@@ -79,13 +79,14 @@ What lives where:
 
 Each agent is a single `.md` file with YAML frontmatter (config) and a Markdown body (system prompt). Files live in `{OPENAGENTD_CONFIG_DIR}/agents/` by default.
 
-To import an OpenClaw/Hermes workspace that uses prompt files such as `AGENTS.md`, `SOUL.md`, `SOULS.md`, or `TOOLS.md`, run:
+To import OpenClaw or Hermes prompt/context files, run:
 
 ```bash
 openagentd migrate openclaw --from ~/.openclaw/workspace --model openai:gpt-5.5
+openagentd migrate hermes --from ~/.hermes --model openai:gpt-5.5
 ```
 
-This writes one normal OpenAgentd lead agent at `{OPENAGENTD_CONFIG_DIR}/agents/openclaw.md`. Existing files are not replaced unless `--force` is passed.
+This writes one normal OpenAgentd lead agent at `{OPENAGENTD_CONFIG_DIR}/agents/<name>.md`. Existing files are not replaced unless `--force` is passed. OpenClaw imports `AGENTS.md`, `SOUL.md`, `SOULS.md`, and `TOOLS.md`; Hermes imports `SOUL.md`, `.hermes.md`, `HERMES.md`, `AGENTS.md`, `CLAUDE.md`, and `.cursorrules`.
 
 | Path | Purpose |
 |------|---------|

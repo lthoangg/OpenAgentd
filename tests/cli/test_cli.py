@@ -227,7 +227,16 @@ class TestBuildParser:
         )
         assert args.func is cli.cmd_migrate
         assert args.source == "openclaw"
-        assert args.from_dir == "~/.openclaw/workspace"
+        assert args.from_dir is None
+        assert args.model == "openai:gpt-5.5"
+
+    def test_migrate_hermes_subcommand(self):
+        args = build_parser().parse_args(
+            ["migrate", "hermes", "--model", "openai:gpt-5.5"]
+        )
+        assert args.func is cli.cmd_migrate
+        assert args.source == "hermes"
+        assert args.from_dir is None
         assert args.model == "openai:gpt-5.5"
 
     def test_update_subcommand(self):

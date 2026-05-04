@@ -30,6 +30,7 @@ def build_parser() -> argparse.ArgumentParser:
             "Examples:\n"
             "  openagentd init           # first-time setup (provider, API key, config)\n"
             "  openagentd migrate openclaw --from ~/.openclaw/workspace --model openai:gpt-5.5\n"
+            "  openagentd migrate hermes --from ~/.hermes --model openai:gpt-5.5\n"
             "  openagentd auth copilot   # authenticate with an OAuth provider\n"
             "  openagentd                # start in background (production)\n"
             "  openagentd --dev          # start in foreground with hot-reload\n"
@@ -87,14 +88,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_migrate.add_argument(
         "source",
-        choices=("openclaw",),
+        choices=("openclaw", "hermes"),
         help="Source format to import",
     )
     p_migrate.add_argument(
         "--from",
         dest="from_dir",
-        default="~/.openclaw/workspace",
-        help="OpenClaw workspace directory (default: ~/.openclaw/workspace)",
+        help="Source directory (defaults to ~/.openclaw/workspace or ~/.hermes)",
     )
     p_migrate.add_argument(
         "--model",
@@ -103,8 +103,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_migrate.add_argument(
         "--name",
-        default="openclaw",
-        help="Name for the imported lead agent (default: openclaw)",
+        help="Name for the imported lead agent (default: source name)",
     )
     p_migrate.add_argument(
         "--config-dir",

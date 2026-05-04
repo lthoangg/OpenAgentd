@@ -12,6 +12,7 @@ from app.cli.commands.auth import cmd_auth
 from app.cli.commands.doctor import cmd_doctor
 from app.cli.commands.init import cmd_init
 from app.cli.commands.logs import cmd_logs
+from app.cli.commands.migrate import cmd_migrate
 from app.cli.commands.start import cmd_start
 from app.cli.commands.status import cmd_status
 from app.cli.commands.stop import cmd_stop
@@ -28,6 +29,7 @@ def build_parser() -> argparse.ArgumentParser:
         epilog=(
             "Examples:\n"
             "  openagentd init           # first-time setup (provider, API key, config)\n"
+            "  openagentd migrate openclaw --from ~/.openclaw/workspace --model openai:gpt-5.5\n"
             "  openagentd auth copilot   # authenticate with an OAuth provider\n"
             "  openagentd                # start in background (production)\n"
             "  openagentd --dev          # start in foreground with hot-reload\n"
@@ -77,6 +79,48 @@ def build_parser() -> argparse.ArgumentParser:
         help="Set up for development mode (.env in project root, .openagentd/ tree)",
     )
     p_init.set_defaults(func=cmd_init)
+
+    # ── migrate ───────────────────────────────────────────────────────────────
+    p_migrate = sub.add_parser(
+        "migrate",
+        help="Import agent config from another local agent tool",
+    )
+    p_migrate.add_argument(
+        "source",
+        choices=("openclaw",),
+        help="Source format to import",
+    )
+    p_migrate.add_argument(
+        "--from",
+        dest="from_dir",
+        default="~/.openclaw/workspace",
+        help="OpenClaw workspace directory (default: ~/.openclaw/workspace)",
+    )
+    p_migrate.add_argument(
+        "--model",
+        required=True,
+        help="OpenAgentd model id, e.g. openai:gpt-5.5",
+    )
+    p_migrate.add_argument(
+        "--name",
+        default="openclaw",
+        help="Name for the imported lead agent (default: openclaw)",
+    )
+    p_migrate.add_argument(
+        "--config-dir",
+        help="OpenAgentd config directory (default: XDG config, or .openagentd/config with --dev)",
+    )
+    p_migrate.add_argument(
+        "--force",
+        action="store_true",
+        help="Replace an existing imported agent file",
+    )
+    p_migrate.add_argument(
+        "--dev",
+        action="store_true",
+        help="Use development config dir (.openagentd/config)",
+    )
+    p_migrate.set_defaults(func=cmd_migrate)
 
     # ── auth ──────────────────────────────────────────────────────────────────
     p_auth = sub.add_parser(

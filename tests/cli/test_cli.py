@@ -221,6 +221,15 @@ class TestBuildParser:
         args = build_parser().parse_args(["doctor"])
         assert args.func is cli.cmd_doctor
 
+    def test_migrate_openclaw_subcommand(self):
+        args = build_parser().parse_args(
+            ["migrate", "openclaw", "--model", "openai:gpt-5.5"]
+        )
+        assert args.func is cli.cmd_migrate
+        assert args.source == "openclaw"
+        assert args.from_dir == "~/.openclaw/workspace"
+        assert args.model == "openai:gpt-5.5"
+
     def test_update_subcommand(self):
         args = build_parser().parse_args(["update"])
         assert args.func is cli.cmd_update

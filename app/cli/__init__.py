@@ -5,6 +5,7 @@ Usage
   openagentd               Start server + web UI in the background (production)
   openagentd --dev         Start server + web UI in the foreground with hot-reload
   openagentd init          First-time setup: write .env and seed config files
+  openagentd migrate       Import agent config from another local agent tool
   openagentd auth          Authenticate with an OAuth-based provider (e.g. copilot)
   openagentd stop          Stop the background server and web UI
   openagentd status        Show whether the server is running
@@ -24,6 +25,7 @@ from app.cli.commands.auth import cmd_auth
 from app.cli.commands.doctor import cmd_doctor
 from app.cli.commands.init import cmd_init
 from app.cli.commands.logs import cmd_logs
+from app.cli.commands.migrate import cmd_migrate
 from app.cli.commands.start import cmd_start
 from app.cli.commands.status import cmd_status
 from app.cli.commands.stop import cmd_stop
@@ -54,6 +56,7 @@ __all__ = [
     "cmd_doctor",
     "cmd_init",
     "cmd_logs",
+    "cmd_migrate",
     "cmd_start",
     "cmd_status",
     "cmd_stop",

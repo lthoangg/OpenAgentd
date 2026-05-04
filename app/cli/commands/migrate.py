@@ -69,7 +69,9 @@ def migrate_openclaw_agent(
     agents_dir = config_dir / "agents"
     target = agents_dir / f"{name}.md"
     if target.exists() and not force:
-        raise FileExistsError(f"Agent already exists: {target}. Pass --force to replace it.")
+        raise FileExistsError(
+            f"Agent already exists: {target}. Pass --force to replace it."
+        )
 
     frontmatter = yaml.safe_dump(
         {
@@ -101,7 +103,9 @@ def migrate_hermes_agent(
 
     source_dir = source_dir.expanduser().resolve()
     if not source_dir.is_dir():
-        raise ValueError(f"Hermes home or project directory does not exist: {source_dir}")
+        raise ValueError(
+            f"Hermes home or project directory does not exist: {source_dir}"
+        )
 
     sections: list[str] = []
     imported_files: list[str] = []
@@ -122,7 +126,9 @@ def migrate_hermes_agent(
     agents_dir = config_dir / "agents"
     target = agents_dir / f"{name}.md"
     if target.exists() and not force:
-        raise FileExistsError(f"Agent already exists: {target}. Pass --force to replace it.")
+        raise FileExistsError(
+            f"Agent already exists: {target}. Pass --force to replace it."
+        )
 
     frontmatter = yaml.safe_dump(
         {
@@ -141,8 +147,12 @@ def migrate_hermes_agent(
 
 
 def cmd_migrate(args: argparse.Namespace) -> None:
-    config_dir = Path(args.config_dir).expanduser() if args.config_dir else _config_dir(args.dev)
-    source_dir = Path(args.from_dir) if args.from_dir else _default_source_dir(args.source)
+    config_dir = (
+        Path(args.config_dir).expanduser() if args.config_dir else _config_dir(args.dev)
+    )
+    source_dir = (
+        Path(args.from_dir) if args.from_dir else _default_source_dir(args.source)
+    )
     if args.source == "openclaw":
         result = migrate_openclaw_agent(
             source_dir,

@@ -1,8 +1,6 @@
 """wiki_search tool — search wiki topics.
 
-Supports two methods:
-- "text": BM25 keyword search (always available)
-- "meaning": embedding-based semantic search (deferred — returns error if called)
+Supports keyword search with BM25 scoring.
 """
 
 from __future__ import annotations
@@ -21,13 +19,8 @@ async def _wiki_search(
         str, Field(description="Search query — natural language or keywords.")
     ],
     methods: Annotated[
-        list[Literal["text", "meaning"]],
-        Field(
-            description=(
-                'Search methods. "text" = BM25 keyword search. '
-                '"meaning" = semantic search (not yet available).'
-            )
-        ),
+        list[Literal["text"]],
+        Field(description='Search methods. Only "text" keyword search is available.'),
     ] = ["text"],
     top_k: Annotated[
         int, Field(description="Maximum number of topics to return (default 5).")
@@ -39,9 +32,6 @@ async def _wiki_search(
     or when you need to look up something specific.
     Returns matching topic files with their content.
     """
-    if "meaning" in methods and "text" not in methods:
-        return 'Semantic search (meaning) is not yet available. Use methods=["text"] instead.'
-
     # text / BM25 search
     root = wiki_root()
     if not root.exists():
@@ -80,7 +70,7 @@ wiki_search = Tool(
     _wiki_search,
     name="wiki_search",
     description=(
-        "Search the wiki — a knowledge base of topics distilled from past conversations. "
+        "Search the wiki by keyword — a knowledge base of topics distilled from past conversations. "
         "Use this to recall what was previously discussed or decided on any subject. "
         "Returns full content of matching topic files."
     ),

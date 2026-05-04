@@ -2,7 +2,7 @@
 title: Multi-Agent Teams
 description: Team architecture, activation loop, mailbox coordination, and member protocols.
 status: stable
-updated: 2026-04-21
+updated: 2026-05-04
 ---
 
 # Agent Teams
@@ -277,9 +277,9 @@ team_message(to: list[str], content: str) -> str
 
 The tool description is **role-specific** via the `role` parameter (`"lead"` or `"member"`):
 - **Lead**: "delegate tasks, provide instructions, relay scope changes, ask for status"
-- **Member**: "Your ONLY way to communicate — plain text output is silently discarded. Call this tool to: deliver work output, hand off results to a peer, ask unblocking questions"
+- **Member**: "Your ONLY way to communicate. Call this tool to: deliver work output, hand off results to a peer, ask unblocking questions"
 
-Tool-mechanical rules (one call per audience, no name prefix, content constraints) are self-contained in the Field descriptions — not repeated in protocol constants. The member description explicitly states that plain text is discarded to prevent members from delivering results as assistant text instead of routing through the mailbox.
+Tool-mechanical rules (one call per audience, no name prefix, content constraints) are self-contained in the Field descriptions — not repeated in protocol constants. Member protocol also says not to use plain text output; completed work must be delivered through `team_message`.
 
 ---
 
@@ -392,7 +392,7 @@ Protocol constants (`COMMUNICATION_RULES`, `MESSAGE_FORMAT`, `LEAD_PROTOCOL`, `M
 
 | Section | `TeamLead.build_protocol()` | `TeamMember.build_protocol()` |
 |---------|------|---------|
-| Communication rules | plain text = final user response; coordination via `team_message` tool; use `remember` for user facts | `team_message` is the ONLY communication method; plain text output is silently discarded; no social messages; collaborate directly with peers via `team_message`; `<sleep>` when idle |
+| Communication rules | plain text is user-visible and reserved for the final answer, plus one optional brief progress note after delegation; coordination via `team_message` tool | `team_message` is the ONLY communication method for results; do not use plain text output; no social messages; collaborate directly with peers via `team_message`; respond exactly `<sleep>` with no tool calls when idle |
 | Message format | `[name]: content`, `[user]: content` | `[{lead_name}]: content` (lead), `[name]: content` (peers) |
 | Workflow | receive → delegate → wait (or `<sleep>`) → synthesise | receive → work → `team_message` peers for help if needed → `team_message` results to lead or next peer → `<sleep>` |
 | Team roster | all members with descriptions | lead `[lead]` + other members (not self) |

@@ -49,7 +49,7 @@ Three tiers:
 
 ### `wiki_search` tool
 
-`app/agent/tools/builtin/wiki_search.py` — BM25 keyword search over `wiki/topics/`. Semantic search (`"meaning"`) not yet implemented.
+`app/agent/tools/builtin/wiki_search.py` — BM25 keyword search over `wiki/topics/`.
 
 ### Dream agent
 

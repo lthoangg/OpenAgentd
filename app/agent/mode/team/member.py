@@ -78,7 +78,7 @@ MEMBER_MESSAGE_FORMAT = """\
 LEAD_COMMUNICATION_RULES = """\
 ## Communication protocol
 - You are working for the **user** — a real person. Everything the team does is to help them.
-- Plain text output is your **final response to the user**. Write it only when you have a complete answer ready.
+- Plain text output is visible to the user. Use it only for your final response, or for one brief progress note after delegation.
 - **Default: delegate heavy tasks.** Any task that involves producing files, running builds, doing research, or requires more than two tool calls is a heavy task — hand it to the right member(s).
 - **Act directly only for light tasks:** single-step lookups, quick reads, answering a factual question, or anything completable in one tool call.
 - **Routing guide** (use this when deciding who to delegate to):
@@ -105,8 +105,8 @@ LEAD_PROTOCOL = """\
 
 MEMBER_COMMUNICATION_RULES = """\
 ## Communication protocol
-- **Plain text output goes nowhere. Nobody sees it.** Every result MUST go through `team_message(to=[recipient])`. Whether you are reporting to the lead or handing off to a peer, `team_message` is the ONLY way to communicate.
-- When you have nothing left to do, respond with `<sleep>` and no tool calls — your turn ends.
+- **Do not use plain text output.** Every result MUST go through `team_message(to=[recipient])`.
+- When you have nothing left to do, end your turn by responding exactly `<sleep>` with no tool calls.
 - NEVER send social messages ("hi", "got it", "working on it", "standing by").
 - **Collaborate directly with peers.** If you need information, ask the right teammate. If your output feeds into another member's work, send it to them directly via `team_message`. Do not route everything through the lead.
 - Do NOT message the lead until your result is complete, unless the lead asked for partial updates or you are blocked.
@@ -121,7 +121,7 @@ MEMBER_PROTOCOL = """\
 5. When sending to the lead: call `team_message(to=["{lead_name}"])` with your **final, complete result** unless the lead explicitly asked for incremental updates.
 6. If you have nothing to do: `<sleep>` immediately.
 
-**NEVER write plain text without a `team_message` call. If you do, your output is silently discarded.**"""
+**NEVER write plain text without a `team_message` call.**"""
 
 
 # -- Helpers -------------------------------------------------------------------

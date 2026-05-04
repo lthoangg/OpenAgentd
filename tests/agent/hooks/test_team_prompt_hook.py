@@ -214,6 +214,13 @@ class TestProtocolInjection:
 
         assert "team_message" in prompt
 
+    def test_protocol_constants_capture_current_communication_contract(self):
+        """Prompt constants should preserve the team routing contract."""
+        assert "one brief progress note after delegation" in LEAD_COMMUNICATION_RULES
+        assert "Do not use plain text output" in MEMBER_COMMUNICATION_RULES
+        assert "responding exactly `<sleep>` with no tool calls" in MEMBER_COMMUNICATION_RULES
+        assert "team_message(to=[recipient])" in MEMBER_COMMUNICATION_RULES
+
 
 # ---------------------------------------------------------------------------
 # Roster injection
@@ -339,7 +346,8 @@ class TestProtocolConstants:
     def test_member_communication_rules_enforces_team_message(self):
         """MEMBER_COMMUNICATION_RULES enforces team_message as ONLY communication method."""
         assert "team_message" in MEMBER_COMMUNICATION_RULES
-        assert "Plain text output goes nowhere" in MEMBER_COMMUNICATION_RULES
+        assert "Do not use plain text output" in MEMBER_COMMUNICATION_RULES
+        assert "Every result MUST go through" in MEMBER_COMMUNICATION_RULES
 
     def test_lead_message_format_has_user_prefix(self):
         """Lead message format includes [user]: prefix — members do not."""

@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+from app.agent.errors import ToolArgumentError
+from app.agent.tools.builtin.wiki_search import wiki_search
 from app.agent.tools.builtin.wiki_search import _wiki_search
 from app.services.wiki import write_file
 
@@ -106,11 +108,13 @@ async def test_result_includes_score(_wiki_dir: Path):
     assert "score:" in result
 
 
-# ── Meaning-only returns error ────────────────────────────────────────────────
+# ── Unsupported methods rejected by schema ────────────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_meaning_only_returns_error(_wiki_dir: Path):
-    """Requesting only 'meaning' method should return an error message."""
-    result = await _wiki_search(query="anything", methods=["meaning"], top_k=5)
-    assert "not yet available" in result
+async def test_meaning_method_rejected_by_tool_schema(_wiki_dir: Path):
+    """Semantic search is not exposed until it is implemented."""
+    with pytest.raises(ToolArgumentError) as exc_info:
+        await wiki_search.arun(query="anything", methods=["meaning"], top_k=5)
+
+    assert "Input should be 'text'" in str(exc_info.value)

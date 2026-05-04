@@ -9,8 +9,8 @@ Design parity with opencode's bash.ts:
   the last N lines as an inline tail, with the spill path advertised so it
   can ``read`` the full output if needed.
 - ``workdir`` parameter (optional): run the command in a specific directory.
-  When provided it is resolved against the process CWD, **not** the sandbox
-  workspace.  This lets the agent operate in the real project tree.
+  Relative paths resolve inside the sandbox workspace. Absolute paths are
+  allowed when the caller intentionally needs to run outside the workspace.
 - Abort via ``asyncio.Event``: callers can inject an ``asyncio.Event`` via
   the injected ``_state`` mechanism; the shell tool checks ``interrupt_event``
   from the run context when the helper is called from the agent loop.
@@ -231,7 +231,7 @@ async def _shell(
         int | None,
         Field(
             description=(
-                "Timeout in seconds. Defaults to 120. Increase for long builds. "
+                "Timeout in seconds. Defaults to 20. Increase for long builds. "
                 "If the command legitimately takes longer, retry with a higher value."
             )
         ),

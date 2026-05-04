@@ -59,7 +59,8 @@ remove_path = Tool(
     _remove_path,
     name="rm",
     description=(
-        "Delete a file or directory from the workspace. "
+        "Permanently delete a file or directory from the workspace. "
+        "Use only when the user asked for removal or deletion is necessary. "
         "Set recursive=true to remove a non-empty directory tree."
     ),
 )

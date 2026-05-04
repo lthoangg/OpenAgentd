@@ -351,7 +351,7 @@ Agent system prompts (`.md` body) stay role-specific (expertise only) — all sh
 hook = AgentTeamProtocolHook(team=team, agent_name="explorer")
 ```
 
-Lead gets: delegation workflow, partial-result handling, `<sleep>` to wait for members.
+Lead gets: delegation workflow, partial-result handling, and user-visible final/progress response rules.
 Members get: task workflow, incremental delivery rules, `<sleep>` convention.
 
 ---

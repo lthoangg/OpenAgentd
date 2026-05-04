@@ -2,7 +2,7 @@
 title: Tools & Execution
 description: Tool decorator, JSON schema, argument validation, and tool execution flow.
 status: stable
-updated: 2026-04-24
+updated: 2026-05-04
 ---
 
 # Tools
@@ -145,13 +145,15 @@ The sandbox uses a **denylist** model: any path on disk is reachable except path
 
 | Tool | File | What it does |
 |------|------|-------------|
-| `read` | `read.py` | Read a file. Text files: up to 5 MB with `offset`/`limit` pagination. Images (PNG, JPG, GIF, WebP, ...): base64-encoded via `handlers.py` and returned as `ToolResult` with `ImageDataBlock` — gated by `state.capabilities.input.vision` (non-vision models get a text notice). Documents (PDF, DOCX, PPTX, XLSX, ...): converted to text via markitdown; failed PDFs fall back to raw bytes on vision models. |
+| `read` | `read.py` | Read a file. Text files: up to 5 MB with optional `offset`/`limit` pagination; `offset` is 1-indexed and matches line numbers returned by `grep`. Images (PNG, JPG, GIF, WebP, ...): base64-encoded via `handlers.py` and returned as `ToolResult` with `ImageDataBlock` — gated by `state.capabilities.input.vision` (non-vision models get a text notice). Documents (PDF, DOCX, PPTX, XLSX, ...): converted to text via markitdown; failed PDFs fall back to raw bytes on vision models. |
 | `write` | `write.py` | Write or overwrite a file (creates directories as needed) |
 | `edit` | `edit.py` | Replace exact text in a file; fuzzy-matches whitespace/indentation |
 | `ls` | `ls.py` | List directory contents with type indicators |
 | `grep` | `grep.py` | Regex content search across files; returns `file:line: content` |
 | `glob` | `glob.py` | Glob pattern search. `match='path'` (default) matches full relative path (supports `**`); `match='name'` matches filename only |
-| `rm` | `rm.py` | Delete a file or directory; `recursive=true` for non-empty directories |
+| `rm` | `rm.py` | Permanently delete a file or directory; `recursive=true` for non-empty directories |
+
+`read` returns raw text when called without pagination arguments. When `limit` is set, the result includes a `[start-end/total]` header and `offset=1` starts at the first line.
 
 ### Web (`builtin/web.py`)
 
@@ -174,7 +176,7 @@ The sandbox uses a **denylist** model: any path on disk is reachable except path
 | `command` | `str` | required | Shell command. Runs via the user's preferred POSIX shell (`$SHELL` → zsh → bash → sh). |
 | `description` | `str` | `""` | Short description of what the command does (e.g. `'Run tests'`). Used for logging and displayed in the frontend as the tool call header. |
 | `workdir` | `str \| None` | `None` | Working directory. Omit to use the session workspace root. Relative paths resolve inside the workspace; absolute paths are used as-is. |
-| `timeout_seconds` | `int \| None` | `None` | Override default timeout (default 120s). Increase for long builds. |
+| `timeout_seconds` | `int \| None` | `None` | Override default timeout (default 20s). Increase for long builds. |
 | `background` | `bool` | `false` | Run without waiting. Returns a PID; use `bg` to manage it. |
 
 #### Large output handling
@@ -220,7 +222,7 @@ All subprocesses are started with `start_new_session=True`, which places them in
 
 Shell commands are gated by the **permission system** (`app/agent/permission.py`) before execution. By default `AutoAllowPermissionService` is active — it fires `permission_asked` SSE events and auto-approves. A blocking `PermissionService` with user-defined `Rule`/`Ruleset` (wildcard, last-match-wins) can be wired in when a frontend approval UI is ready. The old denylist (`sudo`, `rm -rf`, etc.) has been removed in favour of this rule-based approach.
 
-Path containment for file tools is enforced by `SandboxConfig.validate_path` — see the denylist rules at the top of [Filesystem](#filesystem-builtinfilesystem). The `shell` tool additionally calls `SandboxConfig.check_command` at the top of `_shell()`: a `shlex` tokenises the command, path-like tokens (containing `/`, leading `~`, or leading `.`) are resolved against the workspace and run through the same denylist, and the call raises `PermissionError("Sandbox blocked 'shell': ...")` on a hit. **Best-effort only** — `$VAR`, `$(...)`, backticks, and base64 are not evaluated, so OS-level user permissions remain the last line of defence. See `app/agent/sandbox.py:check_command`. Timeout: `DEFAULT_MAX_EXECUTION_SECONDS` in `app/agent/sandbox.py` (default 120s). Max output: spilled to `.shell_output/` when large; last 200 lines returned inline.
+Path containment for file tools is enforced by `SandboxConfig.validate_path` — see the denylist rules at the top of [Filesystem](#filesystem-builtinfilesystem). The `shell` tool additionally calls `SandboxConfig.check_command` at the top of `_shell()`: a `shlex` tokenises the command, path-like tokens (containing `/`, leading `~`, or leading `.`) are resolved against the workspace and run through the same denylist, and the call raises `PermissionError("Sandbox blocked 'shell': ...")` on a hit. **Best-effort only** — `$VAR`, `$(...)`, backticks, and base64 are not evaluated, so OS-level user permissions remain the last line of defence. See `app/agent/sandbox.py:check_command`. The default shell timeout is 20s; large output spills to `.shell_output/` with the last 200 lines returned inline.
 
 ### Date (`builtin/date.py`)
 

@@ -118,10 +118,31 @@ async def test_read_file_pagination(sandbox_workspace):
     lines = "\n".join(f"line{i}" for i in range(1, 11))
     (sandbox_workspace / "paged.txt").write_text(lines)
     result = await read_file.arun(path="paged.txt", offset=2, limit=3)
-    assert result.startswith("[3-5/10]")
-    assert "line3" in result
-    assert "line5" in result
-    assert "line6" not in result
+    assert result.startswith("[2-4/10]")
+    assert "line2" in result
+    assert "line4" in result
+    assert "line5" not in result
+
+
+@pytest.mark.asyncio
+async def test_read_file_default_returns_raw_text(sandbox_workspace):
+    """Default reads should not add pagination headers."""
+    content = "line1\nline2\nline3"
+    (sandbox_workspace / "plain.txt").write_text(content)
+
+    result = await read_file.arun(path="plain.txt")
+
+    assert result == content
+
+
+@pytest.mark.asyncio
+async def test_read_file_offset_matches_grep_line_numbers(sandbox_workspace):
+    """Offsets are 1-indexed so callers can pass line numbers from grep."""
+    (sandbox_workspace / "paged.txt").write_text("alpha\nbeta\ngamma\ndelta\n")
+
+    result = await read_file.arun(path="paged.txt", offset=3, limit=1)
+
+    assert result == "[3-3/4]\ngamma\n"
 
 
 # ---------------------------------------------------------------------------

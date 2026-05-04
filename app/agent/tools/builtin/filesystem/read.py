@@ -43,8 +43,8 @@ async def _read_file(
     ],
     offset: Annotated[
         int,
-        Field(description="Line to start from, 0-indexed (default 0)."),
-    ] = 0,
+        Field(description="Line number to start from, 1-indexed (default 1)."),
+    ] = 1,
     limit: Annotated[
         int | None,
         Field(description="Max lines to return. Omit for all lines from offset."),
@@ -98,12 +98,12 @@ async def _read_file(
     except UnicodeDecodeError:
         text = raw.decode("latin-1")
 
-    if offset == 0 and limit is None:
+    if offset == 1 and limit is None:
         return text
 
     lines = text.splitlines(keepends=True)
     total = len(lines)
-    start = max(0, offset)
+    start = max(0, offset - 1)
     end = total if limit is None else min(total, start + limit)
     slice_lines = lines[start:end]
 

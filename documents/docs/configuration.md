@@ -435,14 +435,14 @@ All tools below are available. List only the ones you want the agent to use unde
 | `web_search` | DuckDuckGo search |
 | `web_fetch` | Fetch a URL and return its content as Markdown |
 | `date` | Return today's date/time |
-| `read` | Read a file (up to 5 MB; supports offset/limit pagination) |
+| `read` | Read a file (up to 5 MB; optional 1-indexed offset/limit pagination) |
 | `write` | Write or overwrite a file |
 | `edit` | Replace exact text in a file (fuzzy-matches whitespace/indentation) |
 | `ls` | List directory contents |
 | `grep` | Regex content search across files |
 | `glob` | Glob pattern search — `match='path'` (default) for full-path patterns like `src/**/*.ts`; `match='name'` for filename-only like `*.py` |
-| `rm` | Delete a file or directory (`recursive=true` for non-empty dirs) |
-| `shell` | Run a shell command inside the sandbox (supports `background=true` for long-running processes) |
+| `rm` | Permanently delete a file or directory (`recursive=true` for non-empty dirs) |
+| `shell` | Run a shell command inside the sandbox (20s default timeout; supports `background=true` for long-running processes) |
 | `bg` | Manage background processes: list, check status, read output, stop |
 | `wiki_search` | Search the wiki knowledge base by keyword (BM25) — see [`agent/memory.md`](agent/memory.md) |
 | `note` | Append a note to the current session's wiki note file |

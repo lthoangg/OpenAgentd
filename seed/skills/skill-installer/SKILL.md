@@ -41,4 +41,4 @@ Full instructions the agent reads when it calls skill("skill-name").
 - Directory name must match the `name` field in frontmatter (lowercase, hyphens only).
 - Never overwrite an existing skill without confirming with the user first — read it first and show what will change.
 - After writing, confirm the path and name so the user can add it to an agent's `skills:` list.
-- The `skill` tool uses an `lru_cache` — a newly installed skill won't appear in `discover_skills()` until the server restarts. Inform the user if they need to restart.
+- A new skill can be loaded by exact name immediately. It appears in generated "Available skills" sections after the affected agent rebuilds on its next turn; if a cached skill catalog is stale, use the Skills API/UI path or restart as a fallback.

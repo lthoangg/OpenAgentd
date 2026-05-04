@@ -14,7 +14,7 @@ This skill lets the agent modify its own on-disk configuration in
 response to a user request. All changes are surgical edits to files
 under `{OPENAGENTD_CONFIG_DIR}/`. No code changes, no restarts. Agent
 `.md` edits take effect on the **next turn** of the affected agent;
-`multimodal.yaml` is read on every `generate_image` call.
+`multimodal.yaml` is read on every image/video generation call.
 
 ## Scope — what this skill can change
 
@@ -168,7 +168,7 @@ Only these keys are valid. Reject any request to invent new ones.
 | `fallback_model` | same format as `model` |
 | `temperature` | float, typically `0.0`–`1.0` |
 | `thinking_level` | `none` \| `low` \| `medium` \| `high` |
-| `tools` | subset of: `web_search`, `web_fetch`, `date`, `read`, `write`, `edit`, `ls`, `grep`, `glob`, `rm`, `shell`, `bg`, `generate_image`, plus `mcp_<server>_<tool>` entries from configured MCP servers (never list `skill` or `team_message` — injected automatically) |
+| `tools` | subset of built-ins: `web_search`, `web_fetch`, `date`, `read`, `write`, `edit`, `ls`, `grep`, `glob`, `rm`, `shell`, `bg`, `wiki_search`, `generate_image`, `generate_video`, plus `mcp_<server>_<tool>` entries from configured MCP servers. Never list `skill` or `team_message` — injected automatically. Lead-only tools (`note`, `schedule_task`, `todo_manage`) are also injected automatically. |
 | `skills` | names of subdirectories under `{OPENAGENTD_CONFIG_DIR}/skills/` |
 | `responses_api` | `true` to force OpenAI Responses API |
 | `summarization` | block with `enabled`, `token_threshold`, `keep_last_assistants`, `max_token_length`, `model` |

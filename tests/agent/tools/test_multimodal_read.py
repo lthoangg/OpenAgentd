@@ -294,7 +294,7 @@ class TestReadFileVision:
         )
 
         assert isinstance(result, str)
-        assert result.startswith("[3-5/10]")
+        assert result.startswith("[2-4/10]")
 
     @pytest.mark.asyncio
     async def test_multiple_image_formats(self, workspace):

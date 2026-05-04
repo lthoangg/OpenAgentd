@@ -218,7 +218,10 @@ class TestProtocolInjection:
         """Prompt constants should preserve the team routing contract."""
         assert "one brief progress note after delegation" in LEAD_COMMUNICATION_RULES
         assert "Do not use plain text output" in MEMBER_COMMUNICATION_RULES
-        assert "responding exactly `<sleep>` with no tool calls" in MEMBER_COMMUNICATION_RULES
+        assert (
+            "responding exactly `<sleep>` with no tool calls"
+            in MEMBER_COMMUNICATION_RULES
+        )
         assert "team_message(to=[recipient])" in MEMBER_COMMUNICATION_RULES
 
 

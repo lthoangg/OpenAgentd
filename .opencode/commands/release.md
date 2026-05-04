@@ -42,7 +42,8 @@ Update version in:
 - `web/package.json` — `"version": "<version>"`
 
 ```bash
-uv run ruff format --check app/ tests/   # fix formatting issues first
+uv run ruff format app/ tests/
+uv run ruff format --check app/ tests/
 git add app/version.txt pyproject.toml web/package.json
 git commit -m "chore: bump version to <version>"
 git push origin <branch>

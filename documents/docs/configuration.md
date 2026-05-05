@@ -2,7 +2,7 @@
 title: Configuration Guide
 description: Environment variables, agent setup, tools, skills, sandbox, XDG paths, hooks, running the server.
 status: stable
-updated: 2026-04-30
+updated: 2026-05-05
 ---
 
 # Configuration Guide
@@ -667,6 +667,8 @@ openagentd update            # update to the latest version
 ```
 
 Database migrations run automatically on startup in production mode.
+
+Updates can also be checked from **Settings → Updates** in the installed web app. Installing from the UI runs the update in the background and restarts OpenAgentd when available.
 
 The API is available at `http://localhost:4082/api`.
 Interactive docs: `http://localhost:4082/docs`.

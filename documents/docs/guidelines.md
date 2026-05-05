@@ -2,7 +2,7 @@
 title: Developer Guidelines
 description: Dev commands, code style, testing patterns, performance optimizations, and team protocol conventions.
 status: stable
-updated: 2026-04-21
+updated: 2026-05-05
 ---
 
 # openagentd — Developer Guidelines
@@ -24,7 +24,7 @@ openagentd stop                          # stop background processes
 openagentd status                        # check if running
 openagentd logs                          # tail the server log (alias: openagentd logs -n 100)
 openagentd doctor                        # check system health
-openagentd update                        # update to the latest version
+openagentd update                        # update to the latest version (or Settings → Updates in installed app)
 openagentd --version                     # print version
 
 openagentd auth copilot                  # GitHub Copilot OAuth (browser PKCE)

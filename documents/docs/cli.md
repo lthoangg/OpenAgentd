@@ -135,6 +135,8 @@ Upgrades openagentd to the latest published version. Detects how openagentd was 
 | pipx | `pipx upgrade openagentd` |
 | pip (fallback) | `pip install --upgrade openagentd` |
 
+The installed web app also exposes this flow in **Settings → Updates**. It checks PyPI, shows the latest version, and can start the update plus server restart when allowed.
+
 ---
 
 ## version

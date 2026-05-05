@@ -20,6 +20,11 @@ from app.api.schemas.sessions import (
     SessionPageResponse,
     SessionResponse,
 )
+from app.api.schemas.settings import (
+    SandboxSettingsBody,
+    UpdateInstallBody,
+    UpdateStatusBody,
+)
 
 __all__ = [
     # Shared primitives
@@ -34,4 +39,8 @@ __all__ = [
     "SessionListResponse",
     "SessionPageResponse",
     "SessionResponse",
+    # Settings
+    "SandboxSettingsBody",
+    "UpdateInstallBody",
+    "UpdateStatusBody",
 ]

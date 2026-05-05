@@ -54,4 +54,8 @@ export {
   useSandboxSettingsQuery,
   useUpdateSandboxSettingsMutation,
 } from './useSandboxSettingsQuery'
+export {
+  useUpdateStatusQuery,
+  useInstallUpdateMutation,
+} from './useUpdateQuery'
 export { queryKeys } from './keys'

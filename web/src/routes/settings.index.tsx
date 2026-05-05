@@ -7,8 +7,10 @@ import { Link } from '@tanstack/react-router'
 import {
   ArrowLeft,
   ChevronRight,
+  Download,
   Moon,
   Plug,
+  RefreshCw,
   Settings as SettingsIcon,
   Shield,
   Sparkles,
@@ -18,12 +20,18 @@ import {
 
 import { cn } from '@/lib/utils'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   useAgentFilesQuery,
+  useHealthQuery,
+  useInstallUpdateMutation,
   useMcpServersQuery,
   useSandboxSettingsQuery,
   useSkillFilesQuery,
+  useUpdateStatusQuery,
 } from '@/queries'
+import { useToastStore } from '@/stores/useToastStore'
 
 interface CardProps {
   to: '/settings/agents' | '/settings/skills' | '/settings/mcp' | '/settings/sandbox' | '/settings/dream'
@@ -34,7 +42,7 @@ interface CardProps {
   countLabel: string
 }
 
-function Card({ to, icon: Icon, title, description, count, countLabel }: CardProps) {
+function SettingsNavCard({ to, icon: Icon, title, description, count, countLabel }: CardProps) {
   return (
     <Link
       to={to}
@@ -66,6 +74,115 @@ function Card({ to, icon: Icon, title, description, count, countLabel }: CardPro
         aria-hidden="true"
       />
     </Link>
+  )
+}
+
+export function SystemUpdateCard() {
+  const healthQ = useHealthQuery()
+  const updateQ = useUpdateStatusQuery()
+  const installMut = useInstallUpdateMutation()
+  const push = useToastStore((s) => s.push)
+  const status = updateQ.data
+  const currentVersion = status?.current_version ?? healthQ.data?.version
+
+  const handleCheck = async () => {
+    try {
+      const result = await updateQ.refetch()
+      if (result.error) throw result.error
+      const data = result.data
+      if (!data) return
+      push({
+        tone: data.update_available ? 'info' : 'success',
+        title: data.update_available ? `New update v${data.latest_version}` : 'OpenAgentd is up to date',
+        description: `Current version: v${data.current_version}`,
+      })
+    } catch (err) {
+      push({
+        tone: 'error',
+        title: 'Update check failed',
+        description: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
+
+  const handleInstall = async () => {
+    try {
+      await installMut.mutateAsync()
+      push({
+        tone: 'success',
+        title: 'Update started',
+        description: 'OpenAgentd will install the update and restart in the background.',
+      }, 8000)
+    } catch (err) {
+      push({
+        tone: 'error',
+        title: 'Install failed',
+        description: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
+
+  return (
+    <Card size="sm" className="border-border bg-card/40">
+      <CardHeader className="gap-2 sm:grid-cols-[1fr_auto]">
+        <div>
+          <CardTitle>Application update</CardTitle>
+          <CardDescription>
+            Check for a published OpenAgentd release and install it from here.
+          </CardDescription>
+        </div>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={handleCheck}
+          disabled={updateQ.isFetching || installMut.isPending}
+          className="justify-self-start sm:justify-self-end"
+        >
+          <RefreshCw size={13} className={cn(updateQ.isFetching && 'animate-spin')} aria-hidden="true" />
+          {updateQ.isFetching ? 'Checking...' : 'Check for updates'}
+        </Button>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground ring-1 ring-border/70">
+          <div className="flex flex-wrap items-center gap-2">
+            <span>Current version:</span>
+            <span className="font-mono text-foreground">
+              {currentVersion ? `v${currentVersion}` : 'Not checked'}
+            </span>
+            {status?.latest_version && (
+              <>
+                <span>Latest:</span>
+                <span className="font-mono text-foreground">v{status.latest_version}</span>
+              </>
+            )}
+          </div>
+          {updateQ.error && (
+            <p className="mt-2 text-destructive">
+              {updateQ.error instanceof Error ? updateQ.error.message : String(updateQ.error)}
+            </p>
+          )}
+          {status?.install_blocked_reason && (
+            <p className="mt-2">{status.install_blocked_reason}</p>
+          )}
+        </div>
+
+        {status?.update_available && (
+          <div className="flex flex-col gap-2 rounded-lg border border-primary/20 bg-primary/5 p-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm font-medium text-foreground">
+              New update v{status.latest_version} is available.
+            </p>
+            <Button
+              size="sm"
+              onClick={handleInstall}
+              disabled={!status.can_install || installMut.isPending}
+            >
+              <Download size={13} aria-hidden="true" />
+              {installMut.isPending ? 'Starting...' : 'Install'}
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 
@@ -120,7 +237,7 @@ export function SettingsHubPage() {
         <section>
           <SectionHeader>Workspace</SectionHeader>
           <div className="space-y-2">
-            <Card
+            <SettingsNavCard
               to="/settings/agents"
               icon={Wrench}
               title="Agents"
@@ -128,7 +245,7 @@ export function SettingsHubPage() {
               count={agentsCount}
               countLabel={agentsCount === 1 ? 'agent' : 'agents'}
             />
-            <Card
+            <SettingsNavCard
               to="/settings/skills"
               icon={Sparkles}
               title="Skills"
@@ -136,7 +253,7 @@ export function SettingsHubPage() {
               count={skillsCount}
               countLabel={skillsCount === 1 ? 'skill' : 'skills'}
             />
-            <Card
+            <SettingsNavCard
               to="/settings/mcp"
               icon={Plug}
               title="MCP servers"
@@ -150,7 +267,7 @@ export function SettingsHubPage() {
         <section>
           <SectionHeader>System</SectionHeader>
           <div className="space-y-2">
-            <Card
+            <SettingsNavCard
               to="/settings/sandbox"
               icon={Shield}
               title="Sandbox"
@@ -158,7 +275,7 @@ export function SettingsHubPage() {
               count={sandboxCount}
               countLabel={sandboxCount === 1 ? 'pattern' : 'patterns'}
             />
-            <Card
+            <SettingsNavCard
               to="/settings/dream"
               icon={Moon}
               title="Dream"
@@ -167,6 +284,11 @@ export function SettingsHubPage() {
               countLabel=""
             />
           </div>
+        </section>
+
+        <section>
+          <SectionHeader>Updates</SectionHeader>
+          <SystemUpdateCard />
         </section>
       </div>
     </div>

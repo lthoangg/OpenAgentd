@@ -2,7 +2,7 @@
 title: API Reference
 description: HTTP routes, SSE event protocol, file upload, workspace listing, media proxy, team chat endpoints.
 status: stable
-updated: 2026-04-21
+updated: 2026-05-05
 ---
 
 # API Reference
@@ -168,22 +168,21 @@ The web UI (`SchedulerPanel`, toggled with `Ctrl+S`) exposes all eight operation
 
 ## Settings
 
-User-editable runtime settings persisted under
-`{OPENAGENTD_CONFIG_DIR}`. Currently exposes the sandbox deny-list — a
-list of glob patterns (e.g. `**/.env`, `**/secrets/**`) that are
-matched against the resolved absolute path of every filesystem-tool
-call. See [`configuration.md`](../configuration.md#sandbox-model-and-permissions)
-for the matching rules.
+User-editable runtime settings persisted under `{OPENAGENTD_CONFIG_DIR}` plus update checks for the running app. Sandbox patterns match resolved absolute paths for filesystem-tool calls; see [`configuration.md`](../configuration.md#sandbox-model-and-permissions).
 
 | Method | Path | Returns |
 |--------|------|---------|
 | `GET` | `/api/settings/sandbox` | `{denied_patterns: string[]}` — current list (seed defaults when file absent or key missing) |
 | `PUT` | `/api/settings/sandbox` | `{denied_patterns: string[]}` — replace the list; blank entries stripped |
+| `GET` | `/api/settings/update` | `{current_version, latest_version, update_available, can_install, install_blocked_reason}` — check PyPI for updates |
+| `POST` | `/api/settings/update/install` | `{status:"started"}` — start background update + restart when available |
 
 `PUT` writes `{OPENAGENTD_CONFIG_DIR}/sandbox.yaml` atomically. New
 patterns take effect on the next agent run (each `SandboxConfig`
 re-reads the file at construction). Workspace and memory roots remain
 exempt regardless of pattern matches.
+
+Update install can return `409` when automatic install is unavailable, with a user-facing `detail` message.
 
 ## Permission endpoints
 

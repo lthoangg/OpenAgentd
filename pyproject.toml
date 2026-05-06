@@ -93,5 +93,10 @@ package = true
 include = ["app"]
 exclude = ["tests", "**/__pycache__", ".venv"]
 
+[tool.ty.rules]
+# faster-whisper is an optional extra (voice-local) — not installed in the base
+# venv or on CI. Imports are guarded by try/except ImportError at runtime.
+unresolved-import = "warn"
+
 [tool.ruff]
 target-version = "py313"

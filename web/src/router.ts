@@ -15,6 +15,7 @@ import { NewMcpServerPage } from './routes/settings.mcp.new'
 import { McpServerDetailPage } from './routes/settings.mcp.$name'
 import { SandboxSettingsPage } from './routes/settings.sandbox'
 import { DreamSettingsPage } from './routes/settings.dream'
+import { VoiceSettingsPage } from './routes/settings.voice'
 import { TelemetryPage } from './routes/telemetry'
 import { SchedulerPage } from './routes/scheduler'
 
@@ -124,6 +125,13 @@ const settingsDreamRoute = createRoute({
   component: DreamSettingsPage,
 })
 
+// /settings/voice
+const settingsVoiceRoute = createRoute({
+  getParentRoute: () => settingsLayoutRoute,
+  path: 'voice',
+  component: VoiceSettingsPage,
+})
+
 // /telemetry — standalone observability page (span aggregates & latency)
 const telemetryRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -154,6 +162,7 @@ const routeTree = rootRoute.addChildren([
     settingsMcpDetailRoute,
     settingsSandboxRoute,
     settingsDreamRoute,
+    settingsVoiceRoute,
   ]),
   telemetryRoute,
   schedulerRoute,

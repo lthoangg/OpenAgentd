@@ -637,3 +637,39 @@ export async function installUpdate(): Promise<{ status: string }> {
   if (!res.ok) await parseDetailOrThrow(res, 'POST /settings/update/install')
   return res.json()
 }
+
+// ── /speech ──────────────────────────────────────────────────────────────────
+
+export type SpeechConfig = {
+  enabled: boolean
+  model: string
+  language: string
+  max_file_mb: number
+}
+
+export async function getSpeechConfig(): Promise<SpeechConfig> {
+  const res = await fetch(`${API}/speech/config`)
+  if (!res.ok) throw new Error(`GET /speech/config failed: ${res.status}`)
+  return res.json()
+}
+
+export async function putSpeechConfig(body: SpeechConfig): Promise<SpeechConfig> {
+  const res = await fetch(`${API}/speech/config`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, 'PUT /speech/config')
+  return res.json()
+}
+
+export async function postTranscribe(audioBlob: Blob): Promise<{ text: string }> {
+  const formData = new FormData()
+  formData.append('file', audioBlob, 'recording.webm')
+  const res = await fetch(`${API}/speech/transcribe`, {
+    method: 'POST',
+    body: formData,
+  })
+  if (!res.ok) await parseDetailOrThrow(res, 'POST /speech/transcribe')
+  return res.json()
+}

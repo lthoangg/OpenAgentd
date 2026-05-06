@@ -8,6 +8,7 @@ import {
   ArrowLeft,
   ChevronRight,
   Download,
+  Mic,
   Moon,
   Plug,
   RefreshCw,
@@ -29,12 +30,13 @@ import {
   useMcpServersQuery,
   useSandboxSettingsQuery,
   useSkillFilesQuery,
+  useSpeechConfigQuery,
   useUpdateStatusQuery,
 } from '@/queries'
 import { useToastStore } from '@/stores/useToastStore'
 
 interface CardProps {
-  to: '/settings/agents' | '/settings/skills' | '/settings/mcp' | '/settings/sandbox' | '/settings/dream'
+  to: '/settings/agents' | '/settings/skills' | '/settings/mcp' | '/settings/sandbox' | '/settings/dream' | '/settings/voice'
   icon: LucideIcon
   title: string
   description: string
@@ -200,11 +202,13 @@ export function SettingsHubPage() {
   const skillsQ = useSkillFilesQuery()
   const mcpQ = useMcpServersQuery()
   const sandboxQ = useSandboxSettingsQuery()
+  const speechQ = useSpeechConfigQuery()
 
   const agentsCount = agentsQ.data?.agents.length ?? null
   const skillsCount = skillsQ.data?.skills.length ?? null
   const mcpCount = mcpQ.data?.servers.length ?? null
   const sandboxCount = sandboxQ.data?.denied_patterns.length ?? null
+  const voiceEnabled = speechQ.data?.enabled ?? false
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
@@ -282,6 +286,14 @@ export function SettingsHubPage() {
               description="Cron agent that synthesises sessions into wiki topics"
               count={null}
               countLabel=""
+            />
+            <SettingsNavCard
+              to="/settings/voice"
+              icon={Mic}
+              title="Voice input"
+              description="Transcribe mic recordings locally and insert into the chat input"
+              count={null}
+              countLabel={voiceEnabled ? 'enabled' : 'disabled'}
             />
           </div>
         </section>

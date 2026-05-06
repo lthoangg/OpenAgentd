@@ -18,6 +18,7 @@
 import { Link, useLocation } from '@tanstack/react-router'
 import {
   ArrowLeft,
+  Mic,
   Moon,
   Plug,
   Shield,
@@ -36,6 +37,7 @@ type CategoryPath =
   | '/settings/mcp'
   | '/settings/sandbox'
   | '/settings/dream'
+  | '/settings/voice'
 
 interface RailItem {
   to: CategoryPath
@@ -52,6 +54,7 @@ const ITEMS: readonly RailItem[] = [
   { to: '/settings/mcp', label: 'MCP servers', icon: Plug, matchPrefix: '/settings/mcp' },
   { to: '/settings/sandbox', label: 'Sandbox', icon: Shield, matchPrefix: '/settings/sandbox' },
   { to: '/settings/dream', label: 'Dream', icon: Moon, matchPrefix: '/settings/dream' },
+  { to: '/settings/voice', label: 'Voice', icon: Mic, matchPrefix: '/settings/voice' },
 ]
 
 export function CategoryRail() {

@@ -2,6 +2,7 @@ import { useRef, useState, useCallback, useImperativeHandle, forwardRef, useEffe
 import { ArrowUp, Loader2, Paperclip, Square } from 'lucide-react'
 import { ImageAttachment } from './ImageAttachment'
 import { FileCard } from './FileCard'
+import { VoiceMicButton } from './VoiceMicButton'
 import type { AgentCapabilities } from '@/api/types'
 
 // ── Slash commands ──────────────────────────────────────────────────────────
@@ -42,6 +43,12 @@ interface InputBarProps {
    * above or below. Used by `FloatingInputBar`.
    */
   renderDragHandle?: () => React.ReactNode
+  /**
+   * Whether voice input is enabled (from GET /api/speech/config).
+   * When false the mic button is shown disabled with an explanatory tooltip.
+   * When true the mic button records, transcribes, and appends to input.
+   */
+  voiceEnabled?: boolean
 }
 
 export interface InputBarHandle {
@@ -64,6 +71,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   floating = false,
   filesBelow = false,
   renderDragHandle,
+  voiceEnabled = false,
 }, ref) {
   const [value, setValue] = useState('')
   const [files, setFiles] = useState<File[]>([])
@@ -279,6 +287,15 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     resize()
   }
 
+  // ── Voice transcript insertion ────────────────────────────────────────────
+  const handleVoiceTranscript = useCallback((transcript: string) => {
+    setValue((prev) => {
+      const trimmed = prev.trimEnd()
+      return trimmed ? `${trimmed} ${transcript}` : transcript
+    })
+    requestAnimationFrame(resize)
+  }, [resize])
+
   const hasText = value.trim().length > 0
   const canSend = hasText && !disabled
   const canStop = isStreaming && !disabled && onStop != null
@@ -414,6 +431,13 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
           >
             <Paperclip size={14} />
           </button>
+
+          {/* Voice mic button */}
+          <VoiceMicButton
+            voiceEnabled={voiceEnabled}
+            onTranscript={handleVoiceTranscript}
+            disabled={disabled}
+          />
 
           {/* Send / Stop button */}
           {canStop && !hasText ? (

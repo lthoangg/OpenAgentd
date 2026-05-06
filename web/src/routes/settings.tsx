@@ -38,6 +38,7 @@ function isDetailRoute(pathname: string): boolean {
     pathname.startsWith('/settings/mcp/')   ||
     pathname === '/settings/sandbox'         ||
     pathname === '/settings/dream'           ||
+    pathname === '/settings/voice'           ||
     pathname === '/settings'
   )
 }

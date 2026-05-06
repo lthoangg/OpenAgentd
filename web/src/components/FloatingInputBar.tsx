@@ -88,6 +88,7 @@ interface FloatingInputBarProps {
   placeholder?: string
   autoFocus?: boolean
   capabilities?: AgentCapabilities
+  voiceEnabled?: boolean
 }
 
 /**

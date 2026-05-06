@@ -38,6 +38,7 @@ import { useToastStore } from '@/stores/useToastStore'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { useTileLayout } from '@/hooks/useTileLayout'
 import { useTeamAgentsQuery } from '@/queries/useAgentsQuery'
+import { useSpeechConfigQuery } from '@/queries/useSpeechConfigQuery'
 import {
   Maximize2,
   LayoutGrid,
@@ -119,6 +120,10 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
   const { data: teamAgentsData } = useTeamAgentsQuery()
   const leadCapabilities: AgentCapabilitiesType | undefined = teamAgentsData?.agents
     ?.find((a) => a.is_lead)?.capabilities
+
+  // Voice input — enabled flag from /api/speech/config.
+  const { data: speechConfig } = useSpeechConfigQuery()
+  const voiceEnabled = speechConfig?.enabled ?? false
 
   // Sum tokens — four primitive selectors, no new object returned (avoids infinite loop).
   const totalPrompt     = useTeamStore((s) => Object.values(s.agentStreams).reduce((n, st) => n + st.usage.promptTokens, 0))
@@ -619,6 +624,7 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
                 : 'Message the team…'
           }
           capabilities={leadCapabilities}
+          voiceEnabled={voiceEnabled}
         />
       </div>
 

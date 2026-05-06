@@ -131,10 +131,10 @@ tests/
 │   │                                #   responses_streaming, provider}.py
 │   ├── schemas/
 │   ├── tools/                       # shell, filesystem, web_tools, registry,
-│   │   └── multimodalities/         # generate_image backend tests
+│   │   └── multimodalities/         # generate_image/video backend tests
 │   └── test_*.py                    # loader, agent_loop, sandbox (denylist), permission
 ├── api/                             # mirrors app/api/
-│   └── routes/                      # chat, team, mcp route tests
+│   └── routes/                      # chat, team, mcp, speech route tests
 ├── cli/                             # mirrors app/cli/
 ├── core/                            # config, db, paths, otel
 ├── models/                          # SQLModel schema tests

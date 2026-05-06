@@ -29,6 +29,8 @@
 
 ![Unified team view — every agent's turn in one stream, clearly labeled](documents/assets/team-unified.png)
 
+**Voice input, transcribed locally.** Click the mic button to record, click again to stop. The recording is transcribed on-device via Whisper and inserted into the chat input for review — nothing leaves your machine. Configure in `speech.yaml` or enable via Settings → Voice.
+
 **Schedule it and walk away.** Cron, interval, or one-shot schedules. Results appear when you come back.
 
 **See exactly what the agent is doing.** Built-in OTel dashboard — token usage, latency, trace waterfall. No third-party SaaS, all local.
@@ -185,6 +187,35 @@ Three tiers, all editable:
 3. **Session notes** — Per-session notes the agent appends to via the `note` tool.
 
 The **dream agent** runs on a cron schedule, reads unprocessed session notes, synthesises new topic files, and updates the wiki index — turning ephemeral conversation into durable memory without any action on your part.
+
+---
+
+## Voice input
+
+Click the mic button in the chat input to record. Click again to stop. The recording is transcribed on-device using [Whisper](https://github.com/openai/whisper) and inserted into the input for review — you still press Send manually. Nothing leaves your machine.
+
+**Enable it:**
+
+1. Open **Settings → Voice** and toggle it on (or edit `~/.config/openagentd/speech.yaml` directly).
+2. Install the local transcription extra once:
+
+```bash
+uv sync --extra voice-local
+# or, for tool installs:
+uv tool install "openagentd[voice-local]"
+```
+
+**`speech.yaml` reference:**
+
+```yaml
+voice:
+  enabled: true
+  model: local:base    # local:base / local:small / local:medium
+  language: auto       # or a BCP-47 code: "en", "fr", "ja", …
+  max_file_mb: 25
+```
+
+The file is hot-reloaded on change — no server restart needed. V1 is local-only (`local:*`). No TTS, no auto-send, no silence auto-stop.
 
 ---
 

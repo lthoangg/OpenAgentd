@@ -1,0 +1,13 @@
+voice:
+  # Browser mic input → local Whisper transcription → inserted into chat input.
+  # No audio leaves your machine.
+  #
+  # To enable:
+  #   1. Set enabled: true below.
+  #   2. Install the optional extra: uv sync --extra voice-local
+  #
+  # Future sections (e.g. tts:) will live here alongside voice:.
+  enabled: false
+  model: local:base
+  language: auto   # or e.g. "en", "fr"
+  max_file_mb: 25

@@ -232,7 +232,7 @@ Path containment for file tools is enforced by `SandboxConfig.validate_path` —
 
 ### Multimodalities (`multimodalities/`)
 
-Generative media tools. Each kind (image, audio, video) is gated by a section in `{OPENAGENTD_CONFIG_DIR}/multimodal.yaml`; if the section is missing or the referenced env var is unset, the tool returns a "not configured" error at call time (the agent sees the failure but the server still starts).
+Generative media tools. Each kind is gated by a section in `{OPENAGENTD_CONFIG_DIR}/multimodal.yaml`; if the section is missing or the referenced env var is unset, the tool returns a "not configured" error at call time (the agent sees the failure but the server still starts). Voice input transcription lives in `speech.yaml`, not `multimodal.yaml`; it is a UI/API feature, not an LLM tool.
 
 | Tool | File | What it does |
 |------|------|-------------|
@@ -309,12 +309,13 @@ video:
   # negative_prompt: "low quality, blurry"
   # seed: "42"
 
-# audio:  # reserved — not implemented yet
 ```
 
 The `model` field mirrors the `provider:name` format used by agent `.md` files. The legacy shape with separate `provider:` + `model:` keys is rejected by the loader — update any old config.
 
 The file is loaded once and reloaded on mtime change — no server restart needed when editing.
+
+Voice/speech input is configured separately in `{OPENAGENTD_CONFIG_DIR}/speech.yaml` — see [`web/voice-input.md`](../web/voice-input.md) and [`configuration.md`](../configuration.md).
 
 **Registered backends:**
 

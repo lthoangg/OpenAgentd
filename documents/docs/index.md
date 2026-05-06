@@ -30,6 +30,7 @@ Quick start: `Makefile` (`make run` for the backend on :8000; `cd web && bun dev
 | [Todos popover](./web/todos.md)                      | Web UI Todos popover — task list display, live invalidation, keyboard shortcut                       |
 | [Mobile layout](./web/mobile.md)                     | Phone-first responsive design — breakpoints, safe areas, master/detail patterns, per-component behaviour |
 | [Chat input & queue](./web/chat-input.md)            | Consecutive message queuing, drain-on-done behaviour, `PendingMessageQueue` UI                       |
+| [Voice input](./web/voice-input.md)                  | Browser microphone recording, local speech-to-text, transcript insertion, and settings UI            |
 | [Title generation](./title-generation.md)            | LLM-generated session titles, SSE event, sidebar animation                                           |
 | [Team testing](./testing/team.md)                    | Manual test guide — multi-agent team                                                                 |
 

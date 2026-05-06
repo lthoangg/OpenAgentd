@@ -29,7 +29,7 @@ Both `.env` files are loaded if present — the home-config file takes priority 
 What lives where:
 
 - **Data** — irreplaceable user data. DB (`openagentd.db`). Sibling root `workspace/` lives alongside (`OPENAGENTD_WORKSPACE_DIR`). User-uploaded chat attachments live inside `workspace/<sid>/uploads/` so the agent's filesystem tools can reach them as `uploads/<filename>`. **Back this up.**
-- **Config** — hand-edited configuration. Agents (`agents/`), skills (`skills/`), prompt overrides (`summarization.md`, `title_generation.md`), multimodal generation (`multimodal.yaml`), `.env`.
+- **Config** — hand-edited configuration. Agents (`agents/`), skills (`skills/`), prompt overrides (`summarization.md`, `title_generation.md`), multimodal generation (`multimodal.yaml`), voice/speech input (`speech.yaml`), `.env`.
 - **State** — historical bookkeeping. Logs (`logs/`), telemetry (`telemetry/`), OTEL rollups (`otel/`), `openagentd.pid`. Safe to archive.
 - **Cache** — regeneratable throwaway. `quoteoftheday.json`, `copilot_oauth.json` (OAuth token). Safe to delete any time.
 
@@ -69,9 +69,23 @@ What lives where:
 | `API_HOST` | `0.0.0.0` | Bind address |
 | `API_PORT` | `4082` (8000 on development) | Bind port |
 | `CORS_ORIGINS` | `["*"]` | Allowed CORS origins |
-| `MULTIMODAL_CONFIG_PATH` | `{OPENAGENTD_CONFIG_DIR}/multimodal.yaml` | Path to the multimodal generation config (image/audio/video sections). Drives `generate_image` and `generate_video`. |
+| `MULTIMODAL_CONFIG_PATH` | `{OPENAGENTD_CONFIG_DIR}/multimodal.yaml` | Path to the multimodal config (image/video generation). Drives `generate_image` and `generate_video` settings. |
+| `SPEECH_CONFIG_PATH` | `{OPENAGENTD_CONFIG_DIR}/speech.yaml` | Path to the speech config (`voice:` section). Drives browser mic transcription via `/api/speech/`. |
 | `OPENAGENTD_WIKI_DIR` | dev: `.openagentd/wiki/` · prod: `~/.local/share/openagentd-wiki/` | Wiki knowledge store (`USER.md`, `topics/`, `notes/`). See [`agent/memory.md`](agent/memory.md). |
 > **Service-level defaults (not env vars).** Summarization thresholds, title-generation timeout, tool-result offload sizes, and sandbox limits are module-level constants in their respective service modules — not environment variables. Override them through the file-based / per-agent config surfaces described below (`.openagentd/config/summarization.md`, `.openagentd/config/title_generation.md`, per-agent `.md` frontmatter).
+
+## Optional dependency extras
+
+The base install should stay small. Features that require heavy local runtimes
+use optional extras instead of default dependencies.
+
+| Extra | Enables | Install |
+|-------|---------|---------|
+| `voice-local` | Local browser voice-input transcription via `voice.model: local:base` | `uv sync --extra voice-local` or `uv tool install "openagentd[voice-local]"` |
+
+When `voice.model` is `local:*`, the backend lazy-imports `faster_whisper` from
+`speech.yaml`. A server with voice disabled or the file absent must start without
+the `voice-local` extra installed.
 
 ---
 
@@ -94,7 +108,8 @@ This writes one normal OpenAgentd lead agent at `{OPENAGENTD_CONFIG_DIR}/agents/
 | `{OPENAGENTD_CONFIG_DIR}/dream.md` | Dream agent config (`enabled`, `model`, `schedule`, `tools`) — see [`agent/memory.md`](agent/memory.md#dream-agent-config) |
 | `{OPENAGENTD_CONFIG_DIR}/summarization.md` | Global summarization defaults (model, thresholds) |
 | `{OPENAGENTD_CONFIG_DIR}/title_generation.md` | Global title-generation defaults |
-| `{OPENAGENTD_CONFIG_DIR}/multimodal.yaml` | Provider/model config for multimodal generation tools (`generate_image`, `generate_video`; audio reserved) |
+| `{OPENAGENTD_CONFIG_DIR}/multimodal.yaml` | Provider/model config for multimodal generation tools (`generate_image`, `generate_video`) |
+| `{OPENAGENTD_CONFIG_DIR}/speech.yaml` | Voice/speech input config (`voice:` section for browser mic transcription; future `tts:` section) |
 | `{OPENAGENTD_CONFIG_DIR}/mcp.json` | MCP client config — see [`agent/tools.md`](agent/tools.md#mcp-servers-appagentmcp) and [`api/index.md`](api/index.md#mcp-server-management) |
 | `{OPENAGENTD_CONFIG_DIR}/sandbox.yaml` | User-defined sandbox deny-list (glob patterns, e.g. `**/.env`). Managed via `/settings/sandbox` — see [Sandbox model and permissions](#sandbox-model-and-permissions) |
 | `{OPENAGENTD_CONFIG_DIR}/skills/` | Skill subdirectories (`{name}/SKILL.md`) |

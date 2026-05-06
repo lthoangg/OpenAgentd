@@ -199,6 +199,28 @@ Child of `execute_tool generate_video`, emitted by `_generate_video` in `app/age
 
 Metrics emitted from `_metrics.py`: `openagentd.video.generation.duration` (`s`, dims `provider/model/mode/status`) on every call; `openagentd.video.output.bytes` (`By`, dims `provider/model/mode`) on success only. See [`docs/agent/tools.md#generate_video-parameters`](agent/tools.md#generate_video-parameters) for the tool contract.
 
+### `speech_transcribe {provider:model}` (planned)
+
+Voice input transcription should emit a backend span around
+`POST /api/speech/transcribe`, not an `execute_tool` child span, because voice
+input is a user-input preprocessing step rather than an LLM tool call.
+
+Planned attributes:
+
+| Attribute | Value |
+|-----------|-------|
+| `gen_ai.operation.name` | `"speech_transcribe"` |
+| `gen_ai.provider.name` | provider from `voice.model`, e.g. `local` |
+| `gen_ai.request.model` | model name from `voice.model`, e.g. `base` |
+| `speech.input.bytes` | uploaded audio size |
+| `speech.language` | resolved language when reported by the backend |
+| `speech.transcript.length` | char length of returned transcript |
+| `error.type` | `disabled` \| `configuration` \| `dependency` \| `validation` \| `backend` |
+
+If metrics are added, keep them separate from image/video generation metrics,
+for example `openagentd.speech.transcription.duration` with
+`provider/model/status` dimensions.
+
 ### `summarization` (context compression)
 
 Emitted by `SummarizationHook._summarise()` when the prompt token threshold is crossed.

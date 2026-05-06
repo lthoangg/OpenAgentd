@@ -60,3 +60,16 @@ Stored in `useTeamStore._pendingMessages: PendingMessage[]`.
 The `InputBarHandle` ref exposes:
 - `focus()` — focus the textarea
 - `setValue(text)` — inject text and trigger height recalculation
+
+---
+
+## Voice transcript insertion (planned)
+
+Voice input reuses the normal text input path. The mic button records browser
+audio, sends it to `POST /api/speech/transcribe`, then inserts the returned
+transcript with `InputBarHandle.setValue(text)`. It does **not** call
+`sendMessage` automatically.
+
+If the input already contains text, the transcript should be appended without
+discarding the draft. See [`voice-input.md`](./voice-input.md) for the full
+state machine and backend contract.

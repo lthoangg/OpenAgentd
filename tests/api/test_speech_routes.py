@@ -154,8 +154,12 @@ async def test_transcribe_returns_text_on_success() -> None:
 
     app = _make_app()
     with patch("app.api.routes.speech.get_voice_config", return_value=cfg):
-        with patch("app.api.routes.speech._transcribe_local", side_effect=_fake_transcribe):
-            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        with patch(
+            "app.api.routes.speech._transcribe_local", side_effect=_fake_transcribe
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
                 resp = await client.post(
                     "/api/speech/transcribe",
                     files={"file": ("rec.webm", b"fake audio bytes", "audio/webm")},
@@ -179,7 +183,9 @@ async def test_transcribe_returns_empty_text_for_silence() -> None:
     app = _make_app()
     with patch("app.api.routes.speech.get_voice_config", return_value=cfg):
         with patch("app.api.routes.speech._transcribe_local", side_effect=_fake_silent):
-            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
                 resp = await client.post(
                     "/api/speech/transcribe",
                     files={"file": ("rec.webm", b"silence bytes", "audio/webm")},
@@ -193,7 +199,9 @@ def test_transcribe_returns_501_for_unknown_provider() -> None:
     """Unsupported provider returns 501 with a helpful message."""
     from app.agent.speech._config import VoiceConfig
 
-    cfg = VoiceConfig(provider="openai", model="whisper-1", language="auto", max_file_mb=25)
+    cfg = VoiceConfig(
+        provider="openai", model="whisper-1", language="auto", max_file_mb=25
+    )
     with patch("app.api.routes.speech.get_voice_config", return_value=cfg):
         client = TestClient(_make_app())
         resp = client.post(

@@ -102,7 +102,9 @@ def save_speech_config(
     path = _config_path()
     # Load existing file so we don't clobber future sections (e.g. tts:).
     try:
-        existing: dict[str, Any] = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        existing: dict[str, Any] = (
+            yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        )
         if not isinstance(existing, dict):
             existing = {}
     except FileNotFoundError:
@@ -117,7 +119,10 @@ def save_speech_config(
         "max_file_mb": max_file_mb,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(yaml.dump(existing, default_flow_style=False, allow_unicode=True), encoding="utf-8")
+    path.write_text(
+        yaml.dump(existing, default_flow_style=False, allow_unicode=True),
+        encoding="utf-8",
+    )
 
     # Bust the cache so the next read picks up the new file.
     global _cache

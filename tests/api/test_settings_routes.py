@@ -24,7 +24,9 @@ def _make_app() -> FastAPI:
 
 
 class _FakePyPIResponse:
-    def __init__(self, payload: dict[str, Any], *, json_error: ValueError | None = None) -> None:
+    def __init__(
+        self, payload: dict[str, Any], *, json_error: ValueError | None = None
+    ) -> None:
         self._payload = payload
         self._json_error = json_error
 
@@ -138,7 +140,9 @@ def test_put_sandbox_rejects_unknown_field(isolated_config: Path) -> None:
 async def test_get_update_reports_new_version(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings_routes, "VERSION", "0.1.7")
     monkeypatch.setattr(settings_routes.settings, "APP_ENV", "production")
-    monkeypatch.setattr(settings_routes.shutil, "which", lambda _name: "/usr/bin/openagentd")
+    monkeypatch.setattr(
+        settings_routes.shutil, "which", lambda _name: "/usr/bin/openagentd"
+    )
     _mock_pypi(monkeypatch, {"info": {"version": "0.1.8"}})
 
     async with await _async_client() as client:
@@ -228,7 +232,10 @@ async def test_install_update_blocks_development_mode(
         response = await client.post("/api/settings/update/install")
 
     assert response.status_code == 409
-    assert response.json()["detail"] == "Automatic install is only available for the installed app."
+    assert (
+        response.json()["detail"]
+        == "Automatic install is only available for the installed app."
+    )
     popen.assert_not_called()
 
 

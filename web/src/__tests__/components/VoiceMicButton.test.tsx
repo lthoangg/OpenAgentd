@@ -9,46 +9,28 @@ afterEach(cleanup)
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
 // postTranscribe is called by the component — mock the module.
-const mockPostTranscribe = mock(async (audioBlob: Blob) => {
-  const formData = new FormData()
-  formData.append('file', new File([audioBlob], 'recording.webm', { type: audioBlob.type }))
-
-  const res = await fetch('http://localhost/api/speech/transcribe', {
-    method: 'POST',
-    body: formData,
-  })
-
-  if (!res.ok) {
-    let detail = `POST /speech/transcribe failed: ${res.status}`
-    try {
-      const body = await res.json()
-      if (typeof body?.detail === 'string') detail = body.detail
-    } catch {
-      // Keep fallback.
-    }
-    throw new Error(detail)
-  }
-
-  return res.json()
-})
+const mockPostTranscribe = mock(async () => ({ text: 'hello world' } as { text: string }))
 
 mock.module('@/api/client', () => ({
   postTranscribe: mockPostTranscribe,
 }))
 
+type Toast = { tone: string; title: string; description?: string }
+type ToastWithId = Toast & { id: string }
+
 // useToastStore — capture pushed toasts.
-const pushedToasts: Array<{ tone: string; title: string; description?: string }> = []
-const mockPush = mock((t: { tone: string; title: string; description?: string }) => {
-  pushedToasts.push(t)
+const pushedToasts: Toast[] = []
+const mockPush = mock((...args: unknown[]) => {
+  pushedToasts.push(args[0] as Toast)
 })
 
 const useToastStoreMock = create<{
-  toasts: Array<{ id: string; tone: string; title: string; description?: string }>
-  push: typeof mockPush
+  toasts: ToastWithId[]
+  push: (t: Toast) => void
   dismiss: (id: string) => void
 }>()((set) => ({
   toasts: [],
-  push: (t) => {
+  push: (t: Toast) => {
     mockPush(t)
     set((state) => ({
       toasts: [
@@ -267,7 +249,7 @@ describe('VoiceMicButton — error handling', () => {
 
     await waitFor(() => screen.getByLabelText('Start voice input'))
     expect(mockPush).toHaveBeenCalled()
-    const call = mockPush.mock.calls[0][0]
+    const call = mockPush.mock.calls[0][0] as Toast
     expect(call.tone).toBe('error')
   })
 
@@ -288,7 +270,7 @@ describe('VoiceMicButton — error handling', () => {
     await user.click(screen.getByLabelText('Start voice input'))
 
     await waitFor(() => expect(mockPush).toHaveBeenCalled())
-    const call = mockPush.mock.calls[0][0]
+    const call = mockPush.mock.calls[0][0] as Toast
     expect(call.tone).toBe('error')
 
     // Should remain in idle state

@@ -9,7 +9,11 @@ from fastapi import APIRouter, HTTPException, UploadFile
 from loguru import logger
 
 from app.agent.speech._config import get_voice_config, save_speech_config
-from app.api.schemas.speech import SpeechConfigBody, SpeechConfigResponse, TranscribeResponse
+from app.api.schemas.speech import (
+    SpeechConfigBody,
+    SpeechConfigResponse,
+    TranscribeResponse,
+)
 
 router = APIRouter()
 
@@ -61,7 +65,10 @@ async def update_speech_config(body: SpeechConfigBody) -> SpeechConfigResponse:
 
     logger.info(
         "speech_config_updated enabled={} model={} language={} max_file_mb={}",
-        body.enabled, body.model, body.language, body.max_file_mb,
+        body.enabled,
+        body.model,
+        body.language,
+        body.max_file_mb,
     )
     return SpeechConfigResponse(
         enabled=body.enabled,
@@ -129,7 +136,10 @@ async def transcribe_audio(file: UploadFile) -> TranscribeResponse:
 
     logger.info(
         "speech_transcribed provider={} model={} bytes={} chars={}",
-        cfg.provider, cfg.model, len(audio_bytes), len(text),
+        cfg.provider,
+        cfg.model,
+        len(audio_bytes),
+        len(text),
     )
     return TranscribeResponse(text=text)
 

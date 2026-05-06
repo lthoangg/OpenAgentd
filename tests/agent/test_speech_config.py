@@ -62,7 +62,9 @@ def test_load_raw_mtime_cache_hit_returns_same_object_without_reread(tmp_path) -
 
     with patch("app.agent.speech._config._config_path", return_value=path):
         with patch.object(speech_config, "_cache", None):
-            with patch("app.agent.speech._config.yaml.safe_load", wraps=yaml.safe_load) as safe_load_mock:
+            with patch(
+                "app.agent.speech._config.yaml.safe_load", wraps=yaml.safe_load
+            ) as safe_load_mock:
                 first = speech_config._load_raw()
                 second = speech_config._load_raw()
 
@@ -79,14 +81,18 @@ def test_load_raw_mtime_cache_miss_rereads_file(tmp_path) -> None:
 
     with patch("app.agent.speech._config._config_path", return_value=path):
         with patch.object(speech_config, "_cache", None):
-            with patch("app.agent.speech._config.yaml.safe_load", wraps=yaml.safe_load) as safe_load_mock:
+            with patch(
+                "app.agent.speech._config.yaml.safe_load", wraps=yaml.safe_load
+            ) as safe_load_mock:
                 first = speech_config._load_raw()
                 old_mtime = path.stat().st_mtime_ns
                 path.write_text(
                     "voice:\n  enabled: true\n  model: local:other\n",
                     encoding="utf-8",
                 )
-                os.utime(path, ns=(old_mtime + 1_000_000_000, old_mtime + 1_000_000_000))
+                os.utime(
+                    path, ns=(old_mtime + 1_000_000_000, old_mtime + 1_000_000_000)
+                )
                 second = speech_config._load_raw()
 
     assert first is not second
@@ -182,7 +188,9 @@ def test_get_voice_config_valid_enabled_config_returns_voice_config(tmp_path) ->
         with patch.object(speech_config, "_cache", None):
             cfg = speech_config.get_voice_config()
 
-    assert cfg == VoiceConfig(provider="local", model="base", language="en", max_file_mb=10)
+    assert cfg == VoiceConfig(
+        provider="local", model="base", language="en", max_file_mb=10
+    )
 
 
 def test_get_voice_config_non_string_language_falls_back_to_auto(tmp_path) -> None:
@@ -201,7 +209,9 @@ def test_get_voice_config_non_string_language_falls_back_to_auto(tmp_path) -> No
 
 
 @pytest.mark.parametrize("max_file_mb", [0, -1])
-def test_get_voice_config_invalid_max_file_mb_falls_back_to_25(tmp_path, max_file_mb: int) -> None:
+def test_get_voice_config_invalid_max_file_mb_falls_back_to_25(
+    tmp_path, max_file_mb: int
+) -> None:
     path = tmp_path / "speech.yaml"
     path.write_text(
         f"voice:\n  enabled: true\n  model: local:base\n  max_file_mb: {max_file_mb}\n",
@@ -243,7 +253,9 @@ def test_save_speech_config_writes_correct_yaml_and_round_trips(tmp_path) -> Non
             )
             cfg = speech_config.get_voice_config()
 
-    assert cfg == VoiceConfig(provider="local", model="base", language="fr", max_file_mb=7)
+    assert cfg == VoiceConfig(
+        provider="local", model="base", language="fr", max_file_mb=7
+    )
 
 
 def test_save_speech_config_preserves_existing_top_level_sections(tmp_path) -> None:
@@ -290,5 +302,9 @@ def test_save_speech_config_busts_cache_after_save(tmp_path) -> None:
             )
             second = speech_config.get_voice_config()
 
-    assert first == VoiceConfig(provider="local", model="base", language="en", max_file_mb=25)
-    assert second == VoiceConfig(provider="local", model="tiny", language="de", max_file_mb=12)
+    assert first == VoiceConfig(
+        provider="local", model="base", language="en", max_file_mb=25
+    )
+    assert second == VoiceConfig(
+        provider="local", model="tiny", language="de", max_file_mb=12
+    )

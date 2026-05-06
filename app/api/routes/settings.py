@@ -76,14 +76,20 @@ async def get_update_status() -> UpdateStatusBody:
             response.raise_for_status()
     except httpx.HTTPError as exc:
         logger.warning("update_check_failed error={}", exc)
-        raise HTTPException(status_code=502, detail="Could not check for updates") from exc
+        raise HTTPException(
+            status_code=502, detail="Could not check for updates"
+        ) from exc
 
     try:
         latest = response.json().get("info", {}).get("version")
     except ValueError as exc:
-        raise HTTPException(status_code=502, detail="PyPI did not return valid JSON") from exc
+        raise HTTPException(
+            status_code=502, detail="PyPI did not return valid JSON"
+        ) from exc
     if not isinstance(latest, str) or not latest:
-        raise HTTPException(status_code=502, detail="PyPI did not return a package version")
+        raise HTTPException(
+            status_code=502, detail="PyPI did not return a package version"
+        )
 
     return UpdateStatusBody(
         current_version=VERSION,

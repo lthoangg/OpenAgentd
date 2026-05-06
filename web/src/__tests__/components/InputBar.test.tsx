@@ -1,12 +1,75 @@
-import { describe, it, expect, afterEach } from "bun:test"
+import { describe, it, expect, afterEach, beforeEach } from "bun:test"
 import { render, screen, cleanup, fireEvent, act } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { createRef } from "react"
+import { http, HttpResponse } from "msw"
+import { setupServer } from "msw/node"
+
+import { postTranscribe } from "@/api/client"
 import { InputBar } from "@/components/InputBar"
 import type { InputBarHandle } from "@/components/InputBar"
 import type { AgentCapabilities } from "@/api/types"
 
+const mockPostTranscribe = postTranscribe as unknown as {
+  mockImplementation?: (impl: () => Promise<{ text: string }>) => void
+}
+
+const server = setupServer()
+
+let originalFetch: typeof fetch | undefined
+
+class MockMediaRecorder extends EventTarget {
+  mimeType = "audio/webm"
+  ondataavailable: ((e: { data: Blob }) => void) | null = null
+  onstop: (() => void) | null = null
+
+  start() {
+    this.ondataavailable?.({ data: new Blob(["audio"], { type: "audio/webm" }) })
+  }
+
+  stop() {
+    this.onstop?.()
+  }
+}
+
+function makeStreamStub() {
+  return {
+    getTracks: () => [{ stop: () => {} }],
+  }
+}
+
+beforeEach(() => {
+  mockPostTranscribe.mockImplementation?.(async () => ({ text: "world" }))
+
+  server.listen()
+  server.use(
+    http.post("http://localhost/api/speech/transcribe", () => HttpResponse.json({ text: "world" })),
+  )
+
+  originalFetch = globalThis.fetch
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    if (typeof input === "string" && input.startsWith("/")) {
+      return originalFetch?.(`http://localhost${input}`, init) ?? Promise.reject(new Error("fetch unavailable"))
+    }
+    return originalFetch?.(input, init) ?? Promise.reject(new Error("fetch unavailable"))
+  }) as typeof fetch
+
+  ;(global as Record<string, unknown>).MediaRecorder = MockMediaRecorder
+  Object.defineProperty(navigator, "mediaDevices", {
+    value: { getUserMedia: async () => makeStreamStub() },
+    configurable: true,
+    writable: true,
+  })
+})
+
 afterEach(cleanup)
+
+afterEach(() => {
+  server.resetHandlers()
+  if (originalFetch) globalThis.fetch = originalFetch
+  originalFetch = undefined
+  server.close()
+})
 
 describe("InputBar", () => {
   it("renders textarea with placeholder", () => {
@@ -234,6 +297,46 @@ describe("InputBar", () => {
 
     const textarea = screen.getByLabelText("Message input")
     expect(document.activeElement).toBe(textarea)
+  })
+
+  describe("voice transcript insertion", () => {
+    it("appends transcript to existing draft with space", async () => {
+      const user = userEvent.setup()
+      render(<InputBar onSubmit={() => {}} voiceEnabled={true} />)
+
+      const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+      await user.type(textarea, "hello")
+      await user.click(screen.getByLabelText("Start voice input"))
+      await user.click(screen.getByLabelText("Stop recording"))
+
+      await screen.findByLabelText("Start voice input")
+      expect(textarea.value).toBe("hello world")
+    })
+
+    it("inserts transcript when input is empty", async () => {
+      const user = userEvent.setup()
+      render(<InputBar onSubmit={() => {}} voiceEnabled={true} />)
+
+      const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+      await user.click(screen.getByLabelText("Start voice input"))
+      await user.click(screen.getByLabelText("Stop recording"))
+
+      await screen.findByLabelText("Start voice input")
+      expect(textarea.value).toBe("world")
+    })
+
+    it("strips trailing whitespace from existing draft before appending", async () => {
+      const user = userEvent.setup()
+      render(<InputBar onSubmit={() => {}} voiceEnabled={true} />)
+
+      const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+      await user.type(textarea, "hello   ")
+      await user.click(screen.getByLabelText("Start voice input"))
+      await user.click(screen.getByLabelText("Stop recording"))
+
+      await screen.findByLabelText("Start voice input")
+      expect(textarea.value).toBe("hello world")
+    })
   })
 })
 

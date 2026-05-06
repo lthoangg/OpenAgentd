@@ -22,7 +22,7 @@ def _make_app() -> FastAPI:
 
 def test_config_voice_disabled_when_no_section() -> None:
     """Missing voice section returns enabled=False with safe defaults."""
-    with patch("app.api.routes.speech.get_voice_config", return_value=None):
+    with patch("app.api.routes.speech.load_raw_voice_section", return_value=None):
         client = TestClient(_make_app())
         resp = client.get("/api/speech/config")
 
@@ -34,17 +34,10 @@ def test_config_voice_disabled_when_no_section() -> None:
     assert body["max_file_mb"] == 25
 
 
-def test_config_returns_voice_settings_when_enabled() -> None:
+def test_config_returns_persisted_values_when_enabled() -> None:
     """Enabled voice config is reflected in the response."""
-    from app.agent.speech._config import VoiceConfig
-
-    cfg = VoiceConfig(
-        provider="local",
-        model="base",
-        language="en",
-        max_file_mb=10,
-    )
-    with patch("app.api.routes.speech.get_voice_config", return_value=cfg):
+    raw = {"enabled": True, "model": "local:base", "language": "en", "max_file_mb": 10}
+    with patch("app.api.routes.speech.load_raw_voice_section", return_value=raw):
         client = TestClient(_make_app())
         resp = client.get("/api/speech/config")
 
@@ -54,6 +47,26 @@ def test_config_returns_voice_settings_when_enabled() -> None:
     assert body["model"] == "local:base"
     assert body["language"] == "en"
     assert body["max_file_mb"] == 10
+
+
+def test_config_returns_persisted_values_when_disabled() -> None:
+    """Disabled voice config still returns saved model/language/max_file_mb."""
+    raw = {
+        "enabled": False,
+        "model": "local:small",
+        "language": "fr",
+        "max_file_mb": 50,
+    }
+    with patch("app.api.routes.speech.load_raw_voice_section", return_value=raw):
+        client = TestClient(_make_app())
+        resp = client.get("/api/speech/config")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["enabled"] is False
+    assert body["model"] == "local:small"
+    assert body["language"] == "fr"
+    assert body["max_file_mb"] == 50
 
 
 # ── POST /api/speech/transcribe ───────────────────────────────────────────────

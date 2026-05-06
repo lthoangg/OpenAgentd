@@ -649,7 +649,7 @@ export type SpeechConfig = {
 
 export async function getSpeechConfig(): Promise<SpeechConfig> {
   const res = await fetch(`${API}/speech/config`)
-  if (!res.ok) throw new Error(`GET /speech/config failed: ${res.status}`)
+  if (!res.ok) await parseDetailOrThrow(res, 'GET /speech/config')
   return res.json()
 }
 

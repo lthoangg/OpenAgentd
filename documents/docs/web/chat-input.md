@@ -63,13 +63,13 @@ The `InputBarHandle` ref exposes:
 
 ---
 
-## Voice transcript insertion (planned)
+## Voice transcript insertion
 
 Voice input reuses the normal text input path. The mic button records browser
-audio, sends it to `POST /api/speech/transcribe`, then inserts the returned
-transcript with `InputBarHandle.setValue(text)`. It does **not** call
-`sendMessage` automatically.
+audio, sends it to `POST /api/speech/transcribe`, then appends the returned
+transcript to the existing draft via the `onTranscript` callback (handled in
+`InputBar`). It does **not** call `sendMessage` automatically.
 
-If the input already contains text, the transcript should be appended without
-discarding the draft. See [`voice-input.md`](./voice-input.md) for the full
-state machine and backend contract.
+If the input already contains text, the transcript is appended with a space
+rather than replacing the draft. See [`voice-input.md`](./voice-input.md) for
+the full state machine and backend contract.

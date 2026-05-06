@@ -170,6 +170,6 @@ describe('VoiceSettingsPage', () => {
     renderPage()
 
     expect(await screen.findByRole('alert')).toBeTruthy()
-    expect(screen.getByText('GET /speech/config failed: 500')).toBeTruthy()
+    expect(screen.getByText('Could not load voice config')).toBeTruthy()
   })
 })

@@ -4,11 +4,16 @@ from __future__ import annotations
 
 import asyncio
 import io
+import threading
 
-from fastapi import APIRouter, HTTPException, UploadFile
+from fastapi import APIRouter, File, HTTPException, UploadFile
 from loguru import logger
 
-from app.agent.speech._config import get_voice_config, save_speech_config
+from app.agent.speech._config import (
+    get_voice_config,
+    load_raw_voice_section,
+    save_speech_config,
+)
 from app.api.schemas.speech import (
     SpeechConfigBody,
     SpeechConfigResponse,
@@ -29,13 +34,19 @@ _DISABLED_MODEL = "local:base"
 # process-wide so repeated calls reuse the same loaded model.
 # Key: (model_name, device, compute_type).
 _whisper_cache: dict[tuple[str, str, str], object] = {}
+_whisper_lock = threading.Lock()  # guards first-load initialisation per key
 
 
 @router.get("/config")
 async def get_speech_config() -> SpeechConfigResponse:
-    """Return safe UI config from ``speech.yaml`` — no secrets."""
-    cfg = get_voice_config()
-    if cfg is None:
+    """Return safe UI config from ``speech.yaml`` — no secrets.
+
+    Always returns the persisted values so Settings → Voice can round-trip
+    edits even while voice is disabled.  Falls back to defaults only when the
+    file or ``voice`` section is absent.
+    """
+    raw = load_raw_voice_section()
+    if raw is None:
         return SpeechConfigResponse(
             enabled=False,
             model=_DISABLED_MODEL,
@@ -43,10 +54,10 @@ async def get_speech_config() -> SpeechConfigResponse:
             max_file_mb=25,
         )
     return SpeechConfigResponse(
-        enabled=True,
-        model=f"{cfg.provider}:{cfg.model}",
-        language=cfg.language,
-        max_file_mb=cfg.max_file_mb,
+        enabled=bool(raw.get("enabled", False)),
+        model=str(raw.get("model", _DISABLED_MODEL)),
+        language=str(raw.get("language", "auto")),
+        max_file_mb=int(raw.get("max_file_mb", 25)) or 25,
     )
 
 
@@ -79,7 +90,7 @@ async def update_speech_config(body: SpeechConfigBody) -> SpeechConfigResponse:
 
 
 @router.post("/transcribe")
-async def transcribe_audio(file: UploadFile) -> TranscribeResponse:
+async def transcribe_audio(file: UploadFile = File(...)) -> TranscribeResponse:
     """Transcribe one uploaded audio recording.
 
     Accepts ``multipart/form-data`` with a single ``file`` field containing
@@ -170,8 +181,12 @@ async def _transcribe_local(audio_bytes: bytes, model: str, language: str) -> st
 
         wmodel = _whisper_cache.get(cache_key)
         if wmodel is None:
-            wmodel = WhisperModel(model, device="cpu", compute_type="int8")
-            _whisper_cache[cache_key] = wmodel
+            with _whisper_lock:
+                # Re-check inside the lock — another thread may have loaded it.
+                wmodel = _whisper_cache.get(cache_key)
+                if wmodel is None:
+                    wmodel = WhisperModel(model, device="cpu", compute_type="int8")
+                    _whisper_cache[cache_key] = wmodel
 
         whisper_language = None if language == "auto" else language
         segments, _ = wmodel.transcribe(  # ty: ignore[unresolved-attribute]

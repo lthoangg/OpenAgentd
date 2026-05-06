@@ -240,6 +240,40 @@ def test_save_speech_config_invalid_model_raises_value_error(tmp_path) -> None:
                 )
 
 
+def test_save_speech_config_strips_and_normalises_model(tmp_path) -> None:
+    """Whitespace around provider/name is stripped and the stored value is normalised."""
+    path = tmp_path / "speech.yaml"
+
+    with patch("app.agent.speech._config._config_path", return_value=path):
+        with patch.object(speech_config, "_cache", None):
+            speech_config.save_speech_config(
+                enabled=True,
+                model="local : small",  # spaces around the colon
+                language="auto",
+                max_file_mb=25,
+            )
+            cfg = speech_config.get_voice_config()
+
+    assert cfg is not None
+    assert cfg.provider == "local"
+    assert cfg.model == "small"
+
+
+def test_save_speech_config_model_with_blank_name_after_strip_raises(tmp_path) -> None:
+    """Model like 'local: ' has a blank name after stripping — should raise ValueError."""
+    path = tmp_path / "speech.yaml"
+
+    with patch("app.agent.speech._config._config_path", return_value=path):
+        with patch.object(speech_config, "_cache", None):
+            with pytest.raises(ValueError):
+                speech_config.save_speech_config(
+                    enabled=True,
+                    model="local: ",
+                    language="auto",
+                    max_file_mb=25,
+                )
+
+
 def test_save_speech_config_writes_correct_yaml_and_round_trips(tmp_path) -> None:
     path = tmp_path / "speech.yaml"
 

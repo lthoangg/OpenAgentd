@@ -19,6 +19,8 @@ without a server restart.
 
 from __future__ import annotations
 
+import os
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -84,6 +86,20 @@ class VoiceConfig:
     max_file_mb: int
 
 
+def load_raw_voice_section() -> dict[str, Any] | None:
+    """Return the raw ``voice`` dict from ``speech.yaml``, or ``None`` if absent.
+
+    Unlike ``get_voice_config()`` this does **not** filter on ``enabled`` —
+    callers that need to display persisted settings (e.g. ``GET /api/speech/config``)
+    should use this so disabled configs still round-trip correctly through the UI.
+    """
+    raw = _load_raw()
+    if not raw:
+        return None
+    section = raw.get("voice")
+    return section if isinstance(section, dict) else None
+
+
 def save_speech_config(
     *,
     enabled: bool,
@@ -94,10 +110,15 @@ def save_speech_config(
     """Write the ``voice`` section of ``speech.yaml``, preserving any other
     top-level sections (future ``tts:``, etc.).
 
-    Raises ``ValueError`` if ``model`` is not a valid ``"provider:name"`` string.
+    Raises ``ValueError`` if ``model`` is not a valid ``"provider:name"`` string
+    after stripping whitespace.  The normalised (stripped) model string is stored.
     """
-    if ":" not in model or not all(model.partition(":")[::2]):
+    provider, sep, name = model.partition(":")
+    provider = provider.strip()
+    name = name.strip()
+    if not sep or not provider or not name:
         raise ValueError(f"Invalid model '{model}': expected 'provider:name'")
+    model = f"{provider}:{name}"
 
     path = _config_path()
     # Load existing file so we don't clobber future sections (e.g. tts:).
@@ -118,11 +139,22 @@ def save_speech_config(
         "language": language,
         "max_file_mb": max_file_mb,
     }
+    content = yaml.dump(existing, default_flow_style=False, allow_unicode=True)
+
+    # Atomic write: write to a sibling temp file then rename so a crash during
+    # write never leaves a truncated config (matches sandbox/mcp pattern).
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        yaml.dump(existing, default_flow_style=False, allow_unicode=True),
-        encoding="utf-8",
-    )
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".speech.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(content)
+        os.replace(tmp, path)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
     # Bust the cache so the next read picks up the new file.
     global _cache

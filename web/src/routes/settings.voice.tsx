@@ -167,7 +167,7 @@ export function VoiceSettingsPage() {
                   <span className="text-foreground">Enabled</span>
                 </label>
                 <p className="text-xs text-muted-foreground">
-                  When disabled the mic button in the chat input is hidden.
+                  When disabled the mic button in the chat input is shown but inactive.
                   Requires the <code className="rounded bg-muted px-1 font-mono">voice-local</code> extra:{' '}
                   <code className="rounded bg-muted px-1 font-mono">uv sync --extra voice-local</code>
                 </p>

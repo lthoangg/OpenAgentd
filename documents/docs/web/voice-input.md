@@ -39,7 +39,7 @@ Rules:
 
 - Missing `voice` section means voice input is disabled.
 - `enabled: false` means voice input is disabled.
-- `model` uses the existing `provider:name` shape. V1 supports `local:base`.
+- `model` uses the existing `provider:name` shape. V1 supports `local:base`, `local:small`, and `local:medium`.
 - `language: auto` lets the transcription backend detect the language.
 - `max_file_mb` caps uploaded recording size before transcription.
 
@@ -87,15 +87,16 @@ saved config.
 
 Expected errors:
 
-- Voice disabled: mic button is hidden; direct `POST /transcribe` calls get a clear 503 error.
+- Voice disabled: mic button shown disabled with tooltip; direct `POST /transcribe` calls get a clear 503 error.
 - Unsupported or oversized audio: request rejected before provider execution.
 - Missing optional dependency for `local:*`: setup error with the `openagentd[voice-local]` install hint.
 - Empty transcript: return `{text: ""}` so the UI can avoid modifying the input.
 
 ## Frontend Flow
 
-The mic button lives beside Send in the chat input. It is only rendered when
-`voice.enabled` is `true` — it is hidden (not just disabled) when voice is off.
+The mic button lives beside Send in the chat input. When `voice.enabled` is
+`false` the button is shown in a disabled state with a tooltip directing the
+user to enable voice in Settings — it is not hidden.
 
 | State | Behaviour |
 |-------|-----------|
@@ -110,7 +111,7 @@ than discarding the typed draft. Sending remains the existing typed-message path
 
 ## Verification
 
-- `voice.enabled: false` hides the mic button entirely.
+- `voice.enabled: false` shows the mic button disabled with a tooltip; it does not send or record.
 - Starting/stopping recording is controlled only by mic-button clicks.
 - A successful transcription inserts text into the input and does not auto-send.
 - Permission denial and transcription failure leave the existing input unchanged.

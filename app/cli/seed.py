@@ -7,7 +7,7 @@ What ships
   rewritten to the provider:model the user picked in ``init``.
 - ``skills/`` — one subdirectory per skill, each with at minimum a
   ``SKILL.md``.
-- Top-level config files: ``mcp.json``, ``multimodal.yaml``,
+- Top-level config files: ``mcp.json``, ``multimodal.yaml``, ``speech.yaml``,
   ``summarization.md``, ``title_generation.md``. These are the
   defaults the user can edit later; any file already present in the
   user's config dir is left untouched.
@@ -57,6 +57,7 @@ _SEED_ROOT_FILES: frozenset[str] = frozenset(
         "dream.md",
         "mcp.json",
         "multimodal.yaml",
+        "speech.yaml",
         "summarization.md",
         "title_generation.md",
     }

@@ -292,7 +292,10 @@ tools:
    ```bash
    curl -sS http://localhost:4082/api/mcp/servers/<name> | jq '{state, tool_names}'
    ```
-   If absent or `errored`, **delegate to `mcp-installer`** first.
+   - If `ready`: proceed.
+   - If `starting`: wait a moment and retry once.
+   - If `errored` or absent from `mcp.json`: **delegate to `mcp-installer`** first.
+   - If the daemon is unreachable: proceed anyway — add the `mcp:` entry to the agent file and note it takes effect on the next turn.
 
 2. **For selective `tools:` entries**, pick names from `tool_names`.
    Don't invent names.

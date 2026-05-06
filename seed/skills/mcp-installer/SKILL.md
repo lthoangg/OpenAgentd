@@ -9,170 +9,183 @@ description: >-
 
 # MCP Installer
 
-`{OPENAGENTD_CONFIG_DIR}/mcp.json` is the source of truth. The agent edits
-it directly with `read` / `edit` / `write`, then asks the running daemon
-to re-read it via one HTTP call:
+Use **`mcp_apply.py`** — a script bundled in this skill directory — for all
+MCP operations. It wraps the daemon API so you don't construct curl commands
+by hand.
 
 ```bash
-curl -sS -X POST http://localhost:4082/api/mcp/apply
+# The script lives next to this SKILL.md:
+SCRIPT="{SKILL_DIR}/mcp_apply.py"
+
+python3 "$SCRIPT" <command> [options]
 ```
 
-The daemon validates the file (Pydantic schema), reconciles only the
-runners that changed, and returns a JSON envelope with each server's
-state. Other servers, the running team, and any in-flight turn are
-**not** disrupted.
+The script talks to the daemon at `http://localhost:4082/api/mcp` by default.
+Pass `--base <url>` to override.
 
-No client-side validation step exists or is needed — the daemon is the
-sole authority on schema correctness, and its 422 response carries the
-exact error message.
+## Commands
+
+```bash
+# Add a remote HTTP server
+python "$SCRIPT" add <name> --http <url>
+
+# Add a stdio server
+python "$SCRIPT" add <name> --stdio <command> --args arg1 arg2 --env KEY=VALUE
+
+# Update an existing server
+python "$SCRIPT" update <name> --http <url>
+python "$SCRIPT" update <name> --stdio <command> --args ...
+
+# Remove a server
+python "$SCRIPT" remove <name>
+
+# Restart a runner (no config change)
+python "$SCRIPT" restart <name>
+
+# Re-read mcp.json and reconcile all runners
+python3 "$SCRIPT" apply
+
+# Add a remote HTTP server
+python3 "$SCRIPT" add <name> --http <url>
+
+# Add a stdio server
+python3 "$SCRIPT" add <name> --stdio <command> --args arg1 arg2 --env KEY=VALUE
+
+# Update an existing server
+python3 "$SCRIPT" update <name> --http <url>
+python3 "$SCRIPT" update <name> --stdio <command> --args ...
+
+# Remove a server
+python3 "$SCRIPT" remove <name>
+
+# Restart a runner (no config change)
+python3 "$SCRIPT" restart <name>
+
+# Re-read mcp.json and reconcile all runners
+python3 "$SCRIPT" apply
+
+# Check state of one or all servers
+python3 "$SCRIPT" status [<name>]
+
+# Poll until a server is ready (useful after add/update)
+python3 "$SCRIPT" wait <name> [--timeout 30]
+```
+
+## Exit codes
+
+| Code | Meaning |
+|------|---------|
+| `0` | Success — or daemon unreachable but `mcp.json` updated as fallback |
+| `1` | API / validation error — detail on stderr |
+| `2` | Server ended up in `errored` state |
+| `3` | `wait` timed out — server still `starting` |
+
+`add`, `update`, `remove`, and `apply` never exit 1 on connection refused —
+they fall back to editing `mcp.json` directly and exit 0. The agent can
+always proceed to wiring after these commands regardless of daemon state.
 
 ## When to use
 
-| User intent                                  | Action                                                  |
-| -------------------------------------------- | ------------------------------------------------------- |
-| Install / update / remove / disable a server | Edit `mcp.json`, `apply`, **then wire into an agent**   |
-| Restart one server (no config change)        | `POST /api/mcp/servers/<name>/restart`                  |
-| List servers (config + state)                | `GET /api/mcp/servers`                                  |
-| Inspect one server                           | `GET /api/mcp/servers/<name>`                           |
-| Attach server's tools to an agent            | **Delegate to `self-healing`** — it owns agent files    |
+| User intent                                  | Command                                      |
+| -------------------------------------------- | -------------------------------------------- |
+| Install / update a remote (HTTP) server      | `add` or `update` with `--http`              |
+| Install / update a local (stdio) server      | `add` or `update` with `--stdio`             |
+| Remove a server                              | `remove` — but wire agent files first        |
+| Restart a crashed server                     | `restart`                                    |
+| Re-read mcp.json after manual edit           | `apply`                                      |
+| Check what's running                         | `status`                                     |
+| Attach server tools to an agent              | **Call `skill("self-healing")`** after add   |
 
-## Workflow — install / update / remove
+## Workflow — install / update
 
-1. **Read** `mcp.json` (create with `{"servers": {}}` if missing).
-
-2. **Confirm secrets exist** before installing servers that need them.
-   Use the same `printenv`/`head -c 4` pattern as `self-healing`:
+1. **Confirm secrets exist** before installing servers that need them:
 
    ```bash
    printenv GITHUB_PERSONAL_ACCESS_TOKEN | head -c 4
    ```
 
-   Empty output → tell the user to add it to
-   `{OPENAGENTD_CONFIG_DIR}/.env` and restart openagentd. Don't
+   Empty → tell the user to add it to `{OPENAGENTD_CONFIG_DIR}/.env`. Don't
    install a server you know will fail.
 
-3. **Expand `~` and relative paths** before writing them to args. MCP
-   servers are spawned by the daemon under its own cwd; `~` won't
-   expand inside the JSON. Use `realpath`:
+2. **Expand `~` and relative paths** for stdio args — the daemon spawns under
+   its own cwd. Use `realpath`:
 
    ```bash
-   realpath ~/Documents          # → /Users/<you>/Documents
+   realpath ~/Documents   # → /Users/<you>/Documents
    ```
 
-   Pass the absolute path into `args`. Quote any path containing
-   spaces (the JSON encoder takes care of escaping; you just need
-   the right value).
-
-4. **For removals**, first
-   `rg '<name>' {OPENAGENTD_CONFIG_DIR}/agents/`. If any agent has
-   the server in its `mcp:` list or any `mcp_<name>_*` entry in
-   `tools:`, **delegate to `self-healing`** to strip those references
-   *before* `apply`. Otherwise the next-turn rebuild logs
-   `agent_config_refresh_failed` and the agent keeps stale config.
-
-5. **Show the planned edit** as a fenced ```json block before
-   writing, unless the user was already explicit.
-
-6. **Edit** `mcp.json` with `edit`. Server name regex
-   `^[a-zA-Z][a-zA-Z0-9_-]*$`; immutable (rename = remove + add).
-   Don't inline secrets — reference env vars only.
-
-7. **Apply**:
+3. **Add or update** the server:
 
    ```bash
-   curl -sS -X POST -w '\nHTTP %{http_code}\n' \
-     http://localhost:4082/api/mcp/apply
+   # Remote HTTP (preferred when the server offers a hosted URL)
+   python3 "$SCRIPT" add excalidraw --http https://mcp.excalidraw.com
+
+   # Local stdio
+   python3 "$SCRIPT" add filesystem --stdio npx \
+     --args -y @modelcontextprotocol/server-filesystem /Users/you/Documents
    ```
 
-   - **HTTP 200** with JSON body: success. Inspect the body's
-     `servers[].state` field — `ready` means the runner is up,
-     `errored` means the runner failed (look at `error`).
-   - **HTTP 422** with `{"detail": "..."}`: file on disk failed
-     schema validation. Show the detail verbatim, fix `mcp.json`,
-     retry. Common causes: trailing comma, `"true"` instead of
-     `true`, invalid server-name characters.
-   - **Connection refused / timeout**: daemon isn't on port 4082.
-     This shouldn't happen during an agent turn — surface the raw
-     error and stop.
+   - Exit `0`: runner started (may still be `starting` — use `wait` if needed).
+   - Exit `1`: API validation error — fix the config and retry.
+   - Exit `2`: runner started but immediately errored — show the error, fix
+     config, retry.
 
-8. **Verify from the response body** — don't issue a second `curl`.
-   You already have the truth.
+4. **Wait for ready** (optional but recommended):
 
-9. **Wire into an agent.** Installing alone does NOT make the tools
-   callable. **Delegate to `skill("self-healing")`** to add the
-   server name to the target agent's `mcp:` or `tools:` list.
-   `self-healing` owns the agent-file workflow.
+   ```bash
+   python3 "$SCRIPT" wait excalidraw --timeout 30
+   ```
 
-## Other endpoints
+5. **Wire into an agent.** Installing alone does NOT make the tools callable.
+   This step is **mandatory** — do not consider the install complete until done.
 
-```bash
-# List every configured server with current state.
-curl -sS http://localhost:4082/api/mcp/servers | jq
+   **The lead agent must do this itself** — do not delegate to a member agent,
+   even if the member ran the steps above. Call `skill("self-healing")` directly
+   and add the server name to the target agent's `mcp:` list.
 
-# Inspect one server (state + tool_names + last error if any).
-curl -sS http://localhost:4082/api/mcp/servers/<name> | jq
+   Only skip if the user explicitly says they will wire it manually.
 
-# Restart one runner without touching mcp.json.
-curl -sS -X POST http://localhost:4082/api/mcp/servers/<name>/restart | jq
-```
+## Workflow — removal
 
-`/restart` is for "the server crashed, give it another life" — it
-doesn't re-read `mcp.json`. For config changes, always go through
-`/apply`.
+1. **Strip agent references first.** Check all agent files:
 
-## Config shapes
+   ```bash
+   rg '<name>' {OPENAGENTD_CONFIG_DIR}/agents/
+   ```
 
-```json
-{
-  "servers": {
-    "filesystem": {
-      "transport": "stdio",
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/Users/you/Documents"],
-      "env": {},
-      "enabled": true
-    },
-    "my-remote": {
-      "transport": "http",
-      "url": "https://mcp.example.com/v1",
-      "headers": {"Authorization": "Bearer ${MY_REMOTE_TOKEN}"},
-      "enabled": true
-    }
-  }
-}
-```
+   If any agent has the server in `mcp:` or `mcp_<name>_*` in `tools:`,
+   **call `skill("self-healing")`** to remove those entries *before* removing
+   the server. Otherwise the next-turn rebuild logs `agent_config_refresh_failed`.
 
-`enabled: false` keeps the entry but contributes no tools (state
-`stopped`). Env-var substitution in `headers`/`env` uses
-`${VAR_NAME}` syntax — the daemon resolves at spawn time.
+2. **Remove the server:**
+
+   ```bash
+   python3 "$SCRIPT" remove <name>
+   ```
 
 ## Common servers
 
-| Name         | Command + args                                                    |
-| ------------ | ----------------------------------------------------------------- |
-| filesystem   | `npx -y @modelcontextprotocol/server-filesystem <abs-path>`         |
-| github       | `npx -y @modelcontextprotocol/server-github` (needs token env)      |
-| brave-search | `npx -y @modelcontextprotocol/server-brave-search` (needs key env)  |
-| postgres     | `npx -y @modelcontextprotocol/server-postgres <conn-string>`        |
-| puppeteer    | `npx -y @modelcontextprotocol/server-puppeteer`                     |
-| sqlite       | `uvx mcp-server-sqlite --db-path <abs-path>`                        |
+| Name         | Command                                                             |
+| ------------ | ------------------------------------------------------------------- |
+| filesystem   | `--stdio npx --args -y @modelcontextprotocol/server-filesystem <path>` |
+| github       | `--stdio npx --args -y @modelcontextprotocol/server-github` (needs token env) |
+| brave-search | `--stdio npx --args -y @modelcontextprotocol/server-brave-search` (needs key env) |
+| postgres     | `--stdio npx --args -y @modelcontextprotocol/server-postgres <conn-string>` |
+| sqlite       | `--stdio uvx --args mcp-server-sqlite --db-path <path>` |
+| excalidraw   | `--http https://mcp.excalidraw.com` |
 
-Verify the package name with the user — npm names drift.
+Verify package names with the user — npm names drift.
 
 ## Failure modes
 
-- **HTTP 422 from `/apply`** → schema disagreement. Show `detail`
-  verbatim. Common: trailing comma, wrong type, invalid server name.
-- **Server in `errored` after `/apply`** → show the `error` field;
-  suggest the obvious fix (missing npm package, wrong path, missing
-  env var). Don't retry blindly.
-- **`agent_config_refresh_failed` after `/apply`** (next turn's
-  logs) → an agent's `tools:` list references a tool that no longer
-  exists. `rg 'mcp_' {OPENAGENTD_CONFIG_DIR}/agents/` then delegate
-  to `self-healing`. The agent keeps its previous config until fixed.
-- **Connection refused** → daemon down. The agent itself runs inside
-  the daemon, so this means something is very wrong. Surface the
-  error and stop; don't try to start it.
+- **Exit 2 (`errored`)** → show the error field; suggest the obvious fix
+  (missing package, wrong path, missing env var). Don't retry blindly.
+- **Exit 0 with "daemon unreachable" message** → `mcp.json` was updated
+  as fallback. Proceed to step 5 (wire into agent) as normal. Changes
+  take effect on next daemon restart.
+- **`agent_config_refresh_failed`** (next turn's logs) → an agent's `tools:`
+  list references a removed tool. Run `rg 'mcp_' {OPENAGENTD_CONFIG_DIR}/agents/`
+  then call `skill("self-healing")`.
 
 A failing MCP server does NOT block other servers, the team, or any
 in-flight turn — tell the user that, they often assume the worst.

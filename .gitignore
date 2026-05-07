@@ -208,3 +208,6 @@ app/_web_dist/
 
 # Asset generation scripts (source HTML, not tracked)
 documents/assets/scripts/
+
+# Diagram source files
+.diagrams/

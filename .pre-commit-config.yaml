@@ -42,3 +42,21 @@ repos:
         types: [python]
         files: ^(app|cli)/
         pass_filenames: false
+
+  # ---------------------------------------------------------------------------
+  # Frontend – type checking (app + tests, mirrors CI)
+  # ---------------------------------------------------------------------------
+  - repo: local
+    hooks:
+      - id: tsc-app
+        name: tsc (app)
+        language: system
+        entry: bash -c 'cd web && bun run typecheck'
+        files: ^web/src/(?!__tests__/).*\.(ts|tsx)$
+        pass_filenames: false
+      - id: tsc-tests
+        name: tsc (tests)
+        language: system
+        entry: bash -c 'cd web && bunx tsc -p tsconfig.test.json --noEmit'
+        files: ^web/src/__tests__/.*\.(ts|tsx)$
+        pass_filenames: false

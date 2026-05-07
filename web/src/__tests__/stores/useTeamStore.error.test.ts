@@ -81,10 +81,9 @@ describe("_handleSSEEvent: done", () => {
 });
 
 describe("team error toast subscriber", () => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function makePush() {
-    // mock() only accepts AnyFunction (...args: any[]) — cast needed for typed assignment
-    return mock((..._args: any[]) => {}) as unknown as (t: Omit<Toast, "id">, durationMs?: number) => void;
+    // mock() only accepts AnyFunction; cast to the typed signature for setState
+    return mock(() => undefined) as unknown as (t: Omit<Toast, "id">, durationMs?: number) => void;
   }
 
   it("pushes an error toast when error changes from null to a string", () => {

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test";
+import type { Toast } from "@/stores/useToastStore";
 import { useTeamStore } from "@/stores/useTeamStore";
 import { useToastStore } from "@/stores/useToastStore";
 
@@ -80,8 +81,14 @@ describe("_handleSSEEvent: done", () => {
 });
 
 describe("team error toast subscriber", () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function makePush() {
+    // mock() only accepts AnyFunction (...args: any[]) — cast needed for typed assignment
+    return mock((..._args: any[]) => {}) as unknown as (t: Omit<Toast, "id">, durationMs?: number) => void;
+  }
+
   it("pushes an error toast when error changes from null to a string", () => {
-    const push = mock(useToastStore.getState().push);
+    const push = makePush();
     useToastStore.setState({ ...useToastStore.getState(), push });
 
     useTeamStore.setState({ error: null });
@@ -96,7 +103,7 @@ describe("team error toast subscriber", () => {
   });
 
   it("does not push a toast when the same error is set twice", () => {
-    const push = mock(useToastStore.getState().push);
+    const push = makePush();
     useToastStore.setState({ ...useToastStore.getState(), push });
 
     useTeamStore.setState({ error: null });
@@ -107,7 +114,7 @@ describe("team error toast subscriber", () => {
   });
 
   it("does not push a toast when error is cleared", () => {
-    const push = mock(useToastStore.getState().push);
+    const push = makePush();
     useToastStore.setState({ ...useToastStore.getState(), push });
 
     useTeamStore.setState({ error: null });

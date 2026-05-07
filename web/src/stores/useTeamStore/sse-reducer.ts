@@ -265,7 +265,9 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
             }
             // Commit this turn's output so next turn accumulates on top
             stream._completionBase = stream.usage.completionTokens
-            stream.status = 'available'
+            // Preserve error status so the red pane stays visible until the
+            // user retries (agent_status → working will clear it).
+            if (stream.status !== 'error') stream.status = 'available'
           })
         })
         // Drain the full pending queue in one shot. Combine all queued message

@@ -22,6 +22,7 @@ import { parseTeamBlocks, sumUsageFromMessages } from '@/utils/messages'
 import { createDefaultAgentStream } from './defaults'
 import { revokeBlobUrlsFromBlocks } from './helpers'
 import { createSSEHandler } from './sse-reducer'
+import { useToastStore } from '@/stores/useToastStore'
 import type { TeamStore } from './types'
 
 // Re-export types so existing ``import type { AgentStream } from
@@ -304,3 +305,12 @@ export const useTeamStore = create<TeamStore>()(
     _handleSSEEvent: createSSEHandler({ set, get }),
   }))
 )
+
+// Push a toast whenever the team-level error is set.
+// Covers all three write paths: SSE error event, sendMessage catch,
+// and connectStream onError.
+useTeamStore.subscribe((state, prev) => {
+  if (state.error && state.error !== prev.error) {
+    useToastStore.getState().push({ tone: 'error', title: 'Agent error', description: state.error })
+  }
+})

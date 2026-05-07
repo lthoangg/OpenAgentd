@@ -253,15 +253,14 @@ Message fields: `id`, `from_agent`, `to_agent` (None = broadcast), `content`, `i
 
 ## Team communication tools
 
-**File:** `app/agent/mode/team/tools.py`
+**Files:** `app/agent/mode/team/tools.py`, `app/agent/mode/team/manage.py`
 
 Injected automatically — do not list in `tools:`.
-
-Everyone gets `team_message`.
 
 | Factory | Returns | For |
 |---------|---------|-----|
 | `make_team_message_tool(mailbox, agent_name, role)` | `[team_message]` | All team agents (lead + members) |
+| `make_team_manage_tool(team)` | `[team_manage]` | Lead only |
 
 ### `team_message` tool
 
@@ -280,6 +279,35 @@ The tool description is **role-specific** via the `role` parameter (`"lead"` or 
 - **Member**: "Your ONLY way to communicate. Call this tool to: deliver work output, hand off results to a peer, ask unblocking questions"
 
 Tool-mechanical rules (one call per audience, no name prefix, content constraints) are self-contained in the Field descriptions — not repeated in protocol constants. Member protocol also says not to use plain text output; completed work must be delivered through `team_message`.
+
+### `team_manage` tool (lead-only)
+
+```
+team_manage(member: str, action: "add"|"remove"|"list", kind: "skill"|"tool"|"mcp" | None, name: str | None) -> str
+```
+
+The lead grants or revokes a member's capabilities at runtime by rewriting that member's `.md` frontmatter. The existing drift-detection hot-reload (see [Live config — drift detection](#live-config--drift-detection-no-team-reload)) picks up the change at the start of the member's next turn — no restart, no team rebuild.
+
+- `member` must be a regular member (the lead is not a manageable target).
+- `kind` + `name` are required for `add` / `remove`, ignored by `list`.
+- Validation runs **before** any disk write: unknown skill / tool / MCP server names, plus protected tool names (`skill`, `team_message`, `todo_manage`, `schedule_task`, `note`), are rejected with a clear error string.
+- `add` and `remove` are idempotent — already-present / not-present cases return a message and skip the write.
+- `list` reads from disk, so it reflects pending mutations the member hasn't reloaded yet.
+
+Members do not have `team_manage` themselves. The protocol prompts in `app/agent/mode/team/member.py` enforce a lead-as-translator pattern:
+
+- **Members describe needs in plain language**, not registry names — e.g. *"I need to write files to disk"*, not *"grant me `write`"*. Members may not know what tools/skills/MCP servers actually exist.
+- **The lead translates the need to the exact registry name** and calls `team_manage(add)` — *"I need shadcn examples"* → `team_manage(member="executor", action="add", kind="mcp", name="shadcn")`.
+- **The lead prefers grant + re-delegate over self-execute** when a member explicitly asks for a capability — keeps separation of concerns; self-execute only as a last resort.
+
+Two related protocol invariants in the same file:
+
+- **Members must verify before claiming.** After a tool call, members must read the result and never report success on a tool error. After mutating state (file write, etc.) the protocol asks for a cheap follow-up read (`ls`, `read`) before reporting completion. Catches LLM hallucination after a failed tool call.
+- **Lead must sanity-check claims before promising "done".** When a member reports it wrote a file at path X, lead is instructed to verify with a cheap read when feasible.
+
+> **Robustness contract:** `_build_agent` in `app/agent/loader.py` warn-and-skips unknown tool / MCP names instead of raising. This makes it safe to mutate frontmatter even if the underlying registry shifts after a grant (e.g. an MCP server is later removed from `mcp.json`). The member rebuild succeeds; the missing capability is dropped and logged. `team_manage` validates up-front so typos are never persisted in the first place.
+
+> **Frontmatter formatting:** the rewrite uses `yaml.safe_dump` — YAML key order and any comments inside the frontmatter are not preserved. Bodies (after the closing `---`) are preserved verbatim. Treat agent `.md` files as machine-managed config.
 
 ---
 

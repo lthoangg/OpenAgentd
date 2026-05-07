@@ -220,11 +220,16 @@ def test_build_agent_with_tool(tmp_path):
     assert "my_tool" in agent._tools
 
 
-def test_build_agent_unknown_tool_raises():
+def test_build_agent_unknown_tool_is_skipped():
+    """Unknown tool name is logged and skipped — agent still loads.
+
+    Soft-skip lets dynamic capability changes (team_manage, mcp.json edits)
+    leave stale names in frontmatter without breaking agent rebuild.
+    """
     factory, _ = _make_provider_factory()
     cfg = AgentConfig(name="bot", tools=["nonexistent_tool"])
-    with pytest.raises(ValueError, match="unknown tool"):
-        _build_agent(cfg, {}, factory)
+    agent = _build_agent(cfg, {}, factory)
+    assert "nonexistent_tool" not in agent._tools
 
 
 def _make_tool(name: str):
@@ -261,7 +266,13 @@ def test_build_agent_mcp_servers_inject_tools(monkeypatch):
     assert "mcp_github_list_repos" not in agent._tools
 
 
-def test_build_agent_mcp_unknown_server_raises(monkeypatch):
+def test_build_agent_mcp_unknown_server_is_skipped(monkeypatch):
+    """Unknown MCP server is logged and skipped — agent still loads.
+
+    Same rationale as ``test_build_agent_unknown_tool_is_skipped``: an MCP
+    server may be removed from ``mcp.json`` after a member's frontmatter
+    references it, and we want the next drift-rebuild to succeed.
+    """
     factory, _ = _make_provider_factory()
     from app.agent.mcp import mcp_manager
 
@@ -269,8 +280,10 @@ def test_build_agent_mcp_unknown_server_raises(monkeypatch):
     monkeypatch.setattr(mcp_manager, "server_names", list)
 
     cfg = AgentConfig(name="bot", mcp=["does_not_exist"])
-    with pytest.raises(ValueError, match="unknown MCP server"):
-        _build_agent(cfg, {}, factory)
+    agent = _build_agent(cfg, {}, factory)
+    # No tools from the unknown server; only the always-on ``skill`` tool.
+    assert "skill" in agent._tools
+    assert len(agent._tools) == 1
 
 
 def test_build_agent_mcp_combines_with_tools(monkeypatch):
@@ -578,7 +591,8 @@ def test_load_team_injects_teammates(tmp_path):
     assert "Worker B" in a_prompt
 
 
-def test_load_team_validates_unknown_tool(tmp_path):
+def test_load_team_skips_unknown_tool(tmp_path):
+    """Unknown tool in frontmatter is skipped — team still loads."""
     from app.agent.loader import load_team_from_dir
 
     d = _make_agents_dir(
@@ -593,8 +607,9 @@ def test_load_team_validates_unknown_tool(tmp_path):
         ],
     )
     factory, _ = _make_provider_factory()
-    with pytest.raises(ValueError, match="unknown tool 'nonexistent_tool'"):
-        load_team_from_dir(d, provider_factory=factory)
+    team = load_team_from_dir(d, provider_factory=factory)
+    assert team is not None
+    assert "nonexistent_tool" not in team.lead.agent._tools
 
 
 def test_load_team_with_extra_tools(tmp_path):

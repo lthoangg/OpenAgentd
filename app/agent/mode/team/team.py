@@ -18,6 +18,7 @@ from loguru import logger
 
 from app.agent.mode.team.mailbox import Message, TeamMailbox
 from app.agent.mode.team.member import TeamLead, TeamMember, TeamMemberBase
+from app.agent.mode.team.manage import make_team_manage_tool
 from app.agent.mode.team.tools import make_team_message_tool
 from app.agent.multimodal import build_parts_from_metas
 from app.agent.schemas.chat import HumanMessage
@@ -308,12 +309,16 @@ class AgentTeam:
     def get_injected_tools(self, agent_name: str) -> list[Tool]:
         """Return runtime tools to inject into agent.run() for the given agent.
 
-        Everyone gets team_message.
+        Everyone gets ``team_message``. The lead additionally gets
+        ``team_manage`` to grant or revoke member capabilities at runtime.
         """
         role = "lead" if agent_name == self.lead.name else "member"
         tools: list[Tool] = [
             make_team_message_tool(self.mailbox, agent_name=agent_name, role=role)
         ]
+
+        if agent_name == self.lead.name:
+            tools.append(make_team_manage_tool(self))
 
         return tools
 

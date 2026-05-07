@@ -34,6 +34,32 @@ source code, adding built-in tools, touching files outside
 config directory — pass the absolute config path to `read` / `write` / `edit`
 rather than relative names.
 
+## Fast path — member capability edits via `team_manage`
+
+When the change is **just** adding or removing one `tool` / `skill` / `mcp`
+entry on a **member** (not the lead), prefer the runtime tool over the
+read → diff → edit workflow below:
+
+```
+team_manage(member="<name>", action="add"|"remove", kind="skill"|"tool"|"mcp", name="<value>")
+```
+
+It validates the capability name against the live registry, rejects
+protected names (`skill`, `team_message`, `todo_manage`, `schedule_task`,
+`note`), is idempotent, and rewrites the member's frontmatter
+atomically. Active on the member's next turn — same drift detection.
+
+Use the manual workflow below for everything `team_manage` cannot do:
+
+- Edits to the **lead's own** `.md` (lead is not a manageable target).
+- Multi-field changes (e.g. model + temperature + tools in one diff).
+- Anything outside `tools` / `skills` / `mcp` — `model`, `temperature`,
+  `thinking_level`, `fallback_model`, `summarization`, system prompt body.
+- Editing `multimodal.yaml`.
+- Creating a new agent file.
+
+For those, follow the read → diff → confirm → edit recipe.
+
 ## Workflow — any change
 
 1. **Identify the target file.** Ask the user "which agent?" only if ambiguous;
@@ -254,7 +280,13 @@ Rules:
 ## MCP tools on agents
 
 MCP servers are managed by `mcp-installer` (it edits `mcp.json`). This
-skill wires the resulting tools onto a specific agent. Two ways:
+skill wires the resulting tools onto a specific agent.
+
+> **Member target?** Use `team_manage(member, "add"|"remove", "mcp", "<server>")`
+> — see the *Fast path* section above. The recipes below are for
+> lead-target edits and for selective `tools:` entries.
+
+Two ways:
 
 ### `mcp:` list — bulk attach (recommended for new servers)
 

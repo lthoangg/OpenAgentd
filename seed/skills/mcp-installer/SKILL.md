@@ -139,9 +139,12 @@ always proceed to wiring after these commands regardless of daemon state.
 5. **Wire into an agent.** Installing alone does NOT make the tools callable.
    This step is **mandatory** — do not consider the install complete until done.
 
-   **The lead agent must do this itself** — do not delegate to a member agent,
-   even if the member ran the steps above. Call `skill("self-healing")` directly
-   and add the server name to the target agent's `mcp:` list.
+   **The lead must wire it.** Two paths:
+
+   - **Member target (fast path)**: call `team_manage(member="<name>", action="add", kind="mcp", name="<server>")` directly. One tool call, validates against the live registry, takes effect on the member's next turn.
+   - **Lead target, or any non-trivial multi-field edit**: call `skill("self-healing")` and follow its diff workflow.
+
+   Do not delegate this step to a member agent, even if the member ran the steps above.
 
    Only skip if the user explicitly says they will wire it manually.
 

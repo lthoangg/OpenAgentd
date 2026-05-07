@@ -403,27 +403,39 @@ def _build_agent(
         if tool_name in ("skill", "todo_manage", "schedule_task", "note"):
             continue
         if tool_name not in tool_registry:
-            raise ValueError(
-                f"Agent '{cfg.name}': unknown tool '{tool_name}'. "
-                f"Available: {sorted(tool_registry.keys())}"
+            # Soft-skip: dynamic capability management (team_manage) and
+            # disabled-then-rebuild flows can leave a name in frontmatter
+            # that no longer resolves. Log and continue so the agent still
+            # loads; team_manage validates up-front to prevent typos.
+            logger.warning(
+                "agent_unknown_tool agent={} tool={} available={}",
+                cfg.name,
+                tool_name,
+                sorted(tool_registry.keys()),
             )
+            continue
         if tool_name in seen:
             continue
         seen.add(tool_name)
         tools.append(tool_registry[tool_name])
 
     # MCP servers: each entry grants the agent access to *all* tools exposed
-    # by that server. Unknown server names raise so typos fail loudly.
+    # by that server. Unknown / not-ready servers are warn-and-skip so the
+    # agent still loads when an MCP server is disabled, mid-restart, or
+    # removed from mcp.json after being granted via team_manage.
     if cfg.mcp:
         from app.agent.mcp import mcp_manager
 
         for server_name in cfg.mcp:
             server_tools = mcp_manager.get_tools_for_server(server_name)
             if server_tools is None:
-                raise ValueError(
-                    f"Agent '{cfg.name}': unknown MCP server '{server_name}'. "
-                    f"Configured: {sorted(mcp_manager.server_names())}"
+                logger.warning(
+                    "agent_unknown_mcp_server agent={} server={} configured={}",
+                    cfg.name,
+                    server_name,
+                    sorted(mcp_manager.server_names()),
                 )
+                continue
             for tool in server_tools:
                 if tool.name in seen:
                     continue
@@ -556,20 +568,10 @@ def load_team_from_dir(
 
     db_factory = resolve_db_factory(db_factory)
 
-    # Validate tools exist in registry across all agents
-    tool_errors: list[str] = []
-    for cfg, _ in agent_configs:
-        for tool_name in cfg.tools:
-            if tool_name not in tool_registry:
-                tool_errors.append(
-                    f"Agent '{cfg.name}': unknown tool '{tool_name}'. "
-                    f"Available: {sorted(tool_registry.keys())}"
-                )
-    if tool_errors:
-        raise ValueError(
-            f"Tool validation failed with {len(tool_errors)} error(s):\n"
-            + "\n".join(f"  - {e}" for e in tool_errors)
-        )
+    # Unknown tools / MCP servers in frontmatter are warn-and-skipped by
+    # ``_build_agent`` so dynamic capability changes (team_manage, mcp.json
+    # edits) never break agent load. ``team_manage`` validates names
+    # up-front to prevent typos from being persisted in the first place.
 
     # Build agents
     lead_agent = _build_agent(

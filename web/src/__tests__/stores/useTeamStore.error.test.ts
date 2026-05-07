@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import type { Toast } from "@/stores/useToastStore";
 import { useTeamStore } from "@/stores/useTeamStore";
 import { useToastStore } from "@/stores/useToastStore";
@@ -20,9 +20,18 @@ const INITIAL_TEAM_STATE = {
   cacheInvalidations: [],
 };
 
+const realPush = useToastStore.getState().push;
+const realDismiss = useToastStore.getState().dismiss;
+
 beforeEach(() => {
   useTeamStore.setState(INITIAL_TEAM_STATE);
-  useToastStore.setState({ toasts: [], push: useToastStore.getState().push, dismiss: useToastStore.getState().dismiss });
+  useToastStore.setState({ toasts: [], push: realPush, dismiss: realDismiss });
+});
+
+afterEach(() => {
+  // Wipe any toasts added by the subscriber during the test so they don't
+  // leak into subsequent test files that also check useToastStore.
+  useToastStore.setState({ toasts: [], push: realPush, dismiss: realDismiss });
 });
 
 function makeStream(status: "available" | "working" | "error") {

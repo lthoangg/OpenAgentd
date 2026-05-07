@@ -1,5 +1,9 @@
 # OpenAgentd
 
+<p align="center">
+  <img src="documents/assets/brand/openagentd-primary-lockup.png" alt="OpenAgentd octobot mascot and wordmark" width="760">
+</p>
+
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Python 3.14](https://img.shields.io/badge/python-3.14-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
@@ -8,6 +12,8 @@
 **Your on-machine multi-agent system.** A long-running local service with a web cockpit, persistent memory, and a team of agents that coordinate to get real work done. Everything stays on your hardware.
 
 [Documentation](documents/docs/index.md)
+
+Brand assets live in [`documents/assets/brand`](documents/assets/brand/) for docs/marketing and [`web/src/assets/brand`](web/src/assets/brand/) for the app. The browser-public copy is only for direct URL needs such as the favicon.
 
 ![Four agents coordinating in a single split view](documents/assets/hero-team-split.png)
 

@@ -1,6 +1,6 @@
 ---
 title: Color Palette
-description: Silver Instrument tokens, semantic colors, syntax highlighting, accessibility compliance
+description: Octobot Agent palette, semantic colors, syntax highlighting, accessibility compliance
 status: stable
 updated: 2026-04-21
 ---
@@ -9,20 +9,30 @@ updated: 2026-04-21
 
 ## Overview
 
-OpenAgentd uses a **Silver Instrument** palette — cool, near-achromatic neutrals with a single accent that is always the maximum-contrast neutral available. In dark mode the accent reads as silver; in light mode it reads as graphite. Brand pigment is *earned*, never decorative: saturated color only appears to convey agent state.
+OpenAgentd uses an **Octobot Agent** palette: warm mascot pigments for brand identity, paired with restrained neutral UI surfaces for daily product work. Brand pigment is earned, never decorative: saturated color appears in identity, primary moments, and meaningful agent state.
 
-**Core principle**: color is a communication channel, not a surface treatment. The system is monochrome by default. Every saturated pixel means something is happening.
+**Core principle**: color is a communication channel, not a surface treatment. The product UI stays neutral by default; gold/orange is reserved for the octobot brand, active agent affordances, and important calls to action.
 
 ---
 
 ## Accent philosophy
 
-The accent is not a hue. It is a **brightness delta** from the surrounding neutrals.
+The UI accent remains a high-contrast neutral in dense product surfaces, while brand assets use the warm octobot palette.
 
 - **Dark mode** → accent is `#E4E4E7` (zinc-200). It is the brightest non-text neutral.
 - **Light mode** → accent is `#27272A` (zinc-800). It is the darkest non-text neutral.
 
-The same mental model ("accent = maximum-contrast neutral") applies in both modes. Only the direction of the contrast inverts. This keeps the brand coherent across themes without requiring users to learn two different palettes.
+The mental model is: neutral UI for sustained work, warm brand pigment for identity and agent energy.
+
+### Brand palette
+
+| Name | Hex | Usage |
+|------|-----|-------|
+| Agent Gold | `#FCC352` | Primary brand surface, badge fills, brand emphasis |
+| Loop Orange | `#FA8030` | Energy accent, mascot details, selected brand emphasis |
+| Kernel Brown | `#5F2511` | Mascot linework, text on gold, warm dark contrast |
+| Shell White | `#FBF8F7` | Light brand surfaces and highlights |
+| Console Ink | `#17120F` | Dark brand surfaces |
 
 ---
 
@@ -100,7 +110,7 @@ Charts may use saturated color. Order matters — series 1 always uses the accen
 | Chart 4 | `#C4B5FD` (violet) | `#7C3AED` |
 | Chart 5 | `#F9A8D4` (pink) | `#DB2777` |
 
-**Anti-pattern**: never use silver/graphite as a chart color. The accent is reserved for UI; charts need their own spectrum.
+**Anti-pattern**: never use brand gold/orange as chart colors unless the data explicitly represents OpenAgentd itself. The brand palette is identity-reserved; charts need their own spectrum.
 
 ---
 
@@ -154,15 +164,15 @@ A single gradient button on a flat screen reads as "metal, the primary action". 
 
 ---
 
-## Silver on light backgrounds — the hard case
+## Brand Pigment On Light Backgrounds
 
-Pure silver (`#E4E4E7`) on white (`#FFFFFF`) has a contrast ratio of **~1.1:1** — it is effectively invisible. This is why the accent inverts to graphite in light mode.
+Warm brand pigment can lose contrast on light surfaces if used as text. Use Kernel Brown for text on Agent Gold, and use charcoal text on Shell White surfaces.
 
 **Rules**:
-- Never place `--color-accent` (light-mode value: `#27272A`) on `--color-bg` and expect silver — it's graphite.
-- Never port the dark-mode gradient to light mode. Light mode uses `#3F3F46 → #18181B` (graphite gradient).
-- The brand mark on light backgrounds renders in **charcoal** (`#09090B`), not silver.
-- Screenshots of the product on light marketing surfaces will show graphite buttons. That is correct; do not retouch them to silver.
+- Use `#5F2511` for text on `#FCC352` pills and badges.
+- Use `#27140C` or `#09090B` for large wordmarks on Shell White.
+- Do not use Loop Orange for body text on light backgrounds.
+- Do not recolor the octobot paths to force contrast; choose an appropriate background instead.
 
 ---
 
@@ -278,7 +288,7 @@ The token layer uses class-based mode switching on the `<html>` element (`class=
 Tokens are exposed as Tailwind utilities via the `@theme` block (unprefixed). Use semantic names, not raw hex:
 
 ```tsx
-// Primary CTA (uses accent — silver on dark, graphite on light)
+// Primary CTA (uses the neutral UI accent in dense product surfaces)
 <button className="bg-accent text-bg hover:bg-accent-hover">
   Start session
 </button>
@@ -327,7 +337,7 @@ The previous palette (Gruvbox-inspired, warm gold `#fabd2f` on sepia neutrals) i
 
 | Previous | Current | Reason |
 |----------|---------|--------|
-| Warm gold `#fabd2f` accent | Silver/graphite neutral accent | Accent is now *earned*, not sprayed. Color becomes a semantic channel. |
+| Generic warm accent | Octobot brand palette + neutral UI accent | Brand color is now source-derived and reserved for identity or agent meaning. |
 | Sepia-warm neutrals (`#1d1b19`, `#ebdbb2`) | Cool zinc neutrals (`#0A0A0B`, `#FAFAFA`) | Removes retro/dotfile association. Reads as contemporary software. |
 | Dark-first, light as afterthought | Dark-first, light-equal | Light mode gets full token spec and testing, not a media-query fallback. |
 | `--color-jb-*` token naming | `--color-*` token naming | Drops project-era prefix. Names now describe function, not origin. |

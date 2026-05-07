@@ -7,7 +7,7 @@ updated: 2026-04-29
 
 # Interaction
 
-The interaction language defines how the Silver Instrument UI responds to pointer, keyboard, and touch input. It consumes tokens from [motion.md](./motion.md) and [typography.md](./typography.md) and applies them consistently across every component.
+The interaction language defines how the OpenAgentd UI responds to pointer, keyboard, and touch input. It consumes tokens from [motion.md](./motion.md) and [typography.md](./typography.md) and applies them consistently across every component.
 
 ---
 
@@ -51,7 +51,7 @@ A click is a click. A hover is a hover. A keypress is a keypress. Don't combine 
 
 ## State choreography
 
-Every interactive element moves through a subset of these states. The transitions between them are where the Silver Instrument identity lives.
+Every interactive element moves through a subset of these states. The transitions between them are where the OpenAgentd product identity lives.
 
 ```
 idle  →  hover  →  focus  →  active  →  loading  →  (success | error)  →  idle
@@ -76,12 +76,12 @@ In dark mode, hover "brightens" (moves toward white). In light mode, hover "dark
 ```css
 /* Dark mode: hover brightens */
 .button:hover {
-  background: var(--color-accent-subtle);  /* tinted toward silver */
+  background: var(--color-accent-subtle);  /* subtle neutral tint */
 }
 
 /* Light mode: hover darkens */
 :root.light .button:hover {
-  background: var(--color-accent-subtle);  /* tinted toward graphite */
+  background: var(--color-accent-subtle);  /* subtle neutral tint */
 }
 ```
 
@@ -91,7 +91,7 @@ Because tokens are mode-aware, the same CSS rule produces the correct direction 
 
 ## Font-weight transitions (signature)
 
-A signature of the Silver Instrument language. Text shifts weight under the cursor — subtly, without moving. See [typography.md](./typography.md#font-weight-transitions-signature-interaction) for the full rule.
+A signature of the OpenAgentd interaction language. Text shifts weight under the cursor — subtly, without moving. See [typography.md](./typography.md#font-weight-transitions-signature-interaction) for the full rule.
 
 ```css
 .interactive {

@@ -54,7 +54,7 @@ font-family: 'JetBrains Mono', ui-monospace, "SF Mono", "Courier New", monospace
 
 ## Font-weight transitions (signature interaction)
 
-Weight shifts on hover and active states are a signature of the Silver Instrument interaction language. Text feels *alive* under the cursor without changing color or position.
+Weight shifts on hover and active states are a signature of the OpenAgentd interaction language. Text feels *alive* under the cursor without changing color or position.
 
 ### The rule
 
@@ -149,7 +149,7 @@ The web app exposes typography through the `@theme` inline block in `src/index.c
 
 - Geist Variable loads from `@fontsource-variable/geist` — single variable font file, no per-weight imports needed
 - JetBrains Mono is loaded via a separate CSS import or `@fontsource/jetbrains-mono`
-- Code syntax highlighting uses `highlight.js` with a custom Silver Instrument theme (see [colors.md](./colors.md#syntax-highlighting--code))
+- Code syntax highlighting uses `highlight.js` with the OpenAgentd theme (see [colors.md](./colors.md#syntax-highlighting--code))
 - All UI text inherits `font-family: var(--font-sans)` from the root; code elements (`<code>`, `<pre>`, `.font-mono`) opt in to the mono stack
 - Font-weight transitions are defined in a `.interactive` utility class or applied directly to `<button>`, `<a>`, and `[role="button"]` elements
 

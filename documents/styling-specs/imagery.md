@@ -9,6 +9,19 @@ updated: 2026-04-21
 
 ## Iconography
 
+## Mascot and brand imagery
+
+OpenAgentd uses the octobot mascot from `documents/assets/brand/octobot-agentd-source.png` as the single source of truth. Do not redraw, simplify, or replace the mascot with a generic robot/octopus. Source-faithful lockups live in `documents/assets/brand/`; app-imported copies live in `web/src/assets/brand/`.
+
+Use the full-color mascot for:
+
+- README and social headers
+- Empty states and onboarding moments
+- App icon and avatar-style surfaces
+- Launch or release graphics
+
+Avoid using the mascot as decoration in dense product chrome. In the app UI, small repeated logo positions should use `openagentd-app-icon.png`; larger quiet empty states can use `octobot-agentd-source.png` at low opacity.
+
 ### Library: lucide-react
 
 Single icon library, no mixing. `lucide-react` ships with the web stack and provides consistent 24px-native outlined icons with 1.5–2px strokes.
@@ -117,7 +130,7 @@ const chartColors = {
 };
 ```
 
-**Never** use the accent (silver/graphite) as a chart color. The accent is UI-reserved.
+**Never** use the brand gold/orange as a chart color unless the data explicitly represents OpenAgentd itself. Brand pigment is identity-reserved.
 
 ### Design rules
 

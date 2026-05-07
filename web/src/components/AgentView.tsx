@@ -16,7 +16,8 @@
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import StickmanIdle from '@/assets/stickman-idle.svg?react'
+import OctobotMascot from '@/assets/brand/octobot-agentd-source.png'
+
 import { MarkdownBlock } from '@/utils/markdown'
 import { ChevronDown, ChevronUp, Copy, Check } from 'lucide-react'
 import { Thinking } from './Thinking'
@@ -283,7 +284,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
       <div className="mx-auto max-w-3xl px-4 py-6">
         {isEmpty && (
            <div className="flex flex-col items-center justify-center gap-3 py-16">
-             <StickmanIdle className="text-(--color-text-subtle) opacity-25" width={72} height={72} />
+             <img src={OctobotMascot} className="opacity-25 grayscale" width={72} height={72} alt="Idle octobot" />
              <p className="text-sm text-(--color-text-subtle)">Waiting for your first message…</p>
            </div>
          )}

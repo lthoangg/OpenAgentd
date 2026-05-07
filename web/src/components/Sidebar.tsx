@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { motion, AnimatePresence } from 'framer-motion'
+import OpenAgentdAppIcon from '@/assets/brand/openagentd-app-icon.png'
 import { useProximityTracker, useProximityIntensity } from '@/hooks/useProximity'
 import { useIsMobile } from '@/hooks/use-mobile'
-import StickmanLogo from '@/assets/stickman.svg?react'
+
 import {
   Plus,
   Trash2,
@@ -224,7 +225,7 @@ export function Sidebar({
                 title="Home"
               >
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-(--color-accent-subtle) ring-1 ring-(--color-border-strong)">
-                  <StickmanLogo width={18} height={18} className="text-(--color-accent)" />
+                  <img src={OpenAgentdAppIcon} width={28} height={28} alt="OpenAgentd logo" className="rounded-md" />
                 </div>
                 <AnimatePresence>
                   {!showIconOnly && (

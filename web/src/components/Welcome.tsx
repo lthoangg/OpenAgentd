@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import StickmanLogo from '@/assets/stickman.svg?react'
+import OpenAgentdAppIcon from '@/assets/brand/openagentd-app-icon.png'
+
 import { Wifi, Users, CheckCircle2, AlertCircle } from 'lucide-react'
 import { useHealthQuery } from '@/queries/useHealthQuery'
 import { useTeamStatusQuery } from '@/queries/useTeamStatusQuery'
@@ -67,7 +68,7 @@ export function Welcome({ onReady }: WelcomeProps) {
             transition={{ duration: 0.5, ease: 'easeInOut' }}
             className="relative flex h-20 w-20 items-center justify-center rounded-3xl bg-(--color-accent-subtle) ring-1 ring-(--color-border-strong)"
           >
-            <StickmanLogo width={40} height={40} className="text-(--color-accent)" />
+            <img src={OpenAgentdAppIcon} width={72} height={72} alt="OpenAgentd logo" className="rounded-2xl" />
           </motion.div>
         </div>
 

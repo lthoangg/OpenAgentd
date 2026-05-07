@@ -23,7 +23,8 @@
  * that returning a freshly-built object on every render would trigger.
  */
 import { useEffect, useRef, useState, useCallback } from 'react'
-import StickmanWave from '@/assets/stickman-wave.svg?react'
+import OctobotMascot from '@/assets/brand/octobot-agentd-source.png'
+
 import { useNavigate } from '@tanstack/react-router'
 import { AgentCapabilities } from '../AgentCapabilities'
 import { AgentView } from '../AgentView'
@@ -601,7 +602,7 @@ export function TeamChatView({ sessionId }: TeamChatViewProps) {
           />
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center gap-3">
-            <StickmanWave className="text-(--color-text-subtle) opacity-25" width={64} height={64} />
+            <img src={OctobotMascot} className="opacity-25 grayscale" width={64} height={64} alt="Idle octobot" />
             <p className="text-sm text-(--color-text-muted)">Select an agent above</p>
           </div>
         )}

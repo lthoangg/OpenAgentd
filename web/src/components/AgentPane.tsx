@@ -12,7 +12,8 @@
  * footer while the agent is actively streaming.
  */
 import { useState, useRef, useEffect, useCallback } from 'react'
-import StickmanIdle from '@/assets/stickman-idle.svg?react'
+import OctobotMascot from '@/assets/brand/octobot-agentd-source.png'
+
 import { MarkdownBlock } from '@/utils/markdown'
 import { ChevronDown, ChevronUp, X, Copy, Check, GripVertical } from 'lucide-react'
 import { Thinking } from './Thinking'
@@ -378,7 +379,7 @@ export function AgentPane({
       <div ref={scrollRef} className="flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
         {isEmpty && !isWorking && (
             <div className="flex h-full flex-col items-center justify-center gap-3 py-8">
-              <StickmanIdle className="text-(--color-text-subtle) opacity-30" width={56} height={56} />
+              <img src={OctobotMascot} className="opacity-30 grayscale" width={56} height={56} alt="Idle octobot" />
               <p className="text-xs text-(--color-text-subtle)">{isError ? stream.lastError || 'Error' : 'Waiting…'}</p>
             </div>
           )}

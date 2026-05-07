@@ -1,13 +1,13 @@
 ---
 title: Applications & Templates
-description: Component examples using Silver Instrument tokens in both light and dark modes
+description: Component examples using OpenAgentd tokens in both light and dark modes
 status: stable
 updated: 2026-04-21
 ---
 
 # Applications & Templates
 
-Component examples using Silver Instrument tokens. All examples work in both modes without modification — tokens resolve to silver on dark, graphite on light.
+Component examples using OpenAgentd tokens. All examples work in both modes without modification; brand pigment is reserved for identity, agent state, and primary moments.
 
 ---
 

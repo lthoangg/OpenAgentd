@@ -5,7 +5,7 @@
 
 import { Link } from '@tanstack/react-router'
 import { Activity, AlertTriangle, Loader2 } from 'lucide-react'
-import StickmanLogo from '@/assets/stickman.svg?react'
+import OpenAgentdAppIcon from '@/assets/brand/openagentd-app-icon.png'
 
 export function PageHeader({
   isFetching,
@@ -27,7 +27,7 @@ export function PageHeader({
           title="Home"
         >
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-(--color-accent-subtle) ring-1 ring-(--color-border-strong)">
-            <StickmanLogo width={18} height={18} className="text-(--color-accent)" />
+            <img src={OpenAgentdAppIcon} width={28} height={28} alt="OpenAgentd logo" className="rounded-md" />
           </div>
           <span className="text-sm font-semibold text-(--color-text)">Telemetry</span>
         </Link>

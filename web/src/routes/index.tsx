@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion'
 import { useNavigate } from '@tanstack/react-router'
-import StickmanLogo from '@/assets/stickman.svg?react'
+import OpenAgentdAppIcon from '@/assets/brand/openagentd-app-icon.png'
+
 import { Activity, AlertCircle, Gauge, Settings, Wifi } from 'lucide-react'
 import { useHealthQuery } from '@/queries/useHealthQuery'
 import { useTeamStatusQuery } from '@/queries/useTeamStatusQuery'
@@ -28,7 +29,7 @@ export function HomePage() {
           <div className="relative">
             <div className="absolute inset-0 rounded-3xl bg-(--color-accent-subtle) blur-2xl" />
             <div className="relative flex h-20 w-20 items-center justify-center rounded-3xl bg-(--color-accent-subtle) ring-1 ring-(--color-accent-subtle)">
-              <StickmanLogo width={40} height={40} className="text-(--color-accent)" />
+              <img src={OpenAgentdAppIcon} width={72} height={72} alt="OpenAgentd logo" className="rounded-2xl" />
             </div>
           </div>
           <div className="text-center">

@@ -243,7 +243,7 @@ Per-pattern fallbacks:
 
 ## Anti-patterns
 
-Things that are **never** acceptable in the Silver Instrument motion system.
+Things that are **never** acceptable in the OpenAgentd motion system.
 
 | Anti-pattern | Why it's wrong |
 |-------------|----------------|

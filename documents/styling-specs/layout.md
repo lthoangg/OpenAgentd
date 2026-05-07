@@ -180,7 +180,7 @@ Dense lists (agent/session lists, command palette results, sidebars with 10+ ite
 | Large text (18px+ bold, 24px+ regular) | 3:1 |
 | Graphics / UI components (borders, focus rings, icons conveying meaning) | 3:1 |
 
-All Silver Instrument tokens are pre-verified — see [colors.md](./colors.md#accessibility-wcag-21-aa).
+All OpenAgentd tokens are pre-verified — see [colors.md](./colors.md#accessibility-wcag-21-aa).
 
 **Test tools:**
 - WebAIM Contrast Checker: https://webaim.org/resources/contrastchecker/

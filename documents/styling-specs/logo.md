@@ -1,128 +1,107 @@
 ---
 title: Logo Specifications
-description: Primary wordmark, variants, sizing rules, clear space, and asset delivery formats
+description: Source-faithful octobot mascot, lockups, sizing rules, clear space, and asset delivery formats
 status: stable
-updated: 2026-04-21
+updated: 2026-05-07
 ---
 
 # Logo Specifications
 
 ## Primary logo
 
-- **Format**: Lowercase wordmark `openagentd`
-- **Font**: Geist Variable at 700 weight
-- **Character**: Single-weight, no decoration, no drop shadow, no lockup ornament
-- **Mode-aware color**:
-  - On dark backgrounds: off-white `#FAFAFA`
-  - On light backgrounds: charcoal `#09090B`
-- **Usage**: Use the primary logo in all standard communications — app header, docs, READMEs, social avatars
+- **Format**: Original octobot mascot + `OpenAgentd` wordmark
+- **Mascot source**: `documents/assets/brand/octobot-agentd-source.png`
+- **Canonical assets**: `documents/assets/brand/`
+- **App assets**: `web/src/assets/brand/`
+- **Wordmark casing**: `OpenAgentd`
+- **Wordmark font**: Inter/system sans, 800 weight
+- **Positioning**: mascot left, wordmark and agent-runtime copy right
 
-The wordmark is a utilitarian typographic mark, not a decorative logo. Its job is to name the product clearly and get out of the way.
+The octobot is the brand. Do not redraw it into a generic robot, simplify the tentacles, replace the eyes, or change the proportions. New assets must embed or directly derive from the source PNG.
 
 ---
 
 ## Logo variants
 
-| Variant | Use | Color spec |
-|---------|-----|------------|
-| **Primary (dark)** | App, dark marketing, social cards on dark surfaces | `#FAFAFA` wordmark on `#0A0A0B` |
-| **Primary (light)** | Docs, light marketing, invoices, light social cards | `#09090B` wordmark on `#FAFAFA` |
-| **Gradient hero** | Hero sections, launch graphics, reserved moments | `var(--gradient-accent)` wordmark on dark — reads as brushed metal |
-| **Horizontal lockup** | Wide spaces (header, footer) with tagline alongside | Wordmark + "on-machine AI agents" in `text-2`, separated by 24px vertical rule |
-| **Stacked lockup** | Narrow spaces (mobile nav, portrait posters) | Wordmark above tagline, centered |
-| **Monogram `o.`** | Favicon, app icon, tight spaces where wordmark is illegible | Lowercase `o` followed by period, same color rules as wordmark |
+| Variant | File | Use |
+|---------|------|-----|
+| **Primary lockup** | `openagentd-primary-lockup.png` | README, docs, landing pages, wide marketing surfaces |
+| **Stacked badge** | `openagentd-stacked-badge.png` | Square cards, social avatars, release graphics |
+| **App icon** | `openagentd-app-icon.png` | Transparent mascot icon for sidebar logo, app chrome, and tight UI logo spots |
+| **Social header** | `openagentd-social-header.png` | OpenGraph images, social banners, project headers |
+| **Source mascot** | `octobot-agentd-source.png` | Empty states, illustrations, source derivation |
 
-### Gradient hero — use sparingly
-
-The gradient variant uses `linear-gradient(180deg, #FAFAFA 0%, #D4D4D8 100%)` clipped to the wordmark text. It reads as polished silver. Restrict to:
-- Landing-page hero
-- Launch announcements
-- One instance per surface
-
-Never use the gradient variant in documentation, the app UI, or anywhere it would appear more than once in view. Repeated metal reads as cheap, not premium.
+Use PNG exports as the canonical delivery format because the mascot source is raster and SVG image references can render inconsistently across browsers, README renderers, and export tools.
 
 ---
 
-## Light-background fallback rule
+## Brand copy inside lockups
 
-Silver is invisible on light backgrounds. **Never** render the wordmark in silver (`#E4E4E7`) on a light surface — it fails contrast and loses meaning.
+Prefer agent-centered language:
 
-On light backgrounds, the wordmark is always charcoal (`#09090B`). On light marketing surfaces where a "premium" treatment is required, use the gradient hero variant — but with the *light-mode gradient* (`#3F3F46 → #18181B`), which reads as graphite.
+- `On-machine agent orchestration runtime`
+- `Tools + memory + teams + observability`
+- `LOCAL AGENT RUNTIME`
+- `Build, run, and observe local AI agents.`
 
----
+Do not lead brand assets with implementation technologies such as FastAPI or React. Those belong in technical docs, not identity lockups.
 
-## Clear space & sizing
-
-### Clear space
-
-Maintain breathing room equal to the **height of the lowercase `o`** on all sides. Nothing — other text, images, borders — enters this space.
-
-```
-╭────────────────────────────────╮
-│   ↕                            │
-│   ↔   openagentd    ↔          │
-│   ↕                            │
-╰────────────────────────────────╯
-```
-
-### Minimum size
-
-- **Digital**: 20px cap-height (wordmark). Below this, switch to the `o.` monogram.
-- **Print**: 8mm cap-height at 300 DPI
-
-### Maximum size
-
-No upper limit. At display sizes (above 80px cap-height), pair with sufficient surrounding whitespace — large wordmarks on cramped backgrounds read as shouty.
-
-### Monogram thresholds
-
-Use the `o.` monogram when:
-- Available space is smaller than 20px for the full wordmark
-- The mark appears in a tight grid (favicon, app icon grid, repeated avatar)
-- The context already names the product (e.g. in-app sidebar where "openagentd" is clear from context)
+When text appears inside a filled pill, badge, or bordered container, center it both visually and structurally (`text-anchor="middle"`, `dominant-baseline="middle"` in SVG; flex center in UI code).
 
 ---
 
-## Logo no-nos
+## Palette
 
-❌ **Do not**:
-- Rotate, skew, or distort the wordmark
-- Add drop shadows, glows, or outer effects
-- Use any color other than the mode-appropriate neutrals or the approved gradient
-- Render silver on light backgrounds
-- Add decorative elements, asterisks, or version numbers inside or adjacent
-- Rearrange or modify letter order (the lowercase `d` at the end is load-bearing — it signals "daemon")
-- Use with other wordmarks or logos in a lockup (avoid "openagentd × Partner" logo combinations)
-- Stretch or compress horizontally/vertically
-- Recreate the mark in a different typeface — always use Geist Variable 700
+| Name | Hex | Usage |
+|------|-----|-------|
+| Agent Gold | `#FCC352` | Primary brand surface, badges, brand emphasis |
+| Loop Orange | `#FA8030` | Energy accent, selected brand details |
+| Kernel Brown | `#5F2511` | Mascot linework, text on gold, warm dark contrast |
+| Shell White | `#FBF8F7` | Light brand surfaces and mascot highlights |
+| Console Ink | `#17120F` | Dark brand surfaces |
+
+The product UI can remain neutral and restrained; the brand assets carry the warm octobot palette.
 
 ---
 
-## Asset delivery
+## Clear Space & Sizing
 
-| Format | Use case | Specs |
+### Clear Space
+
+Maintain clear space equal to the octobot eye diameter around the mascot or full lockup. Nothing should intersect the tentacles, antenna, or wordmark area.
+
+### Minimum Size
+
+- **Primary lockup**: 320px wide minimum in digital contexts
+- **Stacked badge**: 96px square minimum
+- **App icon**: 16px minimum, though 32px+ is preferred
+- **Source mascot in empty states**: 48px minimum
+
+At very small sizes, use `openagentd-app-icon.png` instead of the full lockup.
+
+---
+
+## Logo No-Nos
+
+Do not:
+
+- Redraw the mascot from memory
+- Use the old stickman assets
+- Use the old `o.` monogram direction
+- Mention implementation technologies in logo lockups
+- Distort, crop, mirror, or recolor the mascot paths
+- Put non-centered text inside filled pills or badges
+- Add unrelated decorative patterns behind the mascot
+- Replace the warm palette with generic blue/purple SaaS colors
+- Use the mascot as a repeated background texture
+
+---
+
+## Asset Delivery
+
+| Format | Use Case | Specs |
 |--------|----------|-------|
-| **SVG** | Web, scalable graphics, app UI | Preferred for digital — single-file with both mode variants via `currentColor` |
-| **PNG** | Raster fallback, slide decks | 1×, 2×, 3× exports at common display sizes |
-| **PDF** | Print, design files | Vector, with bleed where appropriate |
-| **ICO / ICNS** | Favicon, macOS/Windows app icons | Monogram at required sizes (16, 32, 48, 64, 128, 256, 512) |
+| **PNG** | Web, docs previews, app UI, slide decks | Canonical exported format for source-faithful mascot assets |
+| **ICO / ICNS** | Favicon, app launchers | Use a platform-specific background if required by the target icon format |
 
-### SVG implementation recommendation
-
-Ship a single SVG using `currentColor` so the mark inherits the mode-appropriate text color from its container:
-
-```svg
-<svg viewBox="0 0 280 48" xmlns="http://www.w3.org/2000/svg">
-  <text x="0" y="36" font-family="Geist Variable" font-weight="700" font-size="40" fill="currentColor">
-    openagentd
-  </text>
-</svg>
-```
-
-Then render it with the desired color via CSS:
-
-```css
-.logo-mark { color: var(--color-text); }
-```
-
-All logo files should live in a centralized asset repository (Figma, Google Drive, `web/src/assets/brand/`, or equivalent).
+Use Pencil for brand-board composition and visual review. Final checked-in exports live in `documents/assets/brand/`; app-imported assets live in `web/src/assets/brand/`; direct browser URL assets such as the favicon live in `web/public/brand-assets/`.

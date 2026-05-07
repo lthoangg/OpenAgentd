@@ -22,16 +22,19 @@ RUN groupadd -r openagentd && useradd -r -g openagentd -s /sbin/nologin openagen
 
 WORKDIR /app
 
-# Install Python dependencies first (cached layer). ``--no-editable`` puts
-# the wheel + all deps in ``/app/.venv``; we reuse that venv at runtime.
-COPY pyproject.toml uv.lock* ./
-RUN uv sync --no-dev --no-editable
-
-# Copy application code (alembic.ini and app/migrations/ ship inside app/)
+# Copy everything hatchling needs to build the wheel:
+# pyproject.toml, README.md, and the full app/ package (alembic.ini is
+# force-included and must exist before `uv sync --no-editable` runs).
+COPY pyproject.toml uv.lock* README.md ./
 COPY app/ app/
 
-# Copy pre-built web UI into the package
+# Copy pre-built web UI into the package (must exist before wheel is built
+# so hatchling picks up the artifacts = ["app/_web_dist/**"] entry).
 COPY --from=web-builder /build/web/dist/ app/_web_dist/
+
+# Install Python dependencies. ``--no-editable`` builds the wheel in-place
+# and installs it + all deps into ``/app/.venv``.
+RUN uv sync --no-dev --no-editable
 
 # Put the venv on PATH so ``uvicorn`` resolves directly without a ``uv run``
 # wrapper (avoids one extra process layer at PID 1).
@@ -50,7 +53,7 @@ ENV OPENAGENTD_DATA_DIR=/data \
     OPENAGENTD_STATE_DIR=/data/state \
     OPENAGENTD_CACHE_DIR=/data/cache \
     OPENAGENTD_WORKSPACE_DIR=/data/workspace \
-    AGENT_MEMORY_DIR=/data/memory
+    OPENAGENTD_WIKI_DIR=/data/wiki
 RUN mkdir -p /data && chown openagentd:openagentd /data
 
 EXPOSE 4082

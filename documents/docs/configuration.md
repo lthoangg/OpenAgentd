@@ -72,6 +72,9 @@ What lives where:
 | `MULTIMODAL_CONFIG_PATH` | `{OPENAGENTD_CONFIG_DIR}/multimodal.yaml` | Path to the multimodal config (image/video generation). Drives `generate_image` and `generate_video` settings. |
 | `SPEECH_CONFIG_PATH` | `{OPENAGENTD_CONFIG_DIR}/speech.yaml` | Path to the speech config (`voice:` section). Drives browser mic transcription via `/api/speech/`. |
 | `OPENAGENTD_WIKI_DIR` | dev: `.openagentd/wiki/` · prod: `~/.local/share/openagentd-wiki/` | Wiki knowledge store (`USER.md`, `topics/`, `notes/`). See [`agent/memory.md`](agent/memory.md). |
+
+> **Docker.** The published image pins all path defaults under `/data`: `DATA=/data`, `CONFIG=/data/config`, `STATE=/data/state`, `CACHE=/data/cache`, `WORKSPACE=/data/workspace`, `WIKI=/data/wiki`. The provided `docker-compose.yaml` bind-mounts `data/`, `config/`, `wiki/`, and `workspace/` as separate host directories. See [`install.md`](install.md) for the full setup.
+
 > **Service-level defaults (not env vars).** Summarization thresholds, title-generation timeout, tool-result offload sizes, and sandbox limits are module-level constants in their respective service modules — not environment variables. Override them through the file-based / per-agent config surfaces described below (`.openagentd/config/summarization.md`, `.openagentd/config/title_generation.md`, per-agent `.md` frontmatter).
 
 ## Optional dependency extras

@@ -49,18 +49,42 @@ brew upgrade openagentd
 ## Docker
 
 ```bash
-# Clone the repo (for docker-compose.yaml and .env.example)
 git clone https://github.com/lthoangg/openagentd.git
 cd openagentd
 cp .env.example .env              # add your API key(s)
 
-docker compose up -d              # builds and starts on http://localhost:4082
+docker compose up -d              # pulls and starts on http://localhost:4082
 ```
 
-Or run the image directly:
+`docker-compose.yaml` bind-mounts four host directories so data is inspectable and portable:
+
+| Host path | Container path | Contents |
+|-----------|---------------|----------|
+| `./data` | `/data` | SQLite DB — **back this up** |
+| `./config` | `/data/config` | `agents/`, `skills/`, `.env`, `mcp.json` |
+| `./wiki` | `/data/wiki` | `USER.md`, `topics/`, `notes/` |
+| `./workspace` | `/data/workspace` | Per-session agent workspaces |
+
+The directories are created automatically by Docker on first start. To pre-load agents or skills, populate `./config/agents/` before running `docker compose up`.
+
+Or pull and run without Compose:
 
 ```bash
-docker run -e GOOGLE_API_KEY=your-key -p 4082:4082 ghcr.io/lthoangg/openagentd
+docker run --env-file .env -p 4082:4082 \
+  -v "$PWD/data:/data" \
+  -v "$PWD/config:/data/config" \
+  -v "$PWD/wiki:/data/wiki" \
+  -v "$PWD/workspace:/data/workspace" \
+  ghcr.io/lthoangg/openagentd
+```
+
+### Building from source (local Docker)
+
+Use `docker-compose.local.yaml` to build the image from your working tree instead of pulling from GHCR:
+
+```bash
+cp .env.example .env              # if not already done
+docker compose -f docker-compose.local.yaml up -d --build
 ```
 
 ## From source (development)

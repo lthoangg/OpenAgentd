@@ -1,14 +1,11 @@
 services:
   openagentd:
-    image: ghcr.io/lthoangg/openagentd:latest
+    build: .
     restart: unless-stopped
     ports:
       - "4082:4082"
     volumes:
-      - ./data:/data              # SQLite DB — back this up
-      - ./config:/data/config     # agents/, skills/, .env, mcp.json
-      - ./wiki:/data/wiki         # USER.md, topics/, notes/
-      - ./workspace:/data/workspace  # per-session agent workspaces
+      - openagentd-data:/data
     env_file:
       - .env
     # ``environment:`` takes priority over ``env_file:`` in Compose, so this
@@ -21,3 +18,6 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+
+volumes:
+  openagentd-data:

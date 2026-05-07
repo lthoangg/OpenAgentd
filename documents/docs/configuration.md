@@ -348,6 +348,8 @@ model: zai:glm-5-turbo
 You are a helpful assistant. Be concise and direct.
 ```
 
+> **Authoring rule — keep prompt bodies tool-agnostic.** Don't hardcode tool names like `` `shell` `` or `` `web_search` `` in the prompt body. The frontmatter `tools:` list is the source of truth — it can shrink at runtime via `team_manage` (see [`agent/teams.md`](agent/teams.md#team_manage-tool-lead-only)) or via direct edits, and a prompt that names tools that no longer exist drives weak models to hallucinate. Describe intent (*"prefer in-place edits over rewriting whole files"*) instead of tool names.
+
 ### Fallback model
 
 When the primary model fails with retryable errors (429 rate limit, 5xx server errors,

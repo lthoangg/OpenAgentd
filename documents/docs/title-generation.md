@@ -187,17 +187,11 @@ title is the source of truth after `done`.
 Both `useChatStore` and `useTeamStore` store `sessionTitle: string | null` in
 state. On `title_update`, the store sets `sessionTitle`.
 
-Both route layouts (`chat.tsx`, `cockpit.tsx`) subscribe to the store and react
-to `sessionTitle` changes:
-
-```typescript
-if (state.sessionTitle && state.sessionTitle !== prev.sessionTitle && state.sessionId) {
-    queryClient.setQueriesData<SessionResponse[]>(
-        { queryKey: queryKeys.sessions.all() },
-        (old) => old?.map((s) => s.id === sid ? { ...s, title } : s),
-    )
-}
-```
+Both route layouts (`chat.tsx`, `cockpit.tsx`) subscribe to the store and patch
+the cached session list on `sessionTitle` change. The team session list is an
+infinite query, so the cache shape is `InfiniteData<SessionPageResponse>` —
+the bridge maps over `pages[*].data`, not the wrapper object. See
+`web/src/routes/cockpit.tsx` (`title_update` branch) for the exact patch.
 
 `setQueriesData` patches the cache in-place — no network re-fetch.
 

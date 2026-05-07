@@ -16,8 +16,9 @@
  * tested with a mock ``QueryClient`` and so the React component
  * stays a thin glue layer.
  */
-import type { QueryClient } from '@tanstack/react-query'
+import type { InfiniteData, QueryClient } from '@tanstack/react-query'
 import type { CacheInvalidation } from '@/stores/useTeamStore'
+import type { SessionPageResponse } from '@/api/types'
 import { queryKeys } from '@/queries'
 
 /**
@@ -50,4 +51,33 @@ export function applyCacheInvalidations(
         break
     }
   }
+}
+
+/**
+ * Patch the cached team session list when a ``title_update`` SSE event
+ * arrives.  The list is an infinite query, so cached data is shaped as
+ * ``InfiniteData<SessionPageResponse>`` (``{ pages, pageParams }``) — we
+ * map each page's ``data`` array, not the wrapper.  An earlier version
+ * typed the cache as ``SessionResponse[]`` and silently no-op'd; the
+ * sidebar only refreshed on reload.
+ *
+ * No-ops when the matching session id is absent from every page (e.g.
+ * cache was cleared between the SSE event and this patch) — TanStack
+ * skips updates whose updater returns the same reference.
+ */
+export function patchSessionTitle(
+  queryClient: Pick<QueryClient, 'setQueriesData'>,
+  sessionId: string,
+  title: string,
+): void {
+  queryClient.setQueriesData<InfiniteData<SessionPageResponse>>(
+    { queryKey: queryKeys.team.sessions.all() },
+    (old) => old && {
+      ...old,
+      pages: old.pages.map((page) => ({
+        ...page,
+        data: page.data.map((s) => s.id === sessionId ? { ...s, title } : s),
+      })),
+    },
+  )
 }

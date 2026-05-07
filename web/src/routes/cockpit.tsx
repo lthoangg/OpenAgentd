@@ -3,9 +3,8 @@ import { Outlet, useParams, useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { TeamChatView } from '@/components/TeamChatView'
 import { useTeamStore } from '@/stores/useTeamStore'
-import { applyCacheInvalidations } from '@/stores/cache-invalidation-bridge'
+import { applyCacheInvalidations, patchSessionTitle } from '@/stores/cache-invalidation-bridge'
 import { queryKeys } from '@/queries'
-import type { SessionResponse } from '@/api/types'
 
 /**
  * Layout route for /cockpit and /cockpit/$sessionId.
@@ -37,14 +36,10 @@ export function TeamLayout() {
         })
       }
 
-      // When title_update arrives, patch the cached team session list in-place — no re-fetch
+      // When title_update arrives, patch the cached team session list
+      // in-place — no re-fetch. See ``patchSessionTitle``.
       if (state.sessionTitle && state.sessionTitle !== prev.sessionTitle && state.sessionId) {
-        const sid = state.sessionId
-        const title = state.sessionTitle
-        queryClient.setQueriesData<SessionResponse[]>(
-          { queryKey: queryKeys.team.sessions.all() },
-          (old) => old?.map((s) => s.id === sid ? { ...s, title } : s),
-        )
+        patchSessionTitle(queryClient, state.sessionId, state.sessionTitle)
       }
 
       // Cache-invalidation bridge: the SSE reducer enqueues domain

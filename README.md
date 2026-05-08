@@ -1,21 +1,19 @@
 # OpenAgentd
 
 <p align="center">
-  <img src="documents/assets/brand/openagentd-primary-lockup.png" alt="OpenAgentd octobot mascot and wordmark" width="760">
+  <img src="https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/brand/openagentd-primary-lockup.png" alt="OpenAgentd octobot mascot and wordmark" width="760">
 </p>
 
-[![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/lthoangg/openagentd/blob/main/LICENSE)
 [![Python 3.14](https://img.shields.io/badge/python-3.14-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![React 19](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)](https://react.dev/)
 
 **Your on-machine multi-agent system.** A long-running local service with a web cockpit, persistent memory, and a team of agents that coordinate to get real work done. Everything stays on your hardware.
 
-[Documentation](documents/docs/index.md)
+[Documentation](https://github.com/lthoangg/openagentd/blob/main/documents/docs/index.md)
 
-Brand assets live in [`documents/assets/brand`](documents/assets/brand/) for docs/marketing and [`web/src/assets/brand`](web/src/assets/brand/) for the app. The browser-public copy is only for direct URL needs such as the favicon.
-
-![Four agents coordinating in a single split view](documents/assets/hero-team-split.png)
+![Four agents coordinating in a single split view](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/hero-team-split.png)
 
 ---
 
@@ -23,7 +21,7 @@ Brand assets live in [`documents/assets/brand`](documents/assets/brand/) for doc
 
 **A cockpit, not a chat box.** Command palette (Ctrl+P), drag-and-drop files, full-screen image viewer, and an inspector that shows every tool call and what came back.
 
-![Command palette — fuzzy search across sessions, agents, files, and actions](documents/assets/command-pallete.gif)
+![Command palette — fuzzy search across sessions, agents, files, and actions](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/command-pallete.gif)
 
 **Agents that can actually do things.** Read and write files, run shell commands, search the web, generate images and video, manage todos, schedule tasks. Add more via a skill `.md` or any MCP server.
 
@@ -33,7 +31,7 @@ Brand assets live in [`documents/assets/brand`](documents/assets/brand/) for doc
 
 **Run a team, not just one agent.** Lead + worker setup with an async mailbox and `team_message` delegation. Watch each agent stream in its own pane — or merge into a single unified view.
 
-![Unified team view — every agent's turn in one stream, clearly labeled](documents/assets/team-unified.png)
+![Unified team view — every agent's turn in one stream, clearly labeled](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/team-unified.png)
 
 **Voice input, transcribed locally.** Click the mic button to record, click again to stop. The recording is transcribed on-device via Whisper and inserted into the chat input for review — nothing leaves your machine. Configure in `speech.yaml` or enable via Settings → Voice.
 
@@ -57,7 +55,7 @@ Brand assets live in [`documents/assets/brand`](documents/assets/brand/) for doc
 | **Telemetry**        | Built-in OTel dashboard               | —                   | —                 | —                    |
 | **Embed / API**      | First-class REST + SSE                | Protocol only       | Channel-shaped    | Channel-shaped       |
 
-Full breakdown: [`documents/docs/comparison.md`](documents/docs/comparison.md).
+Full breakdown: [`documents/docs/comparison.md`](https://github.com/lthoangg/openagentd/blob/main/documents/docs/comparison.md).
 
 ---
 
@@ -82,9 +80,9 @@ openagentd init   # pick provider + API key, install default agents
 openagentd        # http://localhost:4082
 ```
 
-![Installing openagentd with uv tool install](documents/assets/openagentd-install.gif)
+![Installing openagentd with uv tool install](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/openagentd-install.gif)
 
-Other install options (pip, pipx, from source) — see [`documents/docs/install.md`](documents/docs/install.md).
+Other install options (pip, pipx, from source) — see [`documents/docs/install.md`](https://github.com/lthoangg/openagentd/blob/main/documents/docs/install.md).
 
 ---
 
@@ -97,7 +95,7 @@ openagentd migrate openclaw --from ~/.openclaw/workspace --model openai:gpt-5.5
 openagentd migrate hermes --from ~/.hermes --model openai:gpt-5.5
 ```
 
-Existing agent files are not overwritten unless `--force` is passed. See [`documents/docs/configuration.md`](documents/docs/configuration.md#agent-configuration) for supported source files.
+Existing agent files are not overwritten unless `--force` is passed. See [`documents/docs/configuration.md`](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration.md#agent-configuration) for supported source files.
 
 ---
 
@@ -248,7 +246,7 @@ OpenAgentd exports OpenTelemetry spans to local JSONL partitions and serves a bu
 
 No external collector required. All data stays on your machine.
 
-![Telemetry dashboard — token usage, latency, model breakdown, and trace waterfall](documents/assets/telementry.gif)
+![Telemetry dashboard — token usage, latency, model breakdown, and trace waterfall](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/telementry.gif)
 
 ---
 
@@ -300,15 +298,15 @@ OpenAgentd ships with [Context7](https://context7.com) pre-configured. Add any M
 
 | Section | Contents |
 |---------|----------|
-| [Install](documents/docs/install.md) | pip, uv, Homebrew, Docker, source |
-| [CLI reference](documents/docs/cli.md) | Every `openagentd` subcommand |
-| [Configuration](documents/docs/configuration.md) | Env vars, agent `.md` files, providers, tools, skills, sandbox |
-| [Architecture](documents/docs/architecture.md) | C4 diagrams, agent loop, SSE protocol |
-| [API reference](documents/docs/api/index.md) | HTTP endpoints, SSE events, file handling |
-| [Agent engine](documents/docs/agent/) | Loop, hooks, tools, teams, context, summarization |
-| [Comparison](documents/docs/comparison.md) | How OpenAgentd compares to opencode, openclaw, hermes-agent |
-| [Troubleshooting](documents/docs/troubleshooting.md) | Common install and runtime issues |
-| [Guidelines](documents/docs/guidelines.md) | Code style, testing patterns, workflow (contributors) |
+| [Install](https://github.com/lthoangg/openagentd/blob/main/documents/docs/install.md) | pip, uv, Homebrew, Docker, source |
+| [CLI reference](https://github.com/lthoangg/openagentd/blob/main/documents/docs/cli.md) | Every `openagentd` subcommand |
+| [Configuration](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration.md) | Env vars, agent `.md` files, providers, tools, skills, sandbox |
+| [Architecture](https://github.com/lthoangg/openagentd/blob/main/documents/docs/architecture.md) | C4 diagrams, agent loop, SSE protocol |
+| [API reference](https://github.com/lthoangg/openagentd/blob/main/documents/docs/api/index.md) | HTTP endpoints, SSE events, file handling |
+| [Agent engine](https://github.com/lthoangg/openagentd/tree/main/documents/docs/agent) | Loop, hooks, tools, teams, context, summarization |
+| [Comparison](https://github.com/lthoangg/openagentd/blob/main/documents/docs/comparison.md) | How OpenAgentd compares to opencode, openclaw, hermes-agent |
+| [Troubleshooting](https://github.com/lthoangg/openagentd/blob/main/documents/docs/troubleshooting.md) | Common install and runtime issues |
+| [Guidelines](https://github.com/lthoangg/openagentd/blob/main/documents/docs/guidelines.md) | Code style, testing patterns, workflow (contributors) |
 
 ---
 
@@ -326,12 +324,12 @@ OpenAgentd ships with [Context7](https://context7.com) pre-configured. Add any M
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, workflow, and PR guidelines.
+See [CONTRIBUTING.md](https://github.com/lthoangg/openagentd/blob/main/CONTRIBUTING.md) for setup, workflow, and PR guidelines.
 
 ## Security
 
-See [SECURITY.md](SECURITY.md) for the trust model and how to report vulnerabilities.
+See [SECURITY.md](https://github.com/lthoangg/openagentd/blob/main/SECURITY.md) for the trust model and how to report vulnerabilities.
 
 ## License
 
-[Apache License 2.0](LICENSE). Free for personal, research, and commercial use.
+[Apache License 2.0](https://github.com/lthoangg/openagentd/blob/main/LICENSE). Free for personal, research, and commercial use.

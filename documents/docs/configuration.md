@@ -52,6 +52,8 @@ What lives where:
 | `ROUTER9_BASE_URL` | `http://localhost:20128/v1` | OpenAI-compatible base URL of your 9Router instance |
 | `CLIPROXY_API_KEY` | — | Required for `cliproxy` provider ([CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) local proxy). Use whatever your proxy enforces (any value if auth is disabled). |
 | `CLIPROXY_BASE_URL` | `http://localhost:8317/v1` | OpenAI-compatible base URL of your CLIProxyAPI instance |
+| `OLLAMA_API_KEY` | `ollama` | Used for the `ollama` provider. The daemon ignores auth, but the OpenAI client requires a non-empty header — leave the default unless you front Ollama with a custom auth proxy. |
+| `OLLAMA_BASE_URL` | `http://localhost:11434/v1` | OpenAI-compatible base URL of your Ollama daemon |
 | `NINJA_API_KEY` | — | Quote of the Day via [API Ninjas](https://api-ninjas.com) (free tier: 3 000 calls/month) |
 | — | — | `copilot` provider: run `openagentd auth copilot` (no env var needed) |
 | — | — | `codex` provider: run `openagentd auth codex` (no env var needed) |
@@ -139,6 +141,9 @@ model: bedrock:anthropic.claude-sonnet-4-6         # AWS Bedrock (in-region)
 model: bedrock:amazon.nova-pro-v1:0                # AWS Bedrock Nova
 model: router9:cc/claude-sonnet-4-5-20250929  # 9Router local proxy (set ROUTER9_API_KEY)
 model: cliproxy:gemini-2.5-pro            # CLIProxyAPI local proxy (set CLIPROXY_API_KEY)
+model: ollama:llama3.2                    # Ollama local daemon (no API key needed)
+model: ollama:qwen2.5-coder:7b            # Any model pulled with `ollama pull`
+model: ollama:kimi-k2.6-cloud             # Ollama Cloud (run `ollama signin` first)
 ```
 
 #### Local proxy providers (`router9`, `cliproxy`)
@@ -167,6 +172,67 @@ for the pattern).
 
 If `cliproxy` is run without auth, any non-empty `CLIPROXY_API_KEY` works (the
 header is required by the OpenAI client).
+
+#### Ollama provider
+
+Talks to the local Ollama daemon at `http://localhost:11434/v1` over its
+[OpenAI-compatible API](https://docs.ollama.com/api/openai). The daemon
+ignores auth, so `OLLAMA_API_KEY` defaults to the `"ollama"` placeholder
+(only there to satisfy the OpenAI SDK's mandatory `Authorization` header).
+
+**Setup:**
+
+```bash
+ollama serve                # daemon (usually already running)
+ollama pull llama3.2        # pull any model
+```
+
+```yaml
+model: ollama:llama3.2
+model: ollama:qwen2.5-coder:7b   # tags (`:7b`) work — passed through verbatim
+model: ollama:llava              # vision-capable; opt in via capabilities.yaml
+```
+
+The model name after `ollama:` is passed verbatim to the daemon — use
+exactly what `ollama list` shows, including any tag.
+
+**Cloud models.** Ollama Cloud runs *through* the same local daemon —
+there is no separate HTTPS endpoint. After running `ollama signin` once,
+any model name with the `-cloud` suffix is transparently routed to
+[ollama.com](https://ollama.com):
+
+```yaml
+model: ollama:kimi-k2.6-cloud
+model: ollama:deepseek-v4-pro-cloud
+model: ollama:glm-5.1-cloud
+model: ollama:gpt-oss:120b-cloud
+```
+
+See the live cloud catalog at [ollama.com/search?c=cloud](https://ollama.com/search?c=cloud).
+
+**Remote daemon.** To point at a daemon on another machine, override the
+base URL:
+
+```bash
+# .env
+OLLAMA_BASE_URL=http://gpu-box.local:11434/v1
+```
+
+**Capability defaults:** vision is `false` for the `ollama:` prefix (the
+catalog spans text-only Llama/Qwen/DeepSeek and vision-capable
+Llava/qwen3-vl). Add an entry to `app/agent/providers/capabilities.yaml`
+for any specific vision-capable model you use:
+
+```yaml
+"ollama:llava":
+  input:
+    vision: true
+"ollama:qwen3-vl:8b":
+  input:
+    vision: true
+```
+
+---
 
 #### OpenAI Codex provider
 

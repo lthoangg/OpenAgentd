@@ -119,6 +119,10 @@ _PREFIX_FALLBACKS: list[tuple[str, ModelCapabilities]] = [
     ("openrouter:", ModelCapabilities(input=ModelInputCapabilities(vision=False))),
     # NVIDIA NIM: too varied — text only unless more specific
     ("nvidia:", ModelCapabilities(input=ModelInputCapabilities(vision=False))),
+    # Ollama: catalog spans text-only (Llama, Qwen, DeepSeek) and vision
+    # (Llava, Llama 3.2-vision, qwen3-vl). Conservative default — list
+    # exact vision models in capabilities.yaml when needed.
+    ("ollama:", ModelCapabilities(input=ModelInputCapabilities(vision=False))),
     # 9Router: aggregator proxy fronts many vision-capable models (Claude,
     # Gemini, GPT-4o, etc.); default vision=true and let exact entries opt out.
     ("router9:", ModelCapabilities(input=ModelInputCapabilities(vision=True))),

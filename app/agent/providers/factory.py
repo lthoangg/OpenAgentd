@@ -28,6 +28,7 @@ from app.agent.providers.copilot import CopilotProvider
 from app.agent.providers.deepseek import DeepSeekProvider
 from app.agent.providers.geminicli import GeminiCLIProvider
 from app.agent.providers.googlegenai import GoogleGenAIProvider
+from app.agent.providers.ollama import OllamaProvider
 from app.agent.providers.openai import OpenAIProvider
 from app.agent.providers.vertexai import VertexAIProvider
 from app.agent.providers.xai import XAIProvider
@@ -43,6 +44,7 @@ SUPPORTED_PROVIDERS: tuple[str, ...] = (
     "geminicli",
     "googlegenai",
     "nvidia",
+    "ollama",
     "openai",
     "openrouter",
     "router9",
@@ -201,6 +203,21 @@ def build_provider(
                     s.DEEPSEEK_API_KEY, "DEEPSEEK_API_KEY", "DeepSeek"
                 ),
                 model=model,
+                model_kwargs=kwargs,
+            )
+        case "ollama":
+            # Local Ollama daemon. OLLAMA_API_KEY defaults to "ollama" so
+            # the OpenAI SDK's required Authorization header is satisfied;
+            # the daemon ignores it. Override OLLAMA_BASE_URL when the
+            # daemon runs on another host/port. Cloud models are reachable
+            # through the same daemon with the "-cloud" suffix once the
+            # user has run "ollama signin".
+            return OllamaProvider(
+                api_key=require_api_key(s.OLLAMA_API_KEY, "OLLAMA_API_KEY", "Ollama"),
+                model=model,
+                base_url=os.getenv("OLLAMA_BASE_URL")
+                or s.OLLAMA_BASE_URL
+                or "http://localhost:11434/v1",
                 model_kwargs=kwargs,
             )
         case "zai":

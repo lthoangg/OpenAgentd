@@ -144,9 +144,11 @@ key var (matches `openagentd init`):
 | `router9` | `ROUTER9_API_KEY` |
 | `cliproxy` | `CLIPROXY_API_KEY` |
 
-Providers with managed credentials (`copilot`, `codex`, `vertexai`)
-authenticate via their own CLI / ADC and have no env var to check —
-skip this step for them.
+Providers with managed credentials (`copilot`, `codex`, `vertexai`,
+`ollama`) have no env var to check — `copilot` / `codex` use their
+own CLI, `vertexai` uses ADC, and `ollama` talks to the local
+daemon (or to Ollama Cloud after `ollama signin`). Skip this step
+for them.
 
 ### Relative tweaks ("a bit", "more", "less")
 
@@ -190,7 +192,7 @@ Only these keys are valid. Reject any request to invent new ones.
 
 | Field | Values |
 |-------|--------|
-| `model` | `provider:model` — e.g. `googlegenai:gemini-3.1-flash`, `openai:gpt-5.5`, `zai:glm-5-turbo`, `openrouter:...`, `copilot:...`, `codex:...`, `vertexai:...`, `nvidia:...`, `xai:grok-4.20` |
+| `model` | `provider:model` — e.g. `googlegenai:gemini-3.1-flash`, `openai:gpt-5.5`, `zai:glm-5-turbo`, `openrouter:...`, `copilot:...`, `codex:...`, `vertexai:...`, `nvidia:...`, `xai:grok-4.20`, `ollama:llama3.2`, `ollama:kimi-k2.6-cloud` |
 | `fallback_model` | same format as `model` |
 | `temperature` | float, typically `0.0`–`1.0` |
 | `thinking_level` | `none` \| `low` \| `medium` \| `high` |

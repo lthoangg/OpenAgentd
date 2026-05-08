@@ -103,6 +103,17 @@ class Settings(BaseSettings):
     )
     CLIPROXY_BASE_URL: str = "http://localhost:8317/v1"
 
+    # Ollama (local daemon) — OpenAI-compatible endpoint at
+    # http://localhost:11434/v1 by default. The daemon ignores auth, but
+    # the OpenAI client requires a non-empty Authorization header — so
+    # OLLAMA_API_KEY defaults to "ollama" (Ollama's documented placeholder).
+    # Cloud models are reached through the same daemon by suffixing the
+    # model name with "-cloud" after running "ollama signin".
+    OLLAMA_API_KEY: SecretStr = Field(
+        default=SecretStr("ollama"), description="Used for local Ollama provider"
+    )
+    OLLAMA_BASE_URL: str = "http://localhost:11434/v1"
+
     # Vertex AI API key (Google Cloud key, NOT an AI Studio key)
     # Obtain from: https://console.cloud.google.com/expressmode
     VERTEXAI_API_KEY: SecretStr | None = None

@@ -41,7 +41,7 @@ Brand assets live in [`documents/assets/brand`](documents/assets/brand/) for doc
 
 **See exactly what the agent is doing.** Built-in OTel dashboard — token usage, latency, trace waterfall. No third-party SaaS, all local.
 
-**Pick your model, no lock-in.** 12 providers — Gemini, OpenAI, OpenRouter, Bedrock, Grok, DeepSeek, and more. Switch with one line in your agent config.
+**Pick your model, no lock-in.** 14 providers — Gemini, OpenAI, OpenRouter, Bedrock, Grok, DeepSeek, Ollama, and more. Switch with one line in your agent config.
 
 ---
 
@@ -120,6 +120,7 @@ Switch models with a single line in your agent's `.md` config file. Every provid
 | OpenAI Codex | `codex:gpt-5.5` | `openagentd auth codex` |
 | 9Router (local) | `router9:cc/claude-sonnet-4-5` | `ROUTER9_BASE_URL` |
 | CLIProxyAPI (local) | `cliproxy:gemini-2.5-pro` | `CLIPROXY_BASE_URL` |
+| Ollama (local + cloud) | `ollama:llama3.2` · `ollama:kimi-k2.6-cloud` | none (cloud: `ollama signin`) |
 
 Set a `fallback_model` in your agent config for automatic failover on rate limits or 5xx errors.
 

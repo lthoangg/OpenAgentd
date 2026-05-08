@@ -25,6 +25,7 @@ _PROVIDER_KEY_VAR: dict[str, str] = {
     "deepseek": "DEEPSEEK_API_KEY",
     "router9": "ROUTER9_API_KEY",
     "cliproxy": "CLIPROXY_API_KEY",
+    "ollama": "OLLAMA_API_KEY",
 }
 
 #: Provider → curated model list (last entry = "custom" sentinel added at runtime)
@@ -138,6 +139,24 @@ _PROVIDER_MODELS: dict[str, list[str]] = {
         "claude-opus-4-6",
         "claude-haiku-4-5-20251001",
     ],
+    "ollama": [
+        # Locally pulled models (run `ollama pull <model>` first)
+        "llama3.2",
+        "llama3.2:1b",
+        "qwen2.5-coder",
+        "qwen2.5-coder:7b",
+        "deepseek-r1",
+        "gemma3",
+        "mistral",
+        "llava",
+        # Cloud models — routed via local daemon after `ollama signin`
+        "kimi-k2.6-cloud",
+        "deepseek-v4-pro-cloud",
+        "deepseek-v4-flash-cloud",
+        "glm-5.1-cloud",
+        "qwen3.5-cloud",
+        "gpt-oss:120b-cloud",
+    ],
 }
 
 
@@ -171,6 +190,7 @@ def cmd_init(args: argparse.Namespace) -> None:  # noqa: C901
         "deepseek     — DeepSeek (deepseek-v4, deepseek-r1)",
         "router9      — 9Router local proxy (40+ providers, OpenAI-compatible)",
         "cliproxy     — CLIProxyAPI local proxy (Gemini/Codex/Claude OAuth)",
+        "ollama       — Ollama local daemon (no API key; cloud via -cloud suffix)",
     ]
     idx = _menu("Choose your LLM provider:", provider_labels)
     provider = providers[idx]
@@ -197,6 +217,15 @@ def cmd_init(args: argparse.Namespace) -> None:  # noqa: C901
     elif provider == "codex":
         print(f"  {_dim('ℹ')}  No API key needed — authenticate via OAuth after setup.")
         print(f"     Run: {_bold('openagentd auth codex')}")
+    elif provider == "ollama":
+        print(
+            f"  {_dim('ℹ')}  Ollama needs no API key — make sure the daemon is running "
+            f"({_bold('ollama serve')})."
+        )
+        print(
+            f"     For cloud models (suffix {_bold('-cloud')}), run "
+            f"{_bold('ollama signin')} first."
+        )
     elif provider == "vertexai":
         gcp_project = _ask("Google Cloud project ID:")
         loc_input = _ask("Cloud location [global]:")
@@ -249,6 +278,10 @@ def cmd_init(args: argparse.Namespace) -> None:  # noqa: C901
         new_comments["CLIPROXY_API_KEY"] = (
             "# CLIPROXY_BASE_URL=http://localhost:8317/v1"
         )
+    elif provider == "ollama":
+        # Local daemon — defaults (placeholder key + localhost URL) cover it.
+        # Nothing to write; users override OLLAMA_BASE_URL manually if needed.
+        pass
     elif provider == "vertexai":
         new_creds["GOOGLE_CLOUD_PROJECT"] = gcp_project
         new_creds["GOOGLE_CLOUD_LOCATION"] = gcp_location

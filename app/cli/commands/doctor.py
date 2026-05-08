@@ -30,8 +30,10 @@ _LLM_API_KEY_VARS: tuple[str, ...] = (
 
 #: Providers that authenticate via OAuth or ADC — no API key required.
 #: Doctor should not fail or warn when these are the configured provider.
+#: ``ollama`` is here too: the local daemon ignores auth and the
+#: settings layer ships a placeholder key by default.
 _OAUTH_PROVIDERS: frozenset[str] = frozenset(
-    {"copilot", "codex", "vertexai", "cliproxy", "router9"}
+    {"copilot", "codex", "vertexai", "cliproxy", "router9", "ollama"}
 )
 
 

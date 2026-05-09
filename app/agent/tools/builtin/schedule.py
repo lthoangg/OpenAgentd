@@ -268,13 +268,22 @@ async def _schedule_task(
         from app.scheduler.models import ScheduledTask
         from app.scheduler.schemas import ScheduledTaskCreate
 
-        # Parse at_datetime string → datetime
+        # Parse at_datetime string → datetime. If the string is naive (no
+        # offset / "Z"), interpret it in the user-supplied `timezone` rather
+        # than letting downstream code assume UTC.
         at_dt: datetime | None = None
         if at_datetime:
             try:
                 at_dt = datetime.fromisoformat(at_datetime)
             except ValueError as exc:
                 return f"Error: invalid at_datetime '{at_datetime}': {exc}"
+            if at_dt.tzinfo is None:
+                from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+                try:
+                    at_dt = at_dt.replace(tzinfo=ZoneInfo(timezone))
+                except ZoneInfoNotFoundError:
+                    return f"Error: unknown timezone '{timezone}'."
 
         try:
             payload = ScheduledTaskCreate(

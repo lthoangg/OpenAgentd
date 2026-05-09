@@ -27,10 +27,32 @@ class TZDateTime(TypeDecorator):
     SQLite stores datetimes as naive strings. This decorator re-attaches
     UTC tzinfo on read so that Pydantic serializes them with a 'Z' suffix
     and downstream consumers (web UI, API clients) get correct timezone info.
+
+    On *write* we reject naive datetimes outright. Accepting a naive value
+    silently treats whatever wall-clock the caller produced as UTC, which
+    has bitten us in the scheduler (see git history: a tool parsed
+    ``2026-05-10T01:12:42`` from the user's local zone and we stored it
+    verbatim, mis-labelled UTC on read, off by 7 hours from intent).
+    Aware values are normalised to UTC for consistent storage.
     """
 
     impl = DateTime(timezone=True)
     cache_ok = True
+
+    def process_bind_param(
+        self, value: datetime | None, dialect: sa.Dialect
+    ) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            raise ValueError(
+                "TZDateTime received a naive datetime; callers must attach "
+                "tzinfo (use the user's IANA zone or `timezone.utc`). "
+                f"Got: {value!r}"
+            )
+        # Normalise to UTC so on-disk values are unambiguous regardless of
+        # the source zone.
+        return value.astimezone(timezone.utc)
 
     def process_result_value(
         self, value: datetime | None, dialect: sa.Dialect

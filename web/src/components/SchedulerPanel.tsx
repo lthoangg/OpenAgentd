@@ -8,7 +8,6 @@
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Clock, Play, Pause, Trash2, Plus, Loader2, AlertCircle, CalendarClock, Zap, ArrowLeft, Pencil } from 'lucide-react'
-import { format } from 'date-fns'
 import { DateTimePicker } from '@/components/ui/date-time-picker'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -25,7 +24,7 @@ import {
   useTeamAgentsQuery,
 } from '@/queries'
 import type { ScheduledTaskResponse, ScheduledTaskCreate } from '@/api/types'
-import { formatRelativeDate } from '@/utils/format'
+import { formatRelativeDate, formatInTimezone, wallClockToISO, isoToWallClock } from '@/utils/format'
 import { useIsMobile } from '@/hooks/use-mobile'
 
 interface SchedulerPanelProps {
@@ -93,9 +92,12 @@ function ScheduleTypeSegmented({
   )
 }
 
-function formatScheduleLabel(task: Pick<ScheduledTaskResponse, 'schedule_type' | 'at_datetime' | 'every_seconds' | 'cron_expression'>): string {
+function formatScheduleLabel(task: Pick<ScheduledTaskResponse, 'schedule_type' | 'at_datetime' | 'every_seconds' | 'cron_expression' | 'timezone'>): string {
   if (task.schedule_type === 'at' && task.at_datetime) {
-    return `at ${format(new Date(task.at_datetime), 'dd/MM/yyyy HH:mm')}`
+    // Render in the task's saved timezone, not the browser's — otherwise
+    // a task scheduled for "9 AM in New York" displays a different time
+    // when viewed from a Vietnam-based browser.
+    return `at ${formatInTimezone(task.at_datetime, task.timezone)}`
   }
   if (task.schedule_type === 'every' && task.every_seconds) {
     const mins = Math.floor(task.every_seconds / 60)
@@ -506,15 +508,22 @@ function CreateTaskForm({
     // Strip fields that don't belong to the active schedule_type.
     // The backend Pydantic validator rejects any extra schedule fields
     // (e.g. every_seconds present when schedule_type='at').
+    //
+    // For 'at' schedules, DateTimePicker emits a NAIVE wall-clock string
+    // ("yyyy-MM-dd'T'HH:mm"). We must combine it with the user-supplied
+    // `timezone` before sending — otherwise the backend treats the wall
+    // clock as UTC and the task fires at the wrong hour.
+    const tz = formData.timezone || localTz
+    const atIso = formData.at_datetime ? wallClockToISO(formData.at_datetime, tz) : undefined
     const payload: ScheduledTaskCreate = {
       name: formData.name.trim(),
       agent: formData.agent,
       schedule_type: formData.schedule_type,
-      timezone: formData.timezone,
+      timezone: tz,
       prompt: formData.prompt.trim(),
       session_id: formData.session_id,
       enabled: formData.enabled,
-      ...(formData.schedule_type === 'at'    ? { at_datetime: formData.at_datetime }          : {}),
+      ...(formData.schedule_type === 'at'    ? { at_datetime: atIso }                          : {}),
       ...(formData.schedule_type === 'every' ? { every_seconds: formData.every_seconds }       : {}),
       ...(formData.schedule_type === 'cron'  ? { cron_expression: formData.cron_expression }   : {}),
     }
@@ -812,7 +821,7 @@ function TaskDetailView({
             {task.schedule_type === 'at' && task.at_datetime && (
               <DetailRow label="Date/Time">
                 <span className="text-sm text-(--color-text)">
-                  {format(new Date(task.at_datetime), 'dd/MM/yyyy HH:mm')}
+                  {formatInTimezone(task.at_datetime, task.timezone)}
                 </span>
               </DetailRow>
             )}
@@ -928,11 +937,15 @@ function EditTaskForm({
   onCancel: () => void
 }) {
   const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone
+  // The API returns `at_datetime` as a tz-aware ISO string, but DateTimePicker
+  // expects a naive wall-clock ("yyyy-MM-dd'T'HH:mm") interpreted in the
+  // task's timezone. Convert back so the picker shows the correct value.
+  const initialAt = task.at_datetime ? isoToWallClock(task.at_datetime, task.timezone) : undefined
   const [formData, setFormData] = useState<ScheduledTaskCreate>({
     name: task.name,
     agent: task.agent,
     schedule_type: task.schedule_type,
-    at_datetime: task.at_datetime ?? undefined,
+    at_datetime: initialAt,
     every_seconds: task.every_seconds ?? undefined,
     cron_expression: task.cron_expression ?? undefined,
     timezone: task.timezone,
@@ -960,14 +973,17 @@ function EditTaskForm({
       setError('Cron expression is required'); return
     }
 
+    // Same naive-wall-clock → tz-aware ISO conversion as CreateTaskForm.
+    const tz = formData.timezone || localTz
+    const atIso = formData.at_datetime ? wallClockToISO(formData.at_datetime, tz) : undefined
     const payload: Partial<ScheduledTaskCreate> = {
       agent: formData.agent,
       schedule_type: formData.schedule_type,
-      timezone: formData.timezone,
+      timezone: tz,
       prompt: formData.prompt.trim(),
       session_id: formData.session_id,
       enabled: formData.enabled,
-      ...(formData.schedule_type === 'at'    ? { at_datetime: formData.at_datetime }          : {}),
+      ...(formData.schedule_type === 'at'    ? { at_datetime: atIso }                          : {}),
       ...(formData.schedule_type === 'every' ? { every_seconds: formData.every_seconds }       : {}),
       ...(formData.schedule_type === 'cron'  ? { cron_expression: formData.cron_expression }   : {}),
     }

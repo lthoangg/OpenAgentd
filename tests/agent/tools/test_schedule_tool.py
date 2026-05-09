@@ -319,6 +319,103 @@ async def test_create_at_success(mock_task_scheduler, sample_task, clean_db):
 
 
 @pytest.mark.asyncio
+async def test_create_at_naive_string_uses_supplied_timezone(
+    mock_task_scheduler, sample_task, clean_db
+):
+    """Regression: a naive ISO string for `at_datetime` must be interpreted
+    in the user-supplied `timezone`, not silently treated as UTC.
+
+    Before the fix, ``datetime.fromisoformat('2026-05-10T01:12:42')`` returned
+    a naive datetime; the scheduler stored it as-is and ``TZDateTime`` re-
+    labelled it UTC on read, leaving the row off by the timezone offset.
+    """
+    from zoneinfo import ZoneInfo
+
+    sample_task.schedule_type = "at"
+    sample_task.every_seconds = None
+    expected = datetime(2026, 5, 10, 1, 12, 42, tzinfo=ZoneInfo("Asia/Ho_Chi_Minh"))
+    sample_task.at_datetime = expected
+    mock_task_scheduler.add.return_value = sample_task
+
+    with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
+        result = await schedule_task.arun(
+            action="create",
+            name="test-task",
+            agent="lead",
+            schedule_type="at",
+            at_datetime="2026-05-10T01:12:42",  # naive — no offset
+            timezone="Asia/Ho_Chi_Minh",
+            prompt="Run once",
+        )
+
+    assert "Scheduled task created." in result
+    mock_task_scheduler.add.assert_called_once()
+    task_arg = mock_task_scheduler.add.call_args[0][0]
+
+    # The parsed datetime must be tz-aware AND represent the correct UTC
+    # instant (01:12:42 +07 = 18:12:42 UTC the previous day).
+    assert task_arg.at_datetime is not None
+    assert task_arg.at_datetime.tzinfo is not None
+    assert task_arg.at_datetime == expected
+    assert task_arg.at_datetime.astimezone(timezone.utc) == datetime(
+        2026, 5, 9, 18, 12, 42, tzinfo=timezone.utc
+    )
+
+
+@pytest.mark.asyncio
+async def test_create_at_aware_string_passthrough(
+    mock_task_scheduler, sample_task, clean_db
+):
+    """An ISO string that already carries an offset is left untouched —
+    the supplied `timezone` argument must NOT override an explicit offset."""
+    sample_task.schedule_type = "at"
+    sample_task.every_seconds = None
+    sample_task.at_datetime = datetime(2026, 5, 1, 9, 0, 0, tzinfo=timezone.utc)
+    mock_task_scheduler.add.return_value = sample_task
+
+    with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
+        result = await schedule_task.arun(
+            action="create",
+            name="test-task",
+            agent="lead",
+            schedule_type="at",
+            at_datetime="2026-05-01T09:00:00+00:00",
+            # Even though Saigon is supplied here, the +00:00 in the string
+            # is authoritative — the user asked for 9 AM UTC.
+            timezone="Asia/Ho_Chi_Minh",
+            prompt="Run once",
+        )
+
+    assert "Scheduled task created." in result
+    task_arg = mock_task_scheduler.add.call_args[0][0]
+    assert task_arg.at_datetime == datetime(2026, 5, 1, 9, 0, 0, tzinfo=timezone.utc)
+
+
+@pytest.mark.asyncio
+async def test_create_at_unknown_timezone_returns_error(
+    mock_task_scheduler, sample_task, clean_db
+):
+    """A naive datetime + unknown IANA zone must surface a clear error
+    instead of leaking ZoneInfoNotFoundError from deeper code."""
+    mock_task_scheduler.add.return_value = sample_task
+
+    with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
+        result = await schedule_task.arun(
+            action="create",
+            name="test-task",
+            agent="lead",
+            schedule_type="at",
+            at_datetime="2026-05-10T01:12:42",
+            timezone="Mars/Olympus_Mons",
+            prompt="Run once",
+        )
+
+    assert "Error" in result
+    assert "Mars/Olympus_Mons" in result
+    mock_task_scheduler.add.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_create_cron_success(mock_task_scheduler, sample_task, clean_db):
     """Successfully creates a 'cron' task."""
     sample_task.schedule_type = "cron"

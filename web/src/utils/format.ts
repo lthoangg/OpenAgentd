@@ -58,6 +58,125 @@ export function formatRelativeDate(dateStr: string | null): string {
   return `${format(date, 'dd/MM/yyyy')} ${time}`
 }
 
+// ── IANA timezone helpers ────────────────────────────────────────────────────
+//
+// The browser's `Intl` API can both render a given UTC instant in any IANA
+// zone and tell us the UTC offset of that zone at any instant. We avoid
+// pulling in `date-fns-tz` for two small helpers.
+
+/**
+ * Me get the offset (in minutes, east-of-UTC) that the IANA `timeZone` was
+ * at the given UTC instant. e.g. `Asia/Ho_Chi_Minh` → 420 always;
+ * `America/New_York` → -300 (EST) or -240 (EDT) depending on the date.
+ *
+ * Returns 0 (UTC) for unknown zones rather than throwing.
+ */
+export function getTimezoneOffsetMinutes(timeZone: string, instant: Date): number {
+  try {
+    const dtf = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      hourCycle: 'h23',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+    })
+    const parts = dtf.formatToParts(instant)
+    const map: Record<string, string> = {}
+    for (const p of parts) if (p.type !== 'literal') map[p.type] = p.value
+    const asUTC = Date.UTC(
+      Number(map.year), Number(map.month) - 1, Number(map.day),
+      Number(map.hour), Number(map.minute), Number(map.second),
+    )
+    return Math.round((asUTC - instant.getTime()) / 60000)
+  } catch {
+    return 0
+  }
+}
+
+/**
+ * Me convert a naive local-wall-clock string ("yyyy-MM-dd'T'HH:mm") that
+ * the user picked while thinking in `timeZone` into a tz-aware ISO-8601
+ * string the backend can store unambiguously.
+ *
+ * Returns the input unchanged if it's empty or already has an offset/Z.
+ */
+export function wallClockToISO(local: string, timeZone: string): string {
+  if (!local) return local
+  // Already aware? Pass through.
+  if (/[zZ]|[+-]\d{2}:?\d{2}$/.test(local)) return local
+
+  // Parse the wall-clock fields directly — do NOT use `new Date(local)`
+  // because that would interpret them in the browser's zone.
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(local)
+  if (!m) return local
+  const [, y, mo, d, h, mi, s = '00'] = m
+
+  // Find the offset of `timeZone` at this wall-clock. We do one round-trip:
+  // pretend the wall-clock is UTC, ask what offset the zone has at that
+  // instant, then subtract. (DST edges can drift by an hour; one fixup
+  // iteration is enough for any IANA zone.)
+  const utcGuess = Date.UTC(+y, +mo - 1, +d, +h, +mi, +s)
+  let off = getTimezoneOffsetMinutes(timeZone, new Date(utcGuess))
+  let instant = utcGuess - off * 60_000
+  off = getTimezoneOffsetMinutes(timeZone, new Date(instant))
+  instant = utcGuess - off * 60_000
+
+  const sign = off >= 0 ? '+' : '-'
+  const abs = Math.abs(off)
+  const oh = String(Math.floor(abs / 60)).padStart(2, '0')
+  const om = String(abs % 60).padStart(2, '0')
+  return `${y}-${mo}-${d}T${h}:${mi}:${s}${sign}${oh}:${om}`
+}
+
+/**
+ * Me convert a tz-aware ISO-8601 string from the API back to a naive
+ * wall-clock string ("yyyy-MM-dd'T'HH:mm") in the supplied `timeZone`.
+ * Useful for seeding form pickers that expect local-style input.
+ */
+export function isoToWallClock(iso: string, timeZone: string): string {
+  if (!iso) return ''
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return ''
+  try {
+    const dtf = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      hourCycle: 'h23',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit',
+    })
+    const parts = dtf.formatToParts(date)
+    const map: Record<string, string> = {}
+    for (const p of parts) if (p.type !== 'literal') map[p.type] = p.value
+    return `${map.year}-${map.month}-${map.day}T${map.hour}:${map.minute}`
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * Me format a tz-aware ISO-8601 string in the supplied IANA `timeZone`
+ * as "dd/MM/yyyy HH:mm". Falls back to browser-local rendering if the
+ * zone is unknown.
+ */
+export function formatInTimezone(iso: string | null | undefined, timeZone: string): string {
+  if (!iso) return ''
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return ''
+  try {
+    const dtf = new Intl.DateTimeFormat('en-GB', {
+      timeZone,
+      hourCycle: 'h23',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit',
+    })
+    const parts = dtf.formatToParts(date)
+    const map: Record<string, string> = {}
+    for (const p of parts) if (p.type !== 'literal') map[p.type] = p.value
+    return `${map.day}/${map.month}/${map.year} ${map.hour}:${map.minute}`
+  } catch {
+    return format(date, 'dd/MM/yyyy HH:mm')
+  }
+}
+
 import type { ContentBlock } from '@/api/types'
 
 /**

@@ -13,7 +13,7 @@
 
 [Documentation](https://github.com/lthoangg/openagentd/blob/main/documents/docs/index.md)
 
-![Four agents coordinating in a single split view](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/hero-team-split.png)
+![OpenAgentd annotated multi-agent cockpit](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/brand/openagentd-hero-annotated.png)
 
 ---
 
@@ -21,7 +21,7 @@
 
 **A cockpit, not a chat box.** Command palette (Ctrl+P), drag-and-drop files, full-screen image viewer, and an inspector that shows every tool call and what came back.
 
-![Command palette — fuzzy search across sessions, agents, files, and actions](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/command-pallete.gif)
+![Tool call inspector — arguments, execution status, and results](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/tool-call-inspector.png)
 
 **Agents that can actually do things.** Read and write files, run shell commands, search the web, generate images and video, manage todos, schedule tasks. Add more via a skill `.md` or any MCP server.
 
@@ -31,7 +31,7 @@
 
 **Run a team, not just one agent.** Lead + worker setup with an async mailbox and `team_message` delegation. Watch each agent stream in its own pane — or merge into a single unified view.
 
-![Unified team view — every agent's turn in one stream, clearly labeled](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/team-unified.png)
+![Unified team view — lead and specialist agents visible together](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/team-unified.png)
 
 **Voice input, transcribed locally.** Click the mic button to record, click again to stop. The recording is transcribed on-device via Whisper and inserted into the chat input for review — nothing leaves your machine. Configure in `speech.yaml` or enable via Settings → Voice.
 
@@ -245,8 +245,6 @@ OpenAgentd exports OpenTelemetry spans to local JSONL partitions and serves a bu
 - **Prometheus endpoint** — `/metrics` for external scraping
 
 No external collector required. All data stays on your machine.
-
-![Telemetry dashboard — token usage, latency, model breakdown, and trace waterfall](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/telementry.gif)
 
 ---
 

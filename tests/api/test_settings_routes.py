@@ -244,6 +244,7 @@ async def test_install_update_starts_background_restart(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     popen = Mock()
+    self_terminate = Mock()
     monkeypatch.setattr(settings_routes.settings, "APP_ENV", "production")
     monkeypatch.setattr(
         settings_routes.shutil,
@@ -251,18 +252,45 @@ async def test_install_update_starts_background_restart(
         lambda _name: "/usr/local/bin/openagentd",
     )
     monkeypatch.setattr(settings_routes.subprocess, "Popen", popen)
+    # Replace the BackgroundTasks callable so the test process is not killed.
+    monkeypatch.setattr(
+        settings_routes,
+        "_self_terminate_after_response",
+        self_terminate,
+    )
 
     async with await _async_client() as client:
         response = await client.post("/api/settings/update/install")
 
     assert response.status_code == 200
     assert response.json() == {"status": "started"}
+
+    # Restarter spawned exactly once.
     popen.assert_called_once()
     args, kwargs = popen.call_args
-    assert args[0][0:2] == ["/bin/sh", "-lc"]
-    assert "/usr/local/bin/openagentd update" in args[0][2]
-    assert "/usr/local/bin/openagentd stop" in args[0][2]
-    assert "/usr/local/bin/openagentd start" in args[0][2]
+
+    # POSIX shell, no login flag — `-lc` would source profile files
+    # unnecessarily and slowly on macOS.
+    assert args[0][0:2] == ["/bin/sh", "-c"]
+
+    script = args[0][2]
+    # Polls for parent exit, then runs update + start unconditionally
+    # (no `&&` short-circuit between update and start).
+    assert "kill -0" in script
+    assert "/usr/local/bin/openagentd update" in script
+    assert "/usr/local/bin/openagentd start" in script
+    # The buggy `stop` step has been removed entirely; the parent SIGTERMs
+    # itself via _self_terminate_after_response and the restarter polls
+    # for the PID to disappear.
+    assert "/usr/local/bin/openagentd stop" not in script
+    # Output is captured to a real log file, not /dev/null.
+    assert "self-update.log" in script
+
     assert kwargs["stdout"] == settings_routes.subprocess.DEVNULL
     assert kwargs["stderr"] == settings_routes.subprocess.DEVNULL
     assert kwargs["start_new_session"] is True
+
+    # The self-terminate hook is registered as a background task and runs
+    # *after* the response — at this point the test client has already
+    # received the response, so the mock should have been invoked.
+    self_terminate.assert_called_once()

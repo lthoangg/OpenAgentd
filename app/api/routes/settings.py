@@ -5,11 +5,14 @@ Exposes the user-editable sandbox deny-list and application update controls.
 
 from __future__ import annotations
 
+import os
 import shlex
 import shutil
+import signal
 import subprocess
+import time
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 import httpx
 from loguru import logger
 
@@ -20,6 +23,7 @@ from app.api.schemas.settings import (
     UpdateStatusBody,
 )
 from app.core.config import settings
+from app.core.logging_config import LOGS_DIR
 from app.core.version import VERSION
 
 router = APIRouter()
@@ -100,9 +104,44 @@ async def get_update_status() -> UpdateStatusBody:
     )
 
 
+def _self_terminate_after_response() -> None:
+    """Send SIGTERM to ourselves after the HTTP response has flushed.
+
+    Runs as a FastAPI ``BackgroundTasks`` callable, *after* the response is
+    delivered to the client.  The detached restarter spawned by
+    :func:`install_update` is already waiting for our PID to disappear before
+    it runs ``openagentd update`` and ``openagentd start``.
+    """
+    # Small grace period to let uvicorn flush the response and close the
+    # socket cleanly before we tear the process down.
+    time.sleep(0.5)
+    logger.info("update_install_self_terminating pid={}", os.getpid())
+    os.kill(os.getpid(), signal.SIGTERM)
+
+
 @router.post("/update/install")
-async def install_update() -> UpdateInstallBody:
-    """Start a background self-update, then restart the production server."""
+async def install_update(
+    background_tasks: BackgroundTasks,
+) -> UpdateInstallBody:
+    """Start a detached self-update, then exit so the new server can take over.
+
+    The previous implementation chained ``update && stop && start`` in a single
+    shell.  Any non-zero exit short-circuited the chain (a flaky ``update``
+    would block the restart entirely), and stdout/stderr were redirected to
+    ``/dev/null`` so failures were undiagnosable.  Fixed in v0.3.2.
+
+    The current flow:
+
+    1. Spawn a detached ``/bin/sh`` script that polls ``kill -0 $parent_pid``
+       until our process is gone, then runs ``openagentd update`` and
+       ``openagentd start`` *unconditionally* (no ``&&`` chain).
+    2. Append all output to ``$STATE_DIR/logs/self-update.log`` so failures
+       leave a trail.
+    3. Return the HTTP response, then SIGTERM ourselves via a background task
+       so the response flushes before shutdown — preventing the spurious
+       "Install failed" toast that the client used to see when the connection
+       was severed mid-response.
+    """
     blocked_reason = _install_blocked_reason()
     if blocked_reason is not None:
         raise HTTPException(status_code=409, detail=blocked_reason)
@@ -110,15 +149,37 @@ async def install_update() -> UpdateInstallBody:
     executable = shutil.which("openagentd")
     assert executable is not None
     quoted_executable = shlex.quote(executable)
-    command = (
-        f"sleep 1; {quoted_executable} update && "
-        f"{quoted_executable} stop && {quoted_executable} start"
+
+    log_path = LOGS_DIR / "self-update.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    quoted_log = shlex.quote(str(log_path))
+    parent_pid = os.getpid()
+
+    # POSIX-only restarter.  Windows users must reinstall via
+    # ``uv tool install --upgrade openagentd`` from a terminal.
+    script = (
+        f'echo "[$(date -u +%FT%TZ)] self-update starting parent_pid={parent_pid}" '
+        f">> {quoted_log} 2>&1; "
+        # Wait for the running server to exit (we SIGTERM ourselves as soon
+        # as the response is flushed via BackgroundTasks).
+        f"while kill -0 {parent_pid} 2>/dev/null; do sleep 0.2; done; "
+        f'echo "[$(date -u +%FT%TZ)] parent exited, running update" '
+        f">> {quoted_log} 2>&1; "
+        # Run update — log failures but do not abort the restart.
+        f"{quoted_executable} update >> {quoted_log} 2>&1 || "
+        f'echo "[$(date -u +%FT%TZ)] update step exited non-zero; '
+        f'continuing to start" >> {quoted_log} 2>&1; '
+        # Give the OS a moment to release the listening port.
+        f"sleep 1; "
+        f'echo "[$(date -u +%FT%TZ)] starting server" >> {quoted_log} 2>&1; '
+        f"exec {quoted_executable} start >> {quoted_log} 2>&1"
     )
     subprocess.Popen(
-        ["/bin/sh", "-lc", command],
+        ["/bin/sh", "-c", script],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         start_new_session=True,
     )
-    logger.info("update_install_started executable={}", executable)
+    logger.info("update_install_started executable={} log={}", executable, log_path)
+    background_tasks.add_task(_self_terminate_after_response)
     return UpdateInstallBody(status="started")

@@ -509,7 +509,7 @@ changes.
 
 ## Todo list
 
-`GET /api/team/sessions/{session_id}/todos` reads `.todos.json` from the agent
+`GET /api/team/sessions/{session_id}/todos` reads `.openagentd/.todos.json` from the agent
 workspace and returns the current todo list.
 
 **Response — `TodosResponse`:**
@@ -535,7 +535,7 @@ Response model: `TodosResponse` (Pydantic). Each `TodoItemResponse`:
 | `assigned_to` | string \| null | Concrete agent handle assigned to the task, e.g. `executor#1` |
 | `claimed_by` | string \| null | Agent handle that claimed the task |
 
-Returns `{todos: []}` when `.todos.json` does not exist yet. `session_id` must be a valid UUID (400 on malformed).
+Returns `{todos: []}` when `.openagentd/.todos.json` does not exist yet. `session_id` must be a valid UUID (400 on malformed).
 
 **Invalidation:** the frontend refetches via `queryKeys.todos(sessionId)` whenever a `tool_end` event fires for `todo_manage` — see `web/src/stores/useTeamStore.ts`. The **Todos** popover in the chat header displays this data — see [`documents/docs/web/todos.md`](../web/todos.md).
 

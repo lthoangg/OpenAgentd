@@ -181,7 +181,7 @@ The sandbox uses a **denylist** model: any path on disk is reachable except path
 
 #### Large output handling
 
-Shell output is streamed incrementally. When total output exceeds the sandbox `max_output_bytes` (default 128 KB — see `DEFAULT_MAX_OUTPUT_BYTES` in `app/agent/sandbox.py`), the full output is saved to `.shell_output/<call_id>.txt` inside the session workspace and the last 200 lines are returned inline, together with a reference to the spill file. A `<shell_metadata>` advisory block is appended to results when the command times out, suggesting a higher `timeout_seconds` on retry.
+Shell output is streamed incrementally. When total output exceeds the sandbox `max_output_bytes` (default 128 KB — see `DEFAULT_MAX_OUTPUT_BYTES` in `app/agent/sandbox.py`), the full output is saved to `.openagentd/.shell_output/<call_id>.txt` inside the session workspace and the last 200 lines are returned inline, together with a reference to the spill file. A `<shell_metadata>` advisory block is appended to results when the command times out, suggesting a higher `timeout_seconds` on retry.
 
 For tool result offloading (applied across all tools), `ToolResultOffloadHook` kicks in when the result string exceeds `DEFAULT_CHAR_THRESHOLD` (default 40000 chars — see `app/agent/hooks/tool_result_offload.py`). See [Tool Result Offload](hooks.md#toolresultoffloadhook).
 
@@ -222,7 +222,7 @@ All subprocesses are started with `start_new_session=True`, which places them in
 
 Shell commands are gated by the **permission system** (`app/agent/permission.py`) before execution. By default `AutoAllowPermissionService` is active — it fires `permission_asked` SSE events and auto-approves. A blocking `PermissionService` with user-defined `Rule`/`Ruleset` (wildcard, last-match-wins) can be wired in when a frontend approval UI is ready. The old denylist (`sudo`, `rm -rf`, etc.) has been removed in favour of this rule-based approach.
 
-Path containment for file tools is enforced by `SandboxConfig.validate_path` — see the denylist rules at the top of [Filesystem](#filesystem-builtinfilesystem). The `shell` tool additionally calls `SandboxConfig.check_command` at the top of `_shell()`: a `shlex` tokenises the command, path-like tokens (containing `/`, leading `~`, or leading `.`) are resolved against the workspace and run through the same denylist, and the call raises `PermissionError("Sandbox blocked 'shell': ...")` on a hit. **Best-effort only** — `$VAR`, `$(...)`, backticks, and base64 are not evaluated, so OS-level user permissions remain the last line of defence. See `app/agent/sandbox.py:check_command`. The default shell timeout is 20s; large output spills to `.shell_output/` with the last 200 lines returned inline.
+Path containment for file tools is enforced by `SandboxConfig.validate_path` — see the denylist rules at the top of [Filesystem](#filesystem-builtinfilesystem). The `shell` tool additionally calls `SandboxConfig.check_command` at the top of `_shell()`: a `shlex` tokenises the command, path-like tokens (containing `/`, leading `~`, or leading `.`) are resolved against the workspace and run through the same denylist, and the call raises `PermissionError("Sandbox blocked 'shell': ...")` on a hit. **Best-effort only** — `$VAR`, `$(...)`, backticks, and base64 are not evaluated, so OS-level user permissions remain the last line of defence. See `app/agent/sandbox.py:check_command`. The default shell timeout is 20s; large output spills to `.openagentd/.shell_output/` with the last 200 lines returned inline.
 
 ### Date (`builtin/date.py`)
 
@@ -410,7 +410,7 @@ The loader expands four placeholders in both the description (used in the agent'
 }
 ```
 
-Stored in `.todos.json` inside the session workspace (filename exported as `TODOS_FILENAME` from `app/agent/tools/builtin/todo.py` — both the tool and the `/team/sessions/{id}/todos` route import it). `counter` is monotonically increasing — deleting items never rewinds it. Cached in `state.metadata["_todos"]` within a turn to avoid redundant disk reads. Store is loaded once and saved once per `todo_manage` call regardless of how many actions are batched.
+Stored in `.openagentd/.todos.json` inside the session workspace (path exported as `TODOS_FILENAME` from `app/agent/tools/builtin/todo.py` — both the tool and the `/team/sessions/{id}/todos` route import it). `counter` is monotonically increasing — deleting items never rewinds it. Cached in `state.metadata["_todos"]` within a turn to avoid redundant disk reads. Store is loaded once and saved once per `todo_manage` call regardless of how many actions are batched.
 
 Each item has these fields:
 

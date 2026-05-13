@@ -27,7 +27,7 @@ Or when truncated::
 
     [Succeeded]
 
-    ...output truncated (full output saved to .shell_output/<id>.txt)
+    ...output truncated (full output saved to .openagentd/.shell_output/<id>.txt)
 
     <last N lines>
 
@@ -57,7 +57,7 @@ _DEFAULT_TIMEOUT_SECONDS = (
     20  # 20 s default; background mode handles long-running processes
 )
 _BG_OUTPUT_MAX_LINES = 200  # ring-buffer per background process
-_SHELL_OUTPUT_SUBDIR = ".shell_output"  # within workspace root
+_SHELL_OUTPUT_SUBDIR = ".openagentd/.shell_output"  # within workspace root
 
 # Maximum lines and bytes to include as inline tail in the result
 _TAIL_MAX_LINES = 200
@@ -169,7 +169,7 @@ def _tail_text(text: str, max_lines: int, max_bytes: int) -> tuple[str, bool]:
 
 
 def _spill_output(content: str, workspace: Path, call_id: str) -> Path:
-    """Write *content* to ``.shell_output/<call_id>.txt`` under *workspace*."""
+    """Write *content* to ``.openagentd/.shell_output/<call_id>.txt`` under *workspace*."""
     spill_dir = workspace / _SHELL_OUTPUT_SUBDIR
     spill_dir.mkdir(parents=True, exist_ok=True)
     dest = spill_dir / f"{call_id}.txt"
@@ -251,7 +251,7 @@ async def _shell(
     Uses the user's preferred POSIX shell (``$SHELL`` → zsh → bash → sh).
     Supports ``&&``, ``||``, pipes, ``$VAR``, subshells.
     Large output is streamed: the last 200 lines are returned inline;
-    the full output is saved to ``.shell_output/`` in the workspace.
+    the full output is saved to ``.openagentd/.shell_output/`` in the workspace.
     Set ``background=true`` for long-running processes.
     """
     sandbox = get_sandbox()

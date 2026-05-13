@@ -5,11 +5,11 @@ Covers:
 
 Requirements validated:
   - session_id validated as UUID (400 on malformed)
-  - Missing .todos.json returns empty list (fresh session)
+  - Missing .openagentd/.todos.json returns empty list (fresh session)
   - Missing workspace dir returns empty list
-  - Invalid JSON in .todos.json returns empty list
+  - Invalid JSON in .openagentd/.todos.json returns empty list
   - JSON list format (old format) returns empty list
-  - Valid .todos.json with items returns TodosResponse with all items
+  - Valid .openagentd/.todos.json with items returns TodosResponse with all items
   - Items missing required fields are skipped (caught by outer except)
   - Response schema matches TodoItemResponse
 """
@@ -21,6 +21,8 @@ import uuid
 
 import pytest
 from fastapi.testclient import TestClient
+
+from app.agent.tools.builtin.todo import TODOS_FILENAME
 
 pytestmark = pytest.mark.usefixtures("setup_db")
 
@@ -49,6 +51,12 @@ def session_id() -> str:
     return str(uuid.uuid7())
 
 
+def todos_path(root):
+    path = root / TODOS_FILENAME
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 class TestGetTodos:
     """Test suite for GET /api/team/sessions/{session_id}/todos."""
 
@@ -73,7 +81,7 @@ class TestGetTodos:
     def test_missing_todos_file_returns_empty_list(
         self, client, session_id, tmp_path, monkeypatch
     ):
-        """Fresh session: .todos.json doesn't exist → returns empty list."""
+        """Fresh session: .openagentd/.todos.json doesn't exist → returns empty list."""
         fake_root = tmp_path / "ws"
         fake_root.mkdir(parents=True)
 
@@ -104,10 +112,10 @@ class TestGetTodos:
     def test_invalid_json_in_todos_file_returns_empty_list(
         self, client, session_id, tmp_path, monkeypatch
     ):
-        """.todos.json contains invalid JSON → returns empty list."""
+        """.openagentd/.todos.json contains invalid JSON → returns empty list."""
         fake_root = tmp_path / "ws"
         fake_root.mkdir(parents=True)
-        (fake_root / ".todos.json").write_text("{ invalid json }")
+        todos_path(fake_root).write_text("{ invalid json }")
 
         from app.api.routes.team import todos as team_routes
 
@@ -121,11 +129,11 @@ class TestGetTodos:
     def test_json_list_format_returns_empty_list(
         self, client, session_id, tmp_path, monkeypatch
     ):
-        """Old format: .todos.json is a JSON list (not dict) → returns empty list."""
+        """Old format: .openagentd/.todos.json is a JSON list (not dict) → returns empty list."""
         fake_root = tmp_path / "ws"
         fake_root.mkdir(parents=True)
         # Old format: just a list
-        (fake_root / ".todos.json").write_text(
+        todos_path(fake_root).write_text(
             json.dumps(
                 [
                     {
@@ -150,7 +158,7 @@ class TestGetTodos:
     def test_valid_todos_file_with_single_item(
         self, client, session_id, tmp_path, monkeypatch
     ):
-        """Valid .todos.json with one item → returns TodosResponse."""
+        """Valid .openagentd/.todos.json with one item → returns TodosResponse."""
         fake_root = tmp_path / "ws"
         fake_root.mkdir(parents=True)
         todos_data = {
@@ -164,7 +172,7 @@ class TestGetTodos:
                 }
             ],
         }
-        (fake_root / ".todos.json").write_text(json.dumps(todos_data))
+        todos_path(fake_root).write_text(json.dumps(todos_data))
 
         from app.api.routes.team import todos as team_routes
 
@@ -182,7 +190,7 @@ class TestGetTodos:
     def test_valid_todos_file_with_multiple_items(
         self, client, session_id, tmp_path, monkeypatch
     ):
-        """Valid .todos.json with multiple items → returns all items."""
+        """Valid .openagentd/.todos.json with multiple items → returns all items."""
         fake_root = tmp_path / "ws"
         fake_root.mkdir(parents=True)
         todos_data = {
@@ -208,7 +216,7 @@ class TestGetTodos:
                 },
             ],
         }
-        (fake_root / ".todos.json").write_text(json.dumps(todos_data))
+        todos_path(fake_root).write_text(json.dumps(todos_data))
 
         from app.api.routes.team import todos as team_routes
 
@@ -245,7 +253,7 @@ class TestGetTodos:
                 },
             ],
         }
-        (fake_root / ".todos.json").write_text(json.dumps(todos_data))
+        todos_path(fake_root).write_text(json.dumps(todos_data))
 
         from app.api.routes.team import todos as team_routes
 
@@ -280,7 +288,7 @@ class TestGetTodos:
                 },
             ],
         }
-        (fake_root / ".todos.json").write_text(json.dumps(todos_data))
+        todos_path(fake_root).write_text(json.dumps(todos_data))
 
         from app.api.routes.team import todos as team_routes
 
@@ -315,7 +323,7 @@ class TestGetTodos:
                 },
             ],
         }
-        (fake_root / ".todos.json").write_text(json.dumps(todos_data))
+        todos_path(fake_root).write_text(json.dumps(todos_data))
 
         from app.api.routes.team import todos as team_routes
 
@@ -350,7 +358,7 @@ class TestGetTodos:
                 },
             ],
         }
-        (fake_root / ".todos.json").write_text(json.dumps(todos_data))
+        todos_path(fake_root).write_text(json.dumps(todos_data))
 
         from app.api.routes.team import todos as team_routes
 
@@ -381,7 +389,7 @@ class TestGetTodos:
                 123,  # Number item
             ],
         }
-        (fake_root / ".todos.json").write_text(json.dumps(todos_data))
+        todos_path(fake_root).write_text(json.dumps(todos_data))
 
         from app.api.routes.team import todos as team_routes
 
@@ -396,11 +404,11 @@ class TestGetTodos:
     def test_todos_file_with_empty_items_list(
         self, client, session_id, tmp_path, monkeypatch
     ):
-        """Valid .todos.json with empty items list → returns empty todos."""
+        """Valid .openagentd/.todos.json with empty items list → returns empty todos."""
         fake_root = tmp_path / "ws"
         fake_root.mkdir(parents=True)
         todos_data = {"counter": 0, "items": []}
-        (fake_root / ".todos.json").write_text(json.dumps(todos_data))
+        todos_path(fake_root).write_text(json.dumps(todos_data))
 
         from app.api.routes.team import todos as team_routes
 
@@ -418,7 +426,7 @@ class TestGetTodos:
         fake_root = tmp_path / "ws"
         fake_root.mkdir(parents=True)
         todos_data = {"counter": 0}  # Missing 'items' key
-        (fake_root / ".todos.json").write_text(json.dumps(todos_data))
+        todos_path(fake_root).write_text(json.dumps(todos_data))
 
         from app.api.routes.team import todos as team_routes
 
@@ -446,7 +454,7 @@ class TestGetTodos:
                 }
             ],
         }
-        (fake_root / ".todos.json").write_text(json.dumps(todos_data))
+        todos_path(fake_root).write_text(json.dumps(todos_data))
 
         from app.api.routes.team import todos as team_routes
 
@@ -497,7 +505,7 @@ class TestGetTodos:
                 }
             ],
         }
-        (fake_root / ".todos.json").write_text(json.dumps(todos_data))
+        todos_path(fake_root).write_text(json.dumps(todos_data))
 
         from app.api.routes.team import todos as team_routes
 
@@ -540,7 +548,7 @@ class TestGetTodos:
                 }
             ],
         }
-        (fake_root_1 / ".todos.json").write_text(json.dumps(todos_data_1))
+        todos_path(fake_root_1).write_text(json.dumps(todos_data_1))
 
         fake_root_2 = tmp_path / "ws2"
         fake_root_2.mkdir(parents=True)
@@ -555,7 +563,7 @@ class TestGetTodos:
                 }
             ],
         }
-        (fake_root_2 / ".todos.json").write_text(json.dumps(todos_data_2))
+        todos_path(fake_root_2).write_text(json.dumps(todos_data_2))
 
         def mock_workspace_dir(sid):
             if sid == session_id_1:

@@ -1,4 +1,4 @@
-"""Todo list endpoint — reads the per-session ``.todos.json`` file."""
+"""Todo list endpoint — reads the per-session ``.openagentd/.todos.json`` file."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ router = APIRouter()
 async def get_todos(session_id: str) -> TodosResponse:
     """Return the current todo list for the session.
 
-    Reads ``.todos.json`` from the session workspace.  Returns an empty list
+    Reads ``.openagentd/.todos.json`` from the session workspace.  Returns an empty list
     when the file does not exist (no todos written yet).
     """
     try:

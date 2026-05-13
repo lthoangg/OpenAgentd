@@ -279,7 +279,7 @@ class TestNeverOffload:
 
     def test_never_offload_set_contains_expected_tools(self):
         assert "read" in _NEVER_OFFLOAD
-        # shell is NOT in _NEVER_OFFLOAD — it self-truncates via .shell_output/
+        # shell is NOT in _NEVER_OFFLOAD — it self-truncates via .openagentd/.shell_output/
         assert "shell" not in _NEVER_OFFLOAD
 
 

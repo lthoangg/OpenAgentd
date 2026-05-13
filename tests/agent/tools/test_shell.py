@@ -5,7 +5,7 @@ Covers the rewritten shell tool:
 - streaming foreground execution
 - workdir parameter
 - timeout handling
-- output spilling to .shell_output/
+- output spilling to .openagentd/.shell_output/
 - background process management
 """
 
@@ -215,7 +215,7 @@ async def test_shell_workdir_default_is_sandbox(sandbox_workspace):
 
 @pytest.mark.asyncio
 async def test_shell_large_output_spills(sandbox_workspace, tmp_path):
-    """Output exceeding _TAIL_MAX_BYTES is spilled to .shell_output/ and truncated."""
+    """Output exceeding _TAIL_MAX_BYTES is spilled to .openagentd/.shell_output/ and truncated."""
     # Patch _TAIL_MAX_BYTES to a tiny value so we spill even with small output
     with patch("app.agent.tools.builtin.shell._TAIL_MAX_BYTES", 100):
         result = await shell_tool.arun(
@@ -241,9 +241,11 @@ async def test_shell_output_spill_file_readable(sandbox_workspace):
         # Spill occurred — verify the file actually exists
         import re
 
-        match = re.search(r"\.shell_output/([a-f0-9]+\.txt)", result)
+        match = re.search(r"\.openagentd/\.shell_output/([a-f0-9]+\.txt)", result)
         if match:
-            spill_file = sandbox_workspace / ".shell_output" / match.group(1)
+            spill_file = (
+                sandbox_workspace / ".openagentd" / ".shell_output" / match.group(1)
+            )
             assert spill_file.exists()
 
 

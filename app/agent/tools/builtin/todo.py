@@ -9,7 +9,7 @@ Accepts a list of actions executed in order in a single call:
 
 Storage
 -------
-Items are written to ``.todos.json`` inside the sandbox workspace:
+Items are written to ``.openagentd/.todos.json`` inside the sandbox workspace:
 
 .. code-block:: json
 
@@ -45,9 +45,9 @@ from app.agent.tools.registry import InjectedArg, Tool
 # Constants
 # ---------------------------------------------------------------------------
 
-#: Filename for the per-workspace todo store.  Public so the
+#: Relative path for the per-workspace todo store.  Public so the
 #: ``/team/sessions/{id}/todos`` endpoint can locate the same file.
-TODOS_FILENAME = ".todos.json"
+TODOS_FILENAME = ".openagentd/.todos.json"
 
 # ---------------------------------------------------------------------------
 # Action models (discriminated union on "action")
@@ -167,6 +167,7 @@ def _load_store() -> dict:
 
 def _save_store(store: dict) -> None:
     path = _todos_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(store, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
@@ -196,6 +197,7 @@ def release_in_progress_for_actor(workspace_root: Path, actor: str) -> list[str]
         if isinstance(item.get("task_id"), str):
             released.append(item["task_id"])
     if released:
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
             json.dumps(store, indent=2, ensure_ascii=False), encoding="utf-8"
         )

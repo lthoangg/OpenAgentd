@@ -27,6 +27,7 @@ from app.agent.tools.builtin.todo import (
     CreateAction,
     DeleteAction,
     ReadAction,
+    TODOS_FILENAME,
     UpdateAction,
     _todo_manage,
     release_in_progress_for_actor,
@@ -52,12 +53,13 @@ def tmp_sandbox(tmp_path: Path) -> SandboxConfig:
 
 @pytest.fixture
 def todos_file(tmp_sandbox: SandboxConfig) -> Path:
-    """Return the path to .todos.json in the sandbox."""
-    return tmp_sandbox.workspace_root / ".todos.json"
+    """Return the path to .openagentd/.todos.json in the sandbox."""
+    return tmp_sandbox.workspace_root / TODOS_FILENAME
 
 
 def test_release_in_progress_for_actor_resets_claimed_tasks(tmp_path: Path) -> None:
-    todos = tmp_path / ".todos.json"
+    todos = tmp_path / TODOS_FILENAME
+    todos.parent.mkdir(parents=True)
     todos.write_text(
         json.dumps(
             {

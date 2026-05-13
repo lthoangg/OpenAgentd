@@ -74,7 +74,7 @@ _OFFLOAD_SUBDIR = ".tool_results"
 # Never offload skill — skill content must reach the agent intact; truncating
 # it would silently deliver incomplete instructions.
 # shell is NOT excluded: it self-truncates large output (persists full content
-# to .shell_output/) so the offload hook never sees oversized shell results.
+# to .openagentd/.shell_output/) so the offload hook never sees oversized shell results.
 _NEVER_OFFLOAD = frozenset({"read", "skill"})
 
 

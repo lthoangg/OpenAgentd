@@ -79,6 +79,27 @@ function TreeNodeView({ node, depth }: { node: TreeNode; depth: number }) {
   )
 }
 
+function diffLineClass(line: string) {
+  if (line.startsWith('+++') || line.startsWith('---')) return 'text-(--color-accent)'
+  if (line.startsWith('@@')) return 'bg-(--color-accent)/10 text-(--color-accent)'
+  if (line.startsWith('+')) return 'bg-emerald-500/10 text-emerald-400'
+  if (line.startsWith('-')) return 'bg-red-500/10 text-red-400'
+  if (line.startsWith('diff --git') || line.startsWith('index ')) return 'text-(--color-text)'
+  return 'text-(--color-text-2)'
+}
+
+function DiffPreview({ diff }: { diff: string }) {
+  return (
+    <pre className="overflow-x-auto rounded bg-(--bg-page) p-2 font-mono text-[11px] leading-relaxed">
+      {diff.split('\n').map((line, index) => (
+        <span key={index} className={cn('block whitespace-pre', diffLineClass(line))}>
+          {line || ' '}
+        </span>
+      ))}
+    </pre>
+  )
+}
+
 export function CodingWorkspacePanel({
   workspace,
   open,
@@ -171,7 +192,7 @@ export function CodingWorkspacePanel({
         ) : (
           <>
             {diff.data.truncated && <p className="mb-2 rounded bg-(--color-warning)/10 px-2 py-1 text-xs text-(--color-warning)">Diff truncated for display.</p>}
-            <pre className="whitespace-pre-wrap break-words rounded bg-(--bg-page) p-2 font-mono text-[11px] leading-relaxed text-(--color-text-2)">{diff.data.diff}</pre>
+            <DiffPreview diff={diff.data.diff} />
           </>
         )}
       </div>

@@ -67,6 +67,34 @@ def test_absolute_path_outside_workspace_allowed(tmp_path):
     assert result == outside.resolve()
 
 
+def test_metadata_path_is_session_scoped_when_session_id_present(tmp_path):
+    sandbox = SandboxConfig(
+        workspace=str(tmp_path / "ws"),
+        session_id="session-1",
+        denied_roots=[],
+        denied_patterns=[],
+    )
+
+    result = sandbox.metadata_path(".todos.json")
+
+    assert (
+        result
+        == tmp_path / "ws" / ".openagentd" / "sessions" / "session-1" / ".todos.json"
+    )
+
+
+def test_metadata_path_falls_back_to_workspace_metadata_without_session_id(tmp_path):
+    sandbox = SandboxConfig(
+        workspace=str(tmp_path / "ws"),
+        denied_roots=[],
+        denied_patterns=[],
+    )
+
+    result = sandbox.metadata_path(".shell_output")
+
+    assert result == tmp_path / "ws" / ".openagentd" / ".shell_output"
+
+
 def test_path_inside_denied_root_rejected(tmp_path):
     """Paths under a denied root must be rejected."""
     denied = tmp_path / "denied"

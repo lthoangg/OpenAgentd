@@ -5,11 +5,11 @@ Covers:
 
 Requirements validated:
   - session_id validated as UUID (400 on malformed)
-  - Missing .openagentd/.todos.json returns empty list (fresh session)
+  - Missing session-scoped .openagentd todo file returns empty list (fresh session)
   - Missing workspace dir returns empty list
-  - Invalid JSON in .openagentd/.todos.json returns empty list
+  - Invalid JSON in session-scoped .openagentd todo file returns empty list
   - JSON list format (old format) returns empty list
-  - Valid .openagentd/.todos.json with items returns TodosResponse with all items
+  - Valid session-scoped .openagentd todo file returns TodosResponse with all items
   - Items missing required fields are skipped (caught by outer except)
   - Response schema matches TodoItemResponse
 """
@@ -51,8 +51,8 @@ def session_id() -> str:
     return str(uuid.uuid7())
 
 
-def todos_path(root):
-    path = root / TODOS_FILENAME
+def todos_path(root, session_id: str):
+    path = root / ".openagentd" / "sessions" / session_id / TODOS_FILENAME
     path.parent.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -81,7 +81,7 @@ class TestGetTodos:
     def test_missing_todos_file_returns_empty_list(
         self, client, session_id, tmp_path, monkeypatch
     ):
-        """Fresh session: .openagentd/.todos.json doesn't exist → returns empty list."""
+        """Fresh session: session-scoped todo file doesn't exist → returns empty list."""
         fake_root = tmp_path / "ws"
         fake_root.mkdir(parents=True)
 
@@ -112,10 +112,10 @@ class TestGetTodos:
     def test_invalid_json_in_todos_file_returns_empty_list(
         self, client, session_id, tmp_path, monkeypatch
     ):
-        """.openagentd/.todos.json contains invalid JSON → returns empty list."""
+        """Session-scoped todo file contains invalid JSON → returns empty list."""
         fake_root = tmp_path / "ws"
         fake_root.mkdir(parents=True)
-        todos_path(fake_root).write_text("{ invalid json }")
+        todos_path(fake_root, session_id).write_text("{ invalid json }")
 
         from app.api.routes.team import todos as team_routes
 
@@ -129,11 +129,11 @@ class TestGetTodos:
     def test_json_list_format_returns_empty_list(
         self, client, session_id, tmp_path, monkeypatch
     ):
-        """Old format: .openagentd/.todos.json is a JSON list (not dict) → returns empty list."""
+        """Old format: todo file is a JSON list (not dict) → returns empty list."""
         fake_root = tmp_path / "ws"
         fake_root.mkdir(parents=True)
         # Old format: just a list
-        todos_path(fake_root).write_text(
+        todos_path(fake_root, session_id).write_text(
             json.dumps(
                 [
                     {
@@ -158,7 +158,7 @@ class TestGetTodos:
     def test_valid_todos_file_with_single_item(
         self, client, session_id, tmp_path, monkeypatch
     ):
-        """Valid .openagentd/.todos.json with one item → returns TodosResponse."""
+        """Valid session-scoped todo file with one item → returns TodosResponse."""
         fake_root = tmp_path / "ws"
         fake_root.mkdir(parents=True)
         todos_data = {
@@ -172,7 +172,7 @@ class TestGetTodos:
                 }
             ],
         }
-        todos_path(fake_root).write_text(json.dumps(todos_data))
+        todos_path(fake_root, session_id).write_text(json.dumps(todos_data))
 
         from app.api.routes.team import todos as team_routes
 
@@ -190,7 +190,7 @@ class TestGetTodos:
     def test_valid_todos_file_with_multiple_items(
         self, client, session_id, tmp_path, monkeypatch
     ):
-        """Valid .openagentd/.todos.json with multiple items → returns all items."""
+        """Valid session-scoped todo file with multiple items → returns all items."""
         fake_root = tmp_path / "ws"
         fake_root.mkdir(parents=True)
         todos_data = {
@@ -216,7 +216,7 @@ class TestGetTodos:
                 },
             ],
         }
-        todos_path(fake_root).write_text(json.dumps(todos_data))
+        todos_path(fake_root, session_id).write_text(json.dumps(todos_data))
 
         from app.api.routes.team import todos as team_routes
 
@@ -253,7 +253,7 @@ class TestGetTodos:
                 },
             ],
         }
-        todos_path(fake_root).write_text(json.dumps(todos_data))
+        todos_path(fake_root, session_id).write_text(json.dumps(todos_data))
 
         from app.api.routes.team import todos as team_routes
 
@@ -288,7 +288,7 @@ class TestGetTodos:
                 },
             ],
         }
-        todos_path(fake_root).write_text(json.dumps(todos_data))
+        todos_path(fake_root, session_id).write_text(json.dumps(todos_data))
 
         from app.api.routes.team import todos as team_routes
 
@@ -323,7 +323,7 @@ class TestGetTodos:
                 },
             ],
         }
-        todos_path(fake_root).write_text(json.dumps(todos_data))
+        todos_path(fake_root, session_id).write_text(json.dumps(todos_data))
 
         from app.api.routes.team import todos as team_routes
 
@@ -358,7 +358,7 @@ class TestGetTodos:
                 },
             ],
         }
-        todos_path(fake_root).write_text(json.dumps(todos_data))
+        todos_path(fake_root, session_id).write_text(json.dumps(todos_data))
 
         from app.api.routes.team import todos as team_routes
 
@@ -389,7 +389,7 @@ class TestGetTodos:
                 123,  # Number item
             ],
         }
-        todos_path(fake_root).write_text(json.dumps(todos_data))
+        todos_path(fake_root, session_id).write_text(json.dumps(todos_data))
 
         from app.api.routes.team import todos as team_routes
 
@@ -404,11 +404,11 @@ class TestGetTodos:
     def test_todos_file_with_empty_items_list(
         self, client, session_id, tmp_path, monkeypatch
     ):
-        """Valid .openagentd/.todos.json with empty items list → returns empty todos."""
+        """Valid session-scoped todo file with empty items list → returns empty todos."""
         fake_root = tmp_path / "ws"
         fake_root.mkdir(parents=True)
         todos_data = {"counter": 0, "items": []}
-        todos_path(fake_root).write_text(json.dumps(todos_data))
+        todos_path(fake_root, session_id).write_text(json.dumps(todos_data))
 
         from app.api.routes.team import todos as team_routes
 
@@ -426,7 +426,7 @@ class TestGetTodos:
         fake_root = tmp_path / "ws"
         fake_root.mkdir(parents=True)
         todos_data = {"counter": 0}  # Missing 'items' key
-        todos_path(fake_root).write_text(json.dumps(todos_data))
+        todos_path(fake_root, session_id).write_text(json.dumps(todos_data))
 
         from app.api.routes.team import todos as team_routes
 
@@ -454,7 +454,7 @@ class TestGetTodos:
                 }
             ],
         }
-        todos_path(fake_root).write_text(json.dumps(todos_data))
+        todos_path(fake_root, session_id).write_text(json.dumps(todos_data))
 
         from app.api.routes.team import todos as team_routes
 
@@ -505,7 +505,7 @@ class TestGetTodos:
                 }
             ],
         }
-        todos_path(fake_root).write_text(json.dumps(todos_data))
+        todos_path(fake_root, session_id).write_text(json.dumps(todos_data))
 
         from app.api.routes.team import todos as team_routes
 
@@ -548,7 +548,7 @@ class TestGetTodos:
                 }
             ],
         }
-        todos_path(fake_root_1).write_text(json.dumps(todos_data_1))
+        todos_path(fake_root_1, session_id_1).write_text(json.dumps(todos_data_1))
 
         fake_root_2 = tmp_path / "ws2"
         fake_root_2.mkdir(parents=True)
@@ -563,7 +563,7 @@ class TestGetTodos:
                 }
             ],
         }
-        todos_path(fake_root_2).write_text(json.dumps(todos_data_2))
+        todos_path(fake_root_2, session_id_2).write_text(json.dumps(todos_data_2))
 
         def mock_workspace_dir(sid):
             if sid == session_id_1:
@@ -591,3 +591,39 @@ class TestGetTodos:
         assert len(body2["todos"]) == 1
         assert body2["todos"][0]["task_id"] == "task-002"
         assert body2["todos"][0]["content"] == "Session 2 task"
+
+    def test_same_coding_workspace_sessions_are_independent(
+        self, client, tmp_path, monkeypatch
+    ):
+        """Coding sessions sharing one workspace must not share todo files."""
+        session_id_1 = str(uuid.uuid7())
+        session_id_2 = str(uuid.uuid7())
+        shared_root = tmp_path / "project"
+        shared_root.mkdir(parents=True)
+        todos_path(shared_root, session_id_1).write_text(
+            json.dumps(
+                {
+                    "counter": 1,
+                    "items": [
+                        {
+                            "task_id": "task-001",
+                            "content": "Only session 1",
+                            "status": "pending",
+                            "priority": "high",
+                        }
+                    ],
+                }
+            )
+        )
+
+        from app.api.routes.team import todos as team_routes
+
+        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: shared_root)
+
+        resp1 = client.get(f"/api/team/sessions/{session_id_1}/todos")
+        resp2 = client.get(f"/api/team/sessions/{session_id_2}/todos")
+
+        assert resp1.status_code == 200
+        assert resp1.json()["todos"][0]["content"] == "Only session 1"
+        assert resp2.status_code == 200
+        assert resp2.json() == {"todos": []}

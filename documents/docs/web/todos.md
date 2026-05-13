@@ -93,9 +93,7 @@ The board scrolls horizontally on narrow screens. Each non-empty column owns its
 
 ## Backend
 
-`GET /api/team/sessions/{session_id}/todos` reads `.openagentd/.todos.json` from
-`workspace_dir(session_id)`. Returns `{todos: []}` when the file does not
-exist. `session_id` must be a valid UUID (400 on malformed).
+`GET /api/team/sessions/{session_id}/todos` reads the session-scoped todo file under `.openagentd/sessions/{session_id}/`. Returns `{todos: []}` when it does not exist.
 
 See [API reference — todo list](../api/index.md#todo-list) for the full contract.
 

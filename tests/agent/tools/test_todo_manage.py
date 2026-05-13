@@ -46,19 +46,19 @@ class MockState:
 @pytest.fixture
 def tmp_sandbox(tmp_path: Path) -> SandboxConfig:
     """Create a temporary sandbox pointing to tmp_path."""
-    sandbox = SandboxConfig(workspace=str(tmp_path))
+    sandbox = SandboxConfig(workspace=str(tmp_path), session_id="session-1")
     set_sandbox(sandbox)
     yield sandbox
 
 
 @pytest.fixture
 def todos_file(tmp_sandbox: SandboxConfig) -> Path:
-    """Return the path to .openagentd/.todos.json in the sandbox."""
-    return tmp_sandbox.workspace_root / TODOS_FILENAME
+    """Return the path to the session-scoped todo file in the sandbox."""
+    return tmp_sandbox.metadata_path(TODOS_FILENAME)
 
 
 def test_release_in_progress_for_actor_resets_claimed_tasks(tmp_path: Path) -> None:
-    todos = tmp_path / TODOS_FILENAME
+    todos = tmp_path / ".openagentd" / "sessions" / "session-1" / TODOS_FILENAME
     todos.parent.mkdir(parents=True)
     todos.write_text(
         json.dumps(
@@ -98,7 +98,7 @@ def test_release_in_progress_for_actor_resets_claimed_tasks(tmp_path: Path) -> N
         encoding="utf-8",
     )
 
-    released = release_in_progress_for_actor(tmp_path, "worker#1")
+    released = release_in_progress_for_actor(tmp_path, "worker#1", "session-1")
 
     assert released == ["task_1", "task_2"]
     data = json.loads(todos.read_text(encoding="utf-8"))
@@ -193,6 +193,42 @@ async def test_create_multiple_items_sequential_ids(
     assert store["items"][0]["task_id"] == "task_1"
     assert store["items"][1]["task_id"] == "task_2"
     assert store["items"][2]["task_id"] == "task_3"
+
+
+@pytest.mark.asyncio
+async def test_todos_are_isolated_by_sandbox_session(tmp_path: Path) -> None:
+    sandbox_one = SandboxConfig(workspace=str(tmp_path), session_id="session-1")
+    token_one = set_sandbox(sandbox_one)
+    try:
+        await _todo_manage(
+            actions=[
+                CreateAction(
+                    action="create",
+                    content="Session one task",
+                    status="pending",
+                    priority="high",
+                )
+            ],
+            _state=None,
+        )
+    finally:
+        from app.agent.sandbox import _sandbox_ctx
+
+        _sandbox_ctx.reset(token_one)
+
+    sandbox_two = SandboxConfig(workspace=str(tmp_path), session_id="session-2")
+    token_two = set_sandbox(sandbox_two)
+    try:
+        result = await _todo_manage(actions=[ReadAction(action="read")], _state=None)
+    finally:
+        from app.agent.sandbox import _sandbox_ctx
+
+        _sandbox_ctx.reset(token_two)
+
+    assert result == "No todos."
+    assert sandbox_one.metadata_path(TODOS_FILENAME).exists()
+    store_two = json.loads(sandbox_two.metadata_path(TODOS_FILENAME).read_text())
+    assert store_two == {"counter": 0, "items": []}
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -5,7 +5,7 @@ Covers the rewritten shell tool:
 - streaming foreground execution
 - workdir parameter
 - timeout handling
-- output spilling to .openagentd/.shell_output/
+- output spilling to .openagentd/sessions/<sid>/.shell_output/
 - background process management
 """
 
@@ -48,7 +48,9 @@ def sandbox(tmp_path):
 def sandbox_workspace(tmp_path):
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    config = SandboxConfig(workspace=str(workspace), max_execution_seconds=120)
+    config = SandboxConfig(
+        workspace=str(workspace), session_id="session-1", max_execution_seconds=120
+    )
     token = set_sandbox(config)
     yield workspace
     from app.agent.sandbox import _sandbox_ctx
@@ -215,7 +217,7 @@ async def test_shell_workdir_default_is_sandbox(sandbox_workspace):
 
 @pytest.mark.asyncio
 async def test_shell_large_output_spills(sandbox_workspace, tmp_path):
-    """Output exceeding _TAIL_MAX_BYTES is spilled to .openagentd/.shell_output/ and truncated."""
+    """Output exceeding _TAIL_MAX_BYTES is spilled to session-scoped shell output."""
     # Patch _TAIL_MAX_BYTES to a tiny value so we spill even with small output
     with patch("app.agent.tools.builtin.shell._TAIL_MAX_BYTES", 100):
         result = await shell_tool.arun(
@@ -237,16 +239,26 @@ async def test_shell_output_spill_file_readable(sandbox_workspace):
             command="echo 'some longer output that will be truncated'"
         )
 
-    if "shell_output" in result:
-        # Spill occurred — verify the file actually exists
-        import re
+    import re
 
-        match = re.search(r"\.openagentd/\.shell_output/([a-f0-9]+\.txt)", result)
-        if match:
-            spill_file = (
-                sandbox_workspace / ".openagentd" / ".shell_output" / match.group(1)
-            )
-            assert spill_file.exists()
+    match = re.search(
+        r"\.openagentd/sessions/session-1/\.shell_output/([a-f0-9]+\.txt)",
+        result,
+    )
+    assert match is not None
+    spill_file = (
+        sandbox_workspace
+        / ".openagentd"
+        / "sessions"
+        / "session-1"
+        / ".shell_output"
+        / match.group(1)
+    )
+    assert (
+        spill_file.read_text(encoding="utf-8")
+        == "some longer output that will be truncated\n"
+    )
+    assert ".openagentd/.shell_output" not in result
 
 
 # ---------------------------------------------------------------------------

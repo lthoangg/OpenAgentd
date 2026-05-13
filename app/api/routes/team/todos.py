@@ -1,4 +1,4 @@
-"""Todo list endpoint — reads the per-session ``.openagentd/.todos.json`` file."""
+"""Todo list endpoint — reads the per-session todo metadata file."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ router = APIRouter()
 async def get_todos(session_id: str) -> TodosResponse:
     """Return the current todo list for the session.
 
-    Reads ``.openagentd/.todos.json`` from the session workspace.  Returns an empty list
+    Reads todos from the session metadata directory.  Returns an empty list
     when the file does not exist (no todos written yet).
     """
     try:
@@ -26,7 +26,8 @@ async def get_todos(session_id: str) -> TodosResponse:
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid session id.")
 
-    path = workspace_dir(session_id) / TODOS_FILENAME
+    root = workspace_dir(session_id)
+    path = root / ".openagentd" / "sessions" / session_id / TODOS_FILENAME
     if not path.exists():
         return TodosResponse(todos=[])
     try:

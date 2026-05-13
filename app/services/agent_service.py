@@ -413,7 +413,7 @@ async def interrupt_team(team: "AgentTeam", session_id: str | None) -> list[str]
             sid = session_id or getattr(team.lead, "session_id", None)
             released = (
                 release_in_progress_for_actor(
-                    session_workspace_dir(sid, team.workspace), member.name
+                    session_workspace_dir(sid, team.workspace), member.name, sid
                 )
                 if sid
                 else []

@@ -681,7 +681,7 @@ class TeamMemberBase(abc.ABC):
 
         # Coding mode uses the exact project workspace for every team member.
         workspace = str(session_workspace_dir(lead_session_id, self._team.workspace))
-        session_sandbox = SandboxConfig(workspace=workspace)
+        session_sandbox = SandboxConfig(workspace=workspace, session_id=lead_session_id)
         token = set_sandbox(session_sandbox)
 
         # Scope permission service to this agent run — auto-allows by default,
@@ -846,6 +846,7 @@ class TeamMember(TeamMemberBase):
         released = release_in_progress_for_actor(
             session_workspace_dir(self._team.lead.session_id, self._team.workspace),
             self.name,
+            self._team.lead.session_id,
         )
         suffix = (
             f" In-progress todos reset to pending: {', '.join(released)}."

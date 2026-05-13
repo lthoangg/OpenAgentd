@@ -81,6 +81,7 @@ class SandboxConfig:
     def __init__(
         self,
         workspace: str | None = None,
+        session_id: str | None = None,
         denied_roots: list[Path] | None = None,
         denied_patterns: list[str] | None = None,
         max_execution_seconds: int | None = None,
@@ -95,6 +96,7 @@ class SandboxConfig:
                 "no implicit default is provided."
             )
         self.workspace_root: Path = Path(workspace).resolve()
+        self.session_id = session_id
         self.workspace_root.mkdir(parents=True, exist_ok=True)
 
         if denied_roots is None:
@@ -122,6 +124,14 @@ class SandboxConfig:
         self.allow_network: bool = (
             allow_network if allow_network is not None else DEFAULT_ALLOW_NETWORK
         )
+
+    def metadata_path(self, name: str) -> Path:
+        """Return a path under ``.openagentd`` for this sandbox context."""
+        parts = [".openagentd"]
+        if self.session_id:
+            parts.extend(["sessions", self.session_id])
+        parts.append(name)
+        return self.workspace_root.joinpath(*parts)
 
     # ── Path validation ───────────────────────────────────────────────────
 

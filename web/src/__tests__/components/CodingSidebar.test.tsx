@@ -3,6 +3,7 @@ import type React from 'react'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { findCodingWorkspaceId, loadLastCodingWorkspace } from '@/utils/workspace'
+import { useTeamStore } from '@/stores/useTeamStore'
 
 const navigate = mock(() => {})
 const originalFetch = globalThis.fetch
@@ -12,6 +13,15 @@ const browseResponse = {
   directories: [],
 }
 let validateError: Error | null = null
+let sessionsData: Array<{
+  id: string
+  title: string | null
+  agent_name: string | null
+  created_at: string | null
+  updated_at: string | null
+  mode?: string
+  workspace?: string | null
+}> = []
 
 mock.module('@tanstack/react-router', () => ({
   useNavigate: () => navigate,
@@ -45,7 +55,7 @@ mock.module('@/components/ui/dialog', () => ({
 
 mock.module('@/queries/useSessionsQuery', () => ({
   useTeamSessionsQuery: () => ({
-    data: { pages: [{ data: [] }] },
+    data: { pages: [{ data: sessionsData }] },
     isFetching: false,
     refetch: mock(() => {}),
   }),
@@ -55,6 +65,8 @@ mock.module('@/queries/useSessionsQuery', () => ({
 describe('CodingSidebar workspace trust flow', () => {
   beforeEach(() => {
     localStorage.clear()
+    sessionsData = []
+    useTeamStore.setState({ isTeamWorking: false, sessionId: null })
     navigate.mockClear()
     validateError = null
     globalThis.fetch = mock(async (input: unknown) => {
@@ -82,6 +94,16 @@ describe('CodingSidebar workspace trust flow', () => {
     let view: ReturnType<typeof render> | undefined
     await act(async () => {
       view = render(<CodingSidebar openWorkspaceDialogKey={1} />)
+      await Promise.resolve()
+    })
+    return view
+  }
+
+  async function renderCodingSidebarForSessions(currentSessionId?: string) {
+    const { CodingSidebar } = await import('@/components/CodingSidebar')
+    let view: ReturnType<typeof render> | undefined
+    await act(async () => {
+      view = render(<CodingSidebar currentSessionId={currentSessionId} workspace="/repo/project" />)
       await Promise.resolve()
     })
     return view
@@ -134,5 +156,53 @@ describe('CodingSidebar workspace trust flow', () => {
     expect(screen.queryByText('Trust this workspace?')).toBeNull()
     expect(navigate).not.toHaveBeenCalled()
     expect(loadLastCodingWorkspace()).toBeNull()
+  })
+
+  it('shows a running indicator on the active coding session while the team is working', async () => {
+    sessionsData = [
+      {
+        id: 'session-1',
+        title: 'Active session',
+        agent_name: 'lead',
+        created_at: '2026-05-13T00:00:00Z',
+        updated_at: '2026-05-13T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+      },
+      {
+        id: 'session-2',
+        title: 'Idle session',
+        agent_name: 'lead',
+        created_at: '2026-05-12T00:00:00Z',
+        updated_at: '2026-05-12T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+      },
+    ]
+    useTeamStore.setState({ isTeamWorking: true, sessionId: 'session-1' })
+
+    await renderCodingSidebarForSessions('session-1')
+
+    expect(screen.getByLabelText('Session running')).toBeTruthy()
+    expect(screen.getByText('Active session')).toBeTruthy()
+    expect(screen.getByText('Idle session')).toBeTruthy()
+  })
+
+  it('does not show a running indicator for idle coding sessions', async () => {
+    sessionsData = [
+      {
+        id: 'session-1',
+        title: 'Idle session',
+        agent_name: 'lead',
+        created_at: '2026-05-13T00:00:00Z',
+        updated_at: '2026-05-13T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+      },
+    ]
+
+    await renderCodingSidebarForSessions('session-1')
+
+    expect(screen.queryByLabelText('Session running')).toBeNull()
   })
 })

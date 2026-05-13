@@ -21,6 +21,7 @@ export function CodingSidebar({ currentSessionId, workspace, onCollapse, openWor
   const navigate = useNavigate()
   const sessions = useTeamSessionsQuery()
   const deleteSession = useDeleteTeamSessionMutation()
+  const isTeamWorking = useTeamStore((state) => state.isTeamWorking)
   const allSessions = sessions.data?.pages.flatMap((page) => page.data) ?? []
   const codingSessions = allSessions.filter((session) => session.mode === 'coding' && session.workspace)
   const [workspaces, setWorkspaces] = useState<string[]>(() => loadCodingWorkspaces())
@@ -218,6 +219,11 @@ export function CodingSidebar({ currentSessionId, workspace, onCollapse, openWor
                     {session.title || 'Untitled'}
                   </motion.p>
                 </AnimatePresence>
+                {session.id === currentSessionId && isTeamWorking && (
+                  <span className="absolute right-7 top-1/2 -translate-y-1/2 text-(--color-accent)" aria-label="Session running">
+                    <Loader2 size={12} className="animate-spin" aria-hidden="true" />
+                  </span>
+                )}
                 <p className="mt-0.5 text-xs text-(--color-text-subtle)">{formatRelativeDate(session.created_at)}</p>
               </button>
               <button

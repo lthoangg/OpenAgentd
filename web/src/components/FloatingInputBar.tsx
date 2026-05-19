@@ -157,11 +157,13 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
         requestAnimationFrame(() => innerRef.current?.focus())
       },
       setValue: (text: string) => {
-        expand()
+        // Only expand when setting real content — clearing the composer
+        // (e.g. on session switch) should not force the bar open.
+        if (text) expand()
         innerRef.current?.setValue(text)
       },
       setFiles: (files: File[]) => {
-        expand()
+        if (files.length > 0) expand()
         innerRef.current?.setFiles(files)
       },
     }), [expand])

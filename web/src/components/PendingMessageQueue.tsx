@@ -33,7 +33,7 @@ export function PendingMessageQueue({ inputRef }: PendingMessageQueueProps) {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -4, scale: 0.97 }}
             transition={{ duration: 0.15 }}
-            className="flex items-center gap-2 rounded-xl border border-(--color-border) bg-(--bg-key)/60 px-3 py-2 shadow-sm backdrop-blur-sm"
+            className="flex items-center gap-2 rounded-md border border-(--color-border) bg-(--bg-key)/60 px-3 py-2 shadow-sm backdrop-blur-sm"
           >
             <Clock size={12} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
 

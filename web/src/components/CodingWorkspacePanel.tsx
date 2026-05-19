@@ -36,7 +36,7 @@ function buildTree(files: WorkspaceFileInfo[]): TreeNode {
 }
 
 function TreeNodeView({ node, depth }: { node: TreeNode; depth: number }) {
-  const [open, setOpen] = useState(depth < 1)
+  const [open, setOpen] = useState(false)
   const isDir = node.children.size > 0 && !node.file
   const children = Array.from(node.children.values()).sort((a, b) => {
     const aDir = a.children.size > 0 && !a.file
@@ -306,7 +306,7 @@ export function CodingWorkspacePanel({
         mobile ? 'max-w-none' : 'max-w-[440px]',
       )}
     >
-      <div className={cn('flex min-h-0 w-full flex-col', mobile ? 'max-w-none' : 'max-w-[440px] sm:w-[440px]')}>
+      <div className={cn('flex h-full min-h-0 w-full flex-col', mobile ? 'max-w-none' : 'max-w-[440px] sm:w-[440px]')}>
       <div className="flex items-center justify-between border-b border-(--color-border) px-3 py-3">
         <div className="min-w-0">
           <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-(--color-text-subtle)">Workspace</p>

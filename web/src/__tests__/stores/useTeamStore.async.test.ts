@@ -40,6 +40,8 @@ const mockTeamHistory = mock(() =>
       messages: [],
     },
     members: [],
+    has_more: false,
+    next_cursor: null,
   })
 ) as any
 /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -87,6 +89,9 @@ const INITIAL_STATE = {
   error: null,
   _pendingMessages: [] as import('@/stores/useTeamStore').PendingMessage[],
   _sessionGeneration: 0,
+  hasMore: false,
+  nextCursor: null,
+  _leadRevertTime: null,
 }
 
 function makeStream(overrides: object = {}) {
@@ -161,6 +166,8 @@ beforeEach(() => {
         messages: [],
       },
       members: [],
+      has_more: false,
+      next_cursor: null,
     })
   )
 })
@@ -796,6 +803,8 @@ describe("loadTeamStatus", () => {
           messages: [],
         },
         members: [{ name: "worker", session_id: "w-sess", messages: [] }],
+        has_more: false,
+        next_cursor: null,
       })
     )
 
@@ -823,6 +832,8 @@ describe("loadTeamStatus", () => {
           messages: [],
         },
         members: [{ name: "worker", session_id: "w-sess", messages: [] }],
+        has_more: false,
+        next_cursor: null,
       })
     )
 
@@ -882,6 +893,8 @@ describe("loadSession", () => {
         members: [
           { name: "worker", session_id: "w-sess", messages: [] },
         ],
+        has_more: false,
+        next_cursor: null,
       })
     )
     await useTeamStore.getState().loadSession("sess-1")
@@ -901,6 +914,8 @@ describe("loadSession", () => {
           messages: [],
         },
         members: [{ name: "worker", session_id: "w-sess", messages: [] }],
+        has_more: false,
+        next_cursor: null,
       })
     )
     await useTeamStore.getState().loadSession("sess-1")
@@ -923,6 +938,8 @@ describe("loadSession", () => {
           ],
         },
         members: [],
+        has_more: false,
+        next_cursor: null,
       })
     )
     await useTeamStore.getState().loadSession("sess-1")
@@ -1005,6 +1022,8 @@ describe("loadSession", () => {
         messages: [],
       },
       members: [],
+      has_more: false,
+      next_cursor: null,
     })
     await loadPromise
 
@@ -1058,6 +1077,8 @@ describe("loadSession", () => {
         messages: [],
       },
       members: [],
+      has_more: false,
+      next_cursor: null,
     })
     await loadPromise
 
@@ -1154,6 +1175,8 @@ describe("loadSession", () => {
           messages: [],
         },
         members: [{ name: "worker", session_id: "w-sess", messages: [] }],
+        has_more: false,
+        next_cursor: null,
       })
     )
     useTeamStore.setState({
@@ -1227,10 +1250,114 @@ describe("loadSession", () => {
         messages: [],
       },
       members: [],
+      has_more: false,
+      next_cursor: null,
     })
     await loadPromise
 
     // Stale load did not commit — leadName unchanged from newSession() reset
     expect(useTeamStore.getState().leadName).toBeNull()
+  })
+})
+
+// ── loadOlderMessages ─────────────────────────────────────────────────────────
+
+describe("loadOlderMessages", () => {
+  it("does nothing when hasMore is false", async () => {
+    useTeamStore.setState({ sessionId: "sess-1", hasMore: false, nextCursor: "2024-01-01T00:00:00Z" })
+    await useTeamStore.getState().loadOlderMessages()
+    expect(mockTeamHistory).not.toHaveBeenCalled()
+  })
+
+  it("does nothing when nextCursor is null", async () => {
+    useTeamStore.setState({ sessionId: "sess-1", hasMore: true, nextCursor: null })
+    await useTeamStore.getState().loadOlderMessages()
+    expect(mockTeamHistory).not.toHaveBeenCalled()
+  })
+
+  it("does nothing when sessionId is null", async () => {
+    useTeamStore.setState({ sessionId: null, hasMore: true, nextCursor: "2024-01-01T00:00:00Z" })
+    await useTeamStore.getState().loadOlderMessages()
+    expect(mockTeamHistory).not.toHaveBeenCalled()
+  })
+
+  it("calls teamHistory with the current nextCursor", async () => {
+    useTeamStore.setState({ sessionId: "sess-1", hasMore: true, nextCursor: "2024-01-01T00:00:00Z", leadName: "lead" })
+    mockTeamHistory.mockImplementation(() =>
+      Promise.resolve({
+        lead: {
+          id: "lead-sess",
+          agent_name: "lead",
+          title: null,
+          created_at: null,
+          updated_at: null,
+          sub_sessions: [],
+          messages: [],
+        },
+        members: [],
+        has_more: false,
+        next_cursor: null,
+      })
+    )
+    await useTeamStore.getState().loadOlderMessages()
+    expect(mockTeamHistory).toHaveBeenCalledWith("sess-1", "2024-01-01T00:00:00Z")
+  })
+
+  it("updates hasMore and nextCursor from the response", async () => {
+    useTeamStore.setState({ sessionId: "sess-1", hasMore: true, nextCursor: "2024-02-01T00:00:00Z", leadName: "lead" })
+    mockTeamHistory.mockImplementation(() =>
+      Promise.resolve({
+        lead: {
+          id: "lead-sess",
+          agent_name: "lead",
+          title: null,
+          created_at: null,
+          updated_at: null,
+          sub_sessions: [],
+          messages: [],
+        },
+        members: [],
+        has_more: true,
+        next_cursor: "2024-01-01T00:00:00Z",
+      })
+    )
+    await useTeamStore.getState().loadOlderMessages()
+    expect(useTeamStore.getState().hasMore).toBe(true)
+    expect(useTeamStore.getState().nextCursor).toBe("2024-01-01T00:00:00Z")
+  })
+
+  it("prepends older blocks to lead stream", async () => {
+    useTeamStore.setState({
+      sessionId: "sess-1",
+      hasMore: true,
+      nextCursor: "2024-02-01T00:00:00Z",
+      leadName: "lead",
+      agentStreams: {
+        lead: makeStream({
+          blocks: [{ id: "b2", type: "user" as const, content: "newer" }],
+        }),
+      },
+    })
+    mockTeamHistory.mockImplementation(() =>
+      Promise.resolve({
+        lead: {
+          id: "lead-sess",
+          agent_name: "lead",
+          title: null,
+          created_at: null,
+          updated_at: null,
+          sub_sessions: [],
+          messages: [makeMessageResponse({ id: "m-old", role: "user", content: "older" })],
+        },
+        members: [],
+        has_more: false,
+        next_cursor: null,
+      })
+    )
+    await useTeamStore.getState().loadOlderMessages()
+    const blocks = useTeamStore.getState().agentStreams["lead"].blocks
+    expect(blocks).toHaveLength(2)
+    expect(blocks[0].content).toBe("older")
+    expect(blocks[1].content).toBe("newer")
   })
 })

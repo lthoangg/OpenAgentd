@@ -179,8 +179,11 @@ export async function deleteTeamSession(id: string): Promise<void> {
   if (!res.ok) throw new Error(`deleteTeamSession failed: ${res.status}`)
 }
 
-export async function teamHistory(sessionId: string): Promise<TeamHistoryResponse> {
-  const res = await fetch(`${API}/team/${encodeURIComponent(sessionId)}/history`)
+export async function teamHistory(sessionId: string, before?: string): Promise<TeamHistoryResponse> {
+  const url = before
+    ? `${API}/team/${encodeURIComponent(sessionId)}/history?before=${encodeURIComponent(before)}`
+    : `${API}/team/${encodeURIComponent(sessionId)}/history`
+  const res = await fetch(url)
   if (!res.ok) throw new Error(`teamHistory failed: ${res.status}`)
   return res.json()
 }

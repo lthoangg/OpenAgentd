@@ -80,6 +80,16 @@ export interface TeamStoreState {
   _pendingMessages: PendingMessage[]
   /** Bumped on every newSession() so stale async loadSession calls can be discarded. */
   _sessionGeneration: number
+  /** Whether there are older messages available for the current session. */
+  hasMore: boolean
+  /** Cursor to pass to loadOlderMessages — created_at of the oldest loaded message. */
+  nextCursor: string | null
+  /** Revert boundary timestamp (ms) for the current session, null if no active undo. */
+  _leadRevertTime: number | null
+  /** Workspace path for the current session — stored so loadOlderMessages can pass it. */
+  _workspace: string | null
+  /** True while an older-messages fetch is in flight (prevents duplicate concurrent loads). */
+  _loadingOlder: boolean
   /**
    * Domain events emitted by the SSE reducer that signal server-state
    * has changed and TanStack Query caches need invalidation. Drained
@@ -101,6 +111,7 @@ export interface TeamStoreActions {
   connectStream: () => AbortController
   loadTeamStatus: (workspace?: string | null) => Promise<void>
   loadSession: (sessionId: string, workspace?: string | null) => Promise<void>
+  loadOlderMessages: () => Promise<void>
   setActiveAgent: (name: string) => void
   cycleActiveAgent: (dir: 'next' | 'prev') => void
   toggleSidebar: () => void

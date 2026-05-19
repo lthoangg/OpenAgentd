@@ -97,6 +97,11 @@ export const useTeamStore = create<TeamStore>()(
     _abortController: null,
     _sessionGeneration: 0,
     cacheInvalidations: [],
+    hasMore: false,
+    nextCursor: null,
+    _leadRevertTime: null,
+    _workspace: null,
+    _loadingOlder: false,
 
     newSession: () => {
       get()._abortController?.abort()
@@ -117,6 +122,11 @@ export const useTeamStore = create<TeamStore>()(
         // and would target the wrong cache after the reset.
         state.cacheInvalidations = []
         state._pendingMessages = []
+        state.hasMore = false
+        state.nextCursor = null
+        state._leadRevertTime = null
+        state._workspace = null
+        state._loadingOlder = false
         // A fresh chat starts with only the lead. Historical member streams can
         // remain cached for prior sessions, but they must not stay in the live roster.
         state.agentNames = leadName ? [leadName] : []
@@ -476,6 +486,12 @@ export const useTeamStore = create<TeamStore>()(
           if (!draft.activeAgent || !allNames.includes(draft.activeAgent)) {
             draft.activeAgent = leadName ?? allNames[0] ?? null
           }
+
+          draft.hasMore = history.has_more
+          draft.nextCursor = history.next_cursor
+          draft._leadRevertTime = revertBoundaryTime(history.lead)
+          draft._workspace = workspace ?? null
+          draft._loadingOlder = false
         })
       } catch (err) {
         if (get()._sessionGeneration !== gen) return
@@ -483,6 +499,35 @@ export const useTeamStore = create<TeamStore>()(
           draft.error = err instanceof Error ? err.message : 'Failed to load session'
           draft.isContinuing = false
         })
+      }
+    },
+
+    loadOlderMessages: async () => {
+      const { sessionId, nextCursor, hasMore, leadName, _leadRevertTime, _loadingOlder } = get()
+      if (!sessionId || !hasMore || !nextCursor || _loadingOlder) return
+      set((draft) => { draft._loadingOlder = true })
+      try {
+        const history = await teamHistory(sessionId, nextCursor)
+        set((draft) => {
+          draft._loadingOlder = false
+          draft.hasMore = history.has_more
+          draft.nextCursor = history.next_cursor
+          if (leadName && draft.agentStreams[leadName]) {
+            const filtered = messagesBeforeTime(history.lead.messages, _leadRevertTime)
+            const older = parseTeamBlocks(filtered)
+            draft.agentStreams[leadName].blocks = [...older, ...draft.agentStreams[leadName].blocks]
+          }
+          history.members.forEach((member) => {
+            if (draft.agentStreams[member.name]) {
+              const filtered = messagesBeforeTime(member.messages, _leadRevertTime)
+              const older = parseTeamBlocks(filtered)
+              draft.agentStreams[member.name].blocks = [...older, ...draft.agentStreams[member.name].blocks]
+            }
+          })
+        })
+      } catch (err) {
+        set((draft) => { draft._loadingOlder = false })
+        throw err
       }
     },
 

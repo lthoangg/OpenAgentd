@@ -34,6 +34,7 @@ import { useTeamStore } from '@/stores/useTeamStore'
 import type { ContentBlock, MessageAttachment } from '@/api/types'
 
 const SCROLL_THRESHOLD = 40
+const LOAD_OLDER_THRESHOLD = 300
 
 function isDirectUserBlock(block: ContentBlock): boolean {
   return block.type === 'user' && !block.extra?.from_agent
@@ -249,6 +250,10 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
   const pinnedRef = useRef(true)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
   const sessionId = useTeamStore((s) => s.sessionId) ?? undefined
+  const prevScrollHeightRef = useRef<number | null>(null)
+  // Me mirror store _loadingOlder in a ref so the wheel handler can check
+  // it synchronously without subscribing to store state changes.
+  const loadingOlderRef = useRef(false)
 
   const handleRevert = useCallback(() => {
     void useTeamStore.getState().undoTeam()
@@ -282,6 +287,19 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
     const el = scrollRef.current
     if (!el) return
     const onUserScroll = () => {
+      // Me: check + arm the load flag synchronously on the event, before any
+      // rAF. Multiple wheel events fire before a single rAF executes, so if
+      // the guard lived inside rAF all queued callbacks would see the flag as
+      // false and fire duplicate requests.
+      if (el.scrollTop <= LOAD_OLDER_THRESHOLD && useTeamStore.getState().hasMore && !loadingOlderRef.current) {
+        loadingOlderRef.current = true
+        prevScrollHeightRef.current = el.scrollHeight
+        pendingRestoreRef.current = true
+        void useTeamStore.getState().loadOlderMessages().finally(() => {
+          loadingOlderRef.current = false
+        })
+      }
+
       requestAnimationFrame(() => {
         const atBottom = isAtBottom()
         pinnedRef.current = atBottom
@@ -300,6 +318,20 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
       el.removeEventListener('touchmove', onUserScroll)
     }
   }, [isAtBottom])
+
+  // Me restore scroll position after older messages are prepended.
+  // We track a "pending restore" flag separately from blocks.length so
+  // that SSE flushes (which also grow blocks) never accidentally trigger
+  // a scroll-position restore.
+  const pendingRestoreRef = useRef(false)
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el || !pendingRestoreRef.current || prevScrollHeightRef.current === null) return
+    pendingRestoreRef.current = false
+    el.scrollTop = el.scrollHeight - prevScrollHeightRef.current
+    prevScrollHeightRef.current = null
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blocks.length])
 
   // Me single scroll effect — block count or last block text changed
   const lastContent = allBlocks[allBlocks.length - 1]?.content ?? ''

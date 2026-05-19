@@ -168,6 +168,8 @@ export interface TeamHistoryResponse {
     session_id: string
     messages: MessageResponse[]
   }>
+  has_more: boolean
+  next_cursor: string | null
 }
 
 // SSE Event Types

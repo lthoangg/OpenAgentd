@@ -22,6 +22,8 @@ class TeamHistoryMember(BaseModel):
 class TeamHistoryResponse(BaseModel):
     lead: SessionDetailResponse
     members: list[TeamHistoryMember]
+    has_more: bool = False
+    next_cursor: str | None = None
 
 
 # ── Workspace files ──────────────────────────────────────────────────────────

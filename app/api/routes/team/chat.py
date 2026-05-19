@@ -443,8 +443,8 @@ async def list_team_sessions(
 async def get_team_session_detail(
     session_id: UUID, db: DbSession
 ) -> SessionDetailResponse:
-    """Return one team lead session with its messages."""
-    history = await get_team_history(db, session_id, offset=0, limit=1000)
+    """Return one team lead session with its most recent messages."""
+    history = await get_team_history(db, session_id)
     if history is None:
         raise HTTPException(status_code=404, detail="Session not found.")
 
@@ -468,11 +468,25 @@ async def team_history(
     db: DbSession,
     team: TeamDep,
     session_id: UUID,
-    offset: int = Query(0, ge=0),
-    limit: int = Query(200, ge=1, le=1000),
+    before: str | None = Query(default=None),
 ) -> TeamHistoryResponse:
-    """Return full turn history: lead messages + all member messages (paginated)."""
-    history = await get_team_history(db, session_id, offset=offset, limit=limit)
+    """Return the latest page of turn history (cursor-based, newest-first page).
+
+    Pass ``before`` (ISO 8601 ``created_at`` of the oldest message from the
+    previous response) to load an older page.
+    """
+    from datetime import datetime
+
+    before_dt: datetime | None = None
+    if before is not None:
+        try:
+            before_dt = datetime.fromisoformat(before)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422, detail=f"Invalid before cursor: {before}"
+            ) from exc
+
+    history = await get_team_history(db, session_id, before=before_dt)
     if history is None:
         raise HTTPException(status_code=404, detail="Lead session not found.")
     if history.lead_session.mode == "coding" and history.lead_session.workspace:
@@ -498,4 +512,10 @@ async def team_history(
         for member in history.members
     ]
 
-    return TeamHistoryResponse(lead=lead_detail, members=member_histories)
+    next_cursor = history.next_cursor.isoformat() if history.next_cursor else None
+    return TeamHistoryResponse(
+        lead=lead_detail,
+        members=member_histories,
+        has_more=history.has_more,
+        next_cursor=next_cursor,
+    )

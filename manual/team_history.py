@@ -11,28 +11,49 @@ BASE = "http://localhost:8000/api"
 
 
 def print_history(base: str, sid: str):
-    r = httpx.get(f"{base}/team/{sid}/history", params={"limit": 1000})
-    r.raise_for_status()
-    data = r.json()
+    # Me walk cursor pages oldest-first: collect all pages then print in order.
+    pages: list = []
+    before: str | None = None
+    while True:
+        params = {"before": before} if before else {}
+        r = httpx.get(f"{base}/team/{sid}/history", params=params)
+        r.raise_for_status()
+        data = r.json()
+        pages.append(data)
+        if not data.get("has_more") or not data.get("next_cursor"):
+            break
+        before = data["next_cursor"]
 
-    lead = data["lead"]
-    _print_agent(lead["agent_name"], lead["messages"], is_lead=True)
+    # Pages arrive newest-first (each page is older than the previous), so
+    # reverse to get chronological order before merging.
+    pages.reverse()
 
-    for mb in data.get("members", []):
-        _print_agent(mb["name"], mb["messages"])
+    # Merge messages across pages per agent.
+    lead_messages: list = []
+    members_messages: dict[str, list] = {}
+    lead_name: str = ""
+    for page in pages:
+        lead = page["lead"]
+        lead_name = lead["agent_name"]
+        lead_messages.extend(lead["messages"])
+        for mb in page.get("members", []):
+            members_messages.setdefault(mb["name"], []).extend(mb["messages"])
 
-    total = len(lead["messages"]) + sum(
-        len(mb["messages"]) for mb in data.get("members", [])
-    )
+    _print_agent(lead_name, lead_messages, is_lead=True)
+    for name, msgs in members_messages.items():
+        _print_agent(name, msgs)
+
+    all_member_msgs = list(members_messages.values())
+    total = len(lead_messages) + sum(len(msgs) for msgs in all_member_msgs)
     done_ct = sum(
         1
-        for mb in data.get("members", [])
-        for m in mb["messages"]
+        for msgs in all_member_msgs
+        for m in msgs
         if m.get("content") == "[DONE]"
     )
     social_ct = 0
-    for mb in data.get("members", []):
-        for m in mb["messages"]:
+    for msgs in all_member_msgs:
+        for m in msgs:
             for t in m.get("tool_calls") or []:
                 if t["function"]["name"] == "send_message":
                     a = t["function"]["arguments"].lower()
@@ -43,9 +64,9 @@ def print_history(base: str, sid: str):
                         social_ct += 1
 
     # Me count unique IDs
-    all_ids = [m["id"] for m in lead["messages"]]
-    for mb in data.get("members", []):
-        all_ids += [m["id"] for m in mb["messages"]]
+    all_ids = [m["id"] for m in lead_messages]
+    for msgs in all_member_msgs:
+        all_ids += [m["id"] for m in msgs]
     dupes = len(all_ids) - len(set(all_ids))
 
     print("\n--- summary ---")

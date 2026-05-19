@@ -667,6 +667,9 @@ class TeamHistoryMemberData(NamedTuple):
     messages: list[SessionMessage]
 
 
+_HISTORY_PAGE_SIZE = 100
+
+
 class TeamHistoryData(NamedTuple):
     """Full history payload for a team lead session.
 
@@ -676,50 +679,53 @@ class TeamHistoryData(NamedTuple):
     lead_session: ChatSession
     lead_messages: list[SessionMessage]
     members: list[TeamHistoryMemberData]
+    has_more: bool
+    next_cursor: datetime | None
 
 
 async def get_team_history(
     db: AsyncSession,
     lead_session_id: UUID,
     *,
-    offset: int = 0,
-    limit: int = 200,
+    before: datetime | None = None,
 ) -> TeamHistoryData | None:
-    """Fetch full history for a team lead session and all its sub-sessions.
+    """Fetch the latest page of history for a team lead session and its sub-sessions.
 
-    Args:
-        db: Async database session.
-        lead_session_id: UUID of the lead (top-level) session.
-        offset: Pagination offset applied to each message query.
-        limit: Pagination limit applied to each message query.
+    Fetches up to ``_HISTORY_PAGE_SIZE`` messages per session ordered by
+    ``created_at DESC`` (newest first), then reverses to chronological order
+    for the caller.  Pass the ``next_cursor`` from a previous response as
+    ``before`` to load older messages.
 
-    Returns:
-        A :class:`TeamHistoryData` with the lead session, its paginated
-        messages (summaries included — the frontend renders them as
-        "Session compacted" dividers), and one :class:`TeamHistoryMemberData`
-        per child session. Returns ``None`` if the lead session does not exist.
+    Returns ``None`` if the lead session does not exist.
     """
     lead_session = await db.get(ChatSession, lead_session_id)
     if lead_session is None:
         return None
 
+    def _fetch_page(session_id: UUID):
+        stmt = (
+            select(SessionMessage)
+            .where(col(SessionMessage.session_id) == session_id)
+            .order_by(col(SessionMessage.created_at).desc())
+            .limit(_HISTORY_PAGE_SIZE + 1)
+        )
+        if before is not None:
+            stmt = stmt.where(col(SessionMessage.created_at) < before)
+        return stmt
+
     # Me: summaries are NOT filtered here. The compaction divider in the
     # web UI keys off ``is_summary=True`` rows to render the inline
     # "Session compacted" marker + summary body; hiding them would make
     # the divider vanish on reload. Undo uses ``extra.hidden_from_user``.
-    lead_msgs = [
+    raw_lead = [
         msg
-        for msg in (
-            await db.exec(
-                select(SessionMessage)
-                .where(col(SessionMessage.session_id) == lead_session_id)
-                .order_by(col(SessionMessage.created_at).asc())
-                .offset(offset)
-                .limit(limit)
-            )
-        ).all()
+        for msg in (await db.exec(_fetch_page(lead_session_id))).all()
         if not _is_hidden_from_user(msg)
     ]
+    has_more = len(raw_lead) > _HISTORY_PAGE_SIZE
+    raw_lead = raw_lead[:_HISTORY_PAGE_SIZE]
+    lead_msgs = list(reversed(raw_lead))
+    next_cursor = lead_msgs[0].created_at if (has_more and lead_msgs) else None
 
     sub_sessions = (
         await db.exec(
@@ -731,30 +737,23 @@ async def get_team_history(
 
     # TODO: N+1 — issues one message query per sub-session.  Replace with a
     # single ``WHERE session_id IN (...)`` query and group in Python once
-    # offset/limit semantics per sub-session are no longer needed (or pushed
-    # to the API layer as a single global cursor).
+    # cursor semantics per sub-session are no longer needed.
     members: list[TeamHistoryMemberData] = []
     for sub in sub_sessions:
-        member_msgs = [
+        raw_member = [
             msg
-            for msg in (
-                await db.exec(
-                    select(SessionMessage)
-                    .where(col(SessionMessage.session_id) == sub.id)
-                    # Me: summaries kept — see comment on lead_msgs above.
-                    .order_by(col(SessionMessage.created_at).asc())
-                    .offset(offset)
-                    .limit(limit)
-                )
-            ).all()
+            for msg in (await db.exec(_fetch_page(sub.id))).all()
             if not _is_hidden_from_user(msg)
         ]
+        member_msgs = list(reversed(raw_member[:_HISTORY_PAGE_SIZE]))
         members.append(TeamHistoryMemberData(session=sub, messages=member_msgs))
 
     return TeamHistoryData(
         lead_session=lead_session,
         lead_messages=lead_msgs,
         members=members,
+        has_more=has_more,
+        next_cursor=next_cursor,
     )
 
 

@@ -105,6 +105,50 @@ def _iter_md(root: Path):
         yield path, rel.as_posix()
 
 
+# ── Built-in commands ───────────────────────────────────────────────────────
+#
+# Built-ins are prompt templates owned by OpenAgentd itself rather than the
+# user's command library. They are intentionally **not** listed by
+# ``discover_commands`` — the picker registers them as immediate-execute
+# actions (see ``TeamChatView``'s ``slashCommands``) — but they are
+# resolvable through :func:`get_builtin_command` and the
+# ``/api/commands/{name}/render`` endpoint so the frontend can fetch the
+# rendered body without hardcoding the prompt in the bundle.
+
+_BUILTIN_INIT_BODY = """\
+Inspect the project at the current working directory and create or update \
+`AGENTS.md` at the repo root. Treat this as documentation work, not a code change.
+
+1. If `AGENTS.md` already exists, read it first and preserve human-authored \
+notes that are still accurate — only revise sections that are out of date.
+2. Survey the repo: top-level layout, language and runtime versions, build / \
+test / lint commands (Makefile, package.json, pyproject.toml, Cargo.toml, CI \
+files), notable conventions, and documentation entry points.
+3. Write a concise `AGENTS.md` — aim for a single screen. Suggested sections: \
+one-line summary, Tech stack, Layout, Essential commands, Code style, \
+Post-implementation checklist, Documentation pointers.
+4. Match the repo's existing tone. Do not invent commands — only document \
+what actually works.
+5. Run the lint/test/type-check commands you documented to confirm they \
+succeed. Fix the documentation (not the code) if anything is wrong."""
+
+
+_BUILTIN_COMMANDS: dict[str, Command] = {
+    "init": Command(
+        name="init",
+        description="Create or update AGENTS.md for this project.",
+        body=_BUILTIN_INIT_BODY,
+        path=Path("<builtin>"),
+        source="builtin",
+    ),
+}
+
+
+def get_builtin_command(name: str) -> Command | None:
+    """Return the built-in command with *name*, or ``None`` if not built-in."""
+    return _BUILTIN_COMMANDS.get(name)
+
+
 # ── Public API ──────────────────────────────────────────────────────────────
 
 

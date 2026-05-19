@@ -10,7 +10,11 @@ from app.api.schemas.commands import (
     CommandRenderResponse,
     CommandSummary,
 )
-from app.services.commands import discover_commands, render_command
+from app.services.commands import (
+    discover_commands,
+    get_builtin_command,
+    render_command,
+)
 
 router = APIRouter()
 
@@ -27,8 +31,9 @@ async def list_commands() -> CommandListResponse:
 
 @router.post("/{name:path}/render")
 async def render(name: str, body: CommandRenderRequest) -> CommandRenderResponse:
-    commands = discover_commands()
-    cmd = commands.get(name)
+    # Disk-discovered user commands take precedence so a user can shadow a
+    # built-in by dropping their own ``init.md`` into a commands root.
+    cmd = discover_commands().get(name) or get_builtin_command(name)
     if cmd is None:
         raise HTTPException(status_code=404, detail=f"Command '{name}' not found.")
     return CommandRenderResponse(

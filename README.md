@@ -35,7 +35,7 @@
 
 ## What you get
 
-**A cockpit, not a chat box.** Command palette (Ctrl+P), slash commands (`/continue`, `/compact`, `/undo`, `/redo`), drag-and-drop files, full-screen image viewer, and an inspector that shows every tool call and what came back.
+**A cockpit, not a chat box.** Command palette (Ctrl+P), slash commands (`/init`, `/continue`, `/compact`, `/undo`, `/redo`), drag-and-drop files, full-screen image viewer, and an inspector that shows every tool call and what came back.
 
 ![Tool call inspector — arguments, execution status, and results](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/tool-call-inspector.png)
 

@@ -949,6 +949,24 @@ describe("loadSession", () => {
     expect(useTeamStore.getState().activeAgent).toBe("lead")
   })
 
+  it("clears reverted state from previous session when loading another", async () => {
+    // Regression: revertedCount/revertedMessages are keyed by agent name in
+    // agentStreams, so without an explicit reset session A's "N messages
+    // reverted" banner leaks into session B when both share a lead.
+    useTeamStore.setState({
+      agentStreams: {
+        lead: makeStream({
+          revertedCount: 3,
+          revertedMessages: [{ role: "user", content: "leak" }],
+        }),
+      },
+    })
+    await useTeamStore.getState().loadSession("sess-1")
+    const stream = useTeamStore.getState().agentStreams["lead"]
+    expect(stream.revertedCount).toBe(0)
+    expect(stream.revertedMessages).toEqual([])
+  })
+
   it("sets error when teamHistory throws", async () => {
     mockTeamHistory.mockImplementation(() =>
       Promise.reject(new Error("History unavailable"))

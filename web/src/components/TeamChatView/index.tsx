@@ -204,6 +204,12 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null }: T
 
     useTeamStore.setState({ sessionId })
 
+    // Clear the composer when switching sessions. The InputBar holds its
+    // draft text and pending files in local state, so without an explicit
+    // reset session A's typed-but-unsent message bleeds into session B.
+    inputRef.current?.setValue('')
+    inputRef.current?.setFiles([])
+
     // Order matters: load prior-turn history FIRST, then open the SSE.
     //
     // Before this ordering, `connectStream()` started SSE replay (which

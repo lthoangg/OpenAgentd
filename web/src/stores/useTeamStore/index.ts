@@ -410,6 +410,15 @@ export const useTeamStore = create<TeamStore>()(
           draft.isContinuing = false
           draft.error = null
 
+          // Clear reverted-message state on every stream. These fields are
+          // keyed by agent name, so without this reset session A's "N
+          // messages reverted" banner leaks into session B when both share
+          // a lead. The lead's value is repopulated below from history.
+          Object.values(draft.agentStreams).forEach((stream) => {
+            stream.revertedCount = 0
+            stream.revertedMessages = []
+          })
+
           const leadName = history.lead.agent_name
           draft.leadName = leadName
           if (liveNames !== null) draft.liveAgentNames = liveNames

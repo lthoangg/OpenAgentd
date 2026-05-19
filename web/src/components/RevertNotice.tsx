@@ -16,9 +16,12 @@ export function RevertNotice({ count, messages = [], onRedo }: RevertNoticeProps
     <div className="my-2 flex justify-center">
       <div className="flex w-full max-w-xl flex-col gap-1.5 text-xs text-(--color-text-muted)">
         {expanded && messages.length > 0 && (
-          <div className="max-h-44 space-y-1 overflow-y-auto rounded-md border border-(--color-border) bg-(--color-surface) p-2 shadow-sm">
+          <div className="max-h-44 overflow-y-auto rounded-md border border-(--color-border) bg-(--color-surface) p-2 shadow-sm">
             {messages.map((message, index) => (
-              <div key={`${message.role}-${index}`} className="rounded-sm bg-(--bg-page) px-2 py-1.5">
+              <div
+                key={`${message.role}-${index}`}
+                className="px-2 py-1.5 not-last:border-b not-last:border-(--color-border)"
+              >
                 <div className="whitespace-pre-wrap text-(--color-text-muted)">{message.content}</div>
               </div>
             ))}

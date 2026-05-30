@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
-from app.agent.mcp import mcp_manager
+from app.agent.mcp import load_config as load_mcp_config, mcp_manager
 from app.api.routes.agents import router as agents_router
 from app.api.routes.auth import router as auth_router
 from app.api.routes.commands import router as commands_router
@@ -32,8 +32,12 @@ from app.core.metrics import HTTPMetricsMiddleware, metrics_endpoint
 from app.core.middlewares import RequestSizeLimitMiddleware, SecurityHeadersMiddleware
 from app.core.otel import setup_otel, shutdown_otel
 from app.core.otel_retention import start_otel_retention, stop_otel_retention
+from app.core.runtime_settings import load_runtime_settings
+from app.core.wiki_seed import seed_wiki
+from app.core.workspace_init import ensure_workspace_initialized
 from app.scheduler.scheduler import task_scheduler
 from app.services import memory_stream_store as stream_store, team_manager
+from app.services.dream_scheduler import DreamScheduler
 
 from app.core.version import VERSION
 
@@ -42,8 +46,6 @@ from app.core.version import VERSION
 async def lifespan(app: FastAPI):
     """Startup / shutdown lifecycle."""
     logger.info("server_starting version={}", VERSION)
-
-    from app.core.workspace_init import ensure_workspace_initialized
 
     ensure_workspace_initialized()
 
@@ -57,16 +59,22 @@ async def lifespan(app: FastAPI):
         await asyncio.to_thread(run_migrations)
 
     # ── Seed wiki directory on first boot ──────────────────────────────
-    from app.core.wiki_seed import seed_wiki
-
     seed_wiki()
 
     setup_otel(service_name="openagentd")
     start_otel_retention()
 
-    # Start MCP runners best-effort without blocking API startup. Agents already
-    # tolerate not-yet-ready MCP servers and pick up tools on their next refresh.
-    await mcp_manager.start()
+    try:
+        mcp_config = load_mcp_config()
+    except ValueError as exc:
+        logger.error("mcp_config_invalid err={}", exc)
+    else:
+        if mcp_config.servers:
+            # Start MCP runners best-effort without blocking API startup. Agents already
+            # tolerate not-yet-ready MCP servers and pick up tools on their next refresh.
+            await mcp_manager.start()
+        else:
+            logger.info("mcp_no_servers_configured")
 
     # Parse-only validation at boot: surfaces malformed agent ``.md`` files
     # immediately instead of waiting for the first request to fail.  The
@@ -79,14 +87,20 @@ async def lifespan(app: FastAPI):
         logger.error("agents_dir_invalid path={} error={}", settings.AGENTS_DIR, exc)
         raise
 
-    await task_scheduler.start()
+    if await task_scheduler.has_enabled_tasks():
+        await task_scheduler.start()
+    else:
+        logger.info("scheduler_no_enabled_tasks")
 
     # Start dream scheduler (only if settings.yaml has dream.enabled: true)
+    runtime_settings = load_runtime_settings()
     from app.core.db import async_session_factory
-    from app.services.dream_scheduler import DreamScheduler
 
     dream_scheduler = DreamScheduler(db_factory=async_session_factory)
-    await dream_scheduler.start()
+    if runtime_settings.dream.enabled:
+        await dream_scheduler.start()
+    else:
+        logger.info("dream_scheduler_disabled enabled=false")
     app.state.dream_scheduler = dream_scheduler
 
     yield

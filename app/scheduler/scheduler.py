@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID, uuid5, NAMESPACE_URL
 
 from loguru import logger
-from sqlmodel import select
+from sqlmodel import col, select
 
 from app.core.db import DbFactory
 from app.scheduler.cron import next_fire
@@ -122,11 +122,7 @@ class TaskScheduler:
 
     async def start(self) -> None:
         """Load all enabled tasks from DB and start their timer loops."""
-        async with self._db() as session:
-            result = await session.exec(
-                select(ScheduledTask).where(ScheduledTask.enabled == True)  # noqa: E712
-            )
-            tasks = result.all()
+        tasks = await self._enabled_tasks()
 
         now = datetime.now(_utc)
         for task in tasks:
@@ -143,6 +139,17 @@ class TaskScheduler:
                 self._start_timer(task)
 
         logger.info("scheduler_started tasks={}", len(tasks))
+
+    async def has_enabled_tasks(self) -> bool:
+        """Return whether the DB has any enabled scheduled tasks."""
+        return bool(await self._enabled_tasks())
+
+    async def _enabled_tasks(self) -> list[ScheduledTask]:
+        async with self._db() as session:
+            result = await session.exec(
+                select(ScheduledTask).where(col(ScheduledTask.enabled).is_(True))
+            )
+            return list(result.all())
 
     async def stop(self) -> None:
         """Cancel all running timer tasks."""

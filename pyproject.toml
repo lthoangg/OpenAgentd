@@ -40,7 +40,7 @@ dependencies = [
     "markitdown[pdf,docx]>=0.1.5",
     "pyyaml>=6.0.3",
     "fastapi>=0.135.2",
-    "uvicorn[standard]>=0.42.0",
+    "uvicorn>=0.42.0",
     "sse-starlette>=3.3.4",
     "opentelemetry-api>=1.28.0",
     "opentelemetry-sdk>=1.28.0",
@@ -50,7 +50,7 @@ dependencies = [
     "croniter>=6.2.2",
     "mcp>=1.0.0",
     "boto3>=1.35.0",
-    "botocore[crt]>=1.43.0",
+    "botocore>=1.43.0",
     "duckdb>=1.1.0",
 ]
 

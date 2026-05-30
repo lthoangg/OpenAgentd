@@ -233,11 +233,10 @@ class TestProtocolInjection:
             "Do not use plain text output for responses/results"
             in MEMBER_COMMUNICATION_RULES
         )
-        assert (
-            "responding exactly `<sleep>` directly with no tool calls"
-            in MEMBER_COMMUNICATION_RULES
-        )
-        assert 'team_message(to=["<lead_name>"])' in MEMBER_COMMUNICATION_RULES
+        # Idle / waiting / done -> the only response is the sleep token.
+        assert "exactly `<sleep>`" in MEMBER_COMMUNICATION_RULES
+        # Members address team_message to anyone on the team, not lead-only.
+        assert "anyone on the team" in MEMBER_COMMUNICATION_RULES
         assert (
             "return exactly `<sleep>` directly when waiting or idle" in MEMBER_PROTOCOL
         )
@@ -382,18 +381,16 @@ class TestProtocolConstants:
         assert "## Spawnable blueprints" not in lead_prompt
         assert "Spawnable blueprints` section" not in lead_prompt
 
-    def test_member_communication_rules_enforces_team_message(self):
-        """MEMBER_COMMUNICATION_RULES enforces team_message for lead results."""
+    def test_member_communication_rules_enforce_team_message_to_anyone(self):
+        """All member output routes via team_message — to any teammate, not lead-only."""
         assert "team_message" in MEMBER_COMMUNICATION_RULES
         assert (
             "Do not use plain text output for responses/results"
             in MEMBER_COMMUNICATION_RULES
         )
-        assert (
-            "Every response or result to the lead MUST go through"
-            in MEMBER_COMMUNICATION_RULES
-        )
-        assert 'team_message(to=["<lead_name>"])' in MEMBER_COMMUNICATION_RULES
+        # Cross-member: members are not restricted to messaging the lead.
+        assert "Talk to peers directly" in MEMBER_COMMUNICATION_RULES
+        assert "anyone on the team who needs it" in MEMBER_COMMUNICATION_RULES
 
     def test_lead_message_format_has_user_prefix(self):
         """Lead message format includes [user]: prefix — members do not."""

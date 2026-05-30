@@ -16,6 +16,7 @@ Manual smoke-test scripts for openagentd. All scripts target `http://localhost:8
 | `team_sessions.py` | List team sessions or inspect one | `--id ID`, `--all` |
 | `session_resolve.py` | Verify resolve-or-create for normal and coding sessions | `--workspace PATH`, `--base URL` |
 | `team_history.py` | Print lead + member messages for a session | positional `SESSION_ID` |
+| `team_message_idempotency.py` | Drive a multi-agent, multi-turn run and assert each turn's `get_messages_for_llm` window (lead + every member) is an append-only prefix of the next — the prompt-cache invariant. Flags mid-history mutations; treats summarization prefix rewrites as EXPECTED. Surfaces roster-change rows to confirm roster is appended history, not a system-prompt mutation | `--session ID`, `--messages ...`, `--wait N`, `--base URL` |
 | `team_timeline.py` | Chronological cross-agent timeline (reads DB directly) | `SESSION_ID`, `--full` |
 | `team_todos.py` | Print session todos and flag dependency/claim consistency issues | positional `SESSION_ID` |
 | `team_sse.py` | Capture + pretty-print every SSE event from a team turn, including lifecycle states (`idle`, `working`, `offline`, `error`) | `--session ID`, `--wait N`, `--out FILE`, `--no-summary` |
@@ -45,6 +46,10 @@ uv run python -m manual.team_history <SESSION_ID>
 
 # Chronological timeline across all agents
 uv run python -m manual.team_timeline <SESSION_ID>
+
+# Verify LLM message windows stay append-only across turns (prompt-cache idempotency)
+uv run python -m manual.team_message_idempotency
+uv run python -m manual.team_message_idempotency --session <ID>     # continue an existing lead session
 
 # Inspect task ownership/dependencies
 uv run python -m manual.team_todos <SESSION_ID>

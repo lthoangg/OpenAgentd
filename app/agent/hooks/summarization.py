@@ -746,8 +746,14 @@ class SummarizationHook(BaseAgentHook):
                     provider_name, _, _ = model_id.partition(":")
                     span.set_attribute("gen_ai.provider.name", provider_name)
             try:
-                if ctx.session_id:
-                    kwargs["prompt_cache_key"] = ctx.session_id
+                # No explicit prompt_cache_key: the main chat/coding turns rely
+                # on the provider's automatic prefix caching (keyed on the token
+                # prefix). Forcing a session-scoped key here routes the
+                # summarization request to a different cache partition than the
+                # conversation turns, so it cannot reuse the already-warmed
+                # conversation prefix — a net cache *miss* on OpenAI/codex.
+                # Letting it fall back to automatic prefix caching keeps it
+                # consistent with the normal turns.
                 stream = self._llm_provider.stream(
                     messages=messages,
                     tools=tools,

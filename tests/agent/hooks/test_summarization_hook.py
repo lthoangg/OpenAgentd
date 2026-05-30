@@ -689,7 +689,7 @@ async def test_summariser_call_does_not_override_thinking_level():
 
 
 @pytest.mark.asyncio
-async def test_summariser_passes_tool_defs_and_session_prompt_cache_key():
+async def test_summariser_passes_tool_defs_without_prompt_cache_key():
     provider = MagicMock()
 
     async def _stream(*_, **__):
@@ -728,7 +728,10 @@ async def test_summariser_passes_tool_defs_and_session_prompt_cache_key():
     provider.stream.assert_called_once()
     call_kwargs = provider.stream.call_args[1]
     assert call_kwargs["tools"] == tool_defs
-    assert call_kwargs["prompt_cache_key"] == "session-123"
+    # No forced session-scoped cache key: summarization relies on the
+    # provider's automatic prefix caching, consistent with normal chat turns,
+    # so it can reuse the already-warmed conversation prefix on OpenAI/codex.
+    assert "prompt_cache_key" not in call_kwargs
     assert "tool_choice" not in call_kwargs
 
 

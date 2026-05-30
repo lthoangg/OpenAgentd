@@ -52,12 +52,11 @@ class AgentTeamProtocolHook(BaseAgentHook):
     ) -> "AssistantMessage":
         """Inject team protocol into the system prompt on every model call.
 
-        The restorable-instance roster used by ``TeamLead.build_protocol`` is
-        refreshed in :meth:`AgentTeam.handle_user_message` (once per user
-        message), not here — refreshing on every model call would mean
-        opening a DB session inside the lead's activation task, which is
-        cancellable and can corrupt the connection state of the in-memory
-        SQLite engine used by tests.
+        The injected protocol is static per session, so the system prompt
+        stays byte-stable across turns (prompt-cache friendly). Dynamic roster
+        changes are surfaced to the LLM as append-only ``[system]`` messages
+        (see :meth:`AgentTeam._persist_roster_change`) and via ``team_message``
+        / ``team_manage`` tool results — never by mutating this prompt.
         """
         member = self._get_member()
         new_prompt = member.build_protocol(request.system_prompt, self._team)

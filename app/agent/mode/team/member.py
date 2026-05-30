@@ -85,7 +85,7 @@ LEAD_COMMUNICATION_RULES = """\
 - Plain text output is visible to the user. Use it only for your final response, or for one brief progress note after delegation.
 - **Default: leverage your team.** Members exist to handle substantive work — use them proactively. Doing everything yourself when workers are available underutilises the team and slows throughput.
 - **Delegate whenever any of the following apply (lean toward yes):**
-  - **Role fit** — the work matches a blueprint's specialty; check the `## Spawnable blueprints` section and route accordingly.
+  - **Role fit** — the work matches an available blueprint's specialty; use `team_manage` to discover/spawn the right member.
   - **Parallel work** — multiple independent streams that can run concurrently.
   - **Context hygiene** — the work would flood your own context with noise (long build logs, large file dumps, exhaustive search results).
   - **More than one step** — anything requiring multiple tool calls is member work.
@@ -95,12 +95,7 @@ LEAD_COMMUNICATION_RULES = """\
   - Research, web search, reading docs or codebases → **explorer**
   - Hard decisions, architecture review, trade-off analysis → **consultant**
   - Multiple concerns → spawn / message multiple members in parallel
-- **Roster management — `team_manage`.** Members are spawned on demand. Spawn what you need, address it, dismiss it when done.
-  - To bring members online: `team_manage(action='spawn', members=['<blueprint>'])` -> returns handles like `<blueprint>#1`. Address handles via `team_message(to=['<blueprint>#1'])`.
-  - For parallel work: pass the same blueprint more than once: `team_manage(action='spawn', members=['<blueprint>', '<blueprint>'])` -> `<blueprint>#1`, `<blueprint>#2`. Each instance has its own chat history.
-  - To restore/reuse history: spawn the explicit handle: `team_manage(action='spawn', members=['<blueprint>#1'])`.
-  - To free members when work is done: `team_manage(action='dismiss', members=['<blueprint>#1'])`. Dismiss requires explicit handles and preserves history on disk.
-  - **Spawn at first use — do not pre-spawn idle members.** Spawn the moment you identify work for that role; dismiss as soon as their work is done so the team stays lean.
+- **Roster management — `team_manage`.** Members are spawned on demand. Use the `team_manage` tool description and schema for spawn/restore/dismiss usage and available blueprint discovery. Spawn what you need, address returned handles via `team_message`, and **keep useful members alive across turns** — reusing a live instance preserves its warm context and is faster and cheaper than dismiss-then-respawn. Dismiss only to free resources or clear clutter when an instance clearly won't be needed again.
 - Coordination with members must go through the `team_message` tool. Do not respond to the user until all assigned members have reported back.
 - **Capability management — `team_configure`.** Spawned members start with their built-in profile plus additive user blueprint extras. If a live instance needs an additional skill, built-in tool, or MCP server, use `team_configure` to grant it before delegating, and revoke it once the work is done. These changes are session/instance-local only; they do not edit blueprint/root `.md` files and may be reset by respawn or config drift reload.
   - Use `self-healing` or settings edits for persistent root/blueprint defaults. Use `team_configure` only for just-in-time live-member capabilities.
@@ -115,8 +110,8 @@ LEAD_PROTOCOL = """\
 3. When delegating:
    - For multi-step work, create a todo plan first. Use first-class `dependencies` and `assigned_to` fields; `assigned_to` must be one concrete spawned handle (`<blueprint>#<n>`), not a bare blueprint or group expression. Do not spawn or message owners of blocked tasks until their dependencies are complete.
    - Identify which blueprints cover the work using the routing guide above.
-   - **Prefer restoring a relevant prior instance over spawning fresh.** Check the `## Spawnable blueprints` section: each blueprint lists live + restorable instances with a hint of what each worked on. If a restorable instance's prior work overlaps with the new task (same topic, files, or follow-up correction), spawn its explicit handle (`<blueprint>#N`) so it keeps the context — no re-explaining. Spawn a fresh bare blueprint only when the work is genuinely independent or no restorable instance fits.
-   - **Spawn before assigning member todos.** Call `team_manage(action='spawn', members=[...])`. Bare blueprint names (`<blueprint>`) create new instances; explicit handles (`<blueprint>#<n>`) restore/reuse that instance's history. Repeated blueprint names create parallel instances. Use the returned concrete handles in `assigned_to`.
+   - Prefer restoring a relevant prior instance over spawning fresh when `team_manage` shows a restorable handle whose prior work overlaps with the new task.
+   - **Spawn before assigning member todos.** Call `team_manage` with the needed blueprints or restorable handles, then use the returned concrete handles in `assigned_to`.
    - Assign every relevant instance **in parallel** via `team_message(to=['<handle>'])`.
    - **Once a task is delegated to a member, do not execute the same task in parallel yourself.** Stay in coordination/verification mode unless you explicitly reclaim or cancel the member task first.
    - For dependent workflows, delegate a peer handoff chain from the todo dependencies. Tell prerequisite owners to send final output directly to the owner of each unblocked downstream task; spawn/message downstream owners only after their dependencies are complete so they can claim the task and start.
@@ -126,7 +121,7 @@ LEAD_PROTOCOL = """\
    - If a member's result is partial or more is coming, respond with `<sleep>` to wait.
    - When ALL assigned members have reported final results, respond to the user with the full synthesised answer.
    - **Sanity-check claims before promising "done" to the user.** When a member says they wrote a file or changed state, verify with a cheap read (`ls`, `read`) when feasible. Members can hallucinate success after a failed tool call — one verification beats one wrong answer.
-5. After delivering the answer, dismiss any instance whose work is complete: `team_manage(action='dismiss', members=['<handle>'])` so future turns start with a clean roster. Dismissal preserves history on disk — if a follow-up turn extends that work, restore the same handle with `team_manage(action='spawn', members=['<blueprint>#<n>'])` rather than spawning a fresh peer."""
+5. After delivering the answer, **keep members alive by default.** A live instance carries warm context and prompt-cache state, so reusing it on the next related turn is faster and cheaper than dismiss-then-respawn — message the same live handle again rather than recreating it. Dismiss (`team_manage(action='dismiss', members=['<handle>'])`) only when an instance is clearly finished for the rest of the session, or the roster is cluttered with idle members you won't reuse. Dismissal preserves history on disk, so you can still restore a dismissed handle with `team_manage(action='spawn', members=['<blueprint>#<n>'])` if a later turn revives that work."""
 
 MEMBER_COMMUNICATION_RULES = """\
 ## Communication protocol
@@ -465,20 +460,6 @@ class TeamMemberBase(abc.ABC):
         # File-backed blueprints use the base role name (e.g. ``executor``),
         # but live spawned instances must keep their concrete handle.
         new_agent.name = self.name
-
-        # Re-inject teammates section (same logic as load_team_from_dir).
-        if self._team is not None:
-            roster_lines = []
-            for other in self._team.all_members:
-                if other.name == self.name:
-                    continue
-                role_label = "lead" if other is self._team.lead else "member"
-                desc = other.agent.description or other.name
-                roster_lines.append(f"- **{other.name}** ({role_label}): {desc}")
-            if roster_lines:
-                new_agent.system_prompt += (
-                    "\n## Teammates\n" + "\n".join(roster_lines) + "\n"
-                )
 
         old_model = self.agent.model_id
         self.agent = new_agent
@@ -991,62 +972,12 @@ class TeamLead(TeamMemberBase):
             logger.warning("team_lead_error_emit_failed error={}", push_exc)
 
     def build_protocol(self, base_prompt: str, team: "AgentTeam") -> str:
-        """Assemble lead protocol + roster (blueprints + live instances) into prompt."""
+        """Assemble lead protocol into the system prompt."""
         sections: list[str] = [
             LEAD_COMMUNICATION_RULES,
             LEAD_MESSAGE_FORMAT,
             LEAD_PROTOCOL,
         ]
-
-        # Blueprints section — spawnable members.  Each blueprint shows
-        # its description, currently-live instances, and any restorable
-        # (dismissed-but-on-disk) instances so the lead can choose to
-        # restore one with its prior context rather than spawning a
-        # fresh peer that has to be re-briefed.
-        if team.blueprints:
-            bp_lines: list[str] = []
-            for bp in team.blueprints.values():
-                live = team.live_instances_for_blueprint(bp.name)
-                restorable = team.restorable_instances_for_blueprint(bp.name)
-
-                bp_lines.append(f"- **{bp.name}**: {bp.description}")
-                if live:
-                    bp_lines.append(f"    - live: {', '.join(live)}")
-                if restorable:
-                    # One sub-bullet per restorable handle so the model
-                    # can see *what* each prior instance worked on — that
-                    # is the signal it needs to decide reuse vs. fresh.
-                    for handle, hint in restorable:
-                        bp_lines.append(f"    - restorable: {handle} — {hint}")
-                if not live and not restorable:
-                    bp_lines.append("    - none spawned yet")
-            sections.append(
-                "## Spawnable blueprints\n"
-                "Spawn with `team_manage(action='spawn', members=['<name>'])` "
-                "for new instances, or `team_manage(action='spawn', members=['<name>#<n>'])` "
-                "to restore a prior instance with its history. "
-                "Prefer restoring when the new task continues, corrects, or "
-                "extends what a restorable instance already worked on.\n"
-                + "\n".join(bp_lines)
-            )
-
-        # Eager-members section (back-compat for tests / direct construction):
-        # any TeamMember in team.members whose handle is *not* a
-        # ``blueprint#N`` form is shown as a plain "always-on" entry.
-        from app.agent.mode.team.team import parse_instance_handle
-
-        plain_members = [
-            (name, m)
-            for name, m in team.members.items()
-            if parse_instance_handle(name) is None
-        ]
-        if plain_members:
-            roster_lines = [
-                f"- **{name}**: {m.agent.description or name}"
-                for name, m in plain_members
-            ]
-            sections.append("## Live members\n" + "\n".join(roster_lines))
-
         protocol = "\n\n".join(sections)
         return f"{base_prompt}\n\n---\n\n{protocol}"
 
@@ -1145,22 +1076,6 @@ class TeamMember(TeamMemberBase):
             MEMBER_MESSAGE_FORMAT.format(lead_name=lead_name),
             MEMBER_PROTOCOL.format(lead_name=lead_name),
         ]
-
-        # Build roster — show lead + every currently-live peer instance.
-        # Spawnable-but-not-yet-live blueprints are not shown to members:
-        # only the lead spawns / dismisses, so the member only needs the
-        # current peer roster.
-        roster_lines: list[str] = []
-        lead = team.lead
-        lead_desc = lead.agent.description or lead.name
-        roster_lines.append(f"- **{lead.name}** [lead]: {lead_desc}")
-        for name, member in team.members.items():
-            if name == self.name:
-                continue
-            desc = member.agent.description or member.name
-            roster_lines.append(f"- **{name}**: {desc}")
-        if roster_lines:
-            sections.append("## Team members\n" + "\n".join(roster_lines))
 
         protocol = "\n\n".join(sections)
         return f"{base_prompt}\n\n---\n\n{protocol}"

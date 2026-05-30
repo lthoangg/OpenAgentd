@@ -954,12 +954,12 @@ def test_load_team_injects_teammates(tmp_path):
     team = load_team_from_dir(d, provider_factory=factory)
     assert team is not None
 
-    # Lead protocol exposes the spawnable-blueprint roster (descriptions
-    # live there now, not in a "Teammates" header).
+    # The lead system prompt stays static for prompt caching: the dynamic
+    # blueprint/member roster is never injected into it.
     lead_prompt = team.lead.build_protocol(team.lead.agent.system_prompt, team)
-    assert "Spawnable blueprints" in lead_prompt
-    assert "Worker A" in lead_prompt
-    assert "Worker B" in lead_prompt
+    assert "\n## Spawnable blueprints" not in lead_prompt
+    assert "Worker A" not in lead_prompt
+    assert "Worker B" not in lead_prompt
     # Member protocols are only relevant for live instances; spawning
     # touches the DB, so only verify that the blueprints are registered
     # with the expected descriptions.

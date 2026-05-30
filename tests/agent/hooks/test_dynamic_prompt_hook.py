@@ -39,9 +39,14 @@ def make_request(
     )
 
 
-async def _call_wrap(hook, prompt: str, state: AgentState | None = None) -> str:
+async def _call_wrap(
+    hook,
+    prompt: str,
+    state: AgentState | None = None,
+    ctx: RunContext | None = None,
+) -> str:
     """Call wrap_model_call and return the system_prompt the handler received."""
-    ctx = make_ctx()
+    ctx = ctx or make_ctx()
     s = state or make_state(prompt)
     request = make_request(prompt, s)
     received: list[str] = []
@@ -209,6 +214,33 @@ async def test_inject_current_date_static_across_new_day():
     await inject_current_date.wrap_model_call(ctx, state, request, handler)
     # Must use session date, not today's date
     assert "2020-06-14" in received[0]
+
+
+@pytest.mark.asyncio
+async def test_inject_current_date_same_for_same_session_created_at_across_runs():
+    """Prompt date is stable across follow-up runs in the same session."""
+    frozen = datetime(2024, 12, 31, 23, 59, 0, tzinfo=timezone.utc)
+    state = make_state("Base.")
+
+    first = await _call_wrap(
+        inject_current_date,
+        "Base.",
+        state,
+        ctx=RunContext(
+            session_id="s1", run_id="r1", agent_name="bot", session_created_at=frozen
+        ),
+    )
+    second = await _call_wrap(
+        inject_current_date,
+        "Base.",
+        state,
+        ctx=RunContext(
+            session_id="s1", run_id="r2", agent_name="bot", session_created_at=frozen
+        ),
+    )
+
+    assert first == second
+    assert "2024-12-31" in first
 
 
 # ---------------------------------------------------------------------------

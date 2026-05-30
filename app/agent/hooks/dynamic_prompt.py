@@ -170,7 +170,7 @@ def inject_current_date(request: PromptRequest) -> str:
     """
     ts = request.ctx.session_created_at
     if ts is not None:
-        date_str = ts.strftime("%Y-%m-%d")
+        date_str = ts.astimezone(timezone.utc).strftime("%Y-%m-%d")
     else:
         date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     return f"{request.base_prompt}\n\nCurrent date (UTC): {date_str}"

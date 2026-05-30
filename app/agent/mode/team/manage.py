@@ -38,12 +38,19 @@ _PROTECTED_TOOL_NAMES = frozenset(
 
 
 _MANAGE_DESCRIPTION = (
-    "Manage the live team roster. Use action='spawn' with blueprint names "
-    "like 'executor' to create the next instance, or explicit handles like "
-    "'executor#1' to restore/reuse that instance's history. Use "
-    "action='dismiss' with explicit live handles like 'executor#1' to free "
-    "members when their work is done; history is preserved. Accepts multiple "
-    "members in one call."
+    "Manage the live team roster and discover spawnable member blueprints. "
+    "Use action='spawn' with blueprint names like 'executor' to create the next "
+    "instance; repeat a blueprint name to create parallel instances. Use explicit "
+    "handles like 'executor#1' to restore/reuse that instance's history when a "
+    "follow-up continues or corrects prior work. Prefer keeping useful members "
+    "alive across turns and re-messaging the same live handle — reusing a live "
+    "instance preserves its warm context and is faster and cheaper than "
+    "dismiss-then-respawn. Use action='dismiss' with explicit live handles like "
+    "'executor#1' only when an instance clearly won't be reused or the roster is "
+    "cluttered; history is preserved either way. Accepts multiple members in one "
+    "call. Available blueprints and any live/restorable handles are surfaced in "
+    "this tool's results and in validation errors for unknown blueprints. If no "
+    "blueprints are configured, no member blueprints are available to spawn."
 )
 
 

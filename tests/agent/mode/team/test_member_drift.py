@@ -138,10 +138,10 @@ def test_refresh_keeps_agent_on_parse_failure(_settings_dirs: Path) -> None:
     assert member._config_dirty is False  # cleared to avoid loop
 
 
-def test_refresh_reinjects_teammates_section(
+def test_refresh_does_not_inject_teammates_section(
     _settings_dirs: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`## Teammates` is loader-side; refresh must re-inject it."""
+    """Dynamic teammate roster is runtime context, not refreshed system prompt."""
     import app.agent.loader as _loader
 
     monkeypatch.setattr(
@@ -166,8 +166,8 @@ def test_refresh_reinjects_teammates_section(
 
     worker._refresh_agent_from_disk()
 
-    assert "## Teammates" in worker.agent.system_prompt
-    assert "**peer**" in worker.agent.system_prompt
+    assert "## Teammates" not in worker.agent.system_prompt
+    assert "**peer**" not in worker.agent.system_prompt
 
 
 # ── Drift detection (end-of-turn flag) ───────────────────────────────────────

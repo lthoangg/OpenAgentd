@@ -38,7 +38,14 @@ from app.agent.mode.team.team import (
     parse_instance_handle,
 )
 import app.core.db as _db_module
-from app.models.chat import ChatSession
+from app.agent.schemas.chat import HumanMessage
+from app.models.chat import ChatSession, SessionMessage
+from app.services.chat_service import (
+    get_messages,
+    get_messages_for_llm,
+    save_message,
+    undo_session_messages,
+)
 from tests.agent.mode.team.conftest import MockTeamProvider
 
 
@@ -241,7 +248,7 @@ class TestSpawn:
                 "You are `executor`"
             )
             assert "**executor#1**" not in prompt1
-            assert "**executor#2**" in prompt1
+            assert "**executor#2**" not in prompt1
         finally:
             await team.stop()
 
@@ -350,6 +357,88 @@ class TestDismiss:
             # Respawning #1 should restore the same DB session id.
             restored = await team.spawn("executor", instance_id=1)
             assert restored.session_id == str(old_session_id)
+        finally:
+            await team.stop()
+
+    async def test_roster_changes_persist_hidden_llm_visible_messages(self, tmp_path):
+        team = _build_dynamic_team(tmp_path, {"executor": None, "explorer": None})
+        lead_session_id = uuid.uuid7()
+        await team.start()
+        try:
+            await team.handle_user_message("Hi", session_id=str(lead_session_id))
+            await team.spawn("executor")
+            await team.spawn("explorer")
+            await team.dismiss("executor#1")
+
+            async with _session_factory()() as db:
+                rows = (
+                    await db.exec(
+                        select(SessionMessage)
+                        .where(SessionMessage.session_id == lead_session_id)
+                        .order_by(SessionMessage.created_at, SessionMessage.id)
+                    )
+                ).all()
+                roster_rows = [
+                    r for r in rows if r.extra and r.extra.get("roster_change")
+                ]
+
+                assert [r.role for r in roster_rows] == ["user", "user", "user"]
+                assert [r.exclude_from_context for r in roster_rows] == [
+                    False,
+                    False,
+                    False,
+                ]
+                assert all(
+                    r.extra and r.extra.get("hidden_from_user") is True
+                    for r in roster_rows
+                )
+                assert all(
+                    r.extra and r.extra.get("hidden_from_summary") is True
+                    for r in roster_rows
+                )
+                assert "Member spawned: executor#1" in (roster_rows[0].content or "")
+                assert "Live members: executor#1" in (roster_rows[0].content or "")
+                assert "Member spawned: explorer#1" in (roster_rows[1].content or "")
+                assert "executor#1, explorer#1" in (roster_rows[1].content or "")
+                assert "Member dismissed: executor#1" in (roster_rows[2].content or "")
+                assert "Live members: explorer#1" in (roster_rows[2].content or "")
+
+                visible = await get_messages(db, lead_session_id)
+                assert all(
+                    "Available members changed" not in (m.content or "")
+                    for m in visible
+                )
+
+                llm_messages = await get_messages_for_llm(db, lead_session_id)
+                assert [
+                    m.content
+                    for m in llm_messages
+                    if m.extra and m.extra.get("roster_change")
+                ] == [r.content for r in roster_rows]
+        finally:
+            await team.stop()
+
+    async def test_undo_skips_hidden_roster_change_messages(self, tmp_path):
+        team = _build_dynamic_team(tmp_path, {"executor": None})
+        lead_session_id = uuid.uuid7()
+        await team.start()
+        try:
+            await team.handle_user_message("Hi", session_id=str(lead_session_id))
+            async with _session_factory()() as db:
+                await save_message(
+                    db, lead_session_id, HumanMessage(content="visible turn")
+                )
+                await db.commit()
+
+            await team.spawn("executor")
+
+            async with _session_factory()() as db:
+                shift = await undo_session_messages(db, lead_session_id)
+                await db.commit()
+
+                assert shift.applied is True
+                assert shift.target is not None
+                assert shift.target.content == "visible turn"
         finally:
             await team.stop()
 
@@ -584,6 +673,22 @@ class TestRosterManageTool:
         assert "team_configure" in names
         assert "team_message" in names
         assert "todo_manage" in names
+
+    async def test_team_manage_description_contains_spawn_restore_guidance(
+        self, tmp_path
+    ):
+        from app.agent.mode.team.manage import make_team_manage_tool
+
+        team = _build_dynamic_team(tmp_path, {"executor": None})
+        tool = make_team_manage_tool(team)
+
+        assert "discover spawnable member blueprints" in tool.description
+        assert (
+            "repeat a blueprint name to create parallel instances" in tool.description
+        )
+        assert "restore/reuse that instance's history" in tool.description
+        assert "live/restorable handles" in tool.description
+        assert "no member blueprints are available to spawn" in tool.description
 
     async def test_members_do_not_get_manage_tools(self, tmp_path):
         team = _build_dynamic_team(tmp_path, {"executor": None})

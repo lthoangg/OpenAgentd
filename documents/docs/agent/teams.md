@@ -332,7 +332,7 @@ team_manage(action: "spawn"|"dismiss", members: list[str]) -> str
 The lead manages the live roster with one batch-capable tool.
 
 - `action="spawn"`: each entry in `members` is either a bare blueprint name (`"executor"`) or an explicit handle (`"executor#1"`). Bare names allocate the next available `#N`; explicit handles restore/reuse that exact instance history.
-- `action="dismiss"`: each entry in `members` must be an explicit live handle (`"executor#1"`). Dismiss removes the in-memory member from the roster and preserves DB history.
+- `action="dismiss"`: each entry in `members` must be an explicit live handle (`"executor#1"`). Dismiss removes the in-memory member from the roster and preserves DB history. The lead protocol **keeps members alive by default** and reuses live handles across turns (a warm member preserves its prompt cache); dismiss is reserved for clearly-finished members or roster cleanup.
 - Partial success is allowed; the return string groups `Spawned`, `Dismissed`, `Already live`, `Not live`, and `Errors` entries.
 
 Spawned members keep their blueprint prompt, but team protocol injects the concrete runtime identity (`You are executor#N`) on every model call. Config hot-reload preserves that handle so parallel instances do not collapse back to the blueprint name.
@@ -493,12 +493,12 @@ Protocol constants (`COMMUNICATION_RULES`, `MESSAGE_FORMAT`, `LEAD_PROTOCOL`, `M
 
 | Section | `TeamLead.build_protocol()` | `TeamMember.build_protocol()` |
 |---------|------|---------|
-| Communication rules | plain text is user-visible and reserved for the final answer, plus one optional brief progress note after delegation; coordination via `team_message` tool | `team_message` is the ONLY communication method for results; do not use plain text output; no social messages; collaborate directly with peers via `team_message`; respond exactly `<sleep>` with no tool calls when idle |
+| Communication rules | plain text is user-visible and reserved for the final answer, plus one optional brief progress note after delegation; coordination via `team_message` tool | `team_message` is the ONLY way to send results — addressed to **any teammate** (peer or lead), not lead-only; no plain text output; no social messages; idle/waiting/done → respond exactly `<sleep>` (no tool calls) |
 | Message format | `[name]: content`, `[user]: content` | `[{lead_name}]: content` (lead), `[name]: content` (peers) |
-| Workflow | receive → plan with todos using `dependencies` and concrete `assigned_to` handles; spawn before assigning member todos; message only unblocked owners; delegate peer handoffs from the dependency graph; wait (or `<sleep>`) → synthesise | receive → claim assigned todo if provided → work when unblocked → `team_message` peers for help if needed → `team_message` results to lead or next peer → `<sleep>` |
-| Team roster | all members with descriptions | lead `[lead]` + other members (not self) |
+| Delegation sizing | handle small/quick tasks yourself — spawning has latency + token cost; delegate only substantial work (role-fit, parallel, context-heavy, or a sustained multi-step workstream); prefer reusing a live member | n/a |
+| Workflow | receive → plan with todos using `dependencies` and concrete `assigned_to` handles; spawn before assigning member todos; message only unblocked owners; delegate peer handoffs from the dependency graph; wait (or `<sleep>`) → synthesise | receive → claim assigned todo if provided → work when unblocked → `team_message` peers for help if needed → `team_message` output straight to whoever needs it (peer or lead) → `<sleep>` |
 
-Tool-mechanical rules (one call per audience, no name prefix in content, work-output-only content) are in the `team_message` tool description itself — not in the protocol constants. The tool description is role-specific: lead gets delegation-focused wording, members get delivery-focused wording.
+The protocol is static per session (no dynamic roster — see [`hooks.md`](hooks.md#agentteamprotocolhook)). Tool-mechanical rules (one call per audience, no name prefix in content, work-output-only content) are in the `team_message` tool description itself — not in the protocol constants. The tool description is role-specific: lead gets delegation-focused wording, members get delivery-focused wording.
 
 ### Usage
 

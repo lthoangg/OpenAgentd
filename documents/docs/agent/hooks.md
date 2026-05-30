@@ -383,7 +383,8 @@ Optional factory that returns a hook flushing dream-synthesis events to disk at 
 Injected for **all team agents** (lead and members). Appends team operating protocol to `state.system_prompt` via `wrap_model_call`:
 - Communication rules (message format, output constraints)
 - Role-specific workflow (lead vs member)
-- Team roster with descriptions
+
+The injected protocol is **static per session** — it carries no dynamic roster, so the system prompt stays byte-stable across turns for prompt caching. Roster changes reach the model as append-only `[system]` history (`_persist_roster_change`) and `team_message`/`team_manage` tool results, never by mutating the prompt.
 
 Agent system prompts (`.md` body) stay role-specific (expertise only) — all shared team protocol is injected here. Tool-mechanical rules (batching, prefix stripping) live in the `team_message` tool description, not in the protocol.
 

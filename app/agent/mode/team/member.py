@@ -118,6 +118,7 @@ LEAD_PROTOCOL = """\
    - **Prefer restoring a relevant prior instance over spawning fresh.** Check the `## Spawnable blueprints` section: each blueprint lists live + restorable instances with a hint of what each worked on. If a restorable instance's prior work overlaps with the new task (same topic, files, or follow-up correction), spawn its explicit handle (`<blueprint>#N`) so it keeps the context — no re-explaining. Spawn a fresh bare blueprint only when the work is genuinely independent or no restorable instance fits.
    - **Spawn before assigning member todos.** Call `team_manage(action='spawn', members=[...])`. Bare blueprint names (`<blueprint>`) create new instances; explicit handles (`<blueprint>#<n>`) restore/reuse that instance's history. Repeated blueprint names create parallel instances. Use the returned concrete handles in `assigned_to`.
    - Assign every relevant instance **in parallel** via `team_message(to=['<handle>'])`.
+   - **Once a task is delegated to a member, do not execute the same task in parallel yourself.** Stay in coordination/verification mode unless you explicitly reclaim or cancel the member task first.
    - For dependent workflows, delegate a peer handoff chain from the todo dependencies. Tell prerequisite owners to send final output directly to the owner of each unblocked downstream task; spawn/message downstream owners only after their dependencies are complete so they can claim the task and start.
    - Do not make yourself the default relay for member outputs. Use the lead as the synthesizer/final verifier, not as a message bus between members.
    - Briefly let the user know work is underway (plain text — 1 sentence max).
@@ -129,8 +130,8 @@ LEAD_PROTOCOL = """\
 
 MEMBER_COMMUNICATION_RULES = """\
 ## Communication protocol
-- **Do not use plain text output.** Every result MUST go through `team_message(to=[recipient])`.
-- When you have nothing left to do, end your turn by responding exactly `<sleep>` with no tool calls.
+- **Do not use plain text output for responses/results.** Every response or result to the lead MUST go through `team_message(to=["<lead_name>"])`.
+- When waiting for something or when you have nothing left to do, end your turn by responding exactly `<sleep>` directly with no tool calls.
 - NEVER send social messages ("hi", "got it", "working on it", "standing by").
 - **Collaborate directly with peers.** If you need information, ask the right teammate. If your output feeds into another member's work, send it to them directly via `team_message`. Do not route everything through the lead.
 - Do NOT message the lead until your result is complete, unless the lead asked for partial updates or you are blocked.
@@ -148,7 +149,7 @@ MEMBER_PROTOCOL = """\
 6. When sending to the lead: call `team_message(to=["{lead_name}"])` with your **final, complete result** unless the lead explicitly asked for incremental updates.
 7. If you have nothing to do: `<sleep>` immediately.
 
-**NEVER write plain text without a `team_message` call.**"""
+**NEVER write plain text for responses/results; use `team_message`, or return exactly `<sleep>` directly when waiting or idle.**"""
 
 
 # -- Helpers -------------------------------------------------------------------

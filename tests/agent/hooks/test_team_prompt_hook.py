@@ -223,12 +223,18 @@ class TestProtocolInjection:
     def test_protocol_constants_capture_current_communication_contract(self):
         """Prompt constants should preserve the team routing contract."""
         assert "one brief progress note after delegation" in LEAD_COMMUNICATION_RULES
-        assert "Do not use plain text output" in MEMBER_COMMUNICATION_RULES
         assert (
-            "responding exactly `<sleep>` with no tool calls"
+            "Do not use plain text output for responses/results"
             in MEMBER_COMMUNICATION_RULES
         )
-        assert "team_message(to=[recipient])" in MEMBER_COMMUNICATION_RULES
+        assert (
+            "responding exactly `<sleep>` directly with no tool calls"
+            in MEMBER_COMMUNICATION_RULES
+        )
+        assert 'team_message(to=["<lead_name>"])' in MEMBER_COMMUNICATION_RULES
+        assert (
+            "return exactly `<sleep>` directly when waiting or idle" in MEMBER_PROTOCOL
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -360,10 +366,17 @@ class TestProtocolConstants:
         assert "Members are spawned on demand" in LEAD_COMMUNICATION_RULES
 
     def test_member_communication_rules_enforces_team_message(self):
-        """MEMBER_COMMUNICATION_RULES enforces team_message as ONLY communication method."""
+        """MEMBER_COMMUNICATION_RULES enforces team_message for lead results."""
         assert "team_message" in MEMBER_COMMUNICATION_RULES
-        assert "Do not use plain text output" in MEMBER_COMMUNICATION_RULES
-        assert "Every result MUST go through" in MEMBER_COMMUNICATION_RULES
+        assert (
+            "Do not use plain text output for responses/results"
+            in MEMBER_COMMUNICATION_RULES
+        )
+        assert (
+            "Every response or result to the lead MUST go through"
+            in MEMBER_COMMUNICATION_RULES
+        )
+        assert 'team_message(to=["<lead_name>"])' in MEMBER_COMMUNICATION_RULES
 
     def test_lead_message_format_has_user_prefix(self):
         """Lead message format includes [user]: prefix — members do not."""
@@ -380,6 +393,8 @@ class TestProtocolConstants:
         assert "delegate" in LEAD_PROTOCOL.lower()
         assert "peer handoff chain" in LEAD_PROTOCOL
         assert "not as a message bus" in LEAD_PROTOCOL
+        assert "do not execute the same task in parallel yourself" in LEAD_PROTOCOL
+        assert "reclaim or cancel the member task first" in LEAD_PROTOCOL
         assert "dependencies" in LEAD_PROTOCOL
         assert "assigned_to" in LEAD_PROTOCOL
         assert "explorer#1" not in LEAD_PROTOCOL

@@ -127,13 +127,19 @@ def _thinking_budget(level: str, max_tokens: int) -> int:
     return max(1024, min(budget, max_tokens - 1))
 
 
+def _supports_adaptive_thinking(model: str) -> bool:
+    return any(
+        marker in model for marker in ("opus-4-6", "opus-4-7", "opus-4-8", "sonnet-4-6")
+    )
+
+
 def _apply_thinking(
     model: str, kwargs: dict[str, Any], payload: dict[str, Any]
 ) -> None:
     level = str(kwargs.pop("thinking_level", "") or "").lower()
     if not level or level in {"none", "off"}:
         return
-    if "-4-7" in model:
+    if _supports_adaptive_thinking(model):
         payload["thinking"] = {"type": "adaptive", "display": "summarized"}
         payload["output_config"] = {"effort": level}
         return

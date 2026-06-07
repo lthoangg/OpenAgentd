@@ -59,4 +59,44 @@ def test_anthropic_payload_converts_system_tools_and_thinking() -> None:
 
     assert payload["system"] == "be concise"
     assert payload["tools"][0]["name"] == "lookup"
-    assert payload["thinking"]["budget_tokens"] == 1024
+    assert payload["thinking"] == {"type": "adaptive", "display": "summarized"}
+    assert payload["output_config"] == {"effort": "low"}
+
+
+def test_anthropic_payload_uses_adaptive_thinking_for_claude_opus_4_7() -> None:
+    provider = AnthropicProvider(
+        api_key="sk-ant-test",
+        model="claude-opus-4-7",
+        model_kwargs={"thinking_level": "medium", "max_tokens": 4096},
+    )
+
+    payload = provider._payload(
+        [HumanMessage(content="hi")],
+        None,
+        provider._merged_kwargs(),
+    )
+
+    assert payload["thinking"] == {"type": "adaptive", "display": "summarized"}
+    assert payload["output_config"] == {"effort": "medium"}
+    assert "budget_tokens" not in payload["thinking"]
+
+
+def test_anthropic_payload_uses_manual_thinking_for_older_models() -> None:
+    provider = AnthropicProvider(
+        api_key="sk-ant-test",
+        model="claude-sonnet-4-5",
+        model_kwargs={"thinking_level": "low", "max_tokens": 4096},
+    )
+
+    payload = provider._payload(
+        [HumanMessage(content="hi")],
+        None,
+        provider._merged_kwargs(),
+    )
+
+    assert payload["thinking"] == {
+        "type": "enabled",
+        "budget_tokens": 1024,
+        "display": "summarized",
+    }
+    assert "output_config" not in payload

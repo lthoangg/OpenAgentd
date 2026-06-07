@@ -119,7 +119,7 @@ Other OpenAI-compatible providers (`openrouter`, `nvidia`, `cliproxy`, `router9`
 
 Uses Anthropic's Messages API at `https://api.anthropic.com/v1/messages`. API-key support is built in and configured with `ANTHROPIC_API_KEY`; set `ANTHROPIC_BASE_URL` only for compatible gateways.
 
-`thinking_level` maps to Anthropic `thinking` controls on supported Claude models. Sampling fields are omitted for newer Claude 4.5+ families that reject legacy sampling parameters.
+`thinking_level` maps to Anthropic `thinking` controls on supported Claude models. Claude Opus 4.6+, Opus 4.7+, Opus 4.8+, and Sonnet 4.6 use Anthropic adaptive thinking with `output_config.effort`; older Claude models keep the manual `budget_tokens` payload. Sampling fields are omitted for newer Claude 4.5+ families that reject legacy sampling parameters.
 
 ### `codex`
 

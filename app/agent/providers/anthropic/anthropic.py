@@ -135,20 +135,40 @@ def _supports_adaptive_thinking(model: str) -> bool:
 
 def _apply_thinking(
     model: str, kwargs: dict[str, Any], payload: dict[str, Any]
-) -> None:
+) -> bool:
     level = str(kwargs.pop("thinking_level", "") or "").lower()
     if not level or level in {"none", "off"}:
-        return
+        return False
     if _supports_adaptive_thinking(model):
         payload["thinking"] = {"type": "adaptive", "display": "summarized"}
         payload["output_config"] = {"effort": level}
-        return
+        return True
     max_tokens = int(payload["max_tokens"])
     payload["thinking"] = {
         "type": "enabled",
         "budget_tokens": _thinking_budget(level, max_tokens),
         "display": "summarized",
     }
+    return True
+
+
+def _add_sampling(
+    model: str, kwargs: dict[str, Any], payload: dict[str, Any], *, thinking: bool
+) -> None:
+    if not _supports_legacy_sampling(model):
+        return
+    if not thinking:
+        for name in ("temperature", "top_p"):
+            if name in kwargs and kwargs[name] is not None:
+                payload[name] = kwargs[name]
+        return
+    top_p = kwargs.get("top_p")
+    if (
+        isinstance(top_p, (int, float))
+        and not isinstance(top_p, bool)
+        and 0.95 <= top_p <= 1
+    ):
+        payload["top_p"] = top_p
 
 
 def _finish_reason(stop_reason: str | None) -> str | None:
@@ -223,11 +243,8 @@ class AnthropicProvider(LLMProviderBase):
         anthropic_tools = _anthropic_tools(tools)
         if anthropic_tools:
             payload["tools"] = anthropic_tools
-        if _supports_legacy_sampling(self.model):
-            for name in ("temperature", "top_p"):
-                if name in kwargs and kwargs[name] is not None:
-                    payload[name] = kwargs[name]
-        _apply_thinking(self.model, kwargs, payload)
+        thinking = _apply_thinking(self.model, kwargs, payload)
+        _add_sampling(self.model, kwargs, payload, thinking=thinking)
         return payload
 
     async def chat(

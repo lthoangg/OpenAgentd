@@ -100,3 +100,52 @@ def test_anthropic_payload_uses_manual_thinking_for_older_models() -> None:
         "display": "summarized",
     }
     assert "output_config" not in payload
+
+
+def test_anthropic_payload_omits_incompatible_sampling_when_thinking() -> None:
+    provider = AnthropicProvider(
+        api_key="sk-ant-test",
+        model="claude-sonnet-4",
+        model_kwargs={
+            "thinking_level": "low",
+            "temperature": 0.2,
+            "top_p": 0.7,
+            "max_tokens": 4096,
+        },
+    )
+
+    payload = provider._payload(
+        [HumanMessage(content="hi")],
+        None,
+        provider._merged_kwargs(),
+    )
+
+    assert payload["thinking"] == {
+        "type": "enabled",
+        "budget_tokens": 1024,
+        "display": "summarized",
+    }
+    assert "temperature" not in payload
+    assert "top_p" not in payload
+
+
+def test_anthropic_payload_allows_supported_top_p_when_thinking() -> None:
+    provider = AnthropicProvider(
+        api_key="sk-ant-test",
+        model="claude-sonnet-4",
+        model_kwargs={
+            "thinking_level": "low",
+            "temperature": 0.2,
+            "top_p": 0.95,
+            "max_tokens": 4096,
+        },
+    )
+
+    payload = provider._payload(
+        [HumanMessage(content="hi")],
+        None,
+        provider._merged_kwargs(),
+    )
+
+    assert "temperature" not in payload
+    assert payload["top_p"] == 0.95

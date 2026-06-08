@@ -74,7 +74,7 @@ describe("MCPAppResult", () => {
 
     const iframe = document.body.querySelector("iframe")
     expect(iframe).toBeTruthy()
-    expect(iframe?.getAttribute("sandbox")).toBe("allow-scripts allow-forms")
+    expect(iframe?.getAttribute("sandbox")).toBe("allow-scripts allow-same-origin allow-forms")
     expect(iframe?.getAttribute("allow")).toContain("clipboard-write")
     expect(iframe?.getAttribute("srcdoc")).toContain("script-src 'self' blob: data: 'unsafe-inline' 'unsafe-eval'")
     expect(iframe?.getAttribute("title")).toBe("create_view")

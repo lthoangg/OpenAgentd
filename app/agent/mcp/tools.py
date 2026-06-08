@@ -152,6 +152,10 @@ class MCPTool(Tool):
                 app_resource = _extract_app_resource(resource, resource_uri)
 
                 if app_resource is not None:
+                    if app_resource.get("resourceMeta") is None:
+                        app_resource["resourceMeta"] = await _get_listing_resource_meta(
+                            session, resource_uri
+                        )
                     return ToolResult(
                         parts=[TextBlock(text=text_summary)],
                         mcp_app={
@@ -197,6 +201,32 @@ def _get_ui_meta(mcp_tool: Any) -> dict[str, Any]:
     # Deprecated flat shape used by early MCP Apps drafts.
     resource_uri = meta.get("ui/resourceUri")
     return {"resourceUri": resource_uri} if isinstance(resource_uri, str) else {}
+
+
+async def _get_listing_resource_meta(
+    session: "ClientSession", resource_uri: str
+) -> dict[str, Any] | None:
+    """Return listing-level resource metadata when resources/read omits it."""
+    try:
+        resources_result = await session.list_resources()
+    except Exception as exc:
+        logger.debug(
+            "mcp_app_resource_listing_meta_fetch_failed uri={} error={}",
+            resource_uri,
+            exc,
+        )
+        return None
+
+    resources = getattr(resources_result, "resources", None)
+    if not isinstance(resources, list):
+        return None
+
+    for resource in resources:
+        if str(getattr(resource, "uri", "")) != resource_uri:
+            continue
+        meta = getattr(resource, "meta", None) or getattr(resource, "_meta", None)
+        return meta if isinstance(meta, dict) else None
+    return None
 
 
 def _extract_app_resource(

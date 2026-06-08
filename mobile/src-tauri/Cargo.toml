@@ -1,6 +1,6 @@
 [package]
 name = "openagentd-mobile"
-version = "1.44.7"
+version = "1.44.8"
 description = "OpenAgentd mobile shell"
 authors = ["openagentd contributors"]
 license = "Apache-2.0"

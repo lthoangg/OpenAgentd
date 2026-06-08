@@ -324,6 +324,7 @@ export function MCPAppResult({ mcpApp, sessionId, toolCallId }: MCPAppResultProp
     const transport = new DeferredPostMessageTransport(() => iframe.contentWindow)
 
     let removeLoadListener: (() => void) | undefined
+    let appUrl: string | undefined
     const initialize = async () => {
       try {
         await bridge.connect(transport)
@@ -332,7 +333,8 @@ export function MCPAppResult({ mcpApp, sessionId, toolCallId }: MCPAppResultProp
         }
         iframe.addEventListener('load', attachTarget)
         removeLoadListener = () => iframe.removeEventListener('load', attachTarget)
-        iframe.srcdoc = wrapAppHtml(html, csp ?? undefined)
+        appUrl = URL.createObjectURL(new Blob([wrapAppHtml(html, csp ?? undefined)], { type: 'text/html' }))
+        iframe.src = appUrl
         attachTarget()
       } catch (exc) {
         if (!cancelled) setError(exc instanceof Error ? exc.message : String(exc))
@@ -343,6 +345,7 @@ export function MCPAppResult({ mcpApp, sessionId, toolCallId }: MCPAppResultProp
     return () => {
       cancelled = true
       removeLoadListener?.()
+      if (appUrl) URL.revokeObjectURL(appUrl)
       bridgeRef.current = null
       void bridge.close().catch(() => undefined)
     }

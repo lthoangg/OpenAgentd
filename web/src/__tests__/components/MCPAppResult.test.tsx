@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event"
 import { MCPAppResult } from "@/components/MCPAppResult"
 
 const callMcpAppTool = mock(async () => ({ result: { content: [{ type: "text", text: "saved" }] } }))
+let platform = { isTauri: false, os: "unknown", isMacOverlay: false }
 const createdAppHtml: string[] = []
 const createObjectURL = mock((blob: unknown) => {
   void (blob as Blob).text().then((text) => createdAppHtml.push(text))
@@ -12,6 +13,10 @@ const createObjectURL = mock((blob: unknown) => {
 const revokeObjectURL = mock(() => undefined)
 Object.defineProperty(URL, "createObjectURL", { value: createObjectURL, configurable: true })
 Object.defineProperty(URL, "revokeObjectURL", { value: revokeObjectURL, configurable: true })
+
+mock.module("@/hooks/use-platform", () => ({
+  getPlatform: () => platform,
+}))
 
 afterEach(cleanup)
 
@@ -63,6 +68,7 @@ describe("MCPAppResult", () => {
     revokeObjectURL.mockClear()
     callMcpAppTool.mockClear()
     callMcpAppTool.mockImplementation(async () => ({ result: { content: [{ type: "text", text: "saved" }] } }))
+    platform = { isTauri: false, os: "unknown", isMacOverlay: false }
   })
 
   it("renders MCP app HTML from a blob URL so desktop CSP does not block app scripts", async () => {
@@ -90,6 +96,25 @@ describe("MCPAppResult", () => {
     expect(iframe?.getAttribute("srcdoc")).toBeNull()
     expect(iframe?.getAttribute("title")).toBe("create_view")
     expect(screen.getByText(/Experimental sandbox:/)).toBeTruthy()
+  })
+
+  it("uses a data URL for iOS Tauri because production WKWebView can leave blob frames blank", async () => {
+    platform = { isTauri: true, os: "ios", isMacOverlay: false }
+    render(
+      <MCPAppResult
+        mcpApp={{
+          tool: "create_view",
+          resourceUri: "ui://excalidraw/mcp-app.html",
+          html: "<html><body>mcp app</body></html>",
+          mimeType: "text/html;profile=mcp-app",
+        }}
+      />,
+    )
+
+    await waitFor(() => expect(document.body.querySelector("iframe")?.getAttribute("src")).toMatch(/^data:text\/html/))
+
+    expect(createObjectURL).not.toHaveBeenCalled()
+    expect(decodeURIComponent(document.body.querySelector("iframe")?.getAttribute("src") ?? "")).toContain("mcp app")
   })
 
   it("applies resource CSP domains for externally loaded MCP app modules", async () => {

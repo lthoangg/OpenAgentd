@@ -34,14 +34,14 @@
     ],
     "security": {
       "csp": {
-        "default-src": "'self' http://127.0.0.1:* http://localhost:*",
-        "connect-src": "'self' http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:* ipc: https://ipc.localhost https://esm.sh",
-        "script-src": "'self' 'unsafe-inline' 'unsafe-eval' blob: data: http://127.0.0.1:* http://localhost:* https://esm.sh",
-        "style-src": "'self' 'unsafe-inline' blob: data: http://127.0.0.1:* http://localhost:* https://esm.sh",
-        "img-src": "'self' data: blob: http://127.0.0.1:* http://localhost:* https://esm.sh",
-        "font-src": "'self' data: blob: http://127.0.0.1:* http://localhost:* https://esm.sh",
-        "media-src": "'self' blob: http://127.0.0.1:* http://localhost:*",
-        "frame-src": "'self' data: blob:",
+        "default-src": "'self' http: https:",
+        "connect-src": "'self' http: https: ws: wss: ipc: https://ipc.localhost",
+        "script-src": "'self' 'unsafe-inline' 'unsafe-eval' blob: data: http: https:",
+        "style-src": "'self' 'unsafe-inline' blob: data: http: https:",
+        "img-src": "'self' data: blob: http: https:",
+        "font-src": "'self' data: blob: http: https:",
+        "media-src": "'self' blob: http: https:",
+        "frame-src": "'self' data: blob: http: https:",
         "object-src": "'none'",
         "worker-src": "'self' blob:"
       },

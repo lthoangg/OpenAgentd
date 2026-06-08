@@ -359,13 +359,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           ROLLING_TAG="latest-desktop"
-          # Delete the old rolling release (and its tag) so we can
-          # re-create it pointing at the latest manifest. ``gh release
-          # delete --cleanup-tag`` is idempotent: it succeeds with a
-          # non-zero exit only when the release exists and the delete
-          # call itself fails, which is what we want.
-          gh release delete "$ROLLING_TAG" --yes --cleanup-tag 2>/dev/null || true
-          gh release create "$ROLLING_TAG" _release/latest.json \
-            --title "Desktop updater manifest (rolling)" \
-            --notes "Auto-generated. Points at OpenAgentd Desktop ${{ needs.prepare.outputs.version }}. Do not download artefacts from this release directly — use the versioned release instead." \
-            --prerelease
+          NOTES="Auto-generated. Points at OpenAgentd Desktop ${{ needs.prepare.outputs.version }}. Do not download artefacts from this release directly — use the versioned release instead."
+          if gh release view "$ROLLING_TAG" >/dev/null 2>&1; then
+            gh release upload "$ROLLING_TAG" _release/latest.json --clobber
+            gh release edit "$ROLLING_TAG" \
+              --title "Desktop updater manifest (rolling)" \
+              --notes "$NOTES" \
+              --prerelease \
+              --draft=false
+          else
+            gh release create "$ROLLING_TAG" _release/latest.json \
+              --title "Desktop updater manifest (rolling)" \
+              --notes "$NOTES" \
+              --prerelease
+          fi

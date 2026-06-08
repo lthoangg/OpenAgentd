@@ -41,7 +41,7 @@
         "img-src": "'self' data: blob: http://127.0.0.1:* http://localhost:*",
         "font-src": "'self' data: http://127.0.0.1:* http://localhost:*",
         "media-src": "'self' blob: http://127.0.0.1:* http://localhost:*",
-        "frame-src": "'none'",
+        "frame-src": "'self' data: blob:",
         "object-src": "'none'",
         "worker-src": "'self' blob:"
       },

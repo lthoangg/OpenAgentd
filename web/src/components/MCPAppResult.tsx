@@ -18,6 +18,7 @@ import {
 import type { Transport, TransportSendOptions } from '@modelcontextprotocol/sdk/shared/transport.js'
 import { ExternalLink, Maximize2, X } from 'lucide-react'
 import { callMcpAppTool } from '@/api/client'
+import { getPlatform } from '@/hooks/use-platform'
 
 interface MCPAppPayload {
   server?: string
@@ -116,6 +117,19 @@ function wrapAppHtml(html: string, csp?: McpUiResourceCsp): string {
     return html.replace(/<head\b[^>]*>/i, (match) => `${match}${prefix}`)
   }
   return `<!doctype html><html><head>${prefix}</head><body>${html}</body></html>`
+}
+
+function shouldUseDataFrameUrl(): boolean {
+  const platform = getPlatform()
+  return platform.isTauri && platform.os === 'ios'
+}
+
+function createAppFrameUrl(html: string): { url: string; revoke: () => void } {
+  if (shouldUseDataFrameUrl()) {
+    return { url: `data:text/html;charset=utf-8,${encodeURIComponent(html)}`, revoke: () => undefined }
+  }
+  const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }))
+  return { url, revoke: () => URL.revokeObjectURL(url) }
 }
 
 function errorToolResult(message: string): CallToolResult {
@@ -324,7 +338,7 @@ export function MCPAppResult({ mcpApp, sessionId, toolCallId }: MCPAppResultProp
     const transport = new DeferredPostMessageTransport(() => iframe.contentWindow)
 
     let removeLoadListener: (() => void) | undefined
-    let appUrl: string | undefined
+    let revokeAppUrl: (() => void) | undefined
     const initialize = async () => {
       try {
         await bridge.connect(transport)
@@ -333,8 +347,9 @@ export function MCPAppResult({ mcpApp, sessionId, toolCallId }: MCPAppResultProp
         }
         iframe.addEventListener('load', attachTarget)
         removeLoadListener = () => iframe.removeEventListener('load', attachTarget)
-        appUrl = URL.createObjectURL(new Blob([wrapAppHtml(html, csp ?? undefined)], { type: 'text/html' }))
-        iframe.src = appUrl
+        const appFrame = createAppFrameUrl(wrapAppHtml(html, csp ?? undefined))
+        revokeAppUrl = appFrame.revoke
+        iframe.src = appFrame.url
         attachTarget()
       } catch (exc) {
         if (!cancelled) setError(exc instanceof Error ? exc.message : String(exc))
@@ -345,7 +360,7 @@ export function MCPAppResult({ mcpApp, sessionId, toolCallId }: MCPAppResultProp
     return () => {
       cancelled = true
       removeLoadListener?.()
-      if (appUrl) URL.revokeObjectURL(appUrl)
+      revokeAppUrl?.()
       bridgeRef.current = null
       void bridge.close().catch(() => undefined)
     }

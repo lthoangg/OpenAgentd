@@ -327,13 +327,13 @@ export function MCPAppResult({ mcpApp, sessionId, toolCallId }: MCPAppResultProp
     const initialize = async () => {
       try {
         await bridge.connect(transport)
-        iframe.srcdoc = wrapAppHtml(html, csp ?? undefined)
         const attachTarget = () => {
           if (iframe.contentWindow) transport.setTarget(iframe.contentWindow)
         }
-        attachTarget()
         iframe.addEventListener('load', attachTarget)
         removeLoadListener = () => iframe.removeEventListener('load', attachTarget)
+        iframe.srcdoc = wrapAppHtml(html, csp ?? undefined)
+        attachTarget()
       } catch (exc) {
         if (!cancelled) setError(exc instanceof Error ? exc.message : String(exc))
       }

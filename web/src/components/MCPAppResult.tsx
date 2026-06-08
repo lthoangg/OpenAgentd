@@ -317,7 +317,7 @@ export function MCPAppResult({ mcpApp, sessionId, toolCallId }: MCPAppResultProp
       }
     }
 
-    iframe.setAttribute('sandbox', 'allow-scripts allow-forms')
+    iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms')
     const allow = buildAllowAttribute(permissions)
     if (allow) iframe.setAttribute('allow', allow)
 

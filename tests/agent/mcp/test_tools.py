@@ -10,7 +10,12 @@ import pytest
 from pydantic import AnyUrl
 
 from app.agent.errors import ToolExecutionError
-from app.agent.mcp.tools import MCPTool, _extract_text, _sanitize_schema
+from app.agent.mcp.tools import (
+    MCPTool,
+    _extract_app_resource,
+    _extract_text,
+    _sanitize_schema,
+)
 from app.agent.schemas.chat import ToolResult
 
 
@@ -310,6 +315,78 @@ class TestMCPToolArun:
         read_resource_arg = session.read_resource.call_args.args[0]
         assert isinstance(read_resource_arg, AnyUrl)
         assert str(read_resource_arg) == "ui://excalidraw/mcp-app.html"
+
+    @pytest.mark.asyncio
+    async def test_arun_uses_listing_resource_meta_when_read_resource_omits_meta(
+        self,
+    ) -> None:
+        session = AsyncMock()
+        session.call_tool.return_value = SimpleNamespace(
+            isError=False,
+            content=[SimpleNamespace(type="text", text="Draw a diagram")],
+        )
+        session.read_resource.return_value = SimpleNamespace(
+            contents=[
+                SimpleNamespace(
+                    uri="ui://excalidraw/mcp-app.html",
+                    mimeType="text/html;profile=mcp-app",
+                    text="<html><body>mcp app</body></html>",
+                )
+            ]
+        )
+        session.list_resources.return_value = SimpleNamespace(
+            resources=[
+                SimpleNamespace(
+                    uri="ui://excalidraw/mcp-app.html",
+                    _meta={
+                        "ui": {
+                            "csp": {
+                                "resourceDomains": ["https://esm.sh"],
+                                "connectDomains": ["https://esm.sh"],
+                            }
+                        }
+                    },
+                )
+            ]
+        )
+
+        mcp_tool = SimpleNamespace(
+            name="excalidraw",
+            description="Excalidraw",
+            inputSchema={"type": "object"},
+            _meta={"ui": {"resourceUri": "ui://excalidraw/mcp-app.html"}},
+        )
+        tool = MCPTool(
+            server_name="design", mcp_tool=mcp_tool, session_provider=lambda: session
+        )  # type: ignore[arg-type]
+
+        result = await tool.arun()
+        assert isinstance(result, ToolResult)
+        assert result.mcp_app is not None
+        assert result.mcp_app["resourceMeta"] == {
+            "ui": {
+                "csp": {
+                    "resourceDomains": ["https://esm.sh"],
+                    "connectDomains": ["https://esm.sh"],
+                }
+            }
+        }
+        session.list_resources.assert_called_once()
+
+    def test_extract_app_resource_ignores_listing_resource_meta(self) -> None:
+        resource = SimpleNamespace(
+            contents=[
+                SimpleNamespace(
+                    uri="ui://excalidraw/mcp-app.html",
+                    mimeType="text/html;profile=mcp-app",
+                    text="<html><body>mcp app</body></html>",
+                )
+            ]
+        )
+
+        result = _extract_app_resource(resource, "ui://excalidraw/mcp-app.html")
+        assert result is not None
+        assert result["resourceMeta"] is None
 
     @pytest.mark.asyncio
     async def test_arun_no_session_raises_error(self) -> None:

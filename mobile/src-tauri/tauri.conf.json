@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "OpenAgentd",
   "mainBinaryName": "OpenAgentdMobile",
-  "version": "1.44.8",
+  "version": "1.44.9",
   "identifier": "com.openagentd.mobile",
   "build": {
     "devUrl": "http://localhost:5173",
@@ -28,12 +28,12 @@
       "csp": {
         "default-src": "'self' http://127.0.0.1:* http://localhost:* https:",
         "connect-src": "'self' http: https: ws: ipc: https://ipc.localhost",
-        "script-src": "'self' 'unsafe-inline' http://127.0.0.1:* http://localhost:*",
-        "style-src": "'self' 'unsafe-inline'",
+        "script-src": "'self' 'unsafe-inline' 'unsafe-eval' blob: data: http: https:",
+        "style-src": "'self' 'unsafe-inline' blob: data: http: https:",
         "img-src": "'self' data: blob: http: https:",
-        "font-src": "'self' data:",
+        "font-src": "'self' data: blob: http: https:",
         "media-src": "'self' blob: http: https:",
-        "frame-src": "'none'",
+        "frame-src": "'self' data: blob:",
         "object-src": "'none'",
         "worker-src": "'self' blob:"
       }

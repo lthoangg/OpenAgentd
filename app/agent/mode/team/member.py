@@ -771,8 +771,14 @@ class TeamMemberBase(abc.ABC):
         session_thinking_level = (
             session_row.thinking_level if session_row is not None else None
         )
+        last_service_tier: str | None = None
+        for msg in reversed(history):
+            value = (msg.extra or {}).get("service_tier") if msg.extra else None
+            if isinstance(value, str) and value:
+                last_service_tier = value
+                break
         effective_model = session_model or (
-            self.agent.model_id if session_thinking_level else None
+            self.agent.model_id if session_thinking_level or last_service_tier else None
         )
         if (
             self._role_label == "lead"
@@ -782,6 +788,8 @@ class TeamMemberBase(abc.ABC):
             model_kwargs: dict[str, object] = {}
             if session_thinking_level:
                 model_kwargs["thinking_level"] = session_thinking_level
+            if last_service_tier and effective_model.startswith("codex:"):
+                model_kwargs["service_tier"] = last_service_tier
             runtime_provider = self._team._provider_factory(
                 effective_model,
                 model_kwargs=model_kwargs,

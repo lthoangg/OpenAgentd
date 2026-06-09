@@ -30,6 +30,7 @@ Manual smoke-test scripts for openagentd. All scripts target `http://localhost:8
 | `cancel_queued_message.py` | Verify the × cancel flow hard-deletes a queued row: queue a follow-up, DELETE it (assert 204), DELETE again (assert 404 — row gone), stream to done, assert no `queued_turn_start` and no history entry for that id | `--queue-delay N`, `--base URL` |
 | `mention_attachments.py` | Smoke-test `@`-mention auto-attachment: text file fenced, large text head+tail truncated, image and folder mentions are reference-only (no attachment). Exits non-zero on any invariant failure | `--base URL` |
 | `undo_mid_second_turn.py` | Two-turn `/undo` scenario: turn 1 completes, turn 2 is interrupted mid-stream, `/undo` must return 202 (lead is idle post-Stop, busy-member guard does not fire) and the boundary must roll back so a follow-up runs without the interrupted prompt in context | `--base URL` |
+| `fast_mode.py` | Verify `/team/chat` accepts provider-neutral `fast_mode=true`, ignores it for non-Codex models, and can persist `extra.service_tier=fast` for a Codex model without consuming LLM tokens | `--non-codex-model ID`, `--codex-model ID`, `--base URL` |
 
 ```bash
 # New team turn
@@ -93,6 +94,10 @@ uv run python -m manual.cancel_queued_message
 
 # Two-turn /undo: complete turn 1, interrupt turn 2 mid-stream, /undo, verify boundary rolled back
 uv run python -m manual.undo_mid_second_turn
+
+# Fast mode: non-Codex ignore path; pass --codex-model when Codex is configured
+uv run python -m manual.fast_mode
+uv run python -m manual.fast_mode --codex-model codex:gpt-5.4
 
 # @-mention attachment behaviour (text fenced+truncated, image/folder reference-only)
 uv run python -m manual.mention_attachments

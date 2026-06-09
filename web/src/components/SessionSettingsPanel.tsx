@@ -321,16 +321,19 @@ function SessionModelSettings({
   defaultModel,
   sessionModel,
   sessionThinkingLevel,
+  sessionFastMode,
   onChange,
 }: {
   defaultModel: string | null
   sessionModel: string | null
   sessionThinkingLevel: string | null
-  onChange: (model: string | null, thinkingLevel: string | null) => void
+  sessionFastMode: boolean
+  onChange: (model: string | null, thinkingLevel: string | null, fastMode: boolean) => void
 }) {
   const registry = useRegistryQuery()
   const [draftModel, setDraftModel] = useState(sessionModel ?? defaultModel ?? '')
   const [draftThinkingLevel, setDraftThinkingLevel] = useState(sessionThinkingLevel ?? '')
+  const [draftFastMode, setDraftFastMode] = useState(sessionFastMode)
   const [modelPickerOpen, setModelPickerOpen] = useState(false)
   const [thinkingPickerOpen, setThinkingPickerOpen] = useState(false)
   const [activeModelIndex, setActiveModelIndex] = useState(0)
@@ -343,8 +346,14 @@ function SessionModelSettings({
   }, [modelOptions, draftModel])
   const savedModel = sessionModel ?? defaultModel ?? ''
   const savedThinkingLevel = sessionThinkingLevel ?? ''
-  const dirty = draftModel !== savedModel || draftThinkingLevel !== savedThinkingLevel
+  const savedFastMode = sessionFastMode
+  const dirty =
+    draftModel !== savedModel ||
+    draftThinkingLevel !== savedThinkingLevel ||
+    draftFastMode !== savedFastMode
   const trimmedDraftModel = draftModel.trim()
+  const effectiveDraftModel = trimmedDraftModel || defaultModel || ''
+  const fastModeAvailable = effectiveDraftModel.startsWith('codex:')
   const validModelIds = useMemo(
     () => new Set(modelOptions.map((model) => model.id)),
     [modelOptions],
@@ -388,6 +397,7 @@ function SessionModelSettings({
             onClick={() => {
               setDraftModel(savedModel)
               setDraftThinkingLevel(savedThinkingLevel)
+              setDraftFastMode(savedFastMode)
               setModelPickerOpen(false)
             }}
           >
@@ -398,7 +408,11 @@ function SessionModelSettings({
             size="sm"
             disabled={!dirty || !modelValid}
             onClick={() => {
-              onChange(trimmedDraftModel && trimmedDraftModel !== defaultModel ? trimmedDraftModel : null, draftThinkingLevel || null)
+              onChange(
+                trimmedDraftModel && trimmedDraftModel !== defaultModel ? trimmedDraftModel : null,
+                draftThinkingLevel || null,
+                fastModeAvailable && draftFastMode,
+              )
               setModelPickerOpen(false)
             }}
           >
@@ -525,6 +539,23 @@ function SessionModelSettings({
           )}
           </div>
         </label>
+        <label className="flex min-w-56 max-w-full items-start gap-2 rounded-md border border-(--color-border) bg-(--bg-card) px-3 py-2 text-xs text-(--color-text-muted)">
+          <input
+            type="checkbox"
+            checked={fastModeAvailable && draftFastMode}
+            disabled={!fastModeAvailable}
+            onChange={(e) => setDraftFastMode(e.target.checked)}
+            className="mt-0.5 h-4 w-4 accent-(--color-accent)"
+          />
+          <span>
+            <span className="block font-medium text-(--color-text-2)">Fast mode</span>
+            <span className="mt-0.5 block text-[11px]">
+              {fastModeAvailable
+                ? 'Use Codex Fast mode for messages in this session.'
+                : 'Available when the session model is codex:*.'}
+            </span>
+          </span>
+        </label>
       </div>
     </section>
   )
@@ -541,7 +572,8 @@ interface SessionSettingsPanelProps {
   workspace?: string | null
   sessionModel?: string | null
   sessionThinkingLevel?: string | null
-  onSessionModelSettingsChange?: (model: string | null, thinkingLevel: string | null) => void
+  sessionFastMode?: boolean
+  onSessionModelSettingsChange?: (model: string | null, thinkingLevel: string | null, fastMode: boolean) => void
   onClose: () => void
 }
 
@@ -551,6 +583,7 @@ export function SessionSettingsPanel({
   workspace = null,
   sessionModel = null,
   sessionThinkingLevel = null,
+  sessionFastMode = false,
   onSessionModelSettingsChange,
   onClose,
 }: SessionSettingsPanelProps) {
@@ -654,6 +687,7 @@ export function SessionSettingsPanel({
                   defaultModel={leadAgent.model}
                   sessionModel={sessionModel}
                   sessionThinkingLevel={sessionThinkingLevel}
+                  sessionFastMode={sessionFastMode}
                   onChange={onSessionModelSettingsChange}
                 />
               )}

@@ -117,6 +117,19 @@ describe('postTeamChat', () => {
     expect(form.get('thinking_level')).toBe('high')
   })
 
+  it('sends fast_mode only when requested', async () => {
+    let body: BodyInit | null | undefined
+    globalThis.fetch = mock((_url, init) => {
+      body = (init as RequestInit | undefined)?.body
+      return Promise.resolve(new Response(JSON.stringify({ status: 'accepted', session_id: 'sid' })))
+    }) as typeof fetch
+
+    await postTeamChat('hello', 'sid', false, undefined, 'normal', null, 'codex:gpt-5.4', null, false, true)
+
+    const form = body as FormData
+    expect(form.get('fast_mode')).toBe('true')
+  })
+
   it('sends shell=true when posting a bang shell command', async () => {
     let body: BodyInit | null | undefined
     globalThis.fetch = mock((_url, init) => {

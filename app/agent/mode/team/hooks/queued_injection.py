@@ -12,7 +12,7 @@ sees them in the same turn.  Mid-tool-call splicing is impossible by
 construction: ``before_model`` only fires between LLM steps, never during one.
 
 Out of scope (same as the existing post-turn drain path):
-- ``model`` / ``thinking_level`` stored on the queued row's ``extra`` are not
+- ``model`` / ``thinking_level`` / ``service_tier`` stored on the queued row's ``extra`` are not
   applied — the current turn keeps its originally-selected model.
 - Attachments stored on the queued row are not forwarded.
 """
@@ -67,7 +67,9 @@ class QueuedMessageInjectionHook(BaseAgentHook):
             await db.commit()
 
         for row in queued:
-            state.messages.append(HumanMessage(content=row.content or ""))
+            state.messages.append(
+                HumanMessage(content=row.content or "", extra=row.extra)
+            )
 
         # Emit the same SSE event the post-turn drain path uses so the UI
         # unblurs the queued bubbles and renders them in the transcript.

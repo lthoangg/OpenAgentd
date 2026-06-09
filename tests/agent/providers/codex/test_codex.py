@@ -721,6 +721,29 @@ class TestCodexResponsesHandlerBuildRequest:
         body = handler.build_request(messages, None, False, {"max_tokens": 1000})
         assert "max_output_tokens" not in body
 
+    def test_build_request_maps_fast_service_tier_to_priority(self):
+        """Codex Fast mode is sent as priority service tier upstream."""
+        handler = _CodexResponsesHandler("gpt-5.4", "https://api.example.com", {})
+        messages = [HumanMessage(content="Hello")]
+        body = handler.build_request(messages, None, False, {"service_tier": "fast"})
+        assert body["service_tier"] == "priority"
+
+    def test_build_request_omits_standard_service_tier(self):
+        """Standard/default tiers should not add a private endpoint field."""
+        handler = _CodexResponsesHandler("gpt-5.4", "https://api.example.com", {})
+        messages = [HumanMessage(content="Hello")]
+        body = handler.build_request(
+            messages, None, False, {"service_tier": "standard"}
+        )
+        assert "service_tier" not in body
+
+    def test_build_request_forwards_non_fast_service_tier(self):
+        """Allow other Codex service-tier IDs such as flex to pass through."""
+        handler = _CodexResponsesHandler("gpt-5.4", "https://api.example.com", {})
+        messages = [HumanMessage(content="Hello")]
+        body = handler.build_request(messages, None, False, {"service_tier": "flex"})
+        assert body["service_tier"] == "flex"
+
     def test_build_request_with_empty_system_message_content(self):
         """build_request() handles empty string SystemMessage content."""
         handler = _CodexResponsesHandler("gpt-5.4", "https://api.example.com", {})

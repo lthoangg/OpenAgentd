@@ -59,6 +59,7 @@ export async function postTeamChat(
   model?: string | null,
   thinkingLevel?: string | null,
   shell = false,
+  fastMode = false,
 ): Promise<{ status: string; session_id: string; message_id?: string }> {
   const formData = new FormData()
   if (message) {
@@ -81,6 +82,9 @@ export async function postTeamChat(
   }
   if (thinkingLevel !== undefined) {
     formData.append('thinking_level', thinkingLevel ?? '')
+  }
+  if (fastMode) {
+    formData.append('fast_mode', 'true')
   }
   if (shell) {
     formData.append('shell', 'true')

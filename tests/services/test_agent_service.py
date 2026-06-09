@@ -387,6 +387,7 @@ async def test_dispatch_passes_session_model_settings():
         model_provided=True,
         thinking_level="high",
         thinking_level_provided=True,
+        service_tier=None,
     )
 
 

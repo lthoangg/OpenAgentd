@@ -49,6 +49,7 @@ async def dispatch_shell_command(
     model_provided: bool = False,
     thinking_level: str | None = None,
     thinking_level_provided: bool = False,
+    service_tier: str | None = None,
 ) -> None:
     """Run *command* as a shell tool call and persist it in chat history.
 
@@ -193,6 +194,8 @@ async def dispatch_shell_command(
             msg_extra["model"] = effective_model
         if effective_thinking_level:
             msg_extra["thinking_level"] = effective_thinking_level
+        if service_tier:
+            msg_extra["service_tier"] = service_tier
         msg_extra["kind"] = "user_shell"
         msg_extra["command"] = command
 

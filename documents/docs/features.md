@@ -16,7 +16,7 @@ exists. When you ship something new, **add it here first** — slides, README,
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 15 providers. Your keys.
 
-**Latest release:** v1.44.11 · June 9, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.44.11)
+**Latest release:** v1.45.0 · June 9, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.45.0)
 
 ---
 
@@ -323,6 +323,8 @@ agnostic by design. Deeper doc: [`configuration/providers.md`](./configuration/p
   built-in OAuth helper.
 - **Codex usage monitor** `[v1.32.0]` — Settings → Providers shows live Codex
   OAuth usage windows, resets, credits, unlimited plans, and spend-cap/limit states.
+- **Codex Fast mode** `[v1.45.0]` — when the lead model is `codex:*`, session
+  settings can opt new messages into ChatGPT-subscription Fast mode.
 - **Copilot usage monitor** `[v1.33.0]` — Settings → Providers shows live Copilot
   premium request quota from the saved OAuth token.
 - **Provider plugin usage hooks** `[v1.33.0]` — OAuth provider plugins can

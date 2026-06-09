@@ -502,6 +502,7 @@ class AgentTeam:
         model_provided: bool = False,
         thinking_level: str | None = None,
         thinking_level_provided: bool = False,
+        service_tier: str | None = None,
     ) -> str:
         """Deliver a user message to the team lead. Returns the session_id.
 
@@ -610,6 +611,8 @@ class AgentTeam:
                 extra_with_model["model"] = effective_model
                 if effective_thinking_level:
                     extra_with_model["thinking_level"] = effective_thinking_level
+                if service_tier:
+                    extra_with_model["service_tier"] = service_tier
                 msg_extra = extra_with_model
 
                 await save_message(db, lead_uuid, user_msg, extra=msg_extra)

@@ -2,7 +2,7 @@
 title: Mobile app
 description: Tauri mobile shell for connecting to remote OpenAgentd API servers.
 status: draft
-updated: 2026-05-28
+updated: 2026-06-09
 ---
 
 # Mobile app
@@ -19,6 +19,8 @@ Mobile uses the shared **Backend connection** UI:
 - The built-in desktop sidecar row is hidden because mobile has no bundled backend.
 
 For simulator development, `http://localhost:8000` usually reaches the Mac backend. Physical devices should use a LAN IP or HTTPS endpoint.
+
+Production mobile builds allow `about:` in `frame-src` so sandboxed MCP Apps rendered through `iframe.srcdoc` stay interactive under the packaged Tauri CSP. The app HTML still receives its own MCP resource CSP from `_meta.ui.csp`; the shell-level rule only permits the `about:srcdoc` iframe document.
 
 ## Commands
 

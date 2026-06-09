@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of every user-visible OpenAgentd feature. Source of truth for slides, README, comparison docs, and marketing copy.
 status: stable
-updated: 2026-06-02
+updated: 2026-06-09
 ---
 
 # Features
@@ -16,7 +16,7 @@ exists. When you ship something new, **add it here first** — slides, README,
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 15 providers. Your keys.
 
-**Latest release:** v1.44.1 · June 3, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.44.1)
+**Latest release:** v1.44.11 · June 9, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.44.11)
 
 ---
 
@@ -379,6 +379,8 @@ Four orthogonal ways to add capability. Deeper docs:
   if later tool results reference the same UI resource, chat shows only the
   newest artifact for that resource. The same-server bridge can invoke tools
   currently advertised by the artifact's originating MCP server only `[v1.37.0]`.
+  Production desktop and mobile Tauri shells allow `about:` frames so `srcdoc`
+  MCP Apps render interactively under the packaged CSP `[v1.44.11]`.
 - **MCP `PATH` resolution on desktop** `[v1.17.x]` — desktop auto-resolves the
   shell `PATH` so `npx` / `uvx` stdio servers can find their commands. Restart
   any MCP server in Settings to re-detect.

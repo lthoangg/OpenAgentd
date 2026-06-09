@@ -4,19 +4,6 @@ import userEvent from "@testing-library/user-event"
 import { MCPAppResult } from "@/components/MCPAppResult"
 
 const callMcpAppTool = mock(async () => ({ result: { content: [{ type: "text", text: "saved" }] } }))
-let platform = { isTauri: false, os: "unknown", isMacOverlay: false }
-const createdAppHtml: string[] = []
-const createObjectURL = mock((blob: unknown) => {
-  void (blob as Blob).text().then((text) => createdAppHtml.push(text))
-  return `blob:mcp-app-${createdAppHtml.length}`
-})
-const revokeObjectURL = mock(() => undefined)
-Object.defineProperty(URL, "createObjectURL", { value: createObjectURL, configurable: true })
-Object.defineProperty(URL, "revokeObjectURL", { value: revokeObjectURL, configurable: true })
-
-mock.module("@/hooks/use-platform", () => ({
-  getPlatform: () => platform,
-}))
 
 afterEach(cleanup)
 
@@ -62,16 +49,12 @@ mock.module("@/api/client", () => ({
 describe("MCPAppResult", () => {
   afterEach(() => {
     bridgeInstances.length = 0
-    createdAppHtml.length = 0
     MockBridge.lastTransport = undefined
-    createObjectURL.mockClear()
-    revokeObjectURL.mockClear()
     callMcpAppTool.mockClear()
     callMcpAppTool.mockImplementation(async () => ({ result: { content: [{ type: "text", text: "saved" }] } }))
-    platform = { isTauri: false, os: "unknown", isMacOverlay: false }
   })
 
-  it("renders MCP app HTML from a blob URL so desktop CSP does not block app scripts", async () => {
+  it("renders MCP app HTML from srcdoc so production shells avoid blob/data frame quirks", async () => {
     render(
       <MCPAppResult
         mcpApp={{
@@ -87,34 +70,15 @@ describe("MCPAppResult", () => {
       />,
     )
 
-    await waitFor(() => expect(document.body.querySelector("iframe")?.getAttribute("src")).toMatch(/^blob:/))
+    await waitFor(() => expect(document.body.querySelector("iframe")?.getAttribute("srcdoc")).toContain("mcp app"))
 
     const iframe = document.body.querySelector("iframe")
     expect(iframe).toBeTruthy()
     expect(iframe?.getAttribute("sandbox")).toBe("allow-scripts allow-same-origin allow-forms")
     expect(iframe?.getAttribute("allow")).toContain("clipboard-write")
-    expect(iframe?.getAttribute("srcdoc")).toBeNull()
+    expect(iframe?.getAttribute("src")).toBeNull()
     expect(iframe?.getAttribute("title")).toBe("create_view")
     expect(screen.getByText(/Experimental sandbox:/)).toBeTruthy()
-  })
-
-  it("uses a data URL for iOS Tauri because production WKWebView can leave blob frames blank", async () => {
-    platform = { isTauri: true, os: "ios", isMacOverlay: false }
-    render(
-      <MCPAppResult
-        mcpApp={{
-          tool: "create_view",
-          resourceUri: "ui://excalidraw/mcp-app.html",
-          html: "<html><body>mcp app</body></html>",
-          mimeType: "text/html;profile=mcp-app",
-        }}
-      />,
-    )
-
-    await waitFor(() => expect(document.body.querySelector("iframe")?.getAttribute("src")).toMatch(/^data:text\/html/))
-
-    expect(createObjectURL).not.toHaveBeenCalled()
-    expect(decodeURIComponent(document.body.querySelector("iframe")?.getAttribute("src") ?? "")).toContain("mcp app")
   })
 
   it("applies resource CSP domains for externally loaded MCP app modules", async () => {
@@ -137,9 +101,9 @@ describe("MCPAppResult", () => {
       />,
     )
 
-    await waitFor(() => expect(createdAppHtml[0]).toContain("mcp app"))
+    await waitFor(() => expect(document.body.querySelector("iframe")?.getAttribute("srcdoc")).toContain("mcp app"))
 
-    const appHtml = createdAppHtml[0] ?? ""
+    const appHtml = document.body.querySelector("iframe")?.getAttribute("srcdoc") ?? ""
     expect(appHtml).toContain("script-src 'self' blob: data: https://esm.sh 'unsafe-inline' 'unsafe-eval'")
     expect(appHtml).toContain("connect-src 'self' https://esm.sh")
   })
@@ -156,9 +120,9 @@ describe("MCPAppResult", () => {
       />,
     )
 
-    await waitFor(() => expect(createdAppHtml[0]).toContain("localStorage"))
+    await waitFor(() => expect(document.body.querySelector("iframe")?.getAttribute("srcdoc")).toContain("localStorage"))
 
-    const appHtml = createdAppHtml[0] ?? ""
+    const appHtml = document.body.querySelector("iframe")?.getAttribute("srcdoc") ?? ""
     expect(appHtml.indexOf("function createStorage")).toBeLessThan(appHtml.indexOf('localStorage.getItem("x")'))
     expect(appHtml).toContain("'localStorage','sessionStorage'")
   })
@@ -180,8 +144,7 @@ describe("MCPAppResult", () => {
     await waitFor(() => expect(bridgeInstances[0]?.connect).toHaveBeenCalled())
 
     const iframe = document.body.querySelector("iframe")
-    expect(iframe?.getAttribute("src")).toMatch(/^blob:/)
-    await waitFor(() => expect(createdAppHtml[0]).toContain("mcp app"))
+    expect(iframe?.getAttribute("srcdoc")).toContain("mcp app")
     expect(MockBridge.lastTransport).toBeTruthy()
 
     bridgeInstances[0]?.oninitialized?.()

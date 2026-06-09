@@ -1,7 +1,7 @@
 {
   "name": "openagentd-web",
   "private": true,
-  "version": "1.44.11",
+  "version": "1.45.0",
   "type": "module",
   "scripts": {
     "dev": "vite",

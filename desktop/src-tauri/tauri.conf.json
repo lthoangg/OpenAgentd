@@ -41,7 +41,7 @@
         "img-src": "'self' data: blob: http: https:",
         "font-src": "'self' data: blob: http: https:",
         "media-src": "'self' blob: http: https:",
-        "frame-src": "'self' data: blob: http: https:",
+        "frame-src": "'self' about: data: blob: http: https:",
         "object-src": "'none'",
         "worker-src": "'self' blob:"
       },

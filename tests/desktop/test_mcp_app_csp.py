@@ -29,6 +29,7 @@ def test_desktop_csp_allows_general_mcp_app_resources_in_production() -> None:
     assert "https:" in csp["style-src"]
     assert "http:" in csp["font-src"]
     assert "https:" in csp["font-src"]
+    assert "about:" in csp["frame-src"]
     assert "blob:" in csp["frame-src"]
     assert "data:" in csp["frame-src"]
     assert "http:" in csp["frame-src"]
@@ -38,6 +39,7 @@ def test_desktop_csp_allows_general_mcp_app_resources_in_production() -> None:
 def test_mobile_csp_allows_general_mcp_app_frames_in_production() -> None:
     csp = _csp("mobile/src-tauri/tauri.conf.json")
 
+    assert "about:" in csp["frame-src"]
     assert "blob:" in csp["frame-src"]
     assert "data:" in csp["frame-src"]
     assert "http:" in csp["frame-src"]

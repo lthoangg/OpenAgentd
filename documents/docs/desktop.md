@@ -2,7 +2,7 @@
 title: Desktop distribution
 description: How OpenAgentd packages, ships, signs, and updates the native desktop app.
 status: stable
-updated: 2026-05-28
+updated: 2026-06-09
 ---
 
 # Desktop distribution
@@ -113,6 +113,8 @@ The **About OpenAgentd** item opens the native About panel populated with the ap
 The **View → Reload** action (`⌘/Ctrl+R`) calls `window.location.reload()` on the active webview, respecting the HTTP cache. The tray **Reload Window** action uses the same webview-only reload path for cases where the main window is hidden or wedged. **Force Reload** (`⌘/Ctrl+Shift+R`) keeps native windows alive, restarts the managed production sidecar, waits for health, then reinjects the new backend port/token into every open webview. In dev mode (`OPENAGENTD_DEV_BACKEND_URL`), Tauri does not own the backend process, so Force Reload falls back to webview-only reload. Reload always brings a window to front before refreshing so the user sees the result.
 
 The utility actions **View Config Folder** and **View Backend Log** are desktop diagnostics. Config opens the shared CLI/desktop config root (`$OPENAGENTD_CONFIG_DIR` or `~/.config/openagentd`). Backend log reveals the bundled sidecar's `backend.log` when the sidecar is running; it is unavailable when the app is connected only to an external backend.
+
+Packaged desktop builds allow `about:` in `frame-src` so sandboxed MCP Apps rendered through `iframe.srcdoc` stay interactive under the production Tauri CSP. The app HTML still receives its own MCP resource CSP from `_meta.ui.csp`; the shell-level rule only permits the `about:srcdoc` document that WebKit/Chromium creates for the iframe.
 
 **Zoom In** / **Zoom Out** / **Actual Size** (`⌘/Ctrl+=`, `⌘/Ctrl+-`, `⌘/Ctrl+0`) drive `Webview::set_zoom` on every open OpenAgentd window — the bare `=` key is bound so the user doesn't need Shift, matching Chrome and Safari. The zoom factor multiplies by 1.2 per press, clamped to `[0.5, 3.0]`, and resets to 1.0. State is session-only — not persisted across restarts — because the desktop shell has no other settings store.
 

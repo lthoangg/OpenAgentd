@@ -392,7 +392,13 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
     }
-  }, [value, disabled, onSubmit, files, shellMode])
+  }, [
+    value,
+    disabled,
+    onSubmit,
+    files,
+    shellMode,
+  ])
 
   const buildAcceptString = useCallback((): string => {
     const parts: string[] = [

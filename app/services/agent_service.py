@@ -399,6 +399,7 @@ async def dispatch_user_message(
     model_provided: bool = False,
     thinking_level: str | None = None,
     thinking_level_provided: bool = False,
+    service_tier: str | None = None,
 ) -> tuple[str, int]:
     """Send a user message through the team.
 
@@ -433,6 +434,7 @@ async def dispatch_user_message(
         model_provided=model_provided or model is not None,
         thinking_level=thinking_level,
         thinking_level_provided=thinking_level_provided or thinking_level is not None,
+        service_tier=service_tier,
     )
     logger.info(
         "agent_service_dispatched session_id={} attachments={}",
@@ -453,6 +455,7 @@ async def dispatch_user_shell_command(
     model_provided: bool = False,
     thinking_level: str | None = None,
     thinking_level_provided: bool = False,
+    service_tier: str | None = None,
 ) -> str:
     """Run a user-entered shell command in the session workspace."""
     sid = session_id or str(uuid7())
@@ -470,6 +473,7 @@ async def dispatch_user_shell_command(
                 model_provided=model_provided,
                 thinking_level=thinking_level,
                 thinking_level_provided=thinking_level_provided,
+                service_tier=service_tier,
             )
         except Exception as exc:
             logger.warning(

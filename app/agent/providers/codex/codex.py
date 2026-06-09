@@ -29,6 +29,7 @@ from app.agent.schemas.chat import AssistantMessage, ChatMessage, SystemMessage
 
 CODEX_API_BASE = "https://chatgpt.com/backend-api/codex"
 CODEX_STREAM_IDLE_TIMEOUT_SECONDS = 10.0
+_NO_SERVICE_TIER = {"", "auto", "default", "none", "off", "standard"}
 
 # Identify requests honestly as OpenAgentd.
 _DEFAULT_HEADERS = {
@@ -70,6 +71,15 @@ class _CodexResponsesHandler(ResponsesHandler):
 
         body["instructions"] = "\n\n".join(system_parts)
         body["store"] = False
+
+        service_tier = str(merged.get("service_tier") or "").lower()
+        if service_tier not in _NO_SERVICE_TIER:
+            # Codex Fast mode is exposed as the request service tier.  The
+            # official Codex config stores ``service_tier = "fast"``; the
+            # backend maps that subscription setting to priority processing.
+            body["service_tier"] = (
+                "priority" if service_tier == "fast" else service_tier
+            )
         return body
 
     async def chat(
@@ -130,7 +140,9 @@ class CodexProvider(LLMProviderBase):
         temperature: Ignored by Responses API (accepted for API compatibility).
         top_p: Ignored by Responses API (accepted for API compatibility).
         max_tokens: Hard cap on completion tokens.
-        model_kwargs: Extra request body fields passed as-is.
+        model_kwargs: Extra request body fields passed as-is. Notable keys:
+            ``service_tier="fast"`` — enable ChatGPT-subscription Codex Fast
+            mode for supported models (GPT-5.5/GPT-5.4 at time of writing).
     """
 
     def __init__(

@@ -225,6 +225,17 @@ async def team_chat(
         team_obj = await team_manager.get_or_start_team_for_session(session_id)
         team_obj = _require_team(team_obj)
 
+    effective_request_model = (
+        model
+        or (existing.model if existing is not None else None)
+        or team_obj.lead.agent.model_id
+    )
+    fast_mode_service_tier = (
+        "fast"
+        if body.fast_mode and (effective_request_model or "").startswith("codex:")
+        else None
+    )
+
     # ── Interrupt (mutually exclusive with message) ─────────────────────────
     if interrupt:
         await agent_service.interrupt_team(team_obj, session_id)
@@ -253,6 +264,7 @@ async def team_chat(
             model_provided=model_provided,
             thinking_level=thinking_level,
             thinking_level_provided=thinking_level_provided,
+            service_tier=fast_mode_service_tier,
         )
         logger.info("team_chat_shell_received session_id={}", sid)
         return {"status": "accepted", "session_id": sid}
@@ -320,6 +332,8 @@ async def team_chat(
                     queued_extra["model"] = effective_model
                 if thinking_level:
                     queued_extra["thinking_level"] = thinking_level
+                if fast_mode_service_tier:
+                    queued_extra["service_tier"] = "fast"
                 if queued_attachment_metas:
                     queued_extra["attachments"] = queued_attachment_metas
                 existing_row = await db.get(ChatSession, session_uuid)
@@ -333,6 +347,8 @@ async def team_chat(
                         queued_extra["model"] = effective_model
                     if existing_row.thinking_level:
                         queued_extra["thinking_level"] = existing_row.thinking_level
+                    if fast_mode_service_tier:
+                        queued_extra["service_tier"] = "fast"
                     db.add(existing_row)
                 queued = await save_queued_user_message(
                     db,
@@ -366,6 +382,7 @@ async def team_chat(
                 model_provided=model_provided,
                 thinking_level=thinking_level,
                 thinking_level_provided=thinking_level_provided,
+                service_tier=fast_mode_service_tier,
             )
         except AttachmentError as exc:
             raise HTTPException(status_code=exc.status, detail=str(exc)) from exc

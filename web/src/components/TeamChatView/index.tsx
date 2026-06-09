@@ -157,6 +157,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const sessionTitle   = useTeamStore((s) => s.sessionTitle)
   const sessionModel   = useTeamStore((s) => s.sessionModel)
   const sessionThinkingLevel = useTeamStore((s) => s.sessionThinkingLevel)
+  const sessionFastMode = useTeamStore((s) => s.sessionFastMode)
   const leadName       = useTeamStore((s) => s.leadName)
 
   // Utility modal state lives in useUIStore so only one can be open at a time.
@@ -202,7 +203,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     ?.find((a) => a.is_lead)?.capabilities
   const selectedModel = sessionModel ?? ''
   const selectedThinkingLevel = sessionThinkingLevel ?? ''
-
   const voiceEnabled = true
   const voiceUnavailableReason = null
 
@@ -1117,6 +1117,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
                 workspace,
                 model: current.sessionId ? selectedModel || null : null,
                 thinkingLevel: current.sessionId ? selectedThinkingLevel || null : null,
+                fastMode: current.sessionFastMode,
                 shell,
               })
             }}
@@ -1180,6 +1181,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         workspace={agentWorkspace}
         sessionModel={sessionModel}
         sessionThinkingLevel={sessionThinkingLevel}
+        sessionFastMode={sessionFastMode}
         onSessionModelSettingsChange={setSessionModelSettings}
         onClose={closeAgentCapabilities}
       />

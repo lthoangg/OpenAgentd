@@ -64,6 +64,7 @@ function resetSessionState(
     sessionId: string | null
     model?: string | null
     thinkingLevel?: string | null
+    fastMode?: boolean
     mode?: string
     workspace?: string | null
   },
@@ -73,6 +74,7 @@ function resetSessionState(
   state.sessionTitle = null
   state.sessionModel = options.model ?? null
   state.sessionThinkingLevel = options.thinkingLevel ?? null
+  state.sessionFastMode = options.fastMode ?? false
   state.isTeamWorking = false
   state.isContinuing = false
   state.isConnected = false
@@ -172,6 +174,7 @@ export const useTeamStore = create<TeamStore>()(
     sessionTitle: null,
     sessionModel: null,
     sessionThinkingLevel: null,
+    sessionFastMode: false,
     isTeamWorking: false,
     isContinuing: false,
     isConnected: false,
@@ -203,6 +206,7 @@ export const useTeamStore = create<TeamStore>()(
           sessionId,
           model: options?.model,
           thinkingLevel: options?.thinkingLevel,
+          fastMode: options?.fastMode,
           mode: options?.mode,
           workspace: options?.workspace,
         })
@@ -233,7 +237,7 @@ export const useTeamStore = create<TeamStore>()(
       return true
     },
 
-    sendMessage: async (content: string, files?: File[], options?: { mode?: string; workspace?: string | null; model?: string | null; thinkingLevel?: string | null; shell?: boolean }) => {
+    sendMessage: async (content: string, files?: File[], options?: { mode?: string; workspace?: string | null; model?: string | null; thinkingLevel?: string | null; fastMode?: boolean; shell?: boolean }) => {
       const { leadName, agentStreams } = get()
       const leadWorking = leadName ? agentStreams[leadName]?.status === 'working' : false
 
@@ -255,6 +259,7 @@ export const useTeamStore = create<TeamStore>()(
             options?.model ?? get().sessionModel,
             options?.thinkingLevel ?? get().sessionThinkingLevel,
             options?.shell ?? false,
+            options?.fastMode ?? get().sessionFastMode,
           )
           if (result.status === 'queued' && !result.message_id) {
             throw new Error('Backend did not return a queued message id')
@@ -313,6 +318,7 @@ export const useTeamStore = create<TeamStore>()(
             extra: {
               ...(effectiveModel ? { model: effectiveModel } : {}),
               ...(effectiveThinkingLevel ? { thinking_level: effectiveThinkingLevel } : {}),
+              ...((options?.fastMode ?? draft.sessionFastMode) ? { service_tier: 'fast' } : {}),
               ...(options?.shell ? { kind: 'user_shell', command: content.replace(/^!/, '').trim() } : {}),
             },
           })
@@ -330,6 +336,7 @@ export const useTeamStore = create<TeamStore>()(
           options?.model ?? get().sessionModel,
           options?.thinkingLevel ?? get().sessionThinkingLevel,
           options?.shell ?? false,
+          options?.fastMode ?? get().sessionFastMode,
         )
         set((draft) => {
           draft.sessionId = result.session_id
@@ -351,10 +358,11 @@ export const useTeamStore = create<TeamStore>()(
       }
     },
 
-    setSessionModelSettings: (model: string | null, thinkingLevel: string | null) => {
+    setSessionModelSettings: (model: string | null, thinkingLevel: string | null, fastMode?: boolean) => {
       set((draft) => {
         draft.sessionModel = model
         draft.sessionThinkingLevel = thinkingLevel
+        if (fastMode !== undefined) draft.sessionFastMode = fastMode
       })
     },
 
@@ -663,6 +671,7 @@ export const useTeamStore = create<TeamStore>()(
           draft.sessionId = sessionId
           draft.sessionModel = history.lead.model ?? null
           draft.sessionThinkingLevel = history.lead.thinking_level ?? null
+          draft.sessionFastMode = false
           draft.isTeamWorking = history.lead.running === true
           draft.isContinuing = false
           draft.error = null

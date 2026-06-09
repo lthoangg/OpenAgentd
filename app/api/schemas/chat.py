@@ -39,6 +39,10 @@ class ChatForm(BaseModel):
     thinking_level: str | None = Field(
         None, description="Per-session lead thinking level override."
     )
+    fast_mode: bool = Field(
+        False,
+        description="Per-request fast mode. Ignored by unsupported providers.",
+    )
     shell: bool = Field(
         False,
         description="Run message text as a shell command instead of an agent prompt.",
@@ -54,6 +58,7 @@ class ChatForm(BaseModel):
         workspace: str | None = Form(None),
         model: str | None = Form(None),
         thinking_level: str | None = Form(None),
+        fast_mode: bool = Form(False),
         shell: bool = Form(False),
     ) -> "ChatForm":
         try:
@@ -65,6 +70,7 @@ class ChatForm(BaseModel):
                 workspace=workspace,
                 model=model,
                 thinking_level=thinking_level,
+                fast_mode=fast_mode,
                 shell=shell,
             )
         except ValidationError as exc:

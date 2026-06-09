@@ -252,6 +252,48 @@ class TestTeamChatRoute:
         assert kwargs["thinking_level"] == "high"
         assert kwargs["thinking_level_provided"] is True
 
+    def test_team_chat_passes_fast_mode_per_request_for_codex(
+        self, app_with_team, test_team
+    ):
+        test_team.handle_user_message = AsyncMock(return_value=str(uuid.uuid7()))
+        client = TestClient(app_with_team)
+        with patch(
+            "app.api.routes.team.chat.is_registered_model_id",
+            AsyncMock(return_value=True),
+        ):
+            response = client.post(
+                "/api/team/chat",
+                data={
+                    "message": "Hello team",
+                    "model": "codex:gpt-5.4",
+                    "fast_mode": "true",
+                },
+            )
+        assert response.status_code == 202
+        kwargs = test_team.handle_user_message.call_args.kwargs
+        assert kwargs["service_tier"] == "fast"
+
+    def test_team_chat_ignores_fast_mode_for_non_codex_model(
+        self, app_with_team, test_team
+    ):
+        test_team.handle_user_message = AsyncMock(return_value=str(uuid.uuid7()))
+        client = TestClient(app_with_team)
+        with patch(
+            "app.api.routes.team.chat.is_registered_model_id",
+            AsyncMock(return_value=True),
+        ):
+            response = client.post(
+                "/api/team/chat",
+                data={
+                    "message": "Hello team",
+                    "model": "openai:gpt-5.5",
+                    "fast_mode": "true",
+                },
+            )
+        assert response.status_code == 202
+        kwargs = test_team.handle_user_message.call_args.kwargs
+        assert kwargs["service_tier"] is None
+
     def test_team_chat_empty_model_settings_reset(self, app_with_team, test_team):
         test_team.handle_user_message = AsyncMock(return_value=str(uuid.uuid7()))
         client = TestClient(app_with_team)

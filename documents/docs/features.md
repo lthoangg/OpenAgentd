@@ -323,6 +323,8 @@ agnostic by design. Deeper doc: [`configuration/providers.md`](./configuration/p
   built-in OAuth helper.
 - **Codex usage monitor** `[v1.32.0]` — Settings → Providers shows live Codex
   OAuth usage windows, resets, credits, unlimited plans, and spend-cap/limit states.
+- **Codex Fast mode** `[v1.44.11]` — when the lead model is `codex:*`, the
+  composer can opt a single message into ChatGPT-subscription Fast mode.
 - **Copilot usage monitor** `[v1.33.0]` — Settings → Providers shows live Copilot
   premium request quota from the saved OAuth token.
 - **Provider plugin usage hooks** `[v1.33.0]` — OAuth provider plugins can

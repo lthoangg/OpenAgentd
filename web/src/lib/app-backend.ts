@@ -5,6 +5,7 @@ export interface SavedAppServer {
 
 export interface AppBackendStatus {
   base_url: string
+  token?: string | null
   mode?: 'bundled' | 'external'
   sidecar_running: boolean
   external: boolean

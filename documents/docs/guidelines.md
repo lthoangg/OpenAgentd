@@ -195,7 +195,6 @@ web/src/__tests__/
 - Import from `@/` — tsconfig paths resolve to `src/`.
 - `useStore.setState(partial)` to seed state; `useStore.getState().action()` to invoke.
 - No `require()` — static ESM imports only.
-- Route screens are lazy-loaded in `web/src/router.ts` with `React.lazy`; keep heavyweight settings/telemetry/cockpit code out of the initial bundle.
 - Component tests use `render` from `@testing-library/react` + `user-event`; pure utils and store logic are tested directly without React renders.
 
 ---

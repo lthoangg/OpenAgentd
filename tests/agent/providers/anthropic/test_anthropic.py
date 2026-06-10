@@ -30,6 +30,16 @@ def test_anthropic_provider_accepts_secret_str() -> None:
     assert provider.base_url == "https://api.anthropic.com"
 
 
+def test_anthropic_provider_accepts_custom_timeout() -> None:
+    provider = AnthropicProvider(
+        api_key="sk-ant-test",
+        model="claude-sonnet-4-6",
+        timeout=None,
+    )
+
+    assert provider._timeout is None
+
+
 def test_anthropic_payload_converts_system_tools_and_thinking() -> None:
     provider = AnthropicProvider(
         api_key="sk-ant-test",

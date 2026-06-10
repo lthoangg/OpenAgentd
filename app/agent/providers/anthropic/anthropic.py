@@ -207,6 +207,7 @@ class AnthropicProvider(LLMProviderBase):
         temperature: float | None = None,
         top_p: float | None = None,
         max_tokens: int | None = None,
+        timeout: float | httpx.Timeout | None = 120,
         model_kwargs: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(
@@ -225,6 +226,7 @@ class AnthropicProvider(LLMProviderBase):
             resolved_key, headers, use_api_key_header=use_api_key_header
         )
         self._messages_path = "/v1/messages?beta=true" if beta else "/v1/messages"
+        self._timeout = timeout
 
     def _payload(
         self,
@@ -254,7 +256,7 @@ class AnthropicProvider(LLMProviderBase):
         **kwargs: Any,
     ) -> AssistantMessage:
         merged = self._merged_kwargs(**kwargs)
-        async with httpx.AsyncClient(timeout=120) as client:
+        async with httpx.AsyncClient(timeout=self._timeout) as client:
             response = await client.post(
                 f"{self.base_url}{self._messages_path}",
                 headers=self.headers,
@@ -306,7 +308,7 @@ class AnthropicProvider(LLMProviderBase):
         chunk_id = f"anthropic-{int(time.time())}"
         usage = Usage()
         tool_call_indexes: dict[int, int] = {}
-        async with httpx.AsyncClient(timeout=120) as client:
+        async with httpx.AsyncClient(timeout=self._timeout) as client:
             async with client.stream(
                 "POST",
                 f"{self.base_url}{self._messages_path}",

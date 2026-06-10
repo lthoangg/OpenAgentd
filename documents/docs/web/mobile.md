@@ -2,7 +2,7 @@
 title: Mobile Layout
 description: Phone-first responsive design — breakpoints, safe areas, master/detail patterns, and per-component mobile behaviour.
 status: stable
-updated: 2026-05-31
+updated: 2026-06-10
 ---
 
 # Mobile layout
@@ -43,6 +43,9 @@ Use `h-dvh` everywhere instead of `h-screen` (iOS Safari dynamic toolbar).
 - Prop: `mobileOpen / onMobileClose` (owner: `TeamChatView`).
 - `showIconOnly = !isMobile && collapsed` — icon-only mode is desktop-only.
 - Command palette button hidden on mobile (`onCommandPalette` prop omitted).
+- Row edit/delete actions are always visible on coarse pointers and use larger hit areas; desktop keeps hover-only compact actions.
+- Pull down from the top of the recent-session list to refresh sessions; the app uses an explicit pull affordance because native overscroll refresh is disabled for cockpit stability.
+- Loading rows use two-line skeletons matching the final session row shape.
 
 ### CodingSidebar (`CodingSidebar.tsx`)
 Mirrors the `Sidebar` pattern for `/coding` mode:
@@ -54,6 +57,7 @@ Mirrors the `Sidebar` pattern for `/coding` mode:
 - Coding session restore and workspace list behavior is shared with desktop; see [Coding sessions UI](./coding-sessions.md).
 - `handleSessionSelect` calls `onMobileClose()` so picking a session auto-dismisses the drawer.
 - `TeamChatView`'s hamburger routes to `setMobileSidebarOpen` on coding+mobile (shares state with the regular `Sidebar` drawer).
+- Workspace/session row actions grow under coarse pointers so new-session, worktree, edit, and remove buttons are finger-sized on phones.
 
 ### CodingWorkspacePanel (`CodingWorkspacePanel.tsx`)
 Right-side workspace explorer for `/coding` mode.
@@ -67,9 +71,11 @@ Right-side workspace explorer for `/coding` mode.
 - `Ctrl+P` (command palette) and `v` (cycle view mode) shortcuts no-op on mobile.
 - `CommandPalette` is never rendered on mobile (`!isMobile && showPalette`).
 - User and queued-message bubbles can use the full chat width on mobile; `md:` and wider viewports keep the narrower desktop caps.
+- Long single-agent transcripts render the newest 80 turns first and expose **Show earlier messages** to reveal older turns in chunks, reducing initial mobile layout cost.
 
 ### FloatingInputBar (`FloatingInputBar.tsx`) / InputBar (`InputBar.tsx`)
 - Mobile: static docked `<div>` at the bottom with `border-t`, `backdrop-blur`, `.pb-safe`. No drag, no localStorage position.
+- On Tauri iOS/Android, `useVisualKeyboardInset()` listens to `visualViewport` and adds keyboard occlusion to bottom padding so the composer stays above the soft keyboard.
 - Desktop: draggable floating bar (existing behaviour unchanged).
 - Mobile keyboard: plain `Enter` inserts a newline; users submit with the Send button. Desktop keeps `Enter` to send and `Shift+Enter` for newline.
 - Voice input: the mic button sits beside Send on mobile and desktop. It uses the current browser/WebView speech recognizer when available; unsupported runtimes show a disabled button with a tooltip. Listening starts and stops only from button taps/clicks; no mobile-specific silence auto-stop.
@@ -86,6 +92,13 @@ All three use **master/detail** on mobile — one pane at a time, never side-by-
 Desktop: fixed-width left column + flex-1 right column (unchanged).
 
 `SchedulerPanel` previously used `lg:w-96` / `hidden lg:flex` (viewport breakpoints). These were replaced with explicit `isMobile` branches — the panel's own width (`min(960px, 90vw)`) is narrower than 1024 px on mobile so `lg:` never fired.
+
+### MCP app artifacts (`MCPAppResult.tsx`)
+
+- Inline cards include a host-side fullscreen button; embedded apps can still request fullscreen through the bridge.
+- Fullscreen mode is edge-to-edge on desktop/web. In Tauri mobile shells it applies `env(safe-area-inset-*)` padding so canvases avoid the notch/Dynamic Island and home indicator.
+- Header/caption chrome is hidden in fullscreen so the iframe owns the available screen area.
+- The bridge receives live theme updates when the shell theme changes.
 
 ### Full-screen sheet modals (`WikiPanel`, `SchedulerPanel`, `CommandPalette`)
 Centered modal surfaces switch to a full-bleed sheet on mobile:
@@ -112,6 +125,10 @@ Centered modal surfaces switch to a full-bleed sheet on mobile:
 
 ---
 
+## Image lightbox
+
+Generated and attached images open in a shared full-screen lightbox. Touch shells support swipe-down-to-dismiss, double-tap zoom, and two-finger pinch zoom (1×–4×); desktop keeps backdrop click and Escape.
+
 ## File attachment remove button (`ImageAttachment`, `FileCard`)
 
 The remove (×) button on pending attachments uses `group-hover` to appear on desktop. On mobile, hover never fires, so the button is always visible (`opacity-100 md:opacity-0 md:group-hover:opacity-100`).
@@ -135,6 +152,9 @@ Both footer status rows use `flex-wrap items-center justify-between gap-x-3 gap-
 ## Shared primitive guards
 
 A few `components/ui/*` primitives have responsive guards so individual call sites don't have to:
+
+- **`long-press-button`**: mobile long-press actions trigger best-effort haptic feedback (`navigator.vibrate`) on Tauri iOS/Android when available.
+- **Tiny text utilities**: `.text-[9px]` and `.text-[10px]` are lifted to an 11 px floor under `html[data-mobile-shell]`; desktop density is unchanged.
 
 - **`popover`**: `w-[min(18rem,calc(100vw-1rem))]` — never overflows the viewport when anchored near the edge.
 - **`select`**: `max-w-[calc(100vw-1rem)]` on the content popup.

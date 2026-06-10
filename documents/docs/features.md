@@ -114,14 +114,16 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   mentions load that folder's `AGENTS.md` when present. Caps at 20 mentions /
   20 MB / ~32k chars per turn. Persists on queued messages.
 - **Image viewer (full-screen)** `[since v1.0]` — click any generated or attached
-  image to open in a lightbox.
+  image to open in a lightbox; touch shells support swipe-down dismissal,
+  double-tap zoom, and pinch zoom `[v1.45.2]`.
 - **Workspace files panel** `[since v1.0]` — every file the agent reads, writes, or
   generates appears in the left drawer. Click to preview or download. See
   [`web/workspace-files.md`](./web/workspace-files.md).
 - **Todos panel** `[since v1.0]` — task board with a topbar progress badge
   `<finished>/<total>` `[v1.17.0]`. Live invalidation. See [`web/todos.md`](./web/todos.md).
 - **Mobile / phone-first layout** `[since v1.0]` — breakpoints, safe areas, drawer
-  shapes, and composer keyboard behaviour optimized for small screens. See
+  shapes, composer keyboard avoidance, touch row actions, pull-to-refresh,
+  haptics, and legibility guards optimized for small screens `[v1.45.2]`. See
   [`web/mobile.md`](./web/mobile.md).
 - **macOS overlay + Tauri drag region** `[since v1.0]` — the header doubles as the
   window drag region; macOS gets the proper traffic-light overlay.
@@ -377,8 +379,9 @@ Four orthogonal ways to add capability. Deeper docs:
   resources render as sandboxed sibling chat artifacts. The first producer is
   MCP Apps: MCP tools that declare `_meta.ui.resourceUri` can render `ui://`
   resources with MIME `text/html;profile=mcp-app`. First slice targets
-  interactive Excalidraw diagrams with a 90%-screen fullscreen edit overlay;
-  if later tool results reference the same UI resource, chat shows only the
+  interactive Excalidraw diagrams; fullscreen now uses the full viewport with
+  mobile safe-area padding, and the host exposes its own fullscreen button
+  `[v1.45.2]`. If later tool results reference the same UI resource, chat shows only the
   newest artifact for that resource. The same-server bridge can invoke tools
   currently advertised by the artifact's originating MCP server only `[v1.37.0]`.
   Production desktop and mobile Tauri shells allow `about:` frames so `srcdoc`

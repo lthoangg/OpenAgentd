@@ -17,6 +17,7 @@ Mobile uses the shared **Backend connection** UI:
 - **Save** persists or renames a server for future use.
 - Saved servers can be removed and show live status indicators.
 - The built-in desktop sidecar row is hidden because mobile has no bundled backend.
+- Shared web UI mobile affordances include safe-area-aware fullscreen MCP apps, keyboard-avoiding composer padding, pull-to-refresh for recent sessions, and touch gestures in the image lightbox. See [`web/mobile.md`](./web/mobile.md).
 
 For simulator development, `http://localhost:8000` usually reaches the Mac backend. Physical devices should use a LAN IP or HTTPS endpoint.
 

@@ -347,6 +347,12 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
       case 'queued_turn_start': {
         const agent = d.agent as string
         const messageIds = Array.isArray(d.message_ids) ? new Set(d.message_ids as string[]) : null
+        const eventMessages = Array.isArray(d.messages)
+          ? (d.messages as Array<{ id?: unknown; content?: unknown }>).flatMap((msg) => {
+              if (typeof msg.id !== 'string' || typeof msg.content !== 'string') return []
+              return [{ id: msg.id, content: msg.content }]
+            })
+          : []
         set((draft) => {
           ensureAgent(draft, agent)
           if (agent !== draft.leadName || !draft.sessionId) return
@@ -358,7 +364,21 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
             if (msg.sessionId !== draft.sessionId) return false
             return messageIds === null || messageIds.has(msg.id)
           })
-          if (queued.length === 0) return
+          const queuedIds = new Set(queued.map((msg) => msg.id))
+          const messages = [
+            ...queued.map((msg) => ({
+              id: msg.id,
+              content: msg.content,
+              submittedAt: msg.submittedAt,
+            })),
+            ...eventMessages
+              .filter((msg) => !queuedIds.has(msg.id))
+              .map((msg) => ({
+                ...msg,
+                submittedAt: Date.now(),
+              })),
+          ]
+          if (messages.length === 0) return
           const now = Date.now()
           const stream = draft.agentStreams[agent]
           stream.currentBlocks = stampOpenTextBlocks(
@@ -366,9 +386,9 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
             now,
             stream._turnStartedAt,
           )
-          const nextTurnStartedAt = queued[0]?.submittedAt ?? now
+          const nextTurnStartedAt = messages[0]?.submittedAt ?? now
           stream.currentBlocks.push(
-            ...queued.map((msg) => ({
+            ...messages.map((msg) => ({
               id: msg.id,
               type: 'user' as const,
               content: msg.content,
@@ -376,7 +396,6 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
             })),
           )
           stream._turnStartedAt = nextTurnStartedAt
-          const queuedIds = new Set(queued.map((msg) => msg.id))
           draft._pendingMessages = draft._pendingMessages.filter((msg) => !queuedIds.has(msg.id))
         })
         break

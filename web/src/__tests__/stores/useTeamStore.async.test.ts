@@ -775,6 +775,28 @@ describe("sendMessage: queue behaviour", () => {
     ])
   })
 
+  it("renders backend-provided loop turn messages while streaming", () => {
+    useTeamStore.setState({
+      sessionId: "session-a",
+      leadName: "lead",
+      agentStreams: {
+        lead: makeStream({ status: "idle" as const }),
+      },
+      _pendingMessages: [],
+    })
+
+    useTeamStore.getState()._handleSSEEvent("queued_turn_start", {
+      agent: "lead",
+      message_ids: ["loop-1"],
+      messages: [{ id: "loop-1", content: "just say hi" }],
+    })
+    useTeamStore.getState()._handleSSEEvent("message", { agent: "lead", text: "hi" })
+
+    const blocks = useTeamStore.getState().agentStreams.lead.currentBlocks
+    expect(blocks.map((block) => block.content)).toEqual(["just say hi", "hi"])
+    expect(useTeamStore.getState().isTeamWorking).toBe(true)
+  })
+
   it("keeps queued messages for a different active session", () => {
     useTeamStore.setState({
       sessionId: "session-b",

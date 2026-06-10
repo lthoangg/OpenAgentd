@@ -475,6 +475,9 @@ class TestAgentTeamDoneDetection:
             if c.args[1].event == "queued_turn_start"
         )
         assert event.data["message_ids"] == [str(queued[0].id)]
+        assert event.data["messages"] == [
+            {"id": str(queued[0].id), "content": "queued"}
+        ]
         team.mailbox.send.assert_awaited_once()
 
     async def test_activates_queued_messages_after_lead_done_before_members_idle(

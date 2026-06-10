@@ -535,6 +535,10 @@ class AgentTeam:
                     "type": "queued_turn_start",
                     "agent": self.lead.name,
                     "message_ids": message_ids,
+                    "messages": [
+                        {"id": str(row.id), "content": row.content or ""}
+                        for row in queued
+                    ],
                 },
             ),
         )
@@ -605,6 +609,9 @@ class AgentTeam:
                     "type": "queued_turn_start",
                     "agent": self.lead.name,
                     "message_ids": [str(row.id)],
+                    "messages": [
+                        {"id": str(row.id), "content": loop.prompt},
+                    ],
                 },
             ),
         )

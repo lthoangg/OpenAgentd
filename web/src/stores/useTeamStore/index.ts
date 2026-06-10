@@ -87,6 +87,7 @@ function resetSessionState(
   state.isContinuing = false
   state.isConnected = false
   state.error = null
+  state.activeLoop = null
   state.setupRequired = null
   state._abortController = null
   state._pendingMessages = []
@@ -187,6 +188,7 @@ export const useTeamStore = create<TeamStore>()(
     isContinuing: false,
     isConnected: false,
     error: null,
+    activeLoop: null,
     setupRequired: null,
     _pendingMessages: [],
     _abortController: null,
@@ -556,8 +558,11 @@ export const useTeamStore = create<TeamStore>()(
       const content = isStart ? prompt : command
       const leadName = get().leadName
       const submittedAt = Date.now()
-      if (isStart && leadName && get().agentStreams[leadName]) {
+      if (isStart && leadName) {
         set((draft) => {
+          if (!draft.agentStreams[leadName]) {
+            draft.agentStreams[leadName] = createDefaultAgentStream()
+          }
           draft.isTeamWorking = true
           draft.isContinuing = false
           draft.error = null

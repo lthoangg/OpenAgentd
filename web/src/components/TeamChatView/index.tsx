@@ -47,7 +47,7 @@ import { useUIStore } from '@/stores/useUIStore'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { useTeamAgentsQuery } from '@/queries/useAgentsQuery'
 import { useFileRefsQuery } from '@/queries/useFileRefsQuery'
-import { AlertCircle, Brain, CalendarClock, Check, ChevronDown, FolderOpen, FolderCode, Home, ListTodo, Menu, MoreHorizontal, SlidersHorizontal, X } from 'lucide-react'
+import { AlertCircle, Brain, CalendarClock, Check, ChevronDown, FolderOpen, FolderCode, Home, ListTodo, Menu, MoreHorizontal, Pause, Play, SlidersHorizontal, Square, X } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
@@ -160,6 +160,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const sessionThinkingLevel = useTeamStore((s) => s.sessionThinkingLevel)
   const sessionFastMode = useTeamStore((s) => s.sessionFastMode)
   const leadName       = useTeamStore((s) => s.leadName)
+  const activeLoop     = useTeamStore((s) => s.activeLoop)
 
   // Utility modal state lives in useUIStore so only one can be open at a time.
   const wikiOpen = useUIStore((s) => s.wikiOpen)
@@ -608,7 +609,10 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
       case 'loop:pause':
       case 'loop:resume':
       case 'loop:stop':
-        void runLoopCommand(`/${id}`)
+        void runLoopCommand(`/${id}`).then(() => {
+          const verb = id.slice('loop:'.length)
+          pushToast({ tone: 'success', title: verb === 'stop' ? 'Loop stopped' : `Loop ${verb}d` })
+        })
         break
       case 'init':
         // Prompt body lives on the backend so it can be tweaked without a
@@ -657,11 +661,13 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         return true
       case 'set':
         await runLoopCommand(`/loop:set ${parsed.limit}`)
+        pushToast({ tone: 'success', title: `Loop budget set to ${parsed.limit}` })
         return true
       case 'pause':
       case 'resume':
       case 'stop':
         await runLoopCommand(`/loop:${parsed.kind}`)
+        pushToast({ tone: 'success', title: parsed.kind === 'stop' ? 'Loop stopped' : `Loop ${parsed.kind}d` })
         return true
     }
   }, [pushToast, runLoopCommand])
@@ -809,6 +815,11 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     mobileActionsSwipeStartRef.current = null
   }, [])
 
+  const loopLabel = activeLoop
+    ? `${activeLoop.paused ? 'Loop paused' : activeLoop.prompt ? 'Loop active' : 'Loop ready'}${activeLoop.prompt ? `: "${activeLoop.prompt}"` : ''}`
+    : null
+  const loopProgress = activeLoop ? `${activeLoop.used}/${activeLoop.limit}` : null
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -907,6 +918,26 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
               </span>
             ) : null}
           </div>
+
+          {activeLoop && loopLabel && loopProgress && (
+            <LoopStatusPill
+              label={loopLabel}
+              progress={loopProgress}
+              paused={activeLoop.paused}
+              compact={isMobile}
+              onPauseResume={() => {
+                const command = activeLoop.paused ? '/loop:resume' : '/loop:pause'
+                void runLoopCommand(command).then(() => {
+                  pushToast({ tone: 'success', title: activeLoop.paused ? 'Loop resumed' : 'Loop paused' })
+                })
+              }}
+              onStop={() => {
+                void runLoopCommand('/loop:stop').then(() => {
+                  pushToast({ tone: 'success', title: 'Loop stopped' })
+                })
+              }}
+            />
+          )}
 
           {/* Active-agent chip → dropdown of all members. Split view
               collapses to a count pill — each pane already shows its
@@ -1270,6 +1301,54 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
       {showPalette && (
         <CommandPalette commands={paletteCommands} onClose={() => setShowPalette(false)} />
       )}
+    </div>
+  )
+}
+
+// ─── Loop status ────────────────────────────────────────────────────────────
+
+function LoopStatusPill({
+  label,
+  progress,
+  paused,
+  compact,
+  onPauseResume,
+  onStop,
+}: {
+  label: string
+  progress: string
+  paused: boolean
+  compact: boolean
+  onPauseResume: () => void
+  onStop: () => void
+}) {
+  return (
+    <div
+      className="mx-1 flex max-w-[46vw] shrink-0 items-center gap-1 rounded-full border border-(--color-border) bg-(--bg-card) px-2 py-1 text-xs text-(--color-text) shadow-sm md:max-w-sm"
+      title={`${label} · ${progress} turns`}
+    >
+      <span className="min-w-0 truncate font-medium">
+        {compact ? 'Loop' : label}
+      </span>
+      <span className="shrink-0 font-mono text-[10px] text-(--color-text-muted)">{progress}</span>
+      <button
+        type="button"
+        onClick={onPauseResume}
+        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text)"
+        aria-label={paused ? 'Resume loop' : 'Pause loop'}
+        title={paused ? 'Resume loop' : 'Pause loop'}
+      >
+        {paused ? <Play size={11} aria-hidden="true" /> : <Pause size={11} aria-hidden="true" />}
+      </button>
+      <button
+        type="button"
+        onClick={onStop}
+        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text)"
+        aria-label="Stop loop"
+        title="Stop loop"
+      >
+        <Square size={10} aria-hidden="true" />
+      </button>
     </div>
   )
 }

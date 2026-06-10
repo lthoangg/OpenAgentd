@@ -251,7 +251,10 @@ class TestAgentTeamUserMessage:
 
             assert team._loop_limits[session_id] == 20
             team.mailbox.send.assert_not_awaited()
-            mock_stream_store.assert_awaited()
+            pushed_events = [
+                call.args[1].event for call in mock_stream_store.await_args_list
+            ]
+            assert "loop_status" in pushed_events
             async with db_factory() as db:
                 messages = (await db.exec(select(SessionMessage))).all()
                 assert messages == []

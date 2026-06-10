@@ -68,7 +68,9 @@ Slash commands live in the composer picker only; the command palette does not li
   Use `/loop:set 5|10|20|50` to set the loop budget, `/loop <prompt>` to
   start, then `/loop:pause`, `/loop:resume`, or `/loop:stop` to control it.
   The control forms are transport commands, not chat turns; only `<prompt>`
-  from `/loop <prompt>` is saved as the user message.
+  from `/loop <prompt>` is saved as the user message. While a loop is ready
+  or active, the chat header shows a compact status chip with progress and
+  pause/resume/stop controls.
 - **Discovered commands** insert `/<name> ` into the textarea so you
   can type arguments before submitting. For nested commands, the picker uses
   colon syntax: `git/commit` is displayed and inserted as `/git:commit`.
@@ -116,7 +118,7 @@ Ralph Wiggum loop example:
 
 ```text
 /loop:set 20
-/loop "Run uv run pytest tests/api/routes/test_commands.py -q. If it fails, make the smallest fix and rerun the same command."
+/loop Run uv run pytest tests/api/routes/test_commands.py -q. If it fails, make the smallest fix and rerun the same command.
 ```
 
 OpenAgentd sends the exact configured prompt as a user message. Each time the

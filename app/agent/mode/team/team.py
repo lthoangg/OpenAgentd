@@ -80,6 +80,23 @@ class LoopCommand:
     limit: int | None = None
 
 
+def _loop_status_payload(
+    *,
+    prompt: str | None,
+    limit: int,
+    remaining: int,
+    paused: bool = False,
+) -> dict[str, object]:
+    used = max(limit - remaining, 0)
+    return {
+        "prompt": prompt,
+        "limit": limit,
+        "remaining": remaining,
+        "used": used,
+        "paused": paused,
+    }
+
+
 def parse_loop_command(content: str) -> LoopCommand | None:
     invocation = parse_slash_invocation(content)
     if invocation is None or invocation.command != "loop":
@@ -571,6 +588,18 @@ class AgentTeam:
         await stream_store.push_event(
             session_id,
             StreamEnvelope.from_parts(
+                "loop_status",
+                _loop_status_payload(
+                    prompt=loop.prompt,
+                    limit=self._loop_limits.get(session_id, 10),
+                    remaining=loop.remaining,
+                    paused=loop.paused,
+                ),
+            ),
+        )
+        await stream_store.push_event(
+            session_id,
+            StreamEnvelope.from_parts(
                 "queued_turn_start",
                 {
                     "type": "queued_turn_start",
@@ -688,20 +717,80 @@ class AgentTeam:
                     )
                 else:
                     self._loop_states.pop(session_id, None)
+                await stream_store.push_event(
+                    session_id,
+                    StreamEnvelope.from_parts(
+                        "loop_status",
+                        _loop_status_payload(
+                            prompt=loop_command.prompt,
+                            limit=limit,
+                            remaining=remaining,
+                        ),
+                    ),
+                )
             elif loop_command.action == "set":
                 assert loop_command.limit is not None
                 self._loop_limits[session_id] = loop_command.limit
                 skip_delivery = True
+                await stream_store.push_event(
+                    session_id,
+                    StreamEnvelope.from_parts(
+                        "loop_status",
+                        _loop_status_payload(
+                            prompt=None,
+                            limit=loop_command.limit,
+                            remaining=loop_command.limit,
+                        ),
+                    ),
+                )
             elif loop_command.action == "pause":
                 if session_id in self._loop_states:
                     self._loop_states[session_id].paused = True
+                    state = self._loop_states[session_id]
+                    await stream_store.push_event(
+                        session_id,
+                        StreamEnvelope.from_parts(
+                            "loop_status",
+                            _loop_status_payload(
+                                prompt=state.prompt,
+                                limit=self._loop_limits.get(session_id, 10),
+                                remaining=state.remaining,
+                                paused=True,
+                            ),
+                        ),
+                    )
                 skip_delivery = True
             elif loop_command.action == "resume":
                 if session_id in self._loop_states:
                     self._loop_states[session_id].paused = False
+                    state = self._loop_states[session_id]
+                    await stream_store.push_event(
+                        session_id,
+                        StreamEnvelope.from_parts(
+                            "loop_status",
+                            _loop_status_payload(
+                                prompt=state.prompt,
+                                limit=self._loop_limits.get(session_id, 10),
+                                remaining=state.remaining,
+                            ),
+                        ),
+                    )
                 skip_delivery = True
             elif loop_command.action == "stop":
                 self._loop_states.pop(session_id, None)
+                await stream_store.push_event(
+                    session_id,
+                    StreamEnvelope.from_parts(
+                        "loop_status",
+                        {
+                            "prompt": None,
+                            "limit": 0,
+                            "remaining": 0,
+                            "used": 0,
+                            "paused": False,
+                        },
+                    ),
+                )
                 skip_delivery = True
 
         if skip_delivery:

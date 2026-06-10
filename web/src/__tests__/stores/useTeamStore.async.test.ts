@@ -106,6 +106,7 @@ const INITIAL_STATE = {
   isContinuing: false,
   isConnected: false,
   error: null,
+  activeLoop: null,
   _pendingMessages: [] as import('@/stores/useTeamStore').PendingMessage[],
   _sessionGeneration: 0,
   hasMore: false,
@@ -357,6 +358,42 @@ describe("_handleSSEEvent: inbox", () => {
     })
 
     expect(useTeamStore.getState().agentStreams["worker"].currentBlocks).toHaveLength(2)
+  })
+})
+
+// ── _handleSSEEvent: loop_status ──────────────────────────────────────────────
+
+describe("_handleSSEEvent: loop_status", () => {
+  it("stores active loop status", () => {
+    useTeamStore.getState()._handleSSEEvent("loop_status", {
+      prompt: "just say hi",
+      limit: 5,
+      remaining: 3,
+      used: 2,
+      paused: false,
+    })
+
+    expect(useTeamStore.getState().activeLoop).toEqual({
+      prompt: "just say hi",
+      limit: 5,
+      remaining: 3,
+      used: 2,
+      paused: false,
+    })
+  })
+
+  it("clears active loop status when stopped", () => {
+    useTeamStore.setState({ activeLoop: { prompt: "x", limit: 5, remaining: 1, used: 4, paused: false } })
+
+    useTeamStore.getState()._handleSSEEvent("loop_status", {
+      prompt: null,
+      limit: 0,
+      remaining: 0,
+      used: 0,
+      paused: false,
+    })
+
+    expect(useTeamStore.getState().activeLoop).toBeNull()
   })
 })
 

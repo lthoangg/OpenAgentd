@@ -566,7 +566,7 @@ function SessionRow({ session, isActive, onSelect, onDelete, onEdit, mobileLongP
           e.stopPropagation()
           onEdit(session)
         }}
-        className={`flex w-full items-start gap-2 rounded-md px-2.5 py-2 text-left transition-colors ${
+        className={`flex w-full items-start gap-2 rounded-md px-2.5 py-2 text-left transition-colors pointer-coarse:min-h-11 pointer-coarse:pr-18 ${
           isActive
             ? 'bg-(--bg-key) text-(--color-text)'
             : 'text-(--color-text-2) hover:text-(--color-text)'
@@ -612,12 +612,14 @@ function SessionRow({ session, isActive, onSelect, onDelete, onEdit, mobileLongP
         </div>
       </LongPressButton>
 
+      {/* Hover affordance on fine pointers; always visible with larger hit
+          areas on coarse (touch) pointers where hover does not exist. */}
       <button
         onClick={(e) => {
           e.stopPropagation()
           onEdit(session)
         }}
-        className="absolute right-7 top-1/2 -translate-y-1/2 rounded p-1 text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--bg-key) hover:text-(--color-text) group-hover:opacity-100"
+        className="absolute right-7 top-1/2 flex -translate-y-1/2 items-center justify-center rounded p-1 text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--bg-key) hover:text-(--color-text) group-hover:opacity-100 pointer-coarse:right-9 pointer-coarse:min-h-9 pointer-coarse:min-w-9 pointer-coarse:opacity-100"
         aria-label={`Edit session ${session.title || 'Untitled'}`}
       >
         <Pencil size={12} />
@@ -626,7 +628,7 @@ function SessionRow({ session, isActive, onSelect, onDelete, onEdit, mobileLongP
       {/* Delete on hover */}
       <button
         onClick={(e) => onDelete(e, session)}
-        className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1 text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) group-hover:opacity-100"
+        className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center justify-center rounded p-1 text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) group-hover:opacity-100 pointer-coarse:min-h-9 pointer-coarse:min-w-9 pointer-coarse:opacity-100"
         aria-label={`Delete session ${session.title || 'Untitled'}`}
       >
         <Trash2 size={12} />

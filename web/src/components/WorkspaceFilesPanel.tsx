@@ -504,7 +504,7 @@ export function WorkspaceFilesPanel({ open, sessionId, onClose }: WorkspaceFiles
             animate={prefersReducedMotion ? { opacity: 1 } : { x: 0, opacity: 1 }}
             exit={prefersReducedMotion ? { opacity: 0 } : { x: '100%', opacity: 0 }}
             transition={{ duration: prefersReducedMotion ? 0.01 : 0.22, ease: [0.4, 0, 0.2, 1] }}
-            className="fixed inset-y-0 right-0 z-50 flex w-[min(960px,95vw)] flex-col overflow-hidden border-l border-(--color-border) bg-(--bg-card) shadow-2xl"
+            className="fixed bottom-0 right-0 top-[env(safe-area-inset-top,0px)] z-50 flex w-[min(960px,95vw)] flex-col overflow-hidden border-l border-(--color-border) bg-(--bg-card) shadow-2xl [[data-mobile-shell]_&]:right-[env(safe-area-inset-right,0px)] [[data-mobile-shell]_&]:w-[min(960px,calc(100vw-env(safe-area-inset-left,0px)-env(safe-area-inset-right,0px)))]"
             role="dialog"
             aria-modal="true"
             aria-label="Workspace files"

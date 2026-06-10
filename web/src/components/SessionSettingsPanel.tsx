@@ -642,7 +642,7 @@ export function SessionSettingsPanel({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.97, y: 8 }}
             transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
-            className="fixed left-1/2 top-1/2 z-50 flex h-[min(90vh,860px)] w-[min(90vw,960px)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-md border border-(--color-border) bg-(--bg-card) shadow-2xl"
+            className="fixed bottom-0 left-0 right-0 top-[env(safe-area-inset-top,0px)] z-50 flex flex-col overflow-hidden border border-(--color-border) bg-(--bg-card) shadow-2xl sm:bottom-auto sm:left-1/2 sm:right-auto sm:top-1/2 sm:h-[min(90vh,860px)] sm:w-[min(90vw,960px)] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-md"
             role="dialog"
             aria-modal="true"
             aria-label="Session settings"

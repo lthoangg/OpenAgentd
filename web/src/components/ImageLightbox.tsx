@@ -190,7 +190,7 @@ export function ImageLightbox({ src, alt, isOpen, onClose }: ImageLightboxProps)
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm transition-opacity duration-200"
+      className="mobile-safe-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm transition-opacity duration-200"
       onClick={closeLightbox}
       role="dialog"
       aria-modal="true"
@@ -198,7 +198,7 @@ export function ImageLightbox({ src, alt, isOpen, onClose }: ImageLightboxProps)
     >
       {/* Action buttons — stopPropagation so clicking them doesn't close the overlay. */}
       <div
-        className="absolute right-4 top-4 flex items-center gap-2 [[data-mobile-shell='ios']_&]:top-[max(4rem,calc(env(safe-area-inset-top)+1rem))]"
+        className="absolute right-[max(1rem,env(safe-area-inset-right,0px))] top-[max(1rem,env(safe-area-inset-top,0px))] flex items-center gap-2 [[data-mobile-shell='ios']_&]:top-[max(4rem,calc(env(safe-area-inset-top)+1rem))]"
         onClick={(e) => e.stopPropagation()}
       >
         <LightboxIconButton

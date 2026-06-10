@@ -153,6 +153,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_haptics::init())
         .invoke_handler(tauri::generate_handler![
             app_backend_status,
             app_save_backend_server,

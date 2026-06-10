@@ -19,6 +19,8 @@
     "core:event:default",
     "opener:default",
     "notification:default",
+    "haptics:allow-impact-feedback",
+    "haptics:allow-vibrate",
     "allow-app-backend-status",
     "allow-app-save-backend-server",
     "allow-app-use-external-backend",

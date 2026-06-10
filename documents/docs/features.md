@@ -123,7 +123,9 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   `<finished>/<total>` `[v1.17.0]`. Live invalidation. See [`web/todos.md`](./web/todos.md).
 - **Mobile / phone-first layout** `[since v1.0]` — breakpoints, safe areas, drawer
   shapes, composer keyboard avoidance, touch row actions, pull-to-refresh,
-  haptics, and legibility guards optimized for small screens `[v1.45.2]`. See
+  haptics, and legibility guards optimized for small screens `[v1.45.2]`;
+  long-press rows get native impact haptics (`tauri-plugin-haptics`) and an
+  iOS-style press-and-hold scale animation `[v1.46.1]`. See
   [`web/mobile.md`](./web/mobile.md).
 - **macOS overlay + Tauri drag region** `[since v1.0]` — the header doubles as the
   window drag region; macOS gets the proper traffic-light overlay.

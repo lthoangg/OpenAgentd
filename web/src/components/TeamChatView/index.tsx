@@ -516,7 +516,13 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     { id: 'new', label: 'New Chat', description: 'Start a fresh team conversation' },
     { id: 'init', label: 'Init', description: 'Create or update AGENTS.md for this project' },
     ...(mode === 'coding'
-      ? [{ id: 'loop', label: 'Loop', insertText: 'loop ', description: 'Coding loop: /loop "prompt", /loop:set 10, pause/resume/stop', keepInputOpen: true }]
+      ? [
+          { id: 'loop', label: 'loop', displayName: 'loop', insertText: 'loop', description: 'Start a coding loop with /loop "prompt"', keepInputOpen: true },
+          { id: 'loop/set', label: 'loop:set', displayName: 'loop:set', insertText: 'loop:set', description: 'Set coding loop budget: 5, 10, 20, or 50', keepInputOpen: true },
+          { id: 'loop/pause', label: 'loop:pause', displayName: 'loop:pause', insertText: 'loop:pause', description: 'Pause the active coding loop', keepInputOpen: true },
+          { id: 'loop/resume', label: 'loop:resume', displayName: 'loop:resume', insertText: 'loop:resume', description: 'Resume the paused coding loop', keepInputOpen: true },
+          { id: 'loop/stop', label: 'loop:stop', displayName: 'loop:stop', insertText: 'loop:stop', description: 'Stop the active coding loop', keepInputOpen: true },
+        ]
       : []),
     ...(commandsQ.data?.commands ?? []).map((c) => {
       const displayName = c.name.replace('/', ':')

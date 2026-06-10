@@ -380,9 +380,14 @@ export function MCPAppResult({ mcpApp, sessionId, toolCallId }: MCPAppResultProp
     <div className={isFullscreen ? "fixed inset-0 z-50 flex flex-col bg-(--bg-page) [[data-mobile-shell]_&]:pt-[env(safe-area-inset-top)] [[data-mobile-shell]_&]:pb-[env(safe-area-inset-bottom)] [[data-mobile-shell]_&]:pl-[env(safe-area-inset-left)] [[data-mobile-shell]_&]:pr-[env(safe-area-inset-right)]" : 'flex flex-col gap-2'}>
       <div className={isFullscreen ? 'hidden' : 'flex items-center justify-between gap-2 font-mono text-[10px] text-(--color-text-muted)'}>
         <span className="min-w-0 truncate" title={resourceUri}>{title}{resourceUri ? ` · ${String(resourceUri)}` : ''}</span>
-        <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-(--color-border) px-1.5 py-0.5 text-[9px] uppercase tracking-wide">
+        <button
+          type="button"
+          onClick={() => setDisplayMode(FULLSCREEN_DISPLAY_MODE)}
+          className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-full border border-(--color-border) px-1.5 py-0.5 text-[9px] uppercase tracking-wide transition-colors hover:bg-(--bg-key) focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none pointer-coarse:min-h-9 pointer-coarse:px-3"
+          aria-label={`Open ${title} fullscreen`}
+        >
           <Maximize2 size={9} aria-hidden /> MCP App
-        </span>
+        </button>
       </div>
       {error && (
         <p className="rounded-md border border-(--color-error) px-2 py-1 font-mono text-[10px] text-(--color-error)">

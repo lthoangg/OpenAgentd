@@ -202,6 +202,28 @@ describe("MCPAppResult", () => {
     expect(bridgeInstances[0]?.sendToolResult).toHaveBeenCalledWith({ content: [{ type: "text", text: "Draw a diagram" }] })
   })
 
+  it("lets users open MCP apps fullscreen from inline mode", async () => {
+    const user = userEvent.setup()
+    render(
+      <MCPAppResult
+        mcpApp={{
+          tool: "create_view",
+          resourceUri: "ui://excalidraw/mcp-app.html",
+          html: "<html><body>mcp app</body></html>",
+          mimeType: "text/html;profile=mcp-app",
+        }}
+      />,
+    )
+
+    await user.click(screen.getByRole("button", { name: "Open create_view fullscreen" }))
+
+    expect(screen.getByRole("dialog", { name: "create_view fullscreen MCP app" })).toBeTruthy()
+    expect(bridgeInstances[0]?.setHostContext).toHaveBeenCalledWith({
+      displayMode: "fullscreen",
+      containerDimensions: { height: window.innerHeight, width: window.innerWidth },
+    })
+  })
+
   it("allows MCP apps to request fullscreen edit mode", async () => {
     render(
       <MCPAppResult

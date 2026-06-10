@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, mock } from "bun:test"
-import { render, screen, cleanup } from "@testing-library/react"
+import { fireEvent, render, screen, cleanup } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { AgentView } from "@/components/AgentView"
 import { useTeamStore } from "@/stores/useTeamStore"
@@ -64,6 +64,22 @@ describe("AgentView — message windowing", () => {
 
     expect(screen.getByText("message 0")).toBeTruthy()
     expect(screen.queryByRole("button", { name: /earlier turns/i })).toBeNull()
+  })
+
+  it("reveals older local turns when scrolling to the top", () => {
+    const blocks = Array.from({ length: 85 }, (_, i) => makeUserBlock(`u${i}`, `message ${i}`))
+    const { container } = renderStream({ blocks })
+
+    expect(screen.queryByText("message 0")).toBeNull()
+
+    const scroller = container.querySelector(".overflow-y-auto") as HTMLDivElement
+    Object.defineProperty(scroller, "scrollTop", { configurable: true, value: 0 })
+    Object.defineProperty(scroller, "scrollHeight", { configurable: true, value: 2000 })
+    Object.defineProperty(scroller, "clientHeight", { configurable: true, value: 600 })
+
+    fireEvent.scroll(scroller)
+
+    expect(screen.getByText("message 0")).toBeTruthy()
   })
 })
 

@@ -1,4 +1,5 @@
 import { useRef } from 'react'
+import { softHapticFeedback } from '@/lib/haptics'
 
 const LONG_PRESS_MS = 520
 const LONG_PRESS_MOVE_TOLERANCE = 10
@@ -38,6 +39,7 @@ function LongPressButton({
         timerRef.current = window.setTimeout(() => {
           timerRef.current = null
           startRef.current = null
+          softHapticFeedback()
           onLongPress()
         }, LONG_PRESS_MS)
       }}

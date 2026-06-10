@@ -73,7 +73,7 @@ describe("AgentView — message windowing", () => {
     expect(screen.queryByText("message 0")).toBeNull()
 
     const scroller = container.querySelector(".overflow-y-auto") as HTMLDivElement
-    Object.defineProperty(scroller, "scrollTop", { configurable: true, value: 0 })
+    Object.defineProperty(scroller, "scrollTop", { configurable: true, value: 0, writable: true })
     Object.defineProperty(scroller, "scrollHeight", { configurable: true, value: 2000 })
     Object.defineProperty(scroller, "clientHeight", { configurable: true, value: 600 })
 

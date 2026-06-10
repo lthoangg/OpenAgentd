@@ -70,7 +70,7 @@ describe("AgentView — scroll-to-bottom button", () => {
     })
 
     // Trigger wheel event (user scroll intent) + wait for rAF
-    scrollDiv.dispatchEvent(new Event("wheel", { bubbles: true }))
+    scrollDiv.dispatchEvent(new Event("scroll", { bubbles: true }))
     await new Promise((resolve) => setTimeout(resolve, 50))
 
     const btn = container.querySelector('button[aria-label="Scroll to bottom"]')
@@ -98,7 +98,7 @@ describe("AgentView — scroll-to-bottom button", () => {
       configurable: true,
     })
 
-    scrollDiv.dispatchEvent(new Event("wheel", { bubbles: true }))
+    scrollDiv.dispatchEvent(new Event("scroll", { bubbles: true }))
     await new Promise((resolve) => setTimeout(resolve, 50))
 
     const btn = container.querySelector('button[aria-label="Scroll to bottom"]')
@@ -126,7 +126,7 @@ describe("AgentView — scroll-to-bottom button", () => {
       configurable: true,
     })
 
-    scrollDiv.dispatchEvent(new Event("wheel", { bubbles: true }))
+    scrollDiv.dispatchEvent(new Event("scroll", { bubbles: true }))
     await new Promise((resolve) => setTimeout(resolve, 50))
 
     const btn = container.querySelector('button[aria-label="Scroll to bottom"]') as HTMLButtonElement
@@ -163,7 +163,7 @@ describe("AgentView — scroll-to-bottom button", () => {
       configurable: true,
     })
 
-    scrollDiv.dispatchEvent(new Event("wheel", { bubbles: true }))
+    scrollDiv.dispatchEvent(new Event("scroll", { bubbles: true }))
     await new Promise((resolve) => setTimeout(resolve, 50))
 
     let btn = container.querySelector('button[aria-label="Scroll to bottom"]')
@@ -205,7 +205,7 @@ describe("AgentView — scroll-to-bottom button", () => {
       configurable: true,
     })
 
-    scrollDiv.dispatchEvent(new Event("wheel", { bubbles: true }))
+    scrollDiv.dispatchEvent(new Event("scroll", { bubbles: true }))
     await new Promise((resolve) => setTimeout(resolve, 50))
     expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
 

@@ -48,6 +48,25 @@ function renderStream(props: Partial<React.ComponentProps<typeof AgentView>> = {
 
 // ── tests ────────────────────────────────────────────────────────────────────
 
+describe("AgentView — message windowing", () => {
+  it("renders recent turns first and lets users reveal older turns", async () => {
+    const user = userEvent.setup()
+    const blocks = Array.from({ length: 85 }, (_, i) => makeUserBlock(`u${i}`, `message ${i}`))
+
+    renderStream({ blocks })
+
+    expect(screen.queryByText("message 0")).toBeNull()
+    expect(screen.getByText("message 84")).toBeTruthy()
+    const showEarlier = screen.getByRole("button", { name: /show 5 earlier turns/i })
+    expect(showEarlier.textContent).toContain("5 hidden")
+
+    await user.click(showEarlier)
+
+    expect(screen.getByText("message 0")).toBeTruthy()
+    expect(screen.queryByRole("button", { name: /earlier turns/i })).toBeNull()
+  })
+})
+
 describe("AgentView — AssistantFooter", () => {
   it("renders queued messages below the streaming assistant turn", () => {
     useTeamStore.setState({

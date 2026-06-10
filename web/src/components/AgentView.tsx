@@ -39,6 +39,8 @@ import type { ContentBlock, MessageAttachment } from '@/api/types'
 
 const SCROLL_THRESHOLD = 40
 const LOAD_OLDER_THRESHOLD = 300
+const INITIAL_RENDERED_TURNS = 80
+const TURN_RENDER_STEP = 80
 
 function isDirectUserBlock(block: ContentBlock): boolean {
   return block.type === 'user' && !block.extra?.from_agent
@@ -345,6 +347,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
   const scrollRef = useRef<HTMLDivElement>(null)
   const pinnedRef = useRef(true)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
+  const [renderedTurnCount, setRenderedTurnCount] = useState(INITIAL_RENDERED_TURNS)
   const sessionId = useTeamStore((s) => s.sessionId) ?? undefined
   const prevScrollHeightRef = useRef<number | null>(null)
   // Me mirror store _loadingOlder in a ref so the wheel handler can check
@@ -363,7 +366,18 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
   const totalLen = allBlocks.length
   const latestUserBlockId = [...allBlocks].reverse().find(isDirectUserBlock)?.id
   const turnItems = useMemo(() => partitionTurns(allBlocks), [allBlocks])
+  const hiddenTurnCount = Math.max(0, turnItems.length - renderedTurnCount)
+  const visibleTurnItems = hiddenTurnCount > 0 ? turnItems.slice(hiddenTurnCount) : turnItems
   const latestMCPAppBlockIds = useMemo(() => latestMCPAppResourceBlockIds(allBlocks), [allBlocks])
+
+  const showEarlierTurns = useCallback(() => {
+    const el = scrollRef.current
+    if (el) {
+      prevScrollHeightRef.current = el.scrollHeight
+      pendingRestoreRef.current = true
+    }
+    setRenderedTurnCount((count) => Math.min(turnItems.length, count + TURN_RENDER_STEP))
+  }, [turnItems.length])
 
   const isAtBottom = useCallback(() => {
     const el = scrollRef.current
@@ -431,7 +445,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
     pendingRestoreRef.current = false
     el.scrollTop = el.scrollHeight - prevScrollHeightRef.current
     prevScrollHeightRef.current = null
-  }, [blocks.length])
+  }, [blocks.length, renderedTurnCount])
 
   // Me single scroll effect — block count or last block text changed
   const lastContent = allBlocks[allBlocks.length - 1]?.content ?? ''
@@ -472,7 +486,21 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
          )}
 
          <div className="space-y-3">
-              {turnItems.map((item, k) => {
+              {hiddenTurnCount > 0 && (
+                <div className="flex justify-center py-2">
+                  <button
+                    type="button"
+                    onClick={showEarlierTurns}
+                    className="inline-flex min-h-10 items-center gap-1 rounded-full border border-(--color-border) bg-(--bg-card) px-3 py-1.5 text-xs text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none"
+                    aria-label={`Show ${Math.min(TURN_RENDER_STEP, hiddenTurnCount)} earlier turns`}
+                  >
+                    <ChevronUp size={13} aria-hidden="true" />
+                    Show earlier messages · {hiddenTurnCount} hidden
+                  </button>
+                </div>
+              )}
+              {visibleTurnItems.map((item, k) => {
+                 const globalTurnIndex = hiddenTurnCount + k
                  if (item.kind === 'user') {
                    return (
                      <BlockRenderer
@@ -486,7 +514,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
                    )
                  }
                  // Me only the trailing turn (no user block after) can be "live"
-                  const isTrailingTurn = k === turnItems.length - 1
+                  const isTrailingTurn = globalTurnIndex === turnItems.length - 1
                  return (
                    <AssistantTurn
                      key={`turn-${item.startIndex}-${item.blocks[0]?.id ?? k}`}

@@ -15,6 +15,10 @@ export type ResolvedTheme = 'light' | 'dark'
 
 export const THEME_STORAGE_KEY = 'oa-theme'
 const MEDIA_QUERY = '(prefers-color-scheme: dark)'
+const THEME_COLOR: Record<ResolvedTheme, string> = {
+  light: '#FAFAFA',
+  dark: '#0A0A0B',
+}
 
 function isTheme(value: unknown): value is ThemePreference {
   return value === 'light' || value === 'dark' || value === 'system'
@@ -39,10 +43,22 @@ export function resolveTheme(preference: ThemePreference): ResolvedTheme {
   return preference
 }
 
+function applyThemeColor(resolved: ResolvedTheme): void {
+  let meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"][data-openagentd-theme]')
+  if (!meta) {
+    meta = document.createElement('meta')
+    meta.name = 'theme-color'
+    meta.dataset.openagentdTheme = 'true'
+    document.head.appendChild(meta)
+  }
+  meta.content = THEME_COLOR[resolved]
+}
+
 export function applyTheme(resolved: ResolvedTheme): void {
   const root = document.documentElement
   root.classList.toggle('dark', resolved === 'dark')
   root.classList.toggle('light', resolved === 'light')
+  applyThemeColor(resolved)
 }
 
 export function setThemePreference(preference: ThemePreference): void {

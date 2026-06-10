@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, mock, spyOn } from "bun:test"
-import { render, screen, cleanup } from "@testing-library/react"
+import { render, screen, cleanup, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { FileCard } from "@/components/FileCard"
 
@@ -157,7 +157,8 @@ describe("FileCard", () => {
     const btn = screen.getByRole("button", { name: /report\.pdf/i })
     await user.click(btn)
 
-    expect(openSpy).toHaveBeenCalledWith("https://example.com/files/report.pdf", "_blank")
+    // Browser fallback path of openExternalUrl (no Tauri runtime in tests).
+    await waitFor(() => expect(openSpy).toHaveBeenCalledWith("https://example.com/files/report.pdf", "_blank", "noopener,noreferrer"))
     openSpy.mockRestore()
   })
 

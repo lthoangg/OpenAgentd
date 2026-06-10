@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, mock } from "bun:test"
+import { describe, it, expect, afterEach, beforeEach, mock, spyOn } from "bun:test"
 import { act, render, screen, cleanup, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { MCPAppResult } from "@/components/MCPAppResult"
@@ -46,12 +46,46 @@ mock.module("@/api/client", () => ({
   callMcpAppTool,
 }))
 
+
+
 describe("MCPAppResult", () => {
+  beforeEach(() => {
+    bridgeInstances.length = 0
+    MockBridge.lastTransport = undefined
+    document.documentElement.className = ""
+  })
+
   afterEach(() => {
     bridgeInstances.length = 0
     MockBridge.lastTransport = undefined
     callMcpAppTool.mockClear()
     callMcpAppTool.mockImplementation(async () => ({ result: { content: [{ type: "text", text: "saved" }] } }))
+    document.documentElement.className = ""
+  })
+
+  it("routes open-link requests through openExternalUrl so Tauri shells open the system browser", async () => {
+    const openSpy = spyOn(window, "open").mockImplementation(() => null)
+
+    render(
+      <MCPAppResult
+        mcpApp={{
+          tool: "create_view",
+          resourceUri: "ui://excalidraw/mcp-app.html",
+          html: "<html><body>mcp app</body></html>",
+          mimeType: "text/html;profile=mcp-app",
+        }}
+      />,
+    )
+
+    await waitFor(() => expect(bridgeInstances[0]?.connect).toHaveBeenCalled())
+    await act(async () => {
+      await bridgeInstances[0]?.onopenlink?.({ url: "https://excalidraw.com/#json=abc" })
+    })
+
+    // Browser fallback path of openExternalUrl (no Tauri runtime in tests);
+    // in Tauri shells the same helper routes through tauri-plugin-opener.
+    expect(openSpy).toHaveBeenCalledWith("https://excalidraw.com/#json=abc", "_blank", "noopener,noreferrer")
+    openSpy.mockRestore()
   })
 
   it("renders MCP app HTML from srcdoc so production shells avoid blob/data frame quirks", async () => {
@@ -79,6 +113,29 @@ describe("MCPAppResult", () => {
     expect(iframe?.getAttribute("src")).toBeNull()
     expect(iframe?.getAttribute("title")).toBe("create_view")
     expect(screen.getByText(/Experimental sandbox:/)).toBeTruthy()
+  })
+
+  it("syncs theme changes to the MCP app bridge", async () => {
+    render(
+      <MCPAppResult
+        mcpApp={{
+          tool: "create_view",
+          resourceUri: "ui://excalidraw/mcp-app.html",
+          html: "<html><body>mcp app</body></html>",
+          mimeType: "text/html;profile=mcp-app",
+        }}
+      />,
+    )
+
+    await waitFor(() => expect(bridgeInstances[0]?.connect).toHaveBeenCalled())
+    bridgeInstances[0]?.setHostContext.mockClear()
+    act(() => {
+      document.documentElement.classList.add("dark")
+      window.dispatchEvent(new CustomEvent("oa-theme-change"))
+    })
+
+    expect(bridgeInstances[0]?.setHostContext).toHaveBeenCalledWith({ theme: "dark" })
+    document.documentElement.classList.remove("dark")
   })
 
   it("applies resource CSP domains for externally loaded MCP app modules", async () => {
@@ -153,6 +210,28 @@ describe("MCPAppResult", () => {
     expect(bridgeInstances[0]?.sendToolResult).toHaveBeenCalledWith({ content: [{ type: "text", text: "Draw a diagram" }] })
   })
 
+  it("lets users open MCP apps fullscreen from inline mode", async () => {
+    const user = userEvent.setup()
+    render(
+      <MCPAppResult
+        mcpApp={{
+          tool: "create_view",
+          resourceUri: "ui://excalidraw/mcp-app.html",
+          html: "<html><body>mcp app</body></html>",
+          mimeType: "text/html;profile=mcp-app",
+        }}
+      />,
+    )
+
+    await user.click(screen.getByRole("button", { name: "Open create_view fullscreen" }))
+
+    expect(screen.getByRole("dialog", { name: "create_view fullscreen MCP app" })).toBeTruthy()
+    expect(bridgeInstances[0]?.setHostContext).toHaveBeenCalledWith({
+      displayMode: "fullscreen",
+      containerDimensions: { height: window.innerHeight, width: window.innerWidth },
+    })
+  })
+
   it("allows MCP apps to request fullscreen edit mode", async () => {
     render(
       <MCPAppResult
@@ -176,6 +255,39 @@ describe("MCPAppResult", () => {
       displayMode: "fullscreen",
       containerDimensions: { height: window.innerHeight, width: window.innerWidth },
     })
+  })
+
+  it("uses the full viewport in fullscreen mode with safe-area padding on mobile shells", async () => {
+    render(
+      <MCPAppResult
+        mcpApp={{
+          tool: "create_view",
+          resourceUri: "ui://excalidraw/mcp-app.html",
+          html: "<html><body>mcp app</body></html>",
+          mimeType: "text/html;profile=mcp-app",
+        }}
+      />,
+    )
+
+    await waitFor(() => expect(bridgeInstances[0]?.connect).toHaveBeenCalled())
+    await act(async () => {
+      await bridgeInstances[0]?.onrequestdisplaymode?.({ mode: "fullscreen" })
+    })
+
+    const dialog = screen.getByRole("dialog")
+    const overlay = dialog.parentElement
+    expect(overlay?.className).toContain("fixed inset-0")
+    // Rabbit-ear / notch awareness: safe-area insets applied only under mobile shells.
+    expect(overlay?.className).toContain("[[data-mobile-shell]_&]:pt-[env(safe-area-inset-top)]")
+    expect(overlay?.className).toContain("[[data-mobile-shell]_&]:pb-[env(safe-area-inset-bottom)]")
+    expect(overlay?.className).toContain("[[data-mobile-shell]_&]:pl-[env(safe-area-inset-left)]")
+    expect(overlay?.className).toContain("[[data-mobile-shell]_&]:pr-[env(safe-area-inset-right)]")
+    // No 90vh/90vw letterboxing — iframe fills the dialog.
+    const iframe = document.body.querySelector("iframe")
+    expect(iframe?.className).toContain("h-full w-full")
+    expect(overlay?.className).not.toContain("90vh")
+    // Header and sandbox caption are hidden so the app gets 100% of the screen.
+    expect(screen.getByText(/Experimental sandbox:/).className).toContain("hidden")
   })
 
   it("keeps the same iframe mounted when closing fullscreen", async () => {

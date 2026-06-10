@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, type TouchEvent } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -19,6 +19,7 @@ import { isToday, isYesterday } from 'date-fns'
 import { useTeamSessionsQuery, useDeleteTeamSessionMutation, useUpdateTeamSessionTitleMutation } from '@/queries'
 import { formatRelativeDate } from '@/utils/format'
 import { ThemeToggle } from './ThemeToggle'
+import { Skeleton } from './ui/skeleton'
 import { HealthDot } from './HealthDot'
 import { SidebarItem } from '@/components/ui/sidebar-item'
 import {
@@ -37,6 +38,19 @@ import type { SessionResponse } from '@/api/types'
 interface DateGroup {
   label: string
   sessions: SessionResponse[]
+}
+
+function SessionListSkeleton({ count = 6 }: { count?: number }) {
+  return (
+    <div className="space-y-1 px-1 py-2" aria-label="Loading sessions">
+      {Array.from({ length: count }, (_, index) => (
+        <div key={index} className="rounded-md px-2.5 py-2">
+          <Skeleton className="h-3 w-[min(11rem,70%)] bg-(--bg-key)" />
+          <Skeleton className="mt-2 h-2.5 w-20 bg-(--bg-key)" />
+        </div>
+      ))}
+    </div>
+  )
 }
 
 function groupByDate(sessions: SessionResponse[]): DateGroup[] {
@@ -107,6 +121,8 @@ export function Sidebar({
   const [editTarget, setEditTarget] = useState<SessionResponse | null>(null)
   const [mobileSessionActions, setMobileSessionActions] = useState<SessionResponse | null>(null)
   const [editTitle, setEditTitle] = useState('')
+  const [pullDistance, setPullDistance] = useState(0)
+  const pullStartYRef = useRef<number | null>(null)
 
   const toggleCollapse = useCallback(() => {
     setCollapsed((prev) => {
@@ -121,6 +137,30 @@ export function Sidebar({
   }, [])
 
   const refetchSessions = sessions.refetch
+  const canPullRefresh = isMobile && mobileOpen
+
+  const handleSessionListTouchStart = useCallback((event: TouchEvent<HTMLDivElement>) => {
+    if (!canPullRefresh || sessionListRef.current?.scrollTop !== 0) return
+    pullStartYRef.current = event.touches[0]?.clientY ?? null
+  }, [canPullRefresh])
+
+  const handleSessionListTouchMove = useCallback((event: TouchEvent<HTMLDivElement>) => {
+    if (!canPullRefresh || pullStartYRef.current === null) return
+    const delta = (event.touches[0]?.clientY ?? 0) - pullStartYRef.current
+    if (delta <= 0) {
+      setPullDistance(0)
+      return
+    }
+    setPullDistance(Math.min(72, delta * 0.5))
+  }, [canPullRefresh])
+
+  const handleSessionListTouchEnd = useCallback(() => {
+    if (canPullRefresh && pullDistance >= 54) {
+      void refetchSessions()
+    }
+    pullStartYRef.current = null
+    setPullDistance(0)
+  }, [canPullRefresh, pullDistance, refetchSessions])
 
   // Ctrl+B: collapse sidebar; Ctrl+R: refresh sessions.
   // Ctrl+M (wiki) / Ctrl+S (scheduler) live in TeamChatView — those panels
@@ -330,14 +370,27 @@ export function Sidebar({
                     </button>
                   </div>
 
-                  <div ref={sessionListRef} className="flex-1 overflow-y-auto px-2 pb-2">
-                    {sessions.isLoading && (
-                      <div className="space-y-1 px-1 py-2">
-                        {[...Array(6)].map((_, i) => (
-                          <div key={i} className="h-8 animate-pulse rounded-md bg-(--bg-key)" />
-                        ))}
+                  <div
+                    ref={sessionListRef}
+                    className="relative flex-1 overflow-y-auto px-2 pb-2"
+                    onTouchStart={handleSessionListTouchStart}
+                    onTouchMove={handleSessionListTouchMove}
+                    onTouchEnd={handleSessionListTouchEnd}
+                    onTouchCancel={handleSessionListTouchEnd}
+                  >
+                    {canPullRefresh && (
+                      <div
+                        className="pointer-events-none sticky top-0 z-10 flex justify-center overflow-hidden transition-[height] duration-150"
+                        style={{ height: pullDistance }}
+                        aria-hidden
+                      >
+                        <div className="mt-2 inline-flex h-8 items-center gap-2 rounded-full border border-(--color-border) bg-(--bg-card) px-3 text-[11px] text-(--color-text-muted) shadow-sm">
+                          <RefreshCw size={12} className={pullDistance >= 54 || sessions.isFetching ? 'animate-spin' : ''} />
+                          {pullDistance >= 54 ? 'Release to refresh' : 'Pull to refresh'}
+                        </div>
                       </div>
                     )}
+                    {sessions.isLoading && <SessionListSkeleton />}
                     {sessions.isError && (
                       <p className="px-3 py-4 text-center text-xs text-(--color-error)">Failed to load sessions</p>
                     )}
@@ -364,13 +417,7 @@ export function Sidebar({
                           </div>
                         ))}
                         <div ref={loadMoreRef} className="h-1" aria-hidden />
-                        {isFetchingNextPage && (
-                          <div className="space-y-1 px-1 pt-1">
-                            {[...Array(3)].map((_, i) => (
-                              <div key={i} className="h-8 animate-pulse rounded-md bg-(--bg-key)" />
-                            ))}
-                          </div>
-                        )}
+                        {isFetchingNextPage && <SessionListSkeleton count={3} />}
                       </div>
                     )}
                   </div>
@@ -566,7 +613,7 @@ function SessionRow({ session, isActive, onSelect, onDelete, onEdit, mobileLongP
           e.stopPropagation()
           onEdit(session)
         }}
-        className={`flex w-full items-start gap-2 rounded-md px-2.5 py-2 text-left transition-colors ${
+        className={`flex w-full items-start gap-2 rounded-md px-2.5 py-2 text-left transition-colors pointer-coarse:min-h-11 pointer-coarse:pr-18 ${
           isActive
             ? 'bg-(--bg-key) text-(--color-text)'
             : 'text-(--color-text-2) hover:text-(--color-text)'
@@ -612,12 +659,14 @@ function SessionRow({ session, isActive, onSelect, onDelete, onEdit, mobileLongP
         </div>
       </LongPressButton>
 
+      {/* Hover affordance on fine pointers; always visible with larger hit
+          areas on coarse (touch) pointers where hover does not exist. */}
       <button
         onClick={(e) => {
           e.stopPropagation()
           onEdit(session)
         }}
-        className="absolute right-7 top-1/2 -translate-y-1/2 rounded p-1 text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--bg-key) hover:text-(--color-text) group-hover:opacity-100"
+        className="absolute right-7 top-1/2 flex -translate-y-1/2 items-center justify-center rounded p-1 text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--bg-key) hover:text-(--color-text) group-hover:opacity-100 pointer-coarse:right-9 pointer-coarse:min-h-9 pointer-coarse:min-w-9 pointer-coarse:opacity-100"
         aria-label={`Edit session ${session.title || 'Untitled'}`}
       >
         <Pencil size={12} />
@@ -626,7 +675,7 @@ function SessionRow({ session, isActive, onSelect, onDelete, onEdit, mobileLongP
       {/* Delete on hover */}
       <button
         onClick={(e) => onDelete(e, session)}
-        className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1 text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) group-hover:opacity-100"
+        className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center justify-center rounded p-1 text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) group-hover:opacity-100 pointer-coarse:min-h-9 pointer-coarse:min-w-9 pointer-coarse:opacity-100"
         aria-label={`Delete session ${session.title || 'Untitled'}`}
       >
         <Trash2 size={12} />

@@ -411,6 +411,13 @@ html[data-mobile-shell] [contenteditable="true"] {
   user-select: text;
 }
 
+/* Phone screens make 9–10px metadata hard to read. Keep desktop dense, but
+   lift tiny utility text to an 11px floor inside mobile shells. */
+html[data-mobile-shell] .text-\[9px\],
+html[data-mobile-shell] .text-\[10px\] {
+  font-size: 11px;
+}
+
 .mobile-safe-shell {
   padding-right: env(safe-area-inset-right, 0px);
   padding-left: env(safe-area-inset-left, 0px);

@@ -114,6 +114,7 @@ function WorkspaceSessionList({
   onSessionDelete,
   onSessionEdit,
   onSessionLongPress,
+  onSessionContextActions,
 }: {
   path: string
   currentSessionId?: string
@@ -124,6 +125,7 @@ function WorkspaceSessionList({
   onSessionDelete: (e: React.MouseEvent, session: SessionResponse) => void
   onSessionEdit: (session: SessionResponse) => void
   onSessionLongPress: (session: SessionResponse) => void
+  onSessionContextActions: (session: SessionResponse, event: React.MouseEvent) => void
 }) {
   const sessions = useCodingWorkspaceSessionsQuery(path, !collapsed)
   const workspaceSessions = collapsed
@@ -148,6 +150,11 @@ function WorkspaceSessionList({
               onDoubleClick={(e) => {
                 e.stopPropagation()
                 onSessionEdit(session)
+              }}
+              onContextMenu={(e) => {
+                if (mobileLongPressActions) return
+                e.preventDefault()
+                onSessionContextActions(session, e)
               }}
               className={`w-full rounded-md px-2 py-1.5 text-left text-xs transition-colors ${
                 isCurrent
@@ -293,6 +300,8 @@ export function CodingSidebar({
   const editTitleInputRef = useRef<HTMLInputElement>(null)
   const [deleteTarget, setDeleteTarget] = useState<SessionResponse | null>(null)
   const [mobileSessionActions, setMobileSessionActions] = useState<SessionResponse | null>(null)
+  const [desktopSessionActions, setDesktopSessionActions] = useState<{ session: SessionResponse; x: number; y: number } | null>(null)
+  const [desktopWorkspaceActions, setDesktopWorkspaceActions] = useState<{ path: string; kind: 'main' | 'worktree'; source?: string; worktree?: WorktreeInfo; x: number; y: number } | null>(null)
   const [mobileWorkspaceActions, setMobileWorkspaceActions] = useState<{ path: string; kind: 'main' | 'worktree'; source?: string; worktree?: WorktreeInfo } | null>(null)
   // Workspace pending removal — null when no confirmation is open. The
   // confirmation dialog reads this; ``confirmRemoveWorkspace`` commits.
@@ -755,6 +764,11 @@ export function CodingSidebar({
                   onLongPress={() => setMobileWorkspaceActions({ path, kind: 'main' })}
                   type="button"
                   onClick={() => toggleWorkspaceExpanded(path)}
+                  onContextMenu={(event) => {
+                    if (mobileLongPressActions) return
+                    event.preventDefault()
+                    setDesktopWorkspaceActions({ path, kind: 'main', x: event.clientX, y: event.clientY })
+                  }}
                   className="flex min-w-0 flex-1 items-center gap-1.5 truncate rounded px-2 py-1 text-left text-xs transition-colors hover:bg-(--bg-key)"
                   aria-expanded={sourceIsExpanded}
                   aria-label={`${sourceIsExpanded ? 'Collapse' : 'Expand'} repository ${workspaceLabel(path)}`}
@@ -798,6 +812,11 @@ export function CodingSidebar({
                       onLongPress={() => setMobileWorkspaceActions({ path, kind: 'main' })}
                       type="button"
                       onClick={() => toggleSessionGroupExpanded(path)}
+                      onContextMenu={(event) => {
+                        if (mobileLongPressActions) return
+                        event.preventDefault()
+                        setDesktopWorkspaceActions({ path, kind: 'main', x: event.clientX, y: event.clientY })
+                      }}
                       className={`flex min-w-0 flex-1 items-center gap-1.5 rounded px-2 py-1 text-left text-xs transition-colors hover:bg-(--bg-key) ${sourceIsActive ? 'text-(--color-accent)' : 'text-(--color-text-2)'}`}
                       aria-expanded={sourceSessionGroupExpanded}
                       aria-label={`${sourceSessionGroupExpanded ? 'Collapse' : 'Expand'} main workspace ${workspaceLabel(path)}`}
@@ -828,6 +847,9 @@ export function CodingSidebar({
                       onSessionDelete={handleSessionDelete}
                       onSessionEdit={handleSessionEdit}
                       onSessionLongPress={setMobileSessionActions}
+                      onSessionContextActions={(session, event) => {
+                        setDesktopSessionActions({ session, x: event.clientX, y: event.clientY })
+                      }}
                     />
                   )}
 
@@ -853,6 +875,11 @@ export function CodingSidebar({
                             onLongPress={() => setMobileWorkspaceActions({ path: directory, kind: 'worktree', source: path, worktree: worktreeInfo })}
                             type="button"
                             onClick={() => toggleWorkspaceExpanded(directory)}
+                            onContextMenu={(event) => {
+                              if (mobileLongPressActions) return
+                              event.preventDefault()
+                              setDesktopWorkspaceActions({ path: directory, kind: 'worktree', source: path, worktree: worktreeInfo, x: event.clientX, y: event.clientY })
+                            }}
                             className={`flex min-w-0 flex-1 items-center gap-1.5 rounded px-2 py-1 text-left text-xs transition-colors hover:bg-(--bg-key) ${isActive ? 'text-(--color-accent)' : 'text-(--color-text-2)'}`}
                             aria-expanded={isExpanded}
                             aria-label={`${isExpanded ? 'Collapse' : 'Expand'} worktree ${item.name}`}
@@ -900,6 +927,9 @@ export function CodingSidebar({
                             onSessionDelete={handleSessionDelete}
                             onSessionEdit={handleSessionEdit}
                             onSessionLongPress={setMobileSessionActions}
+                            onSessionContextActions={(session, event) => {
+                              setDesktopSessionActions({ session, x: event.clientX, y: event.clientY })
+                            }}
                           />
                         )}
                       </div>
@@ -1250,6 +1280,129 @@ export function CodingSidebar({
           </form>
         </DialogContent>
       </Dialog>
+
+      {desktopWorkspaceActions && (
+        <div
+          className="fixed inset-0 z-50"
+          onClick={() => setDesktopWorkspaceActions(null)}
+          onContextMenu={(event) => {
+            event.preventDefault()
+            setDesktopWorkspaceActions(null)
+          }}
+        >
+          <div
+            role="menu"
+            aria-label={`Actions for ${workspaceLabel(desktopWorkspaceActions.path)}`}
+            className="fixed min-w-48 rounded-lg border border-(--color-border) bg-(--bg-card) p-1 text-sm text-(--color-text) shadow-xl"
+            style={{ left: desktopWorkspaceActions.x, top: desktopWorkspaceActions.y }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              role="menuitem"
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+              onClick={() => {
+                const action = desktopWorkspaceActions
+                setDesktopWorkspaceActions(null)
+                void selectWorkspace(action.path, { create: true })
+              }}
+            >
+              <Plus size={14} aria-hidden="true" />
+              New session
+            </button>
+            {desktopWorkspaceActions.kind === 'main' ? (
+              <>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+                  onClick={() => {
+                    const action = desktopWorkspaceActions
+                    setDesktopWorkspaceActions(null)
+                    void openWorktreeDialog(action.path)
+                  }}
+                >
+                  <GitBranch size={14} aria-hidden="true" />
+                  Create worktree
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none"
+                  onClick={() => {
+                    const action = desktopWorkspaceActions
+                    setDesktopWorkspaceActions(null)
+                    setRemoveWorkspaceTarget(action.path)
+                  }}
+                >
+                  <Trash2 size={14} aria-hidden="true" />
+                  Remove from sidebar
+                </button>
+              </>
+            ) : desktopWorkspaceActions.worktree?.managed ? (
+              <button
+                type="button"
+                role="menuitem"
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none"
+                onClick={() => {
+                  const item = desktopWorkspaceActions.worktree
+                  setDesktopWorkspaceActions(null)
+                  if (item) void handleRemoveWorktree(item)
+                }}
+              >
+                <Trash2 size={14} aria-hidden="true" />
+                Remove worktree
+              </button>
+            ) : null}
+          </div>
+        </div>
+      )}
+
+      {desktopSessionActions && (
+        <div
+          className="fixed inset-0 z-50"
+          onClick={() => setDesktopSessionActions(null)}
+          onContextMenu={(event) => {
+            event.preventDefault()
+            setDesktopSessionActions(null)
+          }}
+        >
+          <div
+            role="menu"
+            aria-label={`Actions for ${desktopSessionActions.session.title || 'Untitled'}`}
+            className="fixed min-w-44 rounded-lg border border-(--color-border) bg-(--bg-card) p-1 text-sm text-(--color-text) shadow-xl"
+            style={{ left: desktopSessionActions.x, top: desktopSessionActions.y }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              role="menuitem"
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+              onClick={() => {
+                const { session } = desktopSessionActions
+                setDesktopSessionActions(null)
+                handleSessionEdit(session)
+              }}
+            >
+              <Pencil size={14} aria-hidden="true" />
+              Edit title
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none"
+              onClick={() => {
+                const { session } = desktopSessionActions
+                setDesktopSessionActions(null)
+                setDeleteTarget(session)
+              }}
+            >
+              <Trash2 size={14} aria-hidden="true" />
+              Delete session
+            </button>
+          </div>
+        </div>
+      )}
 
       <Dialog
         open={mobileSessionActions !== null}

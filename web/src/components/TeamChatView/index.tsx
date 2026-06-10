@@ -60,7 +60,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { isAgentRole, type AgentRole } from '@/lib/agent-roles'
-import type { AgentStream } from '@/stores/useTeamStore'
+import type { ActiveLoop, AgentStream } from '@/stores/useTeamStore'
 import { AgentTopbar } from '@/components/AgentTopbar'
 import { type InputBarHandle, type SlashCommand, type SnippetCommand } from '../InputBar'
 import { FloatingInputBar } from '../FloatingInputBar'
@@ -71,6 +71,7 @@ import { VIEW_MODES, type ViewMode } from './types'
 import { saveLastCodingWorkspace, workspaceLabel } from '@/utils/workspace'
 import { formatTokens } from '@/utils/format'
 import { setTraySession } from '@/lib/tray'
+import { parseLoopCommand } from '@/lib/parseLoopCommand'
 
 interface TeamChatViewProps {
   sessionId?: string
@@ -159,6 +160,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const sessionThinkingLevel = useTeamStore((s) => s.sessionThinkingLevel)
   const sessionFastMode = useTeamStore((s) => s.sessionFastMode)
   const leadName       = useTeamStore((s) => s.leadName)
+  const activeLoop     = useTeamStore((s) => s.activeLoop)
 
   // Utility modal state lives in useUIStore so only one can be open at a time.
   const wikiOpen = useUIStore((s) => s.wikiOpen)
@@ -516,7 +518,13 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     { id: 'new', label: 'New Chat', description: 'Start a fresh team conversation' },
     { id: 'init', label: 'Init', description: 'Create or update AGENTS.md for this project' },
     ...(mode === 'coding'
-      ? [{ id: 'loop', label: 'Loop', insertText: 'loop ', description: 'Coding loop: /loop "prompt", /loop:set 10, pause/resume/stop', keepInputOpen: true }]
+      ? [
+          { id: 'loop', label: 'loop <prompt>', displayName: 'loop', insertText: 'loop', description: 'Start a coding loop', keepInputOpen: true },
+          { id: 'loop:set', label: 'loop:set <limit>', displayName: 'loop:set', insertText: 'loop:set', description: 'Set coding loop budget: 5, 10, 20, or 50', keepInputOpen: true },
+          { id: 'loop:pause', label: 'loop:pause', displayName: 'loop:pause', description: 'Pause the active coding loop' },
+          { id: 'loop:resume', label: 'loop:resume', displayName: 'loop:resume', description: 'Resume the paused coding loop' },
+          { id: 'loop:stop', label: 'loop:stop', displayName: 'loop:stop', description: 'Stop the active coding loop' },
+        ]
       : []),
     ...(commandsQ.data?.commands ?? []).map((c) => {
       const displayName = c.name.replace('/', ':')
@@ -554,6 +562,17 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     }
   }, [agentWorkspace, pushToast])
 
+  const runLoopCommand = useCallback(async (command: string, prompt?: string) => {
+    const current = useTeamStore.getState()
+    await current.sendLoopCommand(command, prompt, {
+      mode,
+      workspace,
+      model: current.sessionId ? selectedModel || null : null,
+      thinkingLevel: current.sessionId ? selectedThinkingLevel || null : null,
+      fastMode: current.sessionFastMode,
+    })
+  }, [mode, workspace, selectedModel, selectedThinkingLevel])
+
   const handleSlashCommand = useCallback((id: string) => {
     switch (id) {
       case 'stop':
@@ -587,6 +606,14 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
       case 'new':
         handleNewSession()
         break
+      case 'loop:pause':
+      case 'loop:resume':
+      case 'loop:stop':
+        void runLoopCommand(`/${id}`).then(() => {
+          const verb = id.slice('loop:'.length)
+          pushToast({ tone: 'success', title: verb === 'stop' ? 'Loop stopped' : `Loop ${verb}d` })
+        })
+        break
       case 'init':
         // Prompt body lives on the backend so it can be tweaked without a
         // web rebuild and stays the single source of truth.
@@ -606,7 +633,44 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
           )
         break
     }
-  }, [handleNewSession, mode, agentWorkspace, pushToast])
+  }, [handleNewSession, runLoopCommand, mode, agentWorkspace, pushToast])
+
+  const tryHandleBuiltinLoopCommand = useCallback(async (content: string): Promise<boolean> => {
+    const parsed = parseLoopCommand(content)
+    switch (parsed.kind) {
+      case 'none':
+        return false
+      case 'unknown_subcommand':
+        return false
+      case 'start_missing_prompt':
+        pushToast({
+          tone: 'error',
+          title: '/loop needs a prompt',
+          description: 'Type the prompt after /loop, e.g. "/loop just say hi".',
+        })
+        return true
+      case 'set_invalid_limit':
+        pushToast({
+          tone: 'error',
+          title: '/loop:set needs a valid limit',
+          description: 'Use one of: 5, 10, 20, or 50.',
+        })
+        return true
+      case 'start':
+        await runLoopCommand(content, parsed.prompt)
+        return true
+      case 'set':
+        await runLoopCommand(`/loop:set ${parsed.limit}`)
+        pushToast({ tone: 'success', title: `Loop budget set to ${parsed.limit}` })
+        return true
+      case 'pause':
+      case 'resume':
+      case 'stop':
+        await runLoopCommand(`/loop:${parsed.kind}`)
+        pushToast({ tone: 'success', title: parsed.kind === 'stop' ? 'Loop stopped' : `Loop ${parsed.kind}d` })
+        return true
+    }
+  }, [pushToast, runLoopCommand])
 
   /** If *content* starts with a known user-defined command, render server-side
    *  and return the expanded body; otherwise return *content* unchanged. */
@@ -751,6 +815,11 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     mobileActionsSwipeStartRef.current = null
   }, [])
 
+  const loopLabel = activeLoop
+    ? `${activeLoop.paused ? 'Loop paused' : activeLoop.prompt ? 'Loop active' : 'Loop ready'}${activeLoop.prompt ? `: "${activeLoop.prompt}"` : ''}`
+    : null
+  const loopProgress = activeLoop ? `${activeLoop.used}/${activeLoop.limit}` : null
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -850,6 +919,14 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             ) : null}
           </div>
 
+          {!isMobile && activeLoop && loopLabel && loopProgress && (
+            <LoopStatusPill
+              label={loopLabel}
+              progress={loopProgress}
+              compact={false}
+            />
+          )}
+
           {/* Active-agent chip → dropdown of all members. Split view
               collapses to a count pill — each pane already shows its
               own agent. */}
@@ -914,6 +991,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
                 onSelectAgent={setActiveAgent}
                 onWiki={() => { toggleWiki(); closeMobileActionsMenu() }}
                 onScheduler={() => { toggleScheduler(); closeMobileActionsMenu() }}
+                activeLoop={activeLoop}
                 tokens={totalAll > 0
                   ? {
                       input: totalPrompt,
@@ -1112,6 +1190,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             ref={inputRef}
             boundsRef={mainColumnRef}
             onSubmit={async (content, files) => {
+              if (mode === 'coding' && (await tryHandleBuiltinLoopCommand(content))) return
               const shell = content.startsWith('!')
               const command = shell ? content.slice(1).trim() : content
               const expanded = shell ? `!${command}` : await expandUserCommand(content)
@@ -1215,6 +1294,47 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   )
 }
 
+// ─── Loop status ────────────────────────────────────────────────────────────
+
+function LoopStatusPill({
+  label,
+  progress,
+  compact,
+}: {
+  label: string
+  progress: string
+  compact: boolean
+}) {
+  return (
+    <div
+      className="mx-1 flex max-w-[46vw] shrink-0 items-center gap-1 rounded-full border border-(--color-border) bg-(--bg-card) px-2 py-1 text-xs text-(--color-text) shadow-sm md:max-w-sm"
+      title={`${label} · ${progress} turns`}
+    >
+      <span className="min-w-0 truncate font-medium">
+        {compact ? 'Loop' : label}
+      </span>
+      <span className="shrink-0 font-mono text-[10px] text-(--color-text-muted)">{progress}</span>
+    </div>
+  )
+}
+
+function MobileLoopStatusCard({ activeLoop }: { activeLoop: ActiveLoop }) {
+  const state = activeLoop.paused ? 'Paused' : activeLoop.prompt ? 'Active' : 'Ready'
+  return (
+    <div className="mb-1 rounded-md border border-(--color-border) bg-(--bg-card) px-2 py-2 text-sm">
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-medium text-(--color-text)">Loop {state.toLowerCase()}</span>
+        <span className="font-mono text-xs text-(--color-text-muted)">{activeLoop.used}/{activeLoop.limit}</span>
+      </div>
+      {activeLoop.prompt && (
+        <p className="mt-1 line-clamp-2 text-xs text-(--color-text-muted)" title={activeLoop.prompt}>
+          {activeLoop.prompt}
+        </p>
+      )}
+    </div>
+  )
+}
+
 // ─── MobileChatActions ─────────────────────────────────────────────────────
 
 function MobileHeaderAction({
@@ -1266,6 +1386,7 @@ interface MobileChatActionsProps {
   onSelectAgent: (agent: string) => void
   onWiki: () => void
   onScheduler: () => void
+  activeLoop: ActiveLoop | null
   tokens?: {
     input: number
     output: number
@@ -1286,6 +1407,7 @@ function MobileChatActions({
   onSelectAgent,
   onWiki,
   onScheduler,
+  activeLoop,
   tokens,
 }: MobileChatActionsProps) {
   return (
@@ -1366,6 +1488,9 @@ function MobileChatActions({
                 )}
 
                 <div className="px-2 py-2 text-xs font-medium text-muted-foreground">Session</div>
+                {activeLoop && (
+                  <MobileLoopStatusCard activeLoop={activeLoop} />
+                )}
                 {tokens && (
                   <div className="flex min-h-10 items-center gap-2 rounded-md px-2 text-sm">
                     <span className="flex-1">Tokens</span>

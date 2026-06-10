@@ -106,6 +106,7 @@ const INITIAL_STATE = {
   isContinuing: false,
   isConnected: false,
   error: null,
+  activeLoop: null,
   _pendingMessages: [] as import('@/stores/useTeamStore').PendingMessage[],
   _sessionGeneration: 0,
   hasMore: false,
@@ -360,6 +361,42 @@ describe("_handleSSEEvent: inbox", () => {
   })
 })
 
+// ── _handleSSEEvent: loop_status ──────────────────────────────────────────────
+
+describe("_handleSSEEvent: loop_status", () => {
+  it("stores active loop status", () => {
+    useTeamStore.getState()._handleSSEEvent("loop_status", {
+      prompt: "just say hi",
+      limit: 5,
+      remaining: 3,
+      used: 2,
+      paused: false,
+    })
+
+    expect(useTeamStore.getState().activeLoop).toEqual({
+      prompt: "just say hi",
+      limit: 5,
+      remaining: 3,
+      used: 2,
+      paused: false,
+    })
+  })
+
+  it("clears active loop status when stopped", () => {
+    useTeamStore.setState({ activeLoop: { prompt: "x", limit: 5, remaining: 1, used: 4, paused: false } })
+
+    useTeamStore.getState()._handleSSEEvent("loop_status", {
+      prompt: null,
+      limit: 0,
+      remaining: 0,
+      used: 0,
+      paused: false,
+    })
+
+    expect(useTeamStore.getState().activeLoop).toBeNull()
+  })
+})
+
 // ── _handleSSEEvent: error ────────────────────────────────────────────────────
 
 describe("_handleSSEEvent: error", () => {
@@ -495,6 +532,64 @@ describe("sendMessage", () => {
     useTeamStore.setState({ leadName: "lead", agentStreams: { lead: makeStream() } })
     await useTeamStore.getState().sendMessage("hello")
     expect(mockTeamStream).not.toHaveBeenCalled()
+  })
+})
+
+// ── sendLoopCommand ───────────────────────────────────────────────────────────
+
+describe("sendLoopCommand", () => {
+  it("posts the raw loop command but renders only the prompt optimistically", async () => {
+    useTeamStore.setState({ leadName: "lead", agentStreams: { lead: makeStream() } })
+
+    await useTeamStore.getState().sendLoopCommand("/loop just say hi", "just say hi")
+
+    expect(mockPostTeamChat.mock.calls[0][0]).toBe("/loop just say hi")
+    const block = useTeamStore.getState().agentStreams.lead.currentBlocks[0]
+    expect(block.type).toBe("user")
+    expect(block.content).toBe("just say hi")
+  })
+
+  it("does not render a user block for loop control commands", async () => {
+    useTeamStore.setState({ sessionId: "team-sid", leadName: "lead", agentStreams: { lead: makeStream() } })
+
+    await useTeamStore.getState().sendLoopCommand("/loop:pause")
+
+    expect(mockPostTeamChat.mock.calls[0][0]).toBe("/loop:pause")
+    expect(useTeamStore.getState().agentStreams.lead.currentBlocks).toHaveLength(0)
+  })
+
+  it("allows loop budget setup before a session exists", async () => {
+    await useTeamStore.getState().sendLoopCommand("/loop:set 5")
+
+    expect(mockPostTeamChat.mock.calls[0][0]).toBe("/loop:set 5")
+    expect(mockPostTeamChat.mock.calls[0][1]).toBeNull()
+    expect(useTeamStore.getState().sessionId).toBe("team-sid")
+  })
+
+  it("requires an active session for active loop controls", async () => {
+    await useTeamStore.getState().sendLoopCommand("/loop:pause")
+
+    expect(mockPostTeamChat).not.toHaveBeenCalled()
+    expect(useTeamStore.getState().error).toBe("No active session for loop command")
+  })
+
+  it("passes coding options through to postTeamChat", async () => {
+    useTeamStore.setState({ sessionId: "team-sid" })
+
+    await useTeamStore.getState().sendLoopCommand("/loop:set 20", undefined, {
+      mode: "coding",
+      workspace: "/repo",
+      model: "openai:gpt-5.5",
+      thinkingLevel: "high",
+      fastMode: true,
+    })
+
+    const call = mockPostTeamChat.mock.calls[0]
+    expect(call[4]).toBe("coding")
+    expect(call[5]).toBe("/repo")
+    expect(call[6]).toBe("openai:gpt-5.5")
+    expect(call[7]).toBe("high")
+    expect(call[9]).toBe(true)
   })
 })
 
@@ -678,6 +773,28 @@ describe("sendMessage: queue behaviour", () => {
       "queued after undo",
       "continued",
     ])
+  })
+
+  it("renders backend-provided loop turn messages while streaming", () => {
+    useTeamStore.setState({
+      sessionId: "session-a",
+      leadName: "lead",
+      agentStreams: {
+        lead: makeStream({ status: "idle" as const }),
+      },
+      _pendingMessages: [],
+    })
+
+    useTeamStore.getState()._handleSSEEvent("queued_turn_start", {
+      agent: "lead",
+      message_ids: ["loop-1"],
+      messages: [{ id: "loop-1", content: "just say hi" }],
+    })
+    useTeamStore.getState()._handleSSEEvent("message", { agent: "lead", text: "hi" })
+
+    const blocks = useTeamStore.getState().agentStreams.lead.currentBlocks
+    expect(blocks.map((block) => block.content)).toEqual(["just say hi", "hi"])
+    expect(useTeamStore.getState().isTeamWorking).toBe(true)
   })
 
   it("keeps queued messages for a different active session", () => {

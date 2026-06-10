@@ -255,7 +255,7 @@ async def team_chat(
         if parse_loop_command(message) is None:
             raise HTTPException(
                 status_code=422,
-                detail='Invalid /loop command. Use /loop "prompt", /loop:set 5|10|20|50, /loop:pause, /loop:resume, or /loop:stop.',
+                detail="Invalid /loop command. Use /loop <prompt>, /loop:set 5|10|20|50, /loop:pause, /loop:resume, or /loop:stop.",
             )
 
     if body.shell:

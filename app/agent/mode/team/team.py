@@ -80,15 +80,30 @@ class LoopCommand:
     limit: int | None = None
 
 
+def _loop_status_payload(
+    *,
+    prompt: str | None,
+    limit: int,
+    remaining: int,
+    paused: bool = False,
+) -> dict[str, object]:
+    used = max(limit - remaining, 0)
+    return {
+        "prompt": prompt,
+        "limit": limit,
+        "remaining": remaining,
+        "used": used,
+        "paused": paused,
+    }
+
+
 def parse_loop_command(content: str) -> LoopCommand | None:
     invocation = parse_slash_invocation(content)
     if invocation is None or invocation.command != "loop":
         return None
 
     if invocation.subcommand is None:
-        if len(invocation.argv) != 1:
-            return None
-        prompt = invocation.argv[0].strip()
+        prompt = invocation.arguments.strip()
         return LoopCommand(action="start", prompt=prompt) if prompt else None
 
     if invocation.subcommand == "set":
@@ -520,6 +535,10 @@ class AgentTeam:
                     "type": "queued_turn_start",
                     "agent": self.lead.name,
                     "message_ids": message_ids,
+                    "messages": [
+                        {"id": str(row.id), "content": row.content or ""}
+                        for row in queued
+                    ],
                 },
             ),
         )
@@ -573,11 +592,26 @@ class AgentTeam:
         await stream_store.push_event(
             session_id,
             StreamEnvelope.from_parts(
+                "loop_status",
+                _loop_status_payload(
+                    prompt=loop.prompt,
+                    limit=self._loop_limits.get(session_id, 10),
+                    remaining=loop.remaining,
+                    paused=loop.paused,
+                ),
+            ),
+        )
+        await stream_store.push_event(
+            session_id,
+            StreamEnvelope.from_parts(
                 "queued_turn_start",
                 {
                     "type": "queued_turn_start",
                     "agent": self.lead.name,
                     "message_ids": [str(row.id)],
+                    "messages": [
+                        {"id": str(row.id), "content": loop.prompt},
+                    ],
                 },
             ),
         )
@@ -690,21 +724,92 @@ class AgentTeam:
                     )
                 else:
                     self._loop_states.pop(session_id, None)
+                await stream_store.push_event(
+                    session_id,
+                    StreamEnvelope.from_parts(
+                        "loop_status",
+                        _loop_status_payload(
+                            prompt=loop_command.prompt,
+                            limit=limit,
+                            remaining=remaining,
+                        ),
+                    ),
+                )
             elif loop_command.action == "set":
                 assert loop_command.limit is not None
                 self._loop_limits[session_id] = loop_command.limit
                 skip_delivery = True
+                await stream_store.push_event(
+                    session_id,
+                    StreamEnvelope.from_parts(
+                        "loop_status",
+                        _loop_status_payload(
+                            prompt=None,
+                            limit=loop_command.limit,
+                            remaining=loop_command.limit,
+                        ),
+                    ),
+                )
             elif loop_command.action == "pause":
                 if session_id in self._loop_states:
                     self._loop_states[session_id].paused = True
+                    state = self._loop_states[session_id]
+                    await stream_store.push_event(
+                        session_id,
+                        StreamEnvelope.from_parts(
+                            "loop_status",
+                            _loop_status_payload(
+                                prompt=state.prompt,
+                                limit=self._loop_limits.get(session_id, 10),
+                                remaining=state.remaining,
+                                paused=True,
+                            ),
+                        ),
+                    )
                 skip_delivery = True
             elif loop_command.action == "resume":
                 if session_id in self._loop_states:
                     self._loop_states[session_id].paused = False
+                    state = self._loop_states[session_id]
+                    await stream_store.push_event(
+                        session_id,
+                        StreamEnvelope.from_parts(
+                            "loop_status",
+                            _loop_status_payload(
+                                prompt=state.prompt,
+                                limit=self._loop_limits.get(session_id, 10),
+                                remaining=state.remaining,
+                            ),
+                        ),
+                    )
                 skip_delivery = True
             elif loop_command.action == "stop":
                 self._loop_states.pop(session_id, None)
+                await stream_store.push_event(
+                    session_id,
+                    StreamEnvelope.from_parts(
+                        "loop_status",
+                        {
+                            "prompt": None,
+                            "limit": 0,
+                            "remaining": 0,
+                            "used": 0,
+                            "paused": False,
+                        },
+                    ),
+                )
                 skip_delivery = True
+
+        if skip_delivery:
+            try:
+                await stream_store.init_turn(session_id)
+                await stream_store.push_event(
+                    session_id, StreamEnvelope.from_event(DoneEvent())
+                )
+                await stream_store.mark_done(session_id)
+            except Exception as exc:
+                logger.warning("team_loop_command_done_failed error={}", exc)
+            return session_id
 
         try:
             db_factory = resolve_db_factory(self.lead.db_factory)
@@ -806,13 +911,6 @@ class AgentTeam:
                     },
                 ),
             )
-
-        if skip_delivery:
-            await stream_store.push_event(
-                session_id, StreamEnvelope.from_event(DoneEvent())
-            )
-            await stream_store.mark_done(session_id)
-            return session_id
 
         # Mark that a turn is now active
         self._has_active_turn = True

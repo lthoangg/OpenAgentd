@@ -1343,6 +1343,32 @@ describe("loadSession", () => {
     expect(useTeamStore.getState().leadName).toBe("lead")
   })
 
+  it("restores Codex fast mode from the latest user message", async () => {
+    mockTeamHistory.mockImplementation(() =>
+      Promise.resolve({
+        lead: {
+          id: "lead-sess",
+          agent_name: "lead",
+          title: null,
+          created_at: null,
+          updated_at: null,
+          model: "codex:gpt-5.4",
+          sub_sessions: [],
+          messages: [
+            { id: "u1", session_id: "lead-sess", role: "user", content: "hi", reasoning_content: null, tool_calls: null, tool_call_id: null, name: null, is_summary: false, is_hidden: false, extra: { service_tier: "fast" }, created_at: null, attachments: null },
+          ],
+        },
+        members: [],
+        has_more: false,
+        next_cursor: null,
+      })
+    )
+
+    await useTeamStore.getState().loadSession("sess-1")
+
+    expect(useTeamStore.getState().sessionFastMode).toBe(true)
+  })
+
   it("falls back to live lead when history has no agent_name", async () => {
     mockTeamHistory.mockImplementation(() =>
       Promise.resolve({

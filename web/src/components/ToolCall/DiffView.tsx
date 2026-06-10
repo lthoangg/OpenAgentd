@@ -196,7 +196,7 @@ export function DiffView({ toolName, args, result, onCollapse }: DiffViewProps) 
             lines={diff.lines}
             oldStart={diff.hunkStarts?.[0]?.oldStart ?? 1}
             newStart={diff.hunkStarts?.[0]?.newStart ?? 1}
-            onCollapse={onCollapse}
+            onCollapse={diffs.length === 1 ? onCollapse : undefined}
           />
         ))}
       </div>

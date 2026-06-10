@@ -37,6 +37,23 @@ describe("AgentView — UserBubble collapse feature", () => {
     expect(wrapper).toBeTruthy()
   })
 
+  it("allows long unbroken user text to wrap inside the bubble", () => {
+    const blocks: ContentBlock[] = [
+      {
+        id: "1",
+        type: "user",
+        content: "https://example.com/" + "a".repeat(180),
+      },
+    ]
+
+    const { container } = render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
+
+    const bubble = container.querySelector("div[class*='min-w-0'][class*='max-w-full'][class*='overflow-hidden']")
+    const text = container.querySelector("p[class*='overflow-wrap:anywhere']")
+    expect(bubble).toBeTruthy()
+    expect(text).toBeTruthy()
+  })
+
   it("shows full content without collapse button for short message (≤10 lines)", () => {
     const shortContent = "line1\nline2\nline3\nline4\nline5"
     const blocks: ContentBlock[] = [

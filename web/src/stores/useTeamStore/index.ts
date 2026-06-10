@@ -39,6 +39,14 @@ function queuedMessagesFromHistory(sessionId: string, messages: MessageResponse[
     }))
 }
 
+function fastModeFromMessages(messages: MessageResponse[]): boolean {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const msg = messages[index]
+    if (msg.role === 'user') return msg.extra?.service_tier === 'fast'
+  }
+  return false
+}
+
 function isTransientStreamError(err: Error): boolean {
   const message = err.message.toLowerCase()
   return (
@@ -671,7 +679,7 @@ export const useTeamStore = create<TeamStore>()(
           draft.sessionId = sessionId
           draft.sessionModel = history.lead.model ?? null
           draft.sessionThinkingLevel = history.lead.thinking_level ?? null
-          draft.sessionFastMode = false
+          draft.sessionFastMode = fastModeFromMessages(history.lead.messages)
           draft.isTeamWorking = history.lead.running === true
           draft.isContinuing = false
           draft.error = null

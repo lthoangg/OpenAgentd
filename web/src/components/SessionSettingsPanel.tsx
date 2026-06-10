@@ -338,6 +338,7 @@ function SessionModelSettings({
   const [thinkingPickerOpen, setThinkingPickerOpen] = useState(false)
   const [activeModelIndex, setActiveModelIndex] = useState(0)
   const [activeThinkingIndex, setActiveThinkingIndex] = useState(0)
+
   const modelOptions = useMemo(() => registry.data?.models ?? [], [registry.data?.models])
   const visibleModelOptions = useMemo(() => {
     const q = draftModel.trim()
@@ -684,6 +685,7 @@ export function SessionSettingsPanel({
             <>
               {onSessionModelSettingsChange && (
                 <SessionModelSettings
+                  key={`${leadAgent.model ?? ''}:${sessionModel ?? ''}:${sessionThinkingLevel ?? ''}:${sessionFastMode}`}
                   defaultModel={leadAgent.model}
                   sessionModel={sessionModel}
                   sessionThinkingLevel={sessionThinkingLevel}

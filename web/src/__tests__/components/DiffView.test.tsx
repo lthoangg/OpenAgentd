@@ -186,6 +186,36 @@ describe("DiffView", () => {
     expect(screen.getByRole("button", { name: "Collapse diff for src/main.py" })).toBeTruthy()
   })
 
+  it("does not call the outer collapse handler when toggling one file in a multi-file patch", () => {
+    const patchText = [
+      "*** Begin Patch",
+      "*** Update File: src/utils.py",
+      "@@",
+      "-old utils line",
+      "+new utils line",
+      "*** Update File: src/main.py",
+      "@@",
+      "-old main line",
+      "+new main line",
+      "*** End Patch",
+    ].join("\n")
+    let collapsed = false
+
+    render(
+      <DiffView
+        toolName="patch"
+        args={JSON.stringify({ patch_text: patchText })}
+        onCollapse={() => { collapsed = true }}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: "Collapse diff for src/utils.py" }))
+
+    expect(collapsed).toBe(false)
+    expect(screen.queryByText("old utils line")).toBeNull()
+    expect(screen.getByText("old main line")).toBeTruthy()
+  })
+
   it("renders patch hunks with their own line starts", () => {
     const patchText = [
       "*** Begin Patch",

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, type TouchEvent } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -107,6 +107,8 @@ export function Sidebar({
   const [editTarget, setEditTarget] = useState<SessionResponse | null>(null)
   const [mobileSessionActions, setMobileSessionActions] = useState<SessionResponse | null>(null)
   const [editTitle, setEditTitle] = useState('')
+  const [pullDistance, setPullDistance] = useState(0)
+  const pullStartYRef = useRef<number | null>(null)
 
   const toggleCollapse = useCallback(() => {
     setCollapsed((prev) => {
@@ -121,6 +123,30 @@ export function Sidebar({
   }, [])
 
   const refetchSessions = sessions.refetch
+  const canPullRefresh = isMobile && mobileOpen
+
+  const handleSessionListTouchStart = useCallback((event: TouchEvent<HTMLDivElement>) => {
+    if (!canPullRefresh || sessionListRef.current?.scrollTop !== 0) return
+    pullStartYRef.current = event.touches[0]?.clientY ?? null
+  }, [canPullRefresh])
+
+  const handleSessionListTouchMove = useCallback((event: TouchEvent<HTMLDivElement>) => {
+    if (!canPullRefresh || pullStartYRef.current === null) return
+    const delta = (event.touches[0]?.clientY ?? 0) - pullStartYRef.current
+    if (delta <= 0) {
+      setPullDistance(0)
+      return
+    }
+    setPullDistance(Math.min(72, delta * 0.5))
+  }, [canPullRefresh])
+
+  const handleSessionListTouchEnd = useCallback(() => {
+    if (canPullRefresh && pullDistance >= 54) {
+      void refetchSessions()
+    }
+    pullStartYRef.current = null
+    setPullDistance(0)
+  }, [canPullRefresh, pullDistance, refetchSessions])
 
   // Ctrl+B: collapse sidebar; Ctrl+R: refresh sessions.
   // Ctrl+M (wiki) / Ctrl+S (scheduler) live in TeamChatView — those panels
@@ -330,7 +356,26 @@ export function Sidebar({
                     </button>
                   </div>
 
-                  <div ref={sessionListRef} className="flex-1 overflow-y-auto px-2 pb-2">
+                  <div
+                    ref={sessionListRef}
+                    className="relative flex-1 overflow-y-auto px-2 pb-2"
+                    onTouchStart={handleSessionListTouchStart}
+                    onTouchMove={handleSessionListTouchMove}
+                    onTouchEnd={handleSessionListTouchEnd}
+                    onTouchCancel={handleSessionListTouchEnd}
+                  >
+                    {canPullRefresh && (
+                      <div
+                        className="pointer-events-none sticky top-0 z-10 flex justify-center overflow-hidden transition-[height] duration-150"
+                        style={{ height: pullDistance }}
+                        aria-hidden
+                      >
+                        <div className="mt-2 inline-flex h-8 items-center gap-2 rounded-full border border-(--color-border) bg-(--bg-card) px-3 text-[11px] text-(--color-text-muted) shadow-sm">
+                          <RefreshCw size={12} className={pullDistance >= 54 || sessions.isFetching ? 'animate-spin' : ''} />
+                          {pullDistance >= 54 ? 'Release to refresh' : 'Pull to refresh'}
+                        </div>
+                      </div>
+                    )}
                     {sessions.isLoading && (
                       <div className="space-y-1 px-1 py-2">
                         {[...Array(6)].map((_, i) => (

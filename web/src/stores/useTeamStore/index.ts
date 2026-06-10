@@ -548,7 +548,8 @@ export const useTeamStore = create<TeamStore>()(
     sendLoopCommand: async (command, prompt, options) => {
       const sessionId = get().sessionId
       const isStart = prompt !== undefined
-      if (!sessionId && !isStart) {
+      const canCreateSession = isStart || command.startsWith('/loop:set ')
+      if (!sessionId && !canCreateSession) {
         set((draft) => { draft.error = 'No active session for loop command' })
         return
       }

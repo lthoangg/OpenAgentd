@@ -521,7 +521,15 @@ describe("sendLoopCommand", () => {
     expect(useTeamStore.getState().agentStreams.lead.currentBlocks).toHaveLength(0)
   })
 
-  it("requires an active session for loop control commands", async () => {
+  it("allows loop budget setup before a session exists", async () => {
+    await useTeamStore.getState().sendLoopCommand("/loop:set 5")
+
+    expect(mockPostTeamChat.mock.calls[0][0]).toBe("/loop:set 5")
+    expect(mockPostTeamChat.mock.calls[0][1]).toBeNull()
+    expect(useTeamStore.getState().sessionId).toBe("team-sid")
+  })
+
+  it("requires an active session for active loop controls", async () => {
     await useTeamStore.getState().sendLoopCommand("/loop:pause")
 
     expect(mockPostTeamChat).not.toHaveBeenCalled()

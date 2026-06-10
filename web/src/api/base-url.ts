@@ -26,6 +26,7 @@ export function apiBaseUrl(): string {
 
 export function setApiBaseUrl(baseUrl: string): void {
   if (typeof window === 'undefined') return
+  const previous = apiBaseUrl()
   Object.defineProperty(window, '__OAD_BACKEND_UNAVAILABLE__', {
     value: false,
     writable: true,
@@ -36,6 +37,7 @@ export function setApiBaseUrl(baseUrl: string): void {
     writable: true,
     configurable: true,
   })
+  if (apiBaseUrl() === previous) return
   for (const listener of listeners) listener()
 }
 

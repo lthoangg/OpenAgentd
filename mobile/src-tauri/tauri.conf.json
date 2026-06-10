@@ -25,6 +25,7 @@
       }
     ],
     "security": {
+      "dangerousDisableAssetCspModification": ["script-src", "style-src"],
       "csp": {
         "default-src": "'self' http://127.0.0.1:* http://localhost:* https:",
         "connect-src": "'self' http: https: ws: ipc: https://ipc.localhost",

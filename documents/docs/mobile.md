@@ -22,6 +22,8 @@ For simulator development, `http://localhost:8000` usually reaches the Mac backe
 
 Production mobile builds allow `about:` in `frame-src` so sandboxed MCP Apps rendered through `iframe.srcdoc` stay interactive under the packaged Tauri CSP. The app HTML still receives its own MCP resource CSP from `_meta.ui.csp`; the shell-level rule only permits the `about:srcdoc` iframe document.
 
+Production mobile builds also set `dangerousDisableAssetCspModification: ["script-src", "style-src"]` — Tauri's build-time hash/nonce injection would otherwise make browsers ignore `'unsafe-inline'`, blocking the inline scripts inside `srcdoc` MCP Apps (blank canvas in packaged builds, working in dev). The per-resource CSP `<meta>` from `_meta.ui.csp` and the iframe `sandbox` attribute still constrain the embedded app.
+
 ## Commands
 
 ```bash

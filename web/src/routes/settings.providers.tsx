@@ -38,7 +38,12 @@ import {
 } from '@/queries'
 import { openExternalUrl } from '@/lib/open-external'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { usePlatform } from '@/hooks/use-platform'
+import { mediumHapticFeedback } from '@/lib/haptics'
 import { useToastStore } from '@/stores/useToastStore'
+
+const MODEL_LONG_PRESS_MS = 520
+const MODEL_LONG_PRESS_MOVE_TOLERANCE = 10
 
 function providerKindLabel(kind: ProviderInfo['kind']): string {
   if (kind === 'api_key') return 'API key'
@@ -586,28 +591,105 @@ function ModelsPanel({
               <li className="px-2 py-3 text-center text-xs text-(--color-text-muted)">No matching models.</li>
             ) : (
               visible.map(({ qualifiedId }) => (
-                <li
-                  key={qualifiedId}
-                  className="flex min-h-11 items-center gap-2 rounded px-2 py-1 hover:bg-(--bg-key) md:min-h-0"
-                >
-                  <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-(--color-text)">
-                    {qualifiedId}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => void handleCopy(qualifiedId)}
-                    className="flex h-8 w-8 items-center justify-center rounded text-(--color-text-muted) hover:bg-(--bg-card) hover:text-(--color-text) md:h-6 md:w-6"
-                    aria-label={`Copy ${qualifiedId}`}
-                  >
-                    <Copy size={13} className="md:h-[11px] md:w-[11px]" aria-hidden="true" />
-                  </button>
-                </li>
+                <ModelRow key={qualifiedId} qualifiedId={qualifiedId} onCopy={handleCopy} />
               ))
             )}
           </ul>
         </div>
       )}
     </div>
+  )
+}
+
+function ModelRow({ qualifiedId, onCopy }: { qualifiedId: string; onCopy: (qualifiedId: string) => Promise<void> }) {
+  const isMobile = useIsMobile()
+  const { isTauri, os } = usePlatform()
+  const isTauriMobile = isTauri && (os === 'ios' || os === 'android')
+  const [actionsPoint, setActionsPoint] = useState<{ x: number; y: number } | null>(null)
+  const longPressTimerRef = useRef<number | null>(null)
+  const longPressStartRef = useRef<{ x: number; y: number } | null>(null)
+
+  const clearLongPress = () => {
+    if (longPressTimerRef.current !== null) window.clearTimeout(longPressTimerRef.current)
+    longPressTimerRef.current = null
+    longPressStartRef.current = null
+  }
+
+  return (
+    <li
+      className="flex min-h-11 items-center gap-2 rounded px-2 py-1 hover:bg-(--bg-key) md:min-h-0"
+      onContextMenu={(event) => {
+        if (isTauriMobile) return
+        event.preventDefault()
+        setActionsPoint({ x: event.clientX, y: event.clientY })
+      }}
+      onPointerDown={(event) => {
+        if (!isMobile || !isTauriMobile || event.pointerType === 'mouse') return
+        longPressStartRef.current = { x: event.clientX, y: event.clientY }
+        longPressTimerRef.current = window.setTimeout(() => {
+          longPressTimerRef.current = null
+          longPressStartRef.current = null
+          mediumHapticFeedback()
+          setActionsPoint({ x: event.clientX, y: event.clientY })
+        }, MODEL_LONG_PRESS_MS)
+      }}
+      onPointerMove={(event) => {
+        const start = longPressStartRef.current
+        if (!start) return
+        if (
+          Math.abs(event.clientX - start.x) > MODEL_LONG_PRESS_MOVE_TOLERANCE ||
+          Math.abs(event.clientY - start.y) > MODEL_LONG_PRESS_MOVE_TOLERANCE
+        ) {
+          clearLongPress()
+        }
+      }}
+      onPointerUp={clearLongPress}
+      onPointerCancel={clearLongPress}
+      onPointerLeave={clearLongPress}
+    >
+      <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-(--color-text)">
+        {qualifiedId}
+      </span>
+      <button
+        type="button"
+        onClick={() => void onCopy(qualifiedId)}
+        className="flex h-8 w-8 items-center justify-center rounded text-(--color-text-muted) hover:bg-(--bg-card) hover:text-(--color-text) md:h-6 md:w-6"
+        aria-label={`Copy ${qualifiedId}`}
+      >
+        <Copy size={13} className="md:h-[11px] md:w-[11px]" aria-hidden="true" />
+      </button>
+      {actionsPoint && (
+        <div
+          className="fixed inset-0 z-[70]"
+          onClick={() => setActionsPoint(null)}
+          onContextMenu={(event) => {
+            event.preventDefault()
+            setActionsPoint(null)
+          }}
+        >
+          <div
+            role="menu"
+            aria-label={`Actions for ${qualifiedId}`}
+            className="fixed min-w-44 rounded-lg border border-(--color-border) bg-(--bg-card) p-1 text-sm text-(--color-text) shadow-xl"
+            style={{ left: actionsPoint.x, top: actionsPoint.y }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              role="menuitem"
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+              onClick={() => {
+                setActionsPoint(null)
+                void onCopy(qualifiedId)
+              }}
+            >
+              <Copy size={14} aria-hidden="true" />
+              Copy model ID
+            </button>
+          </div>
+        </div>
+      )}
+    </li>
   )
 }
 

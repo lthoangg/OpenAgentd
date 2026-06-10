@@ -4,6 +4,7 @@ import { GripHorizontal } from 'lucide-react'
 import { InputBar, type FileRef, type InputBarHandle, type SlashCommand, type SnippetCommand } from './InputBar'
 import { RevertNotice } from './RevertNotice'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useVisualKeyboardInset } from '@/hooks/use-visual-keyboard-inset'
 import type { AgentCapabilities } from '@/api/types'
 
 // ── Storage ──────────────────────────────────────────────────────────────────
@@ -113,6 +114,7 @@ interface FloatingInputBarProps {
 export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps>(
   function FloatingInputBar({ boundsRef, ...inputProps }, ref) {
     const isMobile = useIsMobile()
+    const keyboardInset = useVisualKeyboardInset()
     const dragControls = useDragControls()
     const panelRef = useRef<HTMLDivElement>(null)
     const [offset, setOffset] = useState<StoredOffset>(() => loadOffset())
@@ -313,8 +315,13 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
     // ── Mobile: static docked bar ────────────────────────────────────────────
     if (isMobile) {
       return (
-        // border-t separates from chat content; pb-safe clears the home indicator
-        <div className="pointer-events-auto border-t border-(--color-border) bg-(--bg-key)/20 px-3 pb-safe pt-2 backdrop-blur-xl">
+        // border-t separates from chat content; pb-safe clears the home
+        // indicator, and the visualViewport inset lifts the composer above
+        // the soft keyboard on iOS/Android Tauri shells.
+        <div
+          className="pointer-events-auto border-t border-(--color-border) bg-(--bg-key)/20 px-3 pb-safe pt-2 backdrop-blur-xl transition-[padding-bottom] duration-150"
+          style={keyboardInset > 0 ? { paddingBottom: `calc(${keyboardInset}px + 0.5rem)` } : undefined}
+        >
           <RevertNotice count={inputProps.revertedCount ?? 0} messages={inputProps.revertedMessages ?? []} onRedo={inputProps.onRedo} />
           <InputBar ref={setInputRefs} floating filesBelow={false} {...inputProps} />
         </div>

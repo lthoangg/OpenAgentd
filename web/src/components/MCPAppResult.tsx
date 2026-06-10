@@ -209,6 +209,16 @@ export function MCPAppResult({ mcpApp, sessionId, toolCallId }: MCPAppResultProp
   }, [displayMode, updateHostDisplayMode])
 
   useEffect(() => {
+    const syncTheme = () => {
+      bridgeRef.current?.setHostContext({ theme: currentTheme() })
+    }
+    const observer = new MutationObserver(syncTheme)
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+    syncTheme()
+    return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
     if (displayMode !== FULLSCREEN_DISPLAY_MODE) return undefined
 
     const previousOverflow = document.body.style.overflow
@@ -361,13 +371,13 @@ export function MCPAppResult({ mcpApp, sessionId, toolCallId }: MCPAppResultProp
     <iframe
       ref={iframeRef}
       title={title}
-      className={isFullscreen ? 'h-full w-full bg-white' : 'w-full rounded-md border border-(--color-border) bg-white'}
+      className={isFullscreen ? 'h-full w-full bg-(--bg-page)' : 'w-full rounded-md border border-(--color-border) bg-(--bg-page)'}
       style={isFullscreen ? undefined : { height }}
     />
   )
 
   return (
-    <div className={isFullscreen ? "fixed inset-0 z-50 flex flex-col bg-white [[data-mobile-shell]_&]:pt-[env(safe-area-inset-top)] [[data-mobile-shell]_&]:pb-[env(safe-area-inset-bottom)] [[data-mobile-shell]_&]:pl-[env(safe-area-inset-left)] [[data-mobile-shell]_&]:pr-[env(safe-area-inset-right)]" : 'flex flex-col gap-2'}>
+    <div className={isFullscreen ? "fixed inset-0 z-50 flex flex-col bg-(--bg-page) [[data-mobile-shell]_&]:pt-[env(safe-area-inset-top)] [[data-mobile-shell]_&]:pb-[env(safe-area-inset-bottom)] [[data-mobile-shell]_&]:pl-[env(safe-area-inset-left)] [[data-mobile-shell]_&]:pr-[env(safe-area-inset-right)]" : 'flex flex-col gap-2'}>
       <div className={isFullscreen ? 'hidden' : 'flex items-center justify-between gap-2 font-mono text-[10px] text-(--color-text-muted)'}>
         <span className="min-w-0 truncate" title={resourceUri}>{title}{resourceUri ? ` · ${String(resourceUri)}` : ''}</span>
         <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-(--color-border) px-1.5 py-0.5 text-[9px] uppercase tracking-wide">

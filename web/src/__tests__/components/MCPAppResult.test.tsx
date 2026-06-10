@@ -54,6 +54,7 @@ describe("MCPAppResult", () => {
     MockBridge.lastTransport = undefined
     callMcpAppTool.mockClear()
     callMcpAppTool.mockImplementation(async () => ({ result: { content: [{ type: "text", text: "saved" }] } }))
+    document.documentElement.classList.remove("dark")
   })
 
   it("routes open-link requests through openExternalUrl so Tauri shells open the system browser", async () => {
@@ -106,6 +107,27 @@ describe("MCPAppResult", () => {
     expect(iframe?.getAttribute("src")).toBeNull()
     expect(iframe?.getAttribute("title")).toBe("create_view")
     expect(screen.getByText(/Experimental sandbox:/)).toBeTruthy()
+  })
+
+  it("syncs theme changes to the MCP app bridge", async () => {
+    render(
+      <MCPAppResult
+        mcpApp={{
+          tool: "create_view",
+          resourceUri: "ui://excalidraw/mcp-app.html",
+          html: "<html><body>mcp app</body></html>",
+          mimeType: "text/html;profile=mcp-app",
+        }}
+      />,
+    )
+
+    await waitFor(() => expect(bridgeInstances[0]?.connect).toHaveBeenCalled())
+    act(() => {
+      document.documentElement.classList.add("dark")
+    })
+
+    await waitFor(() => expect(bridgeInstances[0]?.setHostContext).toHaveBeenCalledWith({ theme: "dark" }))
+    document.documentElement.classList.remove("dark")
   })
 
   it("applies resource CSP domains for externally loaded MCP app modules", async () => {

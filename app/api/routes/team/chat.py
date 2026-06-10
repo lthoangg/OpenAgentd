@@ -14,7 +14,11 @@ from sse_starlette.sse import EventSourceResponse
 
 from app.agent.agent_loop import Agent
 from app.agent.mode.team.member import TeamMemberBase
-from app.agent.mode.team.team import ContinuePreconditionError
+from app.agent.mode.team.team import (
+    ContinuePreconditionError,
+    is_loop_command,
+    parse_loop_command,
+)
 from app.agent.tools.builtin.skill import discover_skills
 from app.api.deps import ChatFormDep, DbSession, TeamDep
 from app.api.routes.team._helpers import (
@@ -242,6 +246,17 @@ async def team_chat(
         return {"status": "interrupted", "session_id": session_id}
 
     assert message is not None
+    if is_loop_command(message):
+        if mode != "coding":
+            raise HTTPException(
+                status_code=422,
+                detail="/loop commands are only available in coding mode.",
+            )
+        if parse_loop_command(message) is None:
+            raise HTTPException(
+                status_code=422,
+                detail='Invalid /loop command. Use /loop "prompt", /loop:set 5|10|20|50, /loop:pause, /loop:resume, or /loop:stop.',
+            )
 
     if body.shell:
         if files:

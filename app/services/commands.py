@@ -29,6 +29,7 @@ is preserved verbatim in the command id — the picker matches against it.
 from __future__ import annotations
 
 import re
+import shlex
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -46,6 +47,16 @@ class Command:
     body: str  # post-frontmatter markdown, untouched
     path: Path  # absolute path to the source .md file
     source: str  # one of: project-openagentd / project-opencode / global-openagentd / global-opencode
+
+
+@dataclass(frozen=True)
+class SlashInvocation:
+    """Parsed slash-command invocation from a chat message."""
+
+    command: str
+    subcommand: str | None
+    arguments: str
+    argv: list[str]
 
 
 # ── Discovery roots ─────────────────────────────────────────────────────────
@@ -175,6 +186,35 @@ _BUILTIN_COMMANDS: dict[str, Command] = {
 def get_builtin_command(name: str) -> Command | None:
     """Return the built-in command with *name*, or ``None`` if not built-in."""
     return _BUILTIN_COMMANDS.get(name)
+
+
+_SLASH_INVOCATION_RE = re.compile(
+    r"^/(?P<command>[A-Za-z0-9_-]+)(?::(?P<subcommand>[A-Za-z0-9_-]+))?(?:\s+(?P<arguments>.*))?$",
+    re.DOTALL,
+)
+
+
+def parse_slash_invocation(content: str) -> SlashInvocation | None:
+    """Parse ``/<command>[:subcommand] [arguments]`` chat input.
+
+    This is intentionally separate from disk command discovery: built-ins can
+    consume structured subcommands while custom commands still use their file
+    name as the command id.
+    """
+    match = _SLASH_INVOCATION_RE.match(content.strip())
+    if match is None:
+        return None
+    arguments = match.group("arguments") or ""
+    try:
+        argv = shlex.split(arguments)
+    except ValueError:
+        argv = []
+    return SlashInvocation(
+        command=match.group("command"),
+        subcommand=match.group("subcommand"),
+        arguments=arguments,
+        argv=argv,
+    )
 
 
 # ── Public API ──────────────────────────────────────────────────────────────

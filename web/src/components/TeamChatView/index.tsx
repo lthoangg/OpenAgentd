@@ -515,6 +515,9 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     { id: 'redo', label: 'Redo', description: 'Restore all undone messages back to the live tip' },
     { id: 'new', label: 'New Chat', description: 'Start a fresh team conversation' },
     { id: 'init', label: 'Init', description: 'Create or update AGENTS.md for this project' },
+    ...(mode === 'coding'
+      ? [{ id: 'loop', label: 'Loop', insertText: 'loop ', description: 'Coding loop: /loop "prompt", /loop:set 10, pause/resume/stop', keepInputOpen: true }]
+      : []),
     ...(commandsQ.data?.commands ?? []).map((c) => {
       const displayName = c.name.replace('/', ':')
       return {
@@ -610,6 +613,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const expandUserCommand = useCallback(
     async (content: string): Promise<string> => {
       if (!content.startsWith('/')) return content
+      if (content.startsWith('/loop:') || content.startsWith('/loop ')) return content
       // The command name may include slashes (nested folders), so we
       // greedily match the longest known prefix instead of splitting on
       // the first space. Tokens are separated by whitespace.

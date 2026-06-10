@@ -62,6 +62,11 @@ Slash commands live in the composer picker only; the command palette does not li
 
 - **Built-in commands** (`/stop`, `/continue`, `/compact`, `/undo`, `/redo`, `/new`) execute immediately on pick.
   `/continue` resumes the last assistant response; `/compact` runs the session summarizer; `/undo` reverts the latest user turn, restores its workspace snapshot, and puts the text back in the composer; `/redo` restores all undone turns sequentially, replaying the workspace forward to the live tip.
+- **Built-in prompt commands** (`/init`, `/loop "prompt"`, `/loop:{subcommand}`) are handled by
+  OpenAgentd. `/init` renders through the backend command endpoint. `/loop:*`
+  is coding-mode only and controls a Ralph Wiggum loop for the current session.
+  Use `/loop:set 5|10|20|50` to set the loop budget, `/loop "prompt"` to
+  start, then `/loop:pause`, `/loop:resume`, or `/loop:stop` to control it.
 - **Discovered commands** insert `/<name> ` into the textarea so you
   can type arguments before submitting. For nested commands, the picker uses
   colon syntax: `git/commit` is displayed and inserted as `/git:commit`.
@@ -104,3 +109,19 @@ Then in chat:
 
 The agent receives the full rendered prompt, not the `/git:commit …`
 line.
+
+Ralph Wiggum loop example:
+
+```text
+/loop:set 20
+/loop "Run uv run pytest tests/api/routes/test_commands.py -q. If it fails, make the smallest fix and rerun the same command."
+```
+
+OpenAgentd sends the exact configured prompt as a user message. Each time the
+team becomes idle, the backend injects the same prompt again in the same session
+until the configured budget is exhausted or you send `/loop:pause` or
+`/loop:stop`.
+
+You can still steer mid-loop with an ordinary message. If the team is already
+working, the normal queued-message path runs first; after that turn completes,
+the loop continues with its configured prompt unless paused or stopped.

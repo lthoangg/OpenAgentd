@@ -70,6 +70,7 @@ struct AppBackendConfig {
 #[derive(Clone, Serialize)]
 struct AppBackendStatus {
     base_url: String,
+    token: Option<String>,
     mode: String,
     sidecar_running: bool,
     external: bool,
@@ -299,8 +300,14 @@ async fn app_backend_status_for_window(app: AppHandle, state: tauri::State<'_, A
     let servers = load_app_backend_config(&app)
         .unwrap_or_else(|_| AppBackendConfig::default())
         .servers;
+    let token = if external {
+        None
+    } else {
+        state.desktop_token.lock().await.clone()
+    };
     Ok(AppBackendStatus {
         base_url,
+        token,
         mode: mode.as_str().to_string(),
         sidecar_running,
         external: mode == BackendMode::External,

@@ -397,42 +397,44 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
     }
   }, [])
 
-  // Me detect user scroll via wheel/touchmove — never fires from programmatic scroll
+  // Me track scroll position and reveal/fetch older history near the top.
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
-    const onUserScroll = () => {
+    const onScroll = () => {
       // Me: check + arm the load flag synchronously on the event, before any
-      // rAF. Multiple wheel events fire before a single rAF executes, so if
-      // the guard lived inside rAF all queued callbacks would see the flag as
-      // false and fire duplicate requests.
-      if (el.scrollTop <= LOAD_OLDER_THRESHOLD && useTeamStore.getState().hasMore && !loadingOlderRef.current) {
-        loadingOlderRef.current = true
-        prevScrollHeightRef.current = el.scrollHeight
-        pendingRestoreRef.current = true
-        void useTeamStore.getState().loadOlderMessages().finally(() => {
-          loadingOlderRef.current = false
-        })
+      // rAF. Multiple scroll events can fire before a single rAF executes, so
+      // if the guard lived inside rAF all queued callbacks would see the flag
+      // as false and fire duplicate requests.
+      if (el.scrollTop <= LOAD_OLDER_THRESHOLD) {
+        if (hiddenTurnCount > 0) {
+          showEarlierTurns()
+        } else if (useTeamStore.getState().hasMore && !loadingOlderRef.current) {
+          loadingOlderRef.current = true
+          prevScrollHeightRef.current = el.scrollHeight
+          pendingRestoreRef.current = true
+          void useTeamStore.getState().loadOlderMessages().finally(() => {
+            loadingOlderRef.current = false
+          })
+        }
       }
 
       requestAnimationFrame(() => {
         const atBottom = isAtBottom()
         pinnedRef.current = atBottom
         // Me: only flip state when the boolean actually changes. Calling
-        // setState with the current value on every wheel tick still
+        // setState with the current value on every scroll tick still
         // schedules a re-render, which cascades through MarkdownBlock /
         // ReactMarkdown and was enough to re-mount inline ``<video>``
         // elements mid-playback (flicker).
         setShowScrollBtn((prev) => (prev === !atBottom ? prev : !atBottom))
       })
     }
-    el.addEventListener('wheel', onUserScroll, { passive: true })
-    el.addEventListener('touchmove', onUserScroll, { passive: true })
+    el.addEventListener('scroll', onScroll, { passive: true })
     return () => {
-      el.removeEventListener('wheel', onUserScroll)
-      el.removeEventListener('touchmove', onUserScroll)
+      el.removeEventListener('scroll', onScroll)
     }
-  }, [isAtBottom])
+  }, [hiddenTurnCount, isAtBottom, showEarlierTurns])
 
   // Me restore scroll position after older messages are prepended.
   // We track a "pending restore" flag separately from blocks.length so

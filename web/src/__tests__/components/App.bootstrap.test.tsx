@@ -4,7 +4,7 @@ import App from '@/App'
 
 const TEST_BACKEND_URL = 'http://10.0.2.2:8000'
 
-let statusPayload: { base_url: string } | null = { base_url: TEST_BACKEND_URL }
+let statusPayload: { base_url: string; token?: string | null } | null = { base_url: TEST_BACKEND_URL }
 
 const invokeMock = mock(async (...args: unknown[]) => {
   const command = String(args[0])
@@ -26,6 +26,7 @@ mock.module('@/components/UpdateCard', () => ({
 
 beforeEach(() => {
   delete window.__OAD_API_BASE_URL__
+  delete window.__OAD_TOKEN__
   statusPayload = { base_url: TEST_BACKEND_URL }
   invokeMock.mockClear()
 })
@@ -33,6 +34,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   delete window.__OAD_API_BASE_URL__
+  delete window.__OAD_TOKEN__
 })
 
 describe('App backend bootstrap', () => {
@@ -41,6 +43,17 @@ describe('App backend bootstrap', () => {
 
     await waitFor(() => {
       expect(window.__OAD_API_BASE_URL__).toBe(TEST_BACKEND_URL)
+    })
+  })
+
+  it('hydrates the desktop token after a force reload page load', async () => {
+    statusPayload = { base_url: TEST_BACKEND_URL, token: 'desktop-token' }
+
+    render(<App />)
+
+    await waitFor(() => {
+      expect(window.__OAD_API_BASE_URL__).toBe(TEST_BACKEND_URL)
+      expect(window.__OAD_TOKEN__).toBe('desktop-token')
     })
   })
 

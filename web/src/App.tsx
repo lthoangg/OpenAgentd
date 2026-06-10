@@ -5,7 +5,9 @@ import { useAppBackendBootstrap } from './hooks/use-app-backend-bootstrap'
 import { router } from './router'
 
 function App() {
-  useAppBackendBootstrap()
+  const backendReady = useAppBackendBootstrap()
+
+  if (!backendReady) return <AppLoadingScreen />
 
   return (
     <Suspense fallback={<AppLoadingScreen />}>

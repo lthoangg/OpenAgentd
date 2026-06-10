@@ -56,6 +56,7 @@ const DEFAULT_HEIGHT = 420
 const MAX_HEIGHT = 900
 const INLINE_DISPLAY_MODE = 'inline' as const
 const FULLSCREEN_DISPLAY_MODE = 'fullscreen' as const
+const THEME_CHANGE_EVENT = 'oa-theme-change'
 function currentTheme(): 'light' | 'dark' {
   return document.documentElement.classList.contains('dark') ? 'dark' : 'light'
 }
@@ -214,8 +215,12 @@ export function MCPAppResult({ mcpApp, sessionId, toolCallId }: MCPAppResultProp
     }
     const observer = new MutationObserver(syncTheme)
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+    window.addEventListener(THEME_CHANGE_EVENT, syncTheme)
     syncTheme()
-    return () => observer.disconnect()
+    return () => {
+      window.removeEventListener(THEME_CHANGE_EVENT, syncTheme)
+      observer.disconnect()
+    }
   }, [])
 
   useEffect(() => {

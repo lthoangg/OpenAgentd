@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, mock, spyOn } from "bun:test"
+import { describe, it, expect, afterEach, beforeEach, mock, spyOn } from "bun:test"
 import { act, render, screen, cleanup, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { MCPAppResult } from "@/components/MCPAppResult"
@@ -49,12 +49,18 @@ mock.module("@/api/client", () => ({
 
 
 describe("MCPAppResult", () => {
+  beforeEach(() => {
+    bridgeInstances.length = 0
+    MockBridge.lastTransport = undefined
+    document.documentElement.className = ""
+  })
+
   afterEach(() => {
     bridgeInstances.length = 0
     MockBridge.lastTransport = undefined
     callMcpAppTool.mockClear()
     callMcpAppTool.mockImplementation(async () => ({ result: { content: [{ type: "text", text: "saved" }] } }))
-    document.documentElement.classList.remove("dark")
+    document.documentElement.className = ""
   })
 
   it("routes open-link requests through openExternalUrl so Tauri shells open the system browser", async () => {
@@ -122,11 +128,13 @@ describe("MCPAppResult", () => {
     )
 
     await waitFor(() => expect(bridgeInstances[0]?.connect).toHaveBeenCalled())
+    bridgeInstances[0]?.setHostContext.mockClear()
     act(() => {
       document.documentElement.classList.add("dark")
+      window.dispatchEvent(new CustomEvent("oa-theme-change"))
     })
 
-    await waitFor(() => expect(bridgeInstances[0]?.setHostContext).toHaveBeenCalledWith({ theme: "dark" }))
+    expect(bridgeInstances[0]?.setHostContext).toHaveBeenCalledWith({ theme: "dark" })
     document.documentElement.classList.remove("dark")
   })
 

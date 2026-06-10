@@ -277,6 +277,8 @@ describe("MCPAppResult", () => {
     const dialog = screen.getByRole("dialog")
     const overlay = dialog.parentElement
     expect(overlay?.className).toContain("fixed inset-0")
+    expect(overlay?.className).toContain("min-h-0")
+    expect(overlay?.className).toContain("overflow-hidden")
     // Rabbit-ear / notch awareness: safe-area insets applied only under mobile shells.
     expect(overlay?.className).toContain("[[data-mobile-shell]_&]:pt-[env(safe-area-inset-top)]")
     expect(overlay?.className).toContain("[[data-mobile-shell]_&]:pb-[env(safe-area-inset-bottom)]")
@@ -285,6 +287,11 @@ describe("MCPAppResult", () => {
     // No 90vh/90vw letterboxing — iframe fills the dialog.
     const iframe = document.body.querySelector("iframe")
     expect(iframe?.className).toContain("h-full w-full")
+    expect(iframe?.parentElement?.className).toContain("overflow-hidden")
+    expect(bridgeInstances[0]?.setHostContext).toHaveBeenCalledWith({
+      displayMode: "fullscreen",
+      containerDimensions: { height: window.innerHeight, width: window.innerWidth },
+    })
     expect(overlay?.className).not.toContain("90vh")
     // Header and sandbox caption are hidden so the app gets 100% of the screen.
     expect(screen.getByText(/Experimental sandbox:/).className).toContain("hidden")

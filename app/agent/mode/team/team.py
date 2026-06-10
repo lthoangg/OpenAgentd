@@ -86,9 +86,7 @@ def parse_loop_command(content: str) -> LoopCommand | None:
         return None
 
     if invocation.subcommand is None:
-        if len(invocation.argv) != 1:
-            return None
-        prompt = invocation.argv[0].strip()
+        prompt = invocation.arguments.strip()
         return LoopCommand(action="start", prompt=prompt) if prompt else None
 
     if invocation.subcommand == "set":
@@ -706,6 +704,17 @@ class AgentTeam:
                 self._loop_states.pop(session_id, None)
                 skip_delivery = True
 
+        if skip_delivery:
+            try:
+                await stream_store.init_turn(session_id)
+                await stream_store.push_event(
+                    session_id, StreamEnvelope.from_event(DoneEvent())
+                )
+                await stream_store.mark_done(session_id)
+            except Exception as exc:
+                logger.warning("team_loop_command_done_failed error={}", exc)
+            return session_id
+
         try:
             db_factory = resolve_db_factory(self.lead.db_factory)
             lead_uuid = UUID(session_id)
@@ -806,13 +815,6 @@ class AgentTeam:
                     },
                 ),
             )
-
-        if skip_delivery:
-            await stream_store.push_event(
-                session_id, StreamEnvelope.from_event(DoneEvent())
-            )
-            await stream_store.mark_done(session_id)
-            return session_id
 
         # Mark that a turn is now active
         self._has_active_turn = True

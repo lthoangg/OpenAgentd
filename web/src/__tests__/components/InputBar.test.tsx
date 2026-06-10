@@ -454,9 +454,9 @@ describe("InputBar", () => {
       <InputBar
         onSubmit={() => {}}
         slashCommands={[
-          { id: "loop", label: "loop", displayName: "loop", insertText: "loop", description: "Start a coding loop", keepInputOpen: true },
-          { id: "loop/set", label: "loop:set", displayName: "loop:set", insertText: "loop:set", description: "Set loop budget", keepInputOpen: true },
-          { id: "loop/pause", label: "loop:pause", displayName: "loop:pause", insertText: "loop:pause", description: "Pause loop", keepInputOpen: true },
+          { id: "loop", label: "loop <prompt>", displayName: "loop", insertText: "loop", description: "Start a coding loop", keepInputOpen: true },
+          { id: "loop:set", label: "loop:set <limit>", displayName: "loop:set", insertText: "loop:set", description: "Set loop budget", keepInputOpen: true },
+          { id: "loop:pause", label: "loop:pause", displayName: "loop:pause", description: "Pause loop" },
         ]}
       />,
     )

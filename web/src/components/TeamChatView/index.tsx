@@ -71,6 +71,7 @@ import { VIEW_MODES, type ViewMode } from './types'
 import { saveLastCodingWorkspace, workspaceLabel } from '@/utils/workspace'
 import { formatTokens } from '@/utils/format'
 import { setTraySession } from '@/lib/tray'
+import { parseLoopCommand } from '@/lib/parseLoopCommand'
 
 interface TeamChatViewProps {
   sessionId?: string
@@ -517,11 +518,11 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     { id: 'init', label: 'Init', description: 'Create or update AGENTS.md for this project' },
     ...(mode === 'coding'
       ? [
-          { id: 'loop', label: 'loop', displayName: 'loop', insertText: 'loop', description: 'Start a coding loop with /loop "prompt"', keepInputOpen: true },
-          { id: 'loop/set', label: 'loop:set', displayName: 'loop:set', insertText: 'loop:set', description: 'Set coding loop budget: 5, 10, 20, or 50', keepInputOpen: true },
-          { id: 'loop/pause', label: 'loop:pause', displayName: 'loop:pause', insertText: 'loop:pause', description: 'Pause the active coding loop', keepInputOpen: true },
-          { id: 'loop/resume', label: 'loop:resume', displayName: 'loop:resume', insertText: 'loop:resume', description: 'Resume the paused coding loop', keepInputOpen: true },
-          { id: 'loop/stop', label: 'loop:stop', displayName: 'loop:stop', insertText: 'loop:stop', description: 'Stop the active coding loop', keepInputOpen: true },
+          { id: 'loop', label: 'loop <prompt>', displayName: 'loop', insertText: 'loop', description: 'Start a coding loop', keepInputOpen: true },
+          { id: 'loop:set', label: 'loop:set <limit>', displayName: 'loop:set', insertText: 'loop:set', description: 'Set coding loop budget: 5, 10, 20, or 50', keepInputOpen: true },
+          { id: 'loop:pause', label: 'loop:pause', displayName: 'loop:pause', description: 'Pause the active coding loop' },
+          { id: 'loop:resume', label: 'loop:resume', displayName: 'loop:resume', description: 'Resume the paused coding loop' },
+          { id: 'loop:stop', label: 'loop:stop', displayName: 'loop:stop', description: 'Stop the active coding loop' },
         ]
       : []),
     ...(commandsQ.data?.commands ?? []).map((c) => {
@@ -560,6 +561,17 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     }
   }, [agentWorkspace, pushToast])
 
+  const runLoopCommand = useCallback(async (command: string, prompt?: string) => {
+    const current = useTeamStore.getState()
+    await current.sendLoopCommand(command, prompt, {
+      mode,
+      workspace,
+      model: current.sessionId ? selectedModel || null : null,
+      thinkingLevel: current.sessionId ? selectedThinkingLevel || null : null,
+      fastMode: current.sessionFastMode,
+    })
+  }, [mode, workspace, selectedModel, selectedThinkingLevel])
+
   const handleSlashCommand = useCallback((id: string) => {
     switch (id) {
       case 'stop':
@@ -593,6 +605,11 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
       case 'new':
         handleNewSession()
         break
+      case 'loop:pause':
+      case 'loop:resume':
+      case 'loop:stop':
+        void runLoopCommand(`/${id}`)
+        break
       case 'init':
         // Prompt body lives on the backend so it can be tweaked without a
         // web rebuild and stays the single source of truth.
@@ -612,7 +629,42 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
           )
         break
     }
-  }, [handleNewSession, mode, agentWorkspace, pushToast])
+  }, [handleNewSession, runLoopCommand, mode, agentWorkspace, pushToast])
+
+  const tryHandleBuiltinLoopCommand = useCallback(async (content: string): Promise<boolean> => {
+    const parsed = parseLoopCommand(content)
+    switch (parsed.kind) {
+      case 'none':
+        return false
+      case 'unknown_subcommand':
+        return false
+      case 'start_missing_prompt':
+        pushToast({
+          tone: 'error',
+          title: '/loop needs a prompt',
+          description: 'Type the prompt after /loop, e.g. "/loop just say hi".',
+        })
+        return true
+      case 'set_invalid_limit':
+        pushToast({
+          tone: 'error',
+          title: '/loop:set needs a valid limit',
+          description: 'Use one of: 5, 10, 20, or 50.',
+        })
+        return true
+      case 'start':
+        await runLoopCommand(content, parsed.prompt)
+        return true
+      case 'set':
+        await runLoopCommand(`/loop:set ${parsed.limit}`)
+        return true
+      case 'pause':
+      case 'resume':
+      case 'stop':
+        await runLoopCommand(`/loop:${parsed.kind}`)
+        return true
+    }
+  }, [pushToast, runLoopCommand])
 
   /** If *content* starts with a known user-defined command, render server-side
    *  and return the expanded body; otherwise return *content* unchanged. */
@@ -1118,6 +1170,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             ref={inputRef}
             boundsRef={mainColumnRef}
             onSubmit={async (content, files) => {
+              if (mode === 'coding' && (await tryHandleBuiltinLoopCommand(content))) return
               const shell = content.startsWith('!')
               const command = shell ? content.slice(1).trim() : content
               const expanded = shell ? `!${command}` : await expandUserCommand(content)

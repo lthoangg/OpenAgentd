@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app.agent.mode.team.team import LoopState
 from app.models.chat import ChatSession, SessionMessage
 
 
@@ -227,6 +228,90 @@ class TestAgentTeamUserMessage:
                 assert user_rows[0].extra is not None
                 assert user_rows[0].extra["model"] == "openai:gpt-5.5"
                 assert user_rows[0].extra["thinking_level"] == "high"
+        finally:
+            await engine.dispose()
+
+    async def test_loop_control_command_does_not_persist_or_deliver_user_message(
+        self, basic_team, mock_stream_store
+    ):
+        engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        async with engine.begin() as conn:
+            await conn.run_sync(SQLModel.metadata.create_all)
+        db_factory = async_sessionmaker(
+            engine, class_=AsyncSession, expire_on_commit=False
+        )
+        team = basic_team
+        team.mode = "coding"
+        team.lead.db_factory = db_factory
+        team.mailbox.send = AsyncMock()
+        session_id = str(uuid.uuid7())
+
+        try:
+            await team.handle_user_message("/loop:set 20", session_id=session_id)
+
+            assert team._loop_limits[session_id] == 20
+            team.mailbox.send.assert_not_awaited()
+            mock_stream_store.assert_awaited()
+            async with db_factory() as db:
+                messages = (await db.exec(select(SessionMessage))).all()
+                assert messages == []
+        finally:
+            await engine.dispose()
+
+    async def test_loop_start_persists_only_prompt_and_delivers_prompt(
+        self, basic_team
+    ):
+        engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        async with engine.begin() as conn:
+            await conn.run_sync(SQLModel.metadata.create_all)
+        db_factory = async_sessionmaker(
+            engine, class_=AsyncSession, expire_on_commit=False
+        )
+        team = basic_team
+        team.mode = "coding"
+        team.lead.db_factory = db_factory
+        team.mailbox.send = AsyncMock()
+        session_id = str(uuid.uuid7())
+
+        try:
+            await team.handle_user_message("/loop just say hi", session_id=session_id)
+
+            team.mailbox.send.assert_awaited_once()
+            sent = team.mailbox.send.await_args.kwargs["message"]
+            assert sent.content == "[user]: just say hi"
+            async with db_factory() as db:
+                messages = (await db.exec(select(SessionMessage))).all()
+                user_rows = [row for row in messages if row.role == "user"]
+                assert len(user_rows) == 1
+                assert user_rows[0].content == "just say hi"
+        finally:
+            await engine.dispose()
+
+    async def test_loop_pause_resume_stop_are_control_commands_only(self, basic_team):
+        engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        async with engine.begin() as conn:
+            await conn.run_sync(SQLModel.metadata.create_all)
+        db_factory = async_sessionmaker(
+            engine, class_=AsyncSession, expire_on_commit=False
+        )
+        team = basic_team
+        team.mode = "coding"
+        team.lead.db_factory = db_factory
+        team.mailbox.send = AsyncMock()
+        session_id = str(uuid.uuid7())
+        team._loop_states[session_id] = LoopState(prompt="keep going", remaining=2)
+
+        try:
+            await team.handle_user_message("/loop:pause", session_id=session_id)
+            assert team._loop_states[session_id].paused is True
+            await team.handle_user_message("/loop:resume", session_id=session_id)
+            assert team._loop_states[session_id].paused is False
+            await team.handle_user_message("/loop:stop", session_id=session_id)
+            assert session_id not in team._loop_states
+            team.mailbox.send.assert_not_awaited()
+            async with db_factory() as db:
+                messages = (await db.exec(select(SessionMessage))).all()
+                assert messages == []
         finally:
             await engine.dispose()
 

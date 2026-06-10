@@ -5,13 +5,29 @@ from __future__ import annotations
 from app.agent.mode.team.team import is_loop_command, parse_loop_command
 
 
-def test_parse_loop_start_uses_command_arguments_for_prompt() -> None:
-    command = parse_loop_command('/loop "uv run pytest -q"')
+def test_parse_loop_start_uses_text_after_space_as_prompt() -> None:
+    command = parse_loop_command("/loop uv run pytest -q")
 
     assert command is not None
     assert command.action == "start"
     assert command.prompt == "uv run pytest -q"
     assert command.limit is None
+
+
+def test_parse_loop_start_keeps_quotes_as_prompt_text() -> None:
+    command = parse_loop_command('/loop "just say hi"')
+
+    assert command is not None
+    assert command.action == "start"
+    assert command.prompt == '"just say hi"'
+
+
+def test_parse_loop_start_accepts_unquoted_prompt_text() -> None:
+    command = parse_loop_command("/loop just say hi")
+
+    assert command is not None
+    assert command.action == "start"
+    assert command.prompt == "just say hi"
 
 
 def test_parse_loop_set_accepts_supported_thresholds() -> None:
@@ -24,6 +40,14 @@ def test_parse_loop_set_accepts_supported_thresholds() -> None:
 
 def test_parse_loop_set_rejects_unsupported_threshold() -> None:
     assert parse_loop_command("/loop:set 7") is None
+
+
+def test_parse_loop_set_rejects_extra_arguments() -> None:
+    assert parse_loop_command("/loop:set 10 now") is None
+
+
+def test_parse_loop_rejects_unknown_subcommand() -> None:
+    assert parse_loop_command("/loop:status") is None
 
 
 def test_parse_loop_controls() -> None:

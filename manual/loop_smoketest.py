@@ -3,7 +3,7 @@
 Flow:
   1. Create a temporary coding workspace.
   2. Configure loop budget with ``/loop:set``.
-  3. Start a loop with ``/loop \"prompt\"``.
+  3. Start a loop with ``/loop <prompt>``.
   4. Wait until the exact prompt appears at least twice in lead history, proving
      backend reinjection happened after a completed team turn.
   5. Send ``/loop:stop`` and wait until the team is idle.
@@ -128,7 +128,7 @@ def main() -> None:
 
         started = post_coding_message(
             base,
-            f'/loop "{args.prompt}"',
+            f"/loop {args.prompt}",
             workspace=workspace,
             session_id=session_id,
         )

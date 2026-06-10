@@ -356,18 +356,19 @@ export function MCPAppResult({ mcpApp, sessionId, toolCallId }: MCPAppResultProp
     return <p className="font-mono text-[11px] text-(--color-error)">MCP app resource did not include HTML.</p>
   }
 
+  const isFullscreen = displayMode === FULLSCREEN_DISPLAY_MODE
   const iframe = (
     <iframe
       ref={iframeRef}
       title={title}
-      className={displayMode === FULLSCREEN_DISPLAY_MODE ? 'h-full w-full rounded-lg border border-(--color-border) bg-white shadow-2xl' : 'w-full rounded-md border border-(--color-border) bg-white'}
-      style={displayMode === FULLSCREEN_DISPLAY_MODE ? undefined : { height }}
+      className={isFullscreen ? 'h-full w-full bg-white' : 'w-full rounded-md border border-(--color-border) bg-white'}
+      style={isFullscreen ? undefined : { height }}
     />
   )
 
   return (
-    <div className={displayMode === FULLSCREEN_DISPLAY_MODE ? 'fixed inset-0 z-50 flex flex-col gap-2 bg-black/60 p-[5vh] backdrop-blur-sm' : 'flex flex-col gap-2'}>
-      <div className="flex items-center justify-between gap-2 font-mono text-[10px] text-(--color-text-muted)">
+    <div className={isFullscreen ? "fixed inset-0 z-50 flex flex-col bg-white [[data-mobile-shell]_&]:pt-[env(safe-area-inset-top)] [[data-mobile-shell]_&]:pb-[env(safe-area-inset-bottom)] [[data-mobile-shell]_&]:pl-[env(safe-area-inset-left)] [[data-mobile-shell]_&]:pr-[env(safe-area-inset-right)]" : 'flex flex-col gap-2'}>
+      <div className={isFullscreen ? 'hidden' : 'flex items-center justify-between gap-2 font-mono text-[10px] text-(--color-text-muted)'}>
         <span className="min-w-0 truncate" title={resourceUri}>{title}{resourceUri ? ` · ${String(resourceUri)}` : ''}</span>
         <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-(--color-border) px-1.5 py-0.5 text-[9px] uppercase tracking-wide">
           <Maximize2 size={9} aria-hidden /> MCP App
@@ -379,15 +380,15 @@ export function MCPAppResult({ mcpApp, sessionId, toolCallId }: MCPAppResultProp
         </p>
       )}
       <div
-        className={displayMode === FULLSCREEN_DISPLAY_MODE ? 'flex min-h-0 flex-1 items-center justify-center' : undefined}
-        role={displayMode === FULLSCREEN_DISPLAY_MODE ? 'dialog' : undefined}
-        aria-modal={displayMode === FULLSCREEN_DISPLAY_MODE ? 'true' : undefined}
-        aria-label={displayMode === FULLSCREEN_DISPLAY_MODE ? `${title} fullscreen MCP app` : undefined}
+        className={isFullscreen ? 'flex min-h-0 flex-1 flex-col' : undefined}
+        role={isFullscreen ? 'dialog' : undefined}
+        aria-modal={isFullscreen ? 'true' : undefined}
+        aria-label={isFullscreen ? `${title} fullscreen MCP app` : undefined}
       >
-        <div className={displayMode === FULLSCREEN_DISPLAY_MODE ? 'h-[90vh] w-[90vw]' : undefined}>
+        <div className={isFullscreen ? 'min-h-0 flex-1' : undefined}>
           {iframe}
         </div>
-        {displayMode === FULLSCREEN_DISPLAY_MODE ? (
+        {isFullscreen ? (
           <button
             type="button"
             onClick={() => setDisplayMode(INLINE_DISPLAY_MODE)}
@@ -398,7 +399,7 @@ export function MCPAppResult({ mcpApp, sessionId, toolCallId }: MCPAppResultProp
           </button>
         ) : null}
       </div>
-      <p className="flex items-center gap-1 font-mono text-[10px] text-(--color-text-muted)">
+      <p className={isFullscreen ? 'hidden' : 'flex items-center gap-1 font-mono text-[10px] text-(--color-text-muted)'}>
         <ExternalLink size={10} aria-hidden />
         Experimental sandbox: app can render and receive the initial tool input/result; app tool calls stay bound to this artifact and its MCP server's current advertised tools.
       </p>

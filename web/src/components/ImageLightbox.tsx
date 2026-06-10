@@ -108,12 +108,12 @@ export function ImageLightbox({ src, alt, isOpen, onClose }: ImageLightboxProps)
     }
   }, [isOpen, onClose])
 
-  useEffect(() => {
-    if (!isOpen) return
+  const closeLightbox = () => {
     setScale(1)
     setTranslateY(0)
     pinchStartDistanceRef.current = null
-  }, [isOpen, src])
+    onClose()
+  }
 
   const handleTouchStart = (event: TouchEvent) => {
     if (event.touches.length === 1) {
@@ -141,7 +141,7 @@ export function ImageLightbox({ src, alt, isOpen, onClose }: ImageLightboxProps)
 
   const handleTouchEnd = () => {
     if (translateY > 80 && scale <= 1.05) {
-      onClose()
+      closeLightbox()
       return
     }
     setTranslateY(0)
@@ -191,7 +191,7 @@ export function ImageLightbox({ src, alt, isOpen, onClose }: ImageLightboxProps)
   return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm transition-opacity duration-200"
-      onClick={onClose}
+      onClick={closeLightbox}
       role="dialog"
       aria-modal="true"
       aria-label="Image lightbox"
@@ -208,7 +208,7 @@ export function ImageLightbox({ src, alt, isOpen, onClose }: ImageLightboxProps)
           tooltip="Download"
         />
         <LightboxIconButton
-          onClick={onClose}
+          onClick={closeLightbox}
           icon={<X size={20} />}
           label="Close lightbox"
           tooltip="Close (Esc)"

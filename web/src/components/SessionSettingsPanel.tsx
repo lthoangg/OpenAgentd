@@ -338,6 +338,13 @@ function SessionModelSettings({
   const [thinkingPickerOpen, setThinkingPickerOpen] = useState(false)
   const [activeModelIndex, setActiveModelIndex] = useState(0)
   const [activeThinkingIndex, setActiveThinkingIndex] = useState(0)
+
+  useEffect(() => {
+    setDraftModel(sessionModel ?? defaultModel ?? '')
+    setDraftThinkingLevel(sessionThinkingLevel ?? '')
+    setDraftFastMode(sessionFastMode)
+  }, [defaultModel, sessionModel, sessionThinkingLevel, sessionFastMode])
+
   const modelOptions = useMemo(() => registry.data?.models ?? [], [registry.data?.models])
   const visibleModelOptions = useMemo(() => {
     const q = draftModel.trim()

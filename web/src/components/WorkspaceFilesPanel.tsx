@@ -16,7 +16,7 @@
  *                                       images use the URL directly as src)
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   X,
@@ -39,6 +39,8 @@ import { useWorkspaceFilesQuery } from '@/queries'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useModalFocus } from '@/hooks/useModalFocus'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
+import { usePlatform } from '@/hooks/use-platform'
+import { mediumHapticFeedback } from '@/lib/haptics'
 import { formatBytes } from '@/utils/format'
 import { ImageLightbox } from './ImageLightbox'
 import type { WorkspaceFileInfo } from '@/api/types'
@@ -46,6 +48,9 @@ import type { WorkspaceFileInfo } from '@/api/types'
 // ── File-type helpers ─────────────────────────────────────────────────────────
 
 // Extensions we preview as plain text.  Anything else falls back to "Download".
+const FILE_LONG_PRESS_MS = 520
+const FILE_LONG_PRESS_MOVE_TOLERANCE = 10
+
 const TEXT_EXTENSIONS = new Set([
   'txt', 'md', 'markdown', 'rst',
   'json', 'jsonl', 'ndjson', 'yaml', 'yml', 'toml', 'ini', 'env', 'gitignore',
@@ -127,15 +132,63 @@ function groupByDir(files: WorkspaceFileInfo[]): Group[] {
 function FileRow({
   file,
   selected,
+  sessionId,
   onSelect,
 }: {
   file: WorkspaceFileInfo
   selected: boolean
+  sessionId: string
   onSelect: (file: WorkspaceFileInfo) => void
 }) {
+  const isMobile = useIsMobile()
+  const { isTauri, os } = usePlatform()
+  const isTauriMobile = isTauri && (os === 'ios' || os === 'android')
+  const [actionsPoint, setActionsPoint] = useState<{ x: number; y: number } | null>(null)
+  const longPressTimerRef = useRef<number | null>(null)
+  const longPressStartRef = useRef<{ x: number; y: number } | null>(null)
+
+  const clearLongPress = () => {
+    if (longPressTimerRef.current !== null) window.clearTimeout(longPressTimerRef.current)
+    longPressTimerRef.current = null
+    longPressStartRef.current = null
+  }
+
+  const copyPath = async () => {
+    await navigator.clipboard.writeText(file.path)
+  }
+
   return (
+    <>
     <button
       onClick={() => onSelect(file)}
+      onContextMenu={(event) => {
+        if (isTauriMobile) return
+        event.preventDefault()
+        setActionsPoint({ x: event.clientX, y: event.clientY })
+      }}
+      onPointerDown={(event) => {
+        if (!isMobile || !isTauriMobile || event.pointerType === 'mouse') return
+        longPressStartRef.current = { x: event.clientX, y: event.clientY }
+        longPressTimerRef.current = window.setTimeout(() => {
+          longPressTimerRef.current = null
+          longPressStartRef.current = null
+          mediumHapticFeedback()
+          setActionsPoint({ x: event.clientX, y: event.clientY })
+        }, FILE_LONG_PRESS_MS)
+      }}
+      onPointerMove={(event) => {
+        const start = longPressStartRef.current
+        if (!start) return
+        if (
+          Math.abs(event.clientX - start.x) > FILE_LONG_PRESS_MOVE_TOLERANCE ||
+          Math.abs(event.clientY - start.y) > FILE_LONG_PRESS_MOVE_TOLERANCE
+        ) {
+          clearLongPress()
+        }
+      }}
+      onPointerUp={clearLongPress}
+      onPointerCancel={clearLongPress}
+      onPointerLeave={clearLongPress}
       className={cn(
         'group flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-xs transition-colors',
         selected
@@ -150,16 +203,72 @@ function FileRow({
         {formatBytes(file.size)}
       </span>
     </button>
+    {actionsPoint && (
+      <div
+        className="fixed inset-0 z-[70]"
+        onClick={() => setActionsPoint(null)}
+        onContextMenu={(event) => {
+          event.preventDefault()
+          setActionsPoint(null)
+        }}
+      >
+        <div
+          role="menu"
+          aria-label={`Actions for ${file.name}`}
+          className="fixed min-w-44 rounded-lg border border-(--color-border) bg-(--bg-card) p-1 text-sm text-(--color-text) shadow-xl"
+          style={{ left: actionsPoint.x, top: actionsPoint.y }}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+            onClick={() => {
+              setActionsPoint(null)
+              onSelect(file)
+            }}
+          >
+            <FileText size={14} aria-hidden="true" />
+            Preview
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+            onClick={() => {
+              setActionsPoint(null)
+              void copyPath()
+            }}
+          >
+            <Copy size={14} aria-hidden="true" />
+            Copy path
+          </button>
+          <a
+            role="menuitem"
+            href={workspaceMediaUrl(sessionId, file.path)}
+            download={file.name}
+            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+            onClick={() => setActionsPoint(null)}
+          >
+            <Download size={14} aria-hidden="true" />
+            Download
+          </a>
+        </div>
+      </div>
+    )}
+    </>
   )
 }
 
 function TreeGroup({
   group,
   selectedPath,
+  sessionId,
   onSelect,
 }: {
   group: Group
   selectedPath: string | null
+  sessionId: string
   onSelect: (file: WorkspaceFileInfo) => void
 }) {
   return (
@@ -174,6 +283,7 @@ function TreeGroup({
             <FileRow
               file={f}
               selected={f.path === selectedPath}
+              sessionId={sessionId}
               onSelect={onSelect}
             />
           </li>
@@ -584,6 +694,7 @@ export function WorkspaceFilesPanel({ open, sessionId, onClose }: WorkspaceFiles
                         key={group.dir}
                         group={group}
                         selectedPath={selectedPath}
+                        sessionId={sessionId}
                         onSelect={handleSelectFile}
                       />
                     ))

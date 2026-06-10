@@ -125,6 +125,7 @@ function resetSessionState(
 }
 
 export type {
+  ActiveLoop,
   AgentStream,
   CacheInvalidation,
   PendingMessage,

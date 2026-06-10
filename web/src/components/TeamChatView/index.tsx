@@ -47,7 +47,7 @@ import { useUIStore } from '@/stores/useUIStore'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { useTeamAgentsQuery } from '@/queries/useAgentsQuery'
 import { useFileRefsQuery } from '@/queries/useFileRefsQuery'
-import { AlertCircle, Brain, CalendarClock, Check, ChevronDown, FolderOpen, FolderCode, Home, ListTodo, Menu, MoreHorizontal, Pause, Play, SlidersHorizontal, Square, X } from 'lucide-react'
+import { AlertCircle, Brain, CalendarClock, Check, ChevronDown, FolderOpen, FolderCode, Home, ListTodo, Menu, MoreHorizontal, SlidersHorizontal, X } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
@@ -60,7 +60,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { isAgentRole, type AgentRole } from '@/lib/agent-roles'
-import type { AgentStream } from '@/stores/useTeamStore'
+import type { ActiveLoop, AgentStream } from '@/stores/useTeamStore'
 import { AgentTopbar } from '@/components/AgentTopbar'
 import { type InputBarHandle, type SlashCommand, type SnippetCommand } from '../InputBar'
 import { FloatingInputBar } from '../FloatingInputBar'
@@ -919,23 +919,11 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             ) : null}
           </div>
 
-          {activeLoop && loopLabel && loopProgress && (
+          {!isMobile && activeLoop && loopLabel && loopProgress && (
             <LoopStatusPill
               label={loopLabel}
               progress={loopProgress}
-              paused={activeLoop.paused}
-              compact={isMobile}
-              onPauseResume={() => {
-                const command = activeLoop.paused ? '/loop:resume' : '/loop:pause'
-                void runLoopCommand(command).then(() => {
-                  pushToast({ tone: 'success', title: activeLoop.paused ? 'Loop resumed' : 'Loop paused' })
-                })
-              }}
-              onStop={() => {
-                void runLoopCommand('/loop:stop').then(() => {
-                  pushToast({ tone: 'success', title: 'Loop stopped' })
-                })
-              }}
+              compact={false}
             />
           )}
 
@@ -1003,6 +991,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
                 onSelectAgent={setActiveAgent}
                 onWiki={() => { toggleWiki(); closeMobileActionsMenu() }}
                 onScheduler={() => { toggleScheduler(); closeMobileActionsMenu() }}
+                activeLoop={activeLoop}
                 tokens={totalAll > 0
                   ? {
                       input: totalPrompt,
@@ -1310,17 +1299,11 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
 function LoopStatusPill({
   label,
   progress,
-  paused,
   compact,
-  onPauseResume,
-  onStop,
 }: {
   label: string
   progress: string
-  paused: boolean
   compact: boolean
-  onPauseResume: () => void
-  onStop: () => void
 }) {
   return (
     <div
@@ -1331,24 +1314,23 @@ function LoopStatusPill({
         {compact ? 'Loop' : label}
       </span>
       <span className="shrink-0 font-mono text-[10px] text-(--color-text-muted)">{progress}</span>
-      <button
-        type="button"
-        onClick={onPauseResume}
-        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text)"
-        aria-label={paused ? 'Resume loop' : 'Pause loop'}
-        title={paused ? 'Resume loop' : 'Pause loop'}
-      >
-        {paused ? <Play size={11} aria-hidden="true" /> : <Pause size={11} aria-hidden="true" />}
-      </button>
-      <button
-        type="button"
-        onClick={onStop}
-        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text)"
-        aria-label="Stop loop"
-        title="Stop loop"
-      >
-        <Square size={10} aria-hidden="true" />
-      </button>
+    </div>
+  )
+}
+
+function MobileLoopStatusCard({ activeLoop }: { activeLoop: ActiveLoop }) {
+  const state = activeLoop.paused ? 'Paused' : activeLoop.prompt ? 'Active' : 'Ready'
+  return (
+    <div className="mb-1 rounded-md border border-(--color-border) bg-(--bg-card) px-2 py-2 text-sm">
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-medium text-(--color-text)">Loop {state.toLowerCase()}</span>
+        <span className="font-mono text-xs text-(--color-text-muted)">{activeLoop.used}/{activeLoop.limit}</span>
+      </div>
+      {activeLoop.prompt && (
+        <p className="mt-1 line-clamp-2 text-xs text-(--color-text-muted)" title={activeLoop.prompt}>
+          {activeLoop.prompt}
+        </p>
+      )}
     </div>
   )
 }
@@ -1404,6 +1386,7 @@ interface MobileChatActionsProps {
   onSelectAgent: (agent: string) => void
   onWiki: () => void
   onScheduler: () => void
+  activeLoop: ActiveLoop | null
   tokens?: {
     input: number
     output: number
@@ -1424,6 +1407,7 @@ function MobileChatActions({
   onSelectAgent,
   onWiki,
   onScheduler,
+  activeLoop,
   tokens,
 }: MobileChatActionsProps) {
   return (
@@ -1504,6 +1488,9 @@ function MobileChatActions({
                 )}
 
                 <div className="px-2 py-2 text-xs font-medium text-muted-foreground">Session</div>
+                {activeLoop && (
+                  <MobileLoopStatusCard activeLoop={activeLoop} />
+                )}
                 {tokens && (
                   <div className="flex min-h-10 items-center gap-2 rounded-md px-2 text-sm">
                     <span className="flex-1">Tokens</span>

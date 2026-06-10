@@ -69,8 +69,8 @@ Slash commands live in the composer picker only; the command palette does not li
   start, then `/loop:pause`, `/loop:resume`, or `/loop:stop` to control it.
   The control forms are transport commands, not chat turns; only `<prompt>`
   from `/loop <prompt>` is saved as the user message. While a loop is ready
-  or active, the chat header shows a compact status chip with progress and
-  pause/resume/stop controls.
+  or active, desktop shows a compact header status chip with progress; mobile
+  shows the same loop awareness inside the right-side chat actions drawer.
 - **Discovered commands** insert `/<name> ` into the textarea so you
   can type arguments before submitting. For nested commands, the picker uses
   colon syntax: `git/commit` is displayed and inserted as `/git:commit`.

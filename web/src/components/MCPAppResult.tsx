@@ -18,6 +18,7 @@ import {
 import type { Transport, TransportSendOptions } from '@modelcontextprotocol/sdk/shared/transport.js'
 import { ExternalLink, Maximize2, X } from 'lucide-react'
 import { callMcpAppTool } from '@/api/client'
+import { openExternalUrl } from '@/lib/open-external'
 
 interface MCPAppPayload {
   server?: string
@@ -262,7 +263,10 @@ export function MCPAppResult({ mcpApp, sessionId, toolCallId }: MCPAppResultProp
       if (typeof nextHeight === 'number') setHeight(clampHeight(nextHeight))
     }
     bridge.onopenlink = async ({ url }) => {
-      window.open(url, '_blank', 'noopener,noreferrer')
+      // window.open is a silent no-op inside Tauri webviews (no tab/popup
+      // machinery, especially iOS WKWebView); openExternalUrl routes through
+      // tauri-plugin-opener there and falls back to window.open in browsers.
+      await openExternalUrl(url)
       return {}
     }
     bridge.onloggingmessage = ({ level, logger, data }) => {

@@ -1,4 +1,5 @@
 import { FileText, FileType, File as FileIcon, X } from 'lucide-react'
+import { openExternalUrl } from '@/lib/open-external'
 
 interface FileCardProps {
   name?: string
@@ -40,7 +41,9 @@ export function FileCard({
 
   const handleClick = () => {
     if (clickable && url) {
-      window.open(url, '_blank')
+      // window.open silently no-ops in Tauri webviews; openExternalUrl uses
+      // the system opener there and falls back to window.open in browsers.
+      void openExternalUrl(url)
     }
   }
 

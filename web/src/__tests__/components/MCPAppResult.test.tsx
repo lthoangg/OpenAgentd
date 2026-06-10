@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, mock } from "bun:test"
+import { describe, it, expect, afterEach, mock, spyOn } from "bun:test"
 import { act, render, screen, cleanup, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { MCPAppResult } from "@/components/MCPAppResult"
@@ -46,12 +46,39 @@ mock.module("@/api/client", () => ({
   callMcpAppTool,
 }))
 
+
+
 describe("MCPAppResult", () => {
   afterEach(() => {
     bridgeInstances.length = 0
     MockBridge.lastTransport = undefined
     callMcpAppTool.mockClear()
     callMcpAppTool.mockImplementation(async () => ({ result: { content: [{ type: "text", text: "saved" }] } }))
+  })
+
+  it("routes open-link requests through openExternalUrl so Tauri shells open the system browser", async () => {
+    const openSpy = spyOn(window, "open").mockImplementation(() => null)
+
+    render(
+      <MCPAppResult
+        mcpApp={{
+          tool: "create_view",
+          resourceUri: "ui://excalidraw/mcp-app.html",
+          html: "<html><body>mcp app</body></html>",
+          mimeType: "text/html;profile=mcp-app",
+        }}
+      />,
+    )
+
+    await waitFor(() => expect(bridgeInstances[0]?.connect).toHaveBeenCalled())
+    await act(async () => {
+      await bridgeInstances[0]?.onopenlink?.({ url: "https://excalidraw.com/#json=abc" })
+    })
+
+    // Browser fallback path of openExternalUrl (no Tauri runtime in tests);
+    // in Tauri shells the same helper routes through tauri-plugin-opener.
+    expect(openSpy).toHaveBeenCalledWith("https://excalidraw.com/#json=abc", "_blank", "noopener,noreferrer")
+    openSpy.mockRestore()
   })
 
   it("renders MCP app HTML from srcdoc so production shells avoid blob/data frame quirks", async () => {

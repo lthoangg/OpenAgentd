@@ -7,7 +7,7 @@
  * ``overflow``/``transform`` never clips the overlay.
  */
 
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode, type TouchEvent, type Touch as ReactTouch } from 'react'
 import { createPortal } from 'react-dom'
 import { Download, X } from 'lucide-react'
 
@@ -79,7 +79,17 @@ function LightboxIconButton({
   )
 }
 
+function distance(a: Touch | ReactTouch, b: Touch | ReactTouch): number {
+  return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)
+}
+
 export function ImageLightbox({ src, alt, isOpen, onClose }: ImageLightboxProps) {
+  const [scale, setScale] = useState(1)
+  const [translateY, setTranslateY] = useState(0)
+  const touchStartYRef = useRef(0)
+  const pinchStartDistanceRef = useRef<number | null>(null)
+  const lastTapRef = useRef(0)
+
   // Escape key handler + body-scroll lock while open.
   useEffect(() => {
     if (!isOpen) return
@@ -97,6 +107,56 @@ export function ImageLightbox({ src, alt, isOpen, onClose }: ImageLightboxProps)
       document.body.style.overflow = previousOverflow
     }
   }, [isOpen, onClose])
+
+  useEffect(() => {
+    if (!isOpen) return
+    setScale(1)
+    setTranslateY(0)
+    pinchStartDistanceRef.current = null
+  }, [isOpen, src])
+
+  const handleTouchStart = (event: TouchEvent) => {
+    if (event.touches.length === 1) {
+      touchStartYRef.current = event.touches[0]?.clientY ?? 0
+      pinchStartDistanceRef.current = null
+      return
+    }
+    if (event.touches.length >= 2) {
+      pinchStartDistanceRef.current = distance(event.touches[0], event.touches[1])
+    }
+  }
+
+  const handleTouchMove = (event: TouchEvent) => {
+    if (event.touches.length >= 2 && pinchStartDistanceRef.current) {
+      const nextDistance = distance(event.touches[0], event.touches[1])
+      const ratio = nextDistance / pinchStartDistanceRef.current
+      setScale(Math.min(4, Math.max(1, ratio)))
+      return
+    }
+    if (event.touches.length === 1 && scale <= 1.05) {
+      const deltaY = (event.touches[0]?.clientY ?? 0) - touchStartYRef.current
+      if (deltaY > 0) setTranslateY(Math.min(160, deltaY))
+    }
+  }
+
+  const handleTouchEnd = () => {
+    if (translateY > 80 && scale <= 1.05) {
+      onClose()
+      return
+    }
+    setTranslateY(0)
+    pinchStartDistanceRef.current = null
+  }
+
+  const handleDoubleClick = () => {
+    setScale((current) => (current > 1 ? 1 : 2))
+  }
+
+  const handleImageClick = () => {
+    const now = Date.now()
+    if (now - lastTapRef.current < 300) handleDoubleClick()
+    lastTapRef.current = now
+  }
 
   const handleDownload = async () => {
     const filename = filenameFromSrc(src, alt)
@@ -158,13 +218,19 @@ export function ImageLightbox({ src, alt, isOpen, onClose }: ImageLightboxProps)
       {/* Image container — stops backdrop-click propagation so a click on
           the image itself doesn't close the overlay. */}
       <div
-        className="flex max-h-[75vh] max-w-[75vw] flex-col items-center justify-center"
+        className="flex max-h-[75vh] max-w-[75vw] touch-none flex-col items-center justify-center"
         onClick={(e) => e.stopPropagation()}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onDoubleClick={handleDoubleClick}
       >
         <img
           src={src}
           alt={alt}
-          className="max-h-[75vh] max-w-[75vw] rounded-lg object-contain shadow-2xl"
+          className="max-h-[75vh] max-w-[75vw] rounded-lg object-contain shadow-2xl transition-transform duration-150"
+          style={{ transform: `translateY(${translateY}px) scale(${scale})` }}
+          onClick={handleImageClick}
         />
         {alt && (
           <p className="mt-4 text-center text-sm text-(--color-text-muted)">

@@ -95,6 +95,44 @@ describe("ImageLightbox", () => {
     expect(onClose).not.toHaveBeenCalled()
   })
 
+  it("closes on swipe-down touch gesture", () => {
+    const onClose = mock(() => {})
+    render(
+      <ImageLightbox src="https://example.com/image.jpg" alt="Test" isOpen={true} onClose={onClose} />
+    )
+
+    const img = screen.getByRole("img", { name: "Test" }).parentElement as HTMLElement
+    fireEvent.touchStart(img, { touches: [{ clientY: 10 }] })
+    fireEvent.touchMove(img, { touches: [{ clientY: 120 }] })
+    fireEvent.touchEnd(img)
+
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it("zooms image on double tap/click", () => {
+    render(
+      <ImageLightbox src="https://example.com/image.jpg" alt="Test" isOpen={true} onClose={mock(() => {})} />
+    )
+
+    const img = screen.getByRole("img", { name: "Test" }) as HTMLImageElement
+    fireEvent.doubleClick(img.parentElement as HTMLElement)
+
+    expect(img.style.transform).toContain("scale(2)")
+  })
+
+  it("pinch-zooms image on two-finger touch move", () => {
+    render(
+      <ImageLightbox src="https://example.com/image.jpg" alt="Test" isOpen={true} onClose={mock(() => {})} />
+    )
+
+    const img = screen.getByRole("img", { name: "Test" }) as HTMLImageElement
+    const target = img.parentElement as HTMLElement
+    fireEvent.touchStart(target, { touches: [{ clientX: 0, clientY: 0 }, { clientX: 50, clientY: 0 }] })
+    fireEvent.touchMove(target, { touches: [{ clientX: 0, clientY: 0 }, { clientX: 100, clientY: 0 }] })
+
+    expect(img.style.transform).toContain("scale(2)")
+  })
+
   it("closes when Escape key is pressed", async () => {
     const onClose = mock(() => {})
     render(

@@ -19,6 +19,7 @@ import { isToday, isYesterday } from 'date-fns'
 import { useTeamSessionsQuery, useDeleteTeamSessionMutation, useUpdateTeamSessionTitleMutation } from '@/queries'
 import { formatRelativeDate } from '@/utils/format'
 import { ThemeToggle } from './ThemeToggle'
+import { Skeleton } from './ui/skeleton'
 import { HealthDot } from './HealthDot'
 import { SidebarItem } from '@/components/ui/sidebar-item'
 import {
@@ -37,6 +38,19 @@ import type { SessionResponse } from '@/api/types'
 interface DateGroup {
   label: string
   sessions: SessionResponse[]
+}
+
+function SessionListSkeleton({ count = 6 }: { count?: number }) {
+  return (
+    <div className="space-y-1 px-1 py-2" aria-label="Loading sessions">
+      {Array.from({ length: count }, (_, index) => (
+        <div key={index} className="rounded-md px-2.5 py-2">
+          <Skeleton className="h-3 w-[min(11rem,70%)] bg-(--bg-key)" />
+          <Skeleton className="mt-2 h-2.5 w-20 bg-(--bg-key)" />
+        </div>
+      ))}
+    </div>
+  )
 }
 
 function groupByDate(sessions: SessionResponse[]): DateGroup[] {
@@ -376,13 +390,7 @@ export function Sidebar({
                         </div>
                       </div>
                     )}
-                    {sessions.isLoading && (
-                      <div className="space-y-1 px-1 py-2">
-                        {[...Array(6)].map((_, i) => (
-                          <div key={i} className="h-8 animate-pulse rounded-md bg-(--bg-key)" />
-                        ))}
-                      </div>
-                    )}
+                    {sessions.isLoading && <SessionListSkeleton />}
                     {sessions.isError && (
                       <p className="px-3 py-4 text-center text-xs text-(--color-error)">Failed to load sessions</p>
                     )}
@@ -409,13 +417,7 @@ export function Sidebar({
                           </div>
                         ))}
                         <div ref={loadMoreRef} className="h-1" aria-hidden />
-                        {isFetchingNextPage && (
-                          <div className="space-y-1 px-1 pt-1">
-                            {[...Array(3)].map((_, i) => (
-                              <div key={i} className="h-8 animate-pulse rounded-md bg-(--bg-key)" />
-                            ))}
-                          </div>
-                        )}
+                        {isFetchingNextPage && <SessionListSkeleton count={3} />}
                       </div>
                     )}
                   </div>

@@ -1,26 +1,29 @@
+import { lazy } from 'react'
 import { createRootRoute, createRoute, createRouter } from '@tanstack/react-router'
 import { Root, NotFound } from './routes/__root'
-import { HomePage } from './routes/index'
-import { TeamLayout, CodingLayout } from './routes/cockpit'
-import { SettingsLayout } from './routes/settings'
-import { SettingsHubPage } from './routes/settings.index'
-import { AgentsListPage } from './routes/settings.agents'
-import { AgentEditorPage } from './routes/settings.agents.$name'
-import { NewAgentPage } from './routes/settings.agents.new'
-import { SkillsListPage } from './routes/settings.skills'
-import { SkillEditorPage } from './routes/settings.skills.$name'
-import { NewSkillPage } from './routes/settings.skills.new'
-import { McpListPage } from './routes/settings.mcp'
-import { NewMcpServerPage } from './routes/settings.mcp.new'
-import { McpServerDetailPage } from './routes/settings.mcp.$name'
-import { SandboxSettingsPage } from './routes/settings.sandbox'
-import { ProvidersSettingsPage } from './routes/settings.providers'
-import { MultimodalSettingsPage } from './routes/settings.multimodal'
-import { DreamSettingsPage } from './routes/settings.dream'
-import { TitleGenerationSettingsPage } from './routes/settings.title-generation'
-import { NotificationSettingsPage } from './routes/settings.notifications'
-import { TelemetryPage } from './routes/telemetry'
-import { SchedulerPage } from './routes/scheduler'
+
+const HomePage = lazy(() => import('./routes/index').then((mod) => ({ default: mod.HomePage })))
+const TeamLayout = lazy(() => import('./routes/cockpit').then((mod) => ({ default: mod.TeamLayout })))
+const CodingLayout = lazy(() => import('./routes/cockpit').then((mod) => ({ default: mod.CodingLayout })))
+const SettingsLayout = lazy(() => import('./routes/settings').then((mod) => ({ default: mod.SettingsLayout })))
+const SettingsHubPage = lazy(() => import('./routes/settings.index').then((mod) => ({ default: mod.SettingsHubPage })))
+const AgentsListPage = lazy(() => import('./routes/settings.agents').then((mod) => ({ default: mod.AgentsListPage })))
+const AgentEditorPage = lazy(() => import('./routes/settings.agents.$name').then((mod) => ({ default: mod.AgentEditorPage })))
+const NewAgentPage = lazy(() => import('./routes/settings.agents.new').then((mod) => ({ default: mod.NewAgentPage })))
+const SkillsListPage = lazy(() => import('./routes/settings.skills').then((mod) => ({ default: mod.SkillsListPage })))
+const SkillEditorPage = lazy(() => import('./routes/settings.skills.$name').then((mod) => ({ default: mod.SkillEditorPage })))
+const NewSkillPage = lazy(() => import('./routes/settings.skills.new').then((mod) => ({ default: mod.NewSkillPage })))
+const McpListPage = lazy(() => import('./routes/settings.mcp').then((mod) => ({ default: mod.McpListPage })))
+const NewMcpServerPage = lazy(() => import('./routes/settings.mcp.new').then((mod) => ({ default: mod.NewMcpServerPage })))
+const McpServerDetailPage = lazy(() => import('./routes/settings.mcp.$name').then((mod) => ({ default: mod.McpServerDetailPage })))
+const SandboxSettingsPage = lazy(() => import('./routes/settings.sandbox').then((mod) => ({ default: mod.SandboxSettingsPage })))
+const ProvidersSettingsPage = lazy(() => import('./routes/settings.providers').then((mod) => ({ default: mod.ProvidersSettingsPage })))
+const MultimodalSettingsPage = lazy(() => import('./routes/settings.multimodal').then((mod) => ({ default: mod.MultimodalSettingsPage })))
+const DreamSettingsPage = lazy(() => import('./routes/settings.dream').then((mod) => ({ default: mod.DreamSettingsPage })))
+const TitleGenerationSettingsPage = lazy(() => import('./routes/settings.title-generation').then((mod) => ({ default: mod.TitleGenerationSettingsPage })))
+const NotificationSettingsPage = lazy(() => import('./routes/settings.notifications').then((mod) => ({ default: mod.NotificationSettingsPage })))
+const TelemetryPage = lazy(() => import('./routes/telemetry').then((mod) => ({ default: mod.TelemetryPage })))
+const SchedulerPage = lazy(() => import('./routes/scheduler').then((mod) => ({ default: mod.SchedulerPage })))
 
 const rootRoute = createRootRoute({
   component: Root,

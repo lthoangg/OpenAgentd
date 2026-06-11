@@ -232,7 +232,7 @@ interface CommandRowProps {
  * Single command row with proximity fade. The keyboard-driven `activeIdx`
  * still owns the dominant `accent-subtle` background; proximity adds a
  * softer `accent-dim` layer on nearby non-active rows so the cursor's
- * position is readable before `onMouseEnter` fires.
+ * position is readable before the pointer enters a row.
  *
  * Layering mirrors SessionRow in Sidebar: proximity is an absolute sibling
  * behind the button (`-z-10`, `isolation: isolate` on wrapper), so the
@@ -257,7 +257,7 @@ function CommandRow({ cmd, idx, isActive, mouseY, onRun, onActivate }: CommandRo
       <button
         data-idx={idx}
         onClick={() => onRun(cmd)}
-        onMouseEnter={() => onActivate(idx)}
+        onPointerEnter={() => onActivate(idx)}
         className={`flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors ${
           isActive
             ? 'bg-(--bg-key) text-(--color-text)'

@@ -83,6 +83,8 @@ async def supports_dynamic_client_registration(cfg: HttpServerConfig) -> bool:
 
 
 class LoopbackCallback:
+    PATH = "/oauth/callback"
+
     def __init__(self) -> None:
         self.result: dict[str, str] = {}
         self.done = Event()
@@ -96,7 +98,7 @@ class LoopbackCallback:
             def do_GET(self) -> None:
                 parsed = urllib.parse.urlparse(self.path)
                 qs = urllib.parse.parse_qs(parsed.query)
-                if parsed.path != "/callback":
+                if parsed.path != callback.PATH:
                     self.send_response(404)
                     self.end_headers()
                     return
@@ -126,7 +128,7 @@ class LoopbackCallback:
                 callback.done.set()
 
         self.server = HTTPServer(("127.0.0.1", 0), Handler)
-        self.redirect_uri = f"http://127.0.0.1:{self.server.server_port}/callback"
+        self.redirect_uri = f"http://localhost:{self.server.server_port}{self.PATH}"
 
     async def wait(self) -> tuple[str, str | None]:
         thread = Thread(target=self.server.serve_forever, daemon=True)

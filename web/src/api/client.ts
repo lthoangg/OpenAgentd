@@ -659,13 +659,24 @@ export class ApiValidationError extends Error {
 }
 
 async function parseDetailOrThrow(res: Response, label: string): Promise<never> {
-  let detail = `${label} failed: ${res.status}`
-  try {
-    const body = await res.json()
-    if (typeof body?.detail === 'string') detail = body.detail
-    else if (Array.isArray(body?.detail)) detail = body.detail.map((e: { msg: string }) => e.msg).join('; ')
-  } catch {
-    // Non-JSON body — keep the fallback.
+  const fallback = `${label} failed: ${res.status}`
+  let detail = fallback
+  const raw = await res.text().catch(() => '')
+  if (raw.trim()) {
+    try {
+      const body = JSON.parse(raw) as { detail?: unknown }
+      if (typeof body.detail === 'string') detail = body.detail
+      else if (Array.isArray(body.detail)) {
+        const messages = body.detail
+          .map((item) => (typeof item === 'object' && item !== null && 'msg' in item ? String(item.msg) : ''))
+          .filter(Boolean)
+        detail = messages.length > 0 ? messages.join('; ') : fallback
+      } else {
+        detail = raw
+      }
+    } catch {
+      detail = raw
+    }
   }
   throw new ApiValidationError(res.status, detail)
 }

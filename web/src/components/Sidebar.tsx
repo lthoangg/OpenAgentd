@@ -33,6 +33,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { LongPressButton } from '@/components/ui/long-press-button'
 import { usePlatform } from '@/hooks/use-platform'
+import { useResizableWidth } from '@/hooks/use-resizable-width'
 import type { SessionResponse } from '@/api/types'
 
 interface DateGroup {
@@ -254,10 +255,19 @@ export function Sidebar({
     onMobileClose?.()
   }
 
+  const resizable = useResizableWidth({
+    storageKey: 'oa.sidebar.width',
+    defaultWidth: 256,
+    minWidth: 220,
+    maxWidth: 420,
+    edge: 'right',
+    disabled: isMobile || collapsed,
+  })
+
   // On mobile the sidebar is a fixed overlay drawer: it slides in/out via
   // x transform and always stays 272px wide. The desktop version animates
-  // its inline width between 56px (icon-only) and 256px (expanded).
-  const desktopWidth = collapsed ? 56 : 256
+  // its inline width between 56px (icon-only) and the user-resized width.
+  const desktopWidth = collapsed ? 56 : resizable.width
 
   return (
     <>
@@ -291,6 +301,18 @@ export function Sidebar({
       }
       style={isMobile ? undefined : { minWidth: desktopWidth }}
     >
+      {!isMobile && !collapsed && (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize sidebar"
+          title="Drag to resize · double-click to reset"
+          className="absolute right-0 top-0 z-20 h-full w-1 cursor-col-resize transition-colors hover:bg-(--color-accent)/40"
+          onPointerDown={resizable.startResize}
+          onDoubleClick={resizable.resetWidth}
+        />
+      )}
+
       {/* showIconOnly: desktop collapsed icon-only mode.
           On mobile the drawer is always fully expanded.
 

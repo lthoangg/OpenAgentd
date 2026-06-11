@@ -8,6 +8,7 @@ import { queryKeys } from '@/queries'
 import { formatBytes } from '@/utils/format'
 import { workspaceLabel } from '@/utils/workspace'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
+import { useResizableWidth } from '@/hooks/use-resizable-width'
 import type { WorkspaceFileInfo, WorkspaceGitDiffResponse } from '@/api/types'
 
 interface TreeNode {
@@ -307,18 +308,37 @@ export function CodingWorkspacePanel({
   })
   const tree = buildTree(files.data?.files ?? [])
   const changedPaths = collectChangedPaths(diff.data)
+  const resizable = useResizableWidth({
+    storageKey: 'oa.codingWorkspacePanel.width',
+    defaultWidth: 440,
+    minWidth: 360,
+    maxWidth: 720,
+    edge: 'left',
+    disabled: mobile,
+  })
 
   if (!open) return null
 
   return (
     <motion.aside
       initial={prefersReducedMotion ? { opacity: 0 } : mobile ? { opacity: 0 } : { width: 0 }}
-      animate={prefersReducedMotion ? { opacity: 1 } : mobile ? { opacity: 1 } : { width: 440 }}
+      animate={prefersReducedMotion ? { opacity: 1 } : mobile ? { opacity: 1 } : { width: resizable.width }}
       exit={prefersReducedMotion ? { opacity: 0 } : mobile ? { opacity: 0 } : { width: 0 }}
       transition={{ duration: prefersReducedMotion ? 0.01 : 0.22, ease: [0.4, 0, 0.2, 1] }}
       className={cn('mobile-safe-top fixed bottom-0 right-0 z-40 min-h-0 w-full overflow-hidden border-l border-(--color-border) bg-(--bg-page) shadow-xl md:relative md:inset-y-auto md:right-auto md:z-auto md:w-auto md:shrink-0 md:shadow-none', mobile ? 'max-w-none' : '-mt-10 h-[calc(100%+2.5rem)] max-w-[440px]')}
     >
-      <div className={cn('flex h-full min-h-0 w-full flex-col', mobile ? 'max-w-none' : 'max-w-[440px] md:w-[440px]')}>
+      <div className={cn('relative flex h-full min-h-0 w-full flex-col', mobile ? 'max-w-none' : 'md:w-full')}>
+        {!mobile && (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize workspace panel"
+            title="Drag to resize · double-click to reset"
+            className="absolute left-0 top-0 z-20 h-full w-1 cursor-col-resize transition-colors hover:bg-(--color-accent)/40"
+            onPointerDown={resizable.startResize}
+            onDoubleClick={resizable.resetWidth}
+          />
+        )}
         <div className="flex items-center justify-between border-b border-(--color-border) px-3 py-3">
           <div className="min-w-0">
             <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-(--color-text-subtle)">Workspace</p>

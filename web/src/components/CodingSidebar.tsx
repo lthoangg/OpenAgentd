@@ -26,6 +26,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
+import { useResizableWidth } from '@/hooks/use-resizable-width'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import {
   Folder,
@@ -595,6 +596,15 @@ export function CodingSidebar({
   const sourceWorkspaces = visibleWorkspaces.filter((path) => !deletedWorktreeSet.has(path))
   const activeWorktreeSource = activeWorkspace ? worktreeSourceByDirectory.get(activeWorkspace) : null
 
+  const resizable = useResizableWidth({
+    storageKey: 'oa.codingSidebar.width',
+    defaultWidth: 256,
+    minWidth: 220,
+    maxWidth: 420,
+    edge: 'right',
+    disabled: isMobile || desktopCollapsed,
+  })
+
   useEffect(() => {
     if (!activeWorkspace || !activeWorktreeSource) return
     setExpandedWorkspaces((current) => {
@@ -698,15 +708,27 @@ export function CodingSidebar({
       animate={
         isMobile
           ? { x: mobileOpen ? 0 : -280, width: 'min(272px, calc(100vw - 2rem))' }
-          : { width: desktopCollapsed ? 0 : 256 }
+          : { width: desktopCollapsed ? 0 : resizable.width }
       }
       transition={{ duration: prefersReducedMotion ? 0.01 : 0.22, ease: [0.4, 0, 0.2, 1] }}
       className={
         isMobile
           ? 'mobile-safe-top fixed bottom-0 left-0 z-40 flex w-[min(272px,calc(100vw-2rem))] shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page) shadow-xl'
-          : 'flex shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page)'
+          : 'relative flex shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page)'
       }
     >
+      {!isMobile && !desktopCollapsed && (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize coding sidebar"
+          title="Drag to resize · double-click to reset"
+          className="absolute right-0 top-0 z-20 h-full w-1 cursor-col-resize transition-colors hover:bg-(--color-accent)/40"
+          onPointerDown={resizable.startResize}
+          onDoubleClick={resizable.resetWidth}
+        />
+      )}
+
       {isMobile && (
         <nav aria-label="Primary" className="px-2 pt-3">
           <button

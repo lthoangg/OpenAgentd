@@ -5,6 +5,7 @@ import { codingWorkspaceFileUrl } from '@/api/client'
 import { cn } from '@/lib/utils'
 import { formatBytes } from '@/utils/format'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
+import { useResizableWidth } from '@/hooks/use-resizable-width'
 import type { WorkspaceFileInfo } from '@/api/types'
 
 const TEXT_EXTENSIONS = new Set([
@@ -283,6 +284,14 @@ export function CodingFileViewerPanel({
   mobile?: boolean
 }) {
   const prefersReducedMotion = useReducedMotion()
+  const resizable = useResizableWidth({
+    storageKey: 'oa.codingFileViewer.width',
+    defaultWidth: 560,
+    minWidth: 420,
+    maxWidth: 880,
+    edge: 'left',
+    disabled: mobile,
+  })
   if (!file) return null
 
   const kind = kindOf(file)
@@ -291,16 +300,27 @@ export function CodingFileViewerPanel({
   return (
     <motion.aside
       initial={prefersReducedMotion ? { opacity: 0 } : mobile ? { opacity: 0 } : { width: 0 }}
-      animate={prefersReducedMotion ? { opacity: 1 } : mobile ? { opacity: 1 } : { width: 560 }}
+      animate={prefersReducedMotion ? { opacity: 1 } : mobile ? { opacity: 1 } : { width: resizable.width }}
       exit={prefersReducedMotion ? { opacity: 0 } : mobile ? { opacity: 0 } : { width: 0 }}
       transition={{ duration: prefersReducedMotion ? 0.01 : 0.22, ease: [0.4, 0, 0.2, 1] }}
       className={cn(
         'mobile-safe-top fixed bottom-0 right-0 z-40 min-h-0 w-full overflow-hidden border-l border-(--color-border) bg-(--bg-card) shadow-xl md:relative md:inset-y-auto md:right-auto md:z-auto md:w-auto md:shrink-0 md:shadow-none',
-        mobile ? 'max-w-none' : 'max-w-[560px]',
+        mobile ? 'max-w-none' : '',
       )}
       aria-label="File viewer"
     >
-      <div className={cn('flex h-full min-h-0 w-full flex-col', mobile ? 'max-w-none' : 'max-w-[560px] md:w-[560px]')}>
+      <div className={cn('relative flex h-full min-h-0 w-full flex-col', mobile ? 'max-w-none' : 'md:w-full')}>
+        {!mobile && (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize file viewer"
+            title="Drag to resize · double-click to reset"
+            className="absolute left-0 top-0 z-20 h-full w-1 cursor-col-resize transition-colors hover:bg-(--color-accent)/40"
+            onPointerDown={resizable.startResize}
+            onDoubleClick={resizable.resetWidth}
+          />
+        )}
         <header className="flex shrink-0 items-center justify-between gap-3 border-b border-(--color-border) px-3 py-3">
           <div className="min-w-0 flex-1">
             <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-(--color-text-subtle)">File</p>

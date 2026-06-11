@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check, Copy, FileText } from 'lucide-react'
 
 interface ReadViewProps {
@@ -33,6 +33,7 @@ function parseReadResult(result: string): { label: string; body: string; startLi
 export function ReadView({ args, result, onCollapse }: ReadViewProps) {
   const [expanded, setExpanded] = useState(true)
   const [copied, setCopied] = useState(false)
+  const copiedTimerRef = useRef<number | null>(null)
   const { path } = useMemo(() => parseArgs(args), [args])
   const { label, body, startLine } = useMemo(() => parseReadResult(result), [result])
   const lines = useMemo(() => {
@@ -41,6 +42,10 @@ export function ReadView({ args, result, onCollapse }: ReadViewProps) {
     if (values.length > 1 && values.at(-1) === '') values.pop()
     return values.length > 0 ? values : ['']
   }, [body])
+
+  useEffect(() => () => {
+    if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current)
+  }, [])
 
   const handleCollapse = () => {
     if (onCollapse) {
@@ -54,7 +59,11 @@ export function ReadView({ args, result, onCollapse }: ReadViewProps) {
     try {
       await navigator.clipboard.writeText(body)
       setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
+      if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current)
+      copiedTimerRef.current = window.setTimeout(() => {
+        copiedTimerRef.current = null
+        setCopied(false)
+      }, 1500)
     } catch {
       // ignore
     }

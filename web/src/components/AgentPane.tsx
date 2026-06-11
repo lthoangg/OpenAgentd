@@ -562,7 +562,7 @@ export function AgentPane({
           className="absolute bottom-2 left-1/2 z-10 -translate-x-1/2 rounded-full border border-(--color-border) bg-(--bg-card) p-1 text-(--color-text-muted) transition-colors hover:text-(--color-text-2)"
           aria-label="Scroll to bottom"
         >
-          <ChevronDown size={12} />
+          <ChevronDown size={16} />
         </button>
       )}
       </div>

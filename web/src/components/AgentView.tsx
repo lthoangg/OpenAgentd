@@ -30,7 +30,7 @@ import { FileCard } from './FileCard'
 import { AssistantTurn } from './AssistantTurnFooter'
 import { PendingMessageQueue } from './PendingMessageQueue'
 import { partitionTurns } from '@/utils/turns'
-import { mergeBlocks } from '@/utils/blocks'
+import { latestDirectUserBlockId, mergeBlocks } from '@/utils/blocks'
 import { extractSleepPrefix, formatTime } from '@/utils/format'
 import { latestMCPAppResourceBlockIds } from '@/utils/mcp-app-artifacts'
 import { useTeamStore } from '@/stores/useTeamStore'
@@ -366,13 +366,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
     [allBlocks],
   )
   const totalLen = allBlocks.length
-  const latestUserBlockId = useMemo(() => {
-    for (let i = allBlocks.length - 1; i >= 0; i--) {
-      const block = allBlocks[i]
-      if (isDirectUserBlock(block)) return block.id
-    }
-    return undefined
-  }, [allBlocks])
+  const latestUserBlockId = useMemo(() => latestDirectUserBlockId(allBlocks), [allBlocks])
   const turnItems = useMemo(() => partitionTurns(allBlocks), [allBlocks])
   const hiddenTurnCount = Math.max(0, turnItems.length - renderedTurnCount)
   const visibleTurnItems = hiddenTurnCount > 0 ? turnItems.slice(hiddenTurnCount) : turnItems

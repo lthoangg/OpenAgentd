@@ -7,7 +7,7 @@
  * introduced when MCP server membership moved into a dedicated picker.
  */
 import { describe, it, expect, afterEach, mock } from 'bun:test'
-import { render, screen, cleanup, within } from '@testing-library/react'
+import { fireEvent, render, screen, cleanup, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import { AgentForm } from '@/components/settings/AgentForm'
@@ -353,6 +353,26 @@ describe('AgentForm — selecting an MCP server updates raw', () => {
     // server.
     const listbox = screen.getByRole('listbox')
     await user.click(within(listbox).getByText('filesystem'))
+
+    const lastCall = onChange.mock.calls.at(-1)
+    expect(lastCall).toBeDefined()
+    const nextRaw = lastCall![0] as string
+    expect(nextRaw).toContain('mcp:\n  - context7\n  - filesystem')
+  })
+
+  it('supports pointer activation for touch and pen option selection', async () => {
+    const user = userEvent.setup()
+    const { onChange } = renderForm()
+
+    onChange.mockClear()
+
+    await user.click(comboboxIn('MCP servers'))
+    const option = within(screen.getByRole('listbox')).getByRole('option', {
+      name: /filesystem/i,
+    })
+
+    fireEvent.pointerDown(option, { pointerType: 'touch' })
+    fireEvent.click(option)
 
     const lastCall = onChange.mock.calls.at(-1)
     expect(lastCall).toBeDefined()

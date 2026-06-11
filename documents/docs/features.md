@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of every user-visible OpenAgentd feature. Source of truth for slides, README, comparison docs, and marketing copy.
 status: stable
-updated: 2026-06-09
+updated: 2026-06-11
 ---
 
 # Features
@@ -120,8 +120,9 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   image to open in a lightbox; touch shells support swipe-down dismissal,
   double-tap zoom, and pinch zoom `[v1.45.2]`.
 - **Workspace files panel** `[since v1.0]` — every file the agent reads, writes, or
-  generates appears in the left drawer. Click to preview or download. See
-  [`web/workspace-files.md`](./web/workspace-files.md).
+  generates appears in the left drawer. Click to preview or download; desktop
+  downloads use a native save dialog instead of navigating away from the app
+  `[v1.52.0]`. See [`web/workspace-files.md`](./web/workspace-files.md).
 - **Todos panel** `[since v1.0]` — task board with a topbar progress badge
   `<finished>/<total>` `[v1.17.0]`. Live invalidation. See [`web/todos.md`](./web/todos.md).
 - **Mobile / phone-first layout** `[since v1.0]` — breakpoints, safe areas, drawer
@@ -132,6 +133,8 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   [`web/mobile.md`](./web/mobile.md).
 - **macOS overlay + Tauri drag region** `[since v1.0]` — the header doubles as the
   window drag region; macOS gets the proper traffic-light overlay.
+- **Restored desktop window size** `[v1.52.0]` — desktop windows reopen at the
+  last normal size saved on quit, while minimized/maximized dimensions are ignored.
 - **Remote-backend mobile shell** `[v1.34.0]` — Tauri mobile app scaffold embeds
   the shared Web UI and connects to saved remote API servers. See [`mobile.md`](./mobile.md).
 - **LAN access key for external clients** `[v1.43.0]` — `openagentd start --lan --key`

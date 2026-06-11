@@ -41,6 +41,16 @@ const trace: TraceListItem = {
 afterEach(cleanup)
 
 describe('TracesTable', () => {
+  it('opens a trace from the keyboard', () => {
+    const onSelect = mock(() => {})
+    render(<TracesTable traces={[trace]} onSelect={onSelect} embedded />)
+    const row = screen.getByRole('button', { name: /open trace/i })
+
+    fireEvent.keyDown(row, { key: 'Enter' })
+
+    expect(onSelect).toHaveBeenCalledWith(trace.trace_id)
+  })
+
   it('clears a stale trace long-press timer when touch starts again', () => {
     const originalClearTimeout = window.clearTimeout
     const clearTimeout = mock((...args: unknown[]) => originalClearTimeout(args[0] as number | undefined))

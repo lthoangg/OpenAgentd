@@ -136,7 +136,11 @@ async def get_uploaded_file(session_id: str, filename: str) -> FileResponse:
 
 
 @router.get("/{session_id}/media/{file_path:path}")
-async def get_workspace_media(session_id: str, file_path: str) -> FileResponse:
+async def get_workspace_media(
+    session_id: str,
+    file_path: str,
+    download: bool = Query(default=False),
+) -> FileResponse:
     """Serve a file from the session's agent workspace.
 
     Supports nested subpaths (e.g. ``output/chart.png``).  Path traversal is
@@ -158,6 +162,7 @@ async def get_workspace_media(session_id: str, file_path: str) -> FileResponse:
         path=str(resolved),
         media_type=_guess_media_type(resolved),
         filename=resolved.name,
+        content_disposition_type="attachment" if download else "inline",
     )
 
 

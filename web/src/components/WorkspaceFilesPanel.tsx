@@ -35,6 +35,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { workspaceMediaUrl } from '@/api/client'
+import { downloadWorkspaceFile } from '@/lib/workspace-download'
 import { useWorkspaceFilesQuery } from '@/queries'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useModalFocus } from '@/hooks/useModalFocus'
@@ -243,16 +244,18 @@ function FileRow({
             <Copy size={14} aria-hidden="true" />
             Copy path
           </button>
-          <a
+          <button
+            type="button"
             role="menuitem"
-            href={workspaceMediaUrl(sessionId, file.path)}
-            download={file.name}
             className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
-            onClick={() => setActionsPoint(null)}
+            onClick={() => {
+              setActionsPoint(null)
+              void downloadWorkspaceFile(sessionId, file)
+            }}
           >
             <Download size={14} aria-hidden="true" />
             Download
-          </a>
+          </button>
         </div>
       </div>
     )}
@@ -405,15 +408,39 @@ function BinaryPreview({ sessionId, file }: { sessionId: string; file: Workspace
         >
           <ExternalLink size={12} /> Open in new tab
         </a>
-        <a
-          href={url}
-          download={file.name}
+        <DownloadWorkspaceFileButton
+          sessionId={sessionId}
+          file={file}
           className="flex items-center gap-1.5 rounded-md border border-(--color-border) px-3 py-1.5 text-xs text-(--color-text-2) transition-colors hover:border-(--color-border-strong)"
         >
           <Download size={12} /> Download
-        </a>
+        </DownloadWorkspaceFileButton>
       </div>
     </div>
+  )
+}
+
+export function DownloadWorkspaceFileButton({
+  sessionId,
+  file,
+  className,
+  children,
+}: {
+  sessionId: string
+  file: WorkspaceFileInfo
+  className?: string
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => void downloadWorkspaceFile(sessionId, file)}
+      className={className}
+      title="Download"
+      aria-label="Download"
+    >
+      {children}
+    </button>
   )
 }
 
@@ -494,14 +521,13 @@ function PreviewArea({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          <a
-            href={workspaceMediaUrl(sessionId, file.path)}
-            download={file.name}
+          <DownloadWorkspaceFileButton
+            sessionId={sessionId}
+            file={file}
             className="flex items-center gap-1 rounded px-2 py-1 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
-            title="Download"
           >
             <Download size={12} />
-          </a>
+          </DownloadWorkspaceFileButton>
           {kind === 'text' && <CopyContentsButton sessionId={sessionId} file={file} />}
         </div>
       </div>
@@ -542,6 +568,7 @@ interface WorkspaceFilesPanelProps {
 
 export function WorkspaceFilesPanel({ open, sessionId, onClose }: WorkspaceFilesPanelProps) {
   const isMobile = useIsMobile()
+  const { isMacOverlay } = usePlatform()
   const { data, isLoading, isError, refetch, isFetching } = useWorkspaceFilesQuery(sessionId)
   const prefersReducedMotion = useReducedMotion()
 
@@ -605,7 +632,7 @@ export function WorkspaceFilesPanel({ open, sessionId, onClose }: WorkspaceFiles
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
             onClick={onClose}
-            className="fixed inset-0 z-40 bg-black/40"
+            className="fixed inset-0 z-40 bg-black/40 [[data-mobile-shell]_&]:top-[calc(var(--spacing-app-header)+env(safe-area-inset-top,0px))]"
           />
 
           <motion.aside
@@ -614,7 +641,11 @@ export function WorkspaceFilesPanel({ open, sessionId, onClose }: WorkspaceFiles
             animate={prefersReducedMotion ? { opacity: 1 } : { x: 0, opacity: 1 }}
             exit={prefersReducedMotion ? { opacity: 0 } : { x: '100%', opacity: 0 }}
             transition={{ duration: prefersReducedMotion ? 0.01 : 0.22, ease: [0.4, 0, 0.2, 1] }}
-            className="fixed bottom-0 right-0 top-[env(safe-area-inset-top,0px)] z-50 flex w-[min(960px,95vw)] flex-col overflow-hidden border-l border-(--color-border) bg-(--bg-card) shadow-2xl [[data-mobile-shell]_&]:right-[env(safe-area-inset-right,0px)] [[data-mobile-shell]_&]:w-[min(960px,calc(100vw-env(safe-area-inset-left,0px)-env(safe-area-inset-right,0px)))]"
+            className={cn(
+              'fixed bottom-0 right-0 top-[env(safe-area-inset-top,0px)] z-50 flex w-[min(960px,95vw)] flex-col overflow-hidden border-l border-(--color-border) bg-(--bg-card) shadow-2xl',
+              '[[data-mobile-shell]_&]:top-[calc(var(--spacing-app-header)+env(safe-area-inset-top,0px))] [[data-mobile-shell]_&]:right-[env(safe-area-inset-right,0px)] [[data-mobile-shell]_&]:w-[min(960px,calc(100vw-env(safe-area-inset-left,0px)-env(safe-area-inset-right,0px)))]',
+              isMacOverlay && 'top-(--spacing-app-header)',
+            )}
             role="dialog"
             aria-modal="true"
             aria-label="Workspace files"

@@ -453,8 +453,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
   const lastContent = allBlocks[allBlocks.length - 1]?.content ?? ''
   useEffect(() => {
     if (pinnedRef.current) scrollToBottom()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [totalLen, lastContent])
+  }, [totalLen, lastContent, scrollToBottom])
 
   const isEmpty = visibleBlocks.length === 0 && !isWorking
 

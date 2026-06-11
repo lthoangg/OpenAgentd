@@ -32,7 +32,13 @@ mock.module('@tauri-apps/api/core', () => ({
   invoke: mockNotify,
 }))
 
-import { sendDesktopNotification } from '../../lib/desktop-notifications'
+import {
+  areDesktopNotificationSoundsEnabled,
+  areDesktopNotificationsEnabled,
+  sendDesktopNotification,
+  setDesktopNotificationSoundsEnabled,
+  setDesktopNotificationsEnabled,
+} from '../../lib/desktop-notifications'
 
 const payload = {
   kind: 'assistant_done' as const,
@@ -98,6 +104,27 @@ describe('desktop notification worker', () => {
     expect((await sendDesktopNotification(payload)).status).toBe('sent')
     expect(mockNotify).toHaveBeenCalledTimes(1)
     expect(mockPlay).not.toHaveBeenCalled()
+  })
+
+  it('treats notification preferences as enabled when storage is unavailable', () => {
+    const originalLocalStorage = window.localStorage
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      value: {
+        getItem: () => { throw new Error('denied') },
+        setItem: () => { throw new Error('denied') },
+      },
+    })
+
+    expect(areDesktopNotificationsEnabled()).toBe(true)
+    expect(areDesktopNotificationSoundsEnabled()).toBe(true)
+    expect(() => setDesktopNotificationsEnabled(false)).not.toThrow()
+    expect(() => setDesktopNotificationSoundsEnabled(false)).not.toThrow()
+
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      value: originalLocalStorage,
+    })
   })
 
   it('unsupported runtime', async () => {

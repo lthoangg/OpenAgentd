@@ -7,7 +7,7 @@
  * view. Each view passes its own `renderBlock` so the per-view block visuals
  * (e.g. compact vs roomy `UserBubble`) stay independent.
  */
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Copy, Check, Play } from 'lucide-react'
 import { formatTime, lastTurnText } from '@/utils/format'
 import type { ContentBlock } from '@/api/types'
@@ -38,6 +38,7 @@ function shortModelName(modelId: string | null | undefined): string | null {
 
 export function AssistantTurnFooter({ turnBlocks, size = 'compact', onContinue }: AssistantTurnFooterProps) {
   const [copied, setCopied] = useState(false)
+  const copiedTimerRef = useRef<number | null>(null)
   // Me lastTurnText walks back to the previous user block; pass the turn directly
   const textContent = lastTurnText(turnBlocks)
   const lastBlock = turnBlocks[turnBlocks.length - 1]
@@ -53,13 +54,21 @@ export function AssistantTurnFooter({ turnBlocks, size = 'compact', onContinue }
   const modelName = shortModelName(modelId)
   const canContinue = Boolean(onContinue && (textContent || turnBlocks.some((b) => b.type === 'tool')))
 
+  useEffect(() => () => {
+    if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current)
+  }, [])
+
   if (!textContent && !timestamp && !canContinue && responseDurationMs === undefined && !modelName) return null
 
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(textContent)
       setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
+      if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current)
+      copiedTimerRef.current = window.setTimeout(() => {
+        copiedTimerRef.current = null
+        setCopied(false)
+      }, 1500)
     } catch { /* ignore */ }
   }
 

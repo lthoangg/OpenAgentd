@@ -304,6 +304,30 @@ describe("AgentView — AssistantFooter", () => {
       expect(writeText).toHaveBeenCalledWith("Hello world")
     })
 
+    it("clears pending copy feedback when unmounted", async () => {
+      const user = userEvent.setup()
+      const writeText = mock(async () => {})
+      Object.defineProperty(navigator, "clipboard", {
+        value: { writeText },
+        configurable: true,
+      })
+      const originalClearTimeout = window.clearTimeout
+      const clearTimeout = mock((...args: unknown[]) => originalClearTimeout(args[0] as number | undefined))
+      window.clearTimeout = clearTimeout as typeof window.clearTimeout
+
+      const view = renderStream({
+        blocks: [makeTextBlock("b1", "Hello world")],
+        currentBlocks: [],
+        isWorking: false,
+      })
+
+      await user.click(screen.getByRole("button", { name: /copy response/i }))
+      view.unmount()
+
+      expect(clearTimeout).toHaveBeenCalled()
+      window.clearTimeout = originalClearTimeout
+    })
+
     it("copies text from multiple text blocks joined with newlines", async () => {
       const user = userEvent.setup()
       const writeText = mock(async () => {})

@@ -352,6 +352,23 @@ class TestMCPManagerWithMockedServer:
 
 
 class TestMCPManagerOAuth:
+    def test_clear_cached_oauth_removes_server_cache(self, tmp_path: Path) -> None:
+        oauth_dir = tmp_path / "mcp-oauth"
+        oauth_dir.mkdir()
+        oauth_file = oauth_dir / "notion.json"
+        oauth_file.write_text(
+            '{"client_info":{"redirect_uris":["http://localhost:1234/callback"]}}',
+            encoding="utf-8",
+        )
+
+        with patch("app.agent.mcp.oauth.settings.OPENAGENTD_CACHE_DIR", str(tmp_path)):
+            from app.agent.mcp.oauth import clear_cached_oauth
+
+            clear_cached_oauth("notion")
+            clear_cached_oauth("notion")
+
+        assert not oauth_file.exists()
+
     @pytest.mark.asyncio
     async def test_oauth_server_without_tokens_is_auth_required(self) -> None:
         manager = MCPManager()

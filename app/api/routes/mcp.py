@@ -19,7 +19,11 @@ from app.agent.mcp.config import (
     save_config,
     validate_server_name,
 )
-from app.agent.mcp.oauth import allow_interactive_oauth, disallow_interactive_oauth
+from app.agent.mcp.oauth import (
+    allow_interactive_oauth,
+    clear_cached_oauth,
+    disallow_interactive_oauth,
+)
 from app.api.schemas.mcp import (
     CreateServerRequest,
     HttpServerBody,
@@ -350,6 +354,7 @@ async def connect_oauth(name: str) -> ServerStatusResponse:
 
     allow_interactive_oauth(name)
     try:
+        clear_cached_oauth(name)
         status = await mcp_manager.restart_server(name)
     finally:
         disallow_interactive_oauth(name)

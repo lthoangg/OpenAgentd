@@ -53,6 +53,22 @@ def has_cached_oauth_tokens(name: str) -> bool:
     return bool(data.get("tokens"))
 
 
+def clear_cached_oauth(name: str) -> None:
+    """Remove cached MCP OAuth state for ``name`` if present.
+
+    The MCP SDK persists dynamically registered client information together
+    with tokens. That client information includes loopback redirect URIs, which
+    can become stale when the desktop sidecar/backend is restarted. An explicit
+    reconnect must therefore start from a clean OAuth file rather than reusing
+    the old client registration.
+    """
+    path = Path(settings.OPENAGENTD_CACHE_DIR) / "mcp-oauth" / f"{name}.json"
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return
+
+
 def has_resolved_client_id(cfg: HttpServerConfig) -> bool:
     oauth = cfg.oauth
     if not oauth or not oauth.client_id:

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import fuzzysort from 'fuzzysort'
 import {
   AlertCircle,
@@ -603,18 +603,19 @@ function ModelsPanel({
 }
 
 function ModelRow({ qualifiedId, onCopy }: { qualifiedId: string; onCopy: (qualifiedId: string) => Promise<void> }) {
-  const isMobile = useIsMobile()
   const { isTauri, os } = usePlatform()
   const isTauriMobile = isTauri && (os === 'ios' || os === 'android')
   const [actionsPoint, setActionsPoint] = useState<{ x: number; y: number } | null>(null)
   const longPressTimerRef = useRef<number | null>(null)
   const longPressStartRef = useRef<{ x: number; y: number } | null>(null)
 
-  const clearLongPress = () => {
+  const clearLongPress = useCallback(() => {
     if (longPressTimerRef.current !== null) window.clearTimeout(longPressTimerRef.current)
     longPressTimerRef.current = null
     longPressStartRef.current = null
-  }
+  }, [])
+
+  useEffect(() => clearLongPress, [clearLongPress])
 
   return (
     <li
@@ -625,7 +626,8 @@ function ModelRow({ qualifiedId, onCopy }: { qualifiedId: string; onCopy: (quali
         setActionsPoint({ x: event.clientX, y: event.clientY })
       }}
       onPointerDown={(event) => {
-        if (!isMobile || !isTauriMobile || event.pointerType === 'mouse') return
+        if (!isTauriMobile || event.pointerType === 'mouse') return
+        clearLongPress()
         longPressStartRef.current = { x: event.clientX, y: event.clientY }
         longPressTimerRef.current = window.setTimeout(() => {
           longPressTimerRef.current = null

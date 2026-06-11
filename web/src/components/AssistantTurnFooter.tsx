@@ -103,12 +103,12 @@ export function AssistantTurnFooter({ turnBlocks, size = 'compact', onContinue }
           <Play size={iconSize} />
         </button>
       )}
-      {timestamp && <span className="text-(--color-text-subtle) text-xs">{formatTime(timestamp)}</span>}
       {modelName && (
         <span className="font-mono text-(--color-text-subtle) text-xs" title={modelId ?? undefined}>
           {modelName}
         </span>
       )}
+      {timestamp && <span className="text-(--color-text-subtle) text-xs">{formatTime(timestamp)}</span>}
       {responseDurationMs !== undefined && (
         <span className="font-mono text-(--color-text-subtle) text-xs" title="Response duration">
           {formatDuration(responseDurationMs)}

@@ -493,10 +493,15 @@ describe("AgentView — AssistantFooter", () => {
       expect(footer).toBeTruthy()
       const copyBtn = screen.getByRole("button", { name: /copy response/i })
       expect(copyBtn).toBeTruthy()
-      expect(footer?.textContent).toContain("claude-sonnet-4.5")
-      expect(footer?.textContent).toContain("1.2s")
-      const timeEl = footer?.querySelector("span")
-      expect(timeEl?.textContent).toMatch(/\d+:\d+/)
+      const footerText = footer?.textContent ?? ""
+      const modelIndex = footerText.indexOf("claude-sonnet-4.5")
+      const timeMatch = footerText.match(/\d+:\d+/)
+      const durationIndex = footerText.indexOf("1.2s")
+      expect(modelIndex).toBeGreaterThanOrEqual(0)
+      expect(timeMatch).not.toBeNull()
+      expect(durationIndex).toBeGreaterThanOrEqual(0)
+      expect(modelIndex).toBeLessThan(timeMatch?.index ?? -1)
+      expect(timeMatch?.index ?? -1).toBeLessThan(durationIndex)
     })
 
     it("renders footer with only timestamp when there is no text content", () => {

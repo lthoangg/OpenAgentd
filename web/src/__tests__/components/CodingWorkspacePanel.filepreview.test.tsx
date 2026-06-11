@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import type React from 'react'
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { WorkspaceFileInfo } from '@/api/types'
@@ -218,5 +218,18 @@ describe('Coding workspace two-layer file preview', () => {
     await user.click(screen.getByRole('button', { name: /add comment for line 1/i }))
 
     expect(onAddComment).toHaveBeenCalledWith('README.md', 1, 1)
+  })
+
+  it('lets touch and pen users drag-select preview lines', async () => {
+    const onAddComment = mock(() => {})
+    await renderViewer(readme, onAddComment)
+    await waitFor(() => expect(screen.getByText('const')).toBeTruthy())
+
+    fireEvent.pointerDown(screen.getByRole('button', { name: /const value = 1/i }), { pointerType: 'touch' })
+    fireEvent.pointerEnter(screen.getByRole('button', { name: /return value/i }), { pointerType: 'touch' })
+    fireEvent.pointerUp(screen.getByRole('button', { name: /return value/i }), { pointerType: 'touch' })
+    await userEvent.click(screen.getByRole('button', { name: /add comment for lines 1-3/i }))
+
+    expect(onAddComment).toHaveBeenCalledWith('README.md', 1, 3)
   })
 })

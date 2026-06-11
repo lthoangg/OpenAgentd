@@ -208,7 +208,7 @@ function TextPreview({
     setSelection((prev) => prev ? { ...prev, focus: line } : prev)
   }
   return (
-    <div className="flex h-full min-h-0 flex-col" onMouseLeave={() => setDragging(false)} onMouseUp={() => setDragging(false)}>
+    <div className="flex h-full min-h-0 flex-col" onPointerLeave={() => setDragging(false)} onPointerUp={() => setDragging(false)}>
       {selection && selectedStart !== null && selectedEnd !== null ? (
         <div className="flex shrink-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-card) px-3 py-2">
           <span className="truncate font-mono text-[11px] text-(--color-text-subtle)">
@@ -231,11 +231,11 @@ function TextPreview({
             <button
               key={index}
               type="button"
-              onMouseDown={(e) => {
+              onPointerDown={(e) => {
                 e.preventDefault()
                 selectLine(lineNo)
               }}
-              onMouseEnter={() => extendSelection(lineNo)}
+              onPointerEnter={() => extendSelection(lineNo)}
               className={cn(
                 'flex w-full items-start gap-3 whitespace-pre px-3 text-left text-(--color-text-2)',
                 selected && 'bg-(--color-accent)/15',

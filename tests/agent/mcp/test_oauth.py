@@ -6,11 +6,11 @@ from app.agent.mcp.config import HttpServerConfig, OAuthConfig
 from app.agent.mcp.oauth import LoopbackCallback, build_oauth_provider
 
 
-def test_loopback_redirect_uri_uses_registered_localhost_oauth_callback_path():
+def test_loopback_redirect_uri_uses_default_callback_path():
     callback = LoopbackCallback()
     try:
         assert callback.redirect_uri.startswith("http://localhost:")
-        assert callback.redirect_uri.endswith("/oauth/callback")
+        assert callback.redirect_uri.endswith("/callback")
     finally:
         callback.server.server_close()
 
@@ -29,5 +29,5 @@ def test_build_oauth_provider_uses_matching_redirect_uri_for_client_metadata():
     parsed = urllib.parse.urlparse(str(redirect_uris[0]))
     assert parsed.scheme == "http"
     assert parsed.hostname == "localhost"
-    assert parsed.path == "/oauth/callback"
+    assert parsed.path == "/callback"
     assert parsed.port is not None

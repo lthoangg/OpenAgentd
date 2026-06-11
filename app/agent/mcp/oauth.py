@@ -83,7 +83,7 @@ async def supports_dynamic_client_registration(cfg: HttpServerConfig) -> bool:
 
 
 class LoopbackCallback:
-    PATH = "/oauth/callback"
+    PATH = "/callback"
 
     def __init__(self) -> None:
         self.result: dict[str, str] = {}

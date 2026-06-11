@@ -183,8 +183,8 @@ function UpdateSettingsCard() {
       </div>
 
       {notesOpen && status?.notes ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-label="Release notes" onClick={() => setNotesOpen(false)}>
-          <div className="max-h-[min(32rem,80vh)] w-full max-w-lg overflow-hidden rounded-md border border-(--color-border) bg-(--bg-card) text-(--color-text) shadow-2xl" onClick={(event) => event.stopPropagation()}>
+        <div className="mobile-safe-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-label="Release notes" onClick={() => setNotesOpen(false)}>
+          <div className="max-h-[min(32rem,calc(100dvh-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)-2rem))] w-full max-w-lg overflow-hidden rounded-md border border-(--color-border) bg-(--bg-card) text-(--color-text) shadow-2xl" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-center justify-between gap-3 border-b border-(--color-border) px-4 py-3">
               <h3 className="text-sm font-semibold">Release notes</h3>
               <div className="flex items-center gap-2">

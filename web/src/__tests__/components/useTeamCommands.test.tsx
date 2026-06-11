@@ -194,9 +194,9 @@ describe("useTeamCommands — coding mode swap", () => {
     expect(byId(result.current, "collapse-sidebar").label).toBe("Toggle Sidebar")
   })
 
-  it("coding mode shows 'Open Files & Diff' and 'Toggle Coding Sidebar'", () => {
+  it("coding mode shows 'Open Changed & Files' and 'Toggle Coding Sidebar'", () => {
     const { result } = renderHook(() => useTeamCommands(makeArgs({ mode: "coding" })))
-    expect(byId(result.current, "workspace-files").label).toBe("Open Files & Diff")
+    expect(byId(result.current, "workspace-files").label).toBe("Open Changed & Files")
     expect(byId(result.current, "collapse-sidebar").label).toBe("Toggle Coding Sidebar")
   })
 

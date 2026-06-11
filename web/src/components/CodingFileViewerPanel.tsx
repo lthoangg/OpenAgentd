@@ -1,10 +1,13 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { Copy, Download, ExternalLink, FileText, Loader2, X, Check } from 'lucide-react'
-import { codingWorkspaceFileUrl } from '@/api/client'
+import { Check, Copy, Download, ExternalLink, FileText, GitCompare, Loader2, X } from 'lucide-react'
+import { codingWorkspaceFileUrl, getCodingWorkspaceGitDiff } from '@/api/client'
 import { cn } from '@/lib/utils'
 import { formatBytes } from '@/utils/format'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
+import { useResizableWidth } from '@/hooks/use-resizable-width'
+import { queryKeys } from '@/queries'
 import type { WorkspaceFileInfo } from '@/api/types'
 
 const TEXT_EXTENSIONS = new Set([
@@ -269,6 +272,25 @@ function BinaryPreview({ workspace, file }: { workspace: string; file: Workspace
   )
 }
 
+function diffLineClass(line: string) {
+  if (line.startsWith('+++') || line.startsWith('---')) return 'text-(--color-accent)'
+  if (line.startsWith('@@')) return 'bg-(--color-accent)/10 text-(--color-accent)'
+  if (line.startsWith('+')) return 'bg-(--color-diff-add-bg) text-(--color-diff-add-text)'
+  if (line.startsWith('-')) return 'bg-(--color-diff-del-bg) text-(--color-diff-del-text)'
+  if (line.startsWith('diff --git') || line.startsWith('index ') || line.startsWith('new file mode')) return 'text-(--color-text)'
+  return 'text-(--color-text-2)'
+}
+
+function DiffPreview({ diff }: { diff: string }) {
+  return (
+    <pre className="h-full overflow-auto bg-(--bg-page) p-3 font-mono text-[11px] leading-relaxed">
+      {diff.split('\n').map((line, index) => (
+        <span key={index} className={cn('block whitespace-pre-wrap break-all px-1', diffLineClass(line))}>{line || ' '}</span>
+      ))}
+    </pre>
+  )
+}
+
 export function CodingFileViewerPanel({
   workspace,
   file,
@@ -283,6 +305,21 @@ export function CodingFileViewerPanel({
   mobile?: boolean
 }) {
   const prefersReducedMotion = useReducedMotion()
+  const resizable = useResizableWidth({
+    storageKey: 'oa.codingFileViewer.width',
+    defaultWidth: 560,
+    minWidth: 420,
+    maxWidth: 880,
+    edge: 'left',
+    disabled: mobile,
+  })
+  const [viewMode, setViewMode] = useState<'file' | 'diff'>('file')
+  const scopedDiff = useQuery({
+    queryKey: [...queryKeys.coding.diff(workspace), file?.path ?? null] as const,
+    queryFn: () => getCodingWorkspaceGitDiff(workspace, file ? [file.path] : []),
+    enabled: file !== null && viewMode === 'diff',
+    staleTime: 5_000,
+  })
   if (!file) return null
 
   const kind = kindOf(file)
@@ -291,16 +328,27 @@ export function CodingFileViewerPanel({
   return (
     <motion.aside
       initial={prefersReducedMotion ? { opacity: 0 } : mobile ? { opacity: 0 } : { width: 0 }}
-      animate={prefersReducedMotion ? { opacity: 1 } : mobile ? { opacity: 1 } : { width: 560 }}
+      animate={prefersReducedMotion ? { opacity: 1 } : mobile ? { opacity: 1 } : { width: resizable.width }}
       exit={prefersReducedMotion ? { opacity: 0 } : mobile ? { opacity: 0 } : { width: 0 }}
       transition={{ duration: prefersReducedMotion ? 0.01 : 0.22, ease: [0.4, 0, 0.2, 1] }}
       className={cn(
         'mobile-safe-top fixed bottom-0 right-0 z-40 min-h-0 w-full overflow-hidden border-l border-(--color-border) bg-(--bg-card) shadow-xl md:relative md:inset-y-auto md:right-auto md:z-auto md:w-auto md:shrink-0 md:shadow-none',
-        mobile ? 'max-w-none' : 'max-w-[560px]',
+        mobile ? 'max-w-none' : '',
       )}
       aria-label="File viewer"
     >
-      <div className={cn('flex h-full min-h-0 w-full flex-col', mobile ? 'max-w-none' : 'max-w-[560px] md:w-[560px]')}>
+      <div className={cn('relative flex h-full min-h-0 w-full flex-col', mobile ? 'max-w-none' : 'md:w-full')}>
+        {!mobile && (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize file viewer"
+            title="Drag to resize · double-click to reset"
+            className="absolute left-0 top-0 z-20 h-full w-1 cursor-col-resize transition-colors hover:bg-(--color-accent)/40"
+            onPointerDown={resizable.startResize}
+            onDoubleClick={resizable.resetWidth}
+          />
+        )}
         <header className="flex shrink-0 items-center justify-between gap-3 border-b border-(--color-border) px-3 py-3">
           <div className="min-w-0 flex-1">
             <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-(--color-text-subtle)">File</p>
@@ -308,6 +356,14 @@ export function CodingFileViewerPanel({
             <p className="mt-0.5 text-[10px] text-(--color-text-subtle)">{formatBytes(file.size)} · {file.mime}</p>
           </div>
           <div className="flex shrink-0 items-center gap-1">
+            <div className="mr-1 flex rounded-md border border-(--color-border) p-0.5">
+              <button type="button" onClick={() => setViewMode('file')} className={cn('h-8 rounded px-2 text-[11px] md:h-auto md:py-1', viewMode === 'file' ? 'bg-(--bg-key) text-(--color-text)' : 'text-(--color-text-muted) hover:text-(--color-text-2)')}>
+                File
+              </button>
+              <button type="button" onClick={() => setViewMode('diff')} className={cn('flex h-8 items-center gap-1 rounded px-2 text-[11px] md:h-auto md:py-1', viewMode === 'diff' ? 'bg-(--bg-key) text-(--color-text)' : 'text-(--color-text-muted) hover:text-(--color-text-2)')}>
+                <GitCompare size={11} /> Diff
+              </button>
+            </div>
             <a href={url} download={file.name} title="Download" className="flex h-9 w-9 items-center justify-center rounded text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-auto md:w-auto md:p-1.5">
               <Download size={14} />
             </a>
@@ -318,9 +374,15 @@ export function CodingFileViewerPanel({
           </div>
         </header>
         <div className="min-h-0 flex-1 overflow-hidden">
-          {kind === 'image' ? <ImagePreview workspace={workspace} file={file} />
+          {viewMode === 'diff' ? (
+            scopedDiff.isLoading ? <div className="flex h-full items-center justify-center"><Loader2 size={16} className="animate-spin text-(--color-text-subtle)" /></div>
+              : scopedDiff.isError ? <div className="flex h-full items-center justify-center px-4 text-center text-xs text-(--color-error)">Failed to load diff</div>
+                : !scopedDiff.data?.is_git_repo ? <div className="flex h-full items-center justify-center px-4 text-center text-xs text-(--color-text-subtle)">Not a git repository</div>
+                  : !scopedDiff.data.diff ? <div className="flex h-full items-center justify-center px-4 text-center text-xs text-(--color-text-subtle)">No diff for this file</div>
+                    : <DiffPreview diff={scopedDiff.data.diff} />
+          ) : kind === 'image' ? <ImagePreview workspace={workspace} file={file} />
             : kind === 'text' ? <TextPreview key={file.path} workspace={workspace} file={file} onAddComment={onAddComment} />
-            : <BinaryPreview workspace={workspace} file={file} />}
+              : <BinaryPreview workspace={workspace} file={file} />}
         </div>
       </div>
     </motion.aside>

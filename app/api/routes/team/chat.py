@@ -246,13 +246,15 @@ async def team_chat(
         return {"status": "interrupted", "session_id": session_id}
 
     assert message is not None
+    loop_command = None
     if is_loop_command(message):
         if mode != "coding":
             raise HTTPException(
                 status_code=422,
                 detail="/loop commands are only available in coding mode.",
             )
-        if parse_loop_command(message) is None:
+        loop_command = parse_loop_command(message)
+        if loop_command is None:
             raise HTTPException(
                 status_code=422,
                 detail="Invalid /loop command. Use /loop <prompt>, /loop:set 5|10|20|50, /loop:pause, /loop:resume, or /loop:stop.",
@@ -316,7 +318,11 @@ async def team_chat(
             async with db.begin():
                 await cleanup_reverted_tail(db, session_uuid)
 
-        if session_uuid is not None and team_obj.has_active_user_turn():
+        if (
+            session_uuid is not None
+            and team_obj.has_active_user_turn()
+            and loop_command is None
+        ):
             # Explicit uploads still 409 — they need the live capability check
             # + persistence pipeline that only runs on the dispatch path. But
             # mentions are derived from workspace files the agent will see

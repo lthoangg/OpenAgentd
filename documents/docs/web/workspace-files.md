@@ -2,7 +2,7 @@
 title: Workspace Files Panel
 description: Right-side drawer for browsing, previewing, and downloading agent-generated files with live invalidation.
 status: stable
-updated: 2026-05-21
+updated: 2026-06-10
 ---
 
 # Workspace Files panel
@@ -22,7 +22,7 @@ The panel is the UI for `GET /api/team/{session_id}/files` — see
 the endpoint contract. File **listings** come from `/files`; file **bytes**
 are fetched on demand from the media proxy (`/media/{path}`).
 
-Normal sessions list the per-session workspace. `/coding` uses **Files & Diff** for the selected project: a recursive tree plus current git diff. New folders require a trust confirmation before opening, and `/coding` restores the last active workspace from local browser storage, including workspaces resolved from coding session restores. The coding session list shows a small running indicator on the active session while that turn is streaming. `.git/` and common generated directories (`node_modules`, `dist`, `.venv`, …) are always pruned; everything else defers to root `.gitignore` (including `!`-negation), so dot-trees like `.openagentd/skills/` show up when tracked. Full rules in [`api/index.md`](../api/index.md#workspace-file-listing). Large git diffs are capped and marked as truncated.
+Normal sessions list the per-session workspace. `/coding` uses **Changed & Files** for the selected project: a changed-files-first list plus the full recursive tree. New folders require a trust confirmation before opening, and `/coding` restores the last active workspace from local browser storage, including workspaces resolved from coding session restores. The coding session list shows a small running indicator on the active session while that turn is streaming. `.git/` and common generated directories (`node_modules`, `dist`, `.venv`, …) are always pruned; everything else defers to root `.gitignore` (including `!`-negation), so dot-trees like `.openagentd/skills/` show up when tracked. Full rules in [`api/index.md`](../api/index.md#workspace-file-listing). Large git diffs are capped and marked as truncated. Selecting a changed file opens the center file viewer; the right workspace sidebar stays list-only.
 
 In coding mode, the chat empty state replaces the default mascot with a `WorkspaceInfoCard` (`web/src/components/WorkspaceInfoCard.tsx`) showing workspace name + path, current git branch, dirty counts, and last commit. Backed by `GET /api/team/workspace/status`; refetched on every new-chat open (component re-mount).
 
@@ -49,10 +49,10 @@ WorkspaceFilesPanel.tsx                (right drawer, w-[min(960px,95vw)])
 | Trigger | Notes |
 |---------|-------|
 | **"Files" button** in the chat header | Next to the **Agents** button; disabled when no session is active. |
-| **`Ctrl+F`** | Toggles the panel. In `/coding`, opens **Files & Diff** for the selected workspace. |
-| **Command Palette** | Normal: *Toggle Workspace Files*. Coding: *Open Files & Diff*. |
+| **`Ctrl+F`** | Toggles the panel. In `/coding`, opens **Changed & Files** for the selected workspace. |
+| **Command Palette** | Normal: *Toggle Workspace Files*. Coding: *Open Changed & Files*. |
 
-The right-side panels animate on enter/exit. Clicking outside **Files & Diff** closes it.
+The right-side panels animate on enter/exit. Clicking outside **Changed & Files** closes it.
 
 ---
 
@@ -179,25 +179,27 @@ Each `FileRow` shows a type-aware icon (`FileImage` / `FileCode` /
 
 ---
 
-## Coding Diff view
+## Coding Changed & Files view
 
-The `/coding` **Diff** tab in `CodingWorkspacePanel.tsx` renders the workspace's
-unified `git diff` (from `GET /api/team/workspace/git-diff/view`) with an
-IDE-style layout:
+The `/coding` workspace panel (`CodingWorkspacePanel.tsx`) is a right-side
+sidebar with two list-only tabs:
 
-- **Per-file sections** — each file is a collapsible card (header row toggles,
-  defaults to expanded) showing the file path and `+N/-N` change counts.
-- **Single line-number gutter** — one 4-ch left column shows the *displayed*
-  line sequence: new-file number for context/additions, old-file number for
-  deletions (so a delete-then-add block reads `…→132→123→133→…`). The gutter
-  is `select-none` + `aria-hidden`, so copy/paste yields code only.
-- **Wrapped content** — long source lines use `whitespace-pre-wrap` +
-  `break-all` to wrap inside the 440 px sidebar instead of overflowing.
-- **Color coding** — additions on emerald, deletions on red, hunk headers on
-  the accent color, meta lines muted. Same palette as the rest of the panel.
+- **Changed** — default view. Parses `GET /api/team/workspace/git-diff/view`
+  into changed paths with status badges (`A` / `M`) and `+N/-N` counts.
+  Selecting a row opens the existing center file viewer instead of rendering
+  diff content in the sidebar.
+- **Files** — full recursive workspace tree from
+  `GET /api/team/workspace/files/list`, with changed files/folders highlighted.
 
-Source of truth: `web/src/components/CodingWorkspacePanel.tsx` (`parseUnifiedDiff`,
-`DiffFileSection`, `DiffGutter`).
+The center file viewer (`CodingFileViewerPanel.tsx`) owns preview rendering. It
+shows file contents by default and offers a touch-friendly **File / Diff** toggle
+for the selected file. Diff mode fetches a scoped diff for that file only, so the
+right sidebar remains focused on `Changed` / `Files` navigation while preview
+content stays in the main workspace area.
+
+Desktop users can resize the normal sidebar, coding sidebar, workspace panel,
+and file viewer via thin drag handles; widths persist in local storage. Mobile
+keeps drawer/master-detail behavior and does not expose resize handles.
 
 ---
 

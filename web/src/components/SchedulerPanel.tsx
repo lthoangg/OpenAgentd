@@ -5,7 +5,7 @@
  * backdrop click to close, and X close button.
  */
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Clock, Play, Pause, Trash2, Plus, Loader2, AlertCircle, CalendarClock, Zap, ArrowLeft, Pencil, FolderOpen } from 'lucide-react'
 import { DateTimePicker } from '@/components/ui/date-time-picker'
@@ -28,6 +28,8 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { useModalFocus } from '@/hooks/useModalFocus'
 import { loadCodingWorkspaceEntries, workspaceLabel } from '@/utils/workspace'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
+import { usePlatform } from '@/hooks/use-platform'
+import { mediumHapticFeedback } from '@/lib/haptics'
 
 interface SchedulerPanelProps {
   open: boolean
@@ -53,6 +55,8 @@ const FIELD_CLASS = 'bg-(--bg-page) dark:bg-(--bg-page)'
 // looks like an outlined frame floating on the same paper. Use the page
 // surface for clear contrast and soften the border.
 const SELECT_CONTENT_CLASS = 'bg-(--bg-page) border-(--color-border-strong)'
+const TASK_LONG_PRESS_MS = 520
+const TASK_LONG_PRESS_MOVE_TOLERANCE = 10
 
 // Three-option segmented control used for "Schedule type". The shared Tabs
 // primitive inverts in light mode (track = bg-key which is darker than the
@@ -519,6 +523,29 @@ function TaskListItem({
   const pauseMutation = usePauseScheduledTaskMutation()
   const resumeMutation = useResumeScheduledTaskMutation()
   const triggerMutation = useTriggerScheduledTaskMutation()
+  const isMobile = useIsMobile()
+  const { isTauri, os } = usePlatform()
+  const isTauriMobile = isTauri && (os === 'ios' || os === 'android')
+  const [actionsPoint, setActionsPoint] = useState<{ x: number; y: number } | null>(null)
+  const longPressTimerRef = useRef<number | null>(null)
+  const longPressStartRef = useRef<{ x: number; y: number } | null>(null)
+
+  const clearLongPress = () => {
+    if (longPressTimerRef.current !== null) window.clearTimeout(longPressTimerRef.current)
+    longPressTimerRef.current = null
+    longPressStartRef.current = null
+  }
+
+  const triggerTask = () => triggerMutation.mutate(task.id)
+  const togglePaused = () => {
+    if (task.status === 'paused') resumeMutation.mutate(task.id)
+    else pauseMutation.mutate(task.id)
+  }
+  const deleteTask = () => {
+    if (confirm(`Delete task "${task.name}"?`)) {
+      deleteMutation.mutate(task.id, { onSuccess: onDeleted })
+    }
+  }
 
   const statusColor = {
     pending: 'text-(--color-text-muted)',
@@ -529,8 +556,37 @@ function TaskListItem({
   }[task.status] ?? 'text-(--color-text-muted)'
 
   return (
+    <>
     <button
       onClick={onSelect}
+      onContextMenu={(event) => {
+        if (isTauriMobile) return
+        event.preventDefault()
+        setActionsPoint({ x: event.clientX, y: event.clientY })
+      }}
+      onPointerDown={(event) => {
+        if (!isMobile || !isTauriMobile || event.pointerType === 'mouse') return
+        longPressStartRef.current = { x: event.clientX, y: event.clientY }
+        longPressTimerRef.current = window.setTimeout(() => {
+          longPressTimerRef.current = null
+          longPressStartRef.current = null
+          mediumHapticFeedback()
+          setActionsPoint({ x: event.clientX, y: event.clientY })
+        }, TASK_LONG_PRESS_MS)
+      }}
+      onPointerMove={(event) => {
+        const start = longPressStartRef.current
+        if (!start) return
+        if (
+          Math.abs(event.clientX - start.x) > TASK_LONG_PRESS_MOVE_TOLERANCE ||
+          Math.abs(event.clientY - start.y) > TASK_LONG_PRESS_MOVE_TOLERANCE
+        ) {
+          clearLongPress()
+        }
+      }}
+      onPointerUp={clearLongPress}
+      onPointerCancel={clearLongPress}
+      onPointerLeave={clearLongPress}
       className={`w-full rounded-lg border px-3 py-2 text-left transition-colors ${
         isSelected
           ? 'border-(--color-accent) bg-(--bg-key)'
@@ -564,7 +620,7 @@ function TaskListItem({
             size="icon-sm"
             onClick={(e) => {
               e.stopPropagation()
-              triggerMutation.mutate(task.id)
+              triggerTask()
             }}
             disabled={triggerMutation.isPending}
             title="Trigger now"
@@ -580,11 +636,7 @@ function TaskListItem({
             size="icon-sm"
             onClick={(e) => {
               e.stopPropagation()
-              if (task.status === 'paused') {
-                resumeMutation.mutate(task.id)
-              } else {
-                pauseMutation.mutate(task.id)
-              }
+              togglePaused()
             }}
             disabled={pauseMutation.isPending || resumeMutation.isPending}
             title={task.status === 'paused' ? 'Resume' : 'Pause'}
@@ -602,9 +654,7 @@ function TaskListItem({
             size="icon-sm"
             onClick={(e) => {
               e.stopPropagation()
-              if (confirm(`Delete task "${task.name}"?`)) {
-                deleteMutation.mutate(task.id, { onSuccess: onDeleted })
-              }
+              deleteTask()
             }}
             disabled={deleteMutation.isPending}
             title="Delete"
@@ -619,6 +669,62 @@ function TaskListItem({
         </div>
       </div>
     </button>
+    {actionsPoint && (
+      <div
+        className="fixed inset-0 z-[70]"
+        onClick={() => setActionsPoint(null)}
+        onContextMenu={(event) => {
+          event.preventDefault()
+          setActionsPoint(null)
+        }}
+      >
+        <div
+          role="menu"
+          aria-label={`Actions for ${task.name}`}
+          className="fixed min-w-44 rounded-lg border border-(--color-border) bg-(--bg-card) p-1 text-sm text-(--color-text) shadow-xl"
+          style={{ left: actionsPoint.x, top: actionsPoint.y }}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+            onClick={() => {
+              setActionsPoint(null)
+              triggerTask()
+            }}
+          >
+            <Zap size={14} aria-hidden="true" />
+            Trigger now
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+            onClick={() => {
+              setActionsPoint(null)
+              togglePaused()
+            }}
+          >
+            {task.status === 'paused' ? <Play size={14} aria-hidden="true" /> : <Pause size={14} aria-hidden="true" />}
+            {task.status === 'paused' ? 'Resume' : 'Pause'}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none"
+            onClick={() => {
+              setActionsPoint(null)
+              deleteTask()
+            }}
+          >
+            <Trash2 size={14} aria-hidden="true" />
+            Delete task
+          </button>
+        </div>
+      </div>
+    )}
+    </>
   )
 }
 

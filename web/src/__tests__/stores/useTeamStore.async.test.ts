@@ -564,6 +564,15 @@ describe("sendLoopCommand", () => {
     expect(mockPostTeamChat.mock.calls[0][0]).toBe("/loop:set 5")
     expect(mockPostTeamChat.mock.calls[0][1]).toBeNull()
     expect(useTeamStore.getState().sessionId).toBe("team-sid")
+    expect(useTeamStore.getState().activeLoop).toEqual({ prompt: null, limit: 5, remaining: 5, used: 0, paused: false })
+  })
+
+  it("optimistically exposes loop state before the SSE status arrives", async () => {
+    useTeamStore.setState({ leadName: "lead", agentStreams: { lead: makeStream() } })
+
+    await useTeamStore.getState().sendLoopCommand("/loop keep testing", "keep testing")
+
+    expect(useTeamStore.getState().activeLoop).toEqual({ prompt: "keep testing", limit: 10, remaining: 9, used: 1, paused: false })
   })
 
   it("requires an active session for active loop controls", async () => {

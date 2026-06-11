@@ -33,6 +33,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { LongPressButton } from '@/components/ui/long-press-button'
 import { usePlatform } from '@/hooks/use-platform'
+import { useResizableWidth } from '@/hooks/use-resizable-width'
 import type { SessionResponse } from '@/api/types'
 
 interface DateGroup {
@@ -120,6 +121,7 @@ export function Sidebar({
   const [deleteTarget, setDeleteTarget] = useState<SessionResponse | null>(null)
   const [editTarget, setEditTarget] = useState<SessionResponse | null>(null)
   const [mobileSessionActions, setMobileSessionActions] = useState<SessionResponse | null>(null)
+  const [desktopSessionActions, setDesktopSessionActions] = useState<{ session: SessionResponse; x: number; y: number } | null>(null)
   const [editTitle, setEditTitle] = useState('')
   const [pullDistance, setPullDistance] = useState(0)
   const pullStartYRef = useRef<number | null>(null)
@@ -253,10 +255,19 @@ export function Sidebar({
     onMobileClose?.()
   }
 
+  const resizable = useResizableWidth({
+    storageKey: 'oa.sidebar.width',
+    defaultWidth: 256,
+    minWidth: 220,
+    maxWidth: 420,
+    edge: 'right',
+    disabled: isMobile || collapsed,
+  })
+
   // On mobile the sidebar is a fixed overlay drawer: it slides in/out via
   // x transform and always stays 272px wide. The desktop version animates
-  // its inline width between 56px (icon-only) and 256px (expanded).
-  const desktopWidth = collapsed ? 56 : 256
+  // its inline width between 56px (icon-only) and the user-resized width.
+  const desktopWidth = collapsed ? 56 : resizable.width
 
   return (
     <>
@@ -290,6 +301,18 @@ export function Sidebar({
       }
       style={isMobile ? undefined : { minWidth: desktopWidth }}
     >
+      {!isMobile && !collapsed && (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize sidebar"
+          title="Drag to resize · double-click to reset"
+          className="absolute right-0 top-0 z-20 h-full w-1 cursor-col-resize transition-colors hover:bg-(--color-accent)/40"
+          onPointerDown={resizable.startResize}
+          onDoubleClick={resizable.resetWidth}
+        />
+      )}
+
       {/* showIconOnly: desktop collapsed icon-only mode.
           On mobile the drawer is always fully expanded.
 
@@ -412,6 +435,9 @@ export function Sidebar({
                                 onEdit={handleEdit}
                                 mobileLongPressActions={mobileLongPressActions}
                                 onLongPress={setMobileSessionActions}
+                                onContextActions={(session, event) => {
+                                  setDesktopSessionActions({ session, x: event.clientX, y: event.clientY })
+                                }}
                               />
                             ))}
                           </div>
@@ -489,6 +515,52 @@ export function Sidebar({
           </>
         )
       })()}
+
+        {desktopSessionActions && (
+          <div
+            className="fixed inset-0 z-50"
+            onClick={() => setDesktopSessionActions(null)}
+            onContextMenu={(event) => {
+              event.preventDefault()
+              setDesktopSessionActions(null)
+            }}
+          >
+            <div
+              role="menu"
+              aria-label={`Actions for ${desktopSessionActions.session.title || 'Untitled'}`}
+              className="fixed min-w-44 rounded-lg border border-(--color-border) bg-(--bg-card) p-1 text-sm text-(--color-text) shadow-xl"
+              style={{ left: desktopSessionActions.x, top: desktopSessionActions.y }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <button
+                type="button"
+                role="menuitem"
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+                onClick={() => {
+                  const { session } = desktopSessionActions
+                  setDesktopSessionActions(null)
+                  handleEdit(session)
+                }}
+              >
+                <Pencil size={14} aria-hidden="true" />
+                Edit title
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none"
+                onClick={() => {
+                  const { session } = desktopSessionActions
+                  setDesktopSessionActions(null)
+                  setDeleteTarget(session)
+                }}
+              >
+                <Trash2 size={14} aria-hidden="true" />
+                Delete session
+              </button>
+            </div>
+          </div>
+        )}
 
         <Dialog open={mobileSessionActions !== null} onOpenChange={(open) => { if (!open) setMobileSessionActions(null) }}>
         <DialogContent>
@@ -592,6 +664,7 @@ interface SessionRowProps {
   onEdit: (session: SessionResponse) => void
   mobileLongPressActions?: boolean
   onLongPress?: (session: SessionResponse) => void
+  onContextActions?: (session: SessionResponse, event: React.MouseEvent) => void
 }
 
 /**
@@ -599,7 +672,7 @@ interface SessionRowProps {
  * brightens its text from ``--color-text-2`` to ``--color-text`` as the
  * hover affordance. Active rows keep the solid ``--bg-key`` background.
  */
-function SessionRow({ session, isActive, onSelect, onDelete, onEdit, mobileLongPressActions = false, onLongPress }: SessionRowProps) {
+function SessionRow({ session, isActive, onSelect, onDelete, onEdit, mobileLongPressActions = false, onLongPress, onContextActions }: SessionRowProps) {
   const isScheduled = Boolean(session.scheduled_task_name)
   const isRunning = session.running === true
 
@@ -612,6 +685,11 @@ function SessionRow({ session, isActive, onSelect, onDelete, onEdit, mobileLongP
         onDoubleClick={(e) => {
           e.stopPropagation()
           onEdit(session)
+        }}
+        onContextMenu={(e) => {
+          if (mobileLongPressActions) return
+          e.preventDefault()
+          onContextActions?.(session, e)
         }}
         className={`flex w-full items-start gap-2 rounded-md px-2.5 py-2 text-left transition-colors ${
           isActive

@@ -18,18 +18,48 @@ interface TreeNode {
   file?: WorkspaceFileInfo
 }
 
-function collectChangedPaths(diff?: WorkspaceGitDiffResponse): Set<string> {
-  const paths = new Set<string>()
-  if (!diff?.is_git_repo) return paths
+type ChangedFileStatus = 'A' | 'M'
 
+interface ChangedFileInfo {
+  path: string
+  status: ChangedFileStatus
+  additions: number
+  deletions: number
+}
+
+const CHANGED_STATUS_LABELS: Record<ChangedFileStatus, string> = {
+  A: 'Added',
+  M: 'Modified',
+}
+
+function collectChangedFiles(diff?: WorkspaceGitDiffResponse): ChangedFileInfo[] {
+  const files = new Map<string, ChangedFileInfo>()
+  if (!diff?.is_git_repo) return []
+
+  let current: ChangedFileInfo | null = null
   for (const line of diff.diff.split('\n')) {
     if (line.startsWith('diff --git ')) {
       const match = /^diff --git a\/(.*) b\/(.*)$/.exec(line)
-      if (match?.[2]) paths.add(match[2])
+      if (!match?.[2]) {
+        current = null
+        continue
+      }
+      current = files.get(match[2]) ?? { path: match[2], status: 'M', additions: 0, deletions: 0 }
+      files.set(current.path, current)
+      continue
     }
+    if (!current) continue
+    if (line.startsWith('new file mode')) current.status = 'A'
+    else if (line.startsWith('+') && !line.startsWith('+++')) current.additions += 1
+    else if (line.startsWith('-') && !line.startsWith('---')) current.deletions += 1
   }
-  for (const path of diff.untracked ?? []) paths.add(path)
-  return paths
+
+  for (const path of diff.untracked ?? []) {
+    const existing = files.get(path)
+    if (existing) existing.status = 'A'
+    else files.set(path, { path, status: 'A', additions: 0, deletions: 0 })
+  }
+  return Array.from(files.values()).sort((a, b) => a.path.localeCompare(b.path))
 }
 
 function pathHasChangedDescendant(path: string, changedPaths: Set<string>): boolean {
@@ -170,9 +200,9 @@ export function CodingWorkspacePanel({
     staleTime: 5_000,
   })
   const tree = buildTree(files.data?.files ?? [])
-  const changedPaths = collectChangedPaths(diff.data)
+  const changedFiles = collectChangedFiles(diff.data)
+  const changedPaths = new Set(changedFiles.map((file) => file.path))
   const fileByPath = new Map((files.data?.files ?? []).map((file) => [file.path, file]))
-  const changedFiles = Array.from(changedPaths).sort((a, b) => a.localeCompare(b))
   const resizable = useResizableWidth({
     storageKey: 'oa.codingWorkspacePanel.width',
     defaultWidth: 440,
@@ -236,23 +266,25 @@ export function CodingWorkspacePanel({
               <div className="p-2">
                 {diff.data.truncated && <p className="mb-2 rounded bg-(--color-warning)/10 px-2 py-1 text-xs text-(--color-warning)">Changed list may be incomplete because the diff was truncated.</p>}
                 <div className="space-y-1">
-                  {changedFiles.map((path) => {
-                    const file = fileByPath.get(path) ?? { path, name: path.split('/').pop() ?? path, size: 0, mtime: 0, mime: 'text/plain' }
-                    const isSelected = selectedFilePath === path
+                  {changedFiles.map((changedFile) => {
+                    const file = fileByPath.get(changedFile.path) ?? { path: changedFile.path, name: changedFile.path.split('/').pop() ?? changedFile.path, size: 0, mtime: 0, mime: 'text/plain' }
+                    const isSelected = selectedFilePath === changedFile.path
                     return (
                       <button
-                        key={path}
+                        key={changedFile.path}
                         type="button"
                         onClick={() => onFileSelect?.(isSelected ? null : file)}
                         className={cn(
                           'flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition-colors',
                           isSelected ? 'bg-(--bg-key) text-(--color-accent)' : 'text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text)',
                         )}
-                        title={path}
+                        title={changedFile.path}
                       >
                         <FileText size={12} className="shrink-0 text-(--accent-orange-text)" />
-                        <span className="min-w-0 flex-1 truncate font-mono">{path}</span>
-                        <span className="shrink-0 font-mono text-[10px] font-semibold text-(--accent-orange-text)">M</span>
+                        <span className="min-w-0 flex-1 truncate font-mono">{changedFile.path}</span>
+                        <span className="shrink-0 font-mono text-[10px] text-emerald-400">{changedFile.additions > 0 ? `+${changedFile.additions}` : ''}</span>
+                        <span className="shrink-0 font-mono text-[10px] text-red-400">{changedFile.deletions > 0 ? `-${changedFile.deletions}` : ''}</span>
+                        <span className="shrink-0 font-mono text-[10px] font-semibold text-(--accent-orange-text)" aria-label={CHANGED_STATUS_LABELS[changedFile.status]}>{changedFile.status}</span>
                       </button>
                     )
                   })}

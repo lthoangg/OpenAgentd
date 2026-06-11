@@ -129,6 +129,50 @@ describe("TextPreview", () => {
     expect(screen.queryByLabelText("Actions for notes.md")).not.toBeInTheDocument()
   })
 
+  it("replaces stale mobile file long-press timers", async () => {
+    isMobile = true
+    platformOs = "ios"
+    const file = makeFile({ path: "notes.md", name: "notes.md", mime: "text/markdown" })
+    const originalClearTimeout = window.clearTimeout
+    const clearTimeout = mock((...args: unknown[]) => originalClearTimeout(args[0] as number | undefined))
+    window.clearTimeout = clearTimeout as typeof window.clearTimeout
+
+    try {
+      mockFetchResponse(
+        (url) => url.includes("/api/team/") && url.includes("/files"),
+        {
+          ok: true,
+          status: 200,
+          json: {
+            session_id: SID,
+            files: [file],
+            truncated: false,
+          } as WorkspaceFilesResponse,
+        },
+      )
+
+      renderWithQueryClient(
+        <WorkspaceFilesPanel open={true} sessionId={SID} onClose={() => {}} />,
+      )
+
+      const fileButton = await screen.findByRole("button", { name: /notes\.md/i })
+      fireEvent.pointerDown(fileButton, {
+        pointerType: "touch",
+        clientX: 40,
+        clientY: 40,
+      })
+      fireEvent.pointerDown(fileButton, {
+        pointerType: "touch",
+        clientX: 42,
+        clientY: 42,
+      })
+
+      expect(clearTimeout).toHaveBeenCalled()
+    } finally {
+      window.clearTimeout = originalClearTimeout
+    }
+  })
+
   // ── raw content rendering ────────────────────────────────────────────────────
 
   it("renders raw content as-is without markdown transformation", async () => {

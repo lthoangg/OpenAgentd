@@ -174,6 +174,7 @@ function FileRow({
       }}
       onPointerDown={(event) => {
         if (!isMobile || !isTauriMobile || event.pointerType === 'mouse') return
+        clearLongPress()
         longPressStartRef.current = { x: event.clientX, y: event.clientY }
         longPressTimerRef.current = window.setTimeout(() => {
           longPressTimerRef.current = null

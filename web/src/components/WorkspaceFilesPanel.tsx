@@ -147,11 +147,13 @@ function FileRow({
   const longPressTimerRef = useRef<number | null>(null)
   const longPressStartRef = useRef<{ x: number; y: number } | null>(null)
 
-  const clearLongPress = () => {
+  const clearLongPress = useCallback(() => {
     if (longPressTimerRef.current !== null) window.clearTimeout(longPressTimerRef.current)
     longPressTimerRef.current = null
     longPressStartRef.current = null
-  }
+  }, [])
+
+  useEffect(() => clearLongPress, [clearLongPress])
 
   const copyPath = async () => {
     await navigator.clipboard.writeText(file.path)

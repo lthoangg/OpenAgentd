@@ -29,7 +29,7 @@ import { ImageAttachment } from './ImageAttachment'
 import { FileCard } from './FileCard'
 import { AssistantTurn } from './AssistantTurnFooter'
 import { PendingMessageQueue } from './PendingMessageQueue'
-import { partitionTurns } from '@/utils/turns'
+import { getVisibleTurnWindow, partitionTurns } from '@/utils/turns'
 import { latestDirectUserBlockId, mergeBlocks } from '@/utils/blocks'
 import { extractSleepPrefix, formatTime } from '@/utils/format'
 import { latestMCPAppResourceBlockIds } from '@/utils/mcp-app-artifacts'
@@ -368,8 +368,10 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
   const totalLen = allBlocks.length
   const latestUserBlockId = useMemo(() => latestDirectUserBlockId(allBlocks), [allBlocks])
   const turnItems = useMemo(() => partitionTurns(allBlocks), [allBlocks])
-  const hiddenTurnCount = Math.max(0, turnItems.length - renderedTurnCount)
-  const visibleTurnItems = hiddenTurnCount > 0 ? turnItems.slice(hiddenTurnCount) : turnItems
+  const { hiddenTurnCount, visibleTurnItems } = useMemo(
+    () => getVisibleTurnWindow(turnItems, renderedTurnCount),
+    [renderedTurnCount, turnItems],
+  )
   const latestMCPAppBlockIds = useMemo(() => latestMCPAppResourceBlockIds(allBlocks), [allBlocks])
 
   const showEarlierTurns = useCallback(() => {

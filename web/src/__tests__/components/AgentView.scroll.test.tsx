@@ -34,7 +34,7 @@ function renderStream(props: Partial<React.ComponentProps<typeof AgentView>> = {
 
 async function waitForScrollUpdate() {
   await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 50))
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)))
   })
 }
 

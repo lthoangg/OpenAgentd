@@ -727,7 +727,9 @@ class TestConnectOAuth:
             patch("app.api.routes.mcp.mcp_manager") as mock_manager,
             patch("app.api.routes.mcp.load_config") as mock_load,
             patch("app.api.routes.mcp.allow_interactive_oauth") as mock_allow,
+            patch("app.api.routes.mcp.clear_cached_oauth") as mock_clear_oauth,
             patch("app.api.routes.mcp.disallow_interactive_oauth") as mock_disallow,
+            patch("app.api.routes.mcp.save_config") as mock_save,
         ):
             cfg = MCPConfig(
                 servers={
@@ -749,8 +751,12 @@ class TestConnectOAuth:
 
             assert response.status_code == 200
             mock_allow.assert_called_once_with("notion")
+            mock_clear_oauth.assert_called_once_with("notion")
             mock_disallow.assert_called_once_with("notion")
-            mock_manager.restart_server.assert_awaited_once_with("notion")
+            mock_manager.restart_server.assert_awaited_once_with(
+                "notion", ready_timeout=300.0
+            )
+            mock_save.assert_called_once_with(cfg)
 
     def test_connect_oauth_rejects_non_oauth_server(self) -> None:
         app = _make_app()

@@ -412,7 +412,9 @@ class MCPManager:
 
     # ── Public mutation API (used by /api/mcp routes) ────────────────────
 
-    async def restart_server(self, name: str) -> MCPServerStatus:
+    async def restart_server(
+        self, name: str, *, ready_timeout: float = 15.0
+    ) -> MCPServerStatus:
         """Restart a single server. The new config is read from disk.
 
         Raises ``KeyError`` if ``name`` is not in the current config file.
@@ -432,9 +434,11 @@ class MCPManager:
         runner = self._runners[name]
         if runner.status.state != "stopped":
             try:
-                await asyncio.wait_for(runner.ready.wait(), timeout=15.0)
+                await asyncio.wait_for(runner.ready.wait(), timeout=ready_timeout)
             except asyncio.TimeoutError:
-                logger.warning("mcp_restart_timeout server={}", name)
+                logger.warning(
+                    "mcp_restart_timeout server={} timeout_s={}", name, ready_timeout
+                )
         return runner.status
 
     async def reload_from_config(self) -> None:

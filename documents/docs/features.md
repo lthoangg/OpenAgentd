@@ -382,7 +382,8 @@ Four orthogonal ways to add capability. Deeper docs:
 
 - **MCP servers** `[since v1.0]` — any Model Context Protocol server, hot-reloaded
   via `POST /api/mcp/apply`. Per-agent scoping. OAuth-backed setup. Includes a
-  bundled MCP installer skill `[v1.8.0]`.
+  bundled MCP installer skill `[v1.8.0]`. Session Settings can enable/disable
+  scoped MCP servers and connect OAuth-backed servers in place `[v1.52.2]`.
 - **Sandboxed UI artifacts** `[v1.36.0]` *(beta)* — tool-produced HTML UI
   resources render as sandboxed sibling chat artifacts. The first producer is
   MCP Apps: MCP tools that declare `_meta.ui.resourceUri` can render `ui://`

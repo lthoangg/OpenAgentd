@@ -228,7 +228,7 @@ function TextPreview({
               }}
               onMouseEnter={() => extendSelection(lineNo)}
               className={cn(
-                'flex w-full items-start gap-3 whitespace-pre px-3 text-left text-(--color-text-2)',
+                'flex w-full items-start gap-3 whitespace-pre-wrap break-words px-3 text-left text-(--color-text-2)',
                 selected && 'bg-(--color-accent)/15',
               )}
             >
@@ -309,7 +309,7 @@ export function CodingFileViewerPanel({
     storageKey: 'oa.codingFileViewer.width',
     defaultWidth: 560,
     minWidth: 420,
-    maxWidth: 880,
+    maxWidth: Math.min(880, Math.max(420, Math.floor((typeof window === 'undefined' ? 880 : window.innerWidth) - 320))),
     edge: 'left',
     disabled: mobile,
   })

@@ -27,11 +27,12 @@ export function useResizableWidth({
     const parsed = stored ? Number(stored) : Number.NaN
     return Number.isFinite(parsed) ? clamp(parsed, minWidth, maxWidth) : defaultWidth
   })
+  const clampedWidth = clamp(width, minWidth, maxWidth)
 
   useEffect(() => {
     if (disabled) return
-    window.localStorage.setItem(storageKey, String(width))
-  }, [disabled, storageKey, width])
+    window.localStorage.setItem(storageKey, String(clampedWidth))
+  }, [clampedWidth, disabled, storageKey])
 
   const resetWidth = useCallback(() => setWidth(defaultWidth), [defaultWidth])
 
@@ -39,7 +40,7 @@ export function useResizableWidth({
     if (disabled || event.pointerType === 'touch') return
     event.preventDefault()
     const startX = event.clientX
-    const startWidth = width
+    const startWidth = clampedWidth
 
     const handleMove = (moveEvent: PointerEvent) => {
       const delta = edge === 'right' ? moveEvent.clientX - startX : startX - moveEvent.clientX
@@ -57,7 +58,7 @@ export function useResizableWidth({
     document.body.style.userSelect = 'none'
     window.addEventListener('pointermove', handleMove)
     window.addEventListener('pointerup', handleUp, { once: true })
-  }, [disabled, edge, maxWidth, minWidth, width])
+  }, [clampedWidth, disabled, edge, maxWidth, minWidth])
 
-  return { width, startResize, resetWidth }
+  return { width: clampedWidth, startResize, resetWidth }
 }

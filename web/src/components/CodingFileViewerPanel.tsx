@@ -356,11 +356,11 @@ export function CodingFileViewerPanel({
             <p className="mt-0.5 text-[10px] text-(--color-text-subtle)">{formatBytes(file.size)} · {file.mime}</p>
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            <div className="mr-1 hidden rounded-md border border-(--color-border) p-0.5 md:flex">
-              <button type="button" onClick={() => setViewMode('file')} className={cn('rounded px-2 py-1 text-[11px]', viewMode === 'file' ? 'bg-(--bg-key) text-(--color-text)' : 'text-(--color-text-muted) hover:text-(--color-text-2)')}>
+            <div className="mr-1 flex rounded-md border border-(--color-border) p-0.5">
+              <button type="button" onClick={() => setViewMode('file')} className={cn('h-8 rounded px-2 text-[11px] md:h-auto md:py-1', viewMode === 'file' ? 'bg-(--bg-key) text-(--color-text)' : 'text-(--color-text-muted) hover:text-(--color-text-2)')}>
                 File
               </button>
-              <button type="button" onClick={() => setViewMode('diff')} className={cn('flex items-center gap-1 rounded px-2 py-1 text-[11px]', viewMode === 'diff' ? 'bg-(--bg-key) text-(--color-text)' : 'text-(--color-text-muted) hover:text-(--color-text-2)')}>
+              <button type="button" onClick={() => setViewMode('diff')} className={cn('flex h-8 items-center gap-1 rounded px-2 text-[11px] md:h-auto md:py-1', viewMode === 'diff' ? 'bg-(--bg-key) text-(--color-text)' : 'text-(--color-text-muted) hover:text-(--color-text-2)')}>
                 <GitCompare size={11} /> Diff
               </button>
             </div>

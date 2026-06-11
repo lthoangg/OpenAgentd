@@ -153,7 +153,7 @@ Both footer status rows use `flex-wrap items-center justify-between gap-x-3 gap-
 
 A few `components/ui/*` primitives have responsive guards so individual call sites don't have to:
 
-- **`long-press-button`**: while a touch press is armed the button scales down slightly (`data-pressing:scale-[0.97]`, iOS context-menu "lift" cue); reaching the 520 ms hold threshold fires a native medium haptic plus `onLongPress`. Haptics route through `lib/haptics.ts` — `tauri-plugin-haptics` (`UIImpactFeedbackGenerator` on iOS, `VibrationEffect` on Android) with a `navigator.vibrate` fallback; all paths are best-effort and never block the press behavior. Mouse pointers are ignored so desktop keeps plain click semantics.
+- **`long-press-button`**: while a touch press is armed the button scales down slightly (`data-pressing:scale-[0.97]`, iOS context-menu "lift" cue); reaching the 520 ms hold threshold fires a native medium haptic plus `onLongPress`. Haptics route through `lib/haptics.ts` — `tauri-plugin-haptics` (`UIImpactFeedbackGenerator` on iOS, `VibrationEffect` on Android) with a `navigator.vibrate` fallback; all paths are best-effort and never block the press behavior. Mouse pointers are ignored so desktop keeps plain click semantics. Pending holds are cancelled on unmount so navigating away or closing a drawer cannot trigger a stale action.
 - **Tiny text utilities**: `.text-[9px]` and `.text-[10px]` are lifted to an 11 px floor under `html[data-mobile-shell]`; desktop density is unchanged.
 
 - **`popover`**: `w-[min(18rem,calc(100vw-1rem))]` — never overflows the viewport when anchored near the edge.

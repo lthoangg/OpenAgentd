@@ -91,6 +91,22 @@ describe('LongPressButton', () => {
     expect(button.dataset.pressing).toBeUndefined()
   })
 
+  it('cancels an armed touch press when unmounted', async () => {
+    const onLongPress = mock(() => {})
+    const view = render(
+      <LongPressButton enabled onLongPress={onLongPress}>
+        Session
+      </LongPressButton>,
+    )
+    const button = screen.getByRole('button')
+
+    fireEvent.pointerDown(button, pressOpts())
+    view.unmount()
+
+    await new Promise((resolve) => window.setTimeout(resolve, 650))
+    expect(onLongPress).not.toHaveBeenCalled()
+  })
+
   it('keeps the scale-press affordance classes on the button', () => {
     render(
       <LongPressButton enabled onLongPress={() => {}} className="custom">

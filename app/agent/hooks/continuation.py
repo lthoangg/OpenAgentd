@@ -61,10 +61,9 @@ class ContinuationHook(BaseAgentHook):
         # Merge into existing extra (the agent loop sets extra["usage"]
         # before this hook runs — preserve it).
         #
-        # TODO(frontend): the flag is currently set but no UI keys off it.
-        # Per the design discussion (Option 3 — tight stack), the message
-        # renderer should suppress the avatar/header and tighten the top
-        # margin when the previous block is from the same assistant.
+        # The frontend consumes this flag in message parsing to merge the
+        # continued text into the previous assistant text block and to skip
+        # duplicate reasoning content for the continuation segment.
         if response.extra is None:
             response.extra = {"is_continuation": True}
         else:

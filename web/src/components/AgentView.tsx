@@ -117,13 +117,22 @@ function UserBubble({ content, timestamp, attachments, onRevert, modelId, shell 
   const [showTime, setShowTime] = useState(false)
   const [copied, setCopied] = useState(false)
   const [expanded, setExpanded] = useState(false)
+  const copiedTimerRef = useRef<number | null>(null)
   const modelName = shortModelName(modelId)
+
+  useEffect(() => () => {
+    if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current)
+  }, [])
 
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(content)
       setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
+      if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current)
+      copiedTimerRef.current = window.setTimeout(() => {
+        copiedTimerRef.current = null
+        setCopied(false)
+      }, 1500)
     } catch {
       // ignore
     }
@@ -140,8 +149,9 @@ function UserBubble({ content, timestamp, attachments, onRevert, modelId, shell 
   return (
     <div
       className="group mb-4 flex justify-end"
-      onMouseEnter={() => setShowTime(true)}
-      onMouseLeave={() => setShowTime(false)}
+      onPointerEnter={() => setShowTime(true)}
+      onPointerLeave={() => setShowTime(false)}
+      onPointerDown={() => setShowTime(true)}
     >
       <div className="flex max-w-full flex-col items-end gap-2 md:max-w-[78%]">
          {/* Attachments */}
@@ -453,8 +463,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
   const lastContent = allBlocks[allBlocks.length - 1]?.content ?? ''
   useEffect(() => {
     if (pinnedRef.current) scrollToBottom()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [totalLen, lastContent])
+  }, [totalLen, lastContent, scrollToBottom])
 
   const isEmpty = visibleBlocks.length === 0 && !isWorking
 

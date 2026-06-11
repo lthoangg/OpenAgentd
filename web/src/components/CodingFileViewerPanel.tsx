@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { Check, Copy, Download, ExternalLink, FileText, GitCompare, Loader2, X } from 'lucide-react'
@@ -41,7 +41,12 @@ function kindOf(file: WorkspaceFileInfo): FileKind {
 function CopyButton({ workspace, file }: { workspace: string; file: WorkspaceFileInfo }) {
   const [copied, setCopied] = useState(false)
   const [busy, setBusy] = useState(false)
+  const copiedTimerRef = useRef<number | null>(null)
   const tooLarge = file.size > MAX_TEXT_PREVIEW_BYTES
+
+  useEffect(() => () => {
+    if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current)
+  }, [])
 
   const handleCopy = async () => {
     if (busy || tooLarge) return
@@ -51,7 +56,11 @@ function CopyButton({ workspace, file }: { workspace: string; file: WorkspaceFil
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       await navigator.clipboard.writeText(await res.text())
       setCopied(true)
-      window.setTimeout(() => setCopied(false), 1500)
+      if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current)
+      copiedTimerRef.current = window.setTimeout(() => {
+        copiedTimerRef.current = null
+        setCopied(false)
+      }, 1500)
     } catch {
       // Best-effort copy. The user can still download/open the file.
     } finally {
@@ -199,7 +208,7 @@ function TextPreview({
     setSelection((prev) => prev ? { ...prev, focus: line } : prev)
   }
   return (
-    <div className="flex h-full min-h-0 flex-col" onMouseLeave={() => setDragging(false)} onMouseUp={() => setDragging(false)}>
+    <div className="flex h-full min-h-0 flex-col" onPointerLeave={() => setDragging(false)} onPointerUp={() => setDragging(false)}>
       {selection && selectedStart !== null && selectedEnd !== null ? (
         <div className="flex shrink-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-card) px-3 py-2">
           <span className="truncate font-mono text-[11px] text-(--color-text-subtle)">
@@ -222,11 +231,11 @@ function TextPreview({
             <button
               key={index}
               type="button"
-              onMouseDown={(e) => {
+              onPointerDown={(e) => {
                 e.preventDefault()
                 selectLine(lineNo)
               }}
-              onMouseEnter={() => extendSelection(lineNo)}
+              onPointerEnter={() => extendSelection(lineNo)}
               className={cn(
                 'flex w-full items-start gap-3 whitespace-pre px-3 text-left text-(--color-text-2)',
                 selected && 'bg-(--color-accent)/15',
@@ -332,8 +341,8 @@ export function CodingFileViewerPanel({
       exit={prefersReducedMotion ? { opacity: 0 } : mobile ? { opacity: 0 } : { width: 0 }}
       transition={{ duration: prefersReducedMotion ? 0.01 : 0.22, ease: [0.4, 0, 0.2, 1] }}
       className={cn(
-        'mobile-safe-top fixed bottom-0 right-0 z-40 min-h-0 w-full overflow-hidden border-l border-(--color-border) bg-(--bg-card) shadow-xl md:relative md:inset-y-auto md:right-auto md:z-auto md:w-auto md:shrink-0 md:shadow-none',
-        mobile ? 'max-w-none' : '',
+        'fixed bottom-0 right-0 z-40 min-h-0 w-full overflow-hidden border-l border-(--color-border) bg-(--bg-card) shadow-xl md:relative md:inset-y-auto md:right-auto md:z-auto md:w-auto md:shrink-0 md:shadow-none',
+        mobile ? 'mobile-safe-top max-w-none' : '',
       )}
       aria-label="File viewer"
     >

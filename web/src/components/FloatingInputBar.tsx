@@ -10,6 +10,7 @@ import type { AgentCapabilities } from '@/api/types'
 // ── Storage ──────────────────────────────────────────────────────────────────
 
 const STORAGE_KEY = 'oa-input-position'
+const MINIMIZED_STORAGE_KEY = 'oa-input-minimized'
 
 /** Persisted drag offset relative to the default docked position. */
 interface StoredOffset {
@@ -43,6 +44,24 @@ function saveOffset(offset: StoredOffset): void {
   if (typeof window === 'undefined') return
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(offset))
+  } catch {
+    // ignore quota errors
+  }
+}
+
+function loadMinimizedPreference(): boolean {
+  if (typeof window === 'undefined') return false
+  try {
+    return window.localStorage.getItem(MINIMIZED_STORAGE_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
+
+function saveMinimizedPreference(minimized: boolean): void {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(MINIMIZED_STORAGE_KEY, String(minimized))
   } catch {
     // ignore quota errors
   }
@@ -129,12 +148,11 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
     // and keep only the stop/restore affordances visible. Mobile keeps the
     // full bar — the soft keyboard already dictates its own focus/blur
     // cadence and a collapse there would fight system behavior.
-    // Start collapsed — the slim action strip is the
-    // resting state. The user summons the full pill explicitly via
-    // click, focus, Ctrl/⌘+I, or by attaching a file. This matches
-    // the minimal-chrome aesthetic of the design and prevents an
-    // empty composer from dominating the chat surface on load.
-    const [minimized, setMinimized] = useState(true)
+    // Start expanded for first-run discoverability, then respect the
+    // user's last desktop resting state. The full composer makes the
+    // primary action obvious in a new cockpit, while returning users can
+    // keep the minimal-chrome action strip after the first blur/collapse.
+    const [minimized, setMinimized] = useState(() => loadMinimizedPreference())
     const [hasContent, setHasContent] = useState(false)
     const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -149,6 +167,7 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
         blurTimerRef.current = null
       }
       setMinimized(false)
+      saveMinimizedPreference(false)
       // Focus is owned by InputBar's auto-focus-on-mount callback ref
       // — it fires the moment the textarea actually attaches to the
       // DOM, after AnimatePresence finishes the message-button exit.
@@ -186,14 +205,20 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
         blurTimerRef.current = null
       }
       setMinimized(false)
+      saveMinimizedPreference(false)
     }, [])
 
     const handleBlur = useCallback((canMinimize: boolean) => {
       if (!canMinimize) return
+      if (blurTimerRef.current) {
+        clearTimeout(blurTimerRef.current)
+        blurTimerRef.current = null
+      }
       // Short delay so a click on a sibling control inside the bar
       // (e.g. the attach picker, mic) doesn't trigger a collapse mid-action.
       blurTimerRef.current = setTimeout(() => {
         setMinimized(true)
+        saveMinimizedPreference(true)
         blurTimerRef.current = null
       }, 180)
     }, [])

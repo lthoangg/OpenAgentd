@@ -269,8 +269,16 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
       cancelled = true
       abortRef.current?.abort()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, agentWorkspace, hasCodingWorkspace, isCodingSessionLoading])
+  }, [
+    agentWorkspace,
+    connectStream,
+    consumeResolvedSessionReady,
+    hasCodingWorkspace,
+    isCodingSessionLoading,
+    loadSession,
+    loadTeamStatus,
+    sessionId,
+  ])
 
   useEffect(() => {
     if (!sessionId) return
@@ -303,8 +311,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
       window.removeEventListener('pageshow', resumeStream)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, agentWorkspace])
+  }, [agentWorkspace, connectStream, loadSession, sessionId])
 
   // ── Commands / shortcuts ───────────────────────────────────────────────────
 

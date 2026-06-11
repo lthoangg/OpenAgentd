@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import type React from 'react'
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { WorkspaceFileInfo } from '@/api/types'
@@ -155,6 +155,33 @@ describe('Coding workspace two-layer file preview', () => {
     await waitFor(() => expect(writeText).toHaveBeenCalledWith('const value = 1\n// comment\nreturn value'))
   })
 
+  it('clears pending copy feedback when the file viewer unmounts', async () => {
+    const user = userEvent.setup()
+    const writeText = mock(async () => {})
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    const originalClearTimeout = window.clearTimeout
+    const clearTimeout = mock((...args: unknown[]) => originalClearTimeout(args[0] as number | undefined))
+    window.clearTimeout = clearTimeout as typeof window.clearTimeout
+
+    try {
+      const { CodingFileViewerPanel } = await import('@/components/CodingFileViewerPanel')
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      const view = render(
+        <QueryClientProvider client={queryClient}>
+          <CodingFileViewerPanel workspace={WORKSPACE} file={readme} onClose={() => {}} />
+        </QueryClientProvider>,
+      )
+
+      await user.click(screen.getByRole('button', { name: /copy file contents/i }))
+      await screen.findByRole('button', { name: /copied!/i })
+      view.unmount()
+
+      expect(clearTimeout).toHaveBeenCalled()
+    } finally {
+      window.clearTimeout = originalClearTimeout
+    }
+  })
+
   it('positions the mobile workspace panel below the app header instead of covering desktop window controls', async () => {
     await renderWorkspacePanel(mock(() => {}), null, true)
 
@@ -173,6 +200,14 @@ describe('Coding workspace two-layer file preview', () => {
     expect(viewer.className).toContain('md:relative')
   })
 
+  it('does not reserve mobile header safe-area space for the desktop file viewer', async () => {
+    await renderViewer(readme, mock(() => {}), false)
+
+    const viewer = screen.getByLabelText('File viewer')
+    expect(viewer.className).not.toContain('mobile-safe-top')
+    expect(viewer.className).toContain('md:relative')
+  })
+
   it('lets users select preview lines and add a line comment reference', async () => {
     const user = userEvent.setup()
     const onAddComment = mock(() => {})
@@ -183,5 +218,18 @@ describe('Coding workspace two-layer file preview', () => {
     await user.click(screen.getByRole('button', { name: /add comment for line 1/i }))
 
     expect(onAddComment).toHaveBeenCalledWith('README.md', 1, 1)
+  })
+
+  it('lets touch and pen users drag-select preview lines', async () => {
+    const onAddComment = mock(() => {})
+    await renderViewer(readme, onAddComment)
+    await waitFor(() => expect(screen.getByText('const')).toBeTruthy())
+
+    fireEvent.pointerDown(screen.getByRole('button', { name: /const value = 1/i }), { pointerType: 'touch' })
+    fireEvent.pointerEnter(screen.getByRole('button', { name: /return value/i }), { pointerType: 'touch' })
+    fireEvent.pointerUp(screen.getByRole('button', { name: /return value/i }), { pointerType: 'touch' })
+    await userEvent.click(screen.getByRole('button', { name: /add comment for lines 1-3/i }))
+
+    expect(onAddComment).toHaveBeenCalledWith('README.md', 1, 3)
   })
 })

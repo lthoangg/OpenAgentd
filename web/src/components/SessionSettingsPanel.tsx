@@ -11,7 +11,7 @@
  *   - Tools collapsible; search input appears above the list when >8 tools.
  */
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import fuzzysort from 'fuzzysort'
 import {
@@ -336,6 +336,7 @@ function SessionModelSettings({
   const [draftFastMode, setDraftFastMode] = useState(sessionFastMode)
   const [modelPickerOpen, setModelPickerOpen] = useState(false)
   const [thinkingPickerOpen, setThinkingPickerOpen] = useState(false)
+  const closeModelPickerTimerRef = useRef<number | null>(null)
   const [activeModelIndex, setActiveModelIndex] = useState(0)
   const [activeThinkingIndex, setActiveThinkingIndex] = useState(0)
 
@@ -379,6 +380,26 @@ function SessionModelSettings({
   }
 
   const selectedThinkingLabel = THINKING_LEVELS.find((level) => level.value === draftThinkingLevel)?.label ?? 'Default'
+
+  const openModelPicker = () => {
+    if (closeModelPickerTimerRef.current !== null) {
+      window.clearTimeout(closeModelPickerTimerRef.current)
+      closeModelPickerTimerRef.current = null
+    }
+    setModelPickerOpen(true)
+  }
+
+  const scheduleCloseModelPicker = () => {
+    if (closeModelPickerTimerRef.current !== null) window.clearTimeout(closeModelPickerTimerRef.current)
+    closeModelPickerTimerRef.current = window.setTimeout(() => {
+      closeModelPickerTimerRef.current = null
+      setModelPickerOpen(false)
+    }, 120)
+  }
+
+  useEffect(() => () => {
+    if (closeModelPickerTimerRef.current !== null) window.clearTimeout(closeModelPickerTimerRef.current)
+  }, [])
 
   return (
     <section className="shrink-0 border-b border-(--color-border) bg-(--bg-page) px-5 py-4">
@@ -429,7 +450,7 @@ function SessionModelSettings({
                 value={draftModel}
                 onChange={(e) => {
                   setDraftModel(e.target.value)
-                  setModelPickerOpen(true)
+                  openModelPicker()
                   setActiveModelIndex(0)
                 }}
                 className="w-full rounded-md border border-(--color-border) bg-(--bg-card) px-3 py-2 font-mono text-xs text-(--color-text) outline-none transition-colors hover:border-(--color-border-strong) focus:border-(--color-accent)"
@@ -437,12 +458,12 @@ function SessionModelSettings({
                 role="combobox"
                 aria-expanded={modelPickerOpen}
                 aria-invalid={!modelValid}
-                onFocus={() => setModelPickerOpen(true)}
-                onBlur={() => window.setTimeout(() => setModelPickerOpen(false), 120)}
+                onFocus={openModelPicker}
+                onBlur={scheduleCloseModelPicker}
                 onKeyDown={(e) => {
                   if (e.key === 'ArrowDown') {
                     e.preventDefault()
-                    setModelPickerOpen(true)
+                    openModelPicker()
                     setActiveModelIndex((index) => Math.min(index + 1, pickerOptions.length - 1))
                   } else if (e.key === 'ArrowUp') {
                     e.preventDefault()
@@ -463,8 +484,8 @@ function SessionModelSettings({
                   <button
                     type="button"
                     key={`${index}:${model.id}`}
-                    onMouseDown={(e) => e.preventDefault()}
-                    onMouseEnter={() => setActiveModelIndex(index)}
+                    onPointerDown={(e) => e.preventDefault()}
+                    onPointerEnter={() => setActiveModelIndex(index)}
                     onClick={() => selectModel(model.id)}
                     className={`block w-full rounded-sm px-2 py-1.5 text-left font-mono text-xs text-(--color-text) transition-colors ${index === activeModelIndex ? 'bg-(--bg-key)' : 'hover:bg-(--bg-key)'}`}
                   >
@@ -524,12 +545,12 @@ function SessionModelSettings({
                   key={level.value}
                   role="option"
                   aria-selected={level.value === draftThinkingLevel}
-                  onMouseDown={(e) => {
+                  onPointerDown={(e) => {
                     e.preventDefault()
                     e.stopPropagation()
                     selectThinkingLevel(level.value)
                   }}
-                  onMouseEnter={() => setActiveThinkingIndex(index)}
+                  onPointerEnter={() => setActiveThinkingIndex(index)}
                   onClick={(e) => e.stopPropagation()}
                   className={`block w-full rounded-sm px-2 py-1.5 text-left text-xs text-(--color-text) transition-colors ${index === activeThinkingIndex ? 'bg-(--bg-key)' : 'hover:bg-(--bg-key)'}`}
                 >
@@ -593,8 +614,7 @@ export function SessionSettingsPanel({
   // Refresh on open
   useEffect(() => {
     if (open) refetch()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open])
+  }, [open, refetch])
 
   // Close on Escape (only while open)
   useEffect(() => {

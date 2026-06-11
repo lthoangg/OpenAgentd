@@ -1,9 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { SchedulerPanel } from '@/components/SchedulerPanel'
 import type { ScheduledTaskResponse } from '@/api/types'
 import '@testing-library/jest-dom'
+
+let isMobile = false
+let platformOs: string | null = null
+
+mock.module('@/hooks/use-mobile', () => ({
+  useIsMobile: () => isMobile,
+}))
+
+mock.module('@/hooks/use-platform', () => ({
+  usePlatform: () => ({ isTauri: Boolean(platformOs), os: platformOs, isMacOverlay: platformOs === 'macos' }),
+}))
 
 let originalFetch: typeof fetch | undefined
 
@@ -61,6 +73,8 @@ function renderPanel(tasks: ScheduledTaskResponse[], props: Partial<React.Compon
 
 beforeEach(() => {
   originalFetch = globalThis.fetch
+  isMobile = false
+  platformOs = null
 })
 
 afterEach(() => {
@@ -101,5 +115,62 @@ describe('SchedulerPanel — task visibility', () => {
     expect(screen.getByText('coding · app')).toBeInTheDocument()
     expect(screen.getByText('coding · api')).toBeInTheDocument()
     expect(screen.getByText('All scheduled tasks')).toBeInTheDocument()
+  })
+
+  it('selects a task row from the keyboard without nesting action buttons', async () => {
+    const user = userEvent.setup()
+    renderPanel([task({ name: 'Keyboard reminder' })])
+
+    const row = await screen.findByRole('button', { name: /Keyboard reminder/i })
+    expect(row.tagName).toBe('DIV')
+    row.focus()
+    await user.keyboard('{Enter}')
+
+    expect(await screen.findByRole('heading', { name: 'Keyboard reminder' })).toBeInTheDocument()
+  })
+
+  it('replaces stale mobile task long-press timers', async () => {
+    isMobile = true
+    platformOs = 'ios'
+    const originalClearTimeout = window.clearTimeout
+    const clearTimeout = mock((...args: unknown[]) => originalClearTimeout(args[0] as number | undefined))
+    window.clearTimeout = clearTimeout as typeof window.clearTimeout
+
+    try {
+      renderPanel([task({ name: 'Mobile reminder' })])
+
+      const row = await screen.findByRole('button', { name: /Mobile reminder/i })
+      fireEvent.pointerDown(row, {
+        pointerType: 'touch',
+        clientX: 40,
+        clientY: 40,
+      })
+      fireEvent.pointerDown(row, {
+        pointerType: 'touch',
+        clientX: 42,
+        clientY: 42,
+      })
+
+      expect(clearTimeout).toHaveBeenCalled()
+    } finally {
+      window.clearTimeout = originalClearTimeout
+    }
+  })
+
+  it('cancels mobile task long-press actions when the row unmounts', async () => {
+    isMobile = true
+    platformOs = 'ios'
+    const view = renderPanel([task({ name: 'Mobile reminder' })])
+
+    const row = await screen.findByRole('button', { name: /Mobile reminder/i })
+    fireEvent.pointerDown(row, {
+      pointerType: 'touch',
+      clientX: 40,
+      clientY: 40,
+    })
+    view.unmount()
+
+    await new Promise((resolve) => window.setTimeout(resolve, 650))
+    expect(screen.queryByLabelText('Actions for Mobile reminder')).not.toBeInTheDocument()
   })
 })

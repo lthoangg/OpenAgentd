@@ -48,6 +48,28 @@ function renderStream(props: Partial<React.ComponentProps<typeof AgentView>> = {
 
 // ── tests ────────────────────────────────────────────────────────────────────
 
+describe("AgentView — user bubble actions", () => {
+  it("reveals user message actions on touch pointer press", () => {
+    const date = new Date(2024, 0, 15, 14, 30, 0)
+    const message = makeUserBlock("u1", "Question")
+    message.timestamp = date
+    renderStream({
+      blocks: [message],
+      currentBlocks: [],
+      isWorking: false,
+    })
+    const userBlock = screen.getByText("Question")
+    const userBubble = userBlock.closest(".group") as HTMLElement | null
+    expect(userBubble).toBeTruthy()
+    const timestamp = screen.getByTitle(/2:30|14:30/)
+    expect(timestamp.getAttribute("aria-hidden")).toBe("true")
+
+    fireEvent.pointerDown(userBubble!, { pointerType: "touch" })
+
+    expect(timestamp.getAttribute("aria-hidden")).toBe("false")
+  })
+})
+
 describe("AgentView — message windowing", () => {
   it("renders recent turns first and lets users reveal older turns", async () => {
     const user = userEvent.setup()
@@ -302,6 +324,30 @@ describe("AgentView — AssistantFooter", () => {
 
       expect(writeText).toHaveBeenCalledOnce()
       expect(writeText).toHaveBeenCalledWith("Hello world")
+    })
+
+    it("clears pending copy feedback when unmounted", async () => {
+      const user = userEvent.setup()
+      const writeText = mock(async () => {})
+      Object.defineProperty(navigator, "clipboard", {
+        value: { writeText },
+        configurable: true,
+      })
+      const originalClearTimeout = window.clearTimeout
+      const clearTimeout = mock((...args: unknown[]) => originalClearTimeout(args[0] as number | undefined))
+      window.clearTimeout = clearTimeout as typeof window.clearTimeout
+
+      const view = renderStream({
+        blocks: [makeTextBlock("b1", "Hello world")],
+        currentBlocks: [],
+        isWorking: false,
+      })
+
+      await user.click(screen.getByRole("button", { name: /copy response/i }))
+      view.unmount()
+
+      expect(clearTimeout).toHaveBeenCalled()
+      window.clearTimeout = originalClearTimeout
     })
 
     it("copies text from multiple text blocks joined with newlines", async () => {

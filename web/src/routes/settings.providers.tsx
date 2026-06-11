@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import fuzzysort from 'fuzzysort'
 import {
   AlertCircle,
@@ -41,6 +41,7 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
 import { mediumHapticFeedback } from '@/lib/haptics'
 import { useToastStore } from '@/stores/useToastStore'
+import { isTransientNetworkError } from '@/utils/errors'
 
 const MODEL_LONG_PRESS_MS = 520
 const MODEL_LONG_PRESS_MOVE_TOLERANCE = 10
@@ -74,7 +75,7 @@ function eventLabel(event: OAuthLoginEvent): string {
 }
 
 function isBenignOAuthStreamClose(message: string): boolean {
-  return /load failed|networkerror|failed to fetch/i.test(message)
+  return isTransientNetworkError(new Error(message))
 }
 
 function formatResetTime(timestamp?: number | null): string | null {
@@ -602,18 +603,19 @@ function ModelsPanel({
 }
 
 function ModelRow({ qualifiedId, onCopy }: { qualifiedId: string; onCopy: (qualifiedId: string) => Promise<void> }) {
-  const isMobile = useIsMobile()
   const { isTauri, os } = usePlatform()
   const isTauriMobile = isTauri && (os === 'ios' || os === 'android')
   const [actionsPoint, setActionsPoint] = useState<{ x: number; y: number } | null>(null)
   const longPressTimerRef = useRef<number | null>(null)
   const longPressStartRef = useRef<{ x: number; y: number } | null>(null)
 
-  const clearLongPress = () => {
+  const clearLongPress = useCallback(() => {
     if (longPressTimerRef.current !== null) window.clearTimeout(longPressTimerRef.current)
     longPressTimerRef.current = null
     longPressStartRef.current = null
-  }
+  }, [])
+
+  useEffect(() => clearLongPress, [clearLongPress])
 
   return (
     <li
@@ -624,7 +626,8 @@ function ModelRow({ qualifiedId, onCopy }: { qualifiedId: string; onCopy: (quali
         setActionsPoint({ x: event.clientX, y: event.clientY })
       }}
       onPointerDown={(event) => {
-        if (!isMobile || !isTauriMobile || event.pointerType === 'mouse') return
+        if (!isTauriMobile || event.pointerType === 'mouse') return
+        clearLongPress()
         longPressStartRef.current = { x: event.clientX, y: event.clientY }
         longPressTimerRef.current = window.setTimeout(() => {
           longPressTimerRef.current = null
@@ -710,6 +713,7 @@ function OAuthLoginDialog({
   const [submittingCode, setSubmittingCode] = useState(false)
   const openedUrlRef = useRef<string | null>(null)
   const successHandledRef = useRef(false)
+  const codeCopiedTimerRef = useRef<number | null>(null)
   const queryClient = useQueryClient()
   const latest = events.at(-1)
   const deviceEvent = events.find((event) => event.event === 'device_code')
@@ -721,11 +725,19 @@ function OAuthLoginDialog({
     try {
       await navigator.clipboard.writeText(deviceEvent.user_code)
       setCodeCopied(true)
-      window.setTimeout(() => setCodeCopied(false), 1500)
+      if (codeCopiedTimerRef.current !== null) window.clearTimeout(codeCopiedTimerRef.current)
+      codeCopiedTimerRef.current = window.setTimeout(() => {
+        codeCopiedTimerRef.current = null
+        setCodeCopied(false)
+      }, 1500)
     } catch {
       // Copy is best-effort; the code remains visible for manual entry.
     }
   }
+
+  useEffect(() => () => {
+    if (codeCopiedTimerRef.current !== null) window.clearTimeout(codeCopiedTimerRef.current)
+  }, [])
 
   useEffect(() => {
     if (!open) return undefined

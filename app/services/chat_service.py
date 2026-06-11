@@ -995,6 +995,27 @@ class TeamHistoryData(NamedTuple):
     next_cursor: datetime | None
 
 
+async def _visible_history_page(
+    db: AsyncSession,
+    session_id: UUID,
+    *,
+    before: datetime | None = None,
+    limit: int = _HISTORY_PAGE_SIZE,
+) -> tuple[list[SessionMessage], bool]:
+    stmt = (
+        select(SessionMessage)
+        .where(col(SessionMessage.session_id) == session_id)
+        .order_by(col(SessionMessage.created_at).desc())
+        .limit(limit + 1)
+    )
+    if before is not None:
+        stmt = stmt.where(col(SessionMessage.created_at) < before)
+
+    raw = [msg for msg in (await db.exec(stmt)).all() if not _is_hidden_from_user(msg)]
+    has_more = len(raw) > limit
+    return list(reversed(raw[:limit])), has_more
+
+
 async def get_team_history(
     db: AsyncSession,
     lead_session_id: UUID,
@@ -1014,29 +1035,15 @@ async def get_team_history(
     if lead_session is None:
         return None
 
-    def _fetch_page(session_id: UUID):
-        stmt = (
-            select(SessionMessage)
-            .where(col(SessionMessage.session_id) == session_id)
-            .order_by(col(SessionMessage.created_at).desc())
-            .limit(_HISTORY_PAGE_SIZE + 1)
-        )
-        if before is not None:
-            stmt = stmt.where(col(SessionMessage.created_at) < before)
-        return stmt
-
     # Me: summaries are NOT filtered here. The compaction divider in the
     # web UI keys off ``is_summary=True`` rows to render the inline
     # "Session compacted" marker + summary body; hiding them would make
     # the divider vanish on reload. Undo uses ``extra.hidden_from_user``.
-    raw_lead = [
-        msg
-        for msg in (await db.exec(_fetch_page(lead_session_id))).all()
-        if not _is_hidden_from_user(msg)
-    ]
-    has_more = len(raw_lead) > _HISTORY_PAGE_SIZE
-    raw_lead = raw_lead[:_HISTORY_PAGE_SIZE]
-    lead_msgs = list(reversed(raw_lead))
+    lead_msgs, has_more = await _visible_history_page(
+        db,
+        lead_session_id,
+        before=before,
+    )
     next_cursor = lead_msgs[0].created_at if (has_more and lead_msgs) else None
 
     sub_sessions = (
@@ -1047,17 +1054,9 @@ async def get_team_history(
         )
     ).all()
 
-    # TODO: N+1 — issues one message query per sub-session.  Replace with a
-    # single ``WHERE session_id IN (...)`` query and group in Python once
-    # cursor semantics per sub-session are no longer needed.
     members: list[TeamHistoryMemberData] = []
     for sub in sub_sessions:
-        raw_member = [
-            msg
-            for msg in (await db.exec(_fetch_page(sub.id))).all()
-            if not _is_hidden_from_user(msg)
-        ]
-        member_msgs = list(reversed(raw_member[:_HISTORY_PAGE_SIZE]))
+        member_msgs, _ = await _visible_history_page(db, sub.id, before=before)
         members.append(TeamHistoryMemberData(session=sub, messages=member_msgs))
 
     return TeamHistoryData(

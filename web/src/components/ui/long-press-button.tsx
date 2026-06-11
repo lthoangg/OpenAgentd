@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { mediumHapticFeedback } from '@/lib/haptics'
 import { cn } from '@/lib/utils'
 
@@ -34,12 +34,14 @@ function LongPressButton({
   const startRef = useRef<{ x: number; y: number } | null>(null)
   const [pressing, setPressing] = useState(false)
 
-  const clear = () => {
+  const clear = useCallback(() => {
     if (timerRef.current !== null) window.clearTimeout(timerRef.current)
     timerRef.current = null
     startRef.current = null
     setPressing(false)
-  }
+  }, [])
+
+  useEffect(() => clear, [clear])
 
   return (
     <button
@@ -52,6 +54,7 @@ function LongPressButton({
       onPointerDown={(event) => {
         onPointerDown?.(event)
         if (!enabled || event.pointerType === 'mouse') return
+        clear()
         startRef.current = { x: event.clientX, y: event.clientY }
         setPressing(true)
         timerRef.current = window.setTimeout(() => {

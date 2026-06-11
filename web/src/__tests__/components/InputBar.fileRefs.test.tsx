@@ -5,7 +5,7 @@
  *   - ``findActiveMention`` pure helper (caret-aware token detection)
  *   - Popover open/close on typing
  *   - Filtering by partial token
- *   - Selection via Enter and click
+ *   - Selection via Enter and pointer activation
  *   - Esc dismisses without inserting
  */
 import { describe, it, expect, afterEach } from "bun:test"
@@ -452,6 +452,20 @@ describe("InputBar — @-mention picker", () => {
     const chips = screen.getAllByTestId("mention-chip")
     expect(chips).toHaveLength(1)
     expect(chips[0].textContent).toBe("@src/api.ts")
+  })
+
+  it("inserts a mention from touch pointer activation", async () => {
+    const user = userEvent.setup()
+    render(<InputBar onSubmit={() => {}} fileRefs={fixtures} />)
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+
+    await user.type(textarea, "read @doc")
+    const introOption = screen.getAllByRole("option").find((option) => option.textContent === "docs/intro.md")
+    expect(introOption).toBeTruthy()
+    fireEvent.pointerDown(introOption!, { pointerType: "touch" })
+
+    expect(textarea.value).toBe("read @docs/intro.md ")
+    expect(screen.queryByRole("listbox", { name: "Reference workspace file" })).toBeNull()
   })
 
   it("ranks the matching directory above its children", async () => {

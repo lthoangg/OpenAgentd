@@ -124,6 +124,26 @@ describe("CopyContentsButton", () => {
     expect(copied).toBeTruthy()
   })
 
+  it("clears pending success feedback when unmounted", async () => {
+    const user = userEvent.setup()
+    mockClipboard()
+    mockFetchOk("hello")
+    const originalClearTimeout = window.clearTimeout
+    const clearTimeout = mock((...args: unknown[]) => originalClearTimeout(args[0] as number | undefined))
+    window.clearTimeout = clearTimeout as typeof window.clearTimeout
+
+    try {
+      const view = render(<CopyContentsButton sessionId={SID} file={makeFile()} />)
+      await user.click(screen.getByRole("button", { name: /copy file contents/i }))
+      await screen.findByRole("button", { name: /copied!/i })
+      view.unmount()
+
+      expect(clearTimeout).toHaveBeenCalled()
+    } finally {
+      window.clearTimeout = originalClearTimeout
+    }
+  })
+
   // ── size cap ────────────────────────────────────────────────────────────────
 
   it("disables the button and explains why when the file exceeds 512 KB", () => {

@@ -15,14 +15,29 @@
  */
 
 import { describe, it, expect, afterEach, mock } from "bun:test"
-import { render, screen, cleanup } from "@testing-library/react"
+import { fireEvent, render, screen, cleanup } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { WorkspaceFilesPanel } from "@/components/WorkspaceFilesPanel"
 import type { WorkspaceFileInfo, WorkspaceFilesResponse } from "@/api/types"
 import "@testing-library/jest-dom"
 
-afterEach(cleanup)
+afterEach(() => {
+  isMobile = false
+  platformOs = null
+  cleanup()
+})
+
+let isMobile = false
+let platformOs: string | null = null
+
+mock.module("@/hooks/use-mobile", () => ({
+  useIsMobile: () => isMobile,
+}))
+
+mock.module("@/hooks/use-platform", () => ({
+  usePlatform: () => ({ isTauri: Boolean(platformOs), os: platformOs, isMacOverlay: platformOs === "macos" }),
+}))
 
 const SID = "01900000-0000-7000-8000-000000000001"
 
@@ -80,6 +95,84 @@ afterEach(() => {
 })
 
 describe("TextPreview", () => {
+  it("cancels mobile file long-press actions when the row unmounts", async () => {
+    isMobile = true
+    platformOs = "ios"
+    const file = makeFile({ path: "notes.md", name: "notes.md", mime: "text/markdown" })
+
+    mockFetchResponse(
+      (url) => url.includes("/api/team/") && url.includes("/files"),
+      {
+        ok: true,
+        status: 200,
+        json: {
+          session_id: SID,
+          files: [file],
+          truncated: false,
+        } as WorkspaceFilesResponse,
+      },
+    )
+
+    const view = renderWithQueryClient(
+      <WorkspaceFilesPanel open={true} sessionId={SID} onClose={() => {}} />,
+    )
+
+    const fileButton = await screen.findByRole("button", { name: /notes\.md/i })
+    fireEvent.pointerDown(fileButton, {
+      pointerType: "touch",
+      clientX: 40,
+      clientY: 40,
+    })
+    view.unmount()
+
+    await new Promise((resolve) => window.setTimeout(resolve, 650))
+    expect(screen.queryByLabelText("Actions for notes.md")).not.toBeInTheDocument()
+  })
+
+  it("replaces stale mobile file long-press timers", async () => {
+    isMobile = true
+    platformOs = "ios"
+    const file = makeFile({ path: "notes.md", name: "notes.md", mime: "text/markdown" })
+    const originalClearTimeout = window.clearTimeout
+    const clearTimeout = mock((...args: unknown[]) => originalClearTimeout(args[0] as number | undefined))
+    window.clearTimeout = clearTimeout as typeof window.clearTimeout
+
+    try {
+      mockFetchResponse(
+        (url) => url.includes("/api/team/") && url.includes("/files"),
+        {
+          ok: true,
+          status: 200,
+          json: {
+            session_id: SID,
+            files: [file],
+            truncated: false,
+          } as WorkspaceFilesResponse,
+        },
+      )
+
+      renderWithQueryClient(
+        <WorkspaceFilesPanel open={true} sessionId={SID} onClose={() => {}} />,
+      )
+
+      const fileButton = await screen.findByRole("button", { name: /notes\.md/i })
+      fireEvent.pointerDown(fileButton, {
+        pointerType: "touch",
+        clientX: 40,
+        clientY: 40,
+      })
+      fireEvent.pointerDown(fileButton, {
+        pointerType: "touch",
+        clientX: 42,
+        clientY: 42,
+      })
+
+      expect(clearTimeout).toHaveBeenCalled()
+    } finally {
+      window.clearTimeout = originalClearTimeout
+    }
+  })
+
   // ── raw content rendering ────────────────────────────────────────────────────
 
   it("renders raw content as-is without markdown transformation", async () => {

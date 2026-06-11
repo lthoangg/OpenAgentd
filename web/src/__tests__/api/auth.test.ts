@@ -548,4 +548,26 @@ describe("isDesktopMode", () => {
     const auth = await freshAuth()
     expect(auth.isDesktopMode()).toBe(true)
   })
+
+  it("is false when access-key storage is unavailable", async () => {
+    const originalLocalStorage = window.localStorage
+    Object.defineProperty(window, "localStorage", {
+      configurable: true,
+      value: {
+        getItem: () => { throw new Error("denied") },
+        setItem: () => { throw new Error("denied") },
+        removeItem: () => { throw new Error("denied") },
+      },
+    })
+
+    const auth = await freshAuth()
+    expect(auth.getAccessKey()).toBeUndefined()
+    expect(() => auth.setAccessKey("secret")).not.toThrow()
+    expect(auth.isDesktopMode()).toBe(false)
+
+    Object.defineProperty(window, "localStorage", {
+      configurable: true,
+      value: originalLocalStorage,
+    })
+  })
 })

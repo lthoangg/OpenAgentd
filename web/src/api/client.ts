@@ -160,7 +160,7 @@ export async function listTeamAgents(workspace?: string | null): Promise<TeamAge
   if (workspace) params.set('workspace', workspace)
   const query = params.toString()
   const res = await fetch(`${apiBaseUrl()}/team/agents${query ? `?${query}` : ''}`)
-  if (!res.ok) throw new Error(`listTeamAgents failed: ${res.status}`)
+  if (!res.ok) await parseDetailOrThrow(res, 'listTeamAgents')
   return res.json()
 }
 
@@ -236,7 +236,7 @@ export async function createWorktree(options: {
 export async function listCodingWorkspaceFiles(workspace: string): Promise<CodingWorkspaceFilesResponse> {
   const params = new URLSearchParams({ workspace })
   const res = await fetch(`${apiBaseUrl()}/team/workspace/files/list?${params}`)
-  if (!res.ok) throw new Error(`listCodingWorkspaceFiles failed: ${res.status}`)
+  if (!res.ok) await parseDetailOrThrow(res, 'listCodingWorkspaceFiles')
   return res.json()
 }
 
@@ -253,14 +253,14 @@ export async function getCodingWorkspaceGitDiff(
     for (const p of paths) params.append('paths', p)
   }
   const res = await fetch(`${apiBaseUrl()}/team/workspace/git-diff/view?${params}`)
-  if (!res.ok) throw new Error(`getCodingWorkspaceGitDiff failed: ${res.status}`)
+  if (!res.ok) await parseDetailOrThrow(res, 'getCodingWorkspaceGitDiff')
   return res.json()
 }
 
 export async function getCodingWorkspaceStatus(workspace: string): Promise<WorkspaceStatusResponse> {
   const params = new URLSearchParams({ workspace })
   const res = await fetch(`${apiBaseUrl()}/team/workspace/status?${params}`)
-  if (!res.ok) throw new Error(`getCodingWorkspaceStatus failed: ${res.status}`)
+  if (!res.ok) await parseDetailOrThrow(res, 'getCodingWorkspaceStatus')
   return res.json()
 }
 
@@ -275,7 +275,7 @@ export async function listTeamSessions(
   if (filters?.mode) params.set('mode', filters.mode)
   if (filters?.workspace) params.set('workspace', filters.workspace)
   const res = await fetch(`${apiBaseUrl()}/team/sessions?${params}`)
-  if (!res.ok) throw new Error(`listTeamSessions failed: ${res.status}`)
+  if (!res.ok) await parseDetailOrThrow(res, 'listTeamSessions')
   return res.json()
 }
 
@@ -291,7 +291,7 @@ export async function setCodingWorkspaceVisibility(workspace: string, hidden: bo
 
 export async function getTeamSession(id: string): Promise<SessionDetailResponse> {
   const res = await fetch(`${apiBaseUrl()}/team/sessions/${id}`)
-  if (!res.ok) throw new Error(`getTeamSession failed: ${res.status}`)
+  if (!res.ok) await parseDetailOrThrow(res, 'getTeamSession')
   return res.json()
 }
 
@@ -330,13 +330,13 @@ export async function updateTeamSessionTitle(id: string, title: string): Promise
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ title }),
   })
-  if (!res.ok) throw new Error(`updateTeamSessionTitle failed: ${res.status}`)
+  if (!res.ok) await parseDetailOrThrow(res, 'updateTeamSessionTitle')
   return res.json()
 }
 
 export async function deleteTeamSession(id: string): Promise<void> {
   const res = await fetch(`${apiBaseUrl()}/team/sessions/${id}`, { method: 'DELETE' })
-  if (!res.ok) throw new Error(`deleteTeamSession failed: ${res.status}`)
+  if (!res.ok) await parseDetailOrThrow(res, 'deleteTeamSession')
 }
 
 export async function teamHistory(sessionId: string, before?: string): Promise<TeamHistoryResponse> {
@@ -344,7 +344,7 @@ export async function teamHistory(sessionId: string, before?: string): Promise<T
     ? `${apiBaseUrl()}/team/${encodeURIComponent(sessionId)}/history?before=${encodeURIComponent(before)}`
     : `${apiBaseUrl()}/team/${encodeURIComponent(sessionId)}/history`
   const res = await fetch(url)
-  if (!res.ok) throw new Error(`teamHistory failed: ${res.status}`)
+  if (!res.ok) await parseDetailOrThrow(res, 'teamHistory')
   return res.json()
 }
 
@@ -357,7 +357,7 @@ export async function teamHistory(sessionId: string, before?: string): Promise<T
  */
 export async function listWorkspaceFiles(sessionId: string): Promise<WorkspaceFilesResponse> {
   const res = await fetch(`${apiBaseUrl()}/team/${encodeURIComponent(sessionId)}/files`)
-  if (!res.ok) throw new Error(`listWorkspaceFiles failed: ${res.status}`)
+  if (!res.ok) await parseDetailOrThrow(res, 'listWorkspaceFiles')
   return res.json()
 }
 
@@ -385,7 +385,7 @@ export function codingWorkspaceFileUrl(workspace: string, path: string): string 
 
 export async function getTodos(sessionId: string): Promise<TodosResponse> {
   const res = await fetch(`${apiBaseUrl()}/team/sessions/${encodeURIComponent(sessionId)}/todos`)
-  if (!res.ok) throw new Error(`getTodos failed: ${res.status}`)
+  if (!res.ok) await parseDetailOrThrow(res, 'getTodos')
   return res.json()
 }
 
@@ -393,7 +393,7 @@ export async function getTodos(sessionId: string): Promise<TodosResponse> {
 
 export async function health(): Promise<{ status: string; version: string }> {
   const res = await fetch(`${apiBaseUrl()}/health/ready`)
-  if (!res.ok) throw new Error(`health failed: ${res.status}`)
+  if (!res.ok) await parseDetailOrThrow(res, 'health')
   return res.json()
 }
 
@@ -450,7 +450,7 @@ export interface ObservabilitySummary {
 
 export async function getObservabilitySummary(days: number): Promise<ObservabilitySummary> {
   const res = await fetch(`${apiBaseUrl()}/observability/summary?days=${days}`)
-  if (!res.ok) throw new Error(`GET /observability/summary failed: ${res.status}`)
+  if (!res.ok) await parseDetailOrThrow(res, 'GET /observability/summary')
   return res.json()
 }
 
@@ -513,7 +513,7 @@ export async function listTraces(
   const res = await fetch(
     `${apiBaseUrl()}/observability/traces?days=${days}&limit=${limit}&offset=${offset}`,
   )
-  if (!res.ok) throw new Error(`GET /observability/traces failed: ${res.status}`)
+  if (!res.ok) await parseDetailOrThrow(res, 'GET /observability/traces')
   return res.json()
 }
 
@@ -529,7 +529,7 @@ export async function getTraceDetail(
     `${apiBaseUrl()}/observability/traces/${encodeURIComponent(traceId)}?days=${days}`,
   )
   if (res.status === 404) return null
-  if (!res.ok) throw new Error(`GET /observability/traces/:id failed: ${res.status}`)
+  if (!res.ok) await parseDetailOrThrow(res, 'GET /observability/traces/:id')
   return res.json()
 }
 
@@ -561,7 +561,7 @@ export async function teamStatus(workspace?: string | null): Promise<TeamStatusR
 
 export async function getQuoteOfTheDay(): Promise<{ quote: string; author: string }> {
   const res = await fetch(`${apiBaseUrl()}/quote`)
-  if (!res.ok) throw new Error(`getQuoteOfTheDay failed: ${res.status}`)
+  if (!res.ok) await parseDetailOrThrow(res, 'getQuoteOfTheDay')
   return res.json()
 }
 
@@ -570,13 +570,13 @@ export async function getQuoteOfTheDay(): Promise<{ quote: string; author: strin
 export async function getWikiTree(unprocessedOnly = false): Promise<WikiTree> {
   const url = unprocessedOnly ? `${apiBaseUrl()}/wiki/tree?unprocessed_only=true` : `${apiBaseUrl()}/wiki/tree`
   const res = await fetch(url)
-  if (!res.ok) throw new Error(`GET /wiki/tree failed: ${res.status}`)
+  if (!res.ok) await parseDetailOrThrow(res, 'GET /wiki/tree')
   return res.json()
 }
 
 export async function getWikiFile(path: string): Promise<WikiFile> {
   const res = await fetch(`${apiBaseUrl()}/wiki/file?path=${encodeURIComponent(path)}`)
-  if (!res.ok) throw new Error(`GET /wiki/file failed: ${res.status}`)
+  if (!res.ok) await parseDetailOrThrow(res, 'GET /wiki/file')
   return res.json()
 }
 
@@ -597,7 +597,7 @@ export async function deleteWikiFile(path: string): Promise<void> {
   const res = await fetch(`${apiBaseUrl()}/wiki/file?path=${encodeURIComponent(path)}`, {
     method: 'DELETE',
   })
-  if (!res.ok) throw new Error(`DELETE /wiki/file failed: ${res.status}`)
+  if (!res.ok) await parseDetailOrThrow(res, 'DELETE /wiki/file')
 }
 
 // ── /dream ────────────────────────────────────────────────────────────────────
@@ -610,7 +610,7 @@ export interface DreamConfig {
 
 export async function getDreamConfig(): Promise<DreamConfig> {
   const res = await fetch(`${apiBaseUrl()}/dream/config`)
-  if (!res.ok) throw new Error(`GET /dream/config failed: ${res.status}`)
+  if (!res.ok) await parseDetailOrThrow(res, 'GET /dream/config')
   return res.json()
 }
 
@@ -659,13 +659,24 @@ export class ApiValidationError extends Error {
 }
 
 async function parseDetailOrThrow(res: Response, label: string): Promise<never> {
-  let detail = `${label} failed: ${res.status}`
-  try {
-    const body = await res.json()
-    if (typeof body?.detail === 'string') detail = body.detail
-    else if (Array.isArray(body?.detail)) detail = body.detail.map((e: { msg: string }) => e.msg).join('; ')
-  } catch {
-    // Non-JSON body — keep the fallback.
+  const fallback = `${label} failed: ${res.status}`
+  let detail = fallback
+  const raw = await res.text().catch(() => '')
+  if (raw.trim()) {
+    try {
+      const body = JSON.parse(raw) as { detail?: unknown }
+      if (typeof body.detail === 'string') detail = body.detail
+      else if (Array.isArray(body.detail)) {
+        const messages = body.detail
+          .map((item) => (typeof item === 'object' && item !== null && 'msg' in item ? String(item.msg) : ''))
+          .filter(Boolean)
+        detail = messages.length > 0 ? messages.join('; ') : fallback
+      } else {
+        detail = raw
+      }
+    } catch {
+      detail = raw
+    }
   }
   throw new ApiValidationError(res.status, detail)
 }
@@ -674,7 +685,7 @@ async function parseDetailOrThrow(res: Response, label: string): Promise<never> 
 
 export async function listAgents(): Promise<AgentListResponse> {
   const res = await fetch(`${apiBaseUrl()}/agents`)
-  if (!res.ok) throw new Error(`listAgents failed: ${res.status}`)
+  if (!res.ok) await parseDetailOrThrow(res, 'listAgents')
   return res.json()
 }
 
@@ -712,7 +723,7 @@ export async function deleteAgent(name: string): Promise<AgentDeleteResponse> {
 
 export async function getRegistry(): Promise<RegistryResponse> {
   const res = await fetch(`${apiBaseUrl()}/agents/registry`)
-  if (!res.ok) throw new Error(`getRegistry failed: ${res.status}`)
+  if (!res.ok) await parseDetailOrThrow(res, 'getRegistry')
   return res.json()
 }
 
@@ -720,7 +731,7 @@ export async function getRegistry(): Promise<RegistryResponse> {
 
 export async function listSkillFiles(): Promise<SkillListResponse> {
   const res = await fetch(`${apiBaseUrl()}/skills`)
-  if (!res.ok) throw new Error(`listSkills failed: ${res.status}`)
+  if (!res.ok) await parseDetailOrThrow(res, 'listSkills')
   return res.json()
 }
 
@@ -763,7 +774,7 @@ export async function listCommands(workspace?: string | null): Promise<CommandLi
   if (workspace) params.set('workspace', workspace)
   const query = params.toString()
   const res = await fetch(`${apiBaseUrl()}/commands${query ? `?${query}` : ''}`)
-  if (!res.ok) throw new Error(`listCommands failed: ${res.status}`)
+  if (!res.ok) await parseDetailOrThrow(res, 'listCommands')
   return res.json()
 }
 
@@ -793,7 +804,7 @@ export async function renderCommand(
 export async function listSnippets(workspace: string): Promise<SnippetListResponse> {
   const params = new URLSearchParams({ workspace })
   const res = await fetch(`${apiBaseUrl()}/snippets?${params.toString()}`)
-  if (!res.ok) throw new Error(`listSnippets failed: ${res.status}`)
+  if (!res.ok) await parseDetailOrThrow(res, 'listSnippets')
   return res.json()
 }
 
@@ -811,7 +822,7 @@ export async function renderSnippet(name: string, workspace: string): Promise<Sn
 
 export async function listScheduledTasks(): Promise<ScheduledTaskListResponse> {
   const res = await fetch(`${apiBaseUrl()}/scheduler/tasks`)
-  if (!res.ok) throw new Error(`listScheduledTasks failed: ${res.status}`)
+  if (!res.ok) await parseDetailOrThrow(res, 'listScheduledTasks')
   return res.json()
 }
 
@@ -913,7 +924,7 @@ export type MCPAppToolCallResponse = { result: unknown }
 
 export async function listMcpServers(): Promise<{ servers: ServerStatus[] }> {
   const res = await fetch(`${apiBaseUrl()}/mcp/servers`)
-  if (!res.ok) throw new Error(`listMcpServers failed: ${res.status}`)
+  if (!res.ok) await parseDetailOrThrow(res, 'listMcpServers')
   return res.json()
 }
 
@@ -1208,8 +1219,8 @@ export function oauthLoginStream(
 ): void {
   const query = mode ? `?mode=${encodeURIComponent(mode)}` : ''
   fetch(`${apiBaseUrl()}/auth/${encodeURIComponent(providerId)}/login${query}`, { signal })
-    .then((res) => {
-      if (!res.ok) throw new Error(`GET /auth/${providerId}/login failed: ${res.status}`)
+    .then(async (res) => {
+      if (!res.ok) await parseDetailOrThrow(res, `GET /auth/${providerId}/login`)
       readSSE(res, {
         ...callbacks,
         onEvent: (type, data) => {

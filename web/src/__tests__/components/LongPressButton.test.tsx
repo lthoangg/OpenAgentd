@@ -73,6 +73,29 @@ describe('LongPressButton', () => {
     expect(onLongPress).not.toHaveBeenCalled()
   })
 
+  it('replaces a stale armed press when a new touch starts', () => {
+    const originalClearTimeout = window.clearTimeout
+    const clearTimeout = mock((...args: unknown[]) => originalClearTimeout(args[0] as number | undefined))
+    window.clearTimeout = clearTimeout as typeof window.clearTimeout
+
+    try {
+      render(
+        <LongPressButton enabled onLongPress={() => {}}>
+          Session
+        </LongPressButton>,
+      )
+      const button = screen.getByRole('button')
+
+      fireEvent.pointerDown(button, pressOpts())
+      fireEvent.pointerDown(button, pressOpts({ clientX: 60 }))
+
+      expect(clearTimeout).toHaveBeenCalledTimes(1)
+      expect(button.dataset.pressing).toBe('true')
+    } finally {
+      window.clearTimeout = originalClearTimeout
+    }
+  })
+
   it('fires onLongPress with a medium haptic after the hold threshold', async () => {
     const onLongPress = mock(() => {})
     render(
@@ -89,6 +112,22 @@ describe('LongPressButton', () => {
 
     expect(hapticCalls).toEqual(['medium'])
     expect(button.dataset.pressing).toBeUndefined()
+  })
+
+  it('cancels an armed touch press when unmounted', async () => {
+    const onLongPress = mock(() => {})
+    const view = render(
+      <LongPressButton enabled onLongPress={onLongPress}>
+        Session
+      </LongPressButton>,
+    )
+    const button = screen.getByRole('button')
+
+    fireEvent.pointerDown(button, pressOpts())
+    view.unmount()
+
+    await new Promise((resolve) => window.setTimeout(resolve, 650))
+    expect(onLongPress).not.toHaveBeenCalled()
   })
 
   it('keeps the scale-press affordance classes on the button', () => {

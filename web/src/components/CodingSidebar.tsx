@@ -54,6 +54,7 @@ import {
   saveLastCodingWorkspace,
   workspaceLabel,
 } from '@/utils/workspace'
+import { isTransientNetworkError } from '@/utils/errors'
 import { ThemeToggle } from './ThemeToggle'
 import { HealthDot } from './HealthDot'
 import { Button } from '@/components/ui/button'
@@ -69,11 +70,6 @@ import type { CodingWorkspaceTreeRepository, SessionResponse, WorktreeInfo } fro
 import { LongPressButton } from '@/components/ui/long-press-button'
 
 const sessionGroupKey = (path: string) => `sessions:${path}`
-
-function isTransientLoadError(err: unknown): boolean {
-  const message = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase()
-  return message.includes('load failed') || message.includes('failed to fetch') || message.includes('networkerror') || message.includes('network request failed')
-}
 
 function worktreeNameSlug(value: string): string {
   return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80).replace(/-+$/g, '') || 'session'
@@ -571,7 +567,7 @@ export function CodingSidebar({
       navigate({ to: '/coding/$sessionId', params: { sessionId: session.id } })
       onMobileClose?.()
     } catch (err) {
-      if (isTransientLoadError(err) && worktreeTarget) {
+      if (isTransientNetworkError(err) && worktreeTarget) {
         const source = worktreeTarget
         const expectedName = worktreeNameSlug(worktreeName || 'session')
         const items = await loadWorktreesForTarget(source)

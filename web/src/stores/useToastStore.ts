@@ -21,6 +21,8 @@ interface ToastStore {
   dismiss: (id: string) => void
 }
 
+const toastTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
 export const useToastStore = create<ToastStore>()(
   immer((set, get) => ({
     toasts: [],
@@ -29,9 +31,18 @@ export const useToastStore = create<ToastStore>()(
       set((state) => {
         state.toasts.push({ id, ...t })
       })
-      setTimeout(() => get().dismiss(id), durationMs)
+      const timer = setTimeout(() => {
+        toastTimers.delete(id)
+        get().dismiss(id)
+      }, durationMs)
+      toastTimers.set(id, timer)
     },
     dismiss: (id) => {
+      const timer = toastTimers.get(id)
+      if (timer) {
+        clearTimeout(timer)
+        toastTimers.delete(id)
+      }
       set((state) => {
         state.toasts = state.toasts.filter((t) => t.id !== id)
       })

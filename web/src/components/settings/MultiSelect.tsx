@@ -138,7 +138,7 @@ export function MultiSelect({
                   type="button"
                   // Stop the surrounding-trigger click from re-toggling the
                   // popover when the user removes a chip.
-                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
                   onClick={(e) => {
                     e.preventDefault()
                     e.stopPropagation()
@@ -200,13 +200,13 @@ export function MultiSelect({
                     type="button"
                     role="option"
                     aria-selected={isSel}
-                    onMouseDown={(e) => e.preventDefault()}
+                    onPointerDown={(e) => e.preventDefault()}
                     onClick={() => {
                       toggle(o.value)
                       // Keep focus + popover open for fast multi-pick.
                       searchRef.current?.focus()
                     }}
-                    onMouseEnter={() => setHighlight(i)}
+                    onPointerEnter={() => setHighlight(i)}
                     className={cn(
                       'flex min-h-11 w-full items-start gap-2 px-2.5 py-1.5 text-left transition-colors md:min-h-0',
                       isHi && 'bg-(--bg-key)',

@@ -42,21 +42,25 @@ export function AssistantTurnFooter({ turnBlocks, size = 'compact', onContinue }
     // Me lastTurnText walks back to the previous user block; pass the turn directly
     const textContent = lastTurnText(turnBlocks)
     const lastBlock = turnBlocks[turnBlocks.length - 1]
-    const responseDurationMs = [...turnBlocks]
-      .reverse()
-      .find((b) => typeof b.responseDurationMs === 'number')
-      ?.responseDurationMs
-    const modelId = [...turnBlocks]
-      .reverse()
-      .map((b) => b.extra?.model)
-      .find((model): model is string => typeof model === 'string')
+    let responseDurationMs: number | undefined
+    let modelId: string | undefined
+    let hasTool = false
+    for (let i = turnBlocks.length - 1; i >= 0; i--) {
+      const block = turnBlocks[i]
+      responseDurationMs ??= typeof block.responseDurationMs === 'number'
+        ? block.responseDurationMs
+        : undefined
+      modelId ??= typeof block.extra?.model === 'string' ? block.extra.model : undefined
+      hasTool ||= block.type === 'tool'
+      if (responseDurationMs !== undefined && modelId !== undefined && hasTool) break
+    }
     return {
       textContent,
       timestamp: lastBlock?.timestamp,
       responseDurationMs,
       modelId,
       modelName: shortModelName(modelId),
-      hasTool: turnBlocks.some((b) => b.type === 'tool'),
+      hasTool,
     }
   }, [turnBlocks])
   const { textContent, timestamp, responseDurationMs, modelId, modelName, hasTool } = footerData

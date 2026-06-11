@@ -81,7 +81,7 @@ Right-side workspace explorer for `/coding` mode.
 - Voice input: the mic button sits beside Send on mobile and desktop. It uses the current browser/WebView speech recognizer when available; unsupported runtimes show a disabled button with a tooltip. Listening starts and stops only from button taps/clicks; no mobile-specific silence auto-stop.
 
 ### MemoryPanel, WorkspaceFilesPanel, SchedulerPanel
-All three use **master/detail** on mobile — one pane at a time, never side-by-side:
+All three use **master/detail** on mobile — one pane at a time, never side-by-side. Touch context actions cancel pending hold timers on unmount so closing a panel or switching panes cannot fire a stale action:
 
 | Panel | List pane | Detail pane | Back trigger |
 |-------|-----------|-------------|--------------|

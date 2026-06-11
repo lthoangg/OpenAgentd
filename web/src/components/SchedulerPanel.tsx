@@ -5,7 +5,7 @@
  * backdrop click to close, and X close button.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Clock, Play, Pause, Trash2, Plus, Loader2, AlertCircle, CalendarClock, Zap, ArrowLeft, Pencil, FolderOpen } from 'lucide-react'
 import { DateTimePicker } from '@/components/ui/date-time-picker'
@@ -529,11 +529,13 @@ function TaskListItem({
   const longPressTimerRef = useRef<number | null>(null)
   const longPressStartRef = useRef<{ x: number; y: number } | null>(null)
 
-  const clearLongPress = () => {
+  const clearLongPress = useCallback(() => {
     if (longPressTimerRef.current !== null) window.clearTimeout(longPressTimerRef.current)
     longPressTimerRef.current = null
     longPressStartRef.current = null
-  }
+  }, [])
+
+  useEffect(() => clearLongPress, [clearLongPress])
 
   const triggerTask = () => triggerMutation.mutate(task.id)
   const togglePaused = () => {

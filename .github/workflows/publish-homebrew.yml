@@ -39,6 +39,7 @@ jobs:
             echo "Fetching PyPI metadata for openagentd ${VERSION} (attempt ${attempt}/5)"
             if curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors "$PYPI_JSON" -o pypi.json; then
               URL=$(python3 -c "import json; d=json.load(open('pypi.json')); print([u['url'] for u in d['urls'] if u['packagetype']=='sdist'][0])")
+              echo "$URL" > pypi-sdist-url.txt
               if curl -fSL --retry 3 --retry-delay 5 --retry-all-errors "$URL" -o openagentd.tar.gz; then
                 exit 0
               fi
@@ -53,6 +54,7 @@ jobs:
         id: hash
         run: |
           echo "sha256=$(sha256sum openagentd.tar.gz | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "url=$(cat pypi-sdist-url.txt)" >> "$GITHUB_OUTPUT"
 
       - name: Checkout homebrew-tap
         uses: actions/checkout@v6
@@ -65,12 +67,13 @@ jobs:
         run: |
           VERSION="${{ steps.release.outputs.version }}"
           SHA256="${{ steps.hash.outputs.sha256 }}"
+          URL="${{ steps.hash.outputs.url }}"
 
           cat > homebrew-tap/Formula/openagentd.rb <<FORMULA
           class Openagentd < Formula
             desc "On-machine multi-agent AI assistant with a web cockpit"
             homepage "https://github.com/lthoangg/openagentd"
-            url "https://files.pythonhosted.org/packages/source/o/openagentd/openagentd-${VERSION}.tar.gz"
+            url "${URL}"
             sha256 "${SHA256}"
             license "Apache-2.0"
 

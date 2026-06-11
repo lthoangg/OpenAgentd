@@ -379,25 +379,6 @@ describe("AgentView — UserBubble collapse feature", () => {
     expect(clipboardWriteText).toHaveBeenCalledWith(content)
   })
 
-  it("clears pending user copy feedback when AgentView unmounts", async () => {
-    const user = userEvent.setup()
-    const blocks: ContentBlock[] = [{ id: "1", type: "user", content: "copy me", timestamp: new Date() }]
-    Object.defineProperty(navigator, "clipboard", {
-      value: { writeText: mock(() => Promise.resolve()) },
-      writable: true,
-    })
-    const originalClearTimeout = window.clearTimeout
-    const clearTimeout = mock((...args: unknown[]) => originalClearTimeout(args[0] as number | undefined))
-    window.clearTimeout = clearTimeout as typeof window.clearTimeout
-
-    const view = render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
-    await user.click(screen.getByLabelText("Copy message"))
-    view.unmount()
-
-    expect(clearTimeout).toHaveBeenCalled()
-    window.clearTimeout = originalClearTimeout
-  })
-
   // ── Timestamp visibility ─────────────────────────────────────────────────
 
   it("shows timestamp on mouse hover", async () => {

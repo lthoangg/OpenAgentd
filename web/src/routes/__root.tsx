@@ -23,13 +23,9 @@ export function Root() {
   useEffect(() => {
     const LAST_ROUTE_KEY = 'oa-last-route'
     if (window.location.pathname === '/' && window.location.search === '') {
-      try {
-        const savedRoute = localStorage.getItem(LAST_ROUTE_KEY)
-        if (savedRoute && savedRoute !== '/') {
-          navigate({ to: savedRoute, replace: true })
-        }
-      } catch {
-        // Storage may be unavailable in restricted WebViews or private contexts.
+      const savedRoute = localStorage.getItem(LAST_ROUTE_KEY)
+      if (savedRoute && savedRoute !== '/') {
+        navigate({ to: savedRoute, replace: true })
       }
     }
   }, [navigate])
@@ -37,11 +33,7 @@ export function Root() {
   useEffect(() => {
     const LAST_ROUTE_KEY = 'oa-last-route'
     const fullPath = window.location.pathname + window.location.search + window.location.hash
-    try {
-      localStorage.setItem(LAST_ROUTE_KEY, fullPath)
-    } catch {
-      // Storage may be unavailable in restricted WebViews or private contexts.
-    }
+    localStorage.setItem(LAST_ROUTE_KEY, fullPath)
   }, [location])
 
   return (

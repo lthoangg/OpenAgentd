@@ -23,22 +23,14 @@ export function useResizableWidth({
 }: ResizableWidthOptions) {
   const [width, setWidth] = useState(() => {
     if (typeof window === 'undefined') return defaultWidth
-    try {
-      const stored = window.localStorage.getItem(storageKey)
-      const parsed = stored ? Number(stored) : Number.NaN
-      return Number.isFinite(parsed) ? clamp(parsed, minWidth, maxWidth) : defaultWidth
-    } catch {
-      return defaultWidth
-    }
+    const stored = window.localStorage.getItem(storageKey)
+    const parsed = stored ? Number(stored) : Number.NaN
+    return Number.isFinite(parsed) ? clamp(parsed, minWidth, maxWidth) : defaultWidth
   })
 
   useEffect(() => {
     if (disabled) return
-    try {
-      window.localStorage.setItem(storageKey, String(width))
-    } catch {
-      // Storage can be unavailable in restricted WebViews/private contexts.
-    }
+    window.localStorage.setItem(storageKey, String(width))
   }, [disabled, storageKey, width])
 
   const resetWidth = useCallback(() => setWidth(defaultWidth), [defaultWidth])

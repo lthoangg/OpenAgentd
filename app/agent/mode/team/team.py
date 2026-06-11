@@ -22,18 +22,13 @@ import asyncio
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, cast
 from uuid import UUID
 
 from loguru import logger
 from sqlmodel import col, select
 
 from app.agent.hooks.continuation import CONTINUATION_DIRECTIVE
-from app.agent.mode.team.loop_commands import (
-    LoopState,
-    loop_status_payload,
-    parse_loop_command,
-)
 from app.agent.mode.team.mailbox import Message, TeamMailbox
 from app.agent.mode.team.member import (
     AlreadyWorkingError,
@@ -52,6 +47,7 @@ from app.core.paths import session_workspace_dir
 from app.models.chat import ChatSession, SessionMessage
 from app.services import memory_stream_store as stream_store
 from app.services import snapshot_service
+from app.services.commands import parse_slash_invocation
 from app.services.stream_envelope import StreamEnvelope
 from app.services.chat_service import (
     BoundaryShift,
@@ -65,6 +61,68 @@ from app.services.chat_service import (
 
 if TYPE_CHECKING:
     from app.agent.providers.factory import ProviderFactory
+
+
+_LOOP_LIMITS = {5, 10, 20, 50}
+
+
+@dataclass
+class LoopState:
+    prompt: str
+    remaining: int
+    paused: bool = False
+
+
+@dataclass(frozen=True)
+class LoopCommand:
+    action: Literal["start", "set", "pause", "resume", "stop"]
+    prompt: str | None = None
+    limit: int | None = None
+
+
+def _loop_status_payload(
+    *,
+    prompt: str | None,
+    limit: int,
+    remaining: int,
+    paused: bool = False,
+) -> dict[str, object]:
+    used = max(limit - remaining, 0)
+    return {
+        "prompt": prompt,
+        "limit": limit,
+        "remaining": remaining,
+        "used": used,
+        "paused": paused,
+    }
+
+
+def parse_loop_command(content: str) -> LoopCommand | None:
+    invocation = parse_slash_invocation(content)
+    if invocation is None or invocation.command != "loop":
+        return None
+
+    if invocation.subcommand is None:
+        prompt = invocation.arguments.strip()
+        return LoopCommand(action="start", prompt=prompt) if prompt else None
+
+    if invocation.subcommand == "set":
+        if len(invocation.argv) != 1 or not invocation.argv[0].isdigit():
+            return None
+        limit = int(invocation.argv[0])
+        if limit not in _LOOP_LIMITS:
+            return None
+        return LoopCommand(action="set", limit=limit)
+
+    if invocation.subcommand not in {"pause", "resume", "stop"} or invocation.argv:
+        return None
+    action = cast(Literal["pause", "resume", "stop"], invocation.subcommand)
+    return LoopCommand(action=action)
+
+
+def is_loop_command(content: str) -> bool:
+    invocation = parse_slash_invocation(content)
+    return invocation is not None and invocation.command == "loop"
 
 
 # ---------------------------------------------------------------------------
@@ -535,7 +593,7 @@ class AgentTeam:
             session_id,
             StreamEnvelope.from_parts(
                 "loop_status",
-                loop_status_payload(
+                _loop_status_payload(
                     prompt=loop.prompt,
                     limit=self._loop_limits.get(session_id, 10),
                     remaining=loop.remaining,
@@ -670,7 +728,7 @@ class AgentTeam:
                     session_id,
                     StreamEnvelope.from_parts(
                         "loop_status",
-                        loop_status_payload(
+                        _loop_status_payload(
                             prompt=loop_command.prompt,
                             limit=limit,
                             remaining=remaining,
@@ -685,7 +743,7 @@ class AgentTeam:
                     session_id,
                     StreamEnvelope.from_parts(
                         "loop_status",
-                        loop_status_payload(
+                        _loop_status_payload(
                             prompt=None,
                             limit=loop_command.limit,
                             remaining=loop_command.limit,
@@ -700,7 +758,7 @@ class AgentTeam:
                         session_id,
                         StreamEnvelope.from_parts(
                             "loop_status",
-                            loop_status_payload(
+                            _loop_status_payload(
                                 prompt=state.prompt,
                                 limit=self._loop_limits.get(session_id, 10),
                                 remaining=state.remaining,
@@ -717,7 +775,7 @@ class AgentTeam:
                         session_id,
                         StreamEnvelope.from_parts(
                             "loop_status",
-                            loop_status_payload(
+                            _loop_status_payload(
                                 prompt=state.prompt,
                                 limit=self._loop_limits.get(session_id, 10),
                                 remaining=state.remaining,

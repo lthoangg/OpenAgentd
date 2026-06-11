@@ -35,12 +35,6 @@ export default defineConfig([
           destructuredArrayIgnorePattern: '^_',
         },
       ],
-      // React Compiler lint rules are still too noisy for this codebase's
-      // scroll restoration and controlled-list patterns. Keep the stable Hooks
-      // rules enabled while we migrate these patterns deliberately.
-      'react-hooks/immutability': 'off',
-      'react-hooks/refs': 'off',
-      'react-hooks/set-state-in-effect': 'off',
     },
   },
 ])

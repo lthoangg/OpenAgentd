@@ -765,7 +765,7 @@ export function ModelCombobox({
           type="button"
           tabIndex={-1}
           aria-label={open ? 'Close model list' : 'Open model list'}
-          onPointerDown={(e) => {
+          onMouseDown={(e) => {
             // Toggle without stealing focus from the input.
             e.preventDefault()
             setOpen((v) => !v)
@@ -809,9 +809,9 @@ export function ModelCombobox({
                       type="button"
                       role="option"
                       aria-selected={isSel}
-                      onPointerDown={(e) => e.preventDefault()}
+                      onMouseDown={(e) => e.preventDefault()}
                       onClick={() => commit(o.id)}
-                      onPointerEnter={() => setHighlight(i)}
+                      onMouseEnter={() => setHighlight(i)}
                       className={cn(
                         'flex min-h-11 w-full items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-left font-mono text-xs transition-colors md:min-h-0',
                         isHi && 'bg-(--bg-key)',

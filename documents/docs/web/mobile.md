@@ -81,7 +81,7 @@ Right-side workspace explorer for `/coding` mode.
 - Voice input: the mic button sits beside Send on mobile and desktop. It uses the current browser/WebView speech recognizer when available; unsupported runtimes show a disabled button with a tooltip. Listening starts and stops only from button taps/clicks; no mobile-specific silence auto-stop.
 
 ### MemoryPanel, WorkspaceFilesPanel, SchedulerPanel
-All three use **master/detail** on mobile — one pane at a time, never side-by-side. Touch context actions cancel pending hold timers on unmount so closing a panel, switching panes, refreshing a file list, or reloading the wiki tree cannot fire a stale action. Scheduler task rows use a focusable row container rather than nested buttons, so desktop keyboard selection and inline action buttons remain valid HTML:
+All three use **master/detail** on mobile — one pane at a time, never side-by-side:
 
 | Panel | List pane | Detail pane | Back trigger |
 |-------|-----------|-------------|--------------|
@@ -149,15 +149,11 @@ Both footer status rows use `flex-wrap items-center justify-between gap-x-3 gap-
 
 ---
 
-## Shell persistence
-
-The root route stores/restores the last route on a best-effort basis. Updater dismissal state, desktop access-key persistence, notification preferences, resizable panel widths, and floating composer preferences use the same pattern. `localStorage` failures are swallowed so restricted WebViews, private browsing, or mobile shells with disabled storage still boot into the app instead of crashing.
-
 ## Shared primitive guards
 
 A few `components/ui/*` primitives have responsive guards so individual call sites don't have to:
 
-- **`long-press-button`**: while a touch press is armed the button scales down slightly (`data-pressing:scale-[0.97]`, iOS context-menu "lift" cue); reaching the 520 ms hold threshold fires a native medium haptic plus `onLongPress`. Haptics route through `lib/haptics.ts` — `tauri-plugin-haptics` (`UIImpactFeedbackGenerator` on iOS, `VibrationEffect` on Android) with a `navigator.vibrate` fallback; all paths are best-effort and never block the press behavior. Mouse pointers are ignored so desktop keeps plain click semantics. Pending holds are cancelled on unmount so navigating away or closing a drawer cannot trigger a stale action. Context-menu copy actions swallow denied clipboard writes because WebViews and insecure browser contexts may reject clipboard access.
+- **`long-press-button`**: while a touch press is armed the button scales down slightly (`data-pressing:scale-[0.97]`, iOS context-menu "lift" cue); reaching the 520 ms hold threshold fires a native medium haptic plus `onLongPress`. Haptics route through `lib/haptics.ts` — `tauri-plugin-haptics` (`UIImpactFeedbackGenerator` on iOS, `VibrationEffect` on Android) with a `navigator.vibrate` fallback; all paths are best-effort and never block the press behavior. Mouse pointers are ignored so desktop keeps plain click semantics.
 - **Tiny text utilities**: `.text-[9px]` and `.text-[10px]` are lifted to an 11 px floor under `html[data-mobile-shell]`; desktop density is unchanged.
 
 - **`popover`**: `w-[min(18rem,calc(100vw-1rem))]` — never overflows the viewport when anchored near the edge.

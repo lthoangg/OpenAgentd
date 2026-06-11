@@ -33,11 +33,7 @@ const ACCESS_KEY_STORAGE = 'openagentd.accessKey'
 
 export function getAccessKey(): string | undefined {
   if (typeof window === 'undefined') return undefined
-  try {
-    return window.localStorage.getItem(ACCESS_KEY_STORAGE) || undefined
-  } catch {
-    return undefined
-  }
+  return window.localStorage.getItem(ACCESS_KEY_STORAGE) || undefined
 }
 
 function getToken(): string | undefined {
@@ -48,15 +44,11 @@ function getToken(): string | undefined {
 export function setAccessKey(key: string): void {
   if (typeof window === 'undefined') return
   const trimmed = key.trim()
-  try {
-    if (trimmed) {
-      window.localStorage.setItem(ACCESS_KEY_STORAGE, trimmed)
-      installDesktopAuth()
-    } else {
-      window.localStorage.removeItem(ACCESS_KEY_STORAGE)
-    }
-  } catch {
-    // Storage can be unavailable in restricted WebViews/private contexts.
+  if (trimmed) {
+    window.localStorage.setItem(ACCESS_KEY_STORAGE, trimmed)
+    installDesktopAuth()
+  } else {
+    window.localStorage.removeItem(ACCESS_KEY_STORAGE)
   }
 }
 
@@ -219,5 +211,5 @@ export function withTokenParam(url: string): string {
 
 export function isDesktopMode(): boolean {
   if (typeof window === 'undefined') return false
-  return window[TOKEN_KEY] !== undefined || Boolean(getAccessKey())
+  return window[TOKEN_KEY] !== undefined || Boolean(window.localStorage.getItem(ACCESS_KEY_STORAGE))
 }

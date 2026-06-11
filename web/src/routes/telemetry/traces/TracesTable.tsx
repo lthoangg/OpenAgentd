@@ -3,7 +3,7 @@
  * clickable; the parent owns the selection state.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { ChevronRight, Copy } from 'lucide-react'
 import type { TraceListItem } from '@/api/client'
 import {
@@ -15,6 +15,7 @@ import {
   timeAgo,
 } from '@/utils/telemetryFormat'
 import { Td, Th } from '../primitives'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
 import { mediumHapticFeedback } from '@/lib/haptics'
 
@@ -76,19 +77,18 @@ function TraceRow({
   now: number
   onSelect: (traceId: string) => void
 }) {
+  const isMobile = useIsMobile()
   const { isTauri, os } = usePlatform()
   const isTauriMobile = isTauri && (os === 'ios' || os === 'android')
   const [actionsPoint, setActionsPoint] = useState<{ x: number; y: number } | null>(null)
   const longPressTimerRef = useRef<number | null>(null)
   const longPressStartRef = useRef<{ x: number; y: number } | null>(null)
 
-  const clearLongPress = useCallback(() => {
+  const clearLongPress = () => {
     if (longPressTimerRef.current !== null) window.clearTimeout(longPressTimerRef.current)
     longPressTimerRef.current = null
     longPressStartRef.current = null
-  }, [])
-
-  useEffect(() => clearLongPress, [clearLongPress])
+  }
 
   const openTrace = () => onSelect(trace.trace_id)
   const copyTraceId = async () => {
@@ -105,8 +105,7 @@ function TraceRow({
           setActionsPoint({ x: event.clientX, y: event.clientY })
         }}
         onPointerDown={(event) => {
-          if (!isTauriMobile || event.pointerType === 'mouse') return
-          clearLongPress()
+          if (!isMobile || !isTauriMobile || event.pointerType === 'mouse') return
           longPressStartRef.current = { x: event.clientX, y: event.clientY }
           longPressTimerRef.current = window.setTimeout(() => {
             longPressTimerRef.current = null

@@ -448,27 +448,6 @@ describe("InputBar", () => {
     expect(textarea.getAttribute("aria-activedescendant")).toBe(options[1].id)
   })
 
-  it("runs slash commands from touch pointer activation", async () => {
-    const onSlashCommand = mock(() => {})
-    const user = userEvent.setup()
-    render(
-      <InputBar
-        onSubmit={() => {}}
-        onSlashCommand={onSlashCommand}
-        slashCommands={[{ id: "stop", label: "Stop", description: "Stop streaming" }]}
-      />,
-    )
-
-    const textarea = screen.getByLabelText("Message input")
-    await user.type(textarea, "/")
-
-    await act(async () => {
-      fireEvent.pointerDown(screen.getByRole("option", { name: /stop streaming/i }), { pointerType: "touch" })
-    })
-
-    expect(onSlashCommand).toHaveBeenCalledWith("stop")
-  })
-
   it("displays loop subcommands with colon syntax", async () => {
     const user = userEvent.setup()
     render(
@@ -545,26 +524,6 @@ describe("InputBar", () => {
     expect(options[0].getAttribute("aria-selected")).toBe("true")
 
     await user.keyboard("{ArrowDown}{Enter}")
-
-    expect(textarea.value).toBe("start Please review this change")
-  })
-
-  it("inserts snippets from touch pointer activation", async () => {
-    const user = userEvent.setup()
-    render(
-      <InputBar
-        onSubmit={() => {}}
-        snippetCommands={[{ id: "review", label: "review", description: "Review this change" }]}
-        onSnippetCommand={() => "Please review this change"}
-      />,
-    )
-
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-    await user.type(textarea, "start #")
-
-    await act(async () => {
-      fireEvent.pointerDown(screen.getByRole("option", { name: /review this change/i }), { pointerType: "touch" })
-    })
 
     expect(textarea.value).toBe("start Please review this change")
   })

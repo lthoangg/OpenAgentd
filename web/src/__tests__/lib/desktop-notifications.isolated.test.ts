@@ -50,8 +50,4 @@ describe('desktop notification library integration', () => {
   it('requests OS permission once and does not notify when denied', async () => {
     await runWorker('permission denied')
   })
-
-  it('treats preferences as enabled when storage is unavailable', async () => {
-    await runWorker('storage is unavailable')
-  })
 })

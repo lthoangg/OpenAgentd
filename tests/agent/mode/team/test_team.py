@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.agent.mode.team.loop_commands import LoopState
+from app.agent.mode.team.team import LoopState
 from app.models.chat import ChatSession, SessionMessage
 
 

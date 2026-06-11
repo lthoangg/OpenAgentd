@@ -199,7 +199,8 @@ function TeamLayoutBase({ forcedMode }: { forcedMode?: 'normal' | 'coding' }) {
         applyCacheInvalidations(queryClient, useTeamStore.getState()._drainCacheInvalidations())
       }
     })
-  }, [queryClient])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
     <>

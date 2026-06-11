@@ -58,12 +58,16 @@ export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
         )
       })
     : commands,
-  [commands, query])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [query])
 
-  // Reset active index whenever the query changes.
-  useEffect(() => {
-    setActiveIdx(0)
-  }, [query])
+  // Reset active index whenever filtered list changes (query changed)
+  const prevQueryRef = useRef(query)
+  if (prevQueryRef.current !== query) {
+    prevQueryRef.current = query
+    // Reset during render — safe because it's gated on a ref change
+    if (activeIdx !== 0) setActiveIdx(0)
+  }
 
   // Scroll active item into view
   useEffect(() => {
@@ -229,7 +233,7 @@ interface CommandRowProps {
  * Single command row with proximity fade. The keyboard-driven `activeIdx`
  * still owns the dominant `accent-subtle` background; proximity adds a
  * softer `accent-dim` layer on nearby non-active rows so the cursor's
- * position is readable before the pointer enters a row.
+ * position is readable before `onMouseEnter` fires.
  *
  * Layering mirrors SessionRow in Sidebar: proximity is an absolute sibling
  * behind the button (`-z-10`, `isolation: isolate` on wrapper), so the
@@ -254,7 +258,7 @@ function CommandRow({ cmd, idx, isActive, mouseY, onRun, onActivate }: CommandRo
       <button
         data-idx={idx}
         onClick={() => onRun(cmd)}
-        onPointerEnter={() => onActivate(idx)}
+        onMouseEnter={() => onActivate(idx)}
         className={`flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors ${
           isActive
             ? 'bg-(--bg-key) text-(--color-text)'

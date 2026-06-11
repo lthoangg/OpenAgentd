@@ -303,9 +303,9 @@ describe('updateTeamSessionTitle', () => {
     expect(result.title).toBe('Renamed session')
   })
 
-  it('throws plain-text backend errors when JSON detail is unavailable', async () => {
-    globalThis.fetch = mock(() => Promise.resolve(new Response('bad title', { status: 422 }))) as typeof fetch
+  it('throws when the backend rejects the title update', async () => {
+    globalThis.fetch = mock(() => Promise.resolve(new Response('bad', { status: 422 }))) as typeof fetch
 
-    await expect(updateTeamSessionTitle('sid', '')).rejects.toThrow('bad title')
+    await expect(updateTeamSessionTitle('sid', '')).rejects.toThrow('updateTeamSessionTitle failed: 422')
   })
 })

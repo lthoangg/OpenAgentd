@@ -87,8 +87,6 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
   const [manualExpanded, setManualExpanded] = useState<boolean | null>(null)
   const [copiedArgs, setCopiedArgs] = useState(false)
   const [copiedResult, setCopiedResult] = useState(false)
-  const copiedArgsTimerRef = useRef<number | null>(null)
-  const copiedResultTimerRef = useRef<number | null>(null)
   const liveOutputRef = useRef<HTMLPreElement>(null)
   const [now, setNow] = useState(() => Date.now())
 
@@ -130,11 +128,6 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
     return () => window.clearInterval(id)
   }, [done, startedAt])
 
-  useEffect(() => () => {
-    if (copiedArgsTimerRef.current !== null) window.clearTimeout(copiedArgsTimerRef.current)
-    if (copiedResultTimerRef.current !== null) window.clearTimeout(copiedResultTimerRef.current)
-  }, [])
-
   useEffect(() => {
     const el = liveOutputRef.current
     if (el) el.scrollTop = el.scrollHeight
@@ -148,11 +141,7 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
     try {
       await navigator.clipboard.writeText(text)
       setCopiedArgs(true)
-      if (copiedArgsTimerRef.current !== null) window.clearTimeout(copiedArgsTimerRef.current)
-      copiedArgsTimerRef.current = window.setTimeout(() => {
-        copiedArgsTimerRef.current = null
-        setCopiedArgs(false)
-      }, 1500)
+      setTimeout(() => setCopiedArgs(false), 1500)
     } catch {
       // ignore
     }
@@ -164,11 +153,7 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
     try {
       await navigator.clipboard.writeText(text)
       setCopiedResult(true)
-      if (copiedResultTimerRef.current !== null) window.clearTimeout(copiedResultTimerRef.current)
-      copiedResultTimerRef.current = window.setTimeout(() => {
-        copiedResultTimerRef.current = null
-        setCopiedResult(false)
-      }, 1500)
+      setTimeout(() => setCopiedResult(false), 1500)
     } catch {
       // ignore
     }

@@ -78,12 +78,18 @@ def _is_pipx_managed() -> bool:
 
 def _upgrade_command() -> tuple[str, list[str]]:
     if _is_brew_managed():
-        return "brew", ["brew", "upgrade", "openagentd"]
+        return "brew", ["brew", "upgrade", "--formula", "lthoangg/tap/openagentd"]
     if _is_uv_tool_managed():
         return "uv tool", ["uv", "tool", "upgrade", "openagentd"]
     if _is_pipx_managed():
         return "pipx", ["pipx", "upgrade", "openagentd"]
     return "pip", [sys.executable, "-m", "pip", "install", "--upgrade", "openagentd"]
+
+
+def _pre_upgrade_commands(manager: str) -> list[list[str]]:
+    if manager == "brew":
+        return [["brew", "update"]]
+    return []
 
 
 def _restart_command(args: argparse.Namespace) -> list[str]:
@@ -124,8 +130,15 @@ def cmd_upgrade(args: argparse.Namespace) -> None:
 
     manager, command = _upgrade_command()
     print(f"  {_bold('Upgrading openagentd')} via {_cyan(manager)} ...")
-    print(f"  {_dim(' '.join(command))}")
-    upgrade_code = _run(command)
+    upgrade_code = 0
+    for pre_upgrade in _pre_upgrade_commands(manager):
+        print(f"  {_dim(' '.join(pre_upgrade))}")
+        upgrade_code = _run(pre_upgrade)
+        if upgrade_code != 0:
+            break
+    if upgrade_code == 0:
+        print(f"  {_dim(' '.join(command))}")
+        upgrade_code = _run(command)
     if upgrade_code == 0:
         post_upgrade = _post_upgrade_command(manager)
         if post_upgrade is not None:

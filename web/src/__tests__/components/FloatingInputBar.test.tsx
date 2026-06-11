@@ -7,6 +7,7 @@ import { useTeamStore } from '@/stores/useTeamStore'
 import type { InputBarHandle } from '@/components/InputBar'
 
 const STORAGE_KEY = 'oa-input-position'
+const MINIMIZED_STORAGE_KEY = 'oa-input-minimized'
 
 afterEach(cleanup)
 beforeEach(() => {
@@ -53,6 +54,7 @@ function Harness(props: {
 
 describe('FloatingInputBar', () => {
   it('keeps the inner InputBar textarea mounted but hidden from AT while minimized', () => {
+    localStorage.setItem(MINIMIZED_STORAGE_KEY, 'true')
     render(<Harness />)
     // The textarea is always in the DOM regardless of minimized state
     // — visibility is opacity-driven so the ref stays valid and focus
@@ -69,6 +71,15 @@ describe('FloatingInputBar', () => {
     render(<Harness />)
     const handle = screen.getByRole('button', { name: /drag input bar/i })
     expect(handle).toBeTruthy()
+  })
+
+  it('starts expanded when no minimized preference is stored', () => {
+    render(<Harness />)
+
+    const textarea = screen.getByRole('textbox', { name: 'Message input' })
+    expect(textarea.getAttribute('disabled')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Expand input bar' })).toBeNull()
+    expect(localStorage.getItem(MINIMIZED_STORAGE_KEY)).toBeNull()
   })
 
   it('starts at the default position (zero offset) when no value is stored', () => {
@@ -131,8 +142,9 @@ describe('FloatingInputBar', () => {
     }
   })
 
-  it('forwards the placeholder prop to the inner InputBar when expanded', async () => {
+  it('forwards the placeholder prop to the inner InputBar when expanded from a persisted minimized state', async () => {
     const user = userEvent.setup()
+    localStorage.setItem(MINIMIZED_STORAGE_KEY, 'true')
     render(<Harness placeholder="Ask the team…" />)
     // Placeholder is empty while the bar is minimized so its ghost
     // doesn't bleed through the slot opacity fade. The minimized
@@ -143,7 +155,8 @@ describe('FloatingInputBar', () => {
     expect(textarea.getAttribute('placeholder')).toBe('Ask the team…')
   })
 
-  it('keeps the collapsed strip available while streaming', () => {
+  it('keeps the collapsed strip available while streaming from a persisted minimized state', () => {
+    localStorage.setItem(MINIMIZED_STORAGE_KEY, 'true')
     render(<Harness isStreaming onStop={() => {}} />)
 
     const textarea = screen.getByLabelText('Message input')
@@ -171,6 +184,7 @@ describe('FloatingInputBar', () => {
 
   it('expands and focuses the textarea through its imperative focus handle', async () => {
     const user = userEvent.setup()
+    localStorage.setItem(MINIMIZED_STORAGE_KEY, 'true')
     render(<Harness exposeFocus />)
 
     const textarea = screen.getByLabelText('Message input')
@@ -194,6 +208,7 @@ describe('FloatingInputBar', () => {
       )
     }
 
+    localStorage.setItem(MINIMIZED_STORAGE_KEY, 'true')
     render(<InsertHarness />)
 
     const textarea = screen.getByLabelText('Message input') as HTMLTextAreaElement

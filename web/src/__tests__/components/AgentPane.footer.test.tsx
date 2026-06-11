@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, mock } from "bun:test"
-import { render, screen, cleanup } from "@testing-library/react"
+import { fireEvent, render, screen, cleanup } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { AgentPane } from "@/components/AgentPane"
 import type { AgentStream } from "@/stores/useTeamStore"
@@ -53,6 +53,26 @@ function renderPanel(stream: AgentStream) {
 }
 
 // ── tests ────────────────────────────────────────────────────────────────────
+
+describe("AgentPane — user bubble actions", () => {
+  it("reveals user message actions on touch pointer press", () => {
+    const date = new Date(2024, 0, 15, 14, 30, 0)
+    const message = makeUserBlock("u1", "Question")
+    message.timestamp = date
+    const stream = makeStream({ blocks: [message] })
+    renderPanel(stream)
+
+    const userBlock = screen.getByText("Question")
+    const userBubble = userBlock.closest(".group") as HTMLElement | null
+    expect(userBubble).toBeTruthy()
+    const timestamp = screen.getByTitle(/2:30|14:30/)
+    expect(timestamp.getAttribute("aria-hidden")).toBe("true")
+
+    fireEvent.pointerDown(userBubble!, { pointerType: "touch" })
+
+    expect(timestamp.getAttribute("aria-hidden")).toBe("false")
+  })
+})
 
 describe("AgentPane — AssistantFooter", () => {
   describe("footer visibility", () => {

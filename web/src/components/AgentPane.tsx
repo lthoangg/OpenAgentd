@@ -128,8 +128,9 @@ function UserBubble({ content, timestamp, attachments, onRevert, modelId, shell 
   return (
     <div
       className="group mb-3 flex justify-end"
-      onMouseEnter={() => setShowTime(true)}
-      onMouseLeave={() => setShowTime(false)}
+      onPointerEnter={() => setShowTime(true)}
+      onPointerLeave={() => setShowTime(false)}
+      onPointerDown={() => setShowTime(true)}
     >
       <div className="flex max-w-full flex-col items-end gap-1.5 md:max-w-[85%]">
          {/* Attachments (compact) */}

@@ -560,8 +560,7 @@ export function WorkspaceFilesPanel({ open, sessionId, onClose }: WorkspaceFiles
   // Refresh on open so the list is fresh even if query was stale.
   useEffect(() => {
     if (open && sessionId) refetch()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, sessionId])
+  }, [open, sessionId, refetch])
 
   // Wrap ``data?.files ?? []`` in a memo so the ``files`` reference is stable
   // when the query returns the same cache entry — otherwise downstream

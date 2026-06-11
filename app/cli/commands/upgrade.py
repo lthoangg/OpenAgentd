@@ -116,8 +116,6 @@ def _run(command: list[str]) -> int:
 
 
 def _post_upgrade_command(manager: str) -> list[str] | None:
-    if manager == "brew":
-        return ["brew", "link", "lthoangg/tap/openagentd"]
     return None
 
 

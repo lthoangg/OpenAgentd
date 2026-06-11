@@ -446,7 +446,7 @@ class TestCmdUpgrade:
 
         assert run_calls == [["uv", "tool", "upgrade", "openagentd"]]
 
-    def test_brew_upgrade_relinks_formula_without_restart(self, monkeypatch):
+    def test_brew_upgrade_does_not_relink_formula_without_restart(self, monkeypatch):
         from app.cli.commands import upgrade as upgrade_mod
 
         args = build_parser().parse_args(["upgrade"])
@@ -470,7 +470,6 @@ class TestCmdUpgrade:
         assert run_calls == [
             ["brew", "update"],
             ["brew", "upgrade", "--formula", "lthoangg/tap/openagentd"],
-            ["brew", "link", "lthoangg/tap/openagentd"],
         ]
 
     def test_upgrade_stops_and_restarts_when_running(self, monkeypatch):
@@ -560,7 +559,6 @@ class TestCmdUpgrade:
         assert run_calls == [
             ["brew", "update"],
             ["brew", "upgrade", "--formula", "lthoangg/tap/openagentd"],
-            ["brew", "link", "lthoangg/tap/openagentd"],
             [__file__, "start"],
         ]
 

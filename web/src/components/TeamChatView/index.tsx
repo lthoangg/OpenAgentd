@@ -1469,6 +1469,12 @@ function MobileChatActions({
               </div>
 
               <div className="flex-1 overflow-y-auto p-2">
+                {activeLoop && (
+                  <>
+                    <div className="px-2 py-2 text-xs font-medium text-muted-foreground">Loop</div>
+                    <MobileLoopStatusCard activeLoop={activeLoop} />
+                  </>
+                )}
                 {activeAgent && agents.length > 1 && (
                   <>
                     <div className="px-2 py-2 text-xs font-medium text-muted-foreground">Agents</div>
@@ -1488,9 +1494,6 @@ function MobileChatActions({
                 )}
 
                 <div className="px-2 py-2 text-xs font-medium text-muted-foreground">Session</div>
-                {activeLoop && (
-                  <MobileLoopStatusCard activeLoop={activeLoop} />
-                )}
                 {tokens && (
                   <div className="flex min-h-10 items-center gap-2 rounded-md px-2 text-sm">
                     <span className="flex-1">Tokens</span>

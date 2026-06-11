@@ -936,6 +936,9 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   // --color-surface fill).
   const actionBtnClass =
     'flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-(--color-border) bg-(--color-surface) text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:cursor-not-allowed disabled:opacity-50'
+  const shellBtnClass = shellMode
+    ? 'flex h-7 shrink-0 items-center gap-1 rounded-md border border-(--color-accent) bg-(--bg-key) px-2 font-mono text-xs text-(--color-text) transition-colors hover:bg-(--color-surface) disabled:cursor-not-allowed disabled:opacity-50'
+    : actionBtnClass
 
   // Three states share one DOM tree: minimized, single-line, multi-line.
   // Multi-line is triggered by the slot's flex-basis:100% which wraps the
@@ -968,6 +971,27 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       />
     </div>
   )
+
+  const shellEl = !minimized ? (
+    <button
+      type="button"
+      onClick={(e) => {
+        stopClick(e)
+        setShellMode((next) => !next)
+        setMentionRange(null)
+        setSnippetRange(null)
+        requestAnimationFrame(() => textareaRef.current?.focus())
+      }}
+      disabled={disabled}
+      aria-label={shellMode ? 'Exit shell mode' : 'Use shell mode'}
+      aria-pressed={shellMode}
+      title={shellMode ? 'Exit shell mode (Esc)' : 'Run a shell command'}
+      className={shellBtnClass}
+    >
+      <Terminal size={13} aria-hidden="true" />
+      {shellMode && <span>Shell</span>}
+    </button>
+  ) : null
 
   const chatEl = minimized ? (
     <button
@@ -1303,12 +1327,8 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
                 minimized ? 'cursor-text' : ''
               }`}
             >
-              {!minimized && shellMode ? (
-                <div className="flex h-7 shrink-0 items-center gap-1 rounded-md border border-(--color-border) bg-(--bg-key) px-2 font-mono text-xs text-(--color-text-2)" aria-label="Shell mode">
-                  <Terminal size={13} aria-hidden="true" />
-                  <span>Shell</span>
-                </div>
-              ) : (
+              {shellEl}
+              {!shellMode && (
                 <>
                   {attachEl}
                   {voiceEl}

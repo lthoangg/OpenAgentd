@@ -359,7 +359,7 @@ describe("InputBar", () => {
     expect(textarea.value).toBe("")
     expect(screen.getByLabelText("Shell command input")).toBe(textarea)
     expect(textarea.placeholder).toBe("Enter shell command... git status")
-    expect(screen.getByLabelText("Shell mode")).toBeTruthy()
+    expect(screen.getByLabelText("Exit shell mode")).toBeTruthy()
     expect(screen.queryByLabelText("Attach file")).toBeNull()
     expect(screen.queryByLabelText(/Voice input/)).toBeNull()
   })
@@ -375,7 +375,24 @@ describe("InputBar", () => {
     expect(textarea.value).toBe("")
     expect(screen.getByLabelText("Message input")).toBe(textarea)
     expect(textarea.placeholder).toBe("Message the team…")
-    expect(screen.queryByLabelText("Shell mode")).toBeNull()
+    expect(screen.getByLabelText("Use shell mode")).toBeTruthy()
+  })
+
+  it("enters and exits shell mode from the shell button", async () => {
+    const user = userEvent.setup()
+    render(<InputBar onSubmit={() => {}} placeholder="Message the team…" />)
+
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+    await user.click(screen.getByLabelText("Use shell mode"))
+
+    expect(screen.getByLabelText("Shell command input")).toBe(textarea)
+    expect(textarea.placeholder).toBe("Enter shell command... git status")
+    expect(screen.queryByLabelText("Attach file")).toBeNull()
+
+    await user.click(screen.getByLabelText("Exit shell mode"))
+
+    expect(screen.getByLabelText("Message input")).toBe(textarea)
+    expect(textarea.placeholder).toBe("Message the team…")
   })
 
   it("submits shell mode content with a visible bang prefix", async () => {

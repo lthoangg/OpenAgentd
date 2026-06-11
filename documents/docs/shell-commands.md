@@ -20,10 +20,11 @@ current turn does **not** call the model first and does not ask the agent whethe
 to run a tool.
 
 In the web/desktop composer, typing `!` as the first character switches the input
-into shell mode: the `!` disappears, the placeholder changes to `Enter shell
-command...`, and the attach/voice controls are replaced by a compact Shell card.
-Press Backspace on an empty shell command, or Escape, to return to normal chat
-mode.
+into shell mode: the `!` disappears and the placeholder changes to `Enter shell
+command...`. Desktop and mobile shells also expose a terminal button in the
+expanded composer for entering shell mode without typing `!`. While shell mode is
+active, attach/voice controls are replaced by the active Shell button. Press
+Backspace on an empty shell command, or Escape, to return to normal chat mode.
 
 ## What is saved in history
 

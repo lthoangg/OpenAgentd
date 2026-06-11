@@ -125,7 +125,7 @@ describe('Coding workspace two-layer file preview', () => {
     expect(screen.getByTitle('assets/logo.png').textContent).toContain('M')
   })
 
-  it('renders text files with a read-only IDE-style line-number gutter', async () => {
+  it('renders text files with a wrapping read-only IDE-style line-number gutter', async () => {
     await renderViewer(readme)
 
     await waitFor(() => expect(screen.getByText('const')).toBeTruthy())
@@ -134,6 +134,8 @@ describe('Coding workspace two-layer file preview', () => {
     expect(screen.getByText('3')).toBeTruthy()
     expect(screen.getByText('// comment')).toBeTruthy()
     expect(screen.getByText('return')).toBeTruthy()
+    expect(screen.getByRole('button', { name: /const value = 1/i }).className).toContain('whitespace-pre-wrap')
+    expect(screen.getByRole('button', { name: /const value = 1/i }).className).toContain('break-words')
   })
 
   it('renders images inline in the separate file viewer panel', async () => {

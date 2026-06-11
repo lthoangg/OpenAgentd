@@ -228,7 +228,7 @@ function TextPreview({
               }}
               onMouseEnter={() => extendSelection(lineNo)}
               className={cn(
-                'flex w-full items-start gap-3 whitespace-pre px-3 text-left text-(--color-text-2)',
+                'flex w-full items-start gap-3 whitespace-pre-wrap break-words px-3 text-left text-(--color-text-2)',
                 selected && 'bg-(--color-accent)/15',
               )}
             >

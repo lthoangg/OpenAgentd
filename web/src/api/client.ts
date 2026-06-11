@@ -450,7 +450,7 @@ export interface ObservabilitySummary {
 
 export async function getObservabilitySummary(days: number): Promise<ObservabilitySummary> {
   const res = await fetch(`${apiBaseUrl()}/observability/summary?days=${days}`)
-  if (!res.ok) throw new Error(`GET /observability/summary failed: ${res.status}`)
+  if (!res.ok) await parseDetailOrThrow(res, 'GET /observability/summary')
   return res.json()
 }
 
@@ -513,7 +513,7 @@ export async function listTraces(
   const res = await fetch(
     `${apiBaseUrl()}/observability/traces?days=${days}&limit=${limit}&offset=${offset}`,
   )
-  if (!res.ok) throw new Error(`GET /observability/traces failed: ${res.status}`)
+  if (!res.ok) await parseDetailOrThrow(res, 'GET /observability/traces')
   return res.json()
 }
 
@@ -529,7 +529,7 @@ export async function getTraceDetail(
     `${apiBaseUrl()}/observability/traces/${encodeURIComponent(traceId)}?days=${days}`,
   )
   if (res.status === 404) return null
-  if (!res.ok) throw new Error(`GET /observability/traces/:id failed: ${res.status}`)
+  if (!res.ok) await parseDetailOrThrow(res, 'GET /observability/traces/:id')
   return res.json()
 }
 
@@ -570,13 +570,13 @@ export async function getQuoteOfTheDay(): Promise<{ quote: string; author: strin
 export async function getWikiTree(unprocessedOnly = false): Promise<WikiTree> {
   const url = unprocessedOnly ? `${apiBaseUrl()}/wiki/tree?unprocessed_only=true` : `${apiBaseUrl()}/wiki/tree`
   const res = await fetch(url)
-  if (!res.ok) throw new Error(`GET /wiki/tree failed: ${res.status}`)
+  if (!res.ok) await parseDetailOrThrow(res, 'GET /wiki/tree')
   return res.json()
 }
 
 export async function getWikiFile(path: string): Promise<WikiFile> {
   const res = await fetch(`${apiBaseUrl()}/wiki/file?path=${encodeURIComponent(path)}`)
-  if (!res.ok) throw new Error(`GET /wiki/file failed: ${res.status}`)
+  if (!res.ok) await parseDetailOrThrow(res, 'GET /wiki/file')
   return res.json()
 }
 
@@ -597,7 +597,7 @@ export async function deleteWikiFile(path: string): Promise<void> {
   const res = await fetch(`${apiBaseUrl()}/wiki/file?path=${encodeURIComponent(path)}`, {
     method: 'DELETE',
   })
-  if (!res.ok) throw new Error(`DELETE /wiki/file failed: ${res.status}`)
+  if (!res.ok) await parseDetailOrThrow(res, 'DELETE /wiki/file')
 }
 
 // ── /dream ────────────────────────────────────────────────────────────────────
@@ -610,7 +610,7 @@ export interface DreamConfig {
 
 export async function getDreamConfig(): Promise<DreamConfig> {
   const res = await fetch(`${apiBaseUrl()}/dream/config`)
-  if (!res.ok) throw new Error(`GET /dream/config failed: ${res.status}`)
+  if (!res.ok) await parseDetailOrThrow(res, 'GET /dream/config')
   return res.json()
 }
 
@@ -1208,8 +1208,8 @@ export function oauthLoginStream(
 ): void {
   const query = mode ? `?mode=${encodeURIComponent(mode)}` : ''
   fetch(`${apiBaseUrl()}/auth/${encodeURIComponent(providerId)}/login${query}`, { signal })
-    .then((res) => {
-      if (!res.ok) throw new Error(`GET /auth/${providerId}/login failed: ${res.status}`)
+    .then(async (res) => {
+      if (!res.ok) await parseDetailOrThrow(res, `GET /auth/${providerId}/login`)
       readSSE(res, {
         ...callbacks,
         onEvent: (type, data) => {

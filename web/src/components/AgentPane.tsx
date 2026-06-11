@@ -32,6 +32,9 @@ import type { AgentStream } from '@/stores/useTeamStore'
 import { resolveApiUrl } from '@/api/client'
 import type { ContentBlock, MessageAttachment } from '@/api/types'
 
+const SCROLL_THRESHOLD = 40
+const USER_SCROLL_DETACH_DELTA = 4
+
 interface AgentPaneProps {
   name: string
   stream: AgentStream
@@ -337,7 +340,6 @@ export function AgentPane({
 
   const pinnedRef = useRef(true)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
-  const SCROLL_THRESHOLD = 40
 
   const isAtBottom = useCallback(() => {
     const el = scrollRef.current
@@ -357,26 +359,58 @@ export function AgentPane({
     }
   }, [])
 
-  // Me detect user scroll via wheel/touchmove — never fires from programmatic scroll
+  // Me detect user scroll intent before stream updates can snap the pane back
+  // to the bottom. Scroll catches scrollbar/keyboard movement; wheel/touchmove
+  // detach immediately when the user starts moving upward.
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
-    const onUserScroll = () => {
-      requestAnimationFrame(() => {
-        const atBottom = isAtBottom()
-        pinnedRef.current = atBottom
-        // Me: only flip state when the boolean actually changes. Calling
-        // setState with the current value on every wheel tick still
-        // schedules a re-render, which can cascade through MarkdownBlock /
-        // ReactMarkdown and re-mount inline media elements mid-playback.
-        setShowScrollBtn((prev) => (prev === !atBottom ? prev : !atBottom))
-      })
+    let lastScrollTop = el.scrollTop
+    let lastTouchY: number | null = null
+    const updatePinnedFromPosition = () => {
+      const atBottom = isAtBottom()
+      pinnedRef.current = atBottom
+      // Me: only flip state when the boolean actually changes. Calling
+      // setState with the current value on every wheel tick still
+      // schedules a re-render, which can cascade through MarkdownBlock /
+      // ReactMarkdown and re-mount inline media elements mid-playback.
+      setShowScrollBtn((prev) => (prev === !atBottom ? prev : !atBottom))
     }
-    el.addEventListener('wheel', onUserScroll, { passive: true })
-    el.addEventListener('touchmove', onUserScroll, { passive: true })
+    const detachFromBottom = () => {
+      pinnedRef.current = false
+      setShowScrollBtn(true)
+    }
+    const onScroll = () => {
+      const nextScrollTop = el.scrollTop
+      if (nextScrollTop < lastScrollTop - USER_SCROLL_DETACH_DELTA) {
+        detachFromBottom()
+      }
+      lastScrollTop = nextScrollTop
+      requestAnimationFrame(updatePinnedFromPosition)
+    }
+    const onWheel = (e: WheelEvent) => {
+      if (e.deltaY < -USER_SCROLL_DETACH_DELTA) detachFromBottom()
+    }
+    const onTouchMove = (e: TouchEvent) => {
+      const y = e.touches[0]?.clientY
+      if (y == null) return
+      if (lastTouchY !== null && y > lastTouchY + USER_SCROLL_DETACH_DELTA) detachFromBottom()
+      lastTouchY = y
+    }
+    const onTouchEnd = () => {
+      lastTouchY = null
+    }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    el.addEventListener('wheel', onWheel, { passive: true })
+    el.addEventListener('touchmove', onTouchMove, { passive: true })
+    el.addEventListener('touchend', onTouchEnd, { passive: true })
+    el.addEventListener('touchcancel', onTouchEnd, { passive: true })
     return () => {
-      el.removeEventListener('wheel', onUserScroll)
-      el.removeEventListener('touchmove', onUserScroll)
+      el.removeEventListener('scroll', onScroll)
+      el.removeEventListener('wheel', onWheel)
+      el.removeEventListener('touchmove', onTouchMove)
+      el.removeEventListener('touchend', onTouchEnd)
+      el.removeEventListener('touchcancel', onTouchEnd)
     }
   }, [isAtBottom])
 

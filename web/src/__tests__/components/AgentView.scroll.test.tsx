@@ -141,6 +141,35 @@ describe("AgentView — scroll-to-bottom button", () => {
     expect(scrollToCalled).toBe(true)
   })
 
+  it("detaches immediately on upward wheel intent near the bottom", async () => {
+    const { container } = renderStream({
+      blocks: [makeTextBlock("b1", "Hello world hello world hello world hello world")],
+      currentBlocks: [],
+      isWorking: true,
+    })
+
+    const scrollDiv = container.querySelector(".overflow-y-auto") as HTMLDivElement
+    Object.defineProperty(scrollDiv, "scrollHeight", {
+      value: 1000,
+      configurable: true,
+    })
+    Object.defineProperty(scrollDiv, "scrollTop", {
+      value: 470,
+      configurable: true,
+      writable: true,
+    })
+    Object.defineProperty(scrollDiv, "clientHeight", {
+      value: 500,
+      configurable: true,
+    })
+
+    scrollDiv.dispatchEvent(new WheelEvent("wheel", { deltaY: -12, bubbles: true }))
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    const btn = container.querySelector('button[aria-label="Scroll to bottom"]')
+    expect(btn).toBeTruthy()
+  })
+
   it("button hides after clicking (scrolls back to bottom)", async () => {
     const { container } = renderStream({
       blocks: [makeTextBlock("b1", "Hello world hello world hello world hello world")],

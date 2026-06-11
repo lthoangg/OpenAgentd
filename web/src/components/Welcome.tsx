@@ -42,7 +42,7 @@ export function Welcome({ onReady }: WelcomeProps) {
     }
   }, [health.isSuccess, teamStatus.isSuccess, teamStatus.data, onReady])
 
-  const step: Step = health.isError
+  const step: Step = health.isError || teamStatus.isError
     ? 'error'
     : !health.isSuccess
       ? 'health'

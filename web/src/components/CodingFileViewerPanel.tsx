@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { Check, Copy, Download, ExternalLink, FileText, GitCompare, Loader2, X } from 'lucide-react'
@@ -41,7 +41,12 @@ function kindOf(file: WorkspaceFileInfo): FileKind {
 function CopyButton({ workspace, file }: { workspace: string; file: WorkspaceFileInfo }) {
   const [copied, setCopied] = useState(false)
   const [busy, setBusy] = useState(false)
+  const copiedTimerRef = useRef<number | null>(null)
   const tooLarge = file.size > MAX_TEXT_PREVIEW_BYTES
+
+  useEffect(() => () => {
+    if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current)
+  }, [])
 
   const handleCopy = async () => {
     if (busy || tooLarge) return
@@ -51,7 +56,11 @@ function CopyButton({ workspace, file }: { workspace: string; file: WorkspaceFil
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       await navigator.clipboard.writeText(await res.text())
       setCopied(true)
-      window.setTimeout(() => setCopied(false), 1500)
+      if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current)
+      copiedTimerRef.current = window.setTimeout(() => {
+        copiedTimerRef.current = null
+        setCopied(false)
+      }, 1500)
     } catch {
       // Best-effort copy. The user can still download/open the file.
     } finally {

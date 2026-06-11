@@ -155,6 +155,33 @@ describe('Coding workspace two-layer file preview', () => {
     await waitFor(() => expect(writeText).toHaveBeenCalledWith('const value = 1\n// comment\nreturn value'))
   })
 
+  it('clears pending copy feedback when the file viewer unmounts', async () => {
+    const user = userEvent.setup()
+    const writeText = mock(async () => {})
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    const originalClearTimeout = window.clearTimeout
+    const clearTimeout = mock((...args: unknown[]) => originalClearTimeout(args[0] as number | undefined))
+    window.clearTimeout = clearTimeout as typeof window.clearTimeout
+
+    try {
+      const { CodingFileViewerPanel } = await import('@/components/CodingFileViewerPanel')
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      const view = render(
+        <QueryClientProvider client={queryClient}>
+          <CodingFileViewerPanel workspace={WORKSPACE} file={readme} onClose={() => {}} />
+        </QueryClientProvider>,
+      )
+
+      await user.click(screen.getByRole('button', { name: /copy file contents/i }))
+      await screen.findByRole('button', { name: /copied!/i })
+      view.unmount()
+
+      expect(clearTimeout).toHaveBeenCalled()
+    } finally {
+      window.clearTimeout = originalClearTimeout
+    }
+  })
+
   it('positions the mobile workspace panel below the app header instead of covering desktop window controls', async () => {
     await renderWorkspacePanel(mock(() => {}), null, true)
 

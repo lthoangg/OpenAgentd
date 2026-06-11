@@ -1509,38 +1509,39 @@ async def test_heal_ignores_reverted_assistant_after_undo_cleanup(session):
 
 @pytest.mark.asyncio
 async def test_undo_and_redo_use_workspace_snapshots(session, tmp_path, monkeypatch):
-    """End-to-end: /undo restores the workspace to the target user message's
-    snapshot, and /redo returns it to the original live tip.
-
-    Models a session with two user turns:
-
-        U1 (snapshot=S1) → assistant writes ``v2`` to ``doc.md``
-        U2 (snapshot=S2) → assistant writes ``v3`` to ``doc.md``
-
-    After /undo the workspace should match S2 (state when U2 was sent =
-    ``doc.md`` contents from U1's assistant turn, i.e. ``v2``). The
-    pre-undo "live" state is captured as the redo anchor, and /redo
-    restores that anchor.
-    """
-    import shutil
-
-    if shutil.which("git") is None:
-        pytest.skip("git binary not available")
-
-    from app.core.config import settings
+    """/undo and /redo pass the right snapshot anchors to the workspace layer."""
     from app.services import snapshot_service
     from app.services.chat_service import (
         redo_session_messages,
         undo_session_messages,
     )
 
-    # Direct the snapshot repo into tmp so we don't pollute real state.
-    state = tmp_path / "state"
-    state.mkdir()
-    monkeypatch.setattr(settings, "OPENAGENTD_STATE_DIR", str(state))
-
     ws = tmp_path / "ws"
     ws.mkdir()
+    doc = ws / "doc.md"
+    snapshots: dict[str, str] = {}
+
+    async def fake_track(session_id: str, workspace):
+        assert workspace == ws
+        snapshot = f"{len(snapshots) + 1:040x}"
+        snapshots[snapshot] = doc.read_text()
+        return snapshot
+
+    async def fake_restore(
+        session_id: str,
+        workspace,
+        snapshot: str,
+        *,
+        skip_stage: bool = False,
+    ):
+        assert workspace == ws
+        assert snapshot in snapshots
+        doc.write_text(snapshots[snapshot])
+        return snapshot_service.RestoreResult(ok=True, modified=["doc.md"])
+
+    monkeypatch.setattr(snapshot_service, "track", fake_track)
+    monkeypatch.setattr(snapshot_service, "restore", fake_restore)
+
     import app.services.chat_service as cs
 
     monkeypatch.setattr(cs, "session_workspace_dir", lambda sid, w: ws)

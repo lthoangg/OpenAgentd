@@ -183,6 +183,22 @@ describe('FloatingInputBar', () => {
     expect(document.activeElement).toBe(textarea)
   })
 
+  it('minimizes when Escape is pressed while the input is focused', async () => {
+    const user = userEvent.setup()
+    render(<Harness />)
+
+    await user.click(screen.getByRole('button', { name: 'Expand input bar' }))
+    const textarea = screen.getByRole('textbox', { name: 'Message input' })
+    await user.click(textarea)
+
+    expect(textarea.getAttribute('disabled')).toBeNull()
+
+    await user.keyboard('{Escape}')
+
+    expect(textarea.getAttribute('disabled')).not.toBeNull()
+    expect(screen.getByRole('button', { name: 'Expand input bar' })).toBeTruthy()
+  })
+
   it('expands and inserts the first typed character through its imperative insertText handle', async () => {
     const ref = createRef<InputBarHandle>()
     function InsertHarness() {
@@ -206,5 +222,18 @@ describe('FloatingInputBar', () => {
 
     expect(textarea.getAttribute('disabled')).toBeNull()
     expect(textarea.value).toBe('h')
+  })
+
+  it('minimizes after sending a message', async () => {
+    const user = userEvent.setup()
+    render(<Harness />)
+
+    await user.click(screen.getByRole('button', { name: 'Expand input bar' }))
+    const textarea = screen.getByRole('textbox', { name: 'Message input' })
+    await user.type(textarea, 'hello')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+    expect(textarea.getAttribute('disabled')).not.toBeNull()
+    expect(screen.getByRole('button', { name: 'Expand input bar' })).toBeTruthy()
   })
 })

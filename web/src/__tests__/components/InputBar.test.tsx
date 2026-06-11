@@ -359,7 +359,7 @@ describe("InputBar", () => {
     expect(textarea.value).toBe("")
     expect(screen.getByLabelText("Shell command input")).toBe(textarea)
     expect(textarea.placeholder).toBe("Enter shell command... git status")
-    expect(screen.getByLabelText("Shell mode")).toBeTruthy()
+    expect(screen.getByLabelText("Exit shell mode")).toBeTruthy()
     expect(screen.queryByLabelText("Attach file")).toBeNull()
     expect(screen.queryByLabelText(/Voice input/)).toBeNull()
   })
@@ -375,7 +375,24 @@ describe("InputBar", () => {
     expect(textarea.value).toBe("")
     expect(screen.getByLabelText("Message input")).toBe(textarea)
     expect(textarea.placeholder).toBe("Message the team…")
-    expect(screen.queryByLabelText("Shell mode")).toBeNull()
+    expect(screen.getByLabelText("Use shell mode")).toBeTruthy()
+  })
+
+  it("enters and exits shell mode from the shell button", async () => {
+    const user = userEvent.setup()
+    render(<InputBar onSubmit={() => {}} placeholder="Message the team…" />)
+
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+    await user.click(screen.getByLabelText("Use shell mode"))
+
+    expect(screen.getByLabelText("Shell command input")).toBe(textarea)
+    expect(textarea.placeholder).toBe("Enter shell command... git status")
+    expect(screen.queryByLabelText("Attach file")).toBeNull()
+
+    await user.click(screen.getByLabelText("Exit shell mode"))
+
+    expect(screen.getByLabelText("Message input")).toBe(textarea)
+    expect(textarea.placeholder).toBe("Message the team…")
   })
 
   it("submits shell mode content with a visible bang prefix", async () => {
@@ -419,6 +436,24 @@ describe("InputBar", () => {
 
     expect(textarea.value).toBe("pwd")
     expect(screen.getByLabelText("Shell command input")).toBe(textarea)
+  })
+
+  it("does not submit a partial slash command", async () => {
+    const user = userEvent.setup()
+    let submitCount = 0
+    render(
+      <InputBar
+        onSubmit={() => { submitCount++ }}
+        slashCommands={[{ id: "new", label: "New", description: "Create new session" }]}
+      />,
+    )
+
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+    await user.type(textarea, "/ne")
+    await user.keyboard("{Enter}")
+
+    expect(submitCount).toBe(0)
+    expect(textarea.value).toBe("/ne")
   })
 
   it("wires slash command popup to the textarea for screen readers", async () => {
@@ -736,6 +771,21 @@ describe("InputBar — useImperativeHandle", () => {
 
     expect(document.activeElement).toBe(textarea)
     expect(textarea.value).toBe("h")
+  })
+
+  it("enters shell mode when first-key auto-capture inserts bang", () => {
+    const ref = createRef<InputBarHandle>()
+    render(<InputBar onSubmit={() => {}} ref={ref} />)
+
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+    act(() => {
+      ref.current?.focus()
+      ref.current?.insertText("!")
+    })
+
+    expect(document.activeElement).toBe(textarea)
+    expect(textarea.value).toBe("")
+    expect(screen.getByLabelText("Shell command input")).toBe(textarea)
   })
 })
 

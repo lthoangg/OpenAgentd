@@ -328,9 +328,14 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     },
     insertText: (text: string) => {
       const el = textareaRef.current
+      const shouldEnterShellMode = !shellMode && value.length === 0 && text === '!'
       setValue((prev) => {
         const start = el?.selectionStart ?? prev.length
         const end = el?.selectionEnd ?? start
+        if (shouldEnterShellMode && prev.length === 0 && start === 0 && end === 0) {
+          requestAnimationFrame(resize)
+          return ''
+        }
         const next = prev.slice(0, start) + text + prev.slice(end)
         requestAnimationFrame(() => {
           el?.setSelectionRange(start + text.length, start + text.length)
@@ -338,7 +343,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         })
         return next
       })
-      setShellMode(false)
+      setShellMode(shouldEnterShellMode ? true : false)
       setHistoryIndex(-1)
       setMentionRange(null)
       setSnippetRange(null)
@@ -372,9 +377,13 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     textareaRef.current = node
   }, [])
 
+  const slashFilter = !shellMode && value.startsWith('/') && !value.includes(' ')
+    ? value.slice(1).toLowerCase()
+    : null
+
   const submit = useCallback(() => {
     const trimmed = value.trim()
-    if (!trimmed || disabled) return
+    if (!trimmed || disabled || slashFilter !== null) return
     const submitted = shellMode ? `!${trimmed}` : trimmed
     onSubmit(submitted, files.length > 0 ? files : undefined)
     setLocalHistory((prev) =>
@@ -398,6 +407,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     onSubmit,
     files,
     shellMode,
+    slashFilter,
   ])
 
   const buildAcceptString = useCallback((): string => {
@@ -500,10 +510,6 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   }, [addFile, isFileTypeAllowed])
 
   // ── Slash command filtering ────────────────────────────────────────────────
-
-  const slashFilter = !shellMode && value.startsWith('/') && !value.includes(' ')
-    ? value.slice(1).toLowerCase()
-    : null
 
   /**
    * ``filteredSlashCommands`` — the visible list shown in the popover.
@@ -801,7 +807,15 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       }
       if (e.key === 'Enter' || e.key === 'Tab') {
         e.preventDefault()
-        executeSlashCommand(selectableSlashCommands[clampedIndex])
+        const selected = selectableSlashCommands[clampedIndex]
+        const selectedTokens = [selected.id, selected.displayName, selected.insertText]
+          .filter((token): token is string => Boolean(token))
+          .flatMap((token) => [token, token.split(/[/:]/, 1)[0]])
+          .map((token) => token.toLowerCase())
+        const exactCommand = selectedTokens.includes(slashFilter ?? '')
+        if (e.key === 'Tab' || slashMenuIndex !== 0 || exactCommand) {
+          executeSlashCommand(selected)
+        }
         return
       }
       if (e.key === 'Escape') {
@@ -927,6 +941,9 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   // --color-surface fill).
   const actionBtnClass =
     'flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-(--color-border) bg-(--color-surface) text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:cursor-not-allowed disabled:opacity-50'
+  const shellBtnClass = shellMode
+    ? 'flex h-7 shrink-0 items-center gap-1 rounded-md border border-(--color-accent) bg-(--bg-key) px-2 font-mono text-xs text-(--color-text) transition-colors hover:bg-(--color-surface) disabled:cursor-not-allowed disabled:opacity-50'
+    : actionBtnClass
 
   // Three states share one DOM tree: minimized, single-line, multi-line.
   // Multi-line is triggered by the slot's flex-basis:100% which wraps the
@@ -959,6 +976,27 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       />
     </div>
   )
+
+  const shellEl = !minimized ? (
+    <button
+      type="button"
+      onClick={(e) => {
+        stopClick(e)
+        setShellMode((next) => !next)
+        setMentionRange(null)
+        setSnippetRange(null)
+        requestAnimationFrame(() => textareaRef.current?.focus())
+      }}
+      disabled={disabled}
+      aria-label={shellMode ? 'Exit shell mode' : 'Use shell mode'}
+      aria-pressed={shellMode}
+      title={shellMode ? 'Exit shell mode (Esc)' : 'Run a shell command'}
+      className={shellBtnClass}
+    >
+      <Terminal size={13} aria-hidden="true" />
+      {shellMode && <span>Shell</span>}
+    </button>
+  ) : null
 
   const chatEl = minimized ? (
     <button
@@ -1294,12 +1332,8 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
                 minimized ? 'cursor-text' : ''
               }`}
             >
-              {!minimized && shellMode ? (
-                <div className="flex h-7 shrink-0 items-center gap-1 rounded-md border border-(--color-border) bg-(--bg-key) px-2 font-mono text-xs text-(--color-text-2)" aria-label="Shell mode">
-                  <Terminal size={13} aria-hidden="true" />
-                  <span>Shell</span>
-                </div>
-              ) : (
+              {shellEl}
+              {!shellMode && (
                 <>
                   {attachEl}
                   {voiceEl}

@@ -4,6 +4,23 @@ export function generateBlockId(): string {
   return `block-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
 }
 
+export function mergeBlocks(
+  blocks: ContentBlock[],
+  currentBlocks: ContentBlock[],
+): ContentBlock[] {
+  if (currentBlocks.length === 0) return blocks
+  if (blocks.length === 0) return currentBlocks
+  return [...blocks, ...currentBlocks]
+}
+
+export function latestDirectUserBlockId(blocks: ContentBlock[]): string | undefined {
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const block = blocks[i]
+    if (block.type === 'user' && !block.extra?.from_agent) return block.id
+  }
+  return undefined
+}
+
 export function appendThinking(
   blocks: ContentBlock[],
   text: string

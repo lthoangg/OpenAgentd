@@ -188,6 +188,14 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
       setMinimized(false)
     }, [])
 
+    const minimize = useCallback(() => {
+      if (blurTimerRef.current) {
+        clearTimeout(blurTimerRef.current)
+        blurTimerRef.current = null
+      }
+      setMinimized(true)
+    }, [])
+
     const handleBlur = useCallback((canMinimize: boolean) => {
       if (!canMinimize) return
       // Short delay so a click on a sibling control inside the bar
@@ -197,6 +205,11 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
         blurTimerRef.current = null
       }, 180)
     }, [])
+
+    const handleSubmit = useCallback((message: string, files?: File[]) => {
+      inputProps.onSubmit(message, files)
+      minimize()
+    }, [inputProps, minimize])
 
     useEffect(() => () => {
       if (blurTimerRef.current) clearTimeout(blurTimerRef.current)
@@ -211,6 +224,13 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
     useEffect(() => {
       if (isMobile) return
       const onKeyDown = (e: KeyboardEvent) => {
+        const target = e.target
+        const isComposerTarget = target instanceof Node && panelRef.current?.contains(target)
+        if (e.key === 'Escape' && isComposerTarget) {
+          e.preventDefault()
+          minimize()
+          return
+        }
         // ``e.key`` is the printed character so the check is layout
         // safe; we accept upper- and lower-case to cover Caps Lock.
         if (e.ctrlKey && !e.metaKey && (e.key === 'i' || e.key === 'I')) {
@@ -225,7 +245,7 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
       }
       window.addEventListener('keydown', onKeyDown)
       return () => window.removeEventListener('keydown', onKeyDown)
-    }, [isMobile, expand])
+    }, [isMobile, expand, minimize])
 
     // External signals that should keep the bar expanded regardless of
     // focus state. ``disabled`` covers the "waiting for response" pause; ``hasContent`` covers
@@ -323,7 +343,7 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
           style={keyboardInset > 0 ? { paddingBottom: `calc(${keyboardInset}px + 0.5rem)` } : undefined}
         >
           <RevertNotice count={inputProps.revertedCount ?? 0} messages={inputProps.revertedMessages ?? []} onRedo={inputProps.onRedo} />
-          <InputBar ref={setInputRefs} floating filesBelow={false} {...inputProps} />
+          <InputBar ref={setInputRefs} floating filesBelow={false} {...inputProps} onSubmit={handleSubmit} />
         </div>
       )
     }
@@ -366,6 +386,7 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
             </button>
           )}
           {...inputProps}
+          onSubmit={handleSubmit}
         />
       </motion.div>
     )

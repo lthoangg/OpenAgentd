@@ -149,7 +149,7 @@ describe('Coding workspace two-layer file preview', () => {
     await renderViewer(binary)
     expect(screen.getByText('No inline preview for this file type')).toBeTruthy()
     expect(screen.getByRole('link', { name: /open in new tab/i })).toBeTruthy()
-    expect(screen.getAllByRole('link', { name: /download/i }).length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByRole('button', { name: /download/i }).length).toBeGreaterThanOrEqual(1)
   })
 
   it('copy button fetches text content and writes it to the clipboard', async () => {

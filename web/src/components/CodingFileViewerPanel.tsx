@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { Check, Copy, Download, ExternalLink, FileText, GitCompare, Loader2, X } from 'lucide-react'
 import { codingWorkspaceFileUrl, getCodingWorkspaceGitDiff } from '@/api/client'
+import { downloadCodingWorkspaceFile } from '@/lib/coding-workspace-download'
 import { cn } from '@/lib/utils'
 import { formatBytes } from '@/utils/format'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
@@ -245,8 +246,8 @@ function TextPreview({
 function ImagePreview({ workspace, file }: { workspace: string; file: WorkspaceFileInfo }) {
   const url = codingWorkspaceFileUrl(workspace, file.path)
   return (
-    <div className="flex h-full items-center justify-center bg-(--bg-page) p-4">
-      <img src={url} alt={file.name} className="max-h-full max-w-full rounded border border-(--color-border) object-contain" />
+    <div className="flex h-full min-h-0 items-center justify-center overflow-auto bg-(--bg-page) p-4">
+      <img src={url} alt={file.name} className="block max-h-full max-w-full rounded border border-(--color-border) object-contain" />
     </div>
   )
 }
@@ -264,9 +265,9 @@ function BinaryPreview({ workspace, file }: { workspace: string; file: Workspace
         <a href={url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 rounded-md bg-(--bg-key) px-3 py-1.5 text-xs text-(--color-accent) transition-colors hover:bg-(--bg-key)">
           <ExternalLink size={12} /> Open in new tab
         </a>
-        <a href={url} download={file.name} className="flex items-center gap-1.5 rounded-md border border-(--color-border) px-3 py-1.5 text-xs text-(--color-text-2) transition-colors hover:border-(--color-border-strong)">
+        <button type="button" onClick={() => void downloadCodingWorkspaceFile(workspace, file)} className="flex items-center gap-1.5 rounded-md border border-(--color-border) px-3 py-1.5 text-xs text-(--color-text-2) transition-colors hover:border-(--color-border-strong)">
           <Download size={12} /> Download
-        </a>
+        </button>
       </div>
     </div>
   )
@@ -323,7 +324,6 @@ export function CodingFileViewerPanel({
   if (!file) return null
 
   const kind = kindOf(file)
-  const url = codingWorkspaceFileUrl(workspace, file.path)
 
   return (
     <motion.aside
@@ -364,9 +364,9 @@ export function CodingFileViewerPanel({
                 <GitCompare size={11} /> Diff
               </button>
             </div>
-            <a href={url} download={file.name} title="Download" className="flex h-9 w-9 items-center justify-center rounded text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-auto md:w-auto md:p-1.5">
+            <button type="button" onClick={() => void downloadCodingWorkspaceFile(workspace, file)} title="Download" className="flex h-9 w-9 items-center justify-center rounded text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-auto md:w-auto md:p-1.5">
               <Download size={14} />
-            </a>
+            </button>
             {kind === 'text' && <CopyButton workspace={workspace} file={file} />}
             <button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-auto md:w-auto md:p-1.5" aria-label="Close file viewer">
               <X size={16} />

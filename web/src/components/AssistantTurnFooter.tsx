@@ -7,7 +7,7 @@
  * view. Each view passes its own `renderBlock` so the per-view block visuals
  * (e.g. compact vs roomy `UserBubble`) stay independent.
  */
-import { useState, type ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { Copy, Check, Play } from 'lucide-react'
 import { formatTime, lastTurnText } from '@/utils/format'
 import type { ContentBlock } from '@/api/types'
@@ -38,20 +38,33 @@ function shortModelName(modelId: string | null | undefined): string | null {
 
 export function AssistantTurnFooter({ turnBlocks, size = 'compact', onContinue }: AssistantTurnFooterProps) {
   const [copied, setCopied] = useState(false)
-  // Me lastTurnText walks back to the previous user block; pass the turn directly
-  const textContent = lastTurnText(turnBlocks)
-  const lastBlock = turnBlocks[turnBlocks.length - 1]
-  const timestamp = lastBlock?.timestamp
-  const responseDurationMs = [...turnBlocks]
-    .reverse()
-    .find((b) => typeof b.responseDurationMs === 'number')
-    ?.responseDurationMs
-  const modelId = [...turnBlocks]
-    .reverse()
-    .map((b) => b.extra?.model)
-    .find((model): model is string => typeof model === 'string')
-  const modelName = shortModelName(modelId)
-  const canContinue = Boolean(onContinue && (textContent || turnBlocks.some((b) => b.type === 'tool')))
+  const footerData = useMemo(() => {
+    // Me lastTurnText walks back to the previous user block; pass the turn directly
+    const textContent = lastTurnText(turnBlocks)
+    const lastBlock = turnBlocks[turnBlocks.length - 1]
+    let responseDurationMs: number | undefined
+    let modelId: string | undefined
+    let hasTool = false
+    for (let i = turnBlocks.length - 1; i >= 0; i--) {
+      const block = turnBlocks[i]
+      responseDurationMs ??= typeof block.responseDurationMs === 'number'
+        ? block.responseDurationMs
+        : undefined
+      modelId ??= typeof block.extra?.model === 'string' ? block.extra.model : undefined
+      hasTool ||= block.type === 'tool'
+      if (responseDurationMs !== undefined && modelId !== undefined && hasTool) break
+    }
+    return {
+      textContent,
+      timestamp: lastBlock?.timestamp,
+      responseDurationMs,
+      modelId,
+      modelName: shortModelName(modelId),
+      hasTool,
+    }
+  }, [turnBlocks])
+  const { textContent, timestamp, responseDurationMs, modelId, modelName, hasTool } = footerData
+  const canContinue = Boolean(onContinue && (textContent || hasTool))
 
   if (!textContent && !timestamp && !canContinue && responseDurationMs === undefined && !modelName) return null
 
@@ -90,12 +103,12 @@ export function AssistantTurnFooter({ turnBlocks, size = 'compact', onContinue }
           <Play size={iconSize} />
         </button>
       )}
-      {timestamp && <span className="text-(--color-text-subtle) text-xs">{formatTime(timestamp)}</span>}
       {modelName && (
         <span className="font-mono text-(--color-text-subtle) text-xs" title={modelId ?? undefined}>
           {modelName}
         </span>
       )}
+      {timestamp && <span className="text-(--color-text-subtle) text-xs">{formatTime(timestamp)}</span>}
       {responseDurationMs !== undefined && (
         <span className="font-mono text-(--color-text-subtle) text-xs" title="Response duration">
           {formatDuration(responseDurationMs)}

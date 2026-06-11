@@ -381,9 +381,10 @@ export function workspaceMediaUrl(sessionId: string, path: string, options?: { d
  *  Each segment is encoded individually so ``/`` separators survive and
  *  path-traversal sequences (``../``) are rejected by the server.
  */
-export function codingWorkspaceFileUrl(workspace: string, path: string): string {
+export function codingWorkspaceFileUrl(workspace: string, path: string, options?: { download?: boolean }): string {
   const params = new URLSearchParams({ workspace, path })
-  return apiUrl(`/team/workspace/files/read?${params}`)
+  if (options?.download) params.set('download', '1')
+  return withTokenParam(apiUrl(`/team/workspace/files/read?${params}`))
 }
 
 export async function getTodos(sessionId: string): Promise<TodosResponse> {

@@ -11,6 +11,22 @@ export type TurnItem =
   | { kind: 'user'; block: ContentBlock; index: number }
   | { kind: 'assistant'; blocks: ContentBlock[]; startIndex: number }
 
+export interface VisibleTurnWindow {
+  hiddenTurnCount: number
+  visibleTurnItems: TurnItem[]
+}
+
+export function getVisibleTurnWindow(
+  turnItems: TurnItem[],
+  renderedTurnCount: number,
+): VisibleTurnWindow {
+  const hiddenTurnCount = Math.max(0, turnItems.length - renderedTurnCount)
+  return {
+    hiddenTurnCount,
+    visibleTurnItems: hiddenTurnCount > 0 ? turnItems.slice(hiddenTurnCount) : turnItems,
+  }
+}
+
 export function partitionTurns(blocks: ContentBlock[]): TurnItem[] {
   const items: TurnItem[] = []
   let i = 0

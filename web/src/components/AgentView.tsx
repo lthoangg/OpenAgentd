@@ -29,7 +29,8 @@ import { ImageAttachment } from './ImageAttachment'
 import { FileCard } from './FileCard'
 import { AssistantTurn } from './AssistantTurnFooter'
 import { PendingMessageQueue } from './PendingMessageQueue'
-import { partitionTurns } from '@/utils/turns'
+import { getVisibleTurnWindow, partitionTurns } from '@/utils/turns'
+import { latestDirectUserBlockId, mergeBlocks } from '@/utils/blocks'
 import { extractSleepPrefix, formatTime } from '@/utils/format'
 import { latestMCPAppResourceBlockIds } from '@/utils/mcp-app-artifacts'
 import { useTeamStore } from '@/stores/useTeamStore'
@@ -38,6 +39,7 @@ import { resolveApiUrl } from '@/api/client'
 import type { ContentBlock, MessageAttachment } from '@/api/types'
 
 const SCROLL_THRESHOLD = 40
+const USER_SCROLL_DETACH_DELTA = 4
 const LOAD_OLDER_THRESHOLD = 300
 const INITIAL_RENDERED_TURNS = 80
 const TURN_RENDER_STEP = 80
@@ -358,16 +360,18 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
     void useTeamStore.getState().undoTeam()
   }, [])
 
-  const allBlocks = useMemo(() => [...blocks, ...currentBlocks], [blocks, currentBlocks])
+  const allBlocks = useMemo(() => mergeBlocks(blocks, currentBlocks), [blocks, currentBlocks])
   const visibleBlocks = useMemo(
     () => allBlocks.filter((block) => block.type !== 'compaction'),
     [allBlocks],
   )
   const totalLen = allBlocks.length
-  const latestUserBlockId = [...allBlocks].reverse().find(isDirectUserBlock)?.id
+  const latestUserBlockId = useMemo(() => latestDirectUserBlockId(allBlocks), [allBlocks])
   const turnItems = useMemo(() => partitionTurns(allBlocks), [allBlocks])
-  const hiddenTurnCount = Math.max(0, turnItems.length - renderedTurnCount)
-  const visibleTurnItems = hiddenTurnCount > 0 ? turnItems.slice(hiddenTurnCount) : turnItems
+  const { hiddenTurnCount, visibleTurnItems } = useMemo(
+    () => getVisibleTurnWindow(turnItems, renderedTurnCount),
+    [renderedTurnCount, turnItems],
+  )
   const latestMCPAppBlockIds = useMemo(() => latestMCPAppResourceBlockIds(allBlocks), [allBlocks])
 
   const showEarlierTurns = useCallback(() => {
@@ -401,7 +405,27 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
+    let lastScrollTop = el.scrollTop
+    const updatePinnedFromPosition = () => {
+      const atBottom = isAtBottom()
+      pinnedRef.current = atBottom
+      // Me: only flip state when the boolean actually changes. Calling
+      // setState with the current value on every scroll tick still
+      // schedules a re-render, which cascades through MarkdownBlock /
+      // ReactMarkdown and was enough to re-mount inline ``<video>``
+      // elements mid-playback (flicker).
+      setShowScrollBtn((prev) => (prev === !atBottom ? prev : !atBottom))
+    }
+    const detachFromBottom = () => {
+      pinnedRef.current = false
+      setShowScrollBtn(true)
+    }
     const onScroll = () => {
+      const nextScrollTop = el.scrollTop
+      if (nextScrollTop < lastScrollTop - USER_SCROLL_DETACH_DELTA) {
+        detachFromBottom()
+      }
+      lastScrollTop = nextScrollTop
       // Me: check + arm the load flag synchronously on the event, before any
       // rAF. Multiple scroll events can fire before a single rAF executes, so
       // if the guard lived inside rAF all queued callbacks would see the flag
@@ -419,20 +443,16 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
         }
       }
 
-      requestAnimationFrame(() => {
-        const atBottom = isAtBottom()
-        pinnedRef.current = atBottom
-        // Me: only flip state when the boolean actually changes. Calling
-        // setState with the current value on every scroll tick still
-        // schedules a re-render, which cascades through MarkdownBlock /
-        // ReactMarkdown and was enough to re-mount inline ``<video>``
-        // elements mid-playback (flicker).
-        setShowScrollBtn((prev) => (prev === !atBottom ? prev : !atBottom))
-      })
+      requestAnimationFrame(updatePinnedFromPosition)
+    }
+    const onWheel = (e: WheelEvent) => {
+      if (e.deltaY < -USER_SCROLL_DETACH_DELTA) detachFromBottom()
     }
     el.addEventListener('scroll', onScroll, { passive: true })
+    el.addEventListener('wheel', onWheel, { passive: true })
     return () => {
       el.removeEventListener('scroll', onScroll)
+      el.removeEventListener('wheel', onWheel)
     }
   }, [hiddenTurnCount, isAtBottom, showEarlierTurns])
 
@@ -574,13 +594,14 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
       </div>
     </div>
     {showScrollBtn && (
-      <button
-        onClick={() => scrollToBottom(true)}
-        className="absolute bottom-24 left-1/2 z-30 -translate-x-1/2 rounded-full border border-(--color-border) bg-(--bg-card) p-1.5 text-(--color-text-muted) shadow-sm transition-colors hover:text-(--color-text-2)"
-        aria-label="Scroll to bottom"
-      >
-        <ChevronDown size={14} />
-      </button>
+        <button
+          onClick={() => scrollToBottom(true)}
+          className="absolute bottom-16 left-1/2 z-10 -translate-x-1/2 rounded-full border border-(--color-border) bg-(--bg-card) p-1 text-(--color-text-muted) transition-colors hover:text-(--color-text-2)"
+          aria-label="Scroll to bottom"
+        >
+          <ChevronDown size={16} />
+        </button>
+
     )}
     </div>
   )

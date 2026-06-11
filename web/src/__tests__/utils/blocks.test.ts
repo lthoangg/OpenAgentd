@@ -1,5 +1,7 @@
 import { describe, it, expect } from "bun:test";
 import {
+  latestDirectUserBlockId,
+  mergeBlocks,
   appendThinking,
   appendText,
   initTool,
@@ -11,6 +13,71 @@ import {
   endCompaction,
 } from "@/utils/blocks";
 import type { ContentBlock } from "@/api/types";
+
+// ---------------------------------------------------------------------------
+// mergeBlocks
+// ---------------------------------------------------------------------------
+
+describe("mergeBlocks", () => {
+  it("returns finalized blocks by reference when current blocks are empty", () => {
+    const blocks: ContentBlock[] = [{ id: "b1", type: "text", content: "done" }];
+    const result = mergeBlocks(blocks, []);
+    expect(result).toBe(blocks);
+  });
+
+  it("returns current blocks by reference when finalized blocks are empty", () => {
+    const currentBlocks: ContentBlock[] = [{ id: "c1", type: "text", content: "live" }];
+    const result = mergeBlocks([], currentBlocks);
+    expect(result).toBe(currentBlocks);
+  });
+
+  it("returns a merged copy when both arrays contain blocks", () => {
+    const blocks: ContentBlock[] = [{ id: "b1", type: "text", content: "done" }];
+    const currentBlocks: ContentBlock[] = [{ id: "c1", type: "text", content: "live" }];
+    const result = mergeBlocks(blocks, currentBlocks);
+    expect(result).not.toBe(blocks);
+    expect(result).not.toBe(currentBlocks);
+    expect(result).toEqual([...blocks, ...currentBlocks]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// latestDirectUserBlockId
+// ---------------------------------------------------------------------------
+
+describe("latestDirectUserBlockId", () => {
+  it("returns undefined for empty blocks", () => {
+    expect(latestDirectUserBlockId([])).toBeUndefined();
+  });
+
+  it("returns the latest direct user block id", () => {
+    const blocks: ContentBlock[] = [
+      { id: "u1", type: "user", content: "first" },
+      { id: "t1", type: "text", content: "answer" },
+      { id: "u2", type: "user", content: "second" },
+    ];
+
+    expect(latestDirectUserBlockId(blocks)).toBe("u2");
+  });
+
+  it("ignores user blocks emitted by agents", () => {
+    const blocks: ContentBlock[] = [
+      { id: "u1", type: "user", content: "direct" },
+      { id: "agent-u", type: "user", content: "agent", extra: { from_agent: "worker" } },
+    ];
+
+    expect(latestDirectUserBlockId(blocks)).toBe("u1");
+  });
+
+  it("returns undefined when there are no direct user blocks", () => {
+    const blocks: ContentBlock[] = [
+      { id: "t1", type: "text", content: "answer" },
+      { id: "agent-u", type: "user", content: "agent", extra: { from_agent: "worker" } },
+    ];
+
+    expect(latestDirectUserBlockId(blocks)).toBeUndefined();
+  });
+});
 
 // ---------------------------------------------------------------------------
 // appendThinking

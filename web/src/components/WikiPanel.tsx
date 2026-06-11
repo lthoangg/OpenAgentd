@@ -377,7 +377,11 @@ function WikiFileRow({
   useEffect(() => clearLongPress, [clearLongPress])
 
   const copyPath = async () => {
-    await navigator.clipboard.writeText(file.path)
+    try {
+      await navigator.clipboard.writeText(file.path)
+    } catch {
+      // Clipboard access can fail in insecure contexts or denied WebViews.
+    }
   }
 
   return (

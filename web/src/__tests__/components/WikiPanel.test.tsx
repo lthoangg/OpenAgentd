@@ -121,4 +121,24 @@ describe('WikiPanel', () => {
     await new Promise((resolve) => window.setTimeout(resolve, 650))
     expect(screen.queryByLabelText('Actions for user.md')).not.toBeTruthy()
   })
+
+  it('does not throw when copying a wiki path is denied', async () => {
+    const originalClipboard = navigator.clipboard
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: mock(async () => { throw new Error('denied') }) },
+    })
+
+    await renderWikiPanel()
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'user.md' }), {
+      clientX: 20,
+      clientY: 20,
+    })
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Copy path' }))
+
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: originalClipboard,
+    })
+  })
 })

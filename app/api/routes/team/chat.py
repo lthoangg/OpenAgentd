@@ -14,11 +14,8 @@ from sse_starlette.sse import EventSourceResponse
 
 from app.agent.agent_loop import Agent
 from app.agent.mode.team.member import TeamMemberBase
-from app.agent.mode.team.team import (
-    ContinuePreconditionError,
-    is_loop_command,
-    parse_loop_command,
-)
+from app.agent.mode.team.loop_commands import is_loop_command, parse_loop_command
+from app.agent.mode.team.team import ContinuePreconditionError
 from app.agent.tools.builtin.skill import discover_skills
 from app.api.deps import ChatFormDep, DbSession, TeamDep
 from app.api.routes.team._helpers import (

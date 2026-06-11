@@ -64,7 +64,8 @@ Slash commands live in the composer picker only; the command palette does not li
   `/continue` resumes the last assistant response; `/compact` runs the session summarizer; `/undo` reverts the latest user turn, restores its workspace snapshot, and puts the text back in the composer; `/redo` restores all undone turns sequentially, replaying the workspace forward to the live tip.
 - **Built-in prompt commands** (`/init`, `/loop <prompt>`, `/loop:{subcommand}`) are handled by
   OpenAgentd. `/init` renders through the backend command endpoint. `/loop:*`
-  is coding-mode only and controls a Ralph Wiggum loop for the current session.
+  parsing lives in `app/agent/mode/team/loop_commands.py`, is coding-mode only,
+  and controls a Ralph Wiggum loop for the current session.
   Use `/loop:set 5|10|20|50` to set the loop budget, `/loop <prompt>` to
   start, then `/loop:pause`, `/loop:resume`, or `/loop:stop` to control it.
   The control forms are transport commands, not chat turns; only `<prompt>`

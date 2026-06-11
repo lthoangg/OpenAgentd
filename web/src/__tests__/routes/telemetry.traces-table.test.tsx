@@ -3,10 +3,6 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 
 import type { TraceListItem } from '@/api/client'
 
-mock.module('@/hooks/use-mobile', () => ({
-  useIsMobile: () => true,
-}))
-
 mock.module('@/hooks/use-platform', () => ({
   usePlatform: () => ({ isTauri: true, os: 'ios' }),
 }))
@@ -51,7 +47,7 @@ describe('TracesTable', () => {
     expect(onSelect).toHaveBeenCalledWith(trace.trace_id)
   })
 
-  it('clears a stale trace long-press timer when touch starts again', () => {
+  it('clears a stale trace long-press timer when touch starts again on tablet-sized Tauri mobile', () => {
     const originalClearTimeout = window.clearTimeout
     const clearTimeout = mock((...args: unknown[]) => originalClearTimeout(args[0] as number | undefined))
     window.clearTimeout = clearTimeout as typeof window.clearTimeout

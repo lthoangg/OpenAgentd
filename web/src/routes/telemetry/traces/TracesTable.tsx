@@ -15,7 +15,6 @@ import {
   timeAgo,
 } from '@/utils/telemetryFormat'
 import { Td, Th } from '../primitives'
-import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
 import { mediumHapticFeedback } from '@/lib/haptics'
 
@@ -77,7 +76,6 @@ function TraceRow({
   now: number
   onSelect: (traceId: string) => void
 }) {
-  const isMobile = useIsMobile()
   const { isTauri, os } = usePlatform()
   const isTauriMobile = isTauri && (os === 'ios' || os === 'android')
   const [actionsPoint, setActionsPoint] = useState<{ x: number; y: number } | null>(null)
@@ -107,7 +105,7 @@ function TraceRow({
           setActionsPoint({ x: event.clientX, y: event.clientY })
         }}
         onPointerDown={(event) => {
-          if (!isMobile || !isTauriMobile || event.pointerType === 'mouse') return
+          if (!isTauriMobile || event.pointerType === 'mouse') return
           clearLongPress()
           longPressStartRef.current = { x: event.clientX, y: event.clientY }
           longPressTimerRef.current = window.setTimeout(() => {

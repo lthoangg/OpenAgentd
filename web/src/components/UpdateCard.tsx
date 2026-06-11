@@ -56,9 +56,18 @@ export function UpdateCard() {
           if (dismissedUntilNextCheckRef.current && (event.payload.status === 'available' || event.payload.status === 'downloaded')) return
           setStatus(event.payload)
         })
+        if (cancelled) {
+          void unlistenStatus()
+          return
+        }
         const unlistenCheck = await listen('updater-check-requested', () => {
           void checkForUpdates(false)
         })
+        if (cancelled) {
+          void unlistenStatus()
+          void unlistenCheck()
+          return
+        }
         cleanup = () => {
           void unlistenStatus()
           void unlistenCheck()

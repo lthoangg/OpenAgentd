@@ -365,7 +365,13 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
     [allBlocks],
   )
   const totalLen = allBlocks.length
-  const latestUserBlockId = [...allBlocks].reverse().find(isDirectUserBlock)?.id
+  const latestUserBlockId = useMemo(() => {
+    for (let i = allBlocks.length - 1; i >= 0; i--) {
+      const block = allBlocks[i]
+      if (isDirectUserBlock(block)) return block.id
+    }
+    return undefined
+  }, [allBlocks])
   const turnItems = useMemo(() => partitionTurns(allBlocks), [allBlocks])
   const hiddenTurnCount = Math.max(0, turnItems.length - renderedTurnCount)
   const visibleTurnItems = hiddenTurnCount > 0 ? turnItems.slice(hiddenTurnCount) : turnItems

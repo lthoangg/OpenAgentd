@@ -663,6 +663,22 @@ class TestMCPManagerOAuth:
                 await manager.stop()
 
     @pytest.mark.asyncio
+    async def test_restart_server_uses_custom_ready_timeout(self) -> None:
+        manager = MCPManager()
+
+        async def mock_run_server(_name, _server_cfg, runner):
+            await runner.shutdown.wait()
+
+        with patch("app.agent.mcp.manager.load_config") as mock_load:
+            mock_load.return_value = MCPConfig(
+                servers={"test": StdioServerConfig(command="echo", enabled=True)}
+            )
+            with patch.object(manager, "_run_server", side_effect=mock_run_server):
+                await manager.restart_server("test", ready_timeout=0.01)
+
+        await manager.stop()
+
+    @pytest.mark.asyncio
     async def test_restart_server_missing_raises_keyerror(self) -> None:
         """MCPManager.restart_server() raises KeyError for missing server."""
         manager = MCPManager()

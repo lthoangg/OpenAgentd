@@ -355,7 +355,7 @@ async def connect_oauth(name: str) -> ServerStatusResponse:
     allow_interactive_oauth(name)
     try:
         clear_cached_oauth(name)
-        status = await mcp_manager.restart_server(name)
+        status = await mcp_manager.restart_server(name, ready_timeout=300.0)
     finally:
         disallow_interactive_oauth(name)
     if status.state != "ready":
@@ -363,6 +363,7 @@ async def connect_oauth(name: str) -> ServerStatusResponse:
             status_code=409,
             detail=status.error or f"MCP server '{name}' did not connect.",
         )
+    save_config(cfg)
     return _to_response(status, server_cfg)
 
 

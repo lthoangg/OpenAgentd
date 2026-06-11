@@ -29,11 +29,17 @@ import {
 import { Button } from '@/components/ui/button'
 import { useTeamAgentsQuery } from '@/queries/useAgentsQuery'
 import { useRegistryQuery } from '@/queries'
+import {
+  useConnectMcpOAuthMutation,
+  useMcpServersQuery,
+  useUpdateMcpServerMutation,
+} from '@/queries/useMcpQuery'
 import type {
   AgentInfo,
   AgentCapabilities as AgentCapabilitiesType,
   TeamAgentInfo,
 } from '@/api/types'
+import type { ServerStatus } from '@/api/client'
 
 const THINKING_LEVELS = [
   { value: '', label: 'Default' },
@@ -234,9 +240,17 @@ function ToolGroupHeader({
 function Tools({
   tools,
   mcpServers,
+  serverStatuses,
+  onToggleServer,
+  onConnectOAuth,
+  busyServer,
 }: {
   tools: AgentInfo['tools']
   mcpServers: string[]
+  serverStatuses: Map<string, ServerStatus>
+  onToggleServer: (server: ServerStatus) => void
+  onConnectOAuth: (server: ServerStatus) => void
+  busyServer: string | null
 }) {
   const [query, setQuery] = useState('')
   const showSearch = tools.length > TOOL_SEARCH_THRESHOLD
@@ -295,9 +309,41 @@ function Tools({
             No tools match “{query}”.
           </p>
         ) : (
-          groups.map((group) => (
+          groups.map((group) => {
+            const status = group.server ? serverStatuses.get(group.server) : undefined
+            return (
             <div key={group.server ?? '__builtin__'}>
               <ToolGroupHeader server={group.server} count={group.tools.length} />
+              {status && (
+                <div className="mb-2 flex flex-wrap items-center gap-2 px-5">
+                  <span className="rounded-md bg-(--bg-key) px-2 py-0.5 text-[10px] font-medium text-(--color-text-muted)">
+                    {status.enabled ? (status.state === 'auth_required' ? 'OAuth required' : status.state) : 'disabled'}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={!status.config || busyServer === status.name}
+                    onClick={() => onToggleServer(status)}
+                  >
+                    {status.enabled ? 'Disable' : 'Enable'}
+                  </Button>
+                  {status.transport === 'http' && status.config?.transport === 'http' && status.config.oauth && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={!status.enabled || busyServer === status.name}
+                      onClick={() => onConnectOAuth(status)}
+                    >
+                      Connect OAuth
+                    </Button>
+                  )}
+                  {status.error && status.state !== 'auth_required' && (
+                    <span className="text-[11px] text-(--color-error)">{status.error}</span>
+                  )}
+                </div>
+              )}
               <div className="space-y-1.5 px-5">
                 {group.tools.length === 0 ? (
                   <p className="text-xs italic text-(--color-text-muted)">
@@ -310,7 +356,8 @@ function Tools({
                 )}
               </div>
             </div>
-          ))
+            )
+          })
         )}
       </div>
     </section>
@@ -589,10 +636,16 @@ export function SessionSettingsPanel({
   onClose,
 }: SessionSettingsPanelProps) {
   const { data, isLoading, refetch } = useTeamAgentsQuery(workspace)
+  const mcpServersQuery = useMcpServersQuery()
+  const updateMcpServer = useUpdateMcpServerMutation()
+  const connectMcpOAuth = useConnectMcpOAuthMutation()
 
   // Refresh on open
   useEffect(() => {
-    if (open) refetch()
+    if (open) {
+      refetch()
+      mcpServersQuery.refetch()
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
@@ -621,6 +674,28 @@ export function SessionSettingsPanel({
   const leadFromApi = allAgents.find((a) => a.is_lead)
   const leadName = display.length > 1 ? (leadFromApi?.name ?? display[0]?.name ?? null) : null
   const leadAgent = (leadName ? byName.get(leadName) : null) ?? display[0]
+  const mcpServerStatuses = useMemo(
+    () => new Map((mcpServersQuery.data?.servers ?? []).map((server) => [server.name, server])),
+    [mcpServersQuery.data?.servers],
+  )
+  const busyServer = updateMcpServer.isPending
+    ? updateMcpServer.variables.name
+    : connectMcpOAuth.isPending
+      ? connectMcpOAuth.variables
+      : null
+  const toggleMcpServer = (server: ServerStatus) => {
+    if (!server.config) return
+    updateMcpServer.mutate(
+      {
+        name: server.name,
+        server: { ...server.config, enabled: !server.enabled },
+      },
+      { onSettled: () => refetch() },
+    )
+  }
+  const connectMcpServerOAuth = (server: ServerStatus) => {
+    connectMcpOAuth.mutate(server.name, { onSettled: () => refetch() })
+  }
 
   return (
     <AnimatePresence>
@@ -708,7 +783,14 @@ export function SessionSettingsPanel({
                 <Capabilities caps={leadAgent.capabilities} tools={leadAgent.tools} />
               )}
 
-              <Tools tools={leadAgent.tools} mcpServers={leadAgent.mcp_servers ?? []} />
+              <Tools
+                tools={leadAgent.tools}
+                mcpServers={leadAgent.mcp_servers ?? []}
+                serverStatuses={mcpServerStatuses}
+                onToggleServer={toggleMcpServer}
+                onConnectOAuth={connectMcpServerOAuth}
+                busyServer={busyServer}
+              />
             </>
           )}
         </div>

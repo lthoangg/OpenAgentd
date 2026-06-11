@@ -293,8 +293,7 @@ export function SchedulerPanel({
     if (open) {
       tasksQuery.refetch()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open])
+  }, [open, tasksQuery.refetch])
 
   const tasks = tasksQuery.data?.tasks ?? []
 

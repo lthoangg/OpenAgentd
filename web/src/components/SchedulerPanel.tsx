@@ -558,8 +558,17 @@ function TaskListItem({
 
   return (
     <>
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onSelect}
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          onSelect()
+        }
+      }}
       onContextMenu={(event) => {
         if (isTauriMobile) return
         event.preventDefault()
@@ -669,7 +678,7 @@ function TaskListItem({
           </Button>
         </div>
       </div>
-    </button>
+    </div>
     {actionsPoint && (
       <div
         className="fixed inset-0 z-[70]"

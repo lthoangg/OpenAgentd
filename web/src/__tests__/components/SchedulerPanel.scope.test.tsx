@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { SchedulerPanel } from '@/components/SchedulerPanel'
 import type { ScheduledTaskResponse } from '@/api/types'
 import '@testing-library/jest-dom'
@@ -116,13 +117,25 @@ describe('SchedulerPanel — task visibility', () => {
     expect(screen.getByText('All scheduled tasks')).toBeInTheDocument()
   })
 
+  it('selects a task row from the keyboard without nesting action buttons', async () => {
+    const user = userEvent.setup()
+    renderPanel([task({ name: 'Keyboard reminder' })])
+
+    const row = await screen.findByRole('button', { name: /Keyboard reminder/i })
+    expect(row.tagName).toBe('DIV')
+    row.focus()
+    await user.keyboard('{Enter}')
+
+    expect(await screen.findByRole('heading', { name: 'Keyboard reminder' })).toBeInTheDocument()
+  })
+
   it('cancels mobile task long-press actions when the row unmounts', async () => {
     isMobile = true
     platformOs = 'ios'
     const view = renderPanel([task({ name: 'Mobile reminder' })])
 
-    const row = await screen.findByText('Mobile reminder')
-    fireEvent.pointerDown(row.closest('button')!, {
+    const row = await screen.findByRole('button', { name: /Mobile reminder/i })
+    fireEvent.pointerDown(row, {
       pointerType: 'touch',
       clientX: 40,
       clientY: 40,

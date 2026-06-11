@@ -711,6 +711,7 @@ function OAuthLoginDialog({
   const [submittingCode, setSubmittingCode] = useState(false)
   const openedUrlRef = useRef<string | null>(null)
   const successHandledRef = useRef(false)
+  const codeCopiedTimerRef = useRef<number | null>(null)
   const queryClient = useQueryClient()
   const latest = events.at(-1)
   const deviceEvent = events.find((event) => event.event === 'device_code')
@@ -722,11 +723,19 @@ function OAuthLoginDialog({
     try {
       await navigator.clipboard.writeText(deviceEvent.user_code)
       setCodeCopied(true)
-      window.setTimeout(() => setCodeCopied(false), 1500)
+      if (codeCopiedTimerRef.current !== null) window.clearTimeout(codeCopiedTimerRef.current)
+      codeCopiedTimerRef.current = window.setTimeout(() => {
+        codeCopiedTimerRef.current = null
+        setCodeCopied(false)
+      }, 1500)
     } catch {
       // Copy is best-effort; the code remains visible for manual entry.
     }
   }
+
+  useEffect(() => () => {
+    if (codeCopiedTimerRef.current !== null) window.clearTimeout(codeCopiedTimerRef.current)
+  }, [])
 
   useEffect(() => {
     if (!open) return undefined

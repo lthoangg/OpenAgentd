@@ -97,6 +97,57 @@ describe('ProvidersSettingsPage', () => {
     expect(screen.queryByText('Failed')).toBeNull()
   })
 
+  it('clears pending OAuth device code copy feedback timers on unmount', async () => {
+    const originalClearTimeout = window.clearTimeout
+    const clearTimeout = mock((...args: unknown[]) => originalClearTimeout(args[0] as number | undefined))
+    window.clearTimeout = clearTimeout as typeof window.clearTimeout
+
+    try {
+      server.use(
+        http.get('http://localhost/api/settings/providers', () => HttpResponse.json({
+          has_any_configured: true,
+          providers: [
+            {
+              id: 'copilot',
+              label: 'Copilot',
+              description: 'Copilot OAuth provider',
+              kind: 'oauth',
+              credentials: [],
+              env_var: '',
+              env_vars: [],
+              fallback_models: [],
+              oauth_command: '',
+              docs_url: '',
+              is_configured: false,
+              is_saved: true,
+              is_reachable: false,
+            },
+          ],
+        })),
+        http.get('http://localhost/api/auth/copilot/login', () => new HttpResponse(
+          'event: device_code\ndata: {"user_code":"ABCD-1234","verification_uri":"https://github.com/login/device"}\n\n',
+          { headers: { 'Content-Type': 'text/event-stream' } },
+        )),
+      )
+
+      const view = renderPage()
+
+      expect(await screen.findByText('Copilot')).toBeTruthy()
+      fireEvent.click(screen.getByRole('button', { name: /Connect/i }))
+      const copyCode = await screen.findByLabelText('Copy device code')
+      await act(async () => {
+        fireEvent.click(copyCode)
+        await Promise.resolve()
+      })
+      clearTimeout.mockClear()
+      view.unmount()
+
+      expect(clearTimeout.mock.calls.length).toBeGreaterThanOrEqual(1)
+    } finally {
+      window.clearTimeout = originalClearTimeout
+    }
+  })
+
   it('shows GitHub device-code copy for Copilot OAuth', async () => {
     server.use(
       http.get('http://localhost/api/settings/providers', () => HttpResponse.json({

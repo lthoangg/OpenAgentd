@@ -593,8 +593,7 @@ export function SessionSettingsPanel({
   // Refresh on open
   useEffect(() => {
     if (open) refetch()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open])
+  }, [open, refetch])
 
   // Close on Escape (only while open)
   useEffect(() => {

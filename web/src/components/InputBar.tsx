@@ -372,9 +372,13 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     textareaRef.current = node
   }, [])
 
+  const slashFilter = !shellMode && value.startsWith('/') && !value.includes(' ')
+    ? value.slice(1).toLowerCase()
+    : null
+
   const submit = useCallback(() => {
     const trimmed = value.trim()
-    if (!trimmed || disabled) return
+    if (!trimmed || disabled || slashFilter !== null) return
     const submitted = shellMode ? `!${trimmed}` : trimmed
     onSubmit(submitted, files.length > 0 ? files : undefined)
     setLocalHistory((prev) =>
@@ -398,6 +402,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     onSubmit,
     files,
     shellMode,
+    slashFilter,
   ])
 
   const buildAcceptString = useCallback((): string => {
@@ -500,10 +505,6 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   }, [addFile, isFileTypeAllowed])
 
   // ── Slash command filtering ────────────────────────────────────────────────
-
-  const slashFilter = !shellMode && value.startsWith('/') && !value.includes(' ')
-    ? value.slice(1).toLowerCase()
-    : null
 
   /**
    * ``filteredSlashCommands`` — the visible list shown in the popover.
@@ -801,7 +802,15 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       }
       if (e.key === 'Enter' || e.key === 'Tab') {
         e.preventDefault()
-        executeSlashCommand(selectableSlashCommands[clampedIndex])
+        const selected = selectableSlashCommands[clampedIndex]
+        const selectedTokens = [selected.id, selected.displayName, selected.insertText]
+          .filter((token): token is string => Boolean(token))
+          .flatMap((token) => [token, token.split(/[/:]/, 1)[0]])
+          .map((token) => token.toLowerCase())
+        const exactCommand = selectedTokens.includes(slashFilter ?? '')
+        if (e.key === 'Tab' || slashMenuIndex !== 0 || exactCommand) {
+          executeSlashCommand(selected)
+        }
         return
       }
       if (e.key === 'Escape') {

@@ -3,7 +3,7 @@
  * clickable; the parent owns the selection state.
  */
 
-import { useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ChevronRight, Copy } from 'lucide-react'
 import type { TraceListItem } from '@/api/client'
 import {
@@ -84,11 +84,13 @@ function TraceRow({
   const longPressTimerRef = useRef<number | null>(null)
   const longPressStartRef = useRef<{ x: number; y: number } | null>(null)
 
-  const clearLongPress = () => {
+  const clearLongPress = useCallback(() => {
     if (longPressTimerRef.current !== null) window.clearTimeout(longPressTimerRef.current)
     longPressTimerRef.current = null
     longPressStartRef.current = null
-  }
+  }, [])
+
+  useEffect(() => clearLongPress, [clearLongPress])
 
   const openTrace = () => onSelect(trace.trace_id)
   const copyTraceId = async () => {
@@ -106,6 +108,7 @@ function TraceRow({
         }}
         onPointerDown={(event) => {
           if (!isMobile || !isTauriMobile || event.pointerType === 'mouse') return
+          clearLongPress()
           longPressStartRef.current = { x: event.clientX, y: event.clientY }
           longPressTimerRef.current = window.setTimeout(() => {
             longPressTimerRef.current = null

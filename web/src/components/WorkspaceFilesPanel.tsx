@@ -432,7 +432,12 @@ export function CopyContentsButton({
 }) {
   const [copied, setCopied] = useState(false)
   const [busy, setBusy] = useState(false)
+  const copiedTimerRef = useRef<number | null>(null)
   const tooLarge = file.size > MAX_TEXT_PREVIEW_BYTES
+
+  useEffect(() => () => {
+    if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current)
+  }, [])
 
   const handleCopy = async () => {
     if (busy || tooLarge) return
@@ -443,7 +448,11 @@ export function CopyContentsButton({
       const text = await res.text()
       await navigator.clipboard.writeText(text)
       setCopied(true)
-      window.setTimeout(() => setCopied(false), 1500)
+      if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current)
+      copiedTimerRef.current = window.setTimeout(() => {
+        copiedTimerRef.current = null
+        setCopied(false)
+      }, 1500)
     } catch {
       // Swallow — the button is best-effort.  Failure is rare (clipboard
       // permission denied, or the media proxy returned non-2xx) and the user

@@ -1149,7 +1149,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
                   role="option"
                   aria-selected={active}
                   ref={(node) => { slashOptionRefs.current[idx] = node }}
-                  onMouseDown={(e) => { e.preventDefault(); executeSlashCommand(cmd) }}
+                  onPointerDown={(e) => { e.preventDefault(); executeSlashCommand(cmd) }}
                   className={`flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors ${
                     active
                       ? 'bg-(--bg-key) text-(--color-text)'
@@ -1191,7 +1191,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
                   ref={(node) => { snippetOptionRefs.current[idx] = node }}
                   role="option"
                   aria-selected={active}
-                  onMouseDown={(e) => { e.preventDefault(); void insertSnippet(cmd) }}
+                  onPointerDown={(e) => { e.preventDefault(); void insertSnippet(cmd) }}
                   className={`flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors ${
                     active
                       ? 'bg-(--bg-key) text-(--color-text)'
@@ -1238,10 +1238,10 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
                   ref={(node) => { mentionOptionRefs.current[idx] = node }}
                   role="option"
                   aria-selected={idx === clampedMentionIndex}
-                  // ``onMouseDown`` + ``preventDefault`` runs before the
-                  // textarea's ``onBlur`` clears the picker, so the click
-                  // actually reaches our handler.
-                  onMouseDown={(e) => { e.preventDefault(); insertMention(ref) }}
+                  // ``onPointerDown`` + ``preventDefault`` runs before the
+                  // textarea's ``onBlur`` clears the picker, so touch, pen,
+                  // and mouse activation all reach our handler.
+                  onPointerDown={(e) => { e.preventDefault(); insertMention(ref) }}
                   className={`flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors ${
                     idx === clampedMentionIndex
                       ? 'bg-(--bg-key) text-(--color-text)'

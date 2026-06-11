@@ -151,7 +151,7 @@ Both footer status rows use `flex-wrap items-center justify-between gap-x-3 gap-
 
 ## Shell persistence
 
-The root route stores/restores the last route on a best-effort basis. `localStorage` failures are swallowed so restricted WebViews, private browsing, or mobile shells with disabled storage still boot into the app instead of crashing.
+The root route stores/restores the last route on a best-effort basis. Updater dismissal state uses the same pattern. `localStorage` failures are swallowed so restricted WebViews, private browsing, or mobile shells with disabled storage still boot into the app instead of crashing.
 
 ## Shared primitive guards
 

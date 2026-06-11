@@ -166,20 +166,32 @@ function ReleaseNotesButton({ fallbackNotes, version }: { fallbackNotes?: string
 }
 
 function isDismissedUntilNextInterval(): boolean {
-  const dismissedUntil = Number(window.localStorage.getItem(DISMISSED_UNTIL_KEY) ?? 0)
-  if (!Number.isFinite(dismissedUntil) || dismissedUntil <= Date.now()) {
-    clearDismissedUntilNextInterval()
+  try {
+    const dismissedUntil = Number(window.localStorage.getItem(DISMISSED_UNTIL_KEY) ?? 0)
+    if (!Number.isFinite(dismissedUntil) || dismissedUntil <= Date.now()) {
+      clearDismissedUntilNextInterval()
+      return false
+    }
+    return true
+  } catch {
     return false
   }
-  return true
 }
 
 function persistDismissedUntilNextInterval() {
-  window.localStorage.setItem(DISMISSED_UNTIL_KEY, String(Date.now() + CHECK_INTERVAL_MS))
+  try {
+    window.localStorage.setItem(DISMISSED_UNTIL_KEY, String(Date.now() + CHECK_INTERVAL_MS))
+  } catch {
+    // Storage can be unavailable in restricted WebViews/private contexts.
+  }
 }
 
 function clearDismissedUntilNextInterval() {
-  window.localStorage.removeItem(DISMISSED_UNTIL_KEY)
+  try {
+    window.localStorage.removeItem(DISMISSED_UNTIL_KEY)
+  } catch {
+    // Storage can be unavailable in restricted WebViews/private contexts.
+  }
 }
 
 function titleForStatus(status: UpdateStatus): string {

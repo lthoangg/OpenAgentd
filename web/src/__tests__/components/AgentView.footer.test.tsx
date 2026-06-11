@@ -81,6 +81,21 @@ describe("AgentView — message windowing", () => {
 
     expect(screen.getByText("message 0")).toBeTruthy()
   })
+
+  it("renders a large thread window without mounting older hidden turns", () => {
+    const blocks = Array.from({ length: 160 }, (_, i) => [
+      makeUserBlock(`u${i}`, `question ${i}`),
+      makeTextBlock(`a${i}`, `answer ${i}`),
+    ]).flat()
+
+    renderStream({ blocks })
+
+    expect(screen.queryByText("question 0")).toBeNull()
+    expect(screen.queryByText("answer 0")).toBeNull()
+    expect(screen.getByText("question 159")).toBeTruthy()
+    expect(screen.getByText("answer 159")).toBeTruthy()
+    expect(screen.getByRole("button", { name: /show 80 earlier turns/i })).toBeTruthy()
+  })
 })
 
 describe("AgentView — AssistantFooter", () => {

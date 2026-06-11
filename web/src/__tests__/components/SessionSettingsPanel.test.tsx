@@ -46,7 +46,10 @@ mock.module('@/queries/useAgentsQuery', () => ({
 }))
 
 mock.module('@/queries', () => ({
-  useRegistryQuery: () => ({ data: { providers: [], models: [{ id: 'openai:gpt-4.1' }] }, isLoading: false }),
+  useRegistryQuery: () => ({
+    data: { providers: [], models: [{ id: 'openai:gpt-4.1' }, { id: 'openai:gpt-4.2' }] },
+    isLoading: false,
+  }),
 }))
 
 import { SessionSettingsPanel } from '@/components/SessionSettingsPanel'
@@ -63,6 +66,30 @@ describe('SessionSettingsPanel', () => {
 
     view.rerender(<SessionSettingsPanel open={true} onClose={() => {}} />)
     expect(refetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('supports touch pointer selection in the model picker', () => {
+    const onChange = mock(() => {})
+    render(
+      <SessionSettingsPanel
+        open
+        onClose={() => {}}
+        onSessionModelSettingsChange={onChange}
+      />,
+    )
+
+    const modelInput = screen.getByRole('combobox', { name: /search session model/i })
+    fireEvent.change(modelInput, { target: { value: '4.2' } })
+    const modelOption = screen
+      .getAllByRole('button')
+      .find((button) => button.textContent === 'openai:gpt-4.2')
+    expect(modelOption).toBeTruthy()
+    fireEvent.pointerEnter(modelOption!, { pointerType: 'touch' })
+    fireEvent.pointerDown(modelOption!, { pointerType: 'touch' })
+    fireEvent.click(modelOption!)
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(onChange).toHaveBeenCalledWith('openai:gpt-4.2', null, false)
   })
 
   it('supports touch pointer selection in the thinking picker', () => {

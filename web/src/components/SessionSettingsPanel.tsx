@@ -484,8 +484,8 @@ function SessionModelSettings({
                   <button
                     type="button"
                     key={`${index}:${model.id}`}
-                    onMouseDown={(e) => e.preventDefault()}
-                    onMouseEnter={() => setActiveModelIndex(index)}
+                    onPointerDown={(e) => e.preventDefault()}
+                    onPointerEnter={() => setActiveModelIndex(index)}
                     onClick={() => selectModel(model.id)}
                     className={`block w-full rounded-sm px-2 py-1.5 text-left font-mono text-xs text-(--color-text) transition-colors ${index === activeModelIndex ? 'bg-(--bg-key)' : 'hover:bg-(--bg-key)'}`}
                   >

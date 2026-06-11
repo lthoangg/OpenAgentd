@@ -11,6 +11,7 @@ const image: WorkspaceFileInfo = { path: 'assets/logo.png', name: 'logo.png', si
 const binary: WorkspaceFileInfo = { path: 'dist/app.bin', name: 'app.bin', size: 100, mtime: 1, mime: 'application/octet-stream' }
 const filesResponse = { workspace: WORKSPACE, truncated: false, files: [readme, image, binary] }
 let diffResponse = { workspace: WORKSPACE, is_git_repo: false, diff: '', untracked: [] as string[] }
+let isMacOverlay = false
 
 const Icon = () => null
 mock.module('lucide-react', () => ({
@@ -27,6 +28,10 @@ mock.module('lucide-react', () => ({
   X: Icon,
 }))
 mock.module('@/hooks/useReducedMotion', () => ({ useReducedMotion: () => false }))
+mock.module('@/hooks/use-platform', () => ({
+  usePlatform: () => ({ isTauri: isMacOverlay, os: isMacOverlay ? 'macos' : 'linux', isMacOverlay }),
+  getPlatform: () => ({ isTauri: isMacOverlay, os: isMacOverlay ? 'macos' : 'linux', isMacOverlay }),
+}))
 mock.module('framer-motion', () => ({
   motion: {
     aside: ({ children, className, 'aria-label': ariaLabel }: { children: React.ReactNode; className?: string; 'aria-label'?: string }) => (
@@ -36,6 +41,7 @@ mock.module('framer-motion', () => ({
 }))
 beforeEach(() => {
   diffResponse = { workspace: WORKSPACE, is_git_repo: false, diff: '', untracked: [] }
+  isMacOverlay = false
   globalThis.fetch = mock(async (input: unknown) => {
     const url = String(input)
     if (url.includes('/workspace/files/list')) return new Response(JSON.stringify(filesResponse))
@@ -162,6 +168,24 @@ describe('Coding workspace two-layer file preview', () => {
     expect(panel.className).toContain('mobile-safe-top')
     expect(panel.className).toContain('fixed')
     expect(panel.className).toContain('md:relative')
+  })
+
+  it('does not extend the desktop workspace panel into the macOS overlay header', async () => {
+    isMacOverlay = true
+    await renderWorkspacePanel(mock(() => {}), null, false)
+
+    const panel = screen.getByRole('complementary')
+    expect(panel.className).toContain('h-full')
+    expect(panel.className).not.toContain('-mt-10')
+    expect(panel.className).not.toContain('h-[calc(100%+2.5rem)]')
+  })
+
+  it('keeps the desktop workspace panel extended under non-macOS headers', async () => {
+    await renderWorkspacePanel(mock(() => {}), null, false)
+
+    const panel = screen.getByRole('complementary')
+    expect(panel.className).toContain('-mt-10')
+    expect(panel.className).toContain('h-[calc(100%+2.5rem)]')
   })
 
   it('positions the mobile file viewer below the app header and keeps the preview full-width', async () => {

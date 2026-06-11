@@ -456,7 +456,10 @@ class TestCmdUpgrade:
         monkeypatch.setattr(
             upgrade_mod,
             "_upgrade_command",
-            lambda: ("brew", ["brew", "upgrade", "openagentd"]),
+            lambda: (
+                "brew",
+                ["brew", "upgrade", "--formula", "lthoangg/tap/openagentd"],
+            ),
         )
         monkeypatch.setattr(
             upgrade_mod, "_run", lambda command: run_calls.append(command) or 0
@@ -465,7 +468,8 @@ class TestCmdUpgrade:
         upgrade_mod.cmd_upgrade(args)
 
         assert run_calls == [
-            ["brew", "upgrade", "openagentd"],
+            ["brew", "update"],
+            ["brew", "upgrade", "--formula", "lthoangg/tap/openagentd"],
             ["brew", "link", "lthoangg/tap/openagentd"],
         ]
 
@@ -540,7 +544,10 @@ class TestCmdUpgrade:
         monkeypatch.setattr(
             upgrade_mod,
             "_upgrade_command",
-            lambda: ("brew", ["brew", "upgrade", "openagentd"]),
+            lambda: (
+                "brew",
+                ["brew", "upgrade", "--formula", "lthoangg/tap/openagentd"],
+            ),
         )
         monkeypatch.setattr(upgrade_mod.shutil, "which", lambda _name: None)
         monkeypatch.setattr(upgrade_mod.sys, "argv", [__file__])
@@ -551,7 +558,8 @@ class TestCmdUpgrade:
         upgrade_mod.cmd_upgrade(args)
 
         assert run_calls == [
-            ["brew", "upgrade", "openagentd"],
+            ["brew", "update"],
+            ["brew", "upgrade", "--formula", "lthoangg/tap/openagentd"],
             ["brew", "link", "lthoangg/tap/openagentd"],
             [__file__, "start"],
         ]

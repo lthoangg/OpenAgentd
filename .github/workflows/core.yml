@@ -22,6 +22,13 @@ on:
       - ".github/workflows/release.yml"
       - ".github/workflows/release-desktop.yml"
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   # Opt JS actions into Node.js 24 ahead of the June 2026 forced switch.
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true

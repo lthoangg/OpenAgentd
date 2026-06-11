@@ -1,6 +1,6 @@
-import { describe, it, expect, afterEach, beforeEach } from 'bun:test'
+import { describe, it, expect, afterEach, beforeEach, mock } from 'bun:test'
 import { createRef, useRef } from 'react'
-import { render, screen, cleanup, act } from '@testing-library/react'
+import { render, screen, cleanup, act, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { FloatingInputBar } from '@/components/FloatingInputBar'
 import { useTeamStore } from '@/stores/useTeamStore'
@@ -199,6 +199,23 @@ describe('FloatingInputBar', () => {
 
     expect(screen.queryByRole('button', { name: /2 messages awaiting/i })).toBeNull()
     expect(screen.queryByText('first queued message')).toBeNull()
+  })
+
+  it('clears a pending blur collapse before scheduling a replacement', () => {
+    render(<Harness />)
+    const textarea = screen.getByRole('textbox', { name: 'Message input' })
+    const originalClearTimeout = window.clearTimeout
+    const clearTimeout = mock((...args: unknown[]) => originalClearTimeout(args[0] as number | undefined))
+    window.clearTimeout = clearTimeout as typeof window.clearTimeout
+
+    try {
+      fireEvent.blur(textarea)
+      fireEvent.blur(textarea)
+
+      expect(clearTimeout).toHaveBeenCalledTimes(1)
+    } finally {
+      window.clearTimeout = originalClearTimeout
+    }
   })
 
   it('expands and focuses the textarea through its imperative focus handle', async () => {

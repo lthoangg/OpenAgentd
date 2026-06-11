@@ -210,6 +210,10 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
 
     const handleBlur = useCallback((canMinimize: boolean) => {
       if (!canMinimize) return
+      if (blurTimerRef.current) {
+        clearTimeout(blurTimerRef.current)
+        blurTimerRef.current = null
+      }
       // Short delay so a click on a sibling control inside the bar
       // (e.g. the attach picker, mic) doesn't trigger a collapse mid-action.
       blurTimerRef.current = setTimeout(() => {

@@ -25,7 +25,7 @@
  * run completes.
  */
 
-import { useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Save, Trash2, FileText, Folder, Loader2, ArrowLeft, ChevronDown, ChevronRight } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -368,11 +368,13 @@ function WikiFileRow({
   const name = file.path.split('/').pop() ?? file.path
   const isActive = file.path === selectedPath
 
-  const clearLongPress = () => {
+  const clearLongPress = useCallback(() => {
     if (longPressTimerRef.current !== null) window.clearTimeout(longPressTimerRef.current)
     longPressTimerRef.current = null
     longPressStartRef.current = null
-  }
+  }, [])
+
+  useEffect(() => clearLongPress, [clearLongPress])
 
   const copyPath = async () => {
     await navigator.clipboard.writeText(file.path)

@@ -4,10 +4,16 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 let isMobile = false
+let platformOs: string | null = null
 const closePanel = mock(() => {})
 
 mock.module('@/hooks/use-mobile', () => ({
   useIsMobile: () => isMobile,
+}))
+
+mock.module('@/hooks/use-platform', () => ({
+  usePlatform: () => ({ isTauri: Boolean(platformOs), os: platformOs, isMacOverlay: platformOs === 'macos' }),
+  getPlatform: () => ({ isTauri: Boolean(platformOs), os: platformOs, isMacOverlay: platformOs === 'macos' }),
 }))
 
 mock.module('@/hooks/useModalFocus', () => ({
@@ -71,6 +77,7 @@ describe('WikiPanel', () => {
     cleanup()
     closePanel.mockClear()
     isMobile = false
+    platformOs = null
   })
 
   async function renderWikiPanel() {
@@ -96,5 +103,22 @@ describe('WikiPanel', () => {
     fireEvent.click(importsButton)
     expect(importsButton.getAttribute('aria-expanded')).toBe('true')
     expect(screen.getByRole('button', { name: 'article.md' })).toBeTruthy()
+  })
+
+  it('cancels mobile wiki long-press actions when the row unmounts', async () => {
+    isMobile = true
+    platformOs = 'ios'
+    const view = await renderWikiPanel()
+
+    const fileButton = screen.getByRole('button', { name: 'user.md' })
+    fireEvent.pointerDown(fileButton, {
+      pointerType: 'touch',
+      clientX: 40,
+      clientY: 40,
+    })
+    view.unmount()
+
+    await new Promise((resolve) => window.setTimeout(resolve, 650))
+    expect(screen.queryByLabelText('Actions for user.md')).not.toBeTruthy()
   })
 })

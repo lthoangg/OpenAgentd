@@ -12,7 +12,7 @@ use std::time::Duration;
 use tauri::{
     menu::{AboutMetadataBuilder, Menu, MenuItem, PredefinedMenuItem, SubmenuBuilder},
     tray::TrayIconBuilder,
-    AppHandle, Emitter, LogicalSize, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder,
+    AppHandle, Emitter, Manager, PhysicalSize, RunEvent, WebviewUrl, WebviewWindowBuilder,
     WindowEvent, Wry,
 };
 use tauri_plugin_dialog::DialogExt;
@@ -72,8 +72,8 @@ struct AppBackendConfig {
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
 struct SavedWindowState {
-    width: f64,
-    height: f64,
+    width: u32,
+    height: u32,
 }
 
 #[derive(Clone, Serialize)]
@@ -1303,7 +1303,7 @@ fn load_window_state(app: &AppHandle) -> Result<Option<SavedWindowState>> {
     let bytes = std::fs::read(&path).with_context(|| format!("read {}", path.display()))?;
     let state: SavedWindowState = serde_json::from_slice(&bytes)
         .with_context(|| format!("parse {}", path.display()))?;
-    if state.width < 760.0 || state.height < 560.0 {
+    if state.width < 760 || state.height < 560 {
         return Ok(None);
     }
     Ok(Some(state))
@@ -1319,8 +1319,8 @@ fn save_window_state(app: &AppHandle, window: &tauri::WebviewWindow) -> Result<(
     }
     let path = window_state_path(app)?;
     let state = SavedWindowState {
-        width: f64::from(size.width),
-        height: f64::from(size.height),
+        width: size.width,
+        height: size.height,
     };
     let bytes = serde_json::to_vec_pretty(&state).context("serialize window state")?;
     std::fs::write(&path, bytes).with_context(|| format!("write {}", path.display()))
@@ -1440,19 +1440,19 @@ async fn build_app_window(app: &AppHandle, label: String, init_script: String) -
     let url = frontend_webview_url()?;
     let saved_size = load_window_state(app).ok().flatten();
     let initial_size = saved_size.unwrap_or(SavedWindowState {
-        width: 1280.0,
-        height: 820.0,
+        width: 1280,
+        height: 820,
     });
     let builder = WebviewWindowBuilder::new(app, label, url)
         .title("OpenAgentd")
-        .inner_size(initial_size.width, initial_size.height)
+        .inner_size(f64::from(initial_size.width), f64::from(initial_size.height))
         .min_inner_size(760.0, 560.0)
         .initialization_script(&init_script)
         .visible(false);
     let builder = configure_window_chrome(builder);
     let win = builder.build().context("build webview window")?;
     if let Some(size) = saved_size {
-        win.set_size(LogicalSize::new(size.width, size.height)).ok();
+        win.set_size(PhysicalSize::new(size.width, size.height)).ok();
     }
     let state: tauri::State<'_, AppState> = app.state();
     win.set_zoom(*state.zoom.lock().await).ok();

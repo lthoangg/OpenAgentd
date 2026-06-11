@@ -284,7 +284,9 @@ def _list_workspace_files(root: Path, session_id: str) -> WorkspaceFilesResponse
 
 
 @router.get("/workspace/files/read")
-async def read_coding_workspace_file(workspace: str, path: str) -> FileResponse:
+async def read_coding_workspace_file(
+    workspace: str, path: str, download: bool = False
+) -> FileResponse:
     """Serve the raw bytes of a single file from the coding workspace.
 
     ``path`` is the POSIX-relative path returned by ``/workspace/files/list``
@@ -310,7 +312,7 @@ async def read_coding_workspace_file(workspace: str, path: str) -> FileResponse:
     return FileResponse(
         path=str(target),
         media_type=mime or "application/octet-stream",
-        filename=target.name,
+        filename=target.name if download else None,
     )
 
 

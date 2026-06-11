@@ -41,6 +41,7 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
 import { mediumHapticFeedback } from '@/lib/haptics'
 import { useToastStore } from '@/stores/useToastStore'
+import { isTransientNetworkError } from '@/utils/errors'
 
 const MODEL_LONG_PRESS_MS = 520
 const MODEL_LONG_PRESS_MOVE_TOLERANCE = 10
@@ -74,7 +75,7 @@ function eventLabel(event: OAuthLoginEvent): string {
 }
 
 function isBenignOAuthStreamClose(message: string): boolean {
-  return /load failed|networkerror|failed to fetch/i.test(message)
+  return isTransientNetworkError(new Error(message))
 }
 
 function formatResetTime(timestamp?: number | null): string | null {

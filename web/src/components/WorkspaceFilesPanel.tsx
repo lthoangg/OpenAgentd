@@ -147,20 +147,14 @@ function FileRow({
   const longPressTimerRef = useRef<number | null>(null)
   const longPressStartRef = useRef<{ x: number; y: number } | null>(null)
 
-  const clearLongPress = useCallback(() => {
+  const clearLongPress = () => {
     if (longPressTimerRef.current !== null) window.clearTimeout(longPressTimerRef.current)
     longPressTimerRef.current = null
     longPressStartRef.current = null
-  }, [])
-
-  useEffect(() => clearLongPress, [clearLongPress])
+  }
 
   const copyPath = async () => {
-    try {
-      await navigator.clipboard.writeText(file.path)
-    } catch {
-      // Clipboard access can fail in insecure contexts or denied WebViews.
-    }
+    await navigator.clipboard.writeText(file.path)
   }
 
   return (
@@ -174,7 +168,6 @@ function FileRow({
       }}
       onPointerDown={(event) => {
         if (!isMobile || !isTauriMobile || event.pointerType === 'mouse') return
-        clearLongPress()
         longPressStartRef.current = { x: event.clientX, y: event.clientY }
         longPressTimerRef.current = window.setTimeout(() => {
           longPressTimerRef.current = null
@@ -433,12 +426,7 @@ export function CopyContentsButton({
 }) {
   const [copied, setCopied] = useState(false)
   const [busy, setBusy] = useState(false)
-  const copiedTimerRef = useRef<number | null>(null)
   const tooLarge = file.size > MAX_TEXT_PREVIEW_BYTES
-
-  useEffect(() => () => {
-    if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current)
-  }, [])
 
   const handleCopy = async () => {
     if (busy || tooLarge) return
@@ -449,11 +437,7 @@ export function CopyContentsButton({
       const text = await res.text()
       await navigator.clipboard.writeText(text)
       setCopied(true)
-      if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current)
-      copiedTimerRef.current = window.setTimeout(() => {
-        copiedTimerRef.current = null
-        setCopied(false)
-      }, 1500)
+      window.setTimeout(() => setCopied(false), 1500)
     } catch {
       // Swallow — the button is best-effort.  Failure is rare (clipboard
       // permission denied, or the media proxy returned non-2xx) and the user
@@ -576,7 +560,8 @@ export function WorkspaceFilesPanel({ open, sessionId, onClose }: WorkspaceFiles
   // Refresh on open so the list is fresh even if query was stale.
   useEffect(() => {
     if (open && sessionId) refetch()
-  }, [open, sessionId, refetch])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, sessionId])
 
   // Wrap ``data?.files ?? []`` in a memo so the ``files`` reference is stable
   // when the query returns the same cache entry — otherwise downstream
@@ -586,14 +571,15 @@ export function WorkspaceFilesPanel({ open, sessionId, onClose }: WorkspaceFiles
 
   // Keep selection valid as the list churns — e.g. the selected file was deleted
   // by a new turn's rm tool call.  When the selection disappears, clear it.
-  const selected = selectedPath ? files.find((f) => f.path === selectedPath) ?? null : null
-  const hasStaleSelection = selectedPath !== null && selected === null
-
   useEffect(() => {
-    if (!hasStaleSelection) return
-    setSelectedPath(null)
-    setMobilePane('tree')
-  }, [hasStaleSelection])
+    if (!selectedPath) return
+    if (!files.some((f) => f.path === selectedPath)) {
+      setSelectedPath(null)
+      setMobilePane('tree')
+    }
+  }, [files, selectedPath])
+
+  const selected = selectedPath ? files.find((f) => f.path === selectedPath) ?? null : null
 
   const handleSelectFile = (f: WorkspaceFileInfo) => {
     setSelectedPath(f.path)

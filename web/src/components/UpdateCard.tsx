@@ -56,18 +56,9 @@ export function UpdateCard() {
           if (dismissedUntilNextCheckRef.current && (event.payload.status === 'available' || event.payload.status === 'downloaded')) return
           setStatus(event.payload)
         })
-        if (cancelled) {
-          void unlistenStatus()
-          return
-        }
         const unlistenCheck = await listen('updater-check-requested', () => {
           void checkForUpdates(false)
         })
-        if (cancelled) {
-          void unlistenStatus()
-          void unlistenCheck()
-          return
-        }
         cleanup = () => {
           void unlistenStatus()
           void unlistenCheck()
@@ -175,32 +166,20 @@ function ReleaseNotesButton({ fallbackNotes, version }: { fallbackNotes?: string
 }
 
 function isDismissedUntilNextInterval(): boolean {
-  try {
-    const dismissedUntil = Number(window.localStorage.getItem(DISMISSED_UNTIL_KEY) ?? 0)
-    if (!Number.isFinite(dismissedUntil) || dismissedUntil <= Date.now()) {
-      clearDismissedUntilNextInterval()
-      return false
-    }
-    return true
-  } catch {
+  const dismissedUntil = Number(window.localStorage.getItem(DISMISSED_UNTIL_KEY) ?? 0)
+  if (!Number.isFinite(dismissedUntil) || dismissedUntil <= Date.now()) {
+    clearDismissedUntilNextInterval()
     return false
   }
+  return true
 }
 
 function persistDismissedUntilNextInterval() {
-  try {
-    window.localStorage.setItem(DISMISSED_UNTIL_KEY, String(Date.now() + CHECK_INTERVAL_MS))
-  } catch {
-    // Storage can be unavailable in restricted WebViews/private contexts.
-  }
+  window.localStorage.setItem(DISMISSED_UNTIL_KEY, String(Date.now() + CHECK_INTERVAL_MS))
 }
 
 function clearDismissedUntilNextInterval() {
-  try {
-    window.localStorage.removeItem(DISMISSED_UNTIL_KEY)
-  } catch {
-    // Storage can be unavailable in restricted WebViews/private contexts.
-  }
+  window.localStorage.removeItem(DISMISSED_UNTIL_KEY)
 }
 
 function titleForStatus(status: UpdateStatus): string {

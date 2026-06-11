@@ -97,57 +97,6 @@ describe('ProvidersSettingsPage', () => {
     expect(screen.queryByText('Failed')).toBeNull()
   })
 
-  it('clears pending OAuth device code copy feedback timers on unmount', async () => {
-    const originalClearTimeout = window.clearTimeout
-    const clearTimeout = mock((...args: unknown[]) => originalClearTimeout(args[0] as number | undefined))
-    window.clearTimeout = clearTimeout as typeof window.clearTimeout
-
-    try {
-      server.use(
-        http.get('http://localhost/api/settings/providers', () => HttpResponse.json({
-          has_any_configured: true,
-          providers: [
-            {
-              id: 'copilot',
-              label: 'Copilot',
-              description: 'Copilot OAuth provider',
-              kind: 'oauth',
-              credentials: [],
-              env_var: '',
-              env_vars: [],
-              fallback_models: [],
-              oauth_command: '',
-              docs_url: '',
-              is_configured: false,
-              is_saved: true,
-              is_reachable: false,
-            },
-          ],
-        })),
-        http.get('http://localhost/api/auth/copilot/login', () => new HttpResponse(
-          'event: device_code\ndata: {"user_code":"ABCD-1234","verification_uri":"https://github.com/login/device"}\n\n',
-          { headers: { 'Content-Type': 'text/event-stream' } },
-        )),
-      )
-
-      const view = renderPage()
-
-      expect(await screen.findByText('Copilot')).toBeTruthy()
-      fireEvent.click(screen.getByRole('button', { name: /Connect/i }))
-      const copyCode = await screen.findByLabelText('Copy device code')
-      await act(async () => {
-        fireEvent.click(copyCode)
-        await Promise.resolve()
-      })
-      clearTimeout.mockClear()
-      view.unmount()
-
-      expect(clearTimeout.mock.calls.length).toBeGreaterThanOrEqual(1)
-    } finally {
-      window.clearTimeout = originalClearTimeout
-    }
-  })
-
   it('shows GitHub device-code copy for Copilot OAuth', async () => {
     server.use(
       http.get('http://localhost/api/settings/providers', () => HttpResponse.json({
@@ -287,66 +236,6 @@ describe('ProvidersSettingsPage', () => {
     expect(copy.className).toContain('w-8')
     expect(copy.className).toContain('md:h-6')
     expect(copy.className).toContain('md:w-6')
-  })
-
-  it('clears stale provider model long-press timers', async () => {
-    const originalClearTimeout = window.clearTimeout
-    const clearTimeout = mock((...args: unknown[]) => originalClearTimeout(args[0] as number | undefined))
-    const originalTauri = (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
-    const originalPlatform = Object.getOwnPropertyDescriptor(Navigator.prototype, 'platform')
-    window.clearTimeout = clearTimeout as typeof window.clearTimeout
-    Object.defineProperty(window, '__TAURI_INTERNALS__', { configurable: true, value: {} })
-    Object.defineProperty(Navigator.prototype, 'platform', { configurable: true, get: () => 'iPhone' })
-
-    try {
-      server.use(
-        http.get('http://localhost/api/settings/providers', () => HttpResponse.json({
-          has_any_configured: true,
-          providers: [
-            {
-              id: 'openai',
-              label: 'OpenAI',
-              description: 'OpenAI provider',
-              kind: 'api_key',
-              credentials: [],
-              env_var: 'OPENAI_API_KEY',
-              env_vars: [],
-              fallback_models: [],
-              oauth_command: '',
-              docs_url: '',
-              is_configured: true,
-              is_saved: true,
-              is_reachable: true,
-            },
-          ],
-        })),
-        http.post('http://localhost/api/settings/providers/openai/models', () => HttpResponse.json({
-          provider: 'openai',
-          models: ['gpt-test'],
-          source: 'provider',
-        })),
-      )
-
-      renderPage()
-
-      expect(await screen.findByText('OpenAI')).toBeTruthy()
-      await waitFor(() => expect(screen.getByText('1 models available')).toBeTruthy())
-      fireEvent.click(screen.getByRole('button', { name: /1 models available/i }))
-      const row = screen.getByText('openai:gpt-test').closest('li')
-      expect(row).toBeTruthy()
-      fireEvent.pointerDown(row!, { pointerType: 'touch', clientX: 40, clientY: 40 })
-      fireEvent.pointerDown(row!, { pointerType: 'touch', clientX: 42, clientY: 42 })
-
-      expect(clearTimeout).toHaveBeenCalled()
-    } finally {
-      window.clearTimeout = originalClearTimeout
-      if (originalTauri === undefined) {
-        delete (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
-      } else {
-        Object.defineProperty(window, '__TAURI_INTERNALS__', { configurable: true, value: originalTauri })
-      }
-      if (originalPlatform) Object.defineProperty(Navigator.prototype, 'platform', originalPlatform)
-    }
   })
 
   it('shows active usage for any connected OAuth provider', async () => {

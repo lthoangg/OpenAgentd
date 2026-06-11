@@ -26,7 +26,6 @@ from app.services.chat_service import (
     save_queued_user_message,
     undo_session_messages,
     save_message,
-    get_team_history,
 )
 
 
@@ -1630,36 +1629,3 @@ async def test_undo_and_redo_use_workspace_snapshots(session, tmp_path, monkeypa
     refreshed = await session.get(ChatSession, chat_session.id)
     assert refreshed is not None
     assert refreshed.revert is None
-
-
-@pytest.mark.asyncio
-async def test_get_team_history_hides_user_hidden_rows_for_lead_and_members(session):
-    lead = await create_chat_session(session, title="Lead")
-    member = await create_chat_session(
-        session,
-        title="Member",
-        parent_session_id=lead.id,
-        agent_name="worker#1",
-    )
-
-    await save_message(session, lead.id, HumanMessage(content="lead visible"))
-    lead_hidden = await save_message(
-        session, lead.id, HumanMessage(content="lead hidden")
-    )
-    await save_message(session, member.id, HumanMessage(content="member visible"))
-    member_hidden = await save_message(
-        session, member.id, HumanMessage(content="member hidden")
-    )
-
-    for row in (lead_hidden, member_hidden):
-        row.extra = {"hidden_from_user": True}
-        session.add(row)
-    await session.commit()
-
-    history = await get_team_history(session, lead.id)
-
-    assert history is not None
-    assert [msg.content for msg in history.lead_messages] == ["lead visible"]
-    assert len(history.members) == 1
-    assert history.members[0].session.id == member.id
-    assert [msg.content for msg in history.members[0].messages] == ["member visible"]

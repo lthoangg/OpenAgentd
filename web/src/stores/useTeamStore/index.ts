@@ -6,7 +6,6 @@ import { createDefaultAgentStream } from './defaults'
 import { applyRevertBoundary, revokeBlobUrlsFromBlocks } from './helpers'
 import { createSSEHandler } from './sse-reducer'
 import { useToastStore } from '@/stores/useToastStore'
-import { isTransientNetworkError } from '@/utils/errors'
 import type { AgentStream, TeamStore } from './types'
 import type { MessageResponse } from '@/api/types'
 
@@ -46,6 +45,16 @@ function fastModeFromMessages(messages: MessageResponse[]): boolean {
     if (msg.role === 'user') return msg.extra?.service_tier === 'fast'
   }
   return false
+}
+
+function isTransientStreamError(err: Error): boolean {
+  const message = err.message.toLowerCase()
+  return (
+    message.includes('load failed') ||
+    message.includes('failed to fetch') ||
+    message.includes('networkerror') ||
+    message.includes('network request failed')
+  )
 }
 
 function effectiveLeadModel(state: TeamStore, leadName: string | null, requestedModel?: string | null): string | null {
@@ -695,7 +704,7 @@ export const useTeamStore = create<TeamStore>()(
             const current = get()
             if (current.sessionId !== sessionId || current._sessionGeneration !== generation) return
             if (current._unloading || abort.signal.aborted) return
-            if (isTransientNetworkError(err) || !current.isTeamWorking) {
+            if (isTransientStreamError(err) || !current.isTeamWorking) {
               set((draft) => { draft.isConnected = false })
               return
             }

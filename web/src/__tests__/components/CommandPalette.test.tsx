@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "bun:test"
-import { fireEvent, render, screen, cleanup } from "@testing-library/react"
+import { render, screen, cleanup } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { CommandPalette } from "@/components/CommandPalette"
 import type { Command } from "@/components/CommandPalette"
@@ -209,22 +209,6 @@ describe("CommandPalette", () => {
   })
 
   // ── click to run ────────────────────────────────────────────────────────────
-
-  it("updates the active command when touch or pen pointer enters a row", async () => {
-    const user = userEvent.setup()
-    const ran = { first: false, second: false }
-    const commands: Command[] = [
-      { id: "c1", label: "First", action: () => { ran.first = true } },
-      { id: "c2", label: "Second", action: () => { ran.second = true } },
-    ]
-    render(<CommandPalette commands={commands} onClose={() => {}} />)
-
-    fireEvent.pointerEnter(screen.getByRole("button", { name: "Second" }), { pointerType: "touch" })
-    await user.keyboard("{Enter}")
-
-    expect(ran.first).toBe(false)
-    expect(ran.second).toBe(true)
-  })
 
   it("runs command when command button is clicked", async () => {
     const user = userEvent.setup()

@@ -2,11 +2,7 @@
 
 from __future__ import annotations
 
-from app.agent.mode.team.loop_commands import (
-    is_loop_command,
-    loop_status_payload,
-    parse_loop_command,
-)
+from app.agent.mode.team.team import is_loop_command, parse_loop_command
 
 
 def test_parse_loop_start_uses_text_after_space_as_prompt() -> None:
@@ -64,18 +60,3 @@ def test_is_loop_command_matches_loop_namespace_and_prompt_form() -> None:
     assert is_loop_command('/loop "prompt"')
     assert is_loop_command("/loop:pause")
     assert not is_loop_command("/init")
-
-
-def test_loop_status_payload_reports_progress() -> None:
-    assert loop_status_payload(
-        prompt="keep going",
-        limit=10,
-        remaining=7,
-        paused=True,
-    ) == {
-        "prompt": "keep going",
-        "limit": 10,
-        "remaining": 7,
-        "used": 3,
-        "paused": True,
-    }

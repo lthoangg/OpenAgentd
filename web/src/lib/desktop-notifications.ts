@@ -41,38 +41,22 @@ function isMobileTauriRuntime(): boolean {
 
 export function areDesktopNotificationsEnabled(): boolean {
   if (typeof window === 'undefined') return true
-  try {
-    return window.localStorage.getItem(ENABLED_KEY) !== 'false'
-  } catch {
-    return true
-  }
+  return window.localStorage.getItem(ENABLED_KEY) !== 'false'
 }
 
 export function setDesktopNotificationsEnabled(enabled: boolean): void {
   if (typeof window === 'undefined') return
-  try {
-    window.localStorage.setItem(ENABLED_KEY, String(enabled))
-  } catch {
-    // Storage can be unavailable in restricted WebViews/private contexts.
-  }
+  window.localStorage.setItem(ENABLED_KEY, String(enabled))
 }
 
 export function areDesktopNotificationSoundsEnabled(): boolean {
   if (typeof window === 'undefined') return true
-  try {
-    return window.localStorage.getItem(SOUND_ENABLED_KEY) !== 'false'
-  } catch {
-    return true
-  }
+  return window.localStorage.getItem(SOUND_ENABLED_KEY) !== 'false'
 }
 
 export function setDesktopNotificationSoundsEnabled(enabled: boolean): void {
   if (typeof window === 'undefined') return
-  try {
-    window.localStorage.setItem(SOUND_ENABLED_KEY, String(enabled))
-  } catch {
-    // Storage can be unavailable in restricted WebViews/private contexts.
-  }
+  window.localStorage.setItem(SOUND_ENABLED_KEY, String(enabled))
 }
 
 function playNotificationSound(): void {

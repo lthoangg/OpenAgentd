@@ -5,7 +5,7 @@
  * backdrop click to close, and X close button.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Clock, Play, Pause, Trash2, Plus, Loader2, AlertCircle, CalendarClock, Zap, ArrowLeft, Pencil, FolderOpen } from 'lucide-react'
 import { DateTimePicker } from '@/components/ui/date-time-picker'
@@ -293,7 +293,8 @@ export function SchedulerPanel({
     if (open) {
       tasksQuery.refetch()
     }
-  }, [open, tasksQuery.refetch])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
 
   const tasks = tasksQuery.data?.tasks ?? []
 
@@ -529,13 +530,11 @@ function TaskListItem({
   const longPressTimerRef = useRef<number | null>(null)
   const longPressStartRef = useRef<{ x: number; y: number } | null>(null)
 
-  const clearLongPress = useCallback(() => {
+  const clearLongPress = () => {
     if (longPressTimerRef.current !== null) window.clearTimeout(longPressTimerRef.current)
     longPressTimerRef.current = null
     longPressStartRef.current = null
-  }, [])
-
-  useEffect(() => clearLongPress, [clearLongPress])
+  }
 
   const triggerTask = () => triggerMutation.mutate(task.id)
   const togglePaused = () => {
@@ -558,17 +557,8 @@ function TaskListItem({
 
   return (
     <>
-    <div
-      role="button"
-      tabIndex={0}
+    <button
       onClick={onSelect}
-      onKeyDown={(event) => {
-        if (event.target !== event.currentTarget) return
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault()
-          onSelect()
-        }
-      }}
       onContextMenu={(event) => {
         if (isTauriMobile) return
         event.preventDefault()
@@ -576,7 +566,6 @@ function TaskListItem({
       }}
       onPointerDown={(event) => {
         if (!isMobile || !isTauriMobile || event.pointerType === 'mouse') return
-        clearLongPress()
         longPressStartRef.current = { x: event.clientX, y: event.clientY }
         longPressTimerRef.current = window.setTimeout(() => {
           longPressTimerRef.current = null
@@ -679,7 +668,7 @@ function TaskListItem({
           </Button>
         </div>
       </div>
-    </div>
+    </button>
     {actionsPoint && (
       <div
         className="fixed inset-0 z-[70]"

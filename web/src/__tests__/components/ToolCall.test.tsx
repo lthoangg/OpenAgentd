@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, beforeEach, mock } from "bun:test"
+import { describe, it, expect, afterEach, beforeEach } from "bun:test"
 import { render, screen, cleanup, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { ToolCall } from "@/components/ToolCall"
@@ -987,27 +987,6 @@ describe("ToolCall — copy buttons", () => {
       expect(screen.getByLabelText("Copy arguments")).toBeTruthy()
       expect(screen.getByLabelText("Copy result")).toBeTruthy()
     })
-  })
-
-  it("clears pending copy feedback timers when unmounted", async () => {
-    const user = userEvent.setup()
-    const originalClearTimeout = window.clearTimeout
-    const clearTimeout = mock((...args: unknown[]) => originalClearTimeout(args[0] as number | undefined))
-    window.clearTimeout = clearTimeout as typeof window.clearTimeout
-
-    try {
-      const view = render(
-        <ToolCall name="custom_tool" args='{"path":"hi.txt"}' done={true} result="some result" />
-      )
-      await user.click(screen.getByRole("button"))
-      await user.click(screen.getByLabelText("Copy arguments"))
-      await user.click(screen.getByLabelText("Copy result"))
-      view.unmount()
-
-      expect(clearTimeout).toHaveBeenCalledTimes(2)
-    } finally {
-      window.clearTimeout = originalClearTimeout
-    }
   })
 
   it("keeps copy buttons visible and large enough for touch before desktop hover reveal", async () => {

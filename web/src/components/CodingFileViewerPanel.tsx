@@ -1,11 +1,13 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { Copy, Download, ExternalLink, FileText, Loader2, X, Check } from 'lucide-react'
-import { codingWorkspaceFileUrl } from '@/api/client'
+import { Check, Copy, Download, ExternalLink, FileText, GitCompare, Loader2, X } from 'lucide-react'
+import { codingWorkspaceFileUrl, getCodingWorkspaceGitDiff } from '@/api/client'
 import { cn } from '@/lib/utils'
 import { formatBytes } from '@/utils/format'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { useResizableWidth } from '@/hooks/use-resizable-width'
+import { queryKeys } from '@/queries'
 import type { WorkspaceFileInfo } from '@/api/types'
 
 const TEXT_EXTENSIONS = new Set([
@@ -270,6 +272,25 @@ function BinaryPreview({ workspace, file }: { workspace: string; file: Workspace
   )
 }
 
+function diffLineClass(line: string) {
+  if (line.startsWith('+++') || line.startsWith('---')) return 'text-(--color-accent)'
+  if (line.startsWith('@@')) return 'bg-(--color-accent)/10 text-(--color-accent)'
+  if (line.startsWith('+')) return 'bg-(--color-diff-add-bg) text-(--color-diff-add-text)'
+  if (line.startsWith('-')) return 'bg-(--color-diff-del-bg) text-(--color-diff-del-text)'
+  if (line.startsWith('diff --git') || line.startsWith('index ') || line.startsWith('new file mode')) return 'text-(--color-text)'
+  return 'text-(--color-text-2)'
+}
+
+function DiffPreview({ diff }: { diff: string }) {
+  return (
+    <pre className="h-full overflow-auto bg-(--bg-page) p-3 font-mono text-[11px] leading-relaxed">
+      {diff.split('\n').map((line, index) => (
+        <span key={index} className={cn('block whitespace-pre-wrap break-all px-1', diffLineClass(line))}>{line || ' '}</span>
+      ))}
+    </pre>
+  )
+}
+
 export function CodingFileViewerPanel({
   workspace,
   file,
@@ -291,6 +312,13 @@ export function CodingFileViewerPanel({
     maxWidth: 880,
     edge: 'left',
     disabled: mobile,
+  })
+  const [viewMode, setViewMode] = useState<'file' | 'diff'>('file')
+  const scopedDiff = useQuery({
+    queryKey: [...queryKeys.coding.diff(workspace), file?.path ?? null] as const,
+    queryFn: () => getCodingWorkspaceGitDiff(workspace, file ? [file.path] : []),
+    enabled: file !== null && viewMode === 'diff',
+    staleTime: 5_000,
   })
   if (!file) return null
 
@@ -328,6 +356,14 @@ export function CodingFileViewerPanel({
             <p className="mt-0.5 text-[10px] text-(--color-text-subtle)">{formatBytes(file.size)} · {file.mime}</p>
           </div>
           <div className="flex shrink-0 items-center gap-1">
+            <div className="mr-1 hidden rounded-md border border-(--color-border) p-0.5 md:flex">
+              <button type="button" onClick={() => setViewMode('file')} className={cn('rounded px-2 py-1 text-[11px]', viewMode === 'file' ? 'bg-(--bg-key) text-(--color-text)' : 'text-(--color-text-muted) hover:text-(--color-text-2)')}>
+                File
+              </button>
+              <button type="button" onClick={() => setViewMode('diff')} className={cn('flex items-center gap-1 rounded px-2 py-1 text-[11px]', viewMode === 'diff' ? 'bg-(--bg-key) text-(--color-text)' : 'text-(--color-text-muted) hover:text-(--color-text-2)')}>
+                <GitCompare size={11} /> Diff
+              </button>
+            </div>
             <a href={url} download={file.name} title="Download" className="flex h-9 w-9 items-center justify-center rounded text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-auto md:w-auto md:p-1.5">
               <Download size={14} />
             </a>
@@ -338,9 +374,15 @@ export function CodingFileViewerPanel({
           </div>
         </header>
         <div className="min-h-0 flex-1 overflow-hidden">
-          {kind === 'image' ? <ImagePreview workspace={workspace} file={file} />
+          {viewMode === 'diff' ? (
+            scopedDiff.isLoading ? <div className="flex h-full items-center justify-center"><Loader2 size={16} className="animate-spin text-(--color-text-subtle)" /></div>
+              : scopedDiff.isError ? <div className="flex h-full items-center justify-center px-4 text-center text-xs text-(--color-error)">Failed to load diff</div>
+                : !scopedDiff.data?.is_git_repo ? <div className="flex h-full items-center justify-center px-4 text-center text-xs text-(--color-text-subtle)">Not a git repository</div>
+                  : !scopedDiff.data.diff ? <div className="flex h-full items-center justify-center px-4 text-center text-xs text-(--color-text-subtle)">No diff for this file</div>
+                    : <DiffPreview diff={scopedDiff.data.diff} />
+          ) : kind === 'image' ? <ImagePreview workspace={workspace} file={file} />
             : kind === 'text' ? <TextPreview key={file.path} workspace={workspace} file={file} onAddComment={onAddComment} />
-            : <BinaryPreview workspace={workspace} file={file} />}
+              : <BinaryPreview workspace={workspace} file={file} />}
         </div>
       </div>
     </motion.aside>

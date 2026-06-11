@@ -54,6 +54,7 @@ function LongPressButton({
       onPointerDown={(event) => {
         onPointerDown?.(event)
         if (!enabled || event.pointerType === 'mouse') return
+        clear()
         startRef.current = { x: event.clientX, y: event.clientY }
         setPressing(true)
         timerRef.current = window.setTimeout(() => {

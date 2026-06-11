@@ -341,6 +341,34 @@ model: openai:gpt-5.4
 
 // ── AgentForm — write-back into raw on selection ────────────────────────────
 
+describe('AgentForm — selecting a model updates raw', () => {
+  it('supports pointer activation for touch and pen option selection', async () => {
+    const user = userEvent.setup()
+    const { onChange } = renderForm(`---
+name: openagentd
+role: lead
+model: ''
+---
+
+You are openagentd.
+`)
+
+    onChange.mockClear()
+
+    const modelInput = within(fieldFor('Model')).getByRole('combobox')
+    await user.click(modelInput)
+    const option = await screen.findByRole('option', { name: /openai:gpt-5.4/i })
+
+    fireEvent.pointerDown(option, { pointerType: 'touch' })
+    fireEvent.click(option)
+
+    const lastCall = onChange.mock.calls.at(-1)
+    expect(lastCall).toBeDefined()
+    const nextRaw = lastCall![0] as string
+    expect(nextRaw).toContain('model: openai:gpt-5.4')
+  })
+})
+
 describe('AgentForm — selecting an MCP server updates raw', () => {
   it('appends the new server to the mcp: list in YAML', async () => {
     const user = userEvent.setup()

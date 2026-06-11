@@ -51,7 +51,11 @@ function saveOffset(offset: StoredOffset): void {
 
 function loadMinimizedPreference(): boolean {
   if (typeof window === 'undefined') return false
-  return window.localStorage.getItem(MINIMIZED_STORAGE_KEY) === 'true'
+  try {
+    return window.localStorage.getItem(MINIMIZED_STORAGE_KEY) === 'true'
+  } catch {
+    return false
+  }
 }
 
 function saveMinimizedPreference(minimized: boolean): void {

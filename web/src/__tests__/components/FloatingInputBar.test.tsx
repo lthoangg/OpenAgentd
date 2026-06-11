@@ -82,6 +82,25 @@ describe('FloatingInputBar', () => {
     expect(localStorage.getItem(MINIMIZED_STORAGE_KEY)).toBeNull()
   })
 
+  it('starts expanded when minimized preference storage is unavailable', () => {
+    const originalLocalStorage = window.localStorage
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      value: {
+        getItem: () => { throw new Error('denied') },
+        setItem: () => { throw new Error('denied') },
+      },
+    })
+
+    render(<Harness />)
+    expect(screen.getByRole('textbox', { name: 'Message input' }).getAttribute('disabled')).toBeNull()
+
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      value: originalLocalStorage,
+    })
+  })
+
   it('starts at the default position (zero offset) when no value is stored', () => {
     render(<Harness />)
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull()

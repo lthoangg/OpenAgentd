@@ -39,7 +39,7 @@ function shortModelName(modelId: string | null | undefined): string | null {
 export function AssistantTurnFooter({ turnBlocks, size = 'compact', onContinue }: AssistantTurnFooterProps) {
   const [copied, setCopied] = useState(false)
   const copiedTimerRef = useRef<number | null>(null)
-  // Me lastTurnText walks back to the previous user block; pass the turn directly
+  // lastTurnText walks back to the previous user block; pass the turn directly.
   const textContent = lastTurnText(turnBlocks)
   const lastBlock = turnBlocks[turnBlocks.length - 1]
   const timestamp = lastBlock?.timestamp

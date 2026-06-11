@@ -60,13 +60,10 @@ export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
     : commands,
   [commands, query])
 
-  // Reset active index whenever filtered list changes (query changed)
-  const prevQueryRef = useRef(query)
-  if (prevQueryRef.current !== query) {
-    prevQueryRef.current = query
-    // Reset during render — safe because it's gated on a ref change
-    if (activeIdx !== 0) setActiveIdx(0)
-  }
+  // Reset active index whenever the query changes.
+  useEffect(() => {
+    setActiveIdx(0)
+  }, [query])
 
   // Scroll active item into view
   useEffect(() => {

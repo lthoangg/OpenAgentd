@@ -586,15 +586,14 @@ export function WorkspaceFilesPanel({ open, sessionId, onClose }: WorkspaceFiles
 
   // Keep selection valid as the list churns — e.g. the selected file was deleted
   // by a new turn's rm tool call.  When the selection disappears, clear it.
-  useEffect(() => {
-    if (!selectedPath) return
-    if (!files.some((f) => f.path === selectedPath)) {
-      setSelectedPath(null)
-      setMobilePane('tree')
-    }
-  }, [files, selectedPath])
-
   const selected = selectedPath ? files.find((f) => f.path === selectedPath) ?? null : null
+  const hasStaleSelection = selectedPath !== null && selected === null
+
+  useEffect(() => {
+    if (!hasStaleSelection) return
+    setSelectedPath(null)
+    setMobilePane('tree')
+  }, [hasStaleSelection])
 
   const handleSelectFile = (f: WorkspaceFileInfo) => {
     setSelectedPath(f.path)

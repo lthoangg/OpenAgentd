@@ -35,6 +35,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { workspaceMediaUrl } from '@/api/client'
+import { downloadWorkspaceFile } from '@/lib/workspace-download'
 import { useWorkspaceFilesQuery } from '@/queries'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useModalFocus } from '@/hooks/useModalFocus'
@@ -243,16 +244,18 @@ function FileRow({
             <Copy size={14} aria-hidden="true" />
             Copy path
           </button>
-          <a
+          <button
+            type="button"
             role="menuitem"
-            href={workspaceMediaUrl(sessionId, file.path)}
-            download={file.name}
             className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
-            onClick={() => setActionsPoint(null)}
+            onClick={() => {
+              setActionsPoint(null)
+              void downloadWorkspaceFile(sessionId, file)
+            }}
           >
             <Download size={14} aria-hidden="true" />
             Download
-          </a>
+          </button>
         </div>
       </div>
     )}
@@ -405,15 +408,39 @@ function BinaryPreview({ sessionId, file }: { sessionId: string; file: Workspace
         >
           <ExternalLink size={12} /> Open in new tab
         </a>
-        <a
-          href={url}
-          download={file.name}
+        <DownloadWorkspaceFileButton
+          sessionId={sessionId}
+          file={file}
           className="flex items-center gap-1.5 rounded-md border border-(--color-border) px-3 py-1.5 text-xs text-(--color-text-2) transition-colors hover:border-(--color-border-strong)"
         >
           <Download size={12} /> Download
-        </a>
+        </DownloadWorkspaceFileButton>
       </div>
     </div>
+  )
+}
+
+export function DownloadWorkspaceFileButton({
+  sessionId,
+  file,
+  className,
+  children,
+}: {
+  sessionId: string
+  file: WorkspaceFileInfo
+  className?: string
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => void downloadWorkspaceFile(sessionId, file)}
+      className={className}
+      title="Download"
+      aria-label="Download"
+    >
+      {children}
+    </button>
   )
 }
 
@@ -494,14 +521,13 @@ function PreviewArea({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          <a
-            href={workspaceMediaUrl(sessionId, file.path)}
-            download={file.name}
+          <DownloadWorkspaceFileButton
+            sessionId={sessionId}
+            file={file}
             className="flex items-center gap-1 rounded px-2 py-1 text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
-            title="Download"
           >
             <Download size={12} />
-          </a>
+          </DownloadWorkspaceFileButton>
           {kind === 'text' && <CopyContentsButton sessionId={sessionId} file={file} />}
         </div>
       </div>

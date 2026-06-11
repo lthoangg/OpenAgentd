@@ -44,6 +44,38 @@ def session_id() -> str:
     return str(uuid.uuid7())
 
 
+class TestWorkspaceMedia:
+    def test_workspace_media_defaults_to_inline_for_previews(
+        self, client, session_id, tmp_path, monkeypatch
+    ):
+        fake_root = tmp_path / "ws"
+        fake_root.mkdir()
+        (fake_root / "chart.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+
+        from app.api.routes.team import files as team_routes
+
+        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+
+        resp = client.get(f"/api/team/{session_id}/media/chart.png")
+        assert resp.status_code == 200
+        assert resp.headers["content-disposition"].startswith("inline;")
+
+    def test_workspace_media_can_force_attachment_download(
+        self, client, session_id, tmp_path, monkeypatch
+    ):
+        fake_root = tmp_path / "ws"
+        fake_root.mkdir()
+        (fake_root / "chart.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+
+        from app.api.routes.team import files as team_routes
+
+        monkeypatch.setattr(team_routes, "workspace_dir", lambda sid: fake_root)
+
+        resp = client.get(f"/api/team/{session_id}/media/chart.png?download=1")
+        assert resp.status_code == 200
+        assert resp.headers["content-disposition"].startswith("attachment;")
+
+
 class TestWorkspaceFilesListing:
     def test_invalid_session_id_returns_400(self, client):
         resp = client.get("/api/team/not-a-uuid/files")

@@ -7,13 +7,15 @@ use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{atomic::{AtomicBool, Ordering}, Arc};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tauri::{
     menu::{AboutMetadataBuilder, Menu, MenuItem, PredefinedMenuItem, SubmenuBuilder},
     tray::TrayIconBuilder,
     AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent, Wry,
 };
+use tauri_plugin_dialog::DialogExt;
+
 use tauri_plugin_opener::OpenerExt;
 #[cfg(test)]
 use tauri_plugin_dialog::MessageDialogResult;
@@ -253,6 +255,46 @@ fn request_voice_permissions() -> Result<bool, String> {
 #[cfg(not(any(target_os = "macos", target_os = "ios")))]
 #[tauri::command]
 fn request_voice_permissions() -> Result<bool, String> {
+    Ok(true)
+}
+
+#[derive(Deserialize)]
+struct SaveWorkspaceFileRequest {
+    url: String,
+    filename: String,
+}
+
+#[tauri::command]
+async fn save_workspace_file(app: AppHandle, request: SaveWorkspaceFileRequest) -> Result<bool, String> {
+    let filename = Path::new(&request.filename)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.is_empty())
+        .unwrap_or("download")
+        .to_string();
+    let target = app
+        .dialog()
+        .file()
+        .set_title("Save file")
+        .set_file_name(filename)
+        .blocking_save_file();
+    let Some(target) = target else {
+        return Ok(false);
+    };
+    let path = target
+        .into_path()
+        .map_err(|_| "Selected destination is not a local file path".to_string())?;
+    let bytes = reqwest::get(&request.url)
+        .await
+        .map_err(|e| format!("Download file: {e}"))?
+        .error_for_status()
+        .map_err(|e| format!("Download file: {e}"))?
+        .bytes()
+        .await
+        .map_err(|e| format!("Read downloaded file: {e}"))?;
+    tokio::fs::write(&path, bytes)
+        .await
+        .map_err(|e| format!("Write {}: {e}", path.display()))?;
     Ok(true)
 }
 
@@ -1499,6 +1541,7 @@ fn main() {
         .on_menu_event(|app, event| handle_desktop_menu(app, event.id().as_ref()))
         .invoke_handler(tauri::generate_handler![
             request_voice_permissions,
+            save_workspace_file,
             backend_health,
             backend_logs_path,
             app_backend_status,

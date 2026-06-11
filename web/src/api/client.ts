@@ -367,9 +367,12 @@ export async function listWorkspaceFiles(sessionId: string): Promise<WorkspaceFi
  *  path would escape the ``/`` separators that the ``{path:path}`` route
  *  pattern needs to see.
  */
-export function workspaceMediaUrl(sessionId: string, path: string): string {
+export function workspaceMediaUrl(sessionId: string, path: string, options?: { download?: boolean }): string {
   const encoded = path.split('/').map(encodeURIComponent).join('/')
-  return withTokenParam(apiUrl(`/team/${encodeURIComponent(sessionId)}/media/${encoded}`))
+  const url = apiUrl(`/team/${encodeURIComponent(sessionId)}/media/${encoded}`)
+  if (!options?.download) return withTokenParam(url)
+  const separator = url.includes('?') ? '&' : '?'
+  return withTokenParam(`${url}${separator}download=1`)
 }
 
 /** Build the URL for serving a raw file from a *coding* workspace (not a

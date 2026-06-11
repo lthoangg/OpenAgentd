@@ -17,6 +17,11 @@ describe('workspaceMediaUrl', () => {
     window.__OAD_TOKEN__ = 'secret'
     expect(workspaceMediaUrl('sid', 'output/chart.png')).toBe('/api/team/sid/media/output/chart.png?_token=secret')
   })
+
+  it('adds download before the desktop token for forced downloads', () => {
+    window.__OAD_TOKEN__ = 'secret'
+    expect(workspaceMediaUrl('sid', 'output/chart.png', { download: true })).toBe('/api/team/sid/media/output/chart.png?download=1&_token=secret')
+  })
 })
 
 describe('resolveApiUrl', () => {

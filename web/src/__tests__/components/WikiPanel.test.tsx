@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import type React from 'react'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -120,6 +120,29 @@ describe('WikiPanel', () => {
 
     await new Promise((resolve) => window.setTimeout(resolve, 650))
     expect(screen.queryByLabelText('Actions for user.md')).not.toBeTruthy()
+  })
+
+  it('replaces stale mobile wiki long-press timers', async () => {
+    isMobile = true
+    platformOs = 'ios'
+    const originalClearTimeout = window.clearTimeout
+    const clearTimeout = spyOn(window, 'clearTimeout').mockImplementation((...args: unknown[]) => originalClearTimeout(args[0] as number | undefined))
+
+    await renderWikiPanel()
+    const fileButton = screen.getByRole('button', { name: 'user.md' })
+    fireEvent.pointerDown(fileButton, {
+      pointerType: 'touch',
+      clientX: 40,
+      clientY: 40,
+    })
+    fireEvent.pointerDown(fileButton, {
+      pointerType: 'touch',
+      clientX: 42,
+      clientY: 42,
+    })
+
+    expect(clearTimeout).toHaveBeenCalled()
+    clearTimeout.mockRestore()
   })
 
   it('does not throw when copying a wiki path is denied', async () => {

@@ -58,8 +58,7 @@ export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
         )
       })
     : commands,
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  [query])
+  [commands, query])
 
   // Reset active index whenever filtered list changes (query changed)
   const prevQueryRef = useRef(query)

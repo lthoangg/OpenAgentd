@@ -12,7 +12,8 @@ use std::time::Duration;
 use tauri::{
     menu::{AboutMetadataBuilder, Menu, MenuItem, PredefinedMenuItem, SubmenuBuilder},
     tray::TrayIconBuilder,
-    AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent, Wry,
+    AppHandle, Emitter, LogicalSize, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder,
+    WindowEvent, Wry,
 };
 use tauri_plugin_dialog::DialogExt;
 
@@ -67,6 +68,12 @@ struct SavedAppServer {
 struct AppBackendConfig {
     active_base_url: Option<String>,
     servers: Vec<SavedAppServer>,
+}
+
+#[derive(Clone, Copy, Serialize, Deserialize)]
+struct SavedWindowState {
+    width: f64,
+    height: f64,
 }
 
 #[derive(Clone, Serialize)]
@@ -533,7 +540,16 @@ fn reveal_backend_log(app: &AppHandle) {
     });
 }
 
+fn persist_active_window_state(app: &AppHandle) {
+    if let Some(window) = target_webview_window(app) {
+        if let Err(e) = save_window_state(app, &window) {
+            log::warn!("failed to save window state: {e:#}");
+        }
+    }
+}
+
 fn quit_app(app: &AppHandle) {
+    persist_active_window_state(app);
     let state: tauri::State<'_, AppState> = app.state();
     state.quitting.store(true, Ordering::SeqCst);
     app.exit(0);
@@ -1265,10 +1281,49 @@ fn normalize_server_name(name: Option<String>) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
-fn app_backend_config_path(app: &AppHandle) -> Result<PathBuf> {
+fn app_config_file(app: &AppHandle, name: &str) -> Result<PathBuf> {
     let dir = app.path().app_config_dir().context("resolve app config dir")?;
     std::fs::create_dir_all(&dir).context("create app config dir")?;
-    Ok(dir.join("desktop-backend.json"))
+    Ok(dir.join(name))
+}
+
+fn app_backend_config_path(app: &AppHandle) -> Result<PathBuf> {
+    app_config_file(app, "desktop-backend.json")
+}
+
+fn window_state_path(app: &AppHandle) -> Result<PathBuf> {
+    app_config_file(app, "window-state.json")
+}
+
+fn load_window_state(app: &AppHandle) -> Result<Option<SavedWindowState>> {
+    let path = window_state_path(app)?;
+    if !path.exists() {
+        return Ok(None);
+    }
+    let bytes = std::fs::read(&path).with_context(|| format!("read {}", path.display()))?;
+    let state: SavedWindowState = serde_json::from_slice(&bytes)
+        .with_context(|| format!("parse {}", path.display()))?;
+    if state.width < 760.0 || state.height < 560.0 {
+        return Ok(None);
+    }
+    Ok(Some(state))
+}
+
+fn save_window_state(app: &AppHandle, window: &tauri::WebviewWindow) -> Result<()> {
+    if window.is_minimized().unwrap_or(false) || window.is_maximized().unwrap_or(false) {
+        return Ok(());
+    }
+    let size = window.inner_size().context("read window inner size")?;
+    if size.width < 760 || size.height < 560 {
+        return Ok(());
+    }
+    let path = window_state_path(app)?;
+    let state = SavedWindowState {
+        width: f64::from(size.width),
+        height: f64::from(size.height),
+    };
+    let bytes = serde_json::to_vec_pretty(&state).context("serialize window state")?;
+    std::fs::write(&path, bytes).with_context(|| format!("write {}", path.display()))
 }
 
 fn load_app_backend_config(app: &AppHandle) -> Result<AppBackendConfig> {
@@ -1383,14 +1438,22 @@ fn next_window_label(app: &AppHandle) -> String {
 
 async fn build_app_window(app: &AppHandle, label: String, init_script: String) -> Result<tauri::WebviewWindow> {
     let url = frontend_webview_url()?;
+    let saved_size = load_window_state(app).ok().flatten();
+    let initial_size = saved_size.unwrap_or(SavedWindowState {
+        width: 1280.0,
+        height: 820.0,
+    });
     let builder = WebviewWindowBuilder::new(app, label, url)
         .title("OpenAgentd")
-        .inner_size(1280.0, 820.0)
+        .inner_size(initial_size.width, initial_size.height)
         .min_inner_size(760.0, 560.0)
         .initialization_script(&init_script)
         .visible(false);
     let builder = configure_window_chrome(builder);
     let win = builder.build().context("build webview window")?;
+    if let Some(size) = saved_size {
+        win.set_size(LogicalSize::new(size.width, size.height)).ok();
+    }
     let state: tauri::State<'_, AppState> = app.state();
     win.set_zoom(*state.zoom.lock().await).ok();
     win.show().context("show window")?;
@@ -1619,6 +1682,7 @@ fn main() {
                 show_main_window(app);
             }
             RunEvent::ExitRequested { .. } => {
+                persist_active_window_state(app);
                 let state: tauri::State<'_, AppState> = app.state();
                 let sidecar = state.sidecar.clone();
                 // Block so the child receives SIGTERM before the parent exits.

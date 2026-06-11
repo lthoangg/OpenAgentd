@@ -568,6 +568,7 @@ interface WorkspaceFilesPanelProps {
 
 export function WorkspaceFilesPanel({ open, sessionId, onClose }: WorkspaceFilesPanelProps) {
   const isMobile = useIsMobile()
+  const { isMacOverlay } = usePlatform()
   const { data, isLoading, isError, refetch, isFetching } = useWorkspaceFilesQuery(sessionId)
   const prefersReducedMotion = useReducedMotion()
 
@@ -631,7 +632,7 @@ export function WorkspaceFilesPanel({ open, sessionId, onClose }: WorkspaceFiles
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
             onClick={onClose}
-            className="fixed inset-0 z-40 bg-black/40"
+            className="fixed inset-0 z-40 bg-black/40 [[data-mobile-shell]_&]:top-[calc(var(--spacing-app-header)+env(safe-area-inset-top,0px))]"
           />
 
           <motion.aside
@@ -640,7 +641,11 @@ export function WorkspaceFilesPanel({ open, sessionId, onClose }: WorkspaceFiles
             animate={prefersReducedMotion ? { opacity: 1 } : { x: 0, opacity: 1 }}
             exit={prefersReducedMotion ? { opacity: 0 } : { x: '100%', opacity: 0 }}
             transition={{ duration: prefersReducedMotion ? 0.01 : 0.22, ease: [0.4, 0, 0.2, 1] }}
-            className="fixed bottom-0 right-0 top-[env(safe-area-inset-top,0px)] z-50 flex w-[min(960px,95vw)] flex-col overflow-hidden border-l border-(--color-border) bg-(--bg-card) shadow-2xl [[data-mobile-shell]_&]:right-[env(safe-area-inset-right,0px)] [[data-mobile-shell]_&]:w-[min(960px,calc(100vw-env(safe-area-inset-left,0px)-env(safe-area-inset-right,0px)))]"
+            className={cn(
+              'fixed bottom-0 right-0 top-[env(safe-area-inset-top,0px)] z-50 flex w-[min(960px,95vw)] flex-col overflow-hidden border-l border-(--color-border) bg-(--bg-card) shadow-2xl',
+              '[[data-mobile-shell]_&]:top-[calc(var(--spacing-app-header)+env(safe-area-inset-top,0px))] [[data-mobile-shell]_&]:right-[env(safe-area-inset-right,0px)] [[data-mobile-shell]_&]:w-[min(960px,calc(100vw-env(safe-area-inset-left,0px)-env(safe-area-inset-right,0px)))]',
+              isMacOverlay && 'top-(--spacing-app-header)',
+            )}
             role="dialog"
             aria-modal="true"
             aria-label="Workspace files"

@@ -129,6 +129,34 @@ describe('SchedulerPanel — task visibility', () => {
     expect(await screen.findByRole('heading', { name: 'Keyboard reminder' })).toBeInTheDocument()
   })
 
+  it('replaces stale mobile task long-press timers', async () => {
+    isMobile = true
+    platformOs = 'ios'
+    const originalClearTimeout = window.clearTimeout
+    const clearTimeout = mock((...args: unknown[]) => originalClearTimeout(args[0] as number | undefined))
+    window.clearTimeout = clearTimeout as typeof window.clearTimeout
+
+    try {
+      renderPanel([task({ name: 'Mobile reminder' })])
+
+      const row = await screen.findByRole('button', { name: /Mobile reminder/i })
+      fireEvent.pointerDown(row, {
+        pointerType: 'touch',
+        clientX: 40,
+        clientY: 40,
+      })
+      fireEvent.pointerDown(row, {
+        pointerType: 'touch',
+        clientX: 42,
+        clientY: 42,
+      })
+
+      expect(clearTimeout).toHaveBeenCalled()
+    } finally {
+      window.clearTimeout = originalClearTimeout
+    }
+  })
+
   it('cancels mobile task long-press actions when the row unmounts', async () => {
     isMobile = true
     platformOs = 'ios'

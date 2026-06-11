@@ -173,6 +173,14 @@ describe('Coding workspace two-layer file preview', () => {
     expect(viewer.className).toContain('md:relative')
   })
 
+  it('does not reserve mobile header safe-area space for the desktop file viewer', async () => {
+    await renderViewer(readme, mock(() => {}), false)
+
+    const viewer = screen.getByLabelText('File viewer')
+    expect(viewer.className).not.toContain('mobile-safe-top')
+    expect(viewer.className).toContain('md:relative')
+  })
+
   it('lets users select preview lines and add a line comment reference', async () => {
     const user = userEvent.setup()
     const onAddComment = mock(() => {})

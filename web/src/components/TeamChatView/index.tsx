@@ -109,7 +109,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const mobileSidebarSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
   const mobileActionsSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
   const [showFilesPanel, setShowFilesPanel] = useState(false)
-  const [codingPanel, setCodingPanel] = useState<null | 'files' | 'diff'>(null)
+  const [codingPanel, setCodingPanel] = useState<null | 'changed' | 'files'>(null)
   const [codingFileViewer, setCodingFileViewer] = useState<WorkspaceFileInfo | null>(null)
   const [codingSidebarCollapsed, setCodingSidebarCollapsed] = useState(true)
   const [openWorkspaceDialogKey, setOpenWorkspaceDialogKey] = useState(0)
@@ -358,7 +358,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     if (mode === 'coding') {
       if (workspace) {
         setCodingPanel((value) => {
-          const next = value === null ? 'files' : null
+          const next = value === null ? 'changed' : null
           if (next === null) setCodingFileViewer(null)
           return next
         })
@@ -1031,8 +1031,8 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
                 ? workspace ? {
                     Icon: FolderOpen,
                     onClick: handleWorkspaceFiles,
-                    title: codingPanel === null ? 'Workspace files and git diff' : 'Close files and diff',
-                    ariaLabel: 'Workspace files and git diff',
+                    title: codingPanel === null ? 'Changed files and workspace files' : 'Close changed files and workspace files',
+                    ariaLabel: 'Changed files and workspace files',
                   } : undefined
                 : {
                     Icon: FolderOpen,

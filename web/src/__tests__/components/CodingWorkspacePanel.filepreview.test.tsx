@@ -61,8 +61,13 @@ async function renderWorkspacePanel(onFileSelect = mock(() => {}), selectedFileP
 
 async function renderViewer(file: WorkspaceFileInfo | null = readme, onAddComment = mock(() => {}), mobile = false) {
   const { CodingFileViewerPanel } = await import('@/components/CodingFileViewerPanel')
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   await act(async () => {
-    render(<CodingFileViewerPanel workspace={WORKSPACE} file={file} onClose={() => {}} onAddComment={onAddComment} mobile={mobile} />)
+    render(
+      <QueryClientProvider client={queryClient}>
+        <CodingFileViewerPanel workspace={WORKSPACE} file={file} onClose={() => {}} onAddComment={onAddComment} mobile={mobile} />
+      </QueryClientProvider>,
+    )
   })
 }
 
@@ -104,10 +109,9 @@ describe('Coding workspace two-layer file preview', () => {
     await renderWorkspacePanel()
     await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
 
-    // Diff is lazy-loaded: switch to Diff tab to trigger the fetch, then back to Files.
-    await user.click(screen.getByRole('button', { name: /diff/i }))
-    await waitFor(() => expect(screen.getByRole('button', { name: /files 2/i })).toBeTruthy())
-    await user.click(screen.getByRole('button', { name: /files 2/i }))
+    await user.click(screen.getByRole('button', { name: /changed/i }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /files/i })).toBeTruthy())
+    await user.click(screen.getByRole('button', { name: /files/i }))
 
     expect(screen.getByTitle('README.md').textContent).toContain('M')
     await user.click(screen.getByText('assets'))

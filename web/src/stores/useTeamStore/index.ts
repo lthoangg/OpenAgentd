@@ -559,6 +559,36 @@ export const useTeamStore = create<TeamStore>()(
       const content = isStart ? prompt : command
       const leadName = get().leadName
       const submittedAt = Date.now()
+      const currentLoop = get().activeLoop
+      if (isStart && prompt) {
+        const limit = currentLoop?.limit ?? 10
+        set((draft) => {
+          draft.activeLoop = {
+            prompt,
+            limit,
+            remaining: Math.max(limit - 1, 0),
+            used: Math.min(1, limit),
+            paused: false,
+          }
+        })
+      } else if (command.startsWith('/loop:set ')) {
+        const limit = Number(command.slice('/loop:set '.length).trim())
+        if (Number.isFinite(limit) && limit > 0) {
+          set((draft) => {
+            draft.activeLoop = { prompt: null, limit, remaining: limit, used: 0, paused: false }
+          })
+        }
+      } else if (command === '/loop:pause' && currentLoop) {
+        set((draft) => {
+          if (draft.activeLoop) draft.activeLoop.paused = true
+        })
+      } else if (command === '/loop:resume' && currentLoop) {
+        set((draft) => {
+          if (draft.activeLoop) draft.activeLoop.paused = false
+        })
+      } else if (command === '/loop:stop') {
+        set((draft) => { draft.activeLoop = null })
+      }
       if (isStart && leadName) {
         set((draft) => {
           if (!draft.agentStreams[leadName]) {

@@ -545,12 +545,12 @@ function SessionModelSettings({
                   key={level.value}
                   role="option"
                   aria-selected={level.value === draftThinkingLevel}
-                  onMouseDown={(e) => {
+                  onPointerDown={(e) => {
                     e.preventDefault()
                     e.stopPropagation()
                     selectThinkingLevel(level.value)
                   }}
-                  onMouseEnter={() => setActiveThinkingIndex(index)}
+                  onPointerEnter={() => setActiveThinkingIndex(index)}
                   onClick={(e) => e.stopPropagation()}
                   className={`block w-full rounded-sm px-2 py-1.5 text-left text-xs text-(--color-text) transition-colors ${index === activeThinkingIndex ? 'bg-(--bg-key)' : 'hover:bg-(--bg-key)'}`}
                 >

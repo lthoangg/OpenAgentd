@@ -65,6 +65,26 @@ describe('SessionSettingsPanel', () => {
     expect(refetch).toHaveBeenCalledTimes(1)
   })
 
+  it('supports touch pointer selection in the thinking picker', () => {
+    const onChange = mock(() => {})
+    render(
+      <SessionSettingsPanel
+        open
+        onClose={() => {}}
+        onSessionModelSettingsChange={onChange}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /thinking level/i }))
+    const highOption = screen.getAllByRole('option').find((option) => option.textContent === 'High')
+    expect(highOption).toBeTruthy()
+    fireEvent.pointerEnter(highOption!, { pointerType: 'touch' })
+    fireEvent.pointerDown(highOption!, { pointerType: 'touch' })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(onChange).toHaveBeenCalledWith(null, 'high', false)
+  })
+
   it('clears pending model picker close timers on refocus and unmount', () => {
     const originalClearTimeout = window.clearTimeout
     const clearTimeout = mock((...args: unknown[]) => originalClearTimeout(args[0] as number | undefined))

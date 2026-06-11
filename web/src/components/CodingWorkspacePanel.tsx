@@ -209,7 +209,7 @@ export function CodingWorkspacePanel({
     storageKey: 'oa.codingWorkspacePanel.width',
     defaultWidth: 440,
     minWidth: 360,
-    maxWidth: 720,
+    maxWidth: Math.min(720, Math.max(360, Math.floor((typeof window === 'undefined' ? 720 : window.innerWidth) - 320))),
     edge: 'left',
     disabled: mobile,
   })

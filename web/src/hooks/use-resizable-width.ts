@@ -33,6 +33,10 @@ export function useResizableWidth({
     window.localStorage.setItem(storageKey, String(width))
   }, [disabled, storageKey, width])
 
+  useEffect(() => {
+    setWidth((current) => clamp(current, minWidth, maxWidth))
+  }, [maxWidth, minWidth])
+
   const resetWidth = useCallback(() => setWidth(defaultWidth), [defaultWidth])
 
   const startResize = useCallback((event: ReactPointerEvent<HTMLElement>) => {

@@ -309,7 +309,7 @@ export function CodingFileViewerPanel({
     storageKey: 'oa.codingFileViewer.width',
     defaultWidth: 560,
     minWidth: 420,
-    maxWidth: 880,
+    maxWidth: Math.min(880, Math.max(420, Math.floor((typeof window === 'undefined' ? 880 : window.innerWidth) - 320))),
     edge: 'left',
     disabled: mobile,
   })

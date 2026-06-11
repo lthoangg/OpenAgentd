@@ -88,7 +88,6 @@ export function ReadView({ args, result, onCollapse }: ReadViewProps) {
         <button
           type="button"
           onPointerDown={(event) => event.stopPropagation()}
-          onMouseDown={(event) => event.stopPropagation()}
           onClick={(event) => {
             event.stopPropagation()
             void copyBody()

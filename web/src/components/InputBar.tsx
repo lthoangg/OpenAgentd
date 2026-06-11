@@ -1059,7 +1059,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         onBlur={() => {
           const canMinimize = value.trim().length === 0 && files.length === 0
           onBlur?.(canMinimize)
-          // Close the picker on blur — clicks on its items use ``onMouseDown``
+          // Close the picker on blur — picker items use ``onPointerDown``
           // with ``preventDefault`` (see below) so they fire before the
           // textarea blurs and the menu still gets to commit its choice.
           setMentionRange(null)

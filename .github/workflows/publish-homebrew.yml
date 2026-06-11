@@ -33,8 +33,21 @@ jobs:
       - name: Download sdist from PyPI
         run: |
           VERSION="${{ steps.release.outputs.version }}"
-          URL=$(curl -fsSL "https://pypi.org/pypi/openagentd/${VERSION}/json" | python3 -c "import sys,json; d=json.load(sys.stdin); print([u['url'] for u in d['urls'] if u['packagetype']=='sdist'][0])")
-          curl -fSL "$URL" -o openagentd.tar.gz
+          PYPI_JSON="https://pypi.org/pypi/openagentd/${VERSION}/json"
+
+          for attempt in 1 2 3 4 5; do
+            echo "Fetching PyPI metadata for openagentd ${VERSION} (attempt ${attempt}/5)"
+            if curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors "$PYPI_JSON" -o pypi.json; then
+              URL=$(python3 -c "import json; d=json.load(open('pypi.json')); print([u['url'] for u in d['urls'] if u['packagetype']=='sdist'][0])")
+              if curl -fSL --retry 3 --retry-delay 5 --retry-all-errors "$URL" -o openagentd.tar.gz; then
+                exit 0
+              fi
+            fi
+            sleep $((attempt * 10))
+          done
+
+          echo "Unable to download openagentd ${VERSION} sdist from PyPI after retries" >&2
+          exit 1
 
       - name: Compute SHA-256
         id: hash

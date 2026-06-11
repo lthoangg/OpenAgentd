@@ -1,6 +1,11 @@
-import { describe, it, expect } from "bun:test";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, mock } from "bun:test";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { fixNestedFences, extractText, MarkdownBlock } from "@/utils/markdown";
+
+Object.defineProperty(navigator, "clipboard", {
+  value: { writeText: mock(async () => undefined) },
+  configurable: true,
+});
 
 // ---------------------------------------------------------------------------
 // fixNestedFences
@@ -421,6 +426,25 @@ describe("MarkdownBlock code fences", () => {
 
     const pre = screen.getByText("plain text").closest("pre");
     expect(pre?.previousElementSibling?.textContent).not.toBe("plain text");
+  });
+
+  it("clears pending code copy feedback timers on unmount", async () => {
+    const originalClearTimeout = window.clearTimeout;
+    const clearTimeout = mock((...args: unknown[]) => originalClearTimeout(args[0] as number | undefined));
+    window.clearTimeout = clearTimeout as typeof window.clearTimeout;
+
+    try {
+      const view = render(<MarkdownBlock content={["```ts", "const answer = 42", "```"].join("\n")} />);
+      await act(async () => {
+        fireEvent.click(screen.getByLabelText("Copy code"));
+        await Promise.resolve();
+      });
+      view.unmount();
+
+      expect(clearTimeout).toHaveBeenCalledTimes(1);
+    } finally {
+      window.clearTimeout = originalClearTimeout;
+    }
   });
 
   it("keeps code copy action visible and large enough for touch before desktop hover reveal", () => {

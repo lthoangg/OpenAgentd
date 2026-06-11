@@ -6,7 +6,7 @@
  * across all views.
  */
 
-import { memo, useMemo, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -140,12 +140,21 @@ export function CodeBlock({
   rawText: string
 }) {
   const [copied, setCopied] = useState(false)
+  const copiedTimerRef = useRef<number | null>(null)
+
+  useEffect(() => () => {
+    if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current)
+  }, [])
 
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(rawText)
       setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
+      if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current)
+      copiedTimerRef.current = window.setTimeout(() => {
+        copiedTimerRef.current = null
+        setCopied(false)
+      }, 1500)
     } catch {
       // ignore
     }

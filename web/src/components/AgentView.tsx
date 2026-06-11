@@ -30,6 +30,7 @@ import { FileCard } from './FileCard'
 import { AssistantTurn } from './AssistantTurnFooter'
 import { PendingMessageQueue } from './PendingMessageQueue'
 import { partitionTurns } from '@/utils/turns'
+import { mergeBlocks } from '@/utils/blocks'
 import { extractSleepPrefix, formatTime } from '@/utils/format'
 import { latestMCPAppResourceBlockIds } from '@/utils/mcp-app-artifacts'
 import { useTeamStore } from '@/stores/useTeamStore'
@@ -359,7 +360,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
     void useTeamStore.getState().undoTeam()
   }, [])
 
-  const allBlocks = useMemo(() => [...blocks, ...currentBlocks], [blocks, currentBlocks])
+  const allBlocks = useMemo(() => mergeBlocks(blocks, currentBlocks), [blocks, currentBlocks])
   const visibleBlocks = useMemo(
     () => allBlocks.filter((block) => block.type !== 'compaction'),
     [allBlocks],

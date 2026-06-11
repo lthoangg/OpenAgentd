@@ -1,5 +1,6 @@
 import { describe, it, expect } from "bun:test";
 import {
+  mergeBlocks,
   appendThinking,
   appendText,
   initTool,
@@ -11,6 +12,33 @@ import {
   endCompaction,
 } from "@/utils/blocks";
 import type { ContentBlock } from "@/api/types";
+
+// ---------------------------------------------------------------------------
+// mergeBlocks
+// ---------------------------------------------------------------------------
+
+describe("mergeBlocks", () => {
+  it("returns finalized blocks by reference when current blocks are empty", () => {
+    const blocks: ContentBlock[] = [{ id: "b1", type: "text", content: "done" }];
+    const result = mergeBlocks(blocks, []);
+    expect(result).toBe(blocks);
+  });
+
+  it("returns current blocks by reference when finalized blocks are empty", () => {
+    const currentBlocks: ContentBlock[] = [{ id: "c1", type: "text", content: "live" }];
+    const result = mergeBlocks([], currentBlocks);
+    expect(result).toBe(currentBlocks);
+  });
+
+  it("returns a merged copy when both arrays contain blocks", () => {
+    const blocks: ContentBlock[] = [{ id: "b1", type: "text", content: "done" }];
+    const currentBlocks: ContentBlock[] = [{ id: "c1", type: "text", content: "live" }];
+    const result = mergeBlocks(blocks, currentBlocks);
+    expect(result).not.toBe(blocks);
+    expect(result).not.toBe(currentBlocks);
+    expect(result).toEqual([...blocks, ...currentBlocks]);
+  });
+});
 
 // ---------------------------------------------------------------------------
 // appendThinking

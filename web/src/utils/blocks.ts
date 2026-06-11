@@ -4,6 +4,15 @@ export function generateBlockId(): string {
   return `block-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
 }
 
+export function mergeBlocks(
+  blocks: ContentBlock[],
+  currentBlocks: ContentBlock[],
+): ContentBlock[] {
+  if (currentBlocks.length === 0) return blocks
+  if (blocks.length === 0) return currentBlocks
+  return [...blocks, ...currentBlocks]
+}
+
 export function appendThinking(
   blocks: ContentBlock[],
   text: string

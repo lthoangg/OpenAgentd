@@ -24,6 +24,7 @@ import { ImageAttachment } from './ImageAttachment'
 import { FileCard } from './FileCard'
 import { AssistantTurn } from './AssistantTurnFooter'
 import { partitionTurns } from '@/utils/turns'
+import { mergeBlocks } from '@/utils/blocks'
 import { formatTokens, extractSleepPrefix, formatTime } from '@/utils/format'
 import { latestMCPAppResourceBlockIds } from '@/utils/mcp-app-artifacts'
 import { useTeamStore } from '@/stores/useTeamStore'
@@ -414,7 +415,10 @@ export function AgentPane({
     }
   }, [isAtBottom])
 
-  const allBlocks = useMemo(() => [...stream.blocks, ...stream.currentBlocks], [stream.blocks, stream.currentBlocks])
+  const allBlocks = useMemo(
+    () => mergeBlocks(stream.blocks, stream.currentBlocks),
+    [stream.blocks, stream.currentBlocks],
+  )
   const latestUserBlockId = useMemo(() => {
     for (let i = allBlocks.length - 1; i >= 0; i--) {
       const block = allBlocks[i]

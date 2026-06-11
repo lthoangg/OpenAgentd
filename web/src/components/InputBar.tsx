@@ -328,9 +328,14 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     },
     insertText: (text: string) => {
       const el = textareaRef.current
+      const shouldEnterShellMode = !shellMode && value.length === 0 && text === '!'
       setValue((prev) => {
         const start = el?.selectionStart ?? prev.length
         const end = el?.selectionEnd ?? start
+        if (shouldEnterShellMode && prev.length === 0 && start === 0 && end === 0) {
+          requestAnimationFrame(resize)
+          return ''
+        }
         const next = prev.slice(0, start) + text + prev.slice(end)
         requestAnimationFrame(() => {
           el?.setSelectionRange(start + text.length, start + text.length)
@@ -338,7 +343,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         })
         return next
       })
-      setShellMode(false)
+      setShellMode(shouldEnterShellMode ? true : false)
       setHistoryIndex(-1)
       setMentionRange(null)
       setSnippetRange(null)

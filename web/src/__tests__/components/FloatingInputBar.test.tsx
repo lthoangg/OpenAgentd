@@ -223,4 +223,17 @@ describe('FloatingInputBar', () => {
     expect(textarea.getAttribute('disabled')).toBeNull()
     expect(textarea.value).toBe('h')
   })
+
+  it('minimizes after sending a message', async () => {
+    const user = userEvent.setup()
+    render(<Harness />)
+
+    await user.click(screen.getByRole('button', { name: 'Expand input bar' }))
+    const textarea = screen.getByRole('textbox', { name: 'Message input' })
+    await user.type(textarea, 'hello')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+    expect(textarea.getAttribute('disabled')).not.toBeNull()
+    expect(screen.getByRole('button', { name: 'Expand input bar' })).toBeTruthy()
+  })
 })

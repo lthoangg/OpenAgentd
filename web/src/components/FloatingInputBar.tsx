@@ -206,6 +206,11 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
       }, 180)
     }, [])
 
+    const handleSubmit = useCallback((message: string, files?: File[]) => {
+      inputProps.onSubmit(message, files)
+      minimize()
+    }, [inputProps, minimize])
+
     useEffect(() => () => {
       if (blurTimerRef.current) clearTimeout(blurTimerRef.current)
     }, [])
@@ -338,7 +343,7 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
           style={keyboardInset > 0 ? { paddingBottom: `calc(${keyboardInset}px + 0.5rem)` } : undefined}
         >
           <RevertNotice count={inputProps.revertedCount ?? 0} messages={inputProps.revertedMessages ?? []} onRedo={inputProps.onRedo} />
-          <InputBar ref={setInputRefs} floating filesBelow={false} {...inputProps} />
+          <InputBar ref={setInputRefs} floating filesBelow={false} {...inputProps} onSubmit={handleSubmit} />
         </div>
       )
     }
@@ -381,6 +386,7 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
             </button>
           )}
           {...inputProps}
+          onSubmit={handleSubmit}
         />
       </motion.div>
     )

@@ -772,6 +772,21 @@ describe("InputBar — useImperativeHandle", () => {
     expect(document.activeElement).toBe(textarea)
     expect(textarea.value).toBe("h")
   })
+
+  it("enters shell mode when first-key auto-capture inserts bang", () => {
+    const ref = createRef<InputBarHandle>()
+    render(<InputBar onSubmit={() => {}} ref={ref} />)
+
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+    act(() => {
+      ref.current?.focus()
+      ref.current?.insertText("!")
+    })
+
+    expect(document.activeElement).toBe(textarea)
+    expect(textarea.value).toBe("")
+    expect(screen.getByLabelText("Shell command input")).toBe(textarea)
+  })
 })
 
 describe("InputBar — buildAcceptString (hidden file input accept attribute)", () => {

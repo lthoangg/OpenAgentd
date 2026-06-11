@@ -58,7 +58,7 @@ Stored in `useTeamStore._pendingMessages: PendingMessage[]`.
 
 `PendingMessageQueue` renders queued messages inside the conversation timeline below the streaming assistant response. Each queued item uses the normal right-aligned user bubble shape with a small × button (labelled "Edit queued message") and a `Queued` label. Clicking × dispatches a `queue:restore-draft` `CustomEvent`; `TeamChatView` listens for it and moves the queued text back into the composer (overwriting any current draft, matching `/undo` semantics) before removing the queued row — so the user can edit or resend instead of losing what they typed.
 
-The desktop floating composer starts as a compact action strip and expands on explicit focus, `Ctrl+I`, attachment/content insertion, the Chat affordance, or type-to-focus: when no editable element is focused, pressing a printable key on the cockpit/coding chat surface focuses the composer and inserts that first character. Pressing `Escape` while focus is inside the expanded composer minimizes it back to the compact strip. While the lead is streaming, the composer may still minimize when empty and blurred; the compact strip remains recoverable with File, Voice, Chat/Expand, and Send/Stop controls. The streaming placeholder tells the user they can queue a follow-up, type `/stop`, or click stop.
+The desktop floating composer starts as a compact action strip and expands on explicit focus, `Ctrl+I`, attachment/content insertion, the Chat affordance, or type-to-focus: when no editable element is focused, pressing a printable key on the cockpit/coding chat surface focuses the composer and inserts that first character. Pressing `Escape` while focus is inside the expanded composer minimizes it back to the compact strip; sending a message also returns the composer to the compact strip. While the lead is streaming, the composer may still minimize when empty and blurred; the compact strip remains recoverable with File, Voice, Chat/Expand, and Send/Stop controls. The streaming placeholder tells the user they can queue a follow-up, type `/stop`, or click stop.
 
 Keyboard submit differs by viewport: desktop `Enter` submits and `Shift+Enter` inserts a newline; mobile `Enter` inserts a newline and the Send button submits.
 
@@ -66,10 +66,12 @@ Keyboard submit differs by viewport: desktop `Enter` submits and `Shift+Enter` i
 
 Typing `!` as the first character enters shell mode, matching opencode's shortcut.
 The `!` is not inserted into the textarea; instead the placeholder changes to
-`Enter shell command...`. Desktop and mobile shells also expose a terminal button
-in the expanded composer for entering shell mode without typing `!`. In shell
-mode, attach/voice controls collapse into the active Shell button. Backspace on
-an empty shell command, or Escape, exits back to normal chat mode.
+`Enter shell command...`. This also works from the desktop compact strip's
+type-to-focus path: pressing `!` expands the composer directly into shell mode.
+Desktop and mobile shells also expose a terminal button in the expanded composer
+for entering shell mode without typing `!`. In shell mode, attach/voice controls
+collapse into the active Shell button. Backspace on an empty shell command, or
+Escape, exits back to normal chat mode.
 
 Submitting shell mode prefixes the visible history/API message with `!`, sets the
 `shell=true` API flag, and marks the optimistic user block as `extra.kind =

@@ -21,10 +21,12 @@ to run a tool.
 
 In the web/desktop composer, typing `!` as the first character switches the input
 into shell mode: the `!` disappears and the placeholder changes to `Enter shell
-command...`. Desktop and mobile shells also expose a terminal button in the
-expanded composer for entering shell mode without typing `!`. While shell mode is
-active, attach/voice controls are replaced by the active Shell button. Press
-Backspace on an empty shell command, or Escape, to return to normal chat mode.
+command...`. This also works from the desktop compact strip's type-to-focus path:
+pressing `!` expands the composer directly into shell mode. Desktop and mobile
+shells also expose a terminal button in the expanded composer for entering shell
+mode without typing `!`. While shell mode is active, attach/voice controls are
+replaced by the active Shell button. Press Backspace on an empty shell command,
+or Escape, to return to normal chat mode.
 
 ## What is saved in history
 

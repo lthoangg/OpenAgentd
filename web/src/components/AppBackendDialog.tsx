@@ -395,32 +395,34 @@ function connectionFailureMessage(baseUrl: string): string {
   return 'Server did not respond to /api/health/live. Check that OpenAgentd is running with --host 0.0.0.0, this device is on the same network, and the URL uses the backend machine LAN IP.'
 }
 
-async function checkServerAuth(baseUrl: string, accessKey: string): Promise<boolean> {
-  const base = baseUrl.replace(/\/+$/, '')
+async function fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs = 1500): Promise<Response> {
   const controller = new AbortController()
-  const timeout = window.setTimeout(() => controller.abort(), 1500)
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs)
   try {
-    const headers = accessKey ? { Authorization: `Bearer ${accessKey}` } : undefined
-    const res = await fetch(`${base}/api/auth/check`, { cache: 'no-store', headers, signal: controller.signal })
-    return res.ok || res.status === 404
-  } catch {
-    return false
+    return await fetch(url, { ...init, signal: controller.signal })
   } finally {
     window.clearTimeout(timeout)
   }
 }
 
+async function checkServerAuth(baseUrl: string, accessKey: string): Promise<boolean> {
+  const base = baseUrl.replace(/\/+$/, '')
+  try {
+    const headers = accessKey ? { Authorization: `Bearer ${accessKey}` } : undefined
+    const res = await fetchWithTimeout(`${base}/api/auth/check`, { cache: 'no-store', headers })
+    return res.ok || res.status === 404
+  } catch {
+    return false
+  }
+}
+
 async function pingServer(baseUrl: string): Promise<boolean> {
   const base = baseUrl.replace(/\/+$/, '')
-  const controller = new AbortController()
-  const timeout = window.setTimeout(() => controller.abort(), 1500)
   try {
-    const res = await fetch(`${base}/api/health/live`, { cache: 'no-store', signal: controller.signal })
+    const res = await fetchWithTimeout(`${base}/api/health/live`, { cache: 'no-store' })
     return res.ok
   } catch {
     return false
-  } finally {
-    window.clearTimeout(timeout)
   }
 }
 

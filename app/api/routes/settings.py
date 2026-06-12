@@ -202,6 +202,18 @@ def _provider_is_configured(entry: "ProviderEntry") -> bool:
         token_file = token_files.get(entry["id"])
         return bool(token_file and token_file.is_file())
     if kind == "cloud_creds":
+        if entry["id"] == "bedrock":
+            store = ProviderCredentialStore(entry["id"])
+            profile = os.environ.get("AWS_BEDROCK_PROFILE") or store.get(
+                "AWS_BEDROCK_PROFILE"
+            )
+            access_key = os.environ.get("AWS_ACCESS_KEY_ID") or store.get(
+                "AWS_ACCESS_KEY_ID"
+            )
+            secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY") or store.get(
+                "AWS_SECRET_ACCESS_KEY"
+            )
+            return bool(profile or (access_key and secret_key))
         # Vertex AI: need project + location *and* gcloud ADC. We can't
         # check gcloud from here without shelling out, so the UI's
         # "Test connection" button is the source of truth.
@@ -233,6 +245,17 @@ def _provider_saved_overrides(entry: "ProviderEntry") -> dict[str, str]:
             names.add(name)
     names.update({"OLLAMA_BASE_URL", "ROUTER9_BASE_URL", "CLIPROXY_BASE_URL"})
     return {name: value for name in names if (value := store.get(name))}
+
+
+def _provider_saved_display_credentials(entry: "ProviderEntry") -> dict[str, str]:
+    """Return saved non-secret credential values that are safe to echo to the UI."""
+    saved = _provider_saved_overrides(entry)
+    visible_names = {
+        str(field.get("name", ""))
+        for field in entry.get("credentials") or []
+        if field.get("name") and not field.get("secret")
+    }
+    return {name: value for name, value in saved.items() if name in visible_names}
 
 
 def _daemon_base_url(provider_id: str) -> str:
@@ -347,6 +370,7 @@ async def list_providers() -> ProvidersListBody:
                 description=entry.get("description", ""),
                 kind=entry["kind"],
                 credentials=list(entry.get("credentials", [])),
+                saved_credentials=_provider_saved_display_credentials(entry),
                 env_var=entry.get("env_var", ""),
                 env_vars=list(entry.get("env_vars", [])),
                 fallback_models=filter_agent_model_ids(

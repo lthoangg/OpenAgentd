@@ -311,7 +311,7 @@ agnostic by design. Deeper doc: [`configuration/providers.md`](./configuration/p
 | ZAI / GLM | `zai:glm-5-turbo` | `ZAI_API_KEY` |
 | xAI Grok | `xai:grok-4.20` | `XAI_API_KEY` |
 | DeepSeek | `deepseek:deepseek-v4-flash` | `DEEPSEEK_API_KEY` |
-| AWS Bedrock | `bedrock:anthropic.claude-sonnet-4-6` | AWS default chain `[v1.32.0]` |
+| AWS Bedrock | `bedrock:anthropic.claude-sonnet-4-6` | AWS profile/access keys via Settings → Providers or AWS default chain `[v1.54.0]` |
 | NVIDIA NIM | `nvidia:stepfun-ai/step-3.5-flash` | `NVIDIA_API_KEY` |
 | GitHub Copilot (OAuth) | `copilot:gpt-5.4-mini` | `openagentd auth copilot` |
 | OpenAI Codex (OAuth) | `codex:gpt-5.5` | `openagentd auth codex` |

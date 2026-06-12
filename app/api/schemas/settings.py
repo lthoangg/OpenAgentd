@@ -47,6 +47,7 @@ class ProviderInfo(BaseModel):
     description: str
     kind: str  # "api_key" | "oauth" | "local" | "cloud_creds"
     credentials: list[dict[str, object]] = Field(default_factory=list)
+    saved_credentials: dict[str, str] = Field(default_factory=dict)
     env_var: str = ""
     env_vars: list[str] = Field(default_factory=list)
     # Only set for providers without a live model-listing endpoint

@@ -195,15 +195,32 @@ async def _codex_models() -> list[str]:
     )
 
 
-async def _bedrock_models() -> list[str]:
+async def _bedrock_models(overrides: Mapping[str, str] | None = None) -> list[str]:
     import boto3
 
     region = (
-        settings.AWS_BEDROCK_REGION or os.getenv("AWS_DEFAULT_REGION") or "us-east-1"
+        _resolve(overrides, "AWS_BEDROCK_REGION")
+        or settings.AWS_BEDROCK_REGION
+        or os.getenv("AWS_BEDROCK_REGION")
+        or os.getenv("AWS_DEFAULT_REGION")
+        or "us-east-1"
     )
     kwargs: dict[str, str] = {"region_name": region}
-    if settings.AWS_BEDROCK_PROFILE:
-        session = boto3.Session(profile_name=settings.AWS_BEDROCK_PROFILE)
+    profile = (
+        _resolve(overrides, "AWS_BEDROCK_PROFILE")
+        or settings.AWS_BEDROCK_PROFILE
+        or os.getenv("AWS_BEDROCK_PROFILE")
+    )
+    access_key = _resolve(overrides, "AWS_ACCESS_KEY_ID")
+    secret_key = _resolve(overrides, "AWS_SECRET_ACCESS_KEY")
+    if profile:
+        session = boto3.Session(profile_name=profile)
+        client = session.client("bedrock", **kwargs)
+    elif access_key and secret_key:
+        session = boto3.Session(
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key,
+        )
         client = session.client("bedrock", **kwargs)
     else:
         client = boto3.client("bedrock", **kwargs)
@@ -261,7 +278,7 @@ async def discover_provider_models(
             case "codex":
                 models = await _codex_models()
             case "bedrock":
-                models = await _bedrock_models()
+                models = await _bedrock_models(overrides)
             case _:
                 from app.agent.providers.plugin_registry import (
                     ProviderCredentialStore,

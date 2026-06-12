@@ -579,12 +579,13 @@ async def save_provider(
 @router.post("/seed")
 async def install_seed_defaults(body: SeedInstallRequest) -> SeedInstallResponse:
     """Install bundled first-run agents/skills into the user's config dir."""
-    from app.cli.seed import SeedDownloadError, install_seed
+    from app.cli.seed import PROVIDER_MODEL_TOKEN, SeedDownloadError, install_seed
 
+    provider_model = body.provider_model or PROVIDER_MODEL_TOKEN
     try:
         result = install_seed(
             Path(settings.OPENAGENTD_CONFIG_DIR),
-            provider_model=body.provider_model.strip(),
+            provider_model=provider_model,
         )
     except SeedDownloadError as exc:
         logger.warning("seed_install_failed error={}", exc)

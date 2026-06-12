@@ -916,9 +916,10 @@ async def team_history(
     history = await get_team_history(db, session_id, before=before_dt)
     if history is None:
         raise HTTPException(status_code=404, detail="Lead session not found.")
+    loop_team = team
     if history.lead_session.mode == "coding" and history.lead_session.workspace:
         try:
-            await team_manager.get_or_start_coding_team(
+            loop_team = await team_manager.get_or_start_coding_team(
                 history.lead_session.workspace, str(history.lead_session.id)
             )
         except ValueError as exc:
@@ -950,6 +951,9 @@ async def team_history(
     return TeamHistoryResponse(
         lead=lead_detail,
         members=member_histories,
+        loop_status=loop_team.loop_status(str(history.lead_session.id))
+        if loop_team
+        else None,
         has_more=history.has_more,
         next_cursor=next_cursor,
     )

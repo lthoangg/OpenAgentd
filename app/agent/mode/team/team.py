@@ -317,6 +317,21 @@ class AgentTeam:
         """Return whether a user turn is active or the lead is already running."""
         return self._has_active_turn or self.lead.state == "working"
 
+    def loop_status(self, session_id: str) -> dict[str, object] | None:
+        """Return the current loop status for a session, if a loop is active."""
+        loop = self._loop_states.get(session_id)
+        if loop is None:
+            limit = self._loop_limits.get(session_id)
+            if limit is None:
+                return None
+            return _loop_status_payload(prompt=None, limit=limit, remaining=limit)
+        return _loop_status_payload(
+            prompt=loop.prompt,
+            limit=self._loop_limits.get(session_id, 10),
+            remaining=loop.remaining,
+            paused=loop.paused,
+        )
+
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------

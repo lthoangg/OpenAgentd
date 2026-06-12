@@ -779,6 +779,7 @@ export const useTeamStore = create<TeamStore>()(
           draft.isTeamWorking = history.lead.running === true
           draft.isContinuing = false
           draft.error = null
+          draft.activeLoop = history.loop_status ?? null
 
           Object.values(draft.agentStreams).forEach((stream) => {
             stream.revertedCount = 0

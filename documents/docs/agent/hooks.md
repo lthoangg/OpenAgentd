@@ -149,7 +149,7 @@ Returns ``None`` only when ``DEFAULT_PROMPT_TOKEN_THRESHOLD <= 0`` (operator-lev
 ```python
 hook = SummarizationHook(
     llm_provider=provider,
-    prompt_token_threshold=200000,
+    prompt_token_threshold=DEFAULT_PROMPT_TOKEN_THRESHOLD,
     keep_last_assistants=3,   # 0 = summarise everything below threshold
     summary_prompt="...",     # required
 )

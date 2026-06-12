@@ -10,7 +10,7 @@ import { useState } from 'react'
 
 import { cn } from '@/lib/utils'
 
-export const DEFAULT_SUMMARY_TRIGGER_TOKENS = 200_000
+export const DEFAULT_SUMMARY_TRIGGER_TOKENS = 250_000
 
 export interface TokenMeterProps {
   input: number
@@ -54,7 +54,6 @@ export function TokenMeter({
       <button
         type="button"
         className="relative flex h-9 min-w-9 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none md:h-7 md:min-w-7 md:rounded-sm"
-        title={tooltip}
         aria-label={tooltip}
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}

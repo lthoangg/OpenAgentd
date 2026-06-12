@@ -175,7 +175,9 @@ function UsagePanel({ limits }: { limits: ProviderUsageLimit[] }) {
 function ProviderCard({ provider }: { provider: ProviderInfo }) {
   const [apiKey, setApiKey] = useState('')
   const [baseUrl, setBaseUrl] = useState('')
+  const [cloudValues, setCloudValues] = useState<Record<string, string>>({})
   const [verifiedKey, setVerifiedKey] = useState('')
+  const [verifiedCloudSignature, setVerifiedCloudSignature] = useState('')
   const [hasReachabilityFailure, setHasReachabilityFailure] = useState(false)
   const [oauthOpen, setOauthOpen] = useState(false)
   const [modelsExpanded, setModelsExpanded] = useState(false)
@@ -188,10 +190,22 @@ function ProviderCard({ provider }: { provider: ProviderInfo }) {
   const trimmedKey = apiKey.trim()
   const trimmedBaseUrl = baseUrl.trim()
   const primaryCredential = provider.credentials[0]
+  const cloudExtra = useMemo<Record<string, string>>(() => {
+    const out: Record<string, string> = {}
+    for (const credential of provider.credentials) {
+      out[credential.name] = (cloudValues[credential.name] ?? provider.saved_credentials[credential.name] ?? '').trim()
+    }
+    return out
+  }, [cloudValues, provider.credentials, provider.saved_credentials])
+  const cloudSignature = useMemo(() => JSON.stringify(cloudExtra), [cloudExtra])
+  const hasCloudCandidate = Object.values(cloudExtra).some((value) => value.length > 0)
   const hasCandidateKey = trimmedKey.length > 0
   // Save is enabled only after List models succeeded for *this exact* key.
   const hasVerifiedKey = verifiedKey === trimmedKey && hasCandidateKey
-  const canSave = (provider.kind === 'api_key' || provider.kind === 'oauth') && hasVerifiedKey
+  const hasVerifiedCloud = verifiedCloudSignature === cloudSignature && hasCloudCandidate
+  const canSave =
+    ((provider.kind === 'api_key' || provider.kind === 'oauth') && hasVerifiedKey) ||
+    (provider.kind === 'cloud_creds' && hasVerifiedCloud)
 
   const daemon = DAEMON_BASE_URL[provider.id]
   // Only sends ``extra`` when the user actually typed something. An empty
@@ -204,11 +218,14 @@ function ProviderCard({ provider }: { provider: ProviderInfo }) {
 
   // Auto-list models for already-connected providers (no new key typed).
   // OAuth providers (Copilot, Codex) also surface their model list here
-  // once the user has completed the device-flow login.
+  // once the user has completed the device-flow login. Cloud credential
+  // providers (Bedrock / Vertex AI) use the saved .env values when the
+  // fields are blank after a page refresh.
   const autoFetchEnabled =
     provider.is_configured &&
     !hasCandidateKey &&
-    (provider.kind === 'api_key' || provider.kind === 'oauth')
+    !hasCloudCandidate &&
+    (provider.kind === 'api_key' || provider.kind === 'oauth' || provider.kind === 'cloud_creds')
 
   const autoModelsQ = useQuery({
     queryKey: queryKeys.settings.providerModels(provider.id),
@@ -233,7 +250,7 @@ function ProviderCard({ provider }: { provider: ProviderInfo }) {
       const listed = await modelsMutation.mutateAsync({
         providerId: provider.id,
         apiKey: trimmedKey,
-        extra: extraForRequest,
+        extra: provider.kind === 'cloud_creds' ? cloudExtra : extraForRequest,
       })
       // Write into the shared query cache so the derived ``models`` /
       // ``modelSource`` above pick it up without a parallel local state.
@@ -242,6 +259,7 @@ function ProviderCard({ provider }: { provider: ProviderInfo }) {
       setHasReachabilityFailure(!reachedProvider)
       if (reachedProvider) {
         setVerifiedKey(trimmedKey)
+        if (provider.kind === 'cloud_creds') setVerifiedCloudSignature(cloudSignature)
         setModelsExpanded(true)
         push({
           tone: 'success',
@@ -273,13 +291,16 @@ function ProviderCard({ provider }: { provider: ProviderInfo }) {
       // when empty) so the backend's ``write_env_credentials`` removes
       // a previously-set line when the user clears the input.
       const extraForSave =
-        daemon !== undefined ? { [daemon.var]: trimmedBaseUrl } : undefined
+        provider.kind === 'cloud_creds'
+          ? cloudExtra
+          : daemon !== undefined ? { [daemon.var]: trimmedBaseUrl } : undefined
       await saveMutation.mutateAsync({
         providerId: provider.id,
-        body: { api_key: trimmedKey, extra: extraForSave },
+        body: { api_key: provider.kind === 'cloud_creds' ? '' : trimmedKey, extra: extraForSave },
       })
       setApiKey('')
       setVerifiedKey('')
+      setVerifiedCloudSignature('')
       push({
         tone: 'success',
         title: 'Provider saved',
@@ -477,8 +498,64 @@ function ProviderCard({ provider }: { provider: ProviderInfo }) {
           </div>
         )}
 
-        {/* ── Detected providers (cloud_creds, or local without base URL) ── */}
-        {provider.kind !== 'api_key' && provider.kind !== 'oauth' && !daemon && (
+        {/* ── Cloud credential providers (Bedrock, Vertex AI) ─────────── */}
+        {provider.kind === 'cloud_creds' && (
+          <div className="space-y-2">
+            <div className="grid gap-2 sm:grid-cols-2">
+              {provider.credentials.map((credential) => (
+                <label key={credential.name} className="block">
+                  <span className="text-[11px] font-medium text-(--color-text-muted)">{credential.label}</span>
+                  <Input
+                    type={credential.secret ? 'password' : 'text'}
+                    value={cloudValues[credential.name] ?? provider.saved_credentials[credential.name] ?? ''}
+                    onChange={(e) => {
+                      setCloudValues((values) => ({ ...values, [credential.name]: e.target.value }))
+                      setVerifiedCloudSignature('')
+                    }}
+                    placeholder={credential.placeholder}
+                    autoComplete="off"
+                    className="mt-1 h-9 font-mono text-xs"
+                    spellCheck={false}
+                  />
+                </label>
+              ))}
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={handleListModels}
+                disabled={!hasCloudCandidate || listing}
+              >
+                {listing && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
+                List models
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleSave}
+                disabled={!canSave || saveMutation.isPending}
+              >
+                {saveMutation.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
+                Save
+              </Button>
+            </div>
+            {hasCloudCandidate && !hasVerifiedCloud && (
+              <p className="text-xs text-(--color-text-muted)">
+                Click <span className="font-medium">List models</span> to verify these credentials before saving.
+              </p>
+            )}
+            {!hasCloudCandidate && provider.is_configured && (
+              <p className="text-xs text-(--color-text-muted)">
+                Credentials saved. Type new values above only if you want to replace them.
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* ── Detected providers (local without base URL) ─────────────── */}
+        {provider.kind !== 'api_key' && provider.kind !== 'oauth' && provider.kind !== 'cloud_creds' && !daemon && (
           <p className="text-xs text-(--color-text-muted)">
             Detected from local environment or system credentials.
           </p>

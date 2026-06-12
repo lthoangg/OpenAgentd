@@ -97,6 +97,8 @@ describe('NotificationSettingsPage', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /send test notification/i }))
 
-    expect(screen.getByText('OS notification permission was not granted.')).toBeTruthy()
+    await waitFor(() => {
+      expect(screen.getByText('OS notification permission was not granted.')).toBeTruthy()
+    })
   })
 })

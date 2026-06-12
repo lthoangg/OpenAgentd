@@ -1063,6 +1063,7 @@ export type ProviderInfo = {
     required: boolean
     placeholder: string
   }>
+  saved_credentials: Record<string, string>
   env_var: string
   env_vars: string[]
   fallback_models: string[]

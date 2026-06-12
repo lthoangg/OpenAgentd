@@ -13,7 +13,7 @@ function makeStream(status: AgentStream["status"], totalTokens = 0): AgentStream
     currentText: "",
     currentThinking: "",
     status,
-    usage: { promptTokens: 0, completionTokens: 0, totalTokens, cachedTokens: 0 },
+    usage: { promptTokens: totalTokens, completionTokens: 0, totalTokens, cachedTokens: 0 },
     model: null,
     lastError: null,
     _completionBase: 0,

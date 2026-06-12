@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "openagentd"
-version = "1.53.1"  # keep in sync with app/version.txt
+version = "1.54.0"  # keep in sync with app/version.txt
 description = "Self-hosted AI agents — streaming chat, tool use, persistent memory, multi-agent teams"
 readme = "README.md"
 requires-python = ">=3.14"
@@ -50,7 +50,7 @@ dependencies = [
     "croniter>=6.2.2",
     "mcp>=1.0.0",
     "boto3>=1.35.0",
-    "botocore>=1.43.1",
+    "botocore[crt]>=1.43.1",
     "duckdb>=1.1.0",
 ]
 

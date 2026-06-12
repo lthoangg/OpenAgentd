@@ -561,10 +561,36 @@ def test_install_seed_defaults_reports_download_failure(
     assert response.json()["detail"] == "offline"
 
 
-def test_install_seed_defaults_rejects_blank_model() -> None:
+@pytest.mark.parametrize("body", [{}, {"provider_model": None}, {"provider_model": ""}])
+def test_install_seed_defaults_accepts_empty_model(
+    body: dict[str, str | None], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        settings_routes.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path)
+    )
+    install_seed = Mock(
+        return_value=SeedResult(
+            agents_written=[],
+            skills_written=[],
+            configs_written=[],
+            agents_removed=[],
+            source="local",
+        )
+    )
+    monkeypatch.setattr("app.cli.seed.install_seed", install_seed)
+
     app = _make_app()
     client = TestClient(app)
-    response = client.post("/api/settings/seed", json={"provider_model": ""})
+    response = client.post("/api/settings/seed", json=body)
+
+    assert response.status_code == 200
+    install_seed.assert_called_once_with(tmp_path, provider_model="__PROVIDER_MODEL__")
+
+
+def test_install_seed_defaults_rejects_invalid_model() -> None:
+    app = _make_app()
+    client = TestClient(app)
+    response = client.post("/api/settings/seed", json={"provider_model": "gpt-5"})
 
     assert response.status_code == 422
 

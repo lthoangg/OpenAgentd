@@ -268,21 +268,23 @@ def build_provider(
         case "bedrock":
             # Auth: explicit API key pair → named profile → boto3 default chain.
             # Region: AWS_BEDROCK_REGION setting → AWS_DEFAULT_REGION env → us-east-1.
+            import os as _os
+
             access_key: str | None = None
             secret_key: str | None = None
-            if s.AWS_BEDROCK_PROFILE is None:
+            profile_name = s.AWS_BEDROCK_PROFILE or _os.getenv("AWS_BEDROCK_PROFILE")
+            if profile_name is None:
                 # Try to pull explicit keys from standard AWS env vars or settings.
                 # boto3 reads these env vars natively too, but we support them through
                 # settings as well (e.g. set in .env for dev).
-                import os as _os
-
                 access_key = _os.getenv("AWS_ACCESS_KEY_ID") or None
                 secret_key = _os.getenv("AWS_SECRET_ACCESS_KEY") or None
             return _with_provider_name(
                 BedrockProvider(
                     model=model,
-                    region_name=s.AWS_BEDROCK_REGION,
-                    profile_name=s.AWS_BEDROCK_PROFILE,
+                    region_name=s.AWS_BEDROCK_REGION
+                    or _os.getenv("AWS_BEDROCK_REGION"),
+                    profile_name=profile_name,
                     aws_access_key_id=access_key,
                     aws_secret_access_key=secret_key,
                     model_kwargs=kwargs,

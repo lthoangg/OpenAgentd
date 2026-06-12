@@ -69,7 +69,7 @@ import { SplitGrid } from './SplitGrid'
 import { useTeamCommands } from './useTeamCommands'
 import { VIEW_MODES, type ViewMode } from './types'
 import { saveLastCodingWorkspace, workspaceLabel } from '@/utils/workspace'
-import { formatTokens } from '@/utils/format'
+import { DEFAULT_SUMMARY_TRIGGER_TOKENS, TokenMeter } from '@/components/ui/token-meter'
 import { setTraySession } from '@/lib/tray'
 import { parseLoopCommand } from '@/lib/parseLoopCommand'
 
@@ -219,10 +219,19 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   })
 
   // Sum tokens — four primitive selectors, no new object returned (avoids infinite loop).
-  const totalPrompt     = useTeamStore((s) => Object.values(s.agentStreams).reduce((n, st) => n + st.usage.promptTokens, 0))
-  const totalCompletion = useTeamStore((s) => Object.values(s.agentStreams).reduce((n, st) => n + st.usage.completionTokens, 0))
-  const totalCached     = useTeamStore((s) => Object.values(s.agentStreams).reduce((n, st) => n + st.usage.cachedTokens, 0))
-  const totalAll        = useTeamStore((s) => Object.values(s.agentStreams).reduce((n, st) => n + st.usage.totalTokens, 0))
+  const totalPrompt     = useTeamStore((s) => Object.values(s.agentStreams).reduce((n, st) => n + (st.usage.turnPromptTokens ?? st.usage.promptTokens), 0))
+  const totalCompletion = useTeamStore((s) => Object.values(s.agentStreams).reduce((n, st) => n + (st.usage.turnCompletionTokens ?? st.usage.completionTokens), 0))
+  const totalCached     = useTeamStore((s) => Object.values(s.agentStreams).reduce((n, st) => n + (st.usage.turnCachedTokens ?? st.usage.cachedTokens), 0))
+  const totalAll        = useTeamStore((s) => Object.values(s.agentStreams).reduce((n, st) => n + (st.usage.turnTotalTokens ?? st.usage.totalTokens), 0))
+  const headerTokens = totalAll > 0
+    ? {
+        input: totalPrompt,
+        output: totalCompletion,
+        cached: totalCached,
+        trigger: DEFAULT_SUMMARY_TRIGGER_TOKENS,
+        pulsing: isTeamWorking,
+      }
+    : undefined
 
   const abortRef = useRef<AbortController | null>(null)
 
@@ -958,6 +967,16 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
           <div className="flex shrink-0 items-center gap-0.5">
           {isMobile ? (
             <>
+              {headerTokens && (
+                <TokenMeter
+                  input={headerTokens.input}
+                  output={headerTokens.output}
+                  cached={headerTokens.cached}
+                  trigger={headerTokens.trigger}
+                  pulsing={headerTokens.pulsing}
+                  className="mr-0.5"
+                />
+              )}
               <MobileHeaderAction
                 Icon={ListTodo}
                 label="Tasks"
@@ -992,30 +1011,12 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
                 onWiki={() => { toggleWiki(); closeMobileActionsMenu() }}
                 onScheduler={() => { toggleScheduler(); closeMobileActionsMenu() }}
                 activeLoop={activeLoop}
-                tokens={totalAll > 0
-                  ? {
-                      input: totalPrompt,
-                      output: totalCompletion,
-                      cached: totalCached,
-                      total: totalAll,
-                      pulsing: isTeamWorking,
-                    }
-                  : undefined}
               />
             </>
           ) : (
             <AgentTopbar
               isMobile={false}
-              tokens={
-                totalAll > 0
-                  ? {
-                      input: totalPrompt,
-                      output: totalCompletion,
-                      cached: totalCached,
-                      pulsing: isTeamWorking,
-                    }
-                  : undefined
-              }
+              tokens={headerTokens}
               dreamRunning={dreamMutation.isPending}
               viewMode={viewMode}
               onViewModeChange={setViewMode}
@@ -1387,13 +1388,6 @@ interface MobileChatActionsProps {
   onWiki: () => void
   onScheduler: () => void
   activeLoop: ActiveLoop | null
-  tokens?: {
-    input: number
-    output: number
-    cached: number
-    total: number
-    pulsing: boolean
-  }
 }
 
 function MobileChatActions({
@@ -1408,7 +1402,6 @@ function MobileChatActions({
   onWiki,
   onScheduler,
   activeLoop,
-  tokens,
 }: MobileChatActionsProps) {
   return (
     <>
@@ -1494,17 +1487,6 @@ function MobileChatActions({
                 )}
 
                 <div className="px-2 py-2 text-xs font-medium text-muted-foreground">Session</div>
-                {tokens && (
-                  <div className="flex min-h-10 items-center gap-2 rounded-md px-2 text-sm">
-                    <span className="flex-1">Tokens</span>
-                    <span className="inline-flex items-center gap-1.5 font-mono text-xs text-(--color-text)">
-                      <span title={`Prompt: ${tokens.input.toLocaleString()}`}>in {formatTokens(tokens.input)}</span>
-                      <span title={`Output: ${tokens.output.toLocaleString()}`}>out {formatTokens(tokens.output)}</span>
-                      {tokens.cached > 0 && <span title={`Cached: ${tokens.cached.toLocaleString()}`}>cache {formatTokens(tokens.cached)}</span>}
-                      {tokens.pulsing && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-(--color-accent)" aria-hidden="true" />}
-                    </span>
-                  </div>
-                )}
                 <button type="button" onClick={onWiki} className="flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-left text-sm transition-colors hover:bg-(--bg-key)">
                   <Brain size={15} aria-hidden="true" />
                   <span className="flex-1">Wiki</span>

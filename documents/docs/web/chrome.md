@@ -2,7 +2,7 @@
 title: App Chrome (Header, Sidebar, Tauri Drag)
 description: Shared header, platform detection, and window-drag plumbing across browser and Tauri desktop.
 status: stable
-updated: 2026-05-27
+updated: 2026-06-12
 ---
 
 # App chrome
@@ -73,3 +73,7 @@ On narrow desktop windows, mobile drawers and their backdrops start below the 40
 Session titles can be renamed directly in the sidebar by double-clicking a session row or using its pencil action. The save path is shared by normal and coding sidebars.
 
 In coding mode, the topbar shows `Workspace: <name>` for the active workspace. The command palette intentionally excludes custom slash commands, Focus Chat Input, and the lead self-switch command; slash commands stay in the composer picker, `Ctrl+I` still focuses the composer, and worker-agent view commands remain available.
+
+## Chat usage meter
+
+`TeamChatView` uses `AgentTopbar` / `TokenMeter` to show context growth in the header before the action buttons on desktop and mobile. The meter is an icon-sized SVG progress ring: current input tokens divided by the summarization trigger. It intentionally has no number inside the circle; hover, focus, or tap/click reveals input, trigger, percent used, output, and cache details. Mobile uses the same placement order as desktop (`usage → actions`) and does not duplicate token usage in the More drawer.

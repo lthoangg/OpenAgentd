@@ -51,8 +51,8 @@ describe("StatusBar", () => {
       cachedTokens: 0,
     }
     render(<StatusBar sessionId={null} usage={usage} />)
-    expect(screen.getByText(/100p/)).toBeTruthy()
-    expect(screen.getByText(/50c/)).toBeTruthy()
+    expect(screen.getByText("100")).toBeTruthy()
+    expect(screen.getByTitle("Input: 100 · Output: 50 · Cache: 0")).toBeTruthy()
   })
 
   it("formats large token counts with 'k' suffix", () => {
@@ -63,8 +63,8 @@ describe("StatusBar", () => {
       cachedTokens: 0,
     }
     render(<StatusBar sessionId={null} usage={usage} />)
-    expect(screen.getByText(/1.5k/)).toBeTruthy()
-    expect(screen.getByText(/2k/)).toBeTruthy()
+    expect(screen.getByText("1.5k")).toBeTruthy()
+    expect(screen.getByTitle("Input: 1,500 · Output: 2,000 · Cache: 0")).toBeTruthy()
   })
 
   it("shows cached tokens when usage.cachedTokens > 0", () => {
@@ -75,7 +75,7 @@ describe("StatusBar", () => {
       cachedTokens: 25,
     }
     render(<StatusBar sessionId={null} usage={usage} />)
-    expect(screen.getByText(/25 cached/)).toBeTruthy()
+    expect(screen.getByTitle("Input: 100 · Output: 50 · Cache: 25")).toBeTruthy()
   })
 
   it("does not show cached tokens when cachedTokens is 0", () => {
@@ -112,9 +112,8 @@ describe("StatusBar", () => {
     )
     expect(screen.getByText("session-")).toBeTruthy() // shortId
     expect(screen.getByText("streaming")).toBeTruthy()
-    expect(screen.getByText(/500p/)).toBeTruthy()
-    expect(screen.getByText(/300c/)).toBeTruthy()
-    expect(screen.getByText(/50 cached/)).toBeTruthy()
+    expect(screen.getByText("500")).toBeTruthy()
+    expect(screen.getByTitle("Input: 500 · Output: 300 · Cache: 50")).toBeTruthy()
     expect(screen.getByText(newHint)).toBeTruthy()
   })
 })

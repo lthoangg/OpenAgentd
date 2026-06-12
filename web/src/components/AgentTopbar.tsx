@@ -26,6 +26,7 @@ export interface AgentTopbarTokens {
   input: number
   output: number
   cached?: number
+  trigger?: number
   pulsing?: boolean
 }
 
@@ -126,7 +127,9 @@ export function AgentTopbar({
           input={tokens.input}
           output={tokens.output}
           cached={tokens.cached}
+          trigger={tokens.trigger}
           pulsing={tokens.pulsing}
+          className="mr-0.5"
         />
       )}
 

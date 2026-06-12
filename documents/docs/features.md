@@ -80,6 +80,10 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   Cockpit, Coding, Command Palette, Wiki, Scheduled Tasks, Session Settings,
   key settings pages, updates, reload, config folder, and backend log; compact
   tray dropdown for status, quick navigation, reload, settings, and quit.
+- **Touch back/forward navigation** `[v1.53.1]` — desktop Tauri windows support
+  edge swipes on touch/pen devices: right from the left edge goes back, left
+  from the right edge goes forward, while editable fields and scroll-like
+  vertical gestures are ignored.
 - **Multiple desktop windows** `[v1.41.0]` — open additional cockpit windows from
   File → New Window, the tray menu, or `Cmd/Ctrl+N`; windows share the bundled
   sidecar and desktop auth token, while each window can independently switch to
@@ -123,6 +127,9 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   generates appears in the left drawer. Click to preview or download; desktop
   downloads use a native save dialog instead of navigating away from the app
   `[v1.52.0]`. See [`web/workspace-files.md`](./web/workspace-files.md).
+- **Header context meter** `[v1.53.0]` — desktop and mobile chat headers show an
+  icon-sized input-token progress ring against the summarization trigger; hover,
+  focus, or tap/click reveals input/output/cache details. See [`web/chrome.md`](./web/chrome.md).
 - **Todos panel** `[since v1.0]` — task board with a topbar progress badge
   `<finished>/<total>` `[v1.17.0]`. Live invalidation. See [`web/todos.md`](./web/todos.md).
 - **Mobile / phone-first layout** `[since v1.0]` — breakpoints, safe areas, drawer
@@ -307,7 +314,7 @@ agnostic by design. Deeper doc: [`configuration/providers.md`](./configuration/p
 | ZAI / GLM | `zai:glm-5-turbo` | `ZAI_API_KEY` |
 | xAI Grok | `xai:grok-4.20` | `XAI_API_KEY` |
 | DeepSeek | `deepseek:deepseek-v4-flash` | `DEEPSEEK_API_KEY` |
-| AWS Bedrock | `bedrock:anthropic.claude-sonnet-4-6` | AWS default chain `[v1.32.0]` |
+| AWS Bedrock | `bedrock:anthropic.claude-sonnet-4-6` | AWS profile/access keys via Settings → Providers or AWS default chain `[v1.54.0]` |
 | NVIDIA NIM | `nvidia:stepfun-ai/step-3.5-flash` | `NVIDIA_API_KEY` |
 | GitHub Copilot (OAuth) | `copilot:gpt-5.4-mini` | `openagentd auth copilot` |
 | OpenAI Codex (OAuth) | `codex:gpt-5.5` | `openagentd auth codex` |

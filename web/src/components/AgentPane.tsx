@@ -464,17 +464,12 @@ export function AgentPane({
          </div>
          <div className="flex items-center gap-1 text-xs text-(--color-text-subtle)">
            {stream.usage.totalTokens > 0 && (
-             <>
-               <span>in {formatTokens(stream.usage.promptTokens)}</span>
-               <span className="text-[#3c3836]">·</span>
-               <span>out {formatTokens(stream.usage.completionTokens)}</span>
-               {stream.usage.cachedTokens > 0 && (
-                 <>
-                   <span className="text-[#3c3836]">·</span>
-                   <span className="text-[#458588]">cached {formatTokens(stream.usage.cachedTokens)}</span>
-                 </>
-               )}
-             </>
+             <span
+               className="flex h-7 min-w-7 items-center justify-center rounded-full border border-(--color-border) bg-(--bg-key) px-1.5 font-mono text-[10px] text-(--color-text)"
+               title={`Input: ${stream.usage.promptTokens.toLocaleString()} · Output: ${stream.usage.completionTokens.toLocaleString()} · Cache: ${stream.usage.cachedTokens.toLocaleString()}`}
+             >
+               {formatTokens(stream.usage.promptTokens)}
+             </span>
            )}
             <span aria-label={`Agent status: ${stream.status}`} className={`h-1.5 w-1.5 rounded-full ${
              isError ? 'bg-(--color-error)' : isWorking ? 'animate-pulse bg-(--color-accent)' : isOffline ? 'bg-(--color-text-subtle) opacity-50' : 'bg-(--color-success)'

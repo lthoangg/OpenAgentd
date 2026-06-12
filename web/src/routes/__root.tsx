@@ -8,12 +8,14 @@ import { Home } from 'lucide-react'
 import { ToastStack } from '@/components/ToastStack'
 import { SkipLink } from '@/components/motion'
 import { MacTitleBar } from '@/components/MacTitleBar'
+import { useHistorySwipeNavigation } from '@/hooks/use-history-swipe-navigation'
 import { useMobileViewportGuards } from '@/hooks/use-mobile-viewport'
 import { useDesktopCommands } from '@/lib/desktop-commands'
 
 export function Root() {
   useMobileViewportGuards()
   useDesktopCommands()
+  useHistorySwipeNavigation()
   // Theme application is handled by `initTheme()` in main.tsx and the
   // inline pre-paint script in index.html. Do not force `.dark` here —
   // it would override the user's preference.

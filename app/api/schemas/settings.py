@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class SandboxSettingsBody(BaseModel):
@@ -47,6 +47,7 @@ class ProviderInfo(BaseModel):
     description: str
     kind: str  # "api_key" | "oauth" | "local" | "cloud_creds"
     credentials: list[dict[str, object]] = Field(default_factory=list)
+    saved_credentials: dict[str, str] = Field(default_factory=dict)
     env_var: str = ""
     env_vars: list[str] = Field(default_factory=list)
     # Only set for providers without a live model-listing endpoint
@@ -181,9 +182,22 @@ class SeedInstallRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    # ``provider:model`` string that substitutes for ``__PROVIDER_MODEL__``
-    # in every seeded agent .md.
-    provider_model: str = Field(min_length=1)
+    # Optional ``provider:model`` string that substitutes for
+    # ``__PROVIDER_MODEL__`` in every seeded agent .md. Empty/null means the
+    # seed keeps its internal placeholder until the user configures a model.
+    provider_model: str | None = None
+
+    @field_validator("provider_model")
+    @classmethod
+    def _validate_provider_model(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            return None
+        if ":" not in value:
+            raise ValueError("provider_model must use '<provider>:<model>' format")
+        return value
 
 
 class SeedInstallResponse(BaseModel):

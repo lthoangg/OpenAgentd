@@ -57,15 +57,15 @@ Summarization has **no operator-facing configuration surface**. All tuning lives
 The trigger threshold is model-aware when the model registry has a `limits.context_length` entry for the agent model. Registry data comes from the bundled `app/agent/providers/model_registry.json`, refreshed `models.dev` cache, and optional user overlay:
 
 ```text
-threshold = min(200000, 75% of model context length)
+threshold = min(MAX_PROMPT_TOKEN_THRESHOLD, 75% of model context length)
 ```
 
 Unknown model context lengths fall back to `DEFAULT_PROMPT_TOKEN_THRESHOLD`.
 
 | Constant | Default | Meaning |
 |----------|---------|---------|
-| `DEFAULT_PROMPT_TOKEN_THRESHOLD` | `200000` | Fallback trigger threshold for `state.usage.last_prompt_tokens` when model context is unknown. Set to `0` to disable summarization entirely. |
-| `MAX_PROMPT_TOKEN_THRESHOLD` | `200000` | Upper bound for model-aware summarization thresholds. |
+| `DEFAULT_PROMPT_TOKEN_THRESHOLD` | see code | Fallback trigger threshold for `state.usage.last_prompt_tokens` when model context is unknown. Set to `0` to disable summarization entirely. |
+| `MAX_PROMPT_TOKEN_THRESHOLD` | see code | Upper bound for model-aware summarization thresholds. |
 | `PROMPT_TOKEN_THRESHOLD_CONTEXT_RATIO` | `0.75` | Fraction of known model context used before applying the max cap. |
 | `DEFAULT_KEEP_LAST_ASSISTANTS` | `3` | Chat-mode keep window. |
 | `CODING_KEEP_LAST_ASSISTANTS` | `0` | Coding-mode keep window. |
@@ -82,7 +82,7 @@ from app.agent.hooks.summarization import build_summarization_hook
 hook = build_summarization_hook(
     default_provider=provider,
     mode=team.mode,             # "coding" → CODING_SUMMARY_PROMPT + keep=0; else CHAT_SUMMARY_PROMPT + keep=3
-    model_id=agent.model_id,    # e.g. "openai:gpt-5"; threshold = min(200k, 75% context)
+    model_id=agent.model_id,    # e.g. "openai:gpt-5"; threshold = min(max threshold, 75% context)
 )
 if hook:
     hooks.append(hook)
@@ -102,7 +102,7 @@ from app.agent.hooks.summarization import (
 hook = SummarizationHook(
     llm_provider=provider,                    # can be a cheaper/faster model
     summary_prompt=CHAT_SUMMARY_PROMPT,        # or CODING_SUMMARY_PROMPT, or a custom string
-    prompt_token_threshold=200000,
+    prompt_token_threshold=DEFAULT_PROMPT_TOKEN_THRESHOLD,
     keep_last_assistants=3,                   # 0 = summarise everything below threshold
     max_token_length=10000,                   # 0 = unlimited
     min_messages_since_last_summary=4,
@@ -224,7 +224,7 @@ main_provider = GoogleGenAIProvider(api_key="...", model="gemini-2.0-flash")
 hook = SummarizationHook(
     llm_provider=summarizer_provider,   # cheap summarizer
     summary_prompt=CHAT_SUMMARY_PROMPT,
-    prompt_token_threshold=200000,
+    prompt_token_threshold=DEFAULT_PROMPT_TOKEN_THRESHOLD,
 )
 agent = Agent(llm_provider=main_provider, hooks=[hook])
 ```

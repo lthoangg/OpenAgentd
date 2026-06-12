@@ -219,10 +219,10 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   })
 
   // Sum tokens — four primitive selectors, no new object returned (avoids infinite loop).
-  const totalPrompt     = useTeamStore((s) => Object.values(s.agentStreams).reduce((n, st) => n + (st.usage.turnPromptTokens ?? st.usage.promptTokens), 0))
-  const totalCompletion = useTeamStore((s) => Object.values(s.agentStreams).reduce((n, st) => n + (st.usage.turnCompletionTokens ?? st.usage.completionTokens), 0))
-  const totalCached     = useTeamStore((s) => Object.values(s.agentStreams).reduce((n, st) => n + (st.usage.turnCachedTokens ?? st.usage.cachedTokens), 0))
-  const totalAll        = useTeamStore((s) => Object.values(s.agentStreams).reduce((n, st) => n + (st.usage.turnTotalTokens ?? st.usage.totalTokens), 0))
+  const totalPrompt     = useTeamStore((s) => Object.values(s.agentStreams).reduce((n, st) => n + st.usage.promptTokens, 0))
+  const totalCompletion = useTeamStore((s) => Object.values(s.agentStreams).reduce((n, st) => n + st.usage.completionTokens, 0))
+  const totalCached     = useTeamStore((s) => Object.values(s.agentStreams).reduce((n, st) => n + st.usage.cachedTokens, 0))
+  const totalAll        = useTeamStore((s) => Object.values(s.agentStreams).reduce((n, st) => n + st.usage.totalTokens, 0))
   const headerTokens = totalAll > 0
     ? {
         input: totalPrompt,

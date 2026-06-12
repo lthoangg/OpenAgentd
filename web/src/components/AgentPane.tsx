@@ -465,14 +465,14 @@ export function AgentPane({
          <div className="flex items-center gap-1 text-xs text-(--color-text-subtle)">
            {stream.usage.totalTokens > 0 && (
              <span
-               className="flex h-7 min-w-7 items-center justify-center rounded-full border border-(--color-border) bg-(--bg-key) px-1.5 font-mono text-[10px] text-(--color-text)"
+               className="flex h-7 min-w-7 items-center justify-center rounded-full bg-(--bg-key) px-1.5 font-mono text-[10px] text-(--color-text)"
                title={`Input: ${stream.usage.promptTokens.toLocaleString()} · Output: ${stream.usage.completionTokens.toLocaleString()} · Cache: ${stream.usage.cachedTokens.toLocaleString()}`}
              >
                {formatTokens(stream.usage.promptTokens)}
              </span>
            )}
             <span aria-label={`Agent status: ${stream.status}`} className={`h-1.5 w-1.5 rounded-full ${
-             isError ? 'bg-(--color-error)' : isWorking ? 'animate-pulse bg-(--color-accent)' : isOffline ? 'bg-(--color-text-subtle) opacity-50' : 'bg-(--color-success)'
+             isError ? 'bg-(--color-error)' : isWorking ? 'bg-(--color-accent)' : isOffline ? 'bg-(--color-text-subtle) opacity-50' : 'bg-(--color-success)'
            }`} />
          </div>
        </div>

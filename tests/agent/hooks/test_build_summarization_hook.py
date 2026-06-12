@@ -70,7 +70,7 @@ def test_mode_none_picks_chat_prompt_and_default_keep(mock_provider):
     assert result._keep_last_assistants == DEFAULT_KEEP_LAST_ASSISTANTS
 
 
-def test_prompt_token_threshold_for_model_caps_at_200k():
+def test_prompt_token_threshold_for_model_caps_at_module_max():
     assert (
         prompt_token_threshold_for_model("openai:gpt-4.1") == MAX_PROMPT_TOKEN_THRESHOLD
     )

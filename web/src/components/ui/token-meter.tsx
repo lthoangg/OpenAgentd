@@ -10,14 +10,13 @@ import { useState } from 'react'
 
 import { cn } from '@/lib/utils'
 
-export const DEFAULT_SUMMARY_TRIGGER_TOKENS = 200_000
+export const DEFAULT_SUMMARY_TRIGGER_TOKENS = 250_000
 
 export interface TokenMeterProps {
   input: number
   output: number
   cached?: number
   trigger?: number
-  /** Show a pulsing ring to signal that values are still climbing. */
   pulsing?: boolean
   className?: string
   /** Title attribute override (defaults to a verbose tooltip). */
@@ -29,7 +28,7 @@ export function TokenMeter({
   output,
   cached = 0,
   trigger = DEFAULT_SUMMARY_TRIGGER_TOKENS,
-  pulsing = false,
+  pulsing: _pulsing = false,
   className,
   title,
 }: TokenMeterProps) {
@@ -54,11 +53,7 @@ export function TokenMeter({
     >
       <button
         type="button"
-        className={cn(
-          'relative flex h-9 min-w-9 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-accent) md:h-7 md:min-w-7 md:rounded-sm',
-          pulsing && 'ring-1 ring-(--color-accent)/30',
-        )}
-        title={tooltip}
+        className="relative flex h-9 min-w-9 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none md:h-7 md:min-w-7 md:rounded-sm"
         aria-label={tooltip}
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
@@ -71,7 +66,8 @@ export function TokenMeter({
             cy="9"
             r={radius}
             fill="none"
-            stroke="var(--color-border)"
+            stroke={ringColor}
+            strokeOpacity="0.18"
             strokeWidth="2"
           />
           <circle
@@ -81,18 +77,12 @@ export function TokenMeter({
             fill="none"
             stroke={ringColor}
             strokeLinecap="round"
-            strokeWidth="2"
+            strokeWidth="2.6"
             strokeDasharray={circumference}
             strokeDashoffset={dashOffset}
           />
         </svg>
       </button>
-      {pulsing && (
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute right-1.5 top-1.5 h-1.5 w-1.5 animate-pulse rounded-full bg-(--color-accent) md:right-1 md:top-1"
-        />
-      )}
       <div
         className={cn(
           'pointer-events-none absolute right-0 top-full z-50 mt-2 min-w-40 rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-2 font-mono text-[11px] leading-5 text-(--color-text) shadow-lg opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100',

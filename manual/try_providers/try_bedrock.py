@@ -10,6 +10,7 @@ Usage:
   uv run python -m manual.try_providers.try_bedrock --model amazon.nova-pro-v1:0
   uv run python -m manual.try_providers.try_bedrock --tools
   uv run python -m manual.try_providers.try_bedrock --real-tools
+  uv run python -m manual.try_providers.try_bedrock --list-models
   uv run python -m manual.try_providers.try_bedrock --no-stream
   uv run python -m manual.try_providers.try_bedrock --simple
 """
@@ -20,6 +21,7 @@ import argparse
 import asyncio
 
 from app.agent.providers.bedrock import BedrockProvider
+from app.agent.providers.model_discovery import _bedrock_models
 from app.core.config import settings
 from manual.try_providers._common import (
     REASONING_PROMPT,
@@ -58,6 +60,11 @@ async def main():
         action="store_true",
         help="Test with actual agent tool schemas (includes memory tools)",
     )
+    p.add_argument(
+        "--list-models",
+        action="store_true",
+        help="List Bedrock foundation models and inference profiles, then exit",
+    )
     p.add_argument("--no-stream", action="store_true", help="Non-streaming chat()")
     p.add_argument(
         "--simple", action="store_true", help="Use simple prompt instead of reasoning"
@@ -66,6 +73,16 @@ async def main():
 
     profile = args.profile or settings.AWS_BEDROCK_PROFILE
     region = args.region or settings.AWS_BEDROCK_REGION
+
+    if args.list_models:
+        overrides = {}
+        if profile:
+            overrides["AWS_BEDROCK_PROFILE"] = profile
+        if region:
+            overrides["AWS_BEDROCK_REGION"] = region
+        for model in await _bedrock_models(overrides):
+            print(model)
+        return
 
     provider = BedrockProvider(
         model=args.model,

@@ -224,13 +224,36 @@ async def _bedrock_models(overrides: Mapping[str, str] | None = None) -> list[st
         client = session.client("bedrock", **kwargs)
     else:
         client = boto3.client("bedrock", **kwargs)
+    model_ids: set[str] = set()
+
     response = client.list_foundation_models(byOutputModality="TEXT")
     summaries = response.get("modelSummaries", [])
-    return sorted(
+    model_ids.update(
         str(item["modelId"])
         for item in summaries
         if isinstance(item, dict) and isinstance(item.get("modelId"), str)
     )
+
+    for profile_type in ("SYSTEM_DEFINED", "APPLICATION"):
+        next_token: str | None = None
+        while True:
+            params = {"typeEquals": profile_type, "maxResults": 1000}
+            if next_token:
+                params["nextToken"] = next_token
+            profiles_response = client.list_inference_profiles(**params)
+            profile_summaries = profiles_response.get("inferenceProfileSummaries", [])
+            model_ids.update(
+                str(item["inferenceProfileId"])
+                for item in profile_summaries
+                if isinstance(item, dict)
+                and isinstance(item.get("inferenceProfileId"), str)
+                and item.get("status") in (None, "ACTIVE")
+            )
+            next_token = profiles_response.get("nextToken")
+            if not isinstance(next_token, str) or not next_token:
+                break
+
+    return sorted(model_ids)
 
 
 async def discover_provider_models(

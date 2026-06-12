@@ -72,8 +72,11 @@ export function TeamStatusBar({
             <StatusDot status={stream.status} />
             <span className="text-(--color-text-2)">{name}</span>
             {stream.usage.totalTokens > 0 && (
-              <span className="text-(--color-text-muted)">
-                {formatTokens(stream.usage.totalTokens)}
+              <span
+                className="flex h-5 min-w-5 items-center justify-center rounded-full border border-(--color-border) bg-(--bg-page) px-1 font-mono text-[10px] text-(--color-text)"
+                title={`Input: ${stream.usage.promptTokens.toLocaleString()} · Output: ${stream.usage.completionTokens.toLocaleString()} · Cache: ${stream.usage.cachedTokens.toLocaleString()}`}
+              >
+                {formatTokens(stream.usage.promptTokens)}
               </span>
             )}
           </div>

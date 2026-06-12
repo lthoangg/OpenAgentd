@@ -974,6 +974,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
                   cached={headerTokens.cached}
                   trigger={headerTokens.trigger}
                   pulsing={headerTokens.pulsing}
+                  className="mr-0.5"
                 />
               )}
               <MobileHeaderAction

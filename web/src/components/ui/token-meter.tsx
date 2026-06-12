@@ -55,7 +55,7 @@ export function TokenMeter({
       <button
         type="button"
         className={cn(
-          'relative flex h-5 min-w-5 items-center justify-center rounded-full text-(--color-text-muted) transition-colors hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-accent)',
+          'relative flex h-9 min-w-9 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-accent) md:h-7 md:min-w-7 md:rounded-sm',
           pulsing && 'ring-1 ring-(--color-accent)/30',
         )}
         title={tooltip}
@@ -65,7 +65,7 @@ export function TokenMeter({
         onFocus={() => setOpen(true)}
         onBlur={() => setOpen(false)}
       >
-        <svg className="h-[18px] w-[18px] -rotate-90" viewBox="0 0 18 18" aria-hidden="true">
+        <svg className="h-[17px] w-[17px] -rotate-90" viewBox="0 0 18 18" aria-hidden="true">
           <circle
             cx="9"
             cy="9"
@@ -90,7 +90,7 @@ export function TokenMeter({
       {pulsing && (
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute right-0 top-0 h-1.5 w-1.5 animate-pulse rounded-full bg-(--color-accent)"
+          className="pointer-events-none absolute right-1.5 top-1.5 h-1.5 w-1.5 animate-pulse rounded-full bg-(--color-accent) md:right-1 md:top-1"
         />
       )}
       <div

@@ -129,6 +129,7 @@ export function AgentTopbar({
           cached={tokens.cached}
           trigger={tokens.trigger}
           pulsing={tokens.pulsing}
+          className="mr-0.5"
         />
       )}
 

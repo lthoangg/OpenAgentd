@@ -69,7 +69,7 @@ import { SplitGrid } from './SplitGrid'
 import { useTeamCommands } from './useTeamCommands'
 import { VIEW_MODES, type ViewMode } from './types'
 import { saveLastCodingWorkspace, workspaceLabel } from '@/utils/workspace'
-import { DEFAULT_SUMMARY_TRIGGER_TOKENS, TokenMeter } from '@/components/ui/token-meter'
+import { TokenMeter } from '@/components/ui/token-meter'
 import { setTraySession } from '@/lib/tray'
 import { parseLoopCommand } from '@/lib/parseLoopCommand'
 
@@ -201,9 +201,10 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const hasCodingWorkspace = mode !== 'coding' || Boolean(workspace)
   const isCodingSessionLoading = mode === 'coding' && codingSessionLoading
   const { data: teamAgentsData, isLoading: teamAgentsLoading } = useTeamAgentsQuery(agentWorkspace, hasCodingWorkspace)
-  const leadCapabilities: AgentCapabilitiesType | undefined = teamAgentsData?.agents
-    ?.find((a) => a.is_lead)?.capabilities
+  const leadAgent = teamAgentsData?.agents?.find((a) => a.is_lead)
+  const leadCapabilities: AgentCapabilitiesType | undefined = leadAgent?.capabilities
   const selectedModel = sessionModel ?? ''
+  const summaryTriggerTokens = leadAgent?.summary_trigger_tokens
   const selectedThinkingLevel = sessionThinkingLevel ?? ''
   const voiceEnabled = true
   const voiceUnavailableReason = null
@@ -228,7 +229,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         input: totalPrompt,
         output: totalCompletion,
         cached: totalCached,
-        trigger: DEFAULT_SUMMARY_TRIGGER_TOKENS,
+        trigger: summaryTriggerTokens,
         pulsing: isTeamWorking,
       }
     : undefined

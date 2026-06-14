@@ -128,8 +128,9 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   downloads use a native save dialog instead of navigating away from the app
   `[v1.52.0]`. See [`web/workspace-files.md`](./web/workspace-files.md).
 - **Header context meter** `[v1.53.0]` — desktop and mobile chat headers show an
-  icon-sized input-token progress ring against the summarization trigger; hover,
-  focus, or tap/click reveals input/output/cache details. See [`web/chrome.md`](./web/chrome.md).
+  icon-sized input-token progress ring against the backend's model-aware
+  summarization trigger; hover, focus, or tap/click reveals input/output/cache
+  details. See [`web/chrome.md`](./web/chrome.md).
 - **Todos panel** `[since v1.0]` — task board with a topbar progress badge
   `<finished>/<total>` `[v1.17.0]`. Live invalidation. See [`web/todos.md`](./web/todos.md).
 - **Mobile / phone-first layout** `[since v1.0]` — breakpoints, safe areas, drawer

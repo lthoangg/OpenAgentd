@@ -78,6 +78,8 @@ router = APIRouter()
 
 def _serialize_agent(agent: Agent, *, is_lead: bool = False) -> dict:
     """Serialize an Agent into the /team/agents response shape."""
+    from app.agent.hooks.summarization import prompt_token_threshold_for_model
+
     skill_names: list[str] = agent.skills or []
     skills: list[dict] = []
     if skill_names:
@@ -94,6 +96,7 @@ def _serialize_agent(agent: Agent, *, is_lead: bool = False) -> dict:
         "name": agent.name,
         "description": agent.description or "",
         "model": agent.model_id,
+        "summary_trigger_tokens": prompt_token_threshold_for_model(agent.model_id),
         "tools": [
             {"name": t.name, "description": t.description or ""}
             for t in agent._tools.values()

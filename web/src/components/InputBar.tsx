@@ -807,15 +807,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       }
       if (e.key === 'Enter' || e.key === 'Tab') {
         e.preventDefault()
-        const selected = selectableSlashCommands[clampedIndex]
-        const selectedTokens = [selected.id, selected.displayName, selected.insertText]
-          .filter((token): token is string => Boolean(token))
-          .flatMap((token) => [token, token.split(/[/:]/, 1)[0]])
-          .map((token) => token.toLowerCase())
-        const exactCommand = selectedTokens.includes(slashFilter ?? '')
-        if (e.key === 'Tab' || slashMenuIndex !== 0 || exactCommand) {
-          executeSlashCommand(selected)
-        }
+        executeSlashCommand(selectableSlashCommands[clampedIndex])
         return
       }
       if (e.key === 'Escape') {

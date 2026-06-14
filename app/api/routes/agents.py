@@ -17,6 +17,7 @@ from loguru import logger
 from pydantic import ValidationError
 
 from app.agent.loader import AgentConfig
+from app.agent.hooks.summarization import prompt_token_threshold_for_model
 from app.agent.providers.capabilities import get_capabilities
 from app.agent.providers.catalog import ProviderEntry, all_providers
 from app.agent.providers.model_discovery import (
@@ -284,6 +285,7 @@ async def get_registry() -> RegistryResponse:
                 vision=caps.input.vision,
                 output_image=caps.output.image,
                 output_video=caps.output.video,
+                summary_trigger_tokens=prompt_token_threshold_for_model(model_id),
             )
         )
 

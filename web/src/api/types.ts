@@ -31,6 +31,7 @@ export interface AgentInfo {
   name: string
   description: string
   model: string | null
+  summary_trigger_tokens?: number
   tools: AgentToolInfo[]
   /** MCP server names this agent was configured with. Includes servers that
    *  exist but contribute no tools (e.g. not yet ready). */
@@ -499,6 +500,7 @@ export interface ModelCatalogEntry {
   vision: boolean
   output_image: boolean
   output_video: boolean
+  summary_trigger_tokens: number
 }
 
 export interface RegistryResponse {

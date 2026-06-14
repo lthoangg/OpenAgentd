@@ -58,6 +58,7 @@ class ModelCatalogEntry(BaseModel):
     vision: bool
     output_image: bool = False
     output_video: bool = False
+    summary_trigger_tokens: int
 
 
 class RegistryResponse(BaseModel):

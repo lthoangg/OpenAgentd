@@ -320,9 +320,9 @@ class TestStart:
         await _persist(db_factory, task)
 
         await scheduler.start()
-        for _ in range(20):
+        for _ in range(50):
             await asyncio.sleep(0.01)
-            if mock_dispatch["dispatch"].called:
+            if mock_dispatch["dispatch"].called and task.id in scheduler._tasks:
                 break
 
         async with db_factory() as session:

@@ -438,12 +438,14 @@ describe("InputBar", () => {
     expect(screen.getByLabelText("Shell command input")).toBe(textarea)
   })
 
-  it("does not submit a partial slash command", async () => {
+  it("executes the selected slash command when pressing Enter on a partial match", async () => {
     const user = userEvent.setup()
     let submitCount = 0
+    let slashCommand = ""
     render(
       <InputBar
         onSubmit={() => { submitCount++ }}
+        onSlashCommand={(id) => { slashCommand = id }}
         slashCommands={[{ id: "new", label: "New", description: "Create new session" }]}
       />,
     )
@@ -453,7 +455,8 @@ describe("InputBar", () => {
     await user.keyboard("{Enter}")
 
     expect(submitCount).toBe(0)
-    expect(textarea.value).toBe("/ne")
+    expect(slashCommand).toBe("new")
+    expect(textarea.value).toBe("")
   })
 
   it("wires slash command popup to the textarea for screen readers", async () => {

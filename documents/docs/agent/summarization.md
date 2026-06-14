@@ -60,7 +60,7 @@ The trigger threshold is model-aware when the model registry has a `limits.conte
 threshold = min(MAX_PROMPT_TOKEN_THRESHOLD, 75% of model context length)
 ```
 
-Unknown model context lengths fall back to `DEFAULT_PROMPT_TOKEN_THRESHOLD`.
+Unknown model context lengths fall back to `DEFAULT_PROMPT_TOKEN_THRESHOLD`. API surfaces that need to display the trigger should use the backend-calculated value (`summary_trigger_tokens` on `/api/team/agents` and `/api/agents/registry`) instead of hardcoding the fallback.
 
 | Constant | Default | Meaning |
 |----------|---------|---------|

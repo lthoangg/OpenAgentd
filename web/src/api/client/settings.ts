@@ -1,0 +1,268 @@
+/**
+ * OpenAgentd API client — settings group: sandbox, title, multimodal, providers, OAuth.
+ */
+
+import { apiBaseUrl } from '../base-url'
+import { readSSE } from '../sse'
+import type { SSECallbacks } from '../sse'
+import { parseDetailOrThrow } from './_shared'
+
+export type SandboxSettings = { denied_patterns: string[] }
+
+export async function getSandboxSettings(): Promise<SandboxSettings> {
+  const res = await fetch(`${apiBaseUrl()}/settings/sandbox`)
+  if (!res.ok) await parseDetailOrThrow(res, 'GET /settings/sandbox')
+  return res.json()
+}
+
+export async function updateSandboxSettings(
+  body: SandboxSettings,
+): Promise<SandboxSettings> {
+  const res = await fetch(`${apiBaseUrl()}/settings/sandbox`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, 'PUT /settings/sandbox')
+  return res.json()
+}
+
+export type TitleGenerationSettings = {
+  enabled: boolean
+  model: string
+  wait_timeout_seconds: number
+}
+
+export async function getTitleGenerationSettings(): Promise<TitleGenerationSettings> {
+  const res = await fetch(`${apiBaseUrl()}/settings/title-generation`)
+  if (!res.ok) await parseDetailOrThrow(res, 'GET /settings/title-generation')
+  return res.json()
+}
+
+export async function updateTitleGenerationSettings(
+  body: TitleGenerationSettings,
+): Promise<TitleGenerationSettings> {
+  const res = await fetch(`${apiBaseUrl()}/settings/title-generation`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, 'PUT /settings/title-generation')
+  return res.json()
+}
+
+export type MultimodalSectionSettings = {
+  model: string
+  [key: string]: string | number | boolean | null
+}
+
+export type MultimodalSettings = {
+  image: MultimodalSectionSettings
+  video: MultimodalSectionSettings
+}
+
+export async function getMultimodalSettings(): Promise<MultimodalSettings> {
+  const res = await fetch(`${apiBaseUrl()}/settings/multimodal`)
+  if (!res.ok) await parseDetailOrThrow(res, 'GET /settings/multimodal')
+  return res.json()
+}
+
+export async function updateMultimodalSettings(
+  body: MultimodalSettings,
+): Promise<MultimodalSettings> {
+  const res = await fetch(`${apiBaseUrl()}/settings/multimodal`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, 'PUT /settings/multimodal')
+  return res.json()
+}
+
+// ── /settings/providers ──────────────────────────────────────────────────────
+
+export type ProviderInfo = {
+  id: string
+  label: string
+  description: string
+  kind: 'api_key' | 'oauth' | 'local' | 'cloud_creds'
+  credentials: Array<{
+    name: string
+    label: string
+    secret: boolean
+    required: boolean
+    placeholder: string
+  }>
+  saved_credentials: Record<string, string>
+  env_var: string
+  env_vars: string[]
+  fallback_models: string[]
+  oauth_command: string
+  docs_url: string
+  is_configured: boolean
+  is_saved: boolean
+  is_reachable?: boolean | null
+}
+
+export type ProvidersListBody = {
+  providers: ProviderInfo[]
+  has_any_configured: boolean
+}
+
+export type ProviderSaveRequest = {
+  api_key?: string
+  extra?: Record<string, string>
+}
+
+export type ProviderModelsResponse = {
+  provider: string
+  models: string[]
+  source: 'provider' | 'fallback'
+}
+
+export type ProviderUsageWindow = {
+  used_percent: number
+  window_minutes?: number | null
+  resets_at?: number | null
+}
+
+export type ProviderUsageLimit = {
+  limit_id?: string | null
+  limit_name?: string | null
+  primary?: ProviderUsageWindow | null
+  secondary?: ProviderUsageWindow | null
+  credits?: {
+    has_credits: boolean
+    unlimited: boolean
+    balance?: string | null
+  } | null
+  plan_type?: string | null
+  rate_limit_reached_type?: string | null
+}
+
+export type ProviderUsageResponse = {
+  provider: string
+  limits: ProviderUsageLimit[]
+}
+
+export type ProviderSaveResponse = {
+  saved: boolean
+  is_first_provider: boolean
+}
+
+export type ProviderTestResponse = {
+  ok: boolean
+  latency_ms?: number | null
+  error?: string | null
+}
+
+export type SeedInstallResponse = {
+  agents_written: string[]
+  skills_written: string[]
+  configs_written: string[]
+  source: string
+}
+
+export type OAuthLoginEvent = {
+  event: string
+  message?: string
+  verification_uri?: string
+  user_code?: string
+  expires_in?: number
+  elapsed_s?: number
+  suggested_model?: string
+  reason?: string
+}
+
+export async function listProviders(): Promise<ProvidersListBody> {
+  const res = await fetch(`${apiBaseUrl()}/settings/providers`)
+  if (!res.ok) await parseDetailOrThrow(res, 'GET /settings/providers')
+  return res.json()
+}
+
+export async function saveProvider(
+  providerId: string,
+  body: ProviderSaveRequest,
+): Promise<ProviderSaveResponse> {
+  const res = await fetch(`${apiBaseUrl()}/settings/providers/${encodeURIComponent(providerId)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, `PUT /settings/providers/${providerId}`)
+  return res.json()
+}
+
+export async function testProvider(
+  providerId: string,
+  body: { api_key?: string; model: string; extra?: Record<string, string> },
+): Promise<ProviderTestResponse> {
+  const res = await fetch(`${apiBaseUrl()}/settings/providers/${encodeURIComponent(providerId)}/test`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, `POST /settings/providers/${providerId}/test`)
+  return res.json()
+}
+
+export async function listProviderModels(
+  providerId: string,
+  body: { api_key?: string; extra?: Record<string, string> },
+): Promise<ProviderModelsResponse> {
+  const res = await fetch(`${apiBaseUrl()}/settings/providers/${encodeURIComponent(providerId)}/models`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, `POST /settings/providers/${providerId}/models`)
+  return res.json()
+}
+
+export async function getProviderUsage(providerId: string): Promise<ProviderUsageResponse> {
+  const res = await fetch(`${apiBaseUrl()}/settings/providers/${encodeURIComponent(providerId)}/usage`)
+  if (!res.ok) await parseDetailOrThrow(res, `GET /settings/providers/${providerId}/usage`)
+  return res.json()
+}
+
+export async function installSeed(providerModel: string): Promise<SeedInstallResponse> {
+  const res = await fetch(`${apiBaseUrl()}/settings/seed`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ provider_model: providerModel }),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, 'POST /settings/seed')
+  return res.json()
+}
+
+export function oauthLoginStream(
+  providerId: string,
+  callbacks: SSECallbacks & { onOAuthEvent?: (event: OAuthLoginEvent) => void },
+  signal?: AbortSignal,
+  mode?: 'browser',
+): void {
+  const query = mode ? `?mode=${encodeURIComponent(mode)}` : ''
+  fetch(`${apiBaseUrl()}/auth/${encodeURIComponent(providerId)}/login${query}`, { signal })
+    .then((res) => {
+      if (!res.ok) throw new Error(`GET /auth/${providerId}/login failed: ${res.status}`)
+      readSSE(res, {
+        ...callbacks,
+        onEvent: (type, data) => {
+          const payload = data as Omit<OAuthLoginEvent, 'event'>
+          callbacks.onOAuthEvent?.({ event: type, ...payload })
+          callbacks.onEvent(type, data)
+        },
+      })
+    })
+    .catch((err) => { if (err.name !== 'AbortError') callbacks.onError?.(err) })
+}
+
+export async function submitOAuthCallback(providerId: string, code: string): Promise<{ ok: boolean; suggested_model?: string }> {
+  const res = await fetch(`${apiBaseUrl()}/auth/${encodeURIComponent(providerId)}/callback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code }),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, `POST /auth/${providerId}/callback`)
+  return res.json()
+}

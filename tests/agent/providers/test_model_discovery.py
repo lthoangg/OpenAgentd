@@ -57,7 +57,9 @@ async def test_bedrock_models_include_foundation_and_inference_profiles(
         SimpleNamespace(client=lambda *args, **kwargs: client),
     )
 
-    models = await _bedrock_models({"AWS_BEDROCK_REGION": "us-east-1"})
+    models = await _bedrock_models(
+        {"AWS_BEDROCK_REGION": "us-east-1", "AWS_BEDROCK_PROFILE": ""}
+    )
 
     assert models == [
         "amazon.nova-pro-v1:0",

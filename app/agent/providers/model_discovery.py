@@ -207,9 +207,9 @@ async def _bedrock_models(overrides: Mapping[str, str] | None = None) -> list[st
     )
     kwargs: dict[str, str] = {"region_name": region}
     profile = (
-        _resolve(overrides, "AWS_BEDROCK_PROFILE")
-        or settings.AWS_BEDROCK_PROFILE
-        or os.getenv("AWS_BEDROCK_PROFILE")
+        overrides["AWS_BEDROCK_PROFILE"]
+        if overrides and "AWS_BEDROCK_PROFILE" in overrides
+        else settings.AWS_BEDROCK_PROFILE or os.getenv("AWS_BEDROCK_PROFILE")
     )
     access_key = _resolve(overrides, "AWS_ACCESS_KEY_ID")
     secret_key = _resolve(overrides, "AWS_SECRET_ACCESS_KEY")

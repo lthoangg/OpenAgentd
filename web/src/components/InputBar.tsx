@@ -858,6 +858,14 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     }
   }
 
+  const handleBeforeInput = (e: React.FormEvent<HTMLTextAreaElement>) => {
+    if ((e.nativeEvent as InputEvent).inputType !== 'insertLineBreak') return
+    if (!slashMenuOpen || selectableSlashCommands.length === 0) return
+
+    e.preventDefault()
+    executeSlashCommand(selectableSlashCommands[clampedIndex])
+  }
+
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const nextValue = e.target.value
     if (!shellMode && nextValue === '!') {
@@ -1072,6 +1080,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       <textarea
         ref={setTextareaRef}
         value={value}
+        onBeforeInput={handleBeforeInput}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
         // Caret-only moves (arrow keys, Home/End) don't fire onChange but

@@ -73,7 +73,7 @@ The `/telemetry` page reads `OTEL_SPAN_SAMPLE_RATIO` via `GET /api/observability
 agent_run {agent_name}        parent_id=null   ← full turn, before_agent…after_agent
   ├── chat {model}            parent_id=root   ← each LLM call, wrap_model_call
   ├── execute_tool {name}     parent_id=root   ← each tool call, wrap_tool_call
-  └── summarization           parent_id=root   ← fired from before_model when threshold hit
+  └── summarization           parent_id=root   ← marked in before_model, executed in wrap_model_call when threshold hit
         └── summarization_llm_call             ← the actual LLM call inside the hook
 ```
 

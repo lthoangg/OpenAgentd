@@ -2,7 +2,7 @@
 title: Rolling-Window Context Summarization
 description: Automatic conversation compression when context window approaches token threshold.
 status: stable
-updated: 2026-05-29
+updated: 2026-06-15
 ---
 
 # Summarization
@@ -141,11 +141,16 @@ before_model(ctx, state)
 │
 ├─ state.usage.last_prompt_tokens < threshold? → skip
 │
-├─ acquire _lock
-├─ _summarising already? → skip (re-entrant guard)
-├─ set _summarising = True
+├─ too few new messages since last summary? → skip
 │
-     └─ _summarise(state)
+└─ mark summarization pending
+
+wrap_model_call(ctx, state, request)
+│
+├─ earlier prompt wrappers have produced the final normal system prompt
+│  (date, memory, team protocol, workspace instructions, etc.)
+│
+└─ _summarise(state, system_prompt=request.system_prompt)
      ├─ messages = [m for m in state.messages if not m.exclude_from_context and not isinstance(m, SystemMessage)]
      ├─ find cutoff: walk backward, count assistant messages
      │    cutoff = index of Nth-from-last assistant message (keep_last_assistants)
@@ -153,8 +158,8 @@ before_model(ctx, state)
      │    to_keep      = messages[cutoff:]      (last N assistant turns + context)
      │    if fewer than N assistant turns exist → to_summarise = all messages
      │
-     ├─ Build summariser request from the normal cacheable prefix, selected messages,
-     │  normal tool definitions, and a trailing summary-only instruction
+     ├─ Build summariser request from the normal cacheable prefix:
+     │  final system prompt + selected messages + trailing summary-only user instruction
      │
      ├─ _call_llm(summariser_messages) → summary_text
      │
@@ -166,7 +171,8 @@ before_model(ctx, state)
      │
      └─ Insert summary at first non-excluded position in state.messages
           → state.messages is now updated in-memory
-          → loop calls checkpointer.sync() after before_model, persisting changes to DB
+          → wrapper forwards a fresh ModelRequest with state.messages_for_llm
+          → loop syncs the updated state to DB
 ```
 
 ---
@@ -176,7 +182,8 @@ before_model(ctx, state)
 ```
 Turn 1–20:  All messages in state.messages, accumulating prompt tokens
 Turn 21:    state.usage.last_prompt_tokens ≥ threshold
-            → before_model fires summarization
+            → before_model marks summarization pending
+            → wrap_model_call fires summarization after prompt wrappers
             → Cutoff = index of 3rd-from-last assistant message (keep_last_assistants=3)
             → Older messages: exclude_from_context=True (mutated in state.messages)
             → Last 3 assistant turns + preceding context: remain included

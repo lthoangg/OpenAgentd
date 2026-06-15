@@ -340,18 +340,13 @@ class Agent(Generic[TContext]):
             # Me sync after before_model — persists summarization changes
             await self._sync(checkpointer, ctx, state)
 
-            if state.metadata.get("stop_after_before_model") is True:
-                logger.info(
-                    "agent_iteration_done agent={} iteration={} action=before_model_only",
-                    self.name,
-                    iteration,
-                )
-                break
-
             # Build wrap_model_call chain and invoke it
             iter_usage_holder: list[Usage | None] = [None]
+            before_model_only = state.metadata.get("stop_after_before_model") is True
 
             async def _stream(req: ModelRequest) -> AssistantMessage:
+                if before_model_only:
+                    return AssistantMessage(content=None)
                 msg, usage = await stream_and_assemble(
                     req=req,
                     ctx=ctx,
@@ -370,6 +365,16 @@ class Agent(Generic[TContext]):
                 return msg
 
             model_chain = build_model_chain(combined_hooks, ctx, state, _stream)
+            if before_model_only:
+                await model_chain(model_request)
+                await self._sync(checkpointer, ctx, state)
+                logger.info(
+                    "agent_iteration_done agent={} iteration={} action=before_model_only",
+                    self.name,
+                    iteration,
+                )
+                break
+
             try:
                 assistant_msg = await model_chain(model_request)
             except (httpx.ConnectError, httpx.ReadTimeout, TimeoutError) as exc:

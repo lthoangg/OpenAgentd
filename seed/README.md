@@ -1,6 +1,6 @@
 # seed/
 
-Default agents, skills, and file-based configuration shipped to first-time users.
+Default agents, optional skills, and file-based configuration shipped to first-time users.
 
 When a user runs `openagentd init`, the CLI copies the contents of this
 directory (locally if running from a source checkout, otherwise from the
@@ -17,8 +17,8 @@ into their own `{OPENAGENTD_CONFIG_DIR}/`.
 
 ```
 seed/
-├── agents/                # one .md per agent — exactly one must have `role: lead`
-├── skills/                # one subdirectory per skill, each containing SKILL.md
+├── agents/                # default global/coding agent descriptors
+├── skills/                # optional user-editable skills; currently empty
 └── mcp.json               # empty MCP server config
 ```
 

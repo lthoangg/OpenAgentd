@@ -302,7 +302,7 @@ Add your own by dropping a `SKILL.md` file into `{config_dir}/skills/{name}/` or
 
 ## MCP servers
 
-OpenAgentd ships with [Context7](https://context7.com) pre-configured. Add any MCP server via the `/settings/mcp` panel or by editing `mcp.json` directly. Changes are hot-reloaded without a restart.
+OpenAgentd starts with an empty `mcp.json`. Add Context7 or any other MCP server via the `/settings/mcp` panel or by editing `mcp.json` directly. Changes are hot-reloaded without a restart.
 
 ```json
 {

@@ -1,6 +1,6 @@
 # seed/ — Agent Instructions
 
-Default agents, skills, and MCP config copied into a user's config directory by `openagentd init`.
+Default agents, optional skills, and MCP config copied into a user's config directory by `openagentd init`.
 
 ## Layout
 

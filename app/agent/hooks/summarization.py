@@ -61,7 +61,7 @@ from app.core.otel import get_tracer
 from app.services.stream_envelope import StreamEnvelope
 
 if TYPE_CHECKING:
-    from app.agent.state import AgentState, ModelRequest, RunContext
+    from app.agent.state import AgentState, ModelCallHandler, ModelRequest, RunContext
 
 # ── Module-level defaults ─────────────────────────────────────────────────
 # These are the single source of truth for summarisation tuning. There is no
@@ -203,47 +203,6 @@ def _find_assistant_cutoff(msgs: list, keep_last: int) -> int:
             if remaining == 0:
                 return i
     return 0  # not enough assistant turns — protect everything
-
-
-# Tool names whose call/result pairs survive summarisation: they stay in
-# context indefinitely and are never sent to the summariser LLM. Skill
-# loads carry instructions the agent needs every turn; replacing them
-# with a stubbed summary line throws away the actual skill body.
-_PRESERVED_TOOL_NAMES: frozenset[str] = frozenset({"skill"})
-
-
-def _collect_preserved_ids(messages: list) -> set[int]:
-    """Return ``id()`` of every message that must survive summarisation.
-
-    Currently preserves:
-
-    * ``ToolMessage`` whose ``name`` is in :data:`_PRESERVED_TOOL_NAMES`
-      (the tool result body — e.g. skill instructions).
-    * The matching ``AssistantMessage`` (the one whose ``tool_calls`` list
-      contains a call with the preserved name) — keeping the result without
-      its preceding call would orphan the ``tool_call_id`` and break the
-      assistant→tool pairing invariant required by OpenAI/ZAI/etc.
-    """
-    preserved_call_ids: set[str] = set()
-    preserved: set[int] = set()
-
-    for m in messages:
-        if isinstance(m, ToolMessage) and m.name in _PRESERVED_TOOL_NAMES:
-            preserved.add(id(m))
-            if m.tool_call_id:
-                preserved_call_ids.add(m.tool_call_id)
-
-    if not preserved_call_ids:
-        return preserved
-
-    for m in messages:
-        if isinstance(m, AssistantMessage) and m.tool_calls:
-            for tc in m.tool_calls:
-                if tc.id in preserved_call_ids:
-                    preserved.add(id(m))
-                    break
-
-    return preserved
 
 
 def _expand_tool_pair_ids(messages: list, seed_ids: set[int]) -> set[int]:
@@ -391,6 +350,7 @@ class SummarizationHook(BaseAgentHook):
         # Snapshot of len(state.messages) at the last summarisation — used
         # by the minimum-delta guard in before_model to prevent thrashing.
         self._messages_at_last_summary: int = 0
+        self._pending_summary: tuple["RunContext", "AgentState"] | None = None
 
     @property
     def prompt_token_threshold(self) -> int:
@@ -435,17 +395,36 @@ class SummarizationHook(BaseAgentHook):
             ctx.agent_name,
             state.usage.last_prompt_tokens,
         )
-        await self._summarise(
-            ctx,
-            state,
-            system_prompt=request.system_prompt if request is not None else None,
-        )
+        self._pending_summary = (ctx, state)
+
+        # The actual summariser LLM call runs from wrap_model_call(), after
+        # earlier prompt-building wrappers (date, memory, team protocol,
+        # workspace instructions, etc.) have produced the same system prompt
+        # the normal chat call would use. That keeps summarisation shaped like
+        # a normal request with one extra final user instruction, preserving
+        # provider prefix-cache reuse.
+        return None
+
+    async def wrap_model_call(
+        self,
+        ctx: "RunContext",
+        state: "AgentState",
+        request: "ModelRequest",
+        handler: "ModelCallHandler",
+    ) -> AssistantMessage:
+        if self._pending_summary is None:
+            return await handler(request)
+
+        pending_ctx, pending_state = self._pending_summary
+        if pending_ctx is not ctx or pending_state is not state:
+            return await handler(request)
+
+        self._pending_summary = None
+        await self._summarise(ctx, state, system_prompt=request.system_prompt)
 
         # Return a fresh request so the current LLM call sees the summary
         # immediately, without the loop needing to rebuild the message list.
-        if request is not None:
-            return request.override(messages=tuple(state.messages_for_llm))
-        return None
+        return await handler(request.override(messages=tuple(state.messages_for_llm)))
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -506,20 +485,11 @@ class SummarizationHook(BaseAgentHook):
             span.set_status(StatusCode.OK)
             return
 
-        # Preserved messages (skill tool calls + their assistant pair) are
-        # neither summarised nor excluded — they stay in the live context
-        # so the agent keeps seeing the skill instructions.
-        preserved_ids = _expand_tool_pair_ids(
-            eligible, _collect_preserved_ids(eligible)
-        )
-
         cutoff_idx = _find_assistant_cutoff(eligible, self._keep_last_assistants)
         if cutoff_idx > 0:
-            to_summarise = [
-                m for m in eligible[:cutoff_idx] if id(m) not in preserved_ids
-            ]
+            to_summarise = eligible[:cutoff_idx]
         else:
-            to_summarise = [m for m in eligible if id(m) not in preserved_ids]
+            to_summarise = eligible
 
         to_summarise_ids = _expand_tool_pair_ids(
             eligible, {id(m) for m in to_summarise}
@@ -555,7 +525,6 @@ class SummarizationHook(BaseAgentHook):
             "summarization.keep_last_assistants", self._keep_last_assistants
         )
         span.set_attribute("summarization.has_prior_summary", has_prior_summary)
-        span.set_attribute("summarization.preserved_messages", len(preserved_ids))
 
         # SSE start/content/end drive the frontend "Session compacting"
         # divider. session_id is None for headless/test runs — skip then.

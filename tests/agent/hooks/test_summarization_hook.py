@@ -39,6 +39,10 @@ def _make_state(last_prompt_tokens: int = 0) -> AgentState:
     )
 
 
+async def _noop_model_handler(request: ModelRequest) -> AssistantMessage:
+    return AssistantMessage(content="done")
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -76,6 +80,14 @@ async def test_no_summarisation_below_threshold(mock_provider):
     state = _make_state(last_prompt_tokens=900)
 
     await hook.before_model(ctx, state)
+    await hook.wrap_model_call(
+        ctx,
+        state,
+        ModelRequest(
+            messages=tuple(state.messages_for_llm), system_prompt=state.system_prompt
+        ),
+        _noop_model_handler,
+    )
 
     mock_provider.stream.assert_not_called()
 
@@ -93,6 +105,14 @@ async def test_force_summarisation_ignores_threshold(mock_provider):
     state.metadata["force_summarization"] = True
 
     await hook.before_model(ctx, state)
+    await hook.wrap_model_call(
+        ctx,
+        state,
+        ModelRequest(
+            messages=tuple(state.messages_for_llm), system_prompt=state.system_prompt
+        ),
+        _noop_model_handler,
+    )
 
     assert mock_provider.stream.called
     assert any(m.is_summary for m in state.messages)
@@ -125,6 +145,14 @@ async def test_summarisation_triggered_when_threshold_met(mock_provider):
     )
 
     await hook.before_model(ctx, state)
+    await hook.wrap_model_call(
+        ctx,
+        state,
+        ModelRequest(
+            messages=tuple(state.messages_for_llm), system_prompt=state.system_prompt
+        ),
+        _noop_model_handler,
+    )
 
     # Me check summary inserted and old messages excluded
     summary_msgs = [m for m in state.messages if getattr(m, "is_summary", False)]
@@ -161,6 +189,14 @@ async def test_min_messages_delta_guard(mock_provider):
     state.messages.append(HM(content="msg3"))
 
     await hook.before_model(ctx, state)
+    await hook.wrap_model_call(
+        ctx,
+        state,
+        ModelRequest(
+            messages=tuple(state.messages_for_llm), system_prompt=state.system_prompt
+        ),
+        _noop_model_handler,
+    )
     mock_provider.stream.assert_not_called()
 
 
@@ -183,6 +219,14 @@ async def test_min_messages_delta_guard_allows_after_enough(mock_provider):
         state.messages.append(HM(content=f"msg{i}"))
 
     await hook.before_model(ctx, state)
+    await hook.wrap_model_call(
+        ctx,
+        state,
+        ModelRequest(
+            messages=tuple(state.messages_for_llm), system_prompt=state.system_prompt
+        ),
+        _noop_model_handler,
+    )
     mock_provider.stream.assert_called_once()
 
 
@@ -224,6 +268,14 @@ async def test_keep_last_assistants_excluded_from_summary(mock_provider):
     mock_provider.stream = lambda messages, **kw: fake_stream(messages)
 
     await hook.before_model(ctx, state)
+    await hook.wrap_model_call(
+        ctx,
+        state,
+        ModelRequest(
+            messages=tuple(state.messages_for_llm), system_prompt=state.system_prompt
+        ),
+        _noop_model_handler,
+    )
 
     # Me check only old messages sent to LLM (not the last assistant turn)
     # to_summarise is embedded as text inside one HumanMessage
@@ -266,6 +318,14 @@ async def test_compaction_does_not_leave_orphan_tool_result_when_call_summarised
     )
 
     await hook.before_model(ctx, state)
+    await hook.wrap_model_call(
+        ctx,
+        state,
+        ModelRequest(
+            messages=tuple(state.messages_for_llm), system_prompt=state.system_prompt
+        ),
+        _noop_model_handler,
+    )
 
     assert tool_asst.exclude_from_context is True
     assert tool_result.exclude_from_context is True
@@ -303,6 +363,14 @@ async def test_compaction_preserves_tool_call_when_result_is_kept(mock_provider)
     )
 
     await hook.before_model(ctx, state)
+    await hook.wrap_model_call(
+        ctx,
+        state,
+        ModelRequest(
+            messages=tuple(state.messages_for_llm), system_prompt=state.system_prompt
+        ),
+        _noop_model_handler,
+    )
 
     assert old_asst.exclude_from_context is True
     assert tool_asst.exclude_from_context is False
@@ -326,6 +394,14 @@ async def test_no_summarisation_without_session_id(mock_provider):
     state = _make_state(last_prompt_tokens=9999)
 
     await hook.before_model(ctx, state)
+    await hook.wrap_model_call(
+        ctx,
+        state,
+        ModelRequest(
+            messages=tuple(state.messages_for_llm), system_prompt=state.system_prompt
+        ),
+        _noop_model_handler,
+    )
     # Me check hook still runs (no session_id guard in new impl — it's a pure state transform)
     # The hook should attempt summarisation regardless of session_id
     # (session_id is only used for logging)
@@ -353,6 +429,14 @@ async def test_no_llm_call_when_no_visible_messages(mock_provider):
     )
 
     await hook.before_model(ctx, state)
+    await hook.wrap_model_call(
+        ctx,
+        state,
+        ModelRequest(
+            messages=tuple(state.messages_for_llm), system_prompt=state.system_prompt
+        ),
+        _noop_model_handler,
+    )
 
     mock_provider.stream.assert_not_called()
 
@@ -375,6 +459,14 @@ async def test_hidden_from_summary_messages_are_not_summarised(mock_provider):
     )
 
     await hook.before_model(ctx, state)
+    await hook.wrap_model_call(
+        ctx,
+        state,
+        ModelRequest(
+            messages=tuple(state.messages_for_llm), system_prompt=state.system_prompt
+        ),
+        _noop_model_handler,
+    )
 
     mock_provider.stream.assert_not_called()
 
@@ -408,6 +500,14 @@ async def test_graceful_on_llm_failure(mock_provider):
 
     # Me check no exception raised — hook handles LLM failure gracefully
     await hook.before_model(ctx, state)
+    await hook.wrap_model_call(
+        ctx,
+        state,
+        ModelRequest(
+            messages=tuple(state.messages_for_llm), system_prompt=state.system_prompt
+        ),
+        _noop_model_handler,
+    )
     # Me check no summary inserted
     summary_msgs = [m for m in state.messages if getattr(m, "is_summary", False)]
     assert len(summary_msgs) == 0
@@ -435,6 +535,14 @@ async def test_summary_saved_with_is_summary_flag(mock_provider):
     )
 
     await hook.before_model(ctx, state)
+    await hook.wrap_model_call(
+        ctx,
+        state,
+        ModelRequest(
+            messages=tuple(state.messages_for_llm), system_prompt=state.system_prompt
+        ),
+        _noop_model_handler,
+    )
 
     # Me check summary message inserted with is_summary=True
     summary_msgs = [m for m in state.messages if getattr(m, "is_summary", False)]
@@ -461,6 +569,14 @@ async def test_disabled_when_threshold_is_zero(mock_provider):
     state = _make_state(last_prompt_tokens=9999)
 
     await hook.before_model(ctx, state)
+    await hook.wrap_model_call(
+        ctx,
+        state,
+        ModelRequest(
+            messages=tuple(state.messages_for_llm), system_prompt=state.system_prompt
+        ),
+        _noop_model_handler,
+    )
     mock_provider.stream.assert_not_called()
 
 
@@ -500,6 +616,14 @@ async def test_summarise_all_messages_when_not_enough_assistant_turns(mock_provi
     mock_provider.stream = lambda messages, **kw: _capturing_stream(messages)
 
     await hook.before_model(ctx, state)
+    await hook.wrap_model_call(
+        ctx,
+        state,
+        ModelRequest(
+            messages=tuple(state.messages_for_llm), system_prompt=state.system_prompt
+        ),
+        _noop_model_handler,
+    )
 
     # Both messages should be embedded in the HumanMessage sent to the LLM
     full_text = " ".join(
@@ -549,6 +673,14 @@ async def test_call_llm_skips_empty_choices_chunks(mock_provider):
     mock_provider.stream = lambda messages, **kw: _mixed_stream()
 
     await hook.before_model(ctx, state)
+    await hook.wrap_model_call(
+        ctx,
+        state,
+        ModelRequest(
+            messages=tuple(state.messages_for_llm), system_prompt=state.system_prompt
+        ),
+        _noop_model_handler,
+    )
 
     # Me check summary inserted with correct content (prefixed by anchor label)
     summary_msgs = [m for m in state.messages if getattr(m, "is_summary", False)]
@@ -595,6 +727,14 @@ async def test_max_token_length_passed_to_provider_when_set():
     )
 
     await hook.before_model(ctx, state)
+    await hook.wrap_model_call(
+        ctx,
+        state,
+        ModelRequest(
+            messages=tuple(state.messages_for_llm), system_prompt=state.system_prompt
+        ),
+        _noop_model_handler,
+    )
 
     # Me check provider.stream was called with max_tokens kwarg
     provider.stream.assert_called_once()
@@ -636,6 +776,14 @@ async def test_max_token_length_zero_disables_limit():
     )
 
     await hook.before_model(ctx, state)
+    await hook.wrap_model_call(
+        ctx,
+        state,
+        ModelRequest(
+            messages=tuple(state.messages_for_llm), system_prompt=state.system_prompt
+        ),
+        _noop_model_handler,
+    )
 
     # Me check provider.stream was called WITHOUT max_tokens kwarg
     provider.stream.assert_called_once()
@@ -682,6 +830,14 @@ async def test_summariser_call_does_not_override_thinking_level():
     )
 
     await hook.before_model(ctx, state)
+    await hook.wrap_model_call(
+        ctx,
+        state,
+        ModelRequest(
+            messages=tuple(state.messages_for_llm), system_prompt=state.system_prompt
+        ),
+        _noop_model_handler,
+    )
 
     provider.stream.assert_called_once()
     call_kwargs = provider.stream.call_args[1]
@@ -723,7 +879,16 @@ async def test_summariser_passes_tool_defs_without_prompt_cache_key():
         tool_defs=tool_defs,
     )
 
-    await hook.before_model(_make_ctx(session_id="session-123"), state)
+    ctx = _make_ctx(session_id="session-123")
+    await hook.before_model(ctx, state)
+    await hook.wrap_model_call(
+        ctx,
+        state,
+        ModelRequest(
+            messages=tuple(state.messages_for_llm), system_prompt=state.system_prompt
+        ),
+        _noop_model_handler,
+    )
 
     provider.stream.assert_called_once()
     call_kwargs = provider.stream.call_args[1]
@@ -791,6 +956,14 @@ async def test_tool_message_content_kept_for_compaction(mock_provider):
     mock_provider.stream = lambda messages, **kw: _capturing_stream(messages)
 
     await hook.before_model(ctx, state)
+    await hook.wrap_model_call(
+        ctx,
+        state,
+        ModelRequest(
+            messages=tuple(state.messages_for_llm), system_prompt=state.system_prompt
+        ),
+        _noop_model_handler,
+    )
 
     # The original tool output stays in the provider-visible prefix instead of
     # being flattened into the final instruction message.
@@ -831,6 +1004,14 @@ async def test_tool_message_without_name_uses_generic_stub(mock_provider):
     mock_provider.stream = lambda messages, **kw: _capturing_stream(messages)
 
     await hook.before_model(ctx, state)
+    await hook.wrap_model_call(
+        ctx,
+        state,
+        ModelRequest(
+            messages=tuple(state.messages_for_llm), system_prompt=state.system_prompt
+        ),
+        _noop_model_handler,
+    )
 
     tool_msgs = [m for m in captured if isinstance(m, ToolMessage)]
     assert tool_msgs
@@ -870,6 +1051,14 @@ async def test_summariser_input_preserves_normal_call_prefix(mock_provider):
     mock_provider.stream = lambda messages, **kw: _capturing_stream(messages)
 
     await hook.before_model(ctx, state)
+    await hook.wrap_model_call(
+        ctx,
+        state,
+        ModelRequest(
+            messages=tuple(state.messages_for_llm), system_prompt=state.system_prompt
+        ),
+        _noop_model_handler,
+    )
 
     assert [type(m) for m in captured] == [
         SystemMessage,
@@ -915,9 +1104,62 @@ async def test_summariser_uses_request_system_prompt_for_cache_prefix(mock_provi
     mock_provider.stream = lambda messages, **kw: _capturing_stream(messages)
 
     await hook.before_model(ctx, state, request)
+    await hook.wrap_model_call(ctx, state, request, _noop_model_handler)
 
     assert isinstance(captured[0], SystemMessage)
     assert captured[0].content == "base prompt\n\n## Tools attached\n- shell"
+
+
+@pytest.mark.asyncio
+async def test_summariser_uses_final_wrapped_system_prompt_for_cache_prefix(
+    mock_provider,
+):
+    """Summarization sees prompt text appended by earlier wrap_model_call hooks."""
+
+    hook = SummarizationHook(
+        llm_provider=mock_provider,
+        summary_prompt="test summary prompt",
+        prompt_token_threshold=1,
+        keep_last_assistants=0,
+    )
+    ctx = _make_ctx()
+    state = AgentState(
+        messages=[HumanMessage(content="hello")],
+        usage=UsageInfo(last_prompt_tokens=9999),
+        system_prompt="base prompt",
+    )
+    request = ModelRequest(
+        messages=tuple(state.messages_for_llm),
+        system_prompt="base prompt",
+    )
+
+    captured: list = []
+
+    async def _capturing_stream(messages, **__):
+        captured.extend(messages)
+        chunk = MagicMock()
+        chunk.choices = [MagicMock()]
+        chunk.choices[0].delta.content = "Summary."
+        chunk.usage = None
+        yield chunk
+
+    mock_provider.stream = lambda messages, **kw: _capturing_stream(messages)
+
+    await hook.before_model(ctx, state, request)
+    await hook.wrap_model_call(
+        ctx,
+        state,
+        request.override(
+            system_prompt="base prompt\n\nCurrent date (UTC): 2026-06-15\n\n## Workspace Instructions\nUse project rules."
+        ),
+        _noop_model_handler,
+    )
+
+    assert isinstance(captured[0], SystemMessage)
+    assert captured[0].content == (
+        "base prompt\n\nCurrent date (UTC): 2026-06-15\n\n"
+        "## Workspace Instructions\nUse project rules."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -955,6 +1197,14 @@ async def test_fresh_request_sent_when_no_prior_summary(mock_provider):
     mock_provider.stream = lambda messages, **kw: _capturing_stream(messages)
 
     await hook.before_model(ctx, state)
+    await hook.wrap_model_call(
+        ctx,
+        state,
+        ModelRequest(
+            messages=tuple(state.messages_for_llm), system_prompt=state.system_prompt
+        ),
+        _noop_model_handler,
+    )
 
     human_msgs = [m for m in captured if isinstance(m, HumanMessage)]
     convo_blob = " ".join(m.content or "" for m in human_msgs)
@@ -1002,6 +1252,14 @@ async def test_merge_request_sent_when_prior_summary_in_window(mock_provider):
     mock_provider.stream = lambda messages, **kw: _capturing_stream(messages)
 
     await hook.before_model(ctx, state)
+    await hook.wrap_model_call(
+        ctx,
+        state,
+        ModelRequest(
+            messages=tuple(state.messages_for_llm), system_prompt=state.system_prompt
+        ),
+        _noop_model_handler,
+    )
 
     human_msgs = [m for m in captured if isinstance(m, HumanMessage)]
     convo_blob = " ".join(m.content or "" for m in human_msgs)
@@ -1054,6 +1312,14 @@ async def test_prior_summary_in_kept_window_is_excluded_from_context(mock_provid
     mock_provider.stream = lambda messages, **kw: _stream(messages)
 
     await hook.before_model(ctx, state)
+    await hook.wrap_model_call(
+        ctx,
+        state,
+        ModelRequest(
+            messages=tuple(state.messages_for_llm), system_prompt=state.system_prompt
+        ),
+        _noop_model_handler,
+    )
 
     assert orphaned_summary.exclude_from_context is True, (
         "Prior is_summary in kept window must be superseded (exclude_from_context=True)"
@@ -1118,6 +1384,15 @@ async def test_merge_request_only_when_prior_summary_in_to_summarise(mock_provid
     mock_provider.stream = lambda messages, **kw: _stream_a(messages)
 
     await hook_a.before_model(ctx, state_a)
+    await hook_a.wrap_model_call(
+        ctx,
+        state_a,
+        ModelRequest(
+            messages=tuple(state_a.messages_for_llm),
+            system_prompt=state_a.system_prompt,
+        ),
+        _noop_model_handler,
+    )
 
     human_a = [m for m in captured_a if isinstance(m, HumanMessage)]
     blob_a = " ".join(m.content or "" for m in human_a)
@@ -1154,6 +1429,15 @@ async def test_merge_request_only_when_prior_summary_in_to_summarise(mock_provid
     mock_provider.stream = lambda messages, **kw: _stream_b(messages)
 
     await hook_b.before_model(ctx, state_b)
+    await hook_b.wrap_model_call(
+        ctx,
+        state_b,
+        ModelRequest(
+            messages=tuple(state_b.messages_for_llm),
+            system_prompt=state_b.system_prompt,
+        ),
+        _noop_model_handler,
+    )
 
     human_b = [m for m in captured_b if isinstance(m, HumanMessage)]
     blob_b = " ".join(m.content or "" for m in human_b)
@@ -1189,6 +1473,14 @@ async def test_messages_at_last_summary_not_updated_on_llm_failure(mock_provider
     mock_provider.stream.return_value = _bad_stream()
 
     await hook.before_model(ctx, state)
+    await hook.wrap_model_call(
+        ctx,
+        state,
+        ModelRequest(
+            messages=tuple(state.messages_for_llm), system_prompt=state.system_prompt
+        ),
+        _noop_model_handler,
+    )
 
     assert hook._messages_at_last_summary == 0, (
         "_messages_at_last_summary must stay 0 when LLM fails — "
@@ -1221,6 +1513,14 @@ async def test_messages_at_last_summary_not_updated_on_empty_response(mock_provi
     mock_provider.stream = lambda messages, **kw: _empty_stream()
 
     await hook.before_model(ctx, state)
+    await hook.wrap_model_call(
+        ctx,
+        state,
+        ModelRequest(
+            messages=tuple(state.messages_for_llm), system_prompt=state.system_prompt
+        ),
+        _noop_model_handler,
+    )
 
     assert hook._messages_at_last_summary == 0, (
         "_messages_at_last_summary must stay 0 when LLM returns empty response"
@@ -1228,17 +1528,15 @@ async def test_messages_at_last_summary_not_updated_on_empty_response(mock_provi
 
 
 # ---------------------------------------------------------------------------
-# before_model return value — ModelRequest override
+# wrap_model_call return value — ModelRequest override
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_before_model_returns_updated_request_when_summarisation_fires(
+async def test_wrap_model_call_forwards_updated_request_when_summarisation_fires(
     mock_provider,
 ):
-    """When summarisation fires and a ModelRequest is passed, before_model must
-    return a new ModelRequest whose messages reflect the post-summary state.
-    This is the path the agent loop takes — it always passes a request."""
+    """When summarisation fires, wrap_model_call forwards post-summary messages."""
     from app.agent.state import ModelRequest
 
     hook = SummarizationHook(
@@ -1273,15 +1571,21 @@ async def test_before_model_returns_updated_request_when_summarisation_fires(
     mock_provider.stream = lambda messages, **kw: _stream(messages)
 
     result = await hook.before_model(ctx, state, original_request)
+    assert result is None
 
-    assert result is not None, (
-        "before_model must return a ModelRequest when summarisation fires"
-    )
-    assert result is not original_request, (
-        "must be a new ModelRequest, not the original"
-    )
+    handled: list[ModelRequest] = []
+
+    async def _handler(req: ModelRequest) -> AssistantMessage:
+        handled.append(req)
+        return AssistantMessage(content="done")
+
+    response = await hook.wrap_model_call(ctx, state, original_request, _handler)
+
+    assert response.content == "done"
+    assert handled
+    assert handled[0] is not original_request
     # The returned messages must include the summary and exclude old messages
-    result_contents = [m.content or "" for m in result.messages]
+    result_contents = [m.content or "" for m in handled[0].messages]
     assert any("Compact summary." in c for c in result_contents), (
         "Returned ModelRequest messages must contain the new summary"
     )
@@ -1363,6 +1667,14 @@ async def test_assistant_with_none_content_renders_as_empty_string(mock_provider
     mock_provider.stream = lambda messages, **kw: _stream(messages)
 
     await hook.before_model(ctx, state)
+    await hook.wrap_model_call(
+        ctx,
+        state,
+        ModelRequest(
+            messages=tuple(state.messages_for_llm), system_prompt=state.system_prompt
+        ),
+        _noop_model_handler,
+    )
 
     assistant_msgs = [m for m in captured if isinstance(m, AssistantMessage)]
     assert assistant_msgs
@@ -1376,13 +1688,11 @@ async def test_assistant_with_none_content_renders_as_empty_string(mock_provider
 
 @pytest.mark.asyncio
 async def test_skill_tool_messages_preserved_through_summarisation(mock_provider):
-    """``ToolMessage(name='skill')`` and its paired ``AssistantMessage`` must:
+    """Skill tool call/result pairs are sent to the summariser and compacted.
 
-    1. Be filtered out of the summariser LLM input (no skill body sent to the LLM).
-    2. Remain in ``state.messages`` with ``exclude_from_context=False`` so the
-       agent keeps seeing the skill instructions on subsequent turns.
-
-    A non-skill tool pair sitting next to it should be summarised normally.
+    The summariser request should mirror the normal provider-visible transcript
+    for prompt-cache reuse, so skill tool output is included instead of being
+    filtered out as a special preserved message.
     """
     hook = SummarizationHook(
         llm_provider=mock_provider,
@@ -1446,24 +1756,28 @@ async def test_skill_tool_messages_preserved_through_summarisation(mock_provider
     mock_provider.stream = lambda messages, **kw: _capturing_stream(messages)
 
     await hook.before_model(ctx, state)
+    await hook.wrap_model_call(
+        ctx,
+        state,
+        ModelRequest(
+            messages=tuple(state.messages_for_llm), system_prompt=state.system_prompt
+        ),
+        _noop_model_handler,
+    )
 
-    # 1) Skill body must not appear in summariser input.
-    human_msgs = [m for m in captured if isinstance(m, HumanMessage)]
-    convo_blob = " ".join(m.content or "" for m in human_msgs)
-    assert "Long skill instructions body" not in convo_blob
-    assert "skill" not in convo_blob.lower() or "[tool/skill]" not in convo_blob
-    # Non-skill tool call should still be summarised (its assistant turn appears).
+    # 1) Skill and non-skill tool calls both appear in summariser input.
+    assert skill_asst in captured
+    assert skill_result in captured
+    assert "Long skill instructions body" in (skill_result.content or "")
     assert other_asst in captured
 
-    # 2) Skill messages stay visible in state — not excluded.
-    assert skill_asst.exclude_from_context is False
-    assert skill_result.exclude_from_context is False
-
-    # 3) Other (non-skill) messages got excluded as part of summarisation.
+    # 2) Skill and other messages got excluded as part of summarisation.
+    assert skill_asst.exclude_from_context is True
+    assert skill_result.exclude_from_context is True
     assert other_asst.exclude_from_context is True
     assert other_result.exclude_from_context is True
 
-    # 4) Summary was inserted.
+    # 3) Summary was inserted.
     summaries = [m for m in state.messages if m.is_summary]
     assert len(summaries) == 1
     assert summaries[0].content == "Summary."

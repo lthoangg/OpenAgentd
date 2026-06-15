@@ -13,7 +13,7 @@ import pytest
 
 from app.agent.hooks.summarization import SummarizationHook
 from app.agent.schemas.chat import AssistantMessage, HumanMessage
-from app.agent.state import AgentState, RunContext, UsageInfo
+from app.agent.state import AgentState, ModelRequest, RunContext, UsageInfo
 
 
 def _make_ctx(session_id: str | None = "sid-1") -> RunContext:
@@ -48,6 +48,24 @@ def _make_provider(chunks: list[str]) -> MagicMock:
     return provider
 
 
+async def _noop_model_handler(request: ModelRequest) -> AssistantMessage:
+    return AssistantMessage(content="done")
+
+
+async def _run_summarization(
+    hook: SummarizationHook, ctx: RunContext, state: AgentState
+) -> None:
+    await hook.before_model(ctx, state)
+    await hook.wrap_model_call(
+        ctx,
+        state,
+        ModelRequest(
+            messages=tuple(state.messages_for_llm), system_prompt=state.system_prompt
+        ),
+        _noop_model_handler,
+    )
+
+
 @pytest.mark.asyncio
 async def test_emits_start_content_end_on_success():
     """Hook publishes start → N content deltas → end with the full summary."""
@@ -61,7 +79,7 @@ async def test_emits_start_content_end_on_success():
 
     fake_push = AsyncMock()
     with patch("app.services.memory_stream_store.push_event", new=fake_push):
-        await hook.before_model(_make_ctx(), _make_state())
+        await _run_summarization(hook, _make_ctx(), _make_state())
 
     events = [c.args[1].event for c in fake_push.call_args_list]
     assert events[0] == "summarization_start"
@@ -102,7 +120,7 @@ async def test_emits_end_with_error_on_llm_failure():
 
     fake_push = AsyncMock()
     with patch("app.services.memory_stream_store.push_event", new=fake_push):
-        await hook.before_model(_make_ctx(), _make_state())
+        await _run_summarization(hook, _make_ctx(), _make_state())
 
     events = [c.args[1].event for c in fake_push.call_args_list]
     assert "summarization_start" in events
@@ -125,7 +143,7 @@ async def test_emits_end_with_error_on_empty_summary():
 
     fake_push = AsyncMock()
     with patch("app.services.memory_stream_store.push_event", new=fake_push):
-        await hook.before_model(_make_ctx(), _make_state())
+        await _run_summarization(hook, _make_ctx(), _make_state())
 
     events = [c.args[1].event for c in fake_push.call_args_list]
     assert events[-1] == "summarization_end"
@@ -146,6 +164,6 @@ async def test_no_emission_without_session_id():
 
     fake_push = AsyncMock()
     with patch("app.services.memory_stream_store.push_event", new=fake_push):
-        await hook.before_model(_make_ctx(session_id=None), _make_state())
+        await _run_summarization(hook, _make_ctx(session_id=None), _make_state())
 
     fake_push.assert_not_called()

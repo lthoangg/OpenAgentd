@@ -18,6 +18,10 @@ def _make_ctx(session_id="test-session") -> RunContext:
     return RunContext(session_id=session_id, run_id="test-run", agent_name="TestAgent")
 
 
+async def _noop_model_handler(request: ModelRequest) -> AssistantMessage:
+    return AssistantMessage(content="done")
+
+
 # ---------------------------------------------------------------------------
 # Lines 194-199: LLM returns empty/whitespace-only summary
 # ---------------------------------------------------------------------------
@@ -54,6 +58,14 @@ async def test_summarisation_skipped_when_llm_returns_empty():
     )
 
     await hook.before_model(ctx, state)
+    await hook.wrap_model_call(
+        ctx,
+        state,
+        ModelRequest(
+            messages=tuple(state.messages_for_llm), system_prompt=state.system_prompt
+        ),
+        _noop_model_handler,
+    )
 
     # Me check no summary inserted
     summary_msgs = [m for m in state.messages if getattr(m, "is_summary", False)]
@@ -88,6 +100,14 @@ async def test_summarisation_skipped_when_llm_returns_none_content():
     )
 
     await hook.before_model(ctx, state)
+    await hook.wrap_model_call(
+        ctx,
+        state,
+        ModelRequest(
+            messages=tuple(state.messages_for_llm), system_prompt=state.system_prompt
+        ),
+        _noop_model_handler,
+    )
 
     summary_msgs = [m for m in state.messages if getattr(m, "is_summary", False)]
     assert len(summary_msgs) == 0
@@ -136,13 +156,13 @@ def test_find_assistant_cutoff_keep_last_negative():
 
 
 # ---------------------------------------------------------------------------
-# Line 160: before_model returns request.override(...) when summarization fires
+# Summarization runs from wrap_model_call after prompt wrappers
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_before_model_returns_updated_request_when_summarization_fires():
-    """Line 160: when summarization runs and request is not None, returns request.override(...)."""
+async def test_wrap_model_call_runs_pending_summarization_with_final_prompt():
+    """Summarization uses the final system prompt and forwards updated messages."""
 
     mock_provider = MagicMock()
 
@@ -180,12 +200,25 @@ async def test_before_model_returns_updated_request_when_summarization_fires():
     )
 
     result = await hook.before_model(ctx, state, request)
+    assert result is None
 
-    # Me summarization fired → result is a new ModelRequest (not None)
-    assert result is not None
-    assert isinstance(result, ModelRequest)
-    # Me messages in result should be the updated window
-    assert result.system_prompt == "You are helpful."
+    handled: list[ModelRequest] = []
+
+    async def _handler(req: ModelRequest) -> AssistantMessage:
+        handled.append(req)
+        return AssistantMessage(content="done")
+
+    response = await hook.wrap_model_call(
+        ctx,
+        state,
+        request.override(system_prompt="You are helpful.\n\nFinal injected prompt."),
+        _handler,
+    )
+
+    assert response.content == "done"
+    assert handled
+    assert handled[0].system_prompt == "You are helpful.\n\nFinal injected prompt."
+    assert any(m.is_summary for m in handled[0].messages)
 
 
 # ---------------------------------------------------------------------------
@@ -232,6 +265,14 @@ async def test_prior_summary_in_kept_window_excluded():
     )
 
     await hook.before_model(ctx, state)
+    await hook.wrap_model_call(
+        ctx,
+        state,
+        ModelRequest(
+            messages=tuple(state.messages_for_llm), system_prompt=state.system_prompt
+        ),
+        _noop_model_handler,
+    )
 
     # Me prior summary should now be excluded (superseded by new summary)
     assert prior_summary.exclude_from_context is True

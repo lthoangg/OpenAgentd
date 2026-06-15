@@ -367,6 +367,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const handleWorkspaceFiles = useCallback(() => {
     if (mode === 'coding') {
       if (workspace) {
+        if (isMobile) setMobileSidebarOpen(false)
         setCodingPanel((value) => {
           const next = value === null ? 'changed' : null
           if (next === null) setCodingFileViewer(null)
@@ -379,11 +380,17 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
       return
     }
     if (sessionIdState) setShowFilesPanel((value) => !value)
-  }, [mode, workspace, sessionIdState])
+  }, [isMobile, mode, workspace, sessionIdState])
 
   const handleCodingSidebarToggle = useCallback(() => {
+    if (isMobile) {
+      setCodingPanel(null)
+      setCodingFileViewer(null)
+      setMobileSidebarOpen((value) => !value)
+      return
+    }
     setCodingSidebarCollapsed((value) => !value)
-  }, [])
+  }, [isMobile])
 
   const handleOpenWorkspaceDialog = useCallback(() => {
     setCodingSidebarCollapsed(false)
@@ -792,10 +799,14 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     const deltaX = touch.clientX - start.x
     const deltaY = touch.clientY - start.y
     if (deltaX > 56 && Math.abs(deltaY) < 36) {
+      if (mode === 'coding') {
+        setCodingPanel(null)
+        setCodingFileViewer(null)
+      }
       setMobileSidebarOpen(true)
       mobileSidebarSwipeStartRef.current = null
     }
-  }, [isMobile, mobileSidebarOpen, os])
+  }, [isMobile, mobileSidebarOpen, mode, os])
 
   const handleMobileSidebarSwipeEnd = useCallback(() => {
     mobileSidebarSwipeStartRef.current = null
@@ -893,11 +904,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
               type="button"
               onClick={() => {
                 if (mode === 'coding') {
-                  if (isMobile) {
-                    setMobileSidebarOpen((v) => !v)
-                  } else {
-                    setCodingSidebarCollapsed((v) => !v)
-                  }
+                  handleCodingSidebarToggle()
                 } else if (isMobile) {
                   setMobileSidebarOpen(true)
                 } else {

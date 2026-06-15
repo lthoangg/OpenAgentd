@@ -293,6 +293,7 @@ class TestCmdStatus:
         out = capsys.readouterr().out
         assert str(own) in out
         assert "OpenAgentd server" in out
+        assert "Version:" in out
         assert "http://127.0.0.1:4082" in out
         assert "http://192.168.1.2:4082" in out
 

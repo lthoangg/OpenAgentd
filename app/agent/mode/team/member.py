@@ -1139,7 +1139,11 @@ class TeamMember(TeamMemberBase):
         base class via :class:`AgentNotConfiguredEvent`; we also notify the
         lead so it can pick a different member instead of retrying us.
         """
-        from app.agent.errors import ProviderAuthenticationError
+        from app.agent.errors import (
+            ProviderAuthenticationError,
+            ProviderConnectionError,
+            ProviderRequestError,
+        )
         from app.agent.providers.unconfigured import UnconfiguredProviderError
 
         await super()._on_turn_error(exc)
@@ -1173,6 +1177,17 @@ class TeamMember(TeamMemberBase):
             reason = (
                 f"[{self.name}]: My provider credentials are not authenticated. "
                 f"Ask the user to reconnect the provider in Settings, then re-spawn me.{suffix}"
+            )
+        elif isinstance(exc, ProviderRequestError):
+            reason = (
+                f"[{self.name}]: My provider rejected the request — {exc}. "
+                f"This will not fix itself on retry; tell the user.{suffix}"
+            )
+        elif isinstance(exc, ProviderConnectionError):
+            reason = (
+                f"[{self.name}]: I could not reach my provider — {exc} "
+                f"Reassign my work to another member or ask the user to check "
+                f"connectivity.{suffix}"
             )
         else:
             reason = (

@@ -64,7 +64,7 @@ OAuth plugins can emit a `code_required` event; the UI then shows a paste field 
 OAuth plugins without a usage hook are shown as connected but unsupported for
 usage monitoring, rather than as temporarily unavailable.
 
-If an OAuth refresh token is rejected by the upstream provider, the provider should raise `ProviderAuthenticationError`. Team execution maps that to the same actionable `agent_not_configured` stream event as an unconfigured model, so the UI can ask the user to reconnect the provider instead of surfacing an internal stack trace.
+If an OAuth refresh token is rejected by the upstream provider, the provider should raise `ProviderAuthenticationError`. Team execution maps that to the same actionable `agent_not_configured` stream event as an unconfigured model, so the UI can ask the user to reconnect the provider instead of surfacing an internal stack trace. The retry layer also auto-classifies raw `401`/`403` HTTP responses from any provider into `ProviderAuthenticationError`, and `400`/`404`/`422` into `ProviderRequestError` (carrying the provider's own error message), so misconfigured keys or bad model names produce a clear, actionable error rather than a generic status code. See [agent/loop.md](../agent/loop.md#retry--fallback).
 
 ## Capability detection
 

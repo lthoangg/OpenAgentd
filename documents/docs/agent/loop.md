@@ -174,8 +174,16 @@ The loop buffers streaming tool-call deltas by `tc.index` — providers stream a
 |--------|-----------|
 | `429 Too Many Requests` | Parse `Retry-After`; retry only when delay is under 60s, otherwise move to fallback or raise |
 | `500 / 502 / 503 / 504` | Retry with exponential backoff |
-| `400 Bad Request` | Raise immediately — malformed request won't self-heal |
+| `401 / 403` | Classify into `ProviderAuthenticationError` and raise — credentials are missing/expired/rejected |
+| `400 / 404 / 422 / other 4xx` | Classify into `ProviderRequestError` (carrying the provider's own error message) and raise — malformed request won't self-heal |
 | `ConnectError / ReadTimeout` | Retry |
+
+Non-retryable HTTP errors are passed through `classify_provider_http_error()`,
+which reads the response body to recover the provider's own explanation (OpenAI
+`{"error": {"message": …}}` and Google GenAI shapes) and wraps it in a typed
+domain error. The original `httpx.HTTPStatusError` is preserved as `__cause__`.
+This turns an opaque `400 Bad Request` into an actionable message (bad model,
+unsupported parameter, context too long, …) that the UI renders directly.
 
 Retry schedule: `min(1 × 3^attempt, 60)` seconds (1s, 3s, 9s, 27s, 60s). On the **last** attempt, no sleep — immediately move to fallback (or raise). For `429`, a computed delay of 60 seconds or more also skips the remaining retries and moves to fallback (or raises if no fallback is configured).
 
@@ -197,7 +205,9 @@ Primary provider (5 retries for transient failures)
 
 - 429s with retry delays of 60 seconds or more skip retries and move to fallback immediately.
 - Quota-style 429s skip retries and move to fallback immediately.
-- Non-retryable errors (400, 401, 403) are raised immediately — no fallback.
+- Non-retryable errors (400, 401, 403, 404, 422) are classified into typed
+  `ProviderAuthenticationError` / `ProviderRequestError` and raised immediately
+  — no fallback.
 - The fallback provider gets the same retry budget (5 attempts with backoff).
 - Configured via `fallback_model` in the agent's `.md` frontmatter (see [configuration.md](../configuration.md#fallback-model)).
 
@@ -240,14 +250,20 @@ it left off. The interrupt event is honoured during the backoff — a user Stop
 ends the turn instead of resuming.
 
 Resume is bounded by `MAX_PROVIDER_RESUME_ATTEMPTS` (3). After the budget is
-exhausted the original exception is re-raised so a persistently dead endpoint
-cannot loop forever. A successful model call resets the budget, so unrelated
-hiccups later in the same turn each get the full allowance.
+exhausted the failure is wrapped in a typed `ProviderConnectionError` (carrying
+the underlying transport `error_type` and provider label) and raised, so a
+persistently dead endpoint cannot loop forever and the UI can explain *why* the
+provider was unreachable. A successful model call resets the budget, so
+unrelated hiccups later in the same turn each get the full allowance.
+
+> The raw `ReadTimeout` / `ConnectError` is intentionally **not** wrapped inside
+> the retry layer — the resume loop must still catch the bare transport error.
+> Only this terminal, budget-exhausted raise produces the typed error.
 
 | Log event | Level | Meaning |
 |-----------|-------|---------|
 | `agent_provider_resume` | WARNING | Provider exhausted its retry budget on a transient failure; the loop will retry the same turn after a backoff. |
-| `agent_provider_resume_exhausted` | ERROR | Resume budget exhausted; the provider error is re-raised and the turn ends. |
+| `agent_provider_resume_exhausted` | ERROR | Resume budget exhausted; the failure is wrapped in `ProviderConnectionError` and raised, ending the turn. |
 
 ### Key log events (retry/fallback)
 

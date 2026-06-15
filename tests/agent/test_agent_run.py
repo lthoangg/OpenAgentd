@@ -7,11 +7,16 @@ from unittest.mock import AsyncMock, MagicMock
 from app.agent.agent_loop import Agent
 from app.agent import usage as usage_module
 from app.agent.agent_loop.retry import (
+    classify_provider_http_error,
     is_non_retryable_429,
     parse_retry_after,
     stream_with_retry,
 )
-from app.agent.errors import ProviderRateLimitError
+from app.agent.errors import (
+    ProviderAuthenticationError,
+    ProviderRateLimitError,
+    ProviderRequestError,
+)
 from app.agent.providers.base import LLMProviderBase
 from app.agent.providers.model_metadata import ModelCost
 from app.agent.tools.registry import Tool
@@ -438,11 +443,18 @@ async def test_agent_run_resumes_after_provider_timeout_mid_task():
 
 
 async def test_agent_run_provider_resume_budget_exhausted_raises():
-    """Persistent timeouts eventually give up rather than spinning forever."""
+    """Persistent timeouts eventually give up rather than spinning forever.
+
+    After the resume budget is exhausted the raw transport error is wrapped
+    in a typed ``ProviderConnectionError`` carrying the underlying error type,
+    so the UI can show *why* the provider was unreachable.
+    """
     import httpx
     from unittest.mock import patch
 
     import pytest
+
+    from app.agent.errors import ProviderConnectionError
 
     async def always_timeout(
         messages: list[ChatMessage],
@@ -460,8 +472,10 @@ async def test_agent_run_provider_resume_budget_exhausted_raises():
         patch("app.agent.agent_loop.retry.asyncio.sleep", new_callable=AsyncMock),
         patch("app.agent.agent_loop.core.asyncio.sleep", new_callable=AsyncMock),
     ):
-        with pytest.raises(httpx.ReadTimeout):
+        with pytest.raises(ProviderConnectionError) as excinfo:
             await agent.run([HumanMessage(content="hi")])
+    assert excinfo.value.error_type == "ReadTimeout"
+    assert isinstance(excinfo.value.__cause__, httpx.ReadTimeout)
 
 
 async def test_stream_with_retry_resets_partial_on_mid_stream_retry():
@@ -983,7 +997,12 @@ async def test_stream_with_retry_on_retryable_http_error():
 
 
 async def test_stream_with_retry_non_retryable_http_error_raises():
-    """Non-retryable HTTPStatusError (e.g. 400) is raised immediately."""
+    """Non-retryable 400 is classified into a typed ProviderRequestError.
+
+    The raw HTTPStatusError must NOT escape — it carries only an opaque
+    status line. The wrapped error surfaces the provider's own message so
+    the UI can show *why* the request failed.
+    """
     import httpx
 
     async def mock_stream(
@@ -991,7 +1010,11 @@ async def test_stream_with_retry_non_retryable_http_error_raises():
         tools: list[dict] | None = None,
         **kwargs,
     ):
-        response = httpx.Response(400, request=httpx.Request("POST", "http://x"))
+        response = httpx.Response(
+            400,
+            request=httpx.Request("POST", "http://x"),
+            json={"error": {"message": "Unsupported parameter: max_tokens"}},
+        )
         raise httpx.HTTPStatusError(
             "bad request", request=response.request, response=response
         )
@@ -1004,9 +1027,86 @@ async def test_stream_with_retry_non_retryable_http_error_raises():
 
     import pytest
 
-    with pytest.raises(httpx.HTTPStatusError):
+    with pytest.raises(ProviderRequestError) as excinfo:
         async for _ in stream_with_retry(**retry_args(agent), messages=[], tools=None):
             pass
+    assert excinfo.value.status_code == 400
+    assert "Unsupported parameter: max_tokens" in str(excinfo.value)
+    # original cause preserved for debugging
+    assert isinstance(excinfo.value.__cause__, httpx.HTTPStatusError)
+
+
+async def test_stream_with_retry_401_raises_authentication_error():
+    """A 401 is classified into ProviderAuthenticationError (configure banner)."""
+    import httpx
+
+    async def mock_stream(
+        messages: list[ChatMessage],
+        tools: list[dict] | None = None,
+        **kwargs,
+    ):
+        response = httpx.Response(
+            401,
+            request=httpx.Request("POST", "http://x"),
+            json={"error": {"message": "Invalid API key"}},
+        )
+        raise httpx.HTTPStatusError(
+            "unauthorized", request=response.request, response=response
+        )
+        yield  # pragma: no cover
+
+    provider = MockProvider([[]])
+    provider.stream = mock_stream  # type: ignore[method-assign]
+    agent = Agent(name="bot", llm_provider=provider)
+
+    import pytest
+
+    with pytest.raises(ProviderAuthenticationError) as excinfo:
+        async for _ in stream_with_retry(**retry_args(agent), messages=[], tools=None):
+            pass
+    assert excinfo.value.status_code == 401
+    assert "Invalid API key" in str(excinfo.value)
+
+
+def test_classify_provider_http_error_codes():
+    """Status codes map to the right typed error; body message is extracted."""
+    import httpx
+
+    def make(status: int, body: dict | None) -> httpx.HTTPStatusError:
+        response = httpx.Response(
+            status,
+            request=httpx.Request("POST", "http://x"),
+            json=body if body is not None else {},
+        )
+        return httpx.HTTPStatusError("e", request=response.request, response=response)
+
+    # 403 -> auth
+    err = classify_provider_http_error(
+        make(403, {"error": {"message": "forbidden"}}), provider_label="gpt-4o"
+    )
+    assert isinstance(err, ProviderAuthenticationError)
+    assert "forbidden" in str(err)
+    assert "gpt-4o" in str(err)
+
+    # 404 -> request error (e.g. unknown model)
+    err = classify_provider_http_error(
+        make(404, {"error": {"message": "model not found"}}), provider_label="gpt-x"
+    )
+    assert isinstance(err, ProviderRequestError)
+    assert "model not found" in str(err)
+
+    # 400 with Google-style body
+    err = classify_provider_http_error(
+        make(400, {"error": {"message": "INVALID_ARGUMENT", "status": "x"}}),
+        provider_label="gemini",
+    )
+    assert isinstance(err, ProviderRequestError)
+    assert "INVALID_ARGUMENT" in str(err)
+
+    # 400 with unparseable body -> still typed, falls back to status line
+    err = classify_provider_http_error(make(400, None), provider_label="p")
+    assert isinstance(err, ProviderRequestError)
+    assert "400" in str(err)
 
 
 async def test_stream_with_retry_on_connect_error():
@@ -1562,7 +1662,7 @@ async def test_stream_with_retry_non_retryable_aread_raises():
     import pytest as _pytest
 
     with patch("app.agent.agent_loop.retry.asyncio.sleep", new_callable=AsyncMock):
-        with _pytest.raises(httpx.HTTPStatusError):
+        with _pytest.raises(ProviderAuthenticationError):
             async for _ in stream_with_retry(
                 **retry_args(agent), messages=[], tools=None
             ):
@@ -1749,7 +1849,7 @@ async def test_stream_with_retry_non_retryable_aread_itself_raises():
     import pytest as _pytest
 
     with patch("app.agent.agent_loop.retry.asyncio.sleep", new_callable=AsyncMock):
-        with _pytest.raises(httpx.HTTPStatusError):
+        with _pytest.raises(ProviderAuthenticationError):
             async for _ in stream_with_retry(
                 **retry_args(agent), messages=[], tools=None
             ):
@@ -2035,7 +2135,7 @@ async def test_fallback_model_not_used_on_non_retryable_error():
     )
 
     with patch("app.agent.agent_loop.retry.asyncio.sleep", new_callable=AsyncMock):
-        with _pytest.raises(httpx.HTTPStatusError):
+        with _pytest.raises(ProviderRequestError):
             async for _ in stream_with_retry(
                 **retry_args(agent), messages=[], tools=None
             ):

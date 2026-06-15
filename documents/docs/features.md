@@ -191,6 +191,14 @@ spawns specialist members on demand. Deeper docs: [`agent/teams.md`](./agent/tea
   instead of waiting for the current turn to finish `[v1.25.0]`.
 - **`provider_status` SSE events in stream** `[v1.17.0]` — retry, exhaustion,
   and fallback transitions surface live in single-agent and split-pane views.
+- **Actionable provider HTTP errors** `[v1.56.0]` — non-retryable provider
+  responses (400/401/403/404/422) are classified into typed errors that carry
+  the provider's own explanation instead of a bare status code. 401/403 render
+  the "configure / reconnect provider" banner; 400-class errors surface the
+  specific reason (bad model, unsupported parameter, context too long) in the
+  error event and lead notification. Exhausted connection/timeout failures
+  likewise become a typed `ProviderConnectionError` naming the transport error
+  and pointing at the provider's base URL.
 - **Stop pauses queued follow-ups instead of dropping them** `[v1.17.0]` — Stop
   releases queued hidden user messages into visible history so you can
   `/undo`, edit, or append before resuming.

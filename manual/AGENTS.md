@@ -288,7 +288,7 @@ Hit LLM provider APIs directly — **no server required**, uses API keys from `.
 |--------|---------|-----------|
 | `try_providers/try_openai.py` | Test OpenAI provider (completions + responses) | `--model`, `--level`, `--responses` |
 | `try_providers/try_openrouter.py` | Test OpenRouter provider through retry/error classification; exits `2` for expected provider-side errors such as insufficient credits | `--model`, `--prompt` |
-| `try_providers/try_copilot.py` | Test Copilot provider (requires `uv run openagentd auth copilot` first) | `--model`, `--level` |
+| `try_providers/try_copilot.py` | Test Copilot provider through retry/error classification (requires `uv run openagentd auth copilot` first); exits `2` for expected provider-side errors such as unsupported models | `--model`, `--level`, `--simple` |
 | `try_providers/try_codex.py` | Test Codex provider (requires `uv run openagentd auth codex` first) | `--model`, `--level`, `--no-stream`, `--simple` |
 | `try_providers/try_googlegenai.py` | Test Google GenAI (Gemini) provider | `--model`, `--level`, `--tools`, `--real-tools` |
 | `try_providers/try_vertexai.py` | Test Vertex AI provider | `--model`, `--level`, `--tools`, `--real-tools` |

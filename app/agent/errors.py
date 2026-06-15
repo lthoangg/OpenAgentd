@@ -9,7 +9,9 @@ Hierarchy::
     OpenAgentdError
     ├── ProviderError
     │   ├── ProviderRateLimitError
-    │   └── ProviderConnectionError
+    │   ├── ProviderConnectionError
+    │   ├── ProviderAuthenticationError
+    │   └── ProviderRequestError
     ├── ToolError
     │   ├── ToolNotFoundError
     │   ├── ToolArgumentError
@@ -42,11 +44,59 @@ class ProviderRateLimitError(ProviderError):
 
 
 class ProviderConnectionError(ProviderError):
-    """Could not reach the provider (network / DNS / timeout)."""
+    """Could not reach the provider (network / DNS / timeout).
+
+    Carries the underlying transport error type (``error_type``) and the
+    provider label so the UI can surface *why* the provider was
+    unreachable instead of a bare connection failure.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        error_type: str | None = None,
+        provider: str | None = None,
+    ) -> None:
+        self.error_type = error_type
+        self.provider = provider
+        super().__init__(message)
 
 
 class ProviderAuthenticationError(ProviderError):
-    """Provider credentials are missing, expired, or rejected."""
+    """Provider credentials are missing, expired, or rejected (HTTP 401/403)."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        provider: str | None = None,
+    ) -> None:
+        self.status_code = status_code
+        self.provider = provider
+        super().__init__(message)
+
+
+class ProviderRequestError(ProviderError):
+    """Provider rejected the request as invalid (HTTP 400/404/422).
+
+    Carries the parsed, human-readable message from the provider's error
+    body plus the originating status code so the UI can surface *why* the
+    request failed (bad model name, unsupported parameter, context too
+    long, …) instead of a bare ``400 Bad Request``.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        provider: str | None = None,
+    ) -> None:
+        self.status_code = status_code
+        self.provider = provider
+        super().__init__(message)
 
 
 # ── Tool errors ───────────────────────────────────────────────────────────

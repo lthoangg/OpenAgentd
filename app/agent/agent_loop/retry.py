@@ -16,6 +16,7 @@ fallback (if any), and a couple of labels for logging.
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING
@@ -23,7 +24,11 @@ from typing import TYPE_CHECKING
 import httpx
 from loguru import logger
 
-from app.agent.errors import ProviderRateLimitError
+from app.agent.errors import (
+    ProviderAuthenticationError,
+    ProviderRateLimitError,
+    ProviderRequestError,
+)
 
 if TYPE_CHECKING:
     from app.agent.hooks import BaseAgentHook
@@ -198,6 +203,80 @@ def is_non_retryable_429(exc: httpx.HTTPStatusError) -> bool:
     return any(marker in body for marker in _NON_RETRYABLE_429_MARKERS)
 
 
+def _extract_provider_error_message(body: str) -> str | None:
+    """Pull the human-readable error string out of a provider error body.
+
+    Handles the two common JSON shapes:
+    - OpenAI / DeepSeek / Copilot: ``{"error": {"message": "...", ...}}``
+    - Google GenAI: ``{"error": {"message": "...", "status": "..."}}``
+
+    Falls back to a top-level ``message``/``detail`` key, then returns
+    ``None`` when nothing useful is found so the caller can use the raw
+    status line instead.
+    """
+    try:
+        data = json.loads(body)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+
+    error = data.get("error")
+    if isinstance(error, dict):
+        msg = error.get("message")
+        if isinstance(msg, str) and msg.strip():
+            return msg.strip()
+    if isinstance(error, str) and error.strip():
+        return error.strip()
+    for key in ("message", "detail"):
+        val = data.get(key)
+        if isinstance(val, str) and val.strip():
+            return val.strip()
+    return None
+
+
+def classify_provider_http_error(
+    exc: httpx.HTTPStatusError, *, provider_label: str
+) -> Exception:
+    """Map a non-retryable provider HTTP error to a typed, user-visible error.
+
+    The raw :class:`httpx.HTTPStatusError` only carries an opaque status
+    line (e.g. ``Client error '400 Bad Request'``). This reads the
+    response body to recover the provider's own explanation and wraps it
+    in a domain error the UI knows how to render:
+
+    - 401 / 403 → :class:`ProviderAuthenticationError` (UI shows a
+      "reconnect provider" banner)
+    - 400 / 404 / 422 → :class:`ProviderRequestError` (UI shows the
+      specific reason — bad model, unsupported param, context too long…)
+    - any other 4xx → :class:`ProviderRequestError` (best-effort)
+
+    Returns the original ``exc`` for status codes that should keep
+    bubbling unchanged (callers only invoke this for non-retryable 4xx).
+    """
+    status = exc.response.status_code
+    try:
+        detail = _extract_provider_error_message(exc.response.text)
+    except Exception:
+        detail = None
+
+    suffix = f": {detail}" if detail else ""
+    punctuation = "" if detail and detail.endswith((".", "!", "?")) else "."
+    if status in (401, 403):
+        return ProviderAuthenticationError(
+            f"{provider_label} rejected the request — authentication failed "
+            f"(HTTP {status}){suffix}{punctuation} Check the provider's API key "
+            f"/ login in Settings → Providers.",
+            status_code=status,
+            provider=provider_label,
+        )
+    return ProviderRequestError(
+        f"{provider_label} rejected the request (HTTP {status}){suffix}{punctuation}",
+        status_code=status,
+        provider=provider_label,
+    )
+
+
 async def stream_with_retry(
     *,
     primary_provider: LLMProviderBase,
@@ -255,7 +334,9 @@ async def stream_with_retry(
                         exc.response.status_code,
                         body,
                     )
-                    raise
+                    raise classify_provider_http_error(
+                        exc, provider_label=provider_label
+                    ) from exc
                 last_exc = exc
                 retry_after = 0
                 if exc.response.status_code == 429:

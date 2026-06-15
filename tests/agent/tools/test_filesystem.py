@@ -268,7 +268,11 @@ async def test_read_allows_log_paths(sandbox_workspace):
 
     token = set_sandbox(SandboxConfig(workspace=str(sandbox_workspace), session_id="s"))
     try:
-        log_path = Path(settings.OPENAGENTD_STATE_DIR) / "logs" / "app" / "app.log"
+        # Test-owned filename under the logs allowlist — avoids the live
+        # ``app.log`` sink the running logger appends to.
+        log_path = (
+            Path(settings.OPENAGENTD_STATE_DIR) / "logs" / "app" / "read-test.log"
+        )
         log_path.parent.mkdir(parents=True, exist_ok=True)
         log_path.write_text("log content", encoding="utf-8")
 

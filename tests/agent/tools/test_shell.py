@@ -670,7 +670,12 @@ class TestSandboxCommandScan:
 
     @pytest.mark.asyncio
     async def test_allows_tail_of_state_log_path(self, tmp_path):
-        log_path = Path(settings.OPENAGENTD_STATE_DIR) / "logs" / "app" / "app.log"
+        # Use a test-owned filename under the logs allowlist rather than the
+        # live ``app.log`` sink, which the running loguru logger appends to
+        # (every shell call logs) and would corrupt this assertion.
+        log_path = (
+            Path(settings.OPENAGENTD_STATE_DIR) / "logs" / "app" / "scan-test.log"
+        )
         log_path.parent.mkdir(parents=True, exist_ok=True)
         log_path.write_text("one\ntwo\n", encoding="utf-8")
         sandbox = SandboxConfig(

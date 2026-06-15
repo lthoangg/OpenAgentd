@@ -391,7 +391,17 @@ class Agent(Generic[TContext]):
                         provider_resume_attempts - 1,
                         type(exc).__name__,
                     )
-                    raise
+                    from app.agent.errors import ProviderConnectionError
+
+                    raise ProviderConnectionError(
+                        f"Could not reach the LLM provider — exhausted "
+                        f"{MAX_PROVIDER_RESUME_ATTEMPTS} resume attempts after a "
+                        f"transient connectivity failure ({type(exc).__name__}). "
+                        f"Check your network connection and the provider's base URL "
+                        f"in Settings → Providers.",
+                        error_type=type(exc).__name__,
+                        provider=active_model_id or "primary",
+                    ) from exc
                 delay = PROVIDER_RESUME_BASE_DELAY * provider_resume_attempts
                 logger.warning(
                     "agent_provider_resume agent={} iteration={} attempt={}/{} "

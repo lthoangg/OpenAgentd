@@ -24,8 +24,10 @@ from loguru import logger
 from app.agent.errors import (
     AgentConfigError,
     OpenAgentdError,
+    ProviderAuthenticationError,
     ProviderConnectionError,
     ProviderRateLimitError,
+    ProviderRequestError,
     RoutingError,
     SandboxError,
     SessionNotFoundError,
@@ -52,6 +54,26 @@ async def _provider_rate_limit(
     logger.warning("provider_rate_limit error={}", exc)
     return JSONResponse(
         status_code=429, content={"detail": str(exc) or "Provider rate limit exceeded."}
+    )
+
+
+async def _provider_authentication(
+    request: Request, exc: ProviderAuthenticationError
+) -> JSONResponse:
+    logger.warning("provider_authentication_error error={}", exc)
+    return JSONResponse(
+        status_code=401,
+        content={"detail": str(exc) or "Provider authentication failed."},
+    )
+
+
+async def _provider_request(
+    request: Request, exc: ProviderRequestError
+) -> JSONResponse:
+    logger.warning("provider_request_error error={}", exc)
+    return JSONResponse(
+        status_code=400,
+        content={"detail": str(exc) or "Provider rejected the request."},
     )
 
 
@@ -102,6 +124,8 @@ async def _openagentd_fallback(request: Request, exc: OpenAgentdError) -> JSONRe
 EXCEPTION_HANDLERS: dict[int | type[Exception], _ExceptionHandler] = {
     SessionNotFoundError: _session_not_found,
     ProviderRateLimitError: _provider_rate_limit,
+    ProviderAuthenticationError: _provider_authentication,
+    ProviderRequestError: _provider_request,
     ProviderConnectionError: _provider_connection,
     ToolArgumentError: _tool_argument,
     ToolExecutionError: _tool_execution,

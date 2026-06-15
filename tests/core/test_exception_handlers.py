@@ -8,8 +8,10 @@ from fastapi import Request
 from app.agent.errors import (
     AgentConfigError,
     OpenAgentdError,
+    ProviderAuthenticationError,
     ProviderConnectionError,
     ProviderRateLimitError,
+    ProviderRequestError,
     RoutingError,
     SandboxError,
     SessionNotFoundError,
@@ -20,8 +22,10 @@ from app.core.exception_handlers import (
     EXCEPTION_HANDLERS,
     _agent_config,
     _openagentd_fallback,
+    _provider_authentication,
     _provider_connection,
     _provider_rate_limit,
+    _provider_request,
     _routing,
     _sandbox,
     _session_not_found,
@@ -96,6 +100,52 @@ class TestProviderConnection:
         req = _make_request()
         resp = await _provider_connection(req, ProviderConnectionError("timeout"))
         assert b"unreachable" in resp.body
+
+
+class TestProviderAuthentication:
+    @pytest.mark.asyncio
+    async def test_returns_401(self):
+        req = _make_request()
+        resp = await _provider_authentication(
+            req, ProviderAuthenticationError("bad key", status_code=401)
+        )
+        assert resp.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_body_contains_message(self):
+        req = _make_request()
+        resp = await _provider_authentication(
+            req, ProviderAuthenticationError("bad key")
+        )
+        assert b"bad key" in resp.body
+
+    @pytest.mark.asyncio
+    async def test_empty_message_uses_default(self):
+        req = _make_request()
+        resp = await _provider_authentication(req, ProviderAuthenticationError(""))
+        assert b"authentication failed" in resp.body
+
+
+class TestProviderRequest:
+    @pytest.mark.asyncio
+    async def test_returns_400(self):
+        req = _make_request()
+        resp = await _provider_request(
+            req, ProviderRequestError("bad model", status_code=400)
+        )
+        assert resp.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_body_contains_message(self):
+        req = _make_request()
+        resp = await _provider_request(req, ProviderRequestError("bad model"))
+        assert b"bad model" in resp.body
+
+    @pytest.mark.asyncio
+    async def test_empty_message_uses_default(self):
+        req = _make_request()
+        resp = await _provider_request(req, ProviderRequestError(""))
+        assert b"rejected the request" in resp.body
 
 
 class TestToolArgument:
@@ -193,6 +243,8 @@ class TestExceptionHandlersDict:
         expected = {
             SessionNotFoundError,
             ProviderRateLimitError,
+            ProviderAuthenticationError,
+            ProviderRequestError,
             ProviderConnectionError,
             ToolArgumentError,
             ToolExecutionError,
@@ -206,6 +258,10 @@ class TestExceptionHandlersDict:
     def test_correct_handlers_assigned(self):
         assert EXCEPTION_HANDLERS[SessionNotFoundError] is _session_not_found
         assert EXCEPTION_HANDLERS[ProviderRateLimitError] is _provider_rate_limit
+        assert (
+            EXCEPTION_HANDLERS[ProviderAuthenticationError] is _provider_authentication
+        )
+        assert EXCEPTION_HANDLERS[ProviderRequestError] is _provider_request
         assert EXCEPTION_HANDLERS[ProviderConnectionError] is _provider_connection
         assert EXCEPTION_HANDLERS[ToolArgumentError] is _tool_argument
         assert EXCEPTION_HANDLERS[ToolExecutionError] is _tool_execution

@@ -287,6 +287,7 @@ Hit LLM provider APIs directly — **no server required**, uses API keys from `.
 | Script | Purpose | Key flags |
 |--------|---------|-----------|
 | `try_providers/try_openai.py` | Test OpenAI provider (completions + responses) | `--model`, `--level`, `--responses` |
+| `try_providers/try_openrouter.py` | Test OpenRouter provider through retry/error classification; exits `2` for expected provider-side errors such as insufficient credits | `--model`, `--prompt` |
 | `try_providers/try_copilot.py` | Test Copilot provider (requires `uv run openagentd auth copilot` first) | `--model`, `--level` |
 | `try_providers/try_codex.py` | Test Codex provider (requires `uv run openagentd auth codex` first) | `--model`, `--level`, `--no-stream`, `--simple` |
 | `try_providers/try_googlegenai.py` | Test Google GenAI (Gemini) provider | `--model`, `--level`, `--tools`, `--real-tools` |
@@ -296,6 +297,7 @@ Hit LLM provider APIs directly — **no server required**, uses API keys from `.
 
 ```bash
 uv run python -m manual.try_providers.try_openai
+uv run python -m manual.try_providers.try_openrouter --model openai/gpt-4o-mini
 uv run python -m manual.try_providers.try_copilot --model gpt-5.4-mini
 uv run python -m manual.try_providers.try_codex --model gpt-5.5 --level low
 uv run python -m manual.try_providers.try_googlegenai

@@ -261,16 +261,17 @@ def classify_provider_http_error(
         detail = None
 
     suffix = f": {detail}" if detail else ""
+    punctuation = "" if detail and detail.endswith((".", "!", "?")) else "."
     if status in (401, 403):
         return ProviderAuthenticationError(
             f"{provider_label} rejected the request — authentication failed "
-            f"(HTTP {status}){suffix}. Check the provider's API key / login "
-            f"in Settings → Providers.",
+            f"(HTTP {status}){suffix}{punctuation} Check the provider's API key "
+            f"/ login in Settings → Providers.",
             status_code=status,
             provider=provider_label,
         )
     return ProviderRequestError(
-        f"{provider_label} rejected the request (HTTP {status}){suffix}.",
+        f"{provider_label} rejected the request (HTTP {status}){suffix}{punctuation}",
         status_code=status,
         provider=provider_label,
     )

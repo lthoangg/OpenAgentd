@@ -245,7 +245,6 @@ function ProviderCard({ provider }: { provider: ProviderInfo }) {
     () => autoModelsQ.data?.models ?? [],
     [autoModelsQ.data?.models],
   )
-  const modelSource = autoModelsQ.data?.source ?? null
 
   const handleListModels = async () => {
     try {
@@ -576,7 +575,7 @@ function ProviderCard({ provider }: { provider: ProviderInfo }) {
         )}
 
         {/* ── Models panel ────────────────────────────────────────────── */}
-        {models.length > 0 && modelSource === 'provider' && (
+        {models.length > 0 && (
           <ModelsPanel
             providerId={provider.id}
             models={models}
@@ -588,11 +587,6 @@ function ProviderCard({ provider }: { provider: ProviderInfo }) {
             onSaveVisibleModels={handleSaveVisibleModels}
             savingVisibleModels={saveVisibleModelsMutation.isPending}
           />
-        )}
-        {modelSource === 'fallback' && models.length > 0 && (
-          <p className="rounded-md border border-(--color-border) bg-(--bg-key) px-2 py-1.5 text-xs text-(--color-text-muted)">
-            Live listing unavailable — showing {models.length} curated fallback models.
-          </p>
         )}
       </CardContent>
       {provider.kind === 'oauth' && oauthOpen && (

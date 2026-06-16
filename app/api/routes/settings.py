@@ -413,16 +413,12 @@ def _build_overrides(
 async def list_provider_models(
     provider_id: str, body: ProviderModelsRequest
 ) -> ProviderModelsResponse:
-    """Return live provider models when available, otherwise the catalog fallback.
+    """Return live provider models, or an empty list when discovery fails.
 
     Per-request credentials in ``body`` are threaded through to
     :func:`discover_provider_models` via the ``overrides`` parameter — we
     never touch ``os.environ`` because a concurrent request would observe
     the leaked value.
-
-    Most providers respond with a live list. For providers with incomplete
-    or missing listing endpoint coverage upstream, we fall back to
-    the curated ``fallback_models`` set in the catalog.
     """
     from app.agent.providers.catalog import find
     from app.agent.providers.model_discovery import (
@@ -446,11 +442,7 @@ async def list_provider_models(
             models=discovered,
             source="provider",
         )
-    return ProviderModelsResponse(
-        provider=provider_id,
-        models=filter_agent_model_ids(list(entry.get("fallback_models", []))),
-        source="fallback",
-    )
+    return ProviderModelsResponse(provider=provider_id, models=[], source="provider")
 
 
 @router.get("/providers/{provider_id}/usage")

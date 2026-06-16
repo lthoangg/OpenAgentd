@@ -722,13 +722,12 @@ def test_list_provider_models_returns_404_for_unknown() -> None:
     assert response.status_code == 404
 
 
-def test_list_provider_models_falls_back_for_vertexai(
+def test_list_provider_models_returns_empty_when_discovery_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When discovery returns no models, providers with a curated
-    ``fallback_models`` list in the catalog
-    respond with ``source=fallback`` and the curated list. Other
-    providers respond with an empty list — see the companion test."""
+    """The settings model-list endpoint should not mask failed live discovery
+    with curated fallback models.
+    """
 
     async def _empty(_entry, **_kwargs):  # type: ignore[no-untyped-def]
         return []
@@ -741,41 +740,12 @@ def test_list_provider_models_falls_back_for_vertexai(
     client = TestClient(app)
     response = client.post(
         "/api/settings/providers/vertexai/models",
-        json={"api_key": "fake"},
+        json={"extra": {"VERTEXAI_API_KEY": "bad-key"}},
     )
 
     assert response.status_code == 200
     body = response.json()
-    assert body["source"] == "fallback"
-    assert isinstance(body["models"], list)
-    assert body["models"], "vertexai catalog entry must keep a non-empty fallback list"
-    assert all(isinstance(model_id, str) for model_id in body["models"])
-
-
-def test_list_provider_models_returns_empty_for_providers_without_fallback(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Providers without a curated ``fallback_models`` return an empty model list
-    when live discovery fails —
-    we no longer surface stale catalog defaults."""
-
-    async def _empty(_entry, **_kwargs):  # type: ignore[no-untyped-def]
-        return []
-
-    monkeypatch.setattr(
-        "app.agent.providers.model_discovery.discover_provider_models", _empty
-    )
-
-    app = _make_app()
-    client = TestClient(app)
-    response = client.post(
-        "/api/settings/providers/openai/models",
-        json={"api_key": "fake"},
-    )
-
-    assert response.status_code == 200
-    body = response.json()
-    assert body["source"] == "fallback"
+    assert body["source"] == "provider"
     assert body["models"] == []
 
 
@@ -839,30 +809,6 @@ def test_list_provider_models_filters_non_agent_models(
     body = response.json()
     assert body["source"] == "provider"
     assert body["models"] == ["gemini-3.5-flash"]
-
-
-def test_list_provider_models_filters_fallback_models(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    async def _empty(_entry, **_kwargs):  # type: ignore[no-untyped-def]
-        return []
-
-    monkeypatch.setattr(
-        "app.agent.providers.model_discovery.discover_provider_models", _empty
-    )
-
-    app = _make_app()
-    client = TestClient(app)
-    response = client.post(
-        "/api/settings/providers/vertexai/models",
-        json={"api_key": "fake"},
-    )
-
-    assert response.status_code == 200
-    body = response.json()
-    assert body["source"] == "fallback"
-    assert "imagen-4" not in body["models"]
-    assert "gemini-3.5-flash" in body["models"]
 
 
 def test_list_provider_models_does_not_mutate_os_environ(

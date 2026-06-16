@@ -722,13 +722,12 @@ def test_list_provider_models_returns_404_for_unknown() -> None:
     assert response.status_code == 404
 
 
-def test_list_provider_models_falls_back_for_vertexai(
+def test_list_provider_models_returns_empty_when_discovery_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When discovery returns no models, providers with a curated
-    ``fallback_models`` list in the catalog
-    respond with ``source=fallback`` and the curated list. Other
-    providers respond with an empty list — see the companion test."""
+    """The settings model-list endpoint should not mask failed live discovery
+    with curated fallback models.
+    """
 
     async def _empty(_entry, **_kwargs):  # type: ignore[no-untyped-def]
         return []
@@ -741,41 +740,12 @@ def test_list_provider_models_falls_back_for_vertexai(
     client = TestClient(app)
     response = client.post(
         "/api/settings/providers/vertexai/models",
-        json={"api_key": "fake"},
+        json={"extra": {"VERTEXAI_API_KEY": "bad-key"}},
     )
 
     assert response.status_code == 200
     body = response.json()
-    assert body["source"] == "fallback"
-    assert isinstance(body["models"], list)
-    assert body["models"], "vertexai catalog entry must keep a non-empty fallback list"
-    assert all(isinstance(model_id, str) for model_id in body["models"])
-
-
-def test_list_provider_models_returns_empty_for_providers_without_fallback(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Providers without a curated ``fallback_models`` return an empty model list
-    when live discovery fails —
-    we no longer surface stale catalog defaults."""
-
-    async def _empty(_entry, **_kwargs):  # type: ignore[no-untyped-def]
-        return []
-
-    monkeypatch.setattr(
-        "app.agent.providers.model_discovery.discover_provider_models", _empty
-    )
-
-    app = _make_app()
-    client = TestClient(app)
-    response = client.post(
-        "/api/settings/providers/openai/models",
-        json={"api_key": "fake"},
-    )
-
-    assert response.status_code == 200
-    body = response.json()
-    assert body["source"] == "fallback"
+    assert body["source"] == "provider"
     assert body["models"] == []
 
 
@@ -839,30 +809,6 @@ def test_list_provider_models_filters_non_agent_models(
     body = response.json()
     assert body["source"] == "provider"
     assert body["models"] == ["gemini-3.5-flash"]
-
-
-def test_list_provider_models_filters_fallback_models(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    async def _empty(_entry, **_kwargs):  # type: ignore[no-untyped-def]
-        return []
-
-    monkeypatch.setattr(
-        "app.agent.providers.model_discovery.discover_provider_models", _empty
-    )
-
-    app = _make_app()
-    client = TestClient(app)
-    response = client.post(
-        "/api/settings/providers/vertexai/models",
-        json={"api_key": "fake"},
-    )
-
-    assert response.status_code == 200
-    body = response.json()
-    assert body["source"] == "fallback"
-    assert "imagen-4" not in body["models"]
-    assert "gemini-3.5-flash" in body["models"]
 
 
 def test_list_provider_models_does_not_mutate_os_environ(
@@ -1184,6 +1130,39 @@ def test_provider_configuration_reads_saved_config_env(
     assert settings_routes._provider_is_configured(entry) is True
 
 
+def test_save_provider_visible_models_writes_runtime_settings(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(
+        settings_routes.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path)
+    )
+
+    app = _make_app()
+    client = TestClient(app)
+    response = client.put(
+        "/api/settings/providers/openai/visible-models",
+        json={"models": ["gpt-5.1", "gpt-5.1-mini", "gpt-5.1"]},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "provider": "openai",
+        "visible_models": ["gpt-5.1", "gpt-5.1-mini"],
+    }
+    assert "visible_models" in (tmp_path / "settings.yaml").read_text(encoding="utf-8")
+
+
+def test_save_provider_visible_models_rejects_unknown_provider() -> None:
+    app = _make_app()
+    client = TestClient(app)
+    response = client.put(
+        "/api/settings/providers/notreal/visible-models",
+        json={"models": ["x"]},
+    )
+
+    assert response.status_code == 404
+
+
 # ── /agents/registry — concurrent + cached discovery ────────────────────────
 
 
@@ -1288,6 +1267,43 @@ def test_registry_discovery_uses_saved_config_env(
     assert "openai:saved-model" in {m["id"] for m in response.json()["models"]}
 
 
+def test_registry_filters_provider_visible_models(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from fastapi import FastAPI
+
+    from app.api.routes import agents as agents_module
+    from app.api.routes.agents import router as agents_router
+    from app.core.runtime_settings import RuntimeSettings, save_runtime_settings
+
+    agents_module._registry_model_cache.clear()
+    monkeypatch.setattr(
+        settings_routes.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path)
+    )
+    save_runtime_settings(
+        RuntimeSettings(providers={"openai": {"visible_models": ["shown"]}})
+    )
+    monkeypatch.setattr(
+        "app.api.routes.settings._provider_is_configured",
+        lambda entry: entry["id"] == "openai",
+    )
+
+    async def _spy(_entry, **_kwargs):  # type: ignore[no-untyped-def]
+        return ["shown", "hidden"]
+
+    monkeypatch.setattr("app.api.routes.agents.discover_provider_models", _spy)
+
+    app = FastAPI()
+    app.include_router(agents_router, prefix="/api/agents")
+    client = TestClient(app)
+    response = client.get("/api/agents/registry")
+
+    assert response.status_code == 200
+    ids = {m["id"] for m in response.json()["models"]}
+    assert "openai:shown" in ids
+    assert "openai:hidden" not in ids
+
+
 def test_registry_survives_discovery_errors(monkeypatch: pytest.MonkeyPatch) -> None:
     """A discovery exception per provider must not break the whole registry."""
     from fastapi import FastAPI
@@ -1312,10 +1328,7 @@ def test_registry_survives_discovery_errors(monkeypatch: pytest.MonkeyPatch) -> 
     response = client.get("/api/agents/registry")
 
     # Registry endpoint stays healthy even when every provider's discovery raises.
-    # Only catalog entries with curated fallbacks survive; every other provider
-    # yields no models without a working live discovery call.
+    # Failed discovery is not masked by catalog fallbacks, so no provider models
+    # are added without a working live discovery call.
     assert response.status_code == 200
-    body = response.json()
-    providers_seen = {m["provider"] for m in body["models"]}
-    assert "openai" not in providers_seen
-    assert providers_seen <= {"anthropic", "bedrock", "googlegenai", "vertexai"}
+    assert response.json()["models"] == []

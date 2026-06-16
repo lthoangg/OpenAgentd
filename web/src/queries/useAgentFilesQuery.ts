@@ -36,13 +36,16 @@ export function useRegistryQuery() {
   return useQuery({
     queryKey: queryKeys.agentFiles.registry(),
     queryFn: getRegistry,
-    staleTime: 5 * 60_000,
+    staleTime: Infinity,
+    gcTime: Infinity,
     refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   })
 }
 
 function invalidateTeam(client: ReturnType<typeof useQueryClient>) {
   client.invalidateQueries({ queryKey: queryKeys.agentFiles.all() })
+  client.invalidateQueries({ queryKey: queryKeys.agentFiles.registry() })
   client.invalidateQueries({ queryKey: queryKeys.agents() })
   client.invalidateQueries({ queryKey: queryKeys.team.status() })
 }

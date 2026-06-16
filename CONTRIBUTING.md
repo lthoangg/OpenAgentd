@@ -46,7 +46,7 @@ uv sync
 bun install --cwd web
 
 # 3. First-time setup (provider, API key, config files)
-openagentd init --dev
+openagentd init
 
 # 4. Start the backend
 make run
@@ -72,8 +72,8 @@ openagentd/
 ├── web/                    # React 19 frontend (Vite + Bun)
 ├── tests/                  # pytest test suite
 ├── seed/                   # Default config copied on first init
-│   ├── agents/             # Seed agent .md files (lead + members)
-│   └── skills/             # Seed skill SKILL.md files
+│   ├── agents/             # Default global/coding agent descriptors
+│   └── mcp.json            # Empty default MCP server config
 ├── documents/              # All documentation
 │   ├── docs/               # Architecture, configuration, guidelines
 │   └── styling-specs/      # Design tokens and visual specifications

@@ -9,6 +9,7 @@ from app.cli.net import server_addresses
 from app.cli.paths import _server_log
 from app.cli.pids import _find_pids, _pid_alive
 from app.cli.ui import _bold, _cyan, _dim, _green, _yellow
+from app.core.version import VERSION
 
 
 def cmd_status(_args: argparse.Namespace) -> None:
@@ -18,6 +19,7 @@ def cmd_status(_args: argparse.Namespace) -> None:
     addresses = server_addresses(host=_resolve_host(_args), port=port)
     print()
     print(f"  {_bold(_cyan('OpenAgentd server'))}")
+    print(f"  {_dim('Version:')} v{VERSION}")
     print()
     if alive:
         print(

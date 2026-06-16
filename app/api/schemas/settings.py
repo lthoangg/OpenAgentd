@@ -64,6 +64,9 @@ class ProviderInfo(BaseModel):
     # True when live model discovery reached the provider. False means saved
     # credentials/tokens exist, but the provider could not be reached now.
     is_reachable: bool | None = None
+    # Provider-local model IDs shown in normal model pickers. Empty means all
+    # discovered models for this provider are visible.
+    visible_models: list[str] = Field(default_factory=list)
 
 
 class ProvidersListBody(BaseModel):
@@ -175,6 +178,19 @@ class ProviderSaveResponse(BaseModel):
     # configured provider (frontend uses this to decide whether to
     # trigger the seed installer afterward).
     is_first_provider: bool = False
+
+
+class ProviderVisibleModelsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    models: list[str] = Field(default_factory=list)
+
+
+class ProviderVisibleModelsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider: str
+    visible_models: list[str] = Field(default_factory=list)
 
 
 class SeedInstallRequest(BaseModel):

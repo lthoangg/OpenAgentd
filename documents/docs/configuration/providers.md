@@ -44,6 +44,20 @@ Built-ins are resolved in `app/agent/providers/factory.py`; provider plugins are
 
 The model id after the prefix is passed **verbatim** to the upstream. The Settings model picker filters provider listings to agent-usable text-chat models, so generation-only models such as `veo-*`, `imagen-*`, image-preview, embeddings, and TTS models are hidden.
 
+## Visible models
+
+Each provider card in **Settings → Providers** can save a provider-local `visible_models` list in `{OPENAGENTD_CONFIG_DIR}/settings.yaml`:
+
+```yaml
+providers:
+  openai:
+    visible_models:
+      - gpt-5.1
+      - gpt-5.1-mini
+```
+
+This is a UI visibility filter, not runtime enforcement. Use the per-model visibility button in the provider card to choose which models appear in normal model pickers. Missing or empty `visible_models` means all discovered agent-usable models for that provider remain visible. `/api/agents/registry` and the provider model-list endpoint use live provider discovery results only; failed auth or unreachable discovery returns an empty list instead of curated defaults.
+
 ## Provider plugins
 
 Drop-in provider plugins live in `{OPENAGENTD_CONFIG_DIR}/plugins/` and export a `ProviderPlugin` named `provider`. They can:

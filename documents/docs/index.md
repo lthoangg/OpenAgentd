@@ -84,7 +84,7 @@ app/          FastAPI backend
   cli/        openagentd CLI entry points
 web/          React frontend (Vite + Bun)
 desktop/      Tauri v2 desktop shell
-seed/         Default agents and mcp.json (copied on first init)
+seed/         Default agents and empty mcp.json (copied on first init)
 tests/        pytest test suite (mirrors app/)
 documents/    Developer docs (this directory)
 ```

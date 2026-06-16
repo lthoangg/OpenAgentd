@@ -24,6 +24,7 @@ from app.agent.providers.model_discovery import (
     discover_provider_models,
     filter_agent_model_ids,
 )
+from app.core.runtime_settings import provider_visible_models
 from app.agent.tools.builtin.skill import discover_skills
 from app.api.schemas.agents import (
     AgentDeleteResponse,
@@ -289,23 +290,13 @@ async def get_registry() -> RegistryResponse:
             )
         )
 
-    # Live discovery covers every configured provider that has a working
-    # ``/models`` endpoint. For the rare provider with no listing API
-    # upstream, the catalog carries a curated
-    # ``fallback_models`` list — but we only surface it when the provider
-    # is configured, so the agent dropdown never advertises models the
-    # user can't actually run.
-    from app.api.routes.settings import _provider_is_configured
-
-    for entry in all_providers():
-        fallback = entry.get("fallback_models", [])
-        if not fallback or not _provider_is_configured(entry):
-            continue
-        for model in filter_agent_model_ids(list(fallback)):
-            _append(entry["id"], model)
-
+    visible_by_provider: dict[str, set[str]] = {}
     for provider, model in await _discover_configured_registry_models():
-        _append(provider, model)
+        visible = visible_by_provider.setdefault(
+            provider, set(provider_visible_models(provider))
+        )
+        if not visible or model in visible:
+            _append(provider, model)
 
     models.sort(key=lambda item: (item.provider, item.model))
 
@@ -380,9 +371,9 @@ async def is_registered_model_id(model_id: str) -> bool:
     for entry in all_providers():
         if entry["id"] != provider or not _provider_is_configured(entry):
             continue
-        fallback = filter_agent_model_ids(list(entry.get("fallback_models", [])))
-        if model in fallback:
-            return True
+        visible = set(provider_visible_models(provider))
+        if visible and model not in visible:
+            return False
         discovered = await _discover_configured_registry_models()
         return any(p == provider and m == model for p, m in discovered)
     return False

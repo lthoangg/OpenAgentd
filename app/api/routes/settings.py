@@ -21,6 +21,10 @@ from loguru import logger
 
 from app.agent.sandbox_config import SandboxFileConfig, load_config, save_config
 from app.core.config import settings
+from app.core.runtime_settings import (
+    provider_visible_models,
+    set_provider_visible_models,
+)
 
 if TYPE_CHECKING:
     from app.agent.providers.catalog import ProviderEntry
@@ -33,6 +37,8 @@ from app.api.schemas.settings import (
     ProviderTestRequest,
     ProviderTestResponse,
     ProviderUsageResponse,
+    ProviderVisibleModelsRequest,
+    ProviderVisibleModelsResponse,
     ProvidersListBody,
     MultimodalSettingsBody,
     SandboxSettingsBody,
@@ -381,6 +387,7 @@ async def list_providers() -> ProvidersListBody:
                 is_configured=is_configured and bool(live_models),
                 is_saved=is_saved,
                 is_reachable=bool(live_models) if is_configured else None,
+                visible_models=provider_visible_models(entry["id"]),
             )
         )
     has_any = any(p.is_configured for p in out)
@@ -406,16 +413,12 @@ def _build_overrides(
 async def list_provider_models(
     provider_id: str, body: ProviderModelsRequest
 ) -> ProviderModelsResponse:
-    """Return live provider models when available, otherwise the catalog fallback.
+    """Return live provider models, or an empty list when discovery fails.
 
     Per-request credentials in ``body`` are threaded through to
     :func:`discover_provider_models` via the ``overrides`` parameter — we
     never touch ``os.environ`` because a concurrent request would observe
     the leaked value.
-
-    Most providers respond with a live list. For providers with incomplete
-    or missing listing endpoint coverage upstream, we fall back to
-    the curated ``fallback_models`` set in the catalog.
     """
     from app.agent.providers.catalog import find
     from app.agent.providers.model_discovery import (
@@ -439,11 +442,7 @@ async def list_provider_models(
             models=discovered,
             source="provider",
         )
-    return ProviderModelsResponse(
-        provider=provider_id,
-        models=filter_agent_model_ids(list(entry.get("fallback_models", []))),
-        source="fallback",
-    )
+    return ProviderModelsResponse(provider=provider_id, models=[], source="provider")
 
 
 @router.get("/providers/{provider_id}/usage")
@@ -461,6 +460,24 @@ async def get_provider_usage(provider_id: str) -> ProviderUsageResponse:
         raise HTTPException(
             status_code=502, detail="Provider usage unavailable."
         ) from exc
+
+
+@router.put("/providers/{provider_id}/visible-models")
+async def save_provider_visible_models(
+    provider_id: str, body: ProviderVisibleModelsRequest
+) -> ProviderVisibleModelsResponse:
+    """Persist provider-local model IDs shown in normal model pickers."""
+    from app.agent.providers.catalog import find
+
+    entry = find(provider_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"Unknown provider '{provider_id}'")
+
+    set_provider_visible_models(provider_id, body.models)
+    return ProviderVisibleModelsResponse(
+        provider=provider_id,
+        visible_models=provider_visible_models(provider_id),
+    )
 
 
 @router.post("/providers/{provider_id}/test")

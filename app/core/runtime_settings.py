@@ -50,6 +50,12 @@ class ServerSettings(BaseModel):
     access_key: str | None = None
 
 
+class ProviderUiSettings(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    visible_models: list[str] = Field(default_factory=list)
+
+
 class RuntimeSettings(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -59,6 +65,25 @@ class RuntimeSettings(BaseModel):
     dream: DreamSettings = Field(default_factory=DreamSettings)
     memory_vector: MemoryVectorSettings = Field(default_factory=MemoryVectorSettings)
     server: ServerSettings = Field(default_factory=ServerSettings)
+    providers: dict[str, ProviderUiSettings] = Field(default_factory=dict)
+
+
+def provider_visible_models(provider_id: str) -> list[str]:
+    return (
+        load_runtime_settings()
+        .providers.get(provider_id, ProviderUiSettings())
+        .visible_models
+    )
+
+
+def set_provider_visible_models(provider_id: str, models: list[str]) -> None:
+    cfg = load_runtime_settings()
+    cleaned = sorted({model.strip() for model in models if model.strip()})
+    if cleaned:
+        cfg.providers[provider_id] = ProviderUiSettings(visible_models=cleaned)
+    else:
+        cfg.providers.pop(provider_id, None)
+    save_runtime_settings(cfg)
 
 
 def runtime_settings_path() -> Path:

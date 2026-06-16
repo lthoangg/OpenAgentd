@@ -35,6 +35,7 @@ import {
   useProviderUsageQuery,
   useProvidersQuery,
   useSaveProviderMutation,
+  useSaveProviderVisibleModelsMutation,
 } from '@/queries'
 import { openExternalUrl } from '@/lib/open-external'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -184,6 +185,7 @@ function ProviderCard({ provider }: { provider: ProviderInfo }) {
   const [modelSearch, setModelSearch] = useState('')
   const modelsMutation = useProviderModelsMutation()
   const saveMutation = useSaveProviderMutation()
+  const saveVisibleModelsMutation = useSaveProviderVisibleModelsMutation()
   const push = useToastStore((s) => s.push)
   const queryClient = useQueryClient()
 
@@ -243,7 +245,6 @@ function ProviderCard({ provider }: { provider: ProviderInfo }) {
     () => autoModelsQ.data?.models ?? [],
     [autoModelsQ.data?.models],
   )
-  const modelSource = autoModelsQ.data?.source ?? null
 
   const handleListModels = async () => {
     try {
@@ -310,6 +311,18 @@ function ProviderCard({ provider }: { provider: ProviderInfo }) {
       push({
         tone: 'error',
         title: 'Could not save provider',
+        description: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
+
+  const handleSaveVisibleModels = async (models: string[]) => {
+    try {
+      await saveVisibleModelsMutation.mutateAsync({ providerId: provider.id, models })
+    } catch (err) {
+      push({
+        tone: 'error',
+        title: 'Could not save visible models',
         description: err instanceof Error ? err.message : String(err),
       })
     }
@@ -562,20 +575,18 @@ function ProviderCard({ provider }: { provider: ProviderInfo }) {
         )}
 
         {/* ── Models panel ────────────────────────────────────────────── */}
-        {models.length > 0 && modelSource === 'provider' && (
+        {models.length > 0 && (
           <ModelsPanel
             providerId={provider.id}
             models={models}
+            visibleModels={provider.visible_models}
             search={modelSearch}
             onSearchChange={setModelSearch}
             expanded={modelsExpanded}
             onToggle={() => setModelsExpanded((v) => !v)}
+            onSaveVisibleModels={handleSaveVisibleModels}
+            savingVisibleModels={saveVisibleModelsMutation.isPending}
           />
-        )}
-        {modelSource === 'fallback' && models.length > 0 && (
-          <p className="rounded-md border border-(--color-border) bg-(--bg-key) px-2 py-1.5 text-xs text-(--color-text-muted)">
-            Live listing unavailable — showing {models.length} curated fallback models.
-          </p>
         )}
       </CardContent>
       {provider.kind === 'oauth' && oauthOpen && (
@@ -589,29 +600,39 @@ function ProviderCard({ provider }: { provider: ProviderInfo }) {
  *  *and* the value the user sees / copies, so search and display stay in
  *  sync. */
 type IndexedModel = {
+  modelId: string
   qualifiedId: string
 }
 
 function ModelsPanel({
   providerId,
   models,
+  visibleModels,
   search,
   onSearchChange,
   expanded,
   onToggle,
+  onSaveVisibleModels,
+  savingVisibleModels,
 }: {
   providerId: string
   models: string[]
+  visibleModels: string[]
   search: string
   onSearchChange: (v: string) => void
   expanded: boolean
   onToggle: () => void
+  onSaveVisibleModels: (models: string[]) => Promise<void>
+  savingVisibleModels: boolean
 }) {
   // Copying is silent on success — feedback is already implicit (the
   // mouse click triggers the browser's clipboard write). We only surface
   // a toast if the clipboard API rejects, which is rare and worth
   // calling out.
   const push = useToastStore((s) => s.push)
+  const visibleSet = useMemo(() => new Set(visibleModels), [visibleModels])
+  const allVisible = visibleSet.size === 0
+
   const handleCopy = async (qualifiedId: string) => {
     try {
       await navigator.clipboard.writeText(qualifiedId)
@@ -624,7 +645,7 @@ function ModelsPanel({
   // string means searching for ``"openai:gpt-5"`` works just as well as
   // searching for ``"gpt5"``.
   const indexed = useMemo<IndexedModel[]>(
-    () => models.map((id) => ({ qualifiedId: `${providerId}:${id}` })),
+    () => models.map((id) => ({ modelId: id, qualifiedId: `${providerId}:${id}` })),
     [models, providerId],
   )
 
@@ -640,6 +661,14 @@ function ModelsPanel({
     })
     return results.map((r) => r.obj)
   }, [indexed, search])
+  const visibleCount = allVisible ? indexed.length : visibleSet.size
+
+  const toggleVisibleModel = (modelId: string) => {
+    const next = new Set(visibleModels)
+    if (next.has(modelId)) next.delete(modelId)
+    else next.add(modelId)
+    void onSaveVisibleModels(Array.from(next).sort())
+  }
 
   return (
     <div className="rounded-md border border-(--color-border) bg-(--bg-page)">
@@ -650,7 +679,7 @@ function ModelsPanel({
         aria-expanded={expanded}
       >
         <span>
-          {indexed.length} models available {search && <span className="text-(--color-text-muted)">· {visible.length} shown</span>}
+          {indexed.length} models available · {allVisible ? 'all visible' : `${visibleCount} visible`} {search && <span className="text-(--color-text-muted)">· {visible.length} shown</span>}
         </span>
         <span className="text-[11px]">{expanded ? 'Hide' : 'Show'}</span>
       </button>
@@ -664,12 +693,22 @@ function ModelsPanel({
             className="h-8 text-xs"
             aria-label="Filter models"
           />
+          <p className="mt-2 text-[11px] text-(--color-text-muted)">
+            Use the visibility button next to each model to choose which models normal OpenAgentd pickers show. If none are selected, all models are visible.
+          </p>
           <ul className="mt-2 max-h-64 overflow-y-auto">
             {visible.length === 0 ? (
               <li className="px-2 py-3 text-center text-xs text-(--color-text-muted)">No matching models.</li>
             ) : (
-              visible.map(({ qualifiedId }) => (
-                <ModelRow key={qualifiedId} qualifiedId={qualifiedId} onCopy={handleCopy} />
+              visible.map(({ qualifiedId, modelId }) => (
+                <ModelRow
+                  key={qualifiedId}
+                  qualifiedId={qualifiedId}
+                  selected={!allVisible && visibleSet.has(modelId)}
+                  savingVisibleModels={savingVisibleModels}
+                  onToggleVisible={() => toggleVisibleModel(modelId)}
+                  onCopy={handleCopy}
+                />
               ))
             )}
           </ul>
@@ -679,7 +718,19 @@ function ModelsPanel({
   )
 }
 
-function ModelRow({ qualifiedId, onCopy }: { qualifiedId: string; onCopy: (qualifiedId: string) => Promise<void> }) {
+function ModelRow({
+  qualifiedId,
+  selected,
+  savingVisibleModels,
+  onToggleVisible,
+  onCopy,
+}: {
+  qualifiedId: string
+  selected: boolean
+  savingVisibleModels: boolean
+  onToggleVisible: () => void
+  onCopy: (qualifiedId: string) => Promise<void>
+}) {
   const isMobile = useIsMobile()
   const { isTauri, os } = usePlatform()
   const isTauriMobile = isTauri && (os === 'ios' || os === 'android')
@@ -728,6 +779,17 @@ function ModelRow({ qualifiedId, onCopy }: { qualifiedId: string; onCopy: (quali
       <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-(--color-text)">
         {qualifiedId}
       </span>
+      <button
+        type="button"
+        onClick={onToggleVisible}
+        disabled={savingVisibleModels}
+        className={`flex h-8 min-w-16 items-center justify-center gap-1 rounded px-2 text-[11px] md:h-6 ${selected ? 'bg-(--color-success-subtle) text-(--color-success)' : 'text-(--color-text-muted) hover:bg-(--bg-card) hover:text-(--color-text)'}`}
+        aria-label={`${selected ? 'Remove' : 'Show'} ${qualifiedId} in model pickers`}
+        title={selected ? 'Remove from visible models' : 'Show in pickers'}
+      >
+        {savingVisibleModels ? <Loader2 size={12} className="animate-spin" aria-hidden="true" /> : selected ? <Check size={12} aria-hidden="true" /> : null}
+        {selected ? 'Visible' : 'Show'}
+      </button>
       <button
         type="button"
         onClick={() => void onCopy(qualifiedId)}
@@ -823,6 +885,7 @@ function OAuthLoginDialog({
           if (event.event === 'success' && !successHandledRef.current) {
             successHandledRef.current = true
             void queryClient.invalidateQueries({ queryKey: queryKeys.settings.providers() })
+            void queryClient.invalidateQueries({ queryKey: queryKeys.agentFiles.registry() })
             const model = event.suggested_model
             if (model) {
               void installSeed(model)
@@ -939,6 +1002,8 @@ function OAuthLoginDialog({
                   .then((result) => {
                     setEvents((current) => [...current, { event: 'success', suggested_model: result.suggested_model }])
                     void queryClient.invalidateQueries({ queryKey: queryKeys.settings.providers() })
+                    void queryClient.invalidateQueries({ queryKey: queryKeys.agentFiles.registry() })
+
                     useToastStore.getState().push({ tone: 'success', title: 'Provider connected', description: provider.label })
                   })
                   .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))

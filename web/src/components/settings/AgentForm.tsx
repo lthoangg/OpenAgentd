@@ -293,9 +293,19 @@ function FormFields({
   // handled by the caller's full-form check before save.
   const nameError = isNew ? validateAgentName(fm.name) : null
   const descriptionError = validateDescription(fm.description ?? '')
+  const currentModelOptions = useMemo(() => {
+    const byId = new Map(modelOptions.map((model) => [model.id, model]))
+    const withCurrent = [...modelOptions]
+    for (const id of [fm.model, fm.fallback_model]) {
+      if (!id || byId.has(id) || !id.includes(':')) continue
+      const [provider, model] = id.split(':', 2)
+      withCurrent.push({ id, provider, model, vision: false })
+    }
+    return withCurrent
+  }, [fm.fallback_model, fm.model, modelOptions])
   const validModelIds = useMemo(
-    () => modelOptions.map((m) => m.id),
-    [modelOptions],
+    () => currentModelOptions.map((m) => m.id),
+    [currentModelOptions],
   )
   const modelError = validateModel(fm.model ?? '', {
     required: true,
@@ -419,7 +429,7 @@ function FormFields({
           <Field label="Model" required error={modelError} className="md:col-span-2">
             <ModelCombobox
               value={fm.model ?? ''}
-              options={modelOptions}
+              options={currentModelOptions}
               onChange={(v) => updateFromForm({ ...fm, model: v }, body)}
               disabled={disabled}
               invalid={!!modelError}
@@ -435,7 +445,7 @@ function FormFields({
           >
             <ModelCombobox
               value={fm.fallback_model ?? ''}
-              options={modelOptions}
+              options={currentModelOptions}
               onChange={(v) => updateFromForm({ ...fm, fallback_model: v || null }, body)}
               disabled={disabled}
               invalid={!!fallbackError}

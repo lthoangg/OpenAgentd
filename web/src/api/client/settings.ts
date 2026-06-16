@@ -102,6 +102,7 @@ export type ProviderInfo = {
   is_configured: boolean
   is_saved: boolean
   is_reachable?: boolean | null
+  visible_models: string[]
 }
 
 export type ProvidersListBody = {
@@ -148,6 +149,11 @@ export type ProviderUsageResponse = {
 export type ProviderSaveResponse = {
   saved: boolean
   is_first_provider: boolean
+}
+
+export type ProviderVisibleModelsResponse = {
+  provider: string
+  visible_models: string[]
 }
 
 export type ProviderTestResponse = {
@@ -216,6 +222,19 @@ export async function listProviderModels(
     body: JSON.stringify(body),
   })
   if (!res.ok) await parseDetailOrThrow(res, `POST /settings/providers/${providerId}/models`)
+  return res.json()
+}
+
+export async function saveProviderVisibleModels(
+  providerId: string,
+  models: string[],
+): Promise<ProviderVisibleModelsResponse> {
+  const res = await fetch(`${apiBaseUrl()}/settings/providers/${encodeURIComponent(providerId)}/visible-models`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ models }),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, `PUT /settings/providers/${providerId}/visible-models`)
   return res.json()
 }
 

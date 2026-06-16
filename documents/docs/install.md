@@ -215,7 +215,7 @@ openagentd/
 │   └── services/           # Business logic, stream store, memory, dream
 ├── web/                    # React 19 frontend (Vite + Bun)
 ├── tests/                  # pytest test suite
-├── seed/                   # Default config copied on first init (agents, mcp.json)
+├── seed/                   # Default agents and empty mcp.json copied on first init
 └── documents/              # All documentation
 ```
 

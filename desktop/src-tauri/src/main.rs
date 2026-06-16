@@ -169,6 +169,7 @@ struct BackendReady {
     port: u16,
     version: String,
     base_url: String,
+    token: Option<String>,
     sidecar_running: bool,
 }
 
@@ -404,6 +405,7 @@ async fn app_use_external_backend(app: AppHandle, window: tauri::WebviewWindow, 
             port: 0,
             version: "external".to_string(),
             base_url: normalized,
+            token: None,
             sidecar_running: false,
         },
     )
@@ -447,6 +449,7 @@ async fn app_use_bundled_backend(app: AppHandle, window: tauri::WebviewWindow) -
             port: 0,
             version: "bundled".to_string(),
             base_url: base,
+            token,
             sidecar_running: true,
         },
     )
@@ -641,7 +644,7 @@ async fn restart_sidecar_and_reload_window(app: &AppHandle) -> Result<()> {
     }
     show_target_window(app);
 
-    let _ = state.desktop_token.lock().await.replace(token);
+    let _ = state.desktop_token.lock().await.replace(token.clone());
     let _ = state.backend_base_url.lock().await.replace(format!("http://127.0.0.1:{}", handshake.port));
     *state.backend_mode.lock().await = BackendMode::Bundled;
     let _ = state.sidecar.lock().await.replace(sidecar);
@@ -651,6 +654,7 @@ async fn restart_sidecar_and_reload_window(app: &AppHandle) -> Result<()> {
             port: handshake.port,
             version: handshake.version,
             base_url: format!("http://127.0.0.1:{}", handshake.port),
+            token: Some(token),
             sidecar_running: true,
         },
     )
@@ -1488,6 +1492,9 @@ async fn create_app_window(app: &AppHandle, label: Option<&str>) -> Result<tauri
 
 async fn start_backend_and_window(app: AppHandle) -> Result<()> {
     let state: tauri::State<'_, AppState> = app.state();
+    if app.get_webview_window(MAIN_WINDOW).is_none() {
+        build_app_window(&app, MAIN_WINDOW.to_string(), backend_unavailable_init_script()).await?;
+    }
 
     if let Some(active_base_url) = load_app_backend_config(&app)
         .ok()
@@ -1501,12 +1508,11 @@ async fn start_backend_and_window(app: AppHandle) -> Result<()> {
                         .lock()
                         .await
                         .insert(MAIN_WINDOW.to_string(), base.clone());
-                    build_app_window(
-                        &app,
-                        MAIN_WINDOW.to_string(),
-                        frontend_init_script(None, &base),
-                    )
-                    .await?;
+                    if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
+                        window
+                            .eval(&frontend_init_script(None, &base))
+                            .context("inject external backend config")?;
+                    }
                     update_tray_status(&app, "Status: Running");
                     app.emit(
                         "backend-ready",
@@ -1514,6 +1520,7 @@ async fn start_backend_and_window(app: AppHandle) -> Result<()> {
                             port: 0,
                             version: "external".to_string(),
                             base_url: base,
+                            token: None,
                             sidecar_running: false,
                         },
                     )
@@ -1548,7 +1555,6 @@ async fn start_backend_and_window(app: AppHandle) -> Result<()> {
                     let base = format!("http://127.0.0.1:{}", handshake.port);
                     if let Err(e) = wait_for_health(&base, 60, Duration::from_millis(250)).await {
                         log::warn!("desktop: sidecar health check failed at startup: {e:#}");
-                        build_app_window(&app, MAIN_WINDOW.to_string(), backend_unavailable_init_script()).await?;
                         update_tray_status(&app, "Status: Error");
                         app.emit(
                             "backend-error",
@@ -1558,8 +1564,6 @@ async fn start_backend_and_window(app: AppHandle) -> Result<()> {
                         )
                         .ok();
                     } else {
-                        // Build the window only once we have the backend URL + token so the
-                        // token is injected before any page JS runs.
                         let token = handshake.token.clone();
                         let init_script = frontend_init_script(Some(&token), &base);
 
@@ -1568,7 +1572,11 @@ async fn start_backend_and_window(app: AppHandle) -> Result<()> {
                         let _ = state.backend_base_url.lock().await.replace(base.clone());
                         *state.backend_mode.lock().await = BackendMode::Bundled;
 
-                        build_app_window(&app, MAIN_WINDOW.to_string(), init_script).await?;
+                        if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
+                            window
+                                .eval(&init_script)
+                                .context("inject bundled backend config")?;
+                        }
                         update_tray_status(&app, "Status: Running");
 
                         app.emit(
@@ -1577,6 +1585,7 @@ async fn start_backend_and_window(app: AppHandle) -> Result<()> {
                                 port: handshake.port,
                                 version: handshake.version,
                                 base_url: base,
+                                token: Some(token),
                                 sidecar_running: true,
                             },
                         )
@@ -1585,7 +1594,6 @@ async fn start_backend_and_window(app: AppHandle) -> Result<()> {
                 }
                 Err(e) => {
                     log::warn!("desktop: sidecar handshake failed at startup: {e:#}");
-                    build_app_window(&app, MAIN_WINDOW.to_string(), backend_unavailable_init_script()).await?;
                     update_tray_status(&app, "Status: Error");
                     app.emit(
                         "backend-error",
@@ -1599,7 +1607,6 @@ async fn start_backend_and_window(app: AppHandle) -> Result<()> {
         }
         Err(e) => {
             log::warn!("desktop: sidecar unavailable at startup: {e:#}");
-            build_app_window(&app, MAIN_WINDOW.to_string(), backend_unavailable_init_script()).await?;
             update_tray_status(&app, "Status: Error");
             app.emit(
                 "backend-error",

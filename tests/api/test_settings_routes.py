@@ -1328,10 +1328,7 @@ def test_registry_survives_discovery_errors(monkeypatch: pytest.MonkeyPatch) -> 
     response = client.get("/api/agents/registry")
 
     # Registry endpoint stays healthy even when every provider's discovery raises.
-    # Only catalog entries with curated fallbacks survive; every other provider
-    # yields no models without a working live discovery call.
+    # Failed discovery is not masked by catalog fallbacks, so no provider models
+    # are added without a working live discovery call.
     assert response.status_code == 200
-    body = response.json()
-    providers_seen = {m["provider"] for m in body["models"]}
-    assert "openai" not in providers_seen
-    assert providers_seen <= {"anthropic", "bedrock", "googlegenai", "vertexai"}
+    assert response.json()["models"] == []

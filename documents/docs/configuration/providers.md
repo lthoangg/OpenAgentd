@@ -56,7 +56,7 @@ providers:
       - gpt-5.1-mini
 ```
 
-This is a UI visibility filter, not runtime enforcement. Use the per-model visibility button in the provider card to choose which models appear in normal model pickers. Missing or empty `visible_models` means all discovered agent-usable models for that provider remain visible. `/api/agents/registry` applies this filter for normal model pickers, while the provider model-list endpoint returns live provider discovery results only; failed auth or unreachable discovery returns an empty list instead of curated defaults.
+This is a UI visibility filter, not runtime enforcement. Use the per-model visibility button in the provider card to choose which models appear in normal model pickers. Missing or empty `visible_models` means all discovered agent-usable models for that provider remain visible. `/api/agents/registry` and the provider model-list endpoint use live provider discovery results only; failed auth or unreachable discovery returns an empty list instead of curated defaults.
 
 ## Provider plugins
 

@@ -6,10 +6,12 @@ import {
   listProviderModels,
   listProviders,
   saveProvider,
+  saveProviderVisibleModels,
   testProvider,
   type ProviderModelsResponse,
   type ProviderSaveRequest,
   type ProviderTestResponse,
+  type ProvidersListBody,
 } from '@/api/client'
 import { queryKeys } from './keys'
 
@@ -28,6 +30,34 @@ export function useSaveProviderMutation() {
       saveProvider(providerId, body),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: queryKeys.settings.providers() })
+      void client.invalidateQueries({ queryKey: queryKeys.agentFiles.registry() })
+    },
+  })
+}
+
+export function useSaveProviderVisibleModelsMutation() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: ({ providerId, models }: { providerId: string; models: string[] }) =>
+      saveProviderVisibleModels(providerId, models),
+    onMutate: async ({ providerId, models }) => {
+      await client.cancelQueries({ queryKey: queryKeys.settings.providers() })
+      const previous = client.getQueryData<ProvidersListBody>(queryKeys.settings.providers())
+      client.setQueryData<ProvidersListBody>(queryKeys.settings.providers(), (current) => {
+        if (!current) return current
+        return {
+          ...current,
+          providers: current.providers.map((provider) =>
+            provider.id === providerId ? { ...provider, visible_models: models } : provider,
+          ),
+        }
+      })
+      return { previous }
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previous) client.setQueryData(queryKeys.settings.providers(), context.previous)
+    },
+    onSettled: () => {
       void client.invalidateQueries({ queryKey: queryKeys.agentFiles.registry() })
     },
   })

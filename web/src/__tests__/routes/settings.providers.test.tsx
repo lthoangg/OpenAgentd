@@ -80,6 +80,7 @@ describe('ProvidersSettingsPage', () => {
             is_configured: false,
             is_saved: true,
             is_reachable: false,
+            visible_models: [],
           },
         ],
       })),
@@ -116,6 +117,7 @@ describe('ProvidersSettingsPage', () => {
             is_configured: false,
             is_saved: true,
             is_reachable: false,
+            visible_models: [],
           },
         ],
       })),
@@ -160,6 +162,7 @@ describe('ProvidersSettingsPage', () => {
             is_configured: false,
             is_saved: false,
             is_reachable: null,
+            visible_models: [],
           },
         ],
       })),
@@ -210,6 +213,7 @@ describe('ProvidersSettingsPage', () => {
             is_configured: true,
             is_saved: true,
             is_reachable: true,
+            visible_models: [],
           },
         ],
       })),
@@ -223,7 +227,7 @@ describe('ProvidersSettingsPage', () => {
     renderPage()
 
     expect(await screen.findByText('OpenAI')).toBeTruthy()
-    await waitFor(() => expect(screen.getByText('1 models available')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText(/1 models available/)).toBeTruthy())
     const toggle = screen.getByRole('button', { name: /1 models available/i })
     expect(toggle.className).toContain('min-h-11')
     expect(toggle.className).toContain('md:min-h-0')
@@ -257,6 +261,7 @@ describe('ProvidersSettingsPage', () => {
             is_configured: true,
             is_saved: true,
             is_reachable: true,
+            visible_models: [],
           },
         ],
       })),

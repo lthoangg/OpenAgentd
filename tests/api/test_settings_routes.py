@@ -1184,6 +1184,39 @@ def test_provider_configuration_reads_saved_config_env(
     assert settings_routes._provider_is_configured(entry) is True
 
 
+def test_save_provider_visible_models_writes_runtime_settings(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(
+        settings_routes.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path)
+    )
+
+    app = _make_app()
+    client = TestClient(app)
+    response = client.put(
+        "/api/settings/providers/openai/visible-models",
+        json={"models": ["gpt-5.1", "gpt-5.1-mini", "gpt-5.1"]},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "provider": "openai",
+        "visible_models": ["gpt-5.1", "gpt-5.1-mini"],
+    }
+    assert "visible_models" in (tmp_path / "settings.yaml").read_text(encoding="utf-8")
+
+
+def test_save_provider_visible_models_rejects_unknown_provider() -> None:
+    app = _make_app()
+    client = TestClient(app)
+    response = client.put(
+        "/api/settings/providers/notreal/visible-models",
+        json={"models": ["x"]},
+    )
+
+    assert response.status_code == 404
+
+
 # ── /agents/registry — concurrent + cached discovery ────────────────────────
 
 
@@ -1286,6 +1319,43 @@ def test_registry_discovery_uses_saved_config_env(
     assert response.status_code == 200
     assert captured["overrides"] == {"OPENAI_API_KEY": "saved-key"}
     assert "openai:saved-model" in {m["id"] for m in response.json()["models"]}
+
+
+def test_registry_filters_provider_visible_models(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from fastapi import FastAPI
+
+    from app.api.routes import agents as agents_module
+    from app.api.routes.agents import router as agents_router
+    from app.core.runtime_settings import RuntimeSettings, save_runtime_settings
+
+    agents_module._registry_model_cache.clear()
+    monkeypatch.setattr(
+        settings_routes.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path)
+    )
+    save_runtime_settings(
+        RuntimeSettings(providers={"openai": {"visible_models": ["shown"]}})
+    )
+    monkeypatch.setattr(
+        "app.api.routes.settings._provider_is_configured",
+        lambda entry: entry["id"] == "openai",
+    )
+
+    async def _spy(_entry, **_kwargs):  # type: ignore[no-untyped-def]
+        return ["shown", "hidden"]
+
+    monkeypatch.setattr("app.api.routes.agents.discover_provider_models", _spy)
+
+    app = FastAPI()
+    app.include_router(agents_router, prefix="/api/agents")
+    client = TestClient(app)
+    response = client.get("/api/agents/registry")
+
+    assert response.status_code == 200
+    ids = {m["id"] for m in response.json()["models"]}
+    assert "openai:shown" in ids
+    assert "openai:hidden" not in ids
 
 
 def test_registry_survives_discovery_errors(monkeypatch: pytest.MonkeyPatch) -> None:

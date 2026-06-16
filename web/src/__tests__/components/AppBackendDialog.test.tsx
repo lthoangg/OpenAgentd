@@ -124,6 +124,28 @@ describe('AppBackendDialog', () => {
     expect(onOpenChange).not.toHaveBeenCalled()
   })
 
+  it('lets users recover from an unreachable external backend by choosing builtin', async () => {
+    const user = userEvent.setup()
+    statusPayload = {
+      ...statusPayload,
+      base_url: 'http://192.168.1.20:4082',
+      mode: 'external',
+      sidecar_running: true,
+      external: true,
+    }
+    render(<AppBackendDialog open onOpenChange={() => {}} />)
+
+    await screen.findByText('Builtin sidecar')
+    await user.click(screen.getByRole('button', { name: 'use builtin' }))
+
+    await waitFor(() => {
+      expect(invokeCalls).toContainEqual({
+        command: 'app_use_bundled_backend',
+        args: undefined,
+      })
+    })
+  })
+
   it('saves a server name without switching connections', async () => {
     const user = userEvent.setup()
     render(<AppBackendDialog open onOpenChange={() => {}} />)
@@ -182,6 +204,21 @@ describe('AppBackendDialog', () => {
       args: { baseUrl: 'http://127.0.0.1:4082', name: '', persist: true },
     })
     expect(onOpenChange).not.toHaveBeenCalled()
+  })
+
+  it('can switch to an external server without making it the remembered startup backend', async () => {
+    const user = userEvent.setup()
+    render(<AppBackendDialog open onOpenChange={() => {}} />)
+
+    await user.type(screen.getByLabelText(/server url/i), 'http://127.0.0.1:4082')
+    await user.click(screen.getByLabelText(/save this server/i))
+    await user.click(screen.getByRole('button', { name: 'Connect' }))
+
+    await waitFor(() => expect(window.__OAD_API_BASE_URL__).toBe('http://127.0.0.1:4082'))
+    expect(invokeCalls).toContainEqual({
+      command: 'app_use_external_backend',
+      args: { baseUrl: 'http://127.0.0.1:4082', name: '', persist: false },
+    })
   })
 
   it('checks and uses a LAN server URL', async () => {

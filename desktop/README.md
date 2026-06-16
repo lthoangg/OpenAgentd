@@ -34,14 +34,16 @@ The Python sidecar:
 
 The Tauri shell:
 
-1. Locates the bundled Python runtime in `Contents/Resources/python/` (macOS),
+1. Checks the remembered external backend from `desktop-backend.json`; if it is healthy, opens the main WebView against that server.
+2. If the remembered external backend is unreachable, continues startup with the bundled sidecar so the app remains usable.
+3. Otherwise locates the bundled Python runtime in `Contents/Resources/python/` (macOS),
    `resources\python\` (Windows), or `usr/lib/openagentd/python/` (Linux).
-2. Spawns the sidecar with `--handshake --generate-token --parent-pid <our pid>`.
-3. Reads stdout until the handshake line; extracts `{port, token}`.
-4. Polls `http://127.0.0.1:<port>/api/health/live` until it returns 200.
-5. Installs an `initialization_script` that sets `window.__OAD_TOKEN__ = "..."`.
-6. Opens one or more WebViews against the same sidecar/token (`Cmd/Ctrl+N` for a secondary window).
-7. On app quit: SIGTERM the sidecar; force-kill after 5s.
+4. Spawns the sidecar with `--handshake --generate-token --parent-pid <our pid>`.
+5. Reads stdout until the handshake line; extracts `{port, token}`.
+6. Polls `http://127.0.0.1:<port>/api/health/live` until it returns 200.
+7. Installs an `initialization_script` that sets `window.__OAD_TOKEN__ = "..."`.
+8. Opens one or more WebViews against the same sidecar/token (`Cmd/Ctrl+N` for a secondary window).
+9. On app quit: SIGTERM the sidecar; force-kill after 5s.
 
 ## Development
 

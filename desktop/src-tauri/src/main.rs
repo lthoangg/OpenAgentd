@@ -386,8 +386,13 @@ async fn app_use_external_backend(app: AppHandle, window: tauri::WebviewWindow, 
     state.window_backend_base_urls.lock().await.insert(window.label().to_string(), normalized.clone());
 
     if persist.unwrap_or(true) {
-        save_app_backend_config(&app, Some(&normalized), normalize_server_name(name).as_deref(), false)
-            .map_err(|e| format!("{e:#}"))?;
+        save_app_backend_config(
+            &app,
+            Some(&normalized),
+            normalize_server_name(name).as_deref(),
+            true,
+        )
+        .map_err(|e| format!("{e:#}"))?;
     }
 
     let init_script = frontend_init_script(None, &normalized);
@@ -431,6 +436,8 @@ async fn app_use_bundled_backend(app: AppHandle, window: tauri::WebviewWindow) -
         .clone()
         .ok_or_else(|| "bundled backend is not ready".to_string())?;
     state.window_backend_base_urls.lock().await.remove(window.label());
+    save_app_backend_config(&app, None, None, true)
+        .map_err(|e| format!("{e:#}"))?;
     let token = state.desktop_token.lock().await.clone();
     let init_script = frontend_init_script(token.as_deref(), &base);
     window.eval(&init_script).map_err(|e| format!("inject bundled backend config: {e:#}"))?;
@@ -1482,6 +1489,47 @@ async fn create_app_window(app: &AppHandle, label: Option<&str>) -> Result<tauri
 async fn start_backend_and_window(app: AppHandle) -> Result<()> {
     let state: tauri::State<'_, AppState> = app.state();
 
+    if let Some(active_base_url) = load_app_backend_config(&app)
+        .ok()
+        .and_then(|config| config.active_base_url)
+    {
+        match normalize_external_base_url(&active_base_url) {
+            Ok(base) => match wait_for_health(&base, 8, Duration::from_millis(250)).await {
+                Ok(()) => {
+                    state
+                        .window_backend_base_urls
+                        .lock()
+                        .await
+                        .insert(MAIN_WINDOW.to_string(), base.clone());
+                    build_app_window(
+                        &app,
+                        MAIN_WINDOW.to_string(),
+                        frontend_init_script(None, &base),
+                    )
+                    .await?;
+                    update_tray_status(&app, "Status: Running");
+                    app.emit(
+                        "backend-ready",
+                        BackendReady {
+                            port: 0,
+                            version: "external".to_string(),
+                            base_url: base,
+                            sidecar_running: false,
+                        },
+                    )
+                    .ok();
+                    return Ok(());
+                }
+                Err(e) => log::warn!(
+                    "desktop: saved external backend is not reachable at startup: {e:#}"
+                ),
+            },
+            Err(e) => log::warn!(
+                "desktop: saved external backend URL is invalid at startup: {e:#}"
+            ),
+        }
+    }
+
     match Sidecar::spawn(&app) {
         Ok(mut sidecar) => {
             let handshake_result = sidecar
@@ -1746,6 +1794,20 @@ mod tests {
         assert!(script.contains("__OAD_API_BASE_URL__"));
         assert!(script.contains("__OAD_TOKEN__"));
         assert_eq!(script.matches("writable: true, configurable: true").count(), 2);
+    }
+
+    #[test]
+    fn saved_backend_config_can_mark_external_backend_active() {
+        let mut config = AppBackendConfig::default();
+        config.active_base_url = Some("http://192.168.1.10:4082".to_string());
+
+        let serialized = serde_json::to_string(&config).expect("serialize config");
+        let parsed: AppBackendConfig = serde_json::from_str(&serialized).expect("parse config");
+
+        assert_eq!(
+            parsed.active_base_url.as_deref(),
+            Some("http://192.168.1.10:4082")
+        );
     }
 
     // ── format_update_prompt ────────────────────────────────────────────────

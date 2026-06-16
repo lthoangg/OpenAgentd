@@ -28,6 +28,7 @@ export function useSaveProviderMutation() {
       saveProvider(providerId, body),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: queryKeys.settings.providers() })
+      void client.invalidateQueries({ queryKey: queryKeys.agentFiles.registry() })
     },
   })
 }

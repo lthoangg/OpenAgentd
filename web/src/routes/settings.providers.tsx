@@ -823,6 +823,7 @@ function OAuthLoginDialog({
           if (event.event === 'success' && !successHandledRef.current) {
             successHandledRef.current = true
             void queryClient.invalidateQueries({ queryKey: queryKeys.settings.providers() })
+            void queryClient.invalidateQueries({ queryKey: queryKeys.agentFiles.registry() })
             const model = event.suggested_model
             if (model) {
               void installSeed(model)
@@ -939,6 +940,8 @@ function OAuthLoginDialog({
                   .then((result) => {
                     setEvents((current) => [...current, { event: 'success', suggested_model: result.suggested_model }])
                     void queryClient.invalidateQueries({ queryKey: queryKeys.settings.providers() })
+                    void queryClient.invalidateQueries({ queryKey: queryKeys.agentFiles.registry() })
+
                     useToastStore.getState().push({ tone: 'success', title: 'Provider connected', description: provider.label })
                   })
                   .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))

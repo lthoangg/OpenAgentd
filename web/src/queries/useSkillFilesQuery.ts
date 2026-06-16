@@ -29,6 +29,7 @@ function invalidateAll(client: ReturnType<typeof useQueryClient>) {
   client.invalidateQueries({ queryKey: queryKeys.skillFiles.all() })
   // Skills appear in the registry response and can affect agent reload.
   client.invalidateQueries({ queryKey: queryKeys.agentFiles.all() })
+  client.invalidateQueries({ queryKey: queryKeys.agentFiles.registry() })
   client.invalidateQueries({ queryKey: queryKeys.agents() })
 }
 

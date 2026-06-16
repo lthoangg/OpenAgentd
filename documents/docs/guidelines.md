@@ -193,6 +193,7 @@ web/src/__tests__/
 
 **Key patterns:**
 - Import from `@/` — tsconfig paths resolve to `src/`.
+- Treat the agent registry query (`queryKeys.agentFiles.registry()`) as app-lifetime metadata: keep it cached, and invalidate it explicitly after agent, skill, or provider settings mutations instead of refetching on ordinary tab opens.
 - `useStore.setState(partial)` to seed state; `useStore.getState().action()` to invoke.
 - No `require()` — static ESM imports only.
 - Component tests use `render` from `@testing-library/react` + `user-event`; pure utils and store logic are tested directly without React renders.

@@ -147,7 +147,7 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   the shared Web UI and connects to saved remote API servers. See [`mobile.md`](./mobile.md).
 - **LAN access key for external clients** `[v1.43.0]` — `openagentd start --lan --key`
   stores a `settings.yaml` bearer key so desktop, mobile, and browser clients need the key before controlling a LAN-exposed server. See [`cli.md`](./cli.md).
-- **Desktop server connection manager** `[v1.43.4]` — the desktop **Server connection** dialog switches the current window between the builtin sidecar and saved external servers, validates LAN access keys, normalizes pasted `/api` URLs, and preserves other open windows' backend choices. See [`desktop.md`](./desktop.md).
+- **Desktop server connection manager** `[v1.43.4]` — the desktop **Server connection** dialog switches the current window between the builtin sidecar and saved external servers, validates LAN access keys, normalizes pasted `/api` URLs, and preserves other open windows' backend choices. Remembered external servers reconnect on app launch with sidecar fallback, while the desktop window opens immediately as backend startup continues asynchronously `[v1.57.1]`. See [`desktop.md`](./desktop.md).
 
 ---
 

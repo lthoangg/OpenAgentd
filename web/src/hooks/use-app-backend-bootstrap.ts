@@ -9,6 +9,25 @@ export function useAppBackendBootstrap(): boolean {
 
   useEffect(() => {
     let cancelled = false
+    let unlistenBackendReady: (() => void) | undefined
+    void import('@tauri-apps/api/event').then(({ listen }) => {
+      if (cancelled) return
+      void listen<{ base_url: string; token?: string | null }>('backend-ready', (event) => {
+        if (cancelled || !event.payload.base_url) return
+        if (event.payload.token) {
+          Object.defineProperty(window, '__OAD_TOKEN__', {
+            value: event.payload.token,
+            writable: true,
+            configurable: true,
+          })
+          installDesktopAuth()
+        }
+        setApiBaseUrl(event.payload.base_url)
+      }).then((unlisten) => {
+        if (cancelled) unlisten()
+        else unlistenBackendReady = unlisten
+      }).catch(() => {})
+    }).catch(() => {})
     void getAppBackendStatus().then((status) => {
       if (cancelled) return
       if (!status?.base_url) {
@@ -33,6 +52,7 @@ export function useAppBackendBootstrap(): boolean {
     })
     return () => {
       cancelled = true
+      unlistenBackendReady?.()
       unsubscribe()
     }
   }, [])

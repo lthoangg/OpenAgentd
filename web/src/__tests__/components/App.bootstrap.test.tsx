@@ -5,6 +5,11 @@ import App from '@/App'
 const TEST_BACKEND_URL = 'http://10.0.2.2:8000'
 
 let statusPayload: { base_url: string; token?: string | null } | null = { base_url: TEST_BACKEND_URL }
+interface BackendReadyEvent {
+  payload: { base_url: string; token?: string | null }
+}
+
+let backendReadyListener: ((event: BackendReadyEvent) => void) | null = null
 
 const invokeMock = mock(async (...args: unknown[]) => {
   const command = String(args[0])
@@ -14,6 +19,19 @@ const invokeMock = mock(async (...args: unknown[]) => {
 
 mock.module('@tauri-apps/api/core', () => ({
   invoke: invokeMock,
+}))
+
+const listenMock = mock((...args: unknown[]) => {
+  const event = String(args[0])
+  const callback = args[1] as ((event: BackendReadyEvent) => void) | undefined
+  if (event === 'backend-ready' && callback) backendReadyListener = callback
+  return Promise.resolve(() => {
+    backendReadyListener = null
+  })
+})
+
+mock.module('@tauri-apps/api/event', () => ({
+  listen: listenMock,
 }))
 
 mock.module('@tanstack/react-router', () => ({
@@ -28,6 +46,7 @@ beforeEach(() => {
   delete window.__OAD_API_BASE_URL__
   delete window.__OAD_TOKEN__
   statusPayload = { base_url: TEST_BACKEND_URL }
+  backendReadyListener = null
   invokeMock.mockClear()
 })
 
@@ -64,5 +83,21 @@ describe('App backend bootstrap', () => {
 
     await waitFor(() => expect(invokeMock).toHaveBeenCalled())
     expect(window.__OAD_API_BASE_URL__).toBeUndefined()
+  })
+
+  it('hydrates the backend URL when desktop reports readiness after the window opens', async () => {
+    statusPayload = null
+
+    render(<App />)
+
+    await waitFor(() => expect(invokeMock).toHaveBeenCalled())
+    expect(window.__OAD_API_BASE_URL__).toBeUndefined()
+
+    backendReadyListener?.({ payload: { base_url: TEST_BACKEND_URL, token: 'ready-token' } })
+
+    await waitFor(() => {
+      expect(window.__OAD_API_BASE_URL__).toBe(TEST_BACKEND_URL)
+      expect(window.__OAD_TOKEN__).toBe('ready-token')
+    })
   })
 })

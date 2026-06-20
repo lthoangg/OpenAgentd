@@ -2,7 +2,7 @@
 title: Tools & Execution
 description: Tool decorator, JSON schema, argument validation, and tool execution flow.
 status: stable
-updated: 2026-05-04
+updated: 2026-06-16
 ---
 
 # Tools
@@ -227,7 +227,7 @@ All subprocesses are started with `start_new_session=True`, which places them in
 
 Shell commands are gated by the **permission system** (`app/agent/permission.py`) before execution. By default `AutoAllowPermissionService` is active — it fires `permission_asked` SSE events and auto-approves. A blocking `PermissionService` with user-defined `Rule`/`Ruleset` (wildcard, last-match-wins) can be wired in when a frontend approval UI is ready. The old denylist (`sudo`, `rm -rf`, etc.) has been removed in favour of this rule-based approach.
 
-Path containment for file tools is enforced by `SandboxConfig.validate_path` — see [Filesystem](#filesystem-builtinfilesystem). The `shell` tool also performs a best-effort command path scan via `SandboxConfig.check_command`. The default shell timeout is 60s; large output spills to the session-scoped `.openagentd/sessions/<session_id>/.tool_results/shell/` directory.
+Path containment for file tools is enforced by `SandboxConfig.validate_path` — see [Filesystem](#filesystem-builtinfilesystem). The `shell` tool also performs a best-effort command path scan via `SandboxConfig.check_command`. The default shell timeout is 60s; large output spills to the session-scoped `{OPENAGENTD_DATA_DIR}/sessions/{session_id}/.tool_results/shell/` directory.
 
 ### Date (`builtin/date.py`)
 
@@ -237,7 +237,7 @@ Path containment for file tools is enforced by `SandboxConfig.validate_path` —
 
 ### Multimodalities (`multimodalities/`)
 
-Generative media tools. Each kind is gated by a section in `{OPENAGENTD_CONFIG_DIR}/multimodal.yaml`; if the section is missing or the referenced env var is unset, the tool returns a "not configured" error at call time (the agent sees the failure but the server still starts). Voice input transcription lives in `speech.yaml`, not `multimodal.yaml`; it is a UI/API feature, not an LLM tool.
+Generative media tools. Each kind is gated by a section in `{OPENAGENTD_CONFIG_DIR}/multimodal.yaml`; if the section is missing or the referenced env var is unset, the tool returns a "not configured" error at call time (the agent sees the failure but the server still starts). Voice input uses the browser or app WebView speech recognizer; there is no backend speech service or `speech.yaml` setting.
 
 | Tool | File | What it does |
 |------|------|-------------|

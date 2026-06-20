@@ -82,7 +82,7 @@ Full capability matrix (incl. Aider + opencode): [`documents/docs/comparison.md`
 | Platform | Artefact | First-launch note |
 |---|---|---|
 | macOS (Apple Silicon) | `brew install --cask lthoangg/tap/openagentd` *or* `OpenAgentd_*_aarch64.dmg` | The cask ad-hoc signs and installs automatically. With the `.dmg`, run the bundled `install.sh` then right-click → **Open**. The app is unsigned — [why](https://github.com/lthoangg/openagentd/blob/main/documents/docs/install.md#desktop-unsigned). |
-| Linux | `OpenAgentd_*_amd64.deb` | Install with your package manager, e.g. `sudo apt install ./OpenAgentd_*_amd64.deb`. |
+| Linux | `OpenAgentd_*_amd64.AppImage` *or* `OpenAgentd_*_amd64.deb` | Run the AppImage directly (`chmod +x`, then execute it) or install the `.deb` with your package manager, e.g. `sudo apt install ./OpenAgentd_*_amd64.deb`. |
 
 macOS — after mounting the `.dmg`:
 
@@ -93,7 +93,7 @@ cd /Volumes/OpenAgentd*
 
 Then right-click **OpenAgentd.app → Open** the first time (single-click won't work).
 
-**CLI / API server** (terminal install — backend only; connect from the desktop app via **Backend connection**):
+**CLI / API server** (terminal install — backend only; connect from the desktop app via **Server connection**):
 
 ```bash
 # macOS / Linux
@@ -110,7 +110,7 @@ openagentd        # API server on http://localhost:4082
 For phones or another desktop on the same network:
 
 ```bash
-openagentd start --lan   # bind 0.0.0.0 and print the LAN/mobile URL
+openagentd start --lan --key   # bind 0.0.0.0, save an access key, and print the LAN/mobile URL
 openagentd address       # show local + LAN URLs again later
 openagentd health        # verify the backend is reachable and ready
 ```
@@ -122,7 +122,7 @@ Other install options (pip, pipx, from source) — see [`documents/docs/install.
 Useful maintenance commands:
 
 ```bash
-openagentd start --lan          # expose backend to desktop/mobile on your LAN
+openagentd start --lan --key    # expose backend to desktop/mobile on your LAN with access-key auth
 openagentd restart              # restart the background server
 openagentd address              # show local and LAN server URLs
 openagentd health               # run server/mobile diagnostics
@@ -134,7 +134,7 @@ openagentd cleanup --apply      # delete the listed generated artifacts
 openagentd upgrade              # stop, upgrade, and restart if running
 ```
 
-Generated artifacts are session-scoped under `.openagentd/sessions/{session_id}/` inside the active workspace. Todos live in `.todos.json`; bulky tool output lives under `.tool_results/`, including shell spills at `.tool_results/shell/`. Normal session workspaces are removed when the session is deleted. Coding sessions keep the project directory but remove that session's `.openagentd/sessions/{session_id}/` metadata.
+Generated artifacts are session-scoped under `{OPENAGENTD_DATA_DIR}/sessions/{session_id}/`, not inside the active workspace or coding repo. Todos live at `.todos.json` inside that session artifact directory; bulky tool output lives under `.tool_results/`, including shell spills at `.tool_results/shell/`. Deleting a normal session removes its workspace and session artifact directory. Deleting a coding session keeps the project directory and removes only that session's app-managed artifacts.
 
 ---
 
@@ -339,6 +339,8 @@ Full documentation index: [`documents/docs/index.md`](https://github.com/lthoang
 | [Install](https://github.com/lthoangg/openagentd/blob/main/documents/docs/install.md) | Desktop app first (macOS/Linux); CLI/uv/pipx/pip, source. |
 | [Migration](https://github.com/lthoangg/openagentd/blob/main/MIGRATION.md) | Move setup from OpenClaw, Hermes, Claude Code, Codex CLI, or older OpenAgentd installs |
 | [CLI reference](https://github.com/lthoangg/openagentd/blob/main/documents/docs/cli.md) | Every `openagentd` subcommand |
+| [Slash commands](https://github.com/lthoangg/openagentd/blob/main/documents/docs/commands.md) | Reusable `/name` prompt templates; reuses your opencode command library |
+| [Shell commands](https://github.com/lthoangg/openagentd/blob/main/documents/docs/shell-commands.md) | Opencode-style `!command` sends that run directly through the shell tool |
 | [Configuration overview](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration.md) | Hub — links into the focused subpages below |
 | [Environment variables](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration/env.md) | `Settings` fields, provider keys, optional extras |
 | [Paths & XDG roots](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration/paths.md) | DATA / CONFIG / STATE / CACHE / WORKSPACE / WIKI |
@@ -366,6 +368,7 @@ Full documentation index: [`documents/docs/index.md`](https://github.com/lthoang
 | [Logging](https://github.com/lthoangg/openagentd/blob/main/documents/docs/logging.md) | App log + per-session JSONL, rotation, console format |
 | [Observability](https://github.com/lthoangg/openagentd/blob/main/documents/docs/observability.md) | OTel spans, DuckDB-backed `/api/observability/*`, `/telemetry` UI |
 | [Desktop distribution](https://github.com/lthoangg/openagentd/blob/main/documents/docs/desktop.md) | Tauri v2 shell, Python sidecar, token auth, release pipeline |
+| [Mobile app](https://github.com/lthoangg/openagentd/blob/main/documents/docs/mobile.md) | Tauri mobile shell for remote OpenAgentd API servers |
 | [Title generation](https://github.com/lthoangg/openagentd/blob/main/documents/docs/title-generation.md) | LLM-generated session titles, SSE event, config |
 
 ### Frontend (`web/`)
@@ -373,6 +376,7 @@ Full documentation index: [`documents/docs/index.md`](https://github.com/lthoang
 | Section | Contents |
 |---------|----------|
 | [App chrome](https://github.com/lthoangg/openagentd/blob/main/documents/docs/web/chrome.md) | Shared header, platform detection, Tauri drag, macOS overlay |
+| [Coding sessions UI](https://github.com/lthoangg/openagentd/blob/main/documents/docs/web/coding-sessions.md) | Coding session restore, workspace sidebar pagination, reload/error handling |
 | [Workspace Files](https://github.com/lthoangg/openagentd/blob/main/documents/docs/web/workspace-files.md) | Session files, coding Files & Diff, previews, downloads |
 | [Todos popover](https://github.com/lthoangg/openagentd/blob/main/documents/docs/web/todos.md) | Task board, assignments, claims, dependencies, live updates |
 | [Tool rendering](https://github.com/lthoangg/openagentd/blob/main/documents/docs/web/tool-results.md) | Tool call/result UI and custom renderers |

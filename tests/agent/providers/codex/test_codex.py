@@ -656,6 +656,13 @@ class TestCodexResponsesHandlerBuildRequest:
         body = handler.build_request(messages, None, False, {})
         assert body["instructions"] == "You are helpful"
 
+    def test_build_request_human_message_with_none_content_uses_string(self):
+        """Codex request input text content must not be null."""
+        handler = _CodexResponsesHandler("gpt-5.4", "https://api.example.com", {})
+        messages = [HumanMessage(content=None)]
+        body = handler.build_request(messages, None, False, {})
+        assert body["input"] == [{"role": "user", "content": ""}]
+
     def test_build_request_removes_system_messages_from_input(self):
         """build_request() removes SystemMessages from input array."""
         handler = _CodexResponsesHandler("gpt-5.4", "https://api.example.com", {})

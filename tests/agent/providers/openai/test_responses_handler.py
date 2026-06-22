@@ -62,6 +62,15 @@ class TestResponsesHandler:
         assert result[0]["role"] == "user"
         assert result[0]["content"] == "Hello"
 
+    def test_convert_messages_empty_text_content_uses_string(self, handler):
+        """Responses API text message content must not be null."""
+        messages = [SystemMessage(content=None), HumanMessage(content=None)]
+        result = handler.convert_messages(messages)
+        assert result == [
+            {"role": "system", "content": ""},
+            {"role": "user", "content": ""},
+        ]
+
     def test_convert_messages_human_message_with_parts(self, handler):
         """Convert HumanMessage with multimodal parts."""
         messages = [

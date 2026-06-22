@@ -70,7 +70,7 @@ class ResponsesHandler:
 
         for msg in messages:
             if isinstance(msg, SystemMessage):
-                input_items.append({"role": "system", "content": msg.content})
+                input_items.append({"role": "system", "content": msg.content or ""})
 
             elif isinstance(msg, HumanMessage):
                 if msg.parts:
@@ -96,7 +96,7 @@ class ResponsesHandler:
                             )
                     input_items.append({"role": "user", "content": resp_parts})
                 else:
-                    input_items.append({"role": "user", "content": msg.content})
+                    input_items.append({"role": "user", "content": msg.content or ""})
 
             elif isinstance(msg, AssistantMessage):
                 if msg.content:

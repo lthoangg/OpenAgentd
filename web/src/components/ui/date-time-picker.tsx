@@ -135,7 +135,7 @@ export function DateTimePicker({
             selected={parsed}
             onSelect={handleDaySelect}
             disabled={(d) => d < new Date(new Date().setHours(0, 0, 0, 0))}
-            initialFocus
+            autoFocus
           />
 
           {/* Time + Done row */}

@@ -75,7 +75,7 @@ class CompletionsHandler:
         result: list[OpenAIMessage] = []
         for msg in messages:
             if isinstance(msg, SystemMessage):
-                result.append(OpenAIMessage(role="system", content=msg.content))
+                result.append(OpenAIMessage(role="system", content=msg.content or ""))
 
             elif isinstance(msg, HumanMessage):
                 if msg.parts:
@@ -100,7 +100,7 @@ class CompletionsHandler:
                             )
                     result.append(OpenAIMessage(role="user", content=oai_parts))
                 else:
-                    result.append(OpenAIMessage(role="user", content=msg.content))
+                    result.append(OpenAIMessage(role="user", content=msg.content or ""))
 
             elif isinstance(msg, AssistantMessage):
                 openai_tool_calls = None
@@ -120,7 +120,7 @@ class CompletionsHandler:
                 result.append(
                     OpenAIMessage(
                         role="assistant",
-                        content=msg.content,
+                        content=msg.content or "",
                         tool_calls=openai_tool_calls,
                     )
                 )
@@ -158,7 +158,7 @@ class CompletionsHandler:
                     result.append(
                         OpenAIMessage(
                             role="tool",
-                            content=msg.content,
+                            content=msg.content or "",
                             tool_call_id=msg.tool_call_id,
                             name=msg.name,
                         )

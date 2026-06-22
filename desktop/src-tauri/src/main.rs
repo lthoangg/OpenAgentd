@@ -133,6 +133,8 @@ const ZOOM_MIN: f64 = 0.5;
 const ZOOM_MAX: f64 = 3.0;
 const ZOOM_STEP: f64 = 1.2;
 const ZOOM_DEFAULT: f64 = 1.0;
+const NORMAL_SHUTDOWN_GRACE: Duration = Duration::from_secs(5);
+const RELOAD_SHUTDOWN_GRACE: Duration = Duration::from_millis(750);
 
 /// Label shown in the tray when no chat/coding session is active.
 const TRAY_SESSION_IDLE: &str = "No active session";
@@ -604,7 +606,7 @@ async fn restart_sidecar_and_reload_window(app: &AppHandle) -> Result<()> {
     let state: tauri::State<'_, AppState> = app.state();
     let existing_token = state.desktop_token.lock().await.clone();
 
-    shutdown_sidecar_now(app).await;
+    shutdown_sidecar_now_with_grace(app, RELOAD_SHUTDOWN_GRACE).await;
 
     let mut sidecar = if let Some(token) = existing_token.as_deref() {
         Sidecar::spawn_with_desktop_token(app, Some(token)).context("spawn sidecar")?
@@ -942,11 +944,15 @@ fn cached_update_path(app: &AppHandle, version: &str) -> Result<PathBuf> {
 /// Idempotent: ``.take()``s the sidecar out of shared state, so repeat
 /// calls (or a race with ``ExitRequested``) are no-ops.
 async fn shutdown_sidecar_now(app: &AppHandle) {
+    shutdown_sidecar_now_with_grace(app, NORMAL_SHUTDOWN_GRACE).await;
+}
+
+async fn shutdown_sidecar_now_with_grace(app: &AppHandle, grace: Duration) {
     let state: tauri::State<'_, AppState> = app.state();
     let sidecar = state.sidecar.clone();
     let mut guard = sidecar.lock().await;
     if let Some(mut s) = guard.take() {
-        s.shutdown().await;
+        s.shutdown_with_grace(grace).await;
     }
 }
 
@@ -1801,6 +1807,12 @@ mod tests {
         assert!(script.contains("__OAD_API_BASE_URL__"));
         assert!(script.contains("__OAD_TOKEN__"));
         assert_eq!(script.matches("writable: true, configurable: true").count(), 2);
+    }
+
+    #[test]
+    fn force_reload_shutdown_grace_is_shorter_than_normal_shutdown() {
+        assert!(RELOAD_SHUTDOWN_GRACE < NORMAL_SHUTDOWN_GRACE);
+        assert_eq!(RELOAD_SHUTDOWN_GRACE, Duration::from_millis(750));
     }
 
     #[test]

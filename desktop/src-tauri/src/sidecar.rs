@@ -306,6 +306,10 @@ impl Sidecar {
     }
 
     pub async fn shutdown(&mut self) {
+        self.shutdown_with_grace(SHUTDOWN_GRACE).await;
+    }
+
+    pub async fn shutdown_with_grace(&mut self, grace: Duration) {
         let Some(pid) = self.child.id() else {
             return;
         };
@@ -327,11 +331,11 @@ impl Sidecar {
             // itself dies without running this code.
             let _ = self.child.start_kill();
         }
-        match timeout(SHUTDOWN_GRACE, self.child.wait()).await {
+        match timeout(grace, self.child.wait()).await {
             Ok(Ok(status)) => log::info!("sidecar exited: {status}"),
             Ok(Err(e)) => log::warn!("sidecar wait error: {e}"),
             Err(_) => {
-                log::warn!("sidecar did not exit in {SHUTDOWN_GRACE:?}; force-killing");
+                log::warn!("sidecar did not exit in {grace:?}; force-killing");
                 let _ = self.child.kill().await;
             }
         }

@@ -146,6 +146,28 @@ class TestCompletionsHandler:
         assert result[0].tool_calls[0].function.name == "get_weather"
         assert result[0].tool_calls[0].function.arguments == '{"city": "NYC"}'
 
+    def test_convert_messages_assistant_message_with_tool_calls_without_content(
+        self, handler
+    ):
+        """OpenAI requires assistant content to be a string, even for tool calls."""
+        messages = [
+            AssistantMessage(
+                content=None,
+                tool_calls=[
+                    ToolCall(
+                        id="call_123",
+                        function=FunctionCall(name="get_weather", arguments="{}"),
+                    )
+                ],
+            )
+        ]
+
+        result = handler.convert_messages(messages)
+
+        assert result[0].role == "assistant"
+        assert result[0].content == ""
+        assert result[0].tool_calls is not None
+
     def test_convert_messages_tool_message_text_only(self, handler):
         """Convert ToolMessage with plain text."""
         messages = [

@@ -20,6 +20,12 @@ export default defineConfig([
       globals: globals.browser,
     },
     rules: {
+      // React Compiler-oriented rules are too strict for the current UI state
+      // patterns. Keep the stable hooks checks while we migrate incrementally.
+      'react-hooks/immutability': 'off',
+      'react-hooks/preserve-manual-memoization': 'off',
+      'react-hooks/refs': 'off',
+      'react-hooks/set-state-in-effect': 'off',
       // Allow ``_foo`` as a deliberate "intentionally unused" marker for
       // function parameters and destructured names. Required by the
       // typed-callback pattern Bun's ``mock`` forces on us (the typed

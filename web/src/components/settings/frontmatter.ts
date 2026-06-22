@@ -133,7 +133,6 @@ function yamlEquals(a: Record<string, unknown>, b: Record<string, unknown>): boo
 function parseLooseYaml(text: string): Record<string, unknown> | null {
   const out: Record<string, unknown> = {}
   const lines = text.split(/\r?\n/)
-  let currentKey: string | null = null
   let currentList: string[] | null = null
 
   for (const raw of lines) {
@@ -151,15 +150,14 @@ function parseLooseYaml(text: string): Record<string, unknown> | null {
     if (!kvMatch) return null // bail — unsupported syntax
 
     const [, key, rawValue] = kvMatch
-    currentKey = key
     currentList = null
 
     if (rawValue === '') {
       currentList = []
-      out[currentKey] = currentList
+      out[key] = currentList
       continue
     }
-    out[currentKey] = coerceScalar(unquote(rawValue))
+    out[key] = coerceScalar(unquote(rawValue))
   }
   return out
 }

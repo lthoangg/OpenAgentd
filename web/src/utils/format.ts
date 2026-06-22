@@ -115,13 +115,12 @@ export function wallClockToISO(local: string, timeZone: string): string {
   // instant, then subtract. (DST edges can drift by an hour; one fixup
   // iteration is enough for any IANA zone.)
   const utcGuess = Date.UTC(+y, +mo - 1, +d, +h, +mi, +s)
-  let off = getTimezoneOffsetMinutes(timeZone, new Date(utcGuess))
-  let instant = utcGuess - off * 60_000
-  off = getTimezoneOffsetMinutes(timeZone, new Date(instant))
-  instant = utcGuess - off * 60_000
+  const initialOffset = getTimezoneOffsetMinutes(timeZone, new Date(utcGuess))
+  const initialInstant = utcGuess - initialOffset * 60_000
+  const offset = getTimezoneOffsetMinutes(timeZone, new Date(initialInstant))
 
-  const sign = off >= 0 ? '+' : '-'
-  const abs = Math.abs(off)
+  const sign = offset >= 0 ? '+' : '-'
+  const abs = Math.abs(offset)
   const oh = String(Math.floor(abs / 60)).padStart(2, '0')
   const om = String(abs % 60).padStart(2, '0')
   return `${y}-${mo}-${d}T${h}:${mi}:${s}${sign}${oh}:${om}`

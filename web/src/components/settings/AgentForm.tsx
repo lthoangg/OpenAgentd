@@ -947,7 +947,6 @@ function parseFormState(raw: string): {
 function parseSimpleYaml(text: string): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   const lines = text.split(/\r?\n/)
-  let currentKey: string | null = null
   let currentList: string[] | null = null
 
   for (const raw of lines) {
@@ -967,16 +966,15 @@ function parseSimpleYaml(text: string): Record<string, unknown> {
       continue
     }
     const [, key, rawValue] = kvMatch
-    currentKey = key
     currentList = null
 
     if (rawValue === '') {
       // Expect list on following lines.
       currentList = []
-      out[currentKey] = currentList
+      out[key] = currentList
       continue
     }
-    out[currentKey] = coerce(unquote(rawValue))
+    out[key] = coerce(unquote(rawValue))
   }
   return out
 }

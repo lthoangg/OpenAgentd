@@ -57,7 +57,7 @@ jobs:
           echo "url=$(cat pypi-sdist-url.txt)" >> "$GITHUB_OUTPUT"
 
       - name: Checkout homebrew-tap
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: lthoangg/homebrew-tap
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}

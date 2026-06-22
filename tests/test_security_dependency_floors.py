@@ -54,12 +54,13 @@ def test_web_lock_pins_patched_mcp_sdk_without_reintroducing_react_plugin_break(
 ):
     """MCP SDK is patched while Vite React plugin remains on the compatible major."""
     package_json = json.loads((ROOT / "web/package.json").read_text())
-    assert package_json["dependencies"]["@modelcontextprotocol/sdk"] == "1.26.0"
+    mcp_sdk_version = package_json["dependencies"]["@modelcontextprotocol/sdk"]
+    assert _version_tuple(mcp_sdk_version) >= _version_tuple("1.26.0")
     assert package_json["devDependencies"]["@vitejs/plugin-react"] == "5.2.0"
 
     lock_text = (ROOT / "web/bun.lock").read_text()
-    assert '"@modelcontextprotocol/sdk": "1.26.0"' in lock_text
-    assert '"@modelcontextprotocol/sdk@1.26.0"' in lock_text
+    assert f'"@modelcontextprotocol/sdk": "{mcp_sdk_version}"' in lock_text
+    assert f'"@modelcontextprotocol/sdk@{mcp_sdk_version}"' in lock_text
     assert '"@vitejs/plugin-react": "5.2.0"' in lock_text
     assert '"@vitejs/plugin-react@6.' not in lock_text
 

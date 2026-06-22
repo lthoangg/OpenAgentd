@@ -63,4 +63,9 @@ jobs:
           workspaces: ${{ matrix.working-directory }}
 
       - name: Cargo check
-        run: cargo check --locked
+        run: |
+          if [ "${{ matrix.package }}" = "desktop" ]; then
+            TAURI_CONFIG="$(cat tauri.dev.conf.json)" cargo check --locked
+          else
+            cargo check --locked
+          fi

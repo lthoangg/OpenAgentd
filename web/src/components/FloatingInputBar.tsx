@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react'
 import { motion, useDragControls } from 'framer-motion'
 import { GripHorizontal } from 'lucide-react'
 import { InputBar, type FileRef, type InputBarHandle, type SlashCommand, type SnippetCommand } from './InputBar'
@@ -281,30 +281,46 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
       setFilesBelow(b.bottom - p.bottom >= NEAR_BOTTOM_THRESHOLD)
     }, [boundsRef])
 
+    const clampToVisibleBounds = useCallback(() => {
+      const bounds = boundsRef.current
+      const panel = panelRef.current
+      if (!bounds || !panel) return
+      const b = bounds.getBoundingClientRect()
+      const p = panel.getBoundingClientRect()
+      setOffset((current) => {
+        const next = clampOffset(
+          current,
+          { width: p.width, height: p.height },
+          { width: b.width, height: b.height },
+        )
+        if (next.x === current.x && next.y === current.y) return current
+        saveOffset(next)
+        return next
+      })
+      recomputeFilesBelow()
+    }, [boundsRef, recomputeFilesBelow])
+
+    useLayoutEffect(() => {
+      if (!isMobile) clampToVisibleBounds()
+    }, [isMobile, effectiveMinimized, hasContent, clampToVisibleBounds])
+
     useEffect(() => {
       if (isMobile) return // no clamping needed on mobile
-      const clamp = () => {
-        const bounds = boundsRef.current
-        const panel = panelRef.current
-        if (!bounds || !panel) return
-        const b = bounds.getBoundingClientRect()
-        const p = panel.getBoundingClientRect()
-        setOffset((current) => {
-          const next = clampOffset(
-            current,
-            { width: p.width, height: p.height },
-            { width: b.width, height: b.height },
-          )
-          if (next.x === current.x && next.y === current.y) return current
-          saveOffset(next)
-          return next
-        })
-        recomputeFilesBelow()
+      const observedBounds = boundsRef.current
+      const observedPanel = panelRef.current
+      clampToVisibleBounds()
+      let resizeObserver: ResizeObserver | null = null
+      if (observedBounds && observedPanel && typeof ResizeObserver !== 'undefined') {
+        resizeObserver = new ResizeObserver(clampToVisibleBounds)
+        resizeObserver.observe(observedBounds)
+        resizeObserver.observe(observedPanel)
       }
-      clamp()
-      window.addEventListener('resize', clamp)
-      return () => window.removeEventListener('resize', clamp)
-    }, [isMobile, boundsRef, recomputeFilesBelow])
+      window.addEventListener('resize', clampToVisibleBounds)
+      return () => {
+        window.removeEventListener('resize', clampToVisibleBounds)
+        resizeObserver?.disconnect()
+      }
+    }, [isMobile, boundsRef, clampToVisibleBounds])
 
     const handleDragEnd = useCallback(
       (_e: unknown, info: { offset: { x: number; y: number } }) => {
@@ -360,20 +376,23 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
         onDragEnd={handleDragEnd}
         animate={{ x: offset.x, y: offset.y }}
         transition={{ type: 'spring', stiffness: 380, damping: 32 }}
-        className="pointer-events-auto absolute bottom-4 left-1/2 z-20 w-full max-w-md -translate-x-1/2 px-3"
+        className={`pointer-events-auto absolute bottom-4 left-1/2 z-20 -translate-x-1/2 ${
+          effectiveMinimized ? 'w-fit' : 'w-full max-w-md'
+        }`}
         style={{ touchAction: 'none' }}
       >
         <RevertNotice count={inputProps.revertedCount ?? 0} messages={inputProps.revertedMessages ?? []} onRedo={inputProps.onRedo} />
-        <InputBar
-          ref={setInputRefs}
-          floating
-          filesBelow={filesBelow}
-          minimized={effectiveMinimized}
-          onUnminimize={expand}
-          onFocus={handleFocus}
-          onBlur={handleBlur}
-          onHasContentChange={handleHasContentChange}
-          renderDragHandle={() => (
+        <div className={effectiveMinimized ? '' : 'px-3'}>
+          <InputBar
+            ref={setInputRefs}
+            floating
+            filesBelow={filesBelow}
+            minimized={effectiveMinimized}
+            onUnminimize={expand}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
+            onHasContentChange={handleHasContentChange}
+            renderDragHandle={() => (
             <button
               type="button"
               aria-label="Drag input bar (double-click to reset position)"
@@ -385,9 +404,10 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
               <GripHorizontal size={12} aria-hidden="true" />
             </button>
           )}
-          {...inputProps}
-          onSubmit={handleSubmit}
-        />
+            {...inputProps}
+            onSubmit={handleSubmit}
+          />
+        </div>
       </motion.div>
     )
   },

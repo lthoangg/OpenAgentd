@@ -37,7 +37,7 @@ objc2-speech = { version = "0.3.2", default-features = false, features = ["SFSpe
 
 
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.29", features = ["signal"] }
+nix = { version = "0.31", features = ["signal"] }
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.58", features = [

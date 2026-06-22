@@ -19,7 +19,7 @@ interface TreeNode {
   file?: WorkspaceFileInfo
 }
 
-type ChangedFileStatus = 'A' | 'M'
+type ChangedFileStatus = 'A' | 'M' | 'D'
 
 interface ChangedFileInfo {
   path: string
@@ -31,6 +31,7 @@ interface ChangedFileInfo {
 const CHANGED_STATUS_LABELS: Record<ChangedFileStatus, string> = {
   A: 'Added',
   M: 'Modified',
+  D: 'Deleted',
 }
 
 function collectChangedFiles(diff?: WorkspaceGitDiffResponse): ChangedFileInfo[] {
@@ -41,16 +42,18 @@ function collectChangedFiles(diff?: WorkspaceGitDiffResponse): ChangedFileInfo[]
   for (const line of diff.diff.split('\n')) {
     if (line.startsWith('diff --git ')) {
       const match = /^diff --git a\/(.*) b\/(.*)$/.exec(line)
-      if (!match?.[2]) {
+      if (!match?.[1] || !match[2]) {
         current = null
         continue
       }
-      current = files.get(match[2]) ?? { path: match[2], status: 'M', additions: 0, deletions: 0 }
+      const path = match[2] === '/dev/null' ? match[1] : match[2]
+      current = files.get(path) ?? { path, status: 'M', additions: 0, deletions: 0 }
       files.set(current.path, current)
       continue
     }
     if (!current) continue
     if (line.startsWith('new file mode')) current.status = 'A'
+    else if (line.startsWith('deleted file mode')) current.status = 'D'
     else if (line.startsWith('+') && !line.startsWith('+++')) current.additions += 1
     else if (line.startsWith('-') && !line.startsWith('---')) current.deletions += 1
   }
@@ -272,7 +275,7 @@ export function CodingWorkspacePanel({
                 {diff.data.truncated && <p className="mb-2 rounded bg-(--color-warning)/10 px-2 py-1 text-xs text-(--color-warning)">Changed list may be incomplete because the diff was truncated.</p>}
                 <div className="space-y-1">
                   {changedFiles.map((changedFile) => {
-                    const file = fileByPath.get(changedFile.path) ?? { path: changedFile.path, name: changedFile.path.split('/').pop() ?? changedFile.path, size: 0, mtime: 0, mime: 'text/plain' }
+                    const file = fileByPath.get(changedFile.path) ?? { path: changedFile.path, name: changedFile.path.split('/').pop() ?? changedFile.path, size: 0, mtime: 0, mime: 'text/plain', deleted: changedFile.status === 'D' }
                     const isSelected = selectedFilePath === changedFile.path
                     return (
                       <button

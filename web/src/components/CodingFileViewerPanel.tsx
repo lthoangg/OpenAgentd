@@ -146,9 +146,10 @@ function TextPreview({
   const [loading, setLoading] = useState(!tooLarge)
   const [selection, setSelection] = useState<{ anchor: number; focus: number } | null>(null)
   const [dragging, setDragging] = useState(false)
+  const deleted = file.deleted === true
 
   useEffect(() => {
-    if (tooLarge) return
+    if (tooLarge || deleted) return
     let cancelled = false
     fetch(codingWorkspaceFileUrl(workspace, file.path))
       .then(async (res) => {
@@ -170,7 +171,11 @@ function TextPreview({
     return () => {
       cancelled = true
     }
-  }, [workspace, file.path, tooLarge])
+  }, [workspace, file.path, tooLarge, deleted])
+
+  if (deleted) {
+    return <DeletedFilePreview />
+  }
 
   if (tooLarge) {
     return (
@@ -244,6 +249,7 @@ function TextPreview({
 }
 
 function ImagePreview({ workspace, file }: { workspace: string; file: WorkspaceFileInfo }) {
+  if (file.deleted) return <DeletedFilePreview />
   const url = codingWorkspaceFileUrl(workspace, file.path)
   return (
     <div className="flex h-full min-h-0 items-center justify-center overflow-auto bg-(--bg-page) p-4">
@@ -253,6 +259,7 @@ function ImagePreview({ workspace, file }: { workspace: string; file: WorkspaceF
 }
 
 function BinaryPreview({ workspace, file }: { workspace: string; file: WorkspaceFileInfo }) {
+  if (file.deleted) return <DeletedFilePreview />
   const url = codingWorkspaceFileUrl(workspace, file.path)
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
@@ -269,6 +276,16 @@ function BinaryPreview({ workspace, file }: { workspace: string; file: Workspace
           <Download size={12} /> Download
         </button>
       </div>
+    </div>
+  )
+}
+
+function DeletedFilePreview() {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
+      <FileText size={24} className="text-(--color-text-subtle)" />
+      <p className="text-sm text-(--color-text-2)">File deleted from workspace</p>
+      <p className="text-xs text-(--color-text-subtle)">Open the Diff tab to review the removed contents.</p>
     </div>
   )
 }
@@ -324,6 +341,7 @@ export function CodingFileViewerPanel({
   if (!file) return null
 
   const kind = kindOf(file)
+  const deleted = file.deleted === true
 
   return (
     <motion.aside
@@ -364,10 +382,10 @@ export function CodingFileViewerPanel({
                 <GitCompare size={11} /> Diff
               </button>
             </div>
-            <button type="button" onClick={() => void downloadCodingWorkspaceFile(workspace, file)} title="Download" className="flex h-9 w-9 items-center justify-center rounded text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-auto md:w-auto md:p-1.5">
+            <button type="button" onClick={() => void downloadCodingWorkspaceFile(workspace, file)} disabled={deleted} title={deleted ? 'File deleted from workspace' : 'Download'} className="flex h-9 w-9 items-center justify-center rounded text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:cursor-not-allowed disabled:opacity-40 md:h-auto md:w-auto md:p-1.5">
               <Download size={14} />
             </button>
-            {kind === 'text' && <CopyButton workspace={workspace} file={file} />}
+            {kind === 'text' && !deleted && <CopyButton workspace={workspace} file={file} />}
             <button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-auto md:w-auto md:p-1.5" aria-label="Close file viewer">
               <X size={16} />
             </button>

@@ -24,6 +24,7 @@ import pytest
 
 import app.cli as cli
 from app.cli.net import ServerAddresses
+from app.cli.net import _lan_ips
 from app.cli import (
     _config_dir,
     _data_dir,
@@ -123,6 +124,39 @@ class TestPidAlive:
         # PID 0 always raises OSError on kill(0, 0) with EPERM/EINVAL
         # Use a very high PID that is almost certainly not running
         assert _pid_alive(9_999_999) is False
+
+
+# ---------------------------------------------------------------------------
+# Network helpers
+# ---------------------------------------------------------------------------
+
+
+class TestLanIps:
+    def test_udp_route_ip_is_listed_first(self, monkeypatch):
+        class FakeSocket:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return None
+
+            def connect(self, _addr):
+                return None
+
+            def getsockname(self):
+                return ("10.4.28.34", 12345)
+
+        monkeypatch.setattr("socket.socket", lambda *_args, **_kwargs: FakeSocket())
+        monkeypatch.setattr("socket.gethostname", lambda: "host.local")
+        monkeypatch.setattr(
+            "socket.getaddrinfo",
+            lambda *_args, **_kwargs: [
+                (None, None, None, None, ("10.4.28.145", 0)),
+                (None, None, None, None, ("10.4.28.34", 0)),
+            ],
+        )
+
+        assert _lan_ips() == ["10.4.28.34", "10.4.28.145"]
 
 
 # ---------------------------------------------------------------------------

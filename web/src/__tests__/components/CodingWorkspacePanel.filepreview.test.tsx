@@ -125,6 +125,32 @@ describe('Coding workspace two-layer file preview', () => {
     expect(screen.getByTitle('assets/logo.png').textContent).toContain('M')
   })
 
+  it('marks git-deleted files and opens a deleted-file placeholder instead of loading 404 content', async () => {
+    diffResponse = {
+      workspace: WORKSPACE,
+      is_git_repo: true,
+      diff: 'diff --git a/deleted.txt b/deleted.txt\ndeleted file mode 100644\nindex 1111111..0000000\n--- a/deleted.txt\n+++ /dev/null\n@@ -1 +0,0 @@\n-old\n',
+      untracked: [],
+    }
+    const user = userEvent.setup()
+    const onFileSelect = mock(() => {})
+    await renderWorkspacePanel(onFileSelect)
+    await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
+
+    await user.click(screen.getByRole('button', { name: /changed/i }))
+    await waitFor(() => expect(screen.getByTitle('deleted.txt')).toBeTruthy())
+    await user.click(screen.getByTitle('deleted.txt'))
+
+    expect(screen.getByTitle('deleted.txt').textContent).toContain('D')
+    expect(onFileSelect).toHaveBeenCalledWith({ path: 'deleted.txt', name: 'deleted.txt', size: 0, mtime: 0, mime: 'text/plain', deleted: true })
+
+    await renderViewer({ path: 'deleted.txt', name: 'deleted.txt', size: 0, mtime: 0, mime: 'text/plain', deleted: true })
+
+    expect(screen.getByText('File deleted from workspace')).toBeTruthy()
+    expect(screen.getByText('Open the Diff tab to review the removed contents.')).toBeTruthy()
+    expect(screen.queryByText(/Failed to load: HTTP 404/i)).toBeNull()
+  })
+
   it('renders text files with a wrapping read-only IDE-style line-number gutter', async () => {
     await renderViewer(readme)
 

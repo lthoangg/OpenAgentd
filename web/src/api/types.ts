@@ -522,6 +522,7 @@ export interface WorkspaceFileInfo {
   size: number   // Bytes
   mtime: number  // Seconds since epoch
   mime: string   // MIME type (guessed)
+  deleted?: boolean // Synthetic client-side marker for git-deleted files
 }
 
 export interface WorkspaceFilesResponse {

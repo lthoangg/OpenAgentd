@@ -80,6 +80,24 @@ interface TeamChatViewProps {
   codingSessionLoading?: boolean
 }
 
+const BASE_SLASH_COMMANDS: SlashCommand[] = [
+  { id: 'stop', label: 'Stop', description: 'Stop all working agents' },
+  { id: 'continue', label: 'Continue', description: 'Continue the last assistant response' },
+  { id: 'compact', label: 'Compact', description: 'Summarize and compact this session' },
+  { id: 'undo', label: 'Undo', description: 'Undo the previous message' },
+  { id: 'redo', label: 'Redo', description: 'Restore all undone messages back to the live tip' },
+  { id: 'new', label: 'New Chat', description: 'Start a fresh team conversation' },
+  { id: 'init', label: 'Init', description: 'Create or update AGENTS.md for this project' },
+]
+
+const CODING_SLASH_COMMANDS: SlashCommand[] = [
+  { id: 'loop', label: 'loop <prompt>', displayName: 'loop', insertText: 'loop', description: 'Start a coding loop', keepInputOpen: true },
+  { id: 'loop:set', label: 'loop:set <limit>', displayName: 'loop:set', insertText: 'loop:set', description: 'Set coding loop budget: 5, 10, 20, or 50', keepInputOpen: true },
+  { id: 'loop:pause', label: 'loop:pause', displayName: 'loop:pause', description: 'Pause the active coding loop' },
+  { id: 'loop:resume', label: 'loop:resume', displayName: 'loop:resume', description: 'Resume the paused coding loop' },
+  { id: 'loop:stop', label: 'loop:stop', displayName: 'loop:stop', description: 'Stop the active coding loop' },
+]
+
 async function attachmentToFile(att: MessageAttachment): Promise<File | null> {
   const url = resolveApiUrl(att.url)
   if (!url) return null
@@ -526,23 +544,9 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     () => new Set<string>((commandsQ.data?.commands ?? []).map((c) => c.name)),
     [commandsQ.data],
   )
-  const slashCommands: SlashCommand[] = [
-    { id: 'stop', label: 'Stop', description: 'Stop all working agents' },
-    { id: 'continue', label: 'Continue', description: 'Continue the last assistant response' },
-    { id: 'compact', label: 'Compact', description: 'Summarize and compact this session' },
-    { id: 'undo', label: 'Undo', description: 'Undo the previous message' },
-    { id: 'redo', label: 'Redo', description: 'Restore all undone messages back to the live tip' },
-    { id: 'new', label: 'New Chat', description: 'Start a fresh team conversation' },
-    { id: 'init', label: 'Init', description: 'Create or update AGENTS.md for this project' },
-    ...(mode === 'coding'
-      ? [
-          { id: 'loop', label: 'loop <prompt>', displayName: 'loop', insertText: 'loop', description: 'Start a coding loop', keepInputOpen: true },
-          { id: 'loop:set', label: 'loop:set <limit>', displayName: 'loop:set', insertText: 'loop:set', description: 'Set coding loop budget: 5, 10, 20, or 50', keepInputOpen: true },
-          { id: 'loop:pause', label: 'loop:pause', displayName: 'loop:pause', description: 'Pause the active coding loop' },
-          { id: 'loop:resume', label: 'loop:resume', displayName: 'loop:resume', description: 'Resume the paused coding loop' },
-          { id: 'loop:stop', label: 'loop:stop', displayName: 'loop:stop', description: 'Stop the active coding loop' },
-        ]
-      : []),
+  const slashCommands: SlashCommand[] = useMemo(() => [
+    ...BASE_SLASH_COMMANDS,
+    ...(mode === 'coding' ? CODING_SLASH_COMMANDS : []),
     ...(commandsQ.data?.commands ?? []).map((c) => {
       const displayName = c.name.replace('/', ':')
       return {
@@ -555,7 +559,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         keepInputOpen: true,
       }
     }),
-  ]
+  ], [commandsQ.data?.commands, mode])
 
   const snippetCommands: SnippetCommand[] = (snippetsQ.data?.snippets ?? []).map((item) => ({
     id: item.name,

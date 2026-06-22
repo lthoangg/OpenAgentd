@@ -51,7 +51,7 @@ jobs:
       tag: ${{ steps.version.outputs.tag }}
       matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - id: version
         # Use the same ``v<X.Y.Z>`` tag as ``release.yml``. Both
         # workflows publish into one release so the artefact set
@@ -90,7 +90,7 @@ jobs:
       matrix: ${{ fromJson(needs.prepare.outputs.matrix) }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install Linux WebKitGTK + AppImage deps
         if: matrix.platform == 'linux'
@@ -115,7 +115,7 @@ jobs:
         if: matrix.platform == 'linux'
         run: echo "APPIMAGE_EXTRACT_AND_RUN=1" >> "$GITHUB_ENV"
 
-      - uses: astral-sh/setup-uv@v8.1.0
+      - uses: astral-sh/setup-uv@v8.2.0
         with:
           enable-cache: true
 
@@ -299,7 +299,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event.inputs.platform == 'all'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: actions/download-artifact@v8
         with:

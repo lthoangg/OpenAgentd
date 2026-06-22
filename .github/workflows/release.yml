@@ -21,7 +21,7 @@ jobs:
       id-token: write  # for PyPI OIDC trusted publishing
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Read version
         id: version
@@ -49,7 +49,7 @@ jobs:
             exit 1
           fi
 
-      - uses: astral-sh/setup-uv@v8.1.0
+      - uses: astral-sh/setup-uv@v8.2.0
 
       - uses: oven-sh/setup-bun@v2
 

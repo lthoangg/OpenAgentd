@@ -1,0 +1,66 @@
+name: Tauri
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "desktop/src-tauri/**"
+      - "mobile/src-tauri/**"
+      - ".github/workflows/tauri.yml"
+      - ".github/workflows/release-desktop.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "desktop/src-tauri/**"
+      - "mobile/src-tauri/**"
+      - ".github/workflows/tauri.yml"
+      - ".github/workflows/release-desktop.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Opt JS actions into Node.js 24 ahead of the June 2026 forced switch.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  cargo-check:
+    name: Cargo check (${{ matrix.package }})
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: desktop
+            working-directory: desktop/src-tauri
+          - package: mobile
+            working-directory: mobile/src-tauri
+    defaults:
+      run:
+        working-directory: ${{ matrix.working-directory }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Linux WebKitGTK deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry + target
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ${{ matrix.working-directory }}
+
+      - name: Cargo check
+        run: cargo check --locked

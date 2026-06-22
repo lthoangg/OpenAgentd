@@ -2,7 +2,7 @@
 title: Developer Guidelines
 description: Dev commands, code style, testing patterns, GitHub conventions.
 status: stable
-updated: 2026-05-16
+updated: 2026-06-22
 ---
 
 # openagentd — Developer Guidelines
@@ -61,6 +61,8 @@ bun run typecheck                    # tsc --noEmit
 bun run test                         # unit tests (uses --isolate; required for clean module state)
 bun run build                        # production build (dist/)
 ```
+
+Dependency security updates should keep lockfiles patched without widening unrelated upgrades. `tests/test_security_dependency_floors.py` guards current advisory floors for Python, web, and desktop lockfiles.
 
 ---
 

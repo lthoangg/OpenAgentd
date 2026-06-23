@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of every user-visible OpenAgentd feature. Source of truth for slides, README, comparison docs, and marketing copy.
 status: stable
-updated: 2026-06-22
+updated: 2026-06-23
 ---
 
 # Features
@@ -16,7 +16,7 @@ exists. When you ship something new, **add it here first** — slides, README,
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 15 providers. Your keys.
 
-**Latest release:** v1.57.2 · June 22, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.57.2)
+**Latest release:** v1.61.0 · June 23, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.61.0)
 
 ---
 
@@ -70,8 +70,9 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   context (coding workspace name when available). Settings → Notifications to
   toggle or send a test. Notification sounds are handled by the operating
   system; OpenAgentd does not play an extra in-app sound.
-- **Command palette** `[since v1.0]` — `Ctrl+P` (or `Cmd+P`). Search sessions,
-  agents, files, slash commands, settings.
+- **Command palette** `[since v1.0, v1.61.0]` — `Ctrl+P` (or `Cmd+P`). Search
+  sessions, agents, files, slash commands, settings. Cleaner, faster with a
+  tighter animation and a curated command set that drops low-value entries.
 - **Type-to-focus composer** `[v1.40.0]` — in cockpit and coding chat, start
   typing on the chat surface to expand/focus the composer and capture the first
   character without pressing `Ctrl+I` first. See [`web/chat-input.md`](./web/chat-input.md).
@@ -230,10 +231,21 @@ team against it. Deeper doc: [`web/coding-sessions.md`](./web/coding-sessions.md
   the side drawer. Desktop uses the native folder picker only for the bundled
   sidecar or loopback backends; LAN/external backends use the web folder browser
   so the selected path exists on the backend host.
-- **Git worktree sessions** `[v1.41.0]` — create an isolated git worktree from
-  an existing coding workspace, start a new coding session in that worktree,
-  list existing worktrees, rename worktree sidebar titles, and remove
-  OpenAgentd-managed worktrees.
+- **Git worktree sessions** `[v1.41.0, v1.61.0]` — create an isolated git worktree
+  from an existing coding workspace, start a new coding session in that worktree,
+  list existing worktrees, edit sidebar titles without renaming git directories,
+  and remove OpenAgentd-managed worktrees.
+- **Coding workspace dock** `[v1.61.0]` — right-side dock panel for coding
+  sessions with a permanent Changes tab showing staged/unstaged diffs with
+  status badges, file tabs for read-only previews with line numbers and syntax
+  highlighting, and a file-search overlay. File selection persists across
+  dock close/reopen; clicking inline `@file` mentions opens the referenced file
+  in the dock. Dock, sidebar, and viewer widths are independently resizable via
+  drag handles on desktop.
+- **Compact coding sidebar** `[v1.61.0]` — single-line session entries with
+  status dots and tooltip dates; flattened repository/worktree/session hierarchy
+  without nested group labels; scroll-triggered pagination replaces the Load
+  more button.
 - **Changed-file highlights in the workspace tree** `[v1.30.0]` — modified and
   untracked files are marked directly in the Files tab, parent folders show a
   changed-state indicator, and the tab badge reports the changed-file count.

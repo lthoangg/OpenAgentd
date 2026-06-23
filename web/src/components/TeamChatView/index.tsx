@@ -694,7 +694,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const commands = useTeamCommands({
     viewMode,
     cycleViewMode,
-    setViewMode,
     toggleAgentCapabilities,
     setShowTodos,
     handleWorkspaceFiles,
@@ -702,10 +701,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     mode,
     handleNewSession,
     handleDreamRun,
-    agentNames,
-    leadName,
-    cycleActiveAgent,
-    setActiveAgent,
     navigate,
   })
   const paletteCommands = commands

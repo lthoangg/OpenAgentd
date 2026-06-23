@@ -543,6 +543,7 @@ export interface ScheduledTaskResponse {
   timezone: string
   prompt: string
   session_id: string | null
+  max_runs: number | null
   enabled: boolean
   status: string
   run_count: number
@@ -564,6 +565,7 @@ export interface ScheduledTaskCreate {
   timezone?: string
   prompt: string
   session_id?: string | null
+  max_runs?: number | null
   enabled?: boolean
 }
 

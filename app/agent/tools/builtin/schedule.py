@@ -50,6 +50,7 @@ def _fmt_task(task: Any) -> str:
     status = getattr(task, "status", "unknown")
     enabled = getattr(task, "enabled", True)
     run_count = getattr(task, "run_count", 0)
+    max_runs = getattr(task, "max_runs", None)
     next_fire = getattr(task, "next_fire_at", None)
     name = getattr(task, "name", "?")
     mode = getattr(task, "mode", "normal")
@@ -66,7 +67,7 @@ def _fmt_task(task: Any) -> str:
         target,
         f"schedule={schedule}",
         f"status={'enabled' if enabled else 'paused'}/{status}",
-        f"runs={run_count}",
+        f"runs={run_count}" + (f"/{max_runs}" if max_runs is not None else ""),
     ]
     if next_fire:
         parts.append(f"next={next_fire}")
@@ -178,7 +179,19 @@ async def _schedule_task(
                 "[create] Session continuity. "
                 "None = new session each fire, "
                 "'auto' = persistent session keyed to the task name, "
+                "'current' = continue the current chat/session, "
                 "UUID string = continue a specific existing session."
+            ),
+        ),
+    ] = None,
+    max_runs: Annotated[
+        int | None,
+        Field(
+            default=None,
+            gt=0,
+            description=(
+                "[create] Optional positive cap on successful task firings. "
+                "None = unlimited; e.g. 10 = stop after 10 successful runs."
             ),
         ),
     ] = None,
@@ -198,8 +211,8 @@ async def _schedule_task(
         ),
     ] = None,
     # ── injected ─────────────────────────────────────────────────────────────
-    # ``_mode`` / ``_workspace`` are derived from the calling agent's runtime
-    # context by the tool executor — never accepted from LLM-supplied args.
+    # ``_mode`` / ``_workspace`` and current-session metadata are derived from
+    # the calling agent's runtime context by the tool executor — never accepted from LLM-supplied args.
     # See ``app.agent.agent_loop.tool_executor.make_tool_executor``.
     _state: Annotated[Any, InjectedArg()] = None,
     _mode: Annotated[Literal["normal", "coding"], InjectedArg()] = "normal",
@@ -321,6 +334,14 @@ async def _schedule_task(
         from app.scheduler.scheduler import task_scheduler as _scheduler
         from app.scheduler.schemas import ScheduledTaskCreate
 
+        if session_id == "current":
+            current_session_id = getattr(_state, "metadata", {}).get(
+                "lead_session_id"
+            ) or getattr(_state, "metadata", {}).get("session_id")
+            if not isinstance(current_session_id, str) or not current_session_id:
+                return "Error: session_id='current' is unavailable outside an active chat session."
+            session_id = current_session_id
+
         # Parse at_datetime string → datetime. If the string is naive (no
         # offset / "Z"), interpret it in the user-supplied `timezone` rather
         # than letting downstream code assume UTC.
@@ -350,6 +371,7 @@ async def _schedule_task(
                 timezone=timezone,
                 prompt=prompt,
                 session_id=session_id,
+                max_runs=max_runs,
                 enabled=enabled,
             )
         except Exception as exc:
@@ -384,7 +406,8 @@ async def _schedule_task(
             + target_line
             + f"  schedule    : {created.schedule_type}\n"
             f"  next fire   : {created.next_fire_at}\n"
-            f"  prompt      : {created.prompt!r}"
+            + (f"  max runs    : {created.max_runs}\n" if created.max_runs else "")
+            + f"  prompt      : {created.prompt!r}"
         )
 
     return f"Error: unknown action '{action}'."

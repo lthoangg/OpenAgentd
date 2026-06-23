@@ -899,6 +899,7 @@ class TeamMemberBase(abc.ABC):
         # to specify (or could lie about) the routing target.
         run_metadata: dict[str, object] = {
             "team_mode": self._team.mode,
+            "lead_session_id": lead_session_id,
         }
         if force_compaction:
             run_metadata["force_summarization"] = True

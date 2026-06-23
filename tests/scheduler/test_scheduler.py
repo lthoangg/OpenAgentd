@@ -45,7 +45,9 @@ def mock_dispatch():
     sid = str(uuid4())
 
     async def _get_team():
-        return MagicMock()  # truthy team
+        team = MagicMock()
+        team.has_active_user_turn.return_value = False
+        return team
 
     async def _disp(*_a, **_kw):
         return (sid, 0)
@@ -70,6 +72,7 @@ def _make_task(
     cron_expression: str | None = None,
     enabled: bool = True,
     run_count: int = 0,
+    max_runs: int | None = None,
 ) -> ScheduledTask:
     return ScheduledTask(
         name=name,
@@ -83,6 +86,7 @@ def _make_task(
         prompt="hello",
         enabled=enabled,
         run_count=run_count,
+        max_runs=max_runs,
     )
 
 
@@ -188,6 +192,18 @@ class TestUpdate:
         await scheduler.update(fresh)
         assert task.id not in scheduler._tasks
 
+    async def test_update_marks_exhausted_finite_task_completed(
+        self, scheduler, db_factory
+    ):
+        task = _make_task(name="finite_done", run_count=2, max_runs=2)
+
+        updated = await scheduler.update(task)
+
+        assert updated.enabled is False
+        assert updated.status == "completed"
+        assert updated.next_fire_at is None
+        assert task.id not in scheduler._tasks
+
 
 # ---------------------------------------------------------------------------
 # pause() / resume()
@@ -213,6 +229,29 @@ class TestPauseResume:
         assert resumed.next_fire_at is not None
         assert task.id in scheduler._tasks
         await scheduler.stop()
+
+    async def test_resume_exhausted_finite_task_stays_completed(
+        self, scheduler, db_factory
+    ):
+        task = _make_task(name="finite_resumable", max_runs=1)
+        await scheduler.add(task)
+        await scheduler.stop()
+
+        async with db_factory() as session:
+            row = await session.get(ScheduledTask, task.id)
+            assert row is not None
+            row.run_count = 1
+            row.enabled = False
+            row.status = "paused"
+            session.add(row)
+            await session.commit()
+
+        resumed = await scheduler.resume(task.id)
+
+        assert resumed.enabled is False
+        assert resumed.status == "completed"
+        assert resumed.next_fire_at is None
+        assert task.id not in scheduler._tasks
 
 
 # ---------------------------------------------------------------------------
@@ -499,6 +538,84 @@ class TestFireTaskErrors:
             )
             row = result.one()
         assert row.status == "pending"
+        assert row.next_fire_at is not None
+
+    async def test_active_session_skip_does_not_increment_run_count(
+        self, scheduler, db_factory
+    ):
+        task = _make_task(name="active_skip")
+        task.session_id = str(uuid4())
+        await scheduler.add(task)
+        await scheduler.stop()
+
+        team = MagicMock()
+        team.has_active_user_turn.return_value = True
+
+        async def _get_team():
+            return team
+
+        with (
+            patch("app.services.team_manager.get_or_start_team", side_effect=_get_team),
+            patch("app.services.agent_service.dispatch_user_message") as dispatch,
+        ):
+            await scheduler._fire_task(task)
+
+        async with db_factory() as session:
+            row = await session.get(ScheduledTask, task.id)
+
+        dispatch.assert_not_called()
+        assert row is not None
+        assert row.run_count == 0
+        assert row.status == "pending"
+        assert row.next_fire_at is not None
+
+    async def test_every_task_completes_after_max_runs(
+        self, scheduler, db_factory, mock_dispatch
+    ):
+        task = _make_task(name="finite_every", max_runs=2, run_count=1)
+        await scheduler.add(task)
+        await scheduler.stop()
+
+        await scheduler._fire_task(task)
+
+        async with db_factory() as session:
+            result = await session.exec(
+                select(ScheduledTask).where(ScheduledTask.id == task.id)
+            )
+            row = result.one()
+
+        assert row.run_count == 2
+        assert row.enabled is False
+        assert row.status == "completed"
+        assert row.next_fire_at is None
+
+    async def test_failed_finite_task_does_not_complete(self, scheduler, db_factory):
+        task = _make_task(name="finite_failed", max_runs=1)
+        await scheduler.add(task)
+        await scheduler.stop()
+
+        async def _explode(*_a, **_kw):
+            raise RuntimeError("boom")
+
+        async def _get_team():
+            return MagicMock()
+
+        with (
+            patch("app.services.team_manager.get_or_start_team", side_effect=_get_team),
+            patch(
+                "app.services.agent_service.dispatch_user_message",
+                side_effect=_explode,
+            ),
+        ):
+            await scheduler._fire_task(task)
+
+        async with db_factory() as session:
+            row = await session.get(ScheduledTask, task.id)
+
+        assert row is not None
+        assert row.run_count == 1
+        assert row.enabled is True
+        assert row.status == "failed"
         assert row.next_fire_at is not None
 
 

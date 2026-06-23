@@ -25,6 +25,10 @@ if TYPE_CHECKING:
 _utc = timezone.utc
 
 
+def _schedule_exhausted(task: ScheduledTask) -> bool:
+    return task.max_runs is not None and task.run_count >= task.max_runs
+
+
 class TaskNotFoundError(Exception):
     """Raised when a scheduled task lookup by id has no matching row."""
 
@@ -178,14 +182,19 @@ class TaskScheduler:
 
     async def add(self, task: ScheduledTask) -> ScheduledTask:
         """Persist *task* to DB and start its timer."""
-        task.next_fire_at = next_fire(
-            task.schedule_type,
-            cron_expression=task.cron_expression,
-            every_seconds=task.every_seconds,
-            at_datetime=task.at_datetime,
-            timezone=task.timezone,
-            run_count=task.run_count,
-        )
+        if _schedule_exhausted(task):
+            task.enabled = False
+            task.status = "completed"
+            task.next_fire_at = None
+        else:
+            task.next_fire_at = next_fire(
+                task.schedule_type,
+                cron_expression=task.cron_expression,
+                every_seconds=task.every_seconds,
+                at_datetime=task.at_datetime,
+                timezone=task.timezone,
+                run_count=task.run_count,
+            )
         async with self._db() as session:
             session.add(task)
             await session.commit()
@@ -224,6 +233,7 @@ class TaskScheduler:
             timezone=body.timezone,
             prompt=body.prompt,
             session_id=body.session_id,
+            max_runs=body.max_runs,
             enabled=body.enabled,
         )
         return await self.add(task)
@@ -283,6 +293,8 @@ class TaskScheduler:
             task.prompt = body.prompt
         if body.session_id is not None:
             task.session_id = body.session_id
+        if "max_runs" in body.model_fields_set:
+            task.max_runs = body.max_runs
         if body.enabled is not None:
             task.enabled = body.enabled
 
@@ -303,14 +315,19 @@ class TaskScheduler:
     async def update(self, task: ScheduledTask) -> ScheduledTask:
         """Persist updated *task* and restart/cancel its timer."""
         self._cancel_timer(task.id)
-        task.next_fire_at = next_fire(
-            task.schedule_type,
-            cron_expression=task.cron_expression,
-            every_seconds=task.every_seconds,
-            at_datetime=task.at_datetime,
-            timezone=task.timezone,
-            run_count=task.run_count,
-        )
+        if _schedule_exhausted(task):
+            task.enabled = False
+            task.status = "completed"
+            task.next_fire_at = None
+        else:
+            task.next_fire_at = next_fire(
+                task.schedule_type,
+                cron_expression=task.cron_expression,
+                every_seconds=task.every_seconds,
+                at_datetime=task.at_datetime,
+                timezone=task.timezone,
+                run_count=task.run_count,
+            )
         async with self._db() as session:
             session.add(task)
             await session.commit()
@@ -344,19 +361,25 @@ class TaskScheduler:
             task = result.one()
             task.enabled = True
             task.status = "pending"
-            task.next_fire_at = next_fire(
-                task.schedule_type,
-                cron_expression=task.cron_expression,
-                every_seconds=task.every_seconds,
-                at_datetime=task.at_datetime,
-                timezone=task.timezone,
-                run_count=task.run_count,
-            )
+            if _schedule_exhausted(task):
+                task.enabled = False
+                task.status = "completed"
+                task.next_fire_at = None
+            else:
+                task.next_fire_at = next_fire(
+                    task.schedule_type,
+                    cron_expression=task.cron_expression,
+                    every_seconds=task.every_seconds,
+                    at_datetime=task.at_datetime,
+                    timezone=task.timezone,
+                    run_count=task.run_count,
+                )
             session.add(task)
             await session.commit()
             await session.refresh(task)
 
-        self._start_timer(task)
+        if task.enabled:
+            self._start_timer(task)
         return task
 
     async def trigger(self, task_id: UUID) -> None:
@@ -366,6 +389,13 @@ class TaskScheduler:
                 select(ScheduledTask).where(ScheduledTask.id == task_id)
             )
             task = result.one()
+            if _schedule_exhausted(task):
+                task.enabled = False
+                task.status = "completed"
+                task.next_fire_at = None
+                session.add(task)
+                await session.commit()
+                return
             was_disabled = not task.enabled or task.status == "paused"
             if was_disabled:
                 task.enabled = True
@@ -503,6 +533,29 @@ class TaskScheduler:
                 team = await team_manager.get_or_start_team()
                 if team is None:
                     raise NoTeamConfigured("No team configured.")
+            if resolved_sid is not None and team.has_active_user_turn() is True:
+                async with self._db() as session:
+                    db_task = await session.get(ScheduledTask, task.id)
+                    if db_task is not None:
+                        db_task.status = "pending"
+                        db_task.next_fire_at = next_fire(
+                            db_task.schedule_type,
+                            cron_expression=db_task.cron_expression,
+                            every_seconds=db_task.every_seconds,
+                            at_datetime=db_task.at_datetime,
+                            timezone=db_task.timezone,
+                            after=datetime.now(_utc),
+                            run_count=db_task.run_count,
+                        )
+                        session.add(db_task)
+                        await session.commit()
+                logger.info(
+                    "scheduler_skip_active_session task_id={} name={} session_id={}",
+                    task.id,
+                    task.name,
+                    resolved_sid,
+                )
+                return
             fired_sid, _ = await dispatch_user_message(
                 team,
                 content=f"[Scheduled Task: {task.name}]\n{task.prompt}",
@@ -570,9 +623,17 @@ class TaskScheduler:
                 return
             db_task.run_count += 1
             db_task.last_error = error
-            db_task.next_fire_at = nxt
+            finite_complete = (
+                not error
+                and db_task.max_runs is not None
+                and db_task.run_count >= db_task.max_runs
+            )
+            db_task.next_fire_at = None if finite_complete else nxt
             if error:
                 db_task.status = "failed"
+            elif finite_complete:
+                db_task.enabled = False
+                db_task.status = "completed"
             elif task.schedule_type == "at":
                 db_task.status = "completed"
             else:

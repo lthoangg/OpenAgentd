@@ -170,6 +170,28 @@ class TestCreateEvery:
                 prompt="hi",
             )
 
+    def test_max_runs_must_be_positive_when_provided(self):
+        with pytest.raises(ValidationError):
+            ScheduledTaskCreate(
+                name="t",
+                mode="normal",
+                schedule_type="every",
+                every_seconds=60,
+                prompt="hi",
+                max_runs=0,
+            )
+
+    def test_max_runs_accepts_positive_cap(self):
+        body = ScheduledTaskCreate(
+            name="t",
+            mode="normal",
+            schedule_type="every",
+            every_seconds=60,
+            prompt="hi",
+            max_runs=10,
+        )
+        assert body.max_runs == 10
+
 
 # ---------------------------------------------------------------------------
 # ScheduledTaskCreate — schedule_type "cron"
@@ -296,6 +318,15 @@ class TestUpdate:
     def test_unknown_schedule_type_rejected(self):
         with pytest.raises(ValidationError, match="schedule_type must be"):
             ScheduledTaskUpdate(schedule_type="yearly")
+
+    def test_max_runs_can_be_cleared_on_update(self):
+        body = ScheduledTaskUpdate(max_runs=None)
+        assert body.max_runs is None
+        assert "max_runs" in body.model_fields_set
+
+    def test_max_runs_update_must_be_positive_when_provided(self):
+        with pytest.raises(ValidationError):
+            ScheduledTaskUpdate(max_runs=0)
 
 
 # ---------------------------------------------------------------------------

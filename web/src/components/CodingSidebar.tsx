@@ -29,12 +29,14 @@ import { usePlatform } from '@/hooks/use-platform'
 import { useResizableWidth } from '@/hooks/use-resizable-width'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import {
+  ChevronRight,
   Folder,
   GitBranch,
   HelpCircle,
   Home,
   CircleHelp,
   Loader2,
+  MoreHorizontal,
   Pencil,
   Plus,
   Search,
@@ -130,13 +132,15 @@ function WorkspaceSessionList({
     : (sessions.data?.pages.flatMap((page) => page.data) ?? [])
 
   return (
-    <div className="space-y-0.5 pb-2 pl-4 pr-2">
+    <div className="space-y-0.5 pb-1 pl-7 pr-2">
       {workspaceSessions.length === 0 && !collapsed && !sessions.isLoading && (
         <p className="px-2 py-1 text-xs text-(--color-text-subtle)">No sessions yet.</p>
       )}
       {workspaceSessions.map((session) => {
         const isCurrent = session.id === currentSessionId
         const isRunning = session.running === true
+        const sessionTitle = session.title || 'Untitled'
+        const sessionDate = formatRelativeDate(session.created_at)
         return (
           <div key={session.id} className="group relative">
             <LongPressButton
@@ -153,16 +157,15 @@ function WorkspaceSessionList({
                 e.preventDefault()
                 onSessionContextActions(session, e)
               }}
-              className={`w-full rounded-md px-2 py-1.5 text-left text-xs transition-colors ${
+              title={`${sessionTitle} · ${sessionDate}`}
+              className={`flex min-h-6 w-full items-center gap-1.5 rounded px-2 py-0.5 text-left text-xs transition-colors ${
                 isCurrent
                   ? 'bg-(--bg-key) text-(--color-text)'
                   : 'text-(--color-text-2) hover:text-(--color-text)'
               }`}
             >
-              <p className="truncate font-medium">{session.title || 'Untitled'}</p>
-              <p className="mt-0.5 truncate text-xs text-(--color-text-subtle)">
-                {formatRelativeDate(session.created_at)}
-              </p>
+              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${isRunning ? 'bg-(--color-accent)' : 'border border-(--color-text-subtle)'}`} aria-hidden="true" />
+              <span className="min-w-0 flex-1 truncate font-medium">{sessionTitle}</span>
               {isRunning && (
                 <span
                   className="absolute right-7 top-1/2 -translate-y-1/2 text-(--color-accent)"
@@ -773,10 +776,12 @@ export function CodingSidebar({
           const sourceSessionGroupExpanded = expandedWorkspaces.has(sessionGroupKey(path))
           const repository = workspaceTree.find((repo) => repo.path === path)
           const nestedWorktrees = (repository?.worktrees ?? []).filter((item) => !deletedWorktreeSet.has(item.path))
+          const sourceSessionCount = sourceSessions.length
+          const worktreeSessionCount = nestedWorktrees.reduce((count, item) => count + codingSessions.filter((s) => s.workspace === item.path).length, 0)
 
           return (
             <div key={path} className="relative">
-              <div className="group flex h-8 items-center pl-2 pr-2">
+              <div className={`group mx-2 mb-0.5 flex h-8 items-center rounded-md border border-transparent ${sourceIsActive ? 'bg-(--bg-key)' : 'hover:bg-(--bg-key)/70'}`}>
                 <LongPressButton
                   enabled={mobileLongPressActions}
                   onLongPress={() => setMobileWorkspaceActions({ path, kind: 'main' })}
@@ -787,12 +792,12 @@ export function CodingSidebar({
                     event.preventDefault()
                     setDesktopWorkspaceActions({ path, kind: 'main', x: event.clientX, y: event.clientY })
                   }}
-                  className="flex min-w-0 flex-1 items-center gap-1.5 truncate rounded px-2 py-1 text-left text-xs transition-colors hover:bg-(--bg-key)"
+                  className="flex min-w-0 flex-1 items-center gap-1.5 truncate rounded px-1.5 py-1 text-left text-xs"
                   aria-expanded={sourceIsExpanded}
                   aria-label={`${sourceIsExpanded ? 'Collapse' : 'Expand'} repository ${workspaceLabel(path)}`}
                   title={path}
                 >
-                  <Folder size={13} className="shrink-0 text-(--color-accent)" aria-hidden="true" />
+                  <Folder size={11} className="shrink-0 text-(--color-accent)" aria-hidden="true" />
                   <span className={`truncate font-mono ${sourceIsActive ? 'font-semibold text-(--color-text)' : 'text-(--color-text-2) group-hover:text-(--color-text)'}`}>
                     {workspaceLabel(path)}
                   </span>
@@ -801,6 +806,8 @@ export function CodingSidebar({
                       <Loader2 size={11} className="shrink-0 animate-spin text-(--color-text-muted)" aria-hidden="true" />
                     </span>
                   )}
+                  {sourceHasRunningSession && <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-(--color-accent)" aria-label="Repository has running session" />}
+                  {sourceSessionCount + worktreeSessionCount > 0 && <span className="shrink-0 text-[10px] tabular-nums text-(--color-text-subtle)">{sourceSessionCount + worktreeSessionCount}</span>}
                 </LongPressButton>
                 <button
                   type="button"
@@ -820,11 +827,20 @@ export function CodingSidebar({
                 >
                   <Trash2 size={11} aria-hidden="true" />
                 </button>
+                <button
+                  type="button"
+                  onClick={(event) => setDesktopWorkspaceActions({ path, kind: 'main', x: event.clientX, y: event.clientY })}
+                  className={`mr-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-(--color-text-subtle) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${isMobile ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                  aria-label={`Actions for ${workspaceLabel(path)}`}
+                  title="Workspace actions"
+                >
+                  <MoreHorizontal size={12} aria-hidden="true" />
+                </button>
               </div>
 
               {(sourceIsExpanded || sourceHasRunningSession) && (
                 <div className="space-y-0.5 pb-1">
-                  <div className="group flex h-7 items-center pr-2" style={{ paddingLeft: 20 }}>
+                  <div className="group flex h-6 items-center pr-2" style={{ paddingLeft: 18 }}>
                     <LongPressButton
                       enabled={mobileLongPressActions}
                       onLongPress={() => setMobileWorkspaceActions({ path, kind: 'main' })}
@@ -835,13 +851,14 @@ export function CodingSidebar({
                         event.preventDefault()
                         setDesktopWorkspaceActions({ path, kind: 'main', x: event.clientX, y: event.clientY })
                       }}
-                      className={`flex min-w-0 flex-1 items-center gap-1.5 rounded px-2 py-1 text-left text-xs transition-colors hover:bg-(--bg-key) ${sourceIsActive ? 'text-(--color-accent)' : 'text-(--color-text-2)'}`}
+                      className={`flex min-w-0 flex-1 items-center gap-1.5 rounded px-1.5 py-0.5 text-left text-xs transition-colors hover:bg-(--bg-key) ${sourceIsActive ? 'text-(--color-accent)' : 'text-(--color-text-2)'}`}
                       aria-expanded={sourceSessionGroupExpanded}
                       aria-label={`${sourceSessionGroupExpanded ? 'Collapse' : 'Expand'} main workspace ${workspaceLabel(path)}`}
                       title={path}
                     >
-                      <Folder size={12} className="shrink-0 text-(--color-text-subtle)" aria-hidden="true" />
-                      <span className="min-w-0 flex-1 truncate font-mono">main workspace</span>
+                      <ChevronRight size={11} className={`shrink-0 text-(--color-text-subtle) transition-transform ${sourceSessionGroupExpanded ? 'rotate-90' : ''}`} aria-hidden="true" />
+                      <span className="min-w-0 flex-1 truncate font-mono">main</span>
+                      {sourceSessionCount > 0 && <span className="shrink-0 rounded-full bg-(--bg-key) px-1.5 text-[10px] text-(--color-text-subtle)">{sourceSessionCount}</span>}
                       {sourceHasRunningSession && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--color-accent)" aria-label="Workspace has running session" />}
                     </LongPressButton>
                     <button
@@ -870,12 +887,6 @@ export function CodingSidebar({
                       }}
                     />
                   )}
-
-                  {nestedWorktrees.length > 0 && (
-                    <div className="px-2 py-1" style={{ paddingLeft: 28 }}>
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-(--color-text-subtle)">Worktrees</p>
-                    </div>
-                  )}
                   {nestedWorktrees.map((item) => {
                     const directory = item.path
                     const worktreeInfo: WorktreeInfo = { name: item.name, directory, managed: item.managed }
@@ -887,7 +898,7 @@ export function CodingSidebar({
                     const hasRunningSession = runningSessions.length > 0
                     return (
                       <div key={directory}>
-                        <div className="group flex min-h-7 items-center pr-2" style={{ paddingLeft: 20 }}>
+                        <div className="group flex min-h-6 items-center pr-2" style={{ paddingLeft: 20 }}>
                           <LongPressButton
                             enabled={mobileLongPressActions}
                             onLongPress={() => setMobileWorkspaceActions({ path: directory, kind: 'worktree', source: path, worktree: worktreeInfo })}
@@ -898,13 +909,15 @@ export function CodingSidebar({
                               event.preventDefault()
                               setDesktopWorkspaceActions({ path: directory, kind: 'worktree', source: path, worktree: worktreeInfo, x: event.clientX, y: event.clientY })
                             }}
-                            className={`flex min-w-0 flex-1 items-center gap-1.5 rounded px-2 py-1 text-left text-xs transition-colors hover:bg-(--bg-key) ${isActive ? 'text-(--color-accent)' : 'text-(--color-text-2)'}`}
+                            className={`flex min-w-0 flex-1 items-center gap-1.5 rounded px-1.5 py-0.5 text-left text-xs transition-colors hover:bg-(--bg-key) ${isActive ? 'text-(--color-accent)' : 'text-(--color-text-2)'}`}
                             aria-expanded={isExpanded}
                             aria-label={`${isExpanded ? 'Collapse' : 'Expand'} worktree ${item.name}`}
                             title={directory}
                           >
+                            <ChevronRight size={11} className={`shrink-0 text-(--color-text-subtle) transition-transform ${isExpanded ? 'rotate-90' : ''}`} aria-hidden="true" />
                             <GitBranch size={12} className="shrink-0 text-(--accent-orange-text)" aria-hidden="true" />
                             <span className="min-w-0 flex-1 truncate font-mono">{item.name}</span>
+                            {itemSessions.length > 0 && <span className="shrink-0 rounded-full bg-(--bg-key) px-1.5 text-[10px] text-(--color-text-subtle)">{itemSessions.length}</span>}
                             {!item.managed && <span className="shrink-0 rounded-full bg-(--bg-key) px-1.5 py-0.5 text-[9px] text-(--color-text-subtle)">external</span>}
                             {(isPending || hasRunningSession) && (
                               <span aria-label={hasRunningSession ? 'Worktree has running session' : undefined}>
@@ -953,16 +966,6 @@ export function CodingSidebar({
                       </div>
                     )
                   })}
-
-                  <button
-                    type="button"
-                    onClick={() => { void openWorktreeDialog(path) }}
-                    className="flex h-7 w-full items-center gap-1.5 rounded px-2 py-1 text-left text-xs font-mono text-(--color-accent) hover:bg-(--bg-key)"
-                    style={{ paddingLeft: 32 }}
-                  >
-                    <Plus size={12} aria-hidden="true" />
-                    <span>Create worktree</span>
-                  </button>
                 </div>
               )}
             </div>

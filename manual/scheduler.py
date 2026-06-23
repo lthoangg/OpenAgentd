@@ -10,12 +10,14 @@ Usage:
   uv run python -m manual.scheduler resume  <TASK_ID>
   uv run python -m manual.scheduler delete  <TASK_ID>
   uv run python -m manual.scheduler demo    --agent <name>   # create + trigger + list + delete
+  uv run python -m manual.scheduler finite-demo              # create max_runs=1 + verify completion + delete
 """
 
 from __future__ import annotations
 
 import argparse
 import time
+import uuid
 
 import httpx
 
@@ -46,11 +48,14 @@ def _print_task(task: dict, *, indent: str = "") -> None:
     nf = task.get("next_fire_at") or "-"
     lr = task.get("last_run_at") or "-"
     err = task.get("last_error") or ""
+    runs = f"{task['run_count']}"
+    if task.get("max_runs"):
+        runs += f"/{task['max_runs']}"
     print(
         f"{indent}[{task['status']:9}] {task['name']!r:30}"
         f"  mode={task['mode']}"
         f"  type={task['schedule_type']}"
-        f"  runs={task['run_count']}"
+        f"  runs={runs}"
         f"  next={nf}"
     )
     if task.get("cron_expression"):
@@ -102,6 +107,8 @@ def cmd_create(base: str, args: argparse.Namespace) -> dict:
         body["cron_expression"] = args.cron
     if args.session:
         body["session_id"] = args.session
+    if args.max_runs:
+        body["max_runs"] = int(args.max_runs)
 
     task = _post(base, "/scheduler/tasks", body)
     print("created:")
@@ -164,6 +171,52 @@ def cmd_demo(base: str, args: argparse.Namespace) -> None:
     print("  done")
 
 
+def cmd_finite_demo(base: str, args: argparse.Namespace) -> None:
+    """Create a max_runs=1 task, wait for completion, then delete it."""
+    unique = uuid.uuid4().hex[:6]
+    name = f"finite-demo-{unique}"
+
+    print(f"--- finite demo: creating task '{name}' with max_runs=1 ---")
+    body = {
+        "name": name,
+        "mode": args.mode,
+        "schedule_type": "every",
+        "every_seconds": 1,
+        "prompt": "This is a finite scheduler demo. Reply with just: FINITE_SCHEDULER_OK",
+        "timezone": "UTC",
+        "max_runs": 1,
+    }
+    if args.workspace:
+        body["workspace"] = args.workspace
+    task = _post(base, "/scheduler/tasks", body)
+    task_id = task["id"]
+    _print_task(task, indent="  ")
+
+    print("--- waiting for run_count=1 and status=completed ---")
+    deadline = time.monotonic() + args.timeout
+    final = task
+    while time.monotonic() < deadline:
+        final = _get(base, f"/scheduler/tasks/{task_id}")
+        if (
+            final.get("run_count") == 1
+            and final.get("status") == "completed"
+            and final.get("enabled") is False
+            and final.get("next_fire_at") is None
+        ):
+            print("  verified finite task completed after one firing")
+            _print_task(final, indent="  ")
+            break
+        time.sleep(0.5)
+    else:
+        print("  failed: finite task did not complete before timeout")
+        _print_task(final, indent="  ")
+        raise SystemExit(1)
+
+    print(f"--- deleting finite demo task {task_id} ---")
+    _delete(base, f"/scheduler/tasks/{task_id}")
+    print("  done")
+
+
 # ── entry point ───────────────────────────────────────────────────────────────
 
 
@@ -193,6 +246,7 @@ def main() -> None:
     cr.add_argument(
         "--session", default=None, help="session_id (omit=new, 'auto'=persistent)"
     )
+    cr.add_argument("--max-runs", default=None, help="Positive cap on successful runs")
 
     tr = sub.add_parser("trigger", help="Fire a task immediately")
     tr.add_argument("task_id")
@@ -211,6 +265,13 @@ def main() -> None:
     )
     dm.add_argument("--mode", choices=["normal", "coding"], default="normal")
     dm.add_argument("--workspace", default=None, help="Required when --mode=coding")
+
+    fd = sub.add_parser(
+        "finite-demo", help="End-to-end max_runs demo: create + wait + delete"
+    )
+    fd.add_argument("--mode", choices=["normal", "coding"], default="normal")
+    fd.add_argument("--workspace", default=None, help="Required when --mode=coding")
+    fd.add_argument("--timeout", type=float, default=30.0)
 
     args = p.parse_args()
     base = args.base.rstrip("/")
@@ -236,6 +297,8 @@ def main() -> None:
             cmd_delete(base, args.task_id)
         elif args.cmd == "demo":
             cmd_demo(base, args)
+        elif args.cmd == "finite-demo":
+            cmd_finite_demo(base, args)
     except httpx.HTTPStatusError as e:
         print(f"HTTP {e.response.status_code}: {e.response.text}")
         raise SystemExit(1)

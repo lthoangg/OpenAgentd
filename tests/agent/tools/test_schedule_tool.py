@@ -8,6 +8,7 @@ from uuid import uuid7
 
 import pytest
 
+from app.agent.errors import ToolArgumentError
 from app.agent.tools.builtin.schedule import schedule_task
 
 
@@ -554,6 +555,25 @@ async def test_create_with_max_runs(mock_task_scheduler, sample_task, clean_db):
     assert "max runs    : 3" in result
     payload = mock_task_scheduler.create.call_args[0][0]
     assert payload.max_runs == 3
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_non_positive_max_runs(mock_task_scheduler, clean_db):
+    with (
+        patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler),
+        pytest.raises(ToolArgumentError, match="max_runs"),
+    ):
+        await schedule_task.arun(
+            action="create",
+            name="test-task",
+            schedule_type="every",
+            every_seconds=3600,
+            prompt="Check email",
+            max_runs=0,
+            _injected=_NORMAL_INJECTED,
+        )
+
+    mock_task_scheduler.create.assert_not_called()
 
 
 @pytest.mark.asyncio

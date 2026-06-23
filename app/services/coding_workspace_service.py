@@ -98,6 +98,29 @@ async def mark_coding_workspace_deleted(db: AsyncSession, path: str) -> int:
     return len(rows)
 
 
+async def rename_coding_workspace(
+    db: AsyncSession, path: str, name: str
+) -> CodingWorkspace:
+    resolved_path = str(Path(path).expanduser().resolve())
+    row = (
+        await db.exec(
+            select(CodingWorkspace).where(CodingWorkspace.path == resolved_path)
+        )
+    ).first()
+    if row is None:
+        row = CodingWorkspace(
+            path=resolved_path,
+            kind="worktree",
+            name=name,
+        )
+    else:
+        row.name = name
+    db.add(row)
+    await db.flush()
+    await db.refresh(row)
+    return row
+
+
 async def list_visible_coding_workspaces(db: AsyncSession) -> list[CodingWorkspace]:
     return list(
         (

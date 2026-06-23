@@ -118,6 +118,31 @@ def test_list_worktrees_excludes_primary(app_without_team, tmp_path, monkeypatch
     ]
 
 
+def test_rename_worktree_updates_sidebar_title(app_without_team, tmp_path, monkeypatch):
+    repo = _repo(tmp_path)
+    data_dir = tmp_path / "data"
+    monkeypatch.setattr(
+        "app.api.routes.team.worktrees.settings.OPENAGENTD_DATA_DIR",
+        str(data_dir),
+    )
+    client = TestClient(app_without_team)
+    created = client.post(
+        "/api/team/workspace/worktrees",
+        json={"source_workspace": str(repo), "name": "Task"},
+    ).json()
+
+    resp = client.patch(
+        "/api/team/workspace/worktrees",
+        json={"directory": created["directory"], "name": "Review UI"},
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["name"] == "Review UI"
+    tree = client.get("/api/team/workspace/tree")
+    assert tree.status_code == 200
+    assert tree.json()["repositories"][0]["worktrees"][0]["name"] == "Review UI"
+
+
 def test_create_worktree_rejects_non_git_workspace(app_without_team, tmp_path):
     client = TestClient(app_without_team)
 

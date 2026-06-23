@@ -232,7 +232,8 @@ team against it. Deeper doc: [`web/coding-sessions.md`](./web/coding-sessions.md
   so the selected path exists on the backend host.
 - **Git worktree sessions** `[v1.41.0]` — create an isolated git worktree from
   an existing coding workspace, start a new coding session in that worktree,
-  list existing worktrees, and remove OpenAgentd-managed worktrees.
+  list existing worktrees, rename worktree sidebar titles, and remove
+  OpenAgentd-managed worktrees.
 - **Changed-file highlights in the workspace tree** `[v1.30.0]` — modified and
   untracked files are marked directly in the Files tab, parent folders show a
   changed-state indicator, and the tab badge reports the changed-file count.
@@ -246,8 +247,9 @@ team against it. Deeper doc: [`web/coding-sessions.md`](./web/coding-sessions.md
   restores workspace context from the saved session. Bare `/coding` is the
   launcher or last-workspace restore. New empty sessions exist before the
   first message.
-- **Workspace sidebar pagination** `[v1.18.0]` — each workspace shows 5 sessions
-  with a bottom *Load more* control; one busy workspace doesn't crowd the others.
+- **Workspace sidebar pagination** `[v1.18.0]` — each main/worktree list shows
+  roughly 5 sessions and loads more when scrolled to the bottom, so one busy
+  workspace doesn't crowd the others.
 - **`@file` / `@folder` auto-attach** `[v1.17.0]` — see [§1](#1-the-desktop-cockpit).
 - **Slash commands scoped to coding workspaces** `[v1.17.0]` — project-local
   commands in `.openagentd/commands/**/*.md` and `.opencode/commands/**/*.md`

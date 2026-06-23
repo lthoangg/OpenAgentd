@@ -190,6 +190,16 @@ export async function removeWorktree(sourceWorkspace: string, directory: string)
   return res.json()
 }
 
+export async function renameWorktree(directory: string, name: string): Promise<WorktreeInfo> {
+  const res = await fetch(`${apiBaseUrl()}/team/workspace/worktrees`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ directory, name }),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, 'renameWorktree')
+  return res.json()
+}
+
 export async function createWorktree(options: {
   sourceWorkspace: string
   name?: string | null

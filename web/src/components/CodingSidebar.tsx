@@ -32,7 +32,6 @@ import {
   GitBranch,
   HelpCircle,
   Home,
-  CircleHelp,
   Loader2,
   MoreHorizontal,
   Pencil,
@@ -45,7 +44,7 @@ import {
 import { queryKeys } from '@/queries'
 import { useCodingWorkspaceSessionsQuery, useDeleteTeamSessionMutation, useTeamSessionsQuery, useUpdateTeamSessionTitleMutation } from '@/queries/useSessionsQuery'
 import { apiBaseUrl } from '@/api/base-url'
-import { browseWorkspaces, getCodingWorkspaceTree, listWorktrees, removeWorktree, resolveTeamSession, setCodingWorkspaceVisibility, validateWorkspace } from '@/api/client'
+import { browseWorkspaces, getCodingWorkspaceTree, listWorktrees, removeWorktree, renameWorktree, resolveTeamSession, setCodingWorkspaceVisibility, validateWorkspace } from '@/api/client'
 import { getAppBackendStatus } from '@/lib/app-backend'
 import { useTeamStore } from '@/stores/useTeamStore'
 import { prependSession, prependWorkspaceSession } from '@/stores/cache-invalidation-bridge'
@@ -180,7 +179,7 @@ function WorkspaceSessionList({
                   : 'text-(--color-text-2) hover:text-(--color-text)'
               }`}
             >
-              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${isRunning ? 'bg-(--color-accent)' : 'border border-(--color-text-subtle)'}`} aria-hidden="true" />
+              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${isRunning ? 'bg-(--color-accent)' : 'border border-(--color-text-subtle)'}`} aria-label={isRunning ? 'Session running' : undefined} aria-hidden={isRunning ? undefined : true} />
               <span className={`min-w-0 flex-1 truncate font-medium ${isRunning ? 'session-title-breathe text-(--color-text)' : ''}`}>{sessionTitle}</span>
 
             </LongPressButton>
@@ -190,7 +189,7 @@ function WorkspaceSessionList({
                 e.stopPropagation()
                 onSessionEdit(session)
               }}
-              className="absolute right-6 top-1/2 flex -translate-y-1/2 items-center justify-center rounded p-1 text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--bg-key) hover:text-(--color-text) group-hover:opacity-100 pointer-coarse:opacity-100"
+              className={`absolute right-6 top-1/2 flex -translate-y-1/2 items-center justify-center rounded p-1 text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--bg-key) hover:text-(--color-text) group-hover:opacity-100 ${mobileLongPressActions ? 'hidden' : 'pointer-coarse:opacity-100'}`}
               aria-label={`Edit session ${session.title || 'Untitled'}`}
             >
               <Pencil size={11} />
@@ -198,7 +197,7 @@ function WorkspaceSessionList({
             <button
               type="button"
               onClick={(e) => onSessionDelete(e, session)}
-              className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center justify-center rounded p-1 text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) group-hover:opacity-100 pointer-coarse:opacity-100"
+              className={`absolute right-1 top-1/2 flex -translate-y-1/2 items-center justify-center rounded p-1 text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) group-hover:opacity-100 ${mobileLongPressActions ? 'hidden' : 'pointer-coarse:opacity-100'}`}
               aria-label={`Delete session ${session.title || 'Untitled'}`}
             >
               <Trash2 size={11} />
@@ -292,6 +291,10 @@ export function CodingSidebar({
   const [editTarget, setEditTarget] = useState<SessionResponse | null>(null)
   const [editTitle, setEditTitle] = useState('')
   const editTitleInputRef = useRef<HTMLInputElement>(null)
+  const [worktreeEditTarget, setWorktreeEditTarget] = useState<WorktreeInfo | null>(null)
+  const [worktreeEditTitle, setWorktreeEditTitle] = useState('')
+  const [worktreeEditLoading, setWorktreeEditLoading] = useState(false)
+  const worktreeEditInputRef = useRef<HTMLInputElement>(null)
   const [deleteTarget, setDeleteTarget] = useState<SessionResponse | null>(null)
   const [mobileSessionActions, setMobileSessionActions] = useState<SessionResponse | null>(null)
   const [desktopSessionActions, setDesktopSessionActions] = useState<{ session: SessionResponse; x: number; y: number } | null>(null)
@@ -400,6 +403,10 @@ export function CodingSidebar({
   useEffect(() => {
     if (editTarget) editTitleInputRef.current?.focus()
   }, [editTarget])
+
+  useEffect(() => {
+    if (worktreeEditTarget) worktreeEditInputRef.current?.focus()
+  }, [worktreeEditTarget])
 
   const selectWorkspace = async (path: string, opts: { create?: boolean } = {}) => {
     const shouldCreate = opts.create === true
@@ -641,6 +648,11 @@ export function CodingSidebar({
     setEditTitle(session.title || '')
   }
 
+  const handleWorktreeEdit = (item: WorktreeInfo) => {
+    setWorktreeEditTarget(item)
+    setWorktreeEditTitle(item.name)
+  }
+
   const submitSessionTitle = (e: React.FormEvent) => {
     e.preventDefault()
     if (!editTarget) return
@@ -650,6 +662,24 @@ export function CodingSidebar({
       { id: editTarget.id, title },
       { onSuccess: () => setEditTarget(null) },
     )
+  }
+
+  const submitWorktreeTitle = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!worktreeEditTarget) return
+    const title = worktreeEditTitle.trim()
+    if (!title) return
+    setWorktreeEditLoading(true)
+    setError(null)
+    try {
+      await renameWorktree(worktreeEditTarget.directory, title)
+      await refreshWorkspaceTree()
+      setWorktreeEditTarget(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to rename worktree')
+    } finally {
+      setWorktreeEditLoading(false)
+    }
   }
 
   const confirmSessionDelete = () => {
@@ -797,7 +827,7 @@ export function CodingSidebar({
                 <button
                   type="button"
                   onClick={() => { void openWorktreeDialog(path) }}
-                  className={`ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-(--color-border) text-(--color-text-muted) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${isMobile ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                  className={`ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-(--color-border) text-(--color-text-muted) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100'}`}
                   aria-label={`Create worktree from ${workspaceLabel(path)}`}
                   title="Create worktree"
                 >
@@ -806,7 +836,7 @@ export function CodingSidebar({
                 <button
                   type="button"
                   onClick={() => setRemoveWorkspaceTarget(path)}
-                  className={`ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-(--color-text-subtle) transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) ${isMobile ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                  className={`ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-(--color-text-subtle) transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100'}`}
                   aria-label={`Hide repository ${workspaceLabel(path)} from sidebar`}
                   title="Hide repository from sidebar"
                 >
@@ -815,7 +845,7 @@ export function CodingSidebar({
                 <button
                   type="button"
                   onClick={(event) => setDesktopWorkspaceActions({ path, kind: 'main', x: event.clientX, y: event.clientY })}
-                  className={`mr-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-(--color-text-subtle) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${isMobile ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                  className={`mr-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-(--color-text-subtle) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100'}`}
                   aria-label={`Actions for ${workspaceLabel(path)}`}
                   title="Workspace actions"
                 >
@@ -879,18 +909,27 @@ export function CodingSidebar({
                           <button
                             type="button"
                             onClick={() => { void selectWorkspace(directory, { create: true }) }}
-                            className={`ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-(--color-border) text-(--color-text-muted) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${isMobile ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                            className={`ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-(--color-border) text-(--color-text-muted) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100'}`}
                             aria-label={`New session in worktree ${item.name}`}
                             title={`New session in worktree ${item.name}`}
                           >
                             <Plus size={11} aria-hidden="true" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleWorktreeEdit(worktreeInfo)}
+                            className={`ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-(--color-text-subtle) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100'}`}
+                            aria-label={`Edit worktree title ${item.name}`}
+                            title="Edit worktree title"
+                          >
+                            <Pencil size={11} aria-hidden="true" />
                           </button>
                           {item.managed ? (
                             <button
                               type="button"
                               onClick={() => { void handleRemoveWorktree(worktreeInfo) }}
                               disabled={worktreeRemoving === directory}
-                              className={`ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-(--color-text-subtle) transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) disabled:opacity-50 ${isMobile ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                              className={`ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-(--color-text-subtle) transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) disabled:opacity-50 ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100'}`}
                               aria-label={`Remove worktree ${item.name}`}
                               title="Remove managed worktree"
                             >
@@ -1120,20 +1159,37 @@ export function CodingSidebar({
                   Remove from sidebar
                 </Button>
               </>
-            ) : mobileWorkspaceActions?.worktree?.managed ? (
-              <Button
-                type="button"
-                variant="outline"
-                className="justify-start text-(--color-error)"
-                onClick={() => {
-                  const item = mobileWorkspaceActions.worktree
-                  setMobileWorkspaceActions(null)
-                  if (item) void handleRemoveWorktree(item)
-                }}
-              >
-                <Trash2 size={14} aria-hidden="true" />
-                Remove worktree
-              </Button>
+            ) : mobileWorkspaceActions?.worktree ? (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="justify-start"
+                  onClick={() => {
+                    const item = mobileWorkspaceActions.worktree
+                    setMobileWorkspaceActions(null)
+                    if (item) handleWorktreeEdit(item)
+                  }}
+                >
+                  <Pencil size={14} aria-hidden="true" />
+                  Edit title
+                </Button>
+                {mobileWorkspaceActions.worktree.managed ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="justify-start text-(--color-error)"
+                    onClick={() => {
+                      const item = mobileWorkspaceActions.worktree
+                      setMobileWorkspaceActions(null)
+                      if (item) void handleRemoveWorktree(item)
+                    }}
+                  >
+                    <Trash2 size={14} aria-hidden="true" />
+                    Remove worktree
+                  </Button>
+                ) : null}
+              </>
             ) : null}
           </DialogFooter>
         </DialogContent>
@@ -1143,13 +1199,10 @@ export function CodingSidebar({
         open={worktreeTarget !== null}
         onOpenChange={(open) => { if (!open) setWorktreeTarget(null) }}
       >
-        <DialogContent showCloseButton={false} className="flex max-h-[min(86dvh,600px)] w-[calc(100vw-1.5rem)] max-w-md flex-col overflow-hidden rounded-lg border border-(--color-border) bg-(--bg-card) p-0 shadow-xl sm:w-[min(680px,calc(100vw-2rem))] sm:max-w-none">
+        <DialogContent showCloseButton={false} className="flex max-h-[min(86dvh,520px)] w-[calc(100vw-1.5rem)] max-w-md flex-col overflow-hidden rounded-lg border border-(--color-border) bg-(--bg-card) p-0 shadow-xl sm:w-[min(560px,calc(100vw-2rem))] sm:max-w-none">
           <form onSubmit={submitWorktree} className="flex h-full min-h-0 flex-col">
-            <DialogHeader className="shrink-0 border-b border-(--color-border) bg-(--bg-page) px-4 py-3 sm:px-5">
-              <div className="flex items-start gap-2.5 sm:gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-(--color-border) bg-(--bg-key) text-(--color-accent)">
-                  <GitBranch size={15} aria-hidden="true" />
-                </div>
+            <DialogHeader className="shrink-0 gap-0 border-b border-(--color-border) bg-(--bg-page) px-3 py-2.5 sm:px-4">
+              <div className="flex items-start gap-2">
                 <div className="min-w-0 flex-1">
                   <DialogTitle className="text-sm font-semibold leading-5 text-(--color-text)">Create worktree</DialogTitle>
                   <DialogDescription className="mt-0.5 text-xs leading-4 text-(--color-text-muted)">
@@ -1159,16 +1212,16 @@ export function CodingSidebar({
                 <button
                   type="button"
                   onClick={() => setWorktreeTarget(null)}
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
                   aria-label="Close create worktree dialog"
                 >
-                  <X size={15} aria-hidden="true" />
+                  <X size={14} aria-hidden="true" />
                 </button>
               </div>
             </DialogHeader>
-            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3 sm:px-5">
-              <div className="rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-2">
-                <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-(--color-text-subtle)">
+            <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-3 py-3 sm:px-4">
+              <div className="rounded-md border border-(--color-border) bg-(--bg-page) px-2.5 py-1.5">
+                <div className="mb-0.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-(--color-text-subtle)">
                   <Folder size={12} aria-hidden="true" />
                   Source workspace
                 </div>
@@ -1176,18 +1229,18 @@ export function CodingSidebar({
                   {worktreeTarget}
                 </p>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-2.5 sm:grid-cols-2">
                 <label className="block space-y-1 text-xs font-medium text-(--color-text-2)">
                   <span>Worktree name</span>
                   <input
                     value={worktreeName}
                     onChange={(e) => setWorktreeName(e.target.value)}
                     placeholder="feature-login"
-                    className="h-9 w-full min-w-0 rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-1 font-mono text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-subtle) focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25"
+                    className="h-8 w-full min-w-0 rounded-md border border-(--color-border) bg-(--bg-page) px-2.5 py-1 font-mono text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-subtle) focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25"
                     maxLength={80}
                     autoFocus
                   />
-                  <p className="text-[11px] font-normal text-(--color-text-subtle)">Blank uses “session”.</p>
+                  <p className="text-[10px] font-normal text-(--color-text-subtle)">Blank uses “session”.</p>
                 </label>
                 <label className="block space-y-1 text-xs font-medium text-(--color-text-2)">
                   <span>Branch</span>
@@ -1195,28 +1248,23 @@ export function CodingSidebar({
                     value={worktreeBranch}
                     onChange={(e) => setWorktreeBranch(e.target.value)}
                     placeholder="openagentd/feature-login"
-                    className="h-9 w-full min-w-0 rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-1 font-mono text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-subtle) focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25"
+                    className="h-8 w-full min-w-0 rounded-md border border-(--color-border) bg-(--bg-page) px-2.5 py-1 font-mono text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-subtle) focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25"
                     maxLength={255}
                   />
-                  <p className="text-[11px] font-normal text-(--color-text-subtle)">Blank defaults to openagentd/name.</p>
+                  <p className="text-[10px] font-normal text-(--color-text-subtle)">Blank defaults to openagentd/name.</p>
                 </label>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="hidden gap-2 rounded-md border border-(--color-border) bg-(--bg-key)/30 px-3 py-2 text-[11px] leading-4 text-(--color-text-muted) sm:flex">
-                  <CircleHelp size={13} className="mt-0.5 shrink-0 text-(--color-text-subtle)" aria-hidden="true" />
-                  <p>Stored in OpenAgentd data, outside the source repo. Uncommitted source changes are not copied.</p>
-                </div>
-                <div className="rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-2 text-xs text-(--color-text-muted)">
-                  <div className="mb-1.5 flex items-center justify-between gap-2">
+              <div className="rounded-md border border-(--color-border) bg-(--bg-page) px-2.5 py-2 text-xs text-(--color-text-muted)">
+                <div className="mb-1 flex items-center justify-between gap-2">
                     <p className="font-medium text-(--color-text-2)">Existing worktrees</p>
                     <span className="rounded-full bg-(--bg-key) px-2 py-0.5 text-[10px] text-(--color-text-subtle)">{worktreeOptions.length}</span>
-                  </div>
-                  {worktreeOptions.length === 0 ? (
+                </div>
+                {worktreeOptions.length === 0 ? (
                     <p className="py-1 text-(--color-text-subtle)">No worktrees yet.</p>
-                  ) : (
-                    <ul className="max-h-44 space-y-1 overflow-y-auto pr-1">
+                ) : (
+                  <ul className="max-h-32 space-y-0.5 overflow-y-auto pr-1">
                       {worktreeOptions.map((item) => (
-                        <li key={item.directory} className="group flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 hover:bg-(--bg-key)" title={item.directory}>
+                        <li key={item.directory} className="group flex min-w-0 items-center gap-2 rounded-md px-2 py-1 hover:bg-(--bg-key)" title={item.directory}>
                           <GitBranch size={12} className="shrink-0 text-(--color-text-subtle)" aria-hidden="true" />
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-(--color-text-2)">{item.name}</p>
@@ -1238,15 +1286,14 @@ export function CodingSidebar({
                           )}
                         </li>
                       ))}
-                    </ul>
-                  )}
-                </div>
+                  </ul>
+                )}
               </div>
               {error && <p className="rounded-md border border-(--color-error)/30 bg-(--color-error-subtle) px-3 py-2 text-xs text-(--color-error)">{error}</p>}
             </div>
-            <DialogFooter className="shrink-0 flex-row justify-end gap-2 border-t border-(--color-border) bg-(--bg-page) px-4 pb-5 pt-3 sm:pl-5 sm:pr-6 sm:pb-6">
-              <Button type="button" variant="outline" onClick={() => setWorktreeTarget(null)} className="h-9 w-auto px-4">Cancel</Button>
-              <Button type="submit" disabled={worktreeLoading} className="h-9 w-auto px-4">
+            <DialogFooter className="mx-0 mb-0 shrink-0 flex-row justify-end gap-2 rounded-none border-t border-(--color-border) bg-(--bg-page) px-3 py-2.5 sm:px-4">
+              <Button type="button" variant="outline" onClick={() => setWorktreeTarget(null)} className="h-8 w-auto px-3 text-xs">Cancel</Button>
+              <Button type="submit" disabled={worktreeLoading} className="h-8 w-auto px-3 text-xs">
                 {worktreeLoading ? 'Creating…' : 'Create and open'}
               </Button>
             </DialogFooter>
@@ -1312,20 +1359,37 @@ export function CodingSidebar({
                   Remove from sidebar
                 </button>
               </>
-            ) : desktopWorkspaceActions.worktree?.managed ? (
-              <button
-                type="button"
-                role="menuitem"
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none"
-                onClick={() => {
-                  const item = desktopWorkspaceActions.worktree
-                  setDesktopWorkspaceActions(null)
-                  if (item) void handleRemoveWorktree(item)
-                }}
-              >
-                <Trash2 size={14} aria-hidden="true" />
-                Remove worktree
-              </button>
+            ) : desktopWorkspaceActions.worktree ? (
+              <>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+                  onClick={() => {
+                    const item = desktopWorkspaceActions.worktree
+                    setDesktopWorkspaceActions(null)
+                    if (item) handleWorktreeEdit(item)
+                  }}
+                >
+                  <Pencil size={14} aria-hidden="true" />
+                  Edit title
+                </button>
+                {desktopWorkspaceActions.worktree.managed ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none"
+                    onClick={() => {
+                      const item = desktopWorkspaceActions.worktree
+                      setDesktopWorkspaceActions(null)
+                      if (item) void handleRemoveWorktree(item)
+                    }}
+                  >
+                    <Trash2 size={14} aria-hidden="true" />
+                    Remove worktree
+                  </button>
+                ) : null}
+              </>
             ) : null}
           </div>
         </div>
@@ -1439,20 +1503,20 @@ export function CodingSidebar({
         open={editTarget !== null}
         onOpenChange={(open) => { if (!open) setEditTarget(null) }}
       >
-        <DialogContent showCloseButton={false}>
-          <form onSubmit={submitSessionTitle}>
-            <DialogHeader>
-              <DialogTitle>Edit session title</DialogTitle>
-              <DialogDescription>
-                Rename this session in the sidebar.
+        <DialogContent className="max-w-xs gap-3 p-3">
+          <form onSubmit={submitSessionTitle} className="space-y-3">
+            <DialogHeader className="gap-1 pr-8">
+              <DialogTitle className="text-sm leading-5">Edit session title</DialogTitle>
+              <DialogDescription className="text-xs leading-4">
+                Rename this sidebar item.
               </DialogDescription>
             </DialogHeader>
-            <div className="px-3 py-2">
+            <div>
               <input
                 ref={editTitleInputRef}
                 value={editTitle}
                 onChange={(e) => setEditTitle(e.target.value)}
-                className="h-9 w-full min-w-0 rounded-[10px] border border-(--color-border) bg-(--bg-page) px-3 py-1 text-sm text-(--color-text) outline-none focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25"
+                className="h-8 w-full min-w-0 rounded-md border border-(--color-border) bg-(--bg-page) px-2.5 py-1 text-sm text-(--color-text) outline-none focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25"
                 aria-label="Session title"
                 maxLength={255}
               />
@@ -1460,10 +1524,43 @@ export function CodingSidebar({
                 <p className="mt-2 text-xs text-(--color-error)">Failed to update title.</p>
               )}
             </div>
-            <DialogFooter className="p-3">
-              <Button type="button" variant="outline" onClick={() => setEditTarget(null)}>Cancel</Button>
-              <Button type="submit" disabled={!editTitle.trim() || updateSessionTitle.isPending}>
+            <DialogFooter className="mx-0 mb-0 flex-row justify-end gap-2 rounded-none border-0 bg-transparent p-0">
+              <Button type="button" variant="outline" className="h-8 px-3 text-xs" onClick={() => setEditTarget(null)}>Cancel</Button>
+              <Button type="submit" className="h-8 px-3 text-xs" disabled={!editTitle.trim() || updateSessionTitle.isPending}>
                 {updateSessionTitle.isPending ? 'Saving…' : 'Save'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={worktreeEditTarget !== null}
+        onOpenChange={(open) => { if (!open) setWorktreeEditTarget(null) }}
+      >
+        <DialogContent className="max-w-xs gap-3 p-3">
+          <form onSubmit={submitWorktreeTitle} className="space-y-3">
+            <DialogHeader className="gap-1 pr-8">
+              <DialogTitle className="text-sm leading-5">Edit worktree title</DialogTitle>
+              <DialogDescription className="max-w-full truncate text-xs leading-4" title={worktreeEditTarget?.directory}>
+                {worktreeEditTarget?.directory ? workspaceLabel(worktreeEditTarget.directory) : 'Rename this sidebar item.'}
+              </DialogDescription>
+            </DialogHeader>
+            <div>
+              <input
+                ref={worktreeEditInputRef}
+                value={worktreeEditTitle}
+                onChange={(e) => setWorktreeEditTitle(e.target.value)}
+                className="h-8 w-full min-w-0 rounded-md border border-(--color-border) bg-(--bg-page) px-2.5 py-1 text-sm text-(--color-text) outline-none focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25"
+                aria-label="Worktree title"
+                maxLength={255}
+              />
+              {error && <p className="mt-2 text-xs text-(--color-error)">{error}</p>}
+            </div>
+            <DialogFooter className="mx-0 mb-0 flex-row justify-end gap-2 rounded-none border-0 bg-transparent p-0">
+              <Button type="button" variant="outline" className="h-8 px-3 text-xs" onClick={() => setWorktreeEditTarget(null)}>Cancel</Button>
+              <Button type="submit" className="h-8 px-3 text-xs" disabled={!worktreeEditTitle.trim() || worktreeEditLoading}>
+                {worktreeEditLoading ? 'Saving…' : 'Save'}
               </Button>
             </DialogFooter>
           </form>

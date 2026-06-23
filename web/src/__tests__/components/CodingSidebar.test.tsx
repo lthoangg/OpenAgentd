@@ -53,6 +53,22 @@ const workspaceTreeResponse = () => ({
   })),
 })
 
+class IntersectionObserverStub {
+  private callback: IntersectionObserverCallback
+
+  constructor(callback: IntersectionObserverCallback) {
+    this.callback = callback
+  }
+
+  observe(target: Element) {
+    this.callback([{ isIntersecting: true, target } as IntersectionObserverEntry], this as unknown as IntersectionObserver)
+  }
+
+  disconnect() {}
+}
+
+globalThis.IntersectionObserver = IntersectionObserverStub as unknown as typeof IntersectionObserver
+
 mock.module('@tanstack/react-router', () => ({
   useNavigate: () => navigate,
 }))
@@ -111,6 +127,7 @@ mock.module('lucide-react', () => ({
   HelpCircle: Icon,
   Home: Icon,
   Loader2: Icon,
+  MoreHorizontal: Icon,
   Plus: Icon,
   Search: Icon,
   Settings: Icon,
@@ -511,7 +528,6 @@ describe('CodingSidebar workspace trust flow', () => {
 
     expect(screen.getByLabelText('Expand repository project')).toBeTruthy()
     expect(screen.getByText('Background running session')).toBeTruthy()
-    expect(screen.getByLabelText('Repository has running session')).toBeTruthy()
     expect(screen.getByLabelText('Session running')).toBeTruthy()
   })
 
@@ -582,7 +598,8 @@ describe('CodingSidebar workspace trust flow', () => {
     const fetchSpy = globalThis.fetch as unknown as ReturnType<typeof mock>
 
     await renderCodingSidebarForSessions('session-1')
-    await user.click(screen.getByLabelText('New session in main workspace project'))
+    await user.click(screen.getByLabelText('Actions for project'))
+    await user.click(screen.getByRole('menuitem', { name: /new session/i }))
 
     expect(fetchSpy).not.toHaveBeenCalledWith('/api/team/sessions/resolve', expect.anything())
     expect(navigate).not.toHaveBeenCalled()
@@ -624,9 +641,8 @@ describe('CodingSidebar workspace trust flow', () => {
     workspaceHasNextPage = true
 
     await renderCodingSidebarForSessions('session-1')
-    await user.click(screen.getByRole('button', { name: /load more/i }))
 
-    expect(fetchWorkspaceNextPage).toHaveBeenCalled()
+    await waitFor(() => expect(fetchWorkspaceNextPage).toHaveBeenCalled())
   })
 
   it('keeps known worktree children under their source when probing the worktree itself returns none', async () => {
@@ -661,7 +677,7 @@ describe('CodingSidebar workspace trust flow', () => {
       workspace: '/data/worktrees/project/task-a',
     })
 
-    await waitFor(() => expect(screen.getByText('Worktrees')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('task-a')).toBeTruthy())
     await new Promise((resolve) => setTimeout(resolve, 0))
 
     expect(screen.getByLabelText('Collapse repository project')).toBeTruthy()
@@ -716,10 +732,9 @@ describe('CodingSidebar workspace trust flow', () => {
       agentStreams: { lead: createDefaultAgentStream() },
     })
 
-    await waitFor(() => expect(screen.getByText('Worktrees')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('task-a')).toBeTruthy())
 
     expect(screen.getByLabelText('Collapse repository project')).toBeTruthy()
-    expect(screen.getByLabelText('Collapse main workspace project')).toBeTruthy()
     expect(screen.getByLabelText('Expand worktree task-a')).toBeTruthy()
     expect(screen.getByText('task-a')).toBeTruthy()
     expect(screen.queryByLabelText('Create worktree from task-a')).toBeNull()
@@ -740,6 +755,47 @@ describe('CodingSidebar workspace trust flow', () => {
       to: '/coding/$sessionId',
       params: { sessionId: 'resolved-worktree-session' },
     })
+  })
+
+  it('renames a worktree sidebar title', async () => {
+    const user = userEvent.setup()
+    sessionsData = [
+      {
+        id: 'session-1',
+        title: 'Worktree session',
+        agent_name: 'lead',
+        created_at: '2026-05-13T00:00:00Z',
+        updated_at: '2026-05-13T00:00:00Z',
+        mode: 'coding',
+        workspace: '/data/worktrees/project/task-a',
+      },
+    ]
+    workspaceSessionsData = sessionsData
+    let renameBody: unknown
+    globalThis.fetch = mock(async (input: unknown, init: unknown) => {
+      const url = String(input)
+      if (url.includes('/api/team/workspace/tree')) {
+        return new Response(JSON.stringify({ repositories: [{ path: '/repo/project', name: 'project', worktrees: [{ path: '/data/worktrees/project/task-a', name: 'task-a', managed: true }] }] }))
+      }
+      if (url.includes('/api/team/workspace/worktrees')) {
+        if ((init as RequestInit | undefined)?.method === 'PATCH') {
+          renameBody = JSON.parse(String((init as RequestInit | undefined)?.body))
+          return new Response(JSON.stringify({ name: 'Review UI', directory: '/data/worktrees/project/task-a', managed: true }))
+        }
+        return new Response(JSON.stringify([]))
+      }
+      return new Response(null, { status: 404 })
+    }) as typeof fetch
+
+    await renderCodingSidebarWithProps({ currentSessionId: 'session-1', workspace: '/repo/project' })
+    await waitFor(() => expect(screen.getByText('task-a')).toBeTruthy())
+    await user.click(screen.getByLabelText('Edit worktree title task-a'))
+    const input = screen.getByLabelText('Worktree title')
+    await user.clear(input)
+    await user.type(input, 'Review UI')
+    await user.click(screen.getByRole('button', { name: /^save$/i }))
+
+    expect(renameBody).toEqual({ directory: '/data/worktrees/project/task-a', name: 'Review UI' })
   })
 
   it('removes deleted managed worktrees without promoting stale inverse relationships', async () => {
@@ -778,7 +834,7 @@ describe('CodingSidebar workspace trust flow', () => {
       workspace: '/repo/project',
     })
 
-    await waitFor(() => expect(screen.getByText('Worktrees')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('task-a')).toBeTruthy())
     await user.click(screen.getByLabelText('Remove worktree task-a'))
 
     await waitFor(() => expect(screen.queryByText('task-a')).toBeNull())
@@ -820,10 +876,10 @@ describe('CodingSidebar workspace trust flow', () => {
       workspace: '/data/worktrees/project/task-a',
     })
 
-    await waitFor(() => expect(screen.getByText('Worktrees')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('task-a')).toBeTruthy())
     expect(screen.getByLabelText('Collapse repository project')).toBeTruthy()
     expect(screen.getByLabelText('Collapse worktree task-a')).toBeTruthy()
-    expect(screen.getByText('Worktree session')).toBeTruthy()
+    expect(screen.getAllByText('Worktree session').length).toBeGreaterThan(0)
   })
 
   it('opens title editing from a coding session card', async () => {

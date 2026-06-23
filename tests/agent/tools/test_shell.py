@@ -518,6 +518,23 @@ async def test_background_process_wait(sandbox_workspace, fast_bg):
 
 
 @pytest.mark.asyncio
+async def test_background_process_wait_limits_final_output(sandbox_workspace, fast_bg):
+    """wait caps final output to the same inline limits as shell."""
+    await shell_tool.arun(
+        command="python - <<'PY'\nfor i in range(400):\n    print(f'line{i:03d}-' + 'x' * 1000)\nPY\nsleep 0.05",
+        background=True,
+        timeout_seconds=1,
+    )
+    pid = next(iter(_bg_processes))
+
+    result = await background_process.arun(action="wait", pid=pid)
+
+    assert "...output truncated..." in result
+    assert "line399" in result
+    assert "line200" not in result
+
+
+@pytest.mark.asyncio
 async def test_background_process_stop(sandbox_workspace, fast_bg):
     """background_process stop removes the process from the registry."""
     await shell_tool.arun(command="sleep 30", background=True, timeout_seconds=1)

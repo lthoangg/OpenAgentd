@@ -130,6 +130,14 @@ class _BgProcess:
         return self.proc.returncode
 
 
+def _limited_bg_output(text: str) -> str:
+    """Return background output capped to the same inline limits as shell."""
+    limited, was_cut = _tail_text(text, _OUTPUT_MAX_LINES, _OUTPUT_MAX_BYTES)
+    if was_cut:
+        return "...output truncated...\n" + limited
+    return limited
+
+
 # Module-level registry: PID → _BgProcess
 _bg_processes: dict[int, _BgProcess] = {}
 
@@ -597,14 +605,14 @@ async def _background_process(
         text = bg.read_output(last_n=last_n_lines)
         if not text:
             return f"PID {pid}: no output captured yet."
-        return f"PID {pid} output:\n{text}"
+        return f"PID {pid} output:\n{_limited_bg_output(text)}"
 
     if action == "wait":
         exit_code = await bg.wait()
         text = bg.read_output(last_n=last_n_lines)
         if not text:
             return f"PID {pid}: exited (code {exit_code})\nNo output captured."
-        return f"PID {pid}: exited (code {exit_code})\nFinal output:\n{text}"
+        return f"PID {pid}: exited (code {exit_code})\nFinal output:\n{_limited_bg_output(text)}"
 
     # action == "stop"
     exit_code = await bg.stop()

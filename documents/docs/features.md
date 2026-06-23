@@ -90,9 +90,7 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
 - **Editable session titles** `[v1.27.0]` — double-click a session card or use its
   edit affordance in the sidebar to rename saved sessions.
 - **Slash commands** `[since v1.0]` — `/init`, `/continue`, `/compact`, `/undo`,
-  `/redo`, coding-mode `/loop <prompt>` and `/loop:{subcommand}` Ralph Wiggum
-  loops with visible status `[v1.49.1]`, plus user-defined commands.
-  See [`commands.md`](./commands.md).
+  `/redo`, plus user-defined commands. See [`commands.md`](./commands.md).
 - **Bang shell commands** `[v1.39.0]` — start a message with `!` to run the
   remainder directly through the shell tool without a model turn; history stores
   the run as structured shell tool output. See [`shell-commands.md`](./shell-commands.md).

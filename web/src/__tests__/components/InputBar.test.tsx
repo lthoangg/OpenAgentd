@@ -486,29 +486,6 @@ describe("InputBar", () => {
     expect(textarea.getAttribute("aria-activedescendant")).toBe(options[1].id)
   })
 
-  it("displays loop subcommands with colon syntax", async () => {
-    const user = userEvent.setup()
-    render(
-      <InputBar
-        onSubmit={() => {}}
-        slashCommands={[
-          { id: "loop", label: "loop <prompt>", displayName: "loop", insertText: "loop", description: "Start a coding loop", keepInputOpen: true },
-          { id: "loop:set", label: "loop:set <limit>", displayName: "loop:set", insertText: "loop:set", description: "Set loop budget", keepInputOpen: true },
-          { id: "loop:pause", label: "loop:pause", displayName: "loop:pause", description: "Pause loop" },
-        ]}
-      />,
-    )
-
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-    await user.type(textarea, "/loop")
-
-    expect(screen.getByText("set")).toBeTruthy()
-    expect(screen.getByText("pause")).toBeTruthy()
-
-    await user.keyboard("{ArrowDown}{Enter}")
-    expect(textarea.value).toBe("/loop:set ")
-  })
-
   it("displays nested commands with colon syntax and inserts colon form", async () => {
     const user = userEvent.setup()
     render(

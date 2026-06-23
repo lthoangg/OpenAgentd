@@ -22,7 +22,7 @@ import asyncio
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Literal
 from uuid import UUID
 
 from loguru import logger
@@ -47,7 +47,6 @@ from app.core.paths import session_workspace_dir
 from app.models.chat import ChatSession, SessionMessage
 from app.services import memory_stream_store as stream_store
 from app.services import snapshot_service
-from app.services.commands import parse_slash_invocation
 from app.services.stream_envelope import StreamEnvelope
 from app.services.chat_service import (
     BoundaryShift,
@@ -61,68 +60,6 @@ from app.services.chat_service import (
 
 if TYPE_CHECKING:
     from app.agent.providers.factory import ProviderFactory
-
-
-_LOOP_LIMITS = {5, 10, 20, 50}
-
-
-@dataclass
-class LoopState:
-    prompt: str
-    remaining: int
-    paused: bool = False
-
-
-@dataclass(frozen=True)
-class LoopCommand:
-    action: Literal["start", "set", "pause", "resume", "stop"]
-    prompt: str | None = None
-    limit: int | None = None
-
-
-def _loop_status_payload(
-    *,
-    prompt: str | None,
-    limit: int,
-    remaining: int,
-    paused: bool = False,
-) -> dict[str, object]:
-    used = max(limit - remaining, 0)
-    return {
-        "prompt": prompt,
-        "limit": limit,
-        "remaining": remaining,
-        "used": used,
-        "paused": paused,
-    }
-
-
-def parse_loop_command(content: str) -> LoopCommand | None:
-    invocation = parse_slash_invocation(content)
-    if invocation is None or invocation.command != "loop":
-        return None
-
-    if invocation.subcommand is None:
-        prompt = invocation.arguments.strip()
-        return LoopCommand(action="start", prompt=prompt) if prompt else None
-
-    if invocation.subcommand == "set":
-        if len(invocation.argv) != 1 or not invocation.argv[0].isdigit():
-            return None
-        limit = int(invocation.argv[0])
-        if limit not in _LOOP_LIMITS:
-            return None
-        return LoopCommand(action="set", limit=limit)
-
-    if invocation.subcommand not in {"pause", "resume", "stop"} or invocation.argv:
-        return None
-    action = cast(Literal["pause", "resume", "stop"], invocation.subcommand)
-    return LoopCommand(action=action)
-
-
-def is_loop_command(content: str) -> bool:
-    invocation = parse_slash_invocation(content)
-    return invocation is not None and invocation.command == "loop"
 
 
 # ---------------------------------------------------------------------------
@@ -290,8 +227,6 @@ class AgentTeam:
 
         # Guard: only emit done after at least one user turn has started
         self._has_active_turn: bool = False
-        self._loop_states: dict[str, LoopState] = {}
-        self._loop_limits: dict[str, int] = {}
 
         # Index agents by name for fast lookup in on_message.  Kept in sync
         # by spawn() / dismiss().
@@ -316,21 +251,6 @@ class AgentTeam:
     def has_active_user_turn(self) -> bool:
         """Return whether a user turn is active or the lead is already running."""
         return self._has_active_turn or self.lead.state == "working"
-
-    def loop_status(self, session_id: str) -> dict[str, object] | None:
-        """Return the current loop status for a session, if a loop is active."""
-        loop = self._loop_states.get(session_id)
-        if loop is None:
-            limit = self._loop_limits.get(session_id)
-            if limit is None:
-                return None
-            return _loop_status_payload(prompt=None, limit=limit, remaining=limit)
-        return _loop_status_payload(
-            prompt=loop.prompt,
-            limit=self._loop_limits.get(session_id, 10),
-            remaining=loop.remaining,
-            paused=loop.paused,
-        )
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -424,9 +344,6 @@ class AgentTeam:
             session_id = self.lead.session_id
 
             if await self._activate_queued_user_messages(session_id):
-                return
-
-            if await self._activate_loop_message(session_id):
                 return
 
             try:
@@ -573,76 +490,6 @@ class AgentTeam:
         )
         return True
 
-    async def _activate_loop_message(self, session_id: str) -> bool:
-        loop = self._loop_states.get(session_id)
-        if loop is None or loop.paused or loop.remaining <= 0:
-            return False
-
-        loop.remaining -= 1
-        if loop.remaining <= 0:
-            self._loop_states.pop(session_id, None)
-
-        try:
-            await stream_store.init_turn(session_id, keep_subscribers=True)
-        except Exception as exc:
-            logger.warning("team_init_loop_turn_failed error={}", exc)
-            return False
-
-        try:
-            session_uuid = UUID(session_id)
-        except ValueError:
-            return False
-        try:
-            db_factory = resolve_db_factory(self.lead.db_factory)
-            async with db_factory() as db:
-                row = await save_message(
-                    db, session_uuid, HumanMessage(content=loop.prompt)
-                )
-                await db.commit()
-        except Exception as exc:
-            logger.warning("team_save_loop_message_failed error={}", exc)
-            return False
-
-        self._has_active_turn = True
-        await stream_store.push_event(
-            session_id,
-            StreamEnvelope.from_parts(
-                "loop_status",
-                _loop_status_payload(
-                    prompt=loop.prompt,
-                    limit=self._loop_limits.get(session_id, 10),
-                    remaining=loop.remaining,
-                    paused=loop.paused,
-                ),
-            ),
-        )
-        await stream_store.push_event(
-            session_id,
-            StreamEnvelope.from_parts(
-                "queued_turn_start",
-                {
-                    "type": "queued_turn_start",
-                    "agent": self.lead.name,
-                    "message_ids": [str(row.id)],
-                    "messages": [
-                        {"id": str(row.id), "content": loop.prompt},
-                    ],
-                },
-            ),
-        )
-        msg = Message(
-            from_agent="user",
-            to_agent=self.lead.name,
-            content=f"[user]: {loop.prompt}",
-        )
-        await self.mailbox.send(to=self.lead.name, message=msg)
-        logger.info(
-            "team_loop_message_activated session_id={} remaining={}",
-            session_id,
-            loop.remaining,
-        )
-        return True
-
     # ------------------------------------------------------------------
     # User message entry point
     # ------------------------------------------------------------------
@@ -709,7 +556,6 @@ class AgentTeam:
             await self._restore_or_drop_members_for_lead(session_id)
 
         if interrupt:
-            self._loop_states.pop(session_id, None)
             cancelled = [m for m in self.all_members if m.state == "working"]
             for member in cancelled:
                 member._cancel_event.set()
@@ -718,114 +564,7 @@ class AgentTeam:
                 "team_interrupted cancelled={}",
                 [m.name for m in cancelled],
             )
-
         # Persist user message and parent member sessions
-        skip_delivery = False
-        loop_command = parse_loop_command(content)
-        if loop_command is not None:
-            if self.mode != "coding":
-                raise ContinuePreconditionError(
-                    "/loop commands are only available in coding mode."
-                )
-            if loop_command.action == "start":
-                assert loop_command.prompt is not None
-                content = loop_command.prompt
-                limit = self._loop_limits.get(session_id, 10)
-                remaining = max(limit - 1, 0)
-                if remaining > 0:
-                    self._loop_states[session_id] = LoopState(
-                        prompt=loop_command.prompt,
-                        remaining=remaining,
-                    )
-                else:
-                    self._loop_states.pop(session_id, None)
-                await stream_store.push_event(
-                    session_id,
-                    StreamEnvelope.from_parts(
-                        "loop_status",
-                        _loop_status_payload(
-                            prompt=loop_command.prompt,
-                            limit=limit,
-                            remaining=remaining,
-                        ),
-                    ),
-                )
-            elif loop_command.action == "set":
-                assert loop_command.limit is not None
-                self._loop_limits[session_id] = loop_command.limit
-                skip_delivery = True
-                await stream_store.push_event(
-                    session_id,
-                    StreamEnvelope.from_parts(
-                        "loop_status",
-                        _loop_status_payload(
-                            prompt=None,
-                            limit=loop_command.limit,
-                            remaining=loop_command.limit,
-                        ),
-                    ),
-                )
-            elif loop_command.action == "pause":
-                if session_id in self._loop_states:
-                    self._loop_states[session_id].paused = True
-                    state = self._loop_states[session_id]
-                    await stream_store.push_event(
-                        session_id,
-                        StreamEnvelope.from_parts(
-                            "loop_status",
-                            _loop_status_payload(
-                                prompt=state.prompt,
-                                limit=self._loop_limits.get(session_id, 10),
-                                remaining=state.remaining,
-                                paused=True,
-                            ),
-                        ),
-                    )
-                skip_delivery = True
-            elif loop_command.action == "resume":
-                if session_id in self._loop_states:
-                    self._loop_states[session_id].paused = False
-                    state = self._loop_states[session_id]
-                    await stream_store.push_event(
-                        session_id,
-                        StreamEnvelope.from_parts(
-                            "loop_status",
-                            _loop_status_payload(
-                                prompt=state.prompt,
-                                limit=self._loop_limits.get(session_id, 10),
-                                remaining=state.remaining,
-                            ),
-                        ),
-                    )
-                skip_delivery = True
-            elif loop_command.action == "stop":
-                self._loop_states.pop(session_id, None)
-                await stream_store.push_event(
-                    session_id,
-                    StreamEnvelope.from_parts(
-                        "loop_status",
-                        {
-                            "prompt": None,
-                            "limit": 0,
-                            "remaining": 0,
-                            "used": 0,
-                            "paused": False,
-                        },
-                    ),
-                )
-                skip_delivery = True
-
-        if skip_delivery:
-            try:
-                await stream_store.init_turn(session_id)
-                await stream_store.push_event(
-                    session_id, StreamEnvelope.from_event(DoneEvent())
-                )
-                await stream_store.mark_done(session_id)
-            except Exception as exc:
-                logger.warning("team_loop_command_done_failed error={}", exc)
-            return session_id
-
         try:
             db_factory = resolve_db_factory(self.lead.db_factory)
             lead_uuid = UUID(session_id)

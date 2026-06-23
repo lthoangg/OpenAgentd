@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 from app.agent.agent_loop import Agent
 from app.agent.providers.base import LLMProviderBase
 from app.agent.mode.team.member import TeamLead, TeamMember
-from app.agent.mode.team.team import AgentTeam, LoopState
+from app.agent.mode.team.team import AgentTeam
 from app.models.chat import ChatSession, CodingWorkspace, SessionMessage
 
 
@@ -772,37 +772,6 @@ class TestTeamHistoryWithData:
         data = resp.json()
 
         assert data["members"] == []
-
-    @pytest.mark.asyncio
-    async def test_history_includes_active_loop_status(self, app_with_team, test_team):
-        import app.core.db as _db
-
-        lead_id = uuid.uuid7()
-        session_id = str(lead_id)
-        async with _db.async_session_factory() as db:
-            async with db.begin():
-                await _create_team_session(db, lead_id)
-                await _add_message(db, lead_id, role="user", content="loop prompt")
-
-        test_team._loop_limits[session_id] = 5
-        test_team._loop_states[session_id] = LoopState(
-            prompt="loop prompt",
-            remaining=3,
-            paused=True,
-        )
-
-        client = TestClient(app_with_team)
-        resp = client.get(f"/api/team/{lead_id}/history")
-        data = resp.json()
-
-        assert resp.status_code == 200
-        assert data["loop_status"] == {
-            "prompt": "loop prompt",
-            "limit": 5,
-            "remaining": 3,
-            "used": 2,
-            "paused": True,
-        }
 
 
 # ---------------------------------------------------------------------------

@@ -14,11 +14,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from app.agent.agent_loop import Agent
 from app.agent.mode.team.member import TeamMemberBase
-from app.agent.mode.team.team import (
-    ContinuePreconditionError,
-    is_loop_command,
-    parse_loop_command,
-)
+from app.agent.mode.team.team import ContinuePreconditionError
 from app.agent.tools.builtin.skill import discover_skills
 from app.api.deps import ChatFormDep, DbSession, TeamDep
 from app.api.routes.team._helpers import (
@@ -249,20 +245,6 @@ async def team_chat(
         return {"status": "interrupted", "session_id": session_id}
 
     assert message is not None
-    loop_command = None
-    if is_loop_command(message):
-        if mode != "coding":
-            raise HTTPException(
-                status_code=422,
-                detail="/loop commands are only available in coding mode.",
-            )
-        loop_command = parse_loop_command(message)
-        if loop_command is None:
-            raise HTTPException(
-                status_code=422,
-                detail="Invalid /loop command. Use /loop <prompt>, /loop:set 5|10|20|50, /loop:pause, /loop:resume, or /loop:stop.",
-            )
-
     if body.shell:
         if files:
             raise HTTPException(
@@ -321,11 +303,7 @@ async def team_chat(
             async with db.begin():
                 await cleanup_reverted_tail(db, session_uuid)
 
-        if (
-            session_uuid is not None
-            and team_obj.has_active_user_turn()
-            and loop_command is None
-        ):
+        if session_uuid is not None and team_obj.has_active_user_turn():
             # Explicit uploads still 409 — they need the live capability check
             # + persistence pipeline that only runs on the dispatch path. But
             # mentions are derived from workspace files the agent will see
@@ -919,10 +897,9 @@ async def team_history(
     history = await get_team_history(db, session_id, before=before_dt)
     if history is None:
         raise HTTPException(status_code=404, detail="Lead session not found.")
-    loop_team = team
     if history.lead_session.mode == "coding" and history.lead_session.workspace:
         try:
-            loop_team = await team_manager.get_or_start_coding_team(
+            await team_manager.get_or_start_coding_team(
                 history.lead_session.workspace, str(history.lead_session.id)
             )
         except ValueError as exc:
@@ -954,9 +931,6 @@ async def team_history(
     return TeamHistoryResponse(
         lead=lead_detail,
         members=member_histories,
-        loop_status=loop_team.loop_status(str(history.lead_session.id))
-        if loop_team
-        else None,
         has_more=history.has_more,
         next_cursor=next_cursor,
     )

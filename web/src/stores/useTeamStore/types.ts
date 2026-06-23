@@ -40,14 +40,6 @@ export interface AgentStream {
   _revertedSuffix?: ContentBlock[]
 }
 
-export interface ActiveLoop {
-  prompt: string | null
-  limit: number
-  remaining: number
-  used: number
-  paused: boolean
-}
-
 export interface TeamStoreState {
   agentStreams: Record<string, AgentStream>
   activeAgent: string | null
@@ -64,7 +56,6 @@ export interface TeamStoreState {
   isContinuing: boolean
   isConnected: boolean
   error: string | null
-  activeLoop: ActiveLoop | null
   setupRequired: SetupRequiredNotice | null
   _pendingMessages: PendingMessage[]
   _sessionGeneration: number
@@ -85,7 +76,6 @@ export interface TeamStoreActions {
   compactTeam: () => Promise<void>
   undoTeam: () => Promise<TeamCommandResponse | undefined>
   redoTeam: () => Promise<void>
-  sendLoopCommand: (command: string, prompt?: string, options?: { mode?: string; workspace?: string | null; model?: string | null; thinkingLevel?: string | null; fastMode?: boolean }) => Promise<void>
   stopTeam: () => Promise<void>
   connectStream: () => AbortController
   loadTeamStatus: (workspace?: string | null) => Promise<void>

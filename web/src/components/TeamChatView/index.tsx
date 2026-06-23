@@ -120,6 +120,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const [showFilesPanel, setShowFilesPanel] = useState(false)
   const [codingPanel, setCodingPanel] = useState<null | 'changed' | 'files'>(null)
   const [codingFileViewer, setCodingFileViewer] = useState<WorkspaceFileInfo | null>(null)
+  const [codingFileViewerDetached, setCodingFileViewerDetached] = useState(false)
   const [codingFileOpenKey, setCodingFileOpenKey] = useState(0)
   const [codingSidebarCollapsed, setCodingSidebarCollapsed] = useState(true)
   const [openWorkspaceDialogKey, setOpenWorkspaceDialogKey] = useState(0)
@@ -134,6 +135,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const effectiveViewMode: ViewMode = isMobile ? 'agent' : viewMode
   useEffect(() => {
     setCodingFileViewer(null)
+    setCodingFileViewerDetached(false)
   }, [workspace])
 
   useEffect(() => {
@@ -378,7 +380,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         if (isMobile) setMobileSidebarOpen(false)
         setCodingPanel((value) => {
           const next = value === null ? 'changed' : null
-          if (next === null) setCodingFileViewer(null)
+          if (next === null) setCodingFileViewerDetached(false)
           return next
         })
       } else {
@@ -480,6 +482,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
 
   const handleCodingFileSelect = useCallback((file: WorkspaceFileInfo | null) => {
     setCodingFileViewer(file)
+    setCodingFileViewerDetached(Boolean(isMobile && file))
     if (isMobile && file) setCodingPanel(null)
   }, [isMobile])
 
@@ -490,6 +493,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     const current = codingFileViewer?.path === cleanPath ? codingFileViewer : null
     if (current) {
       setCodingFileViewer(current)
+      setCodingFileViewerDetached(isMobile)
       setCodingFileOpenKey((value) => value + 1)
       setCodingPanel((value) => (isMobile ? null : value ?? 'files'))
       return
@@ -499,8 +503,9 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
       const file = result.files.find((item) => item.path === cleanPath)
       if (file) {
         setCodingFileViewer(file)
+        setCodingFileViewerDetached(isMobile)
         setCodingFileOpenKey((value) => value + 1)
-        setCodingPanel(isMobile ? null : 'files')
+        setCodingPanel((value) => (isMobile ? null : value ?? 'files'))
       }
     } catch {
       // Keep the current panel state; the panel query will surface listing errors.
@@ -1184,13 +1189,16 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
           />
         )}
         </main>
-        {mode === 'coding' && workspace && codingFileViewer !== null && codingPanel === null && (
+        {mode === 'coding' && workspace && codingFileViewer !== null && codingFileViewerDetached && codingPanel === null && (
           <CodingFileViewerPanel
             workspace={workspace}
             file={codingFileViewer}
             mobile={isMobile}
             onAddComment={handleAddFileComment}
-            onClose={() => setCodingFileViewer(null)}
+            onClose={() => {
+              setCodingFileViewer(null)
+              setCodingFileViewerDetached(false)
+            }}
           />
         )}
         {mode === 'coding' && workspace && codingPanel !== null && (
@@ -1205,7 +1213,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             onAddComment={handleAddFileComment}
             onClose={() => {
               setCodingPanel(null)
-              setCodingFileViewer(null)
+              setCodingFileViewerDetached(false)
             }}
           />
         )}

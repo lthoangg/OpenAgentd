@@ -58,13 +58,15 @@ afterEach(cleanup)
 async function renderWorkspacePanel(onFileSelect = mock(() => {}), selectedFilePath: string | null = null, mobile = false) {
   const { CodingWorkspacePanel } = await import('@/components/CodingWorkspacePanel')
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  let renderResult: ReturnType<typeof render> | null = null
   await act(async () => {
-    render(
+    renderResult = render(
       <QueryClientProvider client={queryClient}>
         <CodingWorkspacePanel workspace={WORKSPACE} open initialTab="files" selectedFilePath={selectedFilePath} onFileSelect={onFileSelect} onClose={() => {}} mobile={mobile} />
       </QueryClientProvider>,
     )
   })
+  return { CodingWorkspacePanel, queryClient, renderResult: renderResult! }
 }
 
 async function renderViewer(file: WorkspaceFileInfo | null = readme, onAddComment = mock(() => {}), mobile = false) {
@@ -86,7 +88,24 @@ describe('Coding workspace two-layer file preview', () => {
 
     await waitFor(() => expect(onFileSelect).toHaveBeenCalledWith(readme))
     expect(screen.getAllByTitle('README.md').length).toBeGreaterThanOrEqual(1)
-    expect(screen.getByText('const')).toBeTruthy()
+    await waitFor(() => expect(screen.getByText('const')).toBeTruthy())
+  })
+
+  it('reopens the selected file tab when the open key changes', async () => {
+    const onFileSelect = mock(() => {})
+    const { CodingWorkspacePanel, queryClient, renderResult } = await renderWorkspacePanel(onFileSelect, 'README.md')
+
+    await waitFor(() => expect(onFileSelect).toHaveBeenCalledWith(readme))
+    await userEvent.setup().click(screen.getByRole('button', { name: /changes/i }))
+    expect(screen.getByText('Not a git repository')).toBeTruthy()
+
+    renderResult.rerender(
+      <QueryClientProvider client={queryClient}>
+        <CodingWorkspacePanel workspace={WORKSPACE} open selectedFilePath="README.md" selectedFileOpenKey={1} onFileSelect={onFileSelect} onClose={() => {}} />
+      </QueryClientProvider>,
+    )
+
+    await waitFor(() => expect(screen.getByText('const')).toBeTruthy())
   })
 
   it('opens file tabs from the plus file search', async () => {

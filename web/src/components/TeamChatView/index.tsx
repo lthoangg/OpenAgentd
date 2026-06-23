@@ -120,6 +120,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const [showFilesPanel, setShowFilesPanel] = useState(false)
   const [codingPanel, setCodingPanel] = useState<null | 'changed' | 'files'>(null)
   const [codingFileViewer, setCodingFileViewer] = useState<WorkspaceFileInfo | null>(null)
+  const [codingFileOpenKey, setCodingFileOpenKey] = useState(0)
   const [codingSidebarCollapsed, setCodingSidebarCollapsed] = useState(true)
   const [openWorkspaceDialogKey, setOpenWorkspaceDialogKey] = useState(0)
   const [showTodos, setShowTodos] = useState(false)
@@ -489,7 +490,8 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     const current = codingFileViewer?.path === cleanPath ? codingFileViewer : null
     if (current) {
       setCodingFileViewer(current)
-      setCodingPanel(isMobile ? null : 'files')
+      setCodingFileOpenKey((value) => value + 1)
+      setCodingPanel((value) => (isMobile ? null : value ?? 'files'))
       return
     }
     try {
@@ -497,6 +499,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
       const file = result.files.find((item) => item.path === cleanPath)
       if (file) {
         setCodingFileViewer(file)
+        setCodingFileOpenKey((value) => value + 1)
         setCodingPanel(isMobile ? null : 'files')
       }
     } catch {
@@ -1192,12 +1195,12 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         )}
         {mode === 'coding' && workspace && codingPanel !== null && (
           <CodingWorkspacePanel
-            key={codingPanel}
             workspace={workspace}
             open
             initialTab={codingPanel}
             mobile={isMobile}
             selectedFilePath={codingFileViewer?.path ?? null}
+            selectedFileOpenKey={codingFileOpenKey}
             onFileSelect={handleCodingFileSelect}
             onAddComment={handleAddFileComment}
             onClose={() => {

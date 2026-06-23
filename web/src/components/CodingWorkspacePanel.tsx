@@ -68,6 +68,7 @@ export function CodingWorkspacePanel({
   onClose,
   mobile = false,
   selectedFilePath = null,
+  selectedFileOpenKey = 0,
   onFileSelect,
   onAddComment,
 }: {
@@ -77,6 +78,7 @@ export function CodingWorkspacePanel({
   onClose: () => void
   mobile?: boolean
   selectedFilePath?: string | null
+  selectedFileOpenKey?: number
   onFileSelect?: (file: WorkspaceFileInfo | null) => void
   onAddComment?: (path: string, startLine: number, endLine: number) => void
 }) {
@@ -132,7 +134,7 @@ export function CodingWorkspacePanel({
     if (!selectedFilePath || files.data?.files == null) return
     const file = files.data.files.find((item) => item.path === selectedFilePath)
     if (file) openFileTab(file)
-  }, [files.data?.files, openFileTab, selectedFilePath])
+  }, [files.data?.files, openFileTab, selectedFileOpenKey, selectedFilePath])
 
   useEffect(() => {
     if (fileSearchOpen) searchInputRef.current?.focus()

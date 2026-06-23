@@ -105,7 +105,7 @@ function WorkspaceSessionList({
   runningSessions,
   collapsed = false,
   mobileLongPressActions = false,
-  className = 'space-y-0.5 pb-1 pl-4 pr-2',
+  className = 'max-h-[7.75rem] space-y-0.5 overflow-y-auto py-0.5 pl-5 pr-2',
   onSessionSelect,
   onSessionDelete,
   onSessionEdit,
@@ -125,12 +125,30 @@ function WorkspaceSessionList({
   onSessionContextActions: (session: SessionResponse, event: React.MouseEvent) => void
 }) {
   const sessions = useCodingWorkspaceSessionsQuery(path, !collapsed)
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = sessions
   const workspaceSessions = collapsed
     ? (runningSessions ?? [])
     : (sessions.data?.pages.flatMap((page) => page.data) ?? [])
+  const listRef = useRef<HTMLDivElement>(null)
+  const loadMoreRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const sentinel = loadMoreRef.current
+    if (!sentinel || collapsed) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && hasNextPage && !isFetchingNextPage) {
+          void fetchNextPage()
+        }
+      },
+      { root: listRef.current, threshold: 0.1 },
+    )
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [collapsed, fetchNextPage, hasNextPage, isFetchingNextPage])
 
   return (
-    <div className={className}>
+    <div ref={listRef} className={className}>
       {workspaceSessions.length === 0 && !collapsed && !sessions.isLoading && (
         <p className="px-2 py-1 text-xs text-(--color-text-subtle)">No sessions yet.</p>
       )}
@@ -163,15 +181,8 @@ function WorkspaceSessionList({
               }`}
             >
               <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${isRunning ? 'bg-(--color-accent)' : 'border border-(--color-text-subtle)'}`} aria-hidden="true" />
-              <span className="min-w-0 flex-1 truncate font-medium">{sessionTitle}</span>
-              {isRunning && (
-                <span
-                  className="absolute right-7 top-1/2 -translate-y-1/2 text-(--color-accent)"
-                  aria-label="Session running"
-                >
-                  <Loader2 size={11} className="animate-spin" aria-hidden="true" />
-                </span>
-              )}
+              <span className={`min-w-0 flex-1 truncate font-medium ${isRunning ? 'session-title-breathe text-(--color-text)' : ''}`}>{sessionTitle}</span>
+
             </LongPressButton>
             <button
               type="button"
@@ -195,16 +206,11 @@ function WorkspaceSessionList({
           </div>
         )
       })}
-      {!collapsed && sessions.hasNextPage && (
-        <button
-          type="button"
-          onClick={() => { void sessions.fetchNextPage() }}
-          disabled={sessions.isFetchingNextPage}
-          className="mt-1 flex w-full items-center justify-center gap-1 rounded-md px-2 py-1.5 text-xs text-(--color-accent) transition-colors hover:bg-(--bg-key) disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {sessions.isFetchingNextPage && <Loader2 size={11} className="animate-spin" aria-hidden="true" />}
-          <span>{sessions.isFetchingNextPage ? 'Loading…' : 'Load more'}</span>
-        </button>
+      {!collapsed && <div ref={loadMoreRef} className="h-1" aria-hidden />}
+      {!collapsed && isFetchingNextPage && (
+        <div className="flex items-center justify-center py-1 text-(--color-accent)" aria-label="Loading more sessions">
+          <Loader2 size={11} className="animate-spin" aria-hidden="true" />
+        </div>
       )}
     </div>
   )
@@ -762,7 +768,7 @@ export function CodingSidebar({
 
           return (
             <div key={path} className="relative">
-              <div className="group mx-2 mb-0.5 flex h-8 items-center rounded-md border border-transparent">
+              <div className="group mx-2 flex h-7 items-center rounded-md border border-transparent">
                 <LongPressButton
                   enabled={mobileLongPressActions}
                   onLongPress={() => setMobileWorkspaceActions({ path, kind: 'main' })}
@@ -782,12 +788,11 @@ export function CodingSidebar({
                   <span className={`truncate font-mono ${sourceIsActive ? 'font-semibold text-(--color-text)' : 'text-(--color-text-2) group-hover:text-(--color-text)'}`}>
                     {workspaceLabel(path)}
                   </span>
-                  {(sourceIsPending || sourceHasRunningSession) && (
-                    <span aria-label={sourceHasRunningSession ? 'Repository has running session' : undefined}>
+                  {sourceIsPending && (
+                    <span>
                       <Loader2 size={11} className="shrink-0 animate-spin text-(--color-text-muted)" aria-hidden="true" />
                     </span>
                   )}
-                  {sourceHasRunningSession && <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-(--color-accent)" aria-label="Repository has running session" />}
                 </LongPressButton>
                 <button
                   type="button"
@@ -819,7 +824,7 @@ export function CodingSidebar({
               </div>
 
               {(sourceIsExpanded || sourceHasRunningSession) && (
-                <div className="space-y-1 pb-1 pt-0.5">
+                <div className="pb-1">
                   <WorkspaceSessionList
                     path={path}
                     currentSessionId={currentSessionId}
@@ -845,7 +850,7 @@ export function CodingSidebar({
                     const hasRunningSession = runningSessions.length > 0
                     return (
                       <div key={directory} className="mt-1">
-                        <div className="group mx-2 flex min-h-6 items-center rounded-md">
+                        <div className="group mx-2 flex h-7 items-center rounded-md">
                           <LongPressButton
                             enabled={mobileLongPressActions}
                             onLongPress={() => setMobileWorkspaceActions({ path: directory, kind: 'worktree', source: path, worktree: worktreeInfo })}
@@ -864,10 +869,9 @@ export function CodingSidebar({
                             <ChevronRight size={11} className={`shrink-0 text-(--color-text-subtle) transition-transform ${isExpanded ? 'rotate-90' : ''}`} aria-hidden="true" />
                             <GitBranch size={12} className="shrink-0 text-(--accent-orange-text)" aria-hidden="true" />
                             <span className="min-w-0 flex-1 truncate font-mono">{item.name}</span>
-                            {itemSessions.length > 0 && <span className="shrink-0 rounded-full bg-(--bg-key) px-1.5 text-[10px] text-(--color-text-subtle)">{itemSessions.length}</span>}
                             {!item.managed && <span className="shrink-0 rounded-full bg-(--bg-key) px-1.5 py-0.5 text-[9px] text-(--color-text-subtle)">external</span>}
-                            {(isPending || hasRunningSession) && (
-                              <span aria-label={hasRunningSession ? 'Worktree has running session' : undefined}>
+                            {isPending && (
+                              <span>
                                 <Loader2 size={11} className="shrink-0 animate-spin text-(--color-text-muted)" aria-hidden="true" />
                               </span>
                             )}
@@ -900,7 +904,7 @@ export function CodingSidebar({
                             currentSessionId={currentSessionId}
                             runningSessions={runningSessions}
                             collapsed={!isExpanded}
-                            className="space-y-0.5 py-1 pl-4 pr-2"
+                            className="max-h-[7.75rem] space-y-0.5 overflow-y-auto py-0.5 pl-5 pr-2"
                             mobileLongPressActions={mobileLongPressActions}
                             onSessionSelect={handleSessionSelect}
                             onSessionDelete={handleSessionDelete}
@@ -924,7 +928,7 @@ export function CodingSidebar({
         <button
           type="button"
           onClick={() => { void openWorkspaceDialog() }}
-          className="mt-1 flex h-8 items-center gap-2 px-3 text-left text-xs italic text-(--color-accent) transition-colors hover:bg-(--bg-key)"
+          className="flex h-8 items-center gap-2 px-3 text-left text-xs italic text-(--color-accent) transition-colors"
           aria-label="Open folder"
           title="Open a new workspace folder"
         >

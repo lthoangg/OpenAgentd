@@ -486,20 +486,23 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     if (mode !== 'coding' || !workspace) return
     const cleanPath = path.split('#', 1)[0]
     if (!cleanPath) return
-    setCodingPanel('files')
     const current = codingFileViewer?.path === cleanPath ? codingFileViewer : null
     if (current) {
       setCodingFileViewer(current)
+      setCodingPanel(isMobile ? null : 'files')
       return
     }
     try {
       const result = await listCodingWorkspaceFiles(workspace)
       const file = result.files.find((item) => item.path === cleanPath)
-      if (file) setCodingFileViewer(file)
+      if (file) {
+        setCodingFileViewer(file)
+        setCodingPanel(isMobile ? null : 'files')
+      }
     } catch {
-      // Keep the files panel open; the panel query will surface listing errors.
+      // Keep the current panel state; the panel query will surface listing errors.
     }
-  }, [codingFileViewer, mode, workspace])
+  }, [codingFileViewer, isMobile, mode, workspace])
 
   // Restore a queued message's text into the composer (fired by the
   // X button on PendingMessageQueue). Overwrites any current draft —
@@ -977,6 +980,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
                     onClick: handleWorkspaceFiles,
                     title: codingPanel === null ? 'Changed files and workspace files' : 'Close changed files and workspace files',
                     ariaLabel: 'Changed files and workspace files',
+                    className: codingPanel !== null ? 'bg-(--bg-key) text-(--color-text) ring-1 ring-(--color-border-strong)' : undefined,
                   } : undefined
                 : {
                     Icon: FolderOpen,
@@ -984,6 +988,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
                     disabled: !sessionIdState,
                     title: sessionIdState ? 'Workspace files (Ctrl+F)' : 'No active session',
                     ariaLabel: 'Workspace files',
+                    className: showFilesPanel ? 'bg-(--bg-key) text-(--color-text) ring-1 ring-(--color-border-strong)' : undefined,
                   }}
               agentsAction={{
                 Icon: SlidersHorizontal,

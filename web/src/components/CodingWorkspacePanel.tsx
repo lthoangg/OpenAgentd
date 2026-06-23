@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { FileText, Folder, GitCompare, Plus, RefreshCw, Search, X } from 'lucide-react'
@@ -101,7 +101,7 @@ export function CodingWorkspacePanel({
   const changedFiles = collectChangedFiles(diff.data)
   const fileByPath = new Map((files.data?.files ?? []).map((file) => [file.path, file]))
   const activeTab = tabs.find((item) => item.id === activeTabId) ?? tabs[0]
-  const openFileTab = (file: WorkspaceFileInfo, viewMode: 'file' | 'diff' = 'file') => {
+  const openFileTab = useCallback((file: WorkspaceFileInfo, viewMode: 'file' | 'diff' = 'file') => {
     const id = `file:${file.path}`
     setTabs((current) => {
       const existing = current.find((item) => item.id === id)
@@ -112,7 +112,7 @@ export function CodingWorkspacePanel({
     })
     setActiveTabId(id)
     onFileSelect?.(file)
-  }
+  }, [onFileSelect])
   const closeTab = (id: string) => {
     if (id === 'review') return
     setTabs((current) => current.filter((item) => item.id !== id))
@@ -127,6 +127,12 @@ export function CodingWorkspacePanel({
     if (!query) return allFiles.slice(0, 30)
     return allFiles.filter((file) => file.path.toLowerCase().includes(query)).slice(0, 30)
   }, [fileSearch, files.data?.files])
+
+  useEffect(() => {
+    if (!selectedFilePath || files.data?.files == null) return
+    const file = files.data.files.find((item) => item.path === selectedFilePath)
+    if (file) openFileTab(file)
+  }, [files.data?.files, openFileTab, selectedFilePath])
 
   useEffect(() => {
     if (fileSearchOpen) searchInputRef.current?.focus()

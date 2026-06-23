@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import type React from 'react'
-import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { WorkspaceFileInfo } from '@/api/types'
@@ -80,6 +80,15 @@ async function renderViewer(file: WorkspaceFileInfo | null = readme, onAddCommen
 }
 
 describe('Coding workspace two-layer file preview', () => {
+  it('opens the selected file path as a file tab', async () => {
+    const onFileSelect = mock(() => {})
+    await renderWorkspacePanel(onFileSelect, 'README.md')
+
+    await waitFor(() => expect(onFileSelect).toHaveBeenCalledWith(readme))
+    expect(screen.getAllByTitle('README.md').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByText('const')).toBeTruthy()
+  })
+
   it('opens file tabs from the plus file search', async () => {
     const user = userEvent.setup()
     const onFileSelect = mock(() => {})

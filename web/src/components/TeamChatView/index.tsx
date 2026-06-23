@@ -1176,7 +1176,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
           />
         )}
         </main>
-        {mode === 'coding' && workspace && codingFileViewer !== null && (
+        {mode === 'coding' && workspace && codingFileViewer !== null && codingPanel === null && (
           <CodingFileViewerPanel
             workspace={workspace}
             file={codingFileViewer}

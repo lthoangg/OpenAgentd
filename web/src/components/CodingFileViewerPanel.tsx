@@ -309,6 +309,38 @@ function DiffPreview({ diff }: { diff: string }) {
   )
 }
 
+export function CodingFilePreviewContent({
+  workspace,
+  file,
+  viewMode,
+  onAddComment,
+}: {
+  workspace: string
+  file: WorkspaceFileInfo
+  viewMode: 'file' | 'diff'
+  onAddComment?: (path: string, startLine: number, endLine: number) => void
+}) {
+  const scopedDiff = useQuery({
+    queryKey: [...queryKeys.coding.diff(workspace), file.path] as const,
+    queryFn: () => getCodingWorkspaceGitDiff(workspace, [file.path]),
+    enabled: viewMode === 'diff',
+    staleTime: 5_000,
+  })
+  const kind = kindOf(file)
+
+  if (viewMode === 'diff') {
+    return scopedDiff.isLoading ? <div className="flex h-full items-center justify-center"><Loader2 size={16} className="animate-spin text-(--color-text-subtle)" /></div>
+      : scopedDiff.isError ? <div className="flex h-full items-center justify-center px-4 text-center text-xs text-(--color-error)">Failed to load diff</div>
+        : !scopedDiff.data?.is_git_repo ? <div className="flex h-full items-center justify-center px-4 text-center text-xs text-(--color-text-subtle)">Not a git repository</div>
+          : !scopedDiff.data.diff ? <div className="flex h-full items-center justify-center px-4 text-center text-xs text-(--color-text-subtle)">No diff for this file</div>
+            : <DiffPreview diff={scopedDiff.data.diff} />
+  }
+
+  return kind === 'image' ? <ImagePreview workspace={workspace} file={file} />
+    : kind === 'text' ? <TextPreview key={file.path} workspace={workspace} file={file} onAddComment={onAddComment} />
+      : <BinaryPreview workspace={workspace} file={file} />
+}
+
 export function CodingFileViewerPanel({
   workspace,
   file,
@@ -332,12 +364,6 @@ export function CodingFileViewerPanel({
     disabled: mobile,
   })
   const [viewMode, setViewMode] = useState<'file' | 'diff'>('file')
-  const scopedDiff = useQuery({
-    queryKey: [...queryKeys.coding.diff(workspace), file?.path ?? null] as const,
-    queryFn: () => getCodingWorkspaceGitDiff(workspace, file ? [file.path] : []),
-    enabled: file !== null && viewMode === 'diff',
-    staleTime: 5_000,
-  })
   if (!file) return null
 
   const kind = kindOf(file)
@@ -392,15 +418,7 @@ export function CodingFileViewerPanel({
           </div>
         </header>
         <div className="min-h-0 flex-1 overflow-hidden">
-          {viewMode === 'diff' ? (
-            scopedDiff.isLoading ? <div className="flex h-full items-center justify-center"><Loader2 size={16} className="animate-spin text-(--color-text-subtle)" /></div>
-              : scopedDiff.isError ? <div className="flex h-full items-center justify-center px-4 text-center text-xs text-(--color-error)">Failed to load diff</div>
-                : !scopedDiff.data?.is_git_repo ? <div className="flex h-full items-center justify-center px-4 text-center text-xs text-(--color-text-subtle)">Not a git repository</div>
-                  : !scopedDiff.data.diff ? <div className="flex h-full items-center justify-center px-4 text-center text-xs text-(--color-text-subtle)">No diff for this file</div>
-                    : <DiffPreview diff={scopedDiff.data.diff} />
-          ) : kind === 'image' ? <ImagePreview workspace={workspace} file={file} />
-            : kind === 'text' ? <TextPreview key={file.path} workspace={workspace} file={file} onAddComment={onAddComment} />
-              : <BinaryPreview workspace={workspace} file={file} />}
+          <CodingFilePreviewContent workspace={workspace} file={file} viewMode={viewMode} onAddComment={onAddComment} />
         </div>
       </div>
     </motion.aside>

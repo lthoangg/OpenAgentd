@@ -179,27 +179,29 @@ Each `FileRow` shows a type-aware icon (`FileImage` / `FileCode` /
 
 ---
 
-## Coding Changed & Files view
+## Coding workspace dock
 
-The `/coding` workspace panel (`CodingWorkspacePanel.tsx`) is a right-side
-sidebar with two list-only tabs:
+The `/coding` workspace panel (`CodingWorkspacePanel.tsx`) is a right-side dock
+with an opencode-style tab strip:
 
-- **Changed** — default view. Parses `GET /api/team/workspace/git-diff/view`
-  into changed paths with status badges (`A` / `M`) and `+N/-N` counts.
-  Selecting a row opens the existing center file viewer instead of rendering
-  diff content in the sidebar.
-- **Files** — full recursive workspace tree from
-  `GET /api/team/workspace/files/list`, with changed files/folders highlighted.
+- **Changes** is the permanent tab. It parses
+  `GET /api/team/workspace/git-diff/view` into changed paths with status badges
+  (`A` / `M` / `D`) and `+N/-N` counts. Selecting a changed row opens that file
+  as a dock tab in **Diff** mode.
+- **File tabs** open inside the dock. They render the same read-only preview
+  content as the standalone file viewer, including the touch-friendly
+  **File / Diff** toggle and scoped file diffs.
+- **+ file search** opens a command-palette-style overlay for searching files
+  from `GET /api/team/workspace/files/list`. Selecting a result opens it as a
+  dock tab.
 
-The center file viewer (`CodingFileViewerPanel.tsx`) owns preview rendering. It
-shows file contents by default and offers a touch-friendly **File / Diff** toggle
-for the selected file. Diff mode fetches a scoped diff for that file only, so the
-right sidebar remains focused on `Changed` / `Files` navigation while preview
-content stays in the main workspace area.
-
-Desktop users can resize the normal sidebar, coding sidebar, workspace panel,
-and file viewer via thin drag handles; widths persist in local storage. Mobile
-keeps drawer/master-detail behavior and does not expose resize handles.
+When the workspace dock is open, file content stays inside the dock instead of
+opening an additional right-side file viewer. The standalone
+`CodingFileViewerPanel.tsx` remains available for flows that open a file without
+the workspace dock. Desktop users can resize the normal sidebar, coding sidebar,
+workspace dock, and standalone file viewer via thin drag handles; widths persist
+in local storage. Mobile keeps drawer/master-detail behavior and does not expose
+resize handles.
 
 ---
 

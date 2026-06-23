@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import type React from 'react'
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { WorkspaceFileInfo } from '@/api/types'
@@ -24,7 +24,9 @@ mock.module('lucide-react', () => ({
   Folder: Icon,
   GitCompare: Icon,
   Loader2: Icon,
+  Plus: Icon,
   RefreshCw: Icon,
+  Search: Icon,
   X: Icon,
 }))
 mock.module('@/hooks/useReducedMotion', () => ({ useReducedMotion: () => false }))
@@ -78,32 +80,34 @@ async function renderViewer(file: WorkspaceFileInfo | null = readme, onAddCommen
 }
 
 describe('Coding workspace two-layer file preview', () => {
-  it('keeps the workspace file tree visible and emits selected file to parent', async () => {
+  it('opens file tabs from the plus file search', async () => {
     const user = userEvent.setup()
     const onFileSelect = mock(() => {})
     await renderWorkspacePanel(onFileSelect)
-    await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
 
+    await user.click(screen.getByRole('button', { name: /open file search/i }))
+    await waitFor(() => expect(screen.getByRole('textbox', { name: /search workspace files/i })).toBeTruthy())
+    await user.type(screen.getByRole('textbox', { name: /search workspace files/i }), 'readme')
     await user.click(screen.getByTitle('README.md'))
 
     expect(onFileSelect).toHaveBeenCalledWith(readme)
-    expect(screen.getByRole('button', { name: /files/i })).toBeTruthy()
-    expect(screen.getByText('README.md')).toBeTruthy()
+    expect(screen.getByRole('button', { name: /changes/i })).toBeTruthy()
+    expect(screen.getByText('const')).toBeTruthy()
   })
 
-  it('highlights the selected file path and emits null when clicked again', async () => {
+  it('opens the first matching file with Enter from file search', async () => {
     const user = userEvent.setup()
     const onFileSelect = mock(() => {})
-    await renderWorkspacePanel(onFileSelect, 'README.md')
-    await waitFor(() => expect(screen.getByTitle('README.md')).toBeTruthy())
+    await renderWorkspacePanel(onFileSelect)
 
-    expect(screen.getByTitle('README.md').className).toContain('text-(--color-accent)')
-    await user.click(screen.getByTitle('README.md'))
+    await user.click(screen.getByRole('button', { name: /open file search/i }))
+    await user.type(screen.getByRole('textbox', { name: /search workspace files/i }), 'readme{Enter}')
 
-    expect(onFileSelect).toHaveBeenCalledWith(null)
+    expect(onFileSelect).toHaveBeenCalledWith(readme)
+    await waitFor(() => expect(screen.getAllByTitle('README.md').length).toBeGreaterThanOrEqual(1))
   })
 
-  it('marks git-modified files and parent folders in the files tab', async () => {
+  it('opens changed files as diff-focused file tabs from Review', async () => {
     diffResponse = {
       workspace: WORKSPACE,
       is_git_repo: true,
@@ -113,16 +117,14 @@ describe('Coding workspace two-layer file preview', () => {
 
     const user = userEvent.setup()
     await renderWorkspacePanel()
-    await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
+    await waitFor(() => expect(screen.getByTitle('README.md')).toBeTruthy())
 
-    await user.click(screen.getByRole('button', { name: /changed/i }))
-    await waitFor(() => expect(screen.getByRole('button', { name: /files/i })).toBeTruthy())
-    await user.click(screen.getByRole('button', { name: /files/i }))
+    const changedRow = screen.getByTitle('README.md')
+    expect(changedRow.textContent).toContain('M')
+    await user.click(changedRow)
 
-    expect(screen.getByTitle('README.md').textContent).toContain('M')
-    await user.click(screen.getByText('assets'))
-    expect(screen.getByLabelText('Contains modified files')).toBeTruthy()
-    expect(screen.getByTitle('assets/logo.png').textContent).toContain('M')
+    expect(screen.getAllByTitle('README.md').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByRole('button', { name: /diff/i }).className).toContain('bg-(--bg-key)')
   })
 
   it('marks git-deleted files and opens a deleted-file placeholder instead of loading 404 content', async () => {
@@ -135,13 +137,11 @@ describe('Coding workspace two-layer file preview', () => {
     const user = userEvent.setup()
     const onFileSelect = mock(() => {})
     await renderWorkspacePanel(onFileSelect)
-    await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
-
-    await user.click(screen.getByRole('button', { name: /changed/i }))
     await waitFor(() => expect(screen.getByTitle('deleted.txt')).toBeTruthy())
-    await user.click(screen.getByTitle('deleted.txt'))
+    const deletedRow = screen.getByTitle('deleted.txt')
+    await user.click(deletedRow)
 
-    expect(screen.getByTitle('deleted.txt').textContent).toContain('D')
+    expect(deletedRow.textContent).toContain('D')
     expect(onFileSelect).toHaveBeenCalledWith({ path: 'deleted.txt', name: 'deleted.txt', size: 0, mtime: 0, mime: 'text/plain', deleted: true })
 
     await renderViewer({ path: 'deleted.txt', name: 'deleted.txt', size: 0, mtime: 0, mime: 'text/plain', deleted: true })
@@ -208,12 +208,13 @@ describe('Coding workspace two-layer file preview', () => {
     expect(panel.className).not.toContain('h-[calc(100%+2.5rem)]')
   })
 
-  it('keeps the desktop workspace panel extended under non-macOS headers', async () => {
+  it('keeps the desktop workspace panel inside the app shell under non-macOS headers', async () => {
     await renderWorkspacePanel(mock(() => {}), null, false)
 
     const panel = screen.getByRole('complementary')
-    expect(panel.className).toContain('-mt-10')
-    expect(panel.className).toContain('h-[calc(100%+2.5rem)]')
+    expect(panel.className).toContain('h-full')
+    expect(panel.className).not.toContain('-mt-10')
+    expect(panel.className).not.toContain('h-[calc(100%+2.5rem)]')
   })
 
   it('positions the mobile file viewer below the app header and keeps the preview full-width', async () => {

@@ -36,6 +36,7 @@ Usage::
 
 from __future__ import annotations
 
+import json
 import time
 from typing import TYPE_CHECKING, Awaitable, Callable
 
@@ -255,22 +256,36 @@ def _expand_tool_pair_ids(messages: list, seed_ids: set[int]) -> set[int]:
 
 
 def _skill_tool_pair_ids(messages: list) -> set[int]:
-    """Return ids for visible assistant→skill tool-result pairs.
+    """Return ids for the first visible assistant→skill tool-result pair per skill.
 
     Skill tool results contain active instruction text. During compaction they
     must remain in the provider-visible transcript so the agent can keep using
-    the loaded skill without calling the tool again. Preserve the assistant
-    ``tool_calls`` message as well so provider tool-call ordering stays valid.
+    the loaded skill without calling the tool again. Preserve only the first
+    successful load per skill so duplicate "already loaded" pairs can compact
+    away instead of accumulating forever. Preserve the assistant ``tool_calls``
+    message as well so provider tool-call ordering stays valid.
     """
     skill_call_ids: set[str] = set()
     message_ids: set[int] = set()
+    seen_skills: set[str] = set()
 
     for m in messages:
         if isinstance(m, AssistantMessage) and m.tool_calls:
             for tc in m.tool_calls:
-                if tc.id and tc.function.name == "skill":
-                    skill_call_ids.add(tc.id)
-                    message_ids.add(id(m))
+                if not tc.id or tc.function.name != "skill":
+                    continue
+                try:
+                    args = json.loads(tc.function.arguments or "{}")
+                except (TypeError, json.JSONDecodeError):
+                    continue
+                skill_name = args.get("skill_name")
+                if not isinstance(skill_name, str) or not skill_name:
+                    continue
+                if skill_name in seen_skills:
+                    continue
+                seen_skills.add(skill_name)
+                skill_call_ids.add(tc.id)
+                message_ids.add(id(m))
 
     if not skill_call_ids:
         return set()

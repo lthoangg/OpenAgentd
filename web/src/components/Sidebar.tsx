@@ -293,7 +293,7 @@ export function Sidebar({
           ? { x: mobileOpen ? 0 : -280, width: 'min(272px, calc(100vw - 2rem))' }
           : { width: desktopWidth }
       }
-      transition={{ duration: prefersReducedMotion ? 0.01 : 0.22, ease: [0.4, 0, 0.2, 1] }}
+      transition={{ duration: resizable.isResizing || prefersReducedMotion ? 0.01 : 0.22, ease: [0.4, 0, 0.2, 1] }}
       className={
         isMobile
           ? 'mobile-safe-top fixed bottom-0 left-0 z-40 flex w-[min(272px,calc(100vw-2rem))] shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page) shadow-xl'

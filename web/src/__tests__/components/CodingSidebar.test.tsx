@@ -625,7 +625,7 @@ describe('CodingSidebar workspace trust flow', () => {
   })
 
   it('loads more sessions at the bottom of a workspace session list', async () => {
-    const user = userEvent.setup()
+    const _user = userEvent.setup()
     sessionsData = [
       {
         id: 'session-1',

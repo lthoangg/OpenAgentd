@@ -270,6 +270,7 @@ async def test_text_mention_carries_truncation_cap(workspace, monkeypatch):
     )
     assert len(out) == 1
     assert out[0].truncate_inline_to == 1234
+    assert out[0].source == "mention"
 
 
 @pytest.mark.asyncio

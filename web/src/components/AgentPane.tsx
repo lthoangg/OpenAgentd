@@ -119,6 +119,7 @@ function UserBubble({ content, timestamp, attachments, onRevert, modelId, shell 
       ? lines.slice(0, USER_COLLAPSE_LINES).join('\n')
       : `${content.slice(0, USER_COLLAPSE_CHARS).trimEnd()}...`
     : content
+  const visibleAttachments = attachments?.filter((att) => att.source !== 'mention') ?? []
 
   return (
     <div
@@ -128,9 +129,9 @@ function UserBubble({ content, timestamp, attachments, onRevert, modelId, shell 
     >
       <div className="flex max-w-full flex-col items-end gap-1.5 md:max-w-[85%]">
          {/* Attachments (compact) */}
-         {attachments && attachments.length > 0 && (
+         {visibleAttachments.length > 0 && (
            <div className="flex flex-wrap justify-end gap-1.5">
-             {attachments.map((att: MessageAttachment, idx: number) => {
+             {visibleAttachments.map((att: MessageAttachment, idx: number) => {
                const isImage = att.category === 'image'
 
                if (isImage) {

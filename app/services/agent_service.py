@@ -125,6 +125,7 @@ class RawAttachment:
     content_type: str | None
     data: bytes
     truncate_inline_to: int | None = None
+    source: str | None = None
 
 
 class AttachmentError(Exception):
@@ -273,6 +274,8 @@ async def _persist_attachment(
         "category": category,
         "url": f"/api/team/{session_id}/uploads/{filename}",
     }
+    if att.source:
+        meta["source"] = att.source
     if category == "text":
         try:
             text = data.decode("utf-8")

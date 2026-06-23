@@ -50,6 +50,42 @@ function renderStream(props: Partial<React.ComponentProps<typeof AgentView>> = {
 // ── tests ────────────────────────────────────────────────────────────────────
 
 describe("AgentView — mentioned files", () => {
+  it("hides mention-generated attachment cards", () => {
+    renderStream({
+      blocks: [{
+        ...makeUserBlock("u1", "Use @Makefile#L4-L6"),
+        attachments: [{
+          filename: "generated.txt",
+          original_name: "Makefile#L4-L6",
+          category: "text",
+          media_type: "text/plain",
+          url: "/api/team/session/uploads/generated.txt",
+          source: "mention",
+        }],
+      }],
+    })
+
+    expect(screen.getByText("@Makefile#L4-L6")).toBeTruthy()
+    expect(screen.queryByText("Makefile#L4-L6")).toBeNull()
+  })
+
+  it("shows explicit upload attachment cards", () => {
+    renderStream({
+      blocks: [{
+        ...makeUserBlock("u1", "Use attached notes"),
+        attachments: [{
+          filename: "generated.txt",
+          original_name: "notes.txt",
+          category: "text",
+          media_type: "text/plain",
+          url: "/api/team/session/uploads/generated.txt",
+        }],
+      }],
+    })
+
+    expect(screen.getByText("notes.txt")).toBeTruthy()
+  })
+
   it("opens a clicked file mention", async () => {
     const user = userEvent.setup()
     const onMentionFileOpen = mock(() => {})

@@ -14,12 +14,8 @@ mock.module('@/hooks/use-mobile', () => ({
   useIsMobile: () => false,
 }))
 
-let soundEnabled = true
-
 mock.module('@/lib/desktop-notifications', () => ({
-  areDesktopNotificationSoundsEnabled: () => soundEnabled,
   areDesktopNotificationsEnabled: () => enabled,
-  setDesktopNotificationSoundsEnabled: (next: boolean) => { soundEnabled = next },
   setDesktopNotificationsEnabled: (next: boolean) => { enabled = next },
   sendDesktopNotification: mockSendDesktopNotification,
 }))
@@ -28,7 +24,6 @@ import { NotificationSettingsPage } from '@/routes/settings.notifications'
 
 beforeEach(() => {
   enabled = true
-  soundEnabled = true
   mockSendDesktopNotification.mockReset()
   mockSendDesktopNotification.mockImplementation(() => Promise.resolve({ status: 'sent', message: 'Native notification sent.' }))
 })
@@ -40,10 +35,6 @@ describe('NotificationSettingsPage', () => {
     const enabledSwitch = screen.getByRole('switch', { name: /enabled/i })
     expect(enabledSwitch.parentElement?.className).toContain('min-h-11')
     expect(enabledSwitch.parentElement?.className).toContain('md:min-h-0')
-
-    const soundSwitch = screen.getByRole('switch', { name: /play sound/i })
-    expect(soundSwitch.parentElement?.className).toContain('min-h-11')
-    expect(soundSwitch.parentElement?.className).toContain('md:min-h-0')
 
     const testButton = screen.getByRole('button', { name: /send test notification/i })
     expect(testButton.className).toContain('min-h-11')
@@ -59,12 +50,11 @@ describe('NotificationSettingsPage', () => {
     expect(screen.getByRole('button', { name: /send test notification/i }).hasAttribute('disabled')).toBe(true)
   })
 
-  it('toggles notification sound', async () => {
+  it('explains notification sound is managed by the OS', () => {
     render(<NotificationSettingsPage />)
 
-    await userEvent.click(screen.getByRole('switch', { name: /play sound/i }))
-
-    expect(soundEnabled).toBe(false)
+    expect(screen.queryByRole('switch', { name: /play sound/i })).toBeNull()
+    expect(screen.getByText(/Notification sounds are controlled by your operating system/i)).toBeTruthy()
   })
 
   it('sends only a forced native test notification', async () => {

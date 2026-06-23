@@ -15,8 +15,6 @@ export interface DesktopNotificationResult {
 }
 
 const ENABLED_KEY = 'oa-desktop-notifications-enabled'
-const SOUND_ENABLED_KEY = 'oa-desktop-notifications-sound-enabled'
-
 let permissionRequested = false
 
 function formatNotificationError(err: unknown): string {
@@ -47,24 +45,6 @@ export function areDesktopNotificationsEnabled(): boolean {
 export function setDesktopNotificationsEnabled(enabled: boolean): void {
   if (typeof window === 'undefined') return
   window.localStorage.setItem(ENABLED_KEY, String(enabled))
-}
-
-export function areDesktopNotificationSoundsEnabled(): boolean {
-  if (typeof window === 'undefined') return true
-  return window.localStorage.getItem(SOUND_ENABLED_KEY) !== 'false'
-}
-
-export function setDesktopNotificationSoundsEnabled(enabled: boolean): void {
-  if (typeof window === 'undefined') return
-  window.localStorage.setItem(SOUND_ENABLED_KEY, String(enabled))
-}
-
-function playNotificationSound(): void {
-  if (!areDesktopNotificationSoundsEnabled()) return
-  const audio = new Audio('/notification.wav')
-  audio.play().catch((err: unknown) => {
-    console.warn('desktop notification sound failed', err)
-  })
 }
 
 export function isBackgroundCompletion(toolName: string, result: string | undefined): boolean {
@@ -124,7 +104,6 @@ export async function sendDesktopNotification(
         group: `openagentd-${payload.kind}`,
       },
     })
-    playNotificationSound()
     return { status: 'sent', message: 'Native notification sent.' }
   } catch (err) {
     console.warn('desktop notification failed', err)

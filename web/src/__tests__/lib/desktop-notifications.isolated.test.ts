@@ -31,7 +31,7 @@ async function runWorker(name: string): Promise<void> {
 }
 
 describe('desktop notification library integration', () => {
-  it('sends native notifications when the desktop window is not focused', async () => {
+  it('sends native notifications without an extra in-app sound', async () => {
     await runWorker('unfocused native send')
   })
 
@@ -39,7 +39,7 @@ describe('desktop notification library integration', () => {
     await runWorker('focused skip and forced send')
   })
 
-  it('sends native notifications in the mobile app without focused-window skip', async () => {
+  it('sends native notifications in the mobile app without focused-window skip or in-app sound', async () => {
     await runWorker('mobile native app')
   })
 

@@ -38,7 +38,7 @@ Go to **Settings → About → Updates**, click **Cancel**, then try again. If i
 
 ### Desktop notifications don't appear
 
-Open **Settings → Notifications**, enable notifications, and send a test notification. Also check the OS permission at **System Settings → Notifications → OpenAgentd**.
+Open **Settings → Notifications**, enable notifications, and send a test notification. Also check the OS permission at **System Settings → Notifications → OpenAgentd**. Notification sounds are controlled by the operating system, not by a separate OpenAgentd sound setting.
 
 ## CLI / server (developers)
 

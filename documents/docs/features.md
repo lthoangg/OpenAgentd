@@ -68,9 +68,8 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   background tasks, scheduled reminders in the desktop app, plus local native
   notifications in the remote-backend mobile shell `[v1.34.0]`. Per-session
   context (coding workspace name when available). Settings → Notifications to
-  toggle or send a test.
-- **Notification sounds** `[v1.22.0]` — separate Play sound toggle so you can
-  keep visual notifications on while muting audio.
+  toggle or send a test. Notification sounds are handled by the operating
+  system; OpenAgentd does not play an extra in-app sound.
 - **Command palette** `[since v1.0]` — `Ctrl+P` (or `Cmd+P`). Search sessions,
   agents, files, slash commands, settings.
 - **Type-to-focus composer** `[v1.40.0]` — in cockpit and coding chat, start

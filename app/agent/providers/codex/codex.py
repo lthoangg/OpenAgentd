@@ -47,6 +47,20 @@ class _CodexResponsesHandler(ResponsesHandler):
     leading SystemMessage into ``instructions`` before building the request.
     """
 
+    def convert_messages(self, messages: list[ChatMessage]) -> list[dict[str, Any]]:
+        """Convert messages to Codex's stricter Responses item shape.
+
+        Upstream Codex models message content as ``Vec<ContentItem>``. The
+        ChatGPT Codex endpoint can intermittently reject plain string content,
+        so text-only user turns are sent as explicit ``input_text`` items.
+        """
+        items = super().convert_messages(messages)
+        for item in items:
+            content = item.get("content")
+            if item.get("role") == "user" and isinstance(content, str):
+                item["content"] = [{"type": "input_text", "text": content}]
+        return items
+
     def build_request(
         self,
         messages: list[ChatMessage],

@@ -100,7 +100,12 @@ class ResponsesHandler:
 
             elif isinstance(msg, AssistantMessage):
                 if msg.content:
-                    input_items.append({"role": "assistant", "content": msg.content})
+                    input_items.append(
+                        {
+                            "role": "assistant",
+                            "content": [{"type": "output_text", "text": msg.content}],
+                        }
+                    )
                 if msg.tool_calls:
                     for tc in msg.tool_calls:
                         # Only include if call_id is non-empty

@@ -9,7 +9,6 @@ import { formatBytes } from '@/utils/format'
 import { workspaceLabel } from '@/utils/workspace'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { useResizableWidth } from '@/hooks/use-resizable-width'
-import { usePlatform } from '@/hooks/use-platform'
 import type { WorkspaceFileInfo, WorkspaceGitDiffResponse } from '@/api/types'
 
 interface TreeNode {
@@ -190,7 +189,6 @@ export function CodingWorkspacePanel({
   onFileSelect?: (file: WorkspaceFileInfo | null) => void
 }) {
   const prefersReducedMotion = useReducedMotion()
-  const { isMacOverlay } = usePlatform()
   const [tab, setTab] = useState<'files' | 'changed'>(initialTab)
   const files = useQuery({
     queryKey: queryKeys.coding.files(workspace),
@@ -227,7 +225,7 @@ export function CodingWorkspacePanel({
       transition={{ duration: resizable.isResizing || prefersReducedMotion ? 0.01 : 0.22, ease: [0.4, 0, 0.2, 1] }}
       className={cn(
         'fixed bottom-0 right-0 z-40 min-h-0 w-full overflow-hidden border-l border-(--color-border) bg-(--bg-page) shadow-xl md:relative md:inset-y-auto md:right-auto md:z-auto md:w-auto md:shrink-0 md:shadow-none',
-        mobile ? 'mobile-safe-top max-w-none' : isMacOverlay ? 'h-full' : '-mt-10 h-[calc(100%+2.5rem)]',
+        mobile ? 'mobile-safe-top max-w-none' : 'h-full',
       )}
     >
       <div className={cn('relative flex h-full min-h-0 w-full flex-col', mobile ? 'max-w-none' : 'md:w-full')}>

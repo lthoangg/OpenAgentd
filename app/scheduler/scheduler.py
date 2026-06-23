@@ -478,6 +478,9 @@ class TaskScheduler:
                 break
             task = fresh
 
+            if not task.enabled or _schedule_exhausted(task):
+                break
+
             # One-shot "at" tasks exit after firing
             if task.schedule_type == "at":
                 break

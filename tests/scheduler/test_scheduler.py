@@ -589,6 +589,27 @@ class TestFireTaskErrors:
         assert row.status == "completed"
         assert row.next_fire_at is None
 
+    async def test_timer_loop_exits_after_max_runs(
+        self, scheduler, db_factory, mock_dispatch
+    ):
+        task = _make_task(name="finite_timer", every_seconds=1, max_runs=1)
+        await scheduler.add(task)
+
+        for _ in range(150):
+            await asyncio.sleep(0.01)
+            if task.id not in scheduler._tasks:
+                break
+
+        async with db_factory() as session:
+            row = await session.get(ScheduledTask, task.id)
+
+        assert row is not None
+        assert row.run_count == 1
+        assert row.enabled is False
+        assert row.status == "completed"
+        assert row.next_fire_at is None
+        assert task.id not in scheduler._tasks
+
     async def test_failed_finite_task_does_not_complete(self, scheduler, db_factory):
         task = _make_task(name="finite_failed", max_runs=1)
         await scheduler.add(task)

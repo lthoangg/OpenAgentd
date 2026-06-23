@@ -13,6 +13,7 @@
  */
 
 import { ExternalLink, FileText, Globe } from 'lucide-react'
+import { truncateForDisplay } from './ToolCall/displayText'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -134,7 +135,7 @@ function ShellResult({ result }: { result: string }) {
   // First line is typically "[Succeeded]" or "[Failed — exit code N]"
   const firstNewline = result.indexOf('\n')
   const statusLine = firstNewline >= 0 ? result.slice(0, firstNewline).trim() : result.trim()
-  const body = firstNewline >= 0 ? result.slice(firstNewline + 1).trimStart() : ''
+  const body = firstNewline >= 0 ? truncateForDisplay(result.slice(firstNewline + 1).trimStart()) : ''
 
   const success = statusLine.startsWith('[Succeeded')
 
@@ -168,7 +169,7 @@ function FileListResult({ result }: { result: string }) {
   const parsed = tryParseJSON(result)
   const entries: string[] = Array.isArray(parsed)
     ? parsed.map(String)
-    : result
+    : truncateForDisplay(result)
         .split('\n')
         .map((l) => l.trim())
         .filter(Boolean)
@@ -195,7 +196,7 @@ function FileReadResult({ result }: { result: string }) {
   // only the actual file content.
   const match = result.match(/^\[(\d+)-(\d+)\/(\d+)\]\n([\s\S]*)$/)
   const rangeLabel = match ? `lines ${match[1]}–${match[2]} of ${match[3]}` : 'file contents'
-  const body = match ? match[4] : result
+  const body = truncateForDisplay(match ? match[4] : result)
 
   return (
     <div className="min-w-0 overflow-hidden rounded-md border border-(--color-border) bg-(--bg-card)">
@@ -278,10 +279,11 @@ function GenericResult({ result }: { result: string }) {
     parsed !== null && typeof parsed === 'object'
       ? JSON.stringify(parsed, null, 2)
       : result
+  const clipped = truncateForDisplay(display)
 
   return (
     <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-(--color-text-2)">
-      {display}
+      {clipped}
     </pre>
   )
 }

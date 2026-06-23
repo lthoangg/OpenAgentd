@@ -185,6 +185,18 @@ describe("ToolCall — web_search display", () => {
 })
 
 describe("ToolCall — diff stats", () => {
+  it("summarizes write content instead of rendering full file contents as args", async () => {
+    const user = userEvent.setup()
+    const content = Array.from({ length: 20 }, (_, index) => `line ${index + 1}`).join("\n")
+    const args = JSON.stringify({ path: "src/generated.txt", content })
+
+    render(<ToolCall name="write" args={args} done={false} />)
+    await user.click(screen.getByRole("button", { name: "Expand write details" }))
+
+    expect(screen.getByText(/content: 20 lines/)).toBeTruthy()
+    expect(screen.queryByText("line 20")).toBeNull()
+  })
+
   it("keeps diff file headers sticky within their own scroll container", async () => {
     const user = userEvent.setup()
     const args = JSON.stringify({
@@ -678,6 +690,14 @@ describe("ToolCall — skill display", () => {
     // Button should not be clickable (cursor-default)
     expect(btn.className).toContain("cursor-default")
     expect(btn.className).not.toContain("cursor-pointer")
+  })
+
+  it("suppresses the loaded instruction body in the result panel", () => {
+    const args = JSON.stringify({ skill_name: "guidelines" })
+    render(<ToolCall name="skill" args={args} done={true} result="Very long skill instructions" />)
+
+    expect(screen.queryByText("Very long skill instructions")).toBeNull()
+    expect(screen.getByRole("button").className).toContain("cursor-default")
   })
 })
 

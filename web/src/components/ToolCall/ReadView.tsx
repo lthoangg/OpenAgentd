@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Check, Copy, FileText } from 'lucide-react'
+import { truncateForDisplay } from './displayText'
 
 interface ReadViewProps {
   args: string
@@ -22,10 +23,10 @@ function parseArgs(args: string): { path: string } {
 
 function parseReadResult(result: string): { label: string; body: string; startLine: number } {
   const match = result.match(/^\[(\d+)-(\d+)\/(\d+)\]\n([\s\S]*)$/)
-  if (!match) return { label: 'file contents', body: result, startLine: 1 }
+  if (!match) return { label: 'file contents', body: truncateForDisplay(result), startLine: 1 }
   return {
     label: `lines ${match[1]}–${match[2]} of ${match[3]}`,
-    body: match[4],
+    body: truncateForDisplay(match[4]),
     startLine: Number(match[1]),
   }
 }

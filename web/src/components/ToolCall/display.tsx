@@ -17,6 +17,7 @@
 import type { ReactNode } from 'react'
 import type { ToolDisplay } from './types'
 import { parsePatchText } from './diffUtils'
+import { summarizeText } from './displayText'
 
 /**
  * Keep argument values in headers easy to restyle consistently.
@@ -276,13 +277,14 @@ export function getToolDisplay(name: string, args: string | undefined): ToolDisp
     return { header, headerTitle, formattedArgs: null }
   }
 
-  // ── skill: conversational header, hide raw args ─────────────
+  // ── skill: conversational header; instructions are for the model, not UI detail ──
   if (name === 'skill') {
     const skillName = str(parsed, 'skill_name')
     return {
       header: skillName ? <Arg>{skillName}</Arg> : null,
       headerTitle: skillName ? skillName : null,
       formattedArgs: null,
+      suppressResult: true,
     }
   }
 
@@ -398,7 +400,7 @@ export function getToolDisplay(name: string, args: string | undefined): ToolDisp
     return {
       header: fileName ? <Arg>{fileName}</Arg> : 'file',
       headerTitle: fileName ? fileName : 'file',
-      formattedArgs: content,
+      formattedArgs: summarizeText('content', content),
     }
   }
 

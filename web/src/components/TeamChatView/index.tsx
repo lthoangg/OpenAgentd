@@ -39,7 +39,7 @@ import { useTodosQuery } from '@/queries/useTodosQuery'
 import { useProvidersQuery, useTriggerDreamMutation } from '@/queries'
 import { useCommandsQuery } from '@/queries/useCommandsQuery'
 import { useSnippetsQuery } from '@/queries/useSnippetsQuery'
-import { renderCommand, renderSnippet, resolveApiUrl, resolveTeamSession } from '@/api/client'
+import { listCodingWorkspaceFiles, renderCommand, renderSnippet, resolveApiUrl, resolveTeamSession } from '@/api/client'
 import { useTeamStore } from '@/stores/useTeamStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { prependSession, prependWorkspaceSession } from '@/stores/cache-invalidation-bridge'
@@ -492,6 +492,25 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     setCodingFileViewer(file)
     if (isMobile && file) setCodingPanel(null)
   }, [isMobile])
+
+  const handleMentionFileOpen = useCallback(async (path: string) => {
+    if (mode !== 'coding' || !workspace) return
+    const cleanPath = path.split('#', 1)[0]
+    if (!cleanPath) return
+    setCodingPanel('files')
+    const current = codingFileViewer?.path === cleanPath ? codingFileViewer : null
+    if (current) {
+      setCodingFileViewer(current)
+      return
+    }
+    try {
+      const result = await listCodingWorkspaceFiles(workspace)
+      const file = result.files.find((item) => item.path === cleanPath)
+      if (file) setCodingFileViewer(file)
+    } catch {
+      // Keep the files panel open; the panel query will surface listing errors.
+    }
+  }, [codingFileViewer, mode, workspace])
 
   // Restore a queued message's text into the composer (fired by the
   // X button on PendingMessageQueue). Overwrites any current draft —
@@ -1184,6 +1203,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             lastError={agentStreams[activeAgent].lastError}
             isContinuing={isContinuing && activeAgent === leadName}
             onContinue={activeAgent === leadName ? continueTeam : undefined}
+            onMentionFileOpen={mode === 'coding' ? handleMentionFileOpen : undefined}
             emptyState={
               mode === 'coding' && workspace ? (
                 <div className="flex flex-col items-center justify-center py-16">

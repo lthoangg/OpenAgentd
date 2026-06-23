@@ -236,6 +236,15 @@ describe("ToolResult — GenericResult fallback", () => {
     render(<ToolResult toolName="edit" result="3 changes applied." />)
     expect(screen.getByText("3 changes applied.")).toBeTruthy()
   })
+
+  it("truncates very large generic results for display", () => {
+    const result = `start-${"x".repeat(20_000)}-end`
+    render(<ToolResult toolName="web_fetch" result={result} />)
+
+    expect(screen.getByText(/display truncated/)).toBeTruthy()
+    expect(screen.getByText(/start-/)).toBeTruthy()
+    expect(screen.getByText(/-end/)).toBeTruthy()
+  })
 })
 
 // ---------------------------------------------------------------------------

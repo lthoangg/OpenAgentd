@@ -214,11 +214,12 @@ export function appendToolOutput(
         (!toolCallId && block.toolName === name && !block.toolDone))
     ) {
       let newOutput = `${block.toolOutput ?? ''}${text}`
-      if (name === 'shell' || name === 'bash') {
-        const lines = newOutput.split('\n')
-        if (lines.length > 10) {
-          newOutput = '... [truncated live output] ...\n' + lines.slice(-10).join('\n')
-        }
+      const lines = newOutput.split('\n')
+      if (lines.length > 120) {
+        newOutput = '... [truncated live output] ...\n' + lines.slice(-120).join('\n')
+      }
+      if (newOutput.length > 24_000) {
+        newOutput = `... [truncated live output] ...\n${newOutput.slice(-24_000)}`
       }
       result[i] = { ...block, toolOutput: newOutput }
       return result

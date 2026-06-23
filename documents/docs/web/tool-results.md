@@ -2,7 +2,7 @@
 title: Tool Call & Result Rendering
 description: Inline tool-call rows with per-tool summaries, codeblock-style args/result panels, and custom renderers.
 status: stable
-updated: 2026-05-31
+updated: 2026-06-23
 ---
 
 # Tool Call & Result Rendering
@@ -24,6 +24,7 @@ ToolCall/index.tsx                  (inline row + header + expand/collapse)
   ├── formatToolLabel()             (custom_tool → Custom Tool)
   ├── Arg                           (marks argument values in summaries)
   ├── getToolDisplay()              (per-tool summary ReactNode & args formatting)
+  ├── displayText.ts                (display-only truncation/size summaries)
   └── ToolResult.tsx                (result section dispatcher)
         ├── WebSearchResult         — web_search
         ├── ShellResult             — shell
@@ -84,6 +85,18 @@ When expanded, the args and/or result sections slide open below the header insid
 - For other tools, each section has a header strip (`bg-(--bg-key)`, bottom divider) with an uppercase 10px mono label (`arguments` / `terminal` / `output` / `result`) and a copy button when applicable.
 - Generic result content uses the renderer's own scroll behavior; live and terminal output use their own scrollable max heights.
 
+### Display-size guardrails
+
+Tool rows intentionally distinguish **model-visible content** from **UI-visible content**. Some tool payloads must remain available to the agent (for example a loaded skill body), but showing them verbatim in the cockpit is noisy and can make the browser retain large strings. The frontend therefore applies display-only guardrails:
+
+- `displayText.ts` provides `truncateForDisplay()` for result/read rendering and `summarizeText()` for large argument bodies.
+- Live tool output kept in the frontend stream state is capped to recent output before rendering.
+- `write` arguments show a line/size summary for `content` rather than the full file body.
+- `skill` suppresses the result panel; the loaded instructions still reach the model.
+- Generic, shell, file-list, and read result renderers truncate very large displayed text with a `... display truncated ...` marker.
+
+These display caps do not replace backend context controls such as `ToolResultOffloadHook` or shell/bg output truncation; they prevent UI bloat even when a result is useful or required in model context.
+
 ---
 
 ## Custom ToolCall display
@@ -112,7 +125,7 @@ Verbs are **deterministic** (no randomised phrase pools). Argument values shown 
 | `shell` | *[description]* (falls back to tool name if empty) | command string as bash block with non-selectable `$ ` prefix | `bash` |
 | `web_search` | *["query"]* | hidden | — |
 | `web_fetch` | *[domain]* (`www.` stripped) | hidden | — |
-| `write` | *[filename]* | rendered as an inline Git-like Diff View (all lines added) | — |
+| `write` | *[filename]* | `content: {N} lines · {size}` summary while running; completed calls render inline Git-like Diff View (all lines added) | `arguments` before completion |
 | `read` | *[filename]* — range suffix ` [start:end]` when `offset`/`limit` set | hidden | — |
 | `edit` | *[filename]* | rendered as an inline Git-like Diff View | — |
 | `rm` | *[filename]* | hidden | — |
@@ -122,7 +135,7 @@ Verbs are **deterministic** (no randomised phrase pools). Argument values shown 
 | `remember` | `Saving to memory…` | `[category] key: value` per item | `arguments` |
 | `forget` | `Removing from memory…` | `category: key` per item | `arguments` |
 | `recall` | `Checking memory…` | `category: key` filter, or hidden if empty | `arguments` |
-| `skill` | *[skill_name]* | hidden | — |
+| `skill` | *[skill_name]* | hidden; result panel suppressed because instructions are model context, not UI detail | — |
 | `note` | `Recording note…` | note `content` only (no JSON wrapper) | `arguments` |
 | `wiki_search` | *["query"]* | hidden | — |
 | `todo_manage` | Action summary, e.g. `Creating todo: `*[content]*, `Updating `*[N todos]*`…`, `Reading todos…` | simplified action list for create/update/batches; hidden for read/claim/delete | `arguments` when shown |
@@ -173,7 +186,7 @@ Backend returns `list[dict]` with `{title, href, body}` per result. The renderer
 
 Backend returns one of:
 - **Foreground:** `"[Succeeded]\n\n<stdout>"` or `"[Failed — exit code N]\n\n<stdout+stderr>"`
-- **Live foreground output:** optional `tool_output_delta` events append to the running tool card until `tool_end` arrives. To prevent UI lag, active live-streamed output is truncated to the last 50 lines. Once the process terminates, it is replaced with the full execution output (up to 300 lines).
+- **Live foreground output:** optional `tool_output_delta` events append to the running tool card until `tool_end` arrives. To prevent UI lag, active live-streamed output is capped in frontend state to recent output. Once the process terminates, it is replaced with the final execution output, which is also display-truncated when very large.
 
 Rendering:
 - First line is parsed as the status token. `Succeeded` uses `--color-success`; `Failed …` uses `--color-error`. No boxed chrome, no icons.
@@ -210,7 +223,7 @@ Backend returns compact roster text such as `Spawned: executor#1. Dismissed: exp
 ### `GenericResult` — everything else
 
 - If `result` parses as a JSON **object**, pretty-prints with `JSON.stringify(parsed, null, 2)`.
-- Otherwise renders as-is in a monospace `<pre>` (`max-h-64`, `break-words`).
+- Otherwise renders as-is in a monospace `<pre>` (`max-h-64`, `break-words`). Very large displayed text is clipped by `truncateForDisplay()` and keeps head/tail context with a `... display truncated ...` marker.
 - Default text color is `--color-text-2` — not `--color-success`. (Previously this renderer defaulted to green, which made every unrelated result — `write`, `edit`, `date`, `skill`, … — look "successful" even when the tool had no notion of success/failure.)
 
 ---

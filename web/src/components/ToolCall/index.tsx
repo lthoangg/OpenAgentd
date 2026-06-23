@@ -103,7 +103,7 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
 
   const { header, headerTitle, formattedArgs, language, suppressResult } =
     getToolDisplay(name, args)
-  const usesDiffView = name === 'edit' || name === 'patch' || name === 'write'
+  const usesDiffView = name === 'edit' || name === 'patch' || (name === 'write' && done)
   const usesReadView = name === 'read'
   const diffStats = (usesDiffView || name === 'rm') && args
     ? getDiffStats(name, args, result)

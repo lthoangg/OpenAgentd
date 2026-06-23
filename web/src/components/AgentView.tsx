@@ -65,6 +65,8 @@ interface AgentViewProps {
   onContinue?: () => void
   /** Optional slot rendered in place of the default mascot empty state. */
   emptyState?: React.ReactNode
+  /** Open a mentioned workspace file in the coding workspace sidebar. */
+  onMentionFileOpen?: (path: string) => void
 }
 
 const USER_COLLAPSE_LINES = 10
@@ -89,7 +91,7 @@ function shortModelName(modelId: string | null | undefined): string | null {
  * ``findCommittedMentions`` without refs falls back to syntax-only range
  * detection — same code path the overlay relies on.
  */
-function renderMentionSegments(content: string): React.ReactNode[] {
+function renderMentionSegments(content: string, onMentionFileOpen?: (path: string) => void): React.ReactNode[] {
   const ranges = findCommittedMentions(content, null)
   if (ranges.length === 0) return [content]
   const out: React.ReactNode[] = []
@@ -98,7 +100,18 @@ function renderMentionSegments(content: string): React.ReactNode[] {
     if (r.start > cursor) out.push(content.slice(cursor, r.start))
     const token = content.slice(r.start, r.end)
     const isFolder = token.endsWith('/')
-    out.push(
+    const path = token.slice(1)
+    out.push(onMentionFileOpen && !isFolder ? (
+      <button
+        key={r.start}
+        type="button"
+        data-mention-kind="file"
+        onClick={() => onMentionFileOpen(path)}
+        className="inline rounded-sm text-(--accent-blue-text) underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none"
+      >
+        {token}
+      </button>
+    ) : (
       <span
         key={r.start}
         data-mention-kind={isFolder ? 'directory' : 'file'}
@@ -107,15 +120,15 @@ function renderMentionSegments(content: string): React.ReactNode[] {
         }
       >
         {token}
-      </span>,
-    )
+      </span>
+    ))
     cursor = r.end
   }
   if (cursor < content.length) out.push(content.slice(cursor))
   return out
 }
 
-function UserBubble({ content, timestamp, attachments, onRevert, modelId, shell }: { content: string; timestamp?: Date; attachments?: MessageAttachment[]; onRevert?: () => void; modelId?: string | null; shell?: boolean }) {
+function UserBubble({ content, timestamp, attachments, onRevert, modelId, shell, onMentionFileOpen }: { content: string; timestamp?: Date; attachments?: MessageAttachment[]; onRevert?: () => void; modelId?: string | null; shell?: boolean; onMentionFileOpen?: (path: string) => void }) {
   const [showTime, setShowTime] = useState(false)
   const [copied, setCopied] = useState(false)
   const [expanded, setExpanded] = useState(false)
@@ -193,7 +206,7 @@ function UserBubble({ content, timestamp, attachments, onRevert, modelId, shell 
                <span>Shell</span>
              </div>
            )}
-           <p className={`min-w-0 break-words whitespace-pre-wrap [overflow-wrap:anywhere] ${shell ? 'font-mono' : ''}`}>{renderMentionSegments(visibleContent)}</p>
+           <p className={`min-w-0 break-words whitespace-pre-wrap [overflow-wrap:anywhere] ${shell ? 'font-mono' : ''}`}>{renderMentionSegments(visibleContent, onMentionFileOpen)}</p>
            {/* Gradient fade at bottom when collapsed */}
            {needsCollapse && !expanded && (
              <div
@@ -253,7 +266,7 @@ function UserBubble({ content, timestamp, attachments, onRevert, modelId, shell 
 }
 
 
-function BlockRenderer({ block, isStreaming, sessionId, onRevert, latestMCPAppBlockIds }: { block: ContentBlock; isStreaming: boolean; sessionId?: string; onRevert?: () => void; latestMCPAppBlockIds?: Set<string> }) {
+function BlockRenderer({ block, isStreaming, sessionId, onRevert, latestMCPAppBlockIds, onMentionFileOpen }: { block: ContentBlock; isStreaming: boolean; sessionId?: string; onRevert?: () => void; latestMCPAppBlockIds?: Set<string>; onMentionFileOpen?: (path: string) => void }) {
   switch (block.type) {
     case 'user': {
       // Me check if this is an inbox message (from another agent, not real user)
@@ -263,7 +276,7 @@ function BlockRenderer({ block, isStreaming, sessionId, onRevert, latestMCPAppBl
       }
       const blockModel = typeof block.extra?.model === 'string' ? block.extra.model : null
       const shell = block.extra?.kind === 'user_shell'
-      return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onRevert={onRevert} modelId={blockModel} shell={shell} />
+      return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onRevert={onRevert} modelId={blockModel} shell={shell} onMentionFileOpen={onMentionFileOpen} />
     }
     case 'thinking':
       return <Thinking content={block.content} isStreaming={isStreaming} />
@@ -345,7 +358,7 @@ function BlockRenderer({ block, isStreaming, sessionId, onRevert, latestMCPAppBl
   }
 }
 
-export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError, isContinuing = false, onContinue, emptyState }: AgentViewProps) {
+export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError, isContinuing = false, onContinue, emptyState, onMentionFileOpen }: AgentViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const pinnedRef = useRef(true)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
@@ -532,6 +545,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
                          sessionId={sessionId}
                          onRevert={item.block.id === latestUserBlockId ? handleRevert : undefined}
                          latestMCPAppBlockIds={latestMCPAppBlockIds}
+                         onMentionFileOpen={onMentionFileOpen}
                         />
                    )
                  }
@@ -555,6 +569,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
                             sessionId={sessionId}
                             onRevert={isDirectUserBlock(block) && block.id === latestUserBlockId ? handleRevert : undefined}
                             latestMCPAppBlockIds={latestMCPAppBlockIds}
+                         onMentionFileOpen={onMentionFileOpen}
                           />
                      )}
                    />

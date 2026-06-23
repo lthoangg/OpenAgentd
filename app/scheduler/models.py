@@ -67,6 +67,9 @@ class ScheduledTask(SQLModel, table=True):
     run_count: int = Field(
         default=0, sa_column=Column(sa.Integer, nullable=False, server_default="0")
     )
+    max_runs: int | None = Field(
+        default=None, sa_column=Column(sa.Integer, nullable=True)
+    )
     last_run_at: datetime | None = Field(
         default=None, sa_column=Column(TZDateTime(), nullable=True)
     )

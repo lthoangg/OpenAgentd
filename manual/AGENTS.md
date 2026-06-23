@@ -31,7 +31,6 @@ Manual smoke-test scripts for openagentd. All scripts target `http://localhost:8
 | `mention_attachments.py` | Smoke-test `@`-mention auto-attachment: text file fenced, large text head+tail truncated, image and folder mentions are reference-only (no attachment). Exits non-zero on any invariant failure | `--base URL` |
 | `undo_mid_second_turn.py` | Two-turn `/undo` scenario: turn 1 completes, turn 2 is interrupted mid-stream, `/undo` must return 202 (lead is idle post-Stop, busy-member guard does not fire) and the boundary must roll back so a follow-up runs without the interrupted prompt in context | `--base URL` |
 | `fast_mode.py` | Verify `/team/chat` accepts provider-neutral `fast_mode=true`, ignores it for non-Codex models, and can persist `extra.service_tier=fast` for a Codex model without consuming LLM tokens | `--non-codex-model ID`, `--codex-model ID`, `--base URL` |
-| `loop_smoketest.py` | Verify coding-mode `/loop` config/start/stop reinjects the exact prompt after team idle | `--workspace PATH`, `--budget 5|10|20|50`, `--prompt TEXT`, `--wait N`, `--base URL` |
 
 ```bash
 # New team turn
@@ -99,10 +98,6 @@ uv run python -m manual.undo_mid_second_turn
 # Fast mode: non-Codex ignore path; pass --codex-model when Codex is configured
 uv run python -m manual.fast_mode
 uv run python -m manual.fast_mode --codex-model codex:gpt-5.4
-
-# Coding /loop controls: configure, start, observe reinjection, stop
-uv run python -m manual.loop_smoketest
-uv run python -m manual.loop_smoketest --budget 5 --prompt "Reply exactly LOOP-SMOKE-OK. Do not use tools."
 
 # @-mention attachment behaviour (text fenced+truncated, image/folder reference-only)
 uv run python -m manual.mention_attachments

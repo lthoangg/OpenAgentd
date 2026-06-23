@@ -204,13 +204,6 @@ export interface TeamHistoryResponse {
     session_id: string
     messages: MessageResponse[]
   }>
-  loop_status?: {
-    prompt: string | null
-    limit: number
-    remaining: number
-    used: number
-    paused: boolean
-  } | null
   has_more: boolean
   next_cursor: string | null
 }
@@ -550,6 +543,7 @@ export interface ScheduledTaskResponse {
   timezone: string
   prompt: string
   session_id: string | null
+  max_runs: number | null
   enabled: boolean
   status: string
   run_count: number
@@ -571,6 +565,7 @@ export interface ScheduledTaskCreate {
   timezone?: string
   prompt: string
   session_id?: string | null
+  max_runs?: number | null
   enabled?: boolean
 }
 

@@ -22,7 +22,6 @@ class TeamHistoryMember(BaseModel):
 class TeamHistoryResponse(BaseModel):
     lead: SessionDetailResponse
     members: list[TeamHistoryMember]
-    loop_status: dict[str, object] | None = None
     has_more: bool = False
     next_cursor: str | None = None
 

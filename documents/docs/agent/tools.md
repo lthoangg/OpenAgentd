@@ -514,7 +514,9 @@ scheduler. See `_in_scope` in `app/agent/tools/builtin/schedule.py`.
 
 When `session_id` is an explicit UUID that already exists, `scheduler.create` / `apply_update` reject mismatched `(mode, workspace)` pairs with `InvalidTaskTargetError` (HTTP 422).
 
-Tasks can also be updated after creation via `PUT /api/scheduler/tasks/{id}` (REST) or through the **Edit** button in the web UI `SchedulerPanel`. Updatable fields: `mode`, `workspace`, `schedule_type`, schedule value fields, `timezone`, `prompt`, `session_id`, `enabled`. See [`api/index.md`](../../docs/api/index.md#scheduler-endpoints).
+`max_runs` is an optional positive integer cap on successful firings. `null` means unlimited. When a task reaches `max_runs`, the scheduler disables it, marks it `completed`, and clears `next_fire_at`.
+
+Tasks can also be updated after creation via `PUT /api/scheduler/tasks/{id}` (REST) or through the **Edit** button in the web UI `SchedulerPanel`. Updatable fields: `mode`, `workspace`, `schedule_type`, schedule value fields, `timezone`, `prompt`, `session_id`, `max_runs`, `enabled`. See [`api/index.md`](../../docs/api/index.md#scheduler-endpoints).
 
 #### Schedule types
 
@@ -530,6 +532,7 @@ Tasks can also be updated after creation via `PUT /api/scheduler/tasks/{id}` (RE
 |-------|-----------|
 | `null` (default) | New session minted on every firing (uuid7) |
 | `"auto"` | Persistent session — resolved to `uuid5(NAMESPACE_URL, "scheduler:{name}")`, deterministic so the same task always reuses the same `ChatSession` row |
+| `"current"` (tool only) | Resolved by `schedule_task` to the current lead chat session before creating the task |
 | UUID string | Continue a specific existing session |
 
 `skill` is **always injected** into every agent — do not list it in `tools:`.

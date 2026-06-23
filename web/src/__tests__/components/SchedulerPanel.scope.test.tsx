@@ -23,6 +23,7 @@ function task(overrides: Partial<ScheduledTaskResponse>): ScheduledTaskResponse 
     enabled: true,
     status: 'pending',
     run_count: 0,
+    max_runs: null,
     last_run_at: null,
     last_error: null,
     next_fire_at: null,

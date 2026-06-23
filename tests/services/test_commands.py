@@ -199,26 +199,26 @@ def test_render_substitutes_all_occurrences(roots):
 
 
 def test_parse_slash_invocation_supports_subcommands_and_quoted_args():
-    parsed = parse_slash_invocation('/loop "Run tests"')
+    parsed = parse_slash_invocation('/commit "Run tests"')
 
     assert parsed is not None
-    assert parsed.command == "loop"
+    assert parsed.command == "commit"
     assert parsed.subcommand is None
     assert parsed.arguments == '"Run tests"'
     assert parsed.argv == ["Run tests"]
 
 
 def test_parse_slash_invocation_supports_colon_subcommands():
-    parsed = parse_slash_invocation("/loop:set 20")
+    parsed = parse_slash_invocation("/git:commit 20")
 
     assert parsed is not None
-    assert parsed.command == "loop"
-    assert parsed.subcommand == "set"
+    assert parsed.command == "git"
+    assert parsed.subcommand == "commit"
     assert parsed.argv == ["20"]
 
 
 def test_parse_slash_invocation_ignores_plain_chat():
-    assert parse_slash_invocation("hello /loop:set 20") is None
+    assert parse_slash_invocation("hello /git:commit 20") is None
 
 
 # ── One-level nesting enforcement ────────────────────────────────────────────

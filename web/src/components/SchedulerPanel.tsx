@@ -751,6 +751,7 @@ function CreateTaskForm({
     every_seconds: 3600,
     timezone: localTz,
     prompt: '',
+    max_runs: null,
     enabled: true,
   })
   const [error, setError] = useState<string | null>(null)
@@ -797,6 +798,7 @@ function CreateTaskForm({
       timezone: tz,
       prompt: formData.prompt.trim(),
       session_id: formData.session_id,
+      max_runs: formData.max_runs ?? null,
       enabled: formData.enabled,
       ...(formData.schedule_type === 'at'    ? { at_datetime: atIso }                          : {}),
       ...(formData.schedule_type === 'every' ? { every_seconds: formData.every_seconds }       : {}),
@@ -813,6 +815,7 @@ function CreateTaskForm({
           every_seconds: 3600,
           timezone: localTz,
           prompt: '',
+          max_runs: null,
           enabled: true,
         })
         onSuccess()
@@ -969,6 +972,20 @@ function CreateTaskForm({
             </p>
           </div>
 
+          {/* Max runs */}
+          <div>
+            <label className="block text-sm font-medium text-(--color-text)">Max runs (optional)</label>
+            <Input
+              type="number"
+              min="1"
+              className={`mt-1 ${FIELD_CLASS}`}
+              value={formData.max_runs ?? ''}
+              onChange={(e) => setFormData({ ...formData, max_runs: e.target.value ? Number(e.target.value) : null })}
+              placeholder="Unlimited"
+            />
+            <p className="mt-1 text-xs text-(--color-text-muted)">Stop after this many successful firings.</p>
+          </div>
+
           {/* Error message */}
           {error && (
             <div className="flex gap-2 rounded-lg border border-(--color-error) bg-(--color-error-subtle) p-3">
@@ -1075,7 +1092,9 @@ function TaskDetailView({
               <span className="text-sm text-(--color-text)">{task.enabled ? 'Yes' : 'No'}</span>
             </DetailRow>
             <DetailRow label="Run Count">
-              <span className="text-sm text-(--color-text)">{task.run_count}</span>
+              <span className="text-sm text-(--color-text)">
+                {task.run_count}{task.max_runs ? ` / ${task.max_runs}` : ''}
+              </span>
             </DetailRow>
           </div>
         </section>
@@ -1231,6 +1250,7 @@ function EditTaskForm({
     timezone: task.timezone,
     prompt: task.prompt,
     session_id: task.session_id ?? undefined,
+    max_runs: task.max_runs ?? null,
     enabled: task.enabled,
   })
   const [error, setError] = useState<string | null>(null)
@@ -1268,6 +1288,7 @@ function EditTaskForm({
       timezone: tz,
       prompt: formData.prompt.trim(),
       session_id: formData.session_id,
+      max_runs: formData.max_runs ?? null,
       enabled: formData.enabled,
       ...(formData.schedule_type === 'at'    ? { at_datetime: atIso }                          : {}),
       ...(formData.schedule_type === 'every' ? { every_seconds: formData.every_seconds }       : {}),
@@ -1424,6 +1445,20 @@ function EditTaskForm({
             <p className="mt-1 text-xs text-(--color-text-muted)">
               null = new session each run, "auto" = persistent session, or UUID
             </p>
+          </div>
+
+          {/* Max runs */}
+          <div>
+            <label className="block text-sm font-medium text-(--color-text)">Max runs (optional)</label>
+            <Input
+              type="number"
+              min="1"
+              className={`mt-1 ${FIELD_CLASS}`}
+              value={formData.max_runs ?? ''}
+              onChange={(e) => setFormData({ ...formData, max_runs: e.target.value ? Number(e.target.value) : null })}
+              placeholder="Unlimited"
+            />
+            <p className="mt-1 text-xs text-(--color-text-muted)">Stop after this many successful firings.</p>
           </div>
 
           {/* Error message */}

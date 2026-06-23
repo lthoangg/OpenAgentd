@@ -40,6 +40,7 @@ class ScheduledTaskCreate(BaseModel):
         default=None,
         description='None=new each time, "auto"=persistent per task name, uuid=continue specific session.',
     )
+    max_runs: int | None = Field(default=None, gt=0)
     enabled: bool = Field(default=True)
 
     @model_validator(mode="after")
@@ -96,6 +97,7 @@ class ScheduledTaskUpdate(BaseModel):
     timezone: str | None = None
     prompt: str | None = None
     session_id: str | None = None
+    max_runs: int | None = Field(default=None, gt=0)
     enabled: bool | None = None
 
     @model_validator(mode="after")
@@ -156,6 +158,7 @@ class ScheduledTaskResponse(BaseModel):
     timezone: str
     prompt: str
     session_id: str | None
+    max_runs: int | None
     enabled: bool
     status: str
     run_count: int

@@ -401,20 +401,6 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         break
       }
 
-      case 'loop_status': {
-        const limit = Number(d.limit) || 0
-        const remaining = Number(d.remaining) || 0
-        const prompt = typeof d.prompt === 'string' && d.prompt ? d.prompt : null
-        const used = Number(d.used) || Math.max(limit - remaining, 0)
-        const paused = Boolean(d.paused)
-        set((draft) => {
-          draft.activeLoop = prompt || limit > 0
-            ? { prompt, limit, remaining, used, paused }
-            : null
-        })
-        break
-      }
-
       case 'desktop_notification': {
         const kind = d.kind as string
         if (kind !== 'assistant_done' && kind !== 'background_done' && kind !== 'reminder_fired') break

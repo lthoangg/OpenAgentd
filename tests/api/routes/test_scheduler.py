@@ -128,6 +128,23 @@ class TestCreate:
         )
         assert resp.status_code == 422
 
+    async def test_create_accepts_max_runs(self, client):
+        resp = await client.post(
+            "/api/scheduler/tasks",
+            json=_create_payload(name="finite", max_runs=3),
+        )
+        assert resp.status_code == 201, resp.text
+        body = resp.json()
+        assert body["max_runs"] == 3
+        assert body["run_count"] == 0
+
+    async def test_create_rejects_non_positive_max_runs(self, client):
+        resp = await client.post(
+            "/api/scheduler/tasks",
+            json=_create_payload(name="bad_max", max_runs=0),
+        )
+        assert resp.status_code == 422
+
 
 # ---------------------------------------------------------------------------
 # GET /tasks
@@ -191,6 +208,33 @@ class TestUpdate:
         body = resp.json()
         assert body["every_seconds"] == 30
         assert body["prompt"] == "new prompt"
+
+    async def test_updates_max_runs(self, client):
+        created = await client.post(
+            "/api/scheduler/tasks", json=_create_payload(name="upd_max")
+        )
+        task_id = created.json()["id"]
+
+        resp = await client.put(
+            f"/api/scheduler/tasks/{task_id}",
+            json={"max_runs": 2},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["max_runs"] == 2
+
+    async def test_clears_max_runs(self, client):
+        created = await client.post(
+            "/api/scheduler/tasks",
+            json=_create_payload(name="clear_max", max_runs=2),
+        )
+        task_id = created.json()["id"]
+
+        resp = await client.put(
+            f"/api/scheduler/tasks/{task_id}",
+            json={"max_runs": None},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["max_runs"] is None
 
     async def test_update_to_coding_requires_workspace(self, client):
         created = await client.post(

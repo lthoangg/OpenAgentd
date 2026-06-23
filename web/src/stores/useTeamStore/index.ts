@@ -78,7 +78,6 @@ function resetSessionState(
   state.isContinuing = false
   state.isConnected = false
   state.error = null
-  state.activeLoop = null
   state.setupRequired = null
   state._abortController = null
   state._pendingMessages = []
@@ -116,7 +115,6 @@ function resetSessionState(
 }
 
 export type {
-  ActiveLoop,
   AgentStream,
   CacheInvalidation,
   PendingMessage,
@@ -180,7 +178,6 @@ export const useTeamStore = create<TeamStore>()(
     isContinuing: false,
     isConnected: false,
     error: null,
-    activeLoop: null,
     setupRequired: null,
     _pendingMessages: [],
     _abortController: null,
@@ -539,107 +536,6 @@ export const useTeamStore = create<TeamStore>()(
       }
     },
 
-    sendLoopCommand: async (command, prompt, options) => {
-      const sessionId = get().sessionId
-      const isStart = prompt !== undefined
-      const canCreateSession = isStart || command.startsWith('/loop:set ')
-      if (!sessionId && !canCreateSession) {
-        set((draft) => { draft.error = 'No active session for loop command' })
-        return
-      }
-      const content = isStart ? prompt : command
-      const leadName = get().leadName
-      const submittedAt = Date.now()
-      const currentLoop = get().activeLoop
-      if (isStart && prompt) {
-        const limit = currentLoop?.limit ?? 10
-        set((draft) => {
-          draft.activeLoop = {
-            prompt,
-            limit,
-            remaining: Math.max(limit - 1, 0),
-            used: Math.min(1, limit),
-            paused: false,
-          }
-        })
-      } else if (command.startsWith('/loop:set ')) {
-        const limit = Number(command.slice('/loop:set '.length).trim())
-        if (Number.isFinite(limit) && limit > 0) {
-          set((draft) => {
-            draft.activeLoop = { prompt: null, limit, remaining: limit, used: 0, paused: false }
-          })
-        }
-      } else if (command === '/loop:pause' && currentLoop) {
-        set((draft) => {
-          if (draft.activeLoop) draft.activeLoop.paused = true
-        })
-      } else if (command === '/loop:resume' && currentLoop) {
-        set((draft) => {
-          if (draft.activeLoop) draft.activeLoop.paused = false
-        })
-      } else if (command === '/loop:stop') {
-        set((draft) => { draft.activeLoop = null })
-      }
-      if (isStart && leadName) {
-        set((draft) => {
-          if (!draft.agentStreams[leadName]) {
-            draft.agentStreams[leadName] = createDefaultAgentStream()
-          }
-          draft.isTeamWorking = true
-          draft.isContinuing = false
-          draft.error = null
-          draft.setupRequired = null
-          draft._leadRevertTime = null
-          Object.values(draft.agentStreams).forEach((stream) => {
-            stream._revertedSuffix = []
-            stream.revertedCount = 0
-            stream.revertedMessages = []
-          })
-          const stream = draft.agentStreams[leadName]
-          if (!stream) return
-          stream._turnStartedAt = submittedAt
-          const effectiveModel = effectiveLeadModel(draft, leadName, options?.model)
-          const effectiveThinkingLevel = options?.thinkingLevel ?? draft.sessionThinkingLevel
-          stream.currentBlocks.push({
-            id: `user-${Date.now()}`,
-            type: 'user',
-            content,
-            timestamp: new Date(submittedAt),
-            extra: {
-              ...(effectiveModel ? { model: effectiveModel } : {}),
-              ...(effectiveThinkingLevel ? { thinking_level: effectiveThinkingLevel } : {}),
-              ...((options?.fastMode ?? draft.sessionFastMode) ? { service_tier: 'fast' } : {}),
-            },
-          })
-        })
-      }
-      try {
-        const result = await postTeamChat(
-          command,
-          sessionId,
-          false,
-          undefined,
-          options?.mode ?? 'coding',
-          options?.workspace ?? get()._workspace,
-          options?.model ?? get().sessionModel,
-          options?.thinkingLevel ?? get().sessionThinkingLevel,
-          false,
-          options?.fastMode ?? get().sessionFastMode,
-        )
-        set((draft) => {
-          draft.sessionId = result.session_id
-          draft.sessionModel = options?.model ?? get().sessionModel
-          draft.sessionThinkingLevel = options?.thinkingLevel ?? get().sessionThinkingLevel
-          if (options?.workspace) draft._workspace = options.workspace
-        })
-        get().connectStream()
-      } catch (err) {
-        set((draft) => {
-          draft.error = err instanceof Error ? err.message : 'Failed to run loop command'
-          if (isStart) draft.isTeamWorking = false
-        })
-      }
-    },
 
     removePendingMessage: (id: string) => {
       const pending = get()._pendingMessages.find((m) => m.id === id)
@@ -779,8 +675,6 @@ export const useTeamStore = create<TeamStore>()(
           draft.isTeamWorking = history.lead.running === true
           draft.isContinuing = false
           draft.error = null
-          draft.activeLoop = history.loop_status ?? null
-
           Object.values(draft.agentStreams).forEach((stream) => {
             stream.revertedCount = 0
             stream.revertedMessages = []

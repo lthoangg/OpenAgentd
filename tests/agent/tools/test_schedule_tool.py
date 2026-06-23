@@ -8,6 +8,7 @@ from uuid import uuid7
 
 import pytest
 
+from app.agent.errors import ToolArgumentError
 from app.agent.tools.builtin.schedule import schedule_task
 
 
@@ -40,6 +41,7 @@ def sample_task():
     task.enabled = True
     task.status = "pending"
     task.run_count = 0
+    task.max_runs = None
     task.next_fire_at = datetime.now(timezone.utc)
     return task
 
@@ -85,6 +87,17 @@ async def test_list_single_task(mock_task_scheduler, sample_task, clean_db):
     assert "schedule=every 3600s" in result
     assert "status=enabled/pending" in result
     assert "runs=0" in result
+
+
+@pytest.mark.asyncio
+async def test_list_task_with_max_runs(mock_task_scheduler, sample_task, clean_db):
+    sample_task.max_runs = 5
+    mock_task_scheduler.list_tasks.return_value = [sample_task]
+
+    with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
+        result = await schedule_task.arun(action="list")
+
+    assert "runs=0/5" in result
 
 
 @pytest.mark.asyncio
@@ -479,6 +492,91 @@ async def test_create_with_session_id_uuid(mock_task_scheduler, sample_task, cle
 
 
 @pytest.mark.asyncio
+async def test_create_with_session_id_current_uses_lead_session(
+    mock_task_scheduler, sample_task, clean_db
+):
+    sample_task.session_id = "019ef6e1-1111-7111-8111-111111111111"
+    mock_task_scheduler.create.return_value = sample_task
+    state = MagicMock()
+    state.metadata = {"lead_session_id": sample_task.session_id}
+
+    with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
+        result = await schedule_task.arun(
+            action="create",
+            name="test-task",
+            schedule_type="every",
+            every_seconds=3600,
+            prompt="Check email",
+            session_id="current",
+            _injected={**_NORMAL_INJECTED, "_state": state},
+        )
+
+    assert "Scheduled task created." in result
+    payload = mock_task_scheduler.create.call_args[0][0]
+    assert payload.session_id == sample_task.session_id
+
+
+@pytest.mark.asyncio
+async def test_create_with_session_id_current_requires_state(
+    mock_task_scheduler, clean_db
+):
+    with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
+        result = await schedule_task.arun(
+            action="create",
+            name="test-task",
+            schedule_type="every",
+            every_seconds=3600,
+            prompt="Check email",
+            session_id="current",
+            _injected=_NORMAL_INJECTED,
+        )
+
+    assert "Error:" in result
+    assert "current" in result
+    mock_task_scheduler.create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_create_with_max_runs(mock_task_scheduler, sample_task, clean_db):
+    sample_task.max_runs = 3
+    mock_task_scheduler.create.return_value = sample_task
+
+    with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
+        result = await schedule_task.arun(
+            action="create",
+            name="test-task",
+            schedule_type="every",
+            every_seconds=3600,
+            prompt="Check email",
+            max_runs=3,
+            _injected=_NORMAL_INJECTED,
+        )
+
+    assert "max runs    : 3" in result
+    payload = mock_task_scheduler.create.call_args[0][0]
+    assert payload.max_runs == 3
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_non_positive_max_runs(mock_task_scheduler, clean_db):
+    with (
+        patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler),
+        pytest.raises(ToolArgumentError, match="max_runs"),
+    ):
+        await schedule_task.arun(
+            action="create",
+            name="test-task",
+            schedule_type="every",
+            every_seconds=3600,
+            prompt="Check email",
+            max_runs=0,
+            _injected=_NORMAL_INJECTED,
+        )
+
+    mock_task_scheduler.create.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_create_with_enabled_false(mock_task_scheduler, sample_task, clean_db):
     """Creates a disabled task."""
     sample_task.enabled = False
@@ -776,6 +874,7 @@ def test_schedule_task_tool_definition(clean_db):
     assert definition["function"]["name"] == "schedule_task"
     params = definition["function"]["parameters"]["properties"]
     assert "action" in params
+    assert "max_runs" in params
     # mode + workspace are derived from runtime context, not exposed to the LLM.
     assert "mode" not in params
     assert "workspace" not in params
@@ -870,6 +969,7 @@ def _make_task(mode: str, workspace: str | None, name: str = "t") -> MagicMock:
     task.enabled = True
     task.status = "pending"
     task.run_count = 0
+    task.max_runs = None
     task.next_fire_at = datetime.now(timezone.utc)
     return task
 

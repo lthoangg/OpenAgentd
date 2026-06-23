@@ -69,6 +69,7 @@ export function CodingWorkspacePanel({
   mobile = false,
   selectedFilePath = null,
   onFileSelect,
+  onAddComment,
 }: {
   workspace: string
   open: boolean
@@ -77,6 +78,7 @@ export function CodingWorkspacePanel({
   mobile?: boolean
   selectedFilePath?: string | null
   onFileSelect?: (file: WorkspaceFileInfo | null) => void
+  onAddComment?: (path: string, startLine: number, endLine: number) => void
 }) {
   const prefersReducedMotion = useReducedMotion()
   const [tabs, setTabs] = useState<WorkspacePanelTab[]>([{ id: 'review', type: 'review', title: 'Changes' }])
@@ -324,7 +326,7 @@ export function CodingWorkspacePanel({
                 </div>
               </div>
               <div className="min-h-0 flex-1 overflow-hidden">
-                <CodingFilePreviewContent workspace={workspace} file={activeTab.file} viewMode={activeTab.viewMode} />
+                <CodingFilePreviewContent workspace={workspace} file={activeTab.file} viewMode={activeTab.viewMode} onAddComment={onAddComment} />
               </div>
             </div>
           ) : null}

@@ -1194,6 +1194,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             mobile={isMobile}
             selectedFilePath={codingFileViewer?.path ?? null}
             onFileSelect={handleCodingFileSelect}
+            onAddComment={handleAddFileComment}
             onClose={() => {
               setCodingPanel(null)
               setCodingFileViewer(null)

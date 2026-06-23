@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { Check, Copy, Download, ExternalLink, FileText, GitCompare, Loader2, X } from 'lucide-react'
+import { Check, Copy, Download, ExternalLink, FileText, GitCompare, Loader2, Plus, X } from 'lucide-react'
 import { codingWorkspaceFileUrl, getCodingWorkspaceGitDiff } from '@/api/client'
 import { downloadCodingWorkspaceFile } from '@/lib/coding-workspace-download'
 import { cn } from '@/lib/utils'
@@ -193,9 +193,6 @@ function TextPreview({
   const lines = content.split('\n')
   const selectedStart = selection ? Math.min(selection.anchor, selection.focus) : null
   const selectedEnd = selection ? Math.max(selection.anchor, selection.focus) : null
-  const addLabel = selectedStart === selectedEnd
-    ? `Add comment for line ${selectedStart}`
-    : `Add comment for lines ${selectedStart}-${selectedEnd}`
   const selectLine = (line: number) => {
     setSelection({ anchor: line, focus: line })
     setDragging(true)
@@ -206,41 +203,47 @@ function TextPreview({
   }
   return (
     <div className="flex h-full min-h-0 flex-col" onMouseLeave={() => setDragging(false)} onMouseUp={() => setDragging(false)}>
-      {selection && selectedStart !== null && selectedEnd !== null ? (
-        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-card) px-3 py-2">
-          <span className="truncate font-mono text-[11px] text-(--color-text-subtle)">
-            {file.path}#L{selectedStart}{selectedStart === selectedEnd ? '' : `-L${selectedEnd}`}
-          </span>
-          <button
-            type="button"
-            onClick={() => onAddComment?.(file.path, selectedStart, selectedEnd)}
-            className="shrink-0 rounded-md bg-(--color-accent) px-2.5 py-1 text-xs font-medium text-(--bg-page) hover:opacity-90"
-          >
-            {addLabel}
-          </button>
-        </div>
-      ) : null}
       <div className="min-h-0 flex-1 overflow-auto font-mono text-xs leading-relaxed">
         {lines.map((line, index) => {
           const lineNo = index + 1
           const selected = selectedStart !== null && selectedEnd !== null && lineNo >= selectedStart && lineNo <= selectedEnd
           return (
-            <button
+            <div
               key={index}
-              type="button"
-              onMouseDown={(e) => {
-                e.preventDefault()
-                selectLine(lineNo)
-              }}
-              onMouseEnter={() => extendSelection(lineNo)}
               className={cn(
-                'flex w-full items-start gap-3 whitespace-pre-wrap break-words px-3 text-left text-(--color-text-2)',
-                selected && 'bg-(--color-accent)/15',
+                'relative flex w-full items-start gap-3 whitespace-pre-wrap break-words px-3 text-left text-(--color-text-2)',
+                selected && 'bg-(--bg-key)',
               )}
             >
-              <LineGutter value={lineNo} />
+              {selected && lineNo === selectedStart && selectedEnd !== null ? (
+                <button
+                  type="button"
+                  onMouseDown={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onAddComment?.(file.path, selectedStart, selectedEnd)
+                  }}
+                  className="absolute left-[calc(0.75rem+4ch+0.25rem)] top-1 z-10 flex h-4 w-4 items-center justify-center rounded border border-(--color-border-strong) bg-(--bg-card) text-(--color-text-muted) shadow hover:bg-(--bg-key) hover:text-(--color-text)"
+                  aria-label={selectedStart === selectedEnd ? `Add comment for line ${selectedStart}` : `Add comment for lines ${selectedStart}-${selectedEnd}`}
+                  title={selectedStart === selectedEnd ? `Comment line ${selectedStart}` : `Comment lines ${selectedStart}-${selectedEnd}`}
+                >
+                  <Plus size={13} aria-hidden="true" />
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onMouseDown={(event) => {
+                  event.preventDefault()
+                  selectLine(lineNo)
+                }}
+                onMouseEnter={() => extendSelection(lineNo)}
+                className="shrink-0"
+                aria-label={`Select line ${lineNo}`}
+              >
+                <LineGutter value={lineNo} />
+              </button>
               <span className="min-w-0 flex-1">{highlightCodeLine(line)}</span>
-            </button>
+            </div>
           )
         })}
       </div>

@@ -160,8 +160,9 @@ describe('Coding workspace two-layer file preview', () => {
     expect(screen.getByText('3')).toBeTruthy()
     expect(screen.getByText('// comment')).toBeTruthy()
     expect(screen.getByText('return')).toBeTruthy()
-    expect(screen.getByRole('button', { name: /const value = 1/i }).className).toContain('whitespace-pre-wrap')
-    expect(screen.getByRole('button', { name: /const value = 1/i }).className).toContain('break-words')
+    const firstLine = screen.getByText('const').closest('div')
+    expect(firstLine?.className).toContain('whitespace-pre-wrap')
+    expect(firstLine?.className).toContain('break-words')
   })
 
   it('renders images inline in the separate file viewer panel', async () => {
@@ -240,7 +241,7 @@ describe('Coding workspace two-layer file preview', () => {
     await renderViewer(readme, onAddComment)
     await waitFor(() => expect(screen.getByText('const')).toBeTruthy())
 
-    await user.click(screen.getByRole('button', { name: /const value = 1/i }))
+    await user.click(screen.getByRole('button', { name: /select line 1/i }))
     await user.click(screen.getByRole('button', { name: /add comment for line 1/i }))
 
     expect(onAddComment).toHaveBeenCalledWith('README.md', 1, 1)

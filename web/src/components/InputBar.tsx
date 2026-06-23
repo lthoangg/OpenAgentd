@@ -268,15 +268,21 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   //     one line again) which would otherwise demote → re-promote.
   const [isMultiLine, setIsMultiLine] = useState(false)
   const promoteLengthRef = useRef(0)
+  const lineHeightRef = useRef<number | null>(null)
+  const resizeFrameRef = useRef<number | null>(null)
   const resize = useCallback(() => {
     const el = textareaRef.current
     if (!el) return
     el.style.height = 'auto'
     // max 5 rows ≈ 120px
     el.style.height = `${Math.min(el.scrollHeight, 120)}px`
-    const computed = window.getComputedStyle(el)
-    const lineHeight = parseFloat(computed.lineHeight) ||
-      parseFloat(computed.fontSize) * 1.5
+    let lineHeight = lineHeightRef.current
+    if (lineHeight == null) {
+      const computed = window.getComputedStyle(el)
+      lineHeight = parseFloat(computed.lineHeight) ||
+        parseFloat(computed.fontSize) * 1.5
+      lineHeightRef.current = lineHeight
+    }
     const wrapped = el.scrollHeight > lineHeight * 1.4
     const currentLen = el.value.length
     const hasNewline = el.value.includes('\n')
@@ -866,6 +872,20 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     executeSlashCommand(selectableSlashCommands[clampedIndex])
   }
 
+  const scheduleResize = useCallback(() => {
+    if (resizeFrameRef.current != null) return
+    resizeFrameRef.current = requestAnimationFrame(() => {
+      resizeFrameRef.current = null
+      resize()
+    })
+  }, [resize])
+
+  useEffect(() => {
+    return () => {
+      if (resizeFrameRef.current != null) cancelAnimationFrame(resizeFrameRef.current)
+    }
+  }, [])
+
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const nextValue = e.target.value
     if (!shellMode && nextValue === '!') {
@@ -877,7 +897,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       setMentionMenuIndex(0)
       setMentionRange(null)
       setSnippetRange(null)
-      requestAnimationFrame(resize)
+      scheduleResize()
       return
     }
     setValue(nextValue)
@@ -892,7 +912,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     if (next) onFileRefsNeeded?.()
     setMentionRange(next)
     setSnippetRange(next || shellMode ? null : findActiveSnippet(nextValue, caret))
-    resize()
+    scheduleResize()
   }
 
   // ── Voice transcript insertion ────────────────────────────────────────────

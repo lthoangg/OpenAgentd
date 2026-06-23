@@ -216,6 +216,85 @@ async def run_direct() -> dict[str, Any]:
         usage=UsageInfo(last_prompt_tokens=9999),
         system_prompt="base prompt",
     )
+    first = await _run_direct_compaction(provider, summarization, state)
+
+    second_skill_call = AssistantMessage(
+        content=None,
+        tool_calls=[
+            ToolCall(
+                id="call_react_component_skill",
+                function=FunctionCall(
+                    name="skill", arguments='{"skill_name":"react-component"}'
+                ),
+            )
+        ],
+    )
+    second_skill_result = ToolMessage(
+        content="# React Component\nUse accessible component patterns.",
+        tool_call_id="call_react_component_skill",
+        name="skill",
+    )
+    shell_call = AssistantMessage(
+        content=None,
+        tool_calls=[
+            ToolCall(
+                id="call_shell",
+                function=FunctionCall(name="shell", arguments='{"command":"pwd"}'),
+            )
+        ],
+    )
+    shell_result = ToolMessage(
+        content="/tmp/openagentd", tool_call_id="call_shell", name="shell"
+    )
+    state.messages.extend(
+        [
+            HumanMessage(content="now load react skill"),
+            second_skill_call,
+            second_skill_result,
+            HumanMessage(content="run pwd"),
+            shell_call,
+            shell_result,
+        ]
+    )
+    state.usage.last_prompt_tokens = 9999
+    second = await _run_direct_compaction(provider, summarization, state)
+
+    visible = state.messages_for_llm
+    skill_results = [
+        m for m in visible if isinstance(m, ToolMessage) and m.name == "skill"
+    ]
+    shell_results = [
+        m for m in visible if isinstance(m, ToolMessage) and m.name == "shell"
+    ]
+    summaries = [m for m in visible if m.is_summary]
+
+    assert skill_result in visible
+    assert second_skill_result in visible
+    assert shell_result not in visible
+    assert len(skill_results) == 2
+    assert len(shell_results) == 0
+    assert len(summaries) == 1
+    assert provider.messages is not None
+    assert skill_result in provider.messages
+    assert second_skill_result in provider.messages
+    assert shell_result in provider.messages
+
+    return {
+        "first_shared_prefix_messages": first["shared_prefix_messages"],
+        "second_shared_prefix_messages": second["shared_prefix_messages"],
+        "skill_included": skill_result in provider.messages,
+        "multi_skill_included": len(skill_results) == 2,
+        "non_skill_tool_compacted": shell_result not in visible,
+        "summary_forwarded": any(m.is_summary for m in second["handled_messages"]),
+        "final_system_prompt_chars": second["final_system_prompt_chars"],
+    }
+
+
+async def _run_direct_compaction(
+    provider: _CapturingProvider,
+    summarization: SummarizationHook,
+    state: AgentState,
+) -> dict[str, Any]:
     ctx = RunContext(session_id="manual", run_id="manual-run", agent_name="lead")
     request = ModelRequest(
         messages=tuple(state.messages_for_llm),
@@ -246,8 +325,6 @@ async def run_direct() -> dict[str, Any]:
 
     assert isinstance(provider.messages[0], SystemMessage)
     assert provider.messages[0].content == final_prompt
-    assert skill_call in provider.messages
-    assert skill_result in provider.messages
     assert len(summarizer_prefix) == len(normal_prefix)
     for left, right in zip(summarizer_prefix, normal_prefix, strict=True):
         assert type(left) is type(right)
@@ -258,9 +335,8 @@ async def run_direct() -> dict[str, Any]:
 
     return {
         "shared_prefix_messages": len(summarizer_prefix),
-        "skill_included": skill_result in provider.messages,
         "final_system_prompt_chars": len(provider.messages[0].content or ""),
-        "summary_forwarded": any(m.is_summary for m in handled[0].messages),
+        "handled_messages": handled[0].messages,
     }
 
 

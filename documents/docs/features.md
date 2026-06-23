@@ -288,7 +288,9 @@ OpenAgentd carries durable, editable memory across sessions. Deeper doc:
   `INDEX.md` and `LOG.md`.
 - **`/compact` rolling-window summarization** `[v1.5.0]` — compresses old turns
   into a single summary message kept in context; UI shows the unabridged
-  conversation. Preserves reasoning and skill/tool context.
+  conversation. Preserves reasoning and loaded skill/tool context; skill
+  instruction tool-call pairs remain active after repeated compaction while the
+  summarizer keeps the same cacheable prompt prefix as normal chat turns.
 - **Notes** `[since v1.0]` — `note` tool writes append-only daily files at
   `wiki/notes/{date}.md`. The dream agent reads these.
 - **`AGENTS.md` at repo root and subfolders** `[v1.9.0]` — written by `/init`;

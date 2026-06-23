@@ -139,7 +139,7 @@ The frontend pushes the label via the `set_tray_session` Tauri command (see `web
 
 ## Notifications
 
-Native desktop notifications use `tauri-plugin-notification` and are controlled from **Settings → Notifications**. They are enabled by default, skipped while the desktop window is focused, and can be tested with a forced notification from that settings page. Notification sounds are in-app and can be toggled separately.
+Native desktop notifications use `tauri-plugin-notification` and are controlled from **Settings → Notifications**. They are enabled by default, skipped while the desktop window is focused, and can be tested with a forced notification from that settings page. Notification sounds are controlled by the operating system; OpenAgentd does not play an extra in-app sound.
 
 The backend emits `desktop_notification` SSE events for assistant completion and scheduled reminders, so completion notifications still fire even if the user has switched sessions. The frontend also emits a background-completion notification when a `bg` tool process exits or stops. Assistant completion text is session-centric: `Session completed` or `Session completed - <workspace>`, with the session title as the body when available.
 

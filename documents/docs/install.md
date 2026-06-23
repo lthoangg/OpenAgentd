@@ -70,7 +70,7 @@ The Tauri auto-updater is a separate signing chain. Update payloads are signed w
 
 ### Update
 
-Use **Settings → About → Updates** in the desktop app to check for releases. The updater silently checks every 6 hours, and as of v1.22.0 it also supports notification sounds with a separate **Play sound** toggle in **Settings → Notifications**.
+Use **Settings → About → Updates** in the desktop app to check for releases. The updater silently checks every 6 hours. Native notification sounds are controlled by the operating system from the app's notification settings.
 
 For Homebrew cask installs:
 

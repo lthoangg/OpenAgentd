@@ -67,7 +67,7 @@ describe('desktop notification worker', () => {
         group: 'openagentd-assistant_done',
       },
     })
-    expect(mockPlay).toHaveBeenCalledTimes(1)
+    expect(mockPlay).not.toHaveBeenCalled()
   })
 
   it('focused skip and forced send', async () => {
@@ -79,23 +79,16 @@ describe('desktop notification worker', () => {
 
     expect((await sendDesktopNotification(payload, { force: true })).status).toBe('sent')
     expect(mockNotify).toHaveBeenCalledTimes(1)
-    expect(mockPlay).toHaveBeenCalledTimes(1)
+    expect(mockPlay).not.toHaveBeenCalled()
   })
 
-  it('sends on mobile native app without desktop focus skip', async () => {
+  it('sends on mobile native app without desktop focus skip or in-app sound', async () => {
     os = 'ios'
     focused = true
 
     const result = await sendDesktopNotification(payload)
 
     expect(result.status).toBe('sent')
-    expect(mockNotify).toHaveBeenCalledTimes(1)
-  })
-
-  it('skips sound when notification sounds are disabled', async () => {
-    window.localStorage.setItem('oa-desktop-notifications-sound-enabled', 'false')
-
-    expect((await sendDesktopNotification(payload)).status).toBe('sent')
     expect(mockNotify).toHaveBeenCalledTimes(1)
     expect(mockPlay).not.toHaveBeenCalled()
   })

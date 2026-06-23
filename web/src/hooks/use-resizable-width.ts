@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 
 interface ResizableWidthOptions {
   storageKey: string
@@ -27,29 +27,63 @@ export function useResizableWidth({
     const parsed = stored ? Number(stored) : Number.NaN
     return Number.isFinite(parsed) ? clamp(parsed, minWidth, maxWidth) : defaultWidth
   })
+  const [isResizing, setIsResizing] = useState(false)
+  const frameRef = useRef<number | null>(null)
+  const latestWidthRef = useRef(clamp(width, minWidth, maxWidth))
   const clampedWidth = clamp(width, minWidth, maxWidth)
 
   useEffect(() => {
-    if (disabled) return
-    window.localStorage.setItem(storageKey, String(clampedWidth))
-  }, [clampedWidth, disabled, storageKey])
+    latestWidthRef.current = clampedWidth
+  }, [clampedWidth])
 
-  const resetWidth = useCallback(() => setWidth(defaultWidth), [defaultWidth])
+  useEffect(() => () => {
+    if (frameRef.current !== null) cancelAnimationFrame(frameRef.current)
+  }, [])
+
+  const persistWidth = useCallback((nextWidth: number) => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem(storageKey, String(nextWidth))
+  }, [storageKey])
+
+  const resetWidth = useCallback(() => {
+    setWidth(defaultWidth)
+    latestWidthRef.current = defaultWidth
+    persistWidth(defaultWidth)
+  }, [defaultWidth, persistWidth])
 
   const startResize = useCallback((event: ReactPointerEvent<HTMLElement>) => {
     if (disabled || event.pointerType === 'touch') return
     event.preventDefault()
+    event.currentTarget.setPointerCapture(event.pointerId)
     const startX = event.clientX
-    const startWidth = clampedWidth
+    const startWidth = latestWidthRef.current
+
+    setIsResizing(true)
+
+    const scheduleWidth = (nextWidth: number) => {
+      latestWidthRef.current = nextWidth
+      if (frameRef.current !== null) return
+      frameRef.current = requestAnimationFrame(() => {
+        frameRef.current = null
+        setWidth(latestWidthRef.current)
+      })
+    }
 
     const handleMove = (moveEvent: PointerEvent) => {
       const delta = edge === 'right' ? moveEvent.clientX - startX : startX - moveEvent.clientX
-      setWidth(clamp(startWidth + delta, minWidth, maxWidth))
+      scheduleWidth(clamp(startWidth + delta, minWidth, maxWidth))
     }
 
     const handleUp = () => {
       window.removeEventListener('pointermove', handleMove)
       window.removeEventListener('pointerup', handleUp)
+      if (frameRef.current !== null) {
+        cancelAnimationFrame(frameRef.current)
+        frameRef.current = null
+      }
+      setWidth(latestWidthRef.current)
+      persistWidth(latestWidthRef.current)
+      setIsResizing(false)
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
     }
@@ -58,7 +92,7 @@ export function useResizableWidth({
     document.body.style.userSelect = 'none'
     window.addEventListener('pointermove', handleMove)
     window.addEventListener('pointerup', handleUp, { once: true })
-  }, [clampedWidth, disabled, edge, maxWidth, minWidth])
+  }, [disabled, edge, maxWidth, minWidth, persistWidth])
 
-  return { width: clampedWidth, startResize, resetWidth }
+  return { width: clampedWidth, isResizing, startResize, resetWidth }
 }

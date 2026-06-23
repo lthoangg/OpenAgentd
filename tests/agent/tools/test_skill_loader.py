@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -113,6 +114,21 @@ class TestLoadSkill:
         assert result == "Analyse data carefully."
 
     @pytest.mark.asyncio
+    async def test_load_skill_reuses_visible_session_skill(self, tmp_path, monkeypatch):
+        d = tmp_path / "analysis"
+        d.mkdir()
+        (d / "SKILL.md").write_text("---\nname: analysis\n---\nAnalyse data carefully.")
+        monkeypatch.setattr("app.agent.tools.builtin.skill._SKILLS_DIR", tmp_path)
+        state = SimpleNamespace(metadata={}, messages_for_llm=[])
+
+        first = await load_skill("analysis", _state=state)
+        second = await load_skill("analysis", _state=state)
+
+        assert first == "Analyse data carefully."
+        assert "already loaded" in second
+        assert "Analyse data carefully" not in second
+
+    @pytest.mark.asyncio
     async def test_load_skill_by_subdir_name(self, tmp_path, monkeypatch):
         """Match by subdirectory name when frontmatter name differs."""
         d = tmp_path / "my-skill"
@@ -151,6 +167,7 @@ class TestLoadSkill:
         assert (
             "reuse those instructions instead of calling this tool again" in description
         )
+        assert "repeated loads return the same content" in description
 
 
 # ---------------------------------------------------------------------------

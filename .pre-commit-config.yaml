@@ -44,10 +44,16 @@ repos:
         pass_filenames: false
 
   # ---------------------------------------------------------------------------
-  # Frontend – type checking (app + tests, mirrors CI)
+  # Frontend – lint (ESLint)
   # ---------------------------------------------------------------------------
   - repo: local
     hooks:
+      - id: eslint
+        name: eslint (web)
+        language: system
+        entry: bash -c 'cd web && bun run lint'
+        files: ^web/src/.*\.(ts|tsx)$
+        pass_filenames: false
       - id: tsc-app
         name: tsc (app)
         language: system

@@ -16,7 +16,7 @@
  * lightweight in-place highlighting without giving up textarea semantics
  * (paste, IME, mobile keyboards, undo stack).
  */
-import { useEffect, useMemo, useRef } from 'react'
+import { memo, useEffect, useMemo, useRef } from 'react'
 
 import { findCommittedMentions, type FileRef } from './InputBar.mentions'
 
@@ -38,7 +38,7 @@ interface MentionOverlayProps {
   fileRefs: readonly FileRef[]
 }
 
-export function MentionOverlay({
+function MentionOverlayComponent({
   value,
   activeRange,
   textareaRef,
@@ -140,3 +140,18 @@ export function MentionOverlay({
     </div>
   )
 }
+
+export const MentionOverlay = memo(MentionOverlayComponent, (prev, next) => {
+  const prevRange = prev.activeRange
+  const nextRange = next.activeRange
+  const sameRange = prevRange === nextRange || (
+    prevRange != null &&
+    nextRange != null &&
+    prevRange.start === nextRange.start &&
+    prevRange.end === nextRange.end
+  )
+  return prev.value === next.value &&
+    prev.fileRefs === next.fileRefs &&
+    prev.textareaRef === next.textareaRef &&
+    sameRange
+})

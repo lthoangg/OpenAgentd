@@ -15,6 +15,7 @@ from app.core.config import settings
 import app.core.db as db_module
 from app.services.coding_workspace_service import (
     mark_coding_workspace_deleted,
+    rename_coding_workspace,
     upsert_coding_workspace,
 )
 from app.services import team_manager
@@ -29,6 +30,11 @@ class WorktreeRemoveRequest(BaseModel):
         description="Primary git repository that owns the worktree."
     )
     directory: str = Field(description="Worktree directory to remove.")
+
+
+class WorktreeRenameRequest(BaseModel):
+    directory: str = Field(description="Worktree directory to rename in the sidebar.")
+    name: str = Field(min_length=1, max_length=255)
 
 
 class WorktreeCreateRequest(BaseModel):
@@ -284,6 +290,24 @@ async def remove_coding_workspace_worktree(
         async with db.begin():
             await mark_coding_workspace_deleted(db, str(directory))
     return {"removed": True}
+
+
+@router.patch("/workspace/worktrees", response_model=WorktreeInfo)
+async def rename_coding_workspace_worktree(
+    body: WorktreeRenameRequest,
+) -> WorktreeInfo:
+    directory = Path(body.directory).expanduser().resolve()
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="Worktree title is required.")
+    async with db_module.async_session_factory() as db:
+        async with db.begin():
+            row = await rename_coding_workspace(db, str(directory), name)
+    return WorktreeInfo(
+        name=row.name or directory.name,
+        directory=row.path,
+        managed=row.managed,
+    )
 
 
 @router.post("/workspace/worktrees", response_model=WorktreeCreateResponse)

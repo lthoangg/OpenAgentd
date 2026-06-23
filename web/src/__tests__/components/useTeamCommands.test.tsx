@@ -16,7 +16,6 @@
  *     so the global shortcut handler (which checks
  *     ``e.ctrlKey && !e.metaKey``) fires.
  *   - ``mode === 'coding'`` swaps the sidebar / workspace commands.
- *   - Per-agent ``View`` commands include each agent.
  *   - The list is *built each render* — re-running the hook with new
  *     inputs returns the new commands (no stale closures).
  */
@@ -34,7 +33,6 @@ function makeArgs(overrides: Partial<Parameters<typeof useTeamCommands>[0]> = {}
   return {
     viewMode: "agent" as ViewMode,
     cycleViewMode: noop,
-    setViewMode: noop,
     toggleAgentCapabilities: noop,
     setShowTodos: noop,
     handleWorkspaceFiles: noop,
@@ -42,10 +40,6 @@ function makeArgs(overrides: Partial<Parameters<typeof useTeamCommands>[0]> = {}
     mode: "normal" as const,
     handleNewSession: noop,
     handleDreamRun: noop,
-    agentNames: [] as string[],
-    leadName: null,
-    cycleActiveAgent: noop,
-    setActiveAgent: noop,
     // navigate is only called inside action lambdas; tests that need
     // it pass their own spy.
     navigate: mock(() => Promise.resolve()) as unknown as Parameters<
@@ -235,73 +229,6 @@ describe("useTeamCommands — coding mode swap", () => {
 })
 
 // ════════════════════════════════════════════════════════════════════════════
-//  Per-agent commands
-// ════════════════════════════════════════════════════════════════════════════
-describe("useTeamCommands — per-agent commands", () => {
-  it("emits switch-<name> commands for worker agents only", () => {
-    const args = makeArgs({
-      agentNames: ["alice", "bob", "charlie"],
-      leadName: "alice",
-    })
-    const { result } = renderHook(() => useTeamCommands(args))
-    expect(result.current.find((c) => c.id === "switch-alice")).toBeUndefined()
-    expect(result.current.find((c) => c.id === "switch-bob")).toBeDefined()
-    expect(result.current.find((c) => c.id === "switch-charlie")).toBeDefined()
-  })
-
-  it("marks switchable agents as workers", () => {
-    const args = makeArgs({
-      agentNames: ["alice", "bob"],
-      leadName: "alice",
-    })
-    const { result } = renderHook(() => useTeamCommands(args))
-    expect(byId(result.current, "switch-bob").description).toBe("Worker agent")
-  })
-
-  it("uses 'View <name>' label in every view mode", () => {
-    for (const viewMode of ["agent", "split"] as const) {
-      const args = makeArgs({
-        viewMode,
-        agentNames: ["alice"],
-      })
-      const { result } = renderHook(() => useTeamCommands(args))
-      expect(byId(result.current, "switch-alice").label).toBe("View alice")
-      cleanup()
-    }
-  })
-
-  it("agent-switch action sets view + active agent", () => {
-    const setViewMode = mock(() => {}) as unknown as (m: ViewMode) => void
-    const setActiveAgent = mock(() => {}) as unknown as (n: string) => void
-    const args = makeArgs({
-      viewMode: "split",
-      agentNames: ["alice"],
-      setViewMode,
-      setActiveAgent,
-    })
-    const { result } = renderHook(() => useTeamCommands(args))
-    byId(result.current, "switch-alice").action()
-    expect(setViewMode).toHaveBeenCalledWith("agent")
-    expect(setActiveAgent).toHaveBeenCalledWith("alice")
-  })
-
-  it("next/prev call cycleActiveAgent with the right direction", () => {
-    const cycle = mock(() => {}) as unknown as (dir: "next" | "prev") => void
-    const args = makeArgs({
-      viewMode: "agent",
-      agentNames: ["alice", "bob"],
-      cycleActiveAgent: cycle,
-    })
-    const { result } = renderHook(() => useTeamCommands(args))
-    byId(result.current, "next-agent").action()
-    byId(result.current, "prev-agent").action()
-    expect(cycle).toHaveBeenCalledTimes(2)
-    expect(cycle).toHaveBeenNthCalledWith(1, "next")
-    expect(cycle).toHaveBeenNthCalledWith(2, "prev")
-  })
-})
-
-// ════════════════════════════════════════════════════════════════════════════
 //  Navigation commands
 // ════════════════════════════════════════════════════════════════════════════
 describe("useTeamCommands — navigation", () => {
@@ -325,22 +252,5 @@ describe("useTeamCommands — navigation", () => {
     )
     byId(result.current, "go-settings").action()
     expect(navigate).toHaveBeenCalledWith({ to: "/settings/agents" })
-  })
-
-  it("edit-<agent> commands route to /settings/agents/$name with the right param", () => {
-    const navigate = mock(() => Promise.resolve())
-    const { result } = renderHook(() =>
-      useTeamCommands(
-        makeArgs({
-          agentNames: ["alice"],
-          navigate: navigate as unknown as Parameters<typeof useTeamCommands>[0]["navigate"],
-        }),
-      ),
-    )
-    byId(result.current, "edit-alice").action()
-    expect(navigate).toHaveBeenCalledWith({
-      to: "/settings/agents/$name",
-      params: { name: "alice" },
-    })
   })
 })

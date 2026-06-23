@@ -121,6 +121,7 @@ export interface MessageAttachment {
   original_name?: string
   category?: 'text' | 'image' | 'document'
   url?: string        // /api/chat/files/{session_id}/{filename} or blob URL for optimistic
+  source?: 'upload' | 'mention' | string
 }
 
 export interface MessageResponse {

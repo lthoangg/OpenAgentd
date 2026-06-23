@@ -1,14 +1,12 @@
 /**
- * CodingSidebar — VSCode-explorer style workspace + session tree for
- * the ``/coding`` route. Mirrors the wireframe sidebar ``Q4zeZN`` in
+ * CodingSidebar — flat workspace + session switcher for the ``/coding``
+ * route. Mirrors the wireframe sidebar ``Q4zeZN`` in
  * ``.diagrams/OpenAgentd-ui.pen``:
  *
  *   • Search input at the top — opens the command palette (Ctrl+P).
- *   • Flat list of workspaces. Each row is a collapsible tree node:
- *       📁 · workspace label · `+` new
- *     Expanding a row reveals the nested coding sessions belonging
- *     to that workspace, with the same delete-on-hover affordance as
- *     the cockpit sidebar.
+ *   • Flat list of repositories, worktrees, and their coding sessions.
+ *     Worktree/session grouping is shown with icons, counts, and spacing
+ *     rather than file-tree indentation.
  *   • ``+ Open folder…`` row at the bottom of the workspace list
  *     surfaces the trusted-workspace dialog.
  *   • Footer trio: ⚙ Settings · ❔ Help (palette) · 🌙 ThemeToggle.
@@ -16,7 +14,7 @@
  * The 64 px icon rail from the previous design is gone — workspace
  * navigation now lives inline so the sidebar matches the cockpit's
  * single-column shape. ``activeWorkspace`` is the workspace driving
- * the current chat; ``expandedWorkspaces`` is local UI state for which tree nodes are
+ * the current chat; ``expandedWorkspaces`` is local UI state for which rows are
  * currently showing their sessions. Multiple workspaces can stay open
  * at once. Switching the active workspace auto-expands it.
  */
@@ -29,12 +27,13 @@ import { usePlatform } from '@/hooks/use-platform'
 import { useResizableWidth } from '@/hooks/use-resizable-width'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import {
+  ChevronRight,
   Folder,
   GitBranch,
   HelpCircle,
   Home,
-  CircleHelp,
   Loader2,
+  MoreHorizontal,
   Pencil,
   Plus,
   Search,
@@ -45,7 +44,7 @@ import {
 import { queryKeys } from '@/queries'
 import { useCodingWorkspaceSessionsQuery, useDeleteTeamSessionMutation, useTeamSessionsQuery, useUpdateTeamSessionTitleMutation } from '@/queries/useSessionsQuery'
 import { apiBaseUrl } from '@/api/base-url'
-import { browseWorkspaces, getCodingWorkspaceTree, listWorktrees, removeWorktree, resolveTeamSession, setCodingWorkspaceVisibility, validateWorkspace } from '@/api/client'
+import { browseWorkspaces, getCodingWorkspaceTree, listWorktrees, removeWorktree, renameWorktree, resolveTeamSession, setCodingWorkspaceVisibility, validateWorkspace } from '@/api/client'
 import { getAppBackendStatus } from '@/lib/app-backend'
 import { useTeamStore } from '@/stores/useTeamStore'
 import { prependSession, prependWorkspaceSession } from '@/stores/cache-invalidation-bridge'
@@ -68,8 +67,6 @@ import {
 } from '@/components/ui/dialog'
 import type { CodingWorkspaceTreeRepository, SessionResponse, WorktreeInfo } from '@/api/types'
 import { LongPressButton } from '@/components/ui/long-press-button'
-
-const sessionGroupKey = (path: string) => `sessions:${path}`
 
 function worktreeNameSlug(value: string): string {
   return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80).replace(/-+$/g, '') || 'session'
@@ -107,6 +104,7 @@ function WorkspaceSessionList({
   runningSessions,
   collapsed = false,
   mobileLongPressActions = false,
+  className = 'max-h-[7.75rem] space-y-0.5 overflow-y-auto py-0.5 pl-5 pr-2',
   onSessionSelect,
   onSessionDelete,
   onSessionEdit,
@@ -118,6 +116,7 @@ function WorkspaceSessionList({
   runningSessions?: SessionResponse[]
   collapsed?: boolean
   mobileLongPressActions?: boolean
+  className?: string
   onSessionSelect: (session: SessionResponse, workspacePath: string) => void
   onSessionDelete: (e: React.MouseEvent, session: SessionResponse) => void
   onSessionEdit: (session: SessionResponse) => void
@@ -125,18 +124,38 @@ function WorkspaceSessionList({
   onSessionContextActions: (session: SessionResponse, event: React.MouseEvent) => void
 }) {
   const sessions = useCodingWorkspaceSessionsQuery(path, !collapsed)
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = sessions
   const workspaceSessions = collapsed
     ? (runningSessions ?? [])
     : (sessions.data?.pages.flatMap((page) => page.data) ?? [])
+  const listRef = useRef<HTMLDivElement>(null)
+  const loadMoreRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const sentinel = loadMoreRef.current
+    if (!sentinel || collapsed) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && hasNextPage && !isFetchingNextPage) {
+          void fetchNextPage()
+        }
+      },
+      { root: listRef.current, threshold: 0.1 },
+    )
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [collapsed, fetchNextPage, hasNextPage, isFetchingNextPage])
 
   return (
-    <div className="space-y-0.5 pb-2 pl-4 pr-2">
+    <div ref={listRef} className={className}>
       {workspaceSessions.length === 0 && !collapsed && !sessions.isLoading && (
         <p className="px-2 py-1 text-xs text-(--color-text-subtle)">No sessions yet.</p>
       )}
       {workspaceSessions.map((session) => {
         const isCurrent = session.id === currentSessionId
         const isRunning = session.running === true
+        const sessionTitle = session.title || 'Untitled'
+        const sessionDate = formatRelativeDate(session.created_at)
         return (
           <div key={session.id} className="group relative">
             <LongPressButton
@@ -153,24 +172,16 @@ function WorkspaceSessionList({
                 e.preventDefault()
                 onSessionContextActions(session, e)
               }}
-              className={`w-full rounded-md px-2 py-1.5 text-left text-xs transition-colors ${
+              title={`${sessionTitle} · ${sessionDate}`}
+              className={`flex min-h-6 w-full items-center gap-1.5 rounded px-2 py-0.5 text-left text-xs transition-colors ${
                 isCurrent
-                  ? 'bg-(--bg-key) text-(--color-text)'
+                  ? 'text-(--color-text)'
                   : 'text-(--color-text-2) hover:text-(--color-text)'
               }`}
             >
-              <p className="truncate font-medium">{session.title || 'Untitled'}</p>
-              <p className="mt-0.5 truncate text-xs text-(--color-text-subtle)">
-                {formatRelativeDate(session.created_at)}
-              </p>
-              {isRunning && (
-                <span
-                  className="absolute right-7 top-1/2 -translate-y-1/2 text-(--color-accent)"
-                  aria-label="Session running"
-                >
-                  <Loader2 size={11} className="animate-spin" aria-hidden="true" />
-                </span>
-              )}
+              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${isRunning ? 'bg-(--color-accent)' : 'border border-(--color-text-subtle)'}`} aria-label={isRunning ? 'Session running' : undefined} aria-hidden={isRunning ? undefined : true} />
+              <span className={`min-w-0 flex-1 truncate font-medium ${isRunning ? 'session-title-breathe text-(--color-text)' : ''}`}>{sessionTitle}</span>
+
             </LongPressButton>
             <button
               type="button"
@@ -178,7 +189,7 @@ function WorkspaceSessionList({
                 e.stopPropagation()
                 onSessionEdit(session)
               }}
-              className="absolute right-6 top-1/2 flex -translate-y-1/2 items-center justify-center rounded p-1 text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--bg-key) hover:text-(--color-text) group-hover:opacity-100 pointer-coarse:opacity-100"
+              className={`absolute right-6 top-1/2 flex -translate-y-1/2 items-center justify-center rounded p-1 text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--bg-key) hover:text-(--color-text) group-hover:opacity-100 ${mobileLongPressActions ? 'hidden' : 'pointer-coarse:opacity-100'}`}
               aria-label={`Edit session ${session.title || 'Untitled'}`}
             >
               <Pencil size={11} />
@@ -186,7 +197,7 @@ function WorkspaceSessionList({
             <button
               type="button"
               onClick={(e) => onSessionDelete(e, session)}
-              className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center justify-center rounded p-1 text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) group-hover:opacity-100 pointer-coarse:opacity-100"
+              className={`absolute right-1 top-1/2 flex -translate-y-1/2 items-center justify-center rounded p-1 text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) group-hover:opacity-100 ${mobileLongPressActions ? 'hidden' : 'pointer-coarse:opacity-100'}`}
               aria-label={`Delete session ${session.title || 'Untitled'}`}
             >
               <Trash2 size={11} />
@@ -194,16 +205,11 @@ function WorkspaceSessionList({
           </div>
         )
       })}
-      {!collapsed && sessions.hasNextPage && (
-        <button
-          type="button"
-          onClick={() => { void sessions.fetchNextPage() }}
-          disabled={sessions.isFetchingNextPage}
-          className="mt-1 flex w-full items-center justify-center gap-1 rounded-md px-2 py-1.5 text-xs text-(--color-accent) transition-colors hover:bg-(--bg-key) disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {sessions.isFetchingNextPage && <Loader2 size={11} className="animate-spin" aria-hidden="true" />}
-          <span>{sessions.isFetchingNextPage ? 'Loading…' : 'Load more'}</span>
-        </button>
+      {!collapsed && <div ref={loadMoreRef} className="h-1" aria-hidden />}
+      {!collapsed && isFetchingNextPage && (
+        <div className="flex items-center justify-center py-1 text-(--color-accent)" aria-label="Loading more sessions">
+          <Loader2 size={11} className="animate-spin" aria-hidden="true" />
+        </div>
       )}
     </div>
   )
@@ -259,7 +265,6 @@ export function CodingSidebar({
     setExpandedWorkspaces((current) => {
       const next = new Set(current)
       next.add(activeWorkspace)
-      next.add(sessionGroupKey(activeWorkspace))
       return next
     })
   }, [activeWorkspace])
@@ -273,15 +278,6 @@ export function CodingSidebar({
     })
   }
 
-  const toggleSessionGroupExpanded = (path: string) => {
-    const key = sessionGroupKey(path)
-    setExpandedWorkspaces((current) => {
-      const next = new Set(current)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
-      return next
-    })
-  }
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [selectedWorkspace, setSelectedWorkspace] = useState<string | null>(null)
@@ -295,6 +291,10 @@ export function CodingSidebar({
   const [editTarget, setEditTarget] = useState<SessionResponse | null>(null)
   const [editTitle, setEditTitle] = useState('')
   const editTitleInputRef = useRef<HTMLInputElement>(null)
+  const [worktreeEditTarget, setWorktreeEditTarget] = useState<WorktreeInfo | null>(null)
+  const [worktreeEditTitle, setWorktreeEditTitle] = useState('')
+  const [worktreeEditLoading, setWorktreeEditLoading] = useState(false)
+  const worktreeEditInputRef = useRef<HTMLInputElement>(null)
   const [deleteTarget, setDeleteTarget] = useState<SessionResponse | null>(null)
   const [mobileSessionActions, setMobileSessionActions] = useState<SessionResponse | null>(null)
   const [desktopSessionActions, setDesktopSessionActions] = useState<{ session: SessionResponse; x: number; y: number } | null>(null)
@@ -404,6 +404,10 @@ export function CodingSidebar({
     if (editTarget) editTitleInputRef.current?.focus()
   }, [editTarget])
 
+  useEffect(() => {
+    if (worktreeEditTarget) worktreeEditInputRef.current?.focus()
+  }, [worktreeEditTarget])
+
   const selectWorkspace = async (path: string, opts: { create?: boolean } = {}) => {
     const shouldCreate = opts.create === true
     const state = useTeamStore.getState()
@@ -464,11 +468,9 @@ export function CodingSidebar({
       void refreshWorkspaceTree()
     }).catch(() => undefined)
     setExpandedWorkspaces((current) => {
-      const key = sessionGroupKey(path)
-      if (!current.has(path) && !current.has(key)) return current
+      if (!current.has(path)) return current
       const next = new Set(current)
       next.delete(path)
-      next.delete(key)
       return next
     })
     if (path === activeWorkspace) {
@@ -512,11 +514,9 @@ export function CodingSidebar({
       await removeWorktree(source, directory)
       setRemovedWorktreePaths((current) => new Set(current).add(directory))
       setExpandedWorkspaces((current) => {
-        const key = sessionGroupKey(directory)
-        if (!current.has(directory) && !current.has(key)) return current
+        if (!current.has(directory)) return current
         const next = new Set(current)
         next.delete(directory)
-        next.delete(key)
         return next
       })
       setWorktreesBySource((current) => {
@@ -648,6 +648,11 @@ export function CodingSidebar({
     setEditTitle(session.title || '')
   }
 
+  const handleWorktreeEdit = (item: WorktreeInfo) => {
+    setWorktreeEditTarget(item)
+    setWorktreeEditTitle(item.name)
+  }
+
   const submitSessionTitle = (e: React.FormEvent) => {
     e.preventDefault()
     if (!editTarget) return
@@ -657,6 +662,24 @@ export function CodingSidebar({
       { id: editTarget.id, title },
       { onSuccess: () => setEditTarget(null) },
     )
+  }
+
+  const submitWorktreeTitle = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!worktreeEditTarget) return
+    const title = worktreeEditTitle.trim()
+    if (!title) return
+    setWorktreeEditLoading(true)
+    setError(null)
+    try {
+      await renameWorktree(worktreeEditTarget.directory, title)
+      await refreshWorkspaceTree()
+      setWorktreeEditTarget(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to rename worktree')
+    } finally {
+      setWorktreeEditLoading(false)
+    }
   }
 
   const confirmSessionDelete = () => {
@@ -706,7 +729,7 @@ export function CodingSidebar({
           ? { x: mobileOpen ? 0 : -280, width: 'min(272px, calc(100vw - 2rem))' }
           : { width: desktopCollapsed ? 0 : resizable.width }
       }
-      transition={{ duration: prefersReducedMotion ? 0.01 : 0.22, ease: [0.4, 0, 0.2, 1] }}
+      transition={{ duration: resizable.isResizing || prefersReducedMotion ? 0.01 : 0.22, ease: [0.4, 0, 0.2, 1] }}
       className={
         isMobile
           ? 'mobile-safe-top fixed bottom-0 left-0 z-40 flex w-[min(272px,calc(100vw-2rem))] shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page) shadow-xl'
@@ -770,13 +793,12 @@ export function CodingSidebar({
           const sourceSessions = codingSessions.filter((s) => s.workspace === path)
           const sourceRunningSessions = sourceSessions.filter((s) => s.running === true)
           const sourceHasRunningSession = sourceRunningSessions.length > 0
-          const sourceSessionGroupExpanded = expandedWorkspaces.has(sessionGroupKey(path))
           const repository = workspaceTree.find((repo) => repo.path === path)
           const nestedWorktrees = (repository?.worktrees ?? []).filter((item) => !deletedWorktreeSet.has(item.path))
 
           return (
             <div key={path} className="relative">
-              <div className="group flex h-8 items-center pl-2 pr-2">
+              <div className="group mx-2 flex h-7 items-center rounded-md border border-transparent">
                 <LongPressButton
                   enabled={mobileLongPressActions}
                   onLongPress={() => setMobileWorkspaceActions({ path, kind: 'main' })}
@@ -787,17 +809,17 @@ export function CodingSidebar({
                     event.preventDefault()
                     setDesktopWorkspaceActions({ path, kind: 'main', x: event.clientX, y: event.clientY })
                   }}
-                  className="flex min-w-0 flex-1 items-center gap-1.5 truncate rounded px-2 py-1 text-left text-xs transition-colors hover:bg-(--bg-key)"
+                  className="flex min-w-0 flex-1 items-center gap-1.5 truncate rounded px-1.5 py-1 text-left text-xs"
                   aria-expanded={sourceIsExpanded}
                   aria-label={`${sourceIsExpanded ? 'Collapse' : 'Expand'} repository ${workspaceLabel(path)}`}
                   title={path}
                 >
-                  <Folder size={13} className="shrink-0 text-(--color-accent)" aria-hidden="true" />
+                  <Folder size={11} className="shrink-0 text-(--color-accent)" aria-hidden="true" />
                   <span className={`truncate font-mono ${sourceIsActive ? 'font-semibold text-(--color-text)' : 'text-(--color-text-2) group-hover:text-(--color-text)'}`}>
                     {workspaceLabel(path)}
                   </span>
-                  {(sourceIsPending || sourceHasRunningSession) && (
-                    <span aria-label={sourceHasRunningSession ? 'Repository has running session' : undefined}>
+                  {sourceIsPending && (
+                    <span>
                       <Loader2 size={11} className="shrink-0 animate-spin text-(--color-text-muted)" aria-hidden="true" />
                     </span>
                   )}
@@ -805,7 +827,7 @@ export function CodingSidebar({
                 <button
                   type="button"
                   onClick={() => { void openWorktreeDialog(path) }}
-                  className={`ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-(--color-border) text-(--color-text-muted) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${isMobile ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                  className={`ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-(--color-border) text-(--color-text-muted) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100'}`}
                   aria-label={`Create worktree from ${workspaceLabel(path)}`}
                   title="Create worktree"
                 >
@@ -814,68 +836,39 @@ export function CodingSidebar({
                 <button
                   type="button"
                   onClick={() => setRemoveWorkspaceTarget(path)}
-                  className={`ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-(--color-text-subtle) transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) ${isMobile ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                  className={`ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-(--color-text-subtle) transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100'}`}
                   aria-label={`Hide repository ${workspaceLabel(path)} from sidebar`}
                   title="Hide repository from sidebar"
                 >
                   <Trash2 size={11} aria-hidden="true" />
                 </button>
+                <button
+                  type="button"
+                  onClick={(event) => setDesktopWorkspaceActions({ path, kind: 'main', x: event.clientX, y: event.clientY })}
+                  className={`mr-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-(--color-text-subtle) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100'}`}
+                  aria-label={`Actions for ${workspaceLabel(path)}`}
+                  title="Workspace actions"
+                >
+                  <MoreHorizontal size={12} aria-hidden="true" />
+                </button>
               </div>
 
               {(sourceIsExpanded || sourceHasRunningSession) && (
-                <div className="space-y-0.5 pb-1">
-                  <div className="group flex h-7 items-center pr-2" style={{ paddingLeft: 20 }}>
-                    <LongPressButton
-                      enabled={mobileLongPressActions}
-                      onLongPress={() => setMobileWorkspaceActions({ path, kind: 'main' })}
-                      type="button"
-                      onClick={() => toggleSessionGroupExpanded(path)}
-                      onContextMenu={(event) => {
-                        if (mobileLongPressActions) return
-                        event.preventDefault()
-                        setDesktopWorkspaceActions({ path, kind: 'main', x: event.clientX, y: event.clientY })
-                      }}
-                      className={`flex min-w-0 flex-1 items-center gap-1.5 rounded px-2 py-1 text-left text-xs transition-colors hover:bg-(--bg-key) ${sourceIsActive ? 'text-(--color-accent)' : 'text-(--color-text-2)'}`}
-                      aria-expanded={sourceSessionGroupExpanded}
-                      aria-label={`${sourceSessionGroupExpanded ? 'Collapse' : 'Expand'} main workspace ${workspaceLabel(path)}`}
-                      title={path}
-                    >
-                      <Folder size={12} className="shrink-0 text-(--color-text-subtle)" aria-hidden="true" />
-                      <span className="min-w-0 flex-1 truncate font-mono">main workspace</span>
-                      {sourceHasRunningSession && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--color-accent)" aria-label="Workspace has running session" />}
-                    </LongPressButton>
-                    <button
-                      type="button"
-                      onClick={() => { void selectWorkspace(path, { create: true }) }}
-                      className={`ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-(--color-border) text-(--color-text-muted) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${isMobile ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
-                      aria-label={`New session in main workspace ${workspaceLabel(path)}`}
-                      title={`New session in main workspace ${workspaceLabel(path)}`}
-                    >
-                      <Plus size={11} aria-hidden="true" />
-                    </button>
-                  </div>
-                  {(sourceSessionGroupExpanded || sourceHasRunningSession) && (
-                    <WorkspaceSessionList
-                      path={path}
-                      currentSessionId={currentSessionId}
-                      runningSessions={sourceRunningSessions}
-                      collapsed={!sourceSessionGroupExpanded}
-                      mobileLongPressActions={mobileLongPressActions}
-                      onSessionSelect={handleSessionSelect}
-                      onSessionDelete={handleSessionDelete}
-                      onSessionEdit={handleSessionEdit}
-                      onSessionLongPress={setMobileSessionActions}
-                      onSessionContextActions={(session, event) => {
-                        setDesktopSessionActions({ session, x: event.clientX, y: event.clientY })
-                      }}
-                    />
-                  )}
-
-                  {nestedWorktrees.length > 0 && (
-                    <div className="px-2 py-1" style={{ paddingLeft: 28 }}>
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-(--color-text-subtle)">Worktrees</p>
-                    </div>
-                  )}
+                <div className="pb-1">
+                  <WorkspaceSessionList
+                    path={path}
+                    currentSessionId={currentSessionId}
+                    runningSessions={sourceRunningSessions}
+                    collapsed={!sourceIsExpanded}
+                    mobileLongPressActions={mobileLongPressActions}
+                    onSessionSelect={handleSessionSelect}
+                    onSessionDelete={handleSessionDelete}
+                    onSessionEdit={handleSessionEdit}
+                    onSessionLongPress={setMobileSessionActions}
+                    onSessionContextActions={(session, event) => {
+                      setDesktopSessionActions({ session, x: event.clientX, y: event.clientY })
+                    }}
+                  />
                   {nestedWorktrees.map((item) => {
                     const directory = item.path
                     const worktreeInfo: WorktreeInfo = { name: item.name, directory, managed: item.managed }
@@ -886,8 +879,8 @@ export function CodingSidebar({
                     const runningSessions = itemSessions.filter((s) => s.running === true)
                     const hasRunningSession = runningSessions.length > 0
                     return (
-                      <div key={directory}>
-                        <div className="group flex min-h-7 items-center pr-2" style={{ paddingLeft: 20 }}>
+                      <div key={directory} className="mt-1">
+                        <div className="group mx-2 flex h-7 items-center rounded-md">
                           <LongPressButton
                             enabled={mobileLongPressActions}
                             onLongPress={() => setMobileWorkspaceActions({ path: directory, kind: 'worktree', source: path, worktree: worktreeInfo })}
@@ -898,16 +891,17 @@ export function CodingSidebar({
                               event.preventDefault()
                               setDesktopWorkspaceActions({ path: directory, kind: 'worktree', source: path, worktree: worktreeInfo, x: event.clientX, y: event.clientY })
                             }}
-                            className={`flex min-w-0 flex-1 items-center gap-1.5 rounded px-2 py-1 text-left text-xs transition-colors hover:bg-(--bg-key) ${isActive ? 'text-(--color-accent)' : 'text-(--color-text-2)'}`}
+                            className={`flex min-w-0 flex-1 items-center gap-1.5 rounded px-1.5 py-0.5 text-left text-xs transition-colors ${isActive ? 'text-(--color-accent)' : 'text-(--color-text-2)'}`}
                             aria-expanded={isExpanded}
                             aria-label={`${isExpanded ? 'Collapse' : 'Expand'} worktree ${item.name}`}
                             title={directory}
                           >
+                            <ChevronRight size={11} className={`shrink-0 text-(--color-text-subtle) transition-transform ${isExpanded ? 'rotate-90' : ''}`} aria-hidden="true" />
                             <GitBranch size={12} className="shrink-0 text-(--accent-orange-text)" aria-hidden="true" />
                             <span className="min-w-0 flex-1 truncate font-mono">{item.name}</span>
                             {!item.managed && <span className="shrink-0 rounded-full bg-(--bg-key) px-1.5 py-0.5 text-[9px] text-(--color-text-subtle)">external</span>}
-                            {(isPending || hasRunningSession) && (
-                              <span aria-label={hasRunningSession ? 'Worktree has running session' : undefined}>
+                            {isPending && (
+                              <span>
                                 <Loader2 size={11} className="shrink-0 animate-spin text-(--color-text-muted)" aria-hidden="true" />
                               </span>
                             )}
@@ -915,18 +909,27 @@ export function CodingSidebar({
                           <button
                             type="button"
                             onClick={() => { void selectWorkspace(directory, { create: true }) }}
-                            className={`ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-(--color-border) text-(--color-text-muted) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${isMobile ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                            className={`ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-(--color-border) text-(--color-text-muted) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100'}`}
                             aria-label={`New session in worktree ${item.name}`}
                             title={`New session in worktree ${item.name}`}
                           >
                             <Plus size={11} aria-hidden="true" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleWorktreeEdit(worktreeInfo)}
+                            className={`ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-(--color-text-subtle) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100'}`}
+                            aria-label={`Edit worktree title ${item.name}`}
+                            title="Edit worktree title"
+                          >
+                            <Pencil size={11} aria-hidden="true" />
                           </button>
                           {item.managed ? (
                             <button
                               type="button"
                               onClick={() => { void handleRemoveWorktree(worktreeInfo) }}
                               disabled={worktreeRemoving === directory}
-                              className={`ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-(--color-text-subtle) transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) disabled:opacity-50 ${isMobile ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                              className={`ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-(--color-text-subtle) transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) disabled:opacity-50 ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100'}`}
                               aria-label={`Remove worktree ${item.name}`}
                               title="Remove managed worktree"
                             >
@@ -940,6 +943,7 @@ export function CodingSidebar({
                             currentSessionId={currentSessionId}
                             runningSessions={runningSessions}
                             collapsed={!isExpanded}
+                            className="max-h-[7.75rem] space-y-0.5 overflow-y-auto py-0.5 pl-5 pr-2"
                             mobileLongPressActions={mobileLongPressActions}
                             onSessionSelect={handleSessionSelect}
                             onSessionDelete={handleSessionDelete}
@@ -953,16 +957,6 @@ export function CodingSidebar({
                       </div>
                     )
                   })}
-
-                  <button
-                    type="button"
-                    onClick={() => { void openWorktreeDialog(path) }}
-                    className="flex h-7 w-full items-center gap-1.5 rounded px-2 py-1 text-left text-xs font-mono text-(--color-accent) hover:bg-(--bg-key)"
-                    style={{ paddingLeft: 32 }}
-                  >
-                    <Plus size={12} aria-hidden="true" />
-                    <span>Create worktree</span>
-                  </button>
                 </div>
               )}
             </div>
@@ -973,7 +967,7 @@ export function CodingSidebar({
         <button
           type="button"
           onClick={() => { void openWorkspaceDialog() }}
-          className="mt-1 flex h-8 items-center gap-2 px-3 text-left text-xs italic text-(--color-accent) transition-colors hover:bg-(--bg-key)"
+          className="flex h-8 items-center gap-2 px-3 text-left text-xs italic text-(--color-accent) transition-colors"
           aria-label="Open folder"
           title="Open a new workspace folder"
         >
@@ -1165,20 +1159,37 @@ export function CodingSidebar({
                   Remove from sidebar
                 </Button>
               </>
-            ) : mobileWorkspaceActions?.worktree?.managed ? (
-              <Button
-                type="button"
-                variant="outline"
-                className="justify-start text-(--color-error)"
-                onClick={() => {
-                  const item = mobileWorkspaceActions.worktree
-                  setMobileWorkspaceActions(null)
-                  if (item) void handleRemoveWorktree(item)
-                }}
-              >
-                <Trash2 size={14} aria-hidden="true" />
-                Remove worktree
-              </Button>
+            ) : mobileWorkspaceActions?.worktree ? (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="justify-start"
+                  onClick={() => {
+                    const item = mobileWorkspaceActions.worktree
+                    setMobileWorkspaceActions(null)
+                    if (item) handleWorktreeEdit(item)
+                  }}
+                >
+                  <Pencil size={14} aria-hidden="true" />
+                  Edit title
+                </Button>
+                {mobileWorkspaceActions.worktree.managed ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="justify-start text-(--color-error)"
+                    onClick={() => {
+                      const item = mobileWorkspaceActions.worktree
+                      setMobileWorkspaceActions(null)
+                      if (item) void handleRemoveWorktree(item)
+                    }}
+                  >
+                    <Trash2 size={14} aria-hidden="true" />
+                    Remove worktree
+                  </Button>
+                ) : null}
+              </>
             ) : null}
           </DialogFooter>
         </DialogContent>
@@ -1188,13 +1199,10 @@ export function CodingSidebar({
         open={worktreeTarget !== null}
         onOpenChange={(open) => { if (!open) setWorktreeTarget(null) }}
       >
-        <DialogContent showCloseButton={false} className="flex max-h-[min(86dvh,600px)] w-[calc(100vw-1.5rem)] max-w-md flex-col overflow-hidden rounded-lg border border-(--color-border) bg-(--bg-card) p-0 shadow-xl sm:w-[min(680px,calc(100vw-2rem))] sm:max-w-none">
+        <DialogContent showCloseButton={false} className="flex max-h-[min(86dvh,520px)] w-[calc(100vw-1.5rem)] max-w-md flex-col overflow-hidden rounded-lg border border-(--color-border) bg-(--bg-card) p-0 shadow-xl sm:w-[min(560px,calc(100vw-2rem))] sm:max-w-none">
           <form onSubmit={submitWorktree} className="flex h-full min-h-0 flex-col">
-            <DialogHeader className="shrink-0 border-b border-(--color-border) bg-(--bg-page) px-4 py-3 sm:px-5">
-              <div className="flex items-start gap-2.5 sm:gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-(--color-border) bg-(--bg-key) text-(--color-accent)">
-                  <GitBranch size={15} aria-hidden="true" />
-                </div>
+            <DialogHeader className="shrink-0 gap-0 border-b border-(--color-border) bg-(--bg-page) px-3 py-2.5 sm:px-4">
+              <div className="flex items-start gap-2">
                 <div className="min-w-0 flex-1">
                   <DialogTitle className="text-sm font-semibold leading-5 text-(--color-text)">Create worktree</DialogTitle>
                   <DialogDescription className="mt-0.5 text-xs leading-4 text-(--color-text-muted)">
@@ -1204,16 +1212,16 @@ export function CodingSidebar({
                 <button
                   type="button"
                   onClick={() => setWorktreeTarget(null)}
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
                   aria-label="Close create worktree dialog"
                 >
-                  <X size={15} aria-hidden="true" />
+                  <X size={14} aria-hidden="true" />
                 </button>
               </div>
             </DialogHeader>
-            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3 sm:px-5">
-              <div className="rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-2">
-                <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-(--color-text-subtle)">
+            <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-3 py-3 sm:px-4">
+              <div className="rounded-md border border-(--color-border) bg-(--bg-page) px-2.5 py-1.5">
+                <div className="mb-0.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-(--color-text-subtle)">
                   <Folder size={12} aria-hidden="true" />
                   Source workspace
                 </div>
@@ -1221,18 +1229,18 @@ export function CodingSidebar({
                   {worktreeTarget}
                 </p>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-2.5 sm:grid-cols-2">
                 <label className="block space-y-1 text-xs font-medium text-(--color-text-2)">
                   <span>Worktree name</span>
                   <input
                     value={worktreeName}
                     onChange={(e) => setWorktreeName(e.target.value)}
                     placeholder="feature-login"
-                    className="h-9 w-full min-w-0 rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-1 font-mono text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-subtle) focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25"
+                    className="h-8 w-full min-w-0 rounded-md border border-(--color-border) bg-(--bg-page) px-2.5 py-1 font-mono text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-subtle) focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25"
                     maxLength={80}
                     autoFocus
                   />
-                  <p className="text-[11px] font-normal text-(--color-text-subtle)">Blank uses “session”.</p>
+                  <p className="text-[10px] font-normal text-(--color-text-subtle)">Blank uses “session”.</p>
                 </label>
                 <label className="block space-y-1 text-xs font-medium text-(--color-text-2)">
                   <span>Branch</span>
@@ -1240,28 +1248,23 @@ export function CodingSidebar({
                     value={worktreeBranch}
                     onChange={(e) => setWorktreeBranch(e.target.value)}
                     placeholder="openagentd/feature-login"
-                    className="h-9 w-full min-w-0 rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-1 font-mono text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-subtle) focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25"
+                    className="h-8 w-full min-w-0 rounded-md border border-(--color-border) bg-(--bg-page) px-2.5 py-1 font-mono text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-subtle) focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25"
                     maxLength={255}
                   />
-                  <p className="text-[11px] font-normal text-(--color-text-subtle)">Blank defaults to openagentd/name.</p>
+                  <p className="text-[10px] font-normal text-(--color-text-subtle)">Blank defaults to openagentd/name.</p>
                 </label>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="hidden gap-2 rounded-md border border-(--color-border) bg-(--bg-key)/30 px-3 py-2 text-[11px] leading-4 text-(--color-text-muted) sm:flex">
-                  <CircleHelp size={13} className="mt-0.5 shrink-0 text-(--color-text-subtle)" aria-hidden="true" />
-                  <p>Stored in OpenAgentd data, outside the source repo. Uncommitted source changes are not copied.</p>
-                </div>
-                <div className="rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-2 text-xs text-(--color-text-muted)">
-                  <div className="mb-1.5 flex items-center justify-between gap-2">
+              <div className="rounded-md border border-(--color-border) bg-(--bg-page) px-2.5 py-2 text-xs text-(--color-text-muted)">
+                <div className="mb-1 flex items-center justify-between gap-2">
                     <p className="font-medium text-(--color-text-2)">Existing worktrees</p>
                     <span className="rounded-full bg-(--bg-key) px-2 py-0.5 text-[10px] text-(--color-text-subtle)">{worktreeOptions.length}</span>
-                  </div>
-                  {worktreeOptions.length === 0 ? (
+                </div>
+                {worktreeOptions.length === 0 ? (
                     <p className="py-1 text-(--color-text-subtle)">No worktrees yet.</p>
-                  ) : (
-                    <ul className="max-h-44 space-y-1 overflow-y-auto pr-1">
+                ) : (
+                  <ul className="max-h-32 space-y-0.5 overflow-y-auto pr-1">
                       {worktreeOptions.map((item) => (
-                        <li key={item.directory} className="group flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 hover:bg-(--bg-key)" title={item.directory}>
+                        <li key={item.directory} className="group flex min-w-0 items-center gap-2 rounded-md px-2 py-1 hover:bg-(--bg-key)" title={item.directory}>
                           <GitBranch size={12} className="shrink-0 text-(--color-text-subtle)" aria-hidden="true" />
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-(--color-text-2)">{item.name}</p>
@@ -1283,15 +1286,14 @@ export function CodingSidebar({
                           )}
                         </li>
                       ))}
-                    </ul>
-                  )}
-                </div>
+                  </ul>
+                )}
               </div>
               {error && <p className="rounded-md border border-(--color-error)/30 bg-(--color-error-subtle) px-3 py-2 text-xs text-(--color-error)">{error}</p>}
             </div>
-            <DialogFooter className="shrink-0 flex-row justify-end gap-2 border-t border-(--color-border) bg-(--bg-page) px-4 pb-5 pt-3 sm:pl-5 sm:pr-6 sm:pb-6">
-              <Button type="button" variant="outline" onClick={() => setWorktreeTarget(null)} className="h-9 w-auto px-4">Cancel</Button>
-              <Button type="submit" disabled={worktreeLoading} className="h-9 w-auto px-4">
+            <DialogFooter className="mx-0 mb-0 shrink-0 flex-row justify-end gap-2 rounded-none border-t border-(--color-border) bg-(--bg-page) px-3 py-2.5 sm:px-4">
+              <Button type="button" variant="outline" onClick={() => setWorktreeTarget(null)} className="h-8 w-auto px-3 text-xs">Cancel</Button>
+              <Button type="submit" disabled={worktreeLoading} className="h-8 w-auto px-3 text-xs">
                 {worktreeLoading ? 'Creating…' : 'Create and open'}
               </Button>
             </DialogFooter>
@@ -1357,20 +1359,37 @@ export function CodingSidebar({
                   Remove from sidebar
                 </button>
               </>
-            ) : desktopWorkspaceActions.worktree?.managed ? (
-              <button
-                type="button"
-                role="menuitem"
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none"
-                onClick={() => {
-                  const item = desktopWorkspaceActions.worktree
-                  setDesktopWorkspaceActions(null)
-                  if (item) void handleRemoveWorktree(item)
-                }}
-              >
-                <Trash2 size={14} aria-hidden="true" />
-                Remove worktree
-              </button>
+            ) : desktopWorkspaceActions.worktree ? (
+              <>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+                  onClick={() => {
+                    const item = desktopWorkspaceActions.worktree
+                    setDesktopWorkspaceActions(null)
+                    if (item) handleWorktreeEdit(item)
+                  }}
+                >
+                  <Pencil size={14} aria-hidden="true" />
+                  Edit title
+                </button>
+                {desktopWorkspaceActions.worktree.managed ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none"
+                    onClick={() => {
+                      const item = desktopWorkspaceActions.worktree
+                      setDesktopWorkspaceActions(null)
+                      if (item) void handleRemoveWorktree(item)
+                    }}
+                  >
+                    <Trash2 size={14} aria-hidden="true" />
+                    Remove worktree
+                  </button>
+                ) : null}
+              </>
             ) : null}
           </div>
         </div>
@@ -1484,20 +1503,20 @@ export function CodingSidebar({
         open={editTarget !== null}
         onOpenChange={(open) => { if (!open) setEditTarget(null) }}
       >
-        <DialogContent showCloseButton={false}>
-          <form onSubmit={submitSessionTitle}>
-            <DialogHeader>
-              <DialogTitle>Edit session title</DialogTitle>
-              <DialogDescription>
-                Rename this session in the sidebar.
+        <DialogContent className="max-w-xs gap-3 p-3">
+          <form onSubmit={submitSessionTitle} className="space-y-3">
+            <DialogHeader className="gap-1 pr-8">
+              <DialogTitle className="text-sm leading-5">Edit session title</DialogTitle>
+              <DialogDescription className="text-xs leading-4">
+                Rename this sidebar item.
               </DialogDescription>
             </DialogHeader>
-            <div className="px-3 py-2">
+            <div>
               <input
                 ref={editTitleInputRef}
                 value={editTitle}
                 onChange={(e) => setEditTitle(e.target.value)}
-                className="h-9 w-full min-w-0 rounded-[10px] border border-(--color-border) bg-(--bg-page) px-3 py-1 text-sm text-(--color-text) outline-none focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25"
+                className="h-8 w-full min-w-0 rounded-md border border-(--color-border) bg-(--bg-page) px-2.5 py-1 text-sm text-(--color-text) outline-none focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25"
                 aria-label="Session title"
                 maxLength={255}
               />
@@ -1505,10 +1524,43 @@ export function CodingSidebar({
                 <p className="mt-2 text-xs text-(--color-error)">Failed to update title.</p>
               )}
             </div>
-            <DialogFooter className="p-3">
-              <Button type="button" variant="outline" onClick={() => setEditTarget(null)}>Cancel</Button>
-              <Button type="submit" disabled={!editTitle.trim() || updateSessionTitle.isPending}>
+            <DialogFooter className="mx-0 mb-0 flex-row justify-end gap-2 rounded-none border-0 bg-transparent p-0">
+              <Button type="button" variant="outline" className="h-8 px-3 text-xs" onClick={() => setEditTarget(null)}>Cancel</Button>
+              <Button type="submit" className="h-8 px-3 text-xs" disabled={!editTitle.trim() || updateSessionTitle.isPending}>
                 {updateSessionTitle.isPending ? 'Saving…' : 'Save'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={worktreeEditTarget !== null}
+        onOpenChange={(open) => { if (!open) setWorktreeEditTarget(null) }}
+      >
+        <DialogContent className="max-w-xs gap-3 p-3">
+          <form onSubmit={submitWorktreeTitle} className="space-y-3">
+            <DialogHeader className="gap-1 pr-8">
+              <DialogTitle className="text-sm leading-5">Edit worktree title</DialogTitle>
+              <DialogDescription className="max-w-full truncate text-xs leading-4" title={worktreeEditTarget?.directory}>
+                {worktreeEditTarget?.directory ? workspaceLabel(worktreeEditTarget.directory) : 'Rename this sidebar item.'}
+              </DialogDescription>
+            </DialogHeader>
+            <div>
+              <input
+                ref={worktreeEditInputRef}
+                value={worktreeEditTitle}
+                onChange={(e) => setWorktreeEditTitle(e.target.value)}
+                className="h-8 w-full min-w-0 rounded-md border border-(--color-border) bg-(--bg-page) px-2.5 py-1 text-sm text-(--color-text) outline-none focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25"
+                aria-label="Worktree title"
+                maxLength={255}
+              />
+              {error && <p className="mt-2 text-xs text-(--color-error)">{error}</p>}
+            </div>
+            <DialogFooter className="mx-0 mb-0 flex-row justify-end gap-2 rounded-none border-0 bg-transparent p-0">
+              <Button type="button" variant="outline" className="h-8 px-3 text-xs" onClick={() => setWorktreeEditTarget(null)}>Cancel</Button>
+              <Button type="submit" className="h-8 px-3 text-xs" disabled={!worktreeEditTitle.trim() || worktreeEditLoading}>
+                {worktreeEditLoading ? 'Saving…' : 'Save'}
               </Button>
             </DialogFooter>
           </form>

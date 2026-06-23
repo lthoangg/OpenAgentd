@@ -250,6 +250,7 @@ async def _read_mention_as_attachment(
         content_type=mime,
         data=data,
         truncate_inline_to=_MENTION_INLINE_MAX_CHARS,
+        source="mention",
     )
 
 

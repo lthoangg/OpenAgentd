@@ -13,10 +13,11 @@ so the LLM can apply the instructions in subsequent reasoning.
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 from functools import lru_cache
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import yaml
 
@@ -24,7 +25,7 @@ from loguru import logger
 from pydantic import Field
 
 from app.agent.sandbox import get_sandbox
-from app.agent.tools.registry import tool
+from app.agent.tools.registry import InjectedArg, tool
 
 
 def _default_skills_dir() -> Path:
@@ -272,7 +273,7 @@ def _skill_tool_description() -> str:
             "Load a specialized skill that provides domain-specific instructions and workflows.",
             "",
             "When a task matches one of the available skills listed below, use this tool to load the full skill instructions.",
-            "Call this at most once per skill. If the same skill was already loaded earlier in the visible conversation, reuse those instructions instead of calling this tool again.",
+            "Call this at most once per skill. If the same skill was already loaded earlier in the visible conversation, reuse those instructions instead of calling this tool again; repeated loads return the same content.",
             "",
             format_available_skills(verbose=False),
         ]
@@ -310,16 +311,48 @@ def _iter_skill_paths(directory: Path):
                 yield nested_file, f"{subdir.name}/{nested.name}"
 
 
+def _loaded_skills_from_messages(state: Any) -> dict[str, str]:
+    """Return skill names already loaded in the visible conversation."""
+    loaded: dict[str, str] = {}
+    for message in getattr(state, "messages_for_llm", []):
+        tool_calls = getattr(message, "tool_calls", None) or []
+        for tool_call in tool_calls:
+            function = getattr(tool_call, "function", None)
+            if getattr(function, "name", None) != "skill":
+                continue
+            try:
+                args = json.loads(getattr(function, "arguments", "") or "{}")
+            except (TypeError, json.JSONDecodeError):
+                continue
+            skill_name = args.get("skill_name")
+            if isinstance(skill_name, str) and skill_name:
+                loaded.setdefault(skill_name, "")
+    return loaded
+
+
 @tool(name="skill", description=_skill_tool_description)
 async def load_skill(
     skill_name: Annotated[
         str,
         Field(
-            description="Skill name from the available skills listed in this tool description (e.g. 'mcp-installer'). Do not call this again for a skill that is already loaded in the visible conversation; reuse the prior instructions instead."
+            description="Skill name from the available skills listed in this tool description (e.g. 'mcp-installer'). Do not call this again for a skill that is already loaded in the visible conversation; reuse the prior instructions instead because repeated loads return the same content."
         ),
     ],
+    _state: Annotated[Any, InjectedArg()] = None,
 ) -> str:
     """Load skill instructions into context."""
+    loaded_skills: dict[str, str] = {}
+    if _state is not None:
+        loaded_skills = _state.metadata.setdefault(
+            "loaded_skills", _loaded_skills_from_messages(_state)
+        )
+        if skill_name in loaded_skills:
+            logger.info("skill_reused name={}", skill_name)
+            return (
+                f"Skill '{skill_name}' is already loaded in this session. "
+                "Reuse the earlier instructions; repeated loads return the same content."
+            )
+
     roots = [r for r in _iter_skill_roots() if r.is_dir()]
     if not roots:
         return "Skills directory not found."
@@ -335,7 +368,13 @@ async def load_skill(
                 # Expand placeholders ({OPENAGENTD_CONFIG_DIR}, {SKILL_DIR}, etc.)
                 # so the agent receives concrete paths it can hand to its
                 # file/shell tools without further interpretation.
-                return _render_tokens(body, skill_dir=path.parent)
+                rendered = _render_tokens(body, skill_dir=path.parent)
+                loaded_skills[skill_name] = rendered
+                if name != skill_name:
+                    loaded_skills[name] = rendered
+                if stem != skill_name:
+                    loaded_skills[stem] = rendered
+                return rendered
 
     available = list(discover_skills().keys())
     return f"Skill '{skill_name}' not found. Available: {available}"

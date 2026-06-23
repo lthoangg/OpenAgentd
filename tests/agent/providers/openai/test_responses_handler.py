@@ -112,7 +112,7 @@ class TestResponsesHandler:
         result = handler.convert_messages(messages)
         assert len(result) == 1
         assert result[0]["role"] == "assistant"
-        assert result[0]["content"] == "I can help."
+        assert result[0]["content"] == [{"type": "output_text", "text": "I can help."}]
 
     def test_convert_messages_assistant_message_with_tool_calls(self, handler):
         """Convert AssistantMessage with tool calls."""
@@ -134,7 +134,9 @@ class TestResponsesHandler:
         # Should have 2 items: content + function_call
         assert len(result) == 2
         assert result[0]["role"] == "assistant"
-        assert result[0]["content"] == "Calling a tool."
+        assert result[0]["content"] == [
+            {"type": "output_text", "text": "Calling a tool."}
+        ]
         assert result[1]["type"] == "function_call"
         assert result[1]["call_id"] == "call_123"
         assert result[1]["name"] == "get_weather"

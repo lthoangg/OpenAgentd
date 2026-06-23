@@ -1,25 +1,21 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { ChevronRight, FileText, Folder, GitCompare, RefreshCw, X } from 'lucide-react'
+import { FileText, Folder, GitCompare, Plus, RefreshCw, Search, X } from 'lucide-react'
 import { getCodingWorkspaceGitDiff, listCodingWorkspaceFiles } from '@/api/client'
+import { CodingFilePreviewContent } from './CodingFileViewerPanel'
 import { cn } from '@/lib/utils'
 import { queryKeys } from '@/queries'
 import { formatBytes } from '@/utils/format'
 import { workspaceLabel } from '@/utils/workspace'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { useResizableWidth } from '@/hooks/use-resizable-width'
-import { usePlatform } from '@/hooks/use-platform'
 import type { WorkspaceFileInfo, WorkspaceGitDiffResponse } from '@/api/types'
 
-interface TreeNode {
-  name: string
-  path: string
-  children: Map<string, TreeNode>
-  file?: WorkspaceFileInfo
-}
-
 type ChangedFileStatus = 'A' | 'M' | 'D'
+type WorkspacePanelTab =
+  | { id: 'review'; type: 'review'; title: 'Changes' }
+  | { id: string; type: 'file'; title: string; file: WorkspaceFileInfo; viewMode: 'file' | 'diff' }
 
 interface ChangedFileInfo {
   path: string
@@ -66,120 +62,15 @@ function collectChangedFiles(diff?: WorkspaceGitDiffResponse): ChangedFileInfo[]
   return Array.from(files.values()).sort((a, b) => a.path.localeCompare(b.path))
 }
 
-function pathHasChangedDescendant(path: string, changedPaths: Set<string>): boolean {
-  const prefix = `${path}/`
-  for (const changedPath of changedPaths) {
-    if (changedPath === path || changedPath.startsWith(prefix)) return true
-  }
-  return false
-}
-
-function buildTree(files: WorkspaceFileInfo[]): TreeNode {
-  const root: TreeNode = { name: '/', path: '', children: new Map() }
-  for (const file of files) {
-    const parts = file.path.split('/')
-    let node = root
-    parts.forEach((part, index) => {
-      const path = parts.slice(0, index + 1).join('/')
-      let child = node.children.get(part)
-      if (!child) {
-        child = { name: part, path, children: new Map() }
-        node.children.set(part, child)
-      }
-      if (index === parts.length - 1) child.file = file
-      node = child
-    })
-  }
-  return root
-}
-
-function TreeNodeView({
-  node,
-  depth,
-  selectedPath,
-  onFileSelect,
-  changedPaths,
-}: {
-  node: TreeNode
-  depth: number
-  selectedPath?: string | null
-  onFileSelect?: (file: WorkspaceFileInfo | null) => void
-  changedPaths: Set<string>
-}) {
-  const [open, setOpen] = useState(false)
-  const isDir = node.children.size > 0 && !node.file
-  const children = Array.from(node.children.values()).sort((a, b) => {
-    const aDir = a.children.size > 0 && !a.file
-    const bDir = b.children.size > 0 && !b.file
-    if (aDir !== bDir) return aDir ? -1 : 1
-    return a.name.localeCompare(b.name)
-  })
-
-  if (!isDir && node.file) {
-    const isSelected = node.file.path === selectedPath
-    const isChanged = changedPaths.has(node.file.path)
-    return (
-      <button
-        type="button"
-        onClick={() => onFileSelect?.(isSelected ? null : node.file!)}
-        className={cn(
-          'flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-xs transition-colors',
-          isSelected
-            ? 'bg-(--bg-key) text-(--color-accent)'
-            : isChanged
-              ? 'text-(--accent-orange-text) hover:bg-(--bg-key)'
-              : 'text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text)',
-        )}
-        style={{ paddingLeft: 8 + depth * 12 }}
-        title={node.file.path}
-      >
-        <FileText size={12} className={cn('shrink-0', isChanged ? 'text-(--accent-orange-text)' : 'text-(--color-text-subtle)')} />
-        <span className="min-w-0 flex-1 truncate font-mono">{node.name}</span>
-        {isChanged && (
-          <span className="shrink-0 font-mono text-[10px] font-semibold text-(--accent-orange-text)">
-            M
-          </span>
-        )}
-        <span className="shrink-0 text-[10px] text-(--color-text-subtle)">{formatBytes(node.file.size)}</span>
-      </button>
-    )
-  }
-
-  const hasChangedDescendant = node.path ? pathHasChangedDescendant(node.path, changedPaths) : false
-
-  return (
-    <div>
-      {node.path && (
-        <button
-          type="button"
-          onClick={() => setOpen((value) => !value)}
-          className={cn(
-            'flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-xs hover:bg-(--bg-key)',
-            hasChangedDescendant ? 'text-(--color-text)' : 'text-(--color-text-2)',
-          )}
-          style={{ paddingLeft: 8 + depth * 12 }}
-        >
-          <ChevronRight size={12} className={cn('shrink-0 transition-transform', open && 'rotate-90')} />
-          <Folder size={12} className={cn('shrink-0', hasChangedDescendant ? 'text-(--accent-orange-text)' : 'text-(--color-accent)')} />
-          <span className="min-w-0 flex-1 truncate font-mono">{node.name}</span>
-          {hasChangedDescendant && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--accent-orange-text)" aria-label="Contains modified files" />}
-        </button>
-      )}
-      {(open || !node.path) && children.map((child) => (
-        <TreeNodeView key={child.path} node={child} depth={node.path ? depth + 1 : 0} selectedPath={selectedPath} onFileSelect={onFileSelect} changedPaths={changedPaths} />
-      ))}
-    </div>
-  )
-}
-
 export function CodingWorkspacePanel({
   workspace,
   open,
-  initialTab = 'changed',
   onClose,
   mobile = false,
   selectedFilePath = null,
+  selectedFileOpenKey = 0,
   onFileSelect,
+  onAddComment,
 }: {
   workspace: string
   open: boolean
@@ -187,11 +78,16 @@ export function CodingWorkspacePanel({
   onClose: () => void
   mobile?: boolean
   selectedFilePath?: string | null
+  selectedFileOpenKey?: number
   onFileSelect?: (file: WorkspaceFileInfo | null) => void
+  onAddComment?: (path: string, startLine: number, endLine: number) => void
 }) {
   const prefersReducedMotion = useReducedMotion()
-  const { isMacOverlay } = usePlatform()
-  const [tab, setTab] = useState<'files' | 'changed'>(initialTab)
+  const [tabs, setTabs] = useState<WorkspacePanelTab[]>([{ id: 'review', type: 'review', title: 'Changes' }])
+  const [activeTabId, setActiveTabId] = useState('review')
+  const [fileSearchOpen, setFileSearchOpen] = useState(false)
+  const [fileSearch, setFileSearch] = useState('')
+  const searchInputRef = useRef<HTMLInputElement>(null)
   const files = useQuery({
     queryKey: queryKeys.coding.files(workspace),
     queryFn: () => listCodingWorkspaceFiles(workspace),
@@ -204,15 +100,50 @@ export function CodingWorkspacePanel({
     enabled: open,
     staleTime: 5_000,
   })
-  const tree = buildTree(files.data?.files ?? [])
   const changedFiles = collectChangedFiles(diff.data)
-  const changedPaths = new Set(changedFiles.map((file) => file.path))
   const fileByPath = new Map((files.data?.files ?? []).map((file) => [file.path, file]))
+  const activeTab = tabs.find((item) => item.id === activeTabId) ?? tabs[0]
+  const openFileTab = useCallback((file: WorkspaceFileInfo, viewMode: 'file' | 'diff' = 'file') => {
+    const id = `file:${file.path}`
+    setTabs((current) => {
+      const existing = current.find((item) => item.id === id)
+      if (existing?.type === 'file') {
+        return current.map((item) => item.id === id ? { ...existing, file, viewMode } : item)
+      }
+      return [...current, { id, type: 'file', title: file.name || file.path.split('/').pop() || file.path, file, viewMode }]
+    })
+    setActiveTabId(id)
+    onFileSelect?.(file)
+  }, [onFileSelect])
+  const closeTab = (id: string) => {
+    if (id === 'review') return
+    setTabs((current) => current.filter((item) => item.id !== id))
+    if (activeTabId === id) setActiveTabId('review')
+  }
+  const setFileTabMode = (id: string, viewMode: 'file' | 'diff') => {
+    setTabs((current) => current.map((item) => item.id === id && item.type === 'file' ? { ...item, viewMode } : item))
+  }
+  const searchableFiles = useMemo(() => {
+    const query = fileSearch.trim().toLowerCase()
+    const allFiles = files.data?.files ?? []
+    if (!query) return allFiles.slice(0, 30)
+    return allFiles.filter((file) => file.path.toLowerCase().includes(query)).slice(0, 30)
+  }, [fileSearch, files.data?.files])
+
+  useEffect(() => {
+    if (!selectedFilePath || files.data?.files == null) return
+    const file = files.data.files.find((item) => item.path === selectedFilePath)
+    if (file) openFileTab(file)
+  }, [files.data?.files, openFileTab, selectedFileOpenKey, selectedFilePath])
+
+  useEffect(() => {
+    if (fileSearchOpen) searchInputRef.current?.focus()
+  }, [fileSearchOpen])
   const resizable = useResizableWidth({
     storageKey: 'oa.codingWorkspacePanel.width',
-    defaultWidth: 440,
-    minWidth: 360,
-    maxWidth: Math.min(720, Math.max(360, Math.floor((typeof window === 'undefined' ? 720 : window.innerWidth) - 320))),
+    defaultWidth: 380,
+    minWidth: 300,
+    maxWidth: Math.min(640, Math.max(320, Math.floor((typeof window === 'undefined' ? 720 : window.innerWidth) - 320))),
     edge: 'left',
     disabled: mobile,
   })
@@ -224,10 +155,10 @@ export function CodingWorkspacePanel({
       initial={prefersReducedMotion ? { opacity: 0 } : mobile ? { opacity: 0 } : { width: 0 }}
       animate={prefersReducedMotion ? { opacity: 1 } : mobile ? { opacity: 1 } : { width: resizable.width }}
       exit={prefersReducedMotion ? { opacity: 0 } : mobile ? { opacity: 0 } : { width: 0 }}
-      transition={{ duration: prefersReducedMotion ? 0.01 : 0.22, ease: [0.4, 0, 0.2, 1] }}
+      transition={{ duration: resizable.isResizing || prefersReducedMotion ? 0.01 : 0.22, ease: [0.4, 0, 0.2, 1] }}
       className={cn(
         'fixed bottom-0 right-0 z-40 min-h-0 w-full overflow-hidden border-l border-(--color-border) bg-(--bg-page) shadow-xl md:relative md:inset-y-auto md:right-auto md:z-auto md:w-auto md:shrink-0 md:shadow-none',
-        mobile ? 'mobile-safe-top max-w-none' : isMacOverlay ? 'h-full' : '-mt-10 h-[calc(100%+2.5rem)]',
+        mobile ? 'mobile-safe-top max-w-none' : 'h-full',
       )}
     >
       <div className={cn('relative flex h-full min-h-0 w-full flex-col', mobile ? 'max-w-none' : 'md:w-full')}>
@@ -242,26 +173,109 @@ export function CodingWorkspacePanel({
             onDoubleClick={resizable.resetWidth}
           />
         )}
-        <div className="flex items-center justify-between border-b border-(--color-border) px-3 py-3">
-          <div className="min-w-0">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-(--color-text-subtle)">Workspace</p>
-            <p className="mt-1 truncate font-mono text-xs text-(--color-text)" title={workspace}>{workspaceLabel(workspace)}</p>
+        {mobile && <div className="flex min-h-10 items-center justify-between border-b border-(--color-border) px-2.5 py-1.5">
+          <div className="flex min-w-0 items-center gap-2">
+            <Folder size={13} className="shrink-0 text-(--color-accent)" aria-hidden="true" />
+            <p className="truncate font-mono text-xs text-(--color-text)" title={workspace}>{workspaceLabel(workspace)}</p>
           </div>
           <button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-md text-(--color-text-muted) hover:bg-(--bg-key) md:h-auto md:w-auto md:p-1" aria-label="Close workspace panel">
             <X size={16} />
           </button>
-        </div>
-        <div className="flex border-b border-(--color-border) p-1">
-          <button type="button" onClick={() => setTab('changed')} className={cn('flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs', tab === 'changed' ? 'bg-(--bg-key) text-(--color-text)' : 'text-(--color-text-muted)')}>
-            <GitCompare size={13} /> Changed
-            {changedPaths.size > 0 && <span className="rounded-full bg-(--color-warning)/15 px-1.5 py-0.5 font-mono text-[10px] text-(--accent-orange-text)">{changedPaths.size}</span>}
+        </div>}
+        <div className="flex min-w-0 items-center gap-1 overflow-x-auto border-b border-(--color-border) px-2 py-1">
+          {tabs.map((tabItem) => (
+            <button
+              key={tabItem.id}
+              type="button"
+              onClick={() => setActiveTabId(tabItem.id)}
+              className={cn(
+                'group flex h-7 max-w-40 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs',
+                activeTabId === tabItem.id
+                  ? tabItem.type === 'file'
+                    ? 'border border-(--color-border-strong) text-(--color-accent)'
+                    : 'border border-(--color-border-strong) text-(--color-text)'
+                  : 'border border-transparent text-(--color-text-muted) hover:text-(--color-text-2)',
+              )}
+              title={tabItem.type === 'file' ? tabItem.file.path : tabItem.title}
+            >
+              {tabItem.type === 'review' ? <GitCompare size={12} aria-hidden="true" /> : <FileText size={12} aria-hidden="true" />}
+              <span className="truncate font-mono">{tabItem.title}</span>
+              {tabItem.type === 'file' && (
+                <span
+                  role="button"
+                  tabIndex={0}
+                  onClick={(event) => { event.stopPropagation(); closeTab(tabItem.id) }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      closeTab(tabItem.id)
+                    }
+                  }}
+                  className="ml-0.5 rounded text-(--color-text-subtle) opacity-70 hover:text-(--color-text) md:opacity-0 md:group-hover:opacity-100"
+                  aria-label={`Close ${tabItem.title}`}
+                >
+                  <X size={11} aria-hidden="true" />
+                </span>
+              )}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => { setFileSearchOpen((value) => !value); setFileSearch('') }}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text)"
+            aria-label="Open file search"
+            title="Open file search"
+          >
+            <Plus size={14} aria-hidden="true" />
           </button>
-          <button type="button" onClick={() => setTab('files')} className={cn('flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs', tab === 'files' ? 'bg-(--bg-key) text-(--color-text)' : 'text-(--color-text-muted)')}>
-            <Folder size={13} /> Files
-          </button>
         </div>
-        <div className={cn('min-h-0 flex-1 overflow-auto', tab === 'files' && 'p-2')}>
-          {tab === 'changed' ? (
+        {fileSearchOpen && (
+          <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 px-3 pt-4 backdrop-blur-sm sm:pt-[15vh]" onClick={() => setFileSearchOpen(false)}>
+          <div className="flex w-full max-w-md flex-col overflow-hidden rounded-lg border border-(--color-border) bg-(--bg-card) shadow-2xl" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="Search workspace files">
+            <div className="flex h-11 items-center gap-2 border-b border-(--color-border) px-3">
+              <Search size={13} className="shrink-0 text-(--color-text-subtle)" aria-hidden="true" />
+              <input
+                ref={searchInputRef}
+                value={fileSearch}
+                onChange={(event) => setFileSearch(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') setFileSearchOpen(false)
+                  if (event.key === 'Enter' && searchableFiles[0]) {
+                    openFileTab(searchableFiles[0])
+                    setFileSearchOpen(false)
+                  }
+                }}
+                placeholder="Search files…"
+                className="min-w-0 flex-1 bg-transparent font-mono text-sm text-(--color-text) outline-none placeholder:text-(--color-text-subtle)"
+                aria-label="Search workspace files"
+              />
+            </div>
+            <div className="max-h-80 overflow-y-auto p-1.5">
+              {searchableFiles.length === 0 ? (
+                <p className="px-2 py-3 text-xs text-(--color-text-subtle)">No files found</p>
+              ) : searchableFiles.map((file) => (
+                <button
+                  key={file.path}
+                  type="button"
+                  onClick={() => { openFileTab(file); setFileSearchOpen(false) }}
+                  className="flex w-full min-w-0 items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text)"
+                  title={file.path}
+                >
+                  <FileText size={12} className="shrink-0 text-(--color-text-subtle)" aria-hidden="true" />
+                  <span className="min-w-0 flex-1 truncate font-mono">{file.path}</span>
+                  <span className="shrink-0 text-[10px] text-(--color-text-subtle)">{formatBytes(file.size)}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          </div>
+        )}
+        <div className="min-h-0 flex-1 overflow-hidden">
+          {activeTab?.type === 'review' ? (
+            <div className="flex h-full min-h-0 flex-col">
+              <div className="min-h-0 flex-1 overflow-auto p-2">
+          {
             diff.isLoading || files.isLoading ? (
               <p className="px-2 py-4 text-xs text-(--color-text-subtle)">Loading changed files…</p>
             ) : diff.isError ? (
@@ -271,7 +285,7 @@ export function CodingWorkspacePanel({
             ) : changedFiles.length === 0 ? (
               <p className="px-2 py-4 text-xs text-(--color-text-subtle)">No changed files</p>
             ) : (
-              <div className="p-2">
+              <div>
                 {diff.data.truncated && <p className="mb-2 rounded bg-(--color-warning)/10 px-2 py-1 text-xs text-(--color-warning)">Changed list may be incomplete because the diff was truncated.</p>}
                 <div className="space-y-1">
                   {changedFiles.map((changedFile) => {
@@ -281,7 +295,7 @@ export function CodingWorkspacePanel({
                       <button
                         key={changedFile.path}
                         type="button"
-                        onClick={() => onFileSelect?.(isSelected ? null : file)}
+                        onClick={() => openFileTab(file, 'diff')}
                         className={cn(
                           'flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition-colors',
                           isSelected ? 'bg-(--bg-key) text-(--color-accent)' : 'text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text)',
@@ -299,17 +313,31 @@ export function CodingWorkspacePanel({
                 </div>
               </div>
             )
-          ) : (
-            files.isLoading ? (
-              <p className="px-2 py-4 text-xs text-(--color-text-subtle)">Loading files…</p>
-            ) : files.isError ? (
-              <p className="px-2 py-4 text-xs text-(--color-error)">Failed to load files</p>
-            ) : files.data?.files.length === 0 ? (
-              <p className="px-2 py-4 text-xs text-(--color-text-subtle)">No files shown</p>
-            ) : (
-              <TreeNodeView node={tree} depth={0} selectedPath={selectedFilePath} onFileSelect={onFileSelect} changedPaths={changedPaths} />
-            )
-          )}
+          }
+              </div>
+            </div>
+          ) : activeTab?.type === 'file' ? (
+            <div className="flex h-full min-h-0 flex-col">
+              <div className="flex shrink-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-card) px-3 py-2">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-(--color-border) text-(--color-accent)">
+                    <FileText size={13} aria-hidden="true" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="truncate font-mono text-xs font-medium text-(--color-text)" title={activeTab.file.path}>{activeTab.file.path}</p>
+                    <p className="mt-0.5 truncate text-[10px] text-(--color-text-subtle)">{formatBytes(activeTab.file.size)} · {activeTab.file.mime}</p>
+                  </div>
+                </div>
+                <div className="flex shrink-0 rounded border border-(--color-border) p-0.5">
+                  <button type="button" onClick={() => setFileTabMode(activeTab.id, 'file')} className={cn('rounded px-2 py-1 text-[11px]', activeTab.viewMode === 'file' ? 'bg-(--bg-key) text-(--color-text)' : 'text-(--color-text-muted)')}>File</button>
+                  <button type="button" onClick={() => setFileTabMode(activeTab.id, 'diff')} className={cn('rounded px-2 py-1 text-[11px]', activeTab.viewMode === 'diff' ? 'bg-(--bg-key) text-(--color-text)' : 'text-(--color-text-muted)')}>Diff</button>
+                </div>
+              </div>
+              <div className="min-h-0 flex-1 overflow-hidden">
+                <CodingFilePreviewContent workspace={workspace} file={activeTab.file} viewMode={activeTab.viewMode} onAddComment={onAddComment} />
+              </div>
+            </div>
+          ) : null}
         </div>
         <button type="button" onClick={() => { void files.refetch(); void diff.refetch() }} className="flex items-center justify-center gap-1.5 border-t border-(--color-border) px-3 py-2 text-xs text-(--color-text-muted) hover:bg-(--bg-key)">
           <RefreshCw size={12} /> Refresh

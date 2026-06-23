@@ -9,7 +9,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Search, CornerDownLeft } from 'lucide-react'
-import { useProximityTracker, useProximityIntensity } from '@/hooks/useProximity'
 import { useModalFocus } from '@/hooks/useModalFocus'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { usePlatform } from '@/hooks/use-platform'
@@ -35,7 +34,6 @@ export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
   const [activeIdx, setActiveIdx] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
-  const mouseY = useProximityTracker(listRef)
   const prefersReducedMotion = useReducedMotion()
   const isMobile = useIsMobile()
   const { isTauri, os } = usePlatform()
@@ -47,7 +45,7 @@ export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
     inputRef.current?.focus()
   }, [])
 
-  // Filter commands by query — memoised so the reference only changes when query changes
+  // Filter commands by query — memoised so the list only changes when inputs change.
   const filtered = useMemo(() => query.trim()
     ? commands.filter((cmd) => {
         const q = query.toLowerCase()
@@ -58,8 +56,7 @@ export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
         )
       })
     : commands,
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  [query])
+  [commands, query])
 
   // Reset active index whenever filtered list changes (query changed)
   const prevQueryRef = useRef(query)
@@ -141,9 +138,9 @@ export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
           initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97, y: -8 }}
           animate={prefersReducedMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 }}
           exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97, y: -8 }}
-          transition={prefersReducedMotion ? { duration: 0.01 } : { type: 'spring', damping: 30, stiffness: 380 }}
+          transition={{ duration: prefersReducedMotion ? 0.01 : 0.12, ease: [0.2, 0, 0, 1] }}
           onClick={(e) => e.stopPropagation()}
-          className="flex w-full max-w-md flex-col overflow-hidden rounded-2xl border border-(--color-border) bg-(--bg-card) shadow-2xl"
+          className="flex w-full max-w-md flex-col overflow-hidden rounded-lg border border-(--color-border) bg-(--bg-card) shadow-2xl"
           role="dialog"
           aria-modal="true"
           aria-label="Command palette"
@@ -196,7 +193,6 @@ export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
                     cmd={row.cmd}
                     idx={row.idx}
                     isActive={isActive}
-                    mouseY={mouseY}
                     onRun={run}
                     onActivate={setActiveIdx}
                   />
@@ -205,7 +201,6 @@ export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
             )}
           </div>
 
-          {/* Footer hint */}
           <div className="flex items-center gap-2 border-t border-(--color-border) px-4 py-2">
             <kbd className="rounded border border-(--color-border) bg-(--bg-page) px-1 py-0.5 font-mono text-[10px] text-(--color-text-muted)">↑↓</kbd>
             <span className="text-xs text-(--color-text-muted)">navigate</span>
@@ -224,37 +219,13 @@ interface CommandRowProps {
   cmd: Command
   idx: number
   isActive: boolean
-  mouseY: number | null
   onRun: (cmd: Command) => void
   onActivate: (idx: number) => void
 }
 
-/**
- * Single command row with proximity fade. The keyboard-driven `activeIdx`
- * still owns the dominant `accent-subtle` background; proximity adds a
- * softer `accent-dim` layer on nearby non-active rows so the cursor's
- * position is readable before `onMouseEnter` fires.
- *
- * Layering mirrors SessionRow in Sidebar: proximity is an absolute sibling
- * behind the button (`-z-10`, `isolation: isolate` on wrapper), so the
- * button's own `hover:bg-*` class can still paint on top without being
- * overridden by an inline style on the same element.
- */
-function CommandRow({ cmd, idx, isActive, mouseY, onRun, onActivate }: CommandRowProps) {
-  const { ref, intensity } = useProximityIntensity(mouseY)
-  const showProximity = !isActive && intensity > 0
-
+function CommandRow({ cmd, idx, isActive, onRun, onActivate }: CommandRowProps) {
   return (
-    <div ref={ref as React.RefObject<HTMLDivElement>} className="relative isolate">
-      {showProximity && (
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 -z-10"
-          style={{
-            backgroundColor: `color-mix(in srgb, var(--bg-key) ${intensity * 100}%, transparent)`,
-          }}
-        />
-      )}
+    <div>
       <button
         data-idx={idx}
         onClick={() => onRun(cmd)}

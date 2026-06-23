@@ -656,12 +656,35 @@ class TestCodexResponsesHandlerBuildRequest:
         body = handler.build_request(messages, None, False, {})
         assert body["instructions"] == "You are helpful"
 
-    def test_build_request_human_message_with_none_content_uses_string(self):
-        """Codex request input text content must not be null."""
+    def test_build_request_human_message_with_none_content_uses_input_text_item(self):
+        """Codex request input text content must use explicit content items."""
         handler = _CodexResponsesHandler("gpt-5.4", "https://api.example.com", {})
         messages = [HumanMessage(content=None)]
         body = handler.build_request(messages, None, False, {})
-        assert body["input"] == [{"role": "user", "content": ""}]
+        assert body["input"] == [
+            {"role": "user", "content": [{"type": "input_text", "text": ""}]}
+        ]
+
+    def test_build_request_human_message_with_text_uses_input_text_item(self):
+        """Codex text-only user turns match upstream ContentItem shape."""
+        handler = _CodexResponsesHandler("gpt-5.4", "https://api.example.com", {})
+        messages = [HumanMessage(content="Hello")]
+        body = handler.build_request(messages, None, False, {})
+        assert body["input"] == [
+            {"role": "user", "content": [{"type": "input_text", "text": "Hello"}]}
+        ]
+
+    def test_build_request_assistant_text_uses_output_text_content_item(self):
+        """Codex rejects raw assistant strings as an unsupported content type."""
+        handler = _CodexResponsesHandler("gpt-5.4", "https://api.example.com", {})
+        messages = [AssistantMessage(content="Prior answer")]
+        body = handler.build_request(messages, None, False, {})
+        assert body["input"] == [
+            {
+                "role": "assistant",
+                "content": [{"type": "output_text", "text": "Prior answer"}],
+            }
+        ]
 
     def test_build_request_removes_system_messages_from_input(self):
         """build_request() removes SystemMessages from input array."""

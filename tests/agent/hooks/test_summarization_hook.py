@@ -1710,7 +1710,9 @@ async def test_skill_tool_messages_preserved_through_summarisation(mock_provider
         tool_calls=[
             ToolCall(
                 id="call_skill_1",
-                function=FunctionCall(name="skill", arguments='{"name":"guidelines"}'),
+                function=FunctionCall(
+                    name="skill", arguments='{"skill_name":"guidelines"}'
+                ),
             )
         ],
     )
@@ -1792,3 +1794,84 @@ async def test_skill_tool_messages_preserved_through_summarisation(mock_provider
     assert summaries[0].content == "Summary."
     assert state.messages.index(skill_asst) < state.messages.index(summaries[0])
     assert state.messages.index(skill_result) < state.messages.index(summaries[0])
+
+
+@pytest.mark.asyncio
+async def test_duplicate_skill_tool_messages_compact_after_first_load(mock_provider):
+    """Summarisation keeps only the first full skill load pair per skill."""
+    hook = SummarizationHook(
+        llm_provider=mock_provider,
+        summary_prompt="test summary prompt",
+        prompt_token_threshold=1,
+        keep_last_assistants=0,
+    )
+    ctx = _make_ctx()
+
+    first_asst = AssistantMessage(
+        content=None,
+        tool_calls=[
+            ToolCall(
+                id="call_skill_1",
+                function=FunctionCall(
+                    name="skill", arguments='{"skill_name":"guidelines"}'
+                ),
+            )
+        ],
+    )
+    first_result = ToolMessage(
+        tool_call_id="call_skill_1",
+        name="skill",
+        content="# Guidelines\nFull instruction body...",
+    )
+    duplicate_asst = AssistantMessage(
+        content=None,
+        tool_calls=[
+            ToolCall(
+                id="call_skill_2",
+                function=FunctionCall(
+                    name="skill", arguments='{"skill_name":"guidelines"}'
+                ),
+            )
+        ],
+    )
+    duplicate_result = ToolMessage(
+        tool_call_id="call_skill_2",
+        name="skill",
+        content="Skill 'guidelines' is already loaded in this session.",
+    )
+
+    state = AgentState(
+        messages=[
+            HumanMessage(content="load skill"),
+            first_asst,
+            first_result,
+            HumanMessage(content="load it again"),
+            duplicate_asst,
+            duplicate_result,
+        ],
+        usage=UsageInfo(last_prompt_tokens=9999),
+    )
+
+    async def _stream(messages, **__):
+        chunk = MagicMock()
+        chunk.choices = [MagicMock()]
+        chunk.choices[0].delta.content = "Summary."
+        chunk.usage = None
+        yield chunk
+
+    mock_provider.stream = lambda messages, **kw: _stream(messages)
+
+    await hook.before_model(ctx, state)
+    await hook.wrap_model_call(
+        ctx,
+        state,
+        ModelRequest(
+            messages=tuple(state.messages_for_llm), system_prompt=state.system_prompt
+        ),
+        _noop_model_handler,
+    )
+
+    assert first_asst.exclude_from_context is False
+    assert first_result.exclude_from_context is False
+    assert duplicate_asst.exclude_from_context is True
+    assert duplicate_result.exclude_from_context is True

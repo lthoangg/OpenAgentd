@@ -120,6 +120,8 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const [showFilesPanel, setShowFilesPanel] = useState(false)
   const [codingPanel, setCodingPanel] = useState<null | 'changed' | 'files'>(null)
   const [codingFileViewer, setCodingFileViewer] = useState<WorkspaceFileInfo | null>(null)
+  const [codingFileViewerDetached, setCodingFileViewerDetached] = useState(false)
+  const [codingFileOpenKey, setCodingFileOpenKey] = useState(0)
   const [codingSidebarCollapsed, setCodingSidebarCollapsed] = useState(true)
   const [openWorkspaceDialogKey, setOpenWorkspaceDialogKey] = useState(0)
   const [showTodos, setShowTodos] = useState(false)
@@ -133,6 +135,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const effectiveViewMode: ViewMode = isMobile ? 'agent' : viewMode
   useEffect(() => {
     setCodingFileViewer(null)
+    setCodingFileViewerDetached(false)
   }, [workspace])
 
   useEffect(() => {
@@ -377,7 +380,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         if (isMobile) setMobileSidebarOpen(false)
         setCodingPanel((value) => {
           const next = value === null ? 'changed' : null
-          if (next === null) setCodingFileViewer(null)
+          if (next === null) setCodingFileViewerDetached(false)
           return next
         })
       } else {
@@ -479,6 +482,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
 
   const handleCodingFileSelect = useCallback((file: WorkspaceFileInfo | null) => {
     setCodingFileViewer(file)
+    setCodingFileViewerDetached(Boolean(isMobile && file))
     if (isMobile && file) setCodingPanel(null)
   }, [isMobile])
 
@@ -486,20 +490,27 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     if (mode !== 'coding' || !workspace) return
     const cleanPath = path.split('#', 1)[0]
     if (!cleanPath) return
-    setCodingPanel('files')
     const current = codingFileViewer?.path === cleanPath ? codingFileViewer : null
     if (current) {
       setCodingFileViewer(current)
+      setCodingFileViewerDetached(isMobile)
+      setCodingFileOpenKey((value) => value + 1)
+      setCodingPanel((value) => (isMobile ? null : value ?? 'files'))
       return
     }
     try {
       const result = await listCodingWorkspaceFiles(workspace)
       const file = result.files.find((item) => item.path === cleanPath)
-      if (file) setCodingFileViewer(file)
+      if (file) {
+        setCodingFileViewer(file)
+        setCodingFileViewerDetached(isMobile)
+        setCodingFileOpenKey((value) => value + 1)
+        setCodingPanel((value) => (isMobile ? null : value ?? 'files'))
+      }
     } catch {
-      // Keep the files panel open; the panel query will surface listing errors.
+      // Keep the current panel state; the panel query will surface listing errors.
     }
-  }, [codingFileViewer, mode, workspace])
+  }, [codingFileViewer, isMobile, mode, workspace])
 
   // Restore a queued message's text into the composer (fired by the
   // X button on PendingMessageQueue). Overwrites any current draft —
@@ -694,7 +705,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const commands = useTeamCommands({
     viewMode,
     cycleViewMode,
-    setViewMode,
     toggleAgentCapabilities,
     setShowTodos,
     handleWorkspaceFiles,
@@ -702,10 +712,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     mode,
     handleNewSession,
     handleDreamRun,
-    agentNames,
-    leadName,
-    cycleActiveAgent,
-    setActiveAgent,
     navigate,
   })
   const paletteCommands = commands
@@ -982,6 +988,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
                     onClick: handleWorkspaceFiles,
                     title: codingPanel === null ? 'Changed files and workspace files' : 'Close changed files and workspace files',
                     ariaLabel: 'Changed files and workspace files',
+                    className: codingPanel !== null ? 'bg-(--bg-key) text-(--color-text) ring-1 ring-(--color-border-strong)' : undefined,
                   } : undefined
                 : {
                     Icon: FolderOpen,
@@ -989,6 +996,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
                     disabled: !sessionIdState,
                     title: sessionIdState ? 'Workspace files (Ctrl+F)' : 'No active session',
                     ariaLabel: 'Workspace files',
+                    className: showFilesPanel ? 'bg-(--bg-key) text-(--color-text) ring-1 ring-(--color-border-strong)' : undefined,
                   }}
               agentsAction={{
                 Icon: SlidersHorizontal,
@@ -1181,27 +1189,31 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
           />
         )}
         </main>
-        {mode === 'coding' && workspace && codingFileViewer !== null && (
+        {mode === 'coding' && workspace && codingFileViewer !== null && codingFileViewerDetached && codingPanel === null && (
           <CodingFileViewerPanel
             workspace={workspace}
             file={codingFileViewer}
             mobile={isMobile}
             onAddComment={handleAddFileComment}
-            onClose={() => setCodingFileViewer(null)}
+            onClose={() => {
+              setCodingFileViewer(null)
+              setCodingFileViewerDetached(false)
+            }}
           />
         )}
         {mode === 'coding' && workspace && codingPanel !== null && (
           <CodingWorkspacePanel
-            key={codingPanel}
             workspace={workspace}
             open
             initialTab={codingPanel}
             mobile={isMobile}
             selectedFilePath={codingFileViewer?.path ?? null}
+            selectedFileOpenKey={codingFileOpenKey}
             onFileSelect={handleCodingFileSelect}
+            onAddComment={handleAddFileComment}
             onClose={() => {
               setCodingPanel(null)
-              setCodingFileViewer(null)
+              setCodingFileViewerDetached(false)
             }}
           />
         )}

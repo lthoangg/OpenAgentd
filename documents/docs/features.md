@@ -117,8 +117,10 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
 - **`@file` / `@folder` mentions in composer** `[v1.17.0]` — files render blue,
   folders render orange. Inline auto-attach: mentioned file body is sent on
   the first turn so the agent doesn't need a round-trip `read` call; folder
-  mentions load that folder's `AGENTS.md` when present. Caps at 20 mentions /
-  20 MB / ~32k chars per turn. Persists on queued messages.
+  mentions load that folder's `AGENTS.md` when present. In coding sessions,
+  clicked file mentions in sent user messages open that file in the workspace
+  files sidebar. Caps at 20 mentions / 20 MB / ~32k chars per turn. Persists
+  on queued messages.
 - **Image viewer (full-screen)** `[since v1.0]` — click any generated or attached
   image to open in a lightbox; touch shells support swipe-down dismissal,
   double-tap zoom, and pinch zoom `[v1.45.2]`.

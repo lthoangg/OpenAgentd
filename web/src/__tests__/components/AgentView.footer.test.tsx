@@ -42,11 +42,38 @@ function renderStream(props: Partial<React.ComponentProps<typeof AgentView>> = {
       currentBlocks={props.currentBlocks ?? []}
       isWorking={props.isWorking ?? false}
       onContinue={props.onContinue}
+      onMentionFileOpen={props.onMentionFileOpen}
     />
   )
 }
 
 // ── tests ────────────────────────────────────────────────────────────────────
+
+describe("AgentView — mentioned files", () => {
+  it("opens a clicked file mention", async () => {
+    const user = userEvent.setup()
+    const onMentionFileOpen = mock(() => {})
+
+    renderStream({
+      blocks: [makeUserBlock("u1", "Please inspect @src/App.tsx before changing it")],
+      onMentionFileOpen,
+    })
+
+    await user.click(screen.getByRole("button", { name: "@src/App.tsx" }))
+
+    expect(onMentionFileOpen).toHaveBeenCalledWith("src/App.tsx")
+  })
+
+  it("does not make folder mentions clickable", () => {
+    renderStream({
+      blocks: [makeUserBlock("u1", "Check @src/components/ first")],
+      onMentionFileOpen: mock(() => {}),
+    })
+
+    expect(screen.queryByRole("button", { name: "@src/components/" })).toBeNull()
+    expect(screen.getByText("@src/components/")).toBeTruthy()
+  })
+})
 
 describe("AgentView — message windowing", () => {
   it("renders recent turns first and lets users reveal older turns", async () => {

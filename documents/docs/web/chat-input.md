@@ -116,7 +116,7 @@ The textarea is rendered with `color: transparent` + `caret-color: var(--color-t
 
 `--color-accent` is **not** used for mentions — in the dark palette it equals `--color-text` and would be invisible. The dedicated `--accent-blue-text` / `--accent-orange-text` tokens are theme-safe.
 
-The same colours apply in rendered user message bubbles (`AgentView.tsx` → `renderMentionSegments`). Kind is inferred from the trailing slash (immutable per-message), not from a live `fileRefs` lookup — historical messages keep their colours even after the referenced path is renamed or removed.
+The same colours apply in rendered user message bubbles (`AgentView.tsx` → `renderMentionSegments`). Kind is inferred from the trailing slash (immutable per-message), not from a live `fileRefs` lookup — historical messages keep their colours even after the referenced path is renamed or removed. In coding sessions, clicked file mentions in sent user messages open the files tab and preview that workspace file; folder mentions stay visual-only.
 
 Tokens chip **only** when they resolve to a known workspace ref — `@@`, `@nonexistent`, and `@foo@bar` produce no chip. Trailing sentence punctuation (`,` `.` `;` `:` `!` `?` `)`) is stripped before resolution. The actively-typed mention is excluded so the colour doesn't flash on every keystroke.
 

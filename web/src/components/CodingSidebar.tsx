@@ -1,14 +1,12 @@
 /**
- * CodingSidebar — VSCode-explorer style workspace + session tree for
- * the ``/coding`` route. Mirrors the wireframe sidebar ``Q4zeZN`` in
+ * CodingSidebar — flat workspace + session switcher for the ``/coding``
+ * route. Mirrors the wireframe sidebar ``Q4zeZN`` in
  * ``.diagrams/OpenAgentd-ui.pen``:
  *
  *   • Search input at the top — opens the command palette (Ctrl+P).
- *   • Flat list of workspaces. Each row is a collapsible tree node:
- *       📁 · workspace label · `+` new
- *     Expanding a row reveals the nested coding sessions belonging
- *     to that workspace, with the same delete-on-hover affordance as
- *     the cockpit sidebar.
+ *   • Flat list of repositories, worktrees, and their coding sessions.
+ *     Worktree/session grouping is shown with icons, counts, and spacing
+ *     rather than file-tree indentation.
  *   • ``+ Open folder…`` row at the bottom of the workspace list
  *     surfaces the trusted-workspace dialog.
  *   • Footer trio: ⚙ Settings · ❔ Help (palette) · 🌙 ThemeToggle.
@@ -16,7 +14,7 @@
  * The 64 px icon rail from the previous design is gone — workspace
  * navigation now lives inline so the sidebar matches the cockpit's
  * single-column shape. ``activeWorkspace`` is the workspace driving
- * the current chat; ``expandedWorkspaces`` is local UI state for which tree nodes are
+ * the current chat; ``expandedWorkspaces`` is local UI state for which rows are
  * currently showing their sessions. Multiple workspaces can stay open
  * at once. Switching the active workspace auto-expands it.
  */
@@ -71,8 +69,6 @@ import {
 import type { CodingWorkspaceTreeRepository, SessionResponse, WorktreeInfo } from '@/api/types'
 import { LongPressButton } from '@/components/ui/long-press-button'
 
-const sessionGroupKey = (path: string) => `sessions:${path}`
-
 function worktreeNameSlug(value: string): string {
   return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80).replace(/-+$/g, '') || 'session'
 }
@@ -109,6 +105,7 @@ function WorkspaceSessionList({
   runningSessions,
   collapsed = false,
   mobileLongPressActions = false,
+  className = 'space-y-0.5 pb-1 pl-4 pr-2',
   onSessionSelect,
   onSessionDelete,
   onSessionEdit,
@@ -120,6 +117,7 @@ function WorkspaceSessionList({
   runningSessions?: SessionResponse[]
   collapsed?: boolean
   mobileLongPressActions?: boolean
+  className?: string
   onSessionSelect: (session: SessionResponse, workspacePath: string) => void
   onSessionDelete: (e: React.MouseEvent, session: SessionResponse) => void
   onSessionEdit: (session: SessionResponse) => void
@@ -132,7 +130,7 @@ function WorkspaceSessionList({
     : (sessions.data?.pages.flatMap((page) => page.data) ?? [])
 
   return (
-    <div className="space-y-0.5 pb-1 pl-7 pr-2">
+    <div className={className}>
       {workspaceSessions.length === 0 && !collapsed && !sessions.isLoading && (
         <p className="px-2 py-1 text-xs text-(--color-text-subtle)">No sessions yet.</p>
       )}
@@ -160,7 +158,7 @@ function WorkspaceSessionList({
               title={`${sessionTitle} · ${sessionDate}`}
               className={`flex min-h-6 w-full items-center gap-1.5 rounded px-2 py-0.5 text-left text-xs transition-colors ${
                 isCurrent
-                  ? 'bg-(--bg-key) text-(--color-text)'
+                  ? 'text-(--color-text)'
                   : 'text-(--color-text-2) hover:text-(--color-text)'
               }`}
             >
@@ -262,7 +260,6 @@ export function CodingSidebar({
     setExpandedWorkspaces((current) => {
       const next = new Set(current)
       next.add(activeWorkspace)
-      next.add(sessionGroupKey(activeWorkspace))
       return next
     })
   }, [activeWorkspace])
@@ -276,15 +273,6 @@ export function CodingSidebar({
     })
   }
 
-  const toggleSessionGroupExpanded = (path: string) => {
-    const key = sessionGroupKey(path)
-    setExpandedWorkspaces((current) => {
-      const next = new Set(current)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
-      return next
-    })
-  }
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [selectedWorkspace, setSelectedWorkspace] = useState<string | null>(null)
@@ -467,11 +455,9 @@ export function CodingSidebar({
       void refreshWorkspaceTree()
     }).catch(() => undefined)
     setExpandedWorkspaces((current) => {
-      const key = sessionGroupKey(path)
-      if (!current.has(path) && !current.has(key)) return current
+      if (!current.has(path)) return current
       const next = new Set(current)
       next.delete(path)
-      next.delete(key)
       return next
     })
     if (path === activeWorkspace) {
@@ -515,11 +501,9 @@ export function CodingSidebar({
       await removeWorktree(source, directory)
       setRemovedWorktreePaths((current) => new Set(current).add(directory))
       setExpandedWorkspaces((current) => {
-        const key = sessionGroupKey(directory)
-        if (!current.has(directory) && !current.has(key)) return current
+        if (!current.has(directory)) return current
         const next = new Set(current)
         next.delete(directory)
-        next.delete(key)
         return next
       })
       setWorktreesBySource((current) => {
@@ -773,15 +757,12 @@ export function CodingSidebar({
           const sourceSessions = codingSessions.filter((s) => s.workspace === path)
           const sourceRunningSessions = sourceSessions.filter((s) => s.running === true)
           const sourceHasRunningSession = sourceRunningSessions.length > 0
-          const sourceSessionGroupExpanded = expandedWorkspaces.has(sessionGroupKey(path))
           const repository = workspaceTree.find((repo) => repo.path === path)
           const nestedWorktrees = (repository?.worktrees ?? []).filter((item) => !deletedWorktreeSet.has(item.path))
-          const sourceSessionCount = sourceSessions.length
-          const worktreeSessionCount = nestedWorktrees.reduce((count, item) => count + codingSessions.filter((s) => s.workspace === item.path).length, 0)
 
           return (
             <div key={path} className="relative">
-              <div className={`group mx-2 mb-0.5 flex h-8 items-center rounded-md border border-transparent ${sourceIsActive ? 'bg-(--bg-key)' : 'hover:bg-(--bg-key)/70'}`}>
+              <div className="group mx-2 mb-0.5 flex h-8 items-center rounded-md border border-transparent">
                 <LongPressButton
                   enabled={mobileLongPressActions}
                   onLongPress={() => setMobileWorkspaceActions({ path, kind: 'main' })}
@@ -807,7 +788,6 @@ export function CodingSidebar({
                     </span>
                   )}
                   {sourceHasRunningSession && <span className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-(--color-accent)" aria-label="Repository has running session" />}
-                  {sourceSessionCount + worktreeSessionCount > 0 && <span className="shrink-0 text-[10px] tabular-nums text-(--color-text-subtle)">{sourceSessionCount + worktreeSessionCount}</span>}
                 </LongPressButton>
                 <button
                   type="button"
@@ -839,54 +819,21 @@ export function CodingSidebar({
               </div>
 
               {(sourceIsExpanded || sourceHasRunningSession) && (
-                <div className="space-y-0.5 pb-1">
-                  <div className="group flex h-6 items-center pr-2" style={{ paddingLeft: 18 }}>
-                    <LongPressButton
-                      enabled={mobileLongPressActions}
-                      onLongPress={() => setMobileWorkspaceActions({ path, kind: 'main' })}
-                      type="button"
-                      onClick={() => toggleSessionGroupExpanded(path)}
-                      onContextMenu={(event) => {
-                        if (mobileLongPressActions) return
-                        event.preventDefault()
-                        setDesktopWorkspaceActions({ path, kind: 'main', x: event.clientX, y: event.clientY })
-                      }}
-                      className={`flex min-w-0 flex-1 items-center gap-1.5 rounded px-1.5 py-0.5 text-left text-xs transition-colors hover:bg-(--bg-key) ${sourceIsActive ? 'text-(--color-accent)' : 'text-(--color-text-2)'}`}
-                      aria-expanded={sourceSessionGroupExpanded}
-                      aria-label={`${sourceSessionGroupExpanded ? 'Collapse' : 'Expand'} main workspace ${workspaceLabel(path)}`}
-                      title={path}
-                    >
-                      <ChevronRight size={11} className={`shrink-0 text-(--color-text-subtle) transition-transform ${sourceSessionGroupExpanded ? 'rotate-90' : ''}`} aria-hidden="true" />
-                      <span className="min-w-0 flex-1 truncate font-mono">main</span>
-                      {sourceSessionCount > 0 && <span className="shrink-0 rounded-full bg-(--bg-key) px-1.5 text-[10px] text-(--color-text-subtle)">{sourceSessionCount}</span>}
-                      {sourceHasRunningSession && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--color-accent)" aria-label="Workspace has running session" />}
-                    </LongPressButton>
-                    <button
-                      type="button"
-                      onClick={() => { void selectWorkspace(path, { create: true }) }}
-                      className={`ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-(--color-border) text-(--color-text-muted) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${isMobile ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
-                      aria-label={`New session in main workspace ${workspaceLabel(path)}`}
-                      title={`New session in main workspace ${workspaceLabel(path)}`}
-                    >
-                      <Plus size={11} aria-hidden="true" />
-                    </button>
-                  </div>
-                  {(sourceSessionGroupExpanded || sourceHasRunningSession) && (
-                    <WorkspaceSessionList
-                      path={path}
-                      currentSessionId={currentSessionId}
-                      runningSessions={sourceRunningSessions}
-                      collapsed={!sourceSessionGroupExpanded}
-                      mobileLongPressActions={mobileLongPressActions}
-                      onSessionSelect={handleSessionSelect}
-                      onSessionDelete={handleSessionDelete}
-                      onSessionEdit={handleSessionEdit}
-                      onSessionLongPress={setMobileSessionActions}
-                      onSessionContextActions={(session, event) => {
-                        setDesktopSessionActions({ session, x: event.clientX, y: event.clientY })
-                      }}
-                    />
-                  )}
+                <div className="space-y-1 pb-1 pt-0.5">
+                  <WorkspaceSessionList
+                    path={path}
+                    currentSessionId={currentSessionId}
+                    runningSessions={sourceRunningSessions}
+                    collapsed={!sourceIsExpanded}
+                    mobileLongPressActions={mobileLongPressActions}
+                    onSessionSelect={handleSessionSelect}
+                    onSessionDelete={handleSessionDelete}
+                    onSessionEdit={handleSessionEdit}
+                    onSessionLongPress={setMobileSessionActions}
+                    onSessionContextActions={(session, event) => {
+                      setDesktopSessionActions({ session, x: event.clientX, y: event.clientY })
+                    }}
+                  />
                   {nestedWorktrees.map((item) => {
                     const directory = item.path
                     const worktreeInfo: WorktreeInfo = { name: item.name, directory, managed: item.managed }
@@ -897,8 +844,8 @@ export function CodingSidebar({
                     const runningSessions = itemSessions.filter((s) => s.running === true)
                     const hasRunningSession = runningSessions.length > 0
                     return (
-                      <div key={directory}>
-                        <div className="group flex min-h-6 items-center pr-2" style={{ paddingLeft: 20 }}>
+                      <div key={directory} className="mt-1">
+                        <div className="group mx-2 flex min-h-6 items-center rounded-md">
                           <LongPressButton
                             enabled={mobileLongPressActions}
                             onLongPress={() => setMobileWorkspaceActions({ path: directory, kind: 'worktree', source: path, worktree: worktreeInfo })}
@@ -909,7 +856,7 @@ export function CodingSidebar({
                               event.preventDefault()
                               setDesktopWorkspaceActions({ path: directory, kind: 'worktree', source: path, worktree: worktreeInfo, x: event.clientX, y: event.clientY })
                             }}
-                            className={`flex min-w-0 flex-1 items-center gap-1.5 rounded px-1.5 py-0.5 text-left text-xs transition-colors hover:bg-(--bg-key) ${isActive ? 'text-(--color-accent)' : 'text-(--color-text-2)'}`}
+                            className={`flex min-w-0 flex-1 items-center gap-1.5 rounded px-1.5 py-0.5 text-left text-xs transition-colors ${isActive ? 'text-(--color-accent)' : 'text-(--color-text-2)'}`}
                             aria-expanded={isExpanded}
                             aria-label={`${isExpanded ? 'Collapse' : 'Expand'} worktree ${item.name}`}
                             title={directory}
@@ -953,6 +900,7 @@ export function CodingSidebar({
                             currentSessionId={currentSessionId}
                             runningSessions={runningSessions}
                             collapsed={!isExpanded}
+                            className="space-y-0.5 py-1 pl-4 pr-2"
                             mobileLongPressActions={mobileLongPressActions}
                             onSessionSelect={handleSessionSelect}
                             onSessionDelete={handleSessionDelete}

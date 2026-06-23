@@ -215,7 +215,7 @@ function TextPreview({
                 selected && 'bg-(--bg-key)',
               )}
             >
-              {selected && lineNo === selectedStart && selectedEnd !== null ? (
+              {selected && lineNo === selectedEnd && selectedStart !== null ? (
                 <button
                   type="button"
                   onMouseDown={(event) => event.stopPropagation()}

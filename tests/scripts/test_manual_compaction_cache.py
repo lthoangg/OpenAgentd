@@ -44,8 +44,11 @@ async def test_direct_smoke_verifies_prefix_shape_and_skill_inclusion() -> None:
     result = await compaction_cache.run_direct()
 
     assert result == {
-        "shared_prefix_messages": 4,
+        "first_shared_prefix_messages": 4,
+        "second_shared_prefix_messages": 10,
         "skill_included": True,
+        "multi_skill_included": True,
+        "non_skill_tool_compacted": True,
         "final_system_prompt_chars": 89,
         "summary_forwarded": True,
     }

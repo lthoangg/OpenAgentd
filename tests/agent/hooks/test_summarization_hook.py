@@ -1630,6 +1630,14 @@ def test_coding_prompt_rejects_raw_transcript_output():
     assert "[assistant]:" in CODING_SUMMARY_PROMPT
 
 
+def test_summary_prompts_do_not_summarize_skill_instructions():
+    from app.agent.hooks.summarization import CHAT_SUMMARY_PROMPT
+
+    expected = "Do not summarize, paraphrase, or quote skill instruction tool results"
+    assert expected in CHAT_SUMMARY_PROMPT
+    assert expected in CODING_SUMMARY_PROMPT
+
+
 # ---------------------------------------------------------------------------
 # _render — None content on non-tool message
 # ---------------------------------------------------------------------------
@@ -1688,12 +1696,7 @@ async def test_assistant_with_none_content_renders_as_empty_string(mock_provider
 
 @pytest.mark.asyncio
 async def test_skill_tool_messages_preserved_through_summarisation(mock_provider):
-    """Skill tool call/result pairs are sent to the summariser and compacted.
-
-    The summariser request should mirror the normal provider-visible transcript
-    for prompt-cache reuse, so skill tool output is included instead of being
-    filtered out as a special preserved message.
-    """
+    """Skill tool call/result pairs are sent to the summariser and kept visible."""
     hook = SummarizationHook(
         llm_provider=mock_provider,
         summary_prompt="test summary prompt",
@@ -1771,13 +1774,21 @@ async def test_skill_tool_messages_preserved_through_summarisation(mock_provider
     assert "Long skill instructions body" in (skill_result.content or "")
     assert other_asst in captured
 
-    # 2) Skill and other messages got excluded as part of summarisation.
-    assert skill_asst.exclude_from_context is True
-    assert skill_result.exclude_from_context is True
+    # 2) Skill messages stay visible; other older messages got compacted.
+    assert skill_asst.exclude_from_context is False
+    assert skill_result.exclude_from_context is False
     assert other_asst.exclude_from_context is True
     assert other_result.exclude_from_context is True
 
-    # 3) Summary was inserted.
+    visible = state.messages_for_llm
+    assert skill_asst in visible
+    assert skill_result in visible
+    assert other_asst not in visible
+    assert other_result not in visible
+
+    # 3) Summary was inserted after the retained skill pair.
     summaries = [m for m in state.messages if m.is_summary]
     assert len(summaries) == 1
     assert summaries[0].content == "Summary."
+    assert state.messages.index(skill_asst) < state.messages.index(summaries[0])
+    assert state.messages.index(skill_result) < state.messages.index(summaries[0])

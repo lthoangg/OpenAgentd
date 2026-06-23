@@ -96,9 +96,12 @@ CHAT_SUMMARY_PROMPT = (
     "or unfinished task. If work is in progress, include the current state and "
     "the immediate next step so the assistant can continue without another user "
     "prompt. Preserve exact names, identifiers, commands, file paths, error "
-    "strings, and other details needed for continuity. Write in third-person "
-    "narrative form. Do not call tools or request tool execution. Return only "
-    "the summary text. Do not include pleasantries or meta-commentary."
+    "strings, and other details needed for continuity. Do not summarize, "
+    "paraphrase, or quote skill instruction tool results; skill instruction "
+    "blocks are preserved separately in context. Mention only that a skill "
+    "remains loaded when relevant. Write in third-person narrative form. Do not "
+    "call tools or request tool execution. Return only the summary text. Do not "
+    "include pleasantries or meta-commentary."
 )
 
 
@@ -146,6 +149,7 @@ Rules:
 - Use terse bullets, not prose paragraphs.
 - Preserve exact file paths, commands, error strings, and identifiers when known.
 - Do not call tools or request tool execution.
+- Do not summarize, paraphrase, or quote skill instruction tool results; skill instruction blocks are preserved separately in context. Mention only that a skill remains loaded when relevant.
 - Return only the summary text.
 - Do not mention the summary process or that context was compacted."""
 
@@ -248,6 +252,34 @@ def _expand_tool_pair_ids(messages: list, seed_ids: set[int]) -> set[int]:
                 changed = True
 
     return expanded
+
+
+def _skill_tool_pair_ids(messages: list) -> set[int]:
+    """Return ids for visible assistant→skill tool-result pairs.
+
+    Skill tool results contain active instruction text. During compaction they
+    must remain in the provider-visible transcript so the agent can keep using
+    the loaded skill without calling the tool again. Preserve the assistant
+    ``tool_calls`` message as well so provider tool-call ordering stays valid.
+    """
+    skill_call_ids: set[str] = set()
+    message_ids: set[int] = set()
+
+    for m in messages:
+        if isinstance(m, AssistantMessage) and m.tool_calls:
+            for tc in m.tool_calls:
+                if tc.id and tc.function.name == "skill":
+                    skill_call_ids.add(tc.id)
+                    message_ids.add(id(m))
+
+    if not skill_call_ids:
+        return set()
+
+    for m in messages:
+        if isinstance(m, ToolMessage) and m.tool_call_id in skill_call_ids:
+            message_ids.add(id(m))
+
+    return _expand_tool_pair_ids(messages, message_ids)
 
 
 def prompt_token_threshold_for_model(model_id: str | None) -> int:
@@ -494,6 +526,7 @@ class SummarizationHook(BaseAgentHook):
         to_summarise_ids = _expand_tool_pair_ids(
             eligible, {id(m) for m in to_summarise}
         )
+        retained_skill_ids = _skill_tool_pair_ids(eligible)
         to_summarise = [m for m in eligible if id(m) in to_summarise_ids]
 
         if not to_summarise:
@@ -573,7 +606,7 @@ class SummarizationHook(BaseAgentHook):
 
         to_summarise_set = {id(m) for m in to_summarise}
         for m in state.messages:
-            if id(m) in to_summarise_set:
+            if id(m) in to_summarise_set and id(m) not in retained_skill_ids:
                 m.exclude_from_context = True
 
         # Exclude any prior summary still in the kept window — the new
@@ -583,10 +616,16 @@ class SummarizationHook(BaseAgentHook):
             if m.is_summary and id(m) not in to_summarise_set:
                 m.exclude_from_context = True
 
-        first_kept_idx = next(
-            (i for i, m in enumerate(state.messages) if not m.exclude_from_context),
-            len(state.messages),
-        )
+        retained_skill_indexes = [
+            i for i, m in enumerate(state.messages) if id(m) in retained_skill_ids
+        ]
+        if retained_skill_indexes:
+            first_kept_idx = max(retained_skill_indexes) + 1
+        else:
+            first_kept_idx = next(
+                (i for i, m in enumerate(state.messages) if not m.exclude_from_context),
+                len(state.messages),
+            )
 
         # HumanMessage as the summary anchor: ZAI and most OpenAI-compat
         # APIs require system → user → … so this shape is safe regardless

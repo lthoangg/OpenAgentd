@@ -2,7 +2,7 @@
 title: Rolling-Window Context Summarization
 description: Automatic conversation compression when context window approaches token threshold.
 status: stable
-updated: 2026-06-15
+updated: 2026-06-23
 ---
 
 # Summarization
@@ -23,7 +23,8 @@ updated: 2026-06-15
 | **UI transparent** | Summary rows (`is_summary=True`) are never returned to the UI. Users see the full unabridged conversation. |
 | **Minimum-delta guard** | `_messages_at_last_summary` tracks the message count at the last summarisation. If fewer than `min_messages_since_last_summary` new messages have arrived, the hook skips — prevents thrashing when the kept window sits close to the threshold. |
 | **Tool result preservation** | `ToolMessage` content is sent to the summariser in its original message shape so compaction sees the same conversation prefix as the normal chat request. |
-| **Cache-first LLM call** | The summariser keeps the normal request prefix, including the actual system prompt after prompt hooks and tool definitions, so large compactions reuse the provider's automatic prefix cache already warmed by the conversation turns. It sets **no explicit prompt-cache key** — a session-scoped key would route the summariser to a different cache partition than the normal turns and miss. Only the summary instruction is appended as the final user message. The prompt explicitly asks for summary text only and not tool use. |
+| **Loaded skill retention** | `skill` tool call/result pairs are retained verbatim after compaction, including the assistant `tool_calls` message required by provider ordering rules. This keeps loaded skill instructions active in the same session without requiring another `skill(...)` call. |
+| **Cache-first LLM call** | The summariser keeps the normal request prefix, including the actual system prompt after prompt hooks, retained skill tool pairs, and tool definitions, so large compactions reuse the provider's automatic prefix cache already warmed by the conversation turns. It sets **no explicit prompt-cache key** — a session-scoped key would route the summariser to a different cache partition than the normal turns and miss. Only the summary instruction is appended as the final user message. The prompt explicitly asks for summary text only and not tool use, and tells the summariser not to summarize or quote retained skill instruction tool results. |
 | **Merge vs. fresh summary** | When the window being summarised contains a prior summary (`is_summary=True`), the hook sends a merge instruction (`_MERGE_REQUEST`) instead of the default request. The summariser is told explicitly to fold old and new content together. |
 | **LLM exception** | Calls an LLM to generate the summary text — the only I/O this hook performs. |
 | **Inherits ``thinking_level``** | The hook does NOT override ``thinking_level`` on the summariser call — the agent's primary level flows through unchanged. Compaction respects the agent configuration; seed agents already pin a low effort (`thinking_level: low`) which is the right floor. |
@@ -158,18 +159,25 @@ wrap_model_call(ctx, state, request)
      │    to_keep      = messages[cutoff:]      (last N assistant turns + context)
      │    if fewer than N assistant turns exist → to_summarise = all messages
      │
+     ├─ Detect retained skill context:
+     │    assistant tool_calls where function.name == "skill" + matching ToolMessage
+     │    are preserved as provider-valid pairs
+     │
      ├─ Build summariser request from the normal cacheable prefix:
      │  final system prompt + selected messages + trailing summary-only user instruction
+     │  (retained skill messages stay in their original positions here so the
+     │   summarization step shares the same prefix as the overflowing chat request)
      │
      ├─ _call_llm(summariser_messages) → summary_text
      │
-     ├─ Mark to_summarise messages: exclude_from_context=True (in-place mutation)
+     ├─ Mark to_summarise messages: exclude_from_context=True (in-place mutation),
+     │  except retained skill pairs, which remain visible
      │
      ├─ Exclude any prior is_summary=True messages still in kept window (superseded)
      │
      ├─ Create HumanMessage("[Summary of earlier conversation]\n" + summary_text, is_summary=True)
      │
-     └─ Insert summary at first non-excluded position in state.messages
+     └─ Insert summary after retained skill pairs, otherwise at first non-excluded position
           → state.messages is now updated in-memory
           → wrapper forwards a fresh ModelRequest with state.messages_for_llm
           → loop syncs the updated state to DB
@@ -192,6 +200,8 @@ Turn 21:    state.usage.last_prompt_tokens ≥ threshold
 
 LLM context from Turn 21 onward (via state.messages_for_llm):
   [system]
+  [assistant: skill tool_call]      # only when a skill was loaded before compaction
+  [tool: skill instruction body]   # retained verbatim so the skill remains active
   [user: [Summary of earlier conversation]\n...]
   [last 3 assistant turns + context verbatim]
   [new user message]
@@ -205,6 +215,35 @@ LLM context from Turn 21 onward (via state.messages_for_llm):
 
 The loop sends `state.messages_for_llm` to the LLM (see `app/agent/state.py:AgentState.messages_for_llm`) — never raw `state.messages`. Multiple summarization rounds work correctly: only the latest summary is included; older summaries are excluded by `exclude_from_context=True` set during the next summarization cycle.
 
+Loaded skills are the intentional exception to "old messages get hidden": `skill` assistant/tool-result pairs remain visible across compactions. The assistant tool-call row is kept with the tool result because providers require tool results to follow a matching assistant `tool_calls` message. Multiple loaded skills are preserved independently; unrelated tool results continue to be summarized and hidden.
+
+## Prompt-cache preservation
+
+Compaction is deliberately shaped like the normal chat request that just crossed
+the threshold. The summarizer request is:
+
+```text
+[same final system prompt]
+[same provider-visible message prefix, including retained skill tool pairs]
+[one extra user message: summarization request + bundled summary prompt]
+```
+
+The hook does not flatten history into a transcript and does not remove skill
+instruction tool results from the summarizer input. That means the summarization
+LLM call can hit the provider's automatic prefix cache for the already-warmed
+conversation prefix. Skill instructions are still present for cache continuity,
+but the bundled summary prompts tell the summarizer not to quote or paraphrase
+those instruction bodies.
+
+Manual verification lives in `manual.compaction_cache --direct`. It runs two
+compactions, loads two skills, adds a non-skill tool result, and asserts that:
+
+- both summarizer calls share the normal request prefix shape;
+- both skill tool results remain in the provider-visible context after repeated
+  compaction;
+- the non-skill tool result is compacted;
+- the generated summary is forwarded into the next model request.
+
 ---
 
 ## DB schema
@@ -213,7 +252,7 @@ The loop sends `state.messages_for_llm` to the LLM (see `app/agent/state.py:Agen
 |--------|--------------------------|
 | `exclude_from_context` | `True` for summarised messages (persisted by `checkpointer.sync()`) |
 | `is_summary` | `True` for the summary message |
-| `role` | `user` for summary (`HumanMessage` — keeps `system → user → ...` invariant valid for all providers including ZAI) |
+| `role` | `user` for summary (`HumanMessage` — keeps `system → user → ...` invariant valid for all providers including ZAI). Retained skill context keeps its original `assistant` tool-call row plus `tool` result row. |
 | `extra.usage` | Token counts written by `checkpointer.sync()` — read back as `state.usage.last_prompt_tokens` on next turn |
 
 ---

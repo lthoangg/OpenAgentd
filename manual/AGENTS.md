@@ -225,7 +225,7 @@ uv run python -m manual.note --cat 2026-04-30-manual-test.md
 | `summarization_test.py` | Drive summarization hook by sending many turns | requires low `DEFAULT_PROMPT_TOKEN_THRESHOLD` in `app/agent/hooks/summarization.py` |
 | `summarization_max_tokens_test.py` | Test max_token_length cap on summary output | requires `DEFAULT_MAX_TOKEN_LENGTH` set in `app/agent/hooks/summarization.py` |
 | `summarization_sse.py` | Capture `summarization_start` / `_content` / `_end` SSE events from a team turn and verify deltas reconstruct the final summary | `--session ID`, `--warmup N`, `--wait N`, `--out FILE` |
-| `compaction_cache.py` | Direct/live smoke for cache-first summarization; direct mode verifies normal-request prefix shape + `skill` inclusion, live mode checks prompt-cache reads during compaction | `--direct`, `--turns N`, `--wait N`, `--session-id ID`, `--min-cache-ratio N` |
+| `compaction_cache.py` | Direct/live smoke for cache-first summarization; direct mode verifies repeated compaction with normal-request prefix shape, multi-skill retention, and non-skill tool compaction; live mode checks prompt-cache reads during compaction | `--direct`, `--turns N`, `--wait N`, `--session-id ID`, `--min-cache-ratio N` |
 | `tool_result_offload_test.py` | Verify large tool results are offloaded to workspace | — |
 | `shell_output_delta.py` | Verify live `tool_output_delta` events from shell output | `--base URL`, `--message TEXT`, `--wait N` |
 | `bang_shell.py` | Verify opencode-style `!command` input dispatches directly to the shell tool, streams shell events, and persists shell history | `--base URL`, `--command TEXT`, `--expect TEXT`, `--session ID`, `--wait N` |
@@ -276,8 +276,8 @@ uv run python -m manual.summarization_sse
 uv run python -m manual.summarization_sse --session <ID>                 # follow-up on existing session
 uv run python -m manual.summarization_sse --out .openagentd/state/summ_sse.jsonl
 
-# Verify summarization prompt-cache reuse during live compaction
-uv run python -m manual.compaction_cache --direct              # no server; verifies prefix shape + skill inclusion
+# Verify summarization prompt-cache reuse during compaction
+uv run python -m manual.compaction_cache --direct              # no server; verifies repeated compaction + multi-skill retention + prefix shape
 uv run python -m manual.compaction_cache --turns 6 --wait 180
 uv run python -m manual.compaction_cache --turns 6 --wait 180 --min-cache-ratio 0.10
 ```

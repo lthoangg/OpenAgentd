@@ -1,5 +1,5 @@
 import { useRef, useState, useCallback, useImperativeHandle, forwardRef, useEffect, useMemo } from 'react'
-import { ArrowUp, File, Folder, Loader2, MessageCircle, Paperclip, Square, Terminal } from 'lucide-react'
+import { ArrowDown, ArrowUp, File, Folder, Loader2, MessageCircle, Paperclip, Square, Terminal } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { FilePreviewStrip } from './FilePreviewStrip'
 import { VoiceMicButton } from './VoiceMicButton'
@@ -188,6 +188,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   const [mentionMenuIndex, setMentionMenuIndex] = useState(0)
   const [localHistory, setLocalHistory] = useState<string[]>([])
   const [historyIndex, setHistoryIndex] = useState(-1)
+  const [focused, setFocused] = useState(false)
   const [snippetRange, setSnippetRange] = useState<
     { start: number; end: number; query: string } | null
   >(null)
@@ -307,6 +308,42 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       return prev
     })
   }, [])
+
+  const navigateHistory = useCallback((dir: 'up' | 'down') => {
+    if (history.length === 0) return false
+    const direction = dir === 'up' ? 1 : -1
+    const canEnterHistory = dir === 'up' && value.length === 0 && historyIndex === -1
+    const inHistory = historyIndex >= 0
+
+    if (canEnterHistory || inHistory) {
+      const nextIndex = canEnterHistory ? 0 : historyIndex + direction
+      if (nextIndex < 0) {
+        setHistoryIndex(-1)
+        setValue('')
+        setShellMode(false)
+        setMentionRange(null)
+        setSnippetRange(null)
+        requestAnimationFrame(resize)
+        return true
+      }
+      if (nextIndex >= history.length) return true
+      const next = history[nextIndex]
+      const shellHistoryEntry = next.startsWith('!')
+      const nextValue = shellHistoryEntry ? next.slice(1) : next
+      setHistoryIndex(nextIndex)
+      setShellMode(shellHistoryEntry)
+      setValue(nextValue)
+      setMentionRange(null)
+      setSnippetRange(null)
+      requestAnimationFrame(() => {
+        const el = textareaRef.current
+        el?.setSelectionRange(nextValue.length, nextValue.length)
+        resize()
+      })
+      return true
+    }
+    return false
+  }, [history, value, historyIndex, resize])
 
   useImperativeHandle(ref, () => ({
     focus: () => textareaRef.current?.focus(),
@@ -825,35 +862,9 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
 
     if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && history.length > 0) {
       if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return
-      const direction = e.key === 'ArrowUp' ? 1 : -1
-      const canEnterHistory = e.key === 'ArrowUp' && value.length === 0 && historyIndex === -1
-      const inHistory = historyIndex >= 0
-      if (canEnterHistory || inHistory) {
+      const handled = navigateHistory(e.key === 'ArrowUp' ? 'up' : 'down')
+      if (handled) {
         e.preventDefault()
-        const nextIndex = canEnterHistory ? 0 : historyIndex + direction
-        if (nextIndex < 0) {
-          setHistoryIndex(-1)
-          setValue('')
-          setShellMode(false)
-          setMentionRange(null)
-          setSnippetRange(null)
-          requestAnimationFrame(resize)
-          return
-        }
-        if (nextIndex >= history.length) return
-        const next = history[nextIndex]
-        const shellHistoryEntry = next.startsWith('!')
-        const nextValue = shellHistoryEntry ? next.slice(1) : next
-        setHistoryIndex(nextIndex)
-        setShellMode(shellHistoryEntry)
-        setValue(nextValue)
-        setMentionRange(null)
-        setSnippetRange(null)
-        requestAnimationFrame(() => {
-          const el = textareaRef.current
-          el?.setSelectionRange(nextValue.length, nextValue.length)
-          resize()
-        })
         return
       }
     }
@@ -1112,10 +1123,12 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         onClick={syncMention}
         onPaste={handlePaste}
         onFocus={(e) => {
+          setFocused(true)
           onFocus?.()
           if (!shellMode && findActiveMention(value, e.currentTarget.selectionStart ?? value.length)) onFileRefsNeeded?.()
         }}
         onBlur={() => {
+          setFocused(false)
           const canMinimize = value.trim().length === 0 && files.length === 0
           onBlur?.(canMinimize)
           // Close the picker on blur — clicks on its items use ``onMouseDown``
@@ -1328,6 +1341,42 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         {/* ``flex justify-center`` centers the self-sized minimized pill. */}
         <div className={`relative ${minimized ? 'flex justify-center' : ''}`}>
           {renderDragHandle?.()}
+          {isMobile && !minimized && focused && history.length > 0 && (
+            <div className="flex items-center gap-1.5 mb-2 px-1">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted) mr-1.5">History:</span>
+              <button
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault()
+                  navigateHistory('up')
+                }}
+                onTouchStart={(e) => {
+                  e.preventDefault()
+                  navigateHistory('up')
+                }}
+                className="flex h-7 w-9 items-center justify-center rounded-md border border-(--color-border) bg-(--color-surface) text-(--color-text-2) active:bg-(--bg-key) transition-colors shadow-sm"
+                aria-label="Previous prompt"
+              >
+                <ArrowUp size={14} />
+              </button>
+              <button
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault()
+                  navigateHistory('down')
+                }}
+                onTouchStart={(e) => {
+                  e.preventDefault()
+                  navigateHistory('down')
+                }}
+                disabled={historyIndex === -1}
+                className="flex h-7 w-9 items-center justify-center rounded-md border border-(--color-border) bg-(--color-surface) text-(--color-text-2) active:bg-(--bg-key) disabled:opacity-40 disabled:pointer-events-none transition-colors shadow-sm"
+                aria-label="Next prompt"
+              >
+                <ArrowDown size={14} />
+              </button>
+            </div>
+          )}
           <motion.div
             layout
             initial={false}

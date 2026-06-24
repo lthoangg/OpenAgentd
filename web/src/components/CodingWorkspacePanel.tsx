@@ -223,7 +223,7 @@ export function CodingWorkspacePanel({
           </button>
         </div>}
         <div className="flex min-w-0 items-center gap-1 border-b border-(--color-border) px-2 py-1">
-          <div className="scrollbar-none flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+          <div className="scrollbar-none flex min-w-0 max-w-[calc(100%-2rem)] items-center gap-1 overflow-x-auto">
             {tabs.map((tabItem) => (
               <button
                 key={tabItem.id}

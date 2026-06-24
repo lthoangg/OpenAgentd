@@ -30,11 +30,13 @@ updated: 2026-06-24
 - Deleting a session selects the next available session when possible instead of attempting to reload the deleted session.
 - On mobile-width screens, the workspace files drawer switches to a full-width file preview after file selection; desktop keeps the file tree visible beside the preview.
 
-## Workspace dock file search
+## Workspace dock file search and review
 
 - The workspace dock exposes file search from the `+` button beside the Changes/file tabs.
 - On desktop, file search is a full-viewport modal so it stays centered over the app while the dock remains resizable.
 - On mobile, file search is centered inside the workspace panel viewport instead of the browser viewport, keeping it below the app header and safe-area. The mobile search field uses a taller touch target and 16px text to avoid iOS zoom and improve tap ergonomics.
+- File preview tabs only show current file content. The old File/Diff toggle is removed.
+- The Changes tab keeps git review in place: each changed file expands/collapses inline and shows a full-context diff generated with a large unified context, with an **Open file** action when users want the current file content.
 
 ## Running and reload states
 

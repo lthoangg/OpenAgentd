@@ -58,7 +58,6 @@ import type { AgentCapabilities as AgentCapabilitiesType, MessageAttachment, Wor
 import { SplitGrid } from './SplitGrid'
 import { MobileHeaderAction } from './MobileHeaderAction'
 import { MobileChatActions } from './MobileChatActions'
-import { ActiveAgentSwitcher } from './ActiveAgentSwitcher'
 import { AgentTabs } from './AgentTabs'
 import { useTeamCommands } from './useTeamCommands'
 import { VIEW_MODES, type ViewMode } from './types'
@@ -884,7 +883,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             ) : null}
           </div>
 
-          {/* Active-agent chip → dropdown of all members. Split view
+          {/* Agent switching lives in the chat area's member line. Split view
               collapses to a count pill — each pane already shows its
               own agent. */}
           <div className="flex min-w-0 flex-1 justify-start overflow-hidden px-1">
@@ -893,14 +892,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
                 <div className="truncate">{mode === 'coding' && workspace ? workspaceLabel(workspace) : sessionTitle || 'Cockpit'}</div>
                 {activeAgent && <div className="truncate font-mono text-[10px] font-normal text-(--color-text-muted)">{activeAgent}</div>}
               </div>
-            )}
-            {effectiveViewMode === 'agent' && activeAgent && !isMobile && (
-              <ActiveAgentSwitcher
-                activeAgent={activeAgent}
-                agents={agentNames}
-                streams={agentStreams}
-                onSelect={setActiveAgent}
-              />
             )}
 
             {effectiveViewMode === 'split' && (

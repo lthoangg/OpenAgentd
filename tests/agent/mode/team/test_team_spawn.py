@@ -683,12 +683,10 @@ class TestRosterManageTool:
         tool = make_team_manage_tool(team)
 
         assert "discover spawnable member blueprints" in tool.description
-        assert (
-            "repeat a blueprint name to create parallel instances" in tool.description
-        )
-        assert "restore/reuse that instance's history" in tool.description
-        assert "live/restorable handles" in tool.description
-        assert "no member blueprints are available to spawn" in tool.description
+        assert "use only listed/available names" in tool.description
+        assert "reuse live/restorable handles" in tool.description
+        assert "available blueprints" in tool.description
+        assert "executor" not in tool.description
 
     async def test_members_do_not_get_manage_tools(self, tmp_path):
         team = _build_dynamic_team(tmp_path, {"executor": None})

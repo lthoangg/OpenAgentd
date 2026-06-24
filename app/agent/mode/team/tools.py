@@ -61,12 +61,10 @@ def make_team_message_tool(
             list[str],
             Field(
                 description=(
-                    "Recipient names — exact instance handles "
-                    "(e.g. 'executor#1') or the bare blueprint name "
-                    "('executor') when only one instance is live. "
-                    "One call per intended audience: if you need to say "
-                    "different things to different people, make separate "
-                    'calls. Example: ["explorer#1"], ["writer", "analyst#2"]'
+                    "Recipient names: exact live handles or an available bare "
+                    "blueprint name when exactly one instance is live. "
+                    "One call per intended audience; make separate calls for "
+                    "different messages."
                 )
             ),
         ],

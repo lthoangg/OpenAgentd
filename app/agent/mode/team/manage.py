@@ -19,18 +19,11 @@ if TYPE_CHECKING:
 
 _MANAGE_DESCRIPTION = (
     "Manage the live team roster and discover spawnable member blueprints. "
-    "Use action='spawn' with blueprint names like 'executor' to create the next "
-    "instance; repeat a blueprint name to create parallel instances. Use explicit "
-    "handles like 'executor#1' to restore/reuse that instance's history when a "
-    "follow-up continues or corrects prior work. Prefer keeping useful members "
-    "alive across turns and re-messaging the same live handle — reusing a live "
-    "instance preserves its warm context and is faster and cheaper than "
-    "dismiss-then-respawn. Use action='dismiss' with explicit live handles like "
-    "'executor#1' only when an instance clearly won't be reused or the roster is "
-    "cluttered; history is preserved either way. Accepts multiple members in one "
-    "call. Available blueprints and any live/restorable handles are surfaced in "
-    "this tool's results and in validation errors for unknown blueprints. If no "
-    "blueprints are configured, no member blueprints are available to spawn."
+    "Blueprint names vary by workspace; use only listed/available names. "
+    "Spawn members before messaging them, reuse live/restorable handles when "
+    "continuing related work, and dismiss only explicit live handles when they "
+    "are no longer needed. Tool results and validation errors include available "
+    "blueprints and live/restorable handles."
 )
 
 
@@ -51,11 +44,9 @@ def make_team_manage_tool(team: "AgentTeam") -> Tool:
             list[str],
             Field(
                 description=(
-                    "For spawn: blueprint names ('executor') create the next "
-                    "available instance, explicit handles ('executor#1') "
-                    "restore/reuse that exact history. For dismiss: pass "
-                    "explicit live handles ('executor#1'). Multiple entries "
-                    "are processed left-to-right."
+                    "For spawn: pass listed/available blueprint names or "
+                    "restorable handles. For dismiss: pass explicit live handles. "
+                    "Multiple entries are processed left-to-right."
                 )
             ),
         ],

@@ -348,6 +348,41 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
       requestAnimationFrame(recomputeFilesBelow)
     }, [recomputeFilesBelow])
 
+    // ── Mobile: Swipe-down to dismiss keyboard / de-focus ───────────────────
+    const touchStartY = useRef<number | null>(null)
+    const touchStartX = useRef<number | null>(null)
+
+    const handleTouchStart = useCallback((e: React.TouchEvent) => {
+      if (e.touches.length === 1) {
+        touchStartY.current = e.touches[0].clientY
+        touchStartX.current = e.touches[0].clientX
+      }
+    }, [])
+
+    const handleTouchMove = useCallback((e: React.TouchEvent) => {
+      if (touchStartY.current === null || touchStartX.current === null) return
+
+      const currentY = e.touches[0].clientY
+      const currentX = e.touches[0].clientX
+      const diffY = currentY - touchStartY.current
+      const diffX = Math.abs(currentX - touchStartX.current)
+
+      // If the user swipes down by more than 30px, and the swipe is mostly vertical:
+      if (diffY > 30 && diffY > diffX * 1.5) {
+        const active = document.activeElement
+        if (active instanceof HTMLElement && active.matches('input, textarea')) {
+          active.blur()
+        }
+        touchStartY.current = null
+        touchStartX.current = null
+      }
+    }, [])
+
+    const handleTouchEnd = useCallback(() => {
+      touchStartY.current = null
+      touchStartX.current = null
+    }, [])
+
     // ── Mobile: static docked bar ────────────────────────────────────────────
     if (isMobile) {
       return (
@@ -355,6 +390,9 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
         // indicator, and the visualViewport inset lifts the composer above
         // the soft keyboard on iOS/Android Tauri shells.
         <div
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
           className="pointer-events-auto border-t border-(--color-border) bg-(--bg-key)/20 px-3 pb-safe pt-2 backdrop-blur-xl transition-[padding-bottom] duration-150"
           style={keyboardInset > 0 ? { paddingBottom: `calc(${keyboardInset}px + 0.5rem)` } : undefined}
         >

@@ -37,26 +37,15 @@ export function useVisualKeyboardInset(): number {
       })
     }
 
-    const focusActiveControl = () => {
-      const active = document.activeElement
-      if (!(active instanceof HTMLElement)) return
-      if (!active.matches('input, textarea, [contenteditable="true"]')) return
-      requestAnimationFrame(() => {
-        active.scrollIntoView({ block: 'nearest', inline: 'nearest' })
-      })
-    }
-
     update()
     window.visualViewport.addEventListener('resize', update)
     window.visualViewport.addEventListener('scroll', update)
-    window.addEventListener('focusin', focusActiveControl)
 
     return () => {
       if (frame) cancelAnimationFrame(frame)
       document.documentElement.style.removeProperty('--keyboard-inset-bottom')
       window.visualViewport?.removeEventListener('resize', update)
       window.visualViewport?.removeEventListener('scroll', update)
-      window.removeEventListener('focusin', focusActiveControl)
     }
   }, [])
 

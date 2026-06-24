@@ -411,6 +411,17 @@ html[data-mobile-shell] {
   touch-action: pan-x pan-y;
 }
 
+@keyframes blink_input_opacity_to_prevent_scrolling_when_focus {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+html[data-mobile-shell] input:focus,
+html[data-mobile-shell] textarea:focus,
+html[data-mobile-shell] [contenteditable="true"]:focus {
+  animation: blink_input_opacity_to_prevent_scrolling_when_focus 0.01s;
+}
+
 html[data-mobile-shell] body {
   -webkit-user-select: none;
   user-select: none;

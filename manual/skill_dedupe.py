@@ -3,9 +3,12 @@
 Verifies two runtime invariants without requiring a live server or LLM:
 
 1. Calling the skill tool twice for the same skill in the same visible session
-   returns the full body only once; the duplicate returns a compact reuse note.
+   returns the full body both times so repeated tool calls still refresh the
+   current LLM context with usable instructions.
 2. Summarisation preserves the first full skill tool pair and compacts later
    duplicate pairs for that skill.
+3. After summarisation, two more duplicate skill calls both rehydrate/reuse the
+   preserved full body instead of returning a placeholder note.
 
 Usage:
   uv run python -m manual.skill_dedupe
@@ -18,6 +21,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import MagicMock
+from unittest.mock import patch
 
 from app.agent.hooks.summarization import SummarizationHook
 from app.agent.schemas.chat import (
@@ -47,24 +51,20 @@ async def _check_tool_dedupe() -> None:
             encoding="utf-8",
         )
 
-        original_roots = skill_module._iter_skill_roots
-        skill_module._iter_skill_roots = lambda: [skills_root]
-        try:
+        with patch.object(
+            skill_module, "_iter_skill_roots", return_value=[skills_root]
+        ):
             state = SimpleNamespace(metadata={}, messages_for_llm=[])
             first = await load_skill("manual-demo", _state=state)
             second = await load_skill("manual-demo", _state=state)
-        finally:
-            skill_module._iter_skill_roots = original_roots
 
     if first != "MANUAL_DEMO_FULL_BODY":
         raise AssertionError(f"first load returned unexpected body: {first!r}")
-    if "already loaded" not in second:
-        raise AssertionError(f"duplicate load did not return reuse note: {second!r}")
-    if "MANUAL_DEMO_FULL_BODY" in second:
-        raise AssertionError("duplicate load returned the full skill body again")
+    if second != "MANUAL_DEMO_FULL_BODY":
+        raise AssertionError(f"duplicate load did not return full body: {second!r}")
 
 
-async def _check_summarization_keeps_only_first_pair() -> None:
+async def _check_summarization_keeps_only_first_pair() -> AgentState:
     provider = MagicMock()
 
     async def _stream(messages, **__):
@@ -112,7 +112,7 @@ async def _check_summarization_keeps_only_first_pair() -> None:
     duplicate_result = ToolMessage(
         tool_call_id="call_skill_2",
         name="skill",
-        content="Skill 'manual-demo' is already loaded in this session.",
+        content="MANUAL_DEMO_FULL_BODY",
     )
 
     state = AgentState(
@@ -142,13 +142,30 @@ async def _check_summarization_keeps_only_first_pair() -> None:
         or not duplicate_result.exclude_from_context
     ):
         raise AssertionError("duplicate skill pair was not compacted")
+    return state
+
+
+async def _check_post_summarization_replay(state: AgentState) -> None:
+    first_replay = await load_skill("manual-demo", _state=state)
+    second_replay = await load_skill("manual-demo", _state=state)
+    if first_replay != "MANUAL_DEMO_FULL_BODY":
+        raise AssertionError(
+            "post-summarisation skill replay did not return full body: "
+            f"{first_replay!r}"
+        )
+    if second_replay != "MANUAL_DEMO_FULL_BODY":
+        raise AssertionError(
+            "post-summarisation duplicate skill replay did not return full body: "
+            f"{second_replay!r}"
+        )
 
 
 async def main_async() -> None:
     await _check_tool_dedupe()
-    await _check_summarization_keeps_only_first_pair()
+    state = await _check_summarization_keeps_only_first_pair()
+    await _check_post_summarization_replay(state)
     print(
-        "[PASS] duplicate skill loads return compact reuse note and compact away after summarisation"
+        "[PASS] duplicate skill loads replay full bodies and compact away after summarisation"
     )
 
 

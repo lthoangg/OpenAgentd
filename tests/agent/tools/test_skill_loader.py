@@ -125,8 +125,105 @@ class TestLoadSkill:
         second = await load_skill("analysis", _state=state)
 
         assert first == "Analyse data carefully."
-        assert "already loaded" in second
-        assert "Analyse data carefully" not in second
+        assert second == "Analyse data carefully."
+
+    @pytest.mark.asyncio
+    async def test_load_skill_rehydrates_visible_session_skill_body(
+        self, tmp_path, monkeypatch
+    ):
+        d = tmp_path / "analysis"
+        d.mkdir()
+        (d / "SKILL.md").write_text("---\nname: analysis\n---\nFresh body.")
+        monkeypatch.setattr("app.agent.tools.builtin.skill._SKILLS_DIR", tmp_path)
+        state = SimpleNamespace(
+            metadata={},
+            messages_for_llm=[
+                SimpleNamespace(
+                    tool_calls=[
+                        SimpleNamespace(
+                            id="call_1",
+                            function=SimpleNamespace(
+                                name="skill",
+                                arguments='{"skill_name":"analysis"}',
+                            ),
+                        )
+                    ]
+                ),
+                SimpleNamespace(
+                    role="tool",
+                    tool_call_id="call_1",
+                    content="Previously loaded body.",
+                ),
+            ],
+        )
+
+        result = await load_skill("analysis", _state=state)
+
+        assert result == "Previously loaded body."
+
+    @pytest.mark.asyncio
+    async def test_load_skill_ignores_malformed_visible_skill_call(
+        self, tmp_path, monkeypatch
+    ):
+        d = tmp_path / "analysis"
+        d.mkdir()
+        (d / "SKILL.md").write_text("---\nname: analysis\n---\nFresh body.")
+        monkeypatch.setattr("app.agent.tools.builtin.skill._SKILLS_DIR", tmp_path)
+        state = SimpleNamespace(
+            metadata={},
+            messages_for_llm=[
+                SimpleNamespace(
+                    tool_calls=[
+                        SimpleNamespace(
+                            id="call_bad",
+                            function=SimpleNamespace(
+                                name="skill",
+                                arguments="not-json",
+                            ),
+                        )
+                    ]
+                ),
+                SimpleNamespace(
+                    role="tool",
+                    tool_call_id="call_bad",
+                    content="Stale body must not be reused.",
+                ),
+            ],
+        )
+
+        result = await load_skill("analysis", _state=state)
+
+        assert result == "Fresh body."
+
+    @pytest.mark.asyncio
+    async def test_load_skill_reload_when_visible_pair_has_no_body(
+        self, tmp_path, monkeypatch
+    ):
+        d = tmp_path / "analysis"
+        d.mkdir()
+        (d / "SKILL.md").write_text("---\nname: analysis\n---\nFresh body.")
+        monkeypatch.setattr("app.agent.tools.builtin.skill._SKILLS_DIR", tmp_path)
+        state = SimpleNamespace(
+            metadata={},
+            messages_for_llm=[
+                SimpleNamespace(
+                    tool_calls=[
+                        SimpleNamespace(
+                            id="call_empty",
+                            function=SimpleNamespace(
+                                name="skill",
+                                arguments='{"skill_name":"analysis"}',
+                            ),
+                        )
+                    ]
+                ),
+                SimpleNamespace(role="tool", tool_call_id="call_empty", content=""),
+            ],
+        )
+
+        result = await load_skill("analysis", _state=state)
+
+        assert result == "Fresh body."
 
     @pytest.mark.asyncio
     async def test_load_skill_by_subdir_name(self, tmp_path, monkeypatch):

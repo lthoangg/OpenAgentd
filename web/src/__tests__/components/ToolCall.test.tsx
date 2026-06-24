@@ -692,12 +692,15 @@ describe("ToolCall — skill display", () => {
     expect(btn.className).not.toContain("cursor-pointer")
   })
 
-  it("suppresses the loaded instruction body in the result panel", () => {
+  it("shows the loaded instruction body when result is present", async () => {
+    const user = userEvent.setup()
     const args = JSON.stringify({ skill_name: "guidelines" })
     render(<ToolCall name="skill" args={args} done={true} result="Very long skill instructions" />)
 
-    expect(screen.queryByText("Very long skill instructions")).toBeNull()
-    expect(screen.getByRole("button").className).toContain("cursor-default")
+    // Button should be expandable now that result content is available
+    expect(screen.getByRole("button").className).toContain("cursor-pointer")
+    await user.click(screen.getByRole("button"))
+    expect(screen.getByText("Very long skill instructions")).toBeTruthy()
   })
 })
 

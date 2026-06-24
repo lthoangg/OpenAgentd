@@ -117,8 +117,10 @@ export function CodingWorkspacePanel({
   const [activeTabId, setActiveTabId] = useState('review')
   const [fileSearchOpen, setFileSearchOpen] = useState(false)
   const [fileSearch, setFileSearch] = useState('')
+  const [focusedIndex, setFocusedIndex] = useState(-1)
   const [expandedDiffs, setExpandedDiffs] = useState<Set<string>>(() => new Set())
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const searchListRef = useRef<HTMLDivElement>(null)
   const tabButtonRefs = useRef(new Map<string, HTMLButtonElement>())
   const files = useQuery({
     queryKey: queryKeys.coding.files(workspace),
@@ -176,6 +178,14 @@ export function CodingWorkspacePanel({
   useEffect(() => {
     if (fileSearchOpen) searchInputRef.current?.focus()
   }, [fileSearchOpen])
+  useEffect(() => {
+    setFocusedIndex(-1)
+  }, [fileSearch])
+  useEffect(() => {
+    if (focusedIndex < 0 || !searchListRef.current) return
+    const item = searchListRef.current.children[focusedIndex] as HTMLElement | undefined
+    item?.scrollIntoView({ block: 'nearest' })
+  }, [focusedIndex])
   useEffect(() => {
     tabButtonRefs.current.get(activeTabId)?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
   }, [activeTabId, tabs.length])
@@ -284,7 +294,7 @@ export function CodingWorkspacePanel({
             )}
             onClick={() => setFileSearchOpen(false)}
           >
-          <div className="flex max-h-[min(28rem,calc(100%-2rem))] w-full max-w-md flex-col overflow-hidden rounded-xl border border-(--color-border) bg-(--bg-card) shadow-2xl" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="Search workspace files">
+          <div className="flex max-h-[min(32rem,calc(100%-2rem))] w-full max-w-xl flex-col overflow-hidden rounded-lg border border-(--color-border) bg-(--bg-card) shadow-2xl" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="Search workspace files">
             <div className="flex h-14 items-center gap-3 border-b border-(--color-border) px-4">
               <Search size={16} className="shrink-0 text-(--color-text-subtle)" aria-hidden="true" />
               <input
@@ -292,10 +302,27 @@ export function CodingWorkspacePanel({
                 value={fileSearch}
                 onChange={(event) => setFileSearch(event.target.value)}
                 onKeyDown={(event) => {
-                  if (event.key === 'Escape') setFileSearchOpen(false)
-                  if (event.key === 'Enter' && searchableFiles[0]) {
-                    openFileTab(searchableFiles[0])
+                  if (event.key === 'Escape') {
                     setFileSearchOpen(false)
+                    return
+                  }
+                  if (event.key === 'ArrowDown') {
+                    event.preventDefault()
+                    setFocusedIndex((prev) => Math.min(prev + 1, searchableFiles.length - 1))
+                    return
+                  }
+                  if (event.key === 'ArrowUp') {
+                    event.preventDefault()
+                    setFocusedIndex((prev) => Math.max(prev - 1, 0))
+                    return
+                  }
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    const targetIndex = focusedIndex >= 0 ? focusedIndex : 0
+                    if (searchableFiles[targetIndex]) {
+                      openFileTab(searchableFiles[targetIndex])
+                      setFileSearchOpen(false)
+                    }
                   }
                 }}
                 placeholder="Search files…"
@@ -303,15 +330,20 @@ export function CodingWorkspacePanel({
                 aria-label="Search workspace files"
               />
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
+            <div ref={searchListRef} className="min-h-0 flex-1 overflow-y-auto p-1.5">
               {searchableFiles.length === 0 ? (
                 <p className="px-2 py-3 text-xs text-(--color-text-subtle)">No files found</p>
-              ) : searchableFiles.map((file) => (
+              ) : searchableFiles.map((file, index) => (
                 <button
                   key={file.path}
                   type="button"
                   onClick={() => { openFileTab(file); setFileSearchOpen(false) }}
-                  className="flex w-full min-w-0 items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text)"
+                  className={cn(
+                    'flex w-full min-w-0 items-center gap-2 rounded px-2 py-1.5 text-left text-xs',
+                    index === focusedIndex
+                      ? 'bg-(--bg-key) text-(--color-text)'
+                      : 'text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text)',
+                  )}
                   title={file.path}
                 >
                   <FileTypeIcon name={file.name || file.path} size={13} />
@@ -319,6 +351,9 @@ export function CodingWorkspacePanel({
                   <span className="shrink-0 text-[10px] text-(--color-text-subtle)">{formatBytes(file.size)}</span>
                 </button>
               ))}
+            </div>
+            <div className="shrink-0 border-t border-(--color-border) px-4 py-2">
+              <p className="text-[10px] text-(--color-text-muted)">↑↓ to navigate · ↵ to open · esc to close</p>
             </div>
           </div>
           </div>

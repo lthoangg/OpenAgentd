@@ -277,14 +277,13 @@ export function getToolDisplay(name: string, args: string | undefined): ToolDisp
     return { header, headerTitle, formattedArgs: null }
   }
 
-  // ── skill: conversational header; instructions are for the model, not UI detail ──
+  // ── skill: conversational header, result body shown on expand ──
   if (name === 'skill') {
     const skillName = str(parsed, 'skill_name')
     return {
       header: skillName ? <Arg>{skillName}</Arg> : null,
       headerTitle: skillName ? skillName : null,
       formattedArgs: null,
-      suppressResult: true,
     }
   }
 

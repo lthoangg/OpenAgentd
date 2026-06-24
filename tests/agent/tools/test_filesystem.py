@@ -111,6 +111,22 @@ async def test_read_file_truncation(sandbox_workspace, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_read_file_caps_large_text_for_context(sandbox_workspace, monkeypatch):
+    read_file_module = importlib.import_module(
+        "app.agent.tools.builtin.filesystem.read"
+    )
+    monkeypatch.setattr(read_file_module, "_MAX_CONTEXT_CHARS", 10)
+    (sandbox_workspace / "material-icons.json").write_text("A" * 50)
+
+    result = await read_file.arun(path="material-icons.json")
+
+    assert result.startswith("A" * 10)
+    assert "read output truncated for LLM context" in result
+    assert "Use offset and limit" in result
+    assert len(result) < 250
+
+
+@pytest.mark.asyncio
 async def test_read_file_latin1_fallback(sandbox_workspace):
     (sandbox_workspace / "latin.bin").write_bytes(b"\xff\xfe")
     result = await read_file.arun(path="latin.bin")

@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { queryKeys } from '@/queries'
 import { openExternalUrl } from '@/lib/open-external'
 import { useToastStore } from '@/stores/useToastStore'
-import { deviceCodeHelp, eventLabel, isBenignOAuthStreamClose } from './helpers'
+import { deviceCodeHelp, eventLabel, isBenignOAuthStreamClose } from './providerUtils'
 
 export function OAuthLoginDialog({
   provider,

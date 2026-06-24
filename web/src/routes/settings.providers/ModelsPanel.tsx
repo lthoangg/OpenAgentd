@@ -6,7 +6,7 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
 import { mediumHapticFeedback } from '@/lib/haptics'
 import { useToastStore } from '@/stores/useToastStore'
-import { MODEL_LONG_PRESS_MOVE_TOLERANCE, MODEL_LONG_PRESS_MS } from './helpers'
+import { MODEL_LONG_PRESS_MOVE_TOLERANCE, MODEL_LONG_PRESS_MS } from './providerUtils'
 
 /** Indexed model entry for fuzzysort — qualifiedId is the search target
  *  *and* the value the user sees / copies, so search and display stay in

@@ -1119,23 +1119,33 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             </Button>
           </div>
         ) : activeAgent && agentStreams[activeAgent] ? (
-          <AgentView
-            blocks={activeBlocks ?? agentStreams[activeAgent].blocks}
-            currentBlocks={activeCurrentBlocks ?? agentStreams[activeAgent].currentBlocks}
-            isWorking={(activeStatus ?? agentStreams[activeAgent].status) === 'working'}
-            isError={(activeStatus ?? agentStreams[activeAgent].status) === 'error'}
-            lastError={agentStreams[activeAgent].lastError}
-            isContinuing={isContinuing && activeAgent === leadName}
-            onContinue={activeAgent === leadName ? continueTeam : undefined}
-            onMentionFileOpen={mode === 'coding' ? handleMentionFileOpen : undefined}
-            emptyState={
-              mode === 'coding' && workspace ? (
-                <div className="flex flex-col items-center justify-center py-16">
-                  <WorkspaceInfoCard workspace={workspace} />
-                </div>
-              ) : undefined
-            }
-          />
+          <div className="flex flex-1 flex-col min-h-0">
+            {effectiveViewMode === 'agent' && agentNames.length > 1 && (
+              <AgentTabs
+                activeAgent={activeAgent}
+                agents={agentNames}
+                streams={agentStreams}
+                onSelect={setActiveAgent}
+              />
+            )}
+            <AgentView
+              blocks={activeBlocks ?? agentStreams[activeAgent].blocks}
+              currentBlocks={activeCurrentBlocks ?? agentStreams[activeAgent].currentBlocks}
+              isWorking={(activeStatus ?? agentStreams[activeAgent].status) === 'working'}
+              isError={(activeStatus ?? agentStreams[activeAgent].status) === 'error'}
+              lastError={agentStreams[activeAgent].lastError}
+              isContinuing={isContinuing && activeAgent === leadName}
+              onContinue={activeAgent === leadName ? continueTeam : undefined}
+              onMentionFileOpen={mode === 'coding' ? handleMentionFileOpen : undefined}
+              emptyState={
+                mode === 'coding' && workspace ? (
+                  <div className="flex flex-col items-center justify-center py-16">
+                    <WorkspaceInfoCard workspace={workspace} />
+                  </div>
+                ) : undefined
+              }
+            />
+          </div>
         ) : mode === 'coding' && workspace ? (
           <div className="flex flex-1 flex-col items-center justify-center py-16">
             <WorkspaceInfoCard workspace={workspace} />
@@ -1489,5 +1499,47 @@ function ActiveAgentSwitcher({
         ))}
       </DropdownMenuContent>
     </DropdownMenu>
+  )
+}
+
+interface AgentTabsProps {
+  activeAgent: string
+  agents: string[]
+  streams: Record<string, AgentStream>
+  onSelect: (agent: string) => void
+}
+
+function AgentTabs({
+  activeAgent,
+  agents,
+  streams,
+  onSelect,
+}: AgentTabsProps) {
+  return (
+    <div className="scrollbar-none flex shrink-0 items-center gap-1.5 border-b border-(--color-border) bg-(--bg-page) px-3 py-1.5 overflow-x-auto">
+      {agents.map((name) => {
+        const isActive = name === activeAgent
+        const stream = streams[name]
+
+        return (
+          <button
+            key={name}
+            type="button"
+            onClick={() => onSelect(name)}
+            className={`flex items-center gap-1.5 rounded-full px-3 py-1 font-mono text-[10px] font-semibold tracking-wide uppercase transition-all outline-none ${
+              isActive
+                ? 'bg-(--bg-key) text-(--color-text) ring-1 ring-(--color-border-strong)'
+                : 'text-(--color-text-subtle) hover:bg-(--bg-key)/40 hover:text-(--color-text-2)'
+            }`}
+          >
+            <span
+              className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotClassFor(name, stream)}`}
+              aria-hidden="true"
+            />
+            <span className="min-w-0 truncate">{name}</span>
+          </button>
+        )
+      })}
+    </div>
   )
 }

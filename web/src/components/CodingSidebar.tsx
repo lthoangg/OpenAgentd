@@ -505,7 +505,7 @@ export function CodingSidebar({
       event.preventDefault()
       event.stopPropagation()
       import('@tauri-apps/api/core').then(({ invoke }) => {
-        invoke('app_new_window', { initialPath: `/coding/${session.id}` }).catch((err) => {
+        invoke('app_new_window', { initialPath: `/coding/${session.id}`, initial_path: `/coding/${session.id}` }).catch((err) => {
           console.error('Failed to open session in new window:', err)
         })
       }).catch(() => {})

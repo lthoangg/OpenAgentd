@@ -312,7 +312,7 @@ def _iter_skill_paths(directory: Path):
 
 
 def _loaded_skills_from_messages(state: Any) -> dict[str, str]:
-    """Return skill names and content already loaded in visible conversation."""
+    """Return first successful visible skill loads keyed by requested name."""
     loaded: dict[str, str] = {}
     pending_by_tool_call_id: dict[str, str] = {}
     for message in getattr(state, "messages_for_llm", []):
@@ -326,8 +326,8 @@ def _loaded_skills_from_messages(state: Any) -> dict[str, str]:
             except (TypeError, json.JSONDecodeError):
                 continue
             skill_name = args.get("skill_name")
-            if isinstance(skill_name, str) and skill_name:
-                loaded.setdefault(skill_name, "")
+            if isinstance(skill_name, str) and skill_name and skill_name not in loaded:
+                loaded[skill_name] = ""
                 tool_call_id = getattr(tool_call, "id", None)
                 if isinstance(tool_call_id, str) and tool_call_id:
                     pending_by_tool_call_id[tool_call_id] = skill_name
@@ -335,7 +335,7 @@ def _loaded_skills_from_messages(state: Any) -> dict[str, str]:
         tool_call_id = getattr(message, "tool_call_id", None)
         if not isinstance(tool_call_id, str):
             continue
-        skill_name = pending_by_tool_call_id.get(tool_call_id)
+        skill_name = pending_by_tool_call_id.pop(tool_call_id, None)
         content = getattr(message, "content", None)
         if skill_name and isinstance(content, str) and content:
             loaded[skill_name] = content

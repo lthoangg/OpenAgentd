@@ -1,19 +1,43 @@
+import { useEffect } from 'react'
 import { ArrowLeft, KeyRound, Loader2 } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
+import { useQueryClient } from '@tanstack/react-query'
 
-import { useProvidersQuery } from '@/queries'
+import { listProviderModels, type ProvidersListBody } from '@/api/client'
+import { queryKeys, useProvidersQuery } from '@/queries'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { ProviderCard } from './settings.providers/ProviderCard'
 
 export function ProvidersSettingsPage() {
   const isMobile = useIsMobile()
   const providersQ = useProvidersQuery()
+  const queryClient = useQueryClient()
   // Render in catalog order so the list is stable regardless of which
   // providers happen to be configured. Sorting by ``is_configured`` would
   // bump a provider to the top the moment its key is saved, which makes
   // the page feel like it's rearranging itself under the user.
   const providers = providersQ.data?.providers ?? []
   const connectedCount = providers.filter((provider) => provider.is_configured).length
+
+  useEffect(() => {
+    if (!providersQ.data) return
+    for (const provider of providersQ.data.providers) {
+      if (!provider.is_configured) continue
+      void listProviderModels(provider.id, {}).then((listed) => {
+        queryClient.setQueryData(queryKeys.settings.providerModels(provider.id), listed)
+        queryClient.setQueryData<ProvidersListBody>(queryKeys.settings.providers(), (current) => {
+          if (!current) return current
+          return {
+            ...current,
+            providers: current.providers.map((item) =>
+              item.id === provider.id ? { ...item, cached_models: listed.models } : item,
+            ),
+          }
+        })
+        void queryClient.invalidateQueries({ queryKey: queryKeys.agentFiles.registry() })
+      }).catch(() => {})
+    }
+  }, [providersQ.data, queryClient])
 
   return (
     <>

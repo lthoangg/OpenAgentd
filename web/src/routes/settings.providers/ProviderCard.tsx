@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertCircle, CheckCircle2, ExternalLink, KeyRound, Loader2, ShieldCheck } from 'lucide-react'
 
-import { ApiValidationError, listProviderModels, type ProviderInfo } from '@/api/client'
+import { ApiValidationError, type ProviderInfo } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -64,15 +64,11 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
   // once the user has completed the device-flow login. Cloud credential
   // providers (Bedrock / Vertex AI) use the saved .env values when the
   // fields are blank after a page refresh.
-  const autoFetchEnabled =
-    provider.is_configured &&
-    !hasCandidateKey &&
-    !hasCloudCandidate &&
-    (provider.kind === 'api_key' || provider.kind === 'oauth' || provider.kind === 'cloud_creds')
+  const autoFetchEnabled = false
 
   const autoModelsQ = useQuery({
     queryKey: queryKeys.settings.providerModels(provider.id),
-    queryFn: () => listProviderModels(provider.id, {}),
+    queryFn: async () => ({ provider: provider.id, models: provider.cached_models, source: 'provider' as const }),
     enabled: autoFetchEnabled,
     staleTime: 60_000,
   })
@@ -83,8 +79,8 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
 
   // Derived (not state) — single source of truth is the query cache.
   const models = useMemo<string[]>(
-    () => autoModelsQ.data?.models ?? [],
-    [autoModelsQ.data?.models],
+    () => autoModelsQ.data?.models ?? provider.cached_models ?? [],
+    [autoModelsQ.data?.models, provider.cached_models],
   )
 
   const handleListModels = async () => {

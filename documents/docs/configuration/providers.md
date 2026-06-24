@@ -56,7 +56,14 @@ providers:
       - gpt-5.1-mini
 ```
 
-This is a UI visibility filter, not runtime enforcement. Use the per-model visibility button in the provider card to choose which models appear in normal model pickers. Missing or empty `visible_models` means all discovered agent-usable models for that provider remain visible. `/api/agents/registry` and the provider model-list endpoint use live provider discovery results only; failed auth or unreachable discovery returns an empty list instead of curated defaults.
+This is a UI visibility filter, not runtime enforcement. Use the per-model visibility button in the provider card to choose which models appear in normal model pickers. Missing or empty `visible_models` means all cached agent-usable models for that provider remain visible.
+
+Provider model lists are now **cache-first**:
+
+- **Session settings / normal model pickers** read only the cached provider-local `cached_models` list from `settings.yaml`, so opening a picker never waits on provider network calls.
+- Opening **Settings → Providers** starts a background refresh for every configured provider and writes the refreshed results back into `cached_models`.
+- Clicking **List models** still performs an immediate live refresh for that provider; using candidate unsaved credentials verifies the candidate key but does **not** persist that model list until the provider is saved / refreshed with saved credentials.
+- Saving or reconnecting a provider invalidates the cached picker registry so subsequent picker opens see the refreshed cached list.
 
 ## Provider plugins
 

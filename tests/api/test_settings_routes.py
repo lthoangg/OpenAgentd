@@ -204,6 +204,7 @@ def test_list_providers_marks_configured_when_env_var_set(
     data = response.json()
     google = next(p for p in data["providers"] if p["id"] == "googlegenai")
     assert google["is_configured"] is True
+    assert google["cached_models"] == []
     assert data["has_any_configured"] is True
 
 
@@ -1133,8 +1134,20 @@ def test_provider_configuration_reads_saved_config_env(
 def test_save_provider_visible_models_writes_runtime_settings(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    from app.core.runtime_settings import RuntimeSettings, save_runtime_settings
+
     monkeypatch.setattr(
         settings_routes.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path)
+    )
+    save_runtime_settings(
+        RuntimeSettings(
+            providers={
+                "openai": {
+                    "cached_models": ["gpt-5.1", "gpt-5.1-mini"],
+                    "last_listed_at": 123,
+                }
+            }
+        )
     )
 
     app = _make_app()
@@ -1149,7 +1162,9 @@ def test_save_provider_visible_models_writes_runtime_settings(
         "provider": "openai",
         "visible_models": ["gpt-5.1", "gpt-5.1-mini"],
     }
-    assert "visible_models" in (tmp_path / "settings.yaml").read_text(encoding="utf-8")
+    saved = (tmp_path / "settings.yaml").read_text(encoding="utf-8")
+    assert "visible_models" in saved
+    assert "cached_models" in saved
 
 
 def test_save_provider_visible_models_rejects_unknown_provider() -> None:
@@ -1163,135 +1178,148 @@ def test_save_provider_visible_models_rejects_unknown_provider() -> None:
     assert response.status_code == 404
 
 
-# ── /agents/registry — concurrent + cached discovery ────────────────────────
-
-
-def test_registry_skips_unconfigured_discovery(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Discovery only runs for providers the user has actually configured."""
-    from fastapi import FastAPI
-
-    from app.api.routes.agents import router as agents_router
-
-    # Force every provider to look unconfigured.
-    monkeypatch.setattr(
-        "app.api.routes.settings._provider_is_configured", lambda _entry: False
-    )
-
-    call_count = 0
-
-    async def _spy(_entry, **_kwargs):  # type: ignore[no-untyped-def]
-        nonlocal call_count
-        call_count += 1
-        return []
-
-    monkeypatch.setattr("app.api.routes.agents.discover_provider_models", _spy)
-
-    app = FastAPI()
-    app.include_router(agents_router, prefix="/api/agents")
-    client = TestClient(app)
-    response = client.get("/api/agents/registry")
-
-    assert response.status_code == 200
-    assert call_count == 0
-
-
-def test_registry_caches_discovery_within_ttl(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Two calls in the same TTL window invoke discovery just once per provider."""
-    from fastapi import FastAPI
-
-    from app.api.routes import agents as agents_module
-    from app.api.routes.agents import router as agents_router
-
-    # Reset the module-level cache so prior tests don't taint the count.
-    agents_module._registry_model_cache.clear()
-
-    monkeypatch.setattr(
-        "app.api.routes.settings._provider_is_configured",
-        lambda entry: entry["id"] == "openai",
-    )
-
-    call_count = 0
-
-    async def _spy(_entry, **_kwargs):  # type: ignore[no-untyped-def]
-        nonlocal call_count
-        call_count += 1
-        return ["only-model"]
-
-    monkeypatch.setattr("app.api.routes.agents.discover_provider_models", _spy)
-
-    app = FastAPI()
-    app.include_router(agents_router, prefix="/api/agents")
-    client = TestClient(app)
-
-    client.get("/api/agents/registry")
-    client.get("/api/agents/registry")
-
-    assert call_count == 1
-
-
-def test_registry_discovery_uses_saved_config_env(
+def test_list_provider_models_persists_cached_models_for_saved_credentials(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    from fastapi import FastAPI
+    from app.core.runtime_settings import provider_cached_models
 
-    from app.api.routes import agents as agents_module
-    from app.api.routes.agents import router as agents_router
-
-    agents_module._registry_model_cache.clear()
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.setattr(
         settings_routes.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path)
     )
-    (tmp_path / ".env").write_text("OPENAI_API_KEY=saved-key\n", encoding="utf-8")
+
+    async def _models(_entry, **_kwargs):  # type: ignore[no-untyped-def]
+        return ["gpt-5", "gpt-5-mini"]
+
     monkeypatch.setattr(
-        "app.api.routes.settings._provider_is_configured",
-        lambda entry: entry["id"] == "openai",
+        "app.agent.providers.model_discovery.discover_provider_models", _models
     )
 
-    captured: dict[str, object] = {}
-
-    async def _spy(_entry, **kwargs):  # type: ignore[no-untyped-def]
-        captured["overrides"] = kwargs.get("overrides")
-        return ["saved-model"]
-
-    monkeypatch.setattr("app.api.routes.agents.discover_provider_models", _spy)
-
-    app = FastAPI()
-    app.include_router(agents_router, prefix="/api/agents")
+    app = _make_app()
     client = TestClient(app)
-
-    response = client.get("/api/agents/registry")
+    response = client.post(
+        "/api/settings/providers/openai/models",
+        json={"api_key": "", "extra": {}},
+    )
 
     assert response.status_code == 200
-    assert captured["overrides"] == {"OPENAI_API_KEY": "saved-key"}
-    assert "openai:saved-model" in {m["id"] for m in response.json()["models"]}
+    assert response.json()["models"] == ["gpt-5", "gpt-5-mini"]
+    assert provider_cached_models("openai") == ["gpt-5", "gpt-5-mini"]
 
 
-def test_registry_filters_provider_visible_models(
+def test_list_provider_models_does_not_persist_candidate_credentials(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    from fastapi import FastAPI
+    from app.core.runtime_settings import provider_cached_models
 
-    from app.api.routes import agents as agents_module
-    from app.api.routes.agents import router as agents_router
-    from app.core.runtime_settings import RuntimeSettings, save_runtime_settings
+    monkeypatch.setattr(
+        settings_routes.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path)
+    )
 
-    agents_module._registry_model_cache.clear()
+    async def _models(_entry, **_kwargs):  # type: ignore[no-untyped-def]
+        return ["candidate-model"]
+
+    monkeypatch.setattr(
+        "app.agent.providers.model_discovery.discover_provider_models", _models
+    )
+
+    app = _make_app()
+    client = TestClient(app)
+    response = client.post(
+        "/api/settings/providers/openai/models",
+        json={"api_key": "new-key", "extra": {}},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["models"] == ["candidate-model"]
+    assert provider_cached_models("openai") == []
+
+
+def test_save_provider_clears_cached_models(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from app.core.runtime_settings import (
+        RuntimeSettings,
+        provider_cached_models,
+        save_runtime_settings,
+    )
+
     monkeypatch.setattr(
         settings_routes.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path)
     )
     save_runtime_settings(
-        RuntimeSettings(providers={"openai": {"visible_models": ["shown"]}})
+        RuntimeSettings(
+            providers={
+                "openai": {
+                    "cached_models": ["stale-model"],
+                    "last_listed_at": 123,
+                }
+            }
+        )
     )
+
+    app = _make_app()
+    client = TestClient(app)
+    response = client.put(
+        "/api/settings/providers/openai",
+        json={"api_key": "saved-key", "extra": {}},
+    )
+
+    assert response.status_code == 200
+    assert provider_cached_models("openai") == []
+
+
+# ── /agents/registry — cache-first provider models ─────────────────────────
+
+
+def test_registry_uses_cached_provider_models(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from fastapi import FastAPI
+
+    from app.api.routes.agents import router as agents_router
+    from app.core.runtime_settings import RuntimeSettings, save_runtime_settings
+
     monkeypatch.setattr(
-        "app.api.routes.settings._provider_is_configured",
-        lambda entry: entry["id"] == "openai",
+        settings_routes.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path)
+    )
+    save_runtime_settings(
+        RuntimeSettings(
+            providers={"openai": {"cached_models": ["gpt-5", "gpt-5-mini"]}}
+        )
     )
 
-    async def _spy(_entry, **_kwargs):  # type: ignore[no-untyped-def]
-        return ["shown", "hidden"]
+    app = FastAPI()
+    app.include_router(agents_router, prefix="/api/agents")
+    client = TestClient(app)
+    response = client.get("/api/agents/registry")
 
-    monkeypatch.setattr("app.api.routes.agents.discover_provider_models", _spy)
+    assert response.status_code == 200
+    ids = {m["id"] for m in response.json()["models"]}
+    assert "openai:gpt-5" in ids
+    assert "openai:gpt-5-mini" in ids
+
+
+def test_registry_filters_cached_models_by_visible_models(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from fastapi import FastAPI
+
+    from app.api.routes.agents import router as agents_router
+    from app.core.runtime_settings import RuntimeSettings, save_runtime_settings
+
+    monkeypatch.setattr(
+        settings_routes.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path)
+    )
+    save_runtime_settings(
+        RuntimeSettings(
+            providers={
+                "openai": {
+                    "cached_models": ["shown", "hidden"],
+                    "visible_models": ["shown"],
+                }
+            }
+        )
+    )
 
     app = FastAPI()
     app.include_router(agents_router, prefix="/api/agents")
@@ -1304,31 +1332,21 @@ def test_registry_filters_provider_visible_models(
     assert "openai:hidden" not in ids
 
 
-def test_registry_survives_discovery_errors(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A discovery exception per provider must not break the whole registry."""
+def test_registry_ignores_missing_cached_models(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from fastapi import FastAPI
 
-    from app.api.routes import agents as agents_module
     from app.api.routes.agents import router as agents_router
 
-    agents_module._registry_model_cache.clear()
-
     monkeypatch.setattr(
-        "app.api.routes.settings._provider_is_configured", lambda _entry: True
+        settings_routes.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path)
     )
-
-    async def _raise(_entry, **_kwargs):  # type: ignore[no-untyped-def]
-        raise RuntimeError("provider unreachable")
-
-    monkeypatch.setattr("app.api.routes.agents.discover_provider_models", _raise)
 
     app = FastAPI()
     app.include_router(agents_router, prefix="/api/agents")
     client = TestClient(app)
     response = client.get("/api/agents/registry")
 
-    # Registry endpoint stays healthy even when every provider's discovery raises.
-    # Failed discovery is not masked by catalog fallbacks, so no provider models
-    # are added without a working live discovery call.
     assert response.status_code == 200
     assert response.json()["models"] == []

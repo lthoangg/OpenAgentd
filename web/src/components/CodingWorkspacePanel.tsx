@@ -366,7 +366,7 @@ export function CodingWorkspacePanel({
                         </button>
                         {expanded && (
                           <div className="border-t border-(--color-border-subtle)">
-                            {fileDiff ? <div className="max-h-[70vh] overflow-auto overscroll-contain touch-pan-y"><DiffPreview diff={fileDiff} /></div>
+                            {fileDiff ? <div className="max-h-[70vh] min-h-0 overflow-y-auto overscroll-contain touch-pan-y"><DiffPreview diff={fileDiff} /></div>
                               : <p className="px-2 py-3 text-xs text-(--color-text-subtle)">No diff body for this file.</p>}
                           </div>
                         )}

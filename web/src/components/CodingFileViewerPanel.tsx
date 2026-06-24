@@ -298,7 +298,7 @@ export function DiffPreview({ diff }: { diff: string }) {
   let newLine = 0
   return (
     <div className="bg-(--bg-card) font-mono text-[11px] leading-relaxed">
-      <div className="min-w-max">
+      <div className="min-w-0">
         {diff.split('\n').map((line, index) => {
           const hunk = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line)
           if (hunk) {
@@ -319,7 +319,7 @@ export function DiffPreview({ diff }: { diff: string }) {
             <div
               key={index}
               className={cn(
-                'flex items-stretch whitespace-pre text-(--color-text)',
+                'flex min-w-0 items-stretch whitespace-pre-wrap break-words text-(--color-text) [overflow-wrap:anywhere]',
                 isAdded && 'bg-(--color-diff-add-bg) text-(--color-diff-add-text)',
                 isRemoved && 'bg-(--color-diff-del-bg) text-(--color-diff-del-text)',
               )}
@@ -327,7 +327,7 @@ export function DiffPreview({ diff }: { diff: string }) {
               <div className="sticky left-0 z-[1] flex shrink-0 select-none border-r border-(--color-border)/40 bg-inherit text-right text-[10px] text-(--color-text-subtle)">
                 <span className="w-9 py-0.5 pr-1.5">{lineNumber}</span>
               </div>
-              <pre className="flex-1 px-2 py-0.5">{line.replace(/^[+-]/, '') || ' '}</pre>
+              <pre className="m-0 min-w-0 flex-1 whitespace-pre-wrap break-words px-2 py-0.5 [overflow-wrap:anywhere]">{line.replace(/^[+-]/, '') || ' '}</pre>
             </div>
           )
         })}

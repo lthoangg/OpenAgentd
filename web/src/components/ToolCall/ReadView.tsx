@@ -98,7 +98,7 @@ export function ReadView({ args, result, onCollapse }: ReadViewProps) {
       </div>
 
       {expanded && (
-        <div className="overflow-x-auto bg-(--bg-card) font-mono text-xs leading-relaxed">
+        <div className="overflow-y-auto bg-(--bg-card) font-mono text-xs leading-relaxed">
           <div className="min-w-max">
             {lines.map((line, idx) => (
               <div key={idx} className="flex items-stretch bg-(--bg-card) text-(--color-text) hover:bg-(--bg-key)/30">

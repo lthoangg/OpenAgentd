@@ -382,7 +382,7 @@ function TextPreview({ sessionId, file }: { sessionId: string; file: WorkspaceFi
   if (content === null) return null
 
   return (
-    <pre className="h-full overflow-auto p-4 font-mono text-xs leading-relaxed text-(--color-text) whitespace-pre">
+    <pre className="h-full overflow-auto whitespace-pre-wrap break-words p-4 font-mono text-xs leading-relaxed text-(--color-text) [overflow-wrap:anywhere]">
       {content}
     </pre>
   )

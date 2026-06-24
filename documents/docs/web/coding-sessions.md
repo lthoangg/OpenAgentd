@@ -36,7 +36,7 @@ updated: 2026-06-24
 - On desktop, file search is a full-viewport modal so it stays centered over the app while the dock remains resizable.
 - On mobile, file search is centered inside the workspace panel viewport instead of the browser viewport, keeping it below the app header and safe-area. The mobile search field uses a taller touch target and 16px text to avoid iOS zoom and improve tap ergonomics.
 - File preview tabs only show current file content. The old File/Diff toggle is removed.
-- The Changes tab keeps git review in place: each changed file expands/collapses inline and shows a full-context diff generated with a large unified context, with an **Open file** action when users want the current file content.
+- The Changes tab keeps git review in place: each changed file expands/collapses inline and shows a full-context diff generated with a large unified context. File and diff content wrap long lines so users only scroll vertically.
 
 ## Running and reload states
 

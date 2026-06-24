@@ -231,10 +231,16 @@ export function CodingWorkspacePanel({
           </button>
         </div>
         {fileSearchOpen && (
-          <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 px-3 pt-4 backdrop-blur-sm sm:pt-[15vh]" onClick={() => setFileSearchOpen(false)}>
-          <div className="flex w-full max-w-md flex-col overflow-hidden rounded-lg border border-(--color-border) bg-(--bg-card) shadow-2xl" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="Search workspace files">
-            <div className="flex h-11 items-center gap-2 border-b border-(--color-border) px-3">
-              <Search size={13} className="shrink-0 text-(--color-text-subtle)" aria-hidden="true" />
+          <div
+            className={cn(
+              'z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm',
+              mobile ? 'absolute inset-0' : 'fixed inset-0',
+            )}
+            onClick={() => setFileSearchOpen(false)}
+          >
+          <div className="flex max-h-[min(28rem,calc(100%-2rem))] w-full max-w-md flex-col overflow-hidden rounded-xl border border-(--color-border) bg-(--bg-card) shadow-2xl" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="Search workspace files">
+            <div className="flex h-14 items-center gap-3 border-b border-(--color-border) px-4">
+              <Search size={16} className="shrink-0 text-(--color-text-subtle)" aria-hidden="true" />
               <input
                 ref={searchInputRef}
                 value={fileSearch}
@@ -247,11 +253,11 @@ export function CodingWorkspacePanel({
                   }
                 }}
                 placeholder="Search files…"
-                className="min-w-0 flex-1 bg-transparent font-mono text-sm text-(--color-text) outline-none placeholder:text-(--color-text-subtle)"
+                className="min-w-0 flex-1 bg-transparent font-mono text-base text-(--color-text) outline-none placeholder:text-(--color-text-subtle) md:text-sm"
                 aria-label="Search workspace files"
               />
             </div>
-            <div className="max-h-80 overflow-y-auto p-1.5">
+            <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
               {searchableFiles.length === 0 ? (
                 <p className="px-2 py-3 text-xs text-(--color-text-subtle)">No files found</p>
               ) : searchableFiles.map((file) => (

@@ -227,6 +227,30 @@ describe('Coding workspace two-layer file preview', () => {
     expect(panel.className).toContain('md:relative')
   })
 
+  it('keeps mobile file search inside the workspace panel viewport', async () => {
+    const user = userEvent.setup()
+    await renderWorkspacePanel(mock(() => {}), null, true)
+
+    await user.click(screen.getByRole('button', { name: /open file search/i }))
+
+    const overlay = screen.getByRole('dialog', { name: /search workspace files/i }).parentElement
+    expect(overlay?.className).toContain('absolute')
+    expect(overlay?.className).toContain('inset-0')
+    expect(overlay?.className).not.toContain('fixed')
+  })
+
+  it('keeps desktop file search anchored to the full viewport', async () => {
+    const user = userEvent.setup()
+    await renderWorkspacePanel(mock(() => {}), null, false)
+
+    await user.click(screen.getByRole('button', { name: /open file search/i }))
+
+    const overlay = screen.getByRole('dialog', { name: /search workspace files/i }).parentElement
+    expect(overlay?.className).toContain('fixed')
+    expect(overlay?.className).toContain('inset-0')
+    expect(overlay?.className).not.toContain('absolute')
+  })
+
   it('does not extend the desktop workspace panel into the macOS overlay header', async () => {
     isMacOverlay = true
     await renderWorkspacePanel(mock(() => {}), null, false)

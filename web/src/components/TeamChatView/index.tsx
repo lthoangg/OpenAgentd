@@ -22,18 +22,12 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
-import { SessionSettingsPanel } from '../SessionSettingsPanel'
 import { AgentView } from '../AgentView'
 import { WorkspaceInfoCard } from '../WorkspaceInfoCard'
 import { CodingSidebar } from '../CodingSidebar'
 import { CodingWorkspacePanel } from '../CodingWorkspacePanel'
 import { CodingFileViewerPanel } from '../CodingFileViewerPanel'
 import { Sidebar } from '../Sidebar'
-import { CommandPalette } from '../CommandPalette'
-import { WorkspaceFilesPanel } from '../WorkspaceFilesPanel'
-import { TodosPopover } from '../TodosPopover'
-import { WikiPanel } from '../WikiPanel'
-import { SchedulerPanel } from '../SchedulerPanel'
 import { useTodosQuery } from '@/queries/useTodosQuery'
 import { useProvidersQuery, useTriggerDreamMutation } from '@/queries'
 import { useCommandsQuery } from '@/queries/useCommandsQuery'
@@ -56,6 +50,7 @@ import { FloatingInputBar } from '../FloatingInputBar'
 import type { AgentCapabilities as AgentCapabilitiesType, MessageAttachment, WorkspaceFileInfo } from '@/api/types'
 import { SplitGrid } from './SplitGrid'
 import { TeamChatHeader } from './TeamChatHeader'
+import { TeamChatPanels } from './TeamChatPanels'
 import { AgentTabs } from './AgentTabs'
 import { useTeamCommands } from './useTeamCommands'
 import { VIEW_MODES, type ViewMode } from './types'
@@ -1067,38 +1062,31 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         )}
       </div>
 
-      <SessionSettingsPanel
-        open={agentCapabilitiesOpen}
+      <TeamChatPanels
+        agentCapabilitiesOpen={agentCapabilitiesOpen}
         agentNames={agentNames}
-        workspace={agentWorkspace}
+        agentWorkspace={agentWorkspace}
         sessionModel={sessionModel}
         sessionThinkingLevel={sessionThinkingLevel}
         sessionFastMode={sessionFastMode}
         onSessionModelSettingsChange={setSessionModelSettings}
-        onClose={closeAgentCapabilities}
-      />
-      <WorkspaceFilesPanel
-        open={mode !== 'coding' && showFilesPanel}
+        onCloseAgentCapabilities={closeAgentCapabilities}
+        mode={mode}
+        showFilesPanel={showFilesPanel}
         sessionId={sessionIdState}
-        onClose={() => setShowFilesPanel(false)}
-      />
-      <TodosPopover
-        open={isMobile && showTodos}
-        onOpenChange={setShowTodos}
+        onCloseFilesPanel={() => setShowFilesPanel(false)}
+        isMobile={isMobile}
+        showTodos={showTodos}
+        onShowTodosChange={setShowTodos}
         todos={todos}
-        sessionId={sessionIdState}
-        trigger={false}
-      />
-      <WikiPanel open={wikiOpen} onClose={closeWiki} />
-      <SchedulerPanel
-        open={schedulerOpen}
-        onClose={closeScheduler}
-        contextMode={mode}
-        contextWorkspace={workspace ?? null}
-      />
-      {showPalette && (
-        <CommandPalette commands={paletteCommands} onClose={() => setShowPalette(false)} />
-      )}
-    </div>
+        wikiOpen={wikiOpen}
+        onCloseWiki={closeWiki}
+        schedulerOpen={schedulerOpen}
+        onCloseScheduler={closeScheduler}
+        workspace={workspace}
+        showPalette={showPalette}
+        paletteCommands={paletteCommands}
+        onClosePalette={() => setShowPalette(false)}
+      />    </div>
   )
 }

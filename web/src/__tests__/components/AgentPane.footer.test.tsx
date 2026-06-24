@@ -48,13 +48,47 @@ function makeStream(overrides: Partial<AgentStream> = {}): AgentStream {
   }
 }
 
-function renderPanel(stream: AgentStream) {
-  return render(<AgentPane name="researcher" stream={stream} isLead={false} />)
+function renderPanel(stream: AgentStream, options: { isLead?: boolean, name?: string } = {}) {
+  return render(
+    <AgentPane
+      name={options.name ?? "researcher"}
+      stream={stream}
+      isLead={options.isLead ?? false}
+    />,
+  )
 }
 
 // ── tests ────────────────────────────────────────────────────────────────────
 
 describe("AgentPane — AssistantFooter", () => {
+  describe("header usage counter", () => {
+    it("shows the token meter for member panes", () => {
+      const stream = makeStream({
+        usage: {
+          promptTokens: 1500,
+          completionTokens: 200,
+          totalTokens: 1700,
+          cachedTokens: 30,
+        },
+      })
+      renderPanel(stream)
+      expect(screen.getByLabelText("Input: 1,500 / 250,000 (1%) · Output: 200 · Cache: 30")).toBeTruthy()
+    })
+
+    it("does not show the usage counter for the lead pane", () => {
+      const stream = makeStream({
+        usage: {
+          promptTokens: 1500,
+          completionTokens: 200,
+          totalTokens: 1700,
+          cachedTokens: 30,
+        },
+      })
+      renderPanel(stream, { isLead: true, name: "lead" })
+      expect(screen.queryByLabelText("Input: 1,500 / 250,000 (1%) · Output: 200 · Cache: 30")).toBeNull()
+    })
+  })
+
   describe("footer visibility", () => {
     it("does not render footer when status=working even with text blocks", () => {
       const stream = makeStream({

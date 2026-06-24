@@ -23,9 +23,10 @@ import { CompactionDivider } from './CompactionDivider'
 import { ImageAttachment } from './ImageAttachment'
 import { FileCard } from './FileCard'
 import { AssistantTurn } from './AssistantTurnFooter'
+import { TokenMeter } from '@/components/ui/token-meter'
 import { partitionTurns } from '@/utils/turns'
 import { latestDirectUserBlockId, mergeBlocks } from '@/utils/blocks'
-import { formatTokens, extractSleepPrefix, formatTime } from '@/utils/format'
+import { extractSleepPrefix, formatTime } from '@/utils/format'
 import { latestMCPAppResourceBlockIds } from '@/utils/mcp-app-artifacts'
 import { useTeamStore } from '@/stores/useTeamStore'
 import { findCommittedMentions } from './InputBar.mentions'
@@ -464,13 +465,12 @@ export function AgentPane({
            )}
          </div>
          <div className="flex items-center gap-1 text-xs text-(--color-text-subtle)">
-           {stream.usage.totalTokens > 0 && (
-             <span
-               className="flex h-7 min-w-7 items-center justify-center rounded-full bg-(--bg-key) px-1.5 font-mono text-[10px] text-(--color-text)"
-               title={`Input: ${stream.usage.promptTokens.toLocaleString()} · Output: ${stream.usage.completionTokens.toLocaleString()} · Cache: ${stream.usage.cachedTokens.toLocaleString()}`}
-             >
-               {formatTokens(stream.usage.promptTokens)}
-             </span>
+           {!isLead && stream.usage.totalTokens > 0 && (
+             <TokenMeter
+               input={stream.usage.promptTokens}
+               output={stream.usage.completionTokens}
+               cached={stream.usage.cachedTokens}
+             />
            )}
             <span aria-label={`Agent status: ${stream.status}`} className={`h-1.5 w-1.5 rounded-full ${
              isError ? 'bg-(--color-error)' : isWorking ? 'bg-(--color-accent)' : isOffline ? 'bg-(--color-text-subtle) opacity-50' : 'bg-(--color-success)'

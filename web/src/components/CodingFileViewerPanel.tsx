@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { motion } from 'framer-motion'
 import { Check, Copy, Download, ExternalLink, FileText, Loader2, Plus, X } from 'lucide-react'
 import { codingWorkspaceFileUrl } from '@/api/client'
@@ -294,8 +294,15 @@ function DeletedFilePreview() {
 }
 
 export function DiffPreview({ diff }: { diff: string }) {
+  const firstChangeRef = useRef<HTMLDivElement | null>(null)
   let oldLine = 0
   let newLine = 0
+  let firstChangeSeen = false
+
+  useEffect(() => {
+    firstChangeRef.current?.scrollIntoView({ block: 'center', inline: 'nearest' })
+  }, [diff])
+
   return (
     <div className="bg-(--bg-card) font-mono text-[11px] leading-relaxed">
       <div className="min-w-0">
@@ -311,6 +318,8 @@ export function DiffPreview({ diff }: { diff: string }) {
 
           const isAdded = line.startsWith('+') && !line.startsWith('+++')
           const isRemoved = line.startsWith('-') && !line.startsWith('---')
+          const isFirstChange = !firstChangeSeen && (isAdded || isRemoved)
+          if (isFirstChange) firstChangeSeen = true
           const lineNumber = isRemoved ? oldLine : newLine
           if (!isAdded) oldLine += 1
           if (!isRemoved) newLine += 1
@@ -318,6 +327,7 @@ export function DiffPreview({ diff }: { diff: string }) {
           return (
             <div
               key={index}
+              ref={isFirstChange ? firstChangeRef : undefined}
               className={cn(
                 'flex min-w-0 items-stretch whitespace-pre-wrap break-words text-(--color-text) [overflow-wrap:anywhere]',
                 isAdded && 'bg-(--color-diff-add-bg) text-(--color-diff-add-text)',

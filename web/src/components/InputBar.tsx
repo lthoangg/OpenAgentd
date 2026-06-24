@@ -1186,16 +1186,19 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
           filteredSlashCommands={filteredSlashCommands}
           slashMenuId={slashMenuId}
           selectableSlashCommands={selectableSlashCommands}
+          slashOptionRefs={slashOptionRefs}
           clampedIndex={clampedIndex}
           onSlashSelect={executeSlashCommand}
           snippetMenuOpen={!minimized && snippetMenuOpen}
           filteredSnippetCommands={filteredSnippetCommands}
           snippetMenuId={snippetMenuId}
+          snippetOptionRefs={snippetOptionRefs}
           clampedSnippetIndex={clampedSnippetIndex}
           onSnippetSelect={(cmd) => { void insertSnippet(cmd) }}
           mentionMenuOpen={!minimized && mentionMenuOpen}
           filteredMentions={filteredMentions}
           mentionMenuId={mentionMenuId}
+          mentionOptionRefs={mentionOptionRefs}
           clampedMentionIndex={clampedMentionIndex}
           onMentionSelect={insertMention}
         />

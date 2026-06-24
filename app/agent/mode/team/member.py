@@ -93,7 +93,7 @@ LEAD_COMMUNICATION_RULES = """\
   - **Context hygiene** — it would flood your own context with noise (long build logs, large file dumps, exhaustive search results).
   - **Sustained multi-step work** — a real workstream, not just two quick tool calls.
 - **Prefer reusing a live member** over spawning a fresh one, and skip delegation entirely when you can finish the task yourself in a step or two.
-- **Delegation roster.** Do not assume default member names exist. Use `team_manage` results/errors to discover available blueprints, spawn only listed/known names, then message the returned handles. If no suitable blueprint exists, do the work yourself.
+- **Delegation roster.** Do not assume default member names exist. Use `team_manage(action='list', members=[])` or prior `team_manage` results/errors to discover available blueprints, spawn only listed/known names, then message the returned handles. If no suitable blueprint exists, do the work yourself.
 - **Roster management — `team_manage`.** Members are spawned on demand. Reuse useful live/restorable handles across related turns. Dismiss only explicit live handles when they clearly are no longer needed.
 - Coordination with members must go through the `team_message` tool. Do not respond to the user until all assigned members have reported back.
 - Member capabilities come from their blueprint/root configuration at spawn time. If a member lacks a required capability, use an appropriately configured blueprint or update durable settings rather than mutating a live member.
@@ -105,7 +105,7 @@ LEAD_PROTOCOL = """\
 2. **Before delegating, consult your skills.** If the user's request matches one of your declared skills (e.g. install/setup/configure/add a skill body → `skill-installer`; MCP server → `mcp-installer`; plugin → `plugin-installer`; agent config/model/tools → `self-healing`; brand or design work → relevant skill), call `skill(skill_name='<name>')` *before* spawning members. Skills carry canonical paths, file formats, and conventions members would otherwise guess wrong. Skipping this step is the #1 cause of members writing to the wrong location.
 3. When delegating:
    - For multi-step work, create a todo plan first. Use first-class `dependencies` and `assigned_to` fields; `assigned_to` must be one concrete spawned handle (`<blueprint>#<n>`), not a bare blueprint or group expression. Do not spawn or message owners of blocked tasks until their dependencies are complete.
-   - Identify which available blueprints cover the work using the routing guide above; never rely on example names as guaranteed members.
+   - Identify which available blueprints cover the work using the routing guide above; never rely on example names as guaranteed members. If the available blueprints are not already known in this turn, call `team_manage(action='list', members=[])` before the first spawn.
    - Prefer restoring a relevant prior instance over spawning fresh when `team_manage` shows a restorable handle whose prior work overlaps with the new task.
    - **Spawn before assigning member todos.** Call `team_manage` with the needed available blueprints or restorable handles, then use the returned concrete handles in `assigned_to`.
    - Assign every relevant instance **in parallel** via `team_message(to=['<handle>'])`.

@@ -1,7 +1,7 @@
 """Lead-only team roster management tools.
 
-``team_manage`` owns the live roster: spawn or dismiss member instances in
-batches.
+``team_manage`` owns the live roster: list spawnable blueprints and live
+members, spawn member instances, and dismiss them in batches.
 """
 
 from __future__ import annotations
@@ -22,8 +22,7 @@ _MANAGE_DESCRIPTION = (
     "Blueprint names vary by workspace; use only listed/available names. "
     "Spawn members before messaging them, reuse live/restorable handles when "
     "continuing related work, and dismiss only explicit live handles when they "
-    "are no longer needed. Tool results and validation errors include available "
-    "blueprints and live/restorable handles."
+    "are no longer needed."
 )
 
 
@@ -32,11 +31,13 @@ def make_team_manage_tool(team: "AgentTeam") -> Tool:
 
     async def team_manage(
         action: Annotated[
-            Literal["spawn", "dismiss"],
+            Literal["spawn", "dismiss", "list"],
             Field(
                 description=(
-                    "'spawn' brings members online; 'dismiss' removes live "
-                    "instances from the roster while preserving history."
+                    "'list' shows the current live member handles and the "
+                    "spawnable blueprints for this workspace; 'spawn' brings "
+                    "members online; 'dismiss' removes live instances from the "
+                    "roster while preserving history."
                 )
             ),
         ],
@@ -44,14 +45,19 @@ def make_team_manage_tool(team: "AgentTeam") -> Tool:
             list[str],
             Field(
                 description=(
-                    "For spawn: pass listed/available blueprint names or "
-                    "restorable handles. For dismiss: pass explicit live handles. "
-                    "Multiple entries are processed left-to-right."
+                    "For list: pass an empty array and read back the live "
+                    "member handles plus spawnable blueprints. For spawn: pass "
+                    "listed/available blueprint names or restorable handles. "
+                    "For dismiss: pass explicit live handles. Multiple entries "
+                    "are processed left-to-right."
                 )
             ),
         ],
     ) -> str:
-        """Spawn or dismiss live member instances in a batch."""
+        """Spawn, dismiss, or list live member instances in a batch."""
+        if action == "list":
+            return _manage_list(team)
+
         if not members:
             return "No members provided."
 
@@ -66,6 +72,7 @@ async def _manage_spawn(team: "AgentTeam", members: list[str]) -> str:
     spawned: list[str] = []
     already_live: list[str] = []
     errors: list[str] = []
+    unknown_blueprints: list[str] = []
 
     from app.agent.mode.team.team import parse_instance_handle
 
@@ -89,13 +96,19 @@ async def _manage_spawn(team: "AgentTeam", members: list[str]) -> str:
                 already_live.append(item)
             else:
                 errors.append(f"{item}: {exc}")
-        except KeyError as exc:
-            errors.append(str(exc))
+        except KeyError:
+            unknown_blueprints.append(item)
         except Exception as exc:
             logger.exception("team_manage_spawn_failed member={}", item)
             errors.append(f"{item}: spawn failed: {exc}")
         else:
             spawned.append(member.name)
+
+    if unknown_blueprints:
+        available = sorted(team.blueprints.keys())
+        errors.append(
+            f"Unknown blueprints: {', '.join(unknown_blueprints)}. Available: {available}."
+        )
 
     return _format_manage_result(
         ("Spawned", spawned),
@@ -147,6 +160,18 @@ async def _manage_dismiss(team: "AgentTeam", members: list[str]) -> str:
         ("Dismissed", dismissed),
         ("Not live", not_live),
         ("Errors", errors),
+    )
+
+
+def _manage_list(team: "AgentTeam") -> str:
+    live = sorted(team.members.keys())
+    blueprints = [
+        f"{bp.name} — {bp.description}" if bp.description else bp.name
+        for bp in sorted(team.blueprints.values(), key=lambda bp: bp.name)
+    ]
+    return _format_manage_result(
+        ("Live", live),
+        ("Spawnable blueprints", blueprints),
     )
 
 

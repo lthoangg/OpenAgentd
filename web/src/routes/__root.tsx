@@ -23,6 +23,14 @@ export function Root() {
   const location = useLocation()
 
   useEffect(() => {
+    const target = window as Window & { __OAD_INITIAL_ROUTE__?: string }
+    const initialRoute = target.__OAD_INITIAL_ROUTE__
+    if (initialRoute) {
+      delete target.__OAD_INITIAL_ROUTE__
+      navigate({ to: initialRoute, replace: true })
+      return
+    }
+
     const LAST_ROUTE_KEY = 'oa-last-route'
     if (window.location.pathname === '/' && window.location.search === '') {
       const savedRoute = localStorage.getItem(LAST_ROUTE_KEY)

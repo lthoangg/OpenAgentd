@@ -88,6 +88,7 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   File → New Window, the tray menu, or `Cmd/Ctrl+N`; windows share the bundled
   sidecar and desktop auth token, while each window can independently switch to
   a saved external server `[v1.47.0]`.
+  - **Hold Command + click session to open in new window** `[v1.62.1]` — in the desktop app, holding `Cmd` (macOS) or `Ctrl/Cmd` (Linux) and clicking a session in the sidebar opens that session directly in a new independent desktop window.
 - **Editable session titles** `[v1.27.0]` — double-click a session card or use its
   edit affordance in the sidebar to rename saved sessions.
 - **Slash commands** `[since v1.0]` — `/init`, `/continue`, `/compact`, `/undo`,

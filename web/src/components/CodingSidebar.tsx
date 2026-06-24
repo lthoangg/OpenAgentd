@@ -117,7 +117,7 @@ function WorkspaceSessionList({
   collapsed?: boolean
   mobileLongPressActions?: boolean
   className?: string
-  onSessionSelect: (session: SessionResponse, workspacePath: string) => void
+  onSessionSelect: (session: SessionResponse, workspacePath: string, event?: React.MouseEvent) => void
   onSessionDelete: (e: React.MouseEvent, session: SessionResponse) => void
   onSessionEdit: (session: SessionResponse) => void
   onSessionLongPress: (session: SessionResponse) => void
@@ -144,7 +144,7 @@ function WorkspaceSessionList({
     )
     observer.observe(sentinel)
     return () => observer.disconnect()
-  }, [collapsed, fetchNextPage, hasNextPage, isFetchingNextPage])
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage, collapsed])
 
   return (
     <div ref={listRef} className={className}>
@@ -162,7 +162,7 @@ function WorkspaceSessionList({
               enabled={mobileLongPressActions}
               onLongPress={() => onSessionLongPress(session)}
               type="button"
-              onClick={() => onSessionSelect(session, path)}
+              onClick={(e) => onSessionSelect(session, path, e)}
               onDoubleClick={(e) => {
                 e.stopPropagation()
                 onSessionEdit(session)
@@ -629,7 +629,18 @@ export function CodingSidebar({
     void selectWorkspace(workspaceToOpen)
   }
 
-  const handleSessionSelect = (session: SessionResponse, workspacePath: string) => {
+  const handleSessionSelect = (session: SessionResponse, workspacePath: string, event?: React.MouseEvent) => {
+    if (event && isTauri && (os === 'macos' ? event.metaKey : (event.ctrlKey || event.metaKey))) {
+      event.preventDefault()
+      event.stopPropagation()
+      import('@tauri-apps/api/core').then(({ invoke }) => {
+        invoke('app_new_window', { initialPath: `/coding/${session.id}` }).catch((err) => {
+          console.error('Failed to open session in new window:', err)
+        })
+      }).catch(() => {})
+      return
+    }
+
     if (session.workspace ?? workspacePath) saveLastCodingWorkspace(session.workspace ?? workspacePath)
     navigate({
       to: '/coding/$sessionId',

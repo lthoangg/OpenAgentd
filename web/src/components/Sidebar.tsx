@@ -241,7 +241,18 @@ export function Sidebar({
     setDeleteTarget(null)
   }
 
-  const handleSelect = (id: string) => {
+  const handleSelect = (id: string, event?: React.MouseEvent) => {
+    if (event && isTauri && (os === 'macos' ? event.metaKey : (event.ctrlKey || event.metaKey))) {
+      event.preventDefault()
+      event.stopPropagation()
+      import('@tauri-apps/api/core').then(({ invoke }) => {
+        invoke('app_new_window', { initialPath: `/cockpit/${id}` }).catch((err) => {
+          console.error('Failed to open session in new window:', err)
+        })
+      }).catch(() => {})
+      return
+    }
+
     navigate({ to: '/cockpit/$sessionId', params: { sessionId: id } })
     onMobileClose?.()
   }
@@ -459,7 +470,7 @@ export function Sidebar({
                   return (
                     <button
                       key={session.id}
-                      onClick={() => handleSelect(session.id)}
+                      onClick={(e) => handleSelect(session.id, e)}
                       title={session.title || 'Untitled'}
                       className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
                         isActive
@@ -659,7 +670,7 @@ export function Sidebar({
 interface SessionRowProps {
   session: SessionResponse
   isActive: boolean
-  onSelect: (id: string) => void
+  onSelect: (id: string, event?: React.MouseEvent) => void
   onDelete: (e: React.MouseEvent, session: SessionResponse) => void
   onEdit: (session: SessionResponse) => void
   mobileLongPressActions?: boolean
@@ -681,7 +692,7 @@ function SessionRow({ session, isActive, onSelect, onDelete, onEdit, mobileLongP
       <LongPressButton
         enabled={mobileLongPressActions}
         onLongPress={() => onLongPress?.(session)}
-        onClick={() => onSelect(session.id)}
+        onClick={(e) => onSelect(session.id, e)}
         onDoubleClick={(e) => {
           e.stopPropagation()
           onEdit(session)

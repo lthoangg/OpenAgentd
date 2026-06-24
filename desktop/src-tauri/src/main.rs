@@ -460,8 +460,8 @@ async fn app_use_bundled_backend(app: AppHandle, window: tauri::WebviewWindow) -
 }
 
 #[tauri::command]
-async fn app_new_window(app: AppHandle) -> Result<(), String> {
-    create_app_window(&app, None)
+async fn app_new_window(app: AppHandle, initial_path: Option<String>) -> Result<(), String> {
+    create_app_window(&app, None, initial_path.as_deref())
         .await
         .map(|_| ())
         .map_err(|e| format!("{e:#}"))
@@ -672,7 +672,7 @@ fn handle_desktop_menu(app: &AppHandle, id: &str) {
         MENU_NEW_WINDOW => {
             let handle = app.clone();
             tauri::async_runtime::spawn(async move {
-                if let Err(e) = create_app_window(&handle, None).await {
+                if let Err(e) = create_app_window(&handle, None, None).await {
                     log::error!("failed to create new window: {e:#}");
                 }
             });
@@ -1427,14 +1427,24 @@ fn frontend_webview_url() -> Result<WebviewUrl> {
 }
 
 fn frontend_init_script(token: Option<&str>, base_url: &str) -> String {
+    frontend_init_script_with_path(token, base_url, None)
+}
+
+fn frontend_init_script_with_path(token: Option<&str>, base_url: &str, initial_path: Option<&str>) -> String {
     let token_define = token.map(|t| {
         format!(
             "Object.defineProperty(window, '__OAD_TOKEN__', {{ value: {token_json}, writable: true, configurable: true }});",
             token_json = serde_json::to_string(t).unwrap_or_else(|_| "\"\"".into())
         )
     }).unwrap_or_default();
+    let route_define = initial_path.map(|r| {
+        format!(
+            "Object.defineProperty(window, '__OAD_INITIAL_ROUTE__', {{ value: {route_json}, writable: true, configurable: true }});",
+            route_json = serde_json::to_string(r).unwrap_or_else(|_| "\"\"".into())
+        )
+    }).unwrap_or_default();
     format!(
-        "Object.defineProperty(window, '__OAD_API_BASE_URL__', {{ value: {base_json}, writable: true, configurable: true }});{token_define}",
+        "Object.defineProperty(window, '__OAD_API_BASE_URL__', {{ value: {base_json}, writable: true, configurable: true }});{token_define}{route_define}",
         base_json = serde_json::to_string(base_url).unwrap_or_else(|_| "\"\"".into())
     )
 }
@@ -1478,7 +1488,7 @@ async fn build_app_window(app: &AppHandle, label: String, init_script: String) -
     Ok(win)
 }
 
-async fn create_app_window(app: &AppHandle, label: Option<&str>) -> Result<tauri::WebviewWindow> {
+async fn create_app_window(app: &AppHandle, label: Option<&str>, initial_path: Option<&str>) -> Result<tauri::WebviewWindow> {
     let state: tauri::State<'_, AppState> = app.state();
     let base = state
         .backend_base_url
@@ -1487,7 +1497,7 @@ async fn create_app_window(app: &AppHandle, label: Option<&str>) -> Result<tauri
         .clone()
         .ok_or_else(|| anyhow!("backend is not ready"))?;
     let token = state.desktop_token.lock().await.clone();
-    let init_script = frontend_init_script(token.as_deref(), &base);
+    let init_script = frontend_init_script_with_path(token.as_deref(), &base, initial_path);
     build_app_window(
         app,
         label.map(str::to_string).unwrap_or_else(|| next_window_label(app)),

@@ -312,8 +312,9 @@ def _iter_skill_paths(directory: Path):
 
 
 def _loaded_skills_from_messages(state: Any) -> dict[str, str]:
-    """Return skill names already loaded in the visible conversation."""
+    """Return skill names and content already loaded in visible conversation."""
     loaded: dict[str, str] = {}
+    pending_by_tool_call_id: dict[str, str] = {}
     for message in getattr(state, "messages_for_llm", []):
         tool_calls = getattr(message, "tool_calls", None) or []
         for tool_call in tool_calls:
@@ -327,6 +328,17 @@ def _loaded_skills_from_messages(state: Any) -> dict[str, str]:
             skill_name = args.get("skill_name")
             if isinstance(skill_name, str) and skill_name:
                 loaded.setdefault(skill_name, "")
+                tool_call_id = getattr(tool_call, "id", None)
+                if isinstance(tool_call_id, str) and tool_call_id:
+                    pending_by_tool_call_id[tool_call_id] = skill_name
+
+        tool_call_id = getattr(message, "tool_call_id", None)
+        if not isinstance(tool_call_id, str):
+            continue
+        skill_name = pending_by_tool_call_id.get(tool_call_id)
+        content = getattr(message, "content", None)
+        if skill_name and isinstance(content, str) and content:
+            loaded[skill_name] = content
     return loaded
 
 
@@ -346,12 +358,9 @@ async def load_skill(
         loaded_skills = _state.metadata.setdefault(
             "loaded_skills", _loaded_skills_from_messages(_state)
         )
-        if skill_name in loaded_skills:
+        if loaded_skills.get(skill_name):
             logger.info("skill_reused name={}", skill_name)
-            return (
-                f"Skill '{skill_name}' is already loaded in this session. "
-                "Reuse the earlier instructions; repeated loads return the same content."
-            )
+            return loaded_skills[skill_name]
 
     roots = [r for r in _iter_skill_roots() if r.is_dir()]
     if not roots:

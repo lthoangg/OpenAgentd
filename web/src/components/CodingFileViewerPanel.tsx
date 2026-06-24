@@ -1,14 +1,12 @@
-import { useEffect, useState, type ReactNode } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { motion } from 'framer-motion'
-import { Check, Copy, Download, ExternalLink, FileText, GitCompare, Loader2, Plus, X } from 'lucide-react'
-import { codingWorkspaceFileUrl, getCodingWorkspaceGitDiff } from '@/api/client'
+import { Check, Copy, Download, ExternalLink, FileText, Loader2, Plus, X } from 'lucide-react'
+import { codingWorkspaceFileUrl } from '@/api/client'
 import { downloadCodingWorkspaceFile } from '@/lib/coding-workspace-download'
 import { cn } from '@/lib/utils'
 import { formatBytes } from '@/utils/format'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { useResizableWidth } from '@/hooks/use-resizable-width'
-import { queryKeys } from '@/queries'
 import type { WorkspaceFileInfo } from '@/api/types'
 
 const TEXT_EXTENSIONS = new Set([
@@ -35,7 +33,9 @@ type FileKind = 'image' | 'text' | 'binary'
 function kindOf(file: WorkspaceFileInfo): FileKind {
   const ext = extOf(file.name)
   if (IMAGE_EXTENSIONS.has(ext) || file.mime.startsWith('image/')) return 'image'
+  if (file.mime.startsWith('audio/') || file.mime.startsWith('video/')) return 'binary'
   if (!ext || TEXT_EXTENSIONS.has(ext) || file.mime.startsWith('text/') || file.mime === 'application/json') return 'text'
+  if (file.size <= MAX_TEXT_PREVIEW_BYTES) return 'text'
   return 'binary'
 }
 
@@ -117,17 +117,17 @@ function highlightCodeLine(line: string): ReactNode[] {
     const token = match[0]
     const lower = token.toLowerCase()
     const cls = token.startsWith('"') || token.startsWith("'") || token.startsWith('`')
-      ? 'text-emerald-300'
+      ? 'text-(--color-syn-string)'
       : /^\d/.test(token)
-        ? 'text-amber-300'
+        ? 'text-(--color-syn-number)'
         : KEYWORDS.has(lower)
-          ? 'text-sky-300'
+          ? 'text-(--color-syn-keyword)'
           : 'text-(--color-text-2)'
     out.push(<span key={`${match.index}-${token}`} className={cls}>{token}</span>)
     last = match.index + token.length
   }
   if (last < code.length) out.push(code.slice(last))
-  if (comment) out.push(<span key="comment" className="text-(--color-text-subtle)">{comment}</span>)
+  if (comment) out.push(<span key="comment" className="text-(--color-syn-comment) italic">{comment}</span>)
   return out.length > 0 ? out : [' ']
 }
 
@@ -288,56 +288,74 @@ function DeletedFilePreview() {
     <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
       <FileText size={24} className="text-(--color-text-subtle)" />
       <p className="text-sm text-(--color-text-2)">File deleted from workspace</p>
-      <p className="text-xs text-(--color-text-subtle)">Open the Diff tab to review the removed contents.</p>
+      <p className="text-xs text-(--color-text-subtle)">Open Changes to review the removed contents.</p>
     </div>
   )
 }
 
-function diffLineClass(line: string) {
-  if (line.startsWith('+++') || line.startsWith('---')) return 'text-(--color-accent)'
-  if (line.startsWith('@@')) return 'bg-(--color-accent)/10 text-(--color-accent)'
-  if (line.startsWith('+')) return 'bg-(--color-diff-add-bg) text-(--color-diff-add-text)'
-  if (line.startsWith('-')) return 'bg-(--color-diff-del-bg) text-(--color-diff-del-text)'
-  if (line.startsWith('diff --git') || line.startsWith('index ') || line.startsWith('new file mode')) return 'text-(--color-text)'
-  return 'text-(--color-text-2)'
-}
+export function DiffPreview({ diff }: { diff: string }) {
+  const firstChangeRef = useRef<HTMLDivElement | null>(null)
+  let oldLine = 0
+  let newLine = 0
+  let firstChangeSeen = false
 
-function DiffPreview({ diff }: { diff: string }) {
+  useEffect(() => {
+    firstChangeRef.current?.scrollIntoView({ block: 'center', inline: 'nearest' })
+  }, [diff])
+
   return (
-    <pre className="h-full overflow-auto bg-(--bg-page) p-3 font-mono text-[11px] leading-relaxed">
-      {diff.split('\n').map((line, index) => (
-        <span key={index} className={cn('block whitespace-pre-wrap break-all px-1', diffLineClass(line))}>{line || ' '}</span>
-      ))}
-    </pre>
+    <div className="bg-(--bg-card) font-mono text-[11px] leading-relaxed">
+      <div className="min-w-0">
+        {diff.split('\n').map((line, index) => {
+          const hunk = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line)
+          if (hunk) {
+            oldLine = Number(hunk[1])
+            newLine = Number(hunk[2])
+          }
+          const isMeta = line.startsWith('diff --git') || line.startsWith('index ') || line.startsWith('new file mode') || line.startsWith('deleted file mode') || line.startsWith('---') || line.startsWith('+++')
+          const isHunk = line.startsWith('@@')
+          if (isMeta || isHunk) return null
+
+          const isAdded = line.startsWith('+') && !line.startsWith('+++')
+          const isRemoved = line.startsWith('-') && !line.startsWith('---')
+          const isFirstChange = !firstChangeSeen && (isAdded || isRemoved)
+          if (isFirstChange) firstChangeSeen = true
+          const lineNumber = isRemoved ? oldLine : newLine
+          if (!isAdded) oldLine += 1
+          if (!isRemoved) newLine += 1
+
+          return (
+            <div
+              key={index}
+              ref={isFirstChange ? firstChangeRef : undefined}
+              className={cn(
+                'flex min-w-0 items-stretch whitespace-pre-wrap break-words text-(--color-text) [overflow-wrap:anywhere]',
+                isAdded && 'bg-(--color-diff-add-bg) text-(--color-diff-add-text)',
+                isRemoved && 'bg-(--color-diff-del-bg) text-(--color-diff-del-text)',
+              )}
+            >
+              <div className="sticky left-0 z-[1] flex shrink-0 select-none border-r border-(--color-border)/40 bg-inherit text-right text-[10px] text-(--color-text-subtle)">
+                <span className="w-9 py-0.5 pr-1.5">{lineNumber}</span>
+              </div>
+              <pre className="m-0 min-w-0 flex-1 whitespace-pre-wrap break-words px-2 py-0.5 [overflow-wrap:anywhere]">{line.replace(/^[+-]/, '') || ' '}</pre>
+            </div>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 
 export function CodingFilePreviewContent({
   workspace,
   file,
-  viewMode,
   onAddComment,
 }: {
   workspace: string
   file: WorkspaceFileInfo
-  viewMode: 'file' | 'diff'
   onAddComment?: (path: string, startLine: number, endLine: number) => void
 }) {
-  const scopedDiff = useQuery({
-    queryKey: [...queryKeys.coding.diff(workspace), file.path] as const,
-    queryFn: () => getCodingWorkspaceGitDiff(workspace, [file.path]),
-    enabled: viewMode === 'diff',
-    staleTime: 5_000,
-  })
   const kind = kindOf(file)
-
-  if (viewMode === 'diff') {
-    return scopedDiff.isLoading ? <div className="flex h-full items-center justify-center"><Loader2 size={16} className="animate-spin text-(--color-text-subtle)" /></div>
-      : scopedDiff.isError ? <div className="flex h-full items-center justify-center px-4 text-center text-xs text-(--color-error)">Failed to load diff</div>
-        : !scopedDiff.data?.is_git_repo ? <div className="flex h-full items-center justify-center px-4 text-center text-xs text-(--color-text-subtle)">Not a git repository</div>
-          : !scopedDiff.data.diff ? <div className="flex h-full items-center justify-center px-4 text-center text-xs text-(--color-text-subtle)">No diff for this file</div>
-            : <DiffPreview diff={scopedDiff.data.diff} />
-  }
 
   return kind === 'image' ? <ImagePreview workspace={workspace} file={file} />
     : kind === 'text' ? <TextPreview key={file.path} workspace={workspace} file={file} onAddComment={onAddComment} />
@@ -366,7 +384,6 @@ export function CodingFileViewerPanel({
     edge: 'left',
     disabled: mobile,
   })
-  const [viewMode, setViewMode] = useState<'file' | 'diff'>('file')
   if (!file) return null
 
   const kind = kindOf(file)
@@ -403,14 +420,6 @@ export function CodingFileViewerPanel({
             <p className="mt-0.5 text-[10px] text-(--color-text-subtle)">{formatBytes(file.size)} · {file.mime}</p>
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            <div className="mr-1 flex rounded-md border border-(--color-border) p-0.5">
-              <button type="button" onClick={() => setViewMode('file')} className={cn('h-8 rounded px-2 text-[11px] md:h-auto md:py-1', viewMode === 'file' ? 'bg-(--bg-key) text-(--color-text)' : 'text-(--color-text-muted) hover:text-(--color-text-2)')}>
-                File
-              </button>
-              <button type="button" onClick={() => setViewMode('diff')} className={cn('flex h-8 items-center gap-1 rounded px-2 text-[11px] md:h-auto md:py-1', viewMode === 'diff' ? 'bg-(--bg-key) text-(--color-text)' : 'text-(--color-text-muted) hover:text-(--color-text-2)')}>
-                <GitCompare size={11} /> Diff
-              </button>
-            </div>
             <button type="button" onClick={() => void downloadCodingWorkspaceFile(workspace, file)} disabled={deleted} title={deleted ? 'File deleted from workspace' : 'Download'} className="flex h-9 w-9 items-center justify-center rounded text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:cursor-not-allowed disabled:opacity-40 md:h-auto md:w-auto md:p-1.5">
               <Download size={14} />
             </button>
@@ -421,7 +430,7 @@ export function CodingFileViewerPanel({
           </div>
         </header>
         <div className="min-h-0 flex-1 overflow-hidden">
-          <CodingFilePreviewContent workspace={workspace} file={file} viewMode={viewMode} onAddComment={onAddComment} />
+          <CodingFilePreviewContent workspace={workspace} file={file} onAddComment={onAddComment} />
         </div>
       </div>
     </motion.aside>

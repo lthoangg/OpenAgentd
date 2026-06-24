@@ -673,6 +673,24 @@ html[data-mobile-shell] .text-\[10px\] {
   font-size: 0.85em;
   color: var(--color-text);
 }
+
+.oa-prose .katex-display,
+.oa-prose .katex,
+.oa-prose .katex-html,
+.oa-prose .katex .base {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.oa-prose .katex-display {
+  overflow: visible;
+}
+
+.oa-prose .katex .base {
+  display: inline;
+}
 .oa-prose a {
   color: var(--color-text);
   font-weight: 500;

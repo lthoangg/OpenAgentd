@@ -8,8 +8,9 @@ import type { WorkspaceFileInfo } from '@/api/types'
 const WORKSPACE = '/repo/project'
 const readme: WorkspaceFileInfo = { path: 'README.md', name: 'README.md', size: 24, mtime: 1, mime: 'text/markdown' }
 const image: WorkspaceFileInfo = { path: 'assets/logo.png', name: 'logo.png', size: 100, mtime: 1, mime: 'image/png' }
-const binary: WorkspaceFileInfo = { path: 'dist/app.bin', name: 'app.bin', size: 100, mtime: 1, mime: 'application/octet-stream' }
-const filesResponse = { workspace: WORKSPACE, truncated: false, files: [readme, image, binary] }
+const binary: WorkspaceFileInfo = { path: 'dist/app.bin', name: 'app.bin', size: 1024 * 1024, mtime: 1, mime: 'application/octet-stream' }
+const envExample: WorkspaceFileInfo = { path: '.env.example', name: '.env.example', size: 32, mtime: 1, mime: 'application/octet-stream' }
+const filesResponse = { workspace: WORKSPACE, truncated: false, files: [readme, image, binary, envExample] }
 let diffResponse = { workspace: WORKSPACE, is_git_repo: false, diff: '', untracked: [] as string[] }
 let isMacOverlay = false
 
@@ -47,6 +48,7 @@ beforeEach(() => {
   globalThis.fetch = mock(async (input: unknown) => {
     const url = String(input)
     if (url.includes('/workspace/files/list')) return new Response(JSON.stringify(filesResponse))
+    if (url.includes('/workspace/files/read') && url.includes('.env.example')) return new Response('OPENAGENTD_PORT=4082\n')
     if (url.includes('/workspace/files/read')) return new Response('const value = 1\n// comment\nreturn value')
     if (url.includes('/workspace/git-diff')) return new Response(JSON.stringify(diffResponse))
     return new Response(null, { status: 404 })
@@ -135,7 +137,7 @@ describe('Coding workspace two-layer file preview', () => {
     await waitFor(() => expect(screen.getAllByTitle('README.md').length).toBeGreaterThanOrEqual(1))
   })
 
-  it('opens changed files as diff-focused file tabs from Review', async () => {
+  it('expands changed-file diffs in the Changes tab without opening a file tab', async () => {
     diffResponse = {
       workspace: WORKSPACE,
       is_git_repo: true,
@@ -151,8 +153,10 @@ describe('Coding workspace two-layer file preview', () => {
     expect(changedRow.textContent).toContain('M')
     await user.click(changedRow)
 
-    expect(screen.getAllByTitle('README.md').length).toBeGreaterThanOrEqual(1)
-    expect(screen.getByRole('button', { name: /diff/i }).className).toContain('bg-(--bg-key)')
+    expect(screen.getByText('old')).toBeTruthy()
+    expect(screen.getByText('new')).toBeTruthy()
+    expect(screen.getAllByTitle('README.md')).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: /^diff$/i })).toBeNull()
   })
 
   it('marks git-deleted files and opens a deleted-file placeholder instead of loading 404 content', async () => {
@@ -170,13 +174,21 @@ describe('Coding workspace two-layer file preview', () => {
     await user.click(deletedRow)
 
     expect(deletedRow.textContent).toContain('D')
-    expect(onFileSelect).toHaveBeenCalledWith({ path: 'deleted.txt', name: 'deleted.txt', size: 0, mtime: 0, mime: 'text/plain', deleted: true })
+    expect(onFileSelect).not.toHaveBeenCalled()
 
     await renderViewer({ path: 'deleted.txt', name: 'deleted.txt', size: 0, mtime: 0, mime: 'text/plain', deleted: true })
 
     expect(screen.getByText('File deleted from workspace')).toBeTruthy()
-    expect(screen.getByText('Open the Diff tab to review the removed contents.')).toBeTruthy()
+    expect(screen.getByText('Open Changes to review the removed contents.')).toBeTruthy()
     expect(screen.queryByText(/Failed to load: HTTP 404/i)).toBeNull()
+  })
+
+  it('does not render File/Diff switching in file previews', async () => {
+    await renderViewer(readme)
+
+    await waitFor(() => expect(screen.getByText('const')).toBeTruthy())
+    expect(screen.queryByRole('button', { name: /^file$/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^diff$/i })).toBeNull()
   })
 
   it('renders text files with a wrapping read-only IDE-style line-number gutter', async () => {
@@ -207,6 +219,21 @@ describe('Coding workspace two-layer file preview', () => {
     expect(screen.getAllByRole('button', { name: /download/i }).length).toBeGreaterThanOrEqual(1)
   })
 
+  it('previews small unknown non-media files as text', async () => {
+    await renderViewer(envExample)
+
+    await waitFor(() => expect(screen.getByText('OPENAGENTD_PORT')).toBeTruthy())
+    expect(screen.queryByText('No inline preview for this file type')).toBeNull()
+  })
+
+  it('hides the workspace tab scrollbar while keeping horizontal overflow scrollable', async () => {
+    await renderWorkspacePanel()
+
+    const tabRow = screen.getByRole('button', { name: /changes/i }).parentElement
+    expect(tabRow?.className).toContain('overflow-x-auto')
+    expect(tabRow?.className).toContain('scrollbar-none')
+  })
+
   it('copy button fetches text content and writes it to the clipboard', async () => {
     const user = userEvent.setup()
     const writeText = mock(async () => {})
@@ -225,6 +252,30 @@ describe('Coding workspace two-layer file preview', () => {
     expect(panel.className).toContain('mobile-safe-top')
     expect(panel.className).toContain('fixed')
     expect(panel.className).toContain('md:relative')
+  })
+
+  it('keeps mobile file search inside the workspace panel viewport', async () => {
+    const user = userEvent.setup()
+    await renderWorkspacePanel(mock(() => {}), null, true)
+
+    await user.click(screen.getByRole('button', { name: /open file search/i }))
+
+    const overlay = screen.getByRole('dialog', { name: /search workspace files/i }).parentElement
+    expect(overlay?.className).toContain('absolute')
+    expect(overlay?.className).toContain('inset-0')
+    expect(overlay?.className).not.toContain('fixed')
+  })
+
+  it('keeps desktop file search anchored to the full viewport', async () => {
+    const user = userEvent.setup()
+    await renderWorkspacePanel(mock(() => {}), null, false)
+
+    await user.click(screen.getByRole('button', { name: /open file search/i }))
+
+    const overlay = screen.getByRole('dialog', { name: /search workspace files/i }).parentElement
+    expect(overlay?.className).toContain('fixed')
+    expect(overlay?.className).toContain('inset-0')
+    expect(overlay?.className).not.toContain('absolute')
   })
 
   it('does not extend the desktop workspace panel into the macOS overlay header', async () => {

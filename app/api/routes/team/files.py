@@ -376,7 +376,7 @@ async def get_coding_workspace_git_diff(
     try:
         result = await asyncio.to_thread(
             subprocess.run,
-            ["git", "-C", resolved, "diff", "--", *diff_paths],
+            ["git", "-C", resolved, "diff", "--unified=999999", "--", *diff_paths],
             capture_output=True,
             text=True,
             timeout=10,

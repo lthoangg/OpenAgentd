@@ -28,6 +28,21 @@ from app.agent.tools.builtin.filesystem.handlers import (
 from app.agent.tools.registry import InjectedArg, Tool
 
 _MAX_READ_BYTES = 5_242_880  # 5 MB read cap
+_MAX_CONTEXT_CHARS = 20_000  # keep read results within typical LLM context budgets
+
+
+def _cap_text_for_context(text: str, rel: object) -> str:
+    """Return a context-safe preview for unpaginated text reads."""
+    if len(text) <= _MAX_CONTEXT_CHARS:
+        return text
+
+    preview = text[:_MAX_CONTEXT_CHARS].rstrip()
+    return (
+        f"{preview}\n\n"
+        f"[read output truncated for LLM context: {rel} is {len(text):,} characters; "
+        f"shown first {_MAX_CONTEXT_CHARS:,}. Use offset and limit to read a smaller "
+        f"line range, or shell tools such as grep/sed/head/tail for targeted inspection.]"
+    )
 
 
 def _has_vision(state: AgentState | None) -> bool:
@@ -99,7 +114,7 @@ async def _read_file(
         text = raw.decode("latin-1")
 
     if offset == 1 and limit is None:
-        return text
+        return _cap_text_for_context(text, rel)
 
     lines = text.splitlines(keepends=True)
     total = len(lines)
@@ -108,7 +123,7 @@ async def _read_file(
     slice_lines = lines[start:end]
 
     header = f"[{start + 1}-{end}/{total}]\n"
-    return header + "".join(slice_lines)
+    return _cap_text_for_context(header + "".join(slice_lines), rel)
 
 
 read_file = Tool(

@@ -252,8 +252,8 @@ describe("TextPreview", () => {
       return element?.tagName === "PRE" && text.includes("indented line")
     })
     expect(preElement.textContent).toBe(content)
-    // Verify the <pre> element preserves whitespace (whitespace-pre class)
-    expect(preElement).toHaveClass("whitespace-pre")
+    // Verify the <pre> element preserves whitespace while allowing long lines to wrap.
+    expect(preElement).toHaveClass("whitespace-pre-wrap")
   })
 
   it("preserves tabs and multiple newlines", async () => {

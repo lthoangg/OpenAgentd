@@ -216,7 +216,7 @@ uv run python -m manual.note --cat 2026-04-30-manual-test.md
 | `provider_models.py` | List discovered provider models, falling back to catalog defaults | provider IDs, `--limit N` |
 | `inspect_prompt.py` | Reconstruct full LLM payload (system prompt + tools JSON) — **no server required** | `--dir`, `--agent`, `--no-date`, `--date`, `--out`, `--stats-only` |
 | `patch_tool.py` | Tell an agent to use filesystem `patch` and verify the tool call | `--base URL`, `--wait N` |
-| `skill_dedupe.py` | Direct smoke for skill loader de-dupe: duplicate skill calls return a compact reuse note, and summarization preserves only the first full skill pair | — |
+| `skill_dedupe.py` | Direct smoke for skill loader de-dupe: duplicate skill calls replay the full body for current context, and summarization preserves only the first full skill pair | — |
 | `otel_inspect.py` | Read OTel spans/metrics from `.openagentd/otel/` JSONL files | `--session ID`, `--trace ID`, `--metrics` |
 | `summarization_test.py` | Drive summarization hook by sending many turns | requires low `DEFAULT_PROMPT_TOKEN_THRESHOLD` in `app/agent/hooks/summarization.py` |
 | `summarization_max_tokens_test.py` | Test max_token_length cap on summary output | requires `DEFAULT_MAX_TOKEN_LENGTH` set in `app/agent/hooks/summarization.py` |
@@ -242,7 +242,7 @@ uv run python -m manual.inspect_prompt
 # Smoke-test the patch tool directly
 uv run python -m manual.patch_tool
 
-# Direct smoke-test duplicate skill-load suppression and summarization compaction
+# Direct smoke-test duplicate skill-load replay and summarization compaction
 uv run python -m manual.skill_dedupe
 
 # Save payload to file (paste into tokenizer)

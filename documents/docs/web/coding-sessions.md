@@ -2,7 +2,7 @@
 title: Coding Sessions UI
 description: Coding-mode session restore, workspace sidebar pagination, and reload/error handling.
 status: stable
-updated: 2026-05-27
+updated: 2026-06-24
 ---
 
 # Coding sessions UI
@@ -29,6 +29,14 @@ updated: 2026-05-27
 - Session titles are editable from the sidebar: double-click a session row or use the pencil action. Saves call `PATCH /api/team/sessions/{id}` and patch the global/workspace/detail session caches in-place.
 - Deleting a session selects the next available session when possible instead of attempting to reload the deleted session.
 - On mobile-width screens, the workspace files drawer switches to a full-width file preview after file selection; desktop keeps the file tree visible beside the preview.
+
+## Workspace dock file search and review
+
+- The workspace dock exposes file search from the `+` button beside the Changes/file tabs.
+- On desktop, file search is a full-viewport modal so it stays centered over the app while the dock remains resizable.
+- On mobile, file search is centered inside the workspace panel viewport instead of the browser viewport, keeping it below the app header and safe-area. The mobile search field uses a taller touch target and 16px text to avoid iOS zoom and improve tap ergonomics.
+- File preview tabs only show current file content. The old File/Diff toggle is removed.
+- The Changes tab keeps git review in place: each changed file expands/collapses inline and shows a full-context diff generated with a large unified context. File and diff content wrap long lines so users only scroll vertically.
 
 ## Running and reload states
 

@@ -1,4 +1,5 @@
 import type { MutableRefObject } from 'react'
+import { File, Folder } from 'lucide-react'
 import type { SlashCommand, SnippetCommand } from './InputBar'
 import type { FileRef } from './InputBar.mentions'
 
@@ -46,16 +47,13 @@ export function InputBarSuggestions({
   onMentionSelect: (ref: FileRef) => void
 }) {
   if (minimized) return null
-  const renderCommandLabel = (cmd: SlashCommand | SnippetCommand) => {
-    const label = ('displayName' in cmd && cmd.displayName) ? cmd.displayName : cmd.label
-    const colonIndex = label.indexOf(':')
-    if (colonIndex === -1) return label
-    return (
-      <>
-        <span>{label.slice(0, colonIndex + 1)}</span>
-        <span>{label.slice(colonIndex + 1)}</span>
-      </>
-    )
+  const slashDisplayParts = (cmd: SlashCommand) => {
+    const displayName = cmd.displayName ?? cmd.id
+    const colon = displayName.indexOf(':')
+    return {
+      prefix: colon === -1 ? '' : displayName.slice(0, colon + 1),
+      suffix: colon === -1 ? displayName : displayName.slice(colon + 1),
+    }
   }
 
   return (
@@ -70,6 +68,7 @@ export function InputBarSuggestions({
             }
             const idx = selectableSlashCommands.findIndex((item) => item.id === cmd.id)
             const active = idx === clampedIndex
+            const { prefix, suffix } = slashDisplayParts(cmd)
             return (
               <button
                 key={cmd.id}
@@ -78,14 +77,22 @@ export function InputBarSuggestions({
                 type="button"
                 role="option"
                 aria-selected={active}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => onSlashSelect(cmd)}
-                className={`flex w-full items-start gap-2 px-3 py-2 text-left transition-colors ${active ? 'bg-(--bg-key)' : 'hover:bg-(--bg-key)/70'}`}
+                onMouseDown={(e) => { e.preventDefault(); onSlashSelect(cmd) }}
+                className={`flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors ${active ? 'bg-(--bg-key) text-(--color-text)' : 'text-(--color-text-muted) hover:bg-(--bg-key)'}`}
               >
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-medium text-(--color-text)">{renderCommandLabel(cmd)}</span>
-                  <span className="block text-xs text-(--color-text-muted)">{cmd.description}</span>
+                <span className="shrink-0 font-mono text-xs text-(--color-accent)">
+                  /
+                  {prefix && <span className="text-(--color-text-muted)">{prefix}</span>}
+                  <span>{suffix}</span>
                 </span>
+                <span className="min-w-0 flex-1 truncate text-(--color-text-2)">
+                  {cmd.description}
+                </span>
+                {cmd.category && (
+                  <span className="shrink-0 rounded-md bg-(--bg-key) px-1.5 py-0.5 font-mono text-[10px] text-(--color-text-muted) ring-1 ring-(--color-border)">
+                    {cmd.category}
+                  </span>
+                )}
               </button>
             )
           })}
@@ -95,9 +102,22 @@ export function InputBarSuggestions({
         <div id={mentionMenuId} role="listbox" aria-label="Reference workspace file" className="absolute bottom-full left-0 right-0 z-10 mb-1 max-h-64 overflow-y-auto rounded-lg border border-(--color-border-strong) bg-(--color-surface) shadow-md">
           {filteredMentions.map((ref, index) => {
             const active = index === clampedMentionIndex
+            const isDir = ref.type === 'directory'
+            const slash = ref.path.lastIndexOf('/')
+            const parent = slash === -1 ? '' : ref.path.slice(0, slash + 1)
+            const basename = slash === -1 ? ref.path : ref.path.slice(slash + 1)
             return (
-              <button key={ref.path} id={`${mentionMenuId}-option-${index}`} ref={(el) => { mentionOptionRefs.current[index] = el }} type="button" role="option" aria-selected={active} onMouseDown={(e) => e.preventDefault()} onClick={() => onMentionSelect(ref)} className={`flex w-full items-center gap-2 px-3 py-2 text-left transition-colors ${active ? 'bg-(--bg-key)' : 'hover:bg-(--bg-key)/70'}`}>
-                <span className="truncate text-sm text-(--color-text)">{ref.type === 'directory' ? `${ref.path}/` : ref.path}</span>
+              <button key={`${ref.type}:${ref.path}`} id={`${mentionMenuId}-option-${index}`} ref={(el) => { mentionOptionRefs.current[index] = el }} type="button" role="option" aria-selected={active} onMouseDown={(e) => { e.preventDefault(); onMentionSelect(ref) }} className={`flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors ${active ? 'bg-(--bg-key) text-(--color-text)' : 'text-(--color-text-muted) hover:bg-(--bg-key)'}`}>
+                {isDir ? (
+                  <Folder className="size-4 shrink-0 text-(--color-accent)" aria-hidden />
+                ) : (
+                  <File className="size-4 shrink-0 text-(--color-text-subtle)" aria-hidden />
+                )}
+                <span className="min-w-0 flex-1 truncate font-mono text-xs">
+                  {parent && <span className="text-(--color-text-subtle)">{parent}</span>}
+                  <span className="text-(--color-text)">{basename}</span>
+                  {isDir && <span className="text-(--color-text-subtle)">/</span>}
+                </span>
               </button>
             )
           })}
@@ -108,11 +128,14 @@ export function InputBarSuggestions({
           {filteredSnippetCommands.map((cmd, index) => {
             const active = index === clampedSnippetIndex
             return (
-              <button key={cmd.id} id={`${snippetMenuId}-option-${index}`} ref={(el) => { snippetOptionRefs.current[index] = el }} type="button" role="option" aria-selected={active} onMouseDown={(e) => e.preventDefault()} onClick={() => onSnippetSelect(cmd)} className={`flex w-full items-start gap-2 px-3 py-2 text-left transition-colors ${active ? 'bg-(--bg-key)' : 'hover:bg-(--bg-key)/70'}`}>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-medium text-(--color-text)">{renderCommandLabel(cmd)}</span>
-                  <span className="block text-xs text-(--color-text-muted)">{cmd.description}</span>
-                </span>
+              <button key={cmd.id} id={`${snippetMenuId}-option-${index}`} ref={(el) => { snippetOptionRefs.current[index] = el }} type="button" role="option" aria-selected={active} onMouseDown={(e) => { e.preventDefault(); onSnippetSelect(cmd) }} className={`flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors ${active ? 'bg-(--bg-key) text-(--color-text)' : 'text-(--color-text-muted) hover:bg-(--bg-key)'}`}>
+                <span className="shrink-0 font-mono text-xs text-(--color-accent)">#{cmd.label}</span>
+                <span className="min-w-0 flex-1 truncate text-(--color-text-2)">{cmd.description}</span>
+                {cmd.category && (
+                  <span className="shrink-0 rounded-md bg-(--bg-key) px-1.5 py-0.5 font-mono text-[10px] text-(--color-text-muted) ring-1 ring-(--color-border)">
+                    {cmd.category}
+                  </span>
+                )}
               </button>
             )
           })}

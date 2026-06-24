@@ -482,9 +482,8 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
 
   const handleCodingFileSelect = useCallback((file: WorkspaceFileInfo | null) => {
     setCodingFileViewer(file)
-    setCodingFileViewerDetached(Boolean(isMobile && file))
-    if (isMobile && file) setCodingPanel(null)
-  }, [isMobile])
+    setCodingFileViewerDetached(false)
+  }, [])
 
   const handleMentionFileOpen = useCallback(async (path: string) => {
     if (mode !== 'coding' || !workspace) return
@@ -493,9 +492,9 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     const current = codingFileViewer?.path === cleanPath ? codingFileViewer : null
     if (current) {
       setCodingFileViewer(current)
-      setCodingFileViewerDetached(isMobile)
+      setCodingFileViewerDetached(false)
       setCodingFileOpenKey((value) => value + 1)
-      setCodingPanel((value) => (isMobile ? null : value ?? 'files'))
+      setCodingPanel((value) => value ?? 'files')
       return
     }
     try {
@@ -503,14 +502,14 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
       const file = result.files.find((item) => item.path === cleanPath)
       if (file) {
         setCodingFileViewer(file)
-        setCodingFileViewerDetached(isMobile)
+        setCodingFileViewerDetached(false)
         setCodingFileOpenKey((value) => value + 1)
-        setCodingPanel((value) => (isMobile ? null : value ?? 'files'))
+        setCodingPanel((value) => value ?? 'files')
       }
     } catch {
       // Keep the current panel state; the panel query will surface listing errors.
     }
-  }, [codingFileViewer, isMobile, mode, workspace])
+  }, [codingFileViewer, mode, workspace])
 
   // Restore a queued message's text into the composer (fired by the
   // X button on PendingMessageQueue). Overwrites any current draft —

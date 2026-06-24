@@ -20,7 +20,6 @@
  * that returning a freshly-built object on every render would trigger.
  */
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
 import { useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { SessionSettingsPanel } from '../SessionSettingsPanel'
@@ -47,25 +46,20 @@ import { useUIStore } from '@/stores/useUIStore'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { useTeamAgentsQuery } from '@/queries/useAgentsQuery'
 import { useFileRefsQuery } from '@/queries/useFileRefsQuery'
-import { AlertCircle, Brain, CalendarClock, Check, ChevronDown, FolderOpen, FolderCode, Home, ListTodo, Menu, MoreHorizontal, SlidersHorizontal, X } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
+import { AlertCircle, FolderOpen, FolderCode, Home, ListTodo, Menu, SlidersHorizontal, X } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
 import { useTauriDrag } from '@/hooks/use-tauri-drag'
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import { isAgentRole, type AgentRole } from '@/lib/agent-roles'
-import type { AgentStream } from '@/stores/useTeamStore'
 import { AgentTopbar } from '@/components/AgentTopbar'
 import { type InputBarHandle, type SlashCommand, type SnippetCommand } from '../InputBar'
 import { FloatingInputBar } from '../FloatingInputBar'
 import type { AgentCapabilities as AgentCapabilitiesType, MessageAttachment, WorkspaceFileInfo } from '@/api/types'
 import { SplitGrid } from './SplitGrid'
+import { MobileHeaderAction } from './MobileHeaderAction'
+import { MobileChatActions } from './MobileChatActions'
+import { ActiveAgentSwitcher } from './ActiveAgentSwitcher'
+import { AgentTabs } from './AgentTabs'
 import { useTeamCommands } from './useTeamCommands'
 import { VIEW_MODES, type ViewMode } from './types'
 import { saveLastCodingWorkspace, workspaceLabel } from '@/utils/workspace'
@@ -1260,286 +1254,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
       {showPalette && (
         <CommandPalette commands={paletteCommands} onClose={() => setShowPalette(false)} />
       )}
-    </div>
-  )
-}
-
-// ─── MobileChatActions ─────────────────────────────────────────────────────
-
-function MobileHeaderAction({
-  Icon,
-  label,
-  onClick,
-  active = false,
-  disabled = false,
-  badge = 0,
-}: {
-  Icon: LucideIcon
-  label: string
-  onClick?: () => void
-  active?: boolean
-  disabled?: boolean
-  badge?: number
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled || !onClick}
-      className={`relative flex h-9 w-9 items-center justify-center rounded-md transition-colors disabled:opacity-45 ${
-        active
-          ? 'bg-(--bg-key) text-(--color-text)'
-          : 'text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text)'
-      }`}
-      aria-label={label}
-      title={label}
-    >
-      <Icon size={16} aria-hidden="true" />
-      {badge > 0 && (
-        <span className="absolute right-0.5 top-0.5 min-w-3.5 rounded-full bg-(--color-accent) px-1 text-center font-mono text-[9px] leading-3.5 text-(--bg-page)">
-          {badge > 9 ? '9+' : badge}
-        </span>
-      )}
-    </button>
-  )
-}
-
-interface MobileChatActionsProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  mode: 'normal' | 'coding'
-  workspace: string | null
-  activeAgent: string | null
-  agents: string[]
-  streams: Record<string, AgentStream>
-  onSelectAgent: (agent: string) => void
-  onWiki: () => void
-  onScheduler: () => void
-}
-
-function MobileChatActions({
-  open,
-  onOpenChange,
-  mode,
-  workspace,
-  activeAgent,
-  agents,
-  streams,
-  onSelectAgent,
-  onWiki,
-  onScheduler,
-}: MobileChatActionsProps) {
-  return (
-    <>
-      <button
-        type="button"
-        data-no-drag
-        onClick={() => onOpenChange(true)}
-        className="mr-1 flex h-9 w-9 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
-        aria-label="Open chat actions"
-        title="Chat actions"
-      >
-        <MoreHorizontal size={17} aria-hidden="true" />
-      </button>
-
-      <AnimatePresence>
-        {open && (
-          <>
-            <motion.div
-              key="mobile-actions-backdrop"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.18 }}
-              className="mobile-safe-top fixed inset-x-0 bottom-0 z-30 bg-black/60 md:hidden"
-              aria-hidden="true"
-              onClick={() => onOpenChange(false)}
-            />
-            <motion.aside
-              key="mobile-actions-drawer"
-              initial={{ x: 280 }}
-              animate={{ x: 0 }}
-              exit={{ x: 280 }}
-              transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
-              className="mobile-safe-top fixed bottom-0 right-0 z-40 flex w-[min(272px,calc(100vw-2rem))] flex-col overflow-hidden border-l border-(--color-border) bg-(--bg-page) shadow-xl md:hidden"
-              role="dialog"
-              aria-modal="true"
-              aria-label="Chat actions"
-            >
-              <div className="border-b border-(--color-border) px-3 py-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-(--color-text)">
-                      {mode === 'coding' && workspace ? workspaceLabel(workspace) : 'Chat actions'}
-                    </p>
-                    {activeAgent && (
-                      <p className="mt-1 truncate font-mono text-xs text-(--color-text-muted)">Active: {activeAgent}</p>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => onOpenChange(false)}
-                    className="rounded-md p-1.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
-                    aria-label="Close chat actions"
-                  >
-                    <X size={16} aria-hidden="true" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-2">
-                {activeAgent && agents.length > 1 && (
-                  <>
-                    <div className="px-2 py-2 text-xs font-medium text-muted-foreground">Agents</div>
-                    {agents.map((name) => (
-                      <button
-                        type="button"
-                        key={name}
-                        onClick={() => { onSelectAgent(name); onOpenChange(false) }}
-                        className="flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-left text-sm transition-colors hover:bg-(--bg-key)"
-                      >
-                        <span className={`h-2 w-2 rounded-full ${dotClassFor(name, streams[name])}`} aria-hidden="true" />
-                        <span className="min-w-0 flex-1 truncate font-mono text-xs">{name}</span>
-                        {name === activeAgent && <Check size={13} className="text-(--color-accent)" aria-hidden="true" />}
-                      </button>
-                    ))}
-                  </>
-                )}
-
-                <div className="px-2 py-2 text-xs font-medium text-muted-foreground">Session</div>
-                <button type="button" onClick={onWiki} className="flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-left text-sm transition-colors hover:bg-(--bg-key)">
-                  <Brain size={15} aria-hidden="true" />
-                  <span className="flex-1">Wiki</span>
-                </button>
-                <button type="button" onClick={onScheduler} className="flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-left text-sm transition-colors hover:bg-(--bg-key)">
-                  <CalendarClock size={15} aria-hidden="true" />
-                  <span className="flex-1">Scheduler</span>
-                </button>
-              </div>
-            </motion.aside>
-          </>
-        )}
-      </AnimatePresence>
-    </>
-  )
-}
-
-// ─── ActiveAgentSwitcher ───────────────────────────────────────────────────
-//
-// Single chip → dropdown of all members. Replaces the horizontal chip
-// carousel that didn't scale past ~4 agents. ``data-no-drag`` on the
-// trigger opts it out of ``useTauriDrag``'s interactive guard so the
-// chip-as-trigger doesn't race the window-drag handler.
-
-interface ActiveAgentSwitcherProps {
-  activeAgent: string
-  agents: string[]
-  streams: Record<string, AgentStream>
-  onSelect: (agent: string) => void
-}
-
-const DOT_BY_ROLE: Record<AgentRole, string> = {
-  openagentd: 'bg-(--color-marker-mint)',
-  executor: 'bg-(--color-marker-orange)',
-  consultant: 'bg-(--color-marker-blue)',
-  explorer: 'bg-(--color-text-muted)',
-}
-
-function dotClassFor(agent: string, stream: AgentStream | undefined): string {
-  if (stream?.status === 'error') return 'bg-(--color-error)'
-  if (stream?.status === 'working') return 'animate-pulse bg-(--color-accent)'
-  if (stream?.status === 'offline') return 'bg-(--color-text-subtle) opacity-50'
-  if (isAgentRole(agent)) return DOT_BY_ROLE[agent]
-  return 'bg-(--color-success)'
-}
-
-function ActiveAgentSwitcher({
-  activeAgent,
-  agents,
-  streams,
-  onSelect,
-}: ActiveAgentSwitcherProps) {
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        data-no-drag
-        className="inline-flex h-9 min-w-0 shrink items-center gap-2 rounded-md px-2 font-mono text-xs leading-none font-semibold text-(--color-text) outline-none transition-all hover:bg-(--bg-key) focus-visible:ring-2 focus-visible:ring-(--color-accent)/40 sm:h-auto sm:px-3 sm:py-1.5"
-        aria-label={`Switch active agent (current: ${activeAgent})`}
-      >
-        <span
-          className={`h-2 w-2 shrink-0 rounded-full ${dotClassFor(activeAgent, streams[activeAgent])}`}
-          aria-hidden="true"
-        />
-        <span className="min-w-0 truncate">{activeAgent}</span>
-        <ChevronDown size={12} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
-      </DropdownMenuTrigger>
-
-      {/* w-auto overrides w-(--anchor-width) so the menu sizes to its
-          content rather than the (narrow) trigger. */}
-      <DropdownMenuContent
-        align="start"
-        sideOffset={6}
-        className="w-auto max-w-[min(90vw,24rem)]"
-      >
-        {agents.map((name) => (
-          <DropdownMenuItem
-            key={name}
-            onClick={() => onSelect(name)}
-            className="flex min-w-40 items-center gap-2 font-mono text-xs whitespace-nowrap"
-          >
-            <span
-              className={`h-2 w-2 shrink-0 rounded-full ${dotClassFor(name, streams[name])}`}
-              aria-hidden="true"
-            />
-            <span>{name}</span>
-            {name === activeAgent && (
-              <Check size={12} className="ml-auto shrink-0 text-(--color-accent)" aria-hidden="true" />
-            )}
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  )
-}
-
-interface AgentTabsProps {
-  activeAgent: string
-  agents: string[]
-  streams: Record<string, AgentStream>
-  onSelect: (agent: string) => void
-}
-
-function AgentTabs({
-  activeAgent,
-  agents,
-  streams,
-  onSelect,
-}: AgentTabsProps) {
-  return (
-    <div className="scrollbar-none flex shrink-0 items-center gap-1.5 border-b border-(--color-border) bg-(--bg-page) px-3 py-1.5 overflow-x-auto">
-      {agents.map((name) => {
-        const isActive = name === activeAgent
-        const stream = streams[name]
-
-        return (
-          <button
-            key={name}
-            type="button"
-            onClick={() => onSelect(name)}
-            className={`flex items-center gap-1.5 rounded-full px-3 py-1 font-mono text-[10px] font-semibold tracking-wide uppercase transition-all outline-none ${
-              isActive
-                ? 'bg-(--bg-key) text-(--color-text) ring-1 ring-(--color-border-strong)'
-                : 'text-(--color-text-subtle) hover:bg-(--bg-key)/40 hover:text-(--color-text-2)'
-            }`}
-          >
-            <span
-              className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotClassFor(name, stream)}`}
-              aria-hidden="true"
-            />
-            <span className="min-w-0 truncate">{name}</span>
-          </button>
-        )
-      })}
     </div>
   )
 }

@@ -393,7 +393,7 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
-          className="pointer-events-auto border-t border-(--color-border) bg-(--bg-key)/20 px-3 pb-safe pt-2 backdrop-blur-xl transition-[padding-bottom] duration-150"
+          className="pointer-events-auto border-t border-(--color-border) bg-(--bg-key)/20 px-3 pb-safe pt-2 backdrop-blur-xl"
           style={keyboardInset > 0 ? { paddingBottom: `calc(${keyboardInset}px + 0.5rem)` } : undefined}
         >
           <RevertNotice count={inputProps.revertedCount ?? 0} messages={inputProps.revertedMessages ?? []} onRedo={inputProps.onRedo} />

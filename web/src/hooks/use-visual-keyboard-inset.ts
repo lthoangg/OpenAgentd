@@ -37,15 +37,28 @@ export function useVisualKeyboardInset(): number {
       })
     }
 
+    const handleFocusOut = () => {
+      if (frame) cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => {
+        const active = document.activeElement
+        if (!active || !active.matches('input, textarea, [contenteditable="true"]')) {
+          setInset(0)
+          document.documentElement.style.setProperty('--keyboard-inset-bottom', '0px')
+        }
+      })
+    }
+
     update()
     window.visualViewport.addEventListener('resize', update)
     window.visualViewport.addEventListener('scroll', update)
+    window.addEventListener('focusout', handleFocusOut)
 
     return () => {
       if (frame) cancelAnimationFrame(frame)
       document.documentElement.style.removeProperty('--keyboard-inset-bottom')
       window.visualViewport?.removeEventListener('resize', update)
       window.visualViewport?.removeEventListener('scroll', update)
+      window.removeEventListener('focusout', handleFocusOut)
     }
   }, [])
 

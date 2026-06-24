@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { ChevronRight, FileText, Folder, GitCompare, Plus, RefreshCw, Search, X } from 'lucide-react'
+import { ChevronRight, Folder, GitCompare, Plus, RefreshCw, Search, X } from 'lucide-react'
 import { getCodingWorkspaceGitDiff, listCodingWorkspaceFiles } from '@/api/client'
 import { CodingFilePreviewContent, DiffPreview } from './CodingFileViewerPanel'
+import { FileTypeIcon } from './FileTypeIcon'
 import { cn } from '@/lib/utils'
 import { queryKeys } from '@/queries'
 import { formatBytes } from '@/utils/format'
@@ -242,7 +243,7 @@ export function CodingWorkspacePanel({
                 )}
                 title={tabItem.type === 'file' ? tabItem.file.path : tabItem.title}
               >
-                {tabItem.type === 'review' ? <GitCompare size={12} aria-hidden="true" /> : <FileText size={12} aria-hidden="true" />}
+                {tabItem.type === 'review' ? <GitCompare size={12} aria-hidden="true" /> : <FileTypeIcon name={tabItem.file.name || tabItem.file.path} size={13} />}
                 <span className="truncate font-mono">{tabItem.title}</span>
                 {tabItem.type === 'file' && (
                   <span
@@ -313,7 +314,7 @@ export function CodingWorkspacePanel({
                   className="flex w-full min-w-0 items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text)"
                   title={file.path}
                 >
-                  <FileText size={12} className="shrink-0 text-(--color-text-subtle)" aria-hidden="true" />
+                  <FileTypeIcon name={file.name || file.path} size={13} />
                   <span className="min-w-0 flex-1 truncate font-mono">{file.path}</span>
                   <span className="shrink-0 text-[10px] text-(--color-text-subtle)">{formatBytes(file.size)}</span>
                 </button>
@@ -357,7 +358,7 @@ export function CodingWorkspacePanel({
                           aria-expanded={expanded}
                         >
                           <ChevronRight size={12} className={cn('shrink-0 text-(--color-text-subtle) transition-transform', expanded && 'rotate-90')} aria-hidden="true" />
-                          <FileText size={12} className="shrink-0 text-(--accent-orange-text)" aria-hidden="true" />
+                          <FileTypeIcon name={changedFile.path} size={13} />
                           <span className="min-w-0 flex-1 truncate font-mono">{changedFile.path}</span>
                           <span className="shrink-0 font-mono text-[10px] text-(--color-diff-add-text)">{changedFile.additions > 0 ? `+${changedFile.additions}` : ''}</span>
                           <span className="shrink-0 font-mono text-[10px] text-(--color-diff-del-text)">{changedFile.deletions > 0 ? `-${changedFile.deletions}` : ''}</span>
@@ -382,13 +383,8 @@ export function CodingWorkspacePanel({
             <div className="flex h-full min-h-0 flex-col">
               <div className="flex shrink-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-card) px-3 py-2">
                 <div className="flex min-w-0 items-center gap-2">
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-(--color-border) text-(--color-accent)">
-                    <FileText size={13} aria-hidden="true" />
-                  </span>
-                  <div className="min-w-0">
-                    <p className="truncate font-mono text-xs font-medium text-(--color-text)" title={activeTab.file.path}>{activeTab.file.path}</p>
-                    <p className="mt-0.5 truncate text-[10px] text-(--color-text-subtle)">{formatBytes(activeTab.file.size)} · {activeTab.file.mime}</p>
-                  </div>
+                  <FileTypeIcon name={activeTab.file.name || activeTab.file.path} size={16} />
+                  <p className="truncate font-mono text-xs font-medium text-(--color-text)" title={activeTab.file.path}>{activeTab.file.path}</p>
                 </div>
               </div>
               <div className="min-h-0 flex-1 overflow-hidden">

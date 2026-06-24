@@ -406,7 +406,12 @@ html[data-mobile-shell] body {
 
 html[data-mobile-shell] input,
 html[data-mobile-shell] textarea,
-html[data-mobile-shell] [contenteditable="true"] {
+html[data-mobile-shell] [contenteditable="true"],
+html[data-mobile-shell] .selectable-text,
+html[data-mobile-shell] .oa-prose,
+html[data-mobile-shell] .oa-prose *,
+html[data-mobile-shell] pre,
+html[data-mobile-shell] code {
   -webkit-user-select: text;
   user-select: text;
 }

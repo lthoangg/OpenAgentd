@@ -29,14 +29,22 @@ export function useMobileViewportGuards() {
       }
     }
 
+    const preventWindowScroll = () => {
+      if (window.scrollY !== 0 || window.scrollX !== 0) {
+        window.scrollTo(0, 0)
+      }
+    }
+
     document.addEventListener('gesturestart', preventGestureZoom)
     document.addEventListener('gesturechange', preventGestureZoom)
     document.addEventListener('gestureend', preventGestureZoom)
     document.addEventListener('touchend', preventDoubleTapZoom, { passive: false })
     document.addEventListener('touchmove', preventPinchZoom, { passive: false })
+    window.addEventListener('scroll', preventWindowScroll)
 
     return () => {
       root.removeAttribute('data-mobile-shell')
+      window.removeEventListener('scroll', preventWindowScroll)
       document.removeEventListener('gesturestart', preventGestureZoom)
       document.removeEventListener('gesturechange', preventGestureZoom)
       document.removeEventListener('gestureend', preventGestureZoom)

@@ -75,7 +75,7 @@ Right-side workspace explorer for `/coding` mode.
 
 ### FloatingInputBar (`FloatingInputBar.tsx`) / InputBar (`InputBar.tsx`)
 - Mobile: static docked `<div>` at the bottom with `border-t`, `backdrop-blur`, `.pb-safe`. No drag, no localStorage position.
-- On Tauri iOS/Android, `useVisualKeyboardInset()` listens to `visualViewport` and adds keyboard occlusion to bottom padding so the composer stays above the soft keyboard.
+- On Tauri iOS/Android, `useVisualKeyboardInset()` listens to `visualViewport` and adds keyboard occlusion to bottom padding so the composer stays above the soft keyboard. The mobile shell also applies a CSS `position: fixed` reset to `html`/`body` combined with a window scroll guard that locks the layout viewport scroll position to `(0, 0)`, preventing the software keyboard from pushing the page/header off-screen.
 - Desktop: draggable floating bar (existing behaviour unchanged).
 - Mobile keyboard: plain `Enter` inserts a newline; users submit with the Send button. Desktop keeps `Enter` to send and `Shift+Enter` for newline.
 - Voice input: the mic button sits beside Send on mobile and desktop. It uses the current browser/WebView speech recognizer when available; unsupported runtimes show a disabled button with a tooltip. Listening starts and stops only from button taps/clicks; no mobile-specific silence auto-stop.

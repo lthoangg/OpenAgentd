@@ -19,24 +19,21 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import OctobotMascot from '@/assets/brand/octobot-agentd-source.png'
 
 import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
-import { ChevronDown, ChevronUp, Copy, Check, Undo2, Terminal } from 'lucide-react'
+import { ChevronDown, ChevronUp } from 'lucide-react'
 import { Thinking } from './Thinking'
 import { ToolCall } from './ToolCall'
 import { MCPAppResult } from './MCPAppResult'
 import { InboxBubble } from './InboxBubble'
 import { CompactionDivider } from './CompactionDivider'
-import { ImageAttachment } from './ImageAttachment'
-import { FileCard } from './FileCard'
 import { AssistantTurn } from './AssistantTurnFooter'
 import { PendingMessageQueue } from './PendingMessageQueue'
 import { getVisibleTurnWindow, partitionTurns } from '@/utils/turns'
 import { latestDirectUserBlockId, mergeBlocks } from '@/utils/blocks'
-import { extractSleepPrefix, formatTime } from '@/utils/format'
+import { extractSleepPrefix } from '@/utils/format'
 import { latestMCPAppResourceBlockIds } from '@/utils/mcp-app-artifacts'
 import { useTeamStore } from '@/stores/useTeamStore'
-import { findCommittedMentions } from './InputBar.mentions'
-import { resolveApiUrl } from '@/api/client'
-import type { ContentBlock, MessageAttachment } from '@/api/types'
+import type { ContentBlock } from '@/api/types'
+import { UserBubble } from './AgentView/UserBubble'
 
 const SCROLL_THRESHOLD = 40
 const USER_SCROLL_DETACH_DELTA = 4
@@ -68,204 +65,6 @@ interface AgentViewProps {
   /** Open a mentioned workspace file in the coding workspace sidebar. */
   onMentionFileOpen?: (path: string) => void
 }
-
-const USER_COLLAPSE_LINES = 10
-const USER_COLLAPSE_CHARS = 700
-
-function shortModelName(modelId: string | null | undefined): string | null {
-  if (!modelId) return null
-  return modelId.split(':').at(-1)?.split('/').at(-1) || modelId
-}
-
-/**
- * Render user prose with ``@mention`` tokens syntax-highlighted.
- *
- * Matches the InputBar's overlay convention so a message looks the same
- * after send as it did while composing:
- *   - folders (token ends in ``/``)      → ``--accent-orange-text``
- *   - files (everything else, default)   → ``--accent-blue-text``
- *
- * The slash heuristic is what the picker inserts; using it (rather than
- * resolving against ``fileRefs``) keeps highlighting stable for old
- * messages whose referenced paths may since have been renamed/removed.
- * ``findCommittedMentions`` without refs falls back to syntax-only range
- * detection — same code path the overlay relies on.
- */
-function renderMentionSegments(content: string, onMentionFileOpen?: (path: string) => void): React.ReactNode[] {
-  const ranges = findCommittedMentions(content, null)
-  if (ranges.length === 0) return [content]
-  const out: React.ReactNode[] = []
-  let cursor = 0
-  for (const r of ranges) {
-    if (r.start > cursor) out.push(content.slice(cursor, r.start))
-    const token = content.slice(r.start, r.end)
-    const isFolder = token.endsWith('/')
-    const path = token.slice(1)
-    out.push(onMentionFileOpen && !isFolder ? (
-      <button
-        key={r.start}
-        type="button"
-        data-mention-kind="file"
-        onClick={() => onMentionFileOpen(path)}
-        className="inline rounded-sm text-(--accent-blue-text) underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none"
-      >
-        {token}
-      </button>
-    ) : (
-      <span
-        key={r.start}
-        data-mention-kind={isFolder ? 'directory' : 'file'}
-        className={
-          isFolder ? 'text-(--accent-orange-text)' : 'text-(--accent-blue-text)'
-        }
-      >
-        {token}
-      </span>
-    ))
-    cursor = r.end
-  }
-  if (cursor < content.length) out.push(content.slice(cursor))
-  return out
-}
-
-function UserBubble({ content, timestamp, attachments, onRevert, modelId, shell, onMentionFileOpen }: { content: string; timestamp?: Date; attachments?: MessageAttachment[]; onRevert?: () => void; modelId?: string | null; shell?: boolean; onMentionFileOpen?: (path: string) => void }) {
-  const [showTime, setShowTime] = useState(false)
-  const [copied, setCopied] = useState(false)
-  const [expanded, setExpanded] = useState(false)
-  const modelName = shortModelName(modelId)
-
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(content)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    } catch {
-      // ignore
-    }
-  }
-
-  const lines = content.split('\n')
-  const needsCollapse = lines.length > USER_COLLAPSE_LINES || content.length > USER_COLLAPSE_CHARS
-  const visibleContent = needsCollapse && !expanded
-    ? lines.length > USER_COLLAPSE_LINES
-      ? lines.slice(0, USER_COLLAPSE_LINES).join('\n')
-      : `${content.slice(0, USER_COLLAPSE_CHARS).trimEnd()}...`
-    : content
-  const visibleAttachments = attachments?.filter((att) => att.source !== 'mention') ?? []
-
-  return (
-    <div
-      className="group mb-4 flex justify-end"
-      onMouseEnter={() => setShowTime(true)}
-      onMouseLeave={() => setShowTime(false)}
-    >
-      <div className="flex max-w-full flex-col items-end gap-2 md:max-w-[78%]">
-         {/* Attachments */}
-         {visibleAttachments.length > 0 && (
-           <div className="flex flex-wrap justify-end gap-2">
-             {visibleAttachments.map((att: MessageAttachment, idx: number) => {
-               const isImage = att.category === 'image'
-
-               if (isImage) {
-                 return (
-                   <ImageAttachment
-                     key={idx}
-                     src={resolveApiUrl(att.url) || ''}
-                     alt={att.original_name || `Attachment ${idx + 1}`}
-                   />
-                 )
-               }
-
-               return (
-                 <FileCard
-                   key={idx}
-                   name={att.original_name || att.filename || `File ${idx + 1}`}
-                   mediaType={att.media_type}
-                   url={resolveApiUrl(att.url)}
-                   clickable={!!att.url}
-                 />
-               )
-             })}
-           </div>
-         )}
-
-          <div className={`relative min-w-0 max-w-full overflow-hidden rounded-sm border px-4 py-3 text-sm leading-relaxed text-(--color-text) shadow-sm selectable-text ${shell ? 'border-(--accent-blue)/30 bg-(--bg-key)' : 'border-(--color-border) bg-(--color-surface)'}`}>
-           {/* Expand / collapse button — top-right inside bubble */}
-           {needsCollapse && (
-             <button
-               onClick={() => setExpanded((v) => !v)}
-               aria-expanded={expanded}
-               title={expanded ? 'Collapse' : 'Expand'}
-               className="absolute top-1.5 right-1.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-(--bg-key) text-(--color-text-2) transition-all duration-150 hover:text-(--color-text) active:scale-90"
-             >
-               {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-             </button>
-           )}
-           {shell && (
-             <div className="mb-1.5 flex items-center gap-1 font-mono text-[11px] text-(--color-text-muted)">
-               <Terminal size={12} aria-hidden="true" />
-               <span>Shell</span>
-             </div>
-           )}
-           <p className={`min-w-0 break-words whitespace-pre-wrap [overflow-wrap:anywhere] ${shell ? 'font-mono' : ''}`}>{renderMentionSegments(visibleContent, onMentionFileOpen)}</p>
-           {/* Gradient fade at bottom when collapsed */}
-           {needsCollapse && !expanded && (
-             <div
-                className="pointer-events-none absolute inset-x-0 bottom-0 backdrop-blur-[1px]"
-               style={{
-                 height: '2.4rem',
-                 background: 'linear-gradient(to bottom, transparent 0%, var(--color-surface) 90%)',
-               }}
-             />
-           )}
-         </div>
-
-         {/* Copy button + timestamp row */}
-          {(timestamp || modelName) && (
-            <div className={`flex items-center gap-1.5 transition-opacity duration-150 ${showTime ? 'opacity-100' : 'opacity-0'}`}>
-              {modelName && (
-                <span className="mr-1 font-mono text-[11px] text-(--color-text-subtle)" title={modelId ?? undefined}>
-                  {modelName}
-                </span>
-              )}
-               {onRevert && (
-                <button
-                  onClick={onRevert}
-                  className="rounded p-0.5 text-(--color-text-muted) transition-colors hover:text-(--color-text-2)"
-                  aria-label="Revert latest message"
-                  title="Revert latest message"
-                >
-                  <Undo2 size={11} />
-                </button>
-              )}
-              <button
-                onClick={handleCopy}
-                className="rounded p-0.5 text-(--color-text-muted) transition-colors hover:text-(--color-text-2)"
-               aria-label="Copy message"
-               title="Copy"
-             >
-               {copied ? (
-                 <Check size={11} className="text-(--color-success)" />
-               ) : (
-                 <Copy size={11} />
-               )}
-             </button>
-              {timestamp && (
-                <span
-                  className="text-xs text-(--color-text-subtle)"
-                  aria-hidden={!showTime}
-                  title={formatTime(timestamp)}
-                >
-                  {formatTime(timestamp)}
-                </span>
-              )}
-            </div>
-          )}
-      </div>
-    </div>
-  )
-}
-
 
 function BlockRenderer({ block, isStreaming, sessionId, onRevert, latestMCPAppBlockIds, onMentionFileOpen }: { block: ContentBlock; isStreaming: boolean; sessionId?: string; onRevert?: () => void; latestMCPAppBlockIds?: Set<string>; onMentionFileOpen?: (path: string) => void }) {
   switch (block.type) {

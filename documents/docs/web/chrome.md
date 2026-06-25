@@ -72,6 +72,8 @@ On narrow desktop windows, mobile drawers and their backdrops start below the 40
 
 Session titles can be renamed directly in the sidebar by double-clicking a session row or using its pencil action. The save path is shared by normal and coding sidebars.
 
+Cockpit and coding sidebars intentionally do not share one mixed session-list cache anymore: cockpit fetches only normal sessions, while coding fetches coding-only pages under separate query keys. This prevents the cockpit recent-session list from briefly rendering `No sessions yet` when prior conversations exist but the active cache was last populated from coding-mode navigation.
+
 In coding mode, the topbar shows `Workspace: <name>` for the active workspace. The command palette intentionally excludes custom slash commands, Focus Chat Input, and the lead self-switch command; slash commands stay in the composer picker, `Ctrl+I` still focuses the composer, and worker-agent view commands remain available.
 
 ## Chat usage meter

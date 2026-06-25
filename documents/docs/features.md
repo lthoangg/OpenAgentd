@@ -97,6 +97,10 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   - **Hold Command + click session to open in new window** `[v1.62.1, v1.64.1]` — in the desktop app, holding `Cmd` (macOS) or `Ctrl/Cmd` (Linux) and clicking a session in either sidebar opens that session directly in a new independent desktop window; failures now surface an in-app error toast instead of silently doing nothing.
 - **Editable session titles** `[v1.27.0]` — double-click a session card or use its
   edit affordance in the sidebar to rename saved sessions.
+- **Mode-scoped recent-session lists** `[v1.66.1]` — cockpit and coding sidebars
+  now fetch their own session pages (`mode=normal` vs `mode=coding`) instead of
+  sharing one mixed cache, preventing intermittent empty recent-session lists
+  when prior conversations exist. See [`web/coding-sessions.md`](./web/coding-sessions.md).
 - **Slash commands** `[since v1.0]` — `/init`, `/continue`, `/compact`, `/undo`,
   `/redo`, plus user-defined commands. See [`commands.md`](./commands.md).
 - **Bang shell commands** `[v1.39.0]` — start a message with `!` to run the

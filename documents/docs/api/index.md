@@ -39,7 +39,7 @@ Sessions are returned newest-first, 20 per page by default. Filters are applied 
 |-------|------|---------|-------|
 | `before` | ISO 8601 string | — | Cursor: return sessions with `created_at` **older than** this value. Omit for the first page. |
 | `limit` | int | `20` | Page size (1–100). The `/coding` workspace sidebar requests 5 at a time. |
-| `mode` | `normal` \| `coding` | — | Optional mode filter. |
+| `mode` | `normal` \| `coding` | — | Optional mode filter. Cockpit recent sessions use `mode=normal`; coding sidebars use `mode=coding`. |
 | `workspace` | string | — | Optional resolved coding workspace filter. Use with `mode=coding` for per-workspace lists. |
 
 `SessionResponse` includes `mode`, `workspace`, `model`, `thinking_level`, and `running`. `running` is derived from the in-memory stream store and is present in list/detail/history responses.

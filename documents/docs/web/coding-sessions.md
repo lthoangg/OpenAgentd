@@ -20,7 +20,9 @@ updated: 2026-06-24
 
 ## Sidebar session lists
 
+- The cockpit recent-session list now fetches only normal sessions (`GET /api/team/sessions?mode=normal`) instead of loading a mixed feed and filtering in the browser. This avoids empty-state glitches when the shared session cache was populated from coding-mode navigation.
 - Coding session lists are scoped per workspace. Expanded workspaces fetch `GET /api/team/sessions?mode=coding&workspace=...` with a page size of 5.
+- The coding sidebar's global repository/session feed likewise fetches only coding sessions (`GET /api/team/sessions?mode=coding`) and keeps a distinct TanStack Query cache key from the cockpit list so normal and coding pagination state cannot overwrite each other.
 - Workspace rows expose **Create worktree**. The backend creates git worktrees under `{OPENAGENTD_DATA_DIR}/worktrees/<repo>-<hash>/`, defaults branches to `openagentd/<name>`, saves the new worktree as a coding workspace, and opens a fresh session there. Worktree sidebar titles can be renamed without renaming the git worktree directory. OpenAgentd-managed worktrees can be removed through the worktree API; arbitrary external worktrees are listed but not deleted by OpenAgentd.
 - Each main/worktree session list is capped to roughly five rows and fetches the next page when the user scrolls to the bottom of that list.
 - Session rows show running indicators from per-session `running` data, not from only the currently selected chat state.

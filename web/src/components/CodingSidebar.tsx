@@ -141,13 +141,12 @@ export function CodingSidebar({
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const pushToast = useToastStore((s) => s.push)
-  const sessions = useTeamSessionsQuery()
+  const sessions = useTeamSessionsQuery('coding')
   const deleteSession = useDeleteTeamSessionMutation()
   const updateSessionTitle = useUpdateTeamSessionTitleMutation()
 
-  const allSessions = sessions.data?.pages.flatMap((page) => page.data) ?? []
-  const codingSessions = allSessions.filter(
-    (session) => session.mode === 'coding' && session.workspace,
+  const codingSessions = (sessions.data?.pages.flatMap((page) => page.data) ?? []).filter(
+    (session) => session.workspace,
   )
 
   const [workspaceTree, setWorkspaceTree] = useState<CodingWorkspaceTreeRepository[]>([])

@@ -56,6 +56,7 @@ import { isTransientNetworkError } from '@/utils/errors'
 import { ThemeToggle } from './ThemeToggle'
 import { HealthDot } from './HealthDot'
 import { Button } from '@/components/ui/button'
+import { useToastStore } from '@/stores/useToastStore'
 import {
   Dialog,
   DialogContent,
@@ -108,6 +109,7 @@ export function CodingSidebar({
   void onCollapse
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const pushToast = useToastStore((s) => s.push)
   const sessions = useTeamSessionsQuery()
   const deleteSession = useDeleteTeamSessionMutation()
   const updateSessionTitle = useUpdateTeamSessionTitleMutation()
@@ -507,8 +509,19 @@ export function CodingSidebar({
       import('@tauri-apps/api/core').then(({ invoke }) => {
         invoke('app_new_window', { initialPath: `/coding/${session.id}`, initial_path: `/coding/${session.id}` }).catch((err) => {
           console.error('Failed to open session in new window:', err)
+          pushToast({
+            tone: 'error',
+            title: 'Could not open session in new window',
+            description: err instanceof Error ? err.message : 'Desktop window creation failed.',
+          })
         })
-      }).catch(() => {})
+      }).catch((err) => {
+        pushToast({
+          tone: 'error',
+          title: 'Could not open session in new window',
+          description: err instanceof Error ? err.message : 'Desktop API is unavailable.',
+        })
+      })
       return
     }
 

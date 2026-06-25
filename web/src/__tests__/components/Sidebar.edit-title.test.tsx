@@ -1,10 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import type React from 'react'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 const navigate = mock(() => {})
 const updateSessionTitleMutate = mock(() => {})
+let invokeShouldFail = false
+const invokeMock = mock(async () => {
+  if (invokeShouldFail) throw new Error('window failed')
+  return undefined
+})
+const pushToast = mock(() => {})
 let isMobile = false
 let sessionsData = [
   {
@@ -30,6 +36,15 @@ mock.module('@tanstack/react-router', () => ({
 
 mock.module('@/hooks/use-mobile', () => ({
   useIsMobile: () => isMobile,
+}))
+
+mock.module('@/hooks/use-platform', () => ({
+  usePlatform: () => ({ isTauri: true, os: 'macos', isMacOverlay: true }),
+  getPlatform: () => ({ isTauri: true, os: 'macos', isMacOverlay: true }),
+}))
+
+mock.module('@tauri-apps/api/core', () => ({
+  invoke: invokeMock,
 }))
 
 mock.module('@/hooks/useReducedMotion', () => ({
@@ -80,6 +95,10 @@ mock.module('@/components/ThemeToggle', () => ({
 
 mock.module('@/components/HealthDot', () => ({
   HealthDot: () => <div aria-label="Connected" />,
+}))
+
+mock.module('@/stores/useToastStore', () => ({
+  useToastStore: (selector: (state: { push: typeof pushToast }) => unknown) => selector({ push: pushToast }),
 }))
 
 mock.module('@/components/ui/sidebar-item', () => ({
@@ -149,7 +168,10 @@ describe('Sidebar session title editing', () => {
       },
     ]
     isMobile = false
+    invokeShouldFail = false
     navigate.mockClear()
+    invokeMock.mockClear()
+    pushToast.mockClear()
     updateSessionTitleMutate.mockClear()
   })
 
@@ -198,6 +220,36 @@ describe('Sidebar session title editing', () => {
     expect(screen.getByRole('button', { name: /^save$/i }).hasAttribute('disabled')).toBe(true)
     await user.keyboard('{Enter}')
     expect(updateSessionTitleMutate).not.toHaveBeenCalled()
+  })
+
+  it('opens a cockpit session in a new desktop window on macOS Command+click', async () => {
+    await renderSidebar()
+
+    fireEvent.mouseDown(screen.getByText('Old title'), { button: 0, metaKey: true })
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('app_new_window', {
+        initialPath: '/cockpit/session-1',
+        initial_path: '/cockpit/session-1',
+      })
+    })
+    expect(navigate).not.toHaveBeenCalled()
+  })
+
+  it('shows a toast when opening a cockpit session window fails', async () => {
+    invokeShouldFail = true
+
+    await renderSidebar()
+
+    fireEvent.mouseDown(screen.getByText('Old title'), { button: 0, metaKey: true })
+
+    await waitFor(() => {
+      expect(pushToast).toHaveBeenCalledWith({
+        tone: 'error',
+        title: 'Could not open session in new window',
+        description: 'window failed',
+      })
+    })
   })
 
   it('uses explicit width for the mobile drawer even when the persisted desktop sidebar is collapsed', async () => {

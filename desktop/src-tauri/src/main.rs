@@ -18,8 +18,11 @@ use tauri::{
 use tauri_plugin_dialog::DialogExt;
 
 use tauri_plugin_opener::OpenerExt;
+    #[cfg(test)]
+    use tauri_plugin_dialog::MessageDialogResult;
 #[cfg(test)]
-use tauri_plugin_dialog::MessageDialogResult;
+use std::collections::HashMap as StdHashMap;
+
 use tauri_plugin_updater::UpdaterExt;
 use tokio::sync::Mutex;
 
@@ -1453,6 +1456,25 @@ fn backend_unavailable_init_script() -> String {
     "Object.defineProperty(window, '__OAD_BACKEND_UNAVAILABLE__', { value: true, writable: true, configurable: true });".to_string()
 }
 
+fn new_window_init_script(
+    bundled_base_url: Option<&str>,
+    desktop_token: Option<&str>,
+    external_window_base_urls: &HashMap<String, String>,
+    active_window_label: &str,
+    initial_path: Option<&str>,
+) -> Result<String> {
+    if let Some(base) = external_window_base_urls.get(active_window_label) {
+        return Ok(frontend_init_script_with_path(None, base, initial_path));
+    }
+    if let Some(base) = bundled_base_url {
+        return Ok(frontend_init_script_with_path(desktop_token, base, initial_path));
+    }
+    if let Some(base) = external_window_base_urls.get(MAIN_WINDOW) {
+        return Ok(frontend_init_script_with_path(None, base, initial_path));
+    }
+    Err(anyhow!("backend is not ready"))
+}
+
 fn next_window_label(app: &AppHandle) -> String {
     for i in 2.. {
         let label = format!("{SECONDARY_WINDOW_PREFIX}{i}");
@@ -1490,14 +1512,17 @@ async fn build_app_window(app: &AppHandle, label: String, init_script: String) -
 
 async fn create_app_window(app: &AppHandle, label: Option<&str>, initial_path: Option<&str>) -> Result<tauri::WebviewWindow> {
     let state: tauri::State<'_, AppState> = app.state();
-    let base = state
-        .backend_base_url
-        .lock()
-        .await
-        .clone()
-        .ok_or_else(|| anyhow!("backend is not ready"))?;
-    let token = state.desktop_token.lock().await.clone();
-    let init_script = frontend_init_script_with_path(token.as_deref(), &base, initial_path);
+    let bundled_base_url = state.backend_base_url.lock().await.clone();
+    let desktop_token = state.desktop_token.lock().await.clone();
+    let external_window_base_urls = state.window_backend_base_urls.lock().await.clone();
+    let active_window_label = state.active_window_label.lock().await.clone();
+    let init_script = new_window_init_script(
+        bundled_base_url.as_deref(),
+        desktop_token.as_deref(),
+        &external_window_base_urls,
+        &active_window_label,
+        initial_path,
+    )?;
     build_app_window(
         app,
         label.map(str::to_string).unwrap_or_else(|| next_window_label(app)),
@@ -1770,6 +1795,41 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn new_window_uses_active_external_backend_before_bundled() {
+        let mut external = StdHashMap::new();
+        external.insert("main-2".to_string(), "http://192.168.1.10:4082".to_string());
+
+        let script = new_window_init_script(
+            Some("http://127.0.0.1:4082"),
+            Some("desktop-token"),
+            &external,
+            "main-2",
+            Some("/coding/session-1"),
+        )
+        .expect("external backend init script");
+
+        assert!(script.contains("http://192.168.1.10:4082"));
+        assert!(!script.contains("desktop-token"));
+        assert!(script.contains("/coding/session-1"));
+    }
+
+    #[test]
+    fn new_window_falls_back_to_bundled_backend() {
+        let script = new_window_init_script(
+            Some("http://127.0.0.1:4082"),
+            Some("desktop-token"),
+            &StdHashMap::new(),
+            MAIN_WINDOW,
+            Some("/cockpit/session-1"),
+        )
+        .expect("bundled backend init script");
+
+        assert!(script.contains("http://127.0.0.1:4082"));
+        assert!(script.contains("desktop-token"));
+        assert!(script.contains("/cockpit/session-1"));
+    }
 
     // ── dialog_result_is_accept ──────────────────────────────────────────────
     //

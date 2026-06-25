@@ -87,8 +87,10 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
 - **Multiple desktop windows** `[v1.41.0]` — open additional cockpit windows from
   File → New Window, the tray menu, or `Cmd/Ctrl+N`; windows share the bundled
   sidecar and desktop auth token, while each window can independently switch to
-  a saved external server `[v1.47.0]`.
-  - **Hold Command + click session to open in new window** `[v1.62.1]` — in the desktop app, holding `Cmd` (macOS) or `Ctrl/Cmd` (Linux) and clicking a session in the sidebar opens that session directly in a new independent desktop window.
+  a saved external server `[v1.47.0]`. New windows now inherit the active
+  window's current backend selection instead of failing when the bundled sidecar
+  is unavailable `[v1.64.1]`.
+  - **Hold Command + click session to open in new window** `[v1.62.1, v1.64.1]` — in the desktop app, holding `Cmd` (macOS) or `Ctrl/Cmd` (Linux) and clicking a session in either sidebar opens that session directly in a new independent desktop window; failures now surface an in-app error toast instead of silently doing nothing.
 - **Editable session titles** `[v1.27.0]` — double-click a session card or use its
   edit affordance in the sidebar to rename saved sessions.
 - **Slash commands** `[since v1.0]` — `/init`, `/continue`, `/compact`, `/undo`,

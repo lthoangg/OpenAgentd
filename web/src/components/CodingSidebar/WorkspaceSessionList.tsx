@@ -1,9 +1,14 @@
 import { useEffect, useRef } from 'react'
+import type React from 'react'
 import { Loader2, Pencil, Trash2 } from 'lucide-react'
 import { useCodingWorkspaceSessionsQuery } from '@/queries/useSessionsQuery'
 import type { SessionResponse } from '@/api/types'
 import { formatRelativeDate } from '@/utils/format'
 import { LongPressButton } from '@/components/ui/long-press-button'
+
+function isModifiedPrimaryClick(event: React.MouseEvent): boolean {
+  return event.button === 0 && (event.metaKey || event.ctrlKey)
+}
 
 export function WorkspaceSessionList({
   path,
@@ -69,7 +74,14 @@ export function WorkspaceSessionList({
               enabled={mobileLongPressActions}
               onLongPress={() => onSessionLongPress(session)}
               type="button"
-              onClick={(e) => onSessionSelect(session, path, e)}
+              onMouseDown={(e) => {
+                if (!isModifiedPrimaryClick(e)) return
+                onSessionSelect(session, path, e)
+              }}
+              onClick={(e) => {
+                if (isModifiedPrimaryClick(e)) return
+                onSessionSelect(session, path, e)
+              }}
               onDoubleClick={(e) => {
                 e.stopPropagation()
                 onSessionEdit(session)

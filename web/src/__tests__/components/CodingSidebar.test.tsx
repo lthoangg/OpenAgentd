@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import type React from 'react'
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { setApiBaseUrl } from '@/api/base-url'
@@ -16,6 +16,7 @@ const browseResponse = {
   directories: [],
 }
 const dialogOpen = mock(async () => '/repo/project')
+const invokeMock = mock(async () => undefined)
 let isTauri = true
 let platformOs = 'macos'
 let isMobile = false
@@ -104,6 +105,10 @@ mock.module('framer-motion', () => ({
 
 mock.module('@tauri-apps/plugin-dialog', () => ({
   open: dialogOpen,
+}))
+
+mock.module('@tauri-apps/api/core', () => ({
+  invoke: invokeMock,
 }))
 
 mock.module('@/lib/app-backend', () => ({
@@ -209,6 +214,7 @@ describe('CodingSidebar workspace trust flow', () => {
     }
     useTeamStore.setState({ isTeamWorking: false, sessionId: null })
     navigate.mockClear()
+    invokeMock.mockClear()
     dialogOpen.mockReset()
     dialogOpen.mockImplementation(async () => '/repo/project')
     deleteSessionMutate.mockClear()
@@ -463,6 +469,33 @@ describe('CodingSidebar workspace trust flow', () => {
 
     expect(screen.getByText('Trust this workspace?')).toBeTruthy()
     expect(dialogOpen).not.toHaveBeenCalled()
+    expect(navigate).not.toHaveBeenCalled()
+  })
+
+  it('opens a coding session in a new desktop window on macOS Command+click', async () => {
+    sessionsData = [
+      {
+        id: 'session-1',
+        title: 'Selected session',
+        agent_name: 'lead',
+        created_at: '2026-05-13T00:00:00Z',
+        updated_at: '2026-05-13T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+      },
+    ]
+    workspaceSessionsData = sessionsData
+
+    await renderCodingSidebarForSessions()
+
+    fireEvent.mouseDown(screen.getByTitle(/selected session ·/i), { button: 0, metaKey: true })
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('app_new_window', {
+        initialPath: '/coding/session-1',
+        initial_path: '/coding/session-1',
+      })
+    })
     expect(navigate).not.toHaveBeenCalled()
   })
 

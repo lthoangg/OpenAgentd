@@ -35,6 +35,7 @@ import { LongPressButton } from '@/components/ui/long-press-button'
 import { usePlatform } from '@/hooks/use-platform'
 import { useResizableWidth } from '@/hooks/use-resizable-width'
 import type { SessionResponse } from '@/api/types'
+import { useToastStore } from '@/stores/useToastStore'
 
 interface DateGroup {
   label: string
@@ -52,6 +53,10 @@ function SessionListSkeleton({ count = 6 }: { count?: number }) {
       ))}
     </div>
   )
+}
+
+function isModifiedPrimaryClick(event: React.MouseEvent): boolean {
+  return event.button === 0 && (event.metaKey || event.ctrlKey)
 }
 
 function groupByDate(sessions: SessionResponse[]): DateGroup[] {
@@ -95,6 +100,7 @@ export function Sidebar({
 }: SidebarProps) {
   const isMobile = useIsMobile()
   const { isTauri, os } = usePlatform()
+  const pushToast = useToastStore((s) => s.push)
   const isTauriMobile = isTauri && (os === 'ios' || os === 'android')
   const mobileLongPressActions = isMobile && isTauriMobile && mobileOpen
   const prefersReducedMotion = useReducedMotion()
@@ -248,8 +254,19 @@ export function Sidebar({
       import('@tauri-apps/api/core').then(({ invoke }) => {
         invoke('app_new_window', { initialPath: `/cockpit/${id}`, initial_path: `/cockpit/${id}` }).catch((err) => {
           console.error('Failed to open session in new window:', err)
+          pushToast({
+            tone: 'error',
+            title: 'Could not open session in new window',
+            description: err instanceof Error ? err.message : 'Desktop window creation failed.',
+          })
         })
-      }).catch(() => {})
+      }).catch((err) => {
+        pushToast({
+          tone: 'error',
+          title: 'Could not open session in new window',
+          description: err instanceof Error ? err.message : 'Desktop API is unavailable.',
+        })
+      })
       return
     }
 
@@ -470,7 +487,14 @@ export function Sidebar({
                   return (
                     <button
                       key={session.id}
-                      onClick={(e) => handleSelect(session.id, e)}
+                      onMouseDown={(e) => {
+                        if (!isModifiedPrimaryClick(e)) return
+                        handleSelect(session.id, e)
+                      }}
+                      onClick={(e) => {
+                        if (isModifiedPrimaryClick(e)) return
+                        handleSelect(session.id, e)
+                      }}
                       title={session.title || 'Untitled'}
                       className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
                         isActive
@@ -692,7 +716,14 @@ function SessionRow({ session, isActive, onSelect, onDelete, onEdit, mobileLongP
       <LongPressButton
         enabled={mobileLongPressActions}
         onLongPress={() => onLongPress?.(session)}
-        onClick={(e) => onSelect(session.id, e)}
+        onMouseDown={(e) => {
+          if (!isModifiedPrimaryClick(e)) return
+          onSelect(session.id, e)
+        }}
+        onClick={(e) => {
+          if (isModifiedPrimaryClick(e)) return
+          onSelect(session.id, e)
+        }}
         onDoubleClick={(e) => {
           e.stopPropagation()
           onEdit(session)

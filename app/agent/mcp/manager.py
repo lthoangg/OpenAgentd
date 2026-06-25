@@ -626,6 +626,12 @@ class MCPManager:
             runner.ready.set()
             raise
         except OAuthRequiredError as exc:
+            logger.warning(
+                "mcp_server_auth_required name={} transport={} err={}",
+                name,
+                server_cfg.transport,
+                exc,
+            )
             runner.session = None
             runner.tools = []
             runner.status.state = "auth_required"
@@ -638,10 +644,17 @@ class MCPManager:
                 and server_cfg.oauth is None
                 and _is_http_auth_failure(exc)
             ):
+                message = _oauth_config_required_message(name)
+                logger.warning(
+                    "mcp_server_auth_required name={} transport={} err={}",
+                    name,
+                    server_cfg.transport,
+                    message,
+                )
                 runner.session = None
                 runner.tools = []
                 runner.status.state = "auth_required"
-                runner.status.error = _oauth_config_required_message(name)
+                runner.status.error = message
                 runner.status.tool_names = []
                 runner.ready.set()
                 return
@@ -650,10 +663,17 @@ class MCPManager:
                 and server_cfg.oauth is not None
                 and not has_resolved_client_id(server_cfg)
             ):
+                message = _oauth_credentials_required_message(name)
+                logger.warning(
+                    "mcp_server_auth_required name={} transport={} err={}",
+                    name,
+                    server_cfg.transport,
+                    message,
+                )
                 runner.session = None
                 runner.tools = []
                 runner.status.state = "auth_required"
-                runner.status.error = _oauth_credentials_required_message(name)
+                runner.status.error = message
                 runner.status.tool_names = []
                 runner.ready.set()
                 return

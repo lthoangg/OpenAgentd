@@ -82,6 +82,13 @@ def setup_logging(log_level: str = "INFO") -> None:
     for noisy in ("httpx", "httpcore", "google.genai", "uvicorn.access"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
+    # The MCP OAuth client logs full exception tracebacks for expected
+    # interactive-auth prompts; keep it from propagating into uvicorn/root logs.
+    oauth_logger = logging.getLogger("mcp.client.auth.oauth2")
+    oauth_logger.handlers.clear()
+    oauth_logger.addHandler(logging.NullHandler())
+    oauth_logger.propagate = False
+
 
 def add_session_sink(session_id: str) -> int:
     """Add a human-readable loguru sink for a specific session.

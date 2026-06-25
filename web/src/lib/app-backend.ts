@@ -41,3 +41,8 @@ export async function switchToBundledAppBackend(): Promise<void> {
   const { invoke } = await import('@tauri-apps/api/core')
   await invoke('app_use_bundled_backend')
 }
+
+export async function stopBundledAppBackend(): Promise<void> {
+  const { invoke } = await import('@tauri-apps/api/core')
+  await invoke('app_stop_bundled_backend')
+}

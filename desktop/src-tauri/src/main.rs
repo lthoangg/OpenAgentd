@@ -499,35 +499,74 @@ async fn app_use_bundled_backend(
 ) -> Result<(), String> {
     let state: tauri::State<'_, AppState> = app.state();
 
-    let base = state
-        .backend_base_url
-        .lock()
-        .await
-        .clone()
-        .ok_or_else(|| "bundled backend is not ready".to_string())?;
+    let existing_token = state.desktop_token.lock().await.clone();
+    let sidecar_alive = {
+        let mut guard = state.sidecar.lock().await;
+        guard.as_mut().is_some_and(|sidecar| sidecar.is_alive())
+    };
+
+    let backend_ready = if sidecar_alive {
+        let base = state
+            .backend_base_url
+            .lock()
+            .await
+            .clone()
+            .ok_or_else(|| "bundled backend is not ready".to_string())?;
+        BackendReady {
+            port: 0,
+            version: "bundled".to_string(),
+            base_url: base,
+            token: existing_token,
+            sidecar_running: true,
+        }
+    } else {
+        let mut sidecar = if let Some(token) = existing_token.as_deref() {
+            Sidecar::spawn_with_desktop_token(&app, Some(token)).map_err(|e| format!("{e:#}"))?
+        } else {
+            Sidecar::spawn(&app).map_err(|e| format!("{e:#}"))?
+        };
+        let handshake = sidecar
+            .read_handshake(Duration::from_secs(30))
+            .await
+            .map_err(|e| format!("{e:#}"))?;
+        let base = format!("http://127.0.0.1:{}", handshake.port);
+        wait_for_health(&base, 60, Duration::from_millis(250))
+            .await
+            .map_err(|e| format!("{e:#}"))?;
+
+        let token = handshake.token.clone();
+        let _ = state.sidecar.lock().await.replace(sidecar);
+        let _ = state.desktop_token.lock().await.replace(token.clone());
+        let _ = state.backend_base_url.lock().await.replace(base.clone());
+        update_tray_status(&app, "Status: Running");
+
+        BackendReady {
+            port: handshake.port,
+            version: handshake.version,
+            base_url: base,
+            token: Some(token),
+            sidecar_running: true,
+        }
+    };
+
     state
         .window_backend_base_urls
         .lock()
         .await
         .remove(window.label());
+    *state.backend_mode.lock().await = BackendMode::Bundled;
     save_app_backend_config(&app, None, None, true).map_err(|e| format!("{e:#}"))?;
-    let token = state.desktop_token.lock().await.clone();
-    let init_script = frontend_init_script(token.as_deref(), &base);
+    let init_script = frontend_init_script(backend_ready.token.as_deref(), &backend_ready.base_url);
     window
         .eval(&init_script)
         .map_err(|e| format!("inject bundled backend config: {e:#}"))?;
-    window
-        .emit(
-            "backend-ready",
-            BackendReady {
-                port: 0,
-                version: "bundled".to_string(),
-                base_url: base,
-                token,
-                sidecar_running: true,
-            },
-        )
-        .ok();
+    window.emit("backend-ready", backend_ready).ok();
+    Ok(())
+}
+
+#[tauri::command]
+async fn app_stop_bundled_backend(app: AppHandle) -> Result<(), String> {
+    shutdown_sidecar_now(&app).await;
     Ok(())
 }
 
@@ -1965,6 +2004,7 @@ fn main() {
             app_save_backend_server,
             app_use_external_backend,
             app_use_bundled_backend,
+            app_stop_bundled_backend,
             app_new_window,
             set_tray_session,
             updater_check,

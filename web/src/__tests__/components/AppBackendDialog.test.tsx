@@ -28,7 +28,23 @@ const invokeMock = mock(async (...args: unknown[]) => {
     const args = commandArgs as { baseUrl?: string }
     return { ...statusPayload, base_url: args.baseUrl ?? statusPayload.base_url, mode: 'external', external: true, sidecar_running: false }
   }
-  if (command === 'app_use_bundled_backend') return null
+  if (command === 'app_use_bundled_backend') {
+    statusPayload = {
+      ...statusPayload,
+      base_url: 'http://127.0.0.1:49545',
+      mode: 'bundled',
+      sidecar_running: true,
+      external: false,
+    }
+    return null
+  }
+  if (command === 'app_stop_bundled_backend') {
+    statusPayload = {
+      ...statusPayload,
+      sidecar_running: false,
+    }
+    return null
+  }
   throw new Error(`unexpected command: ${command}`)
 })
 
@@ -99,9 +115,8 @@ describe('AppBackendDialog', () => {
     expect(invokeCalls.some((call) => call.command === 'app_set_backend_base_url')).toBe(false)
   })
 
-  it('connects the builtin desktop server through the bundled backend command', async () => {
+  it('shows stop instead of use builtin while already connected to bundled backend', async () => {
     const user = userEvent.setup()
-    const onOpenChange = mock(() => {})
     statusPayload = {
       ...statusPayload,
       base_url: 'http://127.0.0.1:49545',
@@ -109,28 +124,50 @@ describe('AppBackendDialog', () => {
       sidecar_running: true,
       external: false,
     }
-    render(<AppBackendDialog open onOpenChange={onOpenChange} />)
+    render(<AppBackendDialog open onOpenChange={() => {}} />)
 
     await screen.findByText('Builtin sidecar')
-    await user.click(screen.getByRole('button', { name: 'use builtin' }))
+    expect(screen.queryByRole('button', { name: 'use builtin' })).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'stop' }))
 
     await waitFor(() => {
       expect(invokeCalls).toContainEqual({
-        command: 'app_use_bundled_backend',
+        command: 'app_stop_bundled_backend',
         args: undefined,
       })
     })
-    await waitFor(() => expect(window.__OAD_API_BASE_URL__).toBe('http://127.0.0.1:49545'))
-    expect(onOpenChange).not.toHaveBeenCalled()
   })
 
-  it('lets users recover from an unreachable external backend by choosing builtin', async () => {
+  it('shows stop when builtin sidecar is already running even if an external server is active', async () => {
     const user = userEvent.setup()
     statusPayload = {
       ...statusPayload,
       base_url: 'http://192.168.1.20:4082',
       mode: 'external',
       sidecar_running: true,
+      external: true,
+    }
+    render(<AppBackendDialog open onOpenChange={() => {}} />)
+
+    await screen.findByText('Builtin sidecar')
+    expect(screen.queryByRole('button', { name: 'use builtin' })).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'stop' }))
+
+    await waitFor(() => {
+      expect(invokeCalls).toContainEqual({
+        command: 'app_stop_bundled_backend',
+        args: undefined,
+      })
+    })
+  })
+
+  it('lets users recover from an unreachable external backend by choosing builtin when the sidecar is stopped', async () => {
+    const user = userEvent.setup()
+    statusPayload = {
+      ...statusPayload,
+      base_url: 'http://192.168.1.20:4082',
+      mode: 'external',
+      sidecar_running: false,
       external: true,
     }
     render(<AppBackendDialog open onOpenChange={() => {}} />)
@@ -144,6 +181,7 @@ describe('AppBackendDialog', () => {
         args: undefined,
       })
     })
+    await waitFor(() => expect(window.__OAD_API_BASE_URL__).toBe('http://127.0.0.1:49545'))
   })
 
   it('saves a server name without switching connections', async () => {

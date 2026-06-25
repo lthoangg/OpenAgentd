@@ -9,6 +9,7 @@ import {
   getAppBackendStatus,
   removeAppBackendServer,
   saveAppBackendServer,
+  stopBundledAppBackend,
   switchToExternalAppBackend,
   switchToBundledAppBackend,
   type SavedAppServer,
@@ -95,6 +96,10 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
 
   async function connectBundled() {
     await runConnectionSwitch(() => switchToBundledAppBackend())
+  }
+
+  async function stopBundled() {
+    await runConnectionSwitch(() => stopBundledAppBackend())
   }
 
   async function saveServer() {
@@ -207,14 +212,25 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
                   {!status?.external ? (
                     <span className="rounded bg-(--bg-key) px-1.5 py-0.5 text-[10px] text-(--color-text-muted)">active</span>
                   ) : null}
-                  <button
-                    type="button"
-                    onClick={() => { void connectBundled() }}
-                    className="rounded bg-(--bg-key) px-1.5 py-0.5 text-[10px] text-(--color-text-muted) hover:text-(--color-text)"
-                    disabled={pending}
-                  >
-                    use builtin
-                  </button>
+                  {status?.sidecar_running ? (
+                    <button
+                      type="button"
+                      onClick={() => { void stopBundled() }}
+                      className="rounded bg-(--bg-key) px-1.5 py-0.5 text-[10px] text-(--color-error) hover:bg-(--color-error)/10"
+                      disabled={pending}
+                    >
+                      stop
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => { void connectBundled() }}
+                      className="rounded bg-(--bg-key) px-1.5 py-0.5 text-[10px] text-(--color-text-muted) hover:text-(--color-text)"
+                      disabled={pending}
+                    >
+                      use builtin
+                    </button>
+                  )}
                 </div>
               ) : null}
               {(status?.servers ?? DEFAULT_SERVERS).map((server) => {

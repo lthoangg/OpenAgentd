@@ -56,10 +56,11 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
 - **Native desktop app for macOS, Linux** `[since v1.0]` — Tauri 2 shell,
   bundled Python sidecar, embedded Web UI, one process, no terminal required.
   *(Windows desktop builds dropped in v1.23.0 — see [§11](#11-distribution-and-updates).)*
-- **Explicit backend connection state** `[v1.44.1]` — desktop connection options
+- **Explicit backend connection state** `[v1.68.0]` — desktop connection options
   are limited to the builtin sidecar and saved servers; no-backend dev windows
   show **Backend unreachable**, active server removal clears the current backend,
-  and connecting a saved server no longer reloads before it can be named.
+  the builtin row exposes **Stop** whenever the sidecar process is already
+  running, and **Use builtin** starts + attaches the bundled backend when needed.
 - **In-app auto-updater** `[v1.22.0]` — bottom-right update card + Settings → About
   → Updates, cached downloads, install-and-restart, signed minisign payloads,
   GitHub release notes rendered inline. Silent check at startup + every 6 hours.

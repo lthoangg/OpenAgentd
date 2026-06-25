@@ -7,6 +7,7 @@ fn main() {
                 "backend_health",
                 "backend_logs_path",
                 "app_new_window",
+                "app_stop_bundled_backend",
                 "set_tray_session",
                 "updater_check",
                 "updater_download",

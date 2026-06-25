@@ -199,7 +199,7 @@ describe("ToolResult — read", () => {
     const header = screen.getByText("read").parentElement
     const body = container.querySelector("pre")
     expect(header?.className).not.toContain("sticky")
-    expect(body?.className).toContain("max-h-80")
+    expect(body?.className).toContain("max-h-[calc(10*1.55em)]")
     expect(body?.className).toContain("overflow-auto")
   })
 

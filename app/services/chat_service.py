@@ -22,6 +22,7 @@ from app.agent.schemas.chat import (
 from app.agent.artifacts import session_artifact_dir
 from app.core.paths import session_workspace_dir, uploads_dir, workspace_dir
 from app.models.chat import ChatSession, SessionMessage
+from app.services import chat_service_queue as _chat_service_queue
 from app.services import chat_service_revert as _chat_service_revert
 from app.services.chat_service_revert import (
     BoundaryShift,
@@ -392,15 +393,12 @@ async def save_queued_user_message(
     *,
     extra: dict | None = None,
 ) -> SessionMessage:
-    queued_at = datetime.now(timezone.utc).isoformat()
-    row_extra = dict(extra or {})
-    row_extra.update({"queue_status": "queued", "queued_at": queued_at})
-    return await save_message(
+    return await _chat_service_queue.save_queued_user_message(
         db,
         session_id,
-        HumanMessage(content=content),
-        is_hidden=True,
-        extra=row_extra,
+        content,
+        extra=extra,
+        save_message=save_message,
     )
 
 
@@ -408,51 +406,14 @@ async def release_queued_user_messages(
     db: AsyncSession,
     session_id: UUID,
 ) -> list[SessionMessage]:
-    rows = await db.exec(
-        select(SessionMessage)
-        .where(col(SessionMessage.session_id) == session_id)
-        .where(col(SessionMessage.role) == "user")
-        .where(col(SessionMessage.exclude_from_context))
-        .where(col(SessionMessage.extra)["queue_status"].as_string() == "queued")
-        .order_by(col(SessionMessage.created_at).asc())
-    )
-    queued = list(rows.all())
-    released_at = datetime.now(timezone.utc)
-    for i, row in enumerate(queued):
-        extra = dict(row.extra or {})
-        extra.pop("queue_status", None)
-        extra.pop("queued_at", None)
-        row.extra = extra or None
-        row.exclude_from_context = False
-        row.created_at = released_at + timedelta(microseconds=i)
-        db.add(row)
-    await db.flush()
-    return queued
+    return await _chat_service_queue.release_queued_user_messages(db, session_id)
 
 
 async def pop_queued_user_messages(
     db: AsyncSession,
     session_id: UUID,
 ) -> list[SessionMessage]:
-    rows = await db.exec(
-        select(SessionMessage)
-        .where(col(SessionMessage.session_id) == session_id)
-        .where(col(SessionMessage.role) == "user")
-        .where(col(SessionMessage.exclude_from_context))
-        .where(col(SessionMessage.extra)["queue_status"].as_string() == "queued")
-        .order_by(col(SessionMessage.created_at).asc())
-    )
-    queued = list(rows.all())
-    activated_at = datetime.now(timezone.utc)
-    for i, row in enumerate(queued):
-        extra = dict(row.extra or {})
-        extra.pop("queue_status", None)
-        row.extra = extra or None
-        row.exclude_from_context = False
-        row.created_at = activated_at + timedelta(microseconds=i)
-        db.add(row)
-    await db.flush()
-    return queued
+    return await _chat_service_queue.pop_queued_user_messages(db, session_id)
 
 
 async def cancel_queued_user_message(
@@ -460,17 +421,9 @@ async def cancel_queued_user_message(
     session_id: UUID,
     message_id: UUID,
 ) -> bool:
-    row = await db.get(SessionMessage, message_id)
-    if (
-        row is None
-        or row.session_id != session_id
-        or not row.extra
-        or row.extra.get("queue_status") != "queued"
-    ):
-        return False
-    await db.delete(row)
-    await db.flush()
-    return True
+    return await _chat_service_queue.cancel_queued_user_message(
+        db, session_id, message_id
+    )
 
 
 # Preserve patchability from tests and existing callers by rebinding the

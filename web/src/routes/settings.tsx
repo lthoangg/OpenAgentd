@@ -34,7 +34,6 @@ function pageTitleFor(pathname: string): string {
   if (pathname === '/settings/providers') return 'Providers'
   if (pathname === '/settings/multimodal') return 'Multimodal'
   if (pathname === '/settings/sandbox') return 'Sandbox'
-  if (pathname === '/settings/dream') return 'Dream'
   if (pathname === '/settings/title-generation') return 'Title generation'
   if (pathname === '/settings/notifications') return 'Notifications'
   return 'Settings'

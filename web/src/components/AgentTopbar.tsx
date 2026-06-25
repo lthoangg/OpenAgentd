@@ -1,18 +1,16 @@
 /**
  * AgentTopbar — right-cluster composite for the chat header.
  *
- * Layout: dream pulse · tokens · view toggle · todos/files/wiki etc.
+ * Layout: tokens · view toggle · todos/files/agents etc.
  * Props-driven so previews and future single-agent surfaces can reuse
  * it without pulling in TeamChatView's stores. Design source:
  * `AgentTopbar` (`E8lml9`) in `.diagrams/OpenAgentd-ui.pen`.
  */
 
 import {
-  Brain,
   CalendarClock,
   FolderOpen,
   ListChecks,
-  Moon,
   Users,
   type LucideIcon,
 } from 'lucide-react'
@@ -51,8 +49,6 @@ export interface AgentTopbarActionDescriptor {
 export interface AgentTopbarProps {
   /** Token totals; when omitted (or all zero) the TokenMeter is hidden. */
   tokens?: AgentTopbarTokens
-  /** Show "Dream…" indicator when the dream loop is running. */
-  dreamRunning?: boolean
   /** Current view mode; when undefined the ViewToggle is hidden. */
   viewMode?: ViewMode
   onViewModeChange?: (mode: ViewMode) => void
@@ -68,8 +64,6 @@ export interface AgentTopbarProps {
   todosAction?: AgentTopbarActionDescriptor
   /** Scheduler action — opens the scheduled-tasks drawer (Ctrl+S). */
   schedulerAction?: AgentTopbarActionDescriptor
-  /** Wiki action — opens the wiki drawer (Ctrl+M). */
-  wikiAction?: AgentTopbarActionDescriptor
   /** Files action — typically toggles the workspace files panel. */
   filesAction?: AgentTopbarActionDescriptor
   /** Agents action — typically toggles the agent capabilities sidebar. */
@@ -86,14 +80,12 @@ export interface AgentTopbarProps {
  */
 export function AgentTopbar({
   tokens,
-  dreamRunning = false,
   viewMode,
   onViewModeChange,
   isMobile = false,
   todosSlot,
   todosAction,
   schedulerAction,
-  wikiAction,
   filesAction,
   agentsAction,
   extraActions,
@@ -112,16 +104,6 @@ export function AgentTopbar({
         className,
       )}
     >
-      {dreamRunning && (
-        <div
-          className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-(--color-text-muted)"
-          title="Dream is running…"
-        >
-          <Moon size={11} className="animate-pulse" aria-hidden="true" />
-          <span className="hidden sm:inline">Dream…</span>
-        </div>
-      )}
-
       {showTokens && tokens && (
         <TokenMeter
           input={tokens.input}
@@ -140,9 +122,6 @@ export function AgentTopbar({
       {todosSlot ?? (todosAction && <AgentTopbarActionButton action={todosAction} fallbackIcon={ListChecks} />)}
       {schedulerAction && (
         <AgentTopbarActionButton action={schedulerAction} fallbackIcon={CalendarClock} />
-      )}
-      {wikiAction && (
-        <AgentTopbarActionButton action={wikiAction} fallbackIcon={Brain} />
       )}
       {filesAction && (
         <AgentTopbarActionButton action={filesAction} fallbackIcon={FolderOpen} />

@@ -12,13 +12,10 @@ import {
 } from '@/utils/blocks'
 import { createDefaultAgentStream } from './defaults'
 import {
-  WIKI_MUTATING_TOOLS,
   FS_MUTATING_TOOLS,
-  NOTE_TOOLS,
   SCHEDULER_MUTATING_TOOLS,
   TODO_MUTATING_TOOLS,
   extractToolPaths,
-  touchesWiki,
 } from './helpers'
 import { isBackgroundCompletion, sendDesktopNotification } from '@/lib/desktop-notifications'
 import type { CacheInvalidation, TeamStore } from './types'
@@ -224,21 +221,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
           })
         }
         const events: CacheInvalidation[] = []
-        if (NOTE_TOOLS.has(toolName)) {
-          events.push({ kind: 'wiki' })
-        }
-        let touchedWiki = false
-        if (WIKI_MUTATING_TOOLS.has(toolName)) {
-          const stream = get().agentStreams[agent]
-          const block = stream?.currentBlocks.find(
-            (b) => b.type === 'tool' && (toolCallId ? b.toolCallId === toolCallId : b.toolName === toolName),
-          )
-          if (touchesWiki(toolName, block?.toolArgs)) {
-            events.push({ kind: 'wiki' })
-            touchedWiki = true
-          }
-        }
-        if (FS_MUTATING_TOOLS.has(toolName) && !touchedWiki) {
+        if (FS_MUTATING_TOOLS.has(toolName)) {
           const workspace = get()._workspace
           if (workspace) {
             const stream = get().agentStreams[agent]
@@ -248,14 +231,11 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
                 (toolCallId ? b.toolCallId === toolCallId : b.toolName === toolName),
             )
             const paths = extractToolPaths(toolName, block?.toolArgs)
-            const workspacePaths = paths?.filter(
-              (p) => !p.startsWith('wiki/') && p !== 'wiki',
-            )
-            if (workspacePaths && workspacePaths.length > 0) {
+            if (paths && paths.length > 0) {
               events.push({
                 kind: 'coding_workspace_paths',
                 workspace,
-                paths: workspacePaths,
+                paths,
               })
             } else {
               events.push({ kind: 'coding_workspace', workspace })

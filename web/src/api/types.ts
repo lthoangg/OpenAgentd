@@ -288,54 +288,6 @@ export interface AgentUsage {
   turnCachedTokens?: number
 }
 
-// ── Wiki ─────────────────────────────────────────────────────────────────────
-
-/** One row in the wiki tree — surfaced from YAML frontmatter. */
-export interface WikiFileInfo {
-  /** Path relative to OPENAGENTD_WIKI_DIR, e.g. 'topics/auth.md'. */
-  path: string
-  description: string
-  updated: string | null
-  tags: string[]
-  /** ``high|medium|low`` from frontmatter; ``null`` when unspecified. */
-  confidence?: string | null
-  /** Source slugs that contributed (e.g. ``session-a1b2c3d4``). */
-  sources?: string[]
-}
-
-/** Full wiki tree grouped by subdirectory.  Mirrors the Karpathy LLM-Wiki
- *  page-type split: concepts (``topics``), entities, sources, comparisons.
- */
-export interface WikiTree {
-  /** Root files: USER.md, INDEX.md, LOG.md, LINT.md (any that exist). */
-  system: WikiFileInfo[]
-  /** notes/ — raw note entries written by tools/agents. */
-  notes: WikiFileInfo[]
-  /** imports/ — raw imported Memory v2 documents. */
-  imports: WikiFileInfo[]
-  /** wiki/ — Memory v2 curated and source-compiled pages. */
-  wiki: WikiFileInfo[]
-  /** topics/ — legacy concept pages (abstract ideas, techniques). */
-  topics: WikiFileInfo[]
-  /** entities/ — legacy concrete things (people, tools, orgs, products). */
-  entities: WikiFileInfo[]
-  /** sources/ — legacy one-page summaries per ingested source. */
-  sources: WikiFileInfo[]
-  /** comparisons/ — legacy X-vs-Y pages. */
-  comparisons: WikiFileInfo[]
-}
-
-/** Raw contents of a single wiki file. */
-export interface WikiFile {
-  path: string
-  content: string
-  description: string
-  updated: string | null
-  tags: string[]
-  confidence?: string | null
-  sources?: string[]
-}
-
 // ── Agent management ────────────────────────────────────────────────────────
 
 /** Lightweight row for the agents list. Invalid files have `valid=false`. */

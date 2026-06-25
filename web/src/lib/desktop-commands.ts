@@ -24,9 +24,6 @@ function runDesktopCommand(command: unknown): void {
     case 'command_palette':
       dispatchCtrlKey('p')
       break
-    case 'wiki':
-      useUIStore.getState().toggleWiki()
-      break
     case 'scheduler':
       useUIStore.getState().toggleScheduler()
       break

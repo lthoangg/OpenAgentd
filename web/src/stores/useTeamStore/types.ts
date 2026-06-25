@@ -8,7 +8,6 @@ export interface PendingMessage {
 }
 
 export type CacheInvalidation =
-  | { kind: 'wiki' }
   | { kind: 'workspace_files'; sessionId: string }
   | { kind: 'coding_workspace'; workspace: string }
   | { kind: 'coding_workspace_paths'; workspace: string; paths: string[] }

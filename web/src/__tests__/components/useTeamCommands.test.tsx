@@ -39,7 +39,6 @@ function makeArgs(overrides: Partial<Parameters<typeof useTeamCommands>[0]> = {}
     handleCodingSidebarToggle: noop,
     mode: "normal" as const,
     handleNewSession: noop,
-    handleDreamRun: noop,
     // navigate is only called inside action lambdas; tests that need
     // it pass their own spy.
     navigate: mock(() => Promise.resolve()) as unknown as Parameters<
@@ -86,7 +85,6 @@ describe("useTeamCommands — shortcut labels", () => {
     expect(byId(result.current, "agent-info").shortcut).toBe("Ctrl+A")
     expect(byId(result.current, "todos").shortcut).toBe("Ctrl+T")
     expect(byId(result.current, "workspace-files").shortcut).toBe("Ctrl+F")
-    expect(byId(result.current, "wiki").shortcut).toBe("Ctrl+M")
     expect(byId(result.current, "scheduled-tasks").shortcut).toBe("Ctrl+S")
     expect(byId(result.current, "collapse-sidebar").shortcut).toBe("Ctrl+B")
   })
@@ -111,22 +109,6 @@ describe("useTeamCommands — dispatchCtrlKey synthetic events", () => {
     expect(captured[0].ctrlKey).toBe(true)
     expect(captured[0].metaKey).toBe(false)
     expect(captured[0].bubbles).toBe(true)
-  })
-
-  it("wiki action dispatches Ctrl+m keydown", () => {
-    const { result } = renderHook(() => useTeamCommands(makeArgs()))
-    const captured: KeyboardEvent[] = []
-    const listener = (e: Event) => captured.push(e as KeyboardEvent)
-    window.addEventListener("keydown", listener)
-    try {
-      byId(result.current, "wiki").action()
-    } finally {
-      window.removeEventListener("keydown", listener)
-    }
-    expect(captured.length).toBe(1)
-    expect(captured[0].key).toBe("m")
-    expect(captured[0].ctrlKey).toBe(true)
-    expect(captured[0].metaKey).toBe(false)
   })
 
   it("scheduled-tasks dispatches Ctrl+s keydown", () => {
@@ -156,12 +138,11 @@ describe("useTeamCommands — dispatchCtrlKey synthetic events", () => {
     }
     window.addEventListener("keydown", handler)
     try {
-      byId(result.current, "wiki").action()
       byId(result.current, "scheduled-tasks").action()
     } finally {
       window.removeEventListener("keydown", handler)
     }
-    expect(captured.map((e) => e.key)).toEqual(["m", "s"])
+    expect(captured.map((e) => e.key)).toEqual(["s"])
   })
 })
 

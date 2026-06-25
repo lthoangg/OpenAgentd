@@ -15,9 +15,6 @@ export function applyCacheInvalidations(
 ): void {
   for (const event of events) {
     switch (event.kind) {
-      case 'wiki':
-        queryClient.invalidateQueries({ queryKey: queryKeys.wiki.all() })
-        break
       case 'workspace_files':
         queryClient.invalidateQueries({ queryKey: queryKeys.team.files(event.sessionId) })
         break

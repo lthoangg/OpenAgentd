@@ -296,17 +296,6 @@ export function getToolDisplay(name: string, args: string | undefined): ToolDisp
     }
   }
 
-  // ── wiki_search: query in header, hide redundant args ──────────
-  if (name === 'wiki_search') {
-    const query = str(parsed, 'query')
-    const truncated = query ? trunc(query) : null
-    return {
-      header: truncated ? <Arg>"{truncated}"</Arg> : null,
-      headerTitle: truncated ? `"${truncated}"` : null,
-      formattedArgs: null,
-    }
-  }
-
   // ── todo_manage: action summary in header, simplified action list ─
   if (name === 'todo_manage') {
     const actions = actionList(parsed)

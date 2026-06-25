@@ -15,7 +15,6 @@ import {
   Info,
   Image,
   KeyRound,
-  Moon,
   Plug,
   Shield,
   Sparkles,
@@ -46,9 +45,8 @@ interface CardProps {
     | '/settings/mcp'
     | '/settings/providers'
     | '/settings/multimodal'
-    | '/settings/sandbox'
-    | '/settings/dream'
-    | '/settings/title-generation'
+  | '/settings/sandbox'
+  | '/settings/title-generation'
     | '/settings/notifications'
   icon: LucideIcon
   title: string
@@ -353,14 +351,6 @@ export function SettingsHubPage() {
                   icon={Image}
                   title="Multimodal"
                   description="Configure image and video generation defaults"
-                  count={null}
-                  countLabel=""
-                />
-                <SettingsNavCard
-                  to="/settings/dream"
-                  icon={Moon}
-                  title="Dream"
-                  description="Cron agent that synthesises sessions into wiki topics"
                   count={null}
                   countLabel=""
                 />

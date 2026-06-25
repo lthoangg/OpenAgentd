@@ -330,18 +330,6 @@ describe("useTeamStore — todo_manage suppression and event emission", () => {
       expect(useTeamStore.getState().cacheInvalidations).toEqual([])
     })
 
-    it("emits wiki event (not todos) for write to wiki/", () => {
-      primeBlock("lead", "write", "tc-write-1", { path: "wiki/notes/notes.md", content: "..." })
-      useTeamStore.getState()._handleSSEEvent("tool_end", {
-        agent: "lead",
-        name: "write",
-        tool_call_id: "tc-write-1",
-        result: "Written 12 bytes",
-      })
-      // write to wiki/ emits a wiki event, not todos
-      expect(useTeamStore.getState().cacheInvalidations).toEqual([{ kind: "wiki" }])
-    })
-
     it("emits scheduler event (not todos) for schedule_task", () => {
       primeBlock("lead", "schedule_task", "tc-sched-1", { task: "daily_standup" })
       useTeamStore.getState()._handleSSEEvent("tool_end", {

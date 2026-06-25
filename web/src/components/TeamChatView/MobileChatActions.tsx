@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { Brain, CalendarClock, Check, MoreHorizontal, X } from 'lucide-react'
+import { CalendarClock, Check, MoreHorizontal, X } from 'lucide-react'
 import type { AgentStream } from '@/stores/useTeamStore'
 import { workspaceLabel } from '@/utils/workspace'
 import { dotClassFor } from './agentDots'
@@ -13,7 +13,6 @@ export interface MobileChatActionsProps {
   agents: string[]
   streams: Record<string, AgentStream>
   onSelectAgent: (agent: string) => void
-  onWiki: () => void
   onScheduler: () => void
 }
 
@@ -26,7 +25,6 @@ export function MobileChatActions({
   agents,
   streams,
   onSelectAgent,
-  onWiki,
   onScheduler,
 }: MobileChatActionsProps) {
   return (
@@ -107,10 +105,6 @@ export function MobileChatActions({
                 )}
 
                 <div className="px-2 py-2 text-xs font-medium text-muted-foreground">Session</div>
-                <button type="button" onClick={onWiki} className="flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-left text-sm transition-colors hover:bg-(--bg-key)">
-                  <Brain size={15} aria-hidden="true" />
-                  <span className="flex-1">Wiki</span>
-                </button>
                 <button type="button" onClick={onScheduler} className="flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-left text-sm transition-colors hover:bg-(--bg-key)">
                   <CalendarClock size={15} aria-hidden="true" />
                   <span className="flex-1">Scheduler</span>

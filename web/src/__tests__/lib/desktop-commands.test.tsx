@@ -30,7 +30,6 @@ async function renderBridge() {
 
 function resetUIStore(): void {
   useUIStore.setState({
-    wikiOpen: false,
     schedulerOpen: false,
     agentCapabilitiesOpen: false,
   })
@@ -44,23 +43,14 @@ describe('useDesktopCommands', () => {
   it('routes panel commands through the shared UI store and keeps panels mutually exclusive', async () => {
     await renderBridge()
 
-    listener?.({ payload: 'wiki' })
-    expect(useUIStore.getState()).toMatchObject({
-      wikiOpen: true,
-      schedulerOpen: false,
-      agentCapabilitiesOpen: false,
-    })
-
     listener?.({ payload: 'scheduler' })
     expect(useUIStore.getState()).toMatchObject({
-      wikiOpen: false,
       schedulerOpen: true,
       agentCapabilitiesOpen: false,
     })
 
     listener?.({ payload: 'agent_capabilities' })
     expect(useUIStore.getState()).toMatchObject({
-      wikiOpen: false,
       schedulerOpen: false,
       agentCapabilitiesOpen: true,
     })
@@ -92,15 +82,14 @@ describe('useDesktopCommands', () => {
     try {
       await renderBridge()
 
-      listener?.({ payload: 'wiki' })
-      listener?.({ payload: 'wiki' })
-      expect(useUIStore.getState().wikiOpen).toBe(true)
-
       listener?.({ payload: 'scheduler' })
+      listener?.({ payload: 'scheduler' })
+      expect(useUIStore.getState().schedulerOpen).toBe(true)
+
+      listener?.({ payload: 'agent_capabilities' })
       expect(useUIStore.getState()).toMatchObject({
-        wikiOpen: false,
-        schedulerOpen: true,
-        agentCapabilitiesOpen: false,
+        schedulerOpen: false,
+        agentCapabilitiesOpen: true,
       })
     } finally {
       Date.now = originalNow
@@ -114,11 +103,11 @@ describe('useDesktopCommands', () => {
     try {
       await renderBridge()
 
-      listener?.({ payload: 'wiki' })
-      expect(useUIStore.getState().wikiOpen).toBe(true)
+      listener?.({ payload: 'scheduler' })
+      expect(useUIStore.getState().schedulerOpen).toBe(true)
 
-      listener?.({ payload: 'wiki' })
-      expect(useUIStore.getState().wikiOpen).toBe(false)
+      listener?.({ payload: 'scheduler' })
+      expect(useUIStore.getState().schedulerOpen).toBe(false)
     } finally {
       Date.now = originalNow
     }
@@ -135,7 +124,6 @@ describe('useDesktopCommands', () => {
       listener?.({ payload: null })
 
       expect(useUIStore.getState()).toMatchObject({
-        wikiOpen: false,
         schedulerOpen: false,
         agentCapabilitiesOpen: false,
       })

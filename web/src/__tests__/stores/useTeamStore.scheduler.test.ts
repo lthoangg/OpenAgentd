@@ -15,7 +15,7 @@ import { useTeamStore } from "@/stores/useTeamStore"
  * This test suite verifies the store-level behaviour:
  * 1. Event fires for schedule_task tool_end events
  * 2. Event does NOT fire for non-scheduler tools
- * 3. Wiki and workspace events are independent of scheduler events
+ * 3. Workspace events are independent of scheduler events
  * 4. Multiple scheduler mutations queue multiple events
  */
 
@@ -219,21 +219,6 @@ describe("useTeamStore — scheduler invalidation", () => {
   })
 
   // ── Independence of event branches ───────────────────────────────────────
-
-  it("wiki and scheduler events are independent (write to wiki)", () => {
-    primeBlock("claude", "write", "tc-11", {
-      path: "wiki/system/USER.md",
-      content: "...",
-    })
-    useTeamStore.getState()._handleSSEEvent("tool_end", {
-      name: "write",
-      agent: "claude",
-      tool_call_id: "tc-11",
-      result: "Written",
-    })
-    // Wiki event only — no scheduler event
-    expect(useTeamStore.getState().cacheInvalidations).toEqual([{ kind: "wiki" }])
-  })
 
   it("workspace and scheduler events are independent (write to workspace)", () => {
     useTeamStore.setState({ sessionId: "sid-123" })

@@ -47,9 +47,6 @@ interface UseTeamCommandsArgs {
   // Session
   handleNewSession: () => void
 
-  // Dream
-  handleDreamRun: () => void
-
   // Navigation
   navigate: ReturnType<typeof useNavigate>
 }
@@ -63,12 +60,10 @@ export function useTeamCommands({
   handleCodingSidebarToggle,
   mode = 'normal',
   handleNewSession,
-  handleDreamRun,
   navigate,
 }: UseTeamCommandsArgs): Command[] {
   const commands: Command[] = [
     { id: 'new-chat', group: 'Team', label: 'New Team Chat', description: 'Start a fresh team conversation', shortcut: 'Ctrl+N', action: handleNewSession },
-    { id: 'dream-run', group: 'Team', label: 'Run Dream', description: 'Synthesise unprocessed sessions into wiki topics', action: handleDreamRun },
     {
       id: 'toggle-view', group: 'View',
       label: viewMode === 'agent' ? 'Switch to Split View' : 'Switch to Agent View',
@@ -80,7 +75,6 @@ export function useTeamCommands({
     mode === 'coding'
       ? { id: 'collapse-sidebar', group: 'View', label: 'Toggle Coding Sidebar', description: 'Collapse or expand workspaces and sessions', shortcut: 'Ctrl+B', action: handleCodingSidebarToggle }
       : { id: 'collapse-sidebar', group: 'View', label: 'Toggle Sidebar', description: '', shortcut: 'Ctrl+B', action: () => dispatchCtrlKey('b') },
-    { id: 'wiki',             group: 'View',       label: 'Wiki',              description: 'Browse and edit the agent wiki', shortcut: 'Ctrl+M', action: () => dispatchCtrlKey('m') },
     { id: 'scheduled-tasks',  group: 'View',       label: 'Scheduled Tasks',   description: 'Manage cron and scheduled agent tasks', shortcut: 'Ctrl+S', action: () => dispatchCtrlKey('s') },
     { id: 'go-home',     group: 'Navigation', label: 'Go to Home',     description: '', action: () => navigate({ to: '/' }) },
     ...(mode === 'normal' ? [{ id: 'go-coding', group: 'Navigation', label: 'Go to Coding Mode', description: 'Open the coding workbench', action: () => navigate({ to: '/coding' }) }] : []),

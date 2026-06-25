@@ -705,36 +705,6 @@ describe("ToolCall — skill display", () => {
 })
 
 // ---------------------------------------------------------------------------
-// Custom tool display — note / wiki_search
-// ---------------------------------------------------------------------------
-
-describe("ToolCall — note display", () => {
-  it("shows conversational header and note content as args", async () => {
-    const user = userEvent.setup()
-    const args = JSON.stringify({ content: "User prefers concise summaries." })
-    render(<ToolCall name="note" args={args} done={false} />)
-
-    expect(getHeader("Recording note…")).toBeTruthy()
-    await user.click(screen.getByRole("button"))
-    expect(screen.getByText("User prefers concise summaries.")).toBeTruthy()
-    expect(screen.queryByText(/"content"/)).toBeNull()
-  })
-})
-
-describe("ToolCall — wiki_search display", () => {
-  it("shows query in the header and hides redundant args", async () => {
-    const user = userEvent.setup()
-    const args = JSON.stringify({ query: "deployment decisions", methods: ["text"], top_k: 5 })
-    render(<ToolCall name="wiki_search" args={args} done={false} />)
-
-    expectPlainArg(getHeader('"deployment decisions"'), '"deployment decisions"')
-    await user.click(screen.getByRole("button"))
-    expect(screen.queryByText("arguments")).toBeNull()
-    expect(screen.queryByText(/"query"/)).toBeNull()
-  })
-})
-
-// ---------------------------------------------------------------------------
 // Custom tool display — todo_manage / schedule_task
 // ---------------------------------------------------------------------------
 

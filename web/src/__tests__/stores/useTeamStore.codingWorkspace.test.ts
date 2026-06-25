@@ -12,7 +12,7 @@ import { useTeamStore } from "@/stores/useTeamStore"
  *
  * ``shell`` / ``patch`` / ``generate_image`` always invalidate the
  * workspace regardless of args. ``write`` / ``edit`` / ``rm`` to a
- * ``wiki/`` path are routed to the wiki cache only.
+ * ``wiki/`` path are now treated as regular workspace paths.
  */
 
 function primeBlock(
@@ -157,7 +157,7 @@ describe("useTeamStore — coding_workspace invalidation", () => {
     ])
   })
 
-  it("emits ONLY wiki (not coding_workspace) when `write` targets wiki/ in coding mode", () => {
+  it("emits coding_workspace_paths when `write` targets wiki/ in coding mode", () => {
     resetStore({ sessionId: "sess-c4", _workspace: "/tmp/proj" })
     primeBlock("claude", "write", "tc-w", { path: "wiki/topics/x.md", content: "y" })
     useTeamStore.getState()._handleSSEEvent("tool_end", {
@@ -166,7 +166,9 @@ describe("useTeamStore — coding_workspace invalidation", () => {
       tool_call_id: "tc-w",
       result: "Written",
     })
-    expect(useTeamStore.getState().cacheInvalidations).toEqual([{ kind: "wiki" }])
+    expect(useTeamStore.getState().cacheInvalidations).toEqual([
+      { kind: "coding_workspace_paths", workspace: "/tmp/proj", paths: ["wiki/topics/x.md"] },
+    ])
   })
 
   it("falls back to workspace_files (session-scoped) when _workspace is unset", () => {
@@ -183,9 +185,7 @@ describe("useTeamStore — coding_workspace invalidation", () => {
     ])
   })
 
-  it("does not double-fire when both wiki and workspace would match", () => {
-    // Writing to wiki/ must only invalidate wiki, never the coding workspace,
-    // because the write never actually touched the workspace tree.
+  it("emits coding_workspace_paths when `edit` targets wiki/ in coding mode", () => {
     resetStore({ sessionId: "sess-c5", _workspace: "/tmp/proj" })
     primeBlock("claude", "edit", "tc-w2", {
       path: "wiki/system/USER.md",
@@ -198,7 +198,9 @@ describe("useTeamStore — coding_workspace invalidation", () => {
       tool_call_id: "tc-w2",
       result: "Edit applied",
     })
-    expect(useTeamStore.getState().cacheInvalidations).toEqual([{ kind: "wiki" }])
+    expect(useTeamStore.getState().cacheInvalidations).toEqual([
+      { kind: "coding_workspace_paths", workspace: "/tmp/proj", paths: ["wiki/system/USER.md"] },
+    ])
   })
 
   it("queues one scoped event per write across a burst (each carries its own path)", () => {

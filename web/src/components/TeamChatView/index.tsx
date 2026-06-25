@@ -29,7 +29,7 @@ import { CodingWorkspacePanel } from '../CodingWorkspacePanel'
 import { CodingFileViewerPanel } from '../CodingFileViewerPanel'
 import { Sidebar } from '../Sidebar'
 import { useTodosQuery } from '@/queries/useTodosQuery'
-import { useProvidersQuery, useTriggerDreamMutation } from '@/queries'
+import { useProvidersQuery } from '@/queries'
 import { useCommandsQuery } from '@/queries/useCommandsQuery'
 import { useSnippetsQuery } from '@/queries/useSnippetsQuery'
 import { listCodingWorkspaceFiles, renderCommand, renderSnippet, resolveApiUrl, resolveTeamSession } from '@/api/client'
@@ -148,7 +148,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const setupRequired = useTeamStore((s) => s.setupRequired)
   const dismissSetupRequired = useTeamStore((s) => s.dismissSetupRequired)
 
-  const dreamMutation = useTriggerDreamMutation()
   const pushToast = useToastStore((s) => s.push)
 
   const activeAgent    = useTeamStore((s) => s.activeAgent)
@@ -163,13 +162,10 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const sessionFastMode = useTeamStore((s) => s.sessionFastMode)
   const leadName       = useTeamStore((s) => s.leadName)
   // Utility modal state lives in useUIStore so only one can be open at a time.
-  const wikiOpen = useUIStore((s) => s.wikiOpen)
   const schedulerOpen = useUIStore((s) => s.schedulerOpen)
   const agentCapabilitiesOpen = useUIStore((s) => s.agentCapabilitiesOpen)
-  const toggleWiki = useUIStore((s) => s.toggleWiki)
   const toggleScheduler = useUIStore((s) => s.toggleScheduler)
   const toggleAgentCapabilities = useUIStore((s) => s.toggleAgentCapabilities)
-  const closeWiki = useUIStore((s) => s.closeWiki)
   const closeScheduler = useUIStore((s) => s.closeScheduler)
   const closeAgentCapabilities = useUIStore((s) => s.closeAgentCapabilities)
 
@@ -393,37 +389,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     setCodingSidebarCollapsed(false)
     setOpenWorkspaceDialogKey((value) => value + 1)
   }, [])
-
-  const handleDreamRun = useCallback(() => {
-    dreamMutation.mutate(undefined, {
-      onSuccess: (result) => {
-        if (result.skipped) {
-          pushToast({
-            tone: 'info',
-            title: 'Dream skipped',
-            description: `${result.skipped}. ${result.remaining} pending.`,
-          })
-          return
-        }
-        const { sessions_processed, notes_processed, remaining } = result
-        const processed = sessions_processed + notes_processed
-        pushToast({
-          tone: 'success',
-          title: 'Dream complete',
-          description: processed > 0
-            ? `${processed} item${processed !== 1 ? 's' : ''} processed. ${remaining} remaining.`
-            : `Nothing to process.`,
-        })
-      },
-      onError: (err) => {
-        pushToast({
-          tone: 'error',
-          title: 'Dream failed',
-          description: err instanceof Error ? err.message : String(err),
-        })
-      },
-    })
-  }, [dreamMutation, pushToast])
 
   // Focus the chat input. Callable directly (shortcut / Command Palette)
   // or indirectly via `window.dispatchEvent(new CustomEvent('focus-chat-input'))`
@@ -707,7 +672,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     handleCodingSidebarToggle,
     mode,
     handleNewSession,
-    handleDreamRun,
     navigate,
   })
   const paletteCommands = commands
@@ -720,8 +684,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     t: () => { if (sessionIdState) setShowTodos((v) => !v) },
     p: isMobile ? undefined : () => setShowPalette((v) => !v),
     b: mode === 'coding' ? handleCodingSidebarToggle : undefined,
-    // Ctrl+M / Ctrl+S — open the wiki / scheduler drawers (state in useUIStore).
-    m: toggleWiki,
+    // Ctrl+S — open the scheduler drawer (state in useUIStore).
     s: toggleScheduler,
     // Ctrl+I — focus the chat input (dispatched via CustomEvent so future
     // callers don't need a ref to the input).
@@ -847,10 +810,8 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         agentNames={agentNames}
         agentStreams={agentStreams}
         onSelectAgent={setActiveAgent}
-        onToggleWiki={toggleWiki}
         onToggleScheduler={toggleScheduler}
         onCloseMobileActionsMenu={closeMobileActionsMenu}
-        dreamRunning={dreamMutation.isPending}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
       />
@@ -1028,13 +989,11 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             isStreaming={isTeamWorking}
             disabled={mode === 'coding' && isCodingSessionLoading}
             placeholder={
-              dreamMutation.isPending
-                ? 'Dream is running…'
-                : isTeamWorking
-                  ? 'Team working… type to interrupt'
-                  : mode === 'coding' && workspace
-                    ? `Coding in ${workspaceLabel(workspace)}`
-                    : 'Message the team…'
+              isTeamWorking
+                ? 'Team working… type to interrupt'
+                : mode === 'coding' && workspace
+                  ? `Coding in ${workspaceLabel(workspace)}`
+                  : 'Message the team…'
             }
             capabilities={leadCapabilities}
             voiceEnabled={voiceEnabled}
@@ -1092,8 +1051,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         showTodos={showTodos}
         onShowTodosChange={setShowTodos}
         todos={todos}
-        wikiOpen={wikiOpen}
-        onCloseWiki={closeWiki}
         schedulerOpen={schedulerOpen}
         onCloseScheduler={closeScheduler}
         workspace={workspace}

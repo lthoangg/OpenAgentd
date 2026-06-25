@@ -16,7 +16,6 @@ import { McpServerDetailPage } from './routes/settings.mcp.$name'
 import { SandboxSettingsPage } from './routes/settings.sandbox'
 import { ProvidersSettingsPage } from './routes/settings.providers'
 import { MultimodalSettingsPage } from './routes/settings.multimodal'
-import { DreamSettingsPage } from './routes/settings.dream'
 import { TitleGenerationSettingsPage } from './routes/settings.title-generation'
 import { NotificationSettingsPage } from './routes/settings.notifications'
 import { TelemetryPage } from './routes/telemetry'
@@ -151,13 +150,6 @@ const settingsMultimodalRoute = createRoute({
   component: MultimodalSettingsPage,
 })
 
-// /settings/dream
-const settingsDreamRoute = createRoute({
-  getParentRoute: () => settingsLayoutRoute,
-  path: 'dream',
-  component: DreamSettingsPage,
-})
-
 const settingsTitleGenerationRoute = createRoute({
   getParentRoute: () => settingsLayoutRoute,
   path: 'title-generation',
@@ -203,7 +195,6 @@ const routeTree = rootRoute.addChildren([
     settingsSandboxRoute,
     settingsProvidersRoute,
     settingsMultimodalRoute,
-    settingsDreamRoute,
     settingsTitleGenerationRoute,
     settingsNotificationsRoute,
   ]),

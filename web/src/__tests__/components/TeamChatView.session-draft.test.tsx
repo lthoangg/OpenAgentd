@@ -18,7 +18,6 @@ mock.module('@tanstack/react-query', () => ({
 mock.module('@/queries/useTodosQuery', () => ({ useTodosQuery: () => ({ data: { todos: [] } }) }))
 mock.module('@/queries', () => ({
   useProvidersQuery: () => ({ data: { providers: [] } }),
-  useTriggerDreamMutation: () => ({ isPending: false, mutate: () => {} }),
 }))
 mock.module('@/queries/useCommandsQuery', () => ({ useCommandsQuery: () => ({ data: { commands: [] } }) }))
 mock.module('@/queries/useSnippetsQuery', () => ({ useSnippetsQuery: () => ({ data: { snippets: [] } }) }))
@@ -32,13 +31,10 @@ mock.module('@/hooks/use-tauri-drag', () => ({ useTauriDrag: () => ({}) }))
 mock.module('@/hooks/useKeyboardShortcuts', () => ({ useKeyboardShortcuts: () => {} }))
 mock.module('@/stores/useUIStore', () => ({
   useUIStore: (selector: (state: Record<string, unknown>) => unknown) => selector({
-    wikiOpen: false,
     schedulerOpen: false,
     agentCapabilitiesOpen: false,
-    toggleWiki: () => {},
     toggleScheduler: () => {},
     toggleAgentCapabilities: () => {},
-    closeWiki: () => {},
     closeScheduler: () => {},
     closeAgentCapabilities: () => {},
   }),

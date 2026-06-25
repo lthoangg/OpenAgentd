@@ -2,7 +2,6 @@ import { CommandPalette } from '../CommandPalette'
 import { SchedulerPanel } from '../SchedulerPanel'
 import { SessionSettingsPanel } from '../SessionSettingsPanel'
 import { TodosPopover } from '../TodosPopover'
-import { WikiPanel } from '../WikiPanel'
 import { WorkspaceFilesPanel } from '../WorkspaceFilesPanel'
 import type { TodoItem } from '@/api/types'
 import type { Command } from '../CommandPalette'
@@ -24,8 +23,6 @@ interface TeamChatPanelsProps {
   showTodos: boolean
   onShowTodosChange: (open: boolean) => void
   todos: TodoItem[]
-  wikiOpen: boolean
-  onCloseWiki: () => void
   schedulerOpen: boolean
   onCloseScheduler: () => void
   workspace: string | null
@@ -51,8 +48,6 @@ export function TeamChatPanels({
   showTodos,
   onShowTodosChange,
   todos,
-  wikiOpen,
-  onCloseWiki,
   schedulerOpen,
   onCloseScheduler,
   workspace,
@@ -84,7 +79,6 @@ export function TeamChatPanels({
         sessionId={sessionId}
         trigger={false}
       />
-      <WikiPanel open={wikiOpen} onClose={onCloseWiki} />
       <SchedulerPanel
         open={schedulerOpen}
         onClose={onCloseScheduler}

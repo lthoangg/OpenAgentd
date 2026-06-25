@@ -37,14 +37,6 @@ export const queryKeys = {
     session: (sessionId: string) => ['file-refs', 'session', sessionId] as const,
   },
   quote: () => ['quote'] as const,
-  wiki: {
-    all: () => ['wiki'] as const,
-    tree: () => ['wiki', 'tree'] as const,
-    file: (path: string) => ['wiki', 'file', path] as const,
-  },
-  dream: {
-    config: () => ['dream', 'config'] as const,
-  },
   agentFiles: {
     all: () => ['agentFiles'] as const,
     list: () => ['agentFiles', 'list'] as const,

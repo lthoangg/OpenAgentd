@@ -7,7 +7,6 @@
  *   │   ✨ Skills          12   │
  *   │   🔌 MCP servers     4    │
  *   │   🛡 Sandbox              │
- *   │   💭 Dream                │
  *   │   🎙 Voice                │
  *   │ ────────────────────────  │
  *   │ ABOUT                     │
@@ -25,7 +24,6 @@ import {
   Info,
   Image,
   KeyRound,
-  Moon,
   Plug,
   Shield,
   Sparkles,
@@ -50,7 +48,6 @@ type SidebarPath =
   | '/settings/providers'
   | '/settings/multimodal'
   | '/settings/sandbox'
-  | '/settings/dream'
   | '/settings/title-generation'
   | '/settings/notifications'
   | '/telemetry'
@@ -159,12 +156,6 @@ export function SettingsSidebar() {
         label: 'Multimodal',
         icon: Image,
         matchPrefix: '/settings/multimodal',
-      },
-      {
-        to: '/settings/dream',
-        label: 'Dream',
-        icon: Moon,
-        matchPrefix: '/settings/dream',
       },
       {
         to: '/settings/title-generation',

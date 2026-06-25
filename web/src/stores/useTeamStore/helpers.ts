@@ -1,8 +1,6 @@
 import type { ContentBlock } from '@/api/types'
 import type { AgentStream } from './types'
 
-export const WIKI_MUTATING_TOOLS = new Set(['write', 'edit', 'rm'])
-
 export const FS_MUTATING_TOOLS = new Set([
   'write',
   'edit',
@@ -14,23 +12,9 @@ export const FS_MUTATING_TOOLS = new Set([
   'generate_video',
 ])
 
-export const NOTE_TOOLS = new Set(['note'])
-
 export const SCHEDULER_MUTATING_TOOLS = new Set(['schedule_task'])
 
 export const TODO_MUTATING_TOOLS = new Set(['todo_manage'])
-
-export function touchesWiki(toolName: string, toolArgs: string | undefined): boolean {
-  if (!WIKI_MUTATING_TOOLS.has(toolName)) return false
-  if (!toolArgs) return false
-  try {
-    const parsed = JSON.parse(toolArgs) as { path?: unknown }
-    const p = typeof parsed.path === 'string' ? parsed.path : ''
-    return p.startsWith('wiki/') || p === 'wiki'
-  } catch {
-    return toolArgs.includes('"path":"wiki/') || toolArgs.includes('"path": "wiki/')
-  }
-}
 
 const PATH_BEARING_TOOLS = new Set(['write', 'edit', 'rm', 'patch'])
 

@@ -2,8 +2,8 @@
  * AgentTopbarPreview — composite preview matching the two pencil
  * variants in the right-cluster section `BbrKe`:
  *
- *   1. Default — agent view, no token meter, no dream
- *   2. Working — agent view, token meter pulsing + Dream running
+ *   1. Default — agent view, no token meter
+ *   2. Working — agent view, token meter pulsing
  *
  * The component is preview-only so it owns its own viewMode state and
  * the actions are no-ops.
@@ -76,7 +76,7 @@ export function AgentTopbarPreview() {
       <div className="grid gap-3">
         <PreviewFrame
           title="1 · Default"
-          description="Idle agent view — no token meter, no dream indicator."
+          description="Idle agent view — no token meter."
         >
           <AgentTopbar
             viewMode={defaultMode}
@@ -89,11 +89,10 @@ export function AgentTopbarPreview() {
 
         <PreviewFrame
           title="2 · Working"
-          description="Token meter pulses while output climbs; Dream indicator appears."
+          description="Token meter pulses while output climbs."
         >
           <AgentTopbar
             tokens={{ input: 12_400, output: 3_200, cached: 8_100, pulsing: true }}
-            dreamRunning
             viewMode={workingMode}
             onViewModeChange={setWorkingMode}
             todosAction={{ ...todos, indicator: true }}

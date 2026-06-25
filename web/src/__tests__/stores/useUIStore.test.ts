@@ -4,7 +4,6 @@ import { useUIStore } from '@/stores/useUIStore'
 
 function resetUIStore(): void {
   useUIStore.setState({
-    wikiOpen: false,
     schedulerOpen: false,
     agentCapabilitiesOpen: false,
   })
@@ -14,11 +13,7 @@ afterEach(resetUIStore)
 
 describe('useUIStore utility modals', () => {
   it('keeps only one utility modal open at a time', () => {
-    useUIStore.getState().toggleWiki()
-    expect(useUIStore.getState().wikiOpen).toBe(true)
-
     useUIStore.getState().toggleScheduler()
-    expect(useUIStore.getState().wikiOpen).toBe(false)
     expect(useUIStore.getState().schedulerOpen).toBe(true)
 
     useUIStore.getState().toggleAgentCapabilities()
@@ -31,7 +26,6 @@ describe('useUIStore utility modals', () => {
     useUIStore.getState().toggleAgentCapabilities()
 
     expect(useUIStore.getState().agentCapabilitiesOpen).toBe(false)
-    expect(useUIStore.getState().wikiOpen).toBe(false)
     expect(useUIStore.getState().schedulerOpen).toBe(false)
   })
 })

@@ -29,15 +29,6 @@ function makeMockClient() {
 }
 
 describe('applyCacheInvalidations', () => {
-  it('maps `wiki` event to wiki.all()', () => {
-    const client = makeMockClient()
-    applyCacheInvalidations(client, [{ kind: 'wiki' }])
-    expect(client.invalidateQueries).toHaveBeenCalledTimes(1)
-    expect(client.invalidateQueries).toHaveBeenCalledWith({
-      queryKey: queryKeys.wiki.all(),
-    })
-  })
-
   it('maps `workspace_files` event to team.files(sessionId)', () => {
     const client = makeMockClient()
     applyCacheInvalidations(client, [{ kind: 'workspace_files', sessionId: 'sid-123' }])
@@ -126,21 +117,17 @@ describe('applyCacheInvalidations', () => {
   it('processes a batch of events in order, one invalidateQueries call per event', () => {
     const client = makeMockClient()
     const events: CacheInvalidation[] = [
-      { kind: 'wiki' },
       { kind: 'scheduler' },
       { kind: 'workspace_files', sessionId: 'sid-1' },
       { kind: 'todos', sessionId: 'sid-1' },
       { kind: 'team_agents' },
     ]
     applyCacheInvalidations(client, events)
-    expect(client.invalidateQueries).toHaveBeenCalledTimes(5)
+    expect(client.invalidateQueries).toHaveBeenCalledTimes(4)
     expect(client.invalidateQueries.mock.calls[0][0]).toEqual({
-      queryKey: queryKeys.wiki.all(),
-    })
-    expect(client.invalidateQueries.mock.calls[1][0]).toEqual({
       queryKey: queryKeys.scheduler.list(),
     })
-    expect(client.invalidateQueries.mock.calls[2][0]).toEqual({
+    expect(client.invalidateQueries.mock.calls[1][0]).toEqual({
       queryKey: queryKeys.team.files('sid-1'),
     })
     expect(client.invalidateQueries.mock.calls[3][0]).toEqual({

@@ -170,7 +170,7 @@ export function Sidebar({
   }, [canPullRefresh, pullDistance, refetchSessions])
 
   // Ctrl+B: collapse sidebar; Ctrl+R: refresh sessions.
-  // Ctrl+M (wiki) / Ctrl+S (scheduler) live in TeamChatView — those panels
+  // Ctrl+S (scheduler) lives in TeamChatView — that panel
   // moved out of the sidebar per the topbar-redesign wireframe and their
   // open-state is owned by useUIStore.
   useEffect(() => {

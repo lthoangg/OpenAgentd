@@ -41,10 +41,8 @@ interface TeamChatHeaderProps {
   agentNames: string[]
   agentStreams: Record<string, AgentStream>
   onSelectAgent: (agent: string) => void
-  onToggleWiki: () => void
   onToggleScheduler: () => void
   onCloseMobileActionsMenu: () => void
-  dreamRunning: boolean
   viewMode: ViewMode
   onViewModeChange: (mode: ViewMode) => void
 }
@@ -78,10 +76,8 @@ export function TeamChatHeader({
   agentNames,
   agentStreams,
   onSelectAgent,
-  onToggleWiki,
   onToggleScheduler,
   onCloseMobileActionsMenu,
-  dreamRunning,
   viewMode,
   onViewModeChange,
 }: TeamChatHeaderProps) {
@@ -221,7 +217,6 @@ export function TeamChatHeader({
               agents={agentNames}
               streams={agentStreams}
               onSelectAgent={onSelectAgent}
-              onWiki={() => { onToggleWiki(); onCloseMobileActionsMenu() }}
               onScheduler={() => { onToggleScheduler(); onCloseMobileActionsMenu() }}
             />
           </>
@@ -229,7 +224,6 @@ export function TeamChatHeader({
           <AgentTopbar
             isMobile={false}
             tokens={headerTokens}
-            dreamRunning={dreamRunning}
             viewMode={viewMode}
             onViewModeChange={onViewModeChange}
             todosSlot={

@@ -6,15 +6,6 @@ export {
   useDeleteTeamSessionMutation,
   useUpdateTeamSessionTitleMutation,
 } from './useSessionsQuery'
-export {
-  useWikiTreeQuery,
-  useWikiFileQuery,
-  useWriteWikiFileMutation,
-  useDeleteWikiFileMutation,
-  useDreamConfigQuery,
-  useUpdateDreamConfigMutation,
-  useTriggerDreamMutation,
-} from './useWikiQuery'
 export { useQuoteQuery } from './useQuoteQuery'
 export { useWorkspaceFilesQuery } from './useWorkspaceFilesQuery'
 export {

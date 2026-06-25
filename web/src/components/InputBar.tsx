@@ -142,6 +142,8 @@ interface InputBarProps {
    * collapsed and the new file invisible.
    */
   onHasContentChange?: (hasContent: boolean) => void
+  /** Called whenever the current unsent text changes. */
+  onValueChange?: (value: string) => void
   /** Newest-first prompt history supplied by the parent, e.g. loaded chat history. */
   historyPrompts?: string[]
 }
@@ -179,6 +181,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   onFocus,
   onBlur,
   onHasContentChange,
+  onValueChange,
   historyPrompts = [],
 }, ref) {
   const [value, setValue] = useState('')
@@ -857,6 +860,10 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   }, [resize])
 
   const hasText = value.trim().length > 0
+  useEffect(() => {
+    onValueChange?.(value)
+  }, [onValueChange, value])
+
   const canSend = hasText && !disabled
   const canStop = isStreaming && !disabled && onStop != null
   const charCount = value.length

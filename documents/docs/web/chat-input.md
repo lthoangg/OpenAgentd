@@ -36,6 +36,8 @@ Attachments are not queued while the lead is working. The UI asks the user to wa
 
 Queued messages are never concatenated. Multiple queued messages become separate user rows and separate lead activations unless the user clicks `/stop`, which pauses the queue by converting pending rows into normal history without running them. Queues are session-scoped, so switching from session A to session B does not display A's queued messages under B.
 
+Unsent composer text is also session-scoped in the frontend: if you type a draft in session A, switch to session B, then return to session A, the original unsent text is restored for that session.
+
 Session Settings may override the lead model and thinking level for the current chat. Sends include those settings, and queued rows keep the effective model metadata so history labels stay tied to the original turn.
 
 ---

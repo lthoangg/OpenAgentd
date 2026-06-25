@@ -64,6 +64,10 @@ interface TeamChatViewProps {
   codingSessionLoading?: boolean
 }
 
+interface SessionDraft {
+  value: string
+}
+
 const BASE_SLASH_COMMANDS: SlashCommand[] = [
   { id: 'stop', label: 'Stop', description: 'Stop all working agents' },
   { id: 'continue', label: 'Continue', description: 'Continue the last assistant response' },
@@ -114,6 +118,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const [showPalette, setShowPalette] = useState(false)
   const [fileRefsEnabled, setFileRefsEnabled] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>('agent')
+  const draftBySessionRef = useRef<Record<string, SessionDraft>>({})
 
   // On mobile, always force agent view — split/unified require a wide screen.
   // Also close any desktop-only panels when shrinking to mobile.
@@ -241,10 +246,8 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
 
     useTeamStore.setState({ sessionId })
 
-    // Clear the composer when switching sessions. The InputBar holds its
-    // draft text and pending files in local state, so without an explicit
-    // reset session A's typed-but-unsent message bleeds into session B.
-    inputRef.current?.setValue('')
+    const draft = draftBySessionRef.current[sessionId]
+    inputRef.current?.setValue(draft?.value ?? '')
     inputRef.current?.setFiles([])
 
     // Order matters: load prior-turn history FIRST, then open the SSE.
@@ -426,6 +429,16 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   // or indirectly via `window.dispatchEvent(new CustomEvent('focus-chat-input'))`
   // — the latter decouples future callers (buttons elsewhere, other views)
   // from this component's ref.
+  const handleDraftValueChange = useCallback((value: string) => {
+    const currentSessionId = useTeamStore.getState().sessionId
+    if (!currentSessionId) return
+    if (value) {
+      draftBySessionRef.current[currentSessionId] = { value }
+      return
+    }
+    delete draftBySessionRef.current[currentSessionId]
+  }, [])
+
   const focusInput = useCallback(() => {
     inputRef.current?.focus()
   }, [])
@@ -1009,6 +1022,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             slashCommands={slashCommands}
             snippetCommands={snippetCommands}
             historyPrompts={historyPrompts}
+            onValueChange={handleDraftValueChange}
             fileRefs={fileRefs}
             onFileRefsNeeded={() => setFileRefsEnabled(true)}
             isStreaming={isTeamWorking}

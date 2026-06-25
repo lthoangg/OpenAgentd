@@ -106,6 +106,12 @@ async def test_copilot_models_filter_by_plan_and_policy_state(
                 "policy_state": "active",
                 "restricted_to": ["business"],
             },
+            "gpt-5-mini": {
+                "limits": {"input": 1, "output": 1},
+                "supports": {"tool_calls": True},
+                "policy_state": "active",
+                "restricted_to": ["individual"],
+            },
         },
     )
     monkeypatch.setattr(

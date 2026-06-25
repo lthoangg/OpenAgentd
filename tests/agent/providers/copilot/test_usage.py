@@ -141,6 +141,13 @@ def test_model_allowed_for_plan_uses_restricted_to_aliases() -> None:
     assert usage.model_allowed_for_plan(["pro"], None) is None
 
 
+def test_model_allowed_for_plan_does_not_promote_individual_to_pro() -> None:
+    assert usage.model_allowed_for_plan(["pro"], "individual") is False
+    assert usage.model_allowed_for_plan(["individual"], "individual") is True
+    assert usage.model_allowed_for_plan(["max"], "individual") is False
+    assert usage.model_allowed_for_plan(["business"], "team") is True
+
+
 def test_model_plan_type_reads_live_usage_payload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

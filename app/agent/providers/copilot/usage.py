@@ -22,16 +22,11 @@ _PREMIUM_INTERACTIONS_QUOTA = "premium_interactions"
 _RESTRICTED_TO_PLAN_ALIASES: dict[str, set[str]] = {
     "free": {"free", "student", "education", "edu"},
     "student": {"student", "education", "edu", "free"},
-    "individual": {"individual", "pro", "pro_plus", "individual_trial", "max"},
-    "individual_trial": {"individual_trial", "individual", "pro", "pro_plus", "max"},
-    "pro": {"pro", "pro_plus", "individual", "individual_trial", "max"},
-    "pro_plus": {"pro_plus", "pro", "individual", "individual_trial", "max"},
     "education": {"education", "edu", "student", "free"},
     "edu": {"edu", "education", "student", "free"},
-    "business": {"business", "enterprise"},
-    "enterprise": {"enterprise", "business"},
-    "team": {"business", "enterprise", "team"},
-    "max": {"max", "pro", "pro_plus", "individual", "individual_trial"},
+    "business": {"business", "enterprise", "team"},
+    "enterprise": {"enterprise", "business", "team"},
+    "team": {"team", "business", "enterprise"},
 }
 
 

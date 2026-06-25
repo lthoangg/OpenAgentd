@@ -937,6 +937,40 @@ describe('CodingSidebar workspace trust flow', () => {
     expect(screen.getByText('Background running session')).toBeTruthy()
   })
 
+  it('makes the selected coding session title visually stronger', async () => {
+    sessionsData = [
+      {
+        id: 'session-1',
+        title: 'Selected idle session',
+        agent_name: 'lead',
+        created_at: '2026-05-13T00:00:00Z',
+        updated_at: '2026-05-13T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+      },
+      {
+        id: 'session-2',
+        title: 'Background session',
+        agent_name: 'lead',
+        created_at: '2026-05-12T00:00:00Z',
+        updated_at: '2026-05-12T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+      },
+    ]
+    workspaceSessionsData = sessionsData
+
+    await renderCodingSidebarForSessions('session-1')
+
+    const selectedTitle = screen.getByText('Selected idle session')
+    const backgroundTitle = screen.getByText('Background session')
+
+    expect(selectedTitle.className).toContain('font-semibold')
+    expect(selectedTitle.className).toContain('text-(--color-text)')
+    expect(backgroundTitle.className).toContain('font-medium')
+    expect(backgroundTitle.className).not.toContain('font-semibold')
+  })
+
   it('keeps running sessions visible when a workspace is collapsed', async () => {
     sessionsData = [
       {

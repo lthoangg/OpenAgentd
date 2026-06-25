@@ -99,7 +99,7 @@ export function WorkspaceSessionList({
               }`}
             >
               <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${isRunning ? 'bg-(--color-accent)' : 'border border-(--color-text-subtle)'}`} aria-label={isRunning ? 'Session running' : undefined} aria-hidden={isRunning ? undefined : true} />
-              <span className={`min-w-0 flex-1 truncate font-medium ${isRunning ? 'session-title-breathe text-(--color-text)' : ''}`}>{sessionTitle}</span>
+              <span className={`min-w-0 flex-1 truncate ${isCurrent ? 'font-semibold text-(--color-text)' : 'font-medium'} ${isRunning ? 'session-title-breathe text-(--color-text)' : ''}`}>{sessionTitle}</span>
 
             </LongPressButton>
             <button

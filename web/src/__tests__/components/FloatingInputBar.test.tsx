@@ -39,6 +39,7 @@ function Harness(props: {
           Focus input
         </button>
       )}
+      <button type="button">Outside</button>
       <FloatingInputBar
         ref={inputRef}
         boundsRef={boundsRef}
@@ -194,6 +195,25 @@ describe('FloatingInputBar', () => {
     expect(textarea.getAttribute('disabled')).toBeNull()
 
     await user.keyboard('{Escape}')
+
+    expect(textarea.getAttribute('disabled')).not.toBeNull()
+    expect(screen.getByRole('button', { name: 'Expand input bar' })).toBeTruthy()
+  })
+
+  it('auto-minimizes when the empty input loses focus', async () => {
+    const user = userEvent.setup()
+    render(<Harness exposeFocus />)
+
+    await user.click(screen.getByRole('button', { name: 'Expand input bar' }))
+    const textarea = screen.getByRole('textbox', { name: 'Message input' })
+    await user.click(textarea)
+    expect(textarea.getAttribute('disabled')).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: 'Outside' }))
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 220))
+    })
 
     expect(textarea.getAttribute('disabled')).not.toBeNull()
     expect(screen.getByRole('button', { name: 'Expand input bar' })).toBeTruthy()

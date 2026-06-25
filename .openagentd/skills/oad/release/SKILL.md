@@ -312,10 +312,11 @@ cat /tmp/install-block.md
   - `OpenAgentd_<ver>_aarch64.dmg` → macOS bullet
   - `OpenAgentd_<ver>_amd64.AppImage` → Linux AppImage mention
   - `OpenAgentd_<ver>_amd64.deb` → Linux `.deb` mention
-- Replace the auto-generated notes, then verify:
+- Write the drafted release notes to an OS temp path (for example `/tmp/release-notes-v<version>.md`), not to a file under the repository workspace. This keeps ad-hoc release artefacts out of the repo tree.
+- Replace the auto-generated notes from that `/tmp` file, then verify:
 
 ```bash
-gh release edit v<version> --repo lthoangg/openagentd --notes-file <path-to-notes.md>
+gh release edit v<version> --repo lthoangg/openagentd --notes-file /tmp/release-notes-v<version>.md
 gh release view v<version> --repo lthoangg/openagentd | sed -n '/## What.s changed/,/Full changelog/p'
 ```
 

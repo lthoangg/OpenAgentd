@@ -11,6 +11,7 @@ import { MacTitleBar } from '@/components/MacTitleBar'
 import { useHistorySwipeNavigation } from '@/hooks/use-history-swipe-navigation'
 import { useMobileViewportGuards } from '@/hooks/use-mobile-viewport'
 import { useDesktopCommands } from '@/lib/desktop-commands'
+import { closestRestorableRoute } from '@/lib/route-restore'
 
 export function Root() {
   useMobileViewportGuards()
@@ -35,7 +36,7 @@ export function Root() {
     if (window.location.pathname === '/' && window.location.search === '') {
       const savedRoute = localStorage.getItem(LAST_ROUTE_KEY)
       if (savedRoute && savedRoute !== '/') {
-        navigate({ to: savedRoute, replace: true })
+        navigate({ to: closestRestorableRoute(savedRoute), replace: true })
       }
     }
   }, [navigate])
@@ -61,11 +62,8 @@ export function Root() {
 
 function RouteLoadingFallback() {
   return (
-    <div className="mobile-safe-shell mobile-viewport flex h-dvh items-center justify-center bg-(--bg-page) text-(--color-text-muted)" role="status" aria-live="polite">
-      <div className="flex items-center gap-3 rounded-full border border-(--color-border) bg-(--bg-card) px-4 py-3 text-sm shadow-sm">
-        <span className="h-2 w-2 animate-pulse rounded-full bg-(--color-accent) motion-reduce:animate-none" />
-        Loading OpenAgentd...
-      </div>
+    <div className="mobile-safe-shell mobile-viewport flex h-dvh items-center justify-center bg-(--bg-page)" role="status" aria-label="Loading OpenAgentd" aria-live="polite">
+      <img src="/openagentd-app-icon.png" width={88} height={88} alt="" aria-hidden="true" className="rounded-2xl" />
     </div>
   )
 }

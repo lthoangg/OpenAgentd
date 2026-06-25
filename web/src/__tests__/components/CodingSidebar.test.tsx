@@ -14,6 +14,11 @@ import {
   toggleExpandedPath,
   visibleNestedWorktrees,
 } from '@/components/CodingSidebar.helpers'
+import {
+  loadWorkspaceBrowser,
+  shouldUseServerWorkspaceBrowser,
+  validateTrustedWorkspace,
+} from '@/components/CodingSidebar.browser'
 
 const navigate = mock(() => {})
 const originalFetch = globalThis.fetch
@@ -202,6 +207,37 @@ mock.module('@/queries/useSessionsQuery', () => ({
 }))
 
 describe('CodingSidebar helpers', () => {
+  it('exports workspace browser helpers used by the component', async () => {
+    globalThis.fetch = mock(async (input: unknown) => {
+      const url = String(input)
+      if (url.includes('/api/team/workspace/browse')) {
+        return new Response(JSON.stringify(browseResponse))
+      }
+      if (url.includes('/api/team/workspace/validate')) {
+        return new Response(JSON.stringify({ workspace: '/repo/project' }))
+      }
+      return new Response(null, { status: 404 })
+    }) as typeof fetch
+
+    expect(await loadWorkspaceBrowser()).toEqual(browseResponse)
+    expect(await validateTrustedWorkspace('/repo/project')).toBe('/repo/project')
+
+    isTauri = false
+    expect(await shouldUseServerWorkspaceBrowser(isTauri, false)).toBe(true)
+
+    isTauri = true
+    appBackendStatus = {
+      base_url: 'https://remote.example.com',
+      sidecar_running: false,
+      external: true,
+      supports_bundled: false,
+      servers: [],
+    }
+    expect(await shouldUseServerWorkspaceBrowser(isTauri, false)).toBe(true)
+
+    globalThis.fetch = originalFetch
+  })
+
   it('toggles expanded paths and can batch-add active paths', () => {
     expect([...toggleExpandedPath(new Set<string>(), '/repo')]).toEqual(['/repo'])
     expect([...toggleExpandedPath(new Set<string>(['/repo']), '/repo')]).toEqual([])

@@ -43,9 +43,7 @@ import {
 } from 'lucide-react'
 import { queryKeys } from '@/queries'
 import { useDeleteTeamSessionMutation, useTeamSessionsQuery, useUpdateTeamSessionTitleMutation } from '@/queries/useSessionsQuery'
-import { apiBaseUrl } from '@/api/base-url'
-import { browseWorkspaces, getCodingWorkspaceTree, listWorktrees, removeWorktree, renameWorktree, resolveTeamSession, setCodingWorkspaceVisibility, validateWorkspace } from '@/api/client'
-import { getAppBackendStatus } from '@/lib/app-backend'
+import { getCodingWorkspaceTree, listWorktrees, removeWorktree, renameWorktree, resolveTeamSession, setCodingWorkspaceVisibility } from '@/api/client'
 import { useTeamStore } from '@/stores/useTeamStore'
 import { prependSession, prependWorkspaceSession } from '@/stores/cache-invalidation-bridge'
 import {
@@ -75,7 +73,12 @@ import {
   toggleExpandedPath,
   visibleNestedWorktrees,
 } from './CodingSidebar.helpers'
-import { isLocalBackendUrl, worktreeNameSlug } from './CodingSidebar/utils'
+import {
+  loadWorkspaceBrowser,
+  shouldUseServerWorkspaceBrowser,
+  validateTrustedWorkspace,
+} from './CodingSidebar.browser'
+import { worktreeNameSlug } from './CodingSidebar/utils'
 
 interface CodingSidebarProps {
   currentSessionId?: string
@@ -184,7 +187,7 @@ export function CodingSidebar({
     setLoading(true)
     setError(null)
     try {
-      const result = await browseWorkspaces(path)
+      const result = await loadWorkspaceBrowser(path)
       setBrowserPath(result.path)
       setParentPath(result.parent)
       setDirs(result.directories)
@@ -207,16 +210,7 @@ export function CodingSidebar({
     setSelectedWorkspace(null)
     setTrustWorkspace(null)
 
-    if (!isTauri || isTauriMobile) {
-      openWebWorkspaceDialog()
-      return
-    }
-
-    const backendBaseUrl = apiBaseUrl().replace(/\/api\/?$/, '')
-    const backend = await getAppBackendStatus()
-    const activeBackendBaseUrl = backend?.base_url ?? backendBaseUrl
-    const isAbsoluteBackendUrl = /^https?:\/\//i.test(activeBackendBaseUrl)
-    if ((backend?.external || (!backend && isAbsoluteBackendUrl)) && !isLocalBackendUrl(activeBackendBaseUrl)) {
+    if (await shouldUseServerWorkspaceBrowser(isTauri, isTauriMobile)) {
       setNativeFolderPickerEnabled(false)
       openWebWorkspaceDialog()
       return
@@ -234,8 +228,7 @@ export function CodingSidebar({
       })
       if (typeof selected !== 'string') return
       setSelectedWorkspace(selected)
-      const result = await validateWorkspace(selected)
-      setTrustWorkspace(result.workspace)
+      setTrustWorkspace(await validateTrustedWorkspace(selected))
       setDialogOpen(true)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to open workspace')
@@ -479,8 +472,7 @@ export function CodingSidebar({
   const openSelectedFolder = async () => {
     if (!browserPath) return
     try {
-      const result = await validateWorkspace(browserPath)
-      setTrustWorkspace(result.workspace)
+      setTrustWorkspace(await validateTrustedWorkspace(browserPath))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Workspace is invalid')
     }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { checkForUpdates as invokeCheckForUpdates, downloadUpdate as invokeDownloadUpdate, fetchReleaseNotes, installUpdate as invokeInstallUpdate, type ReleaseNotes, type UpdateStatus } from '@/lib/updater'
 import { openExternalUrl } from '@/lib/open-external'
-import { MarkdownBlock } from '@/utils/markdown'
+import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
 
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000
 const DISMISSED_UNTIL_KEY = 'openagentd.updater.dismissedUntil'
@@ -156,7 +156,7 @@ function ReleaseNotesButton({ fallbackNotes, version }: { fallbackNotes?: string
               </div>
             </div>
             <div className="max-h-[24rem] overflow-y-auto px-4 py-3 text-(--color-text)">
-              <MarkdownBlock content={`${notes?.body ?? fallbackNotes ?? 'Loading release notes...'}${error ? `\n\nCould not load GitHub release notes: ${error}` : ''}`} />
+              <LazyMarkdownBlock content={`${notes?.body ?? fallbackNotes ?? 'Loading release notes...'}${error ? `\n\nCould not load GitHub release notes: ${error}` : ''}`} />
             </div>
           </div>
         </div>

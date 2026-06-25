@@ -85,9 +85,23 @@ export default defineConfig({
           ) {
             return "devtools"
           }
+          // Tauri APIs — keep in one chunk so the static import from
+          // use-tauri-drag does not land in the main index bundle.
+          if (
+            id.includes("node_modules/@tauri-apps/") ||
+            id.includes("node_modules/@tauri-apps/api") ||
+            id.includes("node_modules/@tauri-apps/plugin-")
+          ) {
+            return "tauri"
+          }
         },
       },
     },
-    chunkSizeWarningLimit: 800, // Increase limit since markdown is intentionally chunked separately
+    // index chunk contains the full app shell (TeamChatView, CodingSidebar,
+    // Sidebar, InputBar, stores) which must be eagerly available on first
+    // paint. Markdown/Tauri/icons/motion are split into separate chunks.
+    // Route-level lazy loading is intentionally avoided to prevent Suspense
+    // waterfalls on tauri:// navigation. 1100 kB reflects the real baseline.
+    chunkSizeWarningLimit: 1100,
   },
 })

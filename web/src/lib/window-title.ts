@@ -1,5 +1,12 @@
-import { getCurrentWindow } from '@tauri-apps/api/window'
 import { workspaceLabel } from '@/utils/workspace'
+
+// Lazy getter — avoids a static import of @tauri-apps/api/window which would
+// pull the entire Tauri API tree into the main bundle and make every
+// dynamic import('@tauri-apps/api/core') ineffective.
+async function getTauriWindow() {
+  const { getCurrentWindow } = await import('@tauri-apps/api/window')
+  return getCurrentWindow()
+}
 
 declare global {
   interface Window {
@@ -35,7 +42,8 @@ export async function syncDesktopWindowTitle(options: {
   if (typeof document !== 'undefined') document.title = title
   if (!isTauriRuntime()) return
   try {
-    await getCurrentWindow().setTitle(title)
+    const win = await getTauriWindow()
+    await win.setTitle(title)
   } catch {
     // Ignore — title sync is cosmetic and must not break chat.
   }

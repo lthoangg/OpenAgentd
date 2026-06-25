@@ -1,6 +1,6 @@
 # Makefile for openagentd
 
-.PHONY: all run dev kill-dev-ports test coverage migrate revision build-web build dist clean help
+.PHONY: all run dev kill-dev-ports test coverage health health-json migrate revision build-web build dist clean help
 
 # Default target
 all: test
@@ -40,6 +40,12 @@ test: ## Run tests
 
 coverage: ## Run tests with coverage report
 	uv run pytest --cov=app --cov-report=term-missing tests/
+
+health: ## Rank god files + detect circular imports (text report)
+	uv run python -m scripts.codehealth
+
+health-json: ## Same as 'health' but emit JSON (for baselines / CI)
+	uv run python -m scripts.codehealth --json
 
 migrate: ## Run Alembic migrations (dev only — production auto-migrates on startup)
 	uv run alembic -c app/alembic.ini upgrade head

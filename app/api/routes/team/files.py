@@ -209,10 +209,13 @@ async def list_workspace_files(session_id: str) -> WorkspaceFilesResponse:
     # No boundary filtering needed — snapshot_service has restored the
     # workspace to the reverted-boundary state, so the on-disk file set
     # already reflects what should be visible.
-    return _list_workspace_files(
-        await _session_workspace(session_id),
-        session_id,
-    )
+    #
+    # ``_list_workspace_files`` is a synchronous, potentially slow walk
+    # (os.walk + per-file stat/resolve over the whole tree). Offload it to
+    # a worker thread so a large workspace can't block the event loop and
+    # stall every other concurrent request.
+    root = await _session_workspace(session_id)
+    return await asyncio.to_thread(_list_workspace_files, root, session_id)
 
 
 def _list_workspace_files(root: Path, session_id: str) -> WorkspaceFilesResponse:
@@ -322,7 +325,11 @@ async def list_coding_workspace_files(workspace: str) -> CodingWorkspaceFilesRes
         resolved = team_manager.validate_workspace(workspace)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    listing = _list_workspace_files(Path(resolved), "workspace")
+    # Coding workspaces can be large repos — offload the synchronous walk
+    # to a thread so it doesn't block the event loop (see list_workspace_files).
+    listing = await asyncio.to_thread(
+        _list_workspace_files, Path(resolved), "workspace"
+    )
     return CodingWorkspaceFilesResponse(
         workspace=resolved,
         files=listing.files,

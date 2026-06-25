@@ -720,6 +720,37 @@ def test_sanitize_tool_pairs_strips_incomplete_assistant_tool_calls(
     assert "call_1" in caplog_loguru.text
 
 
+def test_sanitize_tool_pairs_drops_empty_assistant_after_incomplete_tool_strip(
+    session_id, caplog_loguru
+):
+    """Empty assistant tool stubs are removed to avoid invalid lead history."""
+    db_messages = [
+        make_session_message(
+            role="assistant",
+            content="",
+            tool_calls=[
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {"name": "team_message", "arguments": "{}"},
+                }
+            ],
+            session_id=session_id,
+        ),
+        make_session_message(
+            role="user", content="[executor#1]: result", session_id=session_id
+        ),
+    ]
+
+    result = _deserialize_messages(db_messages, sanitize_tool_pairs=True)
+
+    assert len(result) == 1
+    assert isinstance(result[0], HumanMessage)
+    assert result[0].content == "[executor#1]: result"
+    assert "deserialize_strip_incomplete_assistant_tool_calls" in caplog_loguru.text
+    assert "deserialize_drop_empty_assistant_after_tool_strip" in caplog_loguru.text
+
+
 def test_sanitize_tool_pairs_drops_tool_output_for_bad_partial_call(
     session_id, caplog_loguru
 ):

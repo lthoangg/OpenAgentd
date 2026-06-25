@@ -682,6 +682,21 @@ def test_merge_consecutive_user_messages_preserves_multimodal_neighbours():
     assert len(out) == 2
 
 
+def test_merge_consecutive_user_messages_joins_member_handoff_after_empty_tool_stub():
+    from app.agent.agent_loop.streaming import _merge_consecutive_user_messages
+    from app.agent.schemas.chat import HumanMessage
+
+    out = _merge_consecutive_user_messages(
+        [
+            HumanMessage(content="[user]: debug this"),
+            HumanMessage(content="[executor#1]: root cause found"),
+        ]
+    )
+    assert len(out) == 1
+    assert isinstance(out[0], HumanMessage)
+    assert out[0].content == "[user]: debug this\n\n[executor#1]: root cause found"
+
+
 async def test_stream_and_assemble_merges_consecutive_user_messages():
     """provider.stream() must receive a single merged user message."""
     captured_kwargs: dict = {}

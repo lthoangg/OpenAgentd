@@ -140,7 +140,15 @@ def sanitize_tool_message_pairs(
                     msg.db_id,
                     ", ".join(sorted(missing or tool_call_ids)),
                 )
-                result.append(msg.model_copy(update={"tool_calls": None}))
+                stripped = msg.model_copy(update={"tool_calls": None})
+                if stripped.content:
+                    result.append(stripped)
+                else:
+                    logger.warning(
+                        "deserialize_drop_empty_assistant_after_tool_strip session_id={} message_id={}",
+                        row.session_id if row else None,
+                        msg.db_id,
+                    )
             continue
 
         if isinstance(msg, ToolMessage):

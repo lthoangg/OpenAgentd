@@ -378,8 +378,8 @@ agnostic by design. Deeper doc: [`configuration/providers.md`](./configuration/p
 - **Provider-scoped visible models** `[v1.57.0, v1.63.0]` — Settings → Providers lets
   users choose which provider models appear in normal model pickers. Session
   settings and other pickers read a cached provider model list for instant
-  open, while opening Settings → Providers refreshes configured providers'
-  model lists in the background and **List models** remains the per-provider
+  open; when the cache is empty, `/api/agents/registry` warms configured
+  providers' caches on demand, and **List models** remains the per-provider
   manual refresh / verification action.
 - **Curated multimodal model registry** `[v1.34.0]` — model modality gates,
   token limits, cost, support flags, and thinking-level metadata are maintained

@@ -61,8 +61,9 @@ This is a UI visibility filter, not runtime enforcement. Use the per-model visib
 Provider model lists are now **cache-first**:
 
 - **Session settings / normal model pickers** read only the cached provider-local `cached_models` list from `settings.yaml`, so opening a picker never waits on provider network calls.
-- Opening **Settings → Providers** starts a background refresh for every configured provider and writes the refreshed results back into `cached_models`.
-- Clicking **List models** still performs an immediate live refresh for that provider; using candidate unsaved credentials verifies the candidate key but does **not** persist that model list until the provider is saved / refreshed with saved credentials.
+- There is no provider-side fallback model catalog anymore. If a provider has no cached discovered models yet, its picker entries can be empty until the user lists models successfully.
+- Clicking **List models** performs an immediate live refresh for that provider; using candidate unsaved credentials verifies the candidate key but does **not** persist that model list until the provider is saved / refreshed with saved credentials.
+- When `/api/agents/registry` is asked for picker models and a configured provider has no cached discovered models yet, the backend warms that provider cache on demand before returning the registry.
 - Saving or reconnecting a provider invalidates the cached picker registry so subsequent picker opens see the refreshed cached list.
 
 ## Provider plugins

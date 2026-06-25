@@ -674,6 +674,54 @@ class TestTeamHistoryWithData:
         assert member["name"] == "worker"
 
     @pytest.mark.asyncio
+    async def test_history_groups_multiple_members_correctly(self, app_with_team):
+        """Batched member-page query must group messages per sub-session.
+
+        Guards the N+1 -> single ``WHERE session_id IN (...)`` refactor:
+        each member must get exactly its own messages (no cross-leak), and
+        hidden rows (``extra.hidden_from_user``) must be filtered out.
+        """
+        import app.core.db as _db
+
+        lead_id = uuid.uuid7()
+        member_a = uuid.uuid7()
+        member_b = uuid.uuid7()
+
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                await _create_team_session(db, lead_id)
+                await _create_member_session(db, member_a, lead_id, agent_name="alpha")
+                await _create_member_session(db, member_b, lead_id, agent_name="beta")
+                await _add_message(db, lead_id, role="user", content="lead msg")
+                await _add_message(db, member_a, role="user", content="a-one")
+                await _add_message(db, member_a, role="assistant", content="a-two")
+                await _add_message(db, member_b, role="user", content="b-one")
+                # Hidden row on member B must not surface in history.
+                await _add_message(
+                    db,
+                    member_b,
+                    role="assistant",
+                    content="b-hidden",
+                    extra={"hidden_from_user": True},
+                )
+
+        client = TestClient(app_with_team)
+        resp = client.get(f"/api/team/{lead_id}/history")
+        assert resp.status_code == 200
+        data = resp.json()
+
+        members = {m["name"]: m for m in data["members"]}
+        assert set(members) == {"alpha", "beta"}
+
+        alpha_contents = [m["content"] for m in members["alpha"]["messages"]]
+        beta_contents = [m["content"] for m in members["beta"]["messages"]]
+
+        # No cross-session leakage.
+        assert alpha_contents == ["a-one", "a-two"]
+        # Hidden row filtered; only the visible one remains.
+        assert beta_contents == ["b-one"]
+
+    @pytest.mark.asyncio
     async def test_history_includes_summary_messages(self, app_with_team):
         """Summary rows (``is_summary=True``) must be returned by the history
         endpoint so the frontend can render the inline "Session compacted"

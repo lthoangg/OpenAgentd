@@ -1,5 +1,6 @@
 import asyncio
 import shutil
+from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 from typing import NamedTuple
 from uuid import UUID
@@ -614,6 +615,73 @@ class TeamHistoryData(NamedTuple):
     next_cursor: datetime | None
 
 
+async def _fetch_member_pages(
+    db: AsyncSession,
+    sub_sessions: Sequence[ChatSession],
+    *,
+    before: datetime | None,
+) -> list[TeamHistoryMemberData]:
+    """Fetch the newest message page for every sub-session in one query.
+
+    Replaces the previous N+1 loop (one ``SELECT`` per sub-session) with a
+    single batched ``WHERE session_id IN (...)`` query ordered newest-first,
+    grouped back per session in Python. The per-session
+    ``_HISTORY_PAGE_SIZE + 1`` cap is enforced while grouping so a session
+    with a very long history doesn't pull unbounded rows into memory.
+
+    Semantics match the old loop exactly:
+    - ``before`` filter (from the lead's cursor) is applied uniformly;
+    - ``_is_hidden_from_user`` is filtered in Python *after* fetching
+      (it reads the JSON ``extra`` blob), so a page may end up with fewer
+      than ``_HISTORY_PAGE_SIZE`` visible rows — identical to before;
+    - sub-sessions with no messages still appear, with an empty list;
+    - per-session order is chronological (ascending), sessions keep the
+      caller-provided order.
+
+    The per-session newest-``_HISTORY_PAGE_SIZE`` trim happens in Python
+    after the single fetch, mirroring the old loop (which also fetched then
+    trimmed). Keeping it in SQLModel ``select``/``col`` idioms avoids raw
+    SQLAlchemy window/alias constructs that the rest of the codebase doesn't
+    use.
+    """
+    if not sub_sessions:
+        return []
+
+    session_ids = [s.id for s in sub_sessions]
+
+    stmt = (
+        select(SessionMessage)
+        .where(col(SessionMessage.session_id).in_(session_ids))
+        .order_by(col(SessionMessage.created_at).desc(), col(SessionMessage.id).desc())
+    )
+    if before is not None:
+        stmt = stmt.where(col(SessionMessage.created_at) < before)
+    rows = (await db.exec(stmt)).all()
+
+    # Group newest-first per session (rows already arrive in DESC order, so
+    # appending preserves the per-session ordering the old loop produced).
+    by_session: dict[UUID, list[SessionMessage]] = {sid: [] for sid in session_ids}
+    for msg in rows:
+        bucket = by_session.get(msg.session_id)
+        if bucket is None:
+            continue
+        # Stop accumulating once a session already has enough candidates to
+        # cover the page after hidden-row filtering — caps memory for
+        # sessions with very long histories.
+        if len(bucket) >= _HISTORY_PAGE_SIZE + 1:
+            continue
+        bucket.append(msg)
+
+    members: list[TeamHistoryMemberData] = []
+    for sub in sub_sessions:
+        raw_member = [
+            msg for msg in by_session.get(sub.id, []) if not _is_hidden_from_user(msg)
+        ]
+        member_msgs = list(reversed(raw_member[:_HISTORY_PAGE_SIZE]))
+        members.append(TeamHistoryMemberData(session=sub, messages=member_msgs))
+    return members
+
+
 async def get_team_history(
     db: AsyncSession,
     lead_session_id: UUID,
@@ -666,18 +734,7 @@ async def get_team_history(
         )
     ).all()
 
-    # TODO: N+1 — issues one message query per sub-session.  Replace with a
-    # single ``WHERE session_id IN (...)`` query and group in Python once
-    # cursor semantics per sub-session are no longer needed.
-    members: list[TeamHistoryMemberData] = []
-    for sub in sub_sessions:
-        raw_member = [
-            msg
-            for msg in (await db.exec(_fetch_page(sub.id))).all()
-            if not _is_hidden_from_user(msg)
-        ]
-        member_msgs = list(reversed(raw_member[:_HISTORY_PAGE_SIZE]))
-        members.append(TeamHistoryMemberData(session=sub, messages=member_msgs))
+    members = await _fetch_member_pages(db, sub_sessions, before=before)
 
     return TeamHistoryData(
         lead_session=lead_session,

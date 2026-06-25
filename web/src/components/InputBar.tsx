@@ -3,11 +3,18 @@ import { ArrowUp, Loader2, MessageCircle, Paperclip, Square, Terminal } from 'lu
 import { motion } from 'framer-motion'
 import { FilePreviewStrip } from './FilePreviewStrip'
 import { VoiceMicButton } from './VoiceMicButton'
-import { findActiveMention, rankFileRefs, type FileRef } from './InputBar.mentions'
+import { findActiveMention, type FileRef } from './InputBar.mentions'
 import { MentionOverlay } from './InputBar.overlay'
 import { CHAR_WARN_THRESHOLD, findActiveSnippet } from './InputBar.helpers'
 import { InputBarSuggestions } from './InputBar.suggestions'
 import type { AgentCapabilities } from '@/api/types'
+import { buildAcceptString, isFileTypeAllowed } from './InputBar.files'
+import {
+  buildHistoryEntries,
+  filterMentions,
+  filterSlashCommands,
+  filterSnippetCommands,
+} from './InputBar.menus'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 
@@ -135,6 +142,8 @@ interface InputBarProps {
    * collapsed and the new file invisible.
    */
   onHasContentChange?: (hasContent: boolean) => void
+  /** Called whenever the current unsent text changes. */
+  onValueChange?: (value: string) => void
   /** Newest-first prompt history supplied by the parent, e.g. loaded chat history. */
   historyPrompts?: string[]
 }
@@ -172,6 +181,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   onFocus,
   onBlur,
   onHasContentChange,
+  onValueChange,
   historyPrompts = [],
 }, ref) {
   const [value, setValue] = useState('')
@@ -197,17 +207,10 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   const isMobile = useIsMobile()
   const prefersReducedMotion = useReducedMotion()
 
-  const history = useMemo(() => {
-    const seen = new Set<string>()
-    const entries: string[] = []
-    for (const prompt of [...localHistory, ...historyPrompts]) {
-      const trimmed = prompt.trim()
-      if (!trimmed || seen.has(trimmed)) continue
-      seen.add(trimmed)
-      entries.push(trimmed)
-    }
-    return entries
-  }, [localHistory, historyPrompts])
+  const history = useMemo(
+    () => buildHistoryEntries(localHistory, historyPrompts),
+    [localHistory, historyPrompts],
+  )
 
   // Refresh the active mention window from the current caret position. Called
   // whenever the caret might have moved without the value changing (arrow keys,
@@ -445,44 +448,10 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     slashFilter,
   ])
 
-  const buildAcceptString = useCallback((): string => {
-    const parts: string[] = [
-      'text/plain', 'text/csv', 'text/tab-separated-values', 'text/markdown',
-      'application/json', '.txt', '.csv', '.tsv', '.json', '.md',
-    ]
-    if (capabilities?.input.vision) parts.push('image/*')
-    if (capabilities?.input.document_text) {
-      parts.push('application/pdf', '.pdf',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document', '.docx')
-    }
-    if (capabilities?.input.audio) parts.push('audio/*')
-    if (capabilities?.input.video) parts.push('video/*')
-    return parts.join(',')
-  }, [capabilities])
-
-  const isFileTypeAllowed = useCallback((file: File): boolean => {
-    const mimeType = file.type
-    const name = file.name.toLowerCase()
-    if (
-      mimeType.startsWith('text/') || mimeType === 'application/json' ||
-      name.endsWith('.txt') || name.endsWith('.csv') || name.endsWith('.tsv') ||
-      name.endsWith('.json') || name.endsWith('.md')
-    ) return true
-    if (capabilities?.input.vision && mimeType.startsWith('image/')) return true
-    if (capabilities?.input.document_text && (
-      mimeType === 'application/pdf' ||
-      mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-      name.endsWith('.pdf') || name.endsWith('.docx')
-    )) return true
-    if (capabilities?.input.audio && mimeType.startsWith('audio/')) return true
-    if (capabilities?.input.video && mimeType.startsWith('video/')) return true
-    return false
-  }, [capabilities])
-
   const addFile = useCallback((file: File) => {
-    if (!isFileTypeAllowed(file)) return
+    if (!isFileTypeAllowed(file, capabilities)) return
     setFiles((prev) => [...prev, file])
-  }, [isFileTypeAllowed])
+  }, [capabilities])
 
   const removeFile = useCallback((index: number) => {
     const oldUrl = blobUrls.get(index)
@@ -497,13 +466,13 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       const item = items[i]
       if (item.kind === 'file') {
         const file = item.getAsFile()
-        if (file && isFileTypeAllowed(file)) {
+        if (file && isFileTypeAllowed(file, capabilities)) {
           e.preventDefault()
           addFile(file)
         }
       }
     }
-  }, [addFile, isFileTypeAllowed])
+  }, [addFile, capabilities])
 
   const handleDragEnter = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
@@ -526,23 +495,23 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     if (!droppedFiles) return
     for (let i = 0; i < droppedFiles.length; i++) {
       const file = droppedFiles[i]
-      if (isFileTypeAllowed(file)) {
+      if (isFileTypeAllowed(file, capabilities)) {
         addFile(file)
       }
     }
-  }, [addFile, isFileTypeAllowed])
+  }, [addFile, capabilities])
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = e.currentTarget.files
     if (!selectedFiles) return
     for (let i = 0; i < selectedFiles.length; i++) {
       const file = selectedFiles[i]
-      if (isFileTypeAllowed(file)) {
+      if (isFileTypeAllowed(file, capabilities)) {
         addFile(file)
       }
     }
     e.currentTarget.value = ''
-  }, [addFile, isFileTypeAllowed])
+  }, [addFile, capabilities])
 
   // ── Slash command filtering ────────────────────────────────────────────────
 
@@ -557,42 +526,10 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
    * Separator rows are excluded from keyboard-navigation indexing; only
    * actionable entries count as "selectable" positions.
    */
-  const filteredSlashCommands = useMemo(() => {
-    if (slashFilter === null || slashCommands.length === 0) return []
-    if (slashFilter === '') return slashCommands
-
-    // Two-pass: first collect matching actionable ids, then walk the list
-    // again keeping actionable matches AND any separator that precedes them.
-    const matchedIds = new Set(
-      slashCommands
-        .filter(
-          (cmd) =>
-            !cmd.isSeparator &&
-            (cmd.id.toLowerCase().includes(slashFilter) ||
-              cmd.label.toLowerCase().includes(slashFilter) ||
-              (cmd.displayName ?? '').toLowerCase().includes(slashFilter)),
-        )
-        .map((cmd) => cmd.id),
-    )
-    if (matchedIds.size === 0) return []
-
-    const result: SlashCommand[] = []
-    let pendingSeparator: SlashCommand | null = null
-    for (const cmd of slashCommands) {
-      if (cmd.isSeparator) {
-        pendingSeparator = cmd
-        continue
-      }
-      if (matchedIds.has(cmd.id)) {
-        if (pendingSeparator) {
-          result.push(pendingSeparator)
-          pendingSeparator = null
-        }
-        result.push(cmd)
-      }
-    }
-    return result
-  }, [slashFilter, slashCommands])
+  const filteredSlashCommands = useMemo(
+    () => filterSlashCommands(slashCommands, slashFilter),
+    [slashCommands, slashFilter],
+  )
 
   /** Actionable entries only — used for keyboard index arithmetic. */
   const selectableSlashCommands = useMemo(
@@ -605,14 +542,10 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   const mentionMenuId = 'inputbar-mention-menu'
   const snippetMenuId = 'inputbar-snippet-menu'
 
-  const filteredSnippetCommands = useMemo(() => {
-    if (!snippetRange || snippetCommands.length === 0) return []
-    return snippetCommands.filter((cmd) => {
-      if (snippetRange.query === '') return true
-      return cmd.id.toLowerCase().includes(snippetRange.query) ||
-        cmd.label.toLowerCase().includes(snippetRange.query)
-    })
-  }, [snippetCommands, snippetRange])
+  const filteredSnippetCommands = useMemo(
+    () => filterSnippetCommands(snippetCommands, snippetRange),
+    [snippetCommands, snippetRange],
+  )
 
   const snippetMenuOpen = snippetRange !== null && filteredSnippetCommands.length > 0
   const clampedSnippetIndex = filteredSnippetCommands.length > 0
@@ -695,12 +628,10 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
 
   // ── @-mention filtering ────────────────────────────────────────────────────
 
-  const MENTION_MAX_RESULTS = 20
-
-  const filteredMentions = useMemo(() => {
-    if (!mentionRange || fileRefs.length === 0) return [] as FileRef[]
-    return rankFileRefs(fileRefs, mentionRange.query, MENTION_MAX_RESULTS)
-  }, [mentionRange, fileRefs])
+  const filteredMentions = useMemo(
+    () => filterMentions(fileRefs, mentionRange),
+    [fileRefs, mentionRange],
+  )
 
   const mentionMenuOpen = mentionRange !== null && filteredMentions.length > 0
   const clampedMentionIndex = filteredMentions.length > 0
@@ -929,6 +860,10 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   }, [resize])
 
   const hasText = value.trim().length > 0
+  useEffect(() => {
+    onValueChange?.(value)
+  }, [onValueChange, value])
+
   const canSend = hasText && !disabled
   const canStop = isStreaming && !disabled && onStop != null
   const charCount = value.length
@@ -1275,7 +1210,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
           ref={fileInputRef}
           type="file"
           multiple
-          accept={buildAcceptString()}
+          accept={buildAcceptString(capabilities)}
           onChange={handleFileSelect}
           className="hidden"
           aria-hidden="true"

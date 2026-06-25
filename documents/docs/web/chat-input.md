@@ -36,6 +36,8 @@ Attachments are not queued while the lead is working. The UI asks the user to wa
 
 Queued messages are never concatenated. Multiple queued messages become separate user rows and separate lead activations unless the user clicks `/stop`, which pauses the queue by converting pending rows into normal history without running them. Queues are session-scoped, so switching from session A to session B does not display A's queued messages under B.
 
+Unsent composer text is also session-scoped in the frontend: if you type a draft in session A, switch to session B, then return to session A, the original unsent text is restored for that session.
+
 Session Settings may override the lead model and thinking level for the current chat. Sends include those settings, and queued rows keep the effective model metadata so history labels stay tied to the original turn.
 
 ---
@@ -58,7 +60,7 @@ Stored in `useTeamStore._pendingMessages: PendingMessage[]`.
 
 `PendingMessageQueue` renders queued messages inside the conversation timeline below the streaming assistant response. Each queued item uses the normal right-aligned user bubble shape with a small × button (labelled "Edit queued message") and a `Queued` label. Clicking × dispatches a `queue:restore-draft` `CustomEvent`; `TeamChatView` listens for it and moves the queued text back into the composer (overwriting any current draft, matching `/undo` semantics) before removing the queued row — so the user can edit or resend instead of losing what they typed.
 
-The desktop floating composer starts as a compact action strip and expands on explicit focus, `Ctrl+I`, attachment/content insertion, the Chat affordance, or type-to-focus: when no editable element is focused, pressing a printable key on the cockpit/coding chat surface focuses the composer and inserts that first character. Pressing `Escape` while focus is inside the expanded composer minimizes it back to the compact strip; sending a message also returns the composer to the compact strip. While the lead is streaming, the composer may still minimize when empty and blurred; the compact strip remains recoverable with File, Voice, Chat/Expand, and Send/Stop controls. The streaming placeholder tells the user they can queue a follow-up, type `/stop`, or click stop.
+The desktop floating composer starts as a compact action strip and expands on explicit focus, `Ctrl+I`, attachment/content insertion, the Chat affordance, or type-to-focus: when no editable element is focused, pressing a printable key on the cockpit/coding chat surface focuses the composer and inserts that first character. Pressing `Escape` while focus is inside the expanded composer minimizes it back to the compact strip; sending a message also returns the composer to the compact strip. If the desktop composer is empty and focus moves outside it, it auto-minimizes back to the compact strip. While the lead is streaming, the composer may still minimize when empty and blurred; the compact strip remains recoverable with File, Voice, Chat/Expand, and Send/Stop controls. The streaming placeholder tells the user they can queue a follow-up, type `/stop`, or click stop.
 
 Keyboard submit differs by viewport: desktop `Enter` submits and `Shift+Enter` inserts a newline; mobile `Enter` inserts a newline and the Send button submits.
 

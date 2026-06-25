@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "OpenAgentd",
   "mainBinaryName": "OpenAgentd",
-  "version": "1.65.0",
+  "version": "1.66.0",
   "identifier": "com.openagentd.desktop",
   "build": {
     "devUrl": "http://localhost:5173",
@@ -29,11 +29,17 @@
         "transparent": false,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
-        "trafficLightPosition": { "x": 12, "y": 22 }
+        "trafficLightPosition": {
+          "x": 12,
+          "y": 22
+        }
       }
     ],
     "security": {
-      "dangerousDisableAssetCspModification": ["script-src", "style-src"],
+      "dangerousDisableAssetCspModification": [
+        "script-src",
+        "style-src"
+      ],
       "csp": {
         "default-src": "'self' http: https:",
         "connect-src": "'self' http: https: ws: wss: ipc: https://ipc.localhost",
@@ -48,7 +54,12 @@
       },
       "assetProtocol": {
         "enable": true,
-        "scope": ["$APPDATA/*", "$APPLOCALDATA/*", "$APPCACHE/*", "$APPLOG/*"]
+        "scope": [
+          "$APPDATA/*",
+          "$APPLOCALDATA/*",
+          "$APPCACHE/*",
+          "$APPLOG/*"
+        ]
       }
     }
   },
@@ -57,9 +68,15 @@
     "createUpdaterArtifacts": true,
     "category": "Productivity",
     "copyright": "Copyright (c) 2026 OpenAgentd contributors",
-    "shortDescription": "On-machine AI agents — streaming chat, tool use, persistent memory.",
-    "longDescription": "OpenAgentd is a self-hosted AI agent platform. The desktop app runs everything locally — your data, your keys, your machine.",
-    "targets": ["dmg", "app", "msi", "deb", "appimage"],
+    "shortDescription": "On-machine AI agents \u2014 streaming chat, tool use, persistent memory.",
+    "longDescription": "OpenAgentd is a self-hosted AI agent platform. The desktop app runs everything locally \u2014 your data, your keys, your machine.",
+    "targets": [
+      "dmg",
+      "app",
+      "msi",
+      "deb",
+      "appimage"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -91,7 +108,10 @@
     },
     "linux": {
       "deb": {
-        "depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0"]
+        "depends": [
+          "libwebkit2gtk-4.1-0",
+          "libgtk-3-0"
+        ]
       },
       "appimage": {
         "bundleMediaFramework": false

@@ -1,43 +1,37 @@
 import asyncio
-import json
 import shutil
-from collections.abc import Sequence
-from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import NamedTuple
 from uuid import UUID
 
 from loguru import logger
-from sqlmodel import and_, col, or_, select
+from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from pydantic import TypeAdapter
-
-from app.agent.multimodal import build_parts_from_metas
 from app.agent.schemas.chat import (
     AssistantMessage,
     ChatMessage,
-    HumanMessage,
     ToolMessage,
 )
 from app.agent.artifacts import session_artifact_dir
 from app.core.paths import session_workspace_dir, uploads_dir, workspace_dir
 from app.models.chat import ChatSession, SessionMessage
-from app.services import snapshot_service
-
-
-@dataclass(slots=True)
-class BoundaryShift:
-    """Result of moving the session's revert boundary."""
-
-    applied: bool
-    target: SessionMessage | None = None
-    added: list[str] = field(default_factory=list)
-    modified: list[str] = field(default_factory=list)
-    removed: list[str] = field(default_factory=list)
-
-
-_chat_message_adapter: TypeAdapter[ChatMessage] = TypeAdapter(ChatMessage)
+from app.services import chat_service_queue as _chat_service_queue
+from app.services import chat_service_revert as _chat_service_revert
+from app.services.chat_service_messages import (
+    apply_llm_content_overrides as _apply_llm_content_overrides,
+    deserialize_messages as _deserialize_messages,
+)
+from app.services.chat_service_revert import (
+    BoundaryShift,
+    before_boundary as _before_boundary,
+    boundary_created_at as _boundary_created_at,
+    exclude_messages_before_summary,
+    history_messages_stmt as _history_messages_stmt,
+    is_hidden_from_user as _is_hidden_from_user,
+    is_history_visible as _is_history_visible,
+    visible_messages_stmt as _visible_messages_stmt,
+)
 
 
 async def create_chat_session(
@@ -75,7 +69,6 @@ async def create_chat_session(
 _INTERRUPTED_TOOL_RESULT = (
     "Tool execution was interrupted before a result could be recorded."
 )
-USER_SHELL_LLM_CONTENT = "The following tool was executed by the user"
 
 
 async def heal_orphaned_tool_calls(db: AsyncSession, session_id: UUID) -> int:
@@ -285,80 +278,6 @@ async def save_message(
         raise
 
 
-def _revert_message_id(session: ChatSession | None) -> UUID | None:
-    value = session.revert if session else None
-    if not isinstance(value, dict):
-        return None
-    raw = value.get("message_id")
-    if not isinstance(raw, str):
-        return None
-    try:
-        return UUID(raw)
-    except ValueError:
-        return None
-
-
-async def _revert_boundary(db: AsyncSession, session_id: UUID) -> SessionMessage | None:
-    session = await db.get(ChatSession, session_id)
-    message_id = _revert_message_id(session)
-    if message_id is None:
-        return None
-    row = await db.get(SessionMessage, message_id)
-    if row is None or row.session_id != session_id:
-        return None
-    return row
-
-
-async def _boundary_created_at(db: AsyncSession, session_id: UUID) -> datetime | None:
-    boundary = await _revert_boundary(db, session_id)
-    return boundary.created_at if boundary else None
-
-
-def _before_boundary(stmt, boundary: datetime | None):
-    if boundary is None:
-        return stmt
-    return stmt.where(col(SessionMessage.created_at) < boundary)
-
-
-def _visible_messages_stmt(session_id: UUID, boundary: datetime | None = None):
-    """Base query: all LLM-visible messages for a session, oldest first.
-
-    ``exclude_from_context`` is the LLM-context flag. UI-only hiding uses
-    ``extra.hidden_from_user`` and is applied after deserialization.
-    """
-    stmt = (
-        select(SessionMessage)
-        .where(col(SessionMessage.session_id) == session_id)
-        .where(~col(SessionMessage.exclude_from_context))
-    )
-    return _before_boundary(stmt, boundary).order_by(
-        col(SessionMessage.created_at).asc()
-    )
-
-
-def _history_messages_stmt(session_id: UUID, boundary: datetime | None = None):
-    stmt = select(SessionMessage).where(col(SessionMessage.session_id) == session_id)
-    if boundary is not None:
-        stmt = _before_boundary(stmt, boundary)
-    return stmt.order_by(col(SessionMessage.created_at).asc())
-
-
-def _is_history_visible(row: SessionMessage) -> bool:
-    if not row.exclude_from_context:
-        return True
-    return bool(row.extra and row.extra.get("queue_status") == "queued")
-
-
-def _is_hidden_from_user(row: SessionMessage) -> bool:
-    return bool(row.extra and row.extra.get("hidden_from_user"))
-
-
-def _is_undo_target(row: SessionMessage) -> bool:
-    if _is_hidden_from_user(row):
-        return False
-    return row.is_summary or not row.exclude_from_context
-
-
 async def get_messages(db: AsyncSession, session_id: UUID) -> list[ChatMessage]:
     """Retrieves all *visible* ChatMessages for a session.
 
@@ -461,190 +380,6 @@ async def get_messages_for_llm(db: AsyncSession, session_id: UUID) -> list[ChatM
         raise
 
 
-def _message_snapshot(row: SessionMessage | None) -> str | None:
-    if row is None or not row.extra:
-        return None
-    value = row.extra.get("snapshot")
-    return value if isinstance(value, str) and value else None
-
-
-def _redo_anchor(session: ChatSession | None) -> str | None:
-    value = session.revert if session else None
-    if not isinstance(value, dict):
-        return None
-    raw = value.get("snapshot")
-    return raw if isinstance(raw, str) and raw else None
-
-
-async def undo_session_messages(db: AsyncSession, session_id: UUID) -> BoundaryShift:
-    """Move the session revert boundary to the previous user message."""
-    session = await db.get(ChatSession, session_id)
-    if session is None:
-        return BoundaryShift(applied=False)
-    boundary = await _revert_boundary(db, session_id)
-    stmt = (
-        select(SessionMessage)
-        .where(col(SessionMessage.session_id) == session_id)
-        .where(col(SessionMessage.role) == "user")
-        .order_by(col(SessionMessage.created_at).desc())
-    )
-    if boundary is not None:
-        stmt = stmt.where(col(SessionMessage.created_at) < boundary.created_at)
-    rows = (await db.exec(stmt)).all()
-    target = next((row for row in rows if _is_undo_target(row)), None)
-    if target is None:
-        return BoundaryShift(applied=False)
-
-    workspace = session_workspace_dir(str(session_id), session.workspace)
-    redo_anchor = _redo_anchor(session)
-    just_tracked = False
-    if redo_anchor is None:
-        redo_anchor = await snapshot_service.track(str(session_id), workspace)
-        just_tracked = redo_anchor is not None
-
-    added: list[str] = []
-    modified: list[str] = []
-    removed: list[str] = []
-    target_snapshot = _message_snapshot(target)
-    if target_snapshot:
-        result = await snapshot_service.restore(
-            str(session_id),
-            workspace,
-            target_snapshot,
-            skip_stage=just_tracked,
-        )
-        added, modified, removed = result.added, result.modified, result.removed
-
-    revert_state: dict = {"message_id": str(target.id)}
-    if redo_anchor:
-        revert_state["snapshot"] = redo_anchor
-    session.revert = revert_state
-    db.add(session)
-    await db.flush()
-    return BoundaryShift(
-        applied=True,
-        target=target,
-        added=added,
-        modified=modified,
-        removed=removed,
-    )
-
-
-async def redo_session_messages(db: AsyncSession, session_id: UUID) -> BoundaryShift:
-    """Move the revert boundary forward, or clear it at the end."""
-    session = await db.get(ChatSession, session_id)
-    boundary = await _revert_boundary(db, session_id)
-    if session is None or boundary is None:
-        return BoundaryShift(applied=False)
-    redo_anchor = _redo_anchor(session)
-    next_user = (
-        await db.exec(
-            select(SessionMessage)
-            .where(col(SessionMessage.session_id) == session_id)
-            .where(col(SessionMessage.role) == "user")
-            .where(col(SessionMessage.created_at) > boundary.created_at)
-            .order_by(col(SessionMessage.created_at).asc())
-            .limit(1)
-        )
-    ).first()
-
-    workspace = session_workspace_dir(str(session_id), session.workspace)
-    added: list[str] = []
-    modified: list[str] = []
-    removed: list[str] = []
-    if next_user is None:
-        if redo_anchor:
-            result = await snapshot_service.restore(
-                str(session_id), workspace, redo_anchor
-            )
-            added, modified, removed = result.added, result.modified, result.removed
-        session.revert = None
-    else:
-        next_snapshot = _message_snapshot(next_user)
-        if next_snapshot:
-            result = await snapshot_service.restore(
-                str(session_id), workspace, next_snapshot
-            )
-            added, modified, removed = result.added, result.modified, result.removed
-        revert_state: dict = {"message_id": str(next_user.id)}
-        if redo_anchor:
-            revert_state["snapshot"] = redo_anchor
-        session.revert = revert_state
-    db.add(session)
-    await db.flush()
-    return BoundaryShift(
-        applied=True,
-        target=next_user,
-        added=added,
-        modified=modified,
-        removed=removed,
-    )
-
-
-async def cleanup_reverted_tail(db: AsyncSession, session_id: UUID) -> int:
-    """Permanently hide the reverted tail before accepting an edited resend."""
-    session = await db.get(ChatSession, session_id)
-    boundary = await _revert_boundary(db, session_id)
-    if session is None or boundary is None:
-        return 0
-    rows = (
-        await db.exec(
-            select(SessionMessage)
-            .where(col(SessionMessage.session_id) == session_id)
-            .where(col(SessionMessage.created_at) >= boundary.created_at)
-        )
-    ).all()
-    cleaned = 0
-    for row in rows:
-        if row.extra and row.extra.get("queue_status") == "queued":
-            continue
-        extra = dict(row.extra or {})
-        extra["hidden_from_user"] = True
-        row.extra = extra
-        row.exclude_from_context = True
-        db.add(row)
-        cleaned += 1
-    if boundary.is_summary:
-        previous_summaries = (
-            await db.exec(
-                select(SessionMessage)
-                .where(col(SessionMessage.session_id) == session_id)
-                .where(col(SessionMessage.is_summary))
-                .where(col(SessionMessage.created_at) < boundary.created_at)
-                .order_by(col(SessionMessage.created_at).desc())
-            )
-        ).all()
-        previous_summary = next(
-            (row for row in previous_summaries if not _is_hidden_from_user(row)), None
-        )
-        if previous_summary is not None:
-            previous_summary.exclude_from_context = False
-            db.add(previous_summary)
-        restored = (
-            await db.exec(
-                select(SessionMessage)
-                .where(col(SessionMessage.session_id) == session_id)
-                .where(col(SessionMessage.created_at) < boundary.created_at)
-                .where(~col(SessionMessage.is_summary))
-                .where(col(SessionMessage.exclude_from_context))
-            )
-        ).all()
-        for row in restored:
-            if _is_hidden_from_user(row):
-                continue
-            if (
-                previous_summary is not None
-                and row.created_at <= previous_summary.created_at
-            ):
-                continue
-            row.exclude_from_context = False
-            db.add(row)
-    session.revert = None
-    db.add(session)
-    await db.flush()
-    return cleaned
-
-
 async def save_queued_user_message(
     db: AsyncSession,
     session_id: UUID,
@@ -652,15 +387,12 @@ async def save_queued_user_message(
     *,
     extra: dict | None = None,
 ) -> SessionMessage:
-    queued_at = datetime.now(timezone.utc).isoformat()
-    row_extra = dict(extra or {})
-    row_extra.update({"queue_status": "queued", "queued_at": queued_at})
-    return await save_message(
+    return await _chat_service_queue.save_queued_user_message(
         db,
         session_id,
-        HumanMessage(content=content),
-        is_hidden=True,
-        extra=row_extra,
+        content,
+        extra=extra,
+        save_message=save_message,
     )
 
 
@@ -668,51 +400,14 @@ async def release_queued_user_messages(
     db: AsyncSession,
     session_id: UUID,
 ) -> list[SessionMessage]:
-    rows = await db.exec(
-        select(SessionMessage)
-        .where(col(SessionMessage.session_id) == session_id)
-        .where(col(SessionMessage.role) == "user")
-        .where(col(SessionMessage.exclude_from_context))
-        .where(col(SessionMessage.extra)["queue_status"].as_string() == "queued")
-        .order_by(col(SessionMessage.created_at).asc())
-    )
-    queued = list(rows.all())
-    released_at = datetime.now(timezone.utc)
-    for i, row in enumerate(queued):
-        extra = dict(row.extra or {})
-        extra.pop("queue_status", None)
-        extra.pop("queued_at", None)
-        row.extra = extra or None
-        row.exclude_from_context = False
-        row.created_at = released_at + timedelta(microseconds=i)
-        db.add(row)
-    await db.flush()
-    return queued
+    return await _chat_service_queue.release_queued_user_messages(db, session_id)
 
 
 async def pop_queued_user_messages(
     db: AsyncSession,
     session_id: UUID,
 ) -> list[SessionMessage]:
-    rows = await db.exec(
-        select(SessionMessage)
-        .where(col(SessionMessage.session_id) == session_id)
-        .where(col(SessionMessage.role) == "user")
-        .where(col(SessionMessage.exclude_from_context))
-        .where(col(SessionMessage.extra)["queue_status"].as_string() == "queued")
-        .order_by(col(SessionMessage.created_at).asc())
-    )
-    queued = list(rows.all())
-    activated_at = datetime.now(timezone.utc)
-    for i, row in enumerate(queued):
-        extra = dict(row.extra or {})
-        extra.pop("queue_status", None)
-        row.extra = extra or None
-        row.exclude_from_context = False
-        row.created_at = activated_at + timedelta(microseconds=i)
-        db.add(row)
-    await db.flush()
-    return queued
+    return await _chat_service_queue.pop_queued_user_messages(db, session_id)
 
 
 async def cancel_queued_user_message(
@@ -720,102 +415,26 @@ async def cancel_queued_user_message(
     session_id: UUID,
     message_id: UUID,
 ) -> bool:
-    row = await db.get(SessionMessage, message_id)
-    if (
-        row is None
-        or row.session_id != session_id
-        or not row.extra
-        or row.extra.get("queue_status") != "queued"
-    ):
-        return False
-    await db.delete(row)
-    await db.flush()
-    return True
-
-
-async def exclude_messages_before_summary(
-    db: AsyncSession,
-    session_id: UUID,
-    summary_message_id: UUID,
-    keep_last_n: int = 0,
-) -> int:
-    """Mark messages older than ``summary_message_id`` as excluded from context.
-
-    Excludes:
-    - All previous ``is_summary=True`` rows (superseded summaries).
-    - All regular (non-summary) messages created before the new summary,
-      except the last ``keep_last_n`` which are kept verbatim.
-
-    When ``keep_last_n > 0``, the *most recent* ``keep_last_n`` visible
-    non-summary messages created **before** the summary are preserved so
-    they remain in the LLM context window alongside the new summary.
-
-    Returns the total number of messages excluded.
-    """
-    # Me fetch summary row to get its created_at timestamp
-    summary_msg = await db.get(SessionMessage, summary_message_id)
-    if summary_msg is None:
-        logger.warning(
-            "exclude_messages_before_summary_not_found summary_id={}",
-            summary_message_id,
-        )
-        return 0
-
-    # ── Exclude all previous summaries (superseded by the new one) ──────
-    old_summaries_stmt = (
-        select(SessionMessage)
-        .where(col(SessionMessage.session_id) == session_id)
-        .where(col(SessionMessage.is_summary))
-        .where(col(SessionMessage.id) != summary_message_id)
-        .where(~col(SessionMessage.exclude_from_context))
+    return await _chat_service_queue.cancel_queued_user_message(
+        db, session_id, message_id
     )
-    old_summaries = list((await db.exec(old_summaries_stmt)).all())
-    for row in old_summaries:
-        row.exclude_from_context = True
-        db.add(row)
 
-    # ── Exclude regular messages before the summary ──────────────────────
-    # All visible non-summary messages created before the summary, oldest-first.
-    stmt = (
-        select(SessionMessage)
-        .where(col(SessionMessage.session_id) == session_id)
-        .where(
-            or_(
-                col(SessionMessage.created_at) < summary_msg.created_at,
-                and_(
-                    col(SessionMessage.created_at) == summary_msg.created_at,
-                    col(SessionMessage.id) != summary_msg.id,
-                    ~col(SessionMessage.is_summary),
-                ),
-            )
-        )
-        .where(~col(SessionMessage.exclude_from_context))
-        .where(~col(SessionMessage.is_summary))
-        .order_by(col(SessionMessage.created_at).asc())
-    )
-    rows = list((await db.exec(stmt)).all())
 
-    # Me spare the tail when keep_last_n set
-    if keep_last_n > 0 and len(rows) > keep_last_n:
-        rows_to_exclude = rows[:-keep_last_n]
-    else:
-        rows_to_exclude = rows if keep_last_n == 0 else []
+# Preserve patchability from tests and existing callers by rebinding the
+# extracted revert module to the local path helper on each call.
+async def undo_session_messages(db: AsyncSession, session_id: UUID) -> BoundaryShift:
+    _chat_service_revert.session_workspace_dir = session_workspace_dir
+    return await _chat_service_revert.undo_session_messages(db, session_id)
 
-    for row in rows_to_exclude:
-        row.exclude_from_context = True
-        db.add(row)
 
-    await db.flush()
-    total_excluded = len(old_summaries) + len(rows_to_exclude)
-    logger.info(
-        "messages_excluded session_id={} count={} old_summaries={} kept={} before_summary={}",
-        session_id,
-        total_excluded,
-        len(old_summaries),
-        len(rows) - len(rows_to_exclude),
-        summary_message_id,
-    )
-    return total_excluded
+async def redo_session_messages(db: AsyncSession, session_id: UUID) -> BoundaryShift:
+    _chat_service_revert.session_workspace_dir = session_workspace_dir
+    return await _chat_service_revert.redo_session_messages(db, session_id)
+
+
+async def cleanup_reverted_tail(db: AsyncSession, session_id: UUID) -> int:
+    _chat_service_revert.session_workspace_dir = session_workspace_dir
+    return await _chat_service_revert.cleanup_reverted_tail(db, session_id)
 
 
 # Me keep backward-compat alias during transition
@@ -1067,188 +686,3 @@ async def get_team_history(
         has_more=has_more,
         next_cursor=next_cursor,
     )
-
-
-# ── Internal helpers ──────────────────────────────────────────────────────────
-
-
-def _deserialize_messages(
-    db_messages: Sequence[SessionMessage], *, sanitize_tool_pairs: bool = False
-) -> list[ChatMessage]:
-    """Convert ORM rows into typed ChatMessage objects via TypeAdapter.
-
-    Uses ``model_dump()`` → ``TypeAdapter.validate_python()`` so the
-    discriminated union on ``role`` picks the right subclass automatically.
-    ``BaseMessage.model_config = ConfigDict(extra="ignore")`` drops DB-only
-    columns (``id``, ``session_id``, ``created_at``).
-
-    For user messages with file attachments (stored in extra.attachments),
-    re-hydrates ``parts`` from disk so the LLM sees images in every turn.
-
-    Rows with unrecognised ``role`` values are silently skipped with a warning.
-    """
-    result: list[ChatMessage] = []
-    for m in db_messages:
-        try:
-            d = m.model_dump()
-            # Me coerce None → "" so ToolMessage(tool_call_id: str) no explode
-            if d.get("tool_call_id") is None:
-                d["tool_call_id"] = ""
-            msg = _chat_message_adapter.validate_python(d)
-            # Me stash DB row PK so checkpointer can do reliable PK lookups
-            msg.db_id = m.id
-
-            # Me re-hydrate multimodal parts for user messages that have file attachments
-            if isinstance(msg, HumanMessage) and m.extra:
-                attachments = m.extra.get("attachments")
-                if attachments and isinstance(attachments, list):
-                    parts = _build_parts(msg.content or "", attachments)
-                    if parts:
-                        msg.parts = parts
-
-            result.append(msg)
-        except Exception:
-            # Me skip rows with unknown role — no crash the caller
-            logger.warning(
-                "deserialize_skip_unknown_role session_id={} message_id={} role={}",
-                m.session_id,
-                m.id,
-                m.role,
-            )
-
-    # Strip tool calls whose arguments are not valid JSON — this happens when
-    # the user interrupts the agent mid-stream before the LLM has finished
-    # emitting the arguments. The partial JSON is persisted to the DB and would
-    # cause a JSONDecodeError on the next turn when tool_executor tries to parse
-    # it. Drop the bad tool calls from the assistant message and remove any
-    # orphaned ToolMessage results that reference them.
-    bad_tool_call_ids: set[str] = set()
-    for msg in result:
-        if not isinstance(msg, AssistantMessage) or not msg.tool_calls:
-            continue
-        clean: list = []
-        for tc in msg.tool_calls:
-            try:
-                json.loads(tc.function.arguments)
-                clean.append(tc)
-            except (json.JSONDecodeError, ValueError):
-                bad_tool_call_ids.add(tc.id)
-                logger.warning(
-                    "deserialize_drop_partial_tool_call tool={} id={} args_prefix={!r}",
-                    tc.function.name,
-                    tc.id,
-                    tc.function.arguments[:80],
-                )
-        if len(clean) != len(msg.tool_calls):
-            msg.tool_calls = clean or None
-
-    if bad_tool_call_ids:
-        kept: list[ChatMessage] = []
-        for msg in result:
-            if isinstance(msg, ToolMessage) and msg.tool_call_id in bad_tool_call_ids:
-                row = _message_row_by_id(db_messages).get(msg.db_id)
-                logger.warning(
-                    "deserialize_drop_orphan_tool_message session_id={} message_id={} tool_call_id={}",
-                    row.session_id if row else None,
-                    msg.db_id,
-                    msg.tool_call_id,
-                )
-                continue
-            kept.append(msg)
-        result = kept
-
-    if sanitize_tool_pairs:
-        result = _sanitize_tool_message_pairs(result, db_messages)
-
-    return result
-
-
-def _apply_llm_content_overrides(messages: list[ChatMessage]) -> list[ChatMessage]:
-    for msg in messages:
-        if not isinstance(msg, HumanMessage) or not msg.extra:
-            continue
-        if msg.extra.get("kind") == "user_shell":
-            msg.content = USER_SHELL_LLM_CONTENT
-    return messages
-
-
-def _message_row_by_id(
-    db_messages: Sequence[SessionMessage],
-) -> dict[UUID | None, SessionMessage]:
-    return {m.id: m for m in db_messages}
-
-
-def _sanitize_tool_message_pairs(
-    messages: list[ChatMessage], db_messages: Sequence[SessionMessage]
-) -> list[ChatMessage]:
-    """Drop LLM-invalid tool outputs and strip incomplete assistant tool calls."""
-    rows_by_id = _message_row_by_id(db_messages)
-    result: list[ChatMessage] = []
-    expected_tool_ids: set[str] = set()
-
-    for idx, msg in enumerate(messages):
-        if isinstance(msg, AssistantMessage):
-            expected_tool_ids.clear()
-            if not msg.tool_calls:
-                result.append(msg)
-                continue
-
-            tool_call_ids = {tc.id for tc in msg.tool_calls if tc.id}
-            following_tool_ids: set[str] = set()
-            for next_msg in messages[idx + 1 :]:
-                if not isinstance(next_msg, ToolMessage):
-                    break
-                if next_msg.tool_call_id:
-                    following_tool_ids.add(next_msg.tool_call_id)
-
-            missing = tool_call_ids - following_tool_ids
-            if tool_call_ids and not missing:
-                expected_tool_ids = set(tool_call_ids)
-                result.append(msg)
-            else:
-                row = rows_by_id.get(msg.db_id)
-                logger.warning(
-                    "deserialize_strip_incomplete_assistant_tool_calls session_id={} message_id={} missing_ids=[{}]",
-                    row.session_id if row else None,
-                    msg.db_id,
-                    ", ".join(sorted(missing or tool_call_ids)),
-                )
-                result.append(msg.model_copy(update={"tool_calls": None}))
-            continue
-
-        if isinstance(msg, ToolMessage):
-            if msg.tool_call_id and msg.tool_call_id in expected_tool_ids:
-                result.append(msg)
-                expected_tool_ids.remove(msg.tool_call_id)
-            else:
-                row = rows_by_id.get(msg.db_id)
-                logger.warning(
-                    "deserialize_drop_orphan_tool_message session_id={} message_id={} tool_call_id={}",
-                    row.session_id if row else None,
-                    msg.db_id,
-                    msg.tool_call_id,
-                )
-            continue
-
-        expected_tool_ids.clear()
-        result.append(msg)
-
-    return result
-
-
-def _build_parts(text: str, attachments: list[dict]) -> list | None:
-    """Build LLM content parts from persisted attachment metadata.
-
-    Uses ``build_parts_from_metas`` (fast path: ``converted_text`` in meta,
-    slow path: read from ``att["path"]`` for images / native-PDF documents).
-
-    Returns None if only the trailing user-text block would be produced
-    (i.e. no file content — no point setting HumanMessage.parts in that case).
-    """
-    parts = build_parts_from_metas(text, attachments)
-    # build_parts_from_metas always appends a trailing TextBlock for `text`.
-    # If no file blocks were produced (all attachments missing), skip parts.
-    has_file_blocks = any(
-        not (hasattr(p, "text") and getattr(p, "text") == text) for p in parts
-    )
-    return parts if has_file_blocks else None

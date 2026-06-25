@@ -7,6 +7,48 @@ import { setApiBaseUrl } from '@/api/base-url'
 import { loadLastCodingWorkspace } from '@/utils/workspace'
 import { useTeamStore } from '@/stores/useTeamStore'
 import { createDefaultAgentStream } from '@/stores/useTeamStore/defaults'
+import {
+  addExpandedPaths,
+  buildWorktreeSourceByDirectory,
+  sourceWorkspacePaths,
+  toggleExpandedPath,
+  visibleNestedWorktrees,
+} from '@/components/CodingSidebar.helpers'
+import {
+  loadWorkspaceBrowser,
+  shouldUseServerWorkspaceBrowser,
+  validateTrustedWorkspace,
+} from '@/components/CodingSidebar.browser'
+import {
+  applySessionDelete,
+  applySessionSelection,
+  getFallbackSessionAfterDelete,
+  prepareSessionTitleUpdate,
+} from '@/components/CodingSidebar.sessions'
+import {
+  confirmWorkspaceRemoval,
+  selectCodingWorkspace,
+} from '@/components/CodingSidebar.workspace'
+import {
+  consumeTrustedWorkspace,
+  selectTrustedWorkspace,
+} from '@/components/CodingSidebar.trust'
+import {
+  beginWorktreeTitleEdit,
+  buildOpenWorktreeDialogState,
+  prepareWorktreeRename,
+  submitWorktreeRename,
+} from '@/components/CodingSidebar.worktree-dialog'
+import {
+  openSessionInNewWindow,
+  sessionWindowErrorDescription,
+  shouldOpenSessionInNewWindow,
+} from '@/components/CodingSidebar.window'
+import {
+  loadWorktreesForSource,
+  recoverCreatedWorktreeAfterTransientError,
+  removeManagedWorktree,
+} from '@/components/CodingSidebar.worktrees'
 
 const navigate = mock(() => {})
 const originalFetch = globalThis.fetch
@@ -193,6 +235,360 @@ mock.module('@/queries/useSessionsQuery', () => ({
     isError: false,
   }),
 }))
+
+describe('CodingSidebar helpers', () => {
+  it('exports workspace browser helpers used by the component', async () => {
+    globalThis.fetch = mock(async (input: unknown) => {
+      const url = String(input)
+      if (url.includes('/api/team/workspace/browse')) {
+        return new Response(JSON.stringify(browseResponse))
+      }
+      if (url.includes('/api/team/workspace/validate')) {
+        return new Response(JSON.stringify({ workspace: '/repo/project' }))
+      }
+      return new Response(null, { status: 404 })
+    }) as typeof fetch
+
+    expect(await loadWorkspaceBrowser()).toEqual(browseResponse)
+    expect(await validateTrustedWorkspace('/repo/project')).toBe('/repo/project')
+
+    isTauri = false
+    expect(await shouldUseServerWorkspaceBrowser(isTauri, false)).toBe(true)
+
+    isTauri = true
+    appBackendStatus = {
+      base_url: 'https://remote.example.com',
+      sidecar_running: false,
+      external: true,
+      supports_bundled: false,
+      servers: [],
+    }
+    expect(await shouldUseServerWorkspaceBrowser(isTauri, false)).toBe(true)
+
+    globalThis.fetch = originalFetch
+  })
+
+  it('toggles expanded paths and can batch-add active paths', () => {
+    expect([...toggleExpandedPath(new Set<string>(), '/repo')]).toEqual(['/repo'])
+    expect([...toggleExpandedPath(new Set<string>(['/repo']), '/repo')]).toEqual([])
+    expect([...addExpandedPaths(new Set<string>(), ['/repo', null, '/worktree'])]).toEqual([
+      '/repo',
+      '/worktree',
+    ])
+  })
+
+  it('builds worktree source lookup and filters removed worktrees', () => {
+    const workspaceTree = [
+      {
+        path: '/repo',
+        name: 'repo',
+        worktrees: [
+          { path: '/repo-wt', name: 'repo-wt', managed: true },
+        ],
+      },
+    ]
+    const removed = new Set<string>(['/repo-wt'])
+    const sources = buildWorktreeSourceByDirectory(workspaceTree)
+
+    expect(sources.get('/repo-wt')).toBe('/repo')
+    expect(sourceWorkspacePaths(workspaceTree, removed)).toEqual(['/repo'])
+    expect(visibleNestedWorktrees(workspaceTree[0], removed)).toEqual([])
+  })
+
+  it('exports worktree helpers used by the component', async () => {
+    expect(await loadWorktreesForSource('/repo', async () => [{
+      name: 'task-a',
+      directory: '/repo/task-a',
+      branch: 'feat',
+      managed: true,
+    }])).toEqual([{ name: 'task-a', directory: '/repo/task-a', branch: 'feat', managed: true }])
+
+    expect(await loadWorktreesForSource('/repo', async () => { throw new Error('boom') })).toEqual([])
+
+    const removed = await removeManagedWorktree(
+      { name: 'task-a', directory: '/repo/task-a', branch: 'feat', managed: true },
+      {
+        worktreeTarget: '/repo',
+        worktreeSourceByDirectory: new Map([['/repo/task-a', '/repo']]),
+        loadWorktreesForSource: async () => [],
+        refreshWorkspaceTree: async () => undefined,
+        removeWorktreeFn: async () => undefined,
+      },
+    )
+    expect(removed?.removedDirectory).toBe('/repo/task-a')
+
+    const recovered = await recoverCreatedWorktreeAfterTransientError({
+      error: new TypeError('Failed to fetch'),
+      worktreeTarget: '/repo',
+      worktreeName: 'task a',
+      loadWorktreesForSource: async () => [{
+        name: 'task-a',
+        directory: '/repo/task-a',
+        branch: 'feat',
+        managed: true,
+      }],
+      refreshWorkspaceTree: async () => undefined,
+      navigate: () => undefined,
+      onMobileClose: () => undefined,
+    })
+    expect(recovered).toEqual({ kind: 'recovered', workspace: '/repo/task-a' })
+  })
+
+  it('exports session helpers used by the component', () => {
+    const session = {
+      id: 'session-1',
+      title: 'Session one',
+      agent_name: 'lead',
+      created_at: '2026-05-13T00:00:00Z',
+      updated_at: '2026-05-13T00:00:00Z',
+      mode: 'coding',
+      workspace: '/repo/project',
+    }
+    expect(prepareSessionTitleUpdate(session, '  New title  ')).toEqual({
+      id: 'session-1',
+      title: 'New title',
+    })
+    expect(prepareSessionTitleUpdate(session, '   ')).toBeNull()
+    expect(prepareSessionTitleUpdate(null, 'New title')).toBeNull()
+
+    const fallback = getFallbackSessionAfterDelete(
+      session,
+      'session-1',
+      [
+        session,
+        {
+          id: 'session-2',
+          title: 'Session two',
+          agent_name: 'lead',
+          created_at: '2026-05-12T00:00:00Z',
+          updated_at: '2026-05-12T00:00:00Z',
+          mode: 'coding',
+          workspace: '/repo/project',
+        },
+      ],
+    )
+    expect(fallback?.id).toBe('session-2')
+
+    const selectionNavigate = mock(() => {})
+    const onMobileClose = mock(() => {})
+    applySessionSelection({
+      session,
+      workspacePath: '/repo/project',
+      navigate: selectionNavigate,
+      onMobileClose,
+    })
+    expect(selectionNavigate).toHaveBeenCalledWith({
+      to: '/coding/$sessionId',
+      params: { sessionId: 'session-1' },
+    })
+    expect(onMobileClose).toHaveBeenCalled()
+
+    const deleteNavigate = mock(() => {})
+    const mutateDelete = mock(() => {})
+    applySessionDelete({
+      deleteTarget: session,
+      currentSessionId: 'session-1',
+      codingSessions: [
+        session,
+        {
+          id: 'session-2',
+          title: 'Session two',
+          agent_name: 'lead',
+          created_at: '2026-05-12T00:00:00Z',
+          updated_at: '2026-05-12T00:00:00Z',
+          mode: 'coding',
+          workspace: '/repo/project',
+        },
+      ],
+      mutateDelete,
+      navigate: deleteNavigate,
+    })
+    expect(mutateDelete).toHaveBeenCalledWith('session-1')
+    expect(deleteNavigate).toHaveBeenCalledWith({
+      to: '/coding/$sessionId',
+      params: { sessionId: 'session-2' },
+      replace: true,
+    })
+  })
+
+  it('exports workspace helpers used by the component', async () => {
+    const selectionNavigate = mock(() => {})
+    const queryClient = new QueryClient()
+    let refreshCount = 0
+    const selected = await selectCodingWorkspace({
+      path: '/repo/project',
+      requestedCreate: false,
+      currentSessionId: undefined,
+      currentWorkspace: null,
+      queryClient,
+      refreshWorkspaceTree: async () => { refreshCount += 1 },
+      navigate: selectionNavigate,
+      resolveTeamSessionFn: async () => ({
+        id: 'resolved-session',
+        title: null,
+        agent_name: null,
+        mode: 'coding',
+        workspace: '/repo/project',
+        created_at: null,
+        updated_at: null,
+        created: true,
+      }),
+    })
+    expect(selected).toEqual({ skipped: false })
+    expect(selectionNavigate).toHaveBeenCalledWith({
+      to: '/coding/$sessionId',
+      params: { sessionId: 'resolved-session' },
+    })
+    expect(refreshCount).toBe(1)
+
+    useTeamStore.setState({
+      sessionId: 'session-1',
+      isTeamWorking: false,
+      agentNames: ['lead'],
+      agentStreams: { lead: createDefaultAgentStream() },
+    })
+    const skipped = await selectCodingWorkspace({
+      path: '/repo/project',
+      requestedCreate: true,
+      currentSessionId: 'session-1',
+      currentWorkspace: '/repo/project',
+      queryClient: new QueryClient(),
+      refreshWorkspaceTree: async () => undefined,
+      navigate: mock(() => {}),
+    })
+    expect(skipped).toEqual({ skipped: true })
+
+    const removeNavigate = mock(() => {})
+    const nextExpanded = await confirmWorkspaceRemoval({
+      path: '/repo/project',
+      activeWorkspace: '/repo/project',
+      expandedWorkspaces: new Set<string>(['/repo/project', '/repo/other']),
+      queryClient: new QueryClient(),
+      refreshWorkspaceTree: async () => undefined,
+      navigate: removeNavigate,
+      setCodingWorkspaceVisibilityFn: async () => ({
+        workspace: '/repo/project',
+        hidden: true,
+        updated: 1,
+      }),
+    })
+    expect(nextExpanded.has('/repo/project')).toBe(false)
+    expect(nextExpanded.has('/repo/other')).toBe(true)
+    expect(removeNavigate).toHaveBeenCalledWith({ to: '/coding', replace: true })
+  })
+
+  it('exports worktree dialog helpers used by the component', async () => {
+    expect(buildOpenWorktreeDialogState('/repo/project', [{
+      name: 'task-a',
+      directory: '/repo/project/task-a',
+      branch: 'feat',
+      managed: true,
+    }])).toEqual({
+      target: '/repo/project',
+      name: '',
+      branch: '',
+      options: [{
+        name: 'task-a',
+        directory: '/repo/project/task-a',
+        branch: 'feat',
+        managed: true,
+      }],
+      removing: null,
+      error: null,
+    })
+
+    const editState = beginWorktreeTitleEdit({
+      name: 'task-a',
+      directory: '/repo/project/task-a',
+      branch: 'feat',
+      managed: true,
+    })
+    expect(editState).toEqual({
+      target: {
+        name: 'task-a',
+        directory: '/repo/project/task-a',
+        branch: 'feat',
+        managed: true,
+      },
+      title: 'task-a',
+    })
+
+    expect(prepareWorktreeRename(editState.target, '  Review UI  ')).toEqual({
+      directory: '/repo/project/task-a',
+      title: 'Review UI',
+    })
+    expect(prepareWorktreeRename(editState.target, '   ')).toBeNull()
+    expect(prepareWorktreeRename(null, 'Review UI')).toBeNull()
+
+    const renameWorktreeFn = mock(async () => ({
+      name: 'Review UI',
+      directory: '/repo/project/task-a',
+      managed: true,
+    }))
+    let refreshed = 0
+    expect(await submitWorktreeRename({
+      target: editState.target,
+      title: '  Review UI  ',
+      refreshWorkspaceTree: async () => { refreshed += 1 },
+      renameWorktreeFn,
+    })).toBe(true)
+    expect(renameWorktreeFn).toHaveBeenCalledWith('/repo/project/task-a', 'Review UI')
+    expect(refreshed).toBe(1)
+    expect(await submitWorktreeRename({
+      target: editState.target,
+      title: '   ',
+      refreshWorkspaceTree: async () => undefined,
+      renameWorktreeFn,
+    })).toBe(false)
+  })
+
+  it('exports trust helpers used by the component', async () => {
+    expect(await selectTrustedWorkspace('/repo/project', async (path) => path)).toBe('/repo/project')
+    expect(await selectTrustedWorkspace(null, async (path) => path)).toBeNull()
+    expect(consumeTrustedWorkspace('/repo/project')).toEqual({
+      workspaceToOpen: '/repo/project',
+      nextTrustWorkspace: null,
+      nextDialogOpen: false,
+    })
+    expect(consumeTrustedWorkspace(null)).toEqual({
+      workspaceToOpen: null,
+      nextTrustWorkspace: null,
+      nextDialogOpen: true,
+    })
+  })
+
+  it('exports session window helpers used by the component', async () => {
+    const event = {
+      metaKey: true,
+      ctrlKey: false,
+    } as React.MouseEvent
+    expect(shouldOpenSessionInNewWindow(event, true, 'macos')).toBe(true)
+    expect(shouldOpenSessionInNewWindow({ metaKey: false, ctrlKey: true } as React.MouseEvent, true, 'linux')).toBe(true)
+    expect(shouldOpenSessionInNewWindow(undefined, true, 'macos')).toBe(false)
+    expect(shouldOpenSessionInNewWindow(event, false, 'macos')).toBe(false)
+
+    const invoke = mock(async () => undefined)
+    await openSessionInNewWindow({
+      session: {
+        id: 'session-1',
+        title: 'Selected session',
+        agent_name: 'lead',
+        created_at: '2026-05-13T00:00:00Z',
+        updated_at: '2026-05-13T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+      },
+      importCore: async () => ({ invoke }),
+    })
+    expect(invoke).toHaveBeenCalledWith('app_new_window', {
+      initialPath: '/coding/session-1',
+      initial_path: '/coding/session-1',
+    })
+
+    expect(sessionWindowErrorDescription(new Error('boom'), 'fallback')).toBe('boom')
+    expect(sessionWindowErrorDescription('nope', 'fallback')).toBe('fallback')
+  })
+})
 
 describe('CodingSidebar workspace trust flow', () => {
   beforeEach(() => {
@@ -539,6 +935,87 @@ describe('CodingSidebar workspace trust flow', () => {
     expect(screen.getByLabelText('Session running')).toBeTruthy()
     expect(screen.getByText('Selected idle session')).toBeTruthy()
     expect(screen.getByText('Background running session')).toBeTruthy()
+  })
+
+  it('applies the breathing animation to every running coding session title and dot', async () => {
+    sessionsData = [
+      {
+        id: 'session-1',
+        title: 'Selected running session',
+        agent_name: 'lead',
+        created_at: '2026-05-13T00:00:00Z',
+        updated_at: '2026-05-13T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+        running: true,
+      },
+      {
+        id: 'session-2',
+        title: 'Background running session',
+        agent_name: 'lead',
+        created_at: '2026-05-12T00:00:00Z',
+        updated_at: '2026-05-12T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+        running: true,
+      },
+      {
+        id: 'session-3',
+        title: 'Idle session',
+        agent_name: 'lead',
+        created_at: '2026-05-11T00:00:00Z',
+        updated_at: '2026-05-11T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+      },
+    ]
+    workspaceSessionsData = sessionsData
+
+    await renderCodingSidebarForSessions('session-1')
+
+    expect(screen.getByText('Selected running session').className).toContain('session-title-breathe')
+    expect(screen.getByText('Background running session').className).toContain('session-title-breathe')
+    expect(screen.getByText('Idle session').className).not.toContain('session-title-breathe')
+
+    const runningDots = screen.getAllByLabelText('Session running')
+    expect(runningDots).toHaveLength(2)
+    for (const dot of runningDots) {
+      expect(dot.className).toContain('session-title-breathe')
+    }
+  })
+
+  it('makes the selected coding session title visually stronger', async () => {
+    sessionsData = [
+      {
+        id: 'session-1',
+        title: 'Selected idle session',
+        agent_name: 'lead',
+        created_at: '2026-05-13T00:00:00Z',
+        updated_at: '2026-05-13T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+      },
+      {
+        id: 'session-2',
+        title: 'Background session',
+        agent_name: 'lead',
+        created_at: '2026-05-12T00:00:00Z',
+        updated_at: '2026-05-12T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+      },
+    ]
+    workspaceSessionsData = sessionsData
+
+    await renderCodingSidebarForSessions('session-1')
+
+    const selectedTitle = screen.getByText('Selected idle session')
+    const backgroundTitle = screen.getByText('Background session')
+
+    expect(selectedTitle.className).toContain('font-semibold')
+    expect(selectedTitle.className).toContain('text-(--color-text)')
+    expect(backgroundTitle.className).toContain('font-medium')
+    expect(backgroundTitle.className).not.toContain('font-semibold')
   })
 
   it('keeps running sessions visible when a workspace is collapsed', async () => {

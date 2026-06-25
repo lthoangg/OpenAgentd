@@ -33,36 +33,10 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Check release versions match
+        run: scripts/check_version_consistency.sh
+
+      - name: Ensure release docs were updated too
         run: |
-          FILE_VERSION=$(cat app/version.txt | tr -d '[:space:]')
-          TOML_VERSION=$(grep '^version' pyproject.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
-          WEB_VERSION=$(python3 -c 'import json; print(json.load(open("web/package.json"))["version"])')
-          DESKTOP_CARGO_VERSION=$(grep '^version' desktop/src-tauri/Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
-          DESKTOP_TAURI_VERSION=$(python3 -c 'import json; print(json.load(open("desktop/src-tauri/tauri.conf.json"))["version"])')
-          MOBILE_CARGO_VERSION=$(grep '^version' mobile/src-tauri/Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
-          MOBILE_TAURI_VERSION=$(python3 -c 'import json; print(json.load(open("mobile/src-tauri/tauri.conf.json"))["version"])')
-
-          echo "app/version.txt:                 $FILE_VERSION"
-          echo "pyproject.toml:                  $TOML_VERSION"
-          echo "web/package.json:                $WEB_VERSION"
-          echo "desktop/src-tauri/Cargo.toml:    $DESKTOP_CARGO_VERSION"
-          echo "desktop/src-tauri/tauri.conf:    $DESKTOP_TAURI_VERSION"
-          echo "mobile/src-tauri/Cargo.toml:     $MOBILE_CARGO_VERSION"
-          echo "mobile/src-tauri/tauri.conf:     $MOBILE_TAURI_VERSION"
-
-          for candidate in \
-            "$TOML_VERSION" \
-            "$WEB_VERSION" \
-            "$DESKTOP_CARGO_VERSION" \
-            "$DESKTOP_TAURI_VERSION" \
-            "$MOBILE_CARGO_VERSION" \
-            "$MOBILE_TAURI_VERSION"; do
-            if [ "$candidate" != "$FILE_VERSION" ]; then
-              echo ""
-              echo "ERROR: Version mismatch!"
-              echo "All release-facing version files must match app/version.txt ($FILE_VERSION)."
-              exit 1
-            fi
-          done
-
-          echo "Versions match."
+          VERSION=$(tr -d '[:space:]' < app/version.txt)
+          grep -F "**Latest release:** v${VERSION} ·" documents/docs/features.md
+          grep -E '^updated: [0-9]{4}-[0-9]{2}-[0-9]{2}$' documents/docs/features.md

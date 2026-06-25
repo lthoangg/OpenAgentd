@@ -160,6 +160,8 @@ On install, Rust verifies the updater signature, shuts down the Python sidecar, 
 
 macOS uses the **Overlay** title-bar style (`tauri.conf.json` + `configure_window_chrome` in `main.rs`) — the OS keeps drawing the traffic-light buttons but the WebView extends edge-to-edge underneath. The React app reserves a 70 px left inset and provides the window-drag region itself.
 
+Each desktop window also syncs its native macOS title from the active surface: coding windows use the workspace basename, while cockpit windows use the session title. That title is what macOS shows in the Dock's per-window list when multiple OpenAgentd windows are open.
+
 The bundle includes `Info.plist` with `NSMicrophoneUsageDescription` and `NSSpeechRecognitionUsageDescription` so WebView voice input can show native permission prompts. `entitlements.plist` grants `com.apple.security.device.audio-input` for signed builds. macOS voice input also requires the system speech service: if **Siri & Dictation** / **Dictation** is disabled in System Settings, Screen Time, or device management policy, WebKit speech recognition can fail with `Siri and Dictation are disabled` or `Microphone permission check has failed`. Enable **System Settings → Keyboard → Dictation**, then retry.
 
 Windows and Linux keep their native title bars (`decorations: true`).
@@ -195,21 +197,6 @@ User data (XDG-style, mapped to native dirs by Tauri at launch):
 ~/Library/Caches/com.openagentd.desktop/                ← OPENAGENTD_CACHE_DIR
 ~/Library/Logs/com.openagentd.desktop/                  ← OPENAGENTD_STATE_DIR + sidecar stderr/stdout
 ```
-
-### Windows (`OpenAgentd_<ver>_x64-setup.exe`)
-
-```
-%LOCALAPPDATA%\OpenAgentd\
-  OpenAgentd.exe
-  resources\
-    sidecar\
-      python\python.exe
-      python\Lib\
-      site-packages\
-```
-
-Per-user install (no UAC elevation, no Program Files) so auto-update
-works without prompting.
 
 ### Linux (`OpenAgentd_<ver>_amd64.AppImage`, `.deb`)
 
@@ -258,7 +245,7 @@ cd src-tauri && cargo tauri build
 ```
 
 Output artefacts land in
-`desktop/src-tauri/target/release/bundle/{dmg,msi,deb,appimage}/`.
+`desktop/src-tauri/target/release/bundle/{dmg,deb,appimage}/`.
 
 ## Release
 
@@ -267,7 +254,7 @@ A full release is **two workflows publishing into one GitHub tag** (`v<X.Y.Z>`):
 | Workflow | Trigger | Cadence | Artefacts |
 |---|---|---|---|
 | `.github/workflows/release.yml` | `workflow_dispatch confirm=release` | ~90 s | `openagentd-<ver>-py3-none-any.whl`, `openagentd-<ver>.tar.gz`; publishes to PyPI. |
-| `.github/workflows/release-desktop.yml` | `workflow_dispatch confirm=release-desktop` | ~20–25 min | `OpenAgentd_<ver>_aarch64.dmg`, `OpenAgentd_<ver>_x64_en-US.msi`, `OpenAgentd_<ver>_amd64.deb`, `latest.json`. |
+| `.github/workflows/release-desktop.yml` | `workflow_dispatch confirm=release-desktop` | ~20–25 min | `OpenAgentd_<ver>_aarch64.dmg`, `OpenAgentd_<ver>_amd64.deb`, `latest.json`. |
 
 Both workflows use a **create-or-upload** publish step (`gh release view "$TAG"` → `upload --clobber` if present, else `create`), so order doesn't matter for correctness. The runbook orders them PyPI-first so the canonical auto-generated release notes come from `release.yml`; the desktop matrix then appends its installers ~20 min later. See [`.opencode/commands/release.md`](../../.opencode/commands/release.md) for the operator runbook.
 
@@ -276,15 +263,13 @@ History — pre-1.0.9 releases used a split-tag scheme (`v<X.Y.Z>` for PyPI, `v<
 `release-desktop.yml` matrix:
 
 1. macOS arm64 on `macos-26` (Tahoe — the host SDK matters for the title-bar geometry; see "Window chrome" above).
-2. Windows x64 on `windows-latest`.
-3. Linux x64 on `ubuntu-22.04`.
+2. Linux x64 on `ubuntu-22.04`.
 
 Each runner: `scripts/build_sidecar.py` → `cargo tauri build` → `gh release upload`. The workflow pins current Node 24-compatible GitHub action majors for cache and artifact upload/download steps. The `latest.json` updater manifest is produced after all three matrix legs succeed and uploaded to a rolling `latest-desktop` release that mirrors only the manifest (artefact URLs *inside* `latest.json` still point at the immutable `v<X.Y.Z>` release).
 
 Signing happens when secrets are present:
 
 - **macOS**: `APPLE_SIGNING_IDENTITY` + `APPLE_ID` + `APPLE_PASSWORD` + `APPLE_TEAM_ID` → notarized + stapled.
-- **Windows**: `WINDOWS_CERTIFICATE` (when an Authenticode certificate is available) → signed installer.
 - **Updater**: `TAURI_SIGNING_PRIVATE_KEY` + `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` → `.sig` files alongside artefacts.
 
 When secrets are absent (today's default), the workflow conditionally **unsets** the Tauri signing env vars so `cargo tauri build` falls back to ad-hoc signing (`signingIdentity: "-"` in `tauri.conf.json`).
@@ -309,8 +294,7 @@ point per OS family:
 | Platform        | Artefact                          | Install command                                  |
 | --------------- | --------------------------------- | ------------------------------------------------ |
 | macOS arm64     | `OpenAgentd-x.y.z.dmg`            | mount, then `/Volumes/OpenAgentd/install.sh --install` |
-| Linux (any)     | `OpenAgentd-x.y.z.AppImage` (+ `.deb`, `.rpm`) | `./install.sh --install ./OpenAgentd-x.y.z.AppImage` |
-| Windows x64     | `OpenAgentd-x.y.z-x64.msi`        | double-click; SmartScreen → *More info → Run anyway* |
+| Linux (any)     | `OpenAgentd-x.y.z.AppImage` (+ `.deb`) | `./install.sh --install ./OpenAgentd-x.y.z.AppImage` |
 
 The unified script lives at `desktop/scripts/install.sh`. It does
 platform-specific work via an `uname -s` switch:
@@ -326,11 +310,6 @@ platform-specific work via an `uname -s` switch:
   registers icons under `~/.local/share/icons/hicolor/`, and runs
   `update-desktop-database` / `gtk-update-icon-cache` if present.
   Detects `.deb` / `.rpm` arguments and defers to `dpkg` / `rpm`.
-
-Windows uses **WiX MSI** rather than a custom script — `msiexec`
-already handles registration, Start-Menu shortcut, and uninstall.
-The MSI is unsigned, so first launch shows the SmartScreen
-"unrecognized app" dialog; users click *More info → Run anyway* once.
 
 User-facing copy lives in `desktop/scripts/INSTALL.md` and is
 bundled inside every artefact via `tauri.conf.json` →
@@ -375,7 +354,7 @@ bundled inside every artefact via `tauri.conf.json` →
 | WebKitGTK version skew on Linux                                            | Officially support Ubuntu 22.04 LTS + 24.04 LTS; document fallback.                              |
 | onnxruntime / pandas / lxml fail to build on Python 3.14                   | Wheels verified in Phase 0; CI re-checks on every release matrix run.                            |
 | Backend process leaks after Tauri crash                                    | Parent-PID poll + Windows Job Object + 5 s SIGTERM grace.                                        |
-| macOS Gatekeeper / Windows SmartScreen rejection of unsigned builds        | Signing wired into CI; pre-release builds clearly marked "unsigned" in the GitHub release notes. |
+| macOS Gatekeeper rejection of unsigned builds                              | Signing wired into CI; pre-release builds clearly marked "unsigned" in the GitHub release notes. |
 | Tauri auto-update private key compromise                                   | Re-key script (`scripts/generate_updater_keys.sh`) regenerates pair; old installs require manual re-download. |
 | Concurrent Tauri+CLI desktop runs on the same machine                      | Dynamic ephemeral ports; XDG state dirs are user-global so DB writes are serialised by SQLite WAL. |
 | Frontend/backend drift between desktop and server                          | FastAPI is API-only; Tauri packages `web/dist` via `frontendDist` and injects the active API base URL before React boots. |

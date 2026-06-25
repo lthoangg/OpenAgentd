@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of every user-visible OpenAgentd feature. Source of truth for slides, README, comparison docs, and marketing copy.
 status: stable
-updated: 2026-06-23
+updated: 2026-06-25
 ---
 
 # Features
@@ -16,7 +16,7 @@ exists. When you ship something new, **add it here first** — slides, README,
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 15 providers. Your keys.
 
-**Latest release:** v1.61.0 · June 23, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.61.0)
+**Latest release:** v1.66.0 · June 25, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.66.0)
 
 ---
 
@@ -89,7 +89,11 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   sidecar and desktop auth token, while each window can independently switch to
   a saved external server `[v1.47.0]`. New windows now inherit the active
   window's current backend selection instead of failing when the bundled sidecar
-  is unavailable `[v1.64.1]`.
+  is unavailable `[v1.64.1]`. View → Zoom In / Out / Reset now applies per
+  desktop window instead of globally across all open windows `[v1.66.1]`. On
+  macOS, each desktop window now updates its native title to the active coding
+  workspace name or cockpit session title so the Dock window list distinguishes
+  open windows `[v1.66.1]`.
   - **Hold Command + click session to open in new window** `[v1.62.1, v1.64.1]` — in the desktop app, holding `Cmd` (macOS) or `Ctrl/Cmd` (Linux) and clicking a session in either sidebar opens that session directly in a new independent desktop window; failures now surface an in-app error toast instead of silently doing nothing.
 - **Editable session titles** `[v1.27.0]` — double-click a session card or use its
   edit affordance in the sidebar to rename saved sessions.

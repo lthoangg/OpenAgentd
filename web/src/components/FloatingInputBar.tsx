@@ -99,6 +99,8 @@ interface FloatingInputBarProps {
   revertedMessages?: Array<{ role: string; content: string }>
   onRedo?: () => void
   historyPrompts?: string[]
+  value?: string
+  onValueChange?: (value: string) => void
 }
 
 /**
@@ -268,6 +270,20 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
       }
     }, [])
 
+    useEffect(() => {
+      if (isMobile || forceExpanded) return
+
+      const syncMinimizedWithFocus = () => {
+        const active = document.activeElement
+        const containsFocus = active instanceof Node && panelRef.current?.contains(active)
+        if (!containsFocus) setMinimized(true)
+      }
+
+      syncMinimizedWithFocus()
+      window.addEventListener('focusin', syncMinimizedWithFocus)
+      return () => window.removeEventListener('focusin', syncMinimizedWithFocus)
+    }, [forceExpanded, isMobile])
+
     const effectiveMinimized = !isMobile && minimized && !forceExpanded
 
     const NEAR_BOTTOM_THRESHOLD = 140
@@ -397,7 +413,7 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
           style={keyboardInset > 0 ? { paddingBottom: `calc(${keyboardInset}px + 0.5rem)` } : undefined}
         >
           <RevertNotice count={inputProps.revertedCount ?? 0} messages={inputProps.revertedMessages ?? []} onRedo={inputProps.onRedo} />
-          <InputBar ref={setInputRefs} floating filesBelow={false} {...inputProps} onSubmit={handleSubmit} />
+          <InputBar ref={setInputRefs} floating filesBelow={false} {...inputProps} onValueChange={inputProps.onValueChange} onSubmit={handleSubmit} />
         </div>
       )
     }
@@ -430,6 +446,7 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
             onFocus={handleFocus}
             onBlur={handleBlur}
             onHasContentChange={handleHasContentChange}
+            onValueChange={inputProps.onValueChange}
             renderDragHandle={() => (
             <button
               type="button"

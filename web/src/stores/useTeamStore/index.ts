@@ -669,6 +669,7 @@ export const useTeamStore = create<TeamStore>()(
 
         set((draft) => {
           draft.sessionId = sessionId
+          draft.sessionTitle = history.lead.title ?? null
           draft.sessionModel = history.lead.model ?? null
           draft.sessionThinkingLevel = history.lead.thinking_level ?? null
           draft.sessionFastMode = fastModeFromMessages(history.lead.messages)

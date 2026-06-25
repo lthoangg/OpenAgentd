@@ -141,7 +141,11 @@ class _DeepSeekCompletionsHandler(CompletionsHandler):
                 result.append(
                     DeepSeekMessage(
                         role="assistant",
-                        content=msg.content,
+                        # DeepSeek rejects assistant messages that have neither
+                        # content nor tool_calls. Mirror the OpenAI-compatible
+                        # handler and coerce empty assistant text to "" so
+                        # sanitized history remains provider-valid.
+                        content=msg.content or "",
                         tool_calls=tool_calls,
                         # Echo reasoning_content only when tool_calls were present —
                         # DeepSeek mandates this for thinking-mode tool turns.

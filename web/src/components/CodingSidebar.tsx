@@ -41,18 +41,9 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { queryKeys } from '@/queries'
 import { useDeleteTeamSessionMutation, useTeamSessionsQuery, useUpdateTeamSessionTitleMutation } from '@/queries/useSessionsQuery'
-import { apiBaseUrl } from '@/api/base-url'
-import { browseWorkspaces, getCodingWorkspaceTree, listWorktrees, removeWorktree, renameWorktree, resolveTeamSession, setCodingWorkspaceVisibility, validateWorkspace } from '@/api/client'
-import { getAppBackendStatus } from '@/lib/app-backend'
-import { useTeamStore } from '@/stores/useTeamStore'
-import { prependSession, prependWorkspaceSession } from '@/stores/cache-invalidation-bridge'
-import {
-  saveLastCodingWorkspace,
-  workspaceLabel,
-} from '@/utils/workspace'
-import { isTransientNetworkError } from '@/utils/errors'
+import { getCodingWorkspaceTree, listWorktrees } from '@/api/client'
+import { workspaceLabel } from '@/utils/workspace'
 import { ThemeToggle } from './ThemeToggle'
 import { HealthDot } from './HealthDot'
 import { Button } from '@/components/ui/button'
@@ -68,7 +59,47 @@ import {
 import type { CodingWorkspaceTreeRepository, SessionResponse, WorktreeInfo } from '@/api/types'
 import { LongPressButton } from '@/components/ui/long-press-button'
 import { WorkspaceSessionList } from './CodingSidebar/WorkspaceSessionList'
-import { isLocalBackendUrl, worktreeNameSlug } from './CodingSidebar/utils'
+import {
+  addExpandedPaths,
+  buildWorktreeSourceByDirectory,
+  sourceWorkspacePaths,
+  toggleExpandedPath,
+  visibleNestedWorktrees,
+} from './CodingSidebar.helpers'
+import {
+  loadWorkspaceBrowser,
+  shouldUseServerWorkspaceBrowser,
+  validateTrustedWorkspace,
+} from './CodingSidebar.browser'
+import {
+  loadWorktreesForSource,
+  recoverCreatedWorktreeAfterTransientError,
+  removeManagedWorktree,
+  submitWorktreeSession,
+} from './CodingSidebar.worktrees'
+import {
+  applySessionDelete,
+  applySessionSelection,
+  prepareSessionTitleUpdate,
+} from './CodingSidebar.sessions'
+import {
+  confirmWorkspaceRemoval,
+  selectCodingWorkspace,
+} from './CodingSidebar.workspace'
+import {
+  consumeTrustedWorkspace,
+  selectTrustedWorkspace,
+} from './CodingSidebar.trust'
+import {
+  beginWorktreeTitleEdit,
+  buildOpenWorktreeDialogState,
+  submitWorktreeRename,
+} from './CodingSidebar.worktree-dialog'
+import {
+  openSessionInNewWindow,
+  sessionWindowErrorDescription,
+  shouldOpenSessionInNewWindow,
+} from './CodingSidebar.window'
 
 interface CodingSidebarProps {
   currentSessionId?: string
@@ -120,12 +151,9 @@ export function CodingSidebar({
   )
 
   const [workspaceTree, setWorkspaceTree] = useState<CodingWorkspaceTreeRepository[]>([])
-  const visibleWorkspaces = (workspaceTree ?? []).map((repo) => repo.path)
+  const visibleWorkspaces = workspaceTree.map((repo) => repo.path)
   const activeWorkspace = workspace ?? null
-  const worktreeSourceByDirectory = new Map<string, string>()
-  for (const repo of workspaceTree) {
-    for (const item of repo.worktrees) worktreeSourceByDirectory.set(item.path, repo.path)
-  }
+  const worktreeSourceByDirectory = buildWorktreeSourceByDirectory(workspaceTree)
 
   // ``expandedWorkspaces`` is local UI state — it auto-tracks the active
   // workspace but the user can also expand/collapse any other workspace
@@ -135,20 +163,11 @@ export function CodingSidebar({
   )
   useEffect(() => {
     if (!activeWorkspace) return
-    setExpandedWorkspaces((current) => {
-      const next = new Set(current)
-      next.add(activeWorkspace)
-      return next
-    })
+    setExpandedWorkspaces((current) => addExpandedPaths(current, [activeWorkspace]))
   }, [activeWorkspace])
 
   const toggleWorkspaceExpanded = (path: string) => {
-    setExpandedWorkspaces((current) => {
-      const next = new Set(current)
-      if (next.has(path)) next.delete(path)
-      else next.add(path)
-      return next
-    })
+    setExpandedWorkspaces((current) => toggleExpandedPath(current, path))
   }
 
 
@@ -189,7 +208,7 @@ export function CodingSidebar({
     setLoading(true)
     setError(null)
     try {
-      const result = await browseWorkspaces(path)
+      const result = await loadWorkspaceBrowser(path)
       setBrowserPath(result.path)
       setParentPath(result.parent)
       setDirs(result.directories)
@@ -212,16 +231,7 @@ export function CodingSidebar({
     setSelectedWorkspace(null)
     setTrustWorkspace(null)
 
-    if (!isTauri || isTauriMobile) {
-      openWebWorkspaceDialog()
-      return
-    }
-
-    const backendBaseUrl = apiBaseUrl().replace(/\/api\/?$/, '')
-    const backend = await getAppBackendStatus()
-    const activeBackendBaseUrl = backend?.base_url ?? backendBaseUrl
-    const isAbsoluteBackendUrl = /^https?:\/\//i.test(activeBackendBaseUrl)
-    if ((backend?.external || (!backend && isAbsoluteBackendUrl)) && !isLocalBackendUrl(activeBackendBaseUrl)) {
+    if (await shouldUseServerWorkspaceBrowser(isTauri, isTauriMobile)) {
       setNativeFolderPickerEnabled(false)
       openWebWorkspaceDialog()
       return
@@ -239,8 +249,7 @@ export function CodingSidebar({
       })
       if (typeof selected !== 'string') return
       setSelectedWorkspace(selected)
-      const result = await validateWorkspace(selected)
-      setTrustWorkspace(result.workspace)
+      setTrustWorkspace(await validateTrustedWorkspace(selected))
       setDialogOpen(true)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to open workspace')
@@ -282,46 +291,21 @@ export function CodingSidebar({
   }, [worktreeEditTarget])
 
   const selectWorkspace = async (path: string, opts: { create?: boolean } = {}) => {
-    const shouldCreate = opts.create === true
-    const state = useTeamStore.getState()
-    const create = shouldCreate && !(
-      state.isEmptyIdleSession() &&
-      state.sessionId === currentSessionId &&
-      workspace === path
-    )
-    if (shouldCreate && !create) {
-      setPendingWorkspace(null)
-      return
-    }
-    saveLastCodingWorkspace(path)
+    const requestedCreate = opts.create === true
     setPendingWorkspace(path)
     try {
-      state.beginResolvedSession(null, {
-        mode: 'coding',
-        workspace: path,
-        model: state.sessionModel,
-        thinkingLevel: state.sessionThinkingLevel,
+      const result = await selectCodingWorkspace({
+        path,
+        requestedCreate,
+        currentSessionId,
+        currentWorkspace: workspace,
+        queryClient,
+        refreshWorkspaceTree,
+        navigate,
       })
-      const session = await resolveTeamSession({
-        mode: 'coding',
-        workspace: path,
-        model: state.sessionModel,
-        thinkingLevel: state.sessionThinkingLevel,
-        create,
-      })
-      state.beginResolvedSession(session.id, {
-        mode: 'coding',
-        workspace: session.workspace ?? path,
-        model: session.model ?? state.sessionModel,
-        thinkingLevel: session.thinking_level ?? state.sessionThinkingLevel,
-        skipInitialRestore: create && session.created,
-      })
-      if (create && session.created) {
-        prependSession(queryClient, session)
-        prependWorkspaceSession(queryClient, path, session)
+      if (result.skipped) {
+        setPendingWorkspace(null)
       }
-      await refreshWorkspaceTree()
-      navigate({ to: '/coding/$sessionId', params: { sessionId: session.id } })
     } catch (err) {
       setPendingWorkspace(null)
       setError(err instanceof Error ? err.message : 'Unable to create session')
@@ -336,12 +320,7 @@ export function CodingSidebar({
   const confirmRemoveWorkspace = () => {
     const path = removeWorkspaceTarget
     if (!path) return
-    void setCodingWorkspaceVisibility(path, true).then(() => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.team.sessions.all() })
-      void refreshWorkspaceTree()
-    }).catch(() => undefined)
     setExpandedWorkspaces((current) => {
-      if (!current.has(path)) return current
       const next = new Set(current)
       next.delete(path)
       return next
@@ -349,29 +328,32 @@ export function CodingSidebar({
     if (path === activeWorkspace) {
       navigate({ to: '/coding', replace: true })
     }
+    void confirmWorkspaceRemoval({
+      path,
+      activeWorkspace,
+      expandedWorkspaces,
+      queryClient,
+      refreshWorkspaceTree,
+      navigate: ({ to, replace }) => navigate({ to, replace }),
+    }).catch(() => undefined)
     setRemoveWorkspaceTarget(null)
   }
 
   const loadWorktreesForTarget = useCallback(async (path: string) => {
-    try {
-      const items = await listWorktrees(path)
-      setWorktreesBySource((current) => ({ ...current, [path]: items }))
-      if (worktreeTarget === path) setWorktreeOptions(items)
-      return items
-    } catch {
-      setWorktreesBySource((current) => ({ ...current, [path]: [] }))
-      if (worktreeTarget === path) setWorktreeOptions([])
-      return []
-    }
+    const items = await loadWorktreesForSource(path, listWorktrees)
+    setWorktreesBySource((current) => ({ ...current, [path]: items }))
+    if (worktreeTarget === path) setWorktreeOptions(items)
+    return items
   }, [worktreeTarget])
 
   const openWorktreeDialog = async (path: string) => {
-    setWorktreeTarget(path)
-    setWorktreeName('')
-    setWorktreeBranch('')
-    setWorktreeOptions(worktreesBySource[path] ?? [])
-    setWorktreeRemoving(null)
-    setError(null)
+    const nextState = buildOpenWorktreeDialogState(path, worktreesBySource[path])
+    setWorktreeTarget(nextState.target)
+    setWorktreeName(nextState.name)
+    setWorktreeBranch(nextState.branch)
+    setWorktreeOptions(nextState.options)
+    setWorktreeRemoving(nextState.removing)
+    setError(nextState.error)
     const items = await loadWorktreesForTarget(path)
     setWorktreeOptions(items)
   }
@@ -382,24 +364,28 @@ export function CodingSidebar({
     setWorktreeRemoving(directory)
     setError(null)
     try {
-      const source = worktreeSourceByDirectory.get(directory) ?? worktreeTarget
-      if (!source) return
-      await removeWorktree(source, directory)
-      setRemovedWorktreePaths((current) => new Set(current).add(directory))
+      const result = await removeManagedWorktree(item, {
+        worktreeTarget,
+        worktreeSourceByDirectory,
+        loadWorktreesForSource: loadWorktreesForTarget,
+        refreshWorkspaceTree,
+      })
+      if (!result) return
+      setRemovedWorktreePaths((current) => new Set(current).add(result.removedDirectory))
       setExpandedWorkspaces((current) => {
-        if (!current.has(directory)) return current
+        if (!current.has(result.removedDirectory)) return current
         const next = new Set(current)
-        next.delete(directory)
+        next.delete(result.removedDirectory)
         return next
       })
       setWorktreesBySource((current) => {
         const next = { ...current }
-        delete next[directory]
-        next[source] = (next[source] ?? []).filter((worktree) => worktree.directory !== directory)
+        delete next[result.removedDirectory]
+        if (result.source) {
+          next[result.source] = result.refreshedItems
+        }
         return next
       })
-      await loadWorktreesForTarget(source)
-      await refreshWorkspaceTree()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to remove worktree')
     } finally {
@@ -413,47 +399,31 @@ export function CodingSidebar({
     setWorktreeLoading(true)
     setError(null)
     try {
-      const state = useTeamStore.getState()
-      const session = await resolveTeamSession({
-        mode: 'coding',
-        worktreeFrom: worktreeTarget,
-        worktreeName: worktreeName || 'session',
-        worktreeBranch: worktreeBranch || null,
-        model: state.sessionModel,
-        thinkingLevel: state.sessionThinkingLevel,
+      await submitWorktreeSession({
+        worktreeTarget,
+        worktreeName,
+        worktreeBranch,
+        queryClient,
+        refreshWorkspaceTree,
+        navigate,
+        onMobileClose,
+        loadWorktreesForSource: loadWorktreesForTarget,
       })
-      const path = session.workspace
-      if (!path) throw new Error('Worktree session did not return a workspace')
       setWorktreeTarget(null)
-      saveLastCodingWorkspace(path)
-      const nextState = useTeamStore.getState()
-      nextState.beginResolvedSession(session.id, {
-        mode: 'coding',
-        workspace: path,
-        model: session.model ?? nextState.sessionModel,
-        thinkingLevel: session.thinking_level ?? nextState.sessionThinkingLevel,
-        skipInitialRestore: session.created,
-      })
-      prependSession(queryClient, session)
-      prependWorkspaceSession(queryClient, path, session)
-      await refreshWorkspaceTree()
-      navigate({ to: '/coding/$sessionId', params: { sessionId: session.id } })
-      onMobileClose?.()
     } catch (err) {
-      if (isTransientNetworkError(err) && worktreeTarget) {
-        const source = worktreeTarget
-        const expectedName = worktreeNameSlug(worktreeName || 'session')
-        const items = await loadWorktreesForTarget(source)
-        const created = items.find((item) => item.name === expectedName)
-        if (created) {
-          setWorktreeTarget(null)
-          saveLastCodingWorkspace(created.directory)
-          setError(null)
-          await refreshWorkspaceTree()
-          navigate({ to: '/coding' })
-          onMobileClose?.()
-          return
-        }
+      const recovered = await recoverCreatedWorktreeAfterTransientError({
+        error: err,
+        worktreeTarget,
+        worktreeName,
+        loadWorktreesForSource: loadWorktreesForTarget,
+        refreshWorkspaceTree,
+        navigate: ({ to }) => navigate({ to }),
+        onMobileClose,
+      })
+      if (recovered) {
+        setWorktreeTarget(null)
+        setError(null)
+        return
       }
       setError(err instanceof Error ? err.message : 'Unable to create worktree')
     } finally {
@@ -462,7 +432,7 @@ export function CodingSidebar({
   }
 
   const deletedWorktreeSet = removedWorktreePaths
-  const sourceWorkspaces = visibleWorkspaces.filter((path) => !deletedWorktreeSet.has(path))
+  const sourceWorkspaces = sourceWorkspacePaths(workspaceTree, deletedWorktreeSet)
   const activeWorktreeSource = activeWorkspace ? worktreeSourceByDirectory.get(activeWorkspace) : null
 
   const resizable = useResizableWidth({
@@ -476,61 +446,50 @@ export function CodingSidebar({
 
   useEffect(() => {
     if (!activeWorkspace || !activeWorktreeSource) return
-    setExpandedWorkspaces((current) => {
-      const next = new Set(current)
-      next.add(activeWorktreeSource)
-      next.add(activeWorkspace)
-      return next
-    })
+    setExpandedWorkspaces((current) =>
+      addExpandedPaths(current, [activeWorktreeSource, activeWorkspace]),
+    )
   }, [activeWorkspace, activeWorktreeSource])
 
   const openSelectedFolder = async () => {
-    if (!browserPath) return
     try {
-      const result = await validateWorkspace(browserPath)
-      setTrustWorkspace(result.workspace)
+      const trustedWorkspace = await selectTrustedWorkspace(browserPath, validateTrustedWorkspace)
+      if (!trustedWorkspace) return
+      setTrustWorkspace(trustedWorkspace)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Workspace is invalid')
     }
   }
 
   const confirmTrustedWorkspace = () => {
-    if (!trustWorkspace) return
-    const workspaceToOpen = trustWorkspace
-    setTrustWorkspace(null)
-    setDialogOpen(false)
-    void selectWorkspace(workspaceToOpen)
+    const nextState = consumeTrustedWorkspace(trustWorkspace)
+    if (!nextState.workspaceToOpen) return
+    setTrustWorkspace(nextState.nextTrustWorkspace)
+    setDialogOpen(nextState.nextDialogOpen)
+    void selectWorkspace(nextState.workspaceToOpen)
   }
 
   const handleSessionSelect = (session: SessionResponse, workspacePath: string, event?: React.MouseEvent) => {
-    if (event && isTauri && (os === 'macos' ? event.metaKey : (event.ctrlKey || event.metaKey))) {
+    if (event && shouldOpenSessionInNewWindow(event, isTauri, os)) {
       event.preventDefault()
       event.stopPropagation()
-      import('@tauri-apps/api/core').then(({ invoke }) => {
-        invoke('app_new_window', { initialPath: `/coding/${session.id}`, initial_path: `/coding/${session.id}` }).catch((err) => {
-          console.error('Failed to open session in new window:', err)
-          pushToast({
-            tone: 'error',
-            title: 'Could not open session in new window',
-            description: err instanceof Error ? err.message : 'Desktop window creation failed.',
-          })
-        })
-      }).catch((err) => {
+      openSessionInNewWindow({ session }).catch((err) => {
+        console.error('Failed to open session in new window:', err)
         pushToast({
           tone: 'error',
           title: 'Could not open session in new window',
-          description: err instanceof Error ? err.message : 'Desktop API is unavailable.',
+          description: sessionWindowErrorDescription(err, 'Desktop window creation failed.'),
         })
       })
       return
     }
 
-    if (session.workspace ?? workspacePath) saveLastCodingWorkspace(session.workspace ?? workspacePath)
-    navigate({
-      to: '/coding/$sessionId',
-      params: { sessionId: session.id },
+    applySessionSelection({
+      session,
+      workspacePath,
+      navigate,
+      onMobileClose,
     })
-    onMobileClose?.()
   }
 
   const handleSessionDelete = (e: React.MouseEvent, session: SessionResponse) => {
@@ -544,31 +503,32 @@ export function CodingSidebar({
   }
 
   const handleWorktreeEdit = (item: WorktreeInfo) => {
-    setWorktreeEditTarget(item)
-    setWorktreeEditTitle(item.name)
+    const nextState = beginWorktreeTitleEdit(item)
+    setWorktreeEditTarget(nextState.target)
+    setWorktreeEditTitle(nextState.title)
   }
 
   const submitSessionTitle = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!editTarget) return
-    const title = editTitle.trim()
-    if (!title) return
+    const update = prepareSessionTitleUpdate(editTarget, editTitle)
+    if (!update) return
     updateSessionTitle.mutate(
-      { id: editTarget.id, title },
+      update,
       { onSuccess: () => setEditTarget(null) },
     )
   }
 
   const submitWorktreeTitle = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!worktreeEditTarget) return
-    const title = worktreeEditTitle.trim()
-    if (!title) return
     setWorktreeEditLoading(true)
     setError(null)
     try {
-      await renameWorktree(worktreeEditTarget.directory, title)
-      await refreshWorkspaceTree()
+      const renamed = await submitWorktreeRename({
+        target: worktreeEditTarget,
+        title: worktreeEditTitle,
+        refreshWorkspaceTree,
+      })
+      if (!renamed) return
       setWorktreeEditTarget(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to rename worktree')
@@ -579,23 +539,13 @@ export function CodingSidebar({
 
   const confirmSessionDelete = () => {
     if (!deleteTarget) return
-    const fallbackSession = deleteTarget.id === currentSessionId
-      ? codingSessions.find((session) => session.id !== deleteTarget.id && session.workspace === deleteTarget.workspace)
-        ?? codingSessions.find((session) => session.id !== deleteTarget.id)
-      : null
-    deleteSession.mutate(deleteTarget.id)
-    if (deleteTarget.id === currentSessionId) {
-      if (fallbackSession) {
-        if (fallbackSession.workspace) saveLastCodingWorkspace(fallbackSession.workspace)
-        navigate({
-          to: '/coding/$sessionId',
-          params: { sessionId: fallbackSession.id },
-          replace: true,
-        })
-      } else {
-        navigate({ to: '/coding', replace: true })
-      }
-    }
+    applySessionDelete({
+      deleteTarget,
+      currentSessionId,
+      codingSessions,
+      mutateDelete: deleteSession.mutate,
+      navigate,
+    })
     setDeleteTarget(null)
   }
 
@@ -689,7 +639,7 @@ export function CodingSidebar({
           const sourceRunningSessions = sourceSessions.filter((s) => s.running === true)
           const sourceHasRunningSession = sourceRunningSessions.length > 0
           const repository = workspaceTree.find((repo) => repo.path === path)
-          const nestedWorktrees = (repository?.worktrees ?? []).filter((item) => !deletedWorktreeSet.has(item.path))
+          const nestedWorktrees = visibleNestedWorktrees(repository, deletedWorktreeSet)
 
           return (
             <div key={path} className="relative">

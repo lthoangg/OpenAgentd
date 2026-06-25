@@ -10,19 +10,21 @@ Maintainer scripts for benchmarks, sidecar packaging, updater keys, and release 
 ## Scripts
 
 ```
-build_sidecar.py          Build the desktop Python sidecar bundle
-make_updater_manifest.py  Generate updater release manifests
-update_model_registry.py  Refresh bundled model metadata from models.dev
-bench_snapshot.py         Snapshot-related benchmark helper
-bench_undo_http.py        HTTP undo/redo benchmark helper
-bench_undo_redo.py        Undo/redo benchmark helper
-bench_undo_redo_layers.py Layered undo/redo benchmark helper
-generate_updater_keys.sh  Tauri updater signing key helper
+build_sidecar.py              Build the desktop Python sidecar bundle
+make_updater_manifest.py      Generate updater release manifests
+update_model_registry.py      Refresh bundled model metadata from models.dev
+bump_version.sh               Update release-facing versions and refresh lockfiles
+check_version_consistency.sh  Verify all release-facing versions stay in sync
+render_release_install_block.sh Render release-note Install block from published assets
+generate_updater_keys.sh      Tauri updater signing key helper
 ```
 
 ## Essential commands
 
 ```bash
+scripts/bump_version.sh --help
+scripts/check_version_consistency.sh
+scripts/render_release_install_block.sh --help
 uv run python scripts/build_sidecar.py --help
 uv run python scripts/make_updater_manifest.py --help
 uv run python scripts/update_model_registry.py --help

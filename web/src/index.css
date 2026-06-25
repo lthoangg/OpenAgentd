@@ -592,13 +592,13 @@ html[data-mobile-shell] .text-\[10px\] {
   animation: done-pulse var(--motion-base) var(--ease-out);
 }
 
-/* Running session title — subtle breathing emphasis for active work. */
+/* Running session title/dot — slower breathing emphasis for active work. */
 @keyframes session-title-breathe {
-  0%, 100% { opacity: 0.72; }
+  0%, 100% { opacity: 0.56; }
   50%      { opacity: 1; }
 }
 .session-title-breathe {
-  animation: session-title-breathe 2600ms var(--ease-in-out) infinite;
+  animation: session-title-breathe 2200ms var(--ease-in-out) infinite;
 }
 
 /* ─────────────────────────────────────────────────────────────

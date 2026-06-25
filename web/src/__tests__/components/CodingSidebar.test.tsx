@@ -937,6 +937,53 @@ describe('CodingSidebar workspace trust flow', () => {
     expect(screen.getByText('Background running session')).toBeTruthy()
   })
 
+  it('applies the breathing animation to every running coding session title and dot', async () => {
+    sessionsData = [
+      {
+        id: 'session-1',
+        title: 'Selected running session',
+        agent_name: 'lead',
+        created_at: '2026-05-13T00:00:00Z',
+        updated_at: '2026-05-13T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+        running: true,
+      },
+      {
+        id: 'session-2',
+        title: 'Background running session',
+        agent_name: 'lead',
+        created_at: '2026-05-12T00:00:00Z',
+        updated_at: '2026-05-12T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+        running: true,
+      },
+      {
+        id: 'session-3',
+        title: 'Idle session',
+        agent_name: 'lead',
+        created_at: '2026-05-11T00:00:00Z',
+        updated_at: '2026-05-11T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+      },
+    ]
+    workspaceSessionsData = sessionsData
+
+    await renderCodingSidebarForSessions('session-1')
+
+    expect(screen.getByText('Selected running session').className).toContain('session-title-breathe')
+    expect(screen.getByText('Background running session').className).toContain('session-title-breathe')
+    expect(screen.getByText('Idle session').className).not.toContain('session-title-breathe')
+
+    const runningDots = screen.getAllByLabelText('Session running')
+    expect(runningDots).toHaveLength(2)
+    for (const dot of runningDots) {
+      expect(dot.className).toContain('session-title-breathe')
+    }
+  })
+
   it('makes the selected coding session title visually stronger', async () => {
     sessionsData = [
       {

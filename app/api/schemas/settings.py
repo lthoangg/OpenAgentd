@@ -50,10 +50,6 @@ class ProviderInfo(BaseModel):
     saved_credentials: dict[str, str] = Field(default_factory=dict)
     env_var: str = ""
     env_vars: list[str] = Field(default_factory=list)
-    # Only set for providers without a live model-listing endpoint
-    # (currently just vertexai). Other providers return an empty list
-    # here and the UI must call the `/models` endpoint to populate.
-    fallback_models: list[str] = Field(default_factory=list)
     oauth_command: str = ""
     docs_url: str = ""
     # State the UI uses to decide whether to render "Connected" or a CTA.
@@ -92,11 +88,7 @@ class ProviderModelsResponse(BaseModel):
     # needs to surface on this endpoint, build it from a runtime-fetched
     # registry — see ``documents/techdebts/model-capabilities-registry.md``.
     models: list[str] = Field(default_factory=list)
-    # ``provider`` = list returned by the live provider API.
-    # ``fallback`` = curated list from the catalog (provider has no
-    # listing endpoint, or live discovery failed). Only providers with
-    # ``fallback_models`` set in the catalog ever return this.
-    source: Literal["provider", "fallback"]
+    source: Literal["provider"]
 
 
 class ProviderUsageWindow(BaseModel):

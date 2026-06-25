@@ -96,7 +96,6 @@ export type ProviderInfo = {
   saved_credentials: Record<string, string>
   env_var: string
   env_vars: string[]
-  fallback_models: string[]
   oauth_command: string
   docs_url: string
   is_configured: boolean
@@ -119,7 +118,7 @@ export type ProviderSaveRequest = {
 export type ProviderModelsResponse = {
   provider: string
   models: string[]
-  source: 'provider' | 'fallback'
+  source: 'provider'
 }
 
 export type ProviderUsageWindow = {

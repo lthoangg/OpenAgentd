@@ -348,7 +348,6 @@ async def list_providers() -> ProvidersListBody:
     isn't running.
     """
     from app.agent.providers.catalog import all_providers
-    from app.agent.providers.model_discovery import filter_agent_model_ids
 
     entries = all_providers()
     saved_states = [_provider_is_configured(entry) for entry in entries]
@@ -370,9 +369,6 @@ async def list_providers() -> ProvidersListBody:
                 saved_credentials=_provider_saved_display_credentials(entry),
                 env_var=entry.get("env_var", ""),
                 env_vars=list(entry.get("env_vars", [])),
-                fallback_models=filter_agent_model_ids(
-                    list(entry.get("fallback_models", []))
-                ),
                 oauth_command=entry.get("oauth_command", ""),
                 docs_url=entry.get("docs_url", ""),
                 is_configured=is_configured,

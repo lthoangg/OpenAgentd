@@ -33,11 +33,6 @@ class ProviderEntry(TypedDict, total=False):
       project + location + gcloud auth). UI renders the field list
       from ``env_vars``.
 
-    ``fallback_models`` is a curated list shown when live discovery is
-    incomplete for supported model families (Vertex AI, plus Google
-    image/video models that are not reliably returned by the public
-    model-listing endpoint). See
-    ``documents/techdebts/catalog-default-models.md`` for the history.
     """
 
     id: str
@@ -47,7 +42,6 @@ class ProviderEntry(TypedDict, total=False):
     env_var: str  # primary env var for api_key providers
     env_vars: list[str]  # multi-field providers (vertexai)
     credentials: list[dict[str, object]]
-    fallback_models: list[str]  # only set for providers without live discovery
     oauth_command: str  # CLI fallback hint for oauth providers
     docs_url: str  # link to provider's API key dashboard
     models_dev_provider_id: str  # provider id used by models.dev when different
@@ -78,11 +72,6 @@ _CATALOG: list[ProviderEntry] = [
                 "placeholder": "https://api.anthropic.com",
             },
         ],
-        "fallback_models": [
-            "claude-opus-4-7",
-            "claude-sonnet-4-6",
-            "claude-haiku-4-5",
-        ],
         "docs_url": "https://console.anthropic.com/settings/keys",
     },
     {
@@ -92,12 +81,6 @@ _CATALOG: list[ProviderEntry] = [
         "kind": "api_key",
         "env_var": "GOOGLE_API_KEY",
         "models_dev_provider_id": "google",
-        "fallback_models": [
-            "gemini-3.1-flash-image-preview",
-            "gemini-2.5-flash-image-preview",
-            "veo-3.1-generate-preview",
-            "veo-3.1-fast-generate-preview",
-        ],
         "docs_url": "https://aistudio.google.com/apikey",
     },
     {
@@ -235,11 +218,6 @@ _CATALOG: list[ProviderEntry] = [
                 "placeholder": "••••••••",
             },
         ],
-        "fallback_models": [
-            "bedrock:anthropic.claude-sonnet-4-6",
-            "bedrock:amazon.nova-pro-v1:0",
-            "bedrock:amazon.nova-lite-v1:0",
-        ],
         "docs_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/setting-up.html",
     },
     {
@@ -250,19 +228,6 @@ _CATALOG: list[ProviderEntry] = [
         "env_var": "",
         "models_dev_provider_id": "google-vertex",
         "env_vars": ["GOOGLE_CLOUD_PROJECT", "GOOGLE_CLOUD_LOCATION"],
-        # Vertex AI's `publisherModels.list` endpoint returns hundreds
-        # of mixed-purpose models (PaLM, Codey, custom-trained, etc.)
-        # so we can't usefully live-discover the user-facing subset.
-        # This curated list mirrors the Gemini families we actually
-        # support; refresh when Google ships a new generation.
-        "fallback_models": [
-            "gemini-3.5-flash",
-            "gemini-3.1-pro-preview",
-            "gemini-3-flash-preview",
-            "gemini-3.1-flash-lite-preview",
-            "gemini-2.5-pro",
-            "imagen-4",
-        ],
         "docs_url": "https://cloud.google.com/vertex-ai/docs/start/cloud-environment",
     },
 ]
@@ -289,7 +254,6 @@ def all_providers() -> list[ProviderEntry]:
             "kind": plugin.kind,
             "env_var": plugin.credentials[0].name if plugin.credentials else "",
             "env_vars": [field.name for field in plugin.credentials],
-            "fallback_models": list(plugin.fallback_models),
             "oauth_command": plugin.oauth_command,
             "docs_url": plugin.docs_url,
             "models_dev_provider_id": plugin.models_dev_provider_id,

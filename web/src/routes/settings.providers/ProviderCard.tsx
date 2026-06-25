@@ -105,8 +105,9 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
           description: `${listed.models.length} models available.`,
         })
       } else {
-        // Provider was unreachable → backend fell back to catalog defaults.
-        // Don't mark the key verified; user should retry.
+        // Live discovery returned no models, so don't mark the candidate
+        // credentials as verified; the user should retry after fixing the
+        // provider connection or model-listing permissions.
         push({
           tone: 'error',
           title: 'Failed',

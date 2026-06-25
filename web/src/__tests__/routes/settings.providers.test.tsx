@@ -74,7 +74,6 @@ describe('ProvidersSettingsPage', () => {
             credentials: [],
             env_var: '',
             env_vars: [],
-            fallback_models: [],
             oauth_command: '',
             docs_url: '',
             is_configured: false,
@@ -88,7 +87,7 @@ describe('ProvidersSettingsPage', () => {
       http.post('http://localhost/api/settings/providers/codex/models', () => HttpResponse.json({
         provider: 'codex',
         models: ['gpt-5'],
-        source: 'fallback',
+        source: 'provider',
       })),
     )
 
@@ -112,7 +111,6 @@ describe('ProvidersSettingsPage', () => {
             credentials: [],
             env_var: '',
             env_vars: [],
-            fallback_models: [],
             oauth_command: '',
             docs_url: '',
             is_configured: false,
@@ -158,7 +156,6 @@ describe('ProvidersSettingsPage', () => {
             credentials: [],
             env_var: '',
             env_vars: [],
-            fallback_models: [],
             oauth_command: '',
             docs_url: '',
             is_configured: false,
@@ -210,7 +207,6 @@ describe('ProvidersSettingsPage', () => {
             credentials: [],
             env_var: 'OPENAI_API_KEY',
             env_vars: [],
-            fallback_models: [],
             oauth_command: '',
             docs_url: '',
             is_configured: true,
@@ -246,7 +242,7 @@ describe('ProvidersSettingsPage', () => {
     expect(copy.className).toContain('md:w-6')
   })
 
-  it('refreshes cached models in the background when the providers page opens', async () => {
+  it('shows cached models already returned by the providers payload', async () => {
     server.use(
       http.get('http://localhost/api/settings/providers', () => HttpResponse.json({
         has_any_configured: true,
@@ -259,7 +255,6 @@ describe('ProvidersSettingsPage', () => {
             credentials: [],
             env_var: 'OPENAI_API_KEY',
             env_vars: [],
-            fallback_models: [],
             oauth_command: '',
             docs_url: '',
             is_configured: true,
@@ -298,7 +293,6 @@ describe('ProvidersSettingsPage', () => {
             credentials: [],
             env_var: '',
             env_vars: [],
-            fallback_models: [],
             oauth_command: '',
             docs_url: '',
             is_configured: true,

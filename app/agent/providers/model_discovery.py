@@ -314,7 +314,7 @@ async def discover_provider_models(
                     if plugin.discover_models is not None:
                         models = await plugin.discover_models(store)
                     else:
-                        models = list(plugin.fallback_models)
+                        models = []
                 else:
                     models = []
         return filter_agent_model_ids(models)

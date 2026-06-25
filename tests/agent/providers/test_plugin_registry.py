@@ -68,7 +68,6 @@ def test_provider_plugin_loads_and_is_exposed_in_catalog(
             kind="api_key",
             credentials=[ProviderCredentialField(name="SAMPLE_KEY", label="Sample key")],
             factory=build,
-            fallback_models=["model-a"],
         )
         """,
     )

@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event"
 import { createRef } from "react"
 import { InputBar } from "@/components/InputBar"
 import type { InputBarHandle } from "@/components/InputBar"
+import { buildAcceptString, isFileTypeAllowed } from "@/components/InputBar.files"
 import type { AgentCapabilities } from "@/api/types"
 
 let isMobile = false
@@ -770,6 +771,13 @@ describe("InputBar — useImperativeHandle", () => {
 })
 
 describe("InputBar — buildAcceptString (hidden file input accept attribute)", () => {
+  it("exports the same accept string logic used by the component", () => {
+    const accept = buildAcceptString()
+    expect(accept).toContain("text/plain")
+    expect(accept).toContain(".md")
+    expect(accept).not.toContain("image/*")
+  })
+
   it("includes only text types when no capabilities provided", () => {
     render(<InputBar onSubmit={() => {}} />)
     const input = document.querySelector('input[type="file"]') as HTMLInputElement
@@ -852,6 +860,21 @@ describe("InputBar — capabilities prop", () => {
 })
 
 describe("InputBar — isFileTypeAllowed / addFile filtering", () => {
+  it("exports the same file filtering logic used by the component", () => {
+    const textFile = new File(["hello"], "notes.txt", { type: "text/plain" })
+    const zipFile = new File(["zip"], "archive.zip", { type: "application/zip" })
+    const imageFile = new File(["img"], "photo.png", { type: "image/png" })
+    const caps: AgentCapabilities = {
+      input: { vision: true, document_text: false, audio: false, video: false },
+      output: { text: true, image: false, audio: false },
+    }
+
+    expect(isFileTypeAllowed(textFile)).toBe(true)
+    expect(isFileTypeAllowed(zipFile)).toBe(false)
+    expect(isFileTypeAllowed(imageFile)).toBe(false)
+    expect(isFileTypeAllowed(imageFile, caps)).toBe(true)
+  })
+
   it("always allows plain text files by MIME type", async () => {
     const user = userEvent.setup()
     render(<InputBar onSubmit={() => {}} />)

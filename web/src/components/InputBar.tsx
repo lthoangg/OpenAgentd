@@ -8,6 +8,7 @@ import { MentionOverlay } from './InputBar.overlay'
 import { CHAR_WARN_THRESHOLD, findActiveSnippet } from './InputBar.helpers'
 import { InputBarSuggestions } from './InputBar.suggestions'
 import type { AgentCapabilities } from '@/api/types'
+import { buildAcceptString, isFileTypeAllowed } from './InputBar.files'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 
@@ -445,44 +446,10 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     slashFilter,
   ])
 
-  const buildAcceptString = useCallback((): string => {
-    const parts: string[] = [
-      'text/plain', 'text/csv', 'text/tab-separated-values', 'text/markdown',
-      'application/json', '.txt', '.csv', '.tsv', '.json', '.md',
-    ]
-    if (capabilities?.input.vision) parts.push('image/*')
-    if (capabilities?.input.document_text) {
-      parts.push('application/pdf', '.pdf',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document', '.docx')
-    }
-    if (capabilities?.input.audio) parts.push('audio/*')
-    if (capabilities?.input.video) parts.push('video/*')
-    return parts.join(',')
-  }, [capabilities])
-
-  const isFileTypeAllowed = useCallback((file: File): boolean => {
-    const mimeType = file.type
-    const name = file.name.toLowerCase()
-    if (
-      mimeType.startsWith('text/') || mimeType === 'application/json' ||
-      name.endsWith('.txt') || name.endsWith('.csv') || name.endsWith('.tsv') ||
-      name.endsWith('.json') || name.endsWith('.md')
-    ) return true
-    if (capabilities?.input.vision && mimeType.startsWith('image/')) return true
-    if (capabilities?.input.document_text && (
-      mimeType === 'application/pdf' ||
-      mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-      name.endsWith('.pdf') || name.endsWith('.docx')
-    )) return true
-    if (capabilities?.input.audio && mimeType.startsWith('audio/')) return true
-    if (capabilities?.input.video && mimeType.startsWith('video/')) return true
-    return false
-  }, [capabilities])
-
   const addFile = useCallback((file: File) => {
-    if (!isFileTypeAllowed(file)) return
+    if (!isFileTypeAllowed(file, capabilities)) return
     setFiles((prev) => [...prev, file])
-  }, [isFileTypeAllowed])
+  }, [capabilities])
 
   const removeFile = useCallback((index: number) => {
     const oldUrl = blobUrls.get(index)
@@ -497,13 +464,13 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       const item = items[i]
       if (item.kind === 'file') {
         const file = item.getAsFile()
-        if (file && isFileTypeAllowed(file)) {
+        if (file && isFileTypeAllowed(file, capabilities)) {
           e.preventDefault()
           addFile(file)
         }
       }
     }
-  }, [addFile, isFileTypeAllowed])
+  }, [addFile, capabilities])
 
   const handleDragEnter = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
@@ -526,23 +493,23 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     if (!droppedFiles) return
     for (let i = 0; i < droppedFiles.length; i++) {
       const file = droppedFiles[i]
-      if (isFileTypeAllowed(file)) {
+      if (isFileTypeAllowed(file, capabilities)) {
         addFile(file)
       }
     }
-  }, [addFile, isFileTypeAllowed])
+  }, [addFile, capabilities])
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = e.currentTarget.files
     if (!selectedFiles) return
     for (let i = 0; i < selectedFiles.length; i++) {
       const file = selectedFiles[i]
-      if (isFileTypeAllowed(file)) {
+      if (isFileTypeAllowed(file, capabilities)) {
         addFile(file)
       }
     }
     e.currentTarget.value = ''
-  }, [addFile, isFileTypeAllowed])
+  }, [addFile, capabilities])
 
   // ── Slash command filtering ────────────────────────────────────────────────
 
@@ -1275,7 +1242,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
           ref={fileInputRef}
           type="file"
           multiple
-          accept={buildAcceptString()}
+          accept={buildAcceptString(capabilities)}
           onChange={handleFileSelect}
           className="hidden"
           aria-hidden="true"

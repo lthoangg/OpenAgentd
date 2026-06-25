@@ -41,15 +41,9 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { queryKeys } from '@/queries'
 import { useDeleteTeamSessionMutation, useTeamSessionsQuery, useUpdateTeamSessionTitleMutation } from '@/queries/useSessionsQuery'
-import { getCodingWorkspaceTree, listWorktrees, renameWorktree, resolveTeamSession, setCodingWorkspaceVisibility } from '@/api/client'
-import { useTeamStore } from '@/stores/useTeamStore'
-import { prependSession, prependWorkspaceSession } from '@/stores/cache-invalidation-bridge'
-import {
-  saveLastCodingWorkspace,
-  workspaceLabel,
-} from '@/utils/workspace'
+import { getCodingWorkspaceTree, listWorktrees, renameWorktree } from '@/api/client'
+import { workspaceLabel } from '@/utils/workspace'
 import { ThemeToggle } from './ThemeToggle'
 import { HealthDot } from './HealthDot'
 import { Button } from '@/components/ui/button'
@@ -88,6 +82,11 @@ import {
   applySessionSelection,
   prepareSessionTitleUpdate,
 } from './CodingSidebar.sessions'
+import {
+  confirmWorkspaceRemoval,
+  selectCodingWorkspace,
+  validateSelectedWorkspace,
+} from './CodingSidebar.workspace'
 
 interface CodingSidebarProps {
   currentSessionId?: string
@@ -279,46 +278,21 @@ export function CodingSidebar({
   }, [worktreeEditTarget])
 
   const selectWorkspace = async (path: string, opts: { create?: boolean } = {}) => {
-    const shouldCreate = opts.create === true
-    const state = useTeamStore.getState()
-    const create = shouldCreate && !(
-      state.isEmptyIdleSession() &&
-      state.sessionId === currentSessionId &&
-      workspace === path
-    )
-    if (shouldCreate && !create) {
-      setPendingWorkspace(null)
-      return
-    }
-    saveLastCodingWorkspace(path)
+    const requestedCreate = opts.create === true
     setPendingWorkspace(path)
     try {
-      state.beginResolvedSession(null, {
-        mode: 'coding',
-        workspace: path,
-        model: state.sessionModel,
-        thinkingLevel: state.sessionThinkingLevel,
+      const result = await selectCodingWorkspace({
+        path,
+        requestedCreate,
+        currentSessionId,
+        currentWorkspace: workspace,
+        queryClient,
+        refreshWorkspaceTree,
+        navigate,
       })
-      const session = await resolveTeamSession({
-        mode: 'coding',
-        workspace: path,
-        model: state.sessionModel,
-        thinkingLevel: state.sessionThinkingLevel,
-        create,
-      })
-      state.beginResolvedSession(session.id, {
-        mode: 'coding',
-        workspace: session.workspace ?? path,
-        model: session.model ?? state.sessionModel,
-        thinkingLevel: session.thinking_level ?? state.sessionThinkingLevel,
-        skipInitialRestore: create && session.created,
-      })
-      if (create && session.created) {
-        prependSession(queryClient, session)
-        prependWorkspaceSession(queryClient, path, session)
+      if (result.skipped) {
+        setPendingWorkspace(null)
       }
-      await refreshWorkspaceTree()
-      navigate({ to: '/coding/$sessionId', params: { sessionId: session.id } })
     } catch (err) {
       setPendingWorkspace(null)
       setError(err instanceof Error ? err.message : 'Unable to create session')
@@ -333,12 +307,7 @@ export function CodingSidebar({
   const confirmRemoveWorkspace = () => {
     const path = removeWorkspaceTarget
     if (!path) return
-    void setCodingWorkspaceVisibility(path, true).then(() => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.team.sessions.all() })
-      void refreshWorkspaceTree()
-    }).catch(() => undefined)
     setExpandedWorkspaces((current) => {
-      if (!current.has(path)) return current
       const next = new Set(current)
       next.delete(path)
       return next
@@ -346,6 +315,14 @@ export function CodingSidebar({
     if (path === activeWorkspace) {
       navigate({ to: '/coding', replace: true })
     }
+    void confirmWorkspaceRemoval({
+      path,
+      activeWorkspace,
+      expandedWorkspaces,
+      queryClient,
+      refreshWorkspaceTree,
+      navigate: ({ to, replace }) => navigate({ to, replace }),
+    }).catch(() => undefined)
     setRemoveWorkspaceTarget(null)
   }
 
@@ -461,9 +438,10 @@ export function CodingSidebar({
   }, [activeWorkspace, activeWorktreeSource])
 
   const openSelectedFolder = async () => {
-    if (!browserPath) return
     try {
-      setTrustWorkspace(await validateTrustedWorkspace(browserPath))
+      const trustedWorkspace = await validateSelectedWorkspace(browserPath, validateTrustedWorkspace)
+      if (!trustedWorkspace) return
+      setTrustWorkspace(trustedWorkspace)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Workspace is invalid')
     }

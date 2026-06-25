@@ -26,6 +26,11 @@ import {
   prepareSessionTitleUpdate,
 } from '@/components/CodingSidebar.sessions'
 import {
+  confirmWorkspaceRemoval,
+  selectCodingWorkspace,
+  validateSelectedWorkspace,
+} from '@/components/CodingSidebar.workspace'
+import {
   loadWorktreesForSource,
   recoverCreatedWorktreeAfterTransientError,
   removeManagedWorktree,
@@ -390,6 +395,75 @@ describe('CodingSidebar helpers', () => {
       params: { sessionId: 'session-2' },
       replace: true,
     })
+  })
+
+  it('exports workspace helpers used by the component', async () => {
+    expect(await validateSelectedWorkspace('/repo/project', async (path) => path)).toBe('/repo/project')
+    expect(await validateSelectedWorkspace(null, async (path) => path)).toBeNull()
+
+    const selectionNavigate = mock(() => {})
+    const queryClient = new QueryClient()
+    let refreshCount = 0
+    const selected = await selectCodingWorkspace({
+      path: '/repo/project',
+      requestedCreate: false,
+      currentSessionId: undefined,
+      currentWorkspace: null,
+      queryClient,
+      refreshWorkspaceTree: async () => { refreshCount += 1 },
+      navigate: selectionNavigate,
+      resolveTeamSessionFn: async () => ({
+        id: 'resolved-session',
+        title: null,
+        agent_name: null,
+        mode: 'coding',
+        workspace: '/repo/project',
+        created_at: null,
+        updated_at: null,
+        created: true,
+      }),
+    })
+    expect(selected).toEqual({ skipped: false })
+    expect(selectionNavigate).toHaveBeenCalledWith({
+      to: '/coding/$sessionId',
+      params: { sessionId: 'resolved-session' },
+    })
+    expect(refreshCount).toBe(1)
+
+    useTeamStore.setState({
+      sessionId: 'session-1',
+      isTeamWorking: false,
+      agentNames: ['lead'],
+      agentStreams: { lead: createDefaultAgentStream() },
+    })
+    const skipped = await selectCodingWorkspace({
+      path: '/repo/project',
+      requestedCreate: true,
+      currentSessionId: 'session-1',
+      currentWorkspace: '/repo/project',
+      queryClient: new QueryClient(),
+      refreshWorkspaceTree: async () => undefined,
+      navigate: mock(() => {}),
+    })
+    expect(skipped).toEqual({ skipped: true })
+
+    const removeNavigate = mock(() => {})
+    const nextExpanded = await confirmWorkspaceRemoval({
+      path: '/repo/project',
+      activeWorkspace: '/repo/project',
+      expandedWorkspaces: new Set<string>(['/repo/project', '/repo/other']),
+      queryClient: new QueryClient(),
+      refreshWorkspaceTree: async () => undefined,
+      navigate: removeNavigate,
+      setCodingWorkspaceVisibilityFn: async () => ({
+        workspace: '/repo/project',
+        hidden: true,
+        updated: 1,
+      }),
+    })
+    expect(nextExpanded.has('/repo/project')).toBe(false)
+    expect(nextExpanded.has('/repo/other')).toBe(true)
+    expect(removeNavigate).toHaveBeenCalledWith({ to: '/coding', replace: true })
   })
 })
 

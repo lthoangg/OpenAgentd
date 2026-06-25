@@ -176,7 +176,6 @@ async def diagnostics(tail: int = 200) -> dict[str, Any]:
             "config": _dir_info(settings.OPENAGENTD_CONFIG_DIR),
             "state": _dir_info(settings.OPENAGENTD_STATE_DIR),
             "cache": _dir_info(settings.OPENAGENTD_CACHE_DIR),
-            "wiki": _dir_info(settings.OPENAGENTD_WIKI_DIR),
             "workspace": _dir_info(settings.OPENAGENTD_WORKSPACE_DIR),
             "agents": _dir_info(settings.AGENTS_DIR),
             "skills": _dir_info(settings.SKILLS_DIR),

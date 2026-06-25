@@ -26,8 +26,6 @@ NORMAL_OPENAGENTD_TOOLS = [
     "shell",
     "web_fetch",
     "web_search",
-    "memory_search",
-    "wiki_search",
     "write",
 ]
 CODING_OPENAGENTD_TOOLS = [
@@ -43,7 +41,6 @@ CODING_OPENAGENTD_TOOLS = [
     "shell",
     "web_fetch",
     "web_search",
-    "memory_search",
     "write",
 ]
 

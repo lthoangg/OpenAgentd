@@ -18,7 +18,6 @@ def _default_dirs(app_env: str) -> dict[str, Path]:
     - ``state``     — logs, telemetry, OTEL rollups.  Denied.
     - ``cache``     — regeneratable throwaway (quote of the day, OAuth tokens).
       Denied.
-    - ``wiki``      — shared wiki store (``USER.md``, ``topics/``, ``notes/``).
       Allowed.
     - ``workspace`` — per-session agent workspaces (``{workspace}/<sid>``).
       The active session's workspace is the relative-path root for fs tools.
@@ -29,7 +28,6 @@ def _default_dirs(app_env: str) -> dict[str, Path]:
     Production (``app_env=production``) maps to OS XDG conventions::
 
         ~/.local/share/openagentd            ← data (DB)
-        ~/.local/share/openagentd-wiki       ← wiki
         ~/.local/share/openagentd-workspace  ← workspace (incl. uploads/)
         ~/.config/openagentd                 ← config
         ~/.local/state/openagentd            ← state
@@ -41,7 +39,6 @@ def _default_dirs(app_env: str) -> dict[str, Path]:
 
         .openagentd/dev/data/
             openagentd.db
-        .openagentd/dev/wiki/
         .openagentd/dev/workspace/<sid>/uploads/
         .openagentd/dev/config/
         .openagentd/dev/state/
@@ -52,7 +49,6 @@ def _default_dirs(app_env: str) -> dict[str, Path]:
         data = home / ".local" / "share" / "openagentd"
         return {
             "data": data,
-            "wiki": home / ".local" / "share" / "openagentd-wiki",
             "workspace": home / ".local" / "share" / "openagentd-workspace",
             "config": home / ".config" / "openagentd",
             "state": home / ".local" / "state" / "openagentd",
@@ -63,7 +59,6 @@ def _default_dirs(app_env: str) -> dict[str, Path]:
     data = root / "data"
     return {
         "data": data,
-        "wiki": root / "wiki",
         "workspace": root / "workspace",
         "config": root / "config",
         "state": root / "state",
@@ -179,11 +174,6 @@ class Settings(BaseSettings):
 
     DATABASE_URL: SecretStr = SecretStr("")
 
-    # Wiki directory — shared wiki store (USER.md, topics/, notes/).
-    # Empty string means "derive from APP_ENV" (→ ``.openagentd/dev/wiki`` in dev,
-    # ``~/.local/share/openagentd-wiki`` in production).
-    OPENAGENTD_WIKI_DIR: str = ""
-
     model_config = SettingsConfigDict(
         # Load order: project .env first, then ~/.config/openagentd/.env on top.
         # Values in later files take priority, so the user's home config
@@ -234,10 +224,6 @@ class Settings(BaseSettings):
         # paths (rare).
         if not self.OPENAGENTD_PLUGINS_DIRS:
             self.OPENAGENTD_PLUGINS_DIRS = str(config / "plugins")
-
-        # Wiki directory.
-        if not self.OPENAGENTD_WIKI_DIR:
-            self.OPENAGENTD_WIKI_DIR = str(defaults["wiki"])
 
         return self
 

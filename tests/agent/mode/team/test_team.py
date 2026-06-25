@@ -571,14 +571,11 @@ class TestAgentTeamToolInjection:
         assert "todo_manage" in lead_names
         assert "todo_manage" in member_names
 
-    async def test_member_does_not_get_memory_tools(self, basic_team):
-        """Members don't get memory tools — only the lead writes memory."""
+    async def test_member_injected_tools(self, basic_team):
+        """Members only get team_message and todo_manage injected tools."""
         team = basic_team
         tools = team.get_injected_tools("member_a")
         names = {t.name for t in tools}
-        assert "remember" not in names
-        assert "recall" not in names
-        assert "forget" not in names
         assert names == {"team_message", "todo_manage"}
 
 

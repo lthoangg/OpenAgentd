@@ -26,7 +26,6 @@ async def _run_lifespan() -> FastAPI:
 def slim_lifespan(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(app_module.settings, "APP_ENV", "test")
     monkeypatch.setattr(app_module, "ensure_workspace_initialized", Mock())
-    monkeypatch.setattr(app_module, "seed_wiki", Mock())
     monkeypatch.setattr(app_module, "setup_otel", Mock())
     monkeypatch.setattr(app_module, "start_otel_retention", Mock())
     monkeypatch.setattr(app_module, "stop_otel_retention", AsyncMock())
@@ -38,12 +37,6 @@ def slim_lifespan(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(app_module.team_manager, "stop", AsyncMock())
     monkeypatch.setattr(app_module.task_scheduler, "stop", AsyncMock())
     monkeypatch.setattr(app_module.mcp_manager, "stop", AsyncMock())
-
-    dream_scheduler = SimpleNamespace(start=AsyncMock(), stop=AsyncMock())
-    monkeypatch.setattr(
-        app_module, "DreamScheduler", Mock(return_value=dream_scheduler)
-    )
-    return dream_scheduler
 
 
 @pytest.mark.asyncio
@@ -58,18 +51,11 @@ async def test_lifespan_skips_idle_startup_services(
         app_module.task_scheduler, "has_enabled_tasks", AsyncMock(return_value=False)
     )
     monkeypatch.setattr(app_module.task_scheduler, "start", AsyncMock())
-    monkeypatch.setattr(
-        app_module,
-        "load_runtime_settings",
-        Mock(return_value=SimpleNamespace(dream=SimpleNamespace(enabled=False))),
-    )
 
-    app = await _run_lifespan()
+    await _run_lifespan()
 
     app_module.mcp_manager.start.assert_not_awaited()
     app_module.task_scheduler.start.assert_not_awaited()
-    slim_lifespan.start.assert_not_awaited()
-    assert app.state.dream_scheduler is slim_lifespan
 
 
 @pytest.mark.asyncio
@@ -86,14 +72,8 @@ async def test_lifespan_starts_configured_services(
         app_module.task_scheduler, "has_enabled_tasks", AsyncMock(return_value=True)
     )
     monkeypatch.setattr(app_module.task_scheduler, "start", AsyncMock())
-    monkeypatch.setattr(
-        app_module,
-        "load_runtime_settings",
-        Mock(return_value=SimpleNamespace(dream=SimpleNamespace(enabled=True))),
-    )
 
     await _run_lifespan()
 
     app_module.mcp_manager.start.assert_awaited_once()
     app_module.task_scheduler.start.assert_awaited_once()
-    slim_lifespan.start.assert_awaited_once()

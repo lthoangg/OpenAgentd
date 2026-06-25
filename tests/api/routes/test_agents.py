@@ -201,7 +201,7 @@ role: lead
 model: zai:glm-5-turbo
 tools:
   - shell
-  - wiki_search
+  - web_search
 skills:
   - self-healing
   - custom-skill
@@ -217,7 +217,7 @@ Extra prompt.
     assert row["tools"].count("skill") == 1
     assert row["tools"].count("todo_manage") == 1
     assert row["tools"].count("shell") == 1
-    assert row["tools"].count("wiki_search") == 1
+    assert row["tools"].count("web_search") == 1
     assert row["skills"].count("self-healing") == 1
     assert row["skills"].count("custom-skill") == 1
 

@@ -93,7 +93,7 @@ async def cleanup_generated_artifacts(
     - app-managed state logs/telemetry/OTEL directories older than the cutoff;
     - app-managed session artifact directories whose DB session no longer exists.
 
-    It intentionally does not delete config, wiki, cache credentials, or the DB.
+    It intentionally does not delete config, cache credentials, or the DB.
     """
     cutoff = _older_than_cutoff(older_than_days)
     rows = (await db.exec(select(ChatSession))).all()

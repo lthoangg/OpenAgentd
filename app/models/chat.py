@@ -1,4 +1,3 @@
-import uuid
 from datetime import datetime, timezone
 from uuid import UUID, uuid7
 
@@ -208,53 +207,3 @@ class SessionMessage(SQLModel, table=True):
         default_factory=_utcnow,
         sa_column=Column(TZDateTime(), nullable=False),
     )
-
-
-class DreamLog(SQLModel, table=True):
-    """Records sessions that have been processed by the dream agent."""
-
-    __tablename__ = "dream_log"  # type: ignore[reportIncompatibleVariableOverride]
-
-    id: int | None = Field(default=None, primary_key=True)
-    session_id: uuid.UUID = Field(index=True, unique=True)
-    processed_at: datetime = Field(sa_column=Column(TZDateTime, nullable=False))
-    agent_name: str | None = Field(default=None)
-    topics_written: str | None = Field(default=None)  # JSON array of slugs
-
-
-class DreamNotesLog(SQLModel, table=True):
-    """Records note files that have been processed by the dream agent."""
-
-    __tablename__: str = "dream_notes_log"  # type: ignore[reportIncompatibleVariableOverride]
-
-    id: int | None = Field(default=None, primary_key=True)
-    filename: str = Field(index=True, unique=True)  # e.g. "2026-04-29-abc123.md"
-    processed_at: datetime = Field(sa_column=Column(TZDateTime, nullable=False))
-
-
-class MemoryProcessedSource(SQLModel, table=True):
-    """Content-aware Dream v2 processing state for raw memory sources."""
-
-    __tablename__: str = "memory_processed_sources"  # type: ignore[reportIncompatibleVariableOverride]
-    __table_args__ = (
-        sa.UniqueConstraint(
-            "source_type",
-            "source_id",
-            name="uq_memory_processed_sources_source",
-        ),
-    )
-
-    id: int | None = Field(default=None, primary_key=True)
-    source_type: str = Field(index=True, max_length=50)
-    source_id: str = Field(index=True, max_length=255)
-    content_hash: str = Field(max_length=64)
-    processed_at: datetime = Field(
-        default_factory=_utcnow,
-        sa_column=Column(TZDateTime, nullable=False),
-    )
-    pages_changed: str | None = Field(
-        default=None,
-        sa_column=Column(sa.Text(), nullable=True),
-    )  # JSON array
-    status: str = Field(max_length=20)
-    error: str | None = Field(default=None, sa_column=Column(sa.Text(), nullable=True))

@@ -14,7 +14,6 @@ from app.api.routes.agents import router as agents_router
 from app.api.routes.auth import router as auth_router
 from app.api.routes.commands import router as commands_router
 from app.api.routes.diagnostics import router as diagnostics_router
-from app.api.routes.dream import router as dream_router
 from app.api.routes.health import router as health_router
 from app.api.routes.mcp import router as mcp_router
 from app.api.routes.observability import router as observability_router
@@ -24,7 +23,6 @@ from app.api.routes.settings import router as settings_router
 from app.api.routes.skills import router as skills_router
 from app.api.routes.snippets import router as snippets_router
 from app.api.routes.team import router as team_router
-from app.api.routes.wiki import router as wiki_router
 from app.core.config import settings
 from app.core.desktop_auth import DesktopTokenMiddleware
 from app.core.exception_handlers import EXCEPTION_HANDLERS
@@ -32,12 +30,9 @@ from app.core.metrics import HTTPMetricsMiddleware, metrics_endpoint
 from app.core.middlewares import RequestSizeLimitMiddleware, SecurityHeadersMiddleware
 from app.core.otel import setup_otel, shutdown_otel
 from app.core.otel_retention import start_otel_retention, stop_otel_retention
-from app.core.runtime_settings import load_runtime_settings
-from app.core.wiki_seed import seed_wiki
 from app.core.workspace_init import ensure_workspace_initialized
 from app.scheduler.scheduler import task_scheduler
 from app.services import memory_stream_store as stream_store, team_manager
-from app.services.dream_scheduler import DreamScheduler
 
 from app.core.version import VERSION
 
@@ -57,9 +52,6 @@ async def lifespan(app: FastAPI):
         from app.core.db import run_migrations
 
         await asyncio.to_thread(run_migrations)
-
-    # ── Seed wiki directory on first boot ──────────────────────────────
-    seed_wiki()
 
     setup_otel(service_name="openagentd")
     start_otel_retention()
@@ -92,20 +84,8 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("scheduler_no_enabled_tasks")
 
-    # Start dream scheduler (only if settings.yaml has dream.enabled: true)
-    runtime_settings = load_runtime_settings()
-    from app.core.db import async_session_factory
-
-    dream_scheduler = DreamScheduler(db_factory=async_session_factory)
-    if runtime_settings.dream.enabled:
-        await dream_scheduler.start()
-    else:
-        logger.info("dream_scheduler_disabled enabled=false")
-    app.state.dream_scheduler = dream_scheduler
-
     yield
 
-    await dream_scheduler.stop()
     await task_scheduler.stop()
     await team_manager.stop()
     await mcp_manager.stop()
@@ -154,7 +134,6 @@ def create_app() -> FastAPI:
     app.include_router(health_router, prefix="/api/health", tags=["health"])
     app.include_router(team_router, prefix="/api/team", tags=["team"])
     app.include_router(quote_router, prefix="/api/quote", tags=["quote"])
-    app.include_router(wiki_router, prefix="/api/wiki", tags=["wiki"])
     app.include_router(agents_router, prefix="/api/agents", tags=["agents"])
     app.include_router(skills_router, prefix="/api/skills", tags=["skills"])
     app.include_router(commands_router, prefix="/api/commands", tags=["commands"])
@@ -166,7 +145,6 @@ def create_app() -> FastAPI:
     app.include_router(mcp_router, prefix="/api/mcp", tags=["mcp"])
     app.include_router(settings_router, prefix="/api/settings", tags=["settings"])
     app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
-    app.include_router(dream_router, prefix="/api", tags=["dream"])
     app.include_router(
         diagnostics_router, prefix="/api/diagnostics", tags=["diagnostics"]
     )

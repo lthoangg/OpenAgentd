@@ -30,9 +30,6 @@ def test_ensure_workspace_initialized_creates_roots_and_seeds(
     monkeypatch.setattr(
         workspace_init.settings, "OPENAGENTD_WORKSPACE_DIR", str(tmp_path / "workspace")
     )
-    monkeypatch.setattr(
-        workspace_init.settings, "OPENAGENTD_WIKI_DIR", str(tmp_path / "wiki")
-    )
     monkeypatch.setattr(workspace_init.settings, "AGENTS_DIR", str(config / "agents"))
     monkeypatch.setattr(workspace_init.settings, "SKILLS_DIR", str(config / "skills"))
     monkeypatch.setattr(
@@ -86,9 +83,6 @@ def test_ensure_workspace_initialized_skips_seed_when_agents_exist(
     monkeypatch.setattr(
         workspace_init.settings, "OPENAGENTD_WORKSPACE_DIR", str(tmp_path / "workspace")
     )
-    monkeypatch.setattr(
-        workspace_init.settings, "OPENAGENTD_WIKI_DIR", str(tmp_path / "wiki")
-    )
     monkeypatch.setattr(workspace_init.settings, "AGENTS_DIR", str(agents))
     monkeypatch.setattr(workspace_init.settings, "SKILLS_DIR", str(config / "skills"))
     monkeypatch.setattr(
@@ -125,9 +119,6 @@ def test_ensure_workspace_initialized_materializes_builtins_without_seed(
     )
     monkeypatch.setattr(
         workspace_init.settings, "OPENAGENTD_WORKSPACE_DIR", str(tmp_path / "workspace")
-    )
-    monkeypatch.setattr(
-        workspace_init.settings, "OPENAGENTD_WIKI_DIR", str(tmp_path / "wiki")
     )
     monkeypatch.setattr(workspace_init.settings, "AGENTS_DIR", str(config / "agents"))
     monkeypatch.setattr(workspace_init.settings, "SKILLS_DIR", str(config / "skills"))
@@ -183,7 +174,6 @@ def test_install_seed_writes_runtime_settings_model(tmp_path: Path) -> None:
     ]
     settings = (tmp_path / "config" / "settings.yaml").read_text(encoding="utf-8")
     assert "title_generation:" in settings
-    assert "dream:" in settings
     assert "model: codex:gpt-5.5" in settings
 
 

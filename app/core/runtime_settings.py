@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.config import settings
 
@@ -16,30 +16,6 @@ class TitleGenerationSettings(BaseModel):
     enabled: bool = True
     model: str | None = None
     wait_timeout_seconds: float = 3.0
-
-
-class DreamSettings(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    enabled: bool = False
-    model: str | None = None
-    schedule: str = "0 2 * * *"
-
-    @model_validator(mode="after")
-    def _validate_model(self) -> "DreamSettings":
-        if self.model and ":" not in self.model:
-            raise ValueError("Dream model must be 'provider:model'.")
-        return self
-
-
-class MemoryVectorSettings(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    enabled: bool = False
-    backend: str = "disabled"
-    embedding_model: str | None = None
-    dim: int | None = None
-    index_path: str | None = None
 
 
 class ServerSettings(BaseModel):
@@ -64,8 +40,6 @@ class RuntimeSettings(BaseModel):
     title_generation: TitleGenerationSettings = Field(
         default_factory=TitleGenerationSettings
     )
-    dream: DreamSettings = Field(default_factory=DreamSettings)
-    memory_vector: MemoryVectorSettings = Field(default_factory=MemoryVectorSettings)
     server: ServerSettings = Field(default_factory=ServerSettings)
     providers: dict[str, ProviderUiSettings] = Field(default_factory=dict)
 
@@ -173,7 +147,6 @@ def ensure_runtime_settings(path: Path, *, provider_model: str) -> bool:
     save_runtime_settings(
         RuntimeSettings(
             title_generation=TitleGenerationSettings(model=model),
-            dream=DreamSettings(model=model),
         ),
         path,
     )

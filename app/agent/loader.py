@@ -271,7 +271,6 @@ def _default_tool_registry() -> dict[str, Tool]:
         grep_files,
         list_directory,
         load_skill,
-        memory_search,
         patch_file,
         read_file,
         remove_path,
@@ -282,8 +281,6 @@ def _default_tool_registry() -> dict[str, Tool]:
         web_search,
         write_file,
     )
-    from app.agent.tools.builtin.note import note_tool
-    from app.agent.tools.builtin.wiki_search import wiki_search
     from app.agent.tools.multimodalities import generate_image, generate_video
 
     registry: dict[str, Tool] = {
@@ -303,9 +300,6 @@ def _default_tool_registry() -> dict[str, Tool]:
         "skill": load_skill,
         "schedule_task": schedule_task,
         "todo_manage": todo_manage,
-        "wiki_search": wiki_search,
-        "memory_search": memory_search,
-        "note": note_tool,
         "generate_image": generate_image,
         "generate_video": generate_video,
     }
@@ -369,18 +363,15 @@ def _build_agent(
 
     # These tools are always available to the lead agent — not listed in frontmatter.
     if cfg.role == "lead":
-        from app.agent.tools.builtin.note import note_tool as _note_tool
-
         _todo_manage = tool_registry.get("todo_manage", todo_manage)
         _schedule_task = tool_registry.get("schedule_task", _schedule_task_tool)
-        _note = tool_registry.get("note", _note_tool)
-        tools += [_todo_manage, _schedule_task, _note]
+        tools += [_todo_manage, _schedule_task]
 
     seen: set[str] = {t.name for t in tools}
     cfg.tools = list(dict.fromkeys(cfg.tools))
     cfg.mcp = list(dict.fromkeys(cfg.mcp))
     for tool_name in cfg.tools:
-        if tool_name in ("skill", "todo_manage", "schedule_task", "note"):
+        if tool_name in ("skill", "todo_manage", "schedule_task"):
             continue
         if tool_name not in tool_registry:
             # Soft-skip: settings/self-healing edits and disabled-then-rebuild

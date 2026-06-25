@@ -17,7 +17,6 @@ def ensure_workspace_initialized() -> None:
         settings.OPENAGENTD_STATE_DIR,
         settings.OPENAGENTD_CACHE_DIR,
         settings.OPENAGENTD_WORKSPACE_DIR,
-        settings.OPENAGENTD_WIKI_DIR,
         settings.AGENTS_DIR,
         settings.SKILLS_DIR,
     ):

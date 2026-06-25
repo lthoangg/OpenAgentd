@@ -9,14 +9,11 @@ from .filesystem import (
     remove_path,
     write_file,
 )
-from .memory_search import memory_search
-from .note import note_tool
 from .schedule import schedule_task
 from .shell import background_process, shell_tool
 from .skill import discover_skills, load_skill
 from .todo import todo_manage
 from .web import web_fetch, web_search
-from .wiki_search import wiki_search
 
 __all__ = [
     "background_process",
@@ -29,14 +26,11 @@ __all__ = [
     "list_directory",
     "patch_file",
     "load_skill",
-    "memory_search",
-    "note_tool",
     "read_file",
     "remove_path",
     "schedule_task",
     "todo_manage",
     "web_fetch",
     "web_search",
-    "wiki_search",
     "write_file",
 ]

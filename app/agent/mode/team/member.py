@@ -35,9 +35,6 @@ from app.agent.drift import detect_drift, stamp_agent_files
 from app.agent.hooks.base import BaseAgentHook
 from app.agent.hooks.continuation import ContinuationHook
 from app.agent.hooks.dynamic_prompt import inject_current_date
-from app.agent.hooks.memory_context import default_memory_context_hook
-from app.agent.hooks.memory_flush import build_memory_flush_hook
-from app.agent.hooks.wiki_injection import default_wiki_injection_hook
 from app.agent.hooks.workspace_instructions import WorkspaceInstructionsHook
 from app.agent.hooks.otel import OpenTelemetryHook
 from app.agent.hooks.stream_publisher import StreamPublisherHook
@@ -816,8 +813,6 @@ class TeamMemberBase(abc.ABC):
 
         hooks: list[BaseAgentHook] = [
             inject_current_date,
-            default_wiki_injection_hook,
-            default_memory_context_hook,
             team_prompt_hook,
             team_inbox_hook,
             publisher_hook,
@@ -877,14 +872,6 @@ class TeamMemberBase(abc.ABC):
                 model_id=summarization_model,
             )
             if summ_hook:
-                # Flush memory before the summariser compresses the window —
-                # same threshold so both fire on the same turn, flush first.
-                flush_hook = build_memory_flush_hook(
-                    llm_provider=summarization_provider,
-                    prompt_token_threshold=summ_hook.prompt_token_threshold,
-                )
-                if flush_hook is not None:
-                    hooks.append(flush_hook)
                 hooks.append(summ_hook)
 
         # Inject team tools

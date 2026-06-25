@@ -16,7 +16,7 @@ exists. When you ship something new, **add it here first** — slides, README,
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 15 providers. Your keys.
 
-**Latest release:** v1.67.0 · June 25, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.67.0)
+**Latest release:** v1.68.0 · June 25, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.68.0)
 
 ---
 
@@ -558,10 +558,15 @@ Desktop is primary. CLI / server is the developer path. Deeper doc:
   `migrate hermes`. Imports identity + context Markdown into one lead agent.
 - **Cross-platform single-instance** `[v1.13.0]` — opening the app twice
   focuses the existing window instead of launching a duplicate.
-- **Desktop force reload respects backend mode** `[v1.67.0]` — external-server
+- **Desktop force reload respects backend mode** `[v1.68.0]` — external-server
   windows now do a frontend-only force reload without restarting the bundled
   sidecar, while bundled windows wait for backend readiness before the desktop
   UI finishes bootstrapping after reload.
+- **Closest restorable route fallback after backend switches** `[v1.68.0]` —
+  when reconnecting to a backend that does not have the previous coding or
+  cockpit session, desktop restore now lands on the nearest valid hub page
+  instead of reopening a stale session-specific route.
+
 
 ---
 

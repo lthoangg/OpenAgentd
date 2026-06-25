@@ -2,7 +2,7 @@
 title: Desktop distribution
 description: How OpenAgentd packages, ships, signs, and updates the native desktop app.
 status: stable
-updated: 2026-06-09
+updated: 2026-06-25
 ---
 
 # Desktop distribution

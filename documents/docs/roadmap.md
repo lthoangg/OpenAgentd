@@ -2,7 +2,7 @@
 title: Roadmap
 description: Public roadmap for OpenAgentd — short priority list plus links to GitHub issues.
 status: living
-updated: 2026-05-28
+updated: 2026-06-25
 ---
 
 # Roadmap
@@ -39,7 +39,7 @@ backlog is on GitHub:
 | Local-first UI state | [#87 Persist UI state on disk instead of localStorage](https://github.com/lthoangg/OpenAgentd/issues/87) |
 | Provider and migration coverage | [#105 Qwen](https://github.com/lthoangg/OpenAgentd/issues/105), [#106 LM Studio](https://github.com/lthoangg/OpenAgentd/issues/106), [#107 Claude access](https://github.com/lthoangg/OpenAgentd/issues/107), [#108 Claude Code / Codex CLI / opencode migrations](https://github.com/lthoangg/OpenAgentd/issues/108) |
 | Coding workspace ergonomics | [#88 Line-range file mentions](https://github.com/lthoangg/OpenAgentd/issues/88), [#98 Git worktree support](https://github.com/lthoangg/OpenAgentd/issues/98), [#99 Auto-format after edits](https://github.com/lthoangg/OpenAgentd/issues/99) |
-| Memory | [#101 Per-project wiki memory](https://github.com/lthoangg/OpenAgentd/issues/101), [#102 Cross-session conversation search](https://github.com/lthoangg/OpenAgentd/issues/102) |
+| Memory | [#101 Per-project wiki memory](https://github.com/lthoangg/OpenAgentd/issues/101), [#102 Cross-session conversation search](https://github.com/lthoangg/OpenAgentd/issues/102), [#104 Rework broader wiki and memory architecture](https://github.com/lthoangg/OpenAgentd/issues/104) |
 | Future architecture fork | [#119 Decouple CLI/server from the desktop shell](https://github.com/lthoangg/OpenAgentd/issues/119) |
 
 ## Issue index

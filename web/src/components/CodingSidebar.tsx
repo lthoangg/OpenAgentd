@@ -92,6 +92,11 @@ import {
   buildOpenWorktreeDialogState,
   submitWorktreeRename,
 } from './CodingSidebar.worktree-dialog'
+import {
+  openSessionInNewWindow,
+  sessionWindowErrorDescription,
+  shouldOpenSessionInNewWindow,
+} from './CodingSidebar.window'
 
 interface CodingSidebarProps {
   currentSessionId?: string
@@ -462,23 +467,15 @@ export function CodingSidebar({
   }
 
   const handleSessionSelect = (session: SessionResponse, workspacePath: string, event?: React.MouseEvent) => {
-    if (event && isTauri && (os === 'macos' ? event.metaKey : (event.ctrlKey || event.metaKey))) {
+    if (event && shouldOpenSessionInNewWindow(event, isTauri, os)) {
       event.preventDefault()
       event.stopPropagation()
-      import('@tauri-apps/api/core').then(({ invoke }) => {
-        invoke('app_new_window', { initialPath: `/coding/${session.id}`, initial_path: `/coding/${session.id}` }).catch((err) => {
-          console.error('Failed to open session in new window:', err)
-          pushToast({
-            tone: 'error',
-            title: 'Could not open session in new window',
-            description: err instanceof Error ? err.message : 'Desktop window creation failed.',
-          })
-        })
-      }).catch((err) => {
+      openSessionInNewWindow({ session }).catch((err) => {
+        console.error('Failed to open session in new window:', err)
         pushToast({
           tone: 'error',
           title: 'Could not open session in new window',
-          description: err instanceof Error ? err.message : 'Desktop API is unavailable.',
+          description: sessionWindowErrorDescription(err, 'Desktop window creation failed.'),
         })
       })
       return

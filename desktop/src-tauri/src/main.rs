@@ -729,7 +729,7 @@ async fn restart_sidecar_and_reload_window(app: &AppHandle) -> Result<()> {
     } else {
         Sidecar::spawn(app).context("spawn sidecar")?
     };
-    let handshake: Handshake = sidecar
+    let handshake = sidecar
         .read_handshake(Duration::from_secs(30))
         .await
         .context("read sidecar handshake")?;

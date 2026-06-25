@@ -20,7 +20,6 @@ OpenAgentd splits runtime files across **six** XDG-aligned roots, one per catego
 | State | `OPENAGENTD_STATE_DIR` | `~/.local/state/openagentd` | `.openagentd/dev/state` | denied |
 | Cache | `OPENAGENTD_CACHE_DIR` | `~/.cache/openagentd` | `.openagentd/dev/cache` | denied |
 | Workspace | `OPENAGENTD_WORKSPACE_DIR` | `~/.local/share/openagentd-workspace` | `.openagentd/dev/workspace` | allowed |
-| Wiki | `OPENAGENTD_WIKI_DIR` | `~/.local/share/openagentd-wiki` | `.openagentd/dev/wiki` | allowed |
 
 **What lives where:**
 
@@ -29,7 +28,6 @@ OpenAgentd splits runtime files across **six** XDG-aligned roots, one per catego
 - **State** — historical bookkeeping. Logs (`logs/`), telemetry (`telemetry/`), OTEL rollups (`otel/`), `openagentd.pid`. Safe to archive.
 - **Cache** — regeneratable throwaway. `quoteoftheday.json`, `copilot_oauth.json`, `codex_oauth.json`. Safe to delete any time.
 - **Workspace** — per-session agent workspaces (`{root}/<sid>/`). User uploads live at `{root}/<sid>/uploads/`. Allowed by the sandbox so filesystem tools (`read`/`write`/`shell`) can operate there.
-- **Wiki** — agent memory (`USER.md`, `INDEX.md`, `LOG.md`, `LINT.md`, knowledge dirs, `notes/`). See [`agent/memory.md`](../agent/memory.md).
 
 ## `.env` location
 
@@ -54,16 +52,6 @@ Dev-mode paths shown below — substitute the production columns from the table 
 │   │       └── .tool_results/
 │   │           ├── shell/*.txt            # large shell output spills
 │   │           └── {agent}/*.txt          # large tool-result offloads
-│   ├── wiki/                              # OPENAGENTD_WIKI_DIR
-│   │   ├── USER.md                        # pure YAML, injected into system prompt
-│   │   ├── INDEX.md                       # dream-maintained TOC
-│   │   ├── LOG.md                         # service-managed dream/lint log
-│   │   ├── LINT.md                        # latest dream lint report
-│   │   ├── topics/                        # concept pages
-│   │   ├── entities/                      # concrete things
-│   │   ├── sources/                       # one page per ingested source
-│   │   ├── comparisons/                   # X-vs-Y pages
-│   │   └── notes/                         # agent notes
 │   ├── workspace/                         # OPENAGENTD_WORKSPACE_DIR
 │   │   └── {lead_session_id}/             # normal-mode workspace
 │   │       └── uploads/<uuid>.<ext>       # user uploads (reachable as `uploads/<filename>`)
@@ -130,4 +118,4 @@ Cleanup targets generated, regeneratable artifacts only:
 - orphaned session artifact directories under `{OPENAGENTD_DATA_DIR}/sessions/`;
 - old state logs, telemetry files, and OTEL files.
 
-It intentionally does not delete `OPENAGENTD_DATA_DIR`, `OPENAGENTD_CONFIG_DIR`, `OPENAGENTD_WIKI_DIR`, or credential/cache files.
+It intentionally does not delete `OPENAGENTD_DATA_DIR`, `OPENAGENTD_CONFIG_DIR`, or credential/cache files.

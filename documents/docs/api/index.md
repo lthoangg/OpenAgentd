@@ -155,25 +155,6 @@ in `mcp.json`. Existing unrelated `.env` entries are preserved.
 any side effect), then reconciles runners. The running team and any
 in-flight turn are not disrupted.
 
-## Wiki endpoints
-
-| Method | Path | Returns |
-|--------|------|---------|
-| `GET` | `/api/wiki/tree` | `WikiTreeResponse` — `system` (`USER.md`, `INDEX.md`), `topics`, `notes`. `?unprocessed_only=true` filters notes to files not yet processed by dream. |
-| `GET` | `/api/wiki/file?path=USER.md` | `WikiFileResponse` — raw contents + parsed metadata |
-| `PUT` | `/api/wiki/file` | `WikiFileResponse` — create or overwrite |
-| `DELETE` | `/api/wiki/file?path=topics/foo.md` | `{status, path}` — `USER.md` and `INDEX.md` cannot be deleted |
-
-Paths are relative to `OPENAGENTD_WIKI_DIR`. See [`agent/memory.md`](../agent/memory.md) for the wiki layout.
-
-## Dream endpoint
-
-| Method | Path | Returns |
-|--------|------|---------|
-| `GET` | `/api/dream/config` | `{enabled, model, schedule}` — current Dream runtime settings |
-| `PUT` | `/api/dream/config` | `{enabled, model, schedule}` — persist Dream settings to `settings.yaml` and reload the scheduler |
-| `POST` | `/api/dream/run` | `{sessions_processed, notes_processed, remaining, failed, skipped?}` — trigger dream synthesis immediately; `skipped` is present when dream is not configured and pending items were preserved |
-
 ## Scheduler endpoints
 
 | Method | Path | Returns |

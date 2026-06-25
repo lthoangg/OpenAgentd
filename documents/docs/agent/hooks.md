@@ -342,14 +342,6 @@ LLM call details, SSE payload, client handling, and observability.
 
 ---
 
-### `WikiInjectionHook`
-
-**File:** `wiki_injection.py`
-
-Injects `USER.md` (and selected `topics/` material) into the system prompt on every model call so the agent has stable cross-session memory. See [`memory.md`](./memory.md) for the wiki layout and dream-driven note synthesis.
-
----
-
 ### `WorkspaceInstructionsHook`
 
 **File:** `workspace_instructions.py`
@@ -365,14 +357,6 @@ Coding-mode only. Reads a root `AGENTS.md` in the active workspace (when present
 Wraps each model call in an OTEL span and emits per-turn metrics. See [`observability.md`](../observability.md) for the span hierarchy, attribute schema, and DuckDB-backed `/api/observability/*` endpoints. Registered in `TeamMemberBase._handle_messages()` alongside the streaming/protocol hooks.
 
 `TelemetryHook` (`telemetry.py`) is a legacy lightweight counterpart kept for tests that don't initialise OTEL.
-
----
-
-### `build_memory_flush_hook`
-
-**File:** `memory_flush.py`
-
-Optional factory that returns a hook flushing dream-synthesis events to disk at the end of each turn. Off by default — see [`memory.md`](./memory.md) for when to enable it.
 
 ---
 

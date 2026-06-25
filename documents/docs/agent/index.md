@@ -39,7 +39,7 @@ app/agent/
 │   ├── agent.py            # RunConfig, AgentContext
 │   └── events.py           # SSE event payloads
 ├── tools/              # Tool registry (@tool decorator) + built-ins
-│   └── builtin/            # filesystem/, shell, web, date, skill, wiki_search, note, todo, schedule
+│   └── builtin/            # filesystem/, shell, web, date, skill, todo, schedule
 └── mode/
     └── team/           # AgentTeam, TeamLead, TeamMember, mailbox
         ├── hooks/          # AgentTeamProtocolHook, TeamInboxHook
@@ -59,7 +59,6 @@ app/agent/
 | [team-lazy-spawn.md](./team-lazy-spawn.md) | Lazy member spawning + per-session instance IDs |
 | [context.md](./context.md) | AgentState, RunContext, system prompt injection, metadata |
 | [summarization.md](./summarization.md) | Rolling-window context compression — module-level config, mode-aware prompt + keep window |
-| [memory.md](./memory.md) | Wiki memory — notes, dream synthesis, USER.md injection |
 
 ## Entry points
 

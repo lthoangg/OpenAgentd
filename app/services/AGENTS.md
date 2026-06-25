@@ -10,7 +10,6 @@ team_manager.py          Team construction and session routing
 stream_envelope.py       SSE envelope helpers
 memory_stream_store.py   In-memory stream state
 agent_fs.py              Agent/workspace filesystem helpers
-wiki.py / dream.py       Wiki, notes, Dream processing
 snapshot_service.py      Workspace/session snapshot support
 commands.py              Command handling helpers
 title_service.py         Title generation
@@ -20,7 +19,6 @@ title_service.py         Title generation
 
 - Route behavior change: keep HTTP validation in `app/api/`, durable logic here, and add route/service tests.
 - Session/history change: inspect `chat_service.py`, DB models, stream store, and web store assumptions.
-- Wiki/Dream change: inspect `documents/docs/agent/memory.md`, manual smoke scripts, and scheduler interactions.
 - File/workspace change: check traversal protection, symlink behavior, media endpoints, and tests under `tests/api/routes/test_team_*`.
 
 ## Commands

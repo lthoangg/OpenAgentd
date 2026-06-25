@@ -300,38 +300,19 @@ team against it. Deeper doc: [`web/coding-sessions.md`](./web/coding-sessions.md
 
 ## 4. Memory and context
 
-OpenAgentd carries durable, editable memory across sessions. Deeper doc:
-[`agent/memory.md`](./agent/memory.md), [`agent/context.md`](./agent/context.md),
+OpenAgentd carries context across sessions via rolling-window summarization. Deeper doc:
+[`agent/context.md`](./agent/context.md),
 [`agent/summarization.md`](./agent/summarization.md).
 
-- **`USER.md` auto-injection** `[since v1.0]` — pure YAML durable user facts,
-  injected into every prompt. Identity, preferences, projects, standing context.
-- **Editable wiki memory** `[since v1.0]` — Karpathy-style wiki at
-  `{OPENAGENTD_WIKI_DIR}` with `sources/`, `topics/`, `entities/`,
-  `comparisons/`, `notes/`. Browse and edit from the Wiki panel.
-- **`wiki_search` tool** `[since v1.0]` — explicit search across wiki pages.
-  Pages are not auto-injected — the agent queries them when it decides.
-- **Dream agent (idle consolidation)** `[since v1.0]` — runs at idle, reads
-  notes + recent sessions, promotes durable concepts into wiki pages, maintains
-  `INDEX.md` and `LOG.md`.
 - **`/compact` rolling-window summarization** `[v1.5.0]` — compresses old turns
   into a single summary message kept in context; UI shows the unabridged
   conversation. Preserves reasoning and loaded skill/tool context; skill
   instruction tool-call pairs remain active after repeated compaction while the
   summarizer keeps the same cacheable prompt prefix as normal chat turns.
-- **Notes** `[since v1.0]` — `note` tool writes append-only daily files at
-  `wiki/notes/{date}.md`. The dream agent reads these.
 - **`AGENTS.md` at repo root and subfolders** `[v1.9.0]` — written by `/init`;
   standard repo- and folder-scoped agent context files.
 - **Per-message provider metadata** `[v1.17.0]` — assistant messages persist
   the model that generated each reply (visible in inspector).
-- **Memory v2 / Dream v2 wiki** `[v1.41.0]` — Karpathy-style markdown memory
-  with `SCHEMA.md`, `INDEX.md`, `LOG.md`, `notes/`, `imports/`, and `wiki/`;
-  deterministic Dream maintenance compiles canonical DB sessions, notes, and
-  imports into cited active fact bullets; explicit `memory_search`, conservative
-  automatic relevant-memory injection, a VSCode-like memory tree UI, and manual
-  LongMemEval-style retrieval/injection evals expose quality and false-positive
-  failures. See [`agent/memory.md`](./agent/memory.md).
 
 ---
 
@@ -415,7 +396,6 @@ MCP. Deeper doc: [`agent/tools.md`](./agent/tools.md).
 | Filesystem | `read`, `write`, `edit`, `patch`, `ls`, `glob`, `grep`, `rm` |
 | Shell | `shell`, `bg` (background processes) |
 | Web | `web_search`, `web_fetch` |
-| Memory | `wiki_search`, `note` |
 | Generation | `generate_image`, `generate_video` |
 | Scheduling | `schedule_task` |
 | Tasks | `todo_manage` |

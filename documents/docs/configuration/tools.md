@@ -56,15 +56,6 @@ Both tools route through `multimodal.yaml` to choose a backend (Google, OpenAI, 
 | `generate_image` | Generate (or edit) an image — text-to-image, image+text-to-image. |
 | `generate_video` | Generate a video. |
 
-### Memory (wiki)
-
-See [`agent/memory.md`](../agent/memory.md) for the wiki layout, dream synthesis, and `USER.md` injection.
-
-| Tool | What it does |
-|------|--------------|
-| `wiki_search` | Search the wiki knowledge base by keyword (BM25). |
-| `note` | Append a note to the current session's wiki note file. |
-
 ## Always-injected tools
 
 A few tools are injected by the framework — do **not** list them in `tools:`.

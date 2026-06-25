@@ -137,7 +137,6 @@ Verbs are **deterministic** (no randomised phrase pools). Argument values shown 
 | `recall` | `Checking memory…` | `category: key` filter, or hidden if empty | `arguments` |
 | `skill` | *[skill_name]* | hidden; result panel suppressed because instructions are model context, not UI detail | — |
 | `note` | `Recording note…` | note `content` only (no JSON wrapper) | `arguments` |
-| `wiki_search` | *["query"]* | hidden | — |
 | `todo_manage` | Action summary, e.g. `Creating todo: `*[content]*, `Updating `*[N todos]*`…`, `Reading todos…` | simplified action list for create/update/batches; hidden for read/claim/delete | `arguments` when shown |
 | `schedule_task` | Action summary, e.g. `Scheduling `*[name]*, `Listing scheduled tasks…`, `Pausing scheduled task `*[task_id]* | schedule and prompt details for create; hidden for list/pause/resume/delete/trigger | `arguments` when shown |
 | `bg` | Action-based — e.g. `Listing background processes…`, `Checking process `*[pid]*`…`, `Reading output of process `*[pid]*`…`, `Stopping process `*[pid]*`…`, `Managing background process…` | hidden | — |

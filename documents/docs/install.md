@@ -212,7 +212,7 @@ openagentd/
 │   ├── api/                # Routes (thin — logic in services/)
 │   ├── core/               # Config, DB, middleware, logging
 │   ├── models/             # SQLModel DB schemas (chat)
-│   └── services/           # Business logic, stream store, memory, dream
+│   └── services/           # Business logic, stream store, chat, title
 ├── web/                    # React 19 frontend (Vite + Bun)
 ├── tests/                  # pytest test suite
 ├── seed/                   # Default agents and empty mcp.json copied on first init

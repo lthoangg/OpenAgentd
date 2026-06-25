@@ -395,14 +395,13 @@ The topbar is composed from smaller primitives. Each primitive owns its appearan
 **Primitives in the right cluster (in order)**
 
 1. **Token meter** — desktop only, hidden until totals exceed zero. Shows `input · output · cached` tokens in mono 11px on a transparent background; cached column appears only after the first cache hit. A pulsing dot may follow the numbers while values are still climbing.
-2. **Dream indicator** — small mono row with a pulsing moon glyph, shown while the dream loop is running. Label is hidden on narrow viewports; the pulsing glyph is the minimum.
-3. **Split-pane controls** — desktop only, only meaningful in unified view. Two icon-only ghost buttons for "split down" and "split right".
+2. **Split-pane controls** — desktop only, only meaningful in unified view. Two icon-only ghost buttons for "split down" and "split right".
 4. **View toggle** — desktop only. Three-state segmented control for `agent` / `split` / `unified`. See [View toggle](#view-toggle).
 5. **Topbar action triplet** — Todos, Files, Agents. Each is a small icon+label button (see [Topbar action](#topbar-action)).
 
 **Visibility rules**
 
-- Mobile collapses everything except the action triplet — token meter, dream indicator, split controls, and view toggle are all desktop-only.
+- Mobile collapses everything except the action triplet — token meter, split controls, and view toggle are all desktop-only.
 - The topbar is a `shrink-0` flex row. The left side of the topbar must own its `min-w-0` so the topbar never pushes content off-screen.
 
 **Don't**

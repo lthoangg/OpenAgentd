@@ -58,8 +58,8 @@ C4Container
     System_Boundary(openagentd_boundary, "openagentd System") {
         Container(desktop, "Desktop shell", "Tauri 2 / Rust", "macOS/Linux native shell. Embeds the React Web UI, bundles + launches the Python API sidecar, manages auto-updates (in-app updater, signed payloads), native notifications, and the single-instance lifecycle.")
         Container(web, "Web Frontend", "React / TypeScript / Vite / Bun", "Shared desktop/browser/mobile UI. Command palette, slash commands, tool inspector with diffs, file panel, telemetry dashboard, multi-agent split view. Connects to backend via REST + SSE.")
-        Container(api, "FastAPI Application", "Python / FastAPI / uvicorn", "Exposes REST + SSE endpoints. Handles session management, agent execution, agent loop, hooks, tools, multi-agent teams, memory (wiki + dream), provider fallback, SSE streaming.")
-        ContainerDb(db, "Database", "SQLite / SQLModel / Alembic", "Persists chat sessions, messages, summaries, memory facts, and memory events.")
+        Container(api, "FastAPI Application", "Python / FastAPI / uvicorn", "Exposes REST + SSE endpoints. Handles session management, agent execution, agent loop, hooks, tools, multi-agent teams, provider fallback, SSE streaming.")
+        ContainerDb(db, "Database", "SQLite / SQLModel / Alembic", "Persists chat sessions, messages, and summaries.")
     }
 
     System_Ext(llm_providers, "LLM Providers", "Gemini, Vertex AI, ZAI, OpenRouter", "HTTPS/SSE APIs")
@@ -87,20 +87,19 @@ C4Component
     ContainerDb(db, "Database", "SQLite")
 
     Container_Boundary(api_boundary, "FastAPI Application") {
-        Component(routes, "API Routes", "app/api/routes/", "Top-level: agents, dream, health, mcp, observability, quote, scheduler, settings, skills, speech, wiki, diagnostics. Team: routes/team/{chat,files,permissions,todos}.py — chat handles POST + SSE.")
+        Component(routes, "API Routes", "app/api/routes/", "Top-level: agents, health, mcp, observability, quote, scheduler, settings, skills, speech, diagnostics. Team: routes/team/{chat,files,permissions,todos}.py — chat handles POST + SSE.")
         Component(agent_loader, "Agent Loader", "app/agent/loader.py", "Reads agents/*.md, constructs Agent instances with primary + optional fallback providers.")
         Component(agent, "Agent", "app/agent/agent_loop/", "Reasoning loop package — core.py (Agent class), streaming.py, retry.py, tool_dispatch.py, tool_executor.py.")
-        Component(hooks, "Agent Hooks", "app/agent/hooks/", "StreamPublisherHook, SummarizationHook, dynamic_prompt, SessionLogHook, TitleGenerationHook, ToolResultOffloadHook, OpenTelemetryHook, WikiInjectionHook, WorkspaceInstructionsHook + StreamingHook (custom integrations).")
+        Component(hooks, "Agent Hooks", "app/agent/hooks/", "StreamPublisherHook, SummarizationHook, dynamic_prompt, SessionLogHook, TitleGenerationHook, ToolResultOffloadHook, OpenTelemetryHook, WorkspaceInstructionsHook + StreamingHook (custom integrations).")
         Component(team_hooks, "Team Hooks", "app/agent/mode/team/hooks/", "AgentTeamProtocolHook (system-prompt protocol injection), TeamInboxHook (mailbox drain).")
         Component(checkpointer, "Checkpointer", "app/agent/checkpointer.py", "Abstract base Checkpointer + InMemoryCheckpointer / SQLiteCheckpointer. Synced at 4 points per turn.")
         Component(stream_store, "Stream Store", "app/services/memory_stream_store.py", "In-memory turn state blob + asyncio queues per session. init_turn, push_event, attach, mark_done, commit_agent_content.")
         Component(tool_registry, "Tool Registry", "app/agent/tools/registry.py", "Manages available tools and JSON Schema metadata via @tool decorator.")
-        Component(builtin_tools, "Builtin Tools", "app/agent/tools/builtin/", "filesystem (read, write, edit, ls, grep, glob, rm), shell (shell, bg), web (web_search, web_fetch), date, skill, wiki_search, note, todo, schedule.")
+        Component(builtin_tools, "Builtin Tools", "app/agent/tools/builtin/", "filesystem (read, write, edit, ls, grep, glob, rm), shell (shell, bg), web (web_search, web_fetch), date, skill, todo, schedule.")
         Component(permission, "Permission Service", "app/agent/permission.py", "Rule/Ruleset wildcard matching. AutoAllowPermissionService auto-allows; PermissionService blocks on asyncio.Future until user replies.")
         Component(provider, "LLM Provider", "app/agent/providers/", "Protocol-compatible provider families: OpenAI-compatible, Gemini-compatible, Anthropic-compatible, plus Bedrock Converse and OAuth/subscription specializations. All implement LLMProviderBase. factory.py:build_provider dispatches a 'provider:model' string.")
         Component(plugins, "Plugins", "app/agent/plugins/", "User-authored .py drop-ins loaded from settings.OPENAGENTD_PLUGINS_DIRS. Loader resolves @plugin functions and Plugin(BaseAgentHook) classes per (agent, role).")
         Component(chat_service, "Chat Service", "app/services/chat_service.py", "Sessions, messages, team-history aggregation, heal_orphaned_tool_calls.")
-        Component(dream, "Dream agent", "app/services/dream.py", "Consolidates session notes into durable wiki pages at idle time. Writes to wiki/topics, wiki/entities, wiki/sources, wiki/comparisons.")
         Component(scheduler, "Scheduler", "app/services/scheduler.py", "Cron, interval, and one-shot scheduled tasks. Runs via APScheduler with SQLite persistence. Results appear in the UI when the user returns.")
         Component(models, "Models", "app/models/", "SQLModel schemas: ChatSession, SessionMessage, ScheduledTask, etc.")
         Component(schemas, "Schemas", "app/agent/schemas/", "Pydantic wire types: chat.py (messages), agent.py (RunConfig, AgentContext), events.py (SSE).")

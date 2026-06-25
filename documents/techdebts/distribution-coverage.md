@@ -48,7 +48,7 @@ and `.github/workflows/docker.yml` are gone. The
 **Why removed:** OpenAgentd's threat model assumes a trusted operator
 on a single machine — agents read/write the host filesystem, run shell
 commands, and expect persistent local state. The container model
-forces awkward bind-mounts of the data/config/wiki/workspace dirs and
+forces awkward bind-mounts of the data/config/workspace dirs and
 muddies the "your machine, your keys" pitch. We had no validated
 self-hoster demand to justify the maintenance.
 

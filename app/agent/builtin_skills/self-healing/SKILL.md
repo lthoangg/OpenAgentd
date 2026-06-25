@@ -190,7 +190,7 @@ Only these keys are valid. Reject any request to invent new ones.
 | `fallback_model` | same format as `model` |
 | `temperature` | float, typically `0.0`–`1.0` |
 | `thinking_level` | `none` \| `low` \| `medium` \| `high` |
-| `tools` | extra tools layered on top of any built-in first-party profile tools: `web_search`, `web_fetch`, `date`, `read`, `write`, `edit`, `ls`, `grep`, `glob`, `rm`, `shell`, `bg`, `wiki_search`, `generate_image`, `generate_video`, plus `mcp_<server>_<tool>` entries from configured MCP servers. Never list `skill` or `team_message` — injected automatically. Lead-only tools (`note`, `schedule_task`, `todo_manage`) are also injected automatically. |
+| `tools` | extra tools layered on top of any built-in first-party profile tools: `web_search`, `web_fetch`, `date`, `read`, `write`, `edit`, `ls`, `grep`, `glob`, `rm`, `shell`, `bg`, `generate_image`, `generate_video`, plus `mcp_<server>_<tool>` entries from configured MCP servers. Never list `skill` or `team_message` — injected automatically. Lead-only tools (`schedule_task`, `todo_manage`) are also injected automatically. |
 | `skills` | optional explicit skill metadata/drift hooks; names of discovered skill directories (project/global OpenAgentd, opencode-compatible, or bundled read-only skills). Do not use this as the normal skill-install wiring step. |
 | `responses_api` | `true` to force OpenAI Responses API |
 

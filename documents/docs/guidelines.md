@@ -143,7 +143,7 @@ tests/
 ├── desktop/                         # desktop_auth contract
 ├── models/                          # SQLModel schema tests
 ├── scheduler/                       # scheduled task runtime
-├── services/                        # stream_store, chat_service, title_service, dream, wiki
+├── services/                        # stream_store, chat_service, title_service
 └── test_server.py                   # FastAPI app factory
 ```
 

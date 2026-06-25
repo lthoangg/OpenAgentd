@@ -26,13 +26,13 @@ class _FakeClient:
     def __init__(self, *_args, **_kwargs):
         pass
 
-    async def __aenter__(self):
+    def __enter__(self):
         return self
 
-    async def __aexit__(self, *_args):
+    def __exit__(self, *_args):
         return None
 
-    async def get(self, _url, *, headers):  # type: ignore[no-untyped-def]
+    def get(self, _url, *, headers):  # type: ignore[no-untyped-def]
         assert headers["Authorization"] == "token github-token"
         return _FakeResponse(self.payload)
 
@@ -70,7 +70,7 @@ async def test_get_usage_returns_only_premium_interactions(
             },
         },
     }
-    monkeypatch.setattr(usage.httpx, "AsyncClient", _FakeClient)
+    monkeypatch.setattr(usage.httpx, "Client", _FakeClient)
 
     result = await usage.get_usage()
 
@@ -98,7 +98,7 @@ async def test_get_usage_missing_premium_snapshot_returns_empty_limits(
             "chat": {"quota_id": "chat", "percent_remaining": 10},
         },
     }
-    monkeypatch.setattr(usage.httpx, "AsyncClient", _FakeClient)
+    monkeypatch.setattr(usage.httpx, "Client", _FakeClient)
 
     result = await usage.get_usage()
 
@@ -128,7 +128,26 @@ async def test_get_usage_rejects_invalid_payload(
         lambda: CopilotOAuth(github_token=SecretStr("github-token")),
     )
     _FakeClient.payload = ["not", "an", "object"]
-    monkeypatch.setattr(usage.httpx, "AsyncClient", _FakeClient)
+    monkeypatch.setattr(usage.httpx, "Client", _FakeClient)
 
     with pytest.raises(usage.CopilotUsageUnavailableError):
         await usage.get_usage()
+
+
+def test_model_allowed_for_plan_uses_restricted_to_aliases() -> None:
+    assert usage.model_allowed_for_plan(["edu"], "student") is True
+    assert usage.model_allowed_for_plan(["business"], "student") is False
+    assert usage.model_allowed_for_plan([], "student") is True
+    assert usage.model_allowed_for_plan(["pro"], None) is None
+
+
+def test_model_plan_type_reads_live_usage_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        usage,
+        "_usage_payload",
+        lambda: {"copilot_plan": "Individual Trial"},
+    )
+
+    assert usage.model_plan_type() == "individual_trial"

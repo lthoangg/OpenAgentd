@@ -1070,18 +1070,18 @@ def test_get_copilot_provider_usage_returns_premium_quota_snapshot(
         def __init__(self, *_args, **_kwargs):
             pass
 
-        async def __aenter__(self):
+        def __enter__(self):
             return self
 
-        async def __aexit__(self, *_args):
+        def __exit__(self, *_args):
             return None
 
-        async def get(self, url, *, headers):  # type: ignore[no-untyped-def]
+        def get(self, url, *, headers):  # type: ignore[no-untyped-def]
             captured["url"] = url
             captured["headers"] = headers
             return _FakeResponse()
 
-    monkeypatch.setattr(copilot_usage.httpx, "AsyncClient", _FakeClient)
+    monkeypatch.setattr(copilot_usage.httpx, "Client", _FakeClient)
 
     client = TestClient(_make_app())
     response = client.get("/api/settings/providers/copilot/usage")

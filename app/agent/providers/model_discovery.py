@@ -138,8 +138,13 @@ async def _anthropic_models(overrides: Mapping[str, str] | None) -> list[str]:
 
 async def _copilot_models() -> list[str]:
     from app.agent.providers.copilot.copilot import copilot_model_catalog
+    from app.agent.providers.copilot.usage import (
+        model_allowed_for_plan,
+        model_plan_type,
+    )
 
     catalog = copilot_model_catalog()
+    plan_type = model_plan_type()
     return sorted(
         model_id
         for model_id, info in catalog.items()
@@ -149,6 +154,8 @@ async def _copilot_models() -> list[str]:
         and isinstance(info.get("supports"), dict)
         and info["supports"].get("tool_calls") is True
         and info.get("policy_state") != "disabled"
+        and model_allowed_for_plan(info.get("restricted_to", []), plan_type)
+        is not False
     )
 
 

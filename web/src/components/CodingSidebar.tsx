@@ -43,14 +43,13 @@ import {
 } from 'lucide-react'
 import { queryKeys } from '@/queries'
 import { useDeleteTeamSessionMutation, useTeamSessionsQuery, useUpdateTeamSessionTitleMutation } from '@/queries/useSessionsQuery'
-import { getCodingWorkspaceTree, listWorktrees, removeWorktree, renameWorktree, resolveTeamSession, setCodingWorkspaceVisibility } from '@/api/client'
+import { getCodingWorkspaceTree, listWorktrees, renameWorktree, resolveTeamSession, setCodingWorkspaceVisibility } from '@/api/client'
 import { useTeamStore } from '@/stores/useTeamStore'
 import { prependSession, prependWorkspaceSession } from '@/stores/cache-invalidation-bridge'
 import {
   saveLastCodingWorkspace,
   workspaceLabel,
 } from '@/utils/workspace'
-import { isTransientNetworkError } from '@/utils/errors'
 import { ThemeToggle } from './ThemeToggle'
 import { HealthDot } from './HealthDot'
 import { Button } from '@/components/ui/button'
@@ -78,7 +77,12 @@ import {
   shouldUseServerWorkspaceBrowser,
   validateTrustedWorkspace,
 } from './CodingSidebar.browser'
-import { worktreeNameSlug } from './CodingSidebar/utils'
+import {
+  loadWorktreesForSource,
+  recoverCreatedWorktreeAfterTransientError,
+  removeManagedWorktree,
+  submitWorktreeSession,
+} from './CodingSidebar.worktrees'
 
 interface CodingSidebarProps {
   currentSessionId?: string
@@ -341,16 +345,10 @@ export function CodingSidebar({
   }
 
   const loadWorktreesForTarget = useCallback(async (path: string) => {
-    try {
-      const items = await listWorktrees(path)
-      setWorktreesBySource((current) => ({ ...current, [path]: items }))
-      if (worktreeTarget === path) setWorktreeOptions(items)
-      return items
-    } catch {
-      setWorktreesBySource((current) => ({ ...current, [path]: [] }))
-      if (worktreeTarget === path) setWorktreeOptions([])
-      return []
-    }
+    const items = await loadWorktreesForSource(path, listWorktrees)
+    setWorktreesBySource((current) => ({ ...current, [path]: items }))
+    if (worktreeTarget === path) setWorktreeOptions(items)
+    return items
   }, [worktreeTarget])
 
   const openWorktreeDialog = async (path: string) => {
@@ -370,24 +368,28 @@ export function CodingSidebar({
     setWorktreeRemoving(directory)
     setError(null)
     try {
-      const source = worktreeSourceByDirectory.get(directory) ?? worktreeTarget
-      if (!source) return
-      await removeWorktree(source, directory)
-      setRemovedWorktreePaths((current) => new Set(current).add(directory))
+      const result = await removeManagedWorktree(item, {
+        worktreeTarget,
+        worktreeSourceByDirectory,
+        loadWorktreesForSource: loadWorktreesForTarget,
+        refreshWorkspaceTree,
+      })
+      if (!result) return
+      setRemovedWorktreePaths((current) => new Set(current).add(result.removedDirectory))
       setExpandedWorkspaces((current) => {
-        if (!current.has(directory)) return current
+        if (!current.has(result.removedDirectory)) return current
         const next = new Set(current)
-        next.delete(directory)
+        next.delete(result.removedDirectory)
         return next
       })
       setWorktreesBySource((current) => {
         const next = { ...current }
-        delete next[directory]
-        next[source] = (next[source] ?? []).filter((worktree) => worktree.directory !== directory)
+        delete next[result.removedDirectory]
+        if (result.source) {
+          next[result.source] = result.refreshedItems
+        }
         return next
       })
-      await loadWorktreesForTarget(source)
-      await refreshWorkspaceTree()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to remove worktree')
     } finally {
@@ -401,47 +403,31 @@ export function CodingSidebar({
     setWorktreeLoading(true)
     setError(null)
     try {
-      const state = useTeamStore.getState()
-      const session = await resolveTeamSession({
-        mode: 'coding',
-        worktreeFrom: worktreeTarget,
-        worktreeName: worktreeName || 'session',
-        worktreeBranch: worktreeBranch || null,
-        model: state.sessionModel,
-        thinkingLevel: state.sessionThinkingLevel,
+      await submitWorktreeSession({
+        worktreeTarget,
+        worktreeName,
+        worktreeBranch,
+        queryClient,
+        refreshWorkspaceTree,
+        navigate,
+        onMobileClose,
+        loadWorktreesForSource: loadWorktreesForTarget,
       })
-      const path = session.workspace
-      if (!path) throw new Error('Worktree session did not return a workspace')
       setWorktreeTarget(null)
-      saveLastCodingWorkspace(path)
-      const nextState = useTeamStore.getState()
-      nextState.beginResolvedSession(session.id, {
-        mode: 'coding',
-        workspace: path,
-        model: session.model ?? nextState.sessionModel,
-        thinkingLevel: session.thinking_level ?? nextState.sessionThinkingLevel,
-        skipInitialRestore: session.created,
-      })
-      prependSession(queryClient, session)
-      prependWorkspaceSession(queryClient, path, session)
-      await refreshWorkspaceTree()
-      navigate({ to: '/coding/$sessionId', params: { sessionId: session.id } })
-      onMobileClose?.()
     } catch (err) {
-      if (isTransientNetworkError(err) && worktreeTarget) {
-        const source = worktreeTarget
-        const expectedName = worktreeNameSlug(worktreeName || 'session')
-        const items = await loadWorktreesForTarget(source)
-        const created = items.find((item) => item.name === expectedName)
-        if (created) {
-          setWorktreeTarget(null)
-          saveLastCodingWorkspace(created.directory)
-          setError(null)
-          await refreshWorkspaceTree()
-          navigate({ to: '/coding' })
-          onMobileClose?.()
-          return
-        }
+      const recovered = await recoverCreatedWorktreeAfterTransientError({
+        error: err,
+        worktreeTarget,
+        worktreeName,
+        loadWorktreesForSource: loadWorktreesForTarget,
+        refreshWorkspaceTree,
+        navigate: ({ to }) => navigate({ to }),
+        onMobileClose,
+      })
+      if (recovered) {
+        setWorktreeTarget(null)
+        setError(null)
+        return
       }
       setError(err instanceof Error ? err.message : 'Unable to create worktree')
     } finally {

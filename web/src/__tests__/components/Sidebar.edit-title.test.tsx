@@ -12,7 +12,17 @@ const invokeMock = mock(async () => {
 })
 const pushToast = mock(() => {})
 let isMobile = false
-let sessionsData = [
+type TestSession = {
+  id: string
+  title: string | null
+  agent_name: string | null
+  created_at: string
+  updated_at: string
+  mode: string
+  workspace?: string
+}
+
+let sessionsData: TestSession[] = [
   {
     id: 'session-1',
     title: 'Old title',
@@ -276,5 +286,32 @@ describe('Sidebar session title editing', () => {
     expect(backdrop).toBeTruthy()
     expect(backdrop?.className).toContain('mobile-safe-top')
     expect(backdrop?.className).toContain('bottom-0')
+  })
+
+  it('shows prior normal sessions even when mixed-mode data exists in cache', async () => {
+    sessionsData = [
+      {
+        id: 'session-1',
+        title: 'Normal session',
+        agent_name: 'lead',
+        created_at: '2026-05-13T00:00:00Z',
+        updated_at: '2026-05-13T00:00:00Z',
+        mode: 'normal',
+      },
+      {
+        id: 'session-2',
+        title: 'Coding session',
+        agent_name: 'lead',
+        created_at: '2026-05-14T00:00:00Z',
+        updated_at: '2026-05-14T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+      },
+    ]
+
+    await renderSidebar()
+
+    expect(screen.getByText('Normal session')).toBeTruthy()
+    expect(screen.queryByText('No sessions yet')).toBeNull()
   })
 })

@@ -105,16 +105,15 @@ export function Sidebar({
   const mobileLongPressActions = isMobile && isTauriMobile && mobileOpen
   const prefersReducedMotion = useReducedMotion()
   const navigate = useNavigate()
-  const sessions = useTeamSessionsQuery()
+  const sessions = useTeamSessionsQuery('normal')
   const deleteSession = useDeleteTeamSessionMutation()
   const updateSessionTitle = useUpdateTeamSessionTitleMutation()
   const sessionListRef = useRef<HTMLDivElement>(null)
   const loadMoreRef = useRef<HTMLDivElement>(null)
   const editTitleInputRef = useRef<HTMLInputElement>(null)
 
-  // Flatten pages into a single list of sessions
-  const allSessions = sessions.data?.pages.flatMap((p) => p.data) ?? []
-  const normalSessions = allSessions.filter((s) => s.mode !== 'coding')
+  // The query is already mode-filtered server-side.
+  const normalSessions = sessions.data?.pages.flatMap((p) => p.data) ?? []
 
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     try {

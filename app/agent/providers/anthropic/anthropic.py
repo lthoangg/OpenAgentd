@@ -56,7 +56,7 @@ def _headers(
 
 def _split_messages(
     messages: list[ChatMessage],
-) -> tuple[str | None, list[dict[str, Any]]]:
+) -> tuple[list[dict[str, Any]] | None, list[dict[str, Any]]]:
     system_parts: list[str] = []
     out: list[dict[str, Any]] = []
     for message in messages:
@@ -65,7 +65,12 @@ def _split_messages(
                 system_parts.append(message.content)
             continue
         if isinstance(message, HumanMessage):
-            out.append({"role": "user", "content": message.content or ""})
+            out.append(
+                {
+                    "role": "user",
+                    "content": [{"type": "text", "text": message.content or ""}],
+                }
+            )
         elif isinstance(message, AssistantMessage) and message.tool_calls:
             blocks: list[dict[str, Any]] = []
             if message.content:
@@ -81,7 +86,12 @@ def _split_messages(
                 )
             out.append({"role": "assistant", "content": blocks})
         elif isinstance(message, AssistantMessage):
-            out.append({"role": "assistant", "content": message.content or ""})
+            out.append(
+                {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": message.content or ""}],
+                }
+            )
         elif isinstance(message, ToolMessage):
             out.append(
                 {
@@ -95,7 +105,23 @@ def _split_messages(
                     ],
                 }
             )
-    return "\n\n".join(system_parts) or None, out
+    system_text = "\n\n".join(system_parts)
+    system_blocks = (
+        [{"type": "text", "text": system_text, "cache_control": {"type": "ephemeral"}}]
+        if system_text
+        else None
+    )
+    if out:
+        last = out[-1]
+        content = last.get("content")
+        if isinstance(content, list) and content:
+            final_block = content[-1]
+            if isinstance(final_block, dict) and final_block.get("type") in {
+                "text",
+                "tool_result",
+            }:
+                final_block["cache_control"] = {"type": "ephemeral"}
+    return system_blocks, out
 
 
 def _anthropic_tools(tools: list[dict] | None) -> list[dict[str, Any]] | None:
@@ -327,9 +353,15 @@ class AnthropicProvider(LLMProviderBase):
                     if event_type == "message_start":
                         raw_usage = event.get("message", {}).get("usage", {})
                         if isinstance(raw_usage, dict):
-                            usage.prompt_tokens = int(
-                                raw_usage.get("input_tokens") or 0
+                            non_cached = int(raw_usage.get("input_tokens") or 0)
+                            cache_read = int(
+                                raw_usage.get("cache_read_input_tokens") or 0
                             )
+                            cache_write = int(
+                                raw_usage.get("cache_creation_input_tokens") or 0
+                            )
+                            usage.prompt_tokens = non_cached + cache_read + cache_write
+                            usage.cached_tokens = cache_read or None
                     elif event_type == "content_block_start":
                         content_block = event.get("content_block", {})
                         if (

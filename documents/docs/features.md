@@ -16,7 +16,7 @@ exists. When you ship something new, **add it here first** — slides, README,
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 15 providers. Your keys.
 
-**Latest release:** v1.66.0 · June 25, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.66.0)
+**Latest release:** v1.67.0 · June 25, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.67.0)
 
 ---
 
@@ -97,6 +97,10 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   - **Hold Command + click session to open in new window** `[v1.62.1, v1.64.1]` — in the desktop app, holding `Cmd` (macOS) or `Ctrl/Cmd` (Linux) and clicking a session in either sidebar opens that session directly in a new independent desktop window; failures now surface an in-app error toast instead of silently doing nothing.
 - **Editable session titles** `[v1.27.0]` — double-click a session card or use its
   edit affordance in the sidebar to rename saved sessions.
+- **Mode-scoped recent-session lists** `[v1.66.1]` — cockpit and coding sidebars
+  now fetch their own session pages (`mode=normal` vs `mode=coding`) instead of
+  sharing one mixed cache, preventing intermittent empty recent-session lists
+  when prior conversations exist. See [`web/coding-sessions.md`](./web/coding-sessions.md).
 - **Slash commands** `[since v1.0]` — `/init`, `/continue`, `/compact`, `/undo`,
   `/redo`, plus user-defined commands. See [`commands.md`](./commands.md).
 - **Bang shell commands** `[v1.39.0]` — start a message with `!` to run the
@@ -369,6 +373,13 @@ agnostic by design. Deeper doc: [`configuration/providers.md`](./configuration/p
   even when session or agent thinking settings are enabled.
 - **Anthropic-compatible custom endpoints** `[v1.16.0]` — providers needing
   custom headers or alternate message endpoints are supported.
+- **Anthropic prompt caching + full input accounting** `[v1.66.0]` — Claude
+  requests now place explicit `cache_control: {type: "ephemeral"}` markers on
+  the system block and latest cacheable turn block, matching Anthropic's
+  breakpoint model instead of marking every block. Stored/model usage now counts
+  total prompt input as cold + cache-read + cache-write tokens while preserving
+  cached reads as a separate metric. Deeper doc:
+  [`configuration/providers.md`](./configuration/providers.md#anthropic).
 - **OAuth subscription support** `[v1.8.0]` — Copilot, Codex, others via the
   built-in OAuth helper.
 - **Codex usage monitor** `[v1.32.0]` — Settings → Providers shows live Codex

@@ -192,11 +192,13 @@ async def test_builtin_init_mentions_subfolder_agents_md(client):
 
     assert res.status_code == 200
     content = res.json()["content"]
-    assert "meaningful nested subfolders" in content
     assert "future coding agent" in content
-    assert "Where to look first" in content
-    assert "Do not duplicate parent guidance" in content
-    assert "expensive/optional checks" in content
+    assert "Where to start for a given change" in content
+    assert "Child AGENTS.md files are read only on demand" in content
+    assert (
+        "Create a child AGENTS.md only when a subtree has local conventions" in content
+    )
+    assert "Verify documented commands when feasible" in content
 
 
 @pytest.mark.asyncio

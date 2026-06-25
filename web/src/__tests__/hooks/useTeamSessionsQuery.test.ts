@@ -8,6 +8,7 @@
 
 import { describe, it, expect } from "bun:test"
 import type { SessionPageResponse, SessionResponse } from "@/api/types"
+import { queryKeys } from "@/queries/keys"
 
 function makeSession(id: string): SessionResponse {
   return { id, title: id, agent_name: "lead", created_at: null, updated_at: null }
@@ -44,5 +45,20 @@ describe("flattenPages (Sidebar allSessions)", () => {
     const page2 = makePage(["c", "d"], { has_more: false })
     const flat = [page1, page2].flatMap((p) => p.data)
     expect(flat.map((s) => s.id)).toEqual(["a", "b", "c", "d"])
+  })
+})
+
+describe("query key selection", () => {
+  it("uses the normal infinite key for cockpit sessions", () => {
+    expect(queryKeys.team.sessions.infinite()).toEqual(["team", "sessions", "infinite"])
+  })
+
+  it("has a distinct key for the coding-only aggregate list", () => {
+    expect(queryKeys.team.sessions.workspace("__all_coding__")).toEqual([
+      "team",
+      "sessions",
+      "workspace",
+      "__all_coding__",
+    ])
   })
 })

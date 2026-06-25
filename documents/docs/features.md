@@ -373,6 +373,13 @@ agnostic by design. Deeper doc: [`configuration/providers.md`](./configuration/p
   even when session or agent thinking settings are enabled.
 - **Anthropic-compatible custom endpoints** `[v1.16.0]` — providers needing
   custom headers or alternate message endpoints are supported.
+- **Anthropic prompt caching + full input accounting** `[v1.66.0]` — Claude
+  requests now place explicit `cache_control: {type: "ephemeral"}` markers on
+  the system block and latest cacheable turn block, matching Anthropic's
+  breakpoint model instead of marking every block. Stored/model usage now counts
+  total prompt input as cold + cache-read + cache-write tokens while preserving
+  cached reads as a separate metric. Deeper doc:
+  [`configuration/providers.md`](./configuration/providers.md#anthropic).
 - **OAuth subscription support** `[v1.8.0]` — Copilot, Codex, others via the
   built-in OAuth helper.
 - **Codex usage monitor** `[v1.32.0]` — Settings → Providers shows live Codex

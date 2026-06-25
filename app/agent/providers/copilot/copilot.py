@@ -9,9 +9,9 @@ few facets differ:
 
 * **Headers.** Copilot expects ``Openai-Intent``, ``x-initiator``, and a
   ``User-Agent`` alongside the OAuth bearer.
-* **Per-model endpoint routing.** Some Copilot-hosted models accept only
-  ``/chat/completions``; others accept only ``/responses``. The mapping
-  is hardcoded in :data:`_MODEL_ENDPOINT_MAP`.
+* **Per-model endpoint routing.** Endpoint preference is discovered from
+  Copilot's live ``/models`` metadata when available, with a hardcoded
+  fallback map for offline use.
 * **Reasoning gating.** ``reasoning_effort`` (Chat Completions) is
   accepted only by a whitelisted subset of OpenAI models served via
   Copilot; Claude / Gemini / Grok reject it. Other reasoning fields
@@ -31,25 +31,30 @@ from __future__ import annotations
 
 from typing import Any
 
+import httpx
 from pydantic.types import SecretStr
 
-from app.agent.providers.copilot.oauth import CopilotOAuth
-from app.agent.providers.openai import OpenAIProvider
+from app.agent.providers.copilot.oauth import CopilotOAuth, copilot_api_base
 from app.agent.providers.openai.completions import CompletionsHandler
+from app.agent.providers.openai.openai import OpenAIProvider
 from app.agent.providers.openai.responses import ResponsesHandler
 from app.agent.schemas.chat import ChatMessage, Usage
+from app.core.version import VERSION
 
 COPILOT_API_BASE = "https://api.githubcopilot.com"
+COPILOT_API_VERSION = "2026-06-01"
 
+# Keep these headers aligned with opencode's GitHub Copilot plugin where possible.
+# Source of truth to compare on upgrades:
+# /tmp/opencode-src/packages/opencode/src/plugin/github-copilot/copilot.ts
 _DEFAULT_HEADERS: dict[str, str] = {
     "Content-Type": "application/json",
-    "User-Agent": "openagentd/1.0.0",
+    "User-Agent": f"opencode/{VERSION}",
     "Openai-Intent": "conversation-edits",
     "x-initiator": "user",
+    "X-GitHub-Api-Version": COPILOT_API_VERSION,
 }
 
-# Models that accept ``reasoning_effort`` on /chat/completions. Other
-# Copilot-hosted models reject the field outright.
 _REASONING_EFFORT_MODELS: frozenset[str] = frozenset(
     {
         "gpt-5-mini",
@@ -59,8 +64,6 @@ _REASONING_EFFORT_MODELS: frozenset[str] = frozenset(
     }
 )
 
-# Per-model endpoint preference. Models not listed default to "completions".
-# "completions" → /chat/completions, "responses" → /responses.
 _MODEL_ENDPOINT_MAP: dict[str, str] = {
     "gpt-5-mini": "completions",
     "gpt-5.1": "completions",
@@ -80,41 +83,128 @@ _MODEL_ENDPOINT_MAP: dict[str, str] = {
 }
 
 
+def _oauth_context() -> tuple[str | None, dict[str, Any]]:
+    oauth = CopilotOAuth.load()
+    if oauth is None:
+        return None, {}
+    metadata = {
+        "enterprise_url": oauth.enterprise_url,
+        "api_base": copilot_api_base(oauth.enterprise_url),
+    }
+    return oauth.github_token.get_secret_value(), metadata
+
+
+def _model_metadata(model: str) -> dict[str, Any] | None:
+    return copilot_model_catalog().get(model)
+
+
 def _endpoint_for_model(model: str) -> str:
     """Return ``"completions"`` or ``"responses"`` for ``model``."""
+    metadata = _model_metadata(model)
+    if metadata is not None:
+        endpoints = metadata.get("supported_endpoints")
+        if isinstance(endpoints, list):
+            normalized = {
+                str(item).lstrip("/") for item in endpoints if isinstance(item, str)
+            }
+            if "v1/responses" in normalized or "responses" in normalized:
+                return "responses"
+            if "v1/chat/completions" in normalized or "chat/completions" in normalized:
+                return "completions"
     return _MODEL_ENDPOINT_MAP.get(model, "completions")
 
 
-def _resolve_github_token(explicit: str | SecretStr | None) -> str | None:
+def _supports_reasoning_effort(model: str) -> bool:
+    metadata = _model_metadata(model)
+    if metadata is None:
+        return model in _REASONING_EFFORT_MODELS
+    supports = metadata.get("supports")
+    if isinstance(supports, dict):
+        efforts = supports.get("reasoning_effort")
+        if isinstance(efforts, list):
+            return len(efforts) > 0
+    return model in _REASONING_EFFORT_MODELS
+
+
+def _message_content_has_image(content: Any) -> bool:
+    return isinstance(content, list) and any(
+        isinstance(part, dict)
+        and part.get("type") in {"image_url", "input_image", "image"}
+        for part in content
+    )
+
+
+def _is_agent_initiated(
+    messages: list[dict[str, Any]], *, responses_api: bool
+) -> tuple[bool, bool]:
+    """Mirror opencode's Copilot header heuristics.
+
+    Source to compare when updating:
+    /tmp/opencode-src/packages/opencode/src/plugin/github-copilot/copilot.ts
+    """
+    if not messages:
+        return False, False
+
+    if responses_api:
+        is_vision = any(
+            _message_content_has_image(item.get("content"))
+            for item in messages
+            if isinstance(item, dict)
+        )
+        last = messages[-1]
+        is_agent = last.get("role") != "user"
+        return is_agent, is_vision
+
+    is_vision = any(
+        _message_content_has_image(item.get("content"))
+        for item in messages
+        if isinstance(item, dict)
+    )
+    last = messages[-1]
+    is_agent = last.get("role") != "user"
+    return is_agent, is_vision
+
+
+def _resolve_github_token(
+    explicit: str | SecretStr | None,
+) -> tuple[str | None, dict[str, Any]]:
     """Resolve a GitHub token: explicit arg → oauth file → env var."""
     if explicit:
         return (
-            explicit.get_secret_value() if isinstance(explicit, SecretStr) else explicit
+            explicit.get_secret_value()
+            if isinstance(explicit, SecretStr)
+            else explicit,
+            {},
         )
-    oauth = CopilotOAuth.load()
-    if oauth:
-        return oauth.github_token.get_secret_value()
+    token, metadata = _oauth_context()
+    if token:
+        return token, metadata
     import os
 
-    return os.getenv("GITHUB_COPILOT_TOKEN") or None
+    return os.getenv("GITHUB_COPILOT_TOKEN") or None, {}
 
 
 class _CopilotCompletionsHandler(CompletionsHandler):
-    """Copilot-specific overrides for /chat/completions.
-
-    * Reasoning gating — only forward ``reasoning_effort`` for models the
-      Copilot gateway accepts; Claude / Gemini / Grok reject the field.
-    * Usage extraction — Copilot reports ``reasoning_tokens`` at the top
-      level of the ``usage`` object (OpenAI nests it under
-      ``completion_tokens_details``). Read both, top-level first.
-    """
+    def build_request(
+        self,
+        messages: list[ChatMessage],
+        tools: list[dict[str, Any]] | None,
+        stream: bool,
+        merged: dict[str, Any],
+    ) -> dict[str, Any]:
+        body = super().build_request(messages, tools, stream, merged)
+        converted = body.get("messages", [])
+        is_agent, is_vision = _is_agent_initiated(converted, responses_api=False)
+        body["x-openagentd-copilot-initiator"] = "agent" if is_agent else "user"
+        body["x-openagentd-copilot-vision"] = bool(is_vision)
+        return body
 
     def customize_thinking(self, merged: dict[str, Any], body: dict[str, Any]) -> None:
         thinking_level = merged.get("thinking_level")
         if (
             thinking_level
             and thinking_level not in ("none", "off")
-            and self.model in _REASONING_EFFORT_MODELS
+            and _supports_reasoning_effort(self.model)
         ):
             body["reasoning_effort"] = thinking_level
 
@@ -122,8 +212,6 @@ class _CopilotCompletionsHandler(CompletionsHandler):
         cached = None
         if u.prompt_tokens_details:
             cached = u.prompt_tokens_details.cached_tokens or None
-        # Copilot quirk: reasoning_tokens at the top level of usage.
-        # Fall back to OpenAI's nested location if missing.
         thoughts = getattr(u, "reasoning_tokens", None) or None
         if not thoughts and u.completion_tokens_details:
             thoughts = u.completion_tokens_details.reasoning_tokens or None
@@ -137,19 +225,6 @@ class _CopilotCompletionsHandler(CompletionsHandler):
 
 
 class _CopilotResponsesHandler(ResponsesHandler):
-    """Copilot-specific overrides for /responses.
-
-    * Request shape — Copilot's Responses gateway accepts (and ignores)
-      ``temperature`` and ``top_p``. Passing them through preserves the
-      previous wire format. The strict OpenAI Responses endpoint rejects
-      these fields, which is why the canonical handler omits them.
-    * Streaming events — Copilot's gateway uses ``call_id`` (not
-      ``item_id``) on ``response.function_call_arguments.delta`` /
-      ``done`` and embeds the function ``name`` directly on those events.
-      The canonical OpenAI parser only reads ``item_id`` and never
-      expects an inline ``name``.
-    """
-
     def build_request(
         self,
         messages: list[ChatMessage],
@@ -158,6 +233,10 @@ class _CopilotResponsesHandler(ResponsesHandler):
         merged: dict[str, Any],
     ) -> dict[str, Any]:
         body = super().build_request(messages, tools, stream, merged)
+        converted = body.get("input", [])
+        is_agent, is_vision = _is_agent_initiated(converted, responses_api=True)
+        body["x-openagentd-copilot-initiator"] = "agent" if is_agent else "user"
+        body["x-openagentd-copilot-vision"] = bool(is_vision)
         if merged.get("temperature") is not None:
             body["temperature"] = merged["temperature"]
         if merged.get("top_p") is not None:
@@ -170,25 +249,7 @@ class _CopilotResponsesHandler(ResponsesHandler):
 
 
 class CopilotProvider(OpenAIProvider):
-    """GitHub Copilot provider (OpenAI-compatible).
-
-    Auto-routes to ``/chat/completions`` or ``/responses`` based on the
-    model (see :data:`_MODEL_ENDPOINT_MAP`).
-
-    Args:
-        model: Model name, e.g. ``"gpt-5-mini"``, ``"claude-sonnet-4"``.
-        github_token: Optional explicit GitHub token. Falls back to the
-            OAuth cache file and ``GITHUB_COPILOT_TOKEN`` env var.
-        temperature: Sampling temperature (Chat Completions only; ignored
-            by /responses on the strict OpenAI endpoint, accepted but
-            ignored by the Copilot gateway).
-        top_p: Nucleus sampling cutoff (same caveats as ``temperature``).
-        max_tokens: Hard cap on completion tokens.
-        model_kwargs: Extra request body fields. Notable keys:
-            ``thinking_level`` (str) — only forwarded as
-            ``reasoning_effort`` for models in
-            :data:`_REASONING_EFFORT_MODELS`.
-    """
+    """GitHub Copilot provider (OpenAI-compatible)."""
 
     def __init__(
         self,
@@ -199,7 +260,7 @@ class CopilotProvider(OpenAIProvider):
         max_tokens: int | None = None,
         model_kwargs: dict[str, Any] | None = None,
     ) -> None:
-        token = _resolve_github_token(github_token)
+        token, metadata = _resolve_github_token(github_token)
         if not token:
             raise ValueError(
                 "GitHub token not found.  Run:\n"
@@ -209,14 +270,13 @@ class CopilotProvider(OpenAIProvider):
         super().__init__(
             api_key=token,
             model=model,
-            base_url=COPILOT_API_BASE,
+            base_url=str(metadata.get("api_base") or COPILOT_API_BASE),
             temperature=temperature,
             top_p=top_p,
             max_tokens=max_tokens,
             model_kwargs=model_kwargs,
         )
 
-    # Convenience aliases for callers that think in Copilot-specific terms.
     @property
     def _github_token(self) -> str:
         return self.api_key
@@ -227,12 +287,30 @@ class CopilotProvider(OpenAIProvider):
 
     @property
     def _request_url(self) -> str:
-        return f"{COPILOT_API_BASE}/{'responses' if self._use_responses else 'chat/completions'}"
+        return (
+            f"{self.base_url}/"
+            f"{'responses' if self._use_responses else 'chat/completions'}"
+        )
 
     def _build_headers(self) -> dict[str, str]:
+        # Keep base headers aligned with opencode's GitHub Copilot plugin.
+        # Source of truth to compare on upgrades:
+        # /tmp/opencode-src/packages/opencode/src/plugin/github-copilot/copilot.ts
         return {**_DEFAULT_HEADERS, "Authorization": f"Bearer {self.api_key}"}
 
+    def _prepare_request_headers(self, body: dict[str, Any]) -> dict[str, str]:
+        headers = dict(self._build_headers())
+        initiator = body.pop("x-openagentd-copilot-initiator", None)
+        is_vision = bool(body.pop("x-openagentd-copilot-vision", False))
+        if initiator in {"agent", "user"}:
+            headers["x-initiator"] = initiator
+        if is_vision:
+            headers["Copilot-Vision-Request"] = "true"
+        return headers
+
     def _use_responses_for(self, model_kwargs: dict[str, Any]) -> bool:
+        if "responses_api" in model_kwargs:
+            return bool(model_kwargs["responses_api"])
         return _endpoint_for_model(self.model) == "responses"
 
     def _make_completions_handler(
@@ -244,3 +322,150 @@ class CopilotProvider(OpenAIProvider):
         self, model: str, base_url: str, headers: dict[str, str]
     ) -> ResponsesHandler:
         return _CopilotResponsesHandler(model, base_url, headers)
+
+
+def copilot_model_catalog() -> dict[str, dict[str, Any]]:
+    """Return a normalized snapshot of Copilot `/models` metadata.
+
+    This intentionally mirrors the shape opencode derives from the same
+    endpoint, but keeps the contract Python-native for OpenAgentd.
+
+    Source to compare when updating:
+    /tmp/opencode-src/packages/opencode/src/plugin/github-copilot/models.ts
+    """
+    token, metadata = _oauth_context()
+    if not token:
+        return {}
+    api_base = str(metadata.get("api_base") or COPILOT_API_BASE)
+    try:
+        response = httpx.get(
+            f"{api_base}/models",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/json",
+                "User-Agent": _DEFAULT_HEADERS["User-Agent"],
+                "X-GitHub-Api-Version": COPILOT_API_VERSION,
+            },
+            timeout=5.0,
+        )
+        response.raise_for_status()
+    except Exception:
+        return {}
+
+    data = response.json()
+    items = data.get("data", []) if isinstance(data, dict) else []
+    result: dict[str, dict[str, Any]] = {}
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        model_id = item.get("id")
+        if not isinstance(model_id, str):
+            continue
+
+        caps_raw = item.get("capabilities")
+        caps: dict[str, Any] = caps_raw if isinstance(caps_raw, dict) else {}
+        limits_raw = caps.get("limits")
+        limits: dict[str, Any] = limits_raw if isinstance(limits_raw, dict) else {}
+        supports_raw = caps.get("supports")
+        supports: dict[str, Any] = (
+            supports_raw if isinstance(supports_raw, dict) else {}
+        )
+        vision_limits_raw = limits.get("vision")
+        vision_limits: dict[str, Any] = (
+            vision_limits_raw if isinstance(vision_limits_raw, dict) else {}
+        )
+        endpoints = (
+            item.get("supported_endpoints")
+            if isinstance(item.get("supported_endpoints"), list)
+            else []
+        )
+        policy_raw = item.get("policy")
+        policy: dict[str, Any] = policy_raw if isinstance(policy_raw, dict) else {}
+        billing_raw = item.get("billing")
+        billing: dict[str, Any] = billing_raw if isinstance(billing_raw, dict) else {}
+        token_prices_raw = billing.get("token_prices")
+        token_prices: dict[str, Any] = (
+            token_prices_raw if isinstance(token_prices_raw, dict) else {}
+        )
+        default_prices_raw = token_prices.get("default")
+        default_prices: dict[str, Any] = (
+            default_prices_raw if isinstance(default_prices_raw, dict) else {}
+        )
+
+        image_media = [
+            m
+            for m in vision_limits.get("supported_media_types", [])
+            if isinstance(m, str)
+        ]
+        supports_reasoning = bool(
+            supports.get("adaptive_thinking")
+            or supports.get("reasoning_effort")
+            or supports.get("max_thinking_budget") is not None
+            or supports.get("min_thinking_budget") is not None
+        )
+        uses_messages_api = "/v1/messages" in endpoints
+
+        release_date = item.get("version")
+        if isinstance(release_date, str) and release_date.startswith(f"{model_id}-"):
+            release_date = release_date[len(model_id) + 1 :]
+
+        result[model_id] = {
+            "id": model_id,
+            "name": item.get("name") if isinstance(item.get("name"), str) else model_id,
+            "family": caps.get("family")
+            if isinstance(caps.get("family"), str)
+            else model_id,
+            "release_date": release_date if isinstance(release_date, str) else None,
+            "supported_endpoints": endpoints,
+            "policy_state": policy.get("state")
+            if isinstance(policy.get("state"), str)
+            else None,
+            "model_picker_enabled": bool(item.get("model_picker_enabled")),
+            "uses_messages_api": uses_messages_api,
+            "limits": {
+                "context": limits.get("max_context_window_tokens")
+                or limits.get("max_prompt_tokens"),
+                "input": limits.get("max_prompt_tokens"),
+                "output": limits.get("max_output_tokens"),
+            },
+            "supports": {
+                "tool_calls": supports.get("tool_calls") is True,
+                "streaming": supports.get("streaming") is True,
+                "structured_outputs": supports.get("structured_outputs") is True,
+                "vision": bool(
+                    supports.get("vision")
+                    or any(m.startswith("image/") for m in image_media)
+                ),
+                "reasoning": supports_reasoning,
+                "reasoning_effort": [
+                    v
+                    for v in supports.get("reasoning_effort", [])
+                    if isinstance(v, str)
+                ],
+                "adaptive_thinking": supports.get("adaptive_thinking") is True,
+                "max_thinking_budget": supports.get("max_thinking_budget")
+                if isinstance(supports.get("max_thinking_budget"), int)
+                else None,
+                "min_thinking_budget": supports.get("min_thinking_budget")
+                if isinstance(supports.get("min_thinking_budget"), int)
+                else None,
+            },
+            "pricing": {
+                "batch_size": token_prices.get("batch_size")
+                if isinstance(token_prices.get("batch_size"), (int, float))
+                else None,
+                "input_price": default_prices.get("input_price")
+                if isinstance(default_prices.get("input_price"), (int, float))
+                else None,
+                "output_price": default_prices.get("output_price")
+                if isinstance(default_prices.get("output_price"), (int, float))
+                else None,
+                "cache_price": default_prices.get("cache_price")
+                if isinstance(default_prices.get("cache_price"), (int, float))
+                else None,
+            },
+            "restricted_to": [
+                v for v in billing.get("restricted_to", []) if isinstance(v, str)
+            ],
+        }
+    return result

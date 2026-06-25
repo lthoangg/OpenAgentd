@@ -137,29 +137,18 @@ async def _anthropic_models(overrides: Mapping[str, str] | None) -> list[str]:
 
 
 async def _copilot_models() -> list[str]:
-    from app.agent.providers.copilot.oauth import CopilotOAuth
+    from app.agent.providers.copilot.copilot import copilot_model_catalog
 
-    oauth = CopilotOAuth.load()
-    if oauth is None:
-        return []
-    async with httpx.AsyncClient(timeout=TIMEOUT_S) as client:
-        response = await client.get(
-            "https://api.githubcopilot.com/models",
-            headers={
-                "Authorization": f"Bearer {oauth.github_token.get_secret_value()}",
-                "Accept": "application/json",
-                "User-Agent": "openagentd/1.0.0",
-            },
-        )
-        response.raise_for_status()
-    data = response.json()
-    items = data.get("data", []) if isinstance(data, dict) else []
+    catalog = copilot_model_catalog()
     return sorted(
-        str(item["id"])
-        for item in items
-        if isinstance(item, dict)
-        and isinstance(item.get("id"), str)
-        and item.get("model_picker_enabled", True)
+        model_id
+        for model_id, info in catalog.items()
+        if isinstance(info.get("limits"), dict)
+        and info["limits"].get("input") is not None
+        and info["limits"].get("output") is not None
+        and isinstance(info.get("supports"), dict)
+        and info["supports"].get("tool_calls") is True
+        and info.get("policy_state") != "disabled"
     )
 
 

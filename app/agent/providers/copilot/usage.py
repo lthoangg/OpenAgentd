@@ -14,6 +14,7 @@ from app.api.schemas.settings import (
     ProviderUsageResponse,
     ProviderUsageWindow,
 )
+from app.core.version import VERSION
 
 
 _PREMIUM_INTERACTIONS_QUOTA = "premium_interactions"
@@ -47,7 +48,9 @@ def _usage_headers() -> dict[str, str]:
     return {
         "Authorization": f"token {oauth.github_token.get_secret_value()}",
         "Accept": "application/json",
-        "User-Agent": "openagentd/1.0.0",
+        # Keep this aligned with the runtime Copilot provider headers.
+        # Compare against opencode's GitHub Copilot plugin when updating.
+        "User-Agent": f"opencode/{VERSION}",
     }
 
 

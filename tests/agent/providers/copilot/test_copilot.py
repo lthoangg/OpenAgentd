@@ -16,6 +16,9 @@ from app.agent.providers.copilot.copilot import (
     CopilotProvider,
     _CopilotCompletionsHandler,
     _endpoint_for_model,
+    _is_agent_initiated,
+    _supports_reasoning_effort,
+    copilot_model_catalog,
 )
 from app.agent.schemas.chat import (
     AssistantMessage,
@@ -153,6 +156,56 @@ class TestRequestUrl:
     def test_responses_url(self):
         p = _make_provider(model="gpt-5.4")
         assert p._request_url == _RESPONSES_URL
+
+
+class TestCopilotModelCatalog:
+    def test_catalog_empty_without_oauth(self):
+        with patch(
+            "app.agent.providers.copilot.copilot.CopilotOAuth.load", return_value=None
+        ):
+            assert copilot_model_catalog() == {}
+
+    def test_supports_reasoning_effort_uses_catalog(self):
+        with patch(
+            "app.agent.providers.copilot.copilot.copilot_model_catalog",
+            return_value={
+                "gpt-5.4-mini": {"supports": {"reasoning_effort": ["low", "medium"]}}
+            },
+        ):
+            assert _supports_reasoning_effort("gpt-5.4-mini") is True
+
+    def test_supports_reasoning_effort_falls_back_for_unknown_model(self):
+        with patch(
+            "app.agent.providers.copilot.copilot.copilot_model_catalog",
+            return_value={},
+        ):
+            assert _supports_reasoning_effort("gpt-5-mini") is True
+            assert _supports_reasoning_effort("claude-sonnet-4.5") is False
+
+
+class TestCopilotHeaderHeuristics:
+    def test_completions_user_message_is_user_initiated(self):
+        is_agent, is_vision = _is_agent_initiated(
+            [{"role": "user", "content": [{"type": "text", "text": "hi"}]}],
+            responses_api=False,
+        )
+        assert is_agent is False
+        assert is_vision is False
+
+    def test_completions_assistant_message_is_agent_initiated(self):
+        is_agent, is_vision = _is_agent_initiated(
+            [{"role": "assistant", "content": "working"}], responses_api=False
+        )
+        assert is_agent is True
+        assert is_vision is False
+
+    def test_responses_input_image_sets_vision(self):
+        is_agent, is_vision = _is_agent_initiated(
+            [{"role": "user", "content": [{"type": "input_image", "image_url": "x"}]}],
+            responses_api=True,
+        )
+        assert is_agent is False
+        assert is_vision is True
 
 
 # ---------------------------------------------------------------------------
@@ -938,6 +991,34 @@ class TestBuildResponsesRequestExtra:
             [HumanMessage(content="hi")], None, stream=False, merged=p._merged_kwargs()
         )
         assert body["top_p"] == 0.9
+
+    def test_prepare_headers_sets_agent_initiator_and_vision(self):
+        p = _make_provider(model="gpt-5.4")
+        body = p._responses.build_request(
+            [AssistantMessage(content="thinking")],
+            None,
+            stream=False,
+            merged=p._merged_kwargs(),
+        )
+        headers = p._prepare_request_headers(body)
+        assert headers["x-initiator"] == "agent"
+        assert "Copilot-Vision-Request" not in headers
+
+    def test_prepare_headers_sets_vision_request(self):
+        p = _make_provider(model="gpt-5.4")
+        body = p._responses.build_request(
+            [
+                HumanMessage(
+                    content="", parts=[ImageUrlBlock(url="https://example.com/x.png")]
+                )
+            ],
+            None,
+            stream=False,
+            merged=p._merged_kwargs(),
+        )
+        headers = p._prepare_request_headers(body)
+        assert headers["x-initiator"] == "user"
+        assert headers["Copilot-Vision-Request"] == "true"
 
     def test_max_tokens_in_responses_body(self):
         """Line 333: max_tokens kwarg maps to max_output_tokens in responses body."""

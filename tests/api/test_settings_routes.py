@@ -18,6 +18,7 @@ from app.agent.providers.codex.oauth import CodexOAuth
 from app.agent.providers.copilot.oauth import CopilotOAuth
 from app.agent.providers.codex import usage as codex_usage
 from app.agent.providers.copilot import usage as copilot_usage
+from app.core.version import VERSION
 
 
 def _make_app() -> FastAPI:
@@ -1090,7 +1091,7 @@ def test_get_copilot_provider_usage_returns_premium_quota_snapshot(
     assert captured["headers"] == {
         "Authorization": "token github-token",
         "Accept": "application/json",
-        "User-Agent": "openagentd/1.0.0",
+        "User-Agent": f"opencode/{VERSION}",
     }
     body = response.json()
     assert body["provider"] == "copilot"
@@ -1204,6 +1205,31 @@ def test_list_provider_models_persists_cached_models_for_saved_credentials(
     assert response.status_code == 200
     assert response.json()["models"] == ["gpt-5", "gpt-5-mini"]
     assert provider_cached_models("openai") == ["gpt-5", "gpt-5-mini"]
+
+
+def test_list_provider_models_copilot_uses_normalized_catalog(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(
+        settings_routes.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path)
+    )
+
+    async def _models(_entry, **_kwargs):  # type: ignore[no-untyped-def]
+        return ["gpt-4.1", "gpt-4o-mini"]
+
+    monkeypatch.setattr(
+        "app.agent.providers.model_discovery.discover_provider_models", _models
+    )
+
+    app = _make_app()
+    client = TestClient(app)
+    response = client.post(
+        "/api/settings/providers/copilot/models",
+        json={"api_key": "", "extra": {}},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["models"] == ["gpt-4.1", "gpt-4o-mini"]
 
 
 def test_list_provider_models_does_not_persist_candidate_credentials(

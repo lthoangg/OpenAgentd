@@ -16,7 +16,7 @@ exists. When you ship something new, **add it here first** — slides, README,
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 15 providers. Your keys.
 
-**Latest release:** v1.69.0 · June 25, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.69.0)
+**Latest release:** v1.70.0 · June 25, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.70.0)
 
 ---
 
@@ -397,7 +397,7 @@ MCP. Deeper doc: [`agent/tools.md`](./agent/tools.md).
 | Shell | `shell`, `bg` (background processes) |
 | Web | `web_search`, `web_fetch` |
 | Generation | `generate_image`, `generate_video` |
-| Scheduling | `schedule_task` |
+| Scheduling | `schedule_task` (reminders + self-scheduling agentic loops) `[v1.70.0]` |
 | Tasks | `todo_manage` |
 | Team coordination | `team_message`, `team_manage` |
 | Utility | `date`, `skill` |

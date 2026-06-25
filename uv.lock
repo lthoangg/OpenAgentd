@@ -1131,7 +1131,7 @@ wheels = [
 
 [[package]]
 name = "openagentd"
-version = "1.69.0"
+version = "1.70.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiofiles" },

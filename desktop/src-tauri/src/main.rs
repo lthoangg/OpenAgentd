@@ -29,7 +29,7 @@ use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_updater::UpdaterExt;
 use tokio::sync::Mutex;
 
-use crate::sidecar::{Handshake, Sidecar};
+use crate::sidecar::Sidecar;
 
 /// Shared application state.
 struct AppState {
@@ -140,6 +140,7 @@ const ZOOM_MAX: f64 = 3.0;
 const ZOOM_STEP: f64 = 1.2;
 const ZOOM_DEFAULT: f64 = 1.0;
 const NORMAL_SHUTDOWN_GRACE: Duration = Duration::from_secs(5);
+#[cfg(not(target_os = "macos"))]
 const RELOAD_SHUTDOWN_GRACE: Duration = Duration::from_millis(750);
 
 /// Label shown in the tray when no chat/coding session is active.
@@ -716,6 +717,7 @@ fn restart_app_process(app: &AppHandle) {
     });
 }
 
+#[cfg(not(target_os = "macos"))]
 async fn restart_sidecar_and_reload_window(app: &AppHandle) -> Result<()> {
     let state: tauri::State<'_, AppState> = app.state();
     let existing_token = state.desktop_token.lock().await.clone();

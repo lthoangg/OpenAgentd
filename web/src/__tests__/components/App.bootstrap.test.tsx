@@ -108,10 +108,10 @@ describe('App backend bootstrap', () => {
   it('does not finish bootstrap for bundled desktop mode until the sidecar is running', async () => {
     statusPayload = { base_url: TEST_BACKEND_URL, sidecar_running: false, external: false }
 
-    const { queryByText } = render(<App />)
+    render(<App />)
 
     await waitFor(() => expect(invokeMock).toHaveBeenCalled())
-    expect(queryByText('Loading OpenAgentd...')).toBeTruthy()
+    expect(document.querySelector('[aria-label="Loading OpenAgentd"]')).toBeTruthy()
     expect(window.__OAD_API_BASE_URL__).toBeUndefined()
 
     statusPayload = { base_url: TEST_BACKEND_URL, sidecar_running: true, external: false, token: 'desktop-token' }

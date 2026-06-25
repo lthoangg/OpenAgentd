@@ -18,6 +18,7 @@ Manual smoke-test scripts for openagentd. All scripts target `http://localhost:8
 | `team_history.py` | Print lead + member messages for a session | positional `SESSION_ID` |
 | `team_message_idempotency.py` | Drive a multi-agent, multi-turn run and assert each turn's `get_messages_for_llm` window (lead + every member) is an append-only prefix of the next — the prompt-cache invariant. Flags mid-history mutations; treats summarization prefix rewrites as EXPECTED. Surfaces roster-change rows to confirm roster is appended history, not a system-prompt mutation | `--session ID`, `--messages ...`, `--wait N`, `--base URL` |
 | `team_timeline.py` | Chronological cross-agent timeline (reads DB directly) | `SESSION_ID`, `--full` |
+| `team_history_n1_verify.py` | **No server needed.** Differential check that the batched member-page query (`_fetch_member_pages`) is logically equivalent to the old per-session N+1 loop. Stands up an in-memory SQLite DB, seeds edge cases (empty/all-hidden members, page-size boundary, `before` cursor, interleaved timestamps) and asserts byte-identical output. Exits non-zero on any divergence | _(none)_ |
 | `team_todos.py` | Print session todos and flag dependency/claim consistency issues | positional `SESSION_ID` |
 | `team_open_task_nudge.py` | Drive a member that claims an assigned todo then incorrectly stops without `team_message`; deterministic `--direct` mode fails unless the hidden open-task nudge is observed | `--direct`, `--session ID`, `--wait N`, `--base URL` |
 | `team_sse.py` | Capture + pretty-print every SSE event from a team turn, including lifecycle states (`idle`, `working`, `offline`, `error`) | `--session ID`, `--wait N`, `--out FILE`, `--no-summary` |
@@ -48,6 +49,9 @@ uv run python -m manual.team_history <SESSION_ID>
 
 # Chronological timeline across all agents
 uv run python -m manual.team_timeline <SESSION_ID>
+
+# Verify the team-history batch refactor is equivalent to the old loop (no server)
+uv run python -m manual.team_history_n1_verify
 
 # Verify LLM message windows stay append-only across turns (prompt-cache idempotency)
 uv run python -m manual.team_message_idempotency

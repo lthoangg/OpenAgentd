@@ -22,7 +22,10 @@ from loguru import logger
 from app.agent.sandbox_config import SandboxFileConfig, load_config, save_config
 from app.core.config import settings
 from app.core.runtime_settings import (
+    clear_provider_cached_models,
+    provider_cached_models,
     provider_visible_models,
+    set_provider_cached_models,
     set_provider_visible_models,
 )
 
@@ -353,21 +356,9 @@ async def list_providers() -> ProvidersListBody:
         *(_provider_is_reachable(entry) for entry in entries),
         return_exceptions=False,
     )
-    from app.agent.providers.model_discovery import discover_provider_models
-
-    discovery_results = await asyncio.gather(
-        *(
-            discover_provider_models(entry, overrides=_provider_saved_overrides(entry))
-            if is_configured
-            else _empty_models()
-            for entry, is_configured in zip(entries, reachability, strict=True)
-        ),
-        return_exceptions=False,
-    )
-
     out: list[ProviderInfo] = []
-    for entry, is_saved, is_configured, live_models in zip(
-        entries, saved_states, reachability, discovery_results, strict=True
+    for entry, is_saved, is_configured in zip(
+        entries, saved_states, reachability, strict=True
     ):
         out.append(
             ProviderInfo(
@@ -384,9 +375,10 @@ async def list_providers() -> ProvidersListBody:
                 ),
                 oauth_command=entry.get("oauth_command", ""),
                 docs_url=entry.get("docs_url", ""),
-                is_configured=is_configured and bool(live_models),
+                is_configured=is_configured,
                 is_saved=is_saved,
-                is_reachable=bool(live_models) if is_configured else None,
+                is_reachable=is_configured if is_saved else None,
+                cached_models=provider_cached_models(entry["id"]),
                 visible_models=provider_visible_models(entry["id"]),
             )
         )
@@ -437,6 +429,8 @@ async def list_provider_models(
         await discover_provider_models(entry, overrides=overrides)
     )
     if discovered:
+        if not body.api_key and not body.extra:
+            set_provider_cached_models(provider_id, discovered)
         return ProviderModelsResponse(
             provider=provider_id,
             models=discovered,
@@ -595,6 +589,7 @@ async def save_provider(
     is_first = not env_file.exists() or not _env_has_provider_key(env_file)
 
     write_env_credentials(env_file, creds)
+    clear_provider_cached_models(provider_id)
 
     # Mirror writes into os.environ so build_provider sees them now.
     # ``settings`` is a frozen Pydantic instance — it doesn't refresh,

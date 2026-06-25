@@ -41,7 +41,13 @@ class AgentTeamProtocolHook(BaseAgentHook):
         """Resolve the TeamMemberBase instance for this agent."""
         if self._agent_name == self._team.lead.name:
             return self._team.lead
-        return self._team.members[self._agent_name]
+        member = self._team.members.get(self._agent_name)
+        if member is not None:
+            return member
+        member = self._team._members_by_name.get(self._agent_name)
+        if member is not None:
+            return member
+        raise KeyError(self._agent_name)
 
     async def wrap_model_call(
         self,

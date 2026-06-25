@@ -54,6 +54,8 @@ class ProviderUiSettings(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     visible_models: list[str] = Field(default_factory=list)
+    cached_models: list[str] = Field(default_factory=list)
+    last_listed_at: int | None = None
 
 
 class RuntimeSettings(BaseModel):
@@ -78,9 +80,55 @@ def provider_visible_models(provider_id: str) -> list[str]:
 
 def set_provider_visible_models(provider_id: str, models: list[str]) -> None:
     cfg = load_runtime_settings()
+    current = cfg.providers.get(provider_id, ProviderUiSettings())
     cleaned = sorted({model.strip() for model in models if model.strip()})
-    if cleaned:
-        cfg.providers[provider_id] = ProviderUiSettings(visible_models=cleaned)
+    if cleaned or current.cached_models or current.last_listed_at is not None:
+        cfg.providers[provider_id] = current.model_copy(
+            update={"visible_models": cleaned}
+        )
+    else:
+        cfg.providers.pop(provider_id, None)
+    save_runtime_settings(cfg)
+
+
+def provider_cached_models(provider_id: str) -> list[str]:
+    return (
+        load_runtime_settings()
+        .providers.get(provider_id, ProviderUiSettings())
+        .cached_models
+    )
+
+
+def set_provider_cached_models(provider_id: str, models: list[str]) -> None:
+    import time
+
+    cfg = load_runtime_settings()
+    current = cfg.providers.get(provider_id, ProviderUiSettings())
+    cleaned = sorted({model.strip() for model in models if model.strip()})
+    next_settings = current.model_copy(
+        update={"cached_models": cleaned, "last_listed_at": int(time.time())}
+    )
+    if (
+        cleaned
+        or next_settings.visible_models
+        or next_settings.last_listed_at is not None
+    ):
+        cfg.providers[provider_id] = next_settings
+    else:
+        cfg.providers.pop(provider_id, None)
+    save_runtime_settings(cfg)
+
+
+def clear_provider_cached_models(provider_id: str) -> None:
+    cfg = load_runtime_settings()
+    current = cfg.providers.get(provider_id)
+    if current is None:
+        return
+    next_settings = current.model_copy(
+        update={"cached_models": [], "last_listed_at": None}
+    )
+    if next_settings.visible_models:
+        cfg.providers[provider_id] = next_settings
     else:
         cfg.providers.pop(provider_id, None)
     save_runtime_settings(cfg)

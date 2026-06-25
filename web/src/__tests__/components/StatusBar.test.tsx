@@ -43,7 +43,7 @@ describe("StatusBar", () => {
     expect(screen.getByText(newHint)).toBeTruthy()
   })
 
-  it("shows token counts when usage is provided", () => {
+  it("shows the token meter when usage is provided", () => {
     const usage: AgentUsage = {
       promptTokens: 100,
       completionTokens: 50,
@@ -51,11 +51,10 @@ describe("StatusBar", () => {
       cachedTokens: 0,
     }
     render(<StatusBar sessionId={null} usage={usage} />)
-    expect(screen.getByText("100")).toBeTruthy()
-    expect(screen.getByTitle("Input: 100 · Output: 50 · Cache: 0")).toBeTruthy()
+    expect(screen.getByLabelText("Input: 100 / 250,000 (0%) · Output: 50")).toBeTruthy()
   })
 
-  it("formats large token counts with 'k' suffix", () => {
+  it("uses the token meter tooltip for large token counts", () => {
     const usage: AgentUsage = {
       promptTokens: 1500,
       completionTokens: 2000,
@@ -63,11 +62,10 @@ describe("StatusBar", () => {
       cachedTokens: 0,
     }
     render(<StatusBar sessionId={null} usage={usage} />)
-    expect(screen.getByText("1.5k")).toBeTruthy()
-    expect(screen.getByTitle("Input: 1,500 · Output: 2,000 · Cache: 0")).toBeTruthy()
+    expect(screen.getByLabelText("Input: 1,500 / 250,000 (1%) · Output: 2,000")).toBeTruthy()
   })
 
-  it("shows cached tokens when usage.cachedTokens > 0", () => {
+  it("shows cached tokens in the token meter tooltip when usage.cachedTokens > 0", () => {
     const usage: AgentUsage = {
       promptTokens: 100,
       completionTokens: 50,
@@ -75,7 +73,7 @@ describe("StatusBar", () => {
       cachedTokens: 25,
     }
     render(<StatusBar sessionId={null} usage={usage} />)
-    expect(screen.getByTitle("Input: 100 · Output: 50 · Cache: 25")).toBeTruthy()
+    expect(screen.getByLabelText("Input: 100 / 250,000 (0%) · Output: 50 · Cache: 25")).toBeTruthy()
   })
 
   it("does not show cached tokens when cachedTokens is 0", () => {
@@ -112,8 +110,7 @@ describe("StatusBar", () => {
     )
     expect(screen.getByText("session-")).toBeTruthy() // shortId
     expect(screen.getByText("streaming")).toBeTruthy()
-    expect(screen.getByText("500")).toBeTruthy()
-    expect(screen.getByTitle("Input: 500 · Output: 300 · Cache: 50")).toBeTruthy()
+    expect(screen.getByLabelText("Input: 500 / 250,000 (0%) · Output: 300 · Cache: 50")).toBeTruthy()
     expect(screen.getByText(newHint)).toBeTruthy()
   })
 })

@@ -373,10 +373,12 @@ agnostic by design. Deeper doc: [`configuration/providers.md`](./configuration/p
   premium request quota from the saved OAuth token.
 - **Provider plugin usage hooks** `[v1.33.0]` — OAuth provider plugins can
   surface live usage in the same Settings → Providers panel as built-ins.
-- **Provider-scoped visible models** `[v1.57.0]` — Settings → Providers lets
-  users choose which live-discovered models appear in normal model pickers;
-  failed auth or unreachable discovery returns an empty list instead of curated
-  defaults.
+- **Provider-scoped visible models** `[v1.57.0, v1.63.0]` — Settings → Providers lets
+  users choose which provider models appear in normal model pickers. Session
+  settings and other pickers read a cached provider model list for instant
+  open, while opening Settings → Providers refreshes configured providers'
+  model lists in the background and **List models** remains the per-provider
+  manual refresh / verification action.
 - **Curated multimodal model registry** `[v1.34.0]` — model modality gates,
   token limits, cost, support flags, and thinking-level metadata are maintained
   in one exact-match registry: bundled JSON snapshot, runtime `models.dev`

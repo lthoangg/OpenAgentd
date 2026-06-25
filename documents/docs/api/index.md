@@ -74,7 +74,7 @@ for the frontmatter schema and validation rules.
 | Method | Path | Returns |
 |--------|------|---------|
 | `GET` | `/api/agents` | `{agents: AgentSummary[]}` — name, role, model, tools, skills, validity |
-| `GET` | `/api/agents/registry` | `{tools, skills, providers, models}` — dropdown catalog for the settings UI |
+| `GET` | `/api/agents/registry` | `{tools, skills, providers, models}` — dropdown catalog for the settings UI; model entries come from cached provider model lists, not live provider discovery |
 | `GET` | `/api/agents/{name}` | `AgentDetail` — raw `.md` content + parsed frontmatter + parse error (if any) |
 | `POST` | `/api/agents` | `AgentDetail` 201 — create a new agent |
 | `PUT` | `/api/agents/{name}` | `AgentDetail` — overwrite existing |

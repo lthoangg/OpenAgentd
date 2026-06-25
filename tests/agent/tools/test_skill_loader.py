@@ -12,6 +12,7 @@ from app.agent.tools.builtin.skill import (
     _builtin_skills_dir,
     _discover_skills_cached,
     _iter_skill_paths,
+    _loaded_skills_from_messages,
     _parse_frontmatter,
     _skill_tool_description,
     _skills_dir_signature,
@@ -126,6 +127,75 @@ class TestLoadSkill:
 
         assert first == "Analyse data carefully."
         assert second == "Analyse data carefully."
+
+    def test_loaded_skills_from_messages_tracks_aliases_and_ignores_duplicates(self):
+        state = SimpleNamespace(
+            messages_for_llm=[
+                SimpleNamespace(
+                    tool_calls=[
+                        SimpleNamespace(
+                            id="call_1",
+                            function=SimpleNamespace(
+                                name="skill",
+                                arguments='{"skill_name":"guidelines"}',
+                            ),
+                        ),
+                        SimpleNamespace(
+                            id="call_2",
+                            function=SimpleNamespace(
+                                name="skill",
+                                arguments='{"skill_name":"oad/commit"}',
+                            ),
+                        ),
+                        SimpleNamespace(
+                            id="call_3",
+                            function=SimpleNamespace(
+                                name="shell",
+                                arguments='{"command":"pwd"}',
+                            ),
+                        ),
+                    ]
+                ),
+                SimpleNamespace(
+                    role="tool",
+                    tool_call_id="call_1",
+                    content="Guidelines body.",
+                ),
+                SimpleNamespace(
+                    role="tool",
+                    tool_call_id="call_2",
+                    content="Commit body.",
+                ),
+                SimpleNamespace(
+                    role="tool",
+                    tool_call_id="call_3",
+                    content="/tmp",
+                ),
+                SimpleNamespace(
+                    tool_calls=[
+                        SimpleNamespace(
+                            id="call_4",
+                            function=SimpleNamespace(
+                                name="skill",
+                                arguments='{"skill_name":"guidelines"}',
+                            ),
+                        )
+                    ]
+                ),
+                SimpleNamespace(
+                    role="tool",
+                    tool_call_id="call_4",
+                    content="Duplicate body should not replace the first.",
+                ),
+            ]
+        )
+
+        loaded = _loaded_skills_from_messages(state)
+
+        assert loaded == {
+            "guidelines": "Guidelines body.",
+            "oad/commit": "Commit body.",
+        }
 
     @pytest.mark.asyncio
     async def test_load_skill_rehydrates_visible_session_skill_body(

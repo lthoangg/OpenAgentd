@@ -103,18 +103,36 @@ describe("TeamStatusBar", () => {
     expect(screen.getByText("agent-beta")).toBeTruthy()
   })
 
-  it("shows token count when agent has totalTokens > 0", () => {
-    const agentStreams = { "bot": makeStream("idle", 1500) }
-    render(<TeamStatusBar sessionId={null} agentStreams={agentStreams} />)
-    // Me formatTokens(1500) = "1.5k"
-    expect(screen.getByText("1.5k")).toBeTruthy()
+  it("shows the lead token meter only for the lead stream", () => {
+    const agentStreams = {
+      "lead-bot": makeStream("idle", 1500),
+      "member-bot": makeStream("idle", 900),
+    }
+    render(
+      <TeamStatusBar
+        sessionId={null}
+        leadName="lead-bot"
+        agentStreams={agentStreams}
+      />
+    )
+    expect(screen.getByLabelText("Input: 1,500 / 250,000 (1%) · Output: 0")).toBeTruthy()
+    expect(screen.queryByText("900")).toBeNull()
   })
 
-  it("omits token count when totalTokens is 0", () => {
-    const agentStreams = { "bot": makeStream("idle", 0) }
-    render(<TeamStatusBar sessionId={null} agentStreams={agentStreams} />)
-    const kText = screen.queryByText(/k$/)
-    expect(kText).toBeNull()
+  it("omits token count when the lead stream has no usage", () => {
+    const agentStreams = {
+      "lead-bot": makeStream("idle", 0),
+      "member-bot": makeStream("idle", 900),
+    }
+    render(
+      <TeamStatusBar
+        sessionId={null}
+        leadName="lead-bot"
+        agentStreams={agentStreams}
+      />
+    )
+    expect(screen.queryByTitle("Input: 0 · Output: 0 · Cache: 0")).toBeNull()
+    expect(screen.queryByText("900")).toBeNull()
   })
 
   // ── status dot colors ────────────────────────────────────────────────────────
@@ -176,6 +194,6 @@ describe("TeamStatusBar", () => {
     expect(screen.getByText("working")).toBeTruthy()
     expect(screen.getByText("lead-agent")).toBeTruthy()
     expect(screen.getByText("sub-agent")).toBeTruthy()
-    expect(screen.getByText("500")).toBeTruthy()
+    expect(screen.getByLabelText("Input: 500 / 250,000 (0%) · Output: 0")).toBeTruthy()
   })
 })

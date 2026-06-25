@@ -1,4 +1,5 @@
-import { shortId, formatTokens } from '@/utils/format'
+import { TokenMeter } from '@/components/ui/token-meter'
+import { shortId } from '@/utils/format'
 import type { AgentUsage } from '@/api/types'
 
 interface StatusBarProps {
@@ -43,12 +44,12 @@ export function StatusBar({
        {/* Right: token count */}
        <div className="flex items-center gap-2">
          {usage && (
-           <span
-             className="flex h-7 min-w-7 items-center justify-center rounded-full border border-(--color-border) bg-(--bg-key) px-1.5 font-mono text-[10px] text-(--color-text)"
-             title={`Input: ${usage.promptTokens.toLocaleString()} · Output: ${usage.completionTokens.toLocaleString()} · Cache: ${usage.cachedTokens.toLocaleString()}`}
-           >
-             {formatTokens(usage.promptTokens)}
-           </span>
+           <TokenMeter
+             input={usage.promptTokens}
+             output={usage.completionTokens}
+             cached={usage.cachedTokens}
+             className="mr-0.5"
+           />
          )}
          <span className="hidden text-(--color-text-subtle) sm:inline">Ctrl+N new</span>
        </div>

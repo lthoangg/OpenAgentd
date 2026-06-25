@@ -64,8 +64,10 @@ class ProviderInfo(BaseModel):
     # True when live model discovery reached the provider. False means saved
     # credentials/tokens exist, but the provider could not be reached now.
     is_reachable: bool | None = None
+    # Last explicitly listed provider-local model IDs cached in settings.yaml.
+    cached_models: list[str] = Field(default_factory=list)
     # Provider-local model IDs shown in normal model pickers. Empty means all
-    # discovered models for this provider are visible.
+    # cached models for this provider are visible.
     visible_models: list[str] = Field(default_factory=list)
 
 

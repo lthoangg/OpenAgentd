@@ -214,16 +214,15 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     enabled: fileRefsEnabled && (mode === 'coding' ? Boolean(workspace) : Boolean(sessionIdState)),
   })
 
-  // Sum tokens — four primitive selectors, no new object returned (avoids infinite loop).
-  const totalPrompt     = useTeamStore((s) => Object.values(s.agentStreams).reduce((n, st) => n + st.usage.promptTokens, 0))
-  const totalCompletion = useTeamStore((s) => Object.values(s.agentStreams).reduce((n, st) => n + st.usage.completionTokens, 0))
-  const totalCached     = useTeamStore((s) => Object.values(s.agentStreams).reduce((n, st) => n + st.usage.cachedTokens, 0))
-  const totalAll        = useTeamStore((s) => Object.values(s.agentStreams).reduce((n, st) => n + st.usage.totalTokens, 0))
-  const headerTokens = totalAll > 0
+  const leadPromptTokens = useTeamStore((s) => leadName ? (s.agentStreams[leadName]?.usage.promptTokens ?? 0) : 0)
+  const leadCompletionTokens = useTeamStore((s) => leadName ? (s.agentStreams[leadName]?.usage.completionTokens ?? 0) : 0)
+  const leadCachedTokens = useTeamStore((s) => leadName ? (s.agentStreams[leadName]?.usage.cachedTokens ?? 0) : 0)
+  const leadTotalTokens = useTeamStore((s) => leadName ? (s.agentStreams[leadName]?.usage.totalTokens ?? 0) : 0)
+  const headerTokens = leadTotalTokens > 0
     ? {
-        input: totalPrompt,
-        output: totalCompletion,
-        cached: totalCached,
+        input: leadPromptTokens,
+        output: leadCompletionTokens,
+        cached: leadCachedTokens,
         trigger: summaryTriggerTokens,
         pulsing: isTeamWorking,
       }

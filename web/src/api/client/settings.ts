@@ -102,6 +102,7 @@ export type ProviderInfo = {
   is_configured: boolean
   is_saved: boolean
   is_reachable?: boolean | null
+  cached_models: string[]
   visible_models: string[]
 }
 

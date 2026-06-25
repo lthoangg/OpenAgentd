@@ -1,4 +1,4 @@
-import { formatTokens } from '@/utils/format'
+import { TokenMeter } from '@/components/ui/token-meter'
 import type { AgentStream } from '@/stores/useTeamStore'
 
 interface TeamStatusBarProps {
@@ -33,6 +33,8 @@ export function TeamStatusBar({
   agentStreams,
   error,
 }: TeamStatusBarProps) {
+  const leadStream = leadName ? agentStreams[leadName] : undefined
+
   return (
     <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-(--color-border) bg-(--bg-page) px-3 py-1 text-xs text-(--color-text-muted) sm:px-4">
       {/* Left */}
@@ -60,8 +62,16 @@ export function TeamStatusBar({
         </span>
       )}
 
-      {/* Right: agent pills */}
+      {/* Right: lead usage + agent pills */}
       <div className="flex flex-wrap items-center justify-end gap-1">
+        {leadStream && leadStream.usage.totalTokens > 0 && (
+          <TokenMeter
+            input={leadStream.usage.promptTokens}
+            output={leadStream.usage.completionTokens}
+            cached={leadStream.usage.cachedTokens}
+            className="mr-0.5"
+          />
+        )}
         {Object.entries(agentStreams).map(([name, stream]) => (
           <div
             key={name}
@@ -69,14 +79,6 @@ export function TeamStatusBar({
           >
             <StatusDot status={stream.status} />
             <span className="text-(--color-text-2)">{name}</span>
-            {stream.usage.totalTokens > 0 && (
-              <span
-                className="flex h-5 min-w-5 items-center justify-center rounded-full bg-(--bg-page) px-1 font-mono text-[10px] text-(--color-text)"
-                title={`Input: ${stream.usage.promptTokens.toLocaleString()} · Output: ${stream.usage.completionTokens.toLocaleString()} · Cache: ${stream.usage.cachedTokens.toLocaleString()}`}
-              >
-                {formatTokens(stream.usage.promptTokens)}
-              </span>
-            )}
           </div>
         ))}
       </div>

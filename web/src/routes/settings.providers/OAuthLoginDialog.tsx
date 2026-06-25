@@ -62,6 +62,7 @@ export function OAuthLoginDialog({
           }
           if (event.event === 'success' && !successHandledRef.current) {
             successHandledRef.current = true
+            void queryClient.invalidateQueries({ queryKey: queryKeys.settings.providerModels(provider.id) })
             void queryClient.invalidateQueries({ queryKey: queryKeys.settings.providers() })
             void queryClient.invalidateQueries({ queryKey: queryKeys.agentFiles.registry() })
             const model = event.suggested_model
@@ -179,6 +180,7 @@ export function OAuthLoginDialog({
                 submitOAuthCallback(provider.id, code)
                   .then((result) => {
                     setEvents((current) => [...current, { event: 'success', suggested_model: result.suggested_model }])
+                    void queryClient.invalidateQueries({ queryKey: queryKeys.settings.providerModels(provider.id) })
                     void queryClient.invalidateQueries({ queryKey: queryKeys.settings.providers() })
                     void queryClient.invalidateQueries({ queryKey: queryKeys.agentFiles.registry() })
 

@@ -10,7 +10,7 @@ that contract: validation + rollback semantics, but no live team swap.
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi import FastAPI
@@ -240,13 +240,6 @@ async def test_list_surfaces_invalid_file(fs_dirs, client: AsyncClient):
 async def test_registry_returns_catalog(
     client: AsyncClient, monkeypatch: pytest.MonkeyPatch
 ):
-    import app.api.routes.agents as agents_routes
-
-    agents_routes._registry_model_cache.clear()
-    monkeypatch.setattr(
-        agents_routes, "discover_provider_models", AsyncMock(return_value=[])
-    )
-
     res = await client.get("/api/agents/registry")
     assert res.status_code == 200
     body = res.json()

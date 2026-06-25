@@ -1198,14 +1198,15 @@ class AgentTeam:
             return await self._dismiss_live_member(handle)
 
     async def _dismiss_live_member(self, handle: str) -> bool:
-        member = self.members.pop(handle, None)
+        member = self.members.get(handle)
         if member is None:
             return False
-        self._members_by_name.pop(handle, None)
         try:
             await member.stop()
         except Exception as exc:
             logger.warning("team_dismiss_stop_failed handle={} error={}", handle, exc)
+        self.members.pop(handle, None)
+        self._members_by_name.pop(handle, None)
         logger.info("team_member_dismissed handle={}", handle)
         await self._persist_roster_change(f"Member dismissed: {handle}.")
         await self._emit(agent=handle, event="agent_status", status="offline")

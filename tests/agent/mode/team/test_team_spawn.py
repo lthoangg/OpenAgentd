@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import uuid
 from pathlib import Path
+import asyncio
 from unittest.mock import AsyncMock
 
 import pytest
@@ -46,7 +47,7 @@ from app.services.chat_service import (
     save_message,
     undo_session_messages,
 )
-from tests.agent.mode.team.conftest import MockTeamProvider
+from tests.agent.mode.team.conftest import MockTeamProvider, make_text_chunk
 
 
 def _session_factory():
@@ -314,6 +315,20 @@ class TestSpawn:
 # ---------------------------------------------------------------------------
 
 
+class SlowProvider(MockTeamProvider):
+    def stream(self, messages, tools=None, **kwargs):
+        self.call_count += 1
+
+        async def _gen():
+            try:
+                await asyncio.sleep(60)
+            except asyncio.CancelledError:
+                raise
+            yield make_text_chunk(self.response_text)
+
+        return _gen()
+
+
 class TestDismiss:
     async def test_dismiss_returns_true_and_removes_from_roster(self, tmp_path):
         team = _build_dynamic_team(tmp_path, {"executor": None})
@@ -334,6 +349,28 @@ class TestDismiss:
         try:
             ok = await team.dismiss("executor#42")
             assert ok is False
+        finally:
+            await team.stop()
+
+    async def test_dismiss_working_member_cancels_cleanly(self, tmp_path):
+        team = _build_dynamic_team(tmp_path, {"executor": None})
+        await team.start()
+        try:
+            member = await team.spawn("executor")
+            member.agent.llm_provider = SlowProvider("OK")
+
+            await team.mailbox.send(
+                to="executor#1",
+                message=Message(
+                    from_agent="lead", to_agent="executor#1", content="[lead]: task"
+                ),
+            )
+            await asyncio.sleep(0.05)
+            assert member.state == "working"
+
+            assert await team.dismiss("executor#1") is True
+            assert "executor#1" not in team.members
+            assert member.state == "idle"
         finally:
             await team.stop()
 
@@ -683,12 +720,10 @@ class TestRosterManageTool:
         tool = make_team_manage_tool(team)
 
         assert "discover spawnable member blueprints" in tool.description
-        assert (
-            "repeat a blueprint name to create parallel instances" in tool.description
-        )
-        assert "restore/reuse that instance's history" in tool.description
-        assert "live/restorable handles" in tool.description
-        assert "no member blueprints are available to spawn" in tool.description
+        assert "use only listed/available names" in tool.description
+        assert "reuse live/restorable handles" in tool.description
+        assert "dismiss only explicit live handles" in tool.description
+        assert "executor" not in tool.description
 
     async def test_members_do_not_get_manage_tools(self, tmp_path):
         team = _build_dynamic_team(tmp_path, {"executor": None})
@@ -743,8 +778,44 @@ class TestRosterManageTool:
         team = _build_dynamic_team(tmp_path, {"executor": None})
         tool = make_team_manage_tool(team)
         result = await tool(action="spawn", members=["ghost"])
-        assert "Unknown blueprint" in result
+        assert "Unknown blueprints: ghost" in result
         assert "executor" in result
+
+    async def test_spawn_unknown_blueprints_are_grouped(self, tmp_path):
+        from app.agent.mode.team.manage import make_team_manage_tool
+
+        team = _build_dynamic_team(tmp_path, {"executor": None, "explorer": None})
+        tool = make_team_manage_tool(team)
+        result = await tool(action="spawn", members=["design", "frontend", "writer"])
+        assert "Unknown blueprints: design, frontend, writer." in result
+        assert result.count("Available:") == 1
+        assert "executor" in result
+        assert "explorer" in result
+
+    async def test_list_reports_spawnable_blueprints(self, tmp_path):
+        from app.agent.mode.team.manage import make_team_manage_tool
+
+        team = _build_dynamic_team(
+            tmp_path, {"executor": {"description": "writes files"}}
+        )
+        tool = make_team_manage_tool(team)
+        result = await tool(action="list", members=[])
+        assert "Spawnable blueprints" in result
+        assert "executor — writes files" in result
+
+    async def test_list_reports_live_members(self, tmp_path):
+        from app.agent.mode.team.manage import make_team_manage_tool
+
+        team = _build_dynamic_team(tmp_path, {"executor": None})
+        tool = make_team_manage_tool(team)
+        await team.start()
+        try:
+            await team.spawn("executor")
+            result = await tool(action="list", members=[])
+            assert "Live: executor#1" in result
+            assert "Spawnable blueprints: executor" in result
+        finally:
+            await team.stop()
 
     async def test_dismiss_batch_and_partial_success(self, tmp_path):
         from app.agent.mode.team.manage import make_team_manage_tool

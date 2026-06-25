@@ -246,7 +246,7 @@ export function Sidebar({
       event.preventDefault()
       event.stopPropagation()
       import('@tauri-apps/api/core').then(({ invoke }) => {
-        invoke('app_new_window', { initialPath: `/cockpit/${id}` }).catch((err) => {
+        invoke('app_new_window', { initialPath: `/cockpit/${id}`, initial_path: `/cockpit/${id}` }).catch((err) => {
           console.error('Failed to open session in new window:', err)
         })
       }).catch(() => {})

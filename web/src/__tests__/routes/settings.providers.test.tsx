@@ -80,6 +80,7 @@ describe('ProvidersSettingsPage', () => {
             is_configured: false,
             is_saved: true,
             is_reachable: false,
+            cached_models: [],
             visible_models: [],
           },
         ],
@@ -117,6 +118,7 @@ describe('ProvidersSettingsPage', () => {
             is_configured: false,
             is_saved: true,
             is_reachable: false,
+            cached_models: [],
             visible_models: [],
           },
         ],
@@ -162,6 +164,7 @@ describe('ProvidersSettingsPage', () => {
             is_configured: false,
             is_saved: false,
             is_reachable: null,
+            cached_models: [],
             visible_models: [],
           },
         ],
@@ -213,6 +216,7 @@ describe('ProvidersSettingsPage', () => {
             is_configured: true,
             is_saved: true,
             is_reachable: true,
+            cached_models: [],
             visible_models: [],
           },
         ],
@@ -242,6 +246,45 @@ describe('ProvidersSettingsPage', () => {
     expect(copy.className).toContain('md:w-6')
   })
 
+  it('refreshes cached models in the background when the providers page opens', async () => {
+    server.use(
+      http.get('http://localhost/api/settings/providers', () => HttpResponse.json({
+        has_any_configured: true,
+        providers: [
+          {
+            id: 'openai',
+            label: 'OpenAI',
+            description: 'OpenAI provider',
+            kind: 'api_key',
+            credentials: [],
+            env_var: 'OPENAI_API_KEY',
+            env_vars: [],
+            fallback_models: [],
+            oauth_command: '',
+            docs_url: '',
+            is_configured: true,
+            is_saved: true,
+            is_reachable: true,
+            cached_models: ['old-model'],
+            visible_models: [],
+          },
+        ],
+      })),
+      http.post('http://localhost/api/settings/providers/openai/models', () => HttpResponse.json({
+        provider: 'openai',
+        models: ['new-model'],
+        source: 'provider',
+      })),
+    )
+
+    renderPage()
+
+    expect(await screen.findByText('OpenAI')).toBeTruthy()
+    await waitFor(() => expect(screen.getByText(/1 models available/i)).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: /1 models available/i }))
+    expect(await screen.findByText('openai:new-model')).toBeTruthy()
+  })
+
   it('shows active usage for any connected OAuth provider', async () => {
     server.use(
       http.get('http://localhost/api/settings/providers', () => HttpResponse.json({
@@ -261,6 +304,7 @@ describe('ProvidersSettingsPage', () => {
             is_configured: true,
             is_saved: true,
             is_reachable: true,
+            cached_models: [],
             visible_models: [],
           },
         ],

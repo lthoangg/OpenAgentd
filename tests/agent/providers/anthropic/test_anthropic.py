@@ -67,7 +67,13 @@ def test_anthropic_payload_converts_system_tools_and_thinking() -> None:
         provider._merged_kwargs(),
     )
 
-    assert payload["system"] == "be concise"
+    assert payload["system"] == [
+        {
+            "type": "text",
+            "text": "be concise",
+            "cache_control": {"type": "ephemeral"},
+        }
+    ]
     assert payload["tools"][0]["name"] == "lookup"
     assert payload["thinking"] == {"type": "adaptive", "display": "summarized"}
     assert payload["output_config"] == {"effort": "low"}

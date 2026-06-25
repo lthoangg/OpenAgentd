@@ -7,6 +7,7 @@ file back.  Running agents pick up new config on their next turn.
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any
 
@@ -19,8 +20,16 @@ from app.agent.hooks.summarization import prompt_token_threshold_for_model
 from app.agent.providers.capabilities import get_capabilities
 from app.agent.providers.catalog import all_providers
 from app.agent.providers.model_discovery import filter_agent_model_ids
-from app.core.runtime_settings import provider_cached_models, provider_visible_models
+from app.core.runtime_settings import (
+    provider_cached_models,
+    provider_visible_models,
+    set_provider_cached_models,
+)
 from app.agent.tools.builtin.skill import discover_skills
+from app.api.routes.settings import (
+    _provider_is_configured,
+    _provider_saved_overrides,
+)
 from app.api.schemas.agents import (
     AgentDeleteResponse,
     AgentDetail,
@@ -207,6 +216,42 @@ async def _validate_or_restore(
 # ── Routes ──────────────────────────────────────────────────────────────────
 
 
+async def _warm_provider_model_cache() -> None:
+    """Populate missing cached models for configured providers once per request."""
+    from app.agent.providers.model_discovery import discover_provider_models
+
+    provider_entries = list(all_providers())
+    configured = [
+        entry
+        for entry in provider_entries
+        if _provider_is_configured(entry) and not provider_cached_models(entry["id"])
+    ]
+    if not configured:
+        return
+
+    discovered = await asyncio.gather(
+        *(
+            discover_provider_models(
+                entry,
+                overrides=_provider_saved_overrides(entry),
+            )
+            for entry in configured
+        ),
+        return_exceptions=True,
+    )
+    for entry, models in zip(configured, discovered, strict=True):
+        if isinstance(models, BaseException):
+            logger.info(
+                "provider_model_cache_warm_failed provider={} error={}",
+                entry["id"],
+                models,
+            )
+            continue
+        cleaned = filter_agent_model_ids(models)
+        if cleaned:
+            set_provider_cached_models(entry["id"], cleaned)
+
+
 @router.get("")
 async def list_agents() -> AgentListResponse:
     rows: list[AgentSummary] = []
@@ -231,6 +276,8 @@ async def list_agents() -> AgentListResponse:
 async def get_registry() -> RegistryResponse:
     """Dropdown catalog: tools, skills, providers, known models."""
     from app.agent.loader import _default_tool_registry
+
+    await _warm_provider_model_cache()
 
     tool_registry = _default_tool_registry()
     hidden_tools = {"skill", "todo_manage", "schedule_task", "note"}

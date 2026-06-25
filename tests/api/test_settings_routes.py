@@ -1343,6 +1343,13 @@ def test_registry_ignores_missing_cached_models(
         settings_routes.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path)
     )
 
+    async def _none(_entry, **_kwargs):  # type: ignore[no-untyped-def]
+        return []
+
+    monkeypatch.setattr(
+        "app.agent.providers.model_discovery.discover_provider_models", _none
+    )
+
     app = FastAPI()
     app.include_router(agents_router, prefix="/api/agents")
     client = TestClient(app)
@@ -1350,3 +1357,35 @@ def test_registry_ignores_missing_cached_models(
 
     assert response.status_code == 200
     assert response.json()["models"] == []
+
+
+def test_registry_warms_cached_models_for_configured_providers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from fastapi import FastAPI
+
+    from app.api.routes.agents import router as agents_router
+    from app.core.runtime_settings import provider_cached_models
+
+    monkeypatch.setattr(
+        settings_routes.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path)
+    )
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+
+    async def _discover(_entry, **_kwargs):  # type: ignore[no-untyped-def]
+        return ["gpt-5", "gpt-5-mini"]
+
+    monkeypatch.setattr(
+        "app.agent.providers.model_discovery.discover_provider_models", _discover
+    )
+
+    app = FastAPI()
+    app.include_router(agents_router, prefix="/api/agents")
+    client = TestClient(app)
+    response = client.get("/api/agents/registry")
+
+    assert response.status_code == 200
+    ids = {m["id"] for m in response.json()["models"]}
+    assert "openai:gpt-5" in ids
+    assert "openai:gpt-5-mini" in ids
+    assert provider_cached_models("openai") == ["gpt-5", "gpt-5-mini"]

@@ -1,15 +1,17 @@
-"""schedule_task tool — the team lead's personal reminder / future-self queue.
+"""schedule_task tool — the team lead's personal reminder / self-scheduling loop engine.
 
 Scheduling is **first-person**: every task the lead schedules fires back to
 *itself* (same mode, same workspace) at the target time. There is no
 cross-team or cross-workspace surface — the tool only ever sees and acts on
-tasks bound to the calling lead's routing context. Think of it as a sticky
-note the agent leaves for its future self.
+tasks bound to the calling lead's routing context.
 
-Typical uses:
-  * "Remind me to follow up with Alice next Monday at 9 AM"
-  * "Check the build status every 10 minutes for the next hour"
-  * "Run the daily standup-prep prompt every weekday at 8:30 AM"
+Beyond one-shot reminders, the tool doubles as a **loop engine**: combining
+``session_id='current'`` with ``every_seconds`` + ``max_runs`` lets the lead
+schedule a prompt that re-invokes itself into a bounded self-scheduling loop.
+The LLM-facing guidance for that lives in the tool/parameter descriptions
+below; the conceptual reference (loop patterns, exit paths, primitives) is in
+``documents/docs/agent/tools.md`` → "Loop engineering — self-scheduling
+agentic loops".
 
 All operations proxy through the in-process
 :data:`~app.scheduler.scheduler.task_scheduler` singleton so no HTTP
@@ -164,10 +166,12 @@ async def _schedule_task(
         Field(
             default=None,
             description=(
-                "[create] The message you will receive when the reminder "
-                "fires. Write it in the second person, addressed to your "
-                "future self — e.g. 'Check whether the deployment "
-                "completed and report any failures'. Required for create."
+                "[create] The prompt delivered back to you when the task fires. "
+                "Write it in the second person, addressed to your future self. "
+                "For self-scheduling loops this is the per-iteration instruction — "
+                "e.g. 'Check whether the deployment finished and report the result. "
+                "If still running, note it and stop (the scheduler re-invokes you).'. "
+                "Required for create."
             ),
         ),
     ] = None,
@@ -176,10 +180,12 @@ async def _schedule_task(
         Field(
             default=None,
             description=(
-                "[create] Session continuity. "
-                "None = new session each fire, "
-                "'auto' = persistent session keyed to the task name, "
-                "'current' = continue the current chat/session, "
+                "[create] Session continuity — controls where the fired prompt lands. "
+                "'current' = re-enter the current conversation (reply appears inline; "
+                "use this for self-continuation loops so you can read your prior work). "
+                "'auto' = persistent session keyed to the task name (survives restarts; "
+                "good for long-running background monitors). "
+                "None = fresh session each firing. "
                 "UUID string = continue a specific existing session."
             ),
         ),
@@ -190,8 +196,10 @@ async def _schedule_task(
             default=None,
             gt=0,
             description=(
-                "[create] Optional positive cap on successful task firings. "
-                "None = unlimited; e.g. 10 = stop after 10 successful runs."
+                "[create] Hard cap on successful firings — the task auto-disables "
+                "after N runs. None = unlimited. "
+                "Use this to bound any polling or retry loop, "
+                "e.g. max_runs=20 with every_seconds=30 = poll for 10 minutes then stop."
             ),
         ),
     ] = None,
@@ -218,24 +226,36 @@ async def _schedule_task(
     _mode: Annotated[Literal["normal", "coding"], InjectedArg()] = "normal",
     _workspace: Annotated[str | None, InjectedArg()] = None,
 ) -> str:
-    """Set a reminder for your future self — a prompt that will be
-    delivered back to you (same team, same workspace) at a future time or
-    on a recurring schedule.
+    """Schedule a prompt to be delivered back to you at a future time or on a
+    recurring schedule — and build self-scheduling agentic loops.
 
-    Use this whenever the user wants you to do something later, or to
-    keep doing something on a cadence — e.g.
-      * "remind me tomorrow at 3 PM to follow up with the client"
-      * "check my email every hour and summarize anything urgent"
-      * "every weekday at 8:30 AM, draft the standup summary"
-      * "in 30 minutes, ask me how the build went"
+    Every task fires back to *you* (same team, same workspace). This is both
+    a reminder tool and a **loop engine**: by combining ``session_id='current'``
+    with ``every_seconds`` + ``max_runs`` you create a bounded polling loop
+    that re-invokes you automatically until a condition is met or the cap is hit.
 
-    The scheduled prompt is delivered to *you* — the same lead that
-    scheduled it — not to a different agent or another workspace.
+    Loop recipe (bounded polling)::
 
-    Use ``list`` to see your own pending reminders, ``pause`` / ``resume``
-    to toggle one, ``trigger`` to fire it now, ``delete`` to drop it.
-    Reminders from other teams or other coding workspaces are invisible
-    to you; you can only manage your own.
+        action='create', schedule_type='every', every_seconds=30, max_runs=20,
+        session_id='current',
+        prompt='Check build status and report. If still running, just note it
+                — the scheduler will call you again automatically.'
+
+    Then optionally call ``trigger`` on the returned id to fire the first
+    iteration immediately without waiting for the first 30-second window.
+    When the loop's goal is met, call ``delete`` (or ``pause``) on its own
+    task id to exit early — ``max_runs`` is only the safety backstop, not
+    the intended stopping point for a condition-driven loop.
+
+    Other uses:
+      * One-shot follow-up: ``schedule_type='at'``, specific ``at_datetime``
+      * Recurring background job: ``schedule_type='cron'``, ``session_id='auto'``
+      * "Remind me in 30 minutes": ``schedule_type='every'``, ``every_seconds=1800``,
+        ``max_runs=1``
+
+    Use ``list`` to inspect active loops, ``pause``/``resume`` to toggle them,
+    ``delete`` to tear one down, ``trigger`` to fire immediately.
+    Tasks from other teams or workspaces are invisible to you.
     """
     from app.scheduler.scheduler import task_scheduler
 

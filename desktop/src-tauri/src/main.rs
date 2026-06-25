@@ -656,25 +656,63 @@ fn force_reload_app(app: &AppHandle) {
         return;
     }
 
+    let active_window_label = tauri::async_runtime::block_on(async {
+        state.active_window_label.lock().await.clone()
+    });
+    let using_external_backend = tauri::async_runtime::block_on(async {
+        state
+            .window_backend_base_urls
+            .lock()
+            .await
+            .contains_key(active_window_label.as_str())
+    });
+
+    if using_external_backend {
+        reload_main_window(app);
+        state.force_reloading.store(false, Ordering::SeqCst);
+        return;
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        log::info!("force reload on macOS: restarting desktop app");
+        restart_app_process(app);
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let handle = app.clone();
+        tauri::async_runtime::spawn(async move {
+            update_tray_status(&handle, "Status: Reloading…");
+            let result = restart_sidecar_and_reload_window(&handle).await;
+            if let Err(e) = result {
+                log::error!("failed to force reload backend: {e:#}");
+                update_tray_status(&handle, "Status: Error");
+                handle
+                    .emit(
+                        "backend-error",
+                        BackendError {
+                            message: format!("{e:#}"),
+                        },
+                    )
+                    .ok();
+            }
+
+            let state: tauri::State<'_, AppState> = handle.state();
+            state.force_reloading.store(false, Ordering::SeqCst);
+        });
+    }
+}
+
+fn restart_app_process(app: &AppHandle) {
+    persist_active_window_state(app);
+    update_tray_status(app, "Status: Restarting…");
+    let state: tauri::State<'_, AppState> = app.state();
+    state.quitting.store(true, Ordering::SeqCst);
     let handle = app.clone();
     tauri::async_runtime::spawn(async move {
-        update_tray_status(&handle, "Status: Reloading…");
-        let result = restart_sidecar_and_reload_window(&handle).await;
-        if let Err(e) = result {
-            log::error!("failed to force reload backend: {e:#}");
-            update_tray_status(&handle, "Status: Error");
-            handle
-                .emit(
-                    "backend-error",
-                    BackendError {
-                        message: format!("{e:#}"),
-                    },
-                )
-                .ok();
-        }
-
-        let state: tauri::State<'_, AppState> = handle.state();
-        state.force_reloading.store(false, Ordering::SeqCst);
+        shutdown_sidecar_now(&handle).await;
+        tauri::process::restart(&handle.env());
     });
 }
 
@@ -1014,11 +1052,8 @@ async fn run_update_install(app: AppHandle) -> Result<(), String> {
         format!("Failed to install update: {e}")
     })?;
 
-    update_tray_status(&app, "Status: Restarting…");
-    shutdown_sidecar_now(&app).await;
-
-    state.quitting.store(true, Ordering::SeqCst);
-    tauri::process::restart(&app.env());
+    restart_app_process(&app);
+    Ok(())
 }
 
 async fn fetch_release_notes(version: &str) -> Result<ReleaseNotesResponse, String> {
@@ -2120,6 +2155,16 @@ mod tests {
         );
     }
 
+    #[test]
+    fn new_window_external_backend_map_can_identify_force_reload_scope() {
+        let mut external = StdHashMap::new();
+        external.insert("main-2".to_string(), "http://192.168.1.10:4082".to_string());
+
+        assert!(external.contains_key("main-2"));
+        assert!(!external.contains_key(MAIN_WINDOW));
+    }
+
+    #[cfg(not(target_os = "macos"))]
     #[test]
     fn force_reload_shutdown_grace_is_shorter_than_normal_shutdown() {
         assert!(RELOAD_SHUTDOWN_GRACE < NORMAL_SHUTDOWN_GRACE);

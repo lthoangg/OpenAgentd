@@ -4,7 +4,7 @@ import App from '@/App'
 
 const TEST_BACKEND_URL = 'http://10.0.2.2:8000'
 
-let statusPayload: { base_url: string; token?: string | null } | null = { base_url: TEST_BACKEND_URL }
+let statusPayload: { base_url: string; token?: string | null; external?: boolean; sidecar_running?: boolean } | null = { base_url: TEST_BACKEND_URL }
 interface BackendReadyEvent {
   payload: { base_url: string; token?: string | null }
 }
@@ -42,10 +42,14 @@ mock.module('@/components/UpdateCard', () => ({
   UpdateCard: () => null,
 }))
 
+mock.module('@/hooks/use-platform', () => ({
+  getPlatform: () => ({ isTauri: true, os: 'macos', isMacOverlay: true }),
+}))
+
 beforeEach(() => {
   delete window.__OAD_API_BASE_URL__
   delete window.__OAD_TOKEN__
-  statusPayload = { base_url: TEST_BACKEND_URL }
+  statusPayload = { base_url: TEST_BACKEND_URL, sidecar_running: true, external: false }
   backendReadyListener = null
   invokeMock.mockClear()
 })
@@ -66,7 +70,7 @@ describe('App backend bootstrap', () => {
   })
 
   it('hydrates the desktop token after a force reload page load', async () => {
-    statusPayload = { base_url: TEST_BACKEND_URL, token: 'desktop-token' }
+    statusPayload = { base_url: TEST_BACKEND_URL, token: 'desktop-token', sidecar_running: true, external: false }
 
     render(<App />)
 
@@ -86,7 +90,7 @@ describe('App backend bootstrap', () => {
   })
 
   it('hydrates the backend URL when desktop reports readiness after the window opens', async () => {
-    statusPayload = null
+    statusPayload = { base_url: '', sidecar_running: false, external: false }
 
     render(<App />)
 
@@ -98,6 +102,33 @@ describe('App backend bootstrap', () => {
     await waitFor(() => {
       expect(window.__OAD_API_BASE_URL__).toBe(TEST_BACKEND_URL)
       expect(window.__OAD_TOKEN__).toBe('ready-token')
+    })
+  })
+
+  it('does not finish bootstrap for bundled desktop mode until the sidecar is running', async () => {
+    statusPayload = { base_url: TEST_BACKEND_URL, sidecar_running: false, external: false }
+
+    const { queryByText } = render(<App />)
+
+    await waitFor(() => expect(invokeMock).toHaveBeenCalled())
+    expect(queryByText('Loading OpenAgentd...')).toBeTruthy()
+    expect(window.__OAD_API_BASE_URL__).toBeUndefined()
+
+    statusPayload = { base_url: TEST_BACKEND_URL, sidecar_running: true, external: false, token: 'desktop-token' }
+
+    await waitFor(() => {
+      expect(window.__OAD_API_BASE_URL__).toBe(TEST_BACKEND_URL)
+      expect(window.__OAD_TOKEN__).toBe('desktop-token')
+    })
+  })
+
+  it('allows external desktop backends to bootstrap without waiting for a sidecar', async () => {
+    statusPayload = { base_url: 'http://192.168.1.20:4082', sidecar_running: false, external: true }
+
+    render(<App />)
+
+    await waitFor(() => {
+      expect(window.__OAD_API_BASE_URL__).toBe('http://192.168.1.20:4082')
     })
   })
 })

@@ -558,8 +558,10 @@ Desktop is primary. CLI / server is the developer path. Deeper doc:
   `migrate hermes`. Imports identity + context Markdown into one lead agent.
 - **Cross-platform single-instance** `[v1.13.0]` — opening the app twice
   focuses the existing window instead of launching a duplicate.
-- **Desktop force-reload preserves sidecar state** `[v1.12.0]` — refreshes the
-  web UI without killing the Python sidecar or auth state.
+- **Desktop force reload respects backend mode** `[v1.67.0]` — external-server
+  windows now do a frontend-only force reload without restarting the bundled
+  sidecar, while bundled windows wait for backend readiness before the desktop
+  UI finishes bootstrapping after reload.
 
 ---
 

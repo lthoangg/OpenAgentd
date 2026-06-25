@@ -393,6 +393,36 @@ class TestDeepSeekReasoningContentEcho:
         wire = handler.convert_messages([msg])
         assert wire[0].__dict__.get("reasoning_content") is None
 
+    def test_assistant_message_without_tool_calls_coerces_empty_content(self):
+        """Sanitized history can strip tool_calls, so DeepSeek still needs content."""
+        from app.agent.schemas.chat import AssistantMessage
+
+        handler = self._make_handler()
+        wire = handler._convert_messages_deepseek([AssistantMessage(content=None)])
+        assert wire[0].content == ""
+
+    def test_sanitized_incomplete_tool_call_turn_keeps_valid_assistant_content(self):
+        """Incomplete tool-call turns are stripped to content-only, not null-content."""
+        from app.agent.schemas.chat import AssistantMessage, FunctionCall, ToolCall
+
+        p = DeepSeekProvider(api_key="ds-test-key", model="deepseek-v4-flash")
+        messages = [
+            AssistantMessage(
+                content=None,
+                tool_calls=[
+                    ToolCall(
+                        id="c1",
+                        function=FunctionCall(name="f", arguments="{}"),
+                    )
+                ],
+            )
+        ]
+        body = p._completions.build_request(
+            messages, None, stream=False, merged=p._merged_kwargs()
+        )
+        assert body["messages"][0]["content"] == ""
+        assert "tool_calls" not in body["messages"][0]
+
 
 # ============================================================================
 # Capabilities — deepseek: prefix

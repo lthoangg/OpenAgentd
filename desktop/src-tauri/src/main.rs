@@ -1792,6 +1792,21 @@ async fn build_app_window(
     Ok(win)
 }
 
+/// Resolve the external backend a freshly created window should inherit, if
+/// any. Mirrors the precedence used by [`new_window_init_script`]: prefer the
+/// active window's external backend, then fall back to the main window's
+/// external backend. Returns `None` when the new window should use the bundled
+/// sidecar.
+fn inherited_external_base_url(
+    external_window_base_urls: &HashMap<String, String>,
+    active_window_label: &str,
+) -> Option<String> {
+    external_window_base_urls
+        .get(active_window_label)
+        .or_else(|| external_window_base_urls.get(MAIN_WINDOW))
+        .cloned()
+}
+
 async fn create_app_window(
     app: &AppHandle,
     label: Option<&str>,
@@ -1809,14 +1824,25 @@ async fn create_app_window(
         &active_window_label,
         initial_path,
     )?;
-    build_app_window(
-        app,
-        label
-            .map(str::to_string)
-            .unwrap_or_else(|| next_window_label(app)),
-        init_script,
-    )
-    .await
+    let inherited_external =
+        inherited_external_base_url(&external_window_base_urls, &active_window_label);
+    let window_label = label
+        .map(str::to_string)
+        .unwrap_or_else(|| next_window_label(app));
+    // When the new window inherits an external backend, register it under the
+    // new window's own label *before* its frontend bootstraps. Otherwise
+    // `app_backend_status` would report the bundled backend for this label,
+    // overwriting the injected external base URL — and, when no bundled sidecar
+    // is running, the window would stay stuck on the loading screen because
+    // `sidecar_running` never becomes true.
+    if let Some(base) = inherited_external {
+        state
+            .window_backend_base_urls
+            .lock()
+            .await
+            .insert(window_label.clone(), base);
+    }
+    build_app_window(app, window_label, init_script).await
 }
 
 async fn start_backend_and_window(app: AppHandle) -> Result<()> {
@@ -2138,6 +2164,52 @@ mod tests {
         assert!(script.contains("http://127.0.0.1:4082"));
         assert!(script.contains("desktop-token"));
         assert!(script.contains("/cockpit/session-1"));
+    }
+
+    // ── inherited_external_base_url ──────────────────────────────────────────
+    //
+    // A new window must record the external backend it inherits under its own
+    // label so `app_backend_status` reports the right backend during bootstrap.
+    // Without this, an external-backend window stays stuck on the loading
+    // screen (no bundled sidecar => `sidecar_running` never turns true).
+
+    #[test]
+    fn inherited_external_prefers_active_window_backend() {
+        let mut external = StdHashMap::new();
+        external.insert(
+            MAIN_WINDOW.to_string(),
+            "http://192.168.1.10:4082".to_string(),
+        );
+        external.insert("main-2".to_string(), "http://192.168.1.20:4082".to_string());
+
+        assert_eq!(
+            inherited_external_base_url(&external, "main-2").as_deref(),
+            Some("http://192.168.1.20:4082")
+        );
+    }
+
+    #[test]
+    fn inherited_external_falls_back_to_main_window_backend() {
+        let mut external = StdHashMap::new();
+        external.insert(
+            MAIN_WINDOW.to_string(),
+            "http://192.168.1.10:4082".to_string(),
+        );
+
+        // Active window has no external backend recorded, but the main window
+        // does — the new window should still inherit it.
+        assert_eq!(
+            inherited_external_base_url(&external, "main-3").as_deref(),
+            Some("http://192.168.1.10:4082")
+        );
+    }
+
+    #[test]
+    fn inherited_external_is_none_for_bundled_backend() {
+        assert_eq!(
+            inherited_external_base_url(&StdHashMap::new(), MAIN_WINDOW),
+            None
+        );
     }
 
     // ── dialog_result_is_accept ──────────────────────────────────────────────

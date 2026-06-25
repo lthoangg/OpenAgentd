@@ -130,10 +130,10 @@ describe('applyCacheInvalidations', () => {
     expect(client.invalidateQueries.mock.calls[1][0]).toEqual({
       queryKey: queryKeys.team.files('sid-1'),
     })
-    expect(client.invalidateQueries.mock.calls[3][0]).toEqual({
+    expect(client.invalidateQueries.mock.calls[2][0]).toEqual({
       queryKey: queryKeys.todos('sid-1'),
     })
-    expect(client.invalidateQueries.mock.calls[4][0]).toEqual({
+    expect(client.invalidateQueries.mock.calls[3][0]).toEqual({
       queryKey: queryKeys.teamAgents(),
     })
   })

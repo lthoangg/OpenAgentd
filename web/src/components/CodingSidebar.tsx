@@ -670,21 +670,12 @@ export function CodingSidebar({
                 </LongPressButton>
                 <button
                   type="button"
-                  onClick={() => { void openWorktreeDialog(path) }}
+                  onClick={() => { void selectWorkspace(path, { create: true }) }}
                   className={`ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-(--color-border) text-(--color-text-muted) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100'}`}
-                  aria-label={`Create worktree from ${workspaceLabel(path)}`}
-                  title="Create worktree"
+                  aria-label={`New session in ${workspaceLabel(path)}`}
+                  title="New session"
                 >
-                  <GitBranch size={11} aria-hidden="true" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRemoveWorkspaceTarget(path)}
-                  className={`ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-(--color-text-subtle) transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100'}`}
-                  aria-label={`Hide repository ${workspaceLabel(path)} from sidebar`}
-                  title="Hide repository from sidebar"
-                >
-                  <Trash2 size={11} aria-hidden="true" />
+                  <Plus size={11} aria-hidden="true" />
                 </button>
                 <button
                   type="button"

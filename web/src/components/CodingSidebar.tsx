@@ -83,6 +83,11 @@ import {
   removeManagedWorktree,
   submitWorktreeSession,
 } from './CodingSidebar.worktrees'
+import {
+  applySessionDelete,
+  applySessionSelection,
+  prepareSessionTitleUpdate,
+} from './CodingSidebar.sessions'
 
 interface CodingSidebarProps {
   currentSessionId?: string
@@ -495,12 +500,12 @@ export function CodingSidebar({
       return
     }
 
-    if (session.workspace ?? workspacePath) saveLastCodingWorkspace(session.workspace ?? workspacePath)
-    navigate({
-      to: '/coding/$sessionId',
-      params: { sessionId: session.id },
+    applySessionSelection({
+      session,
+      workspacePath,
+      navigate,
+      onMobileClose,
     })
-    onMobileClose?.()
   }
 
   const handleSessionDelete = (e: React.MouseEvent, session: SessionResponse) => {
@@ -520,11 +525,10 @@ export function CodingSidebar({
 
   const submitSessionTitle = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!editTarget) return
-    const title = editTitle.trim()
-    if (!title) return
+    const update = prepareSessionTitleUpdate(editTarget, editTitle)
+    if (!update) return
     updateSessionTitle.mutate(
-      { id: editTarget.id, title },
+      update,
       { onSuccess: () => setEditTarget(null) },
     )
   }
@@ -549,23 +553,13 @@ export function CodingSidebar({
 
   const confirmSessionDelete = () => {
     if (!deleteTarget) return
-    const fallbackSession = deleteTarget.id === currentSessionId
-      ? codingSessions.find((session) => session.id !== deleteTarget.id && session.workspace === deleteTarget.workspace)
-        ?? codingSessions.find((session) => session.id !== deleteTarget.id)
-      : null
-    deleteSession.mutate(deleteTarget.id)
-    if (deleteTarget.id === currentSessionId) {
-      if (fallbackSession) {
-        if (fallbackSession.workspace) saveLastCodingWorkspace(fallbackSession.workspace)
-        navigate({
-          to: '/coding/$sessionId',
-          params: { sessionId: fallbackSession.id },
-          replace: true,
-        })
-      } else {
-        navigate({ to: '/coding', replace: true })
-      }
-    }
+    applySessionDelete({
+      deleteTarget,
+      currentSessionId,
+      codingSessions,
+      mutateDelete: deleteSession.mutate,
+      navigate,
+    })
     setDeleteTarget(null)
   }
 

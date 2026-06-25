@@ -1,7 +1,5 @@
 import asyncio
-import json
 import shutil
-from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 from typing import NamedTuple
 from uuid import UUID
@@ -10,13 +8,9 @@ from loguru import logger
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from pydantic import TypeAdapter
-
-from app.agent.multimodal import build_parts_from_metas
 from app.agent.schemas.chat import (
     AssistantMessage,
     ChatMessage,
-    HumanMessage,
     ToolMessage,
 )
 from app.agent.artifacts import session_artifact_dir
@@ -24,6 +18,10 @@ from app.core.paths import session_workspace_dir, uploads_dir, workspace_dir
 from app.models.chat import ChatSession, SessionMessage
 from app.services import chat_service_queue as _chat_service_queue
 from app.services import chat_service_revert as _chat_service_revert
+from app.services.chat_service_messages import (
+    apply_llm_content_overrides as _apply_llm_content_overrides,
+    deserialize_messages as _deserialize_messages,
+)
 from app.services.chat_service_revert import (
     BoundaryShift,
     before_boundary as _before_boundary,
@@ -34,9 +32,6 @@ from app.services.chat_service_revert import (
     is_history_visible as _is_history_visible,
     visible_messages_stmt as _visible_messages_stmt,
 )
-
-
-_chat_message_adapter: TypeAdapter[ChatMessage] = TypeAdapter(ChatMessage)
 
 
 async def create_chat_session(
@@ -74,7 +69,6 @@ async def create_chat_session(
 _INTERRUPTED_TOOL_RESULT = (
     "Tool execution was interrupted before a result could be recorded."
 )
-USER_SHELL_LLM_CONTENT = "The following tool was executed by the user"
 
 
 async def heal_orphaned_tool_calls(db: AsyncSession, session_id: UUID) -> int:
@@ -692,188 +686,3 @@ async def get_team_history(
         has_more=has_more,
         next_cursor=next_cursor,
     )
-
-
-# ── Internal helpers ──────────────────────────────────────────────────────────
-
-
-def _deserialize_messages(
-    db_messages: Sequence[SessionMessage], *, sanitize_tool_pairs: bool = False
-) -> list[ChatMessage]:
-    """Convert ORM rows into typed ChatMessage objects via TypeAdapter.
-
-    Uses ``model_dump()`` → ``TypeAdapter.validate_python()`` so the
-    discriminated union on ``role`` picks the right subclass automatically.
-    ``BaseMessage.model_config = ConfigDict(extra="ignore")`` drops DB-only
-    columns (``id``, ``session_id``, ``created_at``).
-
-    For user messages with file attachments (stored in extra.attachments),
-    re-hydrates ``parts`` from disk so the LLM sees images in every turn.
-
-    Rows with unrecognised ``role`` values are silently skipped with a warning.
-    """
-    result: list[ChatMessage] = []
-    for m in db_messages:
-        try:
-            d = m.model_dump()
-            # Me coerce None → "" so ToolMessage(tool_call_id: str) no explode
-            if d.get("tool_call_id") is None:
-                d["tool_call_id"] = ""
-            msg = _chat_message_adapter.validate_python(d)
-            # Me stash DB row PK so checkpointer can do reliable PK lookups
-            msg.db_id = m.id
-
-            # Me re-hydrate multimodal parts for user messages that have file attachments
-            if isinstance(msg, HumanMessage) and m.extra:
-                attachments = m.extra.get("attachments")
-                if attachments and isinstance(attachments, list):
-                    parts = _build_parts(msg.content or "", attachments)
-                    if parts:
-                        msg.parts = parts
-
-            result.append(msg)
-        except Exception:
-            # Me skip rows with unknown role — no crash the caller
-            logger.warning(
-                "deserialize_skip_unknown_role session_id={} message_id={} role={}",
-                m.session_id,
-                m.id,
-                m.role,
-            )
-
-    # Strip tool calls whose arguments are not valid JSON — this happens when
-    # the user interrupts the agent mid-stream before the LLM has finished
-    # emitting the arguments. The partial JSON is persisted to the DB and would
-    # cause a JSONDecodeError on the next turn when tool_executor tries to parse
-    # it. Drop the bad tool calls from the assistant message and remove any
-    # orphaned ToolMessage results that reference them.
-    bad_tool_call_ids: set[str] = set()
-    for msg in result:
-        if not isinstance(msg, AssistantMessage) or not msg.tool_calls:
-            continue
-        clean: list = []
-        for tc in msg.tool_calls:
-            try:
-                json.loads(tc.function.arguments)
-                clean.append(tc)
-            except (json.JSONDecodeError, ValueError):
-                bad_tool_call_ids.add(tc.id)
-                logger.warning(
-                    "deserialize_drop_partial_tool_call tool={} id={} args_prefix={!r}",
-                    tc.function.name,
-                    tc.id,
-                    tc.function.arguments[:80],
-                )
-        if len(clean) != len(msg.tool_calls):
-            msg.tool_calls = clean or None
-
-    if bad_tool_call_ids:
-        kept: list[ChatMessage] = []
-        for msg in result:
-            if isinstance(msg, ToolMessage) and msg.tool_call_id in bad_tool_call_ids:
-                row = _message_row_by_id(db_messages).get(msg.db_id)
-                logger.warning(
-                    "deserialize_drop_orphan_tool_message session_id={} message_id={} tool_call_id={}",
-                    row.session_id if row else None,
-                    msg.db_id,
-                    msg.tool_call_id,
-                )
-                continue
-            kept.append(msg)
-        result = kept
-
-    if sanitize_tool_pairs:
-        result = _sanitize_tool_message_pairs(result, db_messages)
-
-    return result
-
-
-def _apply_llm_content_overrides(messages: list[ChatMessage]) -> list[ChatMessage]:
-    for msg in messages:
-        if not isinstance(msg, HumanMessage) or not msg.extra:
-            continue
-        if msg.extra.get("kind") == "user_shell":
-            msg.content = USER_SHELL_LLM_CONTENT
-    return messages
-
-
-def _message_row_by_id(
-    db_messages: Sequence[SessionMessage],
-) -> dict[UUID | None, SessionMessage]:
-    return {m.id: m for m in db_messages}
-
-
-def _sanitize_tool_message_pairs(
-    messages: list[ChatMessage], db_messages: Sequence[SessionMessage]
-) -> list[ChatMessage]:
-    """Drop LLM-invalid tool outputs and strip incomplete assistant tool calls."""
-    rows_by_id = _message_row_by_id(db_messages)
-    result: list[ChatMessage] = []
-    expected_tool_ids: set[str] = set()
-
-    for idx, msg in enumerate(messages):
-        if isinstance(msg, AssistantMessage):
-            expected_tool_ids.clear()
-            if not msg.tool_calls:
-                result.append(msg)
-                continue
-
-            tool_call_ids = {tc.id for tc in msg.tool_calls if tc.id}
-            following_tool_ids: set[str] = set()
-            for next_msg in messages[idx + 1 :]:
-                if not isinstance(next_msg, ToolMessage):
-                    break
-                if next_msg.tool_call_id:
-                    following_tool_ids.add(next_msg.tool_call_id)
-
-            missing = tool_call_ids - following_tool_ids
-            if tool_call_ids and not missing:
-                expected_tool_ids = set(tool_call_ids)
-                result.append(msg)
-            else:
-                row = rows_by_id.get(msg.db_id)
-                logger.warning(
-                    "deserialize_strip_incomplete_assistant_tool_calls session_id={} message_id={} missing_ids=[{}]",
-                    row.session_id if row else None,
-                    msg.db_id,
-                    ", ".join(sorted(missing or tool_call_ids)),
-                )
-                result.append(msg.model_copy(update={"tool_calls": None}))
-            continue
-
-        if isinstance(msg, ToolMessage):
-            if msg.tool_call_id and msg.tool_call_id in expected_tool_ids:
-                result.append(msg)
-                expected_tool_ids.remove(msg.tool_call_id)
-            else:
-                row = rows_by_id.get(msg.db_id)
-                logger.warning(
-                    "deserialize_drop_orphan_tool_message session_id={} message_id={} tool_call_id={}",
-                    row.session_id if row else None,
-                    msg.db_id,
-                    msg.tool_call_id,
-                )
-            continue
-
-        expected_tool_ids.clear()
-        result.append(msg)
-
-    return result
-
-
-def _build_parts(text: str, attachments: list[dict]) -> list | None:
-    """Build LLM content parts from persisted attachment metadata.
-
-    Uses ``build_parts_from_metas`` (fast path: ``converted_text`` in meta,
-    slow path: read from ``att["path"]`` for images / native-PDF documents).
-
-    Returns None if only the trailing user-text block would be produced
-    (i.e. no file content — no point setting HumanMessage.parts in that case).
-    """
-    parts = build_parts_from_metas(text, attachments)
-    # build_parts_from_metas always appends a trailing TextBlock for `text`.
-    # If no file blocks were produced (all attachments missing), skip parts.
-    has_file_blocks = any(
-        not (hasattr(p, "text") and getattr(p, "text") == text) for p in parts
-    )
-    return parts if has_file_blocks else None

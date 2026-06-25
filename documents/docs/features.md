@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of every user-visible OpenAgentd feature. Source of truth for slides, README, comparison docs, and marketing copy.
 status: stable
-updated: 2026-06-23
+updated: 2026-06-25
 ---
 
 # Features
@@ -16,7 +16,7 @@ exists. When you ship something new, **add it here first** — slides, README,
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 15 providers. Your keys.
 
-**Latest release:** v1.61.0 · June 23, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.61.0)
+**Latest release:** v1.65.0 · June 25, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.65.0)
 
 ---
 

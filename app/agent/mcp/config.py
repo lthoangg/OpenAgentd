@@ -24,7 +24,7 @@ server names to per-server config. Two transport shapes:
     }
 
 Server names must match ``[a-zA-Z][a-zA-Z0-9_-]*`` because they become part
-of the tool name (``mcp_<server>_<tool>``).
+of the tool name (``<server>_<tool>``).
 """
 
 from __future__ import annotations

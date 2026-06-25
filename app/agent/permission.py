@@ -361,7 +361,7 @@ def ruleset_from_config(config: dict) -> Ruleset:
             }
         }
 
-    Wildcard tool names (``"*"``, ``"mcp_*"``) are sorted before specific
+    Wildcard tool names (``"*"``, ``"filesystem_*"``) are sorted before specific
     names so that specific tool rules override the broad default — same
     behaviour as opencode's ``fromConfig``.
     """

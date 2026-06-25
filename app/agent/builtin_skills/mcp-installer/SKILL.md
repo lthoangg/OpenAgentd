@@ -172,7 +172,7 @@ always proceed to wiring after these commands regardless of daemon state.
    rg '<name>' {OPENAGENTD_CONFIG_DIR}/agents/
    ```
 
-   If any agent has the server in `mcp:` or `mcp_<name>_*` in `tools:`,
+   If any agent has the server in `mcp:` or `<name>_*` in `tools:`,
    **call `skill("self-healing")`** to remove those entries *before* removing
    the server. Otherwise the next-turn rebuild logs `agent_config_refresh_failed`.
 
@@ -207,7 +207,7 @@ Verify package names with the user — npm names drift.
   as fallback. Proceed to step 6 (wire into agent) as normal. Changes
   take effect on next daemon restart.
 - **`agent_config_refresh_failed`** (next turn's logs) → an agent's `tools:`
-  list references a removed tool. Run `rg 'mcp_' {OPENAGENTD_CONFIG_DIR}/agents/`
+  list references a removed tool. Run `rg '<server>_' {OPENAGENTD_CONFIG_DIR}/agents/` with the removed server name
   then call `skill("self-healing")`.
 
 A failing MCP server does NOT block other servers, the team, or any

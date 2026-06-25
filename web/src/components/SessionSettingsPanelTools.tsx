@@ -14,9 +14,8 @@ interface ToolGroup {
   tools: AgentInfo['tools']
 }
 
-/** Group tools by origin. Membership is derived from the `mcp_<server>_<tool>`
- *  naming convention enforced by `MCPTool.__init__` on the backend — the same
- *  convention the permission system already relies on, so it's the public
+/** Group tools by origin. Membership is derived from the `<server>_<tool>`
+ *  naming convention enforced by `MCPTool.__init__` on the backend, so it's the public
  *  contract. Servers listed in `mcp_servers` always appear, even with zero
  *  tools (configured but not ready); silently hiding them is worse than
  *  surfacing the state. */
@@ -24,8 +23,8 @@ function groupTools(
   tools: AgentInfo['tools'],
   mcpServers: string[],
 ): ToolGroup[] {
-  // Sort servers longest-prefix-first so a hypothetical `mcp_foo_bar_*` server
-  // is matched before `mcp_foo_*` would steal its tools.
+  // Sort servers longest-prefix-first so a hypothetical `foo_bar_*` server
+  // is matched before `foo_*` would steal its tools.
   const servers = [...mcpServers].sort((a, b) => b.length - a.length)
   const buckets = new Map<string, AgentInfo['tools']>(
     mcpServers.map((s) => [s, []]),
@@ -33,7 +32,7 @@ function groupTools(
   const builtins: AgentInfo['tools'] = []
 
   for (const tool of tools) {
-    const owner = servers.find((s) => tool.name.startsWith(`mcp_${s}_`))
+    const owner = servers.find((s) => tool.name.startsWith(`${s}_`))
     if (owner) buckets.get(owner)!.push(tool)
     else builtins.push(tool)
   }

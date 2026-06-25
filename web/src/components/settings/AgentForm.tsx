@@ -96,12 +96,12 @@ export function AgentForm({
   const mcpServers = useMcpServersQuery()
   const agentFiles = useAgentFilesQuery()
 
-  // Hide ``mcp_<server>_<tool>`` entries from the Tools picker — they are
+  // Hide ``<server>_<tool>`` entries from the Tools picker — they are
   // granted en bloc via the MCP server picker below, so showing them in
   // both places would let the user pick the same capability twice.
   const toolOptions: MultiSelectOption[] =
     registry.data?.tools
-      .filter((t) => !t.name.startsWith('mcp_'))
+      .filter((t) => !mcpServers.data?.servers.some((s) => t.name.startsWith(`${s.name}_`)))
       .map((t) => ({
         value: t.name,
         label: t.name,

@@ -757,7 +757,7 @@ class TestSerializeAgent:
         """Configured MCP servers surface even when they contribute zero tools.
 
         The UI uses this list to render server sections (and group their tools
-        by the `mcp_<server>_<tool>` naming convention), so servers that exist
+        by the `<server>_<tool>` naming convention), so servers that exist
         in config but aren't ready still need to round-trip.
         """
         from app.agent.agent_loop import Agent

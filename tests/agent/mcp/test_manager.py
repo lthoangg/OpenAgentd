@@ -187,7 +187,7 @@ class TestMCPManagerGetToolsDict:
         ready_runner = MagicMock()
         ready_runner.status.state = "ready"
         ready_tool = MagicMock()
-        ready_tool.name = "mcp_ready_tool1"
+        ready_tool.name = "ready_tool1"
         ready_runner.tools = [ready_tool]
 
         error_runner = MagicMock()
@@ -201,7 +201,7 @@ class TestMCPManagerGetToolsDict:
 
         tools = manager.get_tools_dict()
         assert len(tools) == 1
-        assert "mcp_ready_tool1" in tools
+        assert "ready_tool1" in tools
 
 
 class TestMCPManagerRemoveRunner:
@@ -258,7 +258,7 @@ class TestMCPManagerWithMockedServer:
                 transport=server_cfg.transport,
                 enabled=True,
                 state="ready",
-                tool_names=["mcp_test_list_files"],
+                tool_names=["test_list_files"],
             )
             runner.ready.set()
             await runner.shutdown.wait()
@@ -280,11 +280,11 @@ class TestMCPManagerWithMockedServer:
                 status = manager.get_status("test")
                 assert status is not None
                 assert status.state == "ready"
-                assert status.tool_names == ["mcp_test_list_files"]
+                assert status.tool_names == ["test_list_files"]
 
                 # Check tools
                 tools = manager.get_tools_dict()
-                assert "mcp_test_list_files" in tools
+                assert "test_list_files" in tools
 
                 # Cleanup
                 await manager.stop()
@@ -299,7 +299,7 @@ class TestMCPManagerWithMockedServer:
             status=MCPServerStatus(
                 name="test", transport="stdio", enabled=True, state="ready"
             ),
-            tools=[SimpleNamespace(name="mcp_test_save_checkpoint")],
+            tools=[SimpleNamespace(name="test_save_checkpoint")],
         )
         manager._runners["test"] = runner  # type: ignore[assignment]
 
@@ -320,7 +320,7 @@ class TestMCPManagerWithMockedServer:
             status=MCPServerStatus(
                 name="test", transport="stdio", enabled=True, state="ready"
             ),
-            tools=[SimpleNamespace(name="mcp_test_save_checkpoint")],
+            tools=[SimpleNamespace(name="test_save_checkpoint")],
         )
         manager._runners["test"] = runner  # type: ignore[assignment]
 
@@ -339,7 +339,7 @@ class TestMCPManagerWithMockedServer:
             status=MCPServerStatus(
                 name="excalidraw", transport="http", enabled=True, state="ready"
             ),
-            tools=[SimpleNamespace(name="mcp_excalidraw_read_checkpoint")],
+            tools=[SimpleNamespace(name="excalidraw_read_checkpoint")],
         )
         manager._runners["excalidraw"] = runner  # type: ignore[assignment]
 

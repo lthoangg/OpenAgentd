@@ -157,7 +157,7 @@ class TestMCPToolDefinition:
     """Test MCPTool.definition property."""
 
     def test_mcp_tool_definition_name(self) -> None:
-        """MCPTool.definition has correct name format mcp_<server>_<tool>."""
+        """MCPTool.definition has correct name format <server>_<tool>."""
         mcp_tool = SimpleNamespace(
             name="list_files",
             description="List files in a directory",
@@ -168,8 +168,8 @@ class TestMCPToolDefinition:
             mcp_tool=mcp_tool,  # type: ignore[arg-type]
             session_provider=lambda: None,
         )
-        assert tool.name == "mcp_filesystem_list_files"
-        assert tool.definition["function"]["name"] == "mcp_filesystem_list_files"
+        assert tool.name == "filesystem_list_files"
+        assert tool.definition["function"]["name"] == "filesystem_list_files"
 
     def test_mcp_tool_definition_description(self) -> None:
         """MCPTool.definition includes description."""

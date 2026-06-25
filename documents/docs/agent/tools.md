@@ -335,7 +335,7 @@ Provider dispatch lives in `_IMAGE_BACKENDS` (`image.py`) and `_VIDEO_BACKENDS` 
 
 ### MCP servers (`app/agent/mcp/`)
 
-External tools loaded over the [Model Context Protocol](https://modelcontextprotocol.io). Each configured MCP server is launched at startup, its tool list is merged into the agent registry, and tools become callable as `mcp_<server>_<tool>`.
+External tools loaded over the [Model Context Protocol](https://modelcontextprotocol.io). Each configured MCP server is launched at startup, its tool list is merged into the agent registry, and tools become callable as `<server>_<tool>`.
 
 **Config:** `{CONFIG_DIR}/mcp.json` — managed via `/api/mcp/servers` (CRUD + restart) and the **Settings → MCP** UI tab. Two transport shapes:
 
@@ -399,9 +399,9 @@ mcp:
   - context7
 ```
 
-Each tool is exposed to the LLM as `mcp_<server>_<tool>` (the convention `MCPTool.__init__` enforces). Listing individual tool names under `tools:` still works for surgical access, but `mcp:` is the simpler default — and the API's per-agent `mcp_servers` field (see [`api/index.md`](../api/index.md#agent-config-management)) lets the UI group tools by server.
+Each tool is exposed to the LLM as `<server>_<tool>` (the convention `MCPTool.__init__` enforces). Listing individual tool names under `tools:` still works for surgical access, but `mcp:` is the simpler default — and the API's per-agent `mcp_servers` field (see [`api/index.md`](../api/index.md#agent-config-management)) lets the UI group tools by server.
 
-**Permission gating:** the wildcard `mcp_*` is recognised by `ruleset_from_config` (see `app/agent/permission.py`), so a single rule can allow / deny / ask for every MCP tool at once.
+**Permission gating:** grant broad MCP access with server prefixes such as `filesystem_*` or `github_*`; specific tool rules still override broader wildcards in `ruleset_from_config` (see `app/agent/permission.py`).
 
 **Sandboxed UI artifacts / MCP Apps:** tool-produced HTML UI resources can render as sandboxed chat artifacts. The first supported producer is MCP Apps: tools that declare `_meta.ui.resourceUri` and return a `ui://` resource with MIME `text/html;profile=mcp-app`. Excalidraw MCP diagrams appear as sibling artifacts after the completed tool call and can request fullscreen; the host also exposes a fullscreen button and uses full-viewport/safe-area-aware layout. When multiple completed tool results reference the same `resourceUri`, OpenAgentd renders only the newest artifact for that resource so iterative views replace stale copies; different resource URIs still render independently. OpenAgentd stores the app payload in the tool message's `extra.mcp_app` so reloads can rehydrate it, while the LLM-visible tool result remains plain text. The renderer keeps the iframe sandboxed (`allow-scripts allow-same-origin allow-forms`), injects a small in-memory `localStorage`/`sessionStorage` shim for apps that probe browser storage, and honors resource CSP domain metadata; executable app HTML currently requires inline scripts and eval-capable bundles. App-requested server `tools/call` requests must be bound to the persisted `session_id` + `tool_call_id`, must match the artifact's `mcp_app.server`, and are authorized against that server's current advertised tool list at call time. OpenAgentd still does not expose frontend tool listing or cross-server app-to-server calls.
 

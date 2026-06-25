@@ -105,7 +105,7 @@ def _serialize_agent(agent: Agent, *, is_lead: bool = False) -> dict:
             for t in tools_by_name.values()
         ],
         # MCP servers configured on the agent. The UI groups tools by name
-        # prefix (`mcp_<server>_<tool>`) using this list. Includes servers that
+        # prefix (`<server>_<tool>`) using this list. Includes servers that
         # exist in config but aren't ready (zero tools), so the UI can show
         # them as "not ready" instead of silently hiding the section.
         "mcp_servers": list(agent.mcp_servers),

@@ -1,5 +1,5 @@
 /**
- * AgentForm — focused tests for the MCP server picker, the `mcp_*` tool
+ * AgentForm — focused tests for the MCP server picker, the server-prefixed tool
  * filter, and the YAML round-trip of the new ``mcp:`` frontmatter field.
  *
  * The existing form already has broad coverage of identity / model /
@@ -35,8 +35,8 @@ const registryFixture = {
     { name: 'note', description: 'Record notes' },
     // These should be hidden from the Tools picker — they belong to MCP
     // servers and are granted via the MCP picker.
-    { name: 'mcp_context7_resolve_library_id', description: 'C7 resolve' },
-    { name: 'mcp_context7_get_library_docs', description: 'C7 docs' },
+    { name: 'context7_resolve_library_id', description: 'C7 resolve' },
+    { name: 'context7_get_library_docs', description: 'C7 docs' },
   ],
   skills: [{ name: 'self-healing', description: 'Repair the agent config' }],
   providers: ['openai'],
@@ -222,20 +222,20 @@ function comboboxIn(label: string): HTMLElement {
 }
 
 describe('AgentForm — Capabilities card', () => {
-  it('hides mcp_* prefixed entries from the Tools picker', async () => {
+  it('hides MCP server-prefixed entries from the Tools picker', async () => {
     const user = userEvent.setup()
     renderForm()
 
     await user.click(comboboxIn('Tools'))
     // After opening, the search input is focused. Type a query that would
-    // otherwise match the mcp_context7_* entries.
+    // otherwise match the context7_* entries.
     const search = screen.getByLabelText('Search options')
-    await user.type(search, 'mcp_')
+    await user.type(search, 'context7_')
 
     // The list shows the empty state and the count only includes selectable
     // non-MCP, non-implicit tools.
-    expect(screen.queryByText('mcp_context7_resolve_library_id')).toBeNull()
-    expect(screen.queryByText('mcp_context7_get_library_docs')).toBeNull()
+    expect(screen.queryByText('context7_resolve_library_id')).toBeNull()
+    expect(screen.queryByText('context7_get_library_docs')).toBeNull()
     expect(screen.getByText('0/2')).toBeTruthy()
   })
 

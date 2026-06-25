@@ -190,7 +190,7 @@ Only these keys are valid. Reject any request to invent new ones.
 | `fallback_model` | same format as `model` |
 | `temperature` | float, typically `0.0`–`1.0` |
 | `thinking_level` | `none` \| `low` \| `medium` \| `high` |
-| `tools` | extra tools layered on top of any built-in first-party profile tools: `web_search`, `web_fetch`, `date`, `read`, `write`, `edit`, `ls`, `grep`, `glob`, `rm`, `shell`, `bg`, `generate_image`, `generate_video`, plus `mcp_<server>_<tool>` entries from configured MCP servers. Never list `skill` or `team_message` — injected automatically. Lead-only tools (`schedule_task`, `todo_manage`) are also injected automatically. |
+| `tools` | extra tools layered on top of any built-in first-party profile tools: `web_search`, `web_fetch`, `date`, `read`, `write`, `edit`, `ls`, `grep`, `glob`, `rm`, `shell`, `bg`, `generate_image`, `generate_video`, plus `<server>_<tool>` entries from configured MCP servers. Never list `skill` or `team_message` — injected automatically. Lead-only tools (`schedule_task`, `todo_manage`) are also injected automatically. |
 | `skills` | optional explicit skill metadata/drift hooks; names of discovered skill directories (project/global OpenAgentd, opencode-compatible, or bundled read-only skills). Do not use this as the normal skill-install wiring step. |
 | `responses_api` | `true` to force OpenAI Responses API |
 
@@ -275,7 +275,7 @@ Rules:
 
 MCP servers are managed by `mcp-installer` (it edits `mcp.json`). This
 skill wires the resulting tools onto a specific agent. For first-party
-built-in profiles, `mcp:` and selective `mcp_*` tools in the `.md` are
+built-in profiles, `mcp:` and selective server-prefixed MCP tools in the `.md` are
 additive local overrides; they do not replace built-in capabilities.
 
 The recipes below are for agent `.md` edits, including lead targets and
@@ -297,21 +297,21 @@ mcp:
 
 ### `tools:` list — selective attach
 
-Pick specific `mcp_<server>_<tool>` names. Use when the agent only
+Pick specific `<server>_<tool>` names. Use when the agent only
 needs one or two tools from a multi-tool server.
 
 ```yaml
 tools:
   - read
   - shell
-  - mcp_shadcn_get_component
+  - shadcn_get_component
 ```
 
 | User intent | Action |
 |-------------|--------|
 | "Let me use the shadcn MCP" | Add `shadcn` to `mcp:` (bulk) |
-| "Add only the search tool from filesystem" | Add `mcp_filesystem_search` to `tools:` |
-| "Remove the github MCP from this agent" | Strip `github` from `mcp:` AND every `mcp_github_*` entry from `tools:` |
+| "Add only the search tool from filesystem" | Add `filesystem_search` to `tools:` |
+| "Remove the github MCP from this agent" | Strip `github` from `mcp:` AND every `github_*` entry from `tools:` |
 
 ### Workflow
 

@@ -139,7 +139,7 @@ export function VoiceMicButton({
       aria-label={label}
       title={title}
       data-recording={voiceState === 'listening' ? 'true' : undefined}
-      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md border transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
         voiceState === 'listening'
           ? 'border-(--color-error) bg-(--color-error)/15 text-(--color-error) hover:bg-(--color-error)/25'
           : 'border-(--color-border) bg-(--color-surface) text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text)'

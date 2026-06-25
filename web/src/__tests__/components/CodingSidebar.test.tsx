@@ -1060,7 +1060,9 @@ describe('CodingSidebar workspace trust flow', () => {
     await renderCodingSidebarForSessions('session-1')
 
     expect(screen.getByLabelText('Collapse repository project')).toBeTruthy()
-    await user.click(screen.getByLabelText('Hide repository project from sidebar'))
+    await user.click(screen.getByLabelText('Actions for project'))
+    expect(screen.getByRole('menu', { name: 'Actions for project' })).toBeTruthy()
+    await user.click(screen.getByRole('menuitem', { name: /remove from sidebar/i }))
     expect(screen.getByText('Remove workspace from sidebar')).toBeTruthy()
     await user.click(screen.getByRole('button', { name: /^remove from sidebar$/i }))
 

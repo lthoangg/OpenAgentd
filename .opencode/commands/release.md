@@ -200,7 +200,6 @@ Sections:
   **Desktop app** — download from this release (CLI + desktop ship under one tag since 1.0.9):
 
   - macOS Apple Silicon → `brew install --cask lthoangg/tap/openagentd` (recommended — ad-hoc signs automatically), or `OpenAgentd_*_aarch64.dmg` (run bundled `install.sh`, right-click → Open the first time).
-  - Windows → `OpenAgentd_*_x64-setup.exe` (More info → Run anyway at SmartScreen).
   - Linux → `OpenAgentd_*_amd64.AppImage` (`chmod +x` and run) or the `.deb`.
 
   **CLI / API server**
@@ -283,10 +282,17 @@ gh release view v<version> --repo lthoangg/openagentd | grep -E "^asset:"
 gh release view v<prev-version> --repo lthoangg/openagentd
 ```
 
-- Map the asset list to Install bullets:
-  - `OpenAgentd_<ver>_aarch64.dmg` present → keep the macOS Apple Silicon bullet.
-  - `OpenAgentd_<ver>_x64-setup.exe` present → keep the Windows bullet, else drop it.
-  - `OpenAgentd_<ver>_amd64.AppImage` present → keep AppImage in the Linux bullet, else mention only the `.deb` (and drop the bullet entirely if `.deb` is also missing).
+- Generate the `## Install` block from the published asset suffixes instead of rewriting it by hand:
+
+```bash
+scripts/render_release_install_block.sh --version <version> > /tmp/install-block.md
+cat /tmp/install-block.md
+```
+
+- The helper uses the actual release asset names to decide which desktop bullets to include:
+  - `OpenAgentd_<ver>_aarch64.dmg` → macOS bullet
+  - `OpenAgentd_<ver>_amd64.AppImage` → Linux AppImage mention
+  - `OpenAgentd_<ver>_amd64.deb` → Linux `.deb` mention
 - Replace the auto-generated notes, then verify:
 
 ```bash
@@ -294,7 +300,7 @@ gh release edit v<version> --repo lthoangg/openagentd --notes-file <path-to-note
 gh release view v<version> --repo lthoangg/openagentd | sed -n '/## What.s changed/,/Full changelog/p'
 ```
 
-- Final verification — the release must contain both CLI and desktop artefacts, and the install block must reflect what is actually downloadable:
+- Final verification — the release must contain both CLI and desktop artefacts, and the generated install block must reflect what is actually downloadable:
 
 ```bash
 gh release view v<version> --repo lthoangg/openagentd | sed -n '/asset:/p;/## Install/,/Full changelog/p'

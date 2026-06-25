@@ -1,10 +1,10 @@
 # Installing OpenAgentd
 
 OpenAgentd ships as an **unsigned** desktop application. There's no
-malware here — we just haven't paid Apple/Microsoft for code-signing
-certificates yet — but the major operating systems treat unsigned
-software with suspicion. This document explains the one-time steps
-required on each platform.
+malware here — we just haven't paid Apple for code-signing
+certificates yet — but the operating systems we currently ship for
+still treat unsigned software with suspicion. This document explains
+the one-time steps required on each supported platform.
 
 ## macOS (arm64)
 
@@ -71,22 +71,6 @@ sudo rpm -Uvh openagentd-x.y.z.x86_64.rpm
 The `install.sh` helper detects `.deb` / `.rpm` and defers to the
 right package manager automatically.
 
-## Windows (x64)
-
-Run **`OpenAgentd-x.y.z-x64.msi`**.
-
-Windows SmartScreen will show
-*"Windows protected your PC"* on the first launch. Click
-**"More info"** → **"Run anyway"**. You only need to do this once.
-
-The MSI installer handles:
-
-- Copying files to `%LOCALAPPDATA%\Programs\OpenAgentd\`.
-- Creating Start Menu and Desktop shortcuts.
-- Registering the uninstaller in *Settings → Apps*.
-
-To uninstall: *Settings → Apps → OpenAgentd → Uninstall*.
-
 ## Verifying the download (all platforms)
 
 Every release publishes a `SHA256SUMS` file. Verify before installing:
@@ -95,10 +79,6 @@ Every release publishes a `SHA256SUMS` file. Verify before installing:
 # macOS / Linux
 shasum -a 256 -c SHA256SUMS
 
-# Windows (PowerShell)
-Get-FileHash -Algorithm SHA256 OpenAgentd-*.msi
-```
-
 The expected hashes are also pinned in the GitHub release notes.
 
 ## Uninstall
@@ -106,8 +86,7 @@ The expected hashes are also pinned in the GitHub release notes.
 | Platform | How                                                                  |
 |----------|----------------------------------------------------------------------|
 | macOS    | Drag `OpenAgentd.app` from `/Applications` to the Trash.             |
-| Linux    | Delete `~/.local/bin/openagentd` and `~/.local/share/applications/openagentd.desktop`. Or `sudo apt remove openagentd` / `sudo rpm -e openagentd` if you used the system package. |
-| Windows  | *Settings → Apps → OpenAgentd → Uninstall*.                          |
+| Linux    | Delete `~/.local/bin/openagentd` and `~/.local/share/applications/openagentd.desktop`. Or `sudo apt remove openagentd` if you used the system package. |
 
 Application data lives under the same XDG paths used by the CLI (these survive uninstall by design):
 
@@ -149,9 +128,3 @@ export PATH="$HOME/.local/bin:$PATH"
 ```
 
 Reload your shell. Or just launch from the desktop menu.
-
-### Windows: SmartScreen blocked the MSI
-
-Click **"More info"** in the dialog, then **"Run anyway"**. The
-binary is unsigned (we don't have a code-signing cert yet) but
-its SHA256 matches the one published on GitHub.

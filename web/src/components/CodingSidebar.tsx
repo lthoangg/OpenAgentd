@@ -42,7 +42,7 @@ import {
   X,
 } from 'lucide-react'
 import { useDeleteTeamSessionMutation, useTeamSessionsQuery, useUpdateTeamSessionTitleMutation } from '@/queries/useSessionsQuery'
-import { getCodingWorkspaceTree, listWorktrees, renameWorktree } from '@/api/client'
+import { getCodingWorkspaceTree, listWorktrees } from '@/api/client'
 import { workspaceLabel } from '@/utils/workspace'
 import { ThemeToggle } from './ThemeToggle'
 import { HealthDot } from './HealthDot'
@@ -87,6 +87,11 @@ import {
   selectCodingWorkspace,
   validateSelectedWorkspace,
 } from './CodingSidebar.workspace'
+import {
+  beginWorktreeTitleEdit,
+  buildOpenWorktreeDialogState,
+  submitWorktreeRename,
+} from './CodingSidebar.worktree-dialog'
 
 interface CodingSidebarProps {
   currentSessionId?: string
@@ -334,12 +339,13 @@ export function CodingSidebar({
   }, [worktreeTarget])
 
   const openWorktreeDialog = async (path: string) => {
-    setWorktreeTarget(path)
-    setWorktreeName('')
-    setWorktreeBranch('')
-    setWorktreeOptions(worktreesBySource[path] ?? [])
-    setWorktreeRemoving(null)
-    setError(null)
+    const nextState = buildOpenWorktreeDialogState(path, worktreesBySource[path])
+    setWorktreeTarget(nextState.target)
+    setWorktreeName(nextState.name)
+    setWorktreeBranch(nextState.branch)
+    setWorktreeOptions(nextState.options)
+    setWorktreeRemoving(nextState.removing)
+    setError(nextState.error)
     const items = await loadWorktreesForTarget(path)
     setWorktreeOptions(items)
   }
@@ -497,8 +503,9 @@ export function CodingSidebar({
   }
 
   const handleWorktreeEdit = (item: WorktreeInfo) => {
-    setWorktreeEditTarget(item)
-    setWorktreeEditTitle(item.name)
+    const nextState = beginWorktreeTitleEdit(item)
+    setWorktreeEditTarget(nextState.target)
+    setWorktreeEditTitle(nextState.title)
   }
 
   const submitSessionTitle = (e: React.FormEvent) => {
@@ -513,14 +520,15 @@ export function CodingSidebar({
 
   const submitWorktreeTitle = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!worktreeEditTarget) return
-    const title = worktreeEditTitle.trim()
-    if (!title) return
     setWorktreeEditLoading(true)
     setError(null)
     try {
-      await renameWorktree(worktreeEditTarget.directory, title)
-      await refreshWorkspaceTree()
+      const renamed = await submitWorktreeRename({
+        target: worktreeEditTarget,
+        title: worktreeEditTitle,
+        refreshWorkspaceTree,
+      })
+      if (!renamed) return
       setWorktreeEditTarget(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to rename worktree')

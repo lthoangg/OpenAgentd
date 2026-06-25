@@ -92,11 +92,3 @@ export async function confirmWorkspaceRemoval(options: {
   }
   return next
 }
-
-export async function validateSelectedWorkspace(
-  browserPath: string | null,
-  validateTrustedWorkspace: (path: string) => Promise<string>,
-): Promise<string | null> {
-  if (!browserPath) return null
-  return validateTrustedWorkspace(browserPath)
-}

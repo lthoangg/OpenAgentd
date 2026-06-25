@@ -85,8 +85,11 @@ import {
 import {
   confirmWorkspaceRemoval,
   selectCodingWorkspace,
-  validateSelectedWorkspace,
 } from './CodingSidebar.workspace'
+import {
+  consumeTrustedWorkspace,
+  selectTrustedWorkspace,
+} from './CodingSidebar.trust'
 import {
   beginWorktreeTitleEdit,
   buildOpenWorktreeDialogState,
@@ -450,7 +453,7 @@ export function CodingSidebar({
 
   const openSelectedFolder = async () => {
     try {
-      const trustedWorkspace = await validateSelectedWorkspace(browserPath, validateTrustedWorkspace)
+      const trustedWorkspace = await selectTrustedWorkspace(browserPath, validateTrustedWorkspace)
       if (!trustedWorkspace) return
       setTrustWorkspace(trustedWorkspace)
     } catch (err) {
@@ -459,11 +462,11 @@ export function CodingSidebar({
   }
 
   const confirmTrustedWorkspace = () => {
-    if (!trustWorkspace) return
-    const workspaceToOpen = trustWorkspace
-    setTrustWorkspace(null)
-    setDialogOpen(false)
-    void selectWorkspace(workspaceToOpen)
+    const nextState = consumeTrustedWorkspace(trustWorkspace)
+    if (!nextState.workspaceToOpen) return
+    setTrustWorkspace(nextState.nextTrustWorkspace)
+    setDialogOpen(nextState.nextDialogOpen)
+    void selectWorkspace(nextState.workspaceToOpen)
   }
 
   const handleSessionSelect = (session: SessionResponse, workspacePath: string, event?: React.MouseEvent) => {

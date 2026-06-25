@@ -28,8 +28,11 @@ import {
 import {
   confirmWorkspaceRemoval,
   selectCodingWorkspace,
-  validateSelectedWorkspace,
 } from '@/components/CodingSidebar.workspace'
+import {
+  consumeTrustedWorkspace,
+  selectTrustedWorkspace,
+} from '@/components/CodingSidebar.trust'
 import {
   beginWorktreeTitleEdit,
   buildOpenWorktreeDialogState,
@@ -409,9 +412,6 @@ describe('CodingSidebar helpers', () => {
   })
 
   it('exports workspace helpers used by the component', async () => {
-    expect(await validateSelectedWorkspace('/repo/project', async (path) => path)).toBe('/repo/project')
-    expect(await validateSelectedWorkspace(null, async (path) => path)).toBeNull()
-
     const selectionNavigate = mock(() => {})
     const queryClient = new QueryClient()
     let refreshCount = 0
@@ -540,6 +540,21 @@ describe('CodingSidebar helpers', () => {
       refreshWorkspaceTree: async () => undefined,
       renameWorktreeFn,
     })).toBe(false)
+  })
+
+  it('exports trust helpers used by the component', async () => {
+    expect(await selectTrustedWorkspace('/repo/project', async (path) => path)).toBe('/repo/project')
+    expect(await selectTrustedWorkspace(null, async (path) => path)).toBeNull()
+    expect(consumeTrustedWorkspace('/repo/project')).toEqual({
+      workspaceToOpen: '/repo/project',
+      nextTrustWorkspace: null,
+      nextDialogOpen: false,
+    })
+    expect(consumeTrustedWorkspace(null)).toEqual({
+      workspaceToOpen: null,
+      nextTrustWorkspace: null,
+      nextDialogOpen: true,
+    })
   })
 
   it('exports session window helpers used by the component', async () => {

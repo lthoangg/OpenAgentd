@@ -3,12 +3,18 @@ import { ArrowUp, Loader2, MessageCircle, Paperclip, Square, Terminal } from 'lu
 import { motion } from 'framer-motion'
 import { FilePreviewStrip } from './FilePreviewStrip'
 import { VoiceMicButton } from './VoiceMicButton'
-import { findActiveMention, rankFileRefs, type FileRef } from './InputBar.mentions'
+import { findActiveMention, type FileRef } from './InputBar.mentions'
 import { MentionOverlay } from './InputBar.overlay'
 import { CHAR_WARN_THRESHOLD, findActiveSnippet } from './InputBar.helpers'
 import { InputBarSuggestions } from './InputBar.suggestions'
 import type { AgentCapabilities } from '@/api/types'
 import { buildAcceptString, isFileTypeAllowed } from './InputBar.files'
+import {
+  buildHistoryEntries,
+  filterMentions,
+  filterSlashCommands,
+  filterSnippetCommands,
+} from './InputBar.menus'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 
@@ -198,17 +204,10 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   const isMobile = useIsMobile()
   const prefersReducedMotion = useReducedMotion()
 
-  const history = useMemo(() => {
-    const seen = new Set<string>()
-    const entries: string[] = []
-    for (const prompt of [...localHistory, ...historyPrompts]) {
-      const trimmed = prompt.trim()
-      if (!trimmed || seen.has(trimmed)) continue
-      seen.add(trimmed)
-      entries.push(trimmed)
-    }
-    return entries
-  }, [localHistory, historyPrompts])
+  const history = useMemo(
+    () => buildHistoryEntries(localHistory, historyPrompts),
+    [localHistory, historyPrompts],
+  )
 
   // Refresh the active mention window from the current caret position. Called
   // whenever the caret might have moved without the value changing (arrow keys,
@@ -524,42 +523,10 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
    * Separator rows are excluded from keyboard-navigation indexing; only
    * actionable entries count as "selectable" positions.
    */
-  const filteredSlashCommands = useMemo(() => {
-    if (slashFilter === null || slashCommands.length === 0) return []
-    if (slashFilter === '') return slashCommands
-
-    // Two-pass: first collect matching actionable ids, then walk the list
-    // again keeping actionable matches AND any separator that precedes them.
-    const matchedIds = new Set(
-      slashCommands
-        .filter(
-          (cmd) =>
-            !cmd.isSeparator &&
-            (cmd.id.toLowerCase().includes(slashFilter) ||
-              cmd.label.toLowerCase().includes(slashFilter) ||
-              (cmd.displayName ?? '').toLowerCase().includes(slashFilter)),
-        )
-        .map((cmd) => cmd.id),
-    )
-    if (matchedIds.size === 0) return []
-
-    const result: SlashCommand[] = []
-    let pendingSeparator: SlashCommand | null = null
-    for (const cmd of slashCommands) {
-      if (cmd.isSeparator) {
-        pendingSeparator = cmd
-        continue
-      }
-      if (matchedIds.has(cmd.id)) {
-        if (pendingSeparator) {
-          result.push(pendingSeparator)
-          pendingSeparator = null
-        }
-        result.push(cmd)
-      }
-    }
-    return result
-  }, [slashFilter, slashCommands])
+  const filteredSlashCommands = useMemo(
+    () => filterSlashCommands(slashCommands, slashFilter),
+    [slashCommands, slashFilter],
+  )
 
   /** Actionable entries only — used for keyboard index arithmetic. */
   const selectableSlashCommands = useMemo(
@@ -572,14 +539,10 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   const mentionMenuId = 'inputbar-mention-menu'
   const snippetMenuId = 'inputbar-snippet-menu'
 
-  const filteredSnippetCommands = useMemo(() => {
-    if (!snippetRange || snippetCommands.length === 0) return []
-    return snippetCommands.filter((cmd) => {
-      if (snippetRange.query === '') return true
-      return cmd.id.toLowerCase().includes(snippetRange.query) ||
-        cmd.label.toLowerCase().includes(snippetRange.query)
-    })
-  }, [snippetCommands, snippetRange])
+  const filteredSnippetCommands = useMemo(
+    () => filterSnippetCommands(snippetCommands, snippetRange),
+    [snippetCommands, snippetRange],
+  )
 
   const snippetMenuOpen = snippetRange !== null && filteredSnippetCommands.length > 0
   const clampedSnippetIndex = filteredSnippetCommands.length > 0
@@ -662,12 +625,10 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
 
   // ── @-mention filtering ────────────────────────────────────────────────────
 
-  const MENTION_MAX_RESULTS = 20
-
-  const filteredMentions = useMemo(() => {
-    if (!mentionRange || fileRefs.length === 0) return [] as FileRef[]
-    return rankFileRefs(fileRefs, mentionRange.query, MENTION_MAX_RESULTS)
-  }, [mentionRange, fileRefs])
+  const filteredMentions = useMemo(
+    () => filterMentions(fileRefs, mentionRange),
+    [fileRefs, mentionRange],
+  )
 
   const mentionMenuOpen = mentionRange !== null && filteredMentions.length > 0
   const clampedMentionIndex = filteredMentions.length > 0

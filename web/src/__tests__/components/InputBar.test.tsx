@@ -5,6 +5,12 @@ import { createRef } from "react"
 import { InputBar } from "@/components/InputBar"
 import type { InputBarHandle } from "@/components/InputBar"
 import { buildAcceptString, isFileTypeAllowed } from "@/components/InputBar.files"
+import {
+  buildHistoryEntries,
+  filterMentions,
+  filterSlashCommands,
+  filterSnippetCommands,
+} from "@/components/InputBar.menus"
 import type { AgentCapabilities } from "@/api/types"
 
 let isMobile = false
@@ -55,6 +61,48 @@ afterEach(() => {
 })
 
 describe("InputBar", () => {
+  it("exports history dedupe logic used by the component", () => {
+    expect(buildHistoryEntries([" local ", "other"], ["other", "", " persisted "])).toEqual([
+      "local",
+      "other",
+      "persisted",
+    ])
+  })
+
+  it("exports slash filtering logic used by the component", () => {
+    const commands = [
+      { id: "group", label: "Group", description: "", isSeparator: true },
+      { id: "continue", label: "Continue", description: "Continue the run" },
+      { id: "compact", label: "Compact", description: "Compact session" },
+    ]
+    expect(filterSlashCommands(commands, "cont").map((cmd) => cmd.id)).toEqual([
+      "group",
+      "continue",
+    ])
+  })
+
+  it("exports snippet and mention filtering logic used by the component", () => {
+    expect(
+      filterSnippetCommands(
+        [
+          { id: "fix", label: "Fix bug", description: "" },
+          { id: "feat", label: "Add feature", description: "" },
+        ],
+        { start: 0, end: 3, query: "fi" },
+      ).map((cmd) => cmd.id),
+    ).toEqual(["fix"])
+
+    expect(
+      filterMentions(
+        [
+          { path: "src/app.ts", name: "app.ts", type: "file" },
+          { path: "docs/guide.md", name: "guide.md", type: "file" },
+        ],
+        { start: 0, end: 4, query: "app" },
+      ).map((ref) => ref.path),
+    ).toEqual(["src/app.ts"])
+  })
+
   it("renders textarea with placeholder", () => {
     const onSubmit = () => {}
     render(<InputBar onSubmit={onSubmit} placeholder="Type here..." />)

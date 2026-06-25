@@ -303,7 +303,7 @@ def _default_tool_registry() -> dict[str, Tool]:
         "generate_image": generate_image,
         "generate_video": generate_video,
     }
-    # Merge MCP tools from healthy servers. Names follow ``mcp_<server>_<tool>``
+    # Merge MCP tools from healthy servers. Names follow ``<server>_<tool>``
     # so they cannot collide with the builtins above.
     registry.update(mcp_manager.get_tools_dict())
     return registry

@@ -13,8 +13,40 @@ import {
   updateAgent,
   deleteAgent,
   getRegistry,
+  type ProvidersListBody,
 } from '@/api/client'
+import type { ModelCatalogEntry, RegistryResponse } from '@/api/types'
 import { queryKeys } from './keys'
+
+function placeholderRegistryFromProviders(data: ProvidersListBody | undefined): RegistryResponse | undefined {
+  if (!data) return undefined
+
+  const models: ModelCatalogEntry[] = []
+  for (const provider of data.providers) {
+    const visible = new Set(provider.visible_models)
+    for (const model of provider.cached_models) {
+      if (visible.size > 0 && !visible.has(model)) continue
+      models.push({
+        id: `${provider.id}:${model}`,
+        provider: provider.id,
+        model,
+        vision: false,
+        output_image: false,
+        output_video: false,
+        summary_trigger_tokens: 0,
+      })
+    }
+  }
+
+  models.sort((a, b) => a.id.localeCompare(b.id))
+
+  return {
+    tools: [],
+    skills: [],
+    providers: data.providers.map((provider) => provider.id).sort(),
+    models,
+  }
+}
 
 export function useAgentFilesQuery() {
   return useQuery({
@@ -33,9 +65,14 @@ export function useAgentFileQuery(name: string | null | undefined) {
 }
 
 export function useRegistryQuery() {
+  const client = useQueryClient()
   return useQuery({
     queryKey: queryKeys.agentFiles.registry(),
     queryFn: getRegistry,
+    placeholderData: () =>
+      placeholderRegistryFromProviders(
+        client.getQueryData<ProvidersListBody>(queryKeys.settings.providers()),
+      ),
     staleTime: Infinity,
     gcTime: Infinity,
     refetchOnWindowFocus: false,

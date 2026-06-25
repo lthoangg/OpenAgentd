@@ -291,9 +291,11 @@ class CompletionsHandler:
         url = f"{self.base_url}/chat/completions"
 
         async with httpx.AsyncClient() as client:
-            response = await client.post(
-                url, headers=self.headers, json=body, timeout=120.0
-            )
+            headers = self.headers
+            prepare = getattr(self, "_prepare_request_headers", None)
+            if callable(prepare):
+                headers = prepare(body)
+            response = await client.post(url, headers=headers, json=body, timeout=120.0)
             if response.status_code >= 400:
                 logger.error(
                     "openai_chat_error status={} body={}",
@@ -313,8 +315,12 @@ class CompletionsHandler:
         url = f"{self.base_url}/chat/completions"
 
         async with httpx.AsyncClient() as client:
+            headers = self.headers
+            prepare = getattr(self, "_prepare_request_headers", None)
+            if callable(prepare):
+                headers = prepare(body)
             async with client.stream(
-                "POST", url, headers=self.headers, json=body, timeout=120.0
+                "POST", url, headers=headers, json=body, timeout=120.0
             ) as response:
                 if response.status_code >= 400:
                     err_body = await response.aread()

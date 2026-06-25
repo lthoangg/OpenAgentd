@@ -16,7 +16,7 @@ exists. When you ship something new, **add it here first** — slides, README,
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 15 providers. Your keys.
 
-**Latest release:** v1.69.0 · June 25, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.69.0)
+**Latest release:** v1.70.0 · June 25, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.70.0)
 
 ---
 
@@ -335,7 +335,7 @@ agnostic by design. Deeper doc: [`configuration/providers.md`](./configuration/p
 | DeepSeek | `deepseek:deepseek-v4-flash` | `DEEPSEEK_API_KEY` |
 | AWS Bedrock | `bedrock:anthropic.claude-sonnet-4-6` | AWS profile/access keys via Settings → Providers or AWS default chain `[v1.54.0]` |
 | NVIDIA NIM | `nvidia:stepfun-ai/step-3.5-flash` | `NVIDIA_API_KEY` |
-| GitHub Copilot (OAuth) | `copilot:gpt-5.4-mini` | `openagentd auth copilot` |
+| GitHub Copilot (OAuth) | `copilot:gpt-4.1` | `openagentd auth copilot` |
 | OpenAI Codex (OAuth) | `codex:gpt-5.5` | `openagentd auth codex` |
 | Router9 (local) | `router9:cc/claude-sonnet-4-5` | `ROUTER9_API_KEY` (optional) |
 | CLIProxyAPI (local) | `cliproxy:gemini-2.5-pro` | `CLIPROXY_API_KEY` (optional) |
@@ -397,7 +397,7 @@ MCP. Deeper doc: [`agent/tools.md`](./agent/tools.md).
 | Shell | `shell`, `bg` (background processes) |
 | Web | `web_search`, `web_fetch` |
 | Generation | `generate_image`, `generate_video` |
-| Scheduling | `schedule_task` |
+| Scheduling | `schedule_task` (reminders + self-scheduling agentic loops) `[v1.70.0]` |
 | Tasks | `todo_manage` |
 | Team coordination | `team_message`, `team_manage` |
 | Utility | `date`, `skill` |

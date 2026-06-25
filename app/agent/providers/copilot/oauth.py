@@ -19,9 +19,11 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 from pydantic import BaseModel, SecretStr
+from app.core.version import VERSION
 
 # Callable invoked at every user-visible milestone. ``event`` is the
 # short discriminator (e.g. "device_code", "polling", "success",
@@ -60,6 +62,7 @@ class CopilotOAuth(BaseModel):
     """Persisted GitHub OAuth credentials for the Copilot provider."""
 
     github_token: SecretStr  # long-lived (gho_*/ghu_*/ghp_*/github_pat_*)
+    enterprise_url: str | None = None
 
     @classmethod
     def load(cls, path: Path | None = None) -> CopilotOAuth | None:
@@ -68,16 +71,20 @@ class CopilotOAuth(BaseModel):
         if not p.exists():
             return None
         try:
-            return cls.model_validate_json(p.read_text())
+            loaded = cls.model_validate_json(p.read_text())
         except Exception:
             return None
+        loaded.enterprise_url = normalize_enterprise_url(loaded.enterprise_url)
+        return loaded
 
     def save(self, path: Path | None = None) -> None:
         """Write to disk, exposing secret for persistence."""
         p = path or _default_oauth_file()
         p.parent.mkdir(parents=True, exist_ok=True)
-        # Me must reveal secret for JSON file — model_dump_json hides it
-        data = {"github_token": self.github_token.get_secret_value()}
+        data = {
+            "github_token": self.github_token.get_secret_value(),
+            "enterprise_url": normalize_enterprise_url(self.enterprise_url),
+        }
         import json
 
         p.write_text(json.dumps(data, indent=2) + "\n")
@@ -86,26 +93,62 @@ class CopilotOAuth(BaseModel):
 # -- Device-flow constants ----------------------------------------------------
 
 _CLIENT_ID = "Ov23li8tweQw6odWQebz"
-# OpenAgentd OAuth App client ID, pending Copilot model-catalog access.
-# _CLIENT_ID = "Ov23li7j8EJwKLcVR4ur"
 _SCOPE = "read:user"
 _DEVICE_CODE_URL = "https://github.com/login/device/code"
 _ACCESS_TOKEN_URL = "https://github.com/login/oauth/access_token"
 _COPILOT_MODELS_URL = "https://api.githubcopilot.com/models"
+COPILOT_API_VERSION = "2026-06-01"
 
+# Keep these defaults aligned with opencode's GitHub Copilot plugin where possible.
+# Source of truth to compare on upgrades:
+# /tmp/opencode-src/packages/opencode/src/plugin/github-copilot/copilot.ts
 _HEADERS = {
     "Accept": "application/json",
     "Content-Type": "application/json",
-    "User-Agent": "openagentd/1.0.0",
+    "User-Agent": f"opencode/{VERSION}",
+    "X-GitHub-Api-Version": COPILOT_API_VERSION,
 }
+
+
+def normalize_enterprise_url(value: str | None) -> str | None:
+    if not value:
+        return None
+    raw = value.strip()
+    if not raw:
+        return None
+    parsed = urlparse(raw if "://" in raw else f"https://{raw}")
+    host = parsed.netloc or parsed.path
+    return f"https://{host.rstrip('/')}" if host else None
+
+
+def copilot_api_base(enterprise_url: str | None = None) -> str:
+    normalized = normalize_enterprise_url(enterprise_url)
+    if not normalized:
+        return "https://api.githubcopilot.com"
+    return f"https://copilot-api.{urlparse(normalized).netloc}"
+
+
+def copilot_models_url(enterprise_url: str | None = None) -> str:
+    return f"{copilot_api_base(enterprise_url)}/models"
+
+
+def github_device_urls(enterprise_url: str | None = None) -> tuple[str, str]:
+    normalized = normalize_enterprise_url(enterprise_url)
+    if not normalized:
+        return _DEVICE_CODE_URL, _ACCESS_TOKEN_URL
+    return (
+        f"{normalized}/login/device/code",
+        f"{normalized}/login/oauth/access_token",
+    )
 
 
 # -- Device-flow steps --------------------------------------------------------
 
 
-def _request_device_code() -> dict:
+def _request_device_code(enterprise_url: str | None = None) -> dict:
+    device_code_url, _ = github_device_urls(enterprise_url)
     r = httpx.post(
-        _DEVICE_CODE_URL,
+        device_code_url,
         headers=_HEADERS,
         json={"client_id": _CLIENT_ID, "scope": _SCOPE},
         timeout=30.0,
@@ -120,23 +163,14 @@ def _poll_for_token(
     expires_in: int,
     *,
     event_sink: EventSink | None = None,
+    enterprise_url: str | None = None,
 ) -> str:
-    """Poll GitHub for the access token; emit ``polling`` events while waiting.
-
-    Raises ``RuntimeError`` on terminal failures when ``event_sink`` is set
-    (so the HTTP route can return a proper 4xx instead of the CLI's
-    ``sys.exit``). The CLI path keeps the ``sys.exit`` behaviour because
-    interactive users expect the process to terminate on these errors.
-    """
+    """Poll GitHub for the access token; emit ``polling`` events while waiting."""
+    _, access_token_url = github_device_urls(enterprise_url)
     deadline = time.time() + expires_in
-    # ``started`` is only used by the heartbeat emission, which is gated
-    # on ``event_sink is not None``. Computing it conditionally keeps the
-    # CLI path's ``time.time()`` call count stable so existing tests that
-    # mock the clock keep working without modification.
     started = time.time() if event_sink is not None else 0.0
     while time.time() < deadline:
         time.sleep(interval)
-        # Per-iteration heartbeat so the UI's timer doesn't appear frozen.
         if event_sink is not None:
             _say(
                 event_sink,
@@ -145,7 +179,7 @@ def _poll_for_token(
                 elapsed_s=int(time.time() - started),
             )
         r = httpx.post(
-            _ACCESS_TOKEN_URL,
+            access_token_url,
             headers=_HEADERS,
             json={
                 "client_id": _CLIENT_ID,
@@ -199,11 +233,11 @@ def _poll_for_token(
     sys.exit(1)
 
 
-def _verify_copilot_access(token: str) -> bool:
+def _verify_copilot_access(token: str, enterprise_url: str | None = None) -> bool:
     """Verify token by hitting GET /models."""
     try:
         r = httpx.get(
-            _COPILOT_MODELS_URL,
+            copilot_models_url(enterprise_url),
             headers={
                 "Authorization": f"Bearer {token}",
                 "User-Agent": _HEADERS["User-Agent"],
@@ -214,9 +248,14 @@ def _verify_copilot_access(token: str) -> bool:
         if r.status_code == 200:
             data = r.json()
             models = data.get("data", [])
-            enabled = [m for m in models if m.get("model_picker_enabled")]
-            print(f"  Copilot OK — {len(enabled)} models available\n")
-            for m in enabled:
+            available = [
+                m
+                for m in models
+                if isinstance(m, dict)
+                and (m.get("policy") or {}).get("state") != "disabled"
+            ]
+            print(f"  Copilot OK — {len(available)} models available\n")
+            for m in available:
                 endpoints = m.get("supported_endpoints", [])
                 ep_str = ", ".join(endpoints) if endpoints else "?"
                 print(f"    {m['id']:30s}  [{ep_str}]")
@@ -234,28 +273,30 @@ def _verify_copilot_access(token: str) -> bool:
 
 
 def login(
-    oauth_path: Path | None = None, *, event_sink: EventSink | None = None
+    oauth_path: Path | None = None,
+    *,
+    event_sink: EventSink | None = None,
+    enterprise_url: str | None = None,
 ) -> None:
-    """Run the full GitHub Copilot device-flow login.
-
-    When ``event_sink`` is ``None`` (the CLI default), prints user-visible
-    messages to stdout. When supplied, emits structured events via the
-    callback so the HTTP/SSE route can render a live login modal.
-    """
+    """Run the full GitHub Copilot device-flow login."""
     oauth_path = oauth_path or _default_oauth_file()
+    enterprise_url = normalize_enterprise_url(enterprise_url)
 
     _say(event_sink, "started", "=== GitHub Copilot Device Login ===\n")
 
-    # Me check if already logged in
     existing = CopilotOAuth.load(oauth_path)
     if existing:
         _say(event_sink, "checking_existing", f"Existing token found in {oauth_path}")
-        if _verify_copilot_access(existing.github_token.get_secret_value()):
+        existing_enterprise = normalize_enterprise_url(existing.enterprise_url)
+        if _verify_copilot_access(
+            existing.github_token.get_secret_value(), existing_enterprise
+        ):
             _say(
                 event_sink,
                 "success",
                 "Existing token still valid. No action needed.",
                 already_authenticated=True,
+                enterprise_url=existing_enterprise,
             )
             return
         _say(
@@ -264,9 +305,8 @@ def login(
             "Existing token invalid. Re-authenticating...",
         )
 
-    # Step 1: get device code
     _say(event_sink, "requesting_device_code", "Requesting device code...")
-    data = _request_device_code()
+    data = _request_device_code(enterprise_url)
     device_code = data["device_code"]
     user_code = data["user_code"]
     verification_uri = data["verification_uri"]
@@ -280,19 +320,24 @@ def login(
         verification_uri=verification_uri,
         user_code=user_code,
         expires_in=expires_in,
+        enterprise_url=enterprise_url,
     )
 
-    # Step 2: poll for token
-    token = _poll_for_token(device_code, interval, expires_in, event_sink=event_sink)
+    token = _poll_for_token(
+        device_code,
+        interval,
+        expires_in,
+        event_sink=event_sink,
+        enterprise_url=enterprise_url,
+    )
     _say(
         event_sink,
         "token_acquired",
         f"GitHub token acquired: {token[:8]}...{token[-4:]}",
     )
 
-    # Step 3: verify Copilot access
     _say(event_sink, "verifying", "Verifying Copilot access...")
-    ok = _verify_copilot_access(token)
+    ok = _verify_copilot_access(token, enterprise_url)
     if not ok:
         _say(
             event_sink,
@@ -303,13 +348,13 @@ def login(
             copilot_access_ok=False,
         )
 
-    # Step 4: save
-    oauth = CopilotOAuth(github_token=SecretStr(token))
+    oauth = CopilotOAuth(github_token=SecretStr(token), enterprise_url=enterprise_url)
     oauth.save(oauth_path)
     _say(
         event_sink,
         "success",
-        f"Saved to {oauth_path}. Use model: copilot:gpt-5.4-mini",
+        f"Saved to {oauth_path}. Use model: copilot:gpt-4.1",
         oauth_path=str(oauth_path),
-        suggested_model="copilot:gpt-5.4-mini",
+        suggested_model="copilot:gpt-4.1",
+        enterprise_url=enterprise_url,
     )

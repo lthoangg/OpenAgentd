@@ -335,7 +335,7 @@ Provider dispatch lives in `_IMAGE_BACKENDS` (`image.py`) and `_VIDEO_BACKENDS` 
 
 ### MCP servers (`app/agent/mcp/`)
 
-External tools loaded over the [Model Context Protocol](https://modelcontextprotocol.io). Each configured MCP server is launched at startup, its tool list is merged into the agent registry, and tools become callable as `mcp_<server>_<tool>`.
+External tools loaded over the [Model Context Protocol](https://modelcontextprotocol.io). Each configured MCP server is launched at startup, its tool list is merged into the agent registry, and tools become callable as `<server>_<tool>`.
 
 **Config:** `{CONFIG_DIR}/mcp.json` — managed via `/api/mcp/servers` (CRUD + restart) and the **Settings → MCP** UI tab. Two transport shapes:
 
@@ -399,9 +399,9 @@ mcp:
   - context7
 ```
 
-Each tool is exposed to the LLM as `mcp_<server>_<tool>` (the convention `MCPTool.__init__` enforces). Listing individual tool names under `tools:` still works for surgical access, but `mcp:` is the simpler default — and the API's per-agent `mcp_servers` field (see [`api/index.md`](../api/index.md#agent-config-management)) lets the UI group tools by server.
+Each tool is exposed to the LLM as `<server>_<tool>` (the convention `MCPTool.__init__` enforces). Listing individual tool names under `tools:` still works for surgical access, but `mcp:` is the simpler default — and the API's per-agent `mcp_servers` field (see [`api/index.md`](../api/index.md#agent-config-management)) lets the UI group tools by server.
 
-**Permission gating:** the wildcard `mcp_*` is recognised by `ruleset_from_config` (see `app/agent/permission.py`), so a single rule can allow / deny / ask for every MCP tool at once.
+**Permission gating:** grant broad MCP access with server prefixes such as `filesystem_*` or `github_*`; specific tool rules still override broader wildcards in `ruleset_from_config` (see `app/agent/permission.py`).
 
 **Sandboxed UI artifacts / MCP Apps:** tool-produced HTML UI resources can render as sandboxed chat artifacts. The first supported producer is MCP Apps: tools that declare `_meta.ui.resourceUri` and return a `ui://` resource with MIME `text/html;profile=mcp-app`. Excalidraw MCP diagrams appear as sibling artifacts after the completed tool call and can request fullscreen; the host also exposes a fullscreen button and uses full-viewport/safe-area-aware layout. When multiple completed tool results reference the same `resourceUri`, OpenAgentd renders only the newest artifact for that resource so iterative views replace stale copies; different resource URIs still render independently. OpenAgentd stores the app payload in the tool message's `extra.mcp_app` so reloads can rehydrate it, while the LLM-visible tool result remains plain text. The renderer keeps the iframe sandboxed (`allow-scripts allow-same-origin allow-forms`), injects a small in-memory `localStorage`/`sessionStorage` shim for apps that probe browser storage, and honors resource CSP domain metadata; executable app HTML currently requires inline scripts and eval-capable bundles. App-requested server `tools/call` requests must be bound to the persisted `session_id` + `tool_call_id`, must match the artifact's `mcp_app.server`, and are authorized against that server's current advertised tool list at call time. OpenAgentd still does not expose frontend tool listing or cross-server app-to-server calls.
 
@@ -471,7 +471,7 @@ For team work, spawn members before assigning their todos and use the returned c
 
 | Tool | What it does |
 |------|-------------|
-| `schedule_task` | The lead's **personal reminder queue** — schedules prompts that fire back to the same lead later. Create, list, pause, resume, delete, trigger. |
+| `schedule_task` | The lead's **personal reminder queue** and **self-scheduling loop engine** — schedules prompts that fire back to the same lead later, including bounded recurring loops (see [Loop engineering](#loop-engineering--self-scheduling-agentic-loops)). Create, list, pause, resume, delete, trigger. |
 
 Semantically a future-self note: every reminder the lead schedules fires back to *itself* (same mode, same workspace). There is no cross-team or cross-workspace surface — the tool only ever sees and acts on reminders bound to the calling lead's routing context.
 
@@ -534,6 +534,53 @@ Tasks can also be updated after creation via `PUT /api/scheduler/tasks/{id}` (RE
 | `"auto"` | Persistent session — resolved to `uuid5(NAMESPACE_URL, "scheduler:{name}")`, deterministic so the same task always reuses the same `ChatSession` row |
 | `"current"` (tool only) | Resolved by `schedule_task` to the current lead chat session before creating the task |
 | UUID string | Continue a specific existing session |
+
+#### Loop engineering — self-scheduling agentic loops
+
+Beyond one-shot reminders, `schedule_task` is a **loop engine**: a lead can
+schedule a prompt that re-invokes *itself*, creating a recurring autonomous
+cycle. The building blocks:
+
+| Primitive | Role in a loop |
+|-----------|----------------|
+| `session_id="current"` | Fired prompt re-enters the *current* conversation, so the reply appears inline and the agent can read its own prior work — the standard self-continuation loop. |
+| `session_id="auto"` | Each firing continues the same persistent session keyed to the task name (survives restarts). Good for long-running background monitors. |
+| `every_seconds` + `max_runs` | Bounded cadence: poll every N seconds, auto-disable after the cap. `max_runs` is the **safety backstop**, not the intended stopping point. |
+| `trigger` | Fires immediately *and* keeps the recurring schedule alive — kicks off a loop now instead of waiting for the first window. |
+
+**Bounded polling loop** (check every 30 s, stop after 20 checks):
+
+```
+action="create", schedule_type="every", every_seconds=30, max_runs=20,
+session_id="current",
+prompt="Check whether the build finished and report the result. If still
+        running, note it and stop — the scheduler re-invokes you
+        automatically. Once it has finished, delete this task to end early."
+```
+
+**Exiting a loop.** A recurring loop has two exit paths:
+
+* **Passive** — `max_runs` is reached and the scheduler auto-disables the task.
+* **Active** — the fired agent detects its goal is met and calls
+  `delete` (or `pause`) on its *own* task id (found via `list`). Prefer the
+  active exit for condition-driven loops so the loop stops the instant the
+  condition holds instead of burning the remaining iterations. Always set
+  `max_runs` as a bound regardless. Use `list` to find a loop's `id`.
+
+**Timing — overlap is skipped, not queued.** For a fixed-session loop
+(`current` / `auto` / explicit UUID), if the timer fires while that session's
+previous turn is still running, the scheduler **skips** that tick: it re-arms
+`next_fire_at` for the next interval and does **not** increment `run_count`.
+Consequences:
+
+* `every_seconds` is a *minimum* interval, not a guarantee — slow turns push
+  the next fire out, they never stack two turns on the same session.
+* `max_runs` counts *executed* iterations, not elapsed windows — so
+  `every_seconds=30, max_runs=20` guarantees 20 runs but may span well over
+  10 minutes of wall-clock if turns are slow.
+
+(A `session_id=null` loop mints a fresh session per fire and has no overlap
+guard, by design.)
 
 `skill` is **always injected** into every agent — do not list it in `tools:`.
 

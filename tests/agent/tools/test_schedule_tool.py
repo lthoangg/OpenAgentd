@@ -1158,3 +1158,65 @@ async def test_mutation_in_scope_passes_through_to_scheduler(
 
     assert "Task 'my-reminder' paused." in result
     mock_task_scheduler.pause.assert_called_once_with(row.id)
+
+
+# ---------------------------------------------------------------------------
+# Loop-engineering surface
+#
+# These tests pin the vocabulary the LLM reads in the tool's description
+# and parameter descriptions — the key loop-engineering concepts must be
+# present so the model knows how to build self-scheduling loops.
+# ---------------------------------------------------------------------------
+
+
+def test_tool_description_contains_loop_vocabulary():
+    """The LLM-visible description must explain the loop-engineering primitives
+    so the model can construct bounded self-scheduling loops without external
+    prompting."""
+    desc = schedule_task.description
+    assert desc is not None
+    # Core loop primitive names
+    assert "session_id='current'" in desc or "current" in desc
+    assert "max_runs" in desc
+    assert "loop" in desc.lower()
+
+
+def test_tool_description_explains_early_loop_exit():
+    """The description must tell the model it can end a condition-driven loop
+    early by deleting/pausing its own task, rather than always running to
+    max_runs. Without this the model wastes iterations after the goal is met."""
+    desc = schedule_task.description
+    assert desc is not None
+    lower = desc.lower()
+    # Mentions the active exit mechanism …
+    assert "delete" in lower or "pause" in lower
+    # … and ties it to stopping early / not relying solely on max_runs.
+    assert "early" in lower or "own task" in lower
+
+
+def test_prompt_param_description_mentions_loop():
+    """The 'prompt' parameter description must mention its role in loops,
+    so the model understands it is the per-iteration instruction."""
+    params = schedule_task.definition["function"]["parameters"]["properties"]
+    prompt_desc = params["prompt"]["description"]
+    assert (
+        "loop" in prompt_desc.lower()
+        or "re-invoke" in prompt_desc.lower()
+        or "scheduler" in prompt_desc.lower()
+    )
+
+
+def test_session_id_param_description_explains_current():
+    """'session_id' description must explain what 'current' does — re-enters
+    the current conversation — so the model picks the right value for loops."""
+    params = schedule_task.definition["function"]["parameters"]["properties"]
+    sid_desc = params["session_id"]["description"]
+    assert "current" in sid_desc
+    assert "conversation" in sid_desc.lower() or "inline" in sid_desc.lower()
+
+
+def test_max_runs_param_description_explains_bounded_loop():
+    """'max_runs' description must mention bounding a loop, not just 'cap'."""
+    params = schedule_task.definition["function"]["parameters"]["properties"]
+    mr_desc = params["max_runs"]["description"]
+    assert "loop" in mr_desc.lower() or "poll" in mr_desc.lower()

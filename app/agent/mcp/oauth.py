@@ -233,7 +233,7 @@ def build_oauth_provider(
 
     async def redirect_handler(url: str) -> None:
         if name not in _interactive_oauth:
-            raise RuntimeError(
+            raise OAuthRequiredError(
                 f"MCP server '{name}' needs OAuth. Use Settings -> MCP -> Connect OAuth."
             )
         logger.info("mcp_oauth_authorize name={} url={}", name, url)

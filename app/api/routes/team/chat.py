@@ -75,6 +75,7 @@ router = APIRouter()
 def _serialize_agent(agent: Agent, *, is_lead: bool = False) -> dict:
     """Serialize an Agent into the /team/agents response shape."""
     from app.agent.hooks.summarization import prompt_token_threshold_for_model
+    from app.agent.mcp import mcp_manager
 
     skill_names: list[str] = agent.skills or []
     skills: list[dict] = []
@@ -88,6 +89,12 @@ def _serialize_agent(agent: Agent, *, is_lead: bool = False) -> dict:
             for n in skill_names
         ]
 
+    tools_by_name = {t.name: t for t in agent._tools.values()}
+    for server_name in agent.mcp_servers:
+        server_tools = mcp_manager.get_tools_for_server(server_name) or []
+        for tool in server_tools:
+            tools_by_name.setdefault(tool.name, tool)
+
     return {
         "name": agent.name,
         "description": agent.description or "",
@@ -95,10 +102,10 @@ def _serialize_agent(agent: Agent, *, is_lead: bool = False) -> dict:
         "summary_trigger_tokens": prompt_token_threshold_for_model(agent.model_id),
         "tools": [
             {"name": t.name, "description": t.description or ""}
-            for t in agent._tools.values()
+            for t in tools_by_name.values()
         ],
         # MCP servers configured on the agent. The UI groups tools by name
-        # prefix (`mcp_<server>_<tool>`) using this list. Includes servers that
+        # prefix (`<server>_<tool>`) using this list. Includes servers that
         # exist in config but aren't ready (zero tools), so the UI can show
         # them as "not ready" instead of silently hiding the section.
         "mcp_servers": list(agent.mcp_servers),

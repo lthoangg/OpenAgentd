@@ -2,8 +2,14 @@ from __future__ import annotations
 
 import urllib.parse
 
+import pytest
+
 from app.agent.mcp.config import HttpServerConfig, OAuthConfig
-from app.agent.mcp.oauth import LoopbackCallback, build_oauth_provider
+from app.agent.mcp.oauth import (
+    LoopbackCallback,
+    OAuthRequiredError,
+    build_oauth_provider,
+)
 
 
 def test_loopback_redirect_uri_uses_default_callback_path():
@@ -31,3 +37,17 @@ def test_build_oauth_provider_uses_matching_redirect_uri_for_client_metadata():
     assert parsed.hostname == "localhost"
     assert parsed.path == "/callback"
     assert parsed.port is not None
+
+
+@pytest.mark.asyncio
+async def test_build_oauth_provider_redirect_handler_raises_oauth_required_error():
+    cfg = HttpServerConfig(
+        url="https://mcp.example.com/mcp",
+        oauth=OAuthConfig(client_id="client-id"),
+    )
+
+    provider = build_oauth_provider("example", cfg)
+
+    assert provider is not None
+    with pytest.raises(OAuthRequiredError, match="needs OAuth"):
+        await provider.context.redirect_handler("https://example.com/authorize")

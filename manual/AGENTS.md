@@ -218,6 +218,7 @@ uv run python -m manual.note --cat 2026-04-30-manual-test.md
 |--------|---------|-----------|
 | `health.py` | `GET /health/ready` + team agent roster with tools/skills/vision | `--base URL` |
 | `provider_models.py` | List discovered provider models, falling back to catalog defaults | provider IDs, `--limit N` |
+| `backend_log.py` | Inspect structured backend logs for repeated WARNING/ERROR/CRITICAL messages and sample records — **no server required** | `--path`, `--level`, `--contains`, `--limit`, `--samples` |
 | `inspect_prompt.py` | Reconstruct full LLM payload (system prompt + tools JSON) — **no server required** | `--dir`, `--agent`, `--no-date`, `--date`, `--out`, `--stats-only` |
 | `patch_tool.py` | Tell an agent to use filesystem `patch` and verify the tool call | `--base URL`, `--wait N` |
 | `skill_dedupe.py` | Direct smoke for skill loader de-dupe: duplicate skill calls replay the full body for current context, and summarization preserves only the first full skill pair | — |
@@ -236,6 +237,10 @@ uv run python -m manual.health
 
 # Check provider model listing
 uv run python -m manual.provider_models openai googlegenai openrouter nvidia copilot codex
+
+# Summarize repeated backend warnings/errors from the structured app log
+uv run python -m manual.backend_log
+uv run python -m manual.backend_log --contains drop_partial_tool_call_bad_json
 
 # Print char/token breakdown for the chat agent payload
 uv run python -m manual.inspect_prompt --stats-only

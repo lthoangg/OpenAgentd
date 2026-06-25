@@ -151,7 +151,7 @@ Uses your **ChatGPT Plus/Pro/Business subscription** to access OpenAI models via
 
 ### `copilot`
 
-GitHub Copilot OAuth — requires an active Copilot subscription. Models include `copilot:gpt-…`, `copilot:claude-…`, etc. (see Copilot's catalog). Settings → Providers shows the live Copilot premium request quota from the same token.
+GitHub Copilot OAuth — requires an active Copilot subscription. Models include `copilot:gpt-…`, `copilot:claude-…`, etc. (see Copilot's catalog). OpenAgentd now follows Copilot's live `/models` metadata for endpoint selection when credentials are available, falling back to a built-in map offline. OAuth tokens may also target GitHub Enterprise Copilot by passing an enterprise URL during login; the saved token then uses `https://copilot-api.<your-domain>` for model discovery and chat traffic. Settings → Providers shows the live Copilot premium request quota from the same token.
 
 ### `bedrock`
 

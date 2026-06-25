@@ -5,9 +5,8 @@ We forward that schema directly to the LLM in the OpenAI-compatible
 function-calling shape, and route invocations back through the live
 ``ClientSession`` held by the :class:`MCPManager`.
 
-Tool names follow the convention ``mcp_<server>_<tool>`` so they are easy
-to gate via the existing permission system (``mcp_*`` wildcard) and never
-collide with built-in tool names.
+Tool names follow the convention ``<server>_<tool>`` so the originating MCP
+server remains obvious while avoiding the extra ``mcp_`` prefix.
 """
 
 from __future__ import annotations
@@ -76,7 +75,7 @@ class MCPTool(Tool):
         self._session_provider = session_provider
         self._mcp_tool = mcp_tool
 
-        local_name = f"mcp_{server_name}_{mcp_tool.name}"
+        local_name = f"{server_name}_{mcp_tool.name}"
         description = (
             mcp_tool.description
             or f"Tool '{mcp_tool.name}' from MCP server '{server_name}'."

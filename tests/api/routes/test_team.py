@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from unittest.mock import AsyncMock, patch
 
@@ -10,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from app.agent.agent_loop import Agent
 from app.agent.providers.base import LLMProviderBase
+from app.agent.tools.builtin.date import get_date
 from app.agent.mode.team.member import TeamLead, TeamMember
 from app.agent.mode.team.team import AgentTeam
 from app.api.routes.team._helpers import _message_response
@@ -86,7 +88,10 @@ class MockTestProvider(LLMProviderBase):
 def test_team():
     """Create a test team (not started)."""
     agent_lead = Agent(
-        name="lead", llm_provider=MockTestProvider(), system_prompt="Lead"
+        name="lead",
+        llm_provider=MockTestProvider(),
+        system_prompt="Lead",
+        mcp_servers=["filesystem"],
     )
     agent_worker = Agent(
         name="worker", llm_provider=MockTestProvider(), system_prompt="Worker"
@@ -531,6 +536,31 @@ class TestTeamAgentsRoute:
         assert lead_entry["is_lead"] is True
         worker_entry = next(a for a in data["agents"] if a["name"] == "worker")
         assert worker_entry["is_lead"] is False
+
+    def test_team_agents_refreshes_mcp_tools_without_agent_reload(
+        self, app_with_team, monkeypatch
+    ):
+        from app.agent.mcp.manager import mcp_manager, MCPServerStatus, _ServerRunner
+
+        runner = _ServerRunner(
+            shutdown=asyncio.Event(),
+            ready=asyncio.Event(),
+            status=MCPServerStatus(
+                name="filesystem",
+                transport="stdio",
+                enabled=True,
+                state="ready",
+            ),
+            tools=[get_date],
+        )
+        runner.status.tool_names = [get_date.name]
+        monkeypatch.setattr(mcp_manager, "_runners", {"filesystem": runner})
+
+        client = TestClient(app_with_team)
+        data = client.get("/api/team/agents").json()
+        lead_entry = next(a for a in data["agents"] if a["name"] == "lead")
+        tool_names = {tool["name"] for tool in lead_entry["tools"]}
+        assert get_date.name in tool_names
 
 
 class TestTeamHistoryRoute:

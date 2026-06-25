@@ -3,6 +3,7 @@ import React from 'react'
 import { renderHook } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { queryKeys, useRegistryQuery } from '@/queries'
+import type { ProvidersListBody } from '@/api/client'
 
 function createWrapper(queryClient: QueryClient) {
   return ({ children }: { children: React.ReactNode }) =>
@@ -42,5 +43,50 @@ describe('useRegistryQuery', () => {
     expect(options.gcTime).toBe(Infinity)
     expect(options.refetchOnWindowFocus).toBe(false)
     expect(options.refetchOnReconnect).toBe(false)
+  })
+
+  it('hydrates placeholder models from cached provider visibility state', async () => {
+    globalThis.fetch = mock(async () =>
+      new Promise<Response>(() => {
+        // Intentionally unresolved: assert placeholder data before registry fetch completes.
+      })
+    ) as typeof fetch
+
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+      },
+    })
+    const providers: ProvidersListBody = {
+      has_any_configured: true,
+      providers: [
+        {
+          id: 'claude',
+          label: 'Claude OAuth',
+          description: 'Claude',
+          kind: 'oauth',
+          credentials: [],
+          saved_credentials: {},
+          env_var: '',
+          env_vars: [],
+          oauth_command: '',
+          docs_url: '',
+          is_configured: true,
+          is_saved: true,
+          is_reachable: true,
+          cached_models: ['claude-sonnet-4-6', 'claude-haiku-4-5'],
+          visible_models: ['claude-sonnet-4-6'],
+        },
+      ],
+    }
+    queryClient.setQueryData(queryKeys.settings.providers(), providers)
+
+    const { result } = renderHook(() => useRegistryQuery(), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    expect(result.current.data?.models.map((model) => model.id)).toEqual([
+      'claude:claude-sonnet-4-6',
+    ])
   })
 })

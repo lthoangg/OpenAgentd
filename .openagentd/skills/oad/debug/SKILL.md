@@ -15,6 +15,8 @@ Workflow:
    - **Live session / agent behavior:** prefer `manual/` helpers before ad-hoc probing:
      ```bash
      uv run python -m manual.health
+     uv run python -m manual.backend_log
+     uv run python -m manual.backend_log --contains drop_partial_tool_call_bad_json
      uv run python -m manual.team_sessions --id <SESSION_ID>
      uv run python -m manual.team_history <SESSION_ID>
      uv run python -m manual.team_timeline <SESSION_ID> --full

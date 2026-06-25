@@ -7,6 +7,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from loguru import logger
+
 import pytest
 from mcp.client.auth import OAuthRegistrationError
 
@@ -187,7 +189,7 @@ class TestMCPManagerGetToolsDict:
         ready_runner = MagicMock()
         ready_runner.status.state = "ready"
         ready_tool = MagicMock()
-        ready_tool.name = "mcp_ready_tool1"
+        ready_tool.name = "ready_tool1"
         ready_runner.tools = [ready_tool]
 
         error_runner = MagicMock()
@@ -201,7 +203,7 @@ class TestMCPManagerGetToolsDict:
 
         tools = manager.get_tools_dict()
         assert len(tools) == 1
-        assert "mcp_ready_tool1" in tools
+        assert "ready_tool1" in tools
 
 
 class TestMCPManagerRemoveRunner:
@@ -258,7 +260,7 @@ class TestMCPManagerWithMockedServer:
                 transport=server_cfg.transport,
                 enabled=True,
                 state="ready",
-                tool_names=["mcp_test_list_files"],
+                tool_names=["test_list_files"],
             )
             runner.ready.set()
             await runner.shutdown.wait()
@@ -280,11 +282,11 @@ class TestMCPManagerWithMockedServer:
                 status = manager.get_status("test")
                 assert status is not None
                 assert status.state == "ready"
-                assert status.tool_names == ["mcp_test_list_files"]
+                assert status.tool_names == ["test_list_files"]
 
                 # Check tools
                 tools = manager.get_tools_dict()
-                assert "mcp_test_list_files" in tools
+                assert "test_list_files" in tools
 
                 # Cleanup
                 await manager.stop()
@@ -299,7 +301,7 @@ class TestMCPManagerWithMockedServer:
             status=MCPServerStatus(
                 name="test", transport="stdio", enabled=True, state="ready"
             ),
-            tools=[SimpleNamespace(name="mcp_test_save_checkpoint")],
+            tools=[SimpleNamespace(name="test_save_checkpoint")],
         )
         manager._runners["test"] = runner  # type: ignore[assignment]
 
@@ -320,7 +322,7 @@ class TestMCPManagerWithMockedServer:
             status=MCPServerStatus(
                 name="test", transport="stdio", enabled=True, state="ready"
             ),
-            tools=[SimpleNamespace(name="mcp_test_save_checkpoint")],
+            tools=[SimpleNamespace(name="test_save_checkpoint")],
         )
         manager._runners["test"] = runner  # type: ignore[assignment]
 
@@ -339,7 +341,7 @@ class TestMCPManagerWithMockedServer:
             status=MCPServerStatus(
                 name="excalidraw", transport="http", enabled=True, state="ready"
             ),
-            tools=[SimpleNamespace(name="mcp_excalidraw_read_checkpoint")],
+            tools=[SimpleNamespace(name="excalidraw_read_checkpoint")],
         )
         manager._runners["excalidraw"] = runner  # type: ignore[assignment]
 
@@ -372,28 +374,36 @@ class TestMCPManagerOAuth:
     @pytest.mark.asyncio
     async def test_oauth_server_without_tokens_is_auth_required(self) -> None:
         manager = MCPManager()
-        with patch("app.agent.mcp.manager.load_config") as mock_load:
-            cfg = MCPConfig(
-                servers={
-                    "notion": HttpServerConfig(
-                        url="https://mcp.notion.com/mcp",
-                        oauth=OAuthConfig(),
-                    )
-                }
-            )
-            mock_load.return_value = cfg
+        messages: list[str] = []
+        sink_id = logger.add(messages.append, level="WARNING", format="{message}")
+        try:
+            with patch("app.agent.mcp.manager.load_config") as mock_load:
+                cfg = MCPConfig(
+                    servers={
+                        "notion": HttpServerConfig(
+                            url="https://mcp.notion.com/mcp",
+                            oauth=OAuthConfig(),
+                        )
+                    }
+                )
+                mock_load.return_value = cfg
 
-            with patch(
-                "app.agent.mcp.manager.has_cached_oauth_tokens", return_value=False
-            ):
-                await manager.start()
-                runner = manager._runners["notion"]
-                await asyncio.wait_for(runner.ready.wait(), timeout=1.0)
+                with patch(
+                    "app.agent.mcp.manager.has_cached_oauth_tokens", return_value=False
+                ):
+                    await manager.start()
+                    runner = manager._runners["notion"]
+                    await asyncio.wait_for(runner.ready.wait(), timeout=1.0)
 
-            status = manager.get_status("notion")
-            assert status is not None
-            assert status.state == "auth_required"
-            assert "needs OAuth" in (status.error or "")
+                status = manager.get_status("notion")
+                assert status is not None
+                assert status.state == "auth_required"
+                assert "needs OAuth" in (status.error or "")
+                assert any(
+                    "mcp_server_auth_required name=notion" in msg for msg in messages
+                )
+        finally:
+            logger.remove(sink_id)
 
     @pytest.mark.asyncio
     async def test_slack_without_oauth_config_is_auth_required(self) -> None:
@@ -557,74 +567,94 @@ class TestMCPManagerOAuth:
         self,
     ) -> None:
         manager = MCPManager()
-        with patch("app.agent.mcp.manager.load_config") as mock_load:
-            cfg = MCPConfig(
-                servers={
-                    "slack": HttpServerConfig(
-                        url="https://mcp.slack.com/mcp",
-                        oauth=OAuthConfig(),
-                    )
-                }
-            )
-            mock_load.return_value = cfg
+        messages: list[str] = []
+        sink_id = logger.add(messages.append, level="WARNING", format="{message}")
+        try:
+            with patch("app.agent.mcp.manager.load_config") as mock_load:
+                cfg = MCPConfig(
+                    servers={
+                        "slack": HttpServerConfig(
+                            url="https://mcp.slack.com/mcp",
+                            oauth=OAuthConfig(),
+                        )
+                    }
+                )
+                mock_load.return_value = cfg
 
-            with (
-                patch(
-                    "app.agent.mcp.manager.has_cached_oauth_tokens", return_value=False
-                ),
-                patch(
-                    "app.agent.mcp.manager.interactive_oauth_allowed", return_value=True
-                ),
-                patch(
-                    "app.agent.mcp.manager.supports_dynamic_client_registration",
-                    return_value=False,
-                ),
-            ):
-                await manager.start()
-                runner = manager._runners["slack"]
-                await asyncio.wait_for(runner.ready.wait(), timeout=1.0)
+                with (
+                    patch(
+                        "app.agent.mcp.manager.has_cached_oauth_tokens",
+                        return_value=False,
+                    ),
+                    patch(
+                        "app.agent.mcp.manager.interactive_oauth_allowed",
+                        return_value=True,
+                    ),
+                    patch(
+                        "app.agent.mcp.manager.supports_dynamic_client_registration",
+                        return_value=False,
+                    ),
+                ):
+                    await manager.start()
+                    runner = manager._runners["slack"]
+                    await asyncio.wait_for(runner.ready.wait(), timeout=1.0)
 
-            status = manager.get_status("slack")
-            assert status is not None
-            assert status.state == "auth_required"
-            assert "client ID/secret" in (status.error or "")
+                status = manager.get_status("slack")
+                assert status is not None
+                assert status.state == "auth_required"
+                assert "client ID/secret" in (status.error or "")
+                assert any(
+                    "mcp_server_auth_required name=slack" in msg for msg in messages
+                )
+        finally:
+            logger.remove(sink_id)
 
     @pytest.mark.asyncio
     async def test_oauth_with_unresolved_client_id_ref_requires_credentials(
         self,
     ) -> None:
         manager = MCPManager()
-        with patch("app.agent.mcp.manager.load_config") as mock_load:
-            cfg = MCPConfig(
-                servers={
-                    "slack": HttpServerConfig(
-                        url="https://mcp.slack.com/mcp",
-                        oauth=OAuthConfig(client_id="${MISSING_SLACK_CLIENT_ID}"),
-                    )
-                }
-            )
-            mock_load.return_value = cfg
+        messages: list[str] = []
+        sink_id = logger.add(messages.append, level="WARNING", format="{message}")
+        try:
+            with patch("app.agent.mcp.manager.load_config") as mock_load:
+                cfg = MCPConfig(
+                    servers={
+                        "slack": HttpServerConfig(
+                            url="https://mcp.slack.com/mcp",
+                            oauth=OAuthConfig(client_id="${MISSING_SLACK_CLIENT_ID}"),
+                        )
+                    }
+                )
+                mock_load.return_value = cfg
 
-            with (
-                patch(
-                    "app.agent.mcp.manager.has_cached_oauth_tokens", return_value=False
-                ),
-                patch(
-                    "app.agent.mcp.manager.interactive_oauth_allowed", return_value=True
-                ),
-                patch(
-                    "app.agent.mcp.manager.supports_dynamic_client_registration",
-                    return_value=False,
-                ),
-            ):
-                await manager.start()
-                runner = manager._runners["slack"]
-                await asyncio.wait_for(runner.ready.wait(), timeout=1.0)
+                with (
+                    patch(
+                        "app.agent.mcp.manager.has_cached_oauth_tokens",
+                        return_value=False,
+                    ),
+                    patch(
+                        "app.agent.mcp.manager.interactive_oauth_allowed",
+                        return_value=True,
+                    ),
+                    patch(
+                        "app.agent.mcp.manager.supports_dynamic_client_registration",
+                        return_value=False,
+                    ),
+                ):
+                    await manager.start()
+                    runner = manager._runners["slack"]
+                    await asyncio.wait_for(runner.ready.wait(), timeout=1.0)
 
-            status = manager.get_status("slack")
-            assert status is not None
-            assert status.state == "auth_required"
-            assert "client ID/secret" in (status.error or "")
+                status = manager.get_status("slack")
+                assert status is not None
+                assert status.state == "auth_required"
+                assert "client ID/secret" in (status.error or "")
+                assert any(
+                    "mcp_server_auth_required name=slack" in msg for msg in messages
+                )
+        finally:
+            logger.remove(sink_id)
 
     @pytest.mark.asyncio
     async def test_restart_server_with_mocked_server(self) -> None:

@@ -18,7 +18,10 @@ from app.agent.providers.copilot.oauth import (
     _poll_for_token,
     _request_device_code,
     _verify_copilot_access,
+    copilot_api_base,
+    github_device_urls,
     login,
+    normalize_enterprise_url,
 )
 
 
@@ -46,6 +49,17 @@ class TestCopilotOAuthLoad:
         assert result is not None
         assert result.github_token.get_secret_value() == "gho_test_token"
 
+    def test_valid_file_normalizes_enterprise_url(self, tmp_path):
+        path = tmp_path / "oauth.json"
+        path.write_text(
+            json.dumps(
+                {"github_token": "gho_test_token", "enterprise_url": "ghe.example.com/"}
+            )
+        )
+        result = CopilotOAuth.load(path)
+        assert result is not None
+        assert result.enterprise_url == "https://ghe.example.com"
+
     def test_missing_required_field_returns_none(self, tmp_path):
         path = tmp_path / "bad_schema.json"
         path.write_text(json.dumps({"other_field": "value"}))
@@ -68,6 +82,15 @@ class TestCopilotOAuthSave:
         data = json.loads(path.read_text())
         assert data["github_token"] == "gho_my_token"
 
+    def test_writes_normalized_enterprise_url(self, tmp_path):
+        path = tmp_path / "oauth.json"
+        oauth = CopilotOAuth(
+            github_token=SecretStr("gho_my_token"), enterprise_url="ghe.example.com/"
+        )
+        oauth.save(path)
+        data = json.loads(path.read_text())
+        assert data["enterprise_url"] == "https://ghe.example.com"
+
     def test_creates_parent_directories(self, tmp_path):
         path = tmp_path / "a" / "b" / "c" / "oauth.json"
         oauth = CopilotOAuth(github_token=SecretStr("gho_tok"))
@@ -86,6 +109,27 @@ class TestCopilotOAuthSave:
 # ---------------------------------------------------------------------------
 # _request_device_code
 # ---------------------------------------------------------------------------
+
+
+class TestHelpers:
+    def test_normalize_enterprise_url(self):
+        assert normalize_enterprise_url("ghe.example.com/") == "https://ghe.example.com"
+        assert (
+            normalize_enterprise_url("https://ghe.example.com")
+            == "https://ghe.example.com"
+        )
+        assert normalize_enterprise_url(None) is None
+
+    def test_copilot_api_base_for_enterprise(self):
+        assert (
+            copilot_api_base("ghe.example.com") == "https://copilot-api.ghe.example.com"
+        )
+
+    def test_github_device_urls_for_enterprise(self):
+        assert github_device_urls("ghe.example.com") == (
+            "https://ghe.example.com/login/device/code",
+            "https://ghe.example.com/login/oauth/access_token",
+        )
 
 
 class TestRequestDeviceCode:

@@ -57,6 +57,21 @@ def test_setup_logging_silences_noisy_loggers(tmp_path):
         assert logging.getLogger(name).level == logging.WARNING
 
 
+def test_setup_logging_disables_oauth_traceback_logger(tmp_path):
+    with (
+        patch("app.core.logging_config.LOGS_DIR", tmp_path),
+        patch("app.core.logging_config.logger") as mock_logger,
+    ):
+        mock_logger.remove = MagicMock()
+        mock_logger.add = MagicMock()
+        setup_logging()
+
+    oauth_logger = logging.getLogger("mcp.client.auth.oauth2")
+    assert oauth_logger.propagate is False
+    assert len(oauth_logger.handlers) == 1
+    assert isinstance(oauth_logger.handlers[0], logging.NullHandler)
+
+
 def test_setup_logging_default_level_is_info(tmp_path):
     calls = []
     with (

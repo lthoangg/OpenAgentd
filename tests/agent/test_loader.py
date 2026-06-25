@@ -253,9 +253,9 @@ def _make_tool(name: str):
 
 def test_build_agent_mcp_servers_inject_tools(monkeypatch):
     factory, _ = _make_provider_factory()
-    fs_read = _make_tool("mcp_filesystem_read_file")
-    fs_write = _make_tool("mcp_filesystem_write_file")
-    gh_list = _make_tool("mcp_github_list_repos")
+    fs_read = _make_tool("filesystem_read_file")
+    fs_write = _make_tool("filesystem_write_file")
+    gh_list = _make_tool("github_list_repos")
 
     from app.agent.mcp import mcp_manager
 
@@ -270,9 +270,9 @@ def test_build_agent_mcp_servers_inject_tools(monkeypatch):
 
     cfg = AgentConfig(name="bot", mcp=["filesystem"])
     agent = _build_agent(cfg, {}, factory)
-    assert "mcp_filesystem_read_file" in agent._tools
-    assert "mcp_filesystem_write_file" in agent._tools
-    assert "mcp_github_list_repos" not in agent._tools
+    assert "filesystem_read_file" in agent._tools
+    assert "filesystem_write_file" in agent._tools
+    assert "github_list_repos" not in agent._tools
 
 
 def test_build_agent_mcp_unknown_server_is_skipped(monkeypatch):
@@ -297,7 +297,7 @@ def test_build_agent_mcp_unknown_server_is_skipped(monkeypatch):
 
 def test_build_agent_mcp_combines_with_tools(monkeypatch):
     factory, _ = _make_provider_factory()
-    fs_read = _make_tool("mcp_filesystem_read_file")
+    fs_read = _make_tool("filesystem_read_file")
     web = _make_tool("web_search")
 
     from app.agent.mcp import mcp_manager
@@ -312,7 +312,7 @@ def test_build_agent_mcp_combines_with_tools(monkeypatch):
     cfg = AgentConfig(name="bot", tools=["web_search"], mcp=["filesystem"])
     agent = _build_agent(cfg, {"web_search": web}, factory)
     assert "web_search" in agent._tools
-    assert "mcp_filesystem_read_file" in agent._tools
+    assert "filesystem_read_file" in agent._tools
 
 
 def test_build_agent_mcp_not_ready_yields_no_tools(monkeypatch):

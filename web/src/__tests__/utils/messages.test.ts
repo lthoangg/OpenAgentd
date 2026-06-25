@@ -380,7 +380,7 @@ describe("parseApiMessages", () => {
       makeMsg({
         role: "assistant",
         content: null,
-        tool_calls: [{ id: "tc1", type: "function", function: { name: "mcp_design_excalidraw", arguments: "{}" } }],
+        tool_calls: [{ id: "tc1", type: "function", function: { name: "design_excalidraw", arguments: "{}" } }],
         created_at: t,
       }),
       makeMsg({

@@ -75,7 +75,7 @@ class TestListServers:
                 transport="stdio",
                 enabled=True,
                 state="ready",
-                tool_names=["mcp_filesystem_list"],
+                tool_names=["filesystem_list"],
             )
             status2 = MCPServerStatus(
                 name="github",
@@ -105,7 +105,7 @@ class TestGetServer:
                 transport="stdio",
                 enabled=True,
                 state="ready",
-                tool_names=["mcp_filesystem_list"],
+                tool_names=["filesystem_list"],
             )
             mock_manager.get_status.return_value = status
             client = TestClient(app)
@@ -839,7 +839,7 @@ class TestApply:
                     transport="stdio",
                     enabled=True,
                     state="ready",
-                    tool_names=["mcp_fs_read"],
+                    tool_names=["fs_read"],
                 )
             ]
 

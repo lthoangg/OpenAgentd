@@ -148,28 +148,74 @@ def _iter_md(root: Path):
 # rendered body without hardcoding the prompt in the bundle.
 
 _BUILTIN_INIT_BODY = """\
-Inspect the project at the current working directory and create or update \
-`AGENTS.md` at the repo root, in each meaningful top-level subfolder, and in \
-meaningful nested subfolders where a future coding agent would need local \
-instructions to change or add features safely. Treat this as documentation \
-work, not a code change.
+Create or update AGENTS.md files for this repository. The reader is a future \
+coding agent with the full source tree but no memory. Write only what it \
+cannot quickly infer from the code.
 
-1. Read any existing `AGENTS.md` first, including parent files. Preserve \
-accurate human-authored notes; only revise stale or misleading sections.
-2. Survey the repo: layout, nested feature areas, runtimes, build / test / \
-lint commands (Makefile, package.json, pyproject.toml, Cargo.toml, CI), \
-conventions, docs, and generated/vendor/cache/build folders to skip.
-3. Add nested `AGENTS.md` only where it helps a future coding agent: where to \
-look first, coupled files/docs/tests, focused commands, or local gotchas. Do \
-not duplicate parent guidance.
-4. Keep every file concise — ideally one screen. Root covers repo-wide context; \
-children cover only what differs. Prefer sections: Summary, Where to look \
-first, Common feature checks, Commands, Gotchas, Docs.
-5. Do not invent commands or features. Document only what exists, and note \
-expensive/optional checks separately from required focused checks.
-6. Run the lint/test/type-check commands you documented when feasible. If a \
-check fails because of environment or missing services, document the condition \
-instead of changing code."""
+Root AGENTS.md is special: it is injected into the system prompt on every task. \
+Keep it stricter than every child file. Child AGENTS.md files are read only on \
+demand, so move local detail down.
+
+TEST EVERY LINE
+\"Would an agent get this wrong, or waste real time, without being told?\"
+If no, cut it. Do not restate the code. Keep only non-obvious conventions, \
+coupling, prerequisites, sharp edges, and rationale. For root, keep only facts \
+that are repo-wide and useful on most tasks.
+
+KEEP
+- Where to start for a given change.
+- Files, tests, or docs that must change together.
+- Non-obvious commands, flags, order, or prerequisites.
+- Setup that causes silent failure when missing.
+- Conventions not enforced by tooling.
+- Traps where the obvious edit is wrong.
+
+CUT
+- Anything obvious from reading nearby files.
+- README restatements, framework basics, long file/dependency lists.
+- Version numbers and other fast-drifting facts.
+- Folder-specific detail that belongs in a child file.
+
+SHOW CONCRETE COUPLING
+Bad: \"api/ holds the API routes.\"
+Good: \"Add routes under api/routes/ and register them in api/registry; \
+unregistered routes 404 silently.\"
+
+TREE RULES
+- Root is the only guaranteed entry point; every other AGENTS.md must be \
+  reachable from it by relative links, hop by hop.
+- Each file indexes only its immediate children and the few local docs worth \
+  knowing, each with a one-line \"go here when…\" note.
+- Use relative links only; do not dump the full descendant tree.
+- Root must include: (1) one-line usage protocol, (2) immediate-child index, \
+  (3) cross-cutting repo-wide guidance only.
+
+WHEN TO CREATE A CHILD FILE
+Create a child AGENTS.md only when a subtree has local conventions, local \
+commands, distinct architecture, or real traps. If a folder is \"more of the \
+same,\" keep it as one line in the parent index. Do not create AGENTS.md in \
+generated, vendored, cache, or build-output directories.
+
+PROCESS
+1. Survey the actual repo structure, stack, commands, conventions, and ignore \
+   rules before writing.
+2. Read existing AGENTS.md files first, including parents. Preserve accurate \
+   notes; change only what is stale or misleading.
+3. Plan the file tree before editing. Push detail downward by default.
+4. Draft, then prune hard. Keep each file short; root should be especially \
+   compact. If nothing survives pruning, do not create the file.
+5. Verify documented commands when feasible. Quote commands exactly as defined \
+   in repo files; do not normalize or improve them. If checks are blocked by \
+   environment or missing services, document the condition instead of changing \
+   code.
+6. Reconcile links so no real doc is orphaned. In your final response, include \
+   a manifest of files created, updated, or deliberately skipped, with one-line \
+   reasons.
+
+GUARDRAILS
+- Document only what exists; never invent features or commands.
+- Never copy secrets or env-file contents.
+- On re-run, prefer minimal diffs; do not churn correct files."""
 
 
 _BUILTIN_COMMANDS: dict[str, Command] = {

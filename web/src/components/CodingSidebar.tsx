@@ -68,6 +68,13 @@ import {
 import type { CodingWorkspaceTreeRepository, SessionResponse, WorktreeInfo } from '@/api/types'
 import { LongPressButton } from '@/components/ui/long-press-button'
 import { WorkspaceSessionList } from './CodingSidebar/WorkspaceSessionList'
+import {
+  addExpandedPaths,
+  buildWorktreeSourceByDirectory,
+  sourceWorkspacePaths,
+  toggleExpandedPath,
+  visibleNestedWorktrees,
+} from './CodingSidebar.helpers'
 import { isLocalBackendUrl, worktreeNameSlug } from './CodingSidebar/utils'
 
 interface CodingSidebarProps {
@@ -120,12 +127,9 @@ export function CodingSidebar({
   )
 
   const [workspaceTree, setWorkspaceTree] = useState<CodingWorkspaceTreeRepository[]>([])
-  const visibleWorkspaces = (workspaceTree ?? []).map((repo) => repo.path)
+  const visibleWorkspaces = workspaceTree.map((repo) => repo.path)
   const activeWorkspace = workspace ?? null
-  const worktreeSourceByDirectory = new Map<string, string>()
-  for (const repo of workspaceTree) {
-    for (const item of repo.worktrees) worktreeSourceByDirectory.set(item.path, repo.path)
-  }
+  const worktreeSourceByDirectory = buildWorktreeSourceByDirectory(workspaceTree)
 
   // ``expandedWorkspaces`` is local UI state — it auto-tracks the active
   // workspace but the user can also expand/collapse any other workspace
@@ -135,20 +139,11 @@ export function CodingSidebar({
   )
   useEffect(() => {
     if (!activeWorkspace) return
-    setExpandedWorkspaces((current) => {
-      const next = new Set(current)
-      next.add(activeWorkspace)
-      return next
-    })
+    setExpandedWorkspaces((current) => addExpandedPaths(current, [activeWorkspace]))
   }, [activeWorkspace])
 
   const toggleWorkspaceExpanded = (path: string) => {
-    setExpandedWorkspaces((current) => {
-      const next = new Set(current)
-      if (next.has(path)) next.delete(path)
-      else next.add(path)
-      return next
-    })
+    setExpandedWorkspaces((current) => toggleExpandedPath(current, path))
   }
 
 
@@ -462,7 +457,7 @@ export function CodingSidebar({
   }
 
   const deletedWorktreeSet = removedWorktreePaths
-  const sourceWorkspaces = visibleWorkspaces.filter((path) => !deletedWorktreeSet.has(path))
+  const sourceWorkspaces = sourceWorkspacePaths(workspaceTree, deletedWorktreeSet)
   const activeWorktreeSource = activeWorkspace ? worktreeSourceByDirectory.get(activeWorkspace) : null
 
   const resizable = useResizableWidth({
@@ -476,12 +471,9 @@ export function CodingSidebar({
 
   useEffect(() => {
     if (!activeWorkspace || !activeWorktreeSource) return
-    setExpandedWorkspaces((current) => {
-      const next = new Set(current)
-      next.add(activeWorktreeSource)
-      next.add(activeWorkspace)
-      return next
-    })
+    setExpandedWorkspaces((current) =>
+      addExpandedPaths(current, [activeWorktreeSource, activeWorkspace]),
+    )
   }, [activeWorkspace, activeWorktreeSource])
 
   const openSelectedFolder = async () => {
@@ -689,7 +681,7 @@ export function CodingSidebar({
           const sourceRunningSessions = sourceSessions.filter((s) => s.running === true)
           const sourceHasRunningSession = sourceRunningSessions.length > 0
           const repository = workspaceTree.find((repo) => repo.path === path)
-          const nestedWorktrees = (repository?.worktrees ?? []).filter((item) => !deletedWorktreeSet.has(item.path))
+          const nestedWorktrees = visibleNestedWorktrees(repository, deletedWorktreeSet)
 
           return (
             <div key={path} className="relative">

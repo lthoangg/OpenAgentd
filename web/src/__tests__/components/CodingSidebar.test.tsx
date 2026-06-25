@@ -7,6 +7,13 @@ import { setApiBaseUrl } from '@/api/base-url'
 import { loadLastCodingWorkspace } from '@/utils/workspace'
 import { useTeamStore } from '@/stores/useTeamStore'
 import { createDefaultAgentStream } from '@/stores/useTeamStore/defaults'
+import {
+  addExpandedPaths,
+  buildWorktreeSourceByDirectory,
+  sourceWorkspacePaths,
+  toggleExpandedPath,
+  visibleNestedWorktrees,
+} from '@/components/CodingSidebar.helpers'
 
 const navigate = mock(() => {})
 const originalFetch = globalThis.fetch
@@ -193,6 +200,35 @@ mock.module('@/queries/useSessionsQuery', () => ({
     isError: false,
   }),
 }))
+
+describe('CodingSidebar helpers', () => {
+  it('toggles expanded paths and can batch-add active paths', () => {
+    expect([...toggleExpandedPath(new Set<string>(), '/repo')]).toEqual(['/repo'])
+    expect([...toggleExpandedPath(new Set<string>(['/repo']), '/repo')]).toEqual([])
+    expect([...addExpandedPaths(new Set<string>(), ['/repo', null, '/worktree'])]).toEqual([
+      '/repo',
+      '/worktree',
+    ])
+  })
+
+  it('builds worktree source lookup and filters removed worktrees', () => {
+    const workspaceTree = [
+      {
+        path: '/repo',
+        name: 'repo',
+        worktrees: [
+          { path: '/repo-wt', directory: '/repo-wt', name: 'repo-wt', branch: 'feat', managed: true },
+        ],
+      },
+    ]
+    const removed = new Set<string>(['/repo-wt'])
+    const sources = buildWorktreeSourceByDirectory(workspaceTree)
+
+    expect(sources.get('/repo-wt')).toBe('/repo')
+    expect(sourceWorkspacePaths(workspaceTree, removed)).toEqual(['/repo'])
+    expect(visibleNestedWorktrees(workspaceTree[0], removed)).toEqual([])
+  })
+})
 
 describe('CodingSidebar workspace trust flow', () => {
   beforeEach(() => {

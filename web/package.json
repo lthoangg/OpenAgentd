@@ -10,7 +10,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "bun test --parallel src/__tests__",
-    "test:file": "bun test"
+    "test:file": "bun test --parallel"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

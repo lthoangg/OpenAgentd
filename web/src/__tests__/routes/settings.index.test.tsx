@@ -189,7 +189,8 @@ describe('SettingsHubPage — mobile nav', () => {
         '/settings/mcp',
         '/settings/providers',
         '/settings/sandbox',
-        '/settings/dream',
+        '/settings/multimodal',
+        '/settings/title-generation',
         '/settings/notifications',
       ]),
     )

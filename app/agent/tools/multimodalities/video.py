@@ -44,11 +44,11 @@ import re
 import time
 import uuid
 from collections.abc import Awaitable, Callable
-from typing import Annotated, Any, Literal, get_args
+from typing import Any, Literal, get_args
 
 from loguru import logger
 from opentelemetry.trace import Status, StatusCode
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from app.agent.sandbox import get_sandbox
 from app.agent.tools.multimodalities import backends as _backends
@@ -77,6 +77,86 @@ _MAX_REFERENCE_IMAGES = 3
 VideoAspectRatio = Literal["16:9", "9:16"]
 VideoResolution = Literal["720p", "1080p", "4k"]
 VideoDuration = Literal["4", "6", "8"]
+
+_DESCRIPTION = (
+    "Generate a video clip in the session workspace using Veo. "
+    "Supports text-to-video, image-to-video (first frame), first+last "
+    "frame interpolation, up to 3 reference images, and video extension "
+    "(extend an existing mp4). Returns markdown ``![alt](file.mp4)`` to "
+    "include verbatim so it renders inline. On failure returns ``Error: ...``."
+)
+
+
+class VideoArgs(BaseModel):
+    """Arguments for the generate_video tool."""
+
+    prompt: str = Field(
+        description=(
+            "Text description of the video to generate. Can include "
+            "camera direction, action, style, ambiance, and dialogue "
+            "(wrap dialogue in quotes). See the Veo prompt guide."
+        )
+    )
+    filename: str | None = Field(
+        default=None, description="Optional slug for the saved file (no extension)."
+    )
+    first_frame: str | None = Field(
+        default=None,
+        description=(
+            "Optional workspace-relative path of the starting frame. "
+            "Switches the tool from text-to-video to image-to-video. "
+            "Combine with `last_frame` for first-to-last-frame "
+            "interpolation."
+        ),
+    )
+    last_frame: str | None = Field(
+        default=None,
+        description=(
+            "Optional workspace-relative path of the ending frame. "
+            "Requires `first_frame` to be set. The video interpolates "
+            "from `first_frame` to `last_frame`. Mutually exclusive "
+            "with `reference_images`."
+        ),
+    )
+    reference_images: list[str] | None = Field(
+        default=None,
+        description=(
+            "Optional workspace-relative paths (up to 3) of reference "
+            "assets whose subject/appearance should be preserved in the "
+            "video. Mutually exclusive with `last_frame`."
+        ),
+    )
+    aspect_ratio: VideoAspectRatio | None = Field(
+        default=None,
+        description=(
+            "Output aspect ratio: '16:9' (landscape) or '9:16' (portrait). "
+            "Must be '16:9' when using `extend_video`."
+        ),
+    )
+    resolution: VideoResolution | None = Field(
+        default=None,
+        description=(
+            "Output resolution: '720p' (default), '1080p', or '4k'. "
+            "1080p and 4k only support 8s duration."
+        ),
+    )
+    duration_seconds: VideoDuration | None = Field(
+        default=None,
+        description=(
+            "Clip duration in seconds: '4', '6', or '8'. Must be '8' "
+            "with 1080p, 4k, or reference_images."
+        ),
+    )
+    extend_video: str | None = Field(
+        default=None,
+        description=(
+            "Files API URI of a previously Veo-generated video to extend "
+            "(e.g. 'https://generativelanguage.googleapis.com/v1beta/files/…'). "
+            "Appends 8 s of new content guided by `prompt`. "
+            "Mutually exclusive with `first_frame`, `last_frame`, and "
+            "`reference_images`. Output is always 16:9 / 720p / 8 s."
+        ),
+    )
 
 
 _GenerateFn = Callable[
@@ -143,93 +223,17 @@ def _load_input_images(paths: list[str]) -> list[tuple[str, bytes]] | str:
 
 
 async def _generate_video(
-    prompt: Annotated[
-        str,
-        Field(
-            description=(
-                "Text description of the video to generate. Can include "
-                "camera direction, action, style, ambiance, and dialogue "
-                "(wrap dialogue in quotes). See the Veo prompt guide."
-            ),
-        ),
-    ],
-    filename: Annotated[
-        str | None,
-        Field(description="Optional slug for the saved file (no extension)."),
-    ] = None,
-    first_frame: Annotated[
-        str | None,
-        Field(
-            description=(
-                "Optional workspace-relative path of the starting frame. "
-                "Switches the tool from text-to-video to image-to-video. "
-                "Combine with `last_frame` for first-to-last-frame "
-                "interpolation."
-            ),
-        ),
-    ] = None,
-    last_frame: Annotated[
-        str | None,
-        Field(
-            description=(
-                "Optional workspace-relative path of the ending frame. "
-                "Requires `first_frame` to be set. The video interpolates "
-                "from `first_frame` to `last_frame`. Mutually exclusive "
-                "with `reference_images`."
-            ),
-        ),
-    ] = None,
-    reference_images: Annotated[
-        list[str] | None,
-        Field(
-            description=(
-                "Optional workspace-relative paths (up to 3) of reference "
-                "assets whose subject/appearance should be preserved in the "
-                "video. Mutually exclusive with `last_frame`."
-            ),
-        ),
-    ] = None,
-    aspect_ratio: Annotated[
-        VideoAspectRatio | None,
-        Field(
-            description=(
-                "Output aspect ratio: '16:9' (landscape) or '9:16' (portrait). "
-                "Must be '16:9' when using `extend_video`."
-            )
-        ),
-    ] = None,
-    resolution: Annotated[
-        VideoResolution | None,
-        Field(
-            description=(
-                "Output resolution: '720p' (default), '1080p', or '4k'. "
-                "1080p and 4k only support 8s duration."
-            ),
-        ),
-    ] = None,
-    duration_seconds: Annotated[
-        VideoDuration | None,
-        Field(
-            description=(
-                "Clip duration in seconds: '4', '6', or '8'. Must be '8' "
-                "with 1080p, 4k, or reference_images."
-            ),
-        ),
-    ] = None,
-    extend_video: Annotated[
-        str | None,
-        Field(
-            description=(
-                "Files API URI of a previously Veo-generated video to extend "
-                "(e.g. 'https://generativelanguage.googleapis.com/v1beta/files/…'). "
-                "Appends 8 s of new content guided by `prompt`. "
-                "Mutually exclusive with `first_frame`, `last_frame`, and "
-                "`reference_images`. Output is always 16:9 / 720p / 8 s."
-            ),
-        ),
-    ] = None,
+    prompt: str,
+    filename: str | None = None,
+    first_frame: str | None = None,
+    last_frame: str | None = None,
+    reference_images: list[str] | None = None,
+    aspect_ratio: VideoAspectRatio | None = None,
+    resolution: VideoResolution | None = None,
+    duration_seconds: VideoDuration | None = None,
+    extend_video: str | None = None,
 ) -> str:
-    """Generate a video clip. Returns markdown ``![alt](file.mp4)`` — include it verbatim to render inline. On failure returns ``Error: ...``."""
+    """Generate a video clip, saving it to the workspace and returning markdown."""
     tracer = get_tracer()
     t0 = time.monotonic()
     with tracer.start_as_current_span("generate_video") as span:
@@ -557,11 +561,6 @@ _ = Any
 generate_video = Tool(
     _generate_video,
     name="generate_video",
-    description=(
-        "Generate a video clip in the session workspace using Veo. "
-        "Supports text-to-video, image-to-video (first frame), first+last "
-        "frame interpolation, up to 3 reference images, and video extension "
-        "(extend an existing mp4). Returns markdown ``![alt](file.mp4)`` to "
-        "include verbatim so it renders inline. On failure returns ``Error: ...``."
-    ),
+    description=_DESCRIPTION,
+    args_schema=VideoArgs,
 )

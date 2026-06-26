@@ -2,7 +2,7 @@
 title: Tools & Execution
 description: Tool decorator, JSON schema, argument validation, and tool execution flow.
 status: stable
-updated: 2026-06-16
+updated: 2026-06-26
 ---
 
 # Tools
@@ -15,15 +15,61 @@ Tools are plain Python functions the LLM can invoke. The `@tool` decorator wraps
 
 ## `@tool` decorator
 
+A tool's arguments can be described in **two ways**:
+
+### 1. `args_schema` — explicit Pydantic model (preferred)
+
+Pass a Pydantic `BaseModel` to the decorator. The model owns validation
+(constraints, custom `@field_validator`s, cross-field checks) and the JSON
+Schema. The `name` and `description` live on the decorator; the docstring stays
+a short developer-facing summary. This is how all built-in tools are defined.
+
 ```python
-from typing import Annotated, Literal
-from pydantic import Field
+from typing import Literal
+from pydantic import BaseModel, Field, field_validator
 from app.agent.tools import tool
 
+class WebSearchArgs(BaseModel):
+    query: str = Field(description="The search query string.")
+    max_results: int = Field(default=5, ge=1, le=20, description="Max results (1–20).")
+    safesearch: Literal["on", "moderate", "off"] = Field(default="moderate")
+
+    @field_validator("query")
+    @classmethod
+    def _not_blank(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("query must not be blank")
+        return v
+
+@tool(
+    name="web_search",
+    description="Search the web. Returns [{title, href, body}].",
+    args_schema=WebSearchArgs,
+)
+async def web_search(query: str, max_results: int = 5, safesearch: str = "moderate") -> str:
+    ...
+```
+
+The function receives the validated fields as keyword arguments. Alternatively,
+declare a single parameter typed as the schema to receive the validated model
+instance directly:
+
+```python
+@tool(args_schema=WebSearchArgs)
+async def web_search(args: WebSearchArgs) -> str:
+    ...  # args.query, args.max_results — already validated
+```
+
+### 2. Inline `Annotated[T, Field(...)]`
+
+For simple tools, annotate parameters directly; Pydantic builds the validation
+model and schema from the signature. The docstring is used as the description.
+
+```python
 @tool
 async def web_search(
     query: Annotated[str, Field(description="The search query string.")],
-    max_results: Annotated[int, Field(description="Max number of results to return.")] = 5,
+    max_results: Annotated[int, Field(description="Max number of results.")] = 5,
 ) -> str:
     """Search DuckDuckGo for current information, news, and facts."""
     ...
@@ -34,16 +80,23 @@ def greet(name: Annotated[str, Field(description="Person's name.")]) -> str:
     return f"Hello, {name}!"
 ```
 
-See `app/agent/tools/registry.py:tool` for full decorator signature and options.
+See `app/agent/tools/registry.py:tool` for the full decorator signature and options.
 
 ### Rules for well-defined tools
 
-1. **Type-hint every parameter** — types drive the JSON Schema sent to the LLM.
-2. **`Annotated[T, Field(description="...")]`** — description tells the LLM what each arg means.
-3. **Docstring = use case** — describe *when to call it*, not how it's implemented. No `Args:` / `Returns:` sections.
-4. **`async def`** for I/O-bound work. Use `asyncio.to_thread()` for blocking calls.
-5. **`Literal[...]`** for enumerated string parameters.
-6. **Raise domain errors** — `ToolExecutionError` / `ToolArgumentError` / `SandboxPathError`, not bare `Exception`.
+1. **Prefer `args_schema`** — centralizes validation, enables constraints
+   (`ge`/`le`/`pattern`) and custom validators, and keeps the function
+   signature plain. Reach for inline `Annotated` only for trivial tools.
+2. **Type-hint every parameter** — types drive the JSON Schema sent to the LLM.
+3. **`Field(description="...")`** — on the model field (or in `Annotated`) so
+   the LLM knows what each arg means.
+4. **`name` / `description` on the decorator** — keep docstrings as concise
+   developer summaries (no `Args:` / `Returns:` sections); the LLM-facing
+   description belongs in `description=`.
+5. **`async def`** for I/O-bound work. Use `asyncio.to_thread()` for blocking calls.
+6. **`Literal[...]`** for enumerated string parameters.
+7. **Raise domain errors** — `ToolExecutionError` / `ToolArgumentError` /
+   `SandboxPathError`, not bare `Exception`.
 
 ---
 
@@ -54,12 +107,36 @@ See `app/agent/tools/registry.py:tool` for full decorator signature and options.
 | Attribute / method | Type | Notes |
 |--------------------|------|-------|
 | `.name` | `str` | Function name, or override |
-| `.description` | `str` | From docstring or custom override |
+| `.description` | `str` | From `description=` override, docstring, or `args_schema` |
 | `.definition` | `dict` | OpenAI-compatible tool definition |
+| `.args_schema` | `type[BaseModel] \| None` | Explicit validation model, if supplied |
 | `tool(...)` | callable | Calls the original function directly |
 | `await tool.arun(_injected={}, **kwargs)` | coroutine | Validates args, calls function, handles sync/async |
 
-`arun()` validates LLM-provided kwargs with Pydantic before calling the function. On `ValidationError` it raises `ToolArgumentError`.
+`arun()` validates LLM-provided kwargs against the schema (the `args_schema`
+model, or the signature-derived one) before calling the function. Unknown extra
+kwargs are dropped (pydantic `extra="ignore"`), so a stray hallucinated key
+doesn't abort an otherwise-valid call.
+
+### Input-validation failures
+
+When validation fails, `arun()` raises **`ToolArgumentError`** (never a raw
+pydantic `ValidationError`), and the function body **never runs** — failures are
+fail-fast. The error message names the tool and the offending field so the LLM
+can self-correct, e.g. `Invalid arguments for tool 'web_search': ...`.
+
+In the agent loop the **tool executor** (`app/agent/agent_loop/tool_executor.py`)
+catches this and turns it into a short `"Error: ..."` *string* — it is **not**
+re-raised. That string becomes the `ToolMessage` content the model reads on its
+next turn, letting it retry with corrected arguments. The same handling applies
+to malformed-JSON arguments (`ToolArgumentError`), unknown tools
+(`ToolNotFoundError`), and runtime failures inside the tool body
+(`ToolExecutionError`) — every failure mode is stringified rather than crashing
+the turn.
+
+Coverage: `tests/agent/tools/test_registry.py` (the `arun` contract) and
+`tests/agent/agent_loop/test_tool_executor.py` (the end-to-end executor
+handling, including corrected-retry-after-failure).
 
 ### JSON Schema `$ref` resolution
 
@@ -122,12 +199,27 @@ async def get_session_info(
 
 The agent loop calls `tool.arun(_injected={"_state": state}, ...)` — `_state` is injected automatically and never appears in the LLM's tool schema. Use `Any` for the type hint to avoid `get_type_hints()` resolution issues at module load; the runtime value is always `AgentState`.
 
-**Real-world example** — the `read` tool uses injection to check vision capability:
+`InjectedArg` params always stay on the **function signature** (never the
+`args_schema` model). The registry resolves them from the signature and excludes
+them from the schema regardless of how the LLM-facing args are defined — so a
+tool can combine an explicit `args_schema` with injected `_state` / `_mode` /
+`_workspace` / `_tool_output`.
+
+**Real-world example** — the `read` tool uses an `args_schema` for its public
+args and injection to check vision capability:
 
 ```python
+class ReadArgs(BaseModel):
+    path: str = Field(description="Relative path to the file inside the workspace.")
+    offset: int = Field(default=1, description="Line number to start from, 1-indexed.")
+    limit: int | None = Field(default=None, description="Max lines to return.")
+
+@tool(name="read", description="Read a file from the workspace.", args_schema=ReadArgs)
 async def _read_file(
-    path: Annotated[str, Field(...)],
-    _state: Annotated[Any, InjectedArg()] = None,
+    path: str,
+    offset: int = 1,
+    limit: int | None = None,
+    _state: Annotated[Any, InjectedArg()] = None,  # injected, not in schema
 ) -> str | ToolResult:
     vision = _state.capabilities.input.vision if _state else False
     if category == "image" and not vision:

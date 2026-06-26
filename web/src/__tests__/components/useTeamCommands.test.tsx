@@ -22,6 +22,7 @@
 import { describe, it, expect, afterEach, mock } from "bun:test"
 import { renderHook, cleanup } from "@testing-library/react"
 import { useTeamCommands } from "@/components/TeamChatView/useTeamCommands"
+import { useSettingsStore } from "@/stores/useSettingsStore"
 import type { Command } from "@/components/CommandPalette"
 import type { ViewMode } from "@/components/TeamChatView/types"
 
@@ -224,14 +225,12 @@ describe("useTeamCommands — navigation", () => {
     expect(navigate).toHaveBeenCalledWith({ to: "/" })
   })
 
-  it("go-settings navigates to /settings/agents", () => {
-    const navigate = mock(() => Promise.resolve())
-    const { result } = renderHook(() =>
-      useTeamCommands(
-        makeArgs({ navigate: navigate as unknown as Parameters<typeof useTeamCommands>[0]["navigate"] }),
-      ),
-    )
+  it("go-settings opens the Settings modal at the agents section", () => {
+    const openSettings = mock(() => {})
+    useSettingsStore.setState({ openSettings })
+
+    const { result } = renderHook(() => useTeamCommands(makeArgs()))
     byId(result.current, "go-settings").action()
-    expect(navigate).toHaveBeenCalledWith({ to: "/settings/agents" })
+    expect(openSettings).toHaveBeenCalledWith("agents")
   })
 })

@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { useNavigate } from '@tanstack/react-router'
 
 import { useCreateSkillMutation } from '@/queries'
 import { useToastStore } from '@/stores/useToastStore'
@@ -20,12 +19,16 @@ Replace this with the instructions an agent should follow when applying
 this skill. Keep it focused on a single concern.
 `
 
-export function NewSkillPage() {
+interface NewSkillPageProps {
+  onBack: () => void
+  onCreated: (name: string) => void
+}
+
+export function NewSkillPage({ onBack, onCreated }: NewSkillPageProps) {
   const [content, setContent] = useState(TEMPLATE)
   const [name, setName] = useState('new-skill')
   const createMut = useCreateSkillMutation()
   const push = useToastStore((s) => s.push)
-  const navigate = useNavigate()
   const [saveError, setSaveError] = useState<string | null>(null)
 
   const handleContentChange = (raw: string) => {
@@ -40,18 +43,11 @@ export function NewSkillPage() {
 
   const handleCreate = async () => {
     setSaveError(null)
-    if (invalid) {
-      setSaveError(firstDraftError ?? 'Form has validation errors.')
-      return
-    }
+    if (invalid) { setSaveError(firstDraftError ?? 'Form has validation errors.'); return }
     try {
       await createMut.mutateAsync({ name, content })
-      push({
-        tone: 'success',
-        title: `Created skill "${name}"`,
-        description: 'Active on next turn.',
-      })
-      navigate({ to: '/settings/skills/$name', params: { name } })
+      push({ tone: 'success', title: `Created skill "${name}"`, description: 'Active on next turn.' })
+      onCreated(name)
     } catch (err) {
       const msg = err instanceof ApiValidationError ? err.message : String(err)
       setSaveError(msg)
@@ -70,6 +66,7 @@ export function NewSkillPage() {
         error={saveError}
         validationHint={firstDraftError}
         onSave={handleCreate}
+        onBack={onBack}
       />
 
       <div className="min-h-0 flex-1 overflow-y-auto">

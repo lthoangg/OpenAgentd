@@ -11,7 +11,6 @@ import { useToastStore } from '@/stores/useToastStore'
 mock.module('@tanstack/react-router', () => ({
   Link: ({ children }: { children: ReactNode }) => children,
   useNavigate: () => mock(() => undefined),
-  useParams: () => ({ name: 'filesystem' }),
 }))
 
 import { McpServerDetailPage } from '@/routes/settings.mcp.$name'
@@ -49,7 +48,7 @@ function renderPage() {
 
   return render(
     <QueryClientProvider client={queryClient}>
-      <McpServerDetailPage />
+      <McpServerDetailPage name="filesystem" onBack={() => {}} />
       <ToastStack />
     </QueryClientProvider>,
   )

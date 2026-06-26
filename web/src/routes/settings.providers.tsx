@@ -1,15 +1,12 @@
 import { useEffect } from 'react'
-import { ArrowLeft, KeyRound, Loader2 } from 'lucide-react'
-import { Link } from '@tanstack/react-router'
+import { KeyRound, Loader2 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 
 import { listProviderModels, type ProvidersListBody } from '@/api/client'
 import { queryKeys, useProvidersQuery } from '@/queries'
-import { useIsMobile } from '@/hooks/use-mobile'
 import { ProviderCard } from './settings.providers/ProviderCard'
 
 export function ProvidersSettingsPage() {
-  const isMobile = useIsMobile()
   const providersQ = useProvidersQuery()
   const queryClient = useQueryClient()
   // Render in catalog order so the list is stable regardless of which
@@ -42,15 +39,6 @@ export function ProvidersSettingsPage() {
   return (
     <>
       <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-3 border-b border-(--color-border) bg-(--bg-page) px-4">
-        {isMobile && (
-          <Link
-            to="/settings"
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
-            aria-label="Back to settings"
-          >
-            <ArrowLeft size={14} />
-          </Link>
-        )}
         <KeyRound size={15} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
         <h1 className="flex-1 truncate text-sm font-semibold text-(--color-text)">Providers</h1>
         <span className="text-xs text-(--color-text-muted)">{connectedCount} connected</span>

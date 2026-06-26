@@ -3,15 +3,13 @@
  * cannot access (system-level files like ``.env``, ``db/``, etc).
  */
 import { useMemo, useState } from 'react'
-import { AlertCircle, ArrowLeft, ChevronDown, Plus, Save, Trash2 } from 'lucide-react'
-import { Link } from '@tanstack/react-router'
+import { AlertCircle, ChevronDown, Plus, Save, Trash2 } from 'lucide-react'
 
 import {
   useSandboxSettingsQuery,
   useUpdateSandboxSettingsMutation,
 } from '@/queries'
 import { useToastStore } from '@/stores/useToastStore'
-import { useIsMobile } from '@/hooks/use-mobile'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -23,7 +21,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { cn } from '@/lib/utils'
 
 export function SandboxSettingsPage() {
-  const isMobile = useIsMobile()
   const { data, isLoading, error } = useSandboxSettingsQuery()
   const updateMut = useUpdateSandboxSettingsMutation()
   const push = useToastStore((s) => s.push)
@@ -82,15 +79,6 @@ export function SandboxSettingsPage() {
   return (
     <>
       <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-3 border-b border-(--color-border) bg-(--bg-page) px-4">
-        {isMobile && (
-          <Link
-            to="/settings"
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
-            aria-label="Back to settings"
-          >
-            <ArrowLeft size={14} />
-          </Link>
-        )}
         <h1 className="flex-1 truncate text-sm font-semibold text-(--color-text)">Sandbox</h1>
         {dirty && (
           <span className="text-xs text-(--color-text-muted)" aria-live="polite">

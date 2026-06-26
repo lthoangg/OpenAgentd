@@ -2,17 +2,15 @@
  * DetailEmptyState — right-pane placeholder shown when a category is
  * active but no specific item is selected.
  */
-import { Link } from '@tanstack/react-router'
 import { Plus, type LucideIcon } from 'lucide-react'
-
 import { Button } from '@/components/ui/button'
 
 interface DetailEmptyStateProps {
   icon: LucideIcon
   title: string
   body: string
-  ctaTo: '/settings/agents/new' | '/settings/skills/new' | '/settings/mcp/new'
   ctaLabel: string
+  onCta: () => void
   /** Optional 1–2 short tips shown under the body (each on its own row). */
   tips?: readonly string[]
 }
@@ -21,8 +19,8 @@ export function DetailEmptyState({
   icon: Icon,
   title,
   body,
-  ctaTo,
   ctaLabel,
+  onCta,
   tips,
 }: DetailEmptyStateProps) {
   return (
@@ -35,7 +33,7 @@ export function DetailEmptyState({
           <h2 className="text-base font-semibold text-(--color-text)">{title}</h2>
           <p className="text-sm leading-relaxed text-(--color-text-muted)">{body}</p>
         </div>
-        <Button size="sm" render={<Link to={ctaTo} />}>
+        <Button size="sm" onClick={onCta}>
           <Plus size={12} aria-hidden="true" />
           {ctaLabel}
         </Button>

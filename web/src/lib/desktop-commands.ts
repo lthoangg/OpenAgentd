@@ -7,6 +7,7 @@
  */
 import { useEffect } from 'react'
 import { useUIStore } from '@/stores/useUIStore'
+import { useSettingsStore } from '@/stores/useSettingsStore'
 
 function dispatchCtrlKey(key: string): void {
   window.dispatchEvent(
@@ -29,6 +30,9 @@ function runDesktopCommand(command: unknown): void {
       break
     case 'agent_capabilities':
       useUIStore.getState().toggleAgentCapabilities()
+      break
+    case 'settings':
+      useSettingsStore.getState().openSettings()
       break
   }
 }

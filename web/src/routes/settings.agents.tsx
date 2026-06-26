@@ -1,4 +1,3 @@
-import { Link, useParams } from '@tanstack/react-router'
 import { Crown, Plus, Wrench } from 'lucide-react'
 import { useState } from 'react'
 
@@ -14,9 +13,14 @@ import {
 import { SettingsListView, type ListViewRow } from '@/components/settings/SettingsListView'
 import { useAgentFilesQuery } from '@/queries'
 
-export function AgentsListPage() {
+interface AgentsListPageProps {
+  selectedName?: string | null
+  onSelect: (name: string) => void
+  onNew: (mode?: 'normal' | 'coding') => void
+}
+
+export function AgentsListPage({ selectedName, onSelect, onNew }: AgentsListPageProps) {
   const { data, isLoading, isError } = useAgentFilesQuery()
-  const { name: selected } = useParams({ strict: false }) as { name?: string }
   const [modeDialogOpen, setModeDialogOpen] = useState(false)
 
   const rows: ListViewRow[] = (() => {
@@ -25,24 +29,19 @@ export function AgentsListPage() {
       if (a.role === b.role) return a.name.localeCompare(b.name)
       return a.role === 'lead' ? -1 : 1
     }
-    const normal = agents
-      .filter((a) => !a.name.startsWith('coding/'))
-      .sort(byLeadFirst)
-    const coding = agents
-      .filter((a) => a.name.startsWith('coding/'))
-      .sort(byLeadFirst)
+    const normal = agents.filter((a) => !a.name.startsWith('coding/')).sort(byLeadFirst)
+    const coding = agents.filter((a) => a.name.startsWith('coding/')).sort(byLeadFirst)
 
     const mapAgent = (a: (typeof agents)[number]): ListViewRow => {
       const isLead = a.role === 'lead'
       return {
         key: a.name,
-        to: '/settings/agents/$name',
-        params: { name: a.name },
-        active: selected === a.name,
+        active: selectedName === a.name,
         title: a.name.replace(/^coding\//, ''),
         badge: isLead ? 'lead' : undefined,
         description: a.description || a.model || 'No description',
         invalidReason: !a.valid ? (a.error ?? 'Invalid configuration') : undefined,
+        onClick: () => onSelect(a.name),
         trailing: (
           <span
             className="flex h-7 w-7 items-center justify-center rounded-md bg-(--bg-key) text-(--color-text-muted) ring-1 ring-(--color-border)"
@@ -66,45 +65,45 @@ export function AgentsListPage() {
 
   return (
     <>
-    <SettingsListView
-      title="Agents"
-      description="Markdown files with YAML frontmatter. Normal and Coding agents are grouped below; built-in OpenAgentd profiles use additive local overrides."
-      newTo="/settings/agents/new"
-      newLabel="New agent"
-      newAction={
-        <Button size="sm" onClick={() => setModeDialogOpen(true)}>
-          <Plus size={13} aria-hidden="true" />
-          New agent
-        </Button>
-      }
-      filterPlaceholder="Filter agents…"
-      rows={rows}
-      isLoading={isLoading}
-      isError={isError}
-      emptyTitle="No agents yet"
-      emptyBody="Define a team member with a model, tools, and a system prompt."
-    />
-    <Dialog open={modeDialogOpen} onOpenChange={setModeDialogOpen}>
-      <DialogContent showCloseButton={false}>
-        <DialogHeader>
-          <DialogTitle>Create agent</DialogTitle>
-          <DialogDescription>Choose which team directory receives the new agent file.</DialogDescription>
-        </DialogHeader>
-        <div className="grid gap-2 sm:grid-cols-2">
-          <Button render={<Link to="/settings/agents/new" search={{ mode: 'normal' }} />}>
-            Normal
+      <SettingsListView
+        title="Agents"
+        description="Markdown files with YAML frontmatter. Normal and Coding agents are grouped below; built-in OpenAgentd profiles use additive local overrides."
+        newLabel="New agent"
+        onNew={() => setModeDialogOpen(true)}
+        newAction={
+          <Button size="sm" onClick={() => setModeDialogOpen(true)}>
+            <Plus size={13} aria-hidden="true" />
+            New agent
           </Button>
-          <Button render={<Link to="/settings/agents/new" search={{ mode: 'coding' }} />}>
-            Coding
-          </Button>
-        </div>
-        <DialogFooter className="p-3">
-          <Button type="button" variant="outline" onClick={() => setModeDialogOpen(false)}>
-            Cancel
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        }
+        filterPlaceholder="Filter agents…"
+        rows={rows}
+        isLoading={isLoading}
+        isError={isError}
+        emptyTitle="No agents yet"
+        emptyBody="Define a team member with a model, tools, and a system prompt."
+      />
+      <Dialog open={modeDialogOpen} onOpenChange={setModeDialogOpen}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Create agent</DialogTitle>
+            <DialogDescription>Choose which team directory receives the new agent file.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Button onClick={() => { setModeDialogOpen(false); onNew('normal') }}>
+              Normal
+            </Button>
+            <Button onClick={() => { setModeDialogOpen(false); onNew('coding') }}>
+              Coding
+            </Button>
+          </div>
+          <DialogFooter className="p-3">
+            <Button type="button" variant="outline" onClick={() => setModeDialogOpen(false)}>
+              Cancel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

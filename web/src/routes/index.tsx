@@ -4,7 +4,7 @@ import { useNavigate } from '@tanstack/react-router'
 import OpenAgentdAppIcon from '@/assets/brand/openagentd-app-icon.png'
 
 import { AppBackendDialog } from '@/components/AppBackendDialog'
-import { Activity, AlertCircle, Code2, Gauge, Settings, Wifi } from 'lucide-react'
+import { Activity, AlertCircle, Code2, Gauge, Wifi } from 'lucide-react'
 import { useHealthQuery } from '@/queries/useHealthQuery'
 import { useTeamStatusQuery } from '@/queries/useTeamStatusQuery'
 import { usePlatform } from '@/hooks/use-platform'
@@ -106,15 +106,6 @@ export function HomePage() {
              loading={loading && !error}
              compact={isTauriMobile}
              onClick={() => navigate({ to: '/telemetry' })}
-           />
-           <ModeCard
-             icon={Settings}
-             title="Settings"
-             description="Agents, skills, MCP servers, sandbox"
-             disabled={!backendOk}
-             loading={loading && !error}
-             compact={isTauriMobile}
-             onClick={() => navigate({ to: '/settings' })}
            />
         </div>
 

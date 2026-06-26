@@ -6,7 +6,9 @@ import { Link, Outlet, useLocation, useNavigate } from '@tanstack/react-router'
 import { queryClient } from '@/lib/query-client'
 import { Home } from 'lucide-react'
 import { ToastStack } from '@/components/ToastStack'
+import { SettingsModal } from '@/components/SettingsModal'
 import { SkipLink } from '@/components/motion'
+import { useSettingsStore } from '@/stores/useSettingsStore'
 import { MacTitleBar } from '@/components/MacTitleBar'
 import { useHistorySwipeNavigation } from '@/hooks/use-history-swipe-navigation'
 import { useMobileViewportGuards } from '@/hooks/use-mobile-viewport'
@@ -17,6 +19,22 @@ export function Root() {
   useMobileViewportGuards()
   useDesktopCommands()
   useHistorySwipeNavigation()
+
+  // Global Ctrl+. shortcut — opens/toggles the Settings modal from any page.
+  const openSettings = useSettingsStore((s) => s.openSettings)
+  const closeSettings = useSettingsStore((s) => s.closeSettings)
+  const settingsOpen = useSettingsStore((s) => s.open)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.ctrlKey && !e.metaKey && e.key === '.') {
+        e.preventDefault()
+        if (settingsOpen) closeSettings()
+        else openSettings()
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [settingsOpen, openSettings, closeSettings])
   // Theme application is handled by `initTheme()` in main.tsx and the
   // inline pre-paint script in index.html. Do not force `.dark` here —
   // it would override the user's preference.
@@ -54,6 +72,7 @@ export function Root() {
       <Suspense fallback={<RouteLoadingFallback />}>
         <Outlet />
       </Suspense>
+      <SettingsModal />
       <ToastStack />
       {/* <ReactQueryDevtools initialIsOpen={false} /> */}
     </QueryClientProvider>

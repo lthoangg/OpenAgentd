@@ -48,6 +48,7 @@ import { ThemeToggle } from './ThemeToggle'
 import { HealthDot } from './HealthDot'
 import { Button } from '@/components/ui/button'
 import { useToastStore } from '@/stores/useToastStore'
+import { useSettingsStore } from '@/stores/useSettingsStore'
 import {
   Dialog,
   DialogContent,
@@ -141,6 +142,7 @@ export function CodingSidebar({
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const pushToast = useToastStore((s) => s.push)
+  const openSettings = useSettingsStore((s) => s.openSettings)
   const sessions = useTeamSessionsQuery('coding')
   const deleteSession = useDeleteTeamSessionMutation()
   const updateSessionTitle = useUpdateTeamSessionTitleMutation()
@@ -817,10 +819,10 @@ export function CodingSidebar({
         <div className="flex items-center gap-1">
           <button
             type="button"
-            onClick={() => { navigate({ to: '/settings' }); onMobileClose?.() }}
+            onClick={() => { openSettings(); onMobileClose?.() }}
             className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
             aria-label="Settings"
-            title="Settings"
+            title="Settings (Ctrl+.)"
           >
             <Settings size={14} aria-hidden="true" />
           </button>

@@ -1,28 +1,8 @@
 /**
- * SettingsListView — single-column list shown inside the settings detail
- * pane (right of the sidebar). Renders cards stacked vertically with a
- * page title, description, filter input, and a primary "+ New X" CTA.
- *
- *   ┌─────────────────────────────────────────────┐
- *   │ Agents                          [+ New …]   │
- *   │ short description sentence                  │
- *   │                                             │
- *   │ [tabs slot — optional]                      │
- *   │ ┌─────────────────────────────────┐         │
- *   │ │ 🔎  Filter …            6 items │         │
- *   │ └─────────────────────────────────┘         │
- *   │ ┌─────────────────────────────────┐         │
- *   │ │ ▌ name        description  ⋯   │         │  ← active card
- *   │ └─────────────────────────────────┘         │
- *   │ ┌─────────────────────────────────┐         │
- *   │ │   name        description  ⋯   │         │
- *   │ └─────────────────────────────────┘         │
- *   └─────────────────────────────────────────────┘
- *
- * The view is purely presentational — callers are responsible for
- * producing the `rows` array, including any per-card actions.
+ * SettingsListView — single-column list rendered inside the settings modal.
+ * Navigation is entirely callback-driven; no router Links are used so this
+ * component works correctly inside the overlay without any URL changes.
  */
-import { Link } from '@tanstack/react-router'
 import { AlertCircle, Plus, Search } from 'lucide-react'
 import { useId, useMemo, useState, type ReactNode } from 'react'
 
@@ -36,11 +16,7 @@ import { cn } from '@/lib/utils'
 export interface ListViewRow {
   /** Stable key per row. */
   key: string
-  /** Route target rendered as a `<Link>`. Omit for non-clickable group rows. */
-  to?: string
-  /** Path params for parameterised routes (e.g. `{ name }`). */
-  params?: Record<string, string>
-  /** Whether the row is selected in the URL (controls highlight). */
+  /** Whether the row is selected (controls highlight). */
   active?: boolean
   /** Render as a non-clickable group header. */
   kind?: 'item' | 'group'
@@ -56,19 +32,17 @@ export interface ListViewRow {
   invalidReason?: string
   /** Optional trailing content (e.g. status dot). */
   trailing?: ReactNode
+  /** Called when the row is clicked. */
+  onClick?: () => void
 }
-
-type NewRoute =
-  | '/settings/agents/new'
-  | '/settings/skills/new'
-  | '/settings/mcp/new'
 
 export interface SettingsListViewProps {
   title: string
   description: string
-  /** Route for the primary "+ New" CTA. */
-  newTo: NewRoute
   newLabel: string
+  /** Called when the "+ New" button is clicked. */
+  onNew: () => void
+  /** Optional custom element to replace the default "+ New" button. */
   newAction?: ReactNode
   /** Placeholder for the filter input. */
   filterPlaceholder: string
@@ -87,8 +61,8 @@ export interface SettingsListViewProps {
 export function SettingsListView({
   title,
   description,
-  newTo,
   newLabel,
+  onNew,
   newAction,
   filterPlaceholder,
   tabs,
@@ -113,8 +87,7 @@ export function SettingsListView({
   }, [rows, query])
 
   const total = rows.length
-  const countLabel =
-    total === 1 ? '1 item' : `${total} items`
+  const countLabel = total === 1 ? '1 item' : `${total} items`
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
@@ -130,7 +103,7 @@ export function SettingsListView({
             </p>
           </div>
           {newAction ?? (
-            <Button size="sm" render={<Link to={newTo} />}>
+            <Button size="sm" onClick={onNew}>
               <Plus size={13} aria-hidden="true" />
               {newLabel}
             </Button>
@@ -187,7 +160,7 @@ export function SettingsListView({
               <p className="max-w-md text-xs leading-relaxed text-(--color-text-muted)">
                 {emptyBody}
               </p>
-              <Button size="sm" render={<Link to={newTo} />}>
+              <Button size="sm" onClick={onNew}>
                 <Plus size={12} aria-hidden="true" />
                 {newLabel}
               </Button>
@@ -202,7 +175,7 @@ export function SettingsListView({
             <ul className="space-y-2">
               {filtered.map((row) => (
                 <li key={row.key}>
-                  <ListCardLink row={row} />
+                  <ListCard row={row} />
                 </li>
               ))}
             </ul>
@@ -215,7 +188,7 @@ export function SettingsListView({
 
 // ─── Card ──────────────────────────────────────────────────────────────────
 
-function ListCardLink({ row }: { row: ListViewRow }) {
+function ListCard({ row }: { row: ListViewRow }) {
   if (row.kind === 'group') {
     return (
       <div className="px-1 pt-3 pb-1 text-xs font-semibold uppercase tracking-wide text-(--color-text-muted)">
@@ -225,12 +198,12 @@ function ListCardLink({ row }: { row: ListViewRow }) {
   }
 
   return (
-    <Link
-      to={row.to}
-      params={row.params as never}
+    <button
+      type="button"
+      onClick={row.onClick}
       aria-current={row.active ? 'page' : undefined}
       className={cn(
-        'group flex min-h-11 items-start gap-3 rounded-lg border bg-(--bg-card) px-4 py-3 transition-colors',
+        'group flex min-h-11 w-full items-start gap-3 rounded-lg border bg-(--bg-card) px-4 py-3 text-left transition-colors',
         'hover:border-(--color-border-strong)',
         'focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-(--focus-ring)/40',
         row.active
@@ -273,6 +246,6 @@ function ListCardLink({ row }: { row: ListViewRow }) {
         )}
       </div>
       {row.trailing && <div className="shrink-0">{row.trailing}</div>}
-    </Link>
+    </button>
   )
 }

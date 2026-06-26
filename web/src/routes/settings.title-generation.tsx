@@ -1,7 +1,6 @@
 /** /settings/title-generation — edit automatic chat title settings. */
 import { useMemo, useState } from 'react'
-import { ArrowLeft, Save, Type } from 'lucide-react'
-import { Link } from '@tanstack/react-router'
+import { Save, Type } from 'lucide-react'
 
 import {
   useRegistryQuery,
@@ -9,7 +8,6 @@ import {
   useUpdateTitleGenerationSettingsMutation,
 } from '@/queries'
 import { useToastStore } from '@/stores/useToastStore'
-import { useIsMobile } from '@/hooks/use-mobile'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
@@ -32,7 +30,6 @@ function normalized(form: TitleGenerationSettings): TitleGenerationSettings {
 }
 
 export function TitleGenerationSettingsPage() {
-  const isMobile = useIsMobile()
   const { data, isLoading, error } = useTitleGenerationSettingsQuery()
   const updateMut = useUpdateTitleGenerationSettingsMutation()
   const registry = useRegistryQuery()
@@ -83,15 +80,6 @@ export function TitleGenerationSettingsPage() {
   return (
     <>
       <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-3 border-b border-(--color-border) bg-(--bg-page) px-4">
-        {isMobile && (
-          <Link
-            to="/settings"
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
-            aria-label="Back to settings"
-          >
-            <ArrowLeft size={14} />
-          </Link>
-        )}
         <Type size={15} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
         <h1 className="flex-1 truncate text-sm font-semibold text-(--color-text)">Title generation</h1>
         {dirty && <span className="text-xs text-(--color-text-muted)">Unsaved</span>}

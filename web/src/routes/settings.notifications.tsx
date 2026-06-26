@@ -1,18 +1,14 @@
 import { useState } from 'react'
-import { ArrowLeft, Bell, BellRing } from 'lucide-react'
-import { Link } from '@tanstack/react-router'
-
+import { Bell, BellRing } from 'lucide-react'
 import {
   areDesktopNotificationsEnabled,
   sendDesktopNotification,
   setDesktopNotificationsEnabled,
 } from '@/lib/desktop-notifications'
-import { useIsMobile } from '@/hooks/use-mobile'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 
 export function NotificationSettingsPage() {
-  const isMobile = useIsMobile()
   const [enabled, setEnabled] = useState(() => areDesktopNotificationsEnabled())
   const [testing, setTesting] = useState(false)
   const [testMessage, setTestMessage] = useState<string | null>(null)
@@ -43,15 +39,6 @@ export function NotificationSettingsPage() {
   return (
     <>
       <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-3 border-b border-(--color-border) bg-(--bg-page) px-4">
-        {isMobile && (
-          <Link
-            to="/settings"
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
-            aria-label="Back to settings"
-          >
-            <ArrowLeft size={14} />
-          </Link>
-        )}
         <Bell size={15} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
         <h1 className="flex-1 truncate text-sm font-semibold text-(--color-text)">Notifications</h1>
       </header>

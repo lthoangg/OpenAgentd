@@ -21,6 +21,7 @@ import { formatRelativeDate } from '@/utils/format'
 import { ThemeToggle } from './ThemeToggle'
 import { Skeleton } from './ui/skeleton'
 import { HealthDot } from './HealthDot'
+import { useSettingsStore } from '@/stores/useSettingsStore'
 import { SidebarItem } from '@/components/ui/sidebar-item'
 import {
   Dialog,
@@ -105,6 +106,7 @@ export function Sidebar({
   const mobileLongPressActions = isMobile && isTauriMobile && mobileOpen
   const prefersReducedMotion = useReducedMotion()
   const navigate = useNavigate()
+  const openSettings = useSettingsStore((s) => s.openSettings)
   const sessions = useTeamSessionsQuery('normal')
   const deleteSession = useDeleteTeamSessionMutation()
   const updateSessionTitle = useUpdateTeamSessionTitleMutation()
@@ -520,10 +522,10 @@ export function Sidebar({
                   <div className="flex items-center gap-1">
                     <button
                       type="button"
-                      onClick={() => { navigate({ to: '/settings' }); onMobileClose?.() }}
+                      onClick={() => { openSettings(); onMobileClose?.() }}
                       className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
                       aria-label="Settings"
-                      title="Settings"
+                      title="Settings (Ctrl+.)"
                     >
                       <Settings size={14} aria-hidden="true" />
                     </button>

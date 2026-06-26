@@ -9,7 +9,6 @@
  * The Form/Raw toggle is optional; the skill editor (which has only a raw
  * mode) hides it by passing ``mode={undefined}``.
  */
-import { Link } from '@tanstack/react-router'
 import {
   AlertCircle,
   ArrowLeft,
@@ -50,6 +49,8 @@ interface EditorSubHeaderProps {
   saveDisabledReason?: string | null
   /** Save handler; the button manages its own disabled state. */
   onSave: () => void
+  /** Called when the back arrow is clicked. */
+  onBack: () => void
 }
 
 export function EditorSubHeader({
@@ -65,14 +66,9 @@ export function EditorSubHeader({
   mode,
   onModeChange,
   onSave,
+  onBack,
 }: EditorSubHeaderProps) {
   const KindIcon = kind === 'agent' ? Wrench : kind === 'skill' ? Sparkles : Plug
-  const backTo =
-    kind === 'agent'
-      ? '/settings/agents'
-      : kind === 'skill'
-        ? '/settings/skills'
-        : '/settings/mcp'
   const showToggle = mode != null && onModeChange != null
 
   // Save is disabled when there is nothing to save, when the draft is
@@ -96,7 +92,8 @@ export function EditorSubHeader({
               size="icon-sm"
               variant="ghost"
               className="h-11 w-11 md:h-7 md:w-7"
-              render={<Link to={backTo} aria-label="Back to list" />}
+              onClick={onBack}
+              aria-label="Back to list"
             >
               <ArrowLeft size={14} />
             </Button>

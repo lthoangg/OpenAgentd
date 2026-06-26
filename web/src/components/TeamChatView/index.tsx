@@ -37,6 +37,7 @@ import { useTeamStore } from '@/stores/useTeamStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { prependSession, prependWorkspaceSession } from '@/stores/cache-invalidation-bridge'
 import { useUIStore } from '@/stores/useUIStore'
+import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { useTeamAgentsQuery } from '@/queries/useAgentsQuery'
 import { useFileRefsQuery } from '@/queries/useFileRefsQuery'
@@ -93,6 +94,7 @@ async function attachmentToFile(att: MessageAttachment): Promise<File | null> {
 
 export function TeamChatView({ sessionId, mode = 'normal', workspace = null, codingSessionLoading = false }: TeamChatViewProps) {
   const navigate = useNavigate()
+  const openSettings = useSettingsStore((s) => s.openSettings)
   const queryClient = useQueryClient()
   const isMobile = useIsMobile()
   const { isMacOverlay, os } = usePlatform()
@@ -854,7 +856,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             <div className="flex shrink-0 items-center gap-2 self-start sm:self-center">
               <Button
                 size="sm"
-                onClick={() => navigate({ to: '/settings/providers' })}
+                onClick={() => openSettings('providers')}
               >
                 Open Providers
               </Button>
@@ -878,7 +880,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
                 <p className="mt-0.5 text-xs text-(--color-text-muted)">Connect a provider once, then OpenAgentd can seed and run the default team.</p>
               </div>
             </div>
-            <Button size="sm" onClick={() => navigate({ to: '/settings/providers' })}>
+            <Button size="sm" onClick={() => openSettings('providers')}>
               Open Providers
             </Button>
           </div>

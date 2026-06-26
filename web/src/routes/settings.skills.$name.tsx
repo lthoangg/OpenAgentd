@@ -1,4 +1,3 @@
-import { useNavigate, useParams } from '@tanstack/react-router'
 import { useState } from 'react'
 import { Trash2 } from 'lucide-react'
 
@@ -20,14 +19,12 @@ import {
 } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 
-/**
- * Skill editor — lighter than the agent editor because skills have an
- * open-ended schema (only ``name`` + ``description`` are required).
- * We render a single raw .md textarea and let the user go wild.
- */
-export function SkillEditorPage() {
-  const { name } = useParams({ from: '/settings/skills/$name' })
-  const navigate = useNavigate()
+interface SkillEditorPageProps {
+  name: string
+  onBack: () => void
+}
+
+export function SkillEditorPage({ name, onBack }: SkillEditorPageProps) {
   const push = useToastStore((s) => s.push)
   const { data, isLoading, isError, error, refetch } = useSkillFileQuery(name)
   const updateMut = useUpdateSkillMutation()
@@ -49,21 +46,11 @@ export function SkillEditorPage() {
 
   const handleSave = async () => {
     setSaveError(null)
-    if (readOnly) {
-      setSaveError(`Read-only skill from ${data?.source ?? 'external source'}.`)
-      return
-    }
-    if (invalid) {
-      setSaveError(firstDraftError ?? 'Form has validation errors.')
-      return
-    }
+    if (readOnly) { setSaveError(`Read-only skill from ${data?.source ?? 'external source'}.`); return }
+    if (invalid) { setSaveError(firstDraftError ?? 'Form has validation errors.'); return }
     try {
       const res = await updateMut.mutateAsync({ name, content: draft })
-      push({
-        tone: 'success',
-        title: `Saved "${name}"`,
-        description: 'Active on next turn.',
-      })
+      push({ tone: 'success', title: `Saved "${name}"`, description: 'Active on next turn.' })
       setDraft(res.content)
       refetch()
     } catch (err) {
@@ -77,7 +64,7 @@ export function SkillEditorPage() {
     try {
       await deleteMut.mutateAsync(name)
       push({ tone: 'success', title: `Deleted "${name}"` })
-      navigate({ to: '/settings/skills' })
+      onBack()
     } catch (err) {
       const msg = err instanceof ApiValidationError ? err.message : String(err)
       push({ tone: 'error', title: 'Delete failed', description: msg })
@@ -97,14 +84,13 @@ export function SkillEditorPage() {
         validationHint={firstDraftError}
         saveDisabledReason={readOnly ? `Read-only skill from ${data?.source ?? 'external source'}` : null}
         onSave={handleSave}
+        onBack={onBack}
       />
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl p-6">
           {isLoading && <p className="text-sm text-(--color-text-muted)">Loading…</p>}
-          {isError && (
-            <p className="text-sm text-(--color-error)">Failed to load: {String(error)}</p>
-          )}
+          {isError && <p className="text-sm text-(--color-error)">Failed to load: {String(error)}</p>}
           {data && (
             <Card size="sm">
               <CardHeader>
@@ -134,33 +120,16 @@ export function SkillEditorPage() {
             <div className="flex items-center gap-2">
               {dirty && (
                 <>
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    className="min-h-11 md:min-h-0"
-                    onClick={() => data && setDraft(data.content)}
-                  >
-                    Discard changes
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    className="min-h-11 md:min-h-0"
-                    onClick={() => navigate({ to: '/settings/skills' })}
-                  >
-                    Leave without saving
-                  </Button>
+                  <Button variant="ghost" size="xs" className="min-h-11 md:min-h-0"
+                    onClick={() => data && setDraft(data.content)}>Discard changes</Button>
+                  <Button variant="ghost" size="xs" className="min-h-11 md:min-h-0"
+                    onClick={onBack}>Leave without saving</Button>
                 </>
               )}
             </div>
             {data && data.editable && !data.built_in && (
-              <Button
-                variant="destructive"
-                size="xs"
-                className="min-h-11 md:min-h-0"
-                onClick={() => setDeleteOpen(true)}
-                disabled={deleteMut.isPending}
-              >
+              <Button variant="destructive" size="xs" className="min-h-11 md:min-h-0"
+                onClick={() => setDeleteOpen(true)} disabled={deleteMut.isPending}>
                 <Trash2 size={11} aria-hidden="true" />
                 Delete skill
               </Button>
@@ -173,22 +142,11 @@ export function SkillEditorPage() {
         <DialogContent showCloseButton={false}>
           <DialogHeader>
             <DialogTitle>Delete skill</DialogTitle>
-            <DialogDescription>
-              Delete `{name}` from the skills config directory. This cannot be undone.
-            </DialogDescription>
+            <DialogDescription>Delete `{name}` from the skills config directory. This cannot be undone.</DialogDescription>
           </DialogHeader>
           <DialogFooter className="p-3">
-            <Button type="button" variant="outline" onClick={() => setDeleteOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              onClick={handleDelete}
-              disabled={deleteMut.isPending}
-            >
-              Delete
-            </Button>
+            <Button type="button" variant="outline" onClick={() => setDeleteOpen(false)}>Cancel</Button>
+            <Button type="button" variant="destructive" onClick={handleDelete} disabled={deleteMut.isPending}>Delete</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

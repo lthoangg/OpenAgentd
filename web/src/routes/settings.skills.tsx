@@ -1,16 +1,17 @@
-/**
- * /settings/skills — inline list of skill packs in the detail pane.
- */
-import { useParams } from '@tanstack/react-router'
 import { Sparkles } from 'lucide-react'
 import { useMemo } from 'react'
 
 import { SettingsListView, type ListViewRow } from '@/components/settings/SettingsListView'
 import { useSkillFilesQuery } from '@/queries'
 
-export function SkillsListPage() {
+interface SkillsListPageProps {
+  selectedName?: string | null
+  onSelect: (name: string) => void
+  onNew: () => void
+}
+
+export function SkillsListPage({ selectedName, onSelect, onNew }: SkillsListPageProps) {
   const { data, isLoading, isError } = useSkillFilesQuery()
-  const { name: selected } = useParams({ strict: false }) as { name?: string }
 
   const rows = useMemo<ListViewRow[]>(() => {
     const skills = data?.skills ?? []
@@ -30,9 +31,7 @@ export function SkillsListPage() {
       const badge = slash === -1 ? undefined : 'sub-skill'
       return {
         key: s.name,
-        to: '/settings/skills/$name',
-        params: { name: s.name },
-        active: selected === s.name,
+        active: selectedName === s.name,
         title,
         badge,
         description: [
@@ -43,6 +42,7 @@ export function SkillsListPage() {
         ].filter(Boolean).join(' · '),
         meta: slash === -1 ? undefined : s.name,
         invalidReason: !s.valid ? (s.error ?? 'Invalid configuration') : undefined,
+        onClick: () => onSelect(s.name),
         trailing: (
           <span
             className="flex h-7 w-7 items-center justify-center rounded-md bg-(--bg-key) text-(--color-text-muted) ring-1 ring-(--color-border)"
@@ -56,22 +56,18 @@ export function SkillsListPage() {
 
     const rows: ListViewRow[] = flat.map(toRow)
     for (const [parent, group] of [...nestedByParent.entries()].sort(([a], [b]) => a.localeCompare(b))) {
-      rows.push({
-        key: `group:${parent}`,
-        kind: 'group',
-        title: `${parent} sub-skills`,
-      })
+      rows.push({ key: `group:${parent}`, kind: 'group', title: `${parent} sub-skills` })
       rows.push(...group.sort((a, b) => a.name.localeCompare(b.name)).map(toRow))
     }
     return rows
-  }, [data?.skills, selected])
+  }, [data?.skills, selectedName, onSelect])
 
   return (
     <SettingsListView
       title="Skills"
       description="Reusable instruction packs available to any agent. Supports flat skills and one-level sub-skills (shown as parent:sub). Live in .openagentd/skills/."
-      newTo="/settings/skills/new"
       newLabel="New skill"
+      onNew={onNew}
       filterPlaceholder="Filter skills…"
       rows={rows}
       isLoading={isLoading}

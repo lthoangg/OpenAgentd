@@ -248,8 +248,8 @@ team against it. Deeper doc: [`web/coding-sessions.md`](./web/coding-sessions.md
   list existing worktrees, edit sidebar titles without renaming git directories,
   and remove OpenAgentd-managed worktrees.
 - **Coding workspace dock** `[v1.61.0]` — right-side dock panel for coding
-  sessions with a permanent Changes tab showing staged/unstaged full-context
-  diffs with expand/collapse rows and status badges, file tabs for read-only
+  sessions with a permanent Changes tab showing staged/unstaged diff hunks with
+  context lines and expand/collapse rows and status badges, file tabs for read-only
   current-file previews with line numbers and syntax highlighting, and a
   file-search overlay. File search is full-viewport on desktop and centered
   inside the safe-area-aware workspace panel on mobile. File selection persists

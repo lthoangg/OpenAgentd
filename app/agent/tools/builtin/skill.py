@@ -22,10 +22,18 @@ from typing import Annotated, Any
 import yaml
 
 from loguru import logger
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from app.agent.sandbox import get_sandbox
 from app.agent.tools.registry import InjectedArg, tool
+
+
+class SkillArgs(BaseModel):
+    """Arguments for the skill tool."""
+
+    skill_name: str = Field(
+        description="Skill name from the available skills listed in this tool description (e.g. 'mcp-installer'). Do not call this again for a skill that is already loaded in the visible conversation; reuse the prior instructions instead because repeated loads return the same content."
+    )
 
 
 def _default_skills_dir() -> Path:
@@ -342,14 +350,9 @@ def _loaded_skills_from_messages(state: Any) -> dict[str, str]:
     return loaded
 
 
-@tool(name="skill", description=_skill_tool_description)
+@tool(name="skill", description=_skill_tool_description, args_schema=SkillArgs)
 async def load_skill(
-    skill_name: Annotated[
-        str,
-        Field(
-            description="Skill name from the available skills listed in this tool description (e.g. 'mcp-installer'). Do not call this again for a skill that is already loaded in the visible conversation; reuse the prior instructions instead because repeated loads return the same content."
-        ),
-    ],
+    skill_name: str,
     _state: Annotated[Any, InjectedArg()] = None,
 ) -> str:
     """Load skill instructions into context."""

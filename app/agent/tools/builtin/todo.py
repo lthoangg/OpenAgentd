@@ -137,6 +137,21 @@ ActionModel = (
     | ReadAction
 )
 
+
+class TodoArgs(BaseModel):
+    """Arguments for the lead todo_manage tool."""
+
+    actions: list[AnyAction] = Field(description="Ordered list of actions to execute.")
+
+
+class TodoMemberArgs(BaseModel):
+    """Arguments for the member todo_manage tool."""
+
+    actions: list[MemberAnyAction] = Field(
+        description="Ordered list of claim/read/update actions to execute."
+    )
+
+
 # ---------------------------------------------------------------------------
 # Storage helpers
 # ---------------------------------------------------------------------------
@@ -369,20 +384,14 @@ def _assignee_matches_actor(assigned_to: Any, actor: str | None) -> bool:
 
 
 async def _todo_manage(
-    actions: Annotated[
-        list[AnyAction],
-        Field(description="Ordered list of actions to execute."),
-    ],
+    actions: list[AnyAction],
     _state: Annotated[Any, InjectedArg()] = None,
 ) -> str:
     return await _apply_actions(actions, _state=_state, role="lead")
 
 
 async def _todo_manage_member(
-    actions: Annotated[
-        list[MemberAnyAction],
-        Field(description="Ordered list of claim/read/update actions to execute."),
-    ],
+    actions: list[MemberAnyAction],
     _state: Annotated[Any, InjectedArg()] = None,
 ) -> str:
     return await _apply_actions(actions, _state=_state, role="member")
@@ -558,6 +567,7 @@ todo_manage = Tool(
     _todo_manage,
     name="todo_manage",
     description=_DESCRIPTION,
+    args_schema=TodoArgs,
 )
 
 
@@ -565,6 +575,7 @@ todo_manage_member = Tool(
     _todo_manage_member,
     name="todo_manage",
     description=_MEMBER_DESCRIPTION,
+    args_schema=TodoMemberArgs,
 )
 
 

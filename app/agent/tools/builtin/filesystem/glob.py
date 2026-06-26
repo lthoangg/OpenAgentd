@@ -6,9 +6,8 @@ import asyncio
 import fnmatch
 import os
 from pathlib import Path
-from typing import Annotated
 
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from app.agent.sandbox import get_sandbox
 from app.agent.tools.builtin.filesystem._ignore import (
@@ -18,31 +17,40 @@ from app.agent.tools.builtin.filesystem._ignore import (
 )
 from app.agent.tools.registry import Tool
 
+_DESCRIPTION = (
+    "Find files by glob pattern. Use match='path' (default) for full-path patterns "
+    "like 'src/**/*.ts', or match='name' for filename-only like '*.py'."
+)
+
+
+class GlobArgs(BaseModel):
+    """Arguments for the glob tool."""
+
+    pattern: str = Field(
+        description=(
+            "Glob pattern. Use '**/*.py' or 'src/**/*.ts' to match by full path, "
+            "or '*.py' with match='name' to match filename only."
+        )
+    )
+    directory: str = Field(
+        default=".", description="Search root (default '.' = workspace root)."
+    )
+    match: str = Field(
+        default="path",
+        description="Match against 'path' (default) or 'name' (filename only).",
+    )
+    max_results: int = Field(
+        default=200, description="Maximum number of results to return (default 200)."
+    )
+
 
 async def _glob_files(
-    pattern: Annotated[
-        str,
-        Field(
-            description=(
-                "Glob pattern. Use '**/*.py' or 'src/**/*.ts' to match by full path, "
-                "or '*.py' with match='name' to match filename only."
-            )
-        ),
-    ],
-    directory: Annotated[
-        str,
-        Field(description="Search root (default '.' = workspace root)."),
-    ] = ".",
-    match: Annotated[
-        str,
-        Field(description="Match against 'path' (default) or 'name' (filename only)."),
-    ] = "path",
-    max_results: Annotated[
-        int,
-        Field(description="Maximum number of results to return (default 200)."),
-    ] = 200,
+    pattern: str,
+    directory: str = ".",
+    match: str = "path",
+    max_results: int = 200,
 ) -> str:
-    """Find files by glob pattern. match='path' matches the full relative path (supports **); match='name' matches filename only."""
+    """Find files by glob pattern, honouring gitignore and skip rules."""
     sandbox = get_sandbox()
     resolved = sandbox.validate_path(directory)
     if not resolved.is_dir():
@@ -108,8 +116,6 @@ async def _glob_files(
 glob_files = Tool(
     _glob_files,
     name="glob",
-    description=(
-        "Find files by glob pattern. Use match='path' (default) for full-path patterns "
-        "like 'src/**/*.ts', or match='name' for filename-only like '*.py'."
-    ),
+    description=_DESCRIPTION,
+    args_schema=GlobArgs,
 )

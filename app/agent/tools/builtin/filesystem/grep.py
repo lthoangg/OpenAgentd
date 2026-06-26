@@ -7,9 +7,8 @@ import fnmatch
 import os
 import re
 from pathlib import Path
-from typing import Annotated
 
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from app.agent.sandbox import get_sandbox
 from app.agent.tools.builtin.filesystem._ignore import (
@@ -24,26 +23,34 @@ _MAX_PATTERN_LEN = 500
 # Me timeout for the entire scan in seconds
 _SCAN_TIMEOUT_S = 10
 
+_DESCRIPTION = "Search file contents by regex. Returns 'file:line: content'."
+
+
+class GrepArgs(BaseModel):
+    """Arguments for the grep tool."""
+
+    pattern: str = Field(
+        description="Regex to match per line (e.g. 'def main', 'TODO|FIXME')."
+    )
+    directory: str = Field(
+        default=".", description="Search root (default '.' = workspace root)."
+    )
+    include: str = Field(
+        default="*",
+        description="Filename glob to filter files (e.g. '*.py'). Default '*'.",
+    )
+    max_results: int = Field(
+        default=100, description="Maximum matching lines to return (default 100)."
+    )
+
 
 async def _grep_files(
-    pattern: Annotated[
-        str,
-        Field(description="Regex to match per line (e.g. 'def main', 'TODO|FIXME')."),
-    ],
-    directory: Annotated[
-        str,
-        Field(description="Search root (default '.' = workspace root)."),
-    ] = ".",
-    include: Annotated[
-        str,
-        Field(description="Filename glob to filter files (e.g. '*.py'). Default '*'."),
-    ] = "*",
-    max_results: Annotated[
-        int,
-        Field(description="Maximum matching lines to return (default 100)."),
-    ] = 100,
+    pattern: str,
+    directory: str = ".",
+    include: str = "*",
+    max_results: int = 100,
 ) -> str:
-    """Search file contents by regex. Returns 'file:line: content'."""
+    """Search file contents by regex within the workspace."""
     sandbox = get_sandbox()
     resolved = sandbox.validate_path(directory)
     if not resolved.is_dir():
@@ -115,5 +122,6 @@ async def _grep_files(
 grep_files = Tool(
     _grep_files,
     name="grep",
-    description="Search file contents by regex. Returns 'file:line: content'.",
+    description=_DESCRIPTION,
+    args_schema=GrepArgs,
 )

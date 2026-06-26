@@ -1,11 +1,11 @@
 import asyncio
 from io import BytesIO
-from typing import Annotated, Any, Literal
+from typing import Any, Literal
 
 import httpx
 from ddgs import DDGS
 from loguru import logger
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from app.agent.tools.registry import tool
 
@@ -26,26 +26,31 @@ _USER_AGENT = (
 )
 
 
-@tool(name="web_search")
+class WebSearchArgs(BaseModel):
+    """Arguments for the web_search tool."""
+
+    query: str = Field(description="Search query string.")
+    max_results: int = Field(
+        default=5, ge=1, le=20, description="Number of results (default 5, max 20)."
+    )
+    page: int = Field(default=1, ge=1, description="Page number (default 1).")
+    safesearch: Literal["on", "moderate", "off"] = Field(
+        default="moderate", description="Safe search level (default 'moderate')."
+    )
+
+
+@tool(
+    name="web_search",
+    description="Search the web. Returns [{title, href, body}].",
+    args_schema=WebSearchArgs,
+)
 async def web_search(
-    query: Annotated[
-        str,
-        Field(description="Search query string."),
-    ],
-    max_results: Annotated[
-        int,
-        Field(description="Number of results (default 5, max 20)."),
-    ] = 5,
-    page: Annotated[
-        int,
-        Field(description="Page number (default 1)."),
-    ] = 1,
-    safesearch: Annotated[
-        Literal["on", "moderate", "off"],
-        Field(description="Safe search level (default 'moderate')."),
-    ] = "moderate",
+    query: str,
+    max_results: int = 5,
+    page: int = 1,
+    safesearch: Literal["on", "moderate", "off"] = "moderate",
 ) -> list[dict[str, Any]] | str:
-    """Search the web. Returns [{title, href, body}]."""
+    """Search the web via DDGS with an Exa fallback."""
     results = None
     backends = ["auto", "brave", "wikipedia", "mojeek"]
     for backend in backends:
@@ -102,22 +107,29 @@ async def web_search(
         return "No result found"
 
 
-@tool(name="web_fetch")
+class WebFetchArgs(BaseModel):
+    """Arguments for the web_fetch tool."""
+
+    url: str = Field(description="URL to fetch. https:// prepended if no scheme.")
+    format: Literal["markdown", "html", "text"] = Field(  # noqa: A003
+        default="markdown", description="Response format (default 'markdown')."
+    )
+    timeout: int | None = Field(
+        default=None, description="Timeout in seconds (default 30, max 120)."
+    )
+
+
+@tool(
+    name="web_fetch",
+    description="Fetch a URL and return its content. Handles HTML, PDF, and plain text.",
+    args_schema=WebFetchArgs,
+)
 async def web_fetch(
-    url: Annotated[
-        str,
-        Field(description="URL to fetch. https:// prepended if no scheme."),
-    ],
-    format: Annotated[  # noqa: A002
-        Literal["markdown", "html", "text"],
-        Field(description="Response format (default 'markdown')."),
-    ] = "markdown",
-    timeout: Annotated[
-        int | None,
-        Field(description="Timeout in seconds (default 30, max 120)."),
-    ] = None,
+    url: str,
+    format: Literal["markdown", "html", "text"] = "markdown",  # noqa: A002
+    timeout: int | None = None,
 ) -> str:
-    """Fetch a URL and return its content. Handles HTML, PDF, and plain text."""
+    """Fetch a URL and convert its content to the requested format."""
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
 

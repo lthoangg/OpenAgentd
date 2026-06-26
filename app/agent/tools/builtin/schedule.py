@@ -24,9 +24,148 @@ from datetime import datetime
 from typing import Annotated, Any, Literal
 
 from loguru import logger
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from app.agent.tools.registry import InjectedArg, Tool
+
+
+_DESCRIPTION = """
+Schedule a prompt to be delivered back to you at a future time or on a
+recurring schedule — and build self-scheduling agentic loops.
+
+Every task fires back to *you* (same team, same workspace). This is both
+a reminder tool and a **loop engine**: by combining ``session_id='current'``
+with ``every_seconds`` + ``max_runs`` you create a bounded polling loop
+that re-invokes you automatically until a condition is met or the cap is hit.
+
+Loop recipe (bounded polling)::
+
+    action='create', schedule_type='every', every_seconds=30, max_runs=20,
+    session_id='current',
+    prompt='Check build status and report. If still running, just note it
+            — the scheduler will call you again automatically.'
+
+Then optionally call ``trigger`` on the returned id to fire the first
+iteration immediately without waiting for the first 30-second window.
+When the loop's goal is met, call ``delete`` (or ``pause``) on its own
+task id to exit early — ``max_runs`` is only the safety backstop, not
+the intended stopping point for a condition-driven loop.
+
+Other uses:
+  * One-shot follow-up: ``schedule_type='at'``, specific ``at_datetime``
+  * Recurring background job: ``schedule_type='cron'``, ``session_id='auto'``
+  * "Remind me in 30 minutes": ``schedule_type='every'``, ``every_seconds=1800``,
+    ``max_runs=1``
+
+Use ``list`` to inspect active loops, ``pause``/``resume`` to toggle them,
+``delete`` to tear one down, ``trigger`` to fire immediately.
+Tasks from other teams or workspaces are invisible to you.
+""".strip()
+
+
+class ScheduleArgs(BaseModel):
+    """Arguments for the schedule_task tool."""
+
+    action: Literal["create", "list", "pause", "resume", "delete", "trigger"] = Field(
+        description=(
+            "Action to perform on your own reminders: "
+            "'create' a new reminder, "
+            "'list' your pending reminders, "
+            "'pause' a running reminder, "
+            "'resume' a paused reminder, "
+            "'delete' a reminder, "
+            "'trigger' a reminder immediately (deliver its prompt now)."
+        )
+    )
+    # ── create-only fields ──────────────────────────────────────────────
+    name: str | None = Field(
+        default=None,
+        description=(
+            "[create] Unique task name. "
+            "Pattern: ^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$. "
+            "Required for create."
+        ),
+    )
+    schedule_type: Literal["at", "every", "cron"] | None = Field(
+        default=None,
+        description=(
+            "[create] Schedule type. Required for create. "
+            "'at' = one-shot at a specific datetime, "
+            "'every' = repeat every N seconds, "
+            "'cron' = 5-field cron expression."
+        ),
+    )
+    at_datetime: str | None = Field(
+        default=None,
+        description=(
+            "[create, schedule_type='at'] ISO-8601 datetime string "
+            "e.g. '2026-05-01T09:00:00+00:00'. Required when schedule_type='at'."
+        ),
+    )
+    every_seconds: int | None = Field(
+        default=None,
+        gt=0,
+        description=(
+            "[create, schedule_type='every'] Interval in seconds (> 0). "
+            "Required when schedule_type='every'."
+        ),
+    )
+    cron_expression: str | None = Field(
+        default=None,
+        description=(
+            "[create, schedule_type='cron'] Standard 5-field cron expression "
+            "e.g. '0 9 * * 1-5'. Required when schedule_type='cron'."
+        ),
+    )
+    timezone: str = Field(
+        default="UTC",
+        description=(
+            "[create] IANA timezone name for cron/at interpretation, "
+            "e.g. 'Asia/Ho_Chi_Minh', 'America/New_York'. Defaults to 'UTC'."
+        ),
+    )
+    prompt: str | None = Field(
+        default=None,
+        description=(
+            "[create] The prompt delivered back to you when the task fires. "
+            "Write it in the second person, addressed to your future self. "
+            "For self-scheduling loops this is the per-iteration instruction — "
+            "e.g. 'Check whether the deployment finished and report the result. "
+            "If still running, note it and stop (the scheduler re-invokes you).'. "
+            "Required for create."
+        ),
+    )
+    session_id: str | None = Field(
+        default=None,
+        description=(
+            "[create] Session continuity — controls where the fired prompt lands. "
+            "'current' = re-enter the current conversation (reply appears inline; "
+            "use this for self-continuation loops so you can read your prior work). "
+            "'auto' = persistent session keyed to the task name (survives restarts; "
+            "good for long-running background monitors). "
+            "None = fresh session each firing. "
+            "UUID string = continue a specific existing session."
+        ),
+    )
+    max_runs: int | None = Field(
+        default=None,
+        gt=0,
+        description=(
+            "[create] Hard cap on successful firings — the task auto-disables "
+            "after N runs. None = unlimited. "
+            "Use this to bound any polling or retry loop, "
+            "e.g. max_runs=20 with every_seconds=30 = poll for 10 minutes then stop."
+        ),
+    )
+    enabled: bool = Field(
+        default=True,
+        description="[create] Whether the task starts enabled. Defaults to True.",
+    )
+    # ── pause / resume / delete / trigger fields ────────────────────────
+    task_id: str | None = Field(
+        default=None,
+        description="[pause|resume|delete|trigger] UUID of the task to act on.",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -82,142 +221,18 @@ def _fmt_task(task: Any) -> str:
 
 
 async def _schedule_task(
-    action: Annotated[
-        Literal["create", "list", "pause", "resume", "delete", "trigger"],
-        Field(
-            description=(
-                "Action to perform on your own reminders: "
-                "'create' a new reminder, "
-                "'list' your pending reminders, "
-                "'pause' a running reminder, "
-                "'resume' a paused reminder, "
-                "'delete' a reminder, "
-                "'trigger' a reminder immediately (deliver its prompt now)."
-            )
-        ),
-    ],
-    # ── create-only fields ──────────────────────────────────────────────────
-    name: Annotated[
-        str | None,
-        Field(
-            default=None,
-            description=(
-                "[create] Unique task name. "
-                "Pattern: ^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$. "
-                "Required for create."
-            ),
-        ),
-    ] = None,
-    schedule_type: Annotated[
-        Literal["at", "every", "cron"] | None,
-        Field(
-            default=None,
-            description=(
-                "[create] Schedule type. Required for create. "
-                "'at' = one-shot at a specific datetime, "
-                "'every' = repeat every N seconds, "
-                "'cron' = 5-field cron expression."
-            ),
-        ),
-    ] = None,
-    at_datetime: Annotated[
-        str | None,
-        Field(
-            default=None,
-            description=(
-                "[create, schedule_type='at'] ISO-8601 datetime string "
-                "e.g. '2026-05-01T09:00:00+00:00'. Required when schedule_type='at'."
-            ),
-        ),
-    ] = None,
-    every_seconds: Annotated[
-        int | None,
-        Field(
-            default=None,
-            gt=0,
-            description=(
-                "[create, schedule_type='every'] Interval in seconds (> 0). "
-                "Required when schedule_type='every'."
-            ),
-        ),
-    ] = None,
-    cron_expression: Annotated[
-        str | None,
-        Field(
-            default=None,
-            description=(
-                "[create, schedule_type='cron'] Standard 5-field cron expression "
-                "e.g. '0 9 * * 1-5'. Required when schedule_type='cron'."
-            ),
-        ),
-    ] = None,
-    timezone: Annotated[
-        str,
-        Field(
-            default="UTC",
-            description=(
-                "[create] IANA timezone name for cron/at interpretation, "
-                "e.g. 'Asia/Ho_Chi_Minh', 'America/New_York'. Defaults to 'UTC'."
-            ),
-        ),
-    ] = "UTC",
-    prompt: Annotated[
-        str | None,
-        Field(
-            default=None,
-            description=(
-                "[create] The prompt delivered back to you when the task fires. "
-                "Write it in the second person, addressed to your future self. "
-                "For self-scheduling loops this is the per-iteration instruction — "
-                "e.g. 'Check whether the deployment finished and report the result. "
-                "If still running, note it and stop (the scheduler re-invokes you).'. "
-                "Required for create."
-            ),
-        ),
-    ] = None,
-    session_id: Annotated[
-        str | None,
-        Field(
-            default=None,
-            description=(
-                "[create] Session continuity — controls where the fired prompt lands. "
-                "'current' = re-enter the current conversation (reply appears inline; "
-                "use this for self-continuation loops so you can read your prior work). "
-                "'auto' = persistent session keyed to the task name (survives restarts; "
-                "good for long-running background monitors). "
-                "None = fresh session each firing. "
-                "UUID string = continue a specific existing session."
-            ),
-        ),
-    ] = None,
-    max_runs: Annotated[
-        int | None,
-        Field(
-            default=None,
-            gt=0,
-            description=(
-                "[create] Hard cap on successful firings — the task auto-disables "
-                "after N runs. None = unlimited. "
-                "Use this to bound any polling or retry loop, "
-                "e.g. max_runs=20 with every_seconds=30 = poll for 10 minutes then stop."
-            ),
-        ),
-    ] = None,
-    enabled: Annotated[
-        bool,
-        Field(
-            default=True,
-            description="[create] Whether the task starts enabled. Defaults to True.",
-        ),
-    ] = True,
-    # ── pause / resume / delete / trigger fields ─────────────────────────────
-    task_id: Annotated[
-        str | None,
-        Field(
-            default=None,
-            description="[pause|resume|delete|trigger] UUID of the task to act on.",
-        ),
-    ] = None,
+    action: Literal["create", "list", "pause", "resume", "delete", "trigger"],
+    name: str | None = None,
+    schedule_type: Literal["at", "every", "cron"] | None = None,
+    at_datetime: str | None = None,
+    every_seconds: int | None = None,
+    cron_expression: str | None = None,
+    timezone: str = "UTC",
+    prompt: str | None = None,
+    session_id: str | None = None,
+    max_runs: int | None = None,
+    enabled: bool = True,
+    task_id: str | None = None,
     # ── injected ─────────────────────────────────────────────────────────────
     # ``_mode`` / ``_workspace`` and current-session metadata are derived from
     # the calling agent's runtime context by the tool executor — never accepted from LLM-supplied args.
@@ -226,37 +241,7 @@ async def _schedule_task(
     _mode: Annotated[Literal["normal", "coding"], InjectedArg()] = "normal",
     _workspace: Annotated[str | None, InjectedArg()] = None,
 ) -> str:
-    """Schedule a prompt to be delivered back to you at a future time or on a
-    recurring schedule — and build self-scheduling agentic loops.
-
-    Every task fires back to *you* (same team, same workspace). This is both
-    a reminder tool and a **loop engine**: by combining ``session_id='current'``
-    with ``every_seconds`` + ``max_runs`` you create a bounded polling loop
-    that re-invokes you automatically until a condition is met or the cap is hit.
-
-    Loop recipe (bounded polling)::
-
-        action='create', schedule_type='every', every_seconds=30, max_runs=20,
-        session_id='current',
-        prompt='Check build status and report. If still running, just note it
-                — the scheduler will call you again automatically.'
-
-    Then optionally call ``trigger`` on the returned id to fire the first
-    iteration immediately without waiting for the first 30-second window.
-    When the loop's goal is met, call ``delete`` (or ``pause``) on its own
-    task id to exit early — ``max_runs`` is only the safety backstop, not
-    the intended stopping point for a condition-driven loop.
-
-    Other uses:
-      * One-shot follow-up: ``schedule_type='at'``, specific ``at_datetime``
-      * Recurring background job: ``schedule_type='cron'``, ``session_id='auto'``
-      * "Remind me in 30 minutes": ``schedule_type='every'``, ``every_seconds=1800``,
-        ``max_runs=1``
-
-    Use ``list`` to inspect active loops, ``pause``/``resume`` to toggle them,
-    ``delete`` to tear one down, ``trigger`` to fire immediately.
-    Tasks from other teams or workspaces are invisible to you.
-    """
+    """Create, list, or control the lead's scheduled reminders / loops."""
     from app.scheduler.scheduler import task_scheduler
 
     # ── scope helpers ────────────────────────────────────────────────────────
@@ -436,4 +421,6 @@ async def _schedule_task(
 schedule_task = Tool(
     _schedule_task,
     name="schedule_task",
+    description=_DESCRIPTION,
+    args_schema=ScheduleArgs,
 )

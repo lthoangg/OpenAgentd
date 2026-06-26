@@ -54,17 +54,33 @@ def test_dotfile_glob_blocks_env_anywhere(tmp_path: Path) -> None:
         sandbox.validate_path(str(env_file))
 
 
-def test_pattern_does_not_block_workspace_paths(tmp_path: Path) -> None:
-    """Workspace remains exempt even if a pattern would otherwise match it."""
+def test_pattern_blocks_workspace_paths_too(tmp_path: Path) -> None:
+    """User deny patterns must also apply inside the workspace."""
     workspace = tmp_path / "ws"
     workspace.mkdir()
     inside = workspace / ".env"
     inside.touch()
 
-    # Pattern matches ``.env`` anywhere — but workspace exemption wins.
     sandbox = _make(tmp_path, ["**/.env"])
-    # Should not raise
-    sandbox.validate_path(str(inside))
+    with pytest.raises(PermissionError, match="denied sandbox root"):
+        sandbox.validate_path(str(inside))
+
+
+def test_denied_root_does_not_override_workspace_allowance(tmp_path: Path) -> None:
+    """Workspace remains reachable when its parent denied root would match."""
+    denied = tmp_path / "parent"
+    workspace = denied / "ws"
+    workspace.mkdir(parents=True)
+    inside = workspace / "file.txt"
+    inside.touch()
+
+    sandbox = SandboxConfig(
+        workspace=str(workspace),
+        denied_roots=[denied],
+        denied_patterns=[],
+    )
+
+    assert sandbox.validate_path(str(inside)) == inside.resolve()
 
 
 def test_empty_patterns_means_no_extra_denials(tmp_path: Path) -> None:

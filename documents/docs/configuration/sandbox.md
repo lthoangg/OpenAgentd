@@ -2,7 +2,7 @@
 title: Sandbox & Permissions
 description: Denylist path validation, user deny-glob patterns, and the per-tool permission system.
 status: stable
-updated: 2026-05-16
+updated: 2026-06-26
 ---
 
 # Sandbox & Permissions
@@ -23,7 +23,7 @@ The sandbox uses a **denylist** model — paths anywhere on disk are accepted un
 - Resolve under a denied root: `OPENAGENTD_DATA_DIR`, `OPENAGENTD_STATE_DIR`, `OPENAGENTD_CACHE_DIR`.
   - Exception: `{OPENAGENTD_STATE_DIR}/logs/` is readable so agents can inspect OpenAgentd logs such as `app/app.log`.
   - Exception: the active session artifact directory is readable so agents can inspect offloaded tool results.
-- Match a user-defined glob pattern from `sandbox.yaml`.
+- Match a user-defined glob pattern from `sandbox.yaml` (including files inside the active workspace, such as `**/.env`).
 - Are a tilde-prefixed path (`~/...`) — always rejected.
 - Are a symlink whose target lands inside a denied root.
 

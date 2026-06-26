@@ -135,18 +135,22 @@ class SandboxConfig:
 
     def _is_denied(self, resolved: Path) -> Path | str | None:
         """Return the denied root or glob pattern that matched, or None."""
-        if _path_is_under(resolved, self.workspace_root):
-            return None
-        allowed = _allowed_internal_roots(self.session_id)
-        if any(_path_is_under(resolved, root) for root in allowed):
-            return None
+        allowed = [self.workspace_root, *_allowed_internal_roots(self.session_id)]
         for denied in self.denied_roots:
+            if any(
+                _path_is_under(resolved, allowed_root)
+                for allowed_root in allowed
+                if _path_is_under(allowed_root, denied)
+            ):
+                continue
             if _path_is_under(resolved, denied):
                 return denied
         resolved_str = str(resolved)
         for pattern in self.denied_patterns:
             if fnmatch.fnmatchcase(resolved_str, pattern):
                 return pattern
+        if any(_path_is_under(resolved, root) for root in allowed):
+            return None
         return None
 
     def validate_path(self, path: str | Path) -> Path:

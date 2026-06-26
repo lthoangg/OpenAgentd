@@ -47,8 +47,6 @@ A short list of the most important shipped capabilities. The canonical, version-
 
 ![Unified team view — lead and specialist agents visible together](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/team-unified.png)
 
-**Persistent memory you can edit.** Karpathy-style wiki: `USER.md` is injected into every prompt, session notes feed the dream agent, and durable knowledge is organized into sources, topics, entities, and comparisons. Browse and edit it from the Wiki panel.
-
 **Pick your model, no lock-in.** 15 providers — Anthropic, Gemini, OpenAI, OpenRouter, Bedrock, Grok, DeepSeek, Ollama, and more. Switch with one line in your agent config, or override the lead model/thinking level per session from Session Settings.
 Assistant replies show the effective model that generated them, so fallback or per-session overrides stay visible in history.
 
@@ -184,7 +182,6 @@ Set a `fallback_model` in your agent config for automatic failover on rate limit
 | Filesystem | `read`, `write`, `edit`, `patch`, `ls`, `glob`, `grep`, `rm` |
 | Shell | `shell`, `bg` (background processes) |
 | Web | `web_search`, `web_fetch` |
-| Memory | `wiki_search`, `note` |
 | Generation | `generate_image`, `generate_video` |
 | Scheduling | `schedule_task` |
 | Tasks | `todo_manage` |
@@ -234,18 +231,6 @@ System prompt goes here.
 ```
 
 Member instances are created lazily from `role: member` configs. Re-spawning an explicit handle restores its history for the current lead session; dismissing an instance only removes it from the live roster.
-
----
-
-## Memory
-
-The wiki is editable and organized around durable, source-linked pages:
-
-1. **`USER.md`** — Pure YAML, always injected into every system prompt. Edit it directly to give the agent standing context about you, your projects, or your preferences.
-2. **Knowledge pages** — `sources/`, `topics/`, `entities/`, and `comparisons/`, BM25-searchable via `wiki_search`.
-3. **Session notes** — Per-day notes the agent appends to via the `note` tool.
-
-The **dream agent** runs on a cron schedule, reads unprocessed sessions and notes, writes source summaries first, updates related knowledge pages, and refreshes the wiki index - turning ephemeral conversation into durable memory without any action on your part.
 
 ---
 
@@ -343,7 +328,7 @@ Full documentation index: [`documents/docs/index.md`](https://github.com/lthoang
 | [Shell commands](https://github.com/lthoangg/openagentd/blob/main/documents/docs/shell-commands.md) | Opencode-style `!command` sends that run directly through the shell tool |
 | [Configuration overview](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration.md) | Hub — links into the focused subpages below |
 | [Environment variables](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration/env.md) | `Settings` fields, provider keys, optional extras |
-| [Paths & XDG roots](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration/paths.md) | DATA / CONFIG / STATE / CACHE / WORKSPACE / WIKI |
+| [Paths & XDG roots](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration/paths.md) | DATA / CONFIG / STATE / CACHE / WORKSPACE |
 | [LLM providers](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration/providers.md) | Every registered prefix, OAuth flows, capability YAML |
 | [Agent files](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration/agents.md) | `.md` frontmatter schema, validation, editing workflow |
 | [Built-in tools](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration/tools.md) | Filesystem, shell, web, multimodal, memory |

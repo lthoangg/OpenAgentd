@@ -13,7 +13,6 @@ OpenAgentd migration is focused on reusable setup: agent identity, standing inst
 | Project-local instructions | Keep as repo `AGENTS.md` for coding mode |
 | API keys | `~/.config/openagentd/.env` or **Settings → Providers** |
 | OAuth providers | `openagentd auth <provider>` or **Settings → Providers** |
-| Long-term user memory | `~/.local/share/openagentd-wiki/USER.md` |
 
 Run `openagentd init` first if this is a fresh OpenAgentd install. It creates the config directory and seeds the default agents/skills without overwriting existing files.
 
@@ -55,7 +54,7 @@ See `openagentd migrate --help` for the full flag reference.
 
 There is no automatic Claude Code importer yet. Migrate the durable setup manually:
 
-1. Copy reusable personal instructions from `~/.claude/CLAUDE.md` into `~/.config/openagentd/agents/<name>.md` or `~/.local/share/openagentd-wiki/USER.md`.
+1. Copy reusable personal instructions from `~/.claude/CLAUDE.md` into `~/.config/openagentd/agents/<name>.md`.
 2. Keep project `CLAUDE.md` content as repo-local instructions by moving or copying it to `AGENTS.md` in that project.
 3. Move reusable slash-command or workflow text into `~/.config/openagentd/skills/<skill>/SKILL.md`.
 4. Configure providers in **Settings → Providers** or `~/.config/openagentd/.env`.
@@ -82,7 +81,6 @@ The CLI and desktop app share the same production paths:
 |------|------|
 | Config, agents, skills, `.env` | `~/.config/openagentd/` |
 | SQLite database | `~/.local/share/openagentd/openagentd.db` |
-| Wiki memory | `~/.local/share/openagentd-wiki/` |
 | Session workspaces and uploads | `~/.local/share/openagentd-workspace/` |
 | Logs and telemetry | `~/.local/state/openagentd/` |
 | Cache and OAuth tokens | `~/.cache/openagentd/` |

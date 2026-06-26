@@ -464,7 +464,6 @@ class AuditHook(BaseAgentHook):
     inject_current_date,             # date in system prompt
     AgentTeamProtocolHook,           # team protocol injection
     TeamInboxHook,                   # mailbox drain → state.messages
-    WikiInjectionHook,               # USER.md / topics injection
     WorkspaceInstructionsHook,       # coding mode only
     SessionLogHook,                  # JSONL per-session log
     OpenTelemetryHook,               # spans + metrics

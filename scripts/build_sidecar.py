@@ -278,7 +278,6 @@ def smoke_test(python_bin: Path, site_packages: Path) -> None:
         "OPENAGENTD_CONFIG_DIR": str(smoke_root / "config"),
         "OPENAGENTD_STATE_DIR": str(smoke_root / "state"),
         "OPENAGENTD_CACHE_DIR": str(smoke_root / "cache"),
-        "OPENAGENTD_WIKI_DIR": str(smoke_root / "wiki"),
         "OPENAGENTD_WORKSPACE_DIR": str(smoke_root / "workspace"),
     }
 

@@ -22,7 +22,7 @@ seed/
 └── mcp.json               # empty MCP server config
 ```
 
-> Summarisation, title generation, and Dream prompts are built in and are not
+> Summarisation and title generation prompts are built in and are not
 > seeded as editable prompt files. Runtime choices such as enable/model/schedule
 > live in `{OPENAGENTD_CONFIG_DIR}/settings.yaml`, which the app creates from
 > the known schema instead of copying from `seed/`. `multimodal.yaml` is also
@@ -37,8 +37,7 @@ has, so re-running `init` after a release won't clobber edits.
 - **Lead agent first.** `agents/openagentd.md` is the lead; the others are members.
 - **Model placeholder.** Every agent's `model:` field is rewritten by
   `openagentd init` to match the provider/model the user picked. The same
-  selected model is written into generated `settings.yaml` for title generation
-  and Dream defaults.
+  selected model is written into generated `settings.yaml` for title generation.
   After install, users can run `self-healing` to swap individual member
   models (e.g. give the executor a faster model than the lead).
 - **No secrets, ever.** These files are public. `mcp.json` should

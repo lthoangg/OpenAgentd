@@ -13,7 +13,7 @@ Everything you need to customise OpenAgentd. The detailed reference is split acr
 
 | Topic | Doc |
 |-------|-----|
-| **Paths & XDG roots** — DATA / CONFIG / STATE / CACHE / WORKSPACE / WIKI | [`configuration/paths.md`](./configuration/paths.md) |
+| **Paths & XDG roots** — DATA / CONFIG / STATE / CACHE / WORKSPACE | [`configuration/paths.md`](./configuration/paths.md) |
 | **Environment variables** — `Settings` fields, provider keys, optional extras | [`configuration/env.md`](./configuration/env.md) |
 | **LLM providers** — every prefix registered in `build_provider`, OAuth flows, capability YAML | [`configuration/providers.md`](./configuration/providers.md) |
 | **Agent files** — `.md` frontmatter schema, validation, editing workflow | [`configuration/agents.md`](./configuration/agents.md) |
@@ -44,7 +44,6 @@ Built-in lifecycle hooks intercept the agent loop without modifying the core. Th
 | `inject_current_date` | Injects current date into the system prompt |
 | `AgentTeamProtocolHook` | Team-only — injects communication protocol, workflow, and roster |
 | `TeamInboxHook` | Team-only — drains the mailbox into `state.messages` before each model call |
-| `WikiInjectionHook` | Injects `USER.md` / topics into the system prompt |
 | `WorkspaceInstructionsHook` | Coding mode — appends repo-level `AGENTS.md` |
 | `SessionLogHook` | Writes verbose JSONL per session to `{STATE_DIR}/logs/sessions/` |
 | `OpenTelemetryHook` | OTEL spans + metrics — see [`observability.md`](./observability.md) |

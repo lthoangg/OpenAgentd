@@ -92,7 +92,6 @@ Application data lives under the same XDG paths used by the CLI (these survive u
 
 - Config: `~/.config/openagentd/`
 - Data: `~/.local/share/openagentd/`
-- Wiki: `~/.local/share/openagentd-wiki/`
 - Workspace: `~/.local/share/openagentd-workspace/`
 - State/logs: `~/.local/state/openagentd/`
 - Cache/OAuth: `~/.cache/openagentd/`

@@ -191,7 +191,6 @@ openagentd health
 - **Switch agents** — click the agent name in the header to pick a different agent or spin up a team.
 - **Workspace panel** — every file the agent reads, writes, or generates appears in the left panel. Click any file to preview or download it.
 - **Command palette** — press `Ctrl+P` (or `Cmd+P` on macOS) to search sessions, agents, files, and actions.
-- **Memory (Wiki)** — open the Wiki panel to view, edit, or delete anything the agent has remembered across sessions. The `USER.md` file at the top is always injected into every system prompt — edit it to give the agent standing context about you.
 
 ### 4. Customize your agent
 

@@ -174,7 +174,7 @@ export function SandboxSettingsPage() {
                     ))}
                   </ul>
 
-                  <Button size="sm" variant="outline" className="min-h-11 md:min-h-0" onClick={addRow}>
+                  <Button size="sm" variant="default" className="min-h-11 md:min-h-0" onClick={addRow}>
                     <Plus size={12} aria-hidden="true" />
                     Add pattern
                   </Button>

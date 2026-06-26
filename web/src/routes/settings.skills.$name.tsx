@@ -128,7 +128,7 @@ export function SkillEditorPage({ name, onBack }: SkillEditorPageProps) {
               )}
             </div>
             {data && data.editable && !data.built_in && (
-              <Button variant="destructive" size="xs" className="min-h-11 md:min-h-0"
+              <Button variant="danger" size="xs" className="min-h-11 md:min-h-0"
                 onClick={() => setDeleteOpen(true)} disabled={deleteMut.isPending}>
                 <Trash2 size={11} aria-hidden="true" />
                 Delete skill
@@ -145,8 +145,8 @@ export function SkillEditorPage({ name, onBack }: SkillEditorPageProps) {
             <DialogDescription>Delete `{name}` from the skills config directory. This cannot be undone.</DialogDescription>
           </DialogHeader>
           <DialogFooter className="p-3">
-            <Button type="button" variant="outline" onClick={() => setDeleteOpen(false)}>Cancel</Button>
-            <Button type="button" variant="destructive" onClick={handleDelete} disabled={deleteMut.isPending}>Delete</Button>
+            <Button type="button" variant="default" onClick={() => setDeleteOpen(false)}>Cancel</Button>
+            <Button type="button" variant="danger" onClick={handleDelete} disabled={deleteMut.isPending}>Delete</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

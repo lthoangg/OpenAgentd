@@ -350,7 +350,7 @@ export function EditTaskForm({
         <div className="mt-6 flex gap-2">
           <Button
             type="button"
-            variant="outline"
+            variant="default"
             className="flex-1"
             onClick={onCancel}
             disabled={updateMutation.isPending}

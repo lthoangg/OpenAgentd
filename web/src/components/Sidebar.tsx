@@ -607,7 +607,7 @@ export function Sidebar({
           <DialogFooter className="flex-col items-stretch gap-2 p-3 sm:flex-col">
             <Button
               type="button"
-              variant="outline"
+              variant="ghost"
               className="justify-start"
               onClick={() => {
                 const session = mobileSessionActions
@@ -620,8 +620,8 @@ export function Sidebar({
             </Button>
             <Button
               type="button"
-              variant="outline"
-              className="justify-start text-(--color-error)"
+              variant="danger-subtle"
+              className="justify-start"
               onClick={() => {
                 const session = mobileSessionActions
                 setMobileSessionActions(null)
@@ -645,10 +645,10 @@ export function Sidebar({
              </DialogDescription>
            </DialogHeader>
             <DialogFooter className="p-3">
-              <Button variant="outline" onClick={() => setDeleteTarget(null)}>
+              <Button variant="default" onClick={() => setDeleteTarget(null)}>
                 Cancel
               </Button>
-             <Button variant="destructive" onClick={confirmDelete}>
+             <Button variant="danger" onClick={confirmDelete}>
                Delete
              </Button>
            </DialogFooter>
@@ -677,7 +677,7 @@ export function Sidebar({
                )}
              </div>
              <DialogFooter className="p-3">
-               <Button type="button" variant="outline" onClick={() => setEditTarget(null)}>
+               <Button type="button" variant="default" onClick={() => setEditTarget(null)}>
                  Cancel
                </Button>
                <Button type="submit" disabled={!editTitle.trim() || updateSessionTitle.isPending}>

@@ -119,7 +119,7 @@ export function DateTimePicker({
         <PopoverTrigger
           disabled={disabled}
           className={cn(
-            buttonVariants({ variant: 'outline' }),
+            buttonVariants({ variant: 'default' }),
             'h-9 w-full justify-start gap-2 rounded-[10px] border border-(--color-border) bg-(--bg-page) px-3 text-sm font-normal text-(--color-text) hover:border-(--color-border-strong) hover:bg-(--bg-key)',
             !parsed && 'text-(--color-text-muted)',
             triggerClassName,

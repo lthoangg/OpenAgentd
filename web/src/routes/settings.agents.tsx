@@ -98,7 +98,7 @@ export function AgentsListPage({ selectedName, onSelect, onNew }: AgentsListPage
             </Button>
           </div>
           <DialogFooter className="p-3">
-            <Button type="button" variant="outline" onClick={() => setModeDialogOpen(false)}>
+            <Button type="button" variant="default" onClick={() => setModeDialogOpen(false)}>
               Cancel
             </Button>
           </DialogFooter>

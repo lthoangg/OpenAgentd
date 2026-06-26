@@ -94,12 +94,12 @@ export function NewAgentPage({ initialMode = 'normal', onBack, onCreated }: NewA
             <p className="text-xs font-medium text-(--color-text)">Create in</p>
             <div className="mt-2 flex gap-2">
               <Button type="button" size="xs" className="min-h-11 md:min-h-0"
-                variant={agentMode === 'normal' ? 'default' : 'outline'}
+                variant={agentMode === 'normal' ? 'default' : 'subtle'}
                 onClick={() => setAgentMode('normal')}>
                 Normal
               </Button>
               <Button type="button" size="xs" className="min-h-11 md:min-h-0"
-                variant={agentMode === 'coding' ? 'default' : 'outline'}
+                variant={agentMode === 'coding' ? 'default' : 'subtle'}
                 onClick={() => setAgentMode('coding')}>
                 Coding
               </Button>

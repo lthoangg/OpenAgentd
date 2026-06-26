@@ -184,7 +184,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
             type="button"
             size="sm"
             variant="ghost"
-            className="h-6.5 text-[10.5px] px-2 text-(--color-text-muted) hover:text-(--color-text) hover:bg-(--bg-key)/50"
+            className="h-6.5 text-[10.5px] px-2"
             onClick={() => void openExternalUrl(provider.docs_url)}
           >
             Docs <ExternalLink size={10.5} aria-hidden="true" className="ml-1" />
@@ -215,7 +215,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
             <Button
               type="button"
               size="sm"
-              variant="outline"
+              variant="default"
               className="h-8.5 text-xs"
               onClick={handleListModels}
               disabled={!hasCandidateKey || listing}
@@ -267,7 +267,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
           <Button
             type="button"
             size="sm"
-            variant="outline"
+            variant="default"
             className="h-8.5 text-xs"
             onClick={handleListModels}
             disabled={!provider.is_configured || listing}
@@ -325,7 +325,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
             <Button
               type="button"
               size="sm"
-              variant="outline"
+              variant="default"
               className="h-8.5 text-xs"
               onClick={handleListModels}
               disabled={listing}
@@ -376,7 +376,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
             <Button
               type="button"
               size="sm"
-              variant="outline"
+              variant="default"
               className="h-8.5 text-xs"
               onClick={handleListModels}
               disabled={!hasCloudCandidate || listing}

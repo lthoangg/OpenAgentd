@@ -88,7 +88,7 @@ export function SessionModelSettings({
         <div className="flex shrink-0 gap-2">
           <Button
             type="button"
-            variant="outline"
+            variant="default"
             size="sm"
             disabled={!dirty}
             onClick={() => {

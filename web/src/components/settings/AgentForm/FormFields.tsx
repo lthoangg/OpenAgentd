@@ -47,7 +47,7 @@ export function ParseErrorBanner({
         <p className="font-medium">Parse error</p>
         <p className="mt-0.5 opacity-90">{message}</p>
       </div>
-      <Button size="xs" variant="outline" className="min-h-11 md:min-h-0" onClick={onSwitchToRaw}>
+      <Button size="xs" variant="default" className="min-h-11 md:min-h-0" onClick={onSwitchToRaw}>
         Open raw
       </Button>
     </div>

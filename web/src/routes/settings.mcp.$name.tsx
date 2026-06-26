@@ -163,7 +163,7 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
                   </CardHeader>
                   <CardContent>
                     <p className="mb-3 text-xs text-(--color-text-muted)">Connect OAuth to authorize this MCP server.</p>
-                    <Button variant="outline" size="sm" className="min-h-11 md:min-h-0"
+                    <Button variant="default" size="sm" className="min-h-11 md:min-h-0"
                       onClick={handleConnectOAuth} disabled={connectOAuthMut.isPending || !server.enabled}>
                       {connectOAuthMut.isPending ? 'Connecting…' : 'Connect OAuth'}
                     </Button>
@@ -194,7 +194,7 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
                     </>
                   )}
                 </div>
-                <Button variant="destructive" size="xs" className="min-h-11 md:min-h-0"
+                <Button variant="danger" size="xs" className="min-h-11 md:min-h-0"
                   onClick={() => setDeleteOpen(true)} disabled={deleteMut.isPending}>
                   <Trash2 size={11} aria-hidden="true" />
                   Delete server
@@ -214,8 +214,8 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
             <DialogDescription>Delete `{name}` from mcp.json. This cannot be undone.</DialogDescription>
           </DialogHeader>
           <DialogFooter className="p-3">
-            <Button type="button" variant="outline" onClick={() => setDeleteOpen(false)}>Cancel</Button>
-            <Button type="button" variant="destructive" onClick={handleDelete} disabled={deleteMut.isPending}>Delete</Button>
+            <Button type="button" variant="default" onClick={() => setDeleteOpen(false)}>Cancel</Button>
+            <Button type="button" variant="danger" onClick={handleDelete} disabled={deleteMut.isPending}>Delete</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -280,7 +280,7 @@ function RestartCard({ onRestart, pending, enabled }: { onRestart: () => void; p
       </CardHeader>
       <CardContent>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" className="min-h-11 md:min-h-0"
+          <Button variant="default" size="sm" className="min-h-11 md:min-h-0"
             onClick={onRestart} disabled={pending || !enabled} aria-label={pending ? 'Restarting' : 'Restart server'}>
             <RotateCw size={12} aria-hidden="true" />
             {pending ? 'Restarting…' : 'Restart'}

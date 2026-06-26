@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Server, X } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { SectionCard, SectionCardHeader, SectionCardRows, SectionCardRow, SectionCardBadge } from '@/components/ui/section-card'
 
 import { apiBaseUrl, setApiBaseUrl } from '@/api/base-url'
 import { queryClient } from '@/lib/query-client'
@@ -181,15 +183,16 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
             <Server size={13} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
             <h2 id="app-backend-title" className="text-xs font-semibold text-(--color-text)">Backend connection</h2>
           </div>
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon-xs"
             onClick={() => onOpenChange(false)}
-            className="flex h-7 w-7 items-center justify-center rounded text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
             aria-label="Close backend connection"
             title="Close"
           >
             <X size={13} aria-hidden="true" />
-          </button>
+          </Button>
         </div>
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
@@ -198,19 +201,17 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
             <span className="truncate">
               Connected: <span className="text-(--color-text) font-semibold">{status?.base_url || apiBaseUrl().replace(/\/api$/, '')}</span>
             </span>
-            <span className="shrink-0 rounded bg-(--bg-key) px-1.5 py-0.5 text-[9px] border border-(--color-border) text-(--color-text-muted)">
+            <SectionCardBadge>
               {status?.mode === 'external' || status?.external ? 'saved server' : 'builtin sidecar'}
-            </span>
+            </SectionCardBadge>
           </div>
 
           {/* Connection options list */}
-          <div className="rounded border border-(--color-border) bg-(--bg-card) overflow-hidden">
-            <div className="border-b border-(--color-border)/60 bg-(--bg-key)/30 px-3 py-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-(--color-text-muted) select-none">
-              Connection options
-            </div>
-            <div className="divide-y divide-(--color-border)">
+          <SectionCard>
+            <SectionCardHeader>Connection options</SectionCardHeader>
+            <SectionCardRows>
               {status?.supports_bundled !== false ? (
-                <div className="flex items-center gap-2.5 px-3 py-2 text-xs transition-colors hover:bg-(--bg-page)">
+                <SectionCardRow>
                   <button
                     type="button"
                     onClick={() => {}}
@@ -221,37 +222,36 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
                     <span className="truncate font-semibold text-(--color-text)">Builtin sidecar</span>
                   </button>
                   {!status?.external ? (
-                    <span className="shrink-0 rounded bg-(--bg-key) px-1.5 py-0.5 text-[9px] border border-(--color-border) text-(--color-text-muted) font-semibold select-none">active</span>
+                    <SectionCardBadge>active</SectionCardBadge>
                   ) : null}
                   {status?.sidecar_running ? (
-                    <button
+                    <Button
                       type="button"
+                      variant="danger-subtle"
+                      size="xs"
                       onClick={() => { void stopBundled() }}
-                      className="h-6 rounded border border-(--color-border) bg-(--bg-card) px-2 text-[10.5px] font-medium text-(--color-error) hover:bg-(--color-error)/10 focus-visible:outline-none transition-colors"
                       disabled={pending}
                     >
                       stop
-                    </button>
+                    </Button>
                   ) : (
-                    <button
+                    <Button
                       type="button"
+                      variant="subtle"
+                      size="xs"
                       onClick={() => { void connectBundled() }}
-                      className="h-6 rounded border border-(--color-border) bg-(--bg-card) px-2 text-[10.5px] font-medium text-(--color-text-muted) hover:text-(--color-text) hover:bg-(--bg-key)/40 focus-visible:outline-none transition-colors"
                       disabled={pending}
                     >
                       use builtin
-                    </button>
+                    </Button>
                   )}
-                </div>
+                </SectionCardRow>
               ) : null}
               {(status?.servers ?? DEFAULT_SERVERS).map((server) => {
                 const normalizedServerUrl = normalizeServerBaseUrl(server.base_url)
                 const active = status?.mode === 'external' && normalizeServerBaseUrl(status.base_url) === normalizedServerUrl
                 return (
-                  <div
-                    key={server.base_url}
-                    className="flex items-center gap-2.5 px-3 py-2 text-xs transition-colors hover:bg-(--bg-page)"
-                  >
+                  <SectionCardRow key={server.base_url}>
                     <button
                       type="button"
                       onClick={() => { setBaseUrl(normalizedServerUrl); setServerName(server.name ?? '') }}
@@ -265,45 +265,46 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
                       </span>
                     </button>
                     {active ? (
-                      <span className="shrink-0 rounded bg-(--bg-key) px-1.5 py-0.5 text-[9px] border border-(--color-border) text-(--color-text-muted) font-semibold select-none">active</span>
+                      <SectionCardBadge>active</SectionCardBadge>
                     ) : null}
                     <div className="flex items-center gap-1.5 shrink-0">
-                      <button
+                      <Button
                         type="button"
+                        variant="subtle"
+                        size="xs"
                         onClick={() => { void checkExternal(normalizedServerUrl, server.name ?? '', true) }}
-                        className="h-6 rounded border border-(--color-border) bg-(--bg-card) px-2 text-[10.5px] font-medium text-(--color-text-muted) hover:text-(--color-text) hover:bg-(--bg-key)/40 focus-visible:outline-none transition-colors"
                         disabled={pending}
                       >
                         connect
-                      </button>
-                      <button
+                      </Button>
+                      <Button
                         type="button"
+                        variant="subtle"
+                        size="xs"
                         onClick={() => { setBaseUrl(normalizedServerUrl); setServerName(server.name ?? '') }}
-                        className="h-6 rounded border border-(--color-border) bg-(--bg-card) px-2 text-[10.5px] font-medium text-(--color-text-muted) hover:text-(--color-text) hover:bg-(--bg-key)/40 focus-visible:outline-none transition-colors"
                         disabled={pending}
                       >
                         edit
-                      </button>
-                      <button
+                      </Button>
+                      <Button
                         type="button"
+                        variant="danger-subtle"
+                        size="xs"
                         onClick={() => { void removeServer(server.base_url) }}
-                        className="h-6 rounded border border-(--color-border) bg-(--bg-card) px-2 text-[10.5px] font-medium text-(--color-error) hover:bg-(--color-error)/10 focus-visible:outline-none transition-colors"
                         disabled={pending}
                       >
                         remove
-                      </button>
+                      </Button>
                     </div>
-                  </div>
+                  </SectionCardRow>
                 )
               })}
-            </div>
-          </div>
+            </SectionCardRows>
+          </SectionCard>
 
           {/* Form Configuration panel */}
-          <div className="rounded border border-(--color-border) bg-(--bg-card) overflow-hidden">
-            <div className="border-b border-(--color-border)/60 bg-(--bg-key)/30 px-3 py-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-(--color-text-muted) select-none">
-              Configure Server
-            </div>
+          <SectionCard>
+            <SectionCardHeader>Configure Server</SectionCardHeader>
             <div className="p-3.5 space-y-3.5">
               <div className="grid gap-1.5">
                 <label className="text-[10.5px] font-semibold text-(--color-text-muted)" htmlFor="app-backend-url">
@@ -317,14 +318,15 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
                     placeholder="http://<backend-host>:4082"
                     className="min-w-0 flex-1 rounded border border-(--color-border) bg-(--bg-input) px-2.5 py-1.5 font-mono text-xs text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-muted)/60 focus:border-(--focus-ring) focus:ring-2 focus:ring-(--focus-ring)/30"
                   />
-                  <button
+                  <Button
                     type="button"
+                    variant="default"
+                    size="sm"
                     onClick={() => void checkExternal()}
-                    className="h-8.5 rounded border border-(--color-border-strong) bg-(--bg-key) px-3 text-xs font-medium text-(--color-text) hover:bg-(--bg-key)/80 disabled:cursor-not-allowed disabled:opacity-60 transition-colors"
                     disabled={pending}
                   >
                     {pending ? 'Connecting…' : 'Connect'}
-                  </button>
+                  </Button>
                 </div>
               </div>
 
@@ -368,18 +370,19 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
                     placeholder="Work laptop, Home server, Local CLI"
                     className="min-w-0 flex-1 rounded border border-(--color-border) bg-(--bg-input) px-2.5 py-1.5 text-xs text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-muted)/60 focus:border-(--focus-ring) focus:ring-2 focus:ring-(--focus-ring)/30"
                   />
-                  <button
+                  <Button
                     type="button"
+                    variant="default"
+                    size="sm"
                     onClick={() => void saveServer()}
-                    className="h-8.5 rounded border border-(--color-border-strong) bg-(--bg-key) px-3 text-xs font-medium text-(--color-text) hover:bg-(--bg-key)/80 disabled:cursor-not-allowed disabled:opacity-60 transition-colors"
                     disabled={pending}
                   >
                     Save server
-                  </button>
+                  </Button>
                 </div>
               </div>
             </div>
-          </div>
+          </SectionCard>
 
           <p className="text-[10.5px] leading-relaxed text-(--color-text-subtle)">
             Connect verifies and switches to a saved server. Save only stores or renames an entry. Use builtin returns this app to the bundled sidecar. If a LAN server fails, confirm the backend is not bound to localhost only and that firewall/local-network permissions allow access.

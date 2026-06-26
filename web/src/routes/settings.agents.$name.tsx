@@ -130,7 +130,7 @@ export function AgentEditorPage({ name, onBack }: AgentEditorPageProps) {
               )}
             </div>
             {data && !isBuiltIn && (
-              <Button variant="destructive" size="xs" className="min-h-11 md:min-h-0"
+              <Button variant="danger" size="xs" className="min-h-11 md:min-h-0"
                 onClick={() => setDeleteOpen(true)} disabled={deleteMut.isPending}>
                 <Trash2 size={11} aria-hidden="true" />
                 Delete agent
@@ -149,8 +149,8 @@ export function AgentEditorPage({ name, onBack }: AgentEditorPageProps) {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="p-3">
-            <Button type="button" variant="outline" onClick={() => setDeleteOpen(false)}>Cancel</Button>
-            <Button type="button" variant="destructive" onClick={handleDelete} disabled={deleteMut.isPending}>Delete</Button>
+            <Button type="button" variant="default" onClick={() => setDeleteOpen(false)}>Cancel</Button>
+            <Button type="button" variant="danger" onClick={handleDelete} disabled={deleteMut.isPending}>Delete</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

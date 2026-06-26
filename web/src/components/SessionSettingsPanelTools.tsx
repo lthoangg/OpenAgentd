@@ -198,7 +198,7 @@ export function Tools({
                     </span>
                     <Button
                       type="button"
-                      variant="outline"
+                      variant="default"
                       size="sm"
                       disabled={!status.config || busyServer === status.name}
                       onClick={() => onToggleServer(status)}
@@ -208,7 +208,7 @@ export function Tools({
                     {status.transport === 'http' && status.config?.transport === 'http' && status.config.oauth && (
                       <Button
                         type="button"
-                        variant="outline"
+                        variant="default"
                         size="sm"
                         disabled={!status.enabled || busyServer === status.name}
                         onClick={() => onConnectOAuth(status)}

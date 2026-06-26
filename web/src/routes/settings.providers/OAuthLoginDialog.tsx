@@ -158,7 +158,7 @@ export function OAuthLoginDialog({
                   <Button
                     className="mt-3 min-h-11 w-full sm:min-h-0"
                     size="sm"
-                    variant="secondary"
+                    variant="default"
                     onClick={() => {
                       setError(null)
                       setEvents([])

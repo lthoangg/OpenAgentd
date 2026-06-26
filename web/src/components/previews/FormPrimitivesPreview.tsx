@@ -114,7 +114,7 @@ export function LowLevelComponentsPreview() {
         <div className="grid content-start gap-2">
           <span className="text-xs font-medium text-(--color-text-muted)">Popover</span>
           <Popover>
-            <PopoverTrigger render={<Button variant="outline">Open popover</Button>} />
+            <PopoverTrigger render={<Button variant="default">Open popover</Button>} />
             <PopoverContent align="start">
               <PopoverHeader>
                 <PopoverTitle>Schedule conflict</PopoverTitle>
@@ -194,7 +194,7 @@ export function CreateTaskFormPreview() {
         </label>
 
         <div className="flex justify-end gap-2 pt-2">
-          <Button variant="outline">Cancel</Button>
+          <Button variant="default">Cancel</Button>
           <Button>Save task</Button>
         </div>
       </div>

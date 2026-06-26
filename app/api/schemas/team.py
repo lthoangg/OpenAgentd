@@ -72,6 +72,38 @@ class TodosResponse(BaseModel):
     todos: list[TodoItemResponse]
 
 
+# ── Git history and commits ──────────────────────────────────────────────────
+
+
+class GitCommit(BaseModel):
+    """One git commit representation."""
+
+    sha: str
+    short_sha: str
+    author_name: str
+    author_email: str
+    timestamp: int
+    subject: str
+    refs: str | None = None
+
+
+class WorkspaceGitHistoryResponse(BaseModel):
+    """Git history and graph tree representation."""
+
+    workspace: str
+    is_git_repo: bool
+    commits: list[GitCommit]
+    next_cursor: str | None = None
+    graph: str
+
+
+class WorkspaceCommitDiffResponse(BaseModel):
+    """Raw diff of a specific git commit."""
+
+    sha: str
+    diff: str
+
+
 # ── Permissions ──────────────────────────────────────────────────────────────
 
 

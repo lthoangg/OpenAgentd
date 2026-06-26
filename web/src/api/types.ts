@@ -109,6 +109,29 @@ export interface WorkspaceStatusResponse {
   head?: { sha: string; subject: string; timestamp: number } | null
 }
 
+export interface GitCommit {
+  sha: string
+  short_sha: string
+  author_name: string
+  author_email: string
+  timestamp: number
+  subject: string
+  refs?: string | null
+}
+
+export interface WorkspaceGitHistoryResponse {
+  workspace: string
+  is_git_repo: boolean
+  commits: GitCommit[]
+  next_cursor?: string | null
+  graph: string
+}
+
+export interface WorkspaceCommitDiffResponse {
+  sha: string
+  diff: string
+}
+
 export interface CodingWorkspaceFilesResponse {
   workspace: string
   files: WorkspaceFileInfo[]

@@ -283,3 +283,130 @@ class TestWorkspaceFilesListing:
     # physically removes files added after that point, so the listing
     # and media endpoints simply report what's on disk. The snapshot
     # round-trip is covered by tests/services/test_snapshot_service.py.
+
+
+class TestCodingWorkspaceGit:
+    def test_workspace_git_history_not_git_repo(self, client, tmp_path, monkeypatch):
+        fake_root = tmp_path / "not-git"
+        fake_root.mkdir()
+
+        from app.services import team_manager
+
+        monkeypatch.setattr(
+            team_manager, "validate_workspace", lambda w: str(fake_root)
+        )
+
+        resp = client.get(f"/api/team/workspace/git/history?workspace={fake_root}")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["is_git_repo"] is False
+        assert body["commits"] == []
+        assert body["graph"] == ""
+
+    def test_workspace_git_history_success(self, client, tmp_path, monkeypatch):
+        import subprocess
+
+        fake_root = tmp_path / "git-repo"
+        fake_root.mkdir()
+
+        # Initialize real git repo
+        subprocess.run(["git", "init"], cwd=fake_root, check=True, capture_output=True)
+        # Configure git user (required to commit)
+        subprocess.run(
+            ["git", "config", "user.name", "Test User"], cwd=fake_root, check=True
+        )
+        subprocess.run(
+            ["git", "config", "user.email", "test@example.com"],
+            cwd=fake_root,
+            check=True,
+        )
+
+        # Create a commit
+        file_path = fake_root / "hello.txt"
+        file_path.write_text("hello world\n")
+        subprocess.run(["git", "add", "hello.txt"], cwd=fake_root, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Initial commit"], cwd=fake_root, check=True
+        )
+
+        from app.services import team_manager
+
+        monkeypatch.setattr(
+            team_manager, "validate_workspace", lambda w: str(fake_root)
+        )
+
+        resp = client.get(f"/api/team/workspace/git/history?workspace={fake_root}")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["is_git_repo"] is True
+        assert len(body["commits"]) == 1
+        commit = body["commits"][0]
+        assert commit["subject"] == "Initial commit"
+        assert commit["author_name"] == "Test User"
+        assert commit["author_email"] == "test@example.com"
+        assert len(commit["sha"]) == 40
+        assert len(commit["short_sha"]) == 7
+        assert commit["timestamp"] > 0
+        assert "Initial commit" in body["graph"]
+
+    def test_workspace_git_commit_diff_invalid_sha(self, client, tmp_path, monkeypatch):
+        fake_root = tmp_path / "git-repo"
+        fake_root.mkdir()
+
+        from app.services import team_manager
+
+        monkeypatch.setattr(
+            team_manager, "validate_workspace", lambda w: str(fake_root)
+        )
+
+        resp = client.get(
+            f"/api/team/workspace/git/commit-diff?workspace={fake_root}&sha=invalid_sha_123"
+        )
+        assert resp.status_code == 422
+
+    def test_workspace_git_commit_diff_success(self, client, tmp_path, monkeypatch):
+        import subprocess
+
+        fake_root = tmp_path / "git-repo"
+        fake_root.mkdir()
+
+        subprocess.run(["git", "init"], cwd=fake_root, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.name", "Test User"], cwd=fake_root, check=True
+        )
+        subprocess.run(
+            ["git", "config", "user.email", "test@example.com"],
+            cwd=fake_root,
+            check=True,
+        )
+
+        file_path = fake_root / "hello.txt"
+        file_path.write_text("hello world\n")
+        subprocess.run(["git", "add", "hello.txt"], cwd=fake_root, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Initial commit"], cwd=fake_root, check=True
+        )
+
+        # Get the commit sha
+        res = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=fake_root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        sha = res.stdout.strip()
+
+        from app.services import team_manager
+
+        monkeypatch.setattr(
+            team_manager, "validate_workspace", lambda w: str(fake_root)
+        )
+
+        resp = client.get(
+            f"/api/team/workspace/git/commit-diff?workspace={fake_root}&sha={sha}"
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["sha"] == sha
+        assert "+hello world" in body["diff"]

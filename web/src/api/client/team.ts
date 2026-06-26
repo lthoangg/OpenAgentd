@@ -21,6 +21,8 @@ import type {
   WorkspaceBrowseResponse,
   WorkspaceGitDiffResponse,
   WorkspaceStatusResponse,
+  WorkspaceGitHistoryResponse,
+  WorkspaceCommitDiffResponse,
   TeamCommandResponse,
   WorkspaceFilesResponse,
   CodingWorkspaceFilesResponse,
@@ -249,6 +251,31 @@ export async function getCodingWorkspaceStatus(workspace: string): Promise<Works
   const params = new URLSearchParams({ workspace })
   const res = await fetch(`${apiBaseUrl()}/team/workspace/status?${params}`)
   if (!res.ok) await parseDetailOrThrow(res, 'getCodingWorkspaceStatus')
+  return res.json()
+}
+
+export async function getCodingWorkspaceGitHistory(
+  workspace: string,
+  limit = 50,
+  cursor?: string | null,
+  all = false,
+): Promise<WorkspaceGitHistoryResponse> {
+  const params = new URLSearchParams({ workspace, limit: String(limit), all: String(all) })
+  if (cursor) {
+    params.set('cursor', cursor)
+  }
+  const res = await fetch(`${apiBaseUrl()}/team/workspace/git/history?${params}`)
+  if (!res.ok) await parseDetailOrThrow(res, 'getCodingWorkspaceGitHistory')
+  return res.json()
+}
+
+export async function getCodingWorkspaceCommitDiff(
+  workspace: string,
+  sha: string,
+): Promise<WorkspaceCommitDiffResponse> {
+  const params = new URLSearchParams({ workspace, sha })
+  const res = await fetch(`${apiBaseUrl()}/team/workspace/git/commit-diff?${params}`)
+  if (!res.ok) await parseDetailOrThrow(res, 'getCodingWorkspaceCommitDiff')
   return res.json()
 }
 

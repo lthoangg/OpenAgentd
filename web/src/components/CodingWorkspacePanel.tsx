@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { ChevronRight, Folder, GitCompare, Plus, RefreshCw, Search, X } from 'lucide-react'
+import { ChevronDown, ChevronRight, Folder, GitCompare, Plus, RefreshCw, Search, X } from 'lucide-react'
 import { getCodingWorkspaceGitDiff, listCodingWorkspaceFiles, getCodingWorkspaceGitHistory, getCodingWorkspaceCommitDiff } from '@/api/client'
 import { CodingFilePreviewContent, DiffPreview } from './CodingFileViewerPanel'
 import { FileTypeIcon } from './FileTypeIcon'
@@ -15,7 +15,7 @@ import type { WorkspaceFileInfo, WorkspaceGitDiffResponse } from '@/api/types'
 
 type ChangedFileStatus = 'A' | 'M' | 'D'
 type WorkspacePanelTab =
-  | { id: 'review'; type: 'review'; title: 'Changes' }
+  | { id: 'review'; type: 'review'; title: 'Git' }
   | { id: string; type: 'file'; title: string; file: WorkspaceFileInfo }
 
 interface ChangedFileInfo {
@@ -222,7 +222,7 @@ export function CodingWorkspacePanel({
   onAddComment?: (path: string, startLine: number, endLine: number) => void
 }) {
   const prefersReducedMotion = useReducedMotion()
-  const [tabs, setTabs] = useState<WorkspacePanelTab[]>([{ id: 'review', type: 'review', title: 'Changes' }])
+  const [tabs, setTabs] = useState<WorkspacePanelTab[]>([{ id: 'review', type: 'review', title: 'Git' }])
   const [activeTabId, setActiveTabId] = useState('review')
   const [fileSearchOpen, setFileSearchOpen] = useState(false)
   const [fileSearch, setFileSearch] = useState('')
@@ -251,6 +251,7 @@ export function CodingWorkspacePanel({
   const [historyLimit] = useState(50)
   const [expandedCommitSha, setExpandedCommitSha] = useState<string | null>(null)
   const [expandedCommitFiles, setExpandedCommitFiles] = useState<Set<string>>(() => new Set())
+  const [menuOpen, setMenuOpen] = useState(false)
 
   const gitHistory = useInfiniteQuery({
     queryKey: queryKeys.coding.history(workspace, historyLimit, allBranches),
@@ -571,42 +572,111 @@ export function CodingWorkspacePanel({
             <div className="flex h-full min-h-0 flex-col">
               {diff.data?.is_git_repo && (
                 <div className="flex border-b border-(--color-border) bg-(--bg-card) p-1 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => setSubTab('changes')}
-                    className={cn(
-                      'flex-1 rounded py-1 text-center text-[11px] font-medium transition-colors cursor-pointer',
-                      subTab === 'changes'
-                        ? 'bg-(--bg-page) text-(--color-text) shadow-xs border border-(--color-border-strong)'
-                        : 'text-(--color-text-muted) hover:text-(--color-text)'
-                    )}
-                  >
-                    Changes ({changedFiles.length})
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSubTab('commits')}
-                    className={cn(
-                      'flex-1 rounded py-1 text-center text-[11px] font-medium transition-colors cursor-pointer',
-                      subTab === 'commits'
-                        ? 'bg-(--bg-page) text-(--color-text) shadow-xs border border-(--color-border-strong)'
-                        : 'text-(--color-text-muted) hover:text-(--color-text)'
-                    )}
-                  >
-                    Commits
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSubTab('tree')}
-                    className={cn(
-                      'flex-1 rounded py-1 text-center text-[11px] font-medium transition-colors cursor-pointer',
-                      subTab === 'tree'
-                        ? 'bg-(--bg-page) text-(--color-text) shadow-xs border border-(--color-border-strong)'
-                        : 'text-(--color-text-muted) hover:text-(--color-text)'
-                    )}
-                  >
-                    Tree
-                  </button>
+                  {!mobile ? (
+                    <div className="relative w-full">
+                      <button
+                        type="button"
+                        onClick={() => setMenuOpen((prev) => !prev)}
+                        className="flex w-full items-center justify-between rounded px-2.5 py-1 text-left text-xs font-medium border border-(--color-border-strong) bg-(--bg-page) text-(--color-text) hover:bg-(--bg-key) cursor-pointer select-none"
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <GitCompare size={12} className="text-(--color-text-subtle)" />
+                          {subTab === 'changes'
+                            ? `Changes (${changedFiles.length})`
+                            : subTab === 'commits'
+                            ? 'Commits'
+                            : 'Tree'}
+                        </span>
+                        <ChevronDown size={12} className="text-(--color-text-subtle)" />
+                      </button>
+
+                      {menuOpen && (
+                        <>
+                          <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
+                          <div className="absolute left-0 right-0 top-full mt-1 z-20 rounded border border-(--color-border) bg-(--bg-card) p-1 shadow-lg flex flex-col gap-0.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSubTab('changes')
+                                setMenuOpen(false)
+                              }}
+                              className={cn(
+                                'w-full rounded px-2 py-1 text-left text-xs font-medium hover:bg-(--bg-key) cursor-pointer transition-colors',
+                                subTab === 'changes' ? 'text-(--color-accent)' : 'text-(--color-text-2)'
+                              )}
+                            >
+                              Changes ({changedFiles.length})
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSubTab('commits')
+                                setMenuOpen(false)
+                              }}
+                              className={cn(
+                                'w-full rounded px-2 py-1 text-left text-xs font-medium hover:bg-(--bg-key) cursor-pointer transition-colors',
+                                subTab === 'commits' ? 'text-(--color-accent)' : 'text-(--color-text-2)'
+                              )}
+                            >
+                              Commits
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSubTab('tree')
+                                setMenuOpen(false)
+                              }}
+                              className={cn(
+                                'w-full rounded px-2 py-1 text-left text-xs font-medium hover:bg-(--bg-key) cursor-pointer transition-colors',
+                                subTab === 'tree' ? 'text-(--color-accent)' : 'text-(--color-text-2)'
+                              )}
+                            >
+                              Tree
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex w-full bg-inherit gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setSubTab('changes')}
+                        className={cn(
+                          'flex-1 rounded py-1 text-center text-[11px] font-medium transition-colors cursor-pointer',
+                          subTab === 'changes'
+                            ? 'bg-(--bg-page) text-(--color-text) shadow-xs border border-(--color-border-strong)'
+                            : 'text-(--color-text-muted) hover:text-(--color-text)'
+                        )}
+                      >
+                        Changes ({changedFiles.length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSubTab('commits')}
+                        className={cn(
+                          'flex-1 rounded py-1 text-center text-[11px] font-medium transition-colors cursor-pointer',
+                          subTab === 'commits'
+                            ? 'bg-(--bg-page) text-(--color-text) shadow-xs border border-(--color-border-strong)'
+                            : 'text-(--color-text-muted) hover:text-(--color-text)'
+                        )}
+                      >
+                        Commits
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSubTab('tree')}
+                        className={cn(
+                          'flex-1 rounded py-1 text-center text-[11px] font-medium transition-colors cursor-pointer',
+                          subTab === 'tree'
+                            ? 'bg-(--bg-page) text-(--color-text) shadow-xs border border-(--color-border-strong)'
+                            : 'text-(--color-text-muted) hover:text-(--color-text)'
+                        )}
+                      >
+                        Tree
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 

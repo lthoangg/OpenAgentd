@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Server, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { SectionCard, SectionCardHeader, SectionCardRows, SectionCardRow, SectionCardBadge } from '@/components/ui/section-card'
 
 import { apiBaseUrl, setApiBaseUrl } from '@/api/base-url'
@@ -311,12 +312,12 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
                   Server URL
                 </label>
                 <div className="flex gap-2">
-                  <input
+                  <Input
                     id="app-backend-url"
                     value={baseUrl}
                     onChange={(event) => setBaseUrl(event.target.value)}
                     placeholder="http://<backend-host>:4082"
-                    className="min-w-0 flex-1 rounded border border-(--color-border) bg-(--bg-input) px-2.5 py-1.5 font-mono text-xs text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-muted)/60 focus:border-(--focus-ring) focus:ring-2 focus:ring-(--focus-ring)/30"
+                    className="min-w-0 flex-1 font-mono"
                   />
                   <Button
                     type="button"
@@ -345,7 +346,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
                 <label className="text-[10.5px] font-semibold text-(--color-text-muted)" htmlFor="app-backend-key">
                   Access key
                 </label>
-                <input
+                <Input
                   id="app-backend-key"
                   value={accessKey}
                   onChange={(event) => {
@@ -354,7 +355,6 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
                   }}
                   placeholder="Required when server was started with --key"
                   type="password"
-                  className="w-full rounded border border-(--color-border) bg-(--bg-input) px-2.5 py-1.5 text-xs text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-muted)/60 focus:border-(--focus-ring) focus:ring-2 focus:ring-(--focus-ring)/30"
                 />
               </div>
 
@@ -363,12 +363,12 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
                   Server name
                 </label>
                 <div className="flex gap-2">
-                  <input
+                  <Input
                     id="app-backend-name"
                     value={serverName}
                     onChange={(event) => setServerName(event.target.value)}
                     placeholder="Work laptop, Home server, Local CLI"
-                    className="min-w-0 flex-1 rounded border border-(--color-border) bg-(--bg-input) px-2.5 py-1.5 text-xs text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-muted)/60 focus:border-(--focus-ring) focus:ring-2 focus:ring-(--focus-ring)/30"
+                    className="min-w-0 flex-1"
                   />
                   <Button
                     type="button"

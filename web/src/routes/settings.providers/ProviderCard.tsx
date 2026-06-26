@@ -216,7 +216,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
               type="button"
               size="sm"
               variant="default"
-              className="h-8.5 text-xs"
+              className=""
               onClick={handleListModels}
               disabled={!hasCandidateKey || listing}
             >
@@ -226,7 +226,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
             <Button
               type="button"
               size="sm"
-              className="h-8.5 text-xs"
+              className=""
               onClick={handleSave}
               disabled={!canSave || saveMutation.isPending}
             >
@@ -243,7 +243,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
                 onChange={(e) => setBaseUrl(e.target.value)}
                 placeholder={daemon.placeholder}
                 autoComplete="off"
-                className="mt-1 h-8.5 font-mono text-xs"
+                className="mt-1 font-mono"
                 spellCheck={false}
               />
             </label>
@@ -268,7 +268,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
             type="button"
             size="sm"
             variant="default"
-            className="h-8.5 text-xs"
+            className=""
             onClick={handleListModels}
             disabled={!provider.is_configured || listing}
           >
@@ -278,7 +278,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
           <Button
             type="button"
             size="sm"
-            className="h-8.5 text-xs"
+            className=""
             onClick={() => setOauthOpen(true)}
           >
             <ShieldCheck size={12} aria-hidden="true" className="mr-1.5" />
@@ -318,7 +318,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
                 onChange={(e) => setBaseUrl(e.target.value)}
                 placeholder={daemon.placeholder}
                 autoComplete="off"
-                className="h-8.5 font-mono text-xs"
+                className="font-mono"
                 spellCheck={false}
               />
             </label>
@@ -326,7 +326,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
               type="button"
               size="sm"
               variant="default"
-              className="h-8.5 text-xs"
+              className=""
               onClick={handleListModels}
               disabled={listing}
             >
@@ -336,7 +336,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
             <Button
               type="button"
               size="sm"
-              className="h-8.5 text-xs"
+              className=""
               onClick={handleSave}
               disabled={saveMutation.isPending}
             >
@@ -366,7 +366,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
                   }}
                   placeholder={credential.placeholder}
                   autoComplete="off"
-                  className="mt-1 h-8.5 font-mono text-xs"
+                  className="mt-1 font-mono"
                   spellCheck={false}
                 />
               </label>
@@ -377,7 +377,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
               type="button"
               size="sm"
               variant="default"
-              className="h-8.5 text-xs"
+              className=""
               onClick={handleListModels}
               disabled={!hasCloudCandidate || listing}
             >
@@ -387,7 +387,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
             <Button
               type="button"
               size="sm"
-              className="h-8.5 text-xs"
+              className=""
               onClick={handleSave}
               disabled={!canSave || saveMutation.isPending}
             >

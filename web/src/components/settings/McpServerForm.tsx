@@ -427,14 +427,14 @@ function PairListField({
                 onChange={(e) => setAt(idx, { key: e.target.value })}
                 disabled={disabled}
                 placeholder={keyPlaceholder}
-                className="min-h-11 font-mono text-xs md:min-h-9"
+                className="min-h-11 font-mono md:min-h-9"
               />
               <Input
                 value={pair.value}
                 onChange={(e) => setAt(idx, { value: e.target.value })}
                 disabled={disabled}
                 placeholder={valuePlaceholder}
-                className="min-h-11 font-mono text-xs md:min-h-9"
+                className="min-h-11 font-mono md:min-h-9"
               />
               <Button
                 size="icon-xs"

@@ -507,13 +507,20 @@ html[data-mobile-shell] .text-\[10px\] {
   ::-webkit-scrollbar-thumb:hover {
     background: var(--color-text-muted);
   }
-  /* Stop rubber-band chaining at every internal scroll edge. */
+  /* Let internal scrollers chain to their parent when they hit a
+   * top/bottom limit (good UX: cursor/touch over a nested scroll area
+   * keeps scrolling the page once the inner one bottoms out). The
+   * document edge is independently locked via html/body { overflow:
+   * hidden; overscroll-behavior: none } above, so this chaining stops
+   * at the route shell and never rubber-bands the webview edge.
+   * Use `overscroll-contain` explicitly on an element to trap scroll
+   * inside a self-contained overlay (e.g. a dialog/popover). */
   .overflow-auto,
   .overflow-x-auto,
   .overflow-y-auto,
   .overflow-y-scroll,
   .overflow-scroll {
-    overscroll-behavior: none;
+    overscroll-behavior: auto;
   }
 }
 

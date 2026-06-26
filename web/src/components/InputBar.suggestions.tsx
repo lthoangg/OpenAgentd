@@ -59,7 +59,7 @@ export function InputBarSuggestions({
   return (
     <>
       {slashMenuOpen && filteredSlashCommands.length > 0 && (
-        <div id={slashMenuId} role="listbox" aria-label="Slash commands" className="absolute bottom-full left-0 right-0 z-10 mb-1 max-h-64 overflow-y-auto rounded-lg border border-(--color-border-strong) bg-(--color-surface) shadow-md">
+        <div id={slashMenuId} role="listbox" aria-label="Slash commands" className="absolute bottom-full left-0 right-0 z-10 mb-1 max-h-64 overflow-y-auto overscroll-contain rounded-lg border border-(--color-border-strong) bg-(--color-surface) shadow-md">
           {filteredSlashCommands.map((cmd) => {
             if ('isSeparator' in cmd && cmd.isSeparator) {
               return (
@@ -99,7 +99,7 @@ export function InputBarSuggestions({
         </div>
       )}
       {mentionMenuOpen && filteredMentions.length > 0 && (
-        <div id={mentionMenuId} role="listbox" aria-label="Reference workspace file" className="absolute bottom-full left-0 right-0 z-10 mb-1 max-h-64 overflow-y-auto rounded-lg border border-(--color-border-strong) bg-(--color-surface) shadow-md">
+        <div id={mentionMenuId} role="listbox" aria-label="Reference workspace file" className="absolute bottom-full left-0 right-0 z-10 mb-1 max-h-64 overflow-y-auto overscroll-contain rounded-lg border border-(--color-border-strong) bg-(--color-surface) shadow-md">
           {filteredMentions.map((ref, index) => {
             const active = index === clampedMentionIndex
             const isDir = ref.type === 'directory'
@@ -124,7 +124,7 @@ export function InputBarSuggestions({
         </div>
       )}
       {snippetMenuOpen && filteredSnippetCommands.length > 0 && (
-        <div id={snippetMenuId} role="listbox" aria-label="Snippets" className="absolute bottom-full left-0 right-0 z-10 mb-1 max-h-64 overflow-y-auto rounded-lg border border-(--color-border-strong) bg-(--color-surface) shadow-md">
+        <div id={snippetMenuId} role="listbox" aria-label="Snippets" className="absolute bottom-full left-0 right-0 z-10 mb-1 max-h-64 overflow-y-auto overscroll-contain rounded-lg border border-(--color-border-strong) bg-(--color-surface) shadow-md">
           {filteredSnippetCommands.map((cmd, index) => {
             const active = index === clampedSnippetIndex
             return (

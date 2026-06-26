@@ -169,7 +169,7 @@ export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
           </div>
 
           {/* Command list */}
-          <div ref={listRef} className="max-h-80 overflow-y-auto py-1.5">
+          <div ref={listRef} className="max-h-80 overflow-y-auto overscroll-contain py-1.5">
             {filtered.length === 0 ? (
               <p className="px-4 py-6 text-center text-sm text-(--color-text-muted)">
                 No commands match "{query}"

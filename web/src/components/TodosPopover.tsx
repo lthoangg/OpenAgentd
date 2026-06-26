@@ -108,7 +108,7 @@ export function TodosPopover({
       ) : (
         <ul
           aria-label="Task list"
-          className="scrollbar-none max-h-[min(60vh,24rem)] overflow-y-auto py-1"
+          className="scrollbar-none max-h-[min(60vh,24rem)] overflow-y-auto overscroll-contain py-1"
         >
           {sortedTodos.map((todo) => {
             const Icon = STATUS_ICON[todo.status]

@@ -152,7 +152,7 @@ function CommitDetail({
             {expanded && (
               <div className="border-t border-(--color-border-subtle)">
                 {fileDiff ? (
-                  <div className="max-h-[40vh] min-h-0 overflow-y-auto overscroll-contain touch-pan-y">
+                  <div className="max-h-[40vh] min-h-0 overflow-y-auto touch-pan-y">
                     <DiffPreview diff={fileDiff} />
                   </div>
                 ) : (
@@ -805,7 +805,7 @@ export function CodingWorkspacePanel({
                               </button>
                               {expanded && (
                                 <div className="border-t border-(--color-border-subtle)">
-                                  {fileDiff ? <div className="max-h-[70vh] min-h-0 overflow-y-auto overscroll-contain touch-pan-y"><DiffPreview diff={fileDiff} /></div>
+                                  {fileDiff ? <div className="max-h-[70vh] min-h-0 overflow-y-auto touch-pan-y"><DiffPreview diff={fileDiff} /></div>
                                     : <p className="px-2 py-3 text-xs text-(--color-text-subtle)">No diff body for this file.</p>}
                                 </div>
                               )}
@@ -909,7 +909,7 @@ export function CodingWorkspacePanel({
                     <p className="px-2 py-4 text-xs text-(--color-text-subtle)">Not a git repository</p>
                   ) : (
                     <div className="flex flex-col h-full min-h-0">
-                      <div className="min-h-0 flex-1 overflow-auto rounded bg-(--bg-key)/20 border border-(--color-border-subtle) p-2 select-none overscroll-contain">
+                      <div className="min-h-0 flex-1 overflow-auto rounded bg-(--bg-key)/20 border border-(--color-border-subtle) p-2 select-none">
                         {parsedGraphLines.length === 0 ? (
                           <p className="px-2 py-4 text-xs text-(--color-text-subtle)">No graph history.</p>
                         ) : (

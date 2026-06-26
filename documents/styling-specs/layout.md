@@ -325,12 +325,40 @@ The 8px minimum in `.pb-safe` prevents footers being flush with the edge on devi
 body {
   touch-action: manipulation;          /* disables double-tap zoom */
   -webkit-tap-highlight-color: transparent;
-  overscroll-behavior: none;           /* prevents pull-to-refresh on the root */
 }
-.scroll-region {
-  overscroll-behavior: contain;        /* each scroll region contained */
+html, body {
+  overflow: hidden;
+  overscroll-behavior: none;           /* lock the document edge: no rubber-band */
+}
+
+/* Internal scrollers chain to their parent when they hit a top/bottom
+ * limit (good UX: a cursor or finger over a nested scroll area keeps
+ * scrolling the page once the inner one bottoms out). The document edge
+ * is already locked above, so chaining stops at the route shell and
+ * never rubber-bands the webview. */
+.overflow-auto,
+.overflow-x-auto,
+.overflow-y-auto,
+.overflow-y-scroll,
+.overflow-scroll {
+  overscroll-behavior: auto;
 }
 ```
+
+#### Scroll chaining vs. trapping
+
+- **Nested content scrollers chain by default.** A `max-h-*` list or diff
+  preview embedded inside a larger scroll context (e.g. the file list in
+  `CodingWorkspacePanel`) should continue scrolling its parent once it hits
+  the edge. Do **not** add `overscroll-contain` to these.
+- **Self-contained overlays trap scroll.** Add `overscroll-contain` to the
+  outermost scroller of a dialog, sheet, dropdown, select, command palette,
+  or anchored popover so scrolling it never leaks to the page behind. This is
+  applied in `ui/dialog.tsx`, `ui/sheet.tsx`, `ui/dropdown-menu.tsx`,
+  `ui/select.tsx`, `InputBar.suggestions.tsx`, `CommandPalette.tsx`,
+  `TodosPopover.tsx`, `MultiSelect.tsx`, and `ModelCombobox.tsx`.
+
+**Rule of thumb:** content scrollers chain; overlay scrollers contain.
 
 ### Multi-pane panels on mobile
 

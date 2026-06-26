@@ -7,7 +7,20 @@ function Textarea({ className, ...props }: React.ComponentProps<"textarea">) {
     <textarea
       data-slot="textarea"
       className={cn(
-        "flex field-sizing-content min-h-24 w-full rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-2.5 text-sm leading-relaxed text-(--color-text) transition-colors outline-none placeholder:text-(--color-text-subtle) hover:border-(--color-border-strong) focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25 disabled:cursor-not-allowed disabled:bg-(--bg-key) disabled:text-(--color-text-muted) disabled:opacity-60 aria-invalid:border-(--color-error) aria-invalid:ring-2 aria-invalid:ring-(--color-error)/20",
+        // Layout
+        "flex field-sizing-content min-h-24 w-full rounded-sm border",
+        // Surface — matches Input primitive
+        "border-(--color-border) bg-(--bg-input)",
+        // Typography — text-xs consistent with Input; callers override for code (text-[13px])
+        "px-2.5 py-2 text-xs leading-relaxed text-(--color-text)",
+        // Placeholder
+        "placeholder:text-(--color-text-muted)/60",
+        // Interaction — no hover border jump
+        "outline-none transition-colors",
+        "focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/30",
+        // States
+        "disabled:cursor-not-allowed disabled:opacity-50",
+        "aria-invalid:border-(--color-error) aria-invalid:ring-2 aria-invalid:ring-(--color-error)/20",
         className
       )}
       {...props}

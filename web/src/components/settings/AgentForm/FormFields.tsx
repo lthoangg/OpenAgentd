@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { AlertCircle } from 'lucide-react'
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { SectionCard, SectionCardHeader, SectionCardRows } from '@/components/ui/section-card'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
@@ -35,7 +35,7 @@ export function ParseErrorBanner({
   onSwitchToRaw: () => void
 }) {
   return (
-    <div className="flex items-start gap-2 rounded-lg border border-(--color-error)/30 bg-(--color-error-subtle) px-3 py-2 text-xs text-(--color-error)">
+    <div className="flex items-start gap-2 rounded-sm border border-(--color-error)/30 bg-(--color-error-subtle) px-3 py-2 text-xs text-(--color-error)">
       <AlertCircle size={14} className="mt-0.5 shrink-0" />
       <div className="flex-1">
         <p className="font-medium">Parse error</p>
@@ -140,21 +140,19 @@ export function FormFields({
   return (
     <div className="flex flex-col gap-4">
       {hasBuiltInProfile && (
-        <div className="rounded-lg border border-(--color-border) bg-(--bg-card) px-4 py-3 text-sm text-(--color-text-muted)">
-          <p className="font-medium text-(--color-text)">Built-in OpenAgentd profile</p>
-          <p className="mt-1">
+        <div className="rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2.5 text-xs text-(--color-text-muted)">
+          <p className="font-semibold text-(--color-text)">Built-in OpenAgentd profile</p>
+          <p className="mt-1 leading-relaxed">
             OpenAgentd provides the default description, tools, skills, and prompt in code. Values saved here are additive overrides, so versioned built-ins can improve without overwriting your file.
           </p>
         </div>
       )}
 
       {/* Identity ─────────────────────────────────────────────── */}
-      <Card size="sm">
-        <CardHeader>
-          <CardTitle>Identity</CardTitle>
-          <CardDescription>Who is this agent and what is its role?</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2">
+      <SectionCard>
+        <SectionCardHeader>Identity — who is this agent and what is its role?</SectionCardHeader>
+        <SectionCardRows>
+        <div className="px-3 py-3 grid gap-3 md:grid-cols-2">
           <Field
             label="Name"
             required
@@ -207,18 +205,15 @@ export function FormFields({
               aria-invalid={!!descriptionError || undefined}
             />
           </Field>
-        </CardContent>
-      </Card>
+        </div>
+        </SectionCardRows>
+      </SectionCard>
 
       {/* Model & behaviour ─────────────────────────────────────── */}
-      <Card size="sm">
-        <CardHeader>
-          <CardTitle>Model &amp; behaviour</CardTitle>
-          <CardDescription>
-            Which provider, plus sampling temperature and reasoning depth.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2">
+      <SectionCard>
+        <SectionCardHeader>Model &amp; behaviour — provider, temperature, reasoning depth</SectionCardHeader>
+        <SectionCardRows>
+        <div className="px-3 py-3 grid gap-3 md:grid-cols-2">
           <Field label="Model" required error={modelError} className="md:col-span-2">
             <ModelCombobox
               value={fm.model ?? ''}
@@ -259,20 +254,19 @@ export function FormFields({
               ))}
             </Dropdown>
           </Field>
-        </CardContent>
-      </Card>
+        </div>
+        </SectionCardRows>
+      </SectionCard>
 
       {/* Capabilities ──────────────────────────────────────────── */}
-      <Card size="sm">
-        <CardHeader>
-          <CardTitle>Capabilities</CardTitle>
-          <CardDescription>
-            {hasBuiltInProfile
-              ? 'Add extra tools, MCP servers, and skills on top of the built-in profile.'
-              : 'Tools the agent may invoke, MCP servers it has access to, and skills it can load on demand.'}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
+      <SectionCard>
+        <SectionCardHeader>
+          {hasBuiltInProfile
+            ? 'Capabilities \u2014 extra tools, MCP servers, and skills on top of the built-in profile'
+            : 'Capabilities \u2014 tools, MCP servers, and skills'}
+        </SectionCardHeader>
+        <SectionCardRows>
+        <div className="px-3 py-3 flex flex-col gap-4">
           <Field
             label="Tools"
             hint={
@@ -324,20 +318,17 @@ export function FormFields({
               placeholder="Pick skills the agent can load on demand…"
             />
           </Field>
-        </CardContent>
-      </Card>
+        </div>
+        </SectionCardRows>
+      </SectionCard>
 
       {/* System prompt ─────────────────────────────────────────── */}
-      <Card size="sm">
-        <CardHeader>
-          <CardTitle>{hasBuiltInProfile ? 'Extra prompt' : 'System prompt'}</CardTitle>
-          <CardDescription>
-            {hasBuiltInProfile
-              ? 'Additional instructions appended after the built-in prompt.'
-              : 'The instructions placed at the top of every conversation with this agent.'}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+      <SectionCard>
+        <SectionCardHeader>
+          {hasBuiltInProfile ? 'Extra prompt \u2014 appended after the built-in prompt' : 'System prompt \u2014 instructions at the top of every conversation'}
+        </SectionCardHeader>
+        <SectionCardRows>
+        <div className="px-3 py-3">
           <Textarea
             value={body}
             onChange={(e) => updateFromForm(fm, e.target.value)}
@@ -346,8 +337,9 @@ export function FormFields({
             placeholder="You are …"
             className="min-h-72 font-mono text-[13px] leading-relaxed"
           />
-        </CardContent>
-      </Card>
+        </div>
+        </SectionCardRows>
+      </SectionCard>
     </div>
   )
 }
@@ -357,15 +349,15 @@ export function FormFields({
 
 function CapabilityChips({ label, values }: { label: string; values: string[] }) {
   return (
-    <div className="rounded-md border border-(--color-border) bg-(--bg-surface) px-3 py-2">
-      <p className="mb-1.5 text-[11px] font-medium text-(--color-text-muted)">
+    <div className="rounded-xs border border-(--color-border) bg-(--bg-key)/30 px-2.5 py-2">
+      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-(--color-text-muted) select-none">
         {label}
       </p>
       <div className="flex flex-wrap gap-1.5">
         {values.map((value) => (
           <span
             key={value}
-            className="rounded bg-(--bg-key) px-1.5 py-0.5 font-mono text-[11px] text-(--color-text) ring-1 ring-(--color-border)"
+            className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 font-mono text-[10.5px] text-(--color-text-muted)"
           >
             {value}
           </span>

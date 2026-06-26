@@ -19,7 +19,7 @@
  */
 import { useMemo, useState } from 'react'
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { SectionCard, SectionCardHeader, SectionCardRows } from '@/components/ui/section-card'
 import { Textarea } from '@/components/ui/textarea'
 
 import { useAgentFilesQuery, useMcpServersQuery, useRegistryQuery } from '@/queries'
@@ -177,25 +177,25 @@ export function AgentForm({
           updateFromForm={updateFromForm}
         />
       ) : (
-        <Card size="sm">
-          <CardHeader>
-            <CardTitle>Raw .md</CardTitle>
-            <CardDescription>
-              Edit the raw frontmatter and body. Useful for fields the form
-              doesn&rsquo;t expose (e.g. custom hook configuration).
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Textarea
-              value={raw}
-              onChange={(e) => updateFromRaw(e.target.value)}
-              disabled={disabled}
-              rows={28}
-              spellCheck={false}
-              className="min-h-72 font-mono text-[13px] leading-relaxed"
-            />
-          </CardContent>
-        </Card>
+        <SectionCard>
+          <SectionCardHeader>Raw .md — edit frontmatter and body directly</SectionCardHeader>
+          <SectionCardRows>
+            <div className="px-3 py-3">
+              <p className="mb-2.5 text-[11px] text-(--color-text-muted) leading-relaxed">
+                Edit the raw frontmatter and body. Useful for fields the form
+                doesn&rsquo;t expose (e.g. custom hook configuration).
+              </p>
+              <Textarea
+                value={raw}
+                onChange={(e) => updateFromRaw(e.target.value)}
+                disabled={disabled}
+                rows={28}
+                spellCheck={false}
+                className="min-h-72 font-mono text-[13px] leading-relaxed"
+              />
+            </div>
+          </SectionCardRows>
+        </SectionCard>
       )}
     </div>
   )

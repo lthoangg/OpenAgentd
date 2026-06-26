@@ -103,7 +103,7 @@ export function EditorSubHeader({
       </Tooltip>
 
       <span
-        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-(--bg-key) text-(--color-text-muted) ring-1 ring-(--color-border)"
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xs border border-(--color-border) bg-(--bg-key) text-(--color-text-muted)"
         aria-hidden="true"
       >
         <KindIcon size={13} />
@@ -140,7 +140,7 @@ export function EditorSubHeader({
           <Tooltip>
             <TooltipTrigger
               render={
-                <span className="flex items-center gap-1 rounded-md bg-(--color-error-subtle) px-2 py-1 text-xs text-(--color-error)">
+                <span className="flex items-center gap-1 rounded-xs bg-(--color-error-subtle) px-2 py-1 text-xs text-(--color-error)">
                   <AlertCircle size={11} />
                   Error
                 </span>
@@ -153,7 +153,7 @@ export function EditorSubHeader({
           <Tooltip>
             <TooltipTrigger
               render={
-                <span className="flex items-center gap-1 rounded-md bg-(--color-error-subtle) px-2 py-1 text-xs text-(--color-error)">
+                <span className="flex items-center gap-1 rounded-xs bg-(--color-error-subtle) px-2 py-1 text-xs text-(--color-error)">
                   <AlertCircle size={11} />
                   Invalid
                 </span>

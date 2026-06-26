@@ -2,7 +2,7 @@
 title: Applications & Templates
 description: Component guidelines for OpenAgentd UI — agent chips, sidebar, input bar, tool calls, theme toggle
 status: stable
-updated: 2026-05-09
+updated: 2026-05-27
 ---
 
 # Applications & Templates
@@ -58,30 +58,46 @@ Selection is communicated by pigment depth and outline, not by container shape �
 
 ## Buttons
 
-A small, rigid family of variants. Pick by role, never by visual preference.
+A small, rigid family of variants. Pick by role, never by visual preference. The design language comes from the "Cancel" button in the Backend Connection dialog — warm paper card surface, crisp 1px border, muted text at rest, gentle key-press hover. No shadows, no radius inflation.
 
-| Variant | Role | Surface |
+| Variant | Role | Rest surface | Hover |
+|---|---|---|---|
+| `default` | Primary footer/form actions — Cancel, Save, confirm | `--bg-card` fill, `--color-border` outline, full `--color-text` | background → `--bg-key` at 25% |
+| `subtle` | Secondary inline chips — connect, edit, use builtin | `--bg-card` fill, `--color-border` outline, `--color-text-muted` text | text → `--color-text-2`, background → `--bg-key` at 20% |
+| `primary` | Elevated controls — form-paired actions that need slightly more presence | `--bg-key` fill, `--color-border-strong` outline | background → `--color-surface-2` |
+| `ghost` | Tertiary, mostly icons — toolbar, close, back, inline edit | Transparent fill, no border, `--color-text-muted` | background → `--bg-key` at 40%, text → `--color-text` |
+| `danger` | Irreversible confirmation — delete, revoke | `--color-error-subtle` fill, `--color-error`/20 border, `--color-error` text | fill deepens to `--color-error`/15 |
+| `danger-subtle` | Inline destructive chips — remove, stop | `--bg-card` fill, `--color-border` outline, `--color-error` text | background → `--color-error`/10, border → `--color-error`/25 |
+| `link` | Inline text navigation | Transparent, accent-blue text | underline |
+
+**Hover model**
+
+Hover is a single-property lift — only the background opacity changes. The border does not jump to a stronger token on hover (that was the old shadcn model and it reads as jerky). The only exception is `danger-subtle` where the border acquires a faint error tint to reinforce the intent.
+
+**Sizes**
+
+| Size | Height | Use |
 |---|---|---|
-| Primary (default) | The single most important action in a region | Filled in `--color-accent`, text in `--color-text-on-accent`, no border |
-| Outline | Neutral or secondary actions; cancel; "view more" | `--bg-page` fill, `--color-border` outline, hover deepens both |
-| Secondary | Used inside cards/dialogs where outline would clash | `--bg-key` fill, `--color-border` outline |
-| Ghost | Tertiary, mostly icons; "skip", "close", inline edit | Transparent fill, hover wash on `--bg-key` |
-| Destructive | Removes data or breaks state (delete, revoke) | Soft `--color-error-subtle` fill, `--color-error` text and border at low alpha |
-| Link | Inline navigation that visually reads as text | No fill, accent-blue text, underline on hover |
+| `xs` | `h-6`, `text-[10.5px]` | Dense inline chips inside list rows (connect, edit, remove) |
+| `sm` | `h-8`, `text-[0.8rem]` | Dialog footers, form-paired actions (Cancel, Save server) |
+| `default` | `h-9`, `text-xs` | Standard form actions |
+| `lg` | `h-10`, `text-sm` | Hero / prominent CTA |
+| `icon`, `icon-sm`, `icon-xs` | Square equivalents at each size | Icon-only controls |
+
+Pick the smallest size that meets the 44×44 touch target on mobile; use `min-h-11 md:min-h-0` to satisfy this without enlarging desktop buttons.
 
 **Shared rules**
 
-- One radius family across the variants — primary/outline/secondary at the standard small button radius, icon-only variants use the same family one step smaller.
-- Sizes are token-driven: extra-small, small, default, large, plus icon-only equivalents at each size. Pick the smallest size that meets the 44×44 touch target on mobile.
-- Font weight follows [interaction.md § Font-weight transitions](./interaction.md#font-weight-transitions-signature). Icon-only buttons skip the transition (there is no text to shift).
-- Loading state: replace the label with progressive text ("Saving…", "Connecting…"); never show a spinner *and* keep the original label.
-- Disabled state: 50% opacity, `cursor: not-allowed`, `aria-disabled`. Disabled is *unavailable*; loading is *busy*. They are not the same and must not look the same.
+- The `Button` primitive is a plain `<button>` — no Radix, no base-ui. Do not bypass it with hand-stacked utilities; if a variant is missing, grow the variant set.
+- Loading state: replace the label with progressive text ("Saving…", "Connecting…"). Never show a spinner *and* keep the original label.
+- Disabled: 50% opacity, `cursor: not-allowed`. Disabled is *unavailable*; loading is *busy* — they must not look the same.
+- `LongPressButton` is the mobile companion. Pass `variant` + `size` to opt into `Button` styling. Omit both for nav rows that supply their own `className` (session rows, workspace rows).
 
 **Don't**
 
-- Build a custom button by hand-stacking utilities. Reach for the `Button` primitive; if its variants don't fit, the variant set should grow rather than be bypassed.
-- Pair two primary buttons in the same action cluster. There is one primary action per region; everything else is outline/ghost/destructive.
-- Use destructive coloring for "discard draft" or other reversible actions. Reserve it for irreversible loss.
+- Pair two `default` buttons as equal-weight peers. One action leads; the other is `subtle` or `ghost`.
+- Use `danger` for reversible actions like "discard draft". `danger-subtle` for inline chips, `danger` only for confirm-delete dialogs.
+- Use `primary` for actions that sit in the same tonal band as their inputs. `primary`'s `--bg-key` fill stands out; use `default` when co-planarity with the input matters more.
 
 ---
 
@@ -102,6 +118,36 @@ A card separates a self-contained unit of content from the surrounding page. The
 - Layer shadows on flat cards. Only floating chrome (the queue banner, the input bar, popovers) earns a soft depth shadow.
 - Mix `--border-card` with `--color-border` in the same surface — `--border-card` is deprecated; use `--color-border`.
 - Use `ring-*` for separation; rings are reserved for focus and decorative chip outlines (see [interaction.md § Anti-patterns](./interaction.md#anti-patterns)).
+
+---
+
+## SectionCard
+
+A tighter card variant for dense settings panels and dialogs — used wherever a group of rows needs a labelled container without the generous padding of a full `Card`. Pattern extracted from the "Connection options" and "Configure Server" panels in the Backend Connection dialog.
+
+**Anatomy**
+
+```
+SectionCard
+  SectionCardHeader      — uppercase tracking label, --bg-key/30 wash, bottom divider
+  SectionCardRows        — divide-y list of rows
+    SectionCardRow       — flex row, px-3 py-2, hover:--bg-page lift
+      [left: content]
+      [right: action Button chips at size="xs"]
+  SectionCardBadge       — inline pill badge ("active", "saved server", …)
+```
+
+**Rules**
+
+- `SectionCardHeader` text is always `uppercase tracking-wider text-[10.5px] font-semibold --color-text-muted`. Do not use sentence case or larger type.
+- Row hover uses `--bg-page` (lighter than `--bg-card`) — the row lifts away from the card surface, not towards a darker tone.
+- Action chips inside rows use `size="xs"` buttons at `variant="subtle"` (neutral) or `variant="danger-subtle"` (destructive). Never full-weight `default` buttons inside a row — they overwhelm the density.
+- `SectionCardBadge` marks the active/current item. One badge per card maximum.
+
+**Don't**
+
+- Use `SectionCard` for free-form content with variable padding — reach for `Card` instead.
+- Put form inputs directly inside `SectionCardRows` — rows are for select/action lists. Form fields go in a padded `<div>` below the rows, still inside the `SectionCard`.
 
 ---
 
@@ -129,11 +175,25 @@ Form layout, field anatomy, and validation behavior. Use the shared form primiti
 
 **Field anatomy**
 
-- Label above the field, weight 500, `--color-text`.
-- Field surface: `--bg-input` fill, 1px `--color-border`, standard small radius. Focus replaces the bottom border with `--color-accent` and adds a 2px focus ring (see [interaction.md § Focus ring](./interaction.md#focus-ring-specification)).
+- Label above the field, `text-[10.5px]` or `text-xs`, weight semibold, `--color-text-muted`.
+- Field surface: `--bg-input` fill, 1px `--color-border`, `rounded` radius, `text-xs`, `px-2.5 py-1.5` natural height. Focus shifts the border to `--focus-ring` and adds a 2px ring at 30% opacity. No hover border change — the border is stable at rest and only responds to focus.
 - Help text below the field, small text scale, `--color-text-muted`.
-- Error text replaces help text on validation failure: `--color-error`, with `lucide AlertCircle` glyph at the leading edge. The field gains `aria-invalid="true"` and `aria-describedby` pointing at the error.
+- Error text replaces help text on validation failure: `--color-error`, with `lucide AlertCircle` glyph at the leading edge. The field gains `aria-invalid="true"` (which automatically shifts the border and ring to `--color-error`).
 - Required indicators are written ("Required") rather than starred. If a star is used it must repeat the meaning in an accessible name.
+- Placeholder opacity: `--color-text-muted` at 60% — legible but clearly subordinate to entered text.
+
+**`Input` primitive**
+
+The `Input` component is a plain `<input>` — no base-ui wrapper. Meaningful overrides by use-case:
+
+| Use-case | Override |
+|---|---|
+| URL / path / key field | `className="font-mono"` |
+| Inline next to a button | `className="min-w-0 flex-1"` |
+| Mobile touch target | `className="min-h-11 md:min-h-0"` |
+| On a card surface (scheduler drawer) | No override needed — `--bg-input` and `--bg-card` are the same tone |
+
+Do not override `text-xs`, `py-1.5`, `rounded`, or `border-(--color-border)` — those are the canonical base. Do not set a fixed `h-*` height; let `py-1.5` size the field naturally so it co-planes with adjacent `Button` elements at `size="sm"`.
 
 **Boolean toggles**
 
@@ -143,7 +203,7 @@ Form layout, field anatomy, and validation behavior. Use the shared form primiti
 
 **Selects and pickers**
 
-- Use the shared `Select` (built on base-ui) for any single-choice picker — its trigger inherits the same field shell as `Input`.
+- Use the shared `Select` for any single-choice picker — its trigger inherits the same field shell as `Input`.
 - For numeric ranges where stepping matters, use `NumberInput` rather than a `<select>` with hard-coded options.
 - For dates and times, use `DateTimePicker`. Do not roll a bespoke pair of inputs.
 
@@ -152,6 +212,7 @@ Form layout, field anatomy, and validation behavior. Use the shared form primiti
 - Place validation messages above the field — they belong below where the eye lands after typing.
 - Use placeholder text as the only label. Placeholders disappear when the user starts typing and are inaccessible.
 - Combine a busy state and a disabled state visually. A submitting form locks input and shows progress; a disabled form has reduced opacity. They are different intents.
+- Add a `hover:border-` class — the Input border is intentionally stable at rest. Only focus moves it.
 
 ---
 

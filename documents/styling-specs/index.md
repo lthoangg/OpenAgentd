@@ -2,7 +2,7 @@
 title: OpenAgentd Styling
 description: Design-system reference for OpenAgentd brand assets, tokens, components, interaction, and motion
 status: stable
-updated: 2026-05-09
+updated: 2026-05-27
 ---
 
 # OpenAgentd Styling

@@ -2,7 +2,7 @@
 title: Interaction
 description: Hover, focus, active states, keyboard model, touch adaptation, and state choreography
 status: stable
-updated: 2026-05-09
+updated: 2026-05-27
 ---
 
 # Interaction
@@ -62,7 +62,7 @@ idle  →  hover  →  focus  →  active  →  loading  →  (success | error) 
 | State | Visual change | Motion token |
 |-------|---------------|--------------|
 | **Idle** | Default — border, text, and background at their resting values | — |
-| **Hover** | Font-weight 400 → 500; background → `--bg-key` (or role-specific `--accent-{role}-soft` for agent-tagged controls); cursor changes to `pointer` | `var(--motion-fast)` + `var(--ease-out)` |
+| **Hover** | Background lifts one opacity step toward `--bg-key` (buttons: `/25`–`/40` depending on variant; nav rows: full `--bg-key`); text may step one token warmer (`--color-text-muted` → `--color-text-2`); cursor `pointer`. Border does **not** change — a jumping border reads as jerky. | `var(--motion-fast)` + `var(--ease-out)` |
 | **Focus** | 2px `--focus-ring` outline with 2px offset, fades in from opacity 0 → 1 | `var(--motion-fast)` + `var(--ease-out)` |
 | **Active** | Font-weight 500 → 600; background → next-step warm neutral (`--color-surface-2`); slight scale 1 → 0.98 (buttons only) | `var(--motion-instant)` + `var(--ease-in-out)` |
 | **Loading** | Label replaced with progressive text (`Thinking…`, `Saving…`); input locked; keyboard Escape cancels | — |
@@ -74,9 +74,11 @@ idle  →  hover  →  focus  →  active  →  loading  →  (success | error) 
 In light mode, hover moves to a *slightly warmer/darker* paper tone (`--bg-key` is one shade darker than `--bg-page`). In dark mode, hover moves to a *slightly lighter* warm surface (`--bg-key` is one shade lighter than `--bg-page`). The perceptual rule is the same in both — "hover separates from the surrounding surface" — and because `--bg-key` is mode-aware, a single CSS rule does both:
 
 ```css
-.button:hover {
-  background: var(--bg-key);
-}
+/* Button hover — opacity fraction keeps the lift subtle */
+.button:hover { background: color-mix(in srgb, var(--bg-key) 25%, transparent); }
+
+/* Nav row hover — full --bg-key, row separates from the ambient surface */
+.nav-row:hover { background: var(--bg-key); }
 ```
 
 Don't write mode-specific rules unless the *behavior* genuinely differs. Token-based rules give correct light/dark behavior automatically.
@@ -109,7 +111,7 @@ A signature of the OpenAgentd interaction language. Text shifts weight under the
 
 - **Width**: 2px
 - **Offset**: 2px (outside the element)
-- **Color**: `var(--focus-ring)` — resolves to `var(--color-accent)` (warm dark `#3F3429` on light, cream `#F5EBD8` on dark)
+- **Color**: `var(--focus-ring)` — resolves to `var(--accent-blue)` (`#5AA8E2` on light, `#7CC2F0` on dark). Blue is used rather than `--color-accent` (near-black on light / near-white on dark) because the paper accent would render as a hard rectangle indistinguishable from a border; blue gives the standard focus affordance while staying inside the brand palette.
 - **Radius**: matches element's `border-radius`
 - **Fade-in**: opacity 0 → 1, `var(--motion-fast)`, `var(--ease-out)`
 

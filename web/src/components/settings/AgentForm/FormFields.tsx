@@ -241,7 +241,7 @@ export function FormFields({
             />
           </Field>
 
-          <Field label="Temperature" error={tempError} hint="0 – 2; higher = more random.">
+          <Field label="Temperature" error={tempError} hint="0 - 2; higher = more random.">
             <Input
               type="text"
               inputMode="decimal"

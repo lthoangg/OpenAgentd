@@ -242,7 +242,7 @@ function SandboxHelpPopover() {
 
         <p className="border-t border-(--color-border) pt-2 text-[10px] leading-snug text-(--color-text-muted)">
           Built-in DB / state / cache paths are always denied; matching is
-          logical-OR across patterns &mdash; one match blocks access.
+          logical-OR across patterns: one match blocks access.
         </p>
       </PopoverContent>
     </Popover>

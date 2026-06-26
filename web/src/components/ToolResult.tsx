@@ -195,7 +195,7 @@ function FileReadResult({ result }: { result: string }) {
   // range was requested. Promote it to quiet metadata so the code block shows
   // only the actual file content.
   const match = result.match(/^\[(\d+)-(\d+)\/(\d+)\]\n([\s\S]*)$/)
-  const rangeLabel = match ? `lines ${match[1]}–${match[2]} of ${match[3]}` : 'file contents'
+  const rangeLabel = match ? `lines ${match[1]}-${match[2]} of ${match[3]}` : 'file contents'
   const body = truncateForDisplay(match ? match[4] : result)
 
   return (

@@ -266,7 +266,7 @@ describe("ToolCall — diff stats", () => {
     await user.click(screen.getByRole("button", { name: "Expand read details" }))
 
     expect(screen.getByRole("button", { name: "Collapse read result" })).toBeTruthy()
-    expect(screen.getByText("lines 12–20 of 100")).toBeTruthy()
+    expect(screen.getByText("lines 12-20 of 100")).toBeTruthy()
     expect(screen.getByLabelText("Copy read result")).toBeTruthy()
     expect(screen.getByText("12")).toBeTruthy()
     expect(screen.getByText("13")).toBeTruthy()

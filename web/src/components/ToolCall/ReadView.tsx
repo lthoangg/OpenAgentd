@@ -25,7 +25,7 @@ function parseReadResult(result: string): { label: string; body: string; startLi
   const match = result.match(/^\[(\d+)-(\d+)\/(\d+)\]\n([\s\S]*)$/)
   if (!match) return { label: 'file contents', body: truncateForDisplay(result), startLine: 1 }
   return {
-    label: `lines ${match[1]}–${match[2]} of ${match[3]}`,
+    label: `lines ${match[1]}-${match[2]} of ${match[3]}`,
     body: truncateForDisplay(match[4]),
     startLine: Number(match[1]),
   }

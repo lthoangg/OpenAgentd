@@ -31,7 +31,7 @@ describe('formatCompact', () => {
 
 describe('formatMs', () => {
   it('returns an em-dash for zero', () => {
-    expect(formatMs(0)).toBe('—')
+    expect(formatMs(0)).toBe('-')
   })
 
   it('returns ms below 1000', () => {
@@ -47,8 +47,8 @@ describe('formatMs', () => {
 
 describe('formatUsd', () => {
   it('returns an em-dash for non-positive or invalid values', () => {
-    expect(formatUsd(0)).toBe('—')
-    expect(formatUsd(Number.NaN)).toBe('—')
+    expect(formatUsd(0)).toBe('-')
+    expect(formatUsd(Number.NaN)).toBe('-')
   })
 
   it('formats small estimated model costs with useful precision', () => {

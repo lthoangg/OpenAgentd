@@ -176,7 +176,7 @@ describe("ToolResult — read", () => {
 
   it("promotes the [start-end/total] range header to a metadata label", () => {
     // The backend read tool prepends "[12-20/100]\n" when offset/limit are
-    // active. We surface that as a quiet "lines 12–20 of 100" label so the
+    // active. We surface that as a quiet "lines 12-20 of 100" label so the
     // pre block shows only the actual file content.
     render(<ToolResult toolName="read" result={"[12-20/100]\nconst y = 2"} />)
     expect(screen.getByText(/lines 12.20 of 100/)).toBeTruthy()

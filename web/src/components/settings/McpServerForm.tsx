@@ -77,139 +77,144 @@ export function McpServerForm({
         </div>
       </SettingsSection>
 
-      {/* Transport ────────────────────────────────────────────────── */}
-      <SettingsSection title="Transport" description="how the runtime talks to the server process">
-        <TransportToggle
-          value={value.transport}
-          onChange={(transport) => set({ transport })}
-          disabled={disabled}
-        />
+      {/* Transport + connection fields — merged into one section ── */}
+      <SettingsSection
+        title={value.transport === 'stdio' ? 'Transport — Stdio' : 'Transport — HTTP'}
+        description={value.transport === 'stdio' ? 'subprocess speaking MCP over stdin/stdout' : 'Streamable HTTP session'}
+      >
+        <div className="flex flex-col gap-3">
+          {/* Transport picker always at the top */}
+          <TransportToggle
+            value={value.transport}
+            onChange={(transport) => set({ transport })}
+            disabled={disabled}
+          />
+
+          {/* Divider between picker and transport-specific fields */}
+          <div className="border-t border-(--color-border)" />
+
+          {/* ── Stdio fields ── */}
+          {value.transport === 'stdio' && (
+            <>
+              <SettingsField
+                label="Command"
+                required
+                error={errors?.command}
+                hint="Executable to launch (looked up on PATH)."
+              >
+                <Input
+                  value={value.command}
+                  onChange={(e) => set({ command: e.target.value })}
+                  disabled={disabled}
+                  placeholder="npx"
+                  aria-invalid={!!errors?.command || undefined}
+                  className="min-h-11 font-mono md:min-h-9"
+                />
+              </SettingsField>
+
+              <SettingsField label="Arguments" hint="One per line, in order.">
+                <Textarea
+                  value={value.argsText}
+                  onChange={(e) => set({ argsText: e.target.value })}
+                  disabled={disabled}
+                  rows={4}
+                  spellCheck={false}
+                  placeholder="-y&#10;@modelcontextprotocol/server-filesystem&#10;/tmp"
+                  className="min-h-32 font-mono text-[13px] leading-relaxed"
+                />
+              </SettingsField>
+
+              <PairListField
+                label="Environment variables"
+                keyPlaceholder="KEY"
+                valuePlaceholder="value"
+                error={errors?.env}
+                pairs={value.envPairs}
+                onChange={(envPairs) => set({ envPairs })}
+                disabled={disabled}
+              />
+            </>
+          )}
+
+          {/* ── HTTP fields ── */}
+          {value.transport === 'http' && (
+            <>
+              <SettingsField
+                label="URL"
+                required
+                error={errors?.url}
+                hint="Streamable HTTP endpoint (full URL incl. scheme)."
+              >
+                <Input
+                  value={value.url}
+                  onChange={(e) => set({ url: e.target.value })}
+                  disabled={disabled}
+                  placeholder="https://mcp.example.com/v1"
+                  aria-invalid={!!errors?.url || undefined}
+                  className="min-h-11 font-mono md:min-h-9"
+                />
+              </SettingsField>
+
+              <PairListField
+                label="Headers"
+                keyPlaceholder="Header-Name"
+                valuePlaceholder="value"
+                error={errors?.headers}
+                pairs={value.headerPairs}
+                onChange={(headerPairs) => set({ headerPairs })}
+                disabled={disabled}
+              />
+
+              <SettingsField
+                label="OAuth"
+                error={errors?.oauth}
+                hint={
+                  value.oauthEnabled
+                    ? 'Paste app credentials here. They are saved to .env and referenced from mcp.json.'
+                    : 'Enable for hosted servers like Slack or Notion that require user OAuth.'
+                }
+              >
+                <EnabledToggle
+                  value={value.oauthEnabled}
+                  onChange={(oauthEnabled) => set({ oauthEnabled })}
+                  disabled={disabled}
+                  enabledLabel="OAuth"
+                  disabledLabel="None"
+                />
+              </SettingsField>
+
+              {value.oauthEnabled && (
+                <div className="rounded-xs border border-dashed border-(--color-border) px-3 py-2.5 text-xs text-(--color-text-muted)">
+                  Leave blank only for servers that support dynamic OAuth registration, such as Notion.
+                </div>
+              )}
+
+              {value.oauthEnabled && (
+                <div className="grid gap-3 md:grid-cols-2">
+                  <SettingsField label="Client ID" hint="Paste the OAuth app client ID.">
+                    <Input
+                      value={value.oauthClientIdEnv}
+                      onChange={(e) => set({ oauthClientIdEnv: e.target.value })}
+                      disabled={disabled}
+                      placeholder="client id"
+                      className="min-h-11 font-mono md:min-h-9"
+                    />
+                  </SettingsField>
+                  <SettingsField label="Client secret" hint="Paste the OAuth app client secret.">
+                    <Input
+                      value={value.oauthClientSecretEnv}
+                      onChange={(e) => set({ oauthClientSecretEnv: e.target.value })}
+                      disabled={disabled}
+                      placeholder="client secret"
+                      className="min-h-11 font-mono md:min-h-9"
+                    />
+                  </SettingsField>
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </SettingsSection>
-
-      {/* Stdio fields ─────────────────────────────────────────────── */}
-      {value.transport === 'stdio' && (
-        <SettingsSection title="Stdio configuration" description="subprocess speaking MCP over stdin/stdout">
-          <div className="flex flex-col gap-3">
-            <SettingsField
-              label="Command"
-              required
-              error={errors?.command}
-              hint="Executable to launch (looked up on PATH)."
-            >
-              <Input
-                value={value.command}
-                onChange={(e) => set({ command: e.target.value })}
-                disabled={disabled}
-                placeholder="npx"
-                aria-invalid={!!errors?.command || undefined}
-                className="min-h-11 font-mono md:min-h-9"
-              />
-            </SettingsField>
-
-            <SettingsField label="Arguments" hint="One per line, in order.">
-              <Textarea
-                value={value.argsText}
-                onChange={(e) => set({ argsText: e.target.value })}
-                disabled={disabled}
-                rows={4}
-                spellCheck={false}
-                placeholder="-y&#10;@modelcontextprotocol/server-filesystem&#10;/tmp"
-                className="min-h-32 font-mono text-[13px] leading-relaxed"
-              />
-            </SettingsField>
-
-            <PairListField
-              label="Environment variables"
-              keyPlaceholder="KEY"
-              valuePlaceholder="value"
-              error={errors?.env}
-              pairs={value.envPairs}
-              onChange={(envPairs) => set({ envPairs })}
-              disabled={disabled}
-            />
-          </div>
-        </SettingsSection>
-      )}
-
-      {/* HTTP fields ──────────────────────────────────────────────── */}
-      {value.transport === 'http' && (
-        <SettingsSection title="HTTP configuration" description="Streamable HTTP session">
-          <div className="flex flex-col gap-3">
-            <SettingsField
-              label="URL"
-              required
-              error={errors?.url}
-              hint="Streamable HTTP endpoint (full URL incl. scheme)."
-            >
-              <Input
-                value={value.url}
-                onChange={(e) => set({ url: e.target.value })}
-                disabled={disabled}
-                placeholder="https://mcp.example.com/v1"
-                aria-invalid={!!errors?.url || undefined}
-                className="min-h-11 font-mono md:min-h-9"
-              />
-            </SettingsField>
-
-            <PairListField
-              label="Headers"
-              keyPlaceholder="Header-Name"
-              valuePlaceholder="value"
-              error={errors?.headers}
-              pairs={value.headerPairs}
-              onChange={(headerPairs) => set({ headerPairs })}
-              disabled={disabled}
-            />
-
-            <SettingsField
-              label="OAuth"
-              error={errors?.oauth}
-              hint={
-                value.oauthEnabled
-                  ? 'Paste app credentials here. They are saved to .env and referenced from mcp.json.'
-                  : 'Enable for hosted servers like Slack or Notion that require user OAuth.'
-              }
-            >
-              <EnabledToggle
-                value={value.oauthEnabled}
-                onChange={(oauthEnabled) => set({ oauthEnabled })}
-                disabled={disabled}
-                enabledLabel="OAuth"
-                disabledLabel="None"
-              />
-            </SettingsField>
-
-            {value.oauthEnabled && (
-              <div className="rounded-xs border border-dashed border-(--color-border) px-3 py-2.5 text-xs text-(--color-text-muted)">
-                Leave blank only for servers that support dynamic OAuth registration, such as Notion.
-              </div>
-            )}
-
-            {value.oauthEnabled && (
-              <div className="grid gap-3 md:grid-cols-2">
-                <SettingsField label="Client ID" hint="Paste the OAuth app client ID.">
-                  <Input
-                    value={value.oauthClientIdEnv}
-                    onChange={(e) => set({ oauthClientIdEnv: e.target.value })}
-                    disabled={disabled}
-                    placeholder="client id"
-                    className="min-h-11 font-mono md:min-h-9"
-                  />
-                </SettingsField>
-                <SettingsField label="Client secret" hint="Paste the OAuth app client secret.">
-                  <Input
-                    value={value.oauthClientSecretEnv}
-                    onChange={(e) => set({ oauthClientSecretEnv: e.target.value })}
-                    disabled={disabled}
-                    placeholder="client secret"
-                    className="min-h-11 font-mono md:min-h-9"
-                  />
-                </SettingsField>
-              </div>
-            )}
-          </div>
-        </SettingsSection>
-      )}
     </div>
   )
 }

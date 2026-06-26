@@ -617,3 +617,142 @@ async def test_args_schema_with_injected_arg():
     assert "_state" not in props
     result = await search.arun(_injected={"_state": "ctx"}, query="x", max_results=2)
     assert result == "x:2:ctx"
+
+
+# ---------------------------------------------------------------------------
+# Input-validation failure handling — what happens when args don't validate
+# ---------------------------------------------------------------------------
+#
+# These cover the contract the tool executor relies on: a bad LLM-supplied
+# argument set must raise ``ToolArgumentError`` (never reach the function body,
+# never raise a raw pydantic ``ValidationError``), and the error message must
+# name the tool and explain what failed so the LLM can self-correct.
+
+
+async def test_validation_failure_raises_tool_argument_error_not_validation_error():
+    """A bad arg raises the domain ToolArgumentError, not pydantic's."""
+    from pydantic import ValidationError
+
+    @tool
+    def typed(x: Annotated[int, Field(description="An integer.")]) -> int:
+        """Typed tool."""
+        return x
+
+    with pytest.raises(ToolArgumentError) as exc_info:
+        await typed.arun(x="not_an_int")
+    # It must NOT surface as a raw pydantic ValidationError to callers.
+    assert not isinstance(exc_info.value, ValidationError)
+
+
+async def test_validation_failure_message_names_tool_and_field():
+    """The error message identifies the tool and the offending field."""
+
+    @tool(name="adder")
+    def add(
+        a: Annotated[int, Field(description="First.")],
+        b: Annotated[int, Field(description="Second.")],
+    ) -> int:
+        """Add."""
+        return a + b
+
+    with pytest.raises(ToolArgumentError) as exc_info:
+        await add.arun(a=1, b="oops")
+    msg = str(exc_info.value)
+    assert "adder" in msg  # tool name surfaced
+    assert "b" in msg  # offending field surfaced
+
+
+async def test_validation_failure_does_not_invoke_function_body():
+    """When validation fails, the underlying function never runs."""
+    calls: list[int] = []
+
+    @tool
+    def record(x: Annotated[int, Field(description="An integer.")]) -> int:
+        """Record."""
+        calls.append(x)
+        return x
+
+    with pytest.raises(ToolArgumentError):
+        await record.arun(x="bad")
+    assert calls == []  # body skipped — fail-fast before execution
+
+
+async def test_validation_failure_missing_required_field():
+    """Omitting a required arg raises ToolArgumentError."""
+
+    @tool
+    def needs(
+        required: Annotated[str, Field(description="Required string.")],
+    ) -> str:
+        """Needs a required arg."""
+        return required
+
+    with pytest.raises(ToolArgumentError):
+        await needs.arun()  # required missing
+
+
+async def test_validation_failure_args_schema_constraint_message():
+    """args_schema constraint failures carry a descriptive message."""
+
+    class Args(BaseModel):
+        n: int = Field(ge=1, le=10, description="1-10.")
+
+    @tool(args_schema=Args)
+    def bounded(n: int) -> int:
+        """Bounded."""
+        return n
+
+    with pytest.raises(ToolArgumentError) as exc_info:
+        await bounded.arun(n=999)
+    msg = str(exc_info.value)
+    assert "bounded" in msg
+    assert "n" in msg
+
+
+async def test_validation_failure_nested_model_field():
+    """A bad field inside a nested model raises ToolArgumentError."""
+
+    class Item(BaseModel):
+        name: str
+        value: int
+
+    @tool
+    def process(
+        items: Annotated[list[Item], Field(description="Items.")],
+    ) -> str:
+        """Process."""
+        return ",".join(i.name for i in items)
+
+    with pytest.raises(ToolArgumentError):
+        # value should be int — string that can't coerce fails validation
+        await process.arun(items=[{"name": "a", "value": "not_a_number"}])
+
+
+async def test_validation_unknown_extra_field_is_ignored():
+    """Unexpected extra args are dropped (pydantic default 'ignore'), not fatal.
+
+    The LLM sometimes hallucinates an extra key; we tolerate it rather than
+    erroring so a single stray field doesn't abort an otherwise-valid call.
+    """
+
+    @tool
+    def greet(name: Annotated[str, Field(description="Name.")]) -> str:
+        """Greet."""
+        return f"hi {name}"
+
+    result = await greet.arun(name="Sam", bogus_field="ignored")
+    assert result == "hi Sam"
+
+
+async def test_validation_failure_then_success_on_retry():
+    """A corrected retry after a validation failure succeeds (LLM self-correct)."""
+
+    @tool
+    def squared(x: Annotated[int, Field(description="Integer.")]) -> int:
+        """Square."""
+        return x * x
+
+    with pytest.raises(ToolArgumentError):
+        await squared.arun(x="five")  # first attempt: bad type
+    # LLM corrects and retries with a valid int
+    assert await squared.arun(x=5) == 25

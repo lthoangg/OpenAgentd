@@ -83,6 +83,8 @@ const buttonVariants = cva(
       size: {
         // inline / dense — matches the dialog row buttons (connect, edit, remove)
         xs:   'h-6 px-2 text-[10.5px] rounded-[4px] gap-1',
+        // natural-height trigger — px-2 py-1 text-xs, no fixed h — matches dropdown triggers, search inputs
+        trigger: 'px-2 py-1 text-xs rounded gap-1.5',
         // the "Cancel" / "Save server" button size
         sm:   'h-8 px-2.5 text-[0.8rem] rounded',
         // standard form action

@@ -84,8 +84,8 @@ function Dropdown({ trigger, children, className, panelClassName }: DropdownProp
         aria-haspopup="menu"
         aria-expanded={open}
         className={cn(
-          buttonVariants({ variant: 'default', size: 'sm' }),
-          'justify-between gap-1.5',
+          buttonVariants({ variant: 'default', size: 'trigger' }),
+          'justify-between',
           className,
         )}
       >

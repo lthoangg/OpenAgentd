@@ -228,6 +228,65 @@ export function McpServerForm({
  * codebase, and a styled native checkbox feels out of place next to the
  * Tabs/Card aesthetic — the segmented control matches it.
  */
+// ── Segmented control ───────────────────────────────────────────────────────
+// Shared by EnabledToggle and TransportToggle.
+
+function SegmentedControl({
+  options,
+  value,
+  onChange,
+  disabled,
+  'aria-label': ariaLabel,
+  fullWidth = false,
+}: {
+  options: { value: string; label: string }[]
+  value: string
+  onChange: (next: string) => void
+  disabled?: boolean
+  'aria-label': string
+  fullWidth?: boolean
+}) {
+  return (
+    <div
+      role="radiogroup"
+      aria-label={ariaLabel}
+      className={cn(
+        // Track
+        'inline-flex h-8 items-center gap-0.5 rounded-xs border border-(--color-border) bg-(--bg-key) p-0.5',
+        fullWidth && 'w-full',
+        disabled && 'opacity-50',
+      )}
+    >
+      {options.map((opt) => {
+        const active = opt.value === value
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            disabled={disabled}
+            onClick={() => onChange(opt.value)}
+            className={cn(
+              // Base
+              'h-full flex-1 rounded-[3px] px-3 text-xs font-medium',
+              'transition-all duration-150 select-none',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40',
+              // Active segment — lifts off the track
+              active
+                ? 'bg-(--bg-card) text-(--color-text) shadow-sm'
+                : 'bg-transparent text-(--color-text-muted) hover:text-(--color-text)',
+              disabled && 'cursor-not-allowed',
+            )}
+          >
+            {opt.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 function EnabledToggle({
   value,
   onChange,
@@ -242,24 +301,16 @@ function EnabledToggle({
   disabledLabel?: string
 }) {
   return (
-    <div
-      role="radiogroup"
+    <SegmentedControl
       aria-label="Server enabled state"
-      className="inline-flex min-h-11 rounded-sm border border-(--color-border) bg-(--bg-key) p-0.5 md:min-h-9"
-    >
-      <ToggleOption
-        active={value}
-        onClick={() => onChange(true)}
-        disabled={disabled}
-        label={enabledLabel}
-      />
-      <ToggleOption
-        active={!value}
-        onClick={() => onChange(false)}
-        disabled={disabled}
-        label={disabledLabel}
-      />
-    </div>
+      value={value ? 'enabled' : 'disabled'}
+      onChange={(v) => onChange(v === 'enabled')}
+      options={[
+        { value: 'enabled', label: enabledLabel },
+        { value: 'disabled', label: disabledLabel },
+      ]}
+      disabled={disabled}
+    />
   )
 }
 
@@ -273,55 +324,17 @@ function TransportToggle({
   disabled?: boolean
 }) {
   return (
-    <div
-      role="radiogroup"
+    <SegmentedControl
       aria-label="MCP transport"
-      className="grid min-h-11 w-full grid-cols-2 rounded-sm border border-(--color-border) bg-(--bg-key) p-1 md:min-h-10"
-    >
-      <ToggleOption
-        active={value === 'stdio'}
-        onClick={() => onChange('stdio')}
-        disabled={disabled}
-        label="Stdio"
-      />
-      <ToggleOption
-        active={value === 'http'}
-        onClick={() => onChange('http')}
-        disabled={disabled}
-        label="HTTP"
-      />
-    </div>
-  )
-}
-
-function ToggleOption({
-  active,
-  onClick,
-  disabled,
-  label,
-}: {
-  active: boolean
-  onClick: () => void
-  disabled?: boolean
-  label: string
-}) {
-  return (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={active}
+      value={value}
+      onChange={(v) => onChange(v as 'stdio' | 'http')}
+      options={[
+        { value: 'stdio', label: 'Stdio' },
+        { value: 'http', label: 'HTTP' },
+      ]}
       disabled={disabled}
-      onClick={onClick}
-      className={cn(
-        'flex-1 rounded-sm px-3 text-xs font-medium transition-colors',
-        active
-          ? 'bg-(--bg-card) text-(--color-text) shadow-sm'
-          : 'text-(--color-text-muted) hover:text-(--color-text)',
-        disabled && 'cursor-not-allowed opacity-50',
-      )}
-    >
-      {label}
-    </button>
+      fullWidth
+    />
   )
 }
 

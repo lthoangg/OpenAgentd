@@ -1,5 +1,8 @@
 /**
- * Dropdown — lightweight select/menu primitive.
+ * Dropdown — select/menu primitive built on @base-ui/react/menu.
+ *
+ * base-ui's Positioner handles all anchor tracking, scroll, resize,
+ * viewport-flip, and portal — no manual getBoundingClientRect needed.
  *
  * Two modes:
  *
@@ -13,39 +16,27 @@
  *      <DropdownItem value="a">Option A</DropdownItem>
  *      <DropdownItem value="b">Option B</DropdownItem>
  *    </Dropdown>
- *
- * Design language from the "Changes / Commits / Tree" git panel selector:
- *   default-variant trigger · crisp 1px border panel · text-xs items ·
- *   active item in --color-text, inactive in --color-text-2 · hover: --bg-key
- *
- * The panel is portalled to document.body and positioned in viewport coords
- * so it always escapes overflow:hidden ancestors and fixed-modal stacking
- * contexts regardless of z-index — same approach as ModelCombobox.
  */
 import {
   Children,
   cloneElement,
   isValidElement,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
   type ComponentPropsWithRef,
   type ReactNode,
 } from 'react'
-import { createPortal } from 'react-dom'
+import { Menu } from '@base-ui/react/menu'
 import { ChevronDown, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { buttonVariants } from '@/components/ui/button'
 
 // ─── Item ─────────────────────────────────────────────────────────────────────
 
-interface DropdownItemProps extends ComponentPropsWithRef<'button'> {
+interface DropdownItemProps extends ComponentPropsWithRef<'div'> {
   /** Highlights this item as the currently active/selected one. */
   active?: boolean
   /** Value used when the parent <Dropdown> is in controlled-select mode. */
   value?: string
-  /** Called when the item is selected — use instead of onClick for clarity. */
+  /** Called when the item is selected. */
   onSelect?: () => void
 }
 
@@ -53,26 +44,19 @@ function DropdownItem({
   active,
   value: _value,
   onSelect,
-  onClick,
   className,
   children,
   ref,
   ...props
 }: DropdownItemProps) {
   return (
-    <button
+    <Menu.Item
       ref={ref}
-      type="button"
-      role="menuitem"
-      onClick={(e) => {
-        onSelect?.()
-        onClick?.(e)
-      }}
+      onClick={onSelect}
       className={cn(
-        'flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs font-medium',
-        'transition-colors cursor-pointer',
-        'hover:bg-(--bg-key)',
-        'focus-visible:outline-none focus-visible:bg-(--bg-key)',
+        'flex w-full cursor-pointer items-center gap-2 rounded px-2 py-1 text-left text-xs font-medium outline-none',
+        'transition-colors',
+        'data-highlighted:bg-(--bg-key)',
         active ? 'text-(--color-text)' : 'text-(--color-text-2)',
         className,
       )}
@@ -82,24 +66,20 @@ function DropdownItem({
       {active && (
         <Check size={11} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
       )}
-    </button>
+    </Menu.Item>
   )
 }
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
 
 interface DropdownProps {
-  /** Content rendered inside the trigger button — label, icon, count, etc. */
+  /** Content rendered inside the trigger button. */
   trigger: ReactNode
   /** Menu items — use <DropdownItem> children. */
   children: ReactNode
-  /**
-   * Controlled select mode: the currently selected value.
-   * When provided, the trigger shows the matching item's label and each
-   * DropdownItem with a matching `value` prop gets `active` injected.
-   */
+  /** Controlled select: currently selected value. */
   value?: string
-  /** Controlled select mode: called with the new value when an item is picked. */
+  /** Controlled select: called with the new value when an item is picked. */
   onValueChange?: (value: string) => void
   /** Extra classes on the trigger button (e.g. width, min-h-11). */
   className?: string
@@ -107,7 +87,7 @@ interface DropdownProps {
   panelClassName?: string
   /** aria-label for the trigger button. */
   'aria-label'?: string
-  /** aria-invalid — passed through to the trigger for form validation styling. */
+  /** aria-invalid for form validation styling. */
   'aria-invalid'?: boolean | 'true' | 'false'
   disabled?: boolean
 }
@@ -123,36 +103,6 @@ function Dropdown({
   'aria-invalid': ariaInvalid,
   disabled,
 }: DropdownProps) {
-  const [open, setOpen] = useState(false)
-  const [panelRect, setPanelRect] = useState<DOMRect | null>(null)
-  const triggerRef = useRef<HTMLButtonElement>(null)
-
-  // Measure on open. Close on scroll so the panel never drifts away from
-  // its trigger — far better UX than either chasing scroll or staying frozen.
-  useLayoutEffect(() => {
-    if (!open) return
-    const rect = triggerRef.current?.getBoundingClientRect()
-    if (rect) setPanelRect(rect)
-    const onScroll = () => setOpen(false)
-    window.addEventListener('scroll', onScroll, true)
-    return () => window.removeEventListener('scroll', onScroll, true)
-  }, [open])
-
-  // Close when a pointer-down lands outside both the trigger and the panel.
-  useEffect(() => {
-    if (!open) return
-    const onPointerDown = (e: PointerEvent) => {
-      const target = e.target as Node | null
-      if (triggerRef.current?.contains(target)) return
-      // Panel is portalled — check by data attribute on its root
-      const panel = document.querySelector('[data-dropdown-panel]')
-      if (panel?.contains(target)) return
-      setOpen(false)
-    }
-    document.addEventListener('pointerdown', onPointerDown)
-    return () => document.removeEventListener('pointerdown', onPointerDown)
-  }, [open])
-
   // In controlled-select mode: show the selected item's label in the trigger.
   let displayLabel: ReactNode = trigger
   if (value !== undefined) {
@@ -174,27 +124,22 @@ function Dropdown({
             onSelect: () => {
               if (child.props.value !== undefined) onValueChange?.(child.props.value)
               child.props.onSelect?.()
-              setOpen(false)
             },
           })
         })
       : children
 
   return (
-    <>
+    <Menu.Root>
       {/* Trigger */}
-      <button
-        ref={triggerRef}
-        type="button"
-        onClick={() => !disabled && setOpen((prev) => !prev)}
-        aria-haspopup="menu"
-        aria-expanded={open}
+      <Menu.Trigger
+        disabled={disabled}
         aria-label={ariaLabel}
         aria-invalid={ariaInvalid}
-        disabled={disabled}
         className={cn(
           buttonVariants({ variant: 'default', size: 'trigger' }),
           'justify-between',
+          'data-popup-open:border-(--focus-ring)',
           'aria-invalid:border-(--color-error) aria-invalid:ring-2 aria-invalid:ring-(--color-error)/20',
           className,
         )}
@@ -202,38 +147,37 @@ function Dropdown({
         <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate">{displayLabel}</span>
         <ChevronDown
           size={11}
-          className={cn(
-            'shrink-0 text-(--color-text-muted) transition-transform duration-150',
-            open && 'rotate-180',
-          )}
+          className="shrink-0 text-(--color-text-muted) transition-transform duration-150 group-data-popup-open:rotate-180"
           aria-hidden="true"
         />
-      </button>
+      </Menu.Trigger>
 
-      {/* Panel — portalled to body, positioned in viewport coords */}
-      {open && panelRect && createPortal(
-        <div
-          data-dropdown-panel=""
-          role="menu"
-          style={{
-            position: 'fixed',
-            top: panelRect.bottom + 4,
-            left: panelRect.left,
-            minWidth: panelRect.width,
-            zIndex: 9999,
-          }}
-          className={cn(
-            'rounded border border-(--color-border) bg-(--bg-card)',
-            'p-1 shadow-md',
-            'flex flex-col gap-0.5',
-            panelClassName,
-          )}
+      {/* Panel — base-ui Positioner handles portal + anchor + scroll + flip */}
+      <Menu.Portal>
+        <Menu.Positioner
+          side="bottom"
+          align="start"
+          sideOffset={4}
+          alignOffset={0}
+          className="isolate z-50"
         >
-          {items}
-        </div>,
-        document.body,
-      )}
-    </>
+          <Menu.Popup
+            className={cn(
+              'min-w-(--anchor-width) origin-(--transform-origin)',
+              'rounded border border-(--color-border) bg-(--bg-card)',
+              'p-1 shadow-md',
+              'flex flex-col gap-0.5',
+              'duration-100 outline-none',
+              'data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95',
+              'data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95',
+              panelClassName,
+            )}
+          >
+            {items}
+          </Menu.Popup>
+        </Menu.Positioner>
+      </Menu.Portal>
+    </Menu.Root>
   )
 }
 

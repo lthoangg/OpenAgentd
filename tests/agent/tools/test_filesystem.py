@@ -9,7 +9,7 @@ from unittest.mock import patch
 import pytest
 
 from app.agent.artifacts import session_artifact_dir
-from app.agent.errors import ToolExecutionError
+from app.agent.errors import ToolArgumentError, ToolExecutionError
 from app.agent.sandbox import SandboxConfig, set_sandbox
 from app.agent.state import AgentState
 from app.core.config import settings
@@ -394,7 +394,7 @@ class TestGrepFiles:
         assert "No matches" in result
 
     async def test_grep_invalid_regex(self, workspace):
-        with pytest.raises(ToolExecutionError):
+        with pytest.raises(ToolArgumentError):
             await grep_files.arun(pattern="[invalid", directory=".")
 
     async def test_grep_not_a_directory(self, workspace):

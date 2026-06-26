@@ -8,7 +8,7 @@ import os
 import re
 from pathlib import Path
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.agent.sandbox import get_sandbox
 from app.agent.tools.builtin.filesystem._ignore import (
@@ -40,8 +40,21 @@ class GrepArgs(BaseModel):
         description="Filename glob to filter files (e.g. '*.py'). Default '*'.",
     )
     max_results: int = Field(
-        default=100, description="Maximum matching lines to return (default 100)."
+        default=100, ge=1, description="Maximum matching lines to return (default 100)."
     )
+
+    @field_validator("pattern")
+    @classmethod
+    def validate_pattern(cls, v: str) -> str:
+        if len(v) > _MAX_PATTERN_LEN:
+            raise ValueError(
+                f"Pattern too long ({len(v)} chars, max {_MAX_PATTERN_LEN})"
+            )
+        try:
+            re.compile(v)
+        except re.error as exc:
+            raise ValueError(f"Invalid regex: {exc}")
+        return v
 
 
 async def _grep_files(

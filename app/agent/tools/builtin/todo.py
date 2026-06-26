@@ -36,7 +36,7 @@ from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from loguru import logger
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.agent.artifacts import TODOS_FILENAME, todos_path
 from app.agent.tools.registry import InjectedArg, Tool
@@ -69,6 +69,18 @@ class CreateAction(BaseModel):
         description="Agent handle assigned to this task, if any.",
     )
 
+    @field_validator("content")
+    @classmethod
+    def _not_blank(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("content must not be blank")
+        return v
+
+    @field_validator("dependencies")
+    @classmethod
+    def _no_duplicates(cls, v: list[str]) -> list[str]:
+        return list(dict.fromkeys(v))
+
 
 class UpdateAction(BaseModel):
     action: Literal["update"]
@@ -92,6 +104,20 @@ class UpdateAction(BaseModel):
         description="Replacement agent handle assigned to this task.",
     )
 
+    @field_validator("content")
+    @classmethod
+    def _not_blank(cls, v: str | None) -> str | None:
+        if v is not None and not v.strip():
+            raise ValueError("content must not be blank")
+        return v
+
+    @field_validator("dependencies")
+    @classmethod
+    def _no_duplicates(cls, v: list[str] | None) -> list[str] | None:
+        if v is None:
+            return None
+        return list(dict.fromkeys(v))
+
 
 class MemberUpdateAction(BaseModel):
     action: Literal["update"]
@@ -102,6 +128,13 @@ class MemberUpdateAction(BaseModel):
     status: Literal["pending", "in_progress", "completed", "cancelled"] | None = Field(
         default=None, description="New status (omit to keep unchanged)."
     )
+
+    @field_validator("content")
+    @classmethod
+    def _not_blank(cls, v: str | None) -> str | None:
+        if v is not None and not v.strip():
+            raise ValueError("content must not be blank")
+        return v
 
 
 class ClaimAction(BaseModel):

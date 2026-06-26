@@ -5,7 +5,7 @@ from typing import Any, Literal
 import httpx
 from ddgs import DDGS
 from loguru import logger
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.agent.tools.registry import tool
 
@@ -115,8 +115,18 @@ class WebFetchArgs(BaseModel):
         default="markdown", description="Response format (default 'markdown')."
     )
     timeout: int | None = Field(
-        default=None, description="Timeout in seconds (default 30, max 120)."
+        default=None,
+        ge=1,
+        le=120,
+        description="Timeout in seconds (default 30, max 120).",
     )
+
+    @field_validator("url")
+    @classmethod
+    def validate_url(cls, v: str) -> str:
+        if not v.startswith(("http://", "https://")):
+            return "https://" + v
+        return v
 
 
 @tool(

@@ -552,7 +552,9 @@ async def test_background_process_stop(sandbox_workspace, fast_bg):
 async def test_background_process_error_cases(sandbox_workspace):
     """Unknown pid, missing pid, and unknown action all return errors."""
     assert "99999" in await background_process.arun(action="status", pid=99999)
-    assert "pid" in (await background_process.arun(action="status")).lower()
+
+    with pytest.raises(ToolArgumentError, match="pid"):
+        await background_process.arun(action="status")
 
     with pytest.raises(ToolArgumentError, match="action"):
         await background_process.arun(action="restart")

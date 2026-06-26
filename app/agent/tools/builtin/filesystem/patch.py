@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Literal
 
 from loguru import logger
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.agent.sandbox import get_sandbox
 from app.agent.tools.builtin.filesystem._config_watch import notify_fs_change
@@ -29,6 +29,12 @@ class PatchArgs(BaseModel):
     patch_text: str = Field(
         description="The full patch text describing all file changes to apply."
     )
+
+    @field_validator("patch_text")
+    @classmethod
+    def validate_patch_text(cls, v: str) -> str:
+        _parse_patch(v)
+        return v
 
 
 @dataclass

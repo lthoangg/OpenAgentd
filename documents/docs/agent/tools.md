@@ -211,8 +211,12 @@ args and injection to check vision capability:
 ```python
 class ReadArgs(BaseModel):
     path: str = Field(description="Relative path to the file inside the workspace.")
-    offset: int = Field(default=1, description="Line number to start from, 1-indexed.")
-    limit: int | None = Field(default=None, description="Max lines to return.")
+    offset: int = Field(
+        default=1, ge=1, description="Line number to start from, 1-indexed (default 1)."
+    )
+    limit: int | None = Field(
+        default=None, ge=1, description="Max lines to return. Omit for all lines from offset."
+    )
 
 @tool(name="read", description="Read a file from the workspace.", args_schema=ReadArgs)
 async def _read_file(

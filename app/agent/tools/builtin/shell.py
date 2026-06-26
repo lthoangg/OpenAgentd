@@ -48,7 +48,7 @@ from pathlib import Path
 from typing import Annotated, Literal
 
 from loguru import logger
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.agent.artifacts import shell_output_dir
 from app.agent.sandbox import get_sandbox
@@ -102,6 +102,7 @@ class ShellArgs(BaseModel):
     )
     timeout_seconds: int | None = Field(
         default=None,
+        ge=1,
         description=(
             "Timeout in seconds. Defaults to 60. Increase for long builds. "
             "If the command legitimately takes longer, retry with a higher value."
@@ -127,8 +128,16 @@ class BgArgs(BaseModel):
     )
     last_n_lines: int | None = Field(
         default=None,
+        ge=1,
         description="Lines to return for 'output' and 'wait' actions (default all, max 200).",
     )
+
+    @model_validator(mode="after")
+    def _validate_pid(self) -> BgArgs:
+        if self.action in ("status", "output", "stop", "wait"):
+            if self.pid is None:
+                raise ValueError(f"pid is required for action='{self.action}'")
+        return self
 
 
 # ── Constants ────────────────────────────────────────────────────────────────

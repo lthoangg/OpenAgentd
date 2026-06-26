@@ -6,6 +6,7 @@ import asyncio
 import fnmatch
 import os
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -35,19 +36,21 @@ class GlobArgs(BaseModel):
     directory: str = Field(
         default=".", description="Search root (default '.' = workspace root)."
     )
-    match: str = Field(
+    match: Literal["path", "name"] = Field(
         default="path",
         description="Match against 'path' (default) or 'name' (filename only).",
     )
     max_results: int = Field(
-        default=200, description="Maximum number of results to return (default 200)."
+        default=200,
+        ge=1,
+        description="Maximum number of results to return (default 200).",
     )
 
 
 async def _glob_files(
     pattern: str,
     directory: str = ".",
-    match: str = "path",
+    match: Literal["path", "name"] = "path",
     max_results: int = 200,
 ) -> str:
     """Find files by glob pattern, honouring gitignore and skip rules."""

@@ -43,10 +43,12 @@ class ReadArgs(BaseModel):
 
     path: str = Field(description="Relative path to the file inside the workspace.")
     offset: int = Field(
-        default=1, description="Line number to start from, 1-indexed (default 1)."
+        default=1, ge=1, description="Line number to start from, 1-indexed (default 1)."
     )
     limit: int | None = Field(
-        default=None, description="Max lines to return. Omit for all lines from offset."
+        default=None,
+        ge=1,
+        description="Max lines to return. Omit for all lines from offset.",
     )
 
 

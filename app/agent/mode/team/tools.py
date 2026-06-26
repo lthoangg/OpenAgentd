@@ -19,7 +19,7 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.agent.tools.registry import Tool
 
@@ -45,21 +45,30 @@ class TeamMessageArgs(BaseModel):
     """Arguments for the team_message tool."""
 
     to: list[str] = Field(
+        min_length=1,
         description=(
             "Recipient names: exact live handles or an available bare "
             "blueprint name when exactly one instance is live. "
             "One call per intended audience; make separate calls for "
             "different messages."
-        )
+        ),
     )
     content: str = Field(
+        min_length=1,
         description=(
             "The message body. Must be addressed ONLY to recipients in `to`. "
             "Work output only: findings, drafts, data, task instructions, or questions. "
             "NEVER greetings, status updates, or acknowledgements. "
             "Do NOT prefix with your name — the system adds [your-name]: automatically."
-        )
+        ),
     )
+
+    @field_validator("content")
+    @classmethod
+    def _not_blank(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("content must not be blank")
+        return v
 
 
 def make_team_message_tool(

@@ -355,6 +355,13 @@ class TestEditFileTool:
         with pytest.raises(ValueError, match="identical"):
             await _edit_file("f.txt", "hello", "hello")
 
+    async def test_identical_strings_arun_raises(self, sandbox):
+        from app.agent.errors import ToolArgumentError
+        from app.agent.tools.builtin.filesystem import edit_file
+
+        with pytest.raises(ToolArgumentError, match="identical"):
+            await edit_file.arun(path="f.txt", old_string="hello", new_string="hello")
+
     async def test_multiline_edit(self, sandbox):
         _, tmp_path = sandbox
         f = tmp_path / "code.py"

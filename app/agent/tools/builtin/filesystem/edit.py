@@ -11,7 +11,7 @@ import json
 import re
 
 from loguru import logger
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.agent.sandbox import get_sandbox
 from app.agent.tools.builtin.filesystem._config_watch import notify_fs_change
@@ -40,6 +40,14 @@ class EditArgs(BaseModel):
         default=False,
         description="Replace all occurrences of old_string (default false — replace only the unique match).",
     )
+
+    @model_validator(mode="after")
+    def _validate_diff(self) -> EditArgs:
+        if self.old_string == self.new_string:
+            raise ValueError(
+                "No changes to apply: old_string and new_string are identical."
+            )
+        return self
 
 
 def _levenshtein(a: str, b: str) -> int:

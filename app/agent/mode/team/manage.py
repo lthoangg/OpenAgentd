@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Literal
 
 from loguru import logger
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.agent.tools.registry import Tool
 
@@ -46,6 +46,15 @@ class TeamManageArgs(BaseModel):
             "are processed left-to-right."
         )
     )
+
+    @model_validator(mode="after")
+    def _validate_members(self) -> TeamManageArgs:
+        if self.action in ("spawn", "dismiss"):
+            if not self.members:
+                raise ValueError(
+                    f"members list cannot be empty for action='{self.action}'"
+                )
+        return self
 
 
 def make_team_manage_tool(team: "AgentTeam") -> Tool:

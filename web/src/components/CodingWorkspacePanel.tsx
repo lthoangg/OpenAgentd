@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { ChevronDown, ChevronRight, Folder, GitCompare, Plus, RefreshCw, Search, X } from 'lucide-react'
@@ -231,6 +232,9 @@ export function CodingWorkspacePanel({
   const searchInputRef = useRef<HTMLInputElement>(null)
   const searchListRef = useRef<HTMLDivElement>(null)
   const tabButtonRefs = useRef(new Map<string, HTMLButtonElement>())
+  const commitsScrollRef = useRef<HTMLDivElement>(null)
+  // Tracks a SHA that was navigated to from Tree and needs to be scrolled into view.
+  const pendingScrollShaRef = useRef<string | null>(null)
   const files = useQuery({
     queryKey: queryKeys.coding.files(workspace),
     queryFn: () => listCodingWorkspaceFiles(workspace),
@@ -388,6 +392,15 @@ export function CodingWorkspacePanel({
   const toggleDiffExpanded = (path: string) => {
     useGitPanelStore.getState().toggleDiffExpanded(workspace, path)
   }
+  const allExpanded = changedFiles.length > 0 && changedFiles.every((f) => expandedDiffs.has(f.path))
+  const handleExpandCollapseChange = (checked: boolean) => {
+    if (checked) {
+      const allPaths = changedFiles.map((f) => f.path)
+      useGitPanelStore.getState().setExpandedDiffs(workspace, allPaths)
+    } else {
+      useGitPanelStore.getState().setExpandedDiffs(workspace, [])
+    }
+  }
   const searchableFiles = useMemo(() => {
     const query = fileSearch.trim().toLowerCase()
     const allFiles = files.data?.files ?? []
@@ -415,6 +428,18 @@ export function CodingWorkspacePanel({
   useEffect(() => {
     tabButtonRefs.current.get(activeTabId)?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
   }, [activeTabId, tabs.length])
+
+  // After the commits list renders, scroll the pending SHA into view (set by Tree navigation).
+  useEffect(() => {
+    const sha = pendingScrollShaRef.current
+    if (!sha || subTab !== 'commits' || !commitsScrollRef.current) return
+    const card = commitsScrollRef.current.querySelector(`[data-commit-sha="${sha}"]`)
+    if (!card) return
+    pendingScrollShaRef.current = null
+    card.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  })
+
+
   const resizable = useResizableWidth({
     storageKey: 'oa.codingWorkspacePanel.width',
     defaultWidth: 380,
@@ -588,7 +613,7 @@ export function CodingWorkspacePanel({
           {activeTab?.type === 'review' ? (
             <div className="flex h-full min-h-0 flex-col">
               {diff.data?.is_git_repo && (
-                <div className="flex border-b border-(--color-border) bg-(--bg-card) p-1 shrink-0">
+                <div className="flex items-center justify-between border-b border-(--color-border) bg-(--bg-card) p-1 shrink-0 gap-2 min-h-9">
                   {!mobile ? (
                     <div className="relative">
                       <button
@@ -655,7 +680,7 @@ export function CodingWorkspacePanel({
                       )}
                     </div>
                   ) : (
-                    <div className="flex w-full bg-inherit gap-1">
+                    <div className="flex flex-1 bg-inherit gap-1">
                       <button
                         type="button"
                         onClick={() => setSubTab('changes')}
@@ -694,10 +719,53 @@ export function CodingWorkspacePanel({
                       </button>
                     </div>
                   )}
+
+                  <div className="flex items-center gap-1.5 pr-1 shrink-0 select-none">
+                    {subTab === 'changes' && changedFiles.length > 0 && (
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={allExpanded}
+                        onClick={() => handleExpandCollapseChange(!allExpanded)}
+                        className="flex cursor-pointer select-none items-center gap-1.5 rounded px-0.5 py-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-accent)/50"
+                      >
+                        <span className="text-[11px] text-(--color-text-muted)">Expand all</span>
+                        <span
+                          aria-hidden="true"
+                          className={cn(
+                            'relative inline-flex h-[18px] w-8 shrink-0 items-center rounded-full border transition-colors duration-200',
+                            allExpanded
+                              ? 'border-(--color-border-strong) bg-(--color-text-subtle)/25'
+                              : 'border-(--color-border) bg-(--bg-key)',
+                          )}
+                        >
+                          <span
+                            className={cn(
+                              'pointer-events-none block h-3 w-3 rounded-full transition-transform duration-200',
+                              allExpanded
+                                ? 'translate-x-[18px] bg-(--color-text-2)'
+                                : 'translate-x-0.5 bg-(--color-text-subtle)/60',
+                            )}
+                          />
+                        </span>
+                      </button>
+                    )}
+                    {subTab === 'tree' && (
+                      <label className="flex items-center gap-1.5 text-xs text-(--color-text-2) cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={allBranches}
+                          onChange={(event) => setAllBranches(event.target.checked)}
+                          className="rounded border-(--color-border) text-(--color-accent) focus:ring-(--color-accent) h-3.5 w-3.5 cursor-pointer"
+                        />
+                        <span>All Branches</span>
+                      </label>
+                    )}
+                  </div>
                 </div>
               )}
 
-              <div className="min-h-0 flex-1 overflow-auto p-2">
+              <div ref={commitsScrollRef} className="min-h-0 flex-1 overflow-auto p-2">
                 {subTab === 'changes' ? (
                   diff.isLoading || files.isLoading ? (
                     <p className="px-2 py-4 text-xs text-(--color-text-subtle)">Loading changed files…</p>
@@ -761,12 +829,27 @@ export function CodingWorkspacePanel({
                       {commits.map((commit) => {
                         const isExpanded = expandedCommitSha === commit.sha
                         return (
-                          <div key={commit.sha} className="overflow-hidden rounded border border-(--color-border-subtle) bg-(--bg-card) p-2">
+                          <div key={commit.sha} data-commit-sha={commit.sha} className="overflow-hidden rounded border border-(--color-border-subtle) bg-(--bg-card) p-2">
                             <button
                               type="button"
-                              onClick={() => {
-                                setExpandedCommitSha((prev) => (prev === commit.sha ? null : commit.sha))
-                                setExpandedCommitFiles(new Set())
+                              onClick={(e) => {
+                                const card = (e.currentTarget as HTMLElement).closest('[data-commit-sha]') as HTMLElement | null
+                                const scroller = commitsScrollRef.current
+                                // Snapshot card's distance from the top of the scroller before any DOM change.
+                                const cardOffsetBefore = card && scroller
+                                  ? card.getBoundingClientRect().top - scroller.getBoundingClientRect().top
+                                  : null
+                                // flushSync forces React to paint synchronously so we can measure the
+                                // new layout immediately after, with no rAF race condition.
+                                flushSync(() => {
+                                  setExpandedCommitSha((prev) => (prev === commit.sha ? null : commit.sha))
+                                  setExpandedCommitFiles(new Set())
+                                })
+                                // Restore the card to the same visual position by correcting scrollTop.
+                                if (card && scroller && cardOffsetBefore !== null) {
+                                  const cardOffsetAfter = card.getBoundingClientRect().top - scroller.getBoundingClientRect().top
+                                  scroller.scrollTop += cardOffsetAfter - cardOffsetBefore
+                                }
                               }}
                               className="flex w-full cursor-pointer flex-col gap-1 text-left"
                             >
@@ -826,17 +909,6 @@ export function CodingWorkspacePanel({
                     <p className="px-2 py-4 text-xs text-(--color-text-subtle)">Not a git repository</p>
                   ) : (
                     <div className="flex flex-col h-full min-h-0">
-                      <div className="flex items-center justify-between gap-2 border-b border-(--color-border-subtle) pb-2 mb-2 shrink-0">
-                        <label className="flex items-center gap-1.5 text-xs text-(--color-text-2) cursor-pointer select-none">
-                          <input
-                            type="checkbox"
-                            checked={allBranches}
-                            onChange={(event) => setAllBranches(event.target.checked)}
-                            className="rounded border-(--color-border) text-(--color-accent) focus:ring-(--color-accent) h-3.5 w-3.5 cursor-pointer"
-                          />
-                          <span>All Branches</span>
-                        </label>
-                      </div>
                       <div className="min-h-0 flex-1 overflow-auto rounded bg-(--bg-key)/20 border border-(--color-border-subtle) p-2 select-none overscroll-contain">
                         {parsedGraphLines.length === 0 ? (
                           <p className="px-2 py-4 text-xs text-(--color-text-subtle)">No graph history.</p>
@@ -852,12 +924,20 @@ export function CodingWorkspacePanel({
                                     <button
                                       type="button"
                                       onClick={() => {
-                                        setSubTab('commits')
-                                        setExpandedCommitSha(line.sha ?? null)
+                                        // The graph uses short SHAs (7-10 chars); resolve to the
+                                        // full SHA from the loaded commits list so the expand check
+                                        // (expandedCommitSha === commit.sha) matches correctly.
+                                        const shortSha = line.sha ?? null
+                                        const fullSha = shortSha
+                                          ? (commits.find((c) => c.sha.startsWith(shortSha))?.sha ?? shortSha)
+                                          : null
+                                        pendingScrollShaRef.current = fullSha
                                         setExpandedCommitFiles(new Set())
+                                        setExpandedCommitSha(fullSha)
+                                        setSubTab('commits')
                                       }}
                                       className="shrink-0 font-mono text-[9px] text-(--color-text-subtle) bg-(--bg-card) px-1 py-0.5 rounded border border-(--color-border-subtle) hover:bg-(--color-accent)/10 hover:text-(--color-accent) hover:border-(--color-accent)/30 transition-colors cursor-pointer"
-                                      title="Click to view commit details"
+                                      title="Open commit details"
                                     >
                                       {line.sha.substring(0, 7)}
                                     </button>

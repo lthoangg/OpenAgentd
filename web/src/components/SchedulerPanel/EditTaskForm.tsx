@@ -165,85 +165,99 @@ export function EditTaskForm({
             }
           />
 
-          {/* Schedule Type */}
-          <div>
-            <label className="block text-sm font-medium text-(--color-text)">Schedule Type</label>
-            <ScheduleTypeSegmented
-              value={formData.schedule_type}
-              onChange={(v) => setFormData({ ...formData, schedule_type: v })}
-            />
-          </div>
-
-          {/* Schedule value (conditional) */}
-          {formData.schedule_type === 'at' && (
+          {/* Schedule Type & Detail */}
+          {formData.schedule_type === 'every' ? (
             <div>
-              <div className="flex items-end gap-2">
-                <div className="flex-1">
-                  <label className="block text-sm font-medium text-(--color-text)">Date & Time</label>
+              <div className="flex flex-wrap items-start gap-4">
+                <div className="shrink-0">
+                  <label className="block text-sm font-medium text-(--color-text)">Schedule Type</label>
                   <div className="mt-1">
-                    <DateTimePicker
-                      value={formData.at_datetime ?? ''}
-                      onChange={(v) => setFormData({ ...formData, at_datetime: v })}
-                      triggerClassName="bg-(--bg-page) hover:bg-(--bg-page)"
+                    <ScheduleTypeSegmented
+                      value={formData.schedule_type}
+                      onChange={(v) => setFormData({ ...formData, schedule_type: v })}
                     />
                   </div>
                 </div>
-                <div className="w-44 shrink-0">
-                  <label className="block text-sm font-medium text-(--color-text)">Timezone</label>
+                <div className="w-56 shrink-0">
+                  <label className="block text-sm font-medium text-(--color-text)">Interval (seconds)</label>
                   <Input
-                    className={`mt-1 ${FIELD_CLASS}`}
-                    value={formData.timezone}
-                    onChange={(e) => setFormData({ ...formData, timezone: e.target.value })}
-                    placeholder={localTz}
+                    className={`mt-1 w-full ${FIELD_CLASS}`}
+                    type="number"
+                    min="1"
+                    value={formData.every_seconds ?? 3600}
+                    onChange={(e) =>
+                      setFormData({ ...formData, every_seconds: parseInt(e.target.value) || 0 })
+                    }
+                  />
+                  <p className="mt-1 text-xs text-(--color-text-muted)">e.g., 3600 = 1 hour, 86400 = 1 day</p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-(--color-text)">Schedule Type</label>
+                <div className="mt-1">
+                  <ScheduleTypeSegmented
+                    value={formData.schedule_type}
+                    onChange={(v) => setFormData({ ...formData, schedule_type: v })}
                   />
                 </div>
               </div>
-              <p className="mt-1 text-xs text-(--color-text-muted)">IANA timezone (e.g., America/New_York)</p>
-            </div>
-          )}
 
-          {formData.schedule_type === 'every' && (
-            <div>
-              <label className="block text-sm font-medium text-(--color-text)">Interval (seconds)</label>
-              <Input
-                // Numeric value rarely exceeds 6 digits — constrain to ~9rem
-                // so the input does not stretch across the full form width.
-                className={`mt-1 w-36 ${FIELD_CLASS}`}
-                type="number"
-                min="1"
-                value={formData.every_seconds ?? 3600}
-                onChange={(e) =>
-                  setFormData({ ...formData, every_seconds: parseInt(e.target.value) || 0 })
-                }
-              />
-              <p className="mt-1 text-xs text-(--color-text-muted)">e.g., 3600 = 1 hour, 86400 = 1 day</p>
-            </div>
-          )}
+              {formData.schedule_type === 'at' && (
+                <div>
+                  <div className="flex items-end gap-2">
+                    <div className="flex-1">
+                      <label className="block text-sm font-medium text-(--color-text)">Date & Time</label>
+                      <div className="mt-1">
+                        <DateTimePicker
+                          value={formData.at_datetime ?? ''}
+                          onChange={(v) => setFormData({ ...formData, at_datetime: v })}
+                          triggerClassName="bg-(--bg-page) hover:bg-(--bg-page)"
+                        />
+                      </div>
+                    </div>
+                    <div className="w-44 shrink-0">
+                      <label className="block text-sm font-medium text-(--color-text)">Timezone</label>
+                      <Input
+                        className={`mt-1 ${FIELD_CLASS}`}
+                        value={formData.timezone}
+                        onChange={(e) => setFormData({ ...formData, timezone: e.target.value })}
+                        placeholder={localTz}
+                      />
+                    </div>
+                  </div>
+                  <p className="mt-1 text-xs text-(--color-text-muted)">IANA timezone (e.g., America/New_York)</p>
+                </div>
+              )}
 
-          {formData.schedule_type === 'cron' && (
-            <div>
-              <div className="flex items-end gap-2">
-                <div className="flex-1">
-                  <label className="block text-sm font-medium text-(--color-text)">Cron Expression</label>
-                  <Input
-                    className={`mt-1 ${FIELD_CLASS}`}
-                    value={formData.cron_expression ?? ''}
-                    onChange={(e) => setFormData({ ...formData, cron_expression: e.target.value })}
-                    placeholder="e.g., 0 9 * * MON-FRI"
-                  />
+              {formData.schedule_type === 'cron' && (
+                <div>
+                  <div className="flex items-end gap-2">
+                    <div className="flex-1">
+                      <label className="block text-sm font-medium text-(--color-text)">Cron Expression</label>
+                      <Input
+                        className={`mt-1 ${FIELD_CLASS}`}
+                        value={formData.cron_expression ?? ''}
+                        onChange={(e) => setFormData({ ...formData, cron_expression: e.target.value })}
+                        placeholder="e.g., 0 9 * * MON-FRI"
+                      />
+                    </div>
+                    <div className="w-44 shrink-0">
+                      <label className="block text-sm font-medium text-(--color-text)">Timezone</label>
+                      <Input
+                        className={`mt-1 ${FIELD_CLASS}`}
+                        value={formData.timezone}
+                        onChange={(e) => setFormData({ ...formData, timezone: e.target.value })}
+                        placeholder={localTz}
+                      />
+                    </div>
+                  </div>
+                  <p className="mt-1 text-xs text-(--color-text-muted)">IANA timezone (e.g., America/New_York)</p>
                 </div>
-                <div className="w-44 shrink-0">
-                  <label className="block text-sm font-medium text-(--color-text)">Timezone</label>
-                  <Input
-                    className={`mt-1 ${FIELD_CLASS}`}
-                    value={formData.timezone}
-                    onChange={(e) => setFormData({ ...formData, timezone: e.target.value })}
-                    placeholder={localTz}
-                  />
-                </div>
-              </div>
-              <p className="mt-1 text-xs text-(--color-text-muted)">IANA timezone (e.g., America/New_York)</p>
-            </div>
+              )}
+            </>
           )}
 
           {/* Prompt */}
@@ -258,55 +272,56 @@ export function EditTaskForm({
             />
           </div>
 
-          {/* Session Target */}
-          <div>
-            <label htmlFor="edit-session-target" className="block text-sm font-medium text-(--color-text)">Session Target</label>
-            <NativeSelect
-              id="edit-session-target"
-              className="mt-1 w-full"
-              value={sessionType}
-              onChange={(e) => setSessionType(e.target.value as 'new' | 'auto' | 'current' | 'custom')}
-            >
-              <NativeSelectOption value="new">New Session</NativeSelectOption>
-              <NativeSelectOption value="auto">Persistent Task Session</NativeSelectOption>
-              {currentSessionId && (
-                <NativeSelectOption value="current">
-                  Current Chat Session ({currentSessionTitle ? `"${currentSessionTitle}"` : 'Active'})
-                </NativeSelectOption>
+          {/* Session Target & Max Runs */}
+          <div className="flex flex-wrap items-start gap-4">
+            <div className="w-full max-w-md">
+              <label htmlFor="edit-session-target" className="block text-sm font-medium text-(--color-text)">Session Target</label>
+              <NativeSelect
+                id="edit-session-target"
+                className="mt-1 w-full"
+                value={sessionType}
+                onChange={(e) => setSessionType(e.target.value as 'new' | 'auto' | 'current' | 'custom')}
+              >
+                <NativeSelectOption value="new">New Session</NativeSelectOption>
+                <NativeSelectOption value="auto">Persistent Task Session</NativeSelectOption>
+                {currentSessionId && (
+                  <NativeSelectOption value="current">
+                    Current Chat Session ({currentSessionTitle ? `"${currentSessionTitle}"` : 'Active'})
+                  </NativeSelectOption>
+                )}
+                <NativeSelectOption value="custom">Specific Session ID...</NativeSelectOption>
+              </NativeSelect>
+              <p className="mt-1 text-xs text-(--color-text-muted)">
+                {sessionType === 'new' && 'Creates a fresh, isolated chat session for every run.'}
+                {sessionType === 'auto' && 'Runs all executions in a single dedicated chat session created for this task.'}
+                {sessionType === 'current' && 'Delivers the prompt directly into your active chat thread.'}
+                {sessionType === 'custom' && 'Delivers the prompt to a specific chat session by its UUID.'}
+              </p>
+
+              {sessionType === 'custom' && (
+                <div className="mt-2">
+                  <Input
+                    className={FIELD_CLASS}
+                    value={customSessionId}
+                    onChange={(e) => setCustomSessionId(e.target.value)}
+                    placeholder="Enter session UUID (e.g. 123e4567-e89b-12d3-a456-426614174000)"
+                  />
+                </div>
               )}
-              <NativeSelectOption value="custom">Specific Session ID...</NativeSelectOption>
-            </NativeSelect>
-            <p className="mt-1 text-xs text-(--color-text-muted)">
-              {sessionType === 'new' && 'Creates a fresh, isolated chat session for every run.'}
-              {sessionType === 'auto' && 'Runs all executions in a single dedicated chat session created for this task.'}
-              {sessionType === 'current' && 'Delivers the prompt directly into your active chat thread.'}
-              {sessionType === 'custom' && 'Delivers the prompt to a specific chat session by its UUID.'}
-            </p>
+            </div>
 
-            {sessionType === 'custom' && (
-              <div className="mt-2">
-                <Input
-                  className={FIELD_CLASS}
-                  value={customSessionId}
-                  onChange={(e) => setCustomSessionId(e.target.value)}
-                  placeholder="Enter session UUID (e.g. 123e4567-e89b-12d3-a456-426614174000)"
-                />
-              </div>
-            )}
-          </div>
-
-          {/* Max runs */}
-          <div>
-            <label className="block text-sm font-medium text-(--color-text)">Max runs (optional)</label>
-            <Input
-              type="number"
-              min="1"
-              className={`mt-1 ${FIELD_CLASS}`}
-              value={formData.max_runs ?? ''}
-              onChange={(e) => setFormData({ ...formData, max_runs: e.target.value ? Number(e.target.value) : null })}
-              placeholder="Unlimited"
-            />
-            <p className="mt-1 text-xs text-(--color-text-muted)">Stop after this many successful firings.</p>
+            <div className="w-44 shrink-0">
+              <label className="block text-sm font-medium text-(--color-text)">Max runs (optional)</label>
+              <Input
+                type="number"
+                min="1"
+                className={`mt-1 w-full ${FIELD_CLASS}`}
+                value={formData.max_runs ?? ''}
+                onChange={(e) => setFormData({ ...formData, max_runs: e.target.value ? Number(e.target.value) : null })}
+                placeholder="Unlimited"
+              />
+              <p className="mt-1 text-xs text-(--color-text-muted)">Stop after this many successful firings.</p>
+            </div>
           </div>
 
           {/* Error message */}

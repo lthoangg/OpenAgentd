@@ -31,76 +31,80 @@ export function ModeWorkspaceFields({
   return (
     <div>
       <label className="block text-sm font-medium text-(--color-text)">Routing</label>
-      <div
-        role="tablist"
-        aria-label="Task mode"
-        // ``inline-flex`` so two short labels ("Normal" / "Coding") do not
-        // sprawl across the full form width.
-        className="mt-2 inline-flex gap-1 rounded-md border border-(--color-border) bg-(--bg-page) p-1"
-      >
-        {modeOptions.map((opt) => {
-          const active = mode === opt.key
-          return (
-            <button
-              key={opt.key}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              onClick={() => {
-                onChange({
-                  mode: opt.key,
-                  // Drop the workspace when leaving coding mode; preserve it
-                  // when staying on coding so the user does not lose their
-                  // typed-in path by tapping the active tab.
-                  workspace: opt.key === 'coding' ? workspace : null,
-                })
-              }}
-              className={
-                'rounded-sm px-3 py-1 text-xs font-medium transition-colors ' +
-                (active
-                  ? 'bg-(--bg-card) text-(--color-text) shadow-sm ring-1 ring-(--color-border-strong)'
-                  : 'text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text-2)')
-              }
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <div
+          role="tablist"
+          aria-label="Task mode"
+          // ``inline-flex`` so two short labels ("Normal" / "Coding") do not
+          // sprawl across the full form width.
+          className="inline-flex gap-1 rounded-md border border-(--color-border) bg-(--bg-page) p-1 shrink-0"
+        >
+          {modeOptions.map((opt) => {
+            const active = mode === opt.key
+            return (
+              <button
+                key={opt.key}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => {
+                  onChange({
+                    mode: opt.key,
+                    // Drop the workspace when leaving coding mode; preserve it
+                    // when staying on coding so the user does not lose their
+                    // typed-in path by tapping the active tab.
+                    workspace: opt.key === 'coding' ? workspace : null,
+                  })
+                }}
+                className={
+                  'rounded-sm px-3 py-1 text-xs font-medium transition-colors ' +
+                  (active
+                    ? 'bg-(--bg-card) text-(--color-text) shadow-sm ring-1 ring-(--color-border-strong)'
+                    : 'text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text-2)')
+                }
+              >
+                {opt.label}
+              </button>
+            )
+          })}
+        </div>
+
+        {mode === 'coding' && (
+          <div className="w-72 shrink-0">
+            <Select
+              value={workspace ?? ''}
+              onValueChange={(v) => onChange({ mode, workspace: v || null })}
             >
-              {opt.label}
-            </button>
-          )
-        })}
+              <SelectTrigger
+                size="sm"
+                className={`w-full ${FIELD_CLASS}`}
+                aria-label="Select workspace"
+              >
+                <SelectValue>
+                  {workspace ? workspaceLabel(workspace) : 'Select a saved workspace…'}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent className={SELECT_CONTENT_CLASS}>
+                {savedWorkspaces.map((path) => (
+                  <SelectItem key={path} value={path}>
+                    {workspaceLabel(path)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
       </div>
       <p className="mt-1 text-xs text-(--color-text-muted)">
-        {mode === 'normal'
-          ? 'Delivers to the default team lead.'
-          : 'Delivers to the lead of the coding team for the workspace below.'}
+        {mode === 'normal' ? (
+          'Delivers to the default team lead.'
+        ) : (
+          <>
+            Delivers to the lead of the coding team for the selected workspace.{' '}
+            <span>Workspaces come from saved coding workspaces.</span>
+          </>
+        )}
       </p>
-
-      {mode === 'coding' && (
-        <div className="mt-3">
-          <label className="block text-sm font-medium text-(--color-text)">Workspace</label>
-          <Select
-            value={workspace ?? ''}
-            onValueChange={(v) => onChange({ mode, workspace: v || null })}
-          >
-            <SelectTrigger
-              className={`mt-1 w-full ${FIELD_CLASS}`}
-              aria-label="Select workspace"
-            >
-              <SelectValue>
-                {workspace ? workspaceLabel(workspace) : 'Select a saved workspace…'}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent className={SELECT_CONTENT_CLASS}>
-              {savedWorkspaces.map((path) => (
-                <SelectItem key={path} value={path}>
-                  {workspaceLabel(path)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <p className="mt-1 text-xs text-(--color-text-muted)">
-            Workspaces come from saved coding workspaces.
-          </p>
-        </div>
-      )}
     </div>
   )
 }

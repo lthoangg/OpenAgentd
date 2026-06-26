@@ -165,6 +165,42 @@ function CommitDetail({
   )
 }
 
+interface ParsedGraphLine {
+  key: string
+  raw: string
+  graphPart: string
+  sha?: string
+  decorations?: string
+  message?: string
+}
+
+function renderGraphPrefix(prefix: string) {
+  return prefix.split('').map((char, index) => {
+    if (char === '*') {
+      return (
+        <span key={index} className="text-(--color-accent) font-bold font-mono">
+          ●
+        </span>
+      )
+    }
+    if (char === '|') {
+      return (
+        <span key={index} className="text-slate-400 dark:text-slate-500 opacity-60 font-mono">
+          |
+        </span>
+      )
+    }
+    if (char === '/' || char === '\\' || char === '_') {
+      return (
+        <span key={index} className="text-slate-500 dark:text-slate-400 opacity-85 font-mono">
+          {char}
+        </span>
+      )
+    }
+    return <span key={index} className="font-mono">{char}</span>
+  })
+}
+
 export function CodingWorkspacePanel({
   workspace,
   open,
@@ -232,6 +268,44 @@ export function CodingWorkspacePanel({
   const graph = useMemo(() => {
     return gitHistory.data?.pages[0]?.graph ?? ''
   }, [gitHistory.data?.pages])
+
+  const parsedGraphLines = useMemo<ParsedGraphLine[]>(() => {
+    if (!graph) return []
+    return graph.split('\n').filter((line) => line.trim().length > 0).map((line, lineIndex) => {
+      const match = /^(.*?)\b([0-9a-fA-F]{7,10})\b(.*?)$/.exec(line)
+      if (!match) {
+        return {
+          key: `line-${lineIndex}`,
+          raw: line,
+          graphPart: line,
+        }
+      }
+
+      const graphPart = match[1]
+      const sha = match[2]
+      const rest = match[3].trim()
+
+      const decoMatch = /^\((.*?)\)\s*(.*)$/.exec(rest)
+      if (decoMatch) {
+        return {
+          key: `line-${lineIndex}-${sha}`,
+          raw: line,
+          graphPart,
+          sha,
+          decorations: decoMatch[1],
+          message: decoMatch[2],
+        }
+      }
+
+      return {
+        key: `line-${lineIndex}-${sha}`,
+        raw: line,
+        graphPart,
+        sha,
+        message: rest,
+      }
+    })
+  }, [graph])
 
   const sentinelRef = useRef<HTMLDivElement | null>(null)
 
@@ -676,8 +750,70 @@ export function CodingWorkspacePanel({
                           <span>All Branches</span>
                         </label>
                       </div>
-                      <div className="min-h-0 flex-1 overflow-auto rounded bg-(--bg-key)/50 border border-(--color-border-subtle) p-3 font-mono text-[10px] leading-relaxed text-(--color-text-2) whitespace-pre select-text overscroll-contain">
-                        {graph || 'No graph history.'}
+                      <div className="min-h-0 flex-1 overflow-auto rounded bg-(--bg-key)/20 border border-(--color-border-subtle) p-2 select-none overscroll-contain">
+                        {parsedGraphLines.length === 0 ? (
+                          <p className="px-2 py-4 text-xs text-(--color-text-subtle)">No graph history.</p>
+                        ) : (
+                          <div className="flex flex-col min-w-max">
+                            {parsedGraphLines.map((line) => (
+                              <div key={line.key} className="flex items-center gap-2 hover:bg-(--bg-key)/40 px-1 py-0.5 rounded transition-colors group h-5">
+                                <span className="font-mono text-[11px] leading-none whitespace-pre select-none shrink-0 tracking-widest">
+                                  {renderGraphPrefix(line.graphPart)}
+                                </span>
+                                {line.sha ? (
+                                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setSubTab('commits')
+                                        setExpandedCommitSha(line.sha ?? null)
+                                        setExpandedCommitFiles(new Set())
+                                      }}
+                                      className="shrink-0 font-mono text-[9px] text-(--color-text-subtle) bg-(--bg-card) px-1 py-0.5 rounded border border-(--color-border-subtle) hover:bg-(--color-accent)/10 hover:text-(--color-accent) hover:border-(--color-accent)/30 transition-colors cursor-pointer"
+                                      title="Click to view commit details"
+                                    >
+                                      {line.sha.substring(0, 7)}
+                                    </button>
+                                    {line.decorations && (
+                                      <div className="flex items-center gap-1 shrink-0 max-w-[200px] overflow-hidden">
+                                        {line.decorations.split(',').map((ref) => {
+                                          const trimmed = ref.trim()
+                                          const isHead = trimmed.includes('HEAD ->')
+                                          const isRemote = trimmed.includes('origin/')
+                                          return (
+                                            <span
+                                              key={ref}
+                                              className={cn(
+                                                "text-[8px] font-semibold px-1 py-0.5 rounded border truncate leading-none select-none",
+                                                isHead
+                                                  ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                                                  : isRemote
+                                                  ? "bg-rose-500/10 text-rose-500 border-rose-500/20"
+                                                  : "bg-(--color-accent)/10 text-(--color-accent) border-(--color-accent)/20"
+                                              )}
+                                              title={trimmed}
+                                            >
+                                              {trimmed}
+                                            </span>
+                                          )
+                                        })}
+                                      </div>
+                                    )}
+                                    <span className="truncate font-mono text-[11px] text-(--color-text-2) group-hover:text-(--color-text) transition-colors flex-1" title={line.message}>
+                                      {line.message}
+                                    </span>
+                                  </div>
+                                ) : (
+                                  line.raw.trim().length > line.graphPart.trim().length && (
+                                    <span className="font-mono text-[11px] text-(--color-text-subtle) truncate flex-1">
+                                      {line.raw.substring(line.graphPart.length)}
+                                    </span>
+                                  )
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))

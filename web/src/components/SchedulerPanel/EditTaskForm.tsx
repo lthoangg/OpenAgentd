@@ -10,6 +10,8 @@ import { isoToWallClock, wallClockToISO } from '@/utils/format'
 import { FIELD_CLASS } from './utils'
 import { ScheduleTypeSegmented } from './ScheduleTypeSegmented'
 import { ModeWorkspaceFields } from './ModeWorkspaceFields'
+import { useTeamStore } from '@/stores/useTeamStore'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 
 export function EditTaskForm({
   task,
@@ -41,6 +43,26 @@ export function EditTaskForm({
   })
   const [error, setError] = useState<string | null>(null)
 
+  const currentSessionId = useTeamStore((state) => state.sessionId)
+  const currentSessionTitle = useTeamStore((state) => state.sessionTitle)
+
+  const getInitialSessionType = (
+    sid: string | null | undefined,
+    currSid: string | null
+  ): 'new' | 'auto' | 'current' | 'custom' => {
+    if (!sid) return 'new'
+    if (sid === 'auto') return 'auto'
+    if (currSid && sid === currSid) return 'current'
+    return 'custom'
+  }
+
+  const [sessionType, setSessionType] = useState<'new' | 'auto' | 'current' | 'custom'>(
+    getInitialSessionType(task.session_id, currentSessionId)
+  )
+  const [customSessionId, setCustomSessionId] = useState(
+    getInitialSessionType(task.session_id, currentSessionId) === 'custom' ? (task.session_id ?? '') : ''
+  )
+
   const updateMutation = useUpdateScheduledTaskMutation()
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -64,6 +86,16 @@ export function EditTaskForm({
       setError('Cron expression is required'); return
     }
 
+    if (sessionType === 'custom') {
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+      if (!customSessionId.trim()) {
+        setError('Session UUID is required'); return
+      }
+      if (!uuidRegex.test(customSessionId.trim())) {
+        setError('Please enter a valid UUID (e.g. 123e4567-e89b-12d3-a456-426614174000)'); return
+      }
+    }
+
     // Same naive-wall-clock → tz-aware ISO conversion as CreateTaskForm.
     const tz = formData.timezone || localTz
     const atIso = formData.at_datetime ? wallClockToISO(formData.at_datetime, tz) : undefined
@@ -73,7 +105,14 @@ export function EditTaskForm({
       schedule_type: formData.schedule_type,
       timezone: tz,
       prompt: formData.prompt.trim(),
-      session_id: formData.session_id,
+      session_id:
+        sessionType === 'new'
+          ? null
+          : sessionType === 'auto'
+          ? 'auto'
+          : sessionType === 'current'
+          ? currentSessionId
+          : customSessionId.trim() || null,
       max_runs: formData.max_runs ?? null,
       enabled: formData.enabled,
       ...(formData.schedule_type === 'at'    ? { at_datetime: atIso }                          : {}),
@@ -219,18 +258,41 @@ export function EditTaskForm({
             />
           </div>
 
-          {/* Session ID */}
+          {/* Session Target */}
           <div>
-            <label className="block text-sm font-medium text-(--color-text)">Session ID (optional)</label>
-            <Input
-              className={`mt-1 ${FIELD_CLASS}`}
-              value={formData.session_id ?? ''}
-              onChange={(e) => setFormData({ ...formData, session_id: e.target.value || undefined })}
-              placeholder="Leave blank for new session, or enter 'auto'"
-            />
+            <label htmlFor="edit-session-target" className="block text-sm font-medium text-(--color-text)">Session Target</label>
+            <NativeSelect
+              id="edit-session-target"
+              className="mt-1 w-full"
+              value={sessionType}
+              onChange={(e) => setSessionType(e.target.value as 'new' | 'auto' | 'current' | 'custom')}
+            >
+              <NativeSelectOption value="new">New Session</NativeSelectOption>
+              <NativeSelectOption value="auto">Persistent Task Session</NativeSelectOption>
+              {currentSessionId && (
+                <NativeSelectOption value="current">
+                  Current Chat Session ({currentSessionTitle ? `"${currentSessionTitle}"` : 'Active'})
+                </NativeSelectOption>
+              )}
+              <NativeSelectOption value="custom">Specific Session ID...</NativeSelectOption>
+            </NativeSelect>
             <p className="mt-1 text-xs text-(--color-text-muted)">
-              null = new session each run, "auto" = persistent session, or UUID
+              {sessionType === 'new' && 'Creates a fresh, isolated chat session for every run.'}
+              {sessionType === 'auto' && 'Runs all executions in a single dedicated chat session created for this task.'}
+              {sessionType === 'current' && 'Delivers the prompt directly into your active chat thread.'}
+              {sessionType === 'custom' && 'Delivers the prompt to a specific chat session by its UUID.'}
             </p>
+
+            {sessionType === 'custom' && (
+              <div className="mt-2">
+                <Input
+                  className={FIELD_CLASS}
+                  value={customSessionId}
+                  onChange={(e) => setCustomSessionId(e.target.value)}
+                  placeholder="Enter session UUID (e.g. 123e4567-e89b-12d3-a456-426614174000)"
+                />
+              </div>
+            )}
           </div>
 
           {/* Max runs */}

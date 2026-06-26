@@ -518,6 +518,15 @@ When `session_id` is an explicit UUID that already exists, `scheduler.create` / 
 
 Tasks can also be updated after creation via `PUT /api/scheduler/tasks/{id}` (REST) or through the **Edit** button in the web UI `SchedulerPanel`. Updatable fields: `mode`, `workspace`, `schedule_type`, schedule value fields, `timezone`, `prompt`, `session_id`, `max_runs`, `enabled`. See [`api/index.md`](../../docs/api/index.md#scheduler-endpoints).
 
+### Web UI Task Customization & Validation
+The Web UI (`SchedulerPanel`, toggled with `Ctrl+S` or from the sidebar) simplifies task creation and editing:
+*   **Task Title & Auto-Slugification**: Instead of forcing the user to type unique alphanumeric slugs that comply with strict backend validation (`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$`), the UI accepts any natural language title (e.g. `Daily stand-up meeting 2026!`). It automatically generates and previews a clean, valid slug in real-time, then submits it as the unique `name`.
+*   **Intelligent Session Target Selector**: Rather than requiring the user to copy/paste complex UUID strings or remember magic strings like `"auto"`, the UI provides an intuitive dropdown for the **Session Target**:
+    *   *New Session*: Creates a fresh, isolated chat session for every run.
+    *   *Persistent Task Session*: Reuses a single dedicated chat session (translates to `"auto"`).
+    *   *Current Chat Session*: Targets the active chat thread currently open in the cockpit (translates to the current active session UUID). This option dynamically lists the active chat title and is hidden if no active session exists.
+    *   *Specific Session ID...*: Lets the user paste a custom UUID with client-side validation checking that it is a valid UUID format.
+
 #### Schedule types
 
 | `schedule_type` | Required field | Example |

@@ -2,8 +2,9 @@ import { useState, type ReactNode } from 'react'
 import { Pencil, X } from 'lucide-react'
 import type { ScheduledTaskResponse } from '@/api/types'
 import { formatRelativeDate, formatInTimezone } from '@/utils/format'
-import { formatScheduleLabel } from './utils'
+import { formatScheduleLabel, slugify } from './utils'
 import { EditTaskForm } from './EditTaskForm'
+import { useTeamStore } from '@/stores/useTeamStore'
 
 export function TaskDetailView({
   task,
@@ -13,6 +14,7 @@ export function TaskDetailView({
   onClose: () => void
 }) {
   const [editing, setEditing] = useState(false)
+  const currentSessionId = useTeamStore((state) => state.sessionId)
 
   if (editing) {
     return (
@@ -39,6 +41,9 @@ export function TaskDetailView({
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <h2 className="truncate text-base font-semibold text-(--color-text)">{task.name}</h2>
+            <p className="mt-0.5 font-mono text-[11px] text-(--color-text-muted)">
+              slug: <span className="text-(--color-text-2)">{slugify(task.name)}</span>
+            </p>
             <p className="mt-1 text-sm text-(--color-text-muted)">{formatScheduleLabel(task)}</p>
           </div>
           <div className="flex shrink-0 items-center gap-1">
@@ -143,14 +148,26 @@ export function TaskDetailView({
                 {task.prompt}
               </p>
             </div>
-            {task.session_id && (
-              <div>
-                <span className="text-xs text-(--color-text-muted)">Session ID</span>
-                <p className="mt-1 rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-2 font-mono text-xs text-(--color-text) break-all">
-                  {task.session_id}
-                </p>
-              </div>
-            )}
+            <div>
+              <span className="text-xs text-(--color-text-muted)">Session Target</span>
+              <p className="mt-1 rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-2 text-sm text-(--color-text)">
+                {!task.session_id && 'New Session (fresh thread each run)'}
+                {task.session_id === 'auto' && 'Persistent Session (reused dedicated thread)'}
+                {task.session_id && task.session_id !== 'auto' && (
+                  <>
+                    {task.session_id === currentSessionId ? (
+                      <span className="font-medium text-(--color-accent)">
+                        Current Chat Session (active thread)
+                      </span>
+                    ) : (
+                      <span className="font-mono text-xs break-all">
+                        Specific Session: {task.session_id}
+                      </span>
+                    )}
+                  </>
+                )}
+              </p>
+            </div>
           </div>
         </section>
 

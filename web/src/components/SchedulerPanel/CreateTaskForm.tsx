@@ -7,9 +7,11 @@ import { Textarea } from '@/components/ui/textarea'
 import { useCreateScheduledTaskMutation } from '@/queries'
 import type { ScheduledTaskCreate, ScheduledTaskMode } from '@/api/types'
 import { wallClockToISO } from '@/utils/format'
-import { FIELD_CLASS } from './utils'
+import { FIELD_CLASS, slugify } from './utils'
 import { ScheduleTypeSegmented } from './ScheduleTypeSegmented'
 import { ModeWorkspaceFields } from './ModeWorkspaceFields'
+import { useTeamStore } from '@/stores/useTeamStore'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 
 export function CreateTaskForm({
   contextMode,
@@ -36,6 +38,13 @@ export function CreateTaskForm({
     enabled: true,
   })
   const [error, setError] = useState<string | null>(null)
+  const [title, setTitle] = useState('')
+
+  const currentSessionId = useTeamStore((state) => state.sessionId)
+  const currentSessionTitle = useTeamStore((state) => state.sessionTitle)
+
+  const [sessionType, setSessionType] = useState<'new' | 'auto' | 'current' | 'custom'>('new')
+  const [customSessionId, setCustomSessionId] = useState('')
 
   const createMutation = useCreateScheduledTaskMutation()
 
@@ -46,7 +55,11 @@ export function CreateTaskForm({
     const mode: ScheduledTaskMode = formData.mode ?? 'normal'
     const workspace = formData.workspace ?? null
 
-    if (!formData.name.trim()) { setError('Task name is required'); return }
+    const slug = slugify(title)
+    if (!title.trim()) { setError('Task title is required'); return }
+    if (!slug) {
+      setError('Task title must contain at least one letter or number'); return
+    }
     if (mode === 'coding' && !workspace?.trim()) {
       setError('Workspace is required for coding mode'); return
     }
@@ -61,6 +74,16 @@ export function CreateTaskForm({
       setError('Cron expression is required'); return
     }
 
+    if (sessionType === 'custom') {
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+      if (!customSessionId.trim()) {
+        setError('Session UUID is required'); return
+      }
+      if (!uuidRegex.test(customSessionId.trim())) {
+        setError('Please enter a valid UUID (e.g. 123e4567-e89b-12d3-a456-426614174000)'); return
+      }
+    }
+
     // Strip fields that don't belong to the active schedule_type.
     // The backend Pydantic validator rejects any extra schedule fields
     // (e.g. every_seconds present when schedule_type='at').
@@ -72,13 +95,20 @@ export function CreateTaskForm({
     const tz = formData.timezone || localTz
     const atIso = formData.at_datetime ? wallClockToISO(formData.at_datetime, tz) : undefined
     const payload: ScheduledTaskCreate = {
-      name: formData.name.trim(),
+      name: title.trim(),
       mode,
       workspace: mode === 'coding' ? workspace!.trim() : null,
       schedule_type: formData.schedule_type,
       timezone: tz,
       prompt: formData.prompt.trim(),
-      session_id: formData.session_id,
+      session_id:
+        sessionType === 'new'
+          ? null
+          : sessionType === 'auto'
+          ? 'auto'
+          : sessionType === 'current'
+          ? currentSessionId
+          : customSessionId.trim() || null,
       max_runs: formData.max_runs ?? null,
       enabled: formData.enabled,
       ...(formData.schedule_type === 'at'    ? { at_datetime: atIso }                          : {}),
@@ -99,6 +129,9 @@ export function CreateTaskForm({
           max_runs: null,
           enabled: true,
         })
+        setTitle('')
+        setSessionType('new')
+        setCustomSessionId('')
         onSuccess()
       },
       onError: (err) => {
@@ -120,15 +153,24 @@ export function CreateTaskForm({
       {/* Form */}
       <form onSubmit={handleSubmit} className="flex flex-1 flex-col overflow-y-auto px-5 py-4">
         <div className="space-y-4">
-          {/* Name */}
+          {/* Title */}
           <div>
-            <label className="block text-sm font-medium text-(--color-text)">Task Name</label>
+            <label htmlFor="task-title" className="block text-sm font-medium text-(--color-text)">Task Title</label>
             <Input
+              id="task-title"
               className={`mt-1 ${FIELD_CLASS}`}
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              placeholder="e.g., Daily Report"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="e.g., Daily Standup Report"
             />
+            {title && (
+              <p className="mt-1 text-xs text-(--color-text-muted)">
+                Slug identifier:{' '}
+                <code className="rounded bg-(--bg-key) px-1 py-0.5 font-mono text-[11px] text-(--color-text-2)">
+                  {slugify(title)}
+                </code>
+              </p>
+            )}
           </div>
 
           {/* Routing — mode + workspace (mode is auto-injected into the
@@ -239,18 +281,41 @@ export function CreateTaskForm({
             />
           </div>
 
-          {/* Session ID */}
+          {/* Session Target */}
           <div>
-            <label className="block text-sm font-medium text-(--color-text)">Session ID (optional)</label>
-            <Input
-              className={`mt-1 ${FIELD_CLASS}`}
-              value={formData.session_id ?? ''}
-              onChange={(e) => setFormData({ ...formData, session_id: e.target.value || null })}
-              placeholder="Leave blank for new session, or enter 'auto'"
-            />
+            <label htmlFor="session-target" className="block text-sm font-medium text-(--color-text)">Session Target</label>
+            <NativeSelect
+              id="session-target"
+              className="mt-1 w-full"
+              value={sessionType}
+              onChange={(e) => setSessionType(e.target.value as 'new' | 'auto' | 'current' | 'custom')}
+            >
+              <NativeSelectOption value="new">New Session</NativeSelectOption>
+              <NativeSelectOption value="auto">Persistent Task Session</NativeSelectOption>
+              {currentSessionId && (
+                <NativeSelectOption value="current">
+                  Current Chat Session ({currentSessionTitle ? `"${currentSessionTitle}"` : 'Active'})
+                </NativeSelectOption>
+              )}
+              <NativeSelectOption value="custom">Specific Session ID...</NativeSelectOption>
+            </NativeSelect>
             <p className="mt-1 text-xs text-(--color-text-muted)">
-              null = new session each run, "auto" = persistent session, or UUID
+              {sessionType === 'new' && 'Creates a fresh, isolated chat session for every run.'}
+              {sessionType === 'auto' && 'Runs all executions in a single dedicated chat session created for this task.'}
+              {sessionType === 'current' && 'Delivers the prompt directly into your active chat thread.'}
+              {sessionType === 'custom' && 'Delivers the prompt to a specific chat session by its UUID.'}
             </p>
+
+            {sessionType === 'custom' && (
+              <div className="mt-2">
+                <Input
+                  className={FIELD_CLASS}
+                  value={customSessionId}
+                  onChange={(e) => setCustomSessionId(e.target.value)}
+                  placeholder="Enter session UUID (e.g. 123e4567-e89b-12d3-a456-426614174000)"
+                />
+              </div>
+            )}
           </div>
 
           {/* Max runs */}

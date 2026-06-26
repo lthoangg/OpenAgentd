@@ -34,22 +34,26 @@ export function AgentsListPage({ selectedName, onSelect, onNew }: AgentsListPage
 
     const mapAgent = (a: (typeof agents)[number]): ListViewRow => {
       const isLead = a.role === 'lead'
+      // Short model name: strip provider prefix (e.g. "anthropic:claude-opus-4-5" → "claude-opus-4-5")
+      const shortModel = a.model
+        ? a.model.split(':').at(-1)?.split('/').at(-1) ?? a.model
+        : null
+      const metaParts: string[] = []
+      if (shortModel) metaParts.push(shortModel)
+      const toolCount = (a.tools?.length ?? 0) + (a.mcp?.length ?? 0)
+      if (toolCount > 0) metaParts.push(`${toolCount} tool${toolCount !== 1 ? 's' : ''}`)
+      if (a.skills?.length) metaParts.push(`${a.skills.length} skill${a.skills.length !== 1 ? 's' : ''}`)
+
       return {
         key: a.name,
         active: selectedName === a.name,
         title: a.name.replace(/^coding\//, ''),
         badge: isLead ? 'lead' : undefined,
-        description: a.description || a.model || 'No description',
+        description: a.description || undefined,
+        meta: metaParts.length > 0 ? metaParts.join(' · ') : undefined,
+        icon: isLead ? <Crown size={13} /> : <Wrench size={13} />,
         invalidReason: !a.valid ? (a.error ?? 'Invalid configuration') : undefined,
         onClick: () => onSelect(a.name),
-        trailing: (
-          <span
-            className="flex h-7 w-7 items-center justify-center rounded-md bg-(--bg-key) text-(--color-text-muted) ring-1 ring-(--color-border)"
-            aria-hidden="true"
-          >
-            {isLead ? <Crown size={13} /> : <Wrench size={13} />}
-          </span>
-        ),
       }
     }
 

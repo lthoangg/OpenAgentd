@@ -28,9 +28,11 @@ export interface ListViewRow {
   description?: string
   /** File path or other monospace meta line shown under the description. */
   meta?: string
+  /** Icon rendered in the left icon-well. Replaces the generic trailing icon slot. */
+  icon?: ReactNode
   /** Validation error message. When set, an error icon is shown next to the title. */
   invalidReason?: string
-  /** Optional trailing content (e.g. status dot). */
+  /** Optional trailing content (e.g. status dot). Kept for back-compat; prefer icon. */
   trailing?: ReactNode
   /** Called when the row is clicked. */
   onClick?: () => void
@@ -135,7 +137,7 @@ export function SettingsListView({
             </p>
           )}
           {!isLoading && !isError && total === 0 && (
-            <div className="flex flex-col items-center gap-3 rounded-md border border-dashed border-(--color-border) bg-(--bg-card) px-4 py-8 text-center">
+            <div className="flex flex-col items-center gap-3 rounded-sm border border-dashed border-(--color-border) bg-(--bg-card) px-4 py-8 text-center">
               <p className="text-xs font-semibold text-(--color-text)">{emptyTitle}</p>
               <p className="max-w-md text-[11px] leading-relaxed text-(--color-text-muted)">
                 {emptyBody}
@@ -171,7 +173,7 @@ export function SettingsListView({
 function ListCard({ row }: { row: ListViewRow }) {
   if (row.kind === 'group') {
     return (
-      <div className="px-1 pt-2 pb-1 font-mono text-[9px] font-bold uppercase tracking-wider text-(--color-text-subtle) select-none">
+      <div className="px-1 pt-3 pb-1 font-mono text-[9px] font-bold uppercase tracking-wider text-(--color-text-subtle) select-none">
         {row.title}
       </div>
     )
@@ -183,29 +185,60 @@ function ListCard({ row }: { row: ListViewRow }) {
       onClick={row.onClick}
       aria-current={row.active ? 'page' : undefined}
       className={cn(
-        'group flex min-h-11 w-full items-start gap-3 rounded-md border bg-(--bg-card) px-3.5 py-2.5 text-left transition-all',
-        'hover:border-(--color-border-strong) hover:bg-(--bg-key)/10',
-        'focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-(--focus-ring)/40',
+        // Base layout — rounded-sm = 8px, crisp enough for a dense list card
+        'group flex w-full items-center gap-3 rounded-sm border px-3 py-2.5 text-left',
+        // Surface & transition
+        'bg-(--bg-card) transition-colors duration-100',
+        // Hover — gentle warm lift, no border jump
+        'hover:bg-(--bg-key)/30',
+        // Focus ring
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40',
+        // Active vs rest border
         row.active
-          ? 'border-(--color-accent) bg-(--bg-key)/25'
-          : 'border-(--color-border)',
+          ? 'border-(--color-border-strong) bg-(--bg-key)/40'
+          : 'border-(--color-border) hover:border-(--color-border)',
       )}
     >
+      {/* ── Left icon well ──────────────────────────────────────────── */}
+      {row.icon && (
+        <div
+          className={cn(
+            'flex h-8 w-8 shrink-0 items-center justify-center rounded-xs',
+            'border border-(--color-border) bg-(--bg-key)',
+            'text-(--color-text-muted) transition-colors duration-100',
+            // Warm lift when the card is active
+            row.active && 'border-(--color-border-strong) bg-(--bg-key)/70',
+          )}
+          aria-hidden="true"
+        >
+          {row.icon}
+        </div>
+      )}
+
+      {/* ── Body ────────────────────────────────────────────────────── */}
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="truncate text-xs font-semibold text-(--color-text)">
+        {/* Title row */}
+        <div className="flex items-center gap-1.5">
+          <span className={cn(
+            'truncate text-xs font-semibold leading-tight',
+            row.active ? 'text-(--color-text)' : 'text-(--color-text)',
+          )}>
             {row.title}
           </span>
+
+          {/* Role / type badge */}
           {row.badge && (
-            <span className="rounded bg-(--bg-key) px-1.5 py-0.5 font-mono text-[9px] text-(--color-text-muted) border border-(--color-border) select-none">
+            <span className="shrink-0 rounded border border-(--color-border) bg-(--bg-key) px-1.5 py-px font-mono text-[9px] font-semibold uppercase tracking-wide text-(--color-text-muted) select-none">
               {row.badge}
             </span>
           )}
+
+          {/* Invalid config warning */}
           {row.invalidReason && (
             <Tooltip>
               <TooltipTrigger
                 render={
-                  <span className="text-(--color-error)">
+                  <span className="shrink-0 text-(--color-error)">
                     <AlertCircle size={11} aria-label="Invalid configuration" />
                   </span>
                 }
@@ -214,18 +247,28 @@ function ListCard({ row }: { row: ListViewRow }) {
             </Tooltip>
           )}
         </div>
+
+        {/* Description */}
         {row.description && (
-          <p className="mt-0.5 line-clamp-1 text-xs text-(--color-text-muted)">
+          <p className="mt-0.5 line-clamp-1 text-[11px] leading-snug text-(--color-text-muted)">
             {row.description}
           </p>
         )}
+
+        {/* Meta / path line */}
         {row.meta && (
-          <p className="mt-1 truncate font-mono text-[9px] text-(--color-text-subtle)">
+          <p className="mt-0.5 truncate font-mono text-[9px] text-(--color-text-subtle)">
             {row.meta}
           </p>
         )}
       </div>
-      {row.trailing && <div className="shrink-0 self-center">{row.trailing}</div>}
+
+      {/* ── Trailing right-side content (status dots, etc.) ─────────── */}
+      {row.trailing && (
+        <div className="shrink-0 self-center text-(--color-text-muted)">
+          {row.trailing}
+        </div>
+      )}
     </button>
   )
 }

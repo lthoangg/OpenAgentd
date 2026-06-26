@@ -53,17 +53,8 @@ export function McpListPage({ selectedName, onSelect, onNew }: McpListPageProps)
         badge: srv.enabled ? undefined : 'disabled',
         description: `${srv.transport === 'stdio' ? 'Local stdio process' : 'HTTP server'} · ${srv.tool_names.length} ${srv.tool_names.length === 1 ? 'tool' : 'tools'}`,
         onClick: () => onSelect(srv.name),
-        trailing: (
-          <div className="flex items-center gap-2">
-            <StatusDot server={srv} />
-            <span
-              className="flex h-7 w-7 items-center justify-center rounded-md bg-(--bg-key) text-(--color-text-muted) ring-1 ring-(--color-border)"
-              aria-hidden="true"
-            >
-              <Plug size={13} />
-            </span>
-          </div>
-        ),
+        icon: <Plug size={13} />,
+        trailing: <StatusDot server={srv} />,
       })),
     [data?.servers, selectedName, onSelect],
   )

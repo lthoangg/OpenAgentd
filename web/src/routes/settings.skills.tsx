@@ -43,14 +43,7 @@ export function SkillsListPage({ selectedName, onSelect, onNew }: SkillsListPage
         meta: slash === -1 ? undefined : s.name,
         invalidReason: !s.valid ? (s.error ?? 'Invalid configuration') : undefined,
         onClick: () => onSelect(s.name),
-        trailing: (
-          <span
-            className="flex h-7 w-7 items-center justify-center rounded-md bg-(--bg-key) text-(--color-text-muted) ring-1 ring-(--color-border)"
-            aria-hidden="true"
-          >
-            <Sparkles size={13} />
-          </span>
-        ),
+        icon: <Sparkles size={13} />,
       }
     }
 

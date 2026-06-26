@@ -26,41 +26,41 @@ export async function createScheduledTask(body: ScheduledTaskCreate): Promise<Sc
   return res.json()
 }
 
-export async function getScheduledTask(id: string): Promise<ScheduledTaskResponse> {
-  const res = await fetch(`${apiBaseUrl()}/scheduler/tasks/${encodeURIComponent(id)}`)
-  if (!res.ok) await parseDetailOrThrow(res, `GET /scheduler/tasks/${id}`)
+export async function getScheduledTask(slug: string): Promise<ScheduledTaskResponse> {
+  const res = await fetch(`${apiBaseUrl()}/scheduler/tasks/${encodeURIComponent(slug)}`)
+  if (!res.ok) await parseDetailOrThrow(res, `GET /scheduler/tasks/${slug}`)
   return res.json()
 }
 
-export async function updateScheduledTask(id: string, body: Partial<ScheduledTaskCreate>): Promise<ScheduledTaskResponse> {
-  const res = await fetch(`${apiBaseUrl()}/scheduler/tasks/${encodeURIComponent(id)}`, {
+export async function updateScheduledTask(slug: string, body: Partial<ScheduledTaskCreate>): Promise<ScheduledTaskResponse> {
+  const res = await fetch(`${apiBaseUrl()}/scheduler/tasks/${encodeURIComponent(slug)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!res.ok) await parseDetailOrThrow(res, `PUT /scheduler/tasks/${id}`)
+  if (!res.ok) await parseDetailOrThrow(res, `PUT /scheduler/tasks/${slug}`)
   return res.json()
 }
 
-export async function deleteScheduledTask(id: string): Promise<void> {
-  const res = await fetch(`${apiBaseUrl()}/scheduler/tasks/${encodeURIComponent(id)}`, { method: 'DELETE' })
-  if (!res.ok) await parseDetailOrThrow(res, `DELETE /scheduler/tasks/${id}`)
+export async function deleteScheduledTask(slug: string): Promise<void> {
+  const res = await fetch(`${apiBaseUrl()}/scheduler/tasks/${encodeURIComponent(slug)}`, { method: 'DELETE' })
+  if (!res.ok) await parseDetailOrThrow(res, `DELETE /scheduler/tasks/${slug}`)
 }
 
-export async function pauseScheduledTask(id: string): Promise<ScheduledTaskResponse> {
-  const res = await fetch(`${apiBaseUrl()}/scheduler/tasks/${encodeURIComponent(id)}/pause`, { method: 'POST' })
-  if (!res.ok) await parseDetailOrThrow(res, `POST /scheduler/tasks/${id}/pause`)
+export async function pauseScheduledTask(slug: string): Promise<ScheduledTaskResponse> {
+  const res = await fetch(`${apiBaseUrl()}/scheduler/tasks/${encodeURIComponent(slug)}/pause`, { method: 'POST' })
+  if (!res.ok) await parseDetailOrThrow(res, `POST /scheduler/tasks/${slug}/pause`)
   return res.json()
 }
 
-export async function resumeScheduledTask(id: string): Promise<ScheduledTaskResponse> {
-  const res = await fetch(`${apiBaseUrl()}/scheduler/tasks/${encodeURIComponent(id)}/resume`, { method: 'POST' })
-  if (!res.ok) await parseDetailOrThrow(res, `POST /scheduler/tasks/${id}/resume`)
+export async function resumeScheduledTask(slug: string): Promise<ScheduledTaskResponse> {
+  const res = await fetch(`${apiBaseUrl()}/scheduler/tasks/${encodeURIComponent(slug)}/resume`, { method: 'POST' })
+  if (!res.ok) await parseDetailOrThrow(res, `POST /scheduler/tasks/${slug}/resume`)
   return res.json()
 }
 
-export async function triggerScheduledTask(id: string): Promise<{ status: string }> {
-  const res = await fetch(`${apiBaseUrl()}/scheduler/tasks/${encodeURIComponent(id)}/trigger`, { method: 'POST' })
-  if (!res.ok) await parseDetailOrThrow(res, `POST /scheduler/tasks/${id}/trigger`)
+export async function triggerScheduledTask(slug: string): Promise<{ status: string }> {
+  const res = await fetch(`${apiBaseUrl()}/scheduler/tasks/${encodeURIComponent(slug)}/trigger`, { method: 'POST' })
+  if (!res.ok) await parseDetailOrThrow(res, `POST /scheduler/tasks/${slug}/trigger`)
   return res.json()
 }

@@ -162,9 +162,9 @@ class ScheduleArgs(BaseModel):
         description="[create] Whether the task starts enabled. Defaults to True.",
     )
     # ── pause / resume / delete / trigger fields ────────────────────────
-    task_id: str | None = Field(
+    slug: str | None = Field(
         default=None,
-        description="[pause|resume|delete|trigger] UUID of the task to act on.",
+        description="[pause|resume|delete|trigger] Slug of the task to act on.",
     )
 
 
@@ -197,6 +197,7 @@ def _fmt_task(task: Any) -> str:
     mode = getattr(task, "mode", "normal")
     workspace = getattr(task, "workspace", None)
     task_id = getattr(task, "id", "?")
+    slug = getattr(task, "slug", "?")
 
     target = f"mode={mode}"
     if mode == "coding" and workspace:
@@ -204,6 +205,7 @@ def _fmt_task(task: Any) -> str:
 
     parts = [
         f"id={task_id}",
+        f"slug={slug}",
         f"name={name}",
         target,
         f"schedule={schedule}",
@@ -232,7 +234,7 @@ async def _schedule_task(
     session_id: str | None = None,
     max_runs: int | None = None,
     enabled: bool = True,
-    task_id: str | None = None,
+    slug: str | None = None,
     # ── injected ─────────────────────────────────────────────────────────────
     # ``_mode`` / ``_workspace`` and current-session metadata are derived from
     # the calling agent's runtime context by the tool executor — never accepted from LLM-supplied args.
@@ -279,41 +281,38 @@ async def _schedule_task(
 
     # ── pause / resume / delete / trigger ────────────────────────────────────
     if action in ("pause", "resume", "delete", "trigger"):
-        if not task_id:
-            return f"Error: 'task_id' is required for action='{action}'."
-
-        from uuid import UUID
-
-        try:
-            uid = UUID(task_id)
-        except ValueError:
-            return f"Error: '{task_id}' is not a valid UUID."
+        if not slug:
+            return f"Error: 'slug' is required for action='{action}'."
 
         # Scope check happens before any mutation. ``pause``/``resume``
         # would otherwise mutate via the scheduler before we could inspect
         # the row's mode/workspace.
-        existing = await task_scheduler.get_task(uid)
+        existing = await task_scheduler.get_task(slug)
         if existing is None or not _in_scope(existing):
-            return f"Error: no task with id '{task_id}'."
+            return f"Error: no task with slug '{slug}'."
 
         if action == "pause":
-            task = await task_scheduler.pause(uid)
-            logger.info("schedule_tool_pause task_id={} name={}", uid, task.name)
+            task = await task_scheduler.pause(slug)
+            logger.info("schedule_tool_pause task_slug={} name={}", slug, task.name)
             return f"Task '{task.name}' paused."
 
         if action == "resume":
-            task = await task_scheduler.resume(uid)
-            logger.info("schedule_tool_resume task_id={} name={}", uid, task.name)
+            task = await task_scheduler.resume(slug)
+            logger.info("schedule_tool_resume task_slug={} name={}", slug, task.name)
             return f"Task '{task.name}' resumed. Next fire: {task.next_fire_at}"
 
         if action == "delete":
-            await task_scheduler.remove(uid)
-            logger.info("schedule_tool_delete task_id={} name={}", uid, existing.name)
+            await task_scheduler.remove(slug)
+            logger.info(
+                "schedule_tool_delete task_slug={} name={}", slug, existing.name
+            )
             return f"Task '{existing.name}' deleted."
 
         if action == "trigger":
-            await task_scheduler.trigger(uid)
-            logger.info("schedule_tool_trigger task_id={} name={}", uid, existing.name)
+            await task_scheduler.trigger(slug)
+            logger.info(
+                "schedule_tool_trigger task_slug={} name={}", slug, existing.name
+            )
             return f"Task '{existing.name}' triggered immediately."
 
     # ── create ───────────────────────────────────────────────────────────────
@@ -367,6 +366,7 @@ async def _schedule_task(
         try:
             payload = ScheduledTaskCreate(
                 name=name,
+                slug=slug,
                 mode=_mode,
                 workspace=_workspace,
                 schedule_type=schedule_type,
@@ -407,6 +407,7 @@ async def _schedule_task(
         return (
             f"Scheduled task created.\n"
             f"  id          : {created.id}\n"
+            f"  slug        : {created.slug}\n"
             f"  name        : {created.name}\n"
             + target_line
             + f"  schedule    : {created.schedule_type}\n"

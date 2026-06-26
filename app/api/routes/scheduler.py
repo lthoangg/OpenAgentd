@@ -4,17 +4,15 @@ Endpoints
 ---------
 POST   /scheduler/tasks                  — create
 GET    /scheduler/tasks                  — list
-GET    /scheduler/tasks/{task_id}        — get detail
-PUT    /scheduler/tasks/{task_id}        — full update
-DELETE /scheduler/tasks/{task_id}        — delete
-POST   /scheduler/tasks/{task_id}/pause  — pause
-POST   /scheduler/tasks/{task_id}/resume — resume
-POST   /scheduler/tasks/{task_id}/trigger — fire immediately
+GET    /scheduler/tasks/{slug}           — get detail
+PUT    /scheduler/tasks/{slug}           — full update
+DELETE /scheduler/tasks/{slug}           — delete
+POST   /scheduler/tasks/{slug}/pause     — pause
+POST   /scheduler/tasks/{slug}/resume    — resume
+POST   /scheduler/tasks/{slug}/trigger   — fire immediately
 """
 
 from __future__ import annotations
-
-from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.exc import IntegrityError
@@ -93,30 +91,30 @@ async def list_tasks(
 
 
 @router.get(
-    "/tasks/{task_id}",
+    "/tasks/{slug}",
     response_model=ScheduledTaskResponse,
     summary="Get a scheduled task",
 )
 async def get_task(
-    task_id: UUID,
+    slug: str,
     scheduler: TaskScheduler = Depends(get_scheduler),
 ) -> ScheduledTaskResponse:
-    task = _task_or_404(await scheduler.get_task(task_id))
+    task = _task_or_404(await scheduler.get_task(slug))
     return ScheduledTaskResponse.model_validate(task)
 
 
 @router.put(
-    "/tasks/{task_id}",
+    "/tasks/{slug}",
     response_model=ScheduledTaskResponse,
     summary="Update a scheduled task",
 )
 async def update_task(
-    task_id: UUID,
+    slug: str,
     body: ScheduledTaskUpdate,
     scheduler: TaskScheduler = Depends(get_scheduler),
 ) -> ScheduledTaskResponse:
     try:
-        task = await scheduler.apply_update(task_id, body)
+        task = await scheduler.apply_update(slug, body)
     except TaskNotFoundError as exc:
         raise HTTPException(
             status_code=404, detail="Scheduled task not found."
@@ -127,55 +125,55 @@ async def update_task(
 
 
 @router.delete(
-    "/tasks/{task_id}",
+    "/tasks/{slug}",
     status_code=204,
     summary="Delete a scheduled task",
 )
 async def delete_task(
-    task_id: UUID,
+    slug: str,
     scheduler: TaskScheduler = Depends(get_scheduler),
 ) -> None:
-    _task_or_404(await scheduler.get_task(task_id))
-    await scheduler.remove(task_id)
+    _task_or_404(await scheduler.get_task(slug))
+    await scheduler.remove(slug)
 
 
 @router.post(
-    "/tasks/{task_id}/pause",
+    "/tasks/{slug}/pause",
     response_model=ScheduledTaskResponse,
     summary="Pause a scheduled task",
 )
 async def pause_task(
-    task_id: UUID,
+    slug: str,
     scheduler: TaskScheduler = Depends(get_scheduler),
 ) -> ScheduledTaskResponse:
-    _task_or_404(await scheduler.get_task(task_id))
-    task = await scheduler.pause(task_id)
+    _task_or_404(await scheduler.get_task(slug))
+    task = await scheduler.pause(slug)
     return ScheduledTaskResponse.model_validate(task)
 
 
 @router.post(
-    "/tasks/{task_id}/resume",
+    "/tasks/{slug}/resume",
     response_model=ScheduledTaskResponse,
     summary="Resume a paused scheduled task",
 )
 async def resume_task(
-    task_id: UUID,
+    slug: str,
     scheduler: TaskScheduler = Depends(get_scheduler),
 ) -> ScheduledTaskResponse:
-    _task_or_404(await scheduler.get_task(task_id))
-    task = await scheduler.resume(task_id)
+    _task_or_404(await scheduler.get_task(slug))
+    task = await scheduler.resume(slug)
     return ScheduledTaskResponse.model_validate(task)
 
 
 @router.post(
-    "/tasks/{task_id}/trigger",
+    "/tasks/{slug}/trigger",
     status_code=202,
     summary="Fire a task immediately",
 )
 async def trigger_task(
-    task_id: UUID,
+    slug: str,
     scheduler: TaskScheduler = Depends(get_scheduler),
 ) -> dict[str, str]:
-    _task_or_404(await scheduler.get_task(task_id))
-    await scheduler.trigger(task_id)
+    _task_or_404(await scheduler.get_task(slug))
+    await scheduler.trigger(slug)
     return {"status": "dispatched"}

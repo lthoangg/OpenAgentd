@@ -95,7 +95,7 @@ describe("useTeamStore — scheduler invalidation", () => {
   it("emits scheduler event for schedule_task with action: 'update'", () => {
     primeBlock("claude", "schedule_task", "tc-3", {
       action: "update",
-      task_id: "task-123",
+      slug: "task-123",
       schedule: "0 10 * * 1",
     })
     useTeamStore.getState()._handleSSEEvent("tool_end", {
@@ -110,7 +110,7 @@ describe("useTeamStore — scheduler invalidation", () => {
   it("emits scheduler event for schedule_task with action: 'delete'", () => {
     primeBlock("claude", "schedule_task", "tc-4", {
       action: "delete",
-      task_id: "task-456",
+      slug: "task-456",
     })
     useTeamStore.getState()._handleSSEEvent("tool_end", {
       name: "schedule_task",

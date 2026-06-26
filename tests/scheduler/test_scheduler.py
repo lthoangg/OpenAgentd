@@ -74,8 +74,11 @@ def _make_task(
     run_count: int = 0,
     max_runs: int | None = None,
 ) -> ScheduledTask:
+    from app.scheduler.utils import slugify
+
     return ScheduledTask(
         name=name,
+        slug=slugify(name),
         mode="normal",
         workspace=None,
         schedule_type=schedule_type,
@@ -111,7 +114,7 @@ class TestAdd:
         assert saved.id == task.id
         assert saved.next_fire_at is not None
         # Timer should be tracked
-        assert task.id in scheduler._tasks
+        assert task.slug in scheduler._tasks
         # Persisted in DB
         async with db_factory() as session:
             result = await session.exec(
@@ -126,7 +129,7 @@ class TestAdd:
     async def test_disabled_task_persists_but_no_timer(self, scheduler):
         task = _make_task(name="disabled", enabled=False)
         await scheduler.add(task)
-        assert task.id not in scheduler._tasks
+        assert task.slug not in scheduler._tasks
         await scheduler.stop()
 
 
@@ -139,10 +142,10 @@ class TestRemove:
     async def test_removes_task_and_cancels_timer(self, scheduler, db_factory):
         task = _make_task(name="to_remove")
         await scheduler.add(task)
-        assert task.id in scheduler._tasks
+        assert task.slug in scheduler._tasks
 
-        await scheduler.remove(task.id)
-        assert task.id not in scheduler._tasks
+        await scheduler.remove(task.slug)
+        assert task.slug not in scheduler._tasks
 
         async with db_factory() as session:
             result = await session.exec(
@@ -150,8 +153,8 @@ class TestRemove:
             )
             assert result.first() is None
 
-    async def test_remove_nonexistent_id_is_noop(self, scheduler):
-        await scheduler.remove(uuid4())  # no exception
+    async def test_remove_nonexistent_slug_is_noop(self, scheduler):
+        await scheduler.remove("nonexistent-slug")  # no exception
 
 
 # ---------------------------------------------------------------------------
@@ -163,7 +166,7 @@ class TestUpdate:
     async def test_recomputes_next_fire_and_restarts_timer(self, scheduler, db_factory):
         task = _make_task(name="updatable", every_seconds=60)
         await scheduler.add(task)
-        original_timer = scheduler._tasks[task.id]
+        original_timer = scheduler._tasks[task.slug]
 
         # Reload from DB (so we have the persisted copy) and change schedule
         async with db_factory() as session:
@@ -176,7 +179,7 @@ class TestUpdate:
 
         assert updated.every_seconds == 30
         # Timer was replaced (new asyncio.Task object)
-        assert scheduler._tasks[task.id] is not original_timer
+        assert scheduler._tasks[task.slug] is not original_timer
         await scheduler.stop()
 
     async def test_disable_via_update_cancels_timer(self, scheduler, db_factory):
@@ -190,7 +193,7 @@ class TestUpdate:
             fresh = result.one()
         fresh.enabled = False
         await scheduler.update(fresh)
-        assert task.id not in scheduler._tasks
+        assert task.slug not in scheduler._tasks
 
     async def test_update_marks_exhausted_finite_task_completed(
         self, scheduler, db_factory
@@ -202,7 +205,7 @@ class TestUpdate:
         assert updated.enabled is False
         assert updated.status == "completed"
         assert updated.next_fire_at is None
-        assert task.id not in scheduler._tasks
+        assert task.slug not in scheduler._tasks
 
 
 # ---------------------------------------------------------------------------
@@ -214,20 +217,20 @@ class TestPauseResume:
     async def test_pause_marks_paused_and_cancels_timer(self, scheduler, db_factory):
         task = _make_task(name="pausable")
         await scheduler.add(task)
-        paused = await scheduler.pause(task.id)
+        paused = await scheduler.pause(task.slug)
         assert paused.enabled is False
         assert paused.status == "paused"
-        assert task.id not in scheduler._tasks
+        assert task.slug not in scheduler._tasks
 
     async def test_resume_re_enables_and_recomputes(self, scheduler, db_factory):
         task = _make_task(name="resumable")
         await scheduler.add(task)
-        await scheduler.pause(task.id)
-        resumed = await scheduler.resume(task.id)
+        await scheduler.pause(task.slug)
+        resumed = await scheduler.resume(task.slug)
         assert resumed.enabled is True
         assert resumed.status == "pending"
         assert resumed.next_fire_at is not None
-        assert task.id in scheduler._tasks
+        assert task.slug in scheduler._tasks
         await scheduler.stop()
 
     async def test_resume_exhausted_finite_task_stays_completed(
@@ -246,12 +249,12 @@ class TestPauseResume:
             session.add(row)
             await session.commit()
 
-        resumed = await scheduler.resume(task.id)
+        resumed = await scheduler.resume(task.slug)
 
         assert resumed.enabled is False
         assert resumed.status == "completed"
         assert resumed.next_fire_at is None
-        assert task.id not in scheduler._tasks
+        assert task.slug not in scheduler._tasks
 
 
 # ---------------------------------------------------------------------------
@@ -271,13 +274,13 @@ class TestListAndGet:
     async def test_get_returns_specific_task(self, scheduler):
         task = _make_task(name="findable")
         await scheduler.add(task)
-        found = await scheduler.get_task(task.id)
+        found = await scheduler.get_task(task.slug)
         assert found is not None
         assert found.name == "findable"
         await scheduler.stop()
 
-    async def test_get_unknown_id_returns_none(self, scheduler):
-        result = await scheduler.get_task(uuid4())
+    async def test_get_unknown_slug_returns_none(self, scheduler):
+        result = await scheduler.get_task("nonexistent-slug")
         assert result is None
 
 
@@ -361,7 +364,7 @@ class TestStart:
         await scheduler.start()
         for _ in range(50):
             await asyncio.sleep(0.01)
-            if mock_dispatch["dispatch"].called and task.id in scheduler._tasks:
+            if mock_dispatch["dispatch"].called and task.slug in scheduler._tasks:
                 break
 
         async with db_factory() as session:
@@ -373,7 +376,7 @@ class TestStart:
         assert row.status == "pending"
         assert row.next_fire_at is not None
         assert row.next_fire_at > datetime.now(_UTC)
-        assert task.id in scheduler._tasks
+        assert task.slug in scheduler._tasks
 
         await scheduler.stop()
 
@@ -407,7 +410,7 @@ class TestTrigger:
         task = _make_task(name="trigger_me")
         await scheduler.add(task)
 
-        await scheduler.trigger(task.id)
+        await scheduler.trigger(task.slug)
         # Allow the spawned _fire_task coroutine to run.
         for _ in range(20):
             await asyncio.sleep(0.01)
@@ -425,7 +428,7 @@ class TestTrigger:
         task.status = "paused"
         await scheduler.add(task)
 
-        await scheduler.trigger(task.id)
+        await scheduler.trigger(task.slug)
         for _ in range(20):
             await asyncio.sleep(0.01)
             if mock_dispatch["dispatch"].called:
@@ -597,7 +600,7 @@ class TestFireTaskErrors:
 
         for _ in range(150):
             await asyncio.sleep(0.01)
-            if task.id not in scheduler._tasks:
+            if task.slug not in scheduler._tasks:
                 break
 
         async with db_factory() as session:
@@ -608,7 +611,7 @@ class TestFireTaskErrors:
         assert row.enabled is False
         assert row.status == "completed"
         assert row.next_fire_at is None
-        assert task.id not in scheduler._tasks
+        assert task.slug not in scheduler._tasks
 
     async def test_failed_finite_task_does_not_complete(self, scheduler, db_factory):
         task = _make_task(name="finite_failed", max_runs=1)

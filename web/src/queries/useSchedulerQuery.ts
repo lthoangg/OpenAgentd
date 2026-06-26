@@ -31,56 +31,56 @@ export function useCreateScheduledTaskMutation() {
   })
 }
 
-/** PUT /scheduler/tasks/{id} — update an existing scheduled task */
+/** PUT /scheduler/tasks/{slug} — update an existing scheduled task */
 export function useUpdateScheduledTaskMutation() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, body }: { id: string; body: Partial<ScheduledTaskCreate> }) =>
-      updateScheduledTask(id, body),
+    mutationFn: ({ slug, body }: { slug: string; body: Partial<ScheduledTaskCreate> }) =>
+      updateScheduledTask(slug, body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.scheduler.list() })
     },
   })
 }
 
-/** DELETE /scheduler/tasks/{id} — delete a scheduled task */
+/** DELETE /scheduler/tasks/{slug} — delete a scheduled task */
 export function useDeleteScheduledTaskMutation() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (id: string) => deleteScheduledTask(id),
+    mutationFn: (slug: string) => deleteScheduledTask(slug),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.scheduler.list() })
     },
   })
 }
 
-/** POST /scheduler/tasks/{id}/pause — pause a scheduled task */
+/** POST /scheduler/tasks/{slug}/pause — pause a scheduled task */
 export function usePauseScheduledTaskMutation() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (id: string) => pauseScheduledTask(id),
+    mutationFn: (slug: string) => pauseScheduledTask(slug),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.scheduler.list() })
     },
   })
 }
 
-/** POST /scheduler/tasks/{id}/resume — resume a scheduled task */
+/** POST /scheduler/tasks/{slug}/resume — resume a scheduled task */
 export function useResumeScheduledTaskMutation() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (id: string) => resumeScheduledTask(id),
+    mutationFn: (slug: string) => resumeScheduledTask(slug),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.scheduler.list() })
     },
   })
 }
 
-/** POST /scheduler/tasks/{id}/trigger — trigger a scheduled task immediately */
+/** POST /scheduler/tasks/{slug}/trigger — trigger a scheduled task immediately */
 export function useTriggerScheduledTaskMutation() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (id: string) => triggerScheduledTask(id),
+    mutationFn: (slug: string) => triggerScheduledTask(slug),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.scheduler.list() })
     },

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { AlertCircle, Loader2, Pencil, X } from 'lucide-react'
 import { DateTimePicker } from '@/components/ui/date-time-picker'
 import { Button } from '@/components/ui/button'
@@ -45,6 +45,13 @@ export function EditTaskForm({
 
   const currentSessionId = useTeamStore((state) => state.sessionId)
   const currentSessionTitle = useTeamStore((state) => state.sessionTitle)
+  const activeSessionWorkspace = useTeamStore((state) => state._workspace)
+
+  const activeSessionMode = activeSessionWorkspace ? 'coding' : 'normal'
+  const isSessionCompatible =
+    !!currentSessionId &&
+    formData.mode === activeSessionMode &&
+    (formData.mode !== 'coding' || formData.workspace === activeSessionWorkspace)
 
   const getInitialSessionType = (
     sid: string | null | undefined,
@@ -62,6 +69,12 @@ export function EditTaskForm({
   const [customSessionId, setCustomSessionId] = useState(
     getInitialSessionType(task.session_id, currentSessionId) === 'custom' ? (task.session_id ?? '') : ''
   )
+
+  useEffect(() => {
+    if (!isSessionCompatible && sessionType === 'current') {
+      setSessionType('new')
+    }
+  }, [isSessionCompatible, sessionType])
 
   const updateMutation = useUpdateScheduledTaskMutation()
 
@@ -120,7 +133,7 @@ export function EditTaskForm({
       ...(formData.schedule_type === 'cron'  ? { cron_expression: formData.cron_expression }   : {}),
     }
 
-    updateMutation.mutate({ id: task.id, body: payload }, {
+    updateMutation.mutate({ slug: task.slug, body: payload }, {
       onSuccess,
       onError: (err) => {
         setError(err instanceof Error ? err.message : 'Failed to update task')
@@ -284,7 +297,7 @@ export function EditTaskForm({
               >
                 <NativeSelectOption value="new">New Session</NativeSelectOption>
                 <NativeSelectOption value="auto">Persistent Task Session</NativeSelectOption>
-                {currentSessionId && (
+                {isSessionCompatible && (
                   <NativeSelectOption value="current">
                     Current Chat Session ({currentSessionTitle ? `"${currentSessionTitle}"` : 'Active'})
                   </NativeSelectOption>

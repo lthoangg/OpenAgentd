@@ -10,6 +10,7 @@ let originalFetch: typeof fetch | undefined
 function task(overrides: Partial<ScheduledTaskResponse>): ScheduledTaskResponse {
   return {
     id: overrides.id ?? crypto.randomUUID(),
+    slug: overrides.slug ?? 'task',
     name: overrides.name ?? 'Task',
     mode: overrides.mode ?? 'normal',
     workspace: overrides.workspace ?? null,

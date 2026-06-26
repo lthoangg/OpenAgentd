@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { AlertCircle, Loader2, Plus } from 'lucide-react'
 import { DateTimePicker } from '@/components/ui/date-time-picker'
 import { Button } from '@/components/ui/button'
@@ -42,9 +42,22 @@ export function CreateTaskForm({
 
   const currentSessionId = useTeamStore((state) => state.sessionId)
   const currentSessionTitle = useTeamStore((state) => state.sessionTitle)
+  const activeSessionWorkspace = useTeamStore((state) => state._workspace)
+
+  const activeSessionMode = activeSessionWorkspace ? 'coding' : 'normal'
+  const isSessionCompatible =
+    !!currentSessionId &&
+    formData.mode === activeSessionMode &&
+    (formData.mode !== 'coding' || formData.workspace === activeSessionWorkspace)
 
   const [sessionType, setSessionType] = useState<'new' | 'auto' | 'current' | 'custom'>('new')
   const [customSessionId, setCustomSessionId] = useState('')
+
+  useEffect(() => {
+    if (!isSessionCompatible && sessionType === 'current') {
+      setSessionType('new')
+    }
+  }, [isSessionCompatible, sessionType])
 
   const createMutation = useCreateScheduledTaskMutation()
 
@@ -307,7 +320,7 @@ export function CreateTaskForm({
               >
                 <NativeSelectOption value="new">New Session</NativeSelectOption>
                 <NativeSelectOption value="auto">Persistent Task Session</NativeSelectOption>
-                {currentSessionId && (
+                {isSessionCompatible && (
                   <NativeSelectOption value="current">
                     Current Chat Session ({currentSessionTitle ? `"${currentSessionTitle}"` : 'Active'})
                   </NativeSelectOption>

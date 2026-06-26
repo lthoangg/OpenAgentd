@@ -38,14 +38,14 @@ export function TaskListItem({
     longPressStartRef.current = null
   }
 
-  const triggerTask = () => triggerMutation.mutate(task.id)
+  const triggerTask = () => triggerMutation.mutate(task.slug)
   const togglePaused = () => {
-    if (task.status === 'paused') resumeMutation.mutate(task.id)
-    else pauseMutation.mutate(task.id)
+    if (task.status === 'paused') resumeMutation.mutate(task.slug)
+    else pauseMutation.mutate(task.slug)
   }
   const deleteTask = () => {
     if (confirm(`Delete task "${task.name}"?`)) {
-      deleteMutation.mutate(task.id, { onSuccess: onDeleted })
+      deleteMutation.mutate(task.slug, { onSuccess: onDeleted })
     }
   }
 

@@ -506,6 +506,7 @@ export type ScheduledTaskMode = 'normal' | 'coding'
 
 export interface ScheduledTaskResponse {
   id: string
+  slug: string
   name: string
   // Routing target — every task delivers to the team lead of the matching
   // team (default lead for ``normal``, workspace lead for ``coding``).
@@ -532,6 +533,7 @@ export interface ScheduledTaskResponse {
 
 export interface ScheduledTaskCreate {
   name: string
+  slug?: string
   mode?: ScheduledTaskMode
   workspace?: string | null
   schedule_type: 'at' | 'every' | 'cron'

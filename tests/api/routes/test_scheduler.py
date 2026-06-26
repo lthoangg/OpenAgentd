@@ -176,20 +176,20 @@ class TestGet:
         created = await client.post(
             "/api/scheduler/tasks", json=_create_payload(name="findable")
         )
-        task_id = created.json()["id"]
+        task_slug = created.json()["slug"]
 
-        resp = await client.get(f"/api/scheduler/tasks/{task_id}")
+        resp = await client.get(f"/api/scheduler/tasks/{task_slug}")
         assert resp.status_code == 200
         assert resp.json()["name"] == "findable"
 
-    async def test_unknown_id_returns_404(self, client):
-        resp = await client.get(f"/api/scheduler/tasks/{uuid4()}")
+    async def test_unknown_slug_returns_404(self, client):
+        resp = await client.get("/api/scheduler/tasks/some-unknown-slug")
         assert resp.status_code == 404
         assert "not found" in resp.json()["detail"].lower()
 
 
 # ---------------------------------------------------------------------------
-# PUT /tasks/{task_id}
+# PUT /tasks/{slug}
 # ---------------------------------------------------------------------------
 
 
@@ -198,10 +198,10 @@ class TestUpdate:
         created = await client.post(
             "/api/scheduler/tasks", json=_create_payload(name="upd")
         )
-        task_id = created.json()["id"]
+        task_slug = created.json()["slug"]
 
         resp = await client.put(
-            f"/api/scheduler/tasks/{task_id}",
+            f"/api/scheduler/tasks/{task_slug}",
             json={"every_seconds": 30, "prompt": "new prompt"},
         )
         assert resp.status_code == 200
@@ -213,10 +213,10 @@ class TestUpdate:
         created = await client.post(
             "/api/scheduler/tasks", json=_create_payload(name="upd_max")
         )
-        task_id = created.json()["id"]
+        task_slug = created.json()["slug"]
 
         resp = await client.put(
-            f"/api/scheduler/tasks/{task_id}",
+            f"/api/scheduler/tasks/{task_slug}",
             json={"max_runs": 2},
         )
         assert resp.status_code == 200
@@ -227,10 +227,10 @@ class TestUpdate:
             "/api/scheduler/tasks",
             json=_create_payload(name="clear_max", max_runs=2),
         )
-        task_id = created.json()["id"]
+        task_slug = created.json()["slug"]
 
         resp = await client.put(
-            f"/api/scheduler/tasks/{task_id}",
+            f"/api/scheduler/tasks/{task_slug}",
             json={"max_runs": None},
         )
         assert resp.status_code == 200
@@ -240,12 +240,12 @@ class TestUpdate:
         created = await client.post(
             "/api/scheduler/tasks", json=_create_payload(name="upd2")
         )
-        task_id = created.json()["id"]
+        task_slug = created.json()["slug"]
 
         # Existing task has workspace=None; switching to mode=coding without
         # supplying a workspace must 422.
         resp = await client.put(
-            f"/api/scheduler/tasks/{task_id}",
+            f"/api/scheduler/tasks/{task_slug}",
             json={"mode": "coding"},
         )
         assert resp.status_code == 422
@@ -256,25 +256,25 @@ class TestUpdate:
         created = await client.post(
             "/api/scheduler/tasks", json=_create_payload(name="upd3")
         )
-        task_id = created.json()["id"]
+        task_slug = created.json()["slug"]
 
         resp = await client.put(
-            f"/api/scheduler/tasks/{task_id}",
+            f"/api/scheduler/tasks/{task_slug}",
             json={"mode": "coding", "workspace": str(ws)},
         )
         assert resp.status_code == 200
         assert resp.json()["mode"] == "coding"
 
-    async def test_unknown_id_returns_404(self, client):
+    async def test_unknown_slug_returns_404(self, client):
         resp = await client.put(
-            f"/api/scheduler/tasks/{uuid4()}",
+            "/api/scheduler/tasks/some-unknown-slug",
             json={"prompt": "x"},
         )
         assert resp.status_code == 404
 
 
 # ---------------------------------------------------------------------------
-# DELETE /tasks/{task_id}
+# DELETE /tasks/{slug}
 # ---------------------------------------------------------------------------
 
 
@@ -283,22 +283,22 @@ class TestDelete:
         created = await client.post(
             "/api/scheduler/tasks", json=_create_payload(name="del")
         )
-        task_id = created.json()["id"]
+        task_slug = created.json()["slug"]
 
-        resp = await client.delete(f"/api/scheduler/tasks/{task_id}")
+        resp = await client.delete(f"/api/scheduler/tasks/{task_slug}")
         assert resp.status_code == 204
 
         # Confirm gone
-        get_resp = await client.get(f"/api/scheduler/tasks/{task_id}")
+        get_resp = await client.get(f"/api/scheduler/tasks/{task_slug}")
         assert get_resp.status_code == 404
 
-    async def test_unknown_id_returns_404(self, client):
-        resp = await client.delete(f"/api/scheduler/tasks/{uuid4()}")
+    async def test_unknown_slug_returns_404(self, client):
+        resp = await client.delete("/api/scheduler/tasks/some-unknown-slug")
         assert resp.status_code == 404
 
 
 # ---------------------------------------------------------------------------
-# POST /tasks/{id}/pause + /resume
+# POST /tasks/{slug}/pause + /resume
 # ---------------------------------------------------------------------------
 
 
@@ -307,8 +307,8 @@ class TestPauseResume:
         created = await client.post(
             "/api/scheduler/tasks", json=_create_payload(name="p")
         )
-        task_id = created.json()["id"]
-        resp = await client.post(f"/api/scheduler/tasks/{task_id}/pause")
+        task_slug = created.json()["slug"]
+        resp = await client.post(f"/api/scheduler/tasks/{task_slug}/pause")
         assert resp.status_code == 200
         body = resp.json()
         assert body["enabled"] is False
@@ -318,25 +318,25 @@ class TestPauseResume:
         created = await client.post(
             "/api/scheduler/tasks", json=_create_payload(name="r")
         )
-        task_id = created.json()["id"]
-        await client.post(f"/api/scheduler/tasks/{task_id}/pause")
-        resp = await client.post(f"/api/scheduler/tasks/{task_id}/resume")
+        task_slug = created.json()["slug"]
+        await client.post(f"/api/scheduler/tasks/{task_slug}/pause")
+        resp = await client.post(f"/api/scheduler/tasks/{task_slug}/resume")
         assert resp.status_code == 200
         body = resp.json()
         assert body["enabled"] is True
         assert body["status"] == "pending"
 
-    async def test_pause_unknown_id_404(self, client):
-        resp = await client.post(f"/api/scheduler/tasks/{uuid4()}/pause")
+    async def test_pause_unknown_slug_404(self, client):
+        resp = await client.post("/api/scheduler/tasks/some-unknown-slug/pause")
         assert resp.status_code == 404
 
-    async def test_resume_unknown_id_404(self, client):
-        resp = await client.post(f"/api/scheduler/tasks/{uuid4()}/resume")
+    async def test_resume_unknown_slug_404(self, client):
+        resp = await client.post("/api/scheduler/tasks/some-unknown-slug/resume")
         assert resp.status_code == 404
 
 
 # ---------------------------------------------------------------------------
-# POST /tasks/{id}/trigger
+# POST /tasks/{slug}/trigger
 # ---------------------------------------------------------------------------
 
 
@@ -354,13 +354,13 @@ class TestTrigger:
         created = await client.post(
             "/api/scheduler/tasks", json=_create_payload(name="trig")
         )
-        task_id = created.json()["id"]
-        resp = await client.post(f"/api/scheduler/tasks/{task_id}/trigger")
+        task_slug = created.json()["slug"]
+        resp = await client.post(f"/api/scheduler/tasks/{task_slug}/trigger")
         assert resp.status_code == 202
         assert resp.json() == {"status": "dispatched"}
 
-    async def test_unknown_id_returns_404(self, client):
-        resp = await client.post(f"/api/scheduler/tasks/{uuid4()}/trigger")
+    async def test_unknown_slug_returns_404(self, client):
+        resp = await client.post("/api/scheduler/tasks/some-unknown-slug/trigger")
         assert resp.status_code == 404
 
 
@@ -531,10 +531,10 @@ class TestSessionCompat:
             json=_create_payload(name="upd_conflict", session_id=str(sid)),
         )
         assert created.status_code == 201, created.text
-        task_id = created.json()["id"]
+        task_slug = created.json()["slug"]
 
         resp = await client.put(
-            f"/api/scheduler/tasks/{task_id}",
+            f"/api/scheduler/tasks/{task_slug}",
             json={"mode": "coding", "workspace": str(ws)},
         )
         assert resp.status_code == 422

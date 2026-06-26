@@ -599,8 +599,8 @@ the LLM cannot specify or lie about the target. Fires route to:
 
 The same `(_mode, _workspace)` is also the **scope filter** for every
 non-create action. `list` returns only in-scope reminders;
-`pause` / `resume` / `delete` / `trigger` reject out-of-scope task IDs
-with the same `"no task with id …"` surface as truly missing rows — so
+`pause` / `resume` / `delete` / `trigger` reject out-of-scope task slugs
+with the same `"no task with slug …"` surface as truly missing rows — so
 cross-scope existence cannot be probed and no mutation reaches the
 scheduler. See `_in_scope` in `app/agent/tools/builtin/schedule.py`.
 
@@ -608,7 +608,7 @@ When `session_id` is an explicit UUID that already exists, `scheduler.create` / 
 
 `max_runs` is an optional positive integer cap on successful firings. `null` means unlimited. When a task reaches `max_runs`, the scheduler disables it, marks it `completed`, and clears `next_fire_at`.
 
-Tasks can also be updated after creation via `PUT /api/scheduler/tasks/{id}` (REST) or through the **Edit** button in the web UI `SchedulerPanel`. Updatable fields: `mode`, `workspace`, `schedule_type`, schedule value fields, `timezone`, `prompt`, `session_id`, `max_runs`, `enabled`. See [`api/index.md`](../../docs/api/index.md#scheduler-endpoints).
+Tasks can also be updated after creation via `PUT /api/scheduler/tasks/{slug}` (REST) or through the **Edit** button in the web UI `SchedulerPanel`. Updatable fields: `mode`, `workspace`, `schedule_type`, schedule value fields, `timezone`, `prompt`, `session_id`, `max_runs`, `enabled`. See [`api/index.md`](../../docs/api/index.md#scheduler-endpoints).
 
 ### Web UI Task Customization & Validation
 The Web UI (`SchedulerPanel`, toggled with `Ctrl+S` or from the sidebar) simplifies task creation and editing:
@@ -616,7 +616,7 @@ The Web UI (`SchedulerPanel`, toggled with `Ctrl+S` or from the sidebar) simplif
 *   **Intelligent Session Target Selector**: Rather than requiring the user to copy/paste complex UUID strings or remember magic strings like `"auto"`, the UI provides an intuitive dropdown for the **Session Target**:
     *   *New Session*: Creates a fresh, isolated chat session for every run.
     *   *Persistent Task Session*: Reuses a single dedicated chat session (translates to `"auto"`).
-    *   *Current Chat Session*: Targets the active chat thread currently open in the cockpit (translates to the current active session UUID). This option dynamically lists the active chat title and is hidden if no active session exists.
+    *   *Current Chat Session*: Targets the active chat thread currently open in the cockpit (translates to the current active session UUID). This option dynamically lists the active chat title and is hidden if no active session exists or if the task's selected mode/workspace is incompatible with the active session's context.
     *   *Specific Session ID...*: Lets the user paste a custom UUID with client-side validation checking that it is a valid UUID format.
 
 #### Schedule types

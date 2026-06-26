@@ -119,8 +119,8 @@ class TaskScheduler:
 
     def __init__(self, db_factory: DbFactory) -> None:
         self._db = db_factory
-        # task_id → running asyncio.Task
-        self._tasks: dict[UUID, asyncio.Task[None]] = {}
+        # task slug → running asyncio.Task
+        self._tasks: dict[str, asyncio.Task[None]] = {}
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -153,7 +153,10 @@ class TaskScheduler:
         await self._fire_task(task)
 
         async with self._db() as session:
-            fresh = await session.get(ScheduledTask, task.id)
+            result = await session.exec(
+                select(ScheduledTask).where(ScheduledTask.slug == task.slug)
+            )
+            fresh = result.first()
 
         if fresh is not None and fresh.enabled and fresh.schedule_type != "at":
             self._start_timer(fresh)
@@ -221,9 +224,11 @@ class TaskScheduler:
             mode=body.mode,
             workspace=body.workspace,
         )
+        assert body.slug is not None
 
         task = ScheduledTask(
             name=body.name,
+            slug=body.slug,
             mode=body.mode,
             workspace=body.workspace,
             schedule_type=body.schedule_type,
@@ -239,19 +244,19 @@ class TaskScheduler:
         return await self.add(task)
 
     async def apply_update(
-        self, task_id: UUID, body: "ScheduledTaskUpdate"
+        self, slug: str, body: "ScheduledTaskUpdate"
     ) -> ScheduledTask:
         """Apply a partial update from *body* onto an existing task.
 
         Re-validates the routing target if ``mode`` or ``workspace`` change.
 
         Raises:
-            TaskNotFoundError: If *task_id* does not exist.
+            TaskNotFoundError: If *slug* does not exist.
             InvalidTaskTargetError: If the merged (mode, workspace) is invalid.
         """
-        task = await self.get_task(task_id)
+        task = await self.get_task(slug)
         if task is None:
-            raise TaskNotFoundError(str(task_id))
+            raise TaskNotFoundError(slug)
 
         new_mode = body.mode if body.mode is not None else task.mode
         new_workspace = body.workspace if body.workspace is not None else task.workspace
@@ -279,6 +284,9 @@ class TaskScheduler:
                 workspace=new_workspace,
             )
 
+        if body.slug is not None and body.slug != task.slug:
+            self._cancel_timer(task.slug)
+            task.slug = body.slug
         if body.schedule_type is not None:
             task.schedule_type = body.schedule_type
         if body.at_datetime is not None:
@@ -300,12 +308,12 @@ class TaskScheduler:
 
         return await self.update(task)
 
-    async def remove(self, task_id: UUID) -> None:
-        """Cancel timer and delete *task_id* from DB."""
-        self._cancel_timer(task_id)
+    async def remove(self, slug: str) -> None:
+        """Cancel timer and delete *slug* from DB."""
+        self._cancel_timer(slug)
         async with self._db() as session:
             result = await session.exec(
-                select(ScheduledTask).where(ScheduledTask.id == task_id)
+                select(ScheduledTask).where(ScheduledTask.slug == slug)
             )
             task = result.first()
             if task is not None:
@@ -314,7 +322,7 @@ class TaskScheduler:
 
     async def update(self, task: ScheduledTask) -> ScheduledTask:
         """Persist updated *task* and restart/cancel its timer."""
-        self._cancel_timer(task.id)
+        self._cancel_timer(task.slug)
         if _schedule_exhausted(task):
             task.enabled = False
             task.status = "completed"
@@ -337,12 +345,12 @@ class TaskScheduler:
             self._start_timer(task)
         return task
 
-    async def pause(self, task_id: UUID) -> ScheduledTask:
+    async def pause(self, slug: str) -> ScheduledTask:
         """Disable task and cancel its timer."""
-        self._cancel_timer(task_id)
+        self._cancel_timer(slug)
         async with self._db() as session:
             result = await session.exec(
-                select(ScheduledTask).where(ScheduledTask.id == task_id)
+                select(ScheduledTask).where(ScheduledTask.slug == slug)
             )
             task = result.one()
             task.enabled = False
@@ -352,11 +360,11 @@ class TaskScheduler:
             await session.refresh(task)
         return task
 
-    async def resume(self, task_id: UUID) -> ScheduledTask:
+    async def resume(self, slug: str) -> ScheduledTask:
         """Re-enable task, recompute next_fire_at, and start timer."""
         async with self._db() as session:
             result = await session.exec(
-                select(ScheduledTask).where(ScheduledTask.id == task_id)
+                select(ScheduledTask).where(ScheduledTask.slug == slug)
             )
             task = result.one()
             task.enabled = True
@@ -382,11 +390,11 @@ class TaskScheduler:
             self._start_timer(task)
         return task
 
-    async def trigger(self, task_id: UUID) -> None:
+    async def trigger(self, slug: str) -> None:
         """Fire task immediately and ensure it is enabled."""
         async with self._db() as session:
             result = await session.exec(
-                select(ScheduledTask).where(ScheduledTask.id == task_id)
+                select(ScheduledTask).where(ScheduledTask.slug == slug)
             )
             task = result.one()
             if _schedule_exhausted(task):
@@ -422,10 +430,10 @@ class TaskScheduler:
             result = await session.exec(select(ScheduledTask))
             return list(result.all())
 
-    async def get_task(self, task_id: UUID) -> ScheduledTask | None:
+    async def get_task(self, slug: str) -> ScheduledTask | None:
         async with self._db() as session:
             result = await session.exec(
-                select(ScheduledTask).where(ScheduledTask.id == task_id)
+                select(ScheduledTask).where(ScheduledTask.slug == slug)
             )
             return result.first()
 
@@ -433,12 +441,12 @@ class TaskScheduler:
 
     def _start_timer(self, task: ScheduledTask) -> None:
         """Spawn an asyncio task for *task*'s timer loop."""
-        self._cancel_timer(task.id)
+        self._cancel_timer(task.slug)
         t = asyncio.create_task(self._timer_loop(task), name=f"scheduler:{task.name}")
-        self._tasks[task.id] = t
+        self._tasks[task.slug] = t
 
-    def _cancel_timer(self, task_id: UUID) -> None:
-        existing = self._tasks.pop(task_id, None)
+    def _cancel_timer(self, slug: str) -> None:
+        existing = self._tasks.pop(slug, None)
         if existing is not None:
             existing.cancel()
 
@@ -471,7 +479,7 @@ class TaskScheduler:
             # Reload task state from DB so run_count / status are fresh
             async with self._db() as session:
                 result = await session.exec(
-                    select(ScheduledTask).where(ScheduledTask.id == task.id)
+                    select(ScheduledTask).where(ScheduledTask.slug == task.slug)
                 )
                 fresh = result.first()
             if fresh is None:
@@ -486,7 +494,7 @@ class TaskScheduler:
                 break
 
         # Remove ourselves from the tracking dict
-        self._tasks.pop(task.id, None)
+        self._tasks.pop(task.slug, None)
 
     async def _fire_task(self, task: ScheduledTask) -> None:
         """Execute one scheduled firing of *task*."""
@@ -498,7 +506,7 @@ class TaskScheduler:
         # 1. Mark running
         async with self._db() as session:
             result = await session.exec(
-                select(ScheduledTask).where(ScheduledTask.id == task.id)
+                select(ScheduledTask).where(ScheduledTask.slug == task.slug)
             )
             db_task = result.first()
             if db_task is None:
@@ -530,7 +538,7 @@ class TaskScheduler:
                         "Task has mode='coding' but no workspace configured."
                     )
                 team = await team_manager.get_or_start_coding_team(
-                    task.workspace, f"scheduler:{task.id}"
+                    task.workspace, f"scheduler:{task.slug}"
                 )
             else:
                 team = await team_manager.get_or_start_team()
@@ -538,7 +546,10 @@ class TaskScheduler:
                     raise NoTeamConfigured("No team configured.")
             if resolved_sid is not None and team.has_active_user_turn() is True:
                 async with self._db() as session:
-                    db_task = await session.get(ScheduledTask, task.id)
+                    result = await session.exec(
+                        select(ScheduledTask).where(ScheduledTask.slug == task.slug)
+                    )
+                    db_task = result.first()
                     if db_task is not None:
                         db_task.status = "pending"
                         db_task.next_fire_at = next_fire(
@@ -553,8 +564,8 @@ class TaskScheduler:
                         session.add(db_task)
                         await session.commit()
                 logger.info(
-                    "scheduler_skip_active_session task_id={} name={} session_id={}",
-                    task.id,
+                    "scheduler_skip_active_session task_slug={} name={} session_id={}",
+                    task.slug,
                     task.name,
                     resolved_sid,
                 )
@@ -569,8 +580,8 @@ class TaskScheduler:
         except NoTeamConfigured as exc:
             error = str(exc)
             logger.warning(
-                "scheduler_no_team task_id={} name={} mode={} error={}",
-                task.id,
+                "scheduler_no_team task_slug={} name={} mode={} error={}",
+                task.slug,
                 task.name,
                 task.mode,
                 exc,
@@ -578,8 +589,8 @@ class TaskScheduler:
         except Exception as exc:
             error = str(exc)
             logger.error(
-                "scheduler_fire_error task_id={} name={} error={}",
-                task.id,
+                "scheduler_fire_error task_slug={} name={} error={}",
+                task.slug,
                 task.name,
                 exc,
             )
@@ -601,8 +612,8 @@ class TaskScheduler:
                         await db.commit()
             except Exception as stamp_exc:
                 logger.warning(
-                    "scheduler_stamp_failed task_id={} sid={} error={}",
-                    task.id,
+                    "scheduler_stamp_failed task_slug={} sid={} error={}",
+                    task.slug,
                     fired_sid,
                     stamp_exc,
                 )
@@ -619,7 +630,7 @@ class TaskScheduler:
         )
         async with self._db() as session:
             result = await session.exec(
-                select(ScheduledTask).where(ScheduledTask.id == task.id)
+                select(ScheduledTask).where(ScheduledTask.slug == task.slug)
             )
             db_task = result.first()
             if db_task is None:
@@ -645,8 +656,8 @@ class TaskScheduler:
             await session.commit()
 
         logger.info(
-            "scheduler_fired task_id={} name={} run_count={} error={}",
-            task.id,
+            "scheduler_fired task_slug={} name={} run_count={} error={}",
+            task.slug,
             task.name,
             task.run_count + 1,
             error,

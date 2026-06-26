@@ -161,12 +161,12 @@ in-flight turn are not disrupted.
 |--------|------|---------|
 | `GET` | `/api/scheduler/tasks` | `ScheduledTaskListResponse` — all tasks |
 | `POST` | `/api/scheduler/tasks` | `ScheduledTaskResponse` 201 — create task |
-| `GET` | `/api/scheduler/tasks/{id}` | `ScheduledTaskResponse` |
-| `PUT` | `/api/scheduler/tasks/{id}` | `ScheduledTaskResponse` — full update |
-| `DELETE` | `/api/scheduler/tasks/{id}` | 204 |
-| `POST` | `/api/scheduler/tasks/{id}/pause` | `ScheduledTaskResponse` |
-| `POST` | `/api/scheduler/tasks/{id}/resume` | `ScheduledTaskResponse` |
-| `POST` | `/api/scheduler/tasks/{id}/trigger` | `ScheduledTaskResponse` — fire immediately |
+| `GET` | `/api/scheduler/tasks/{slug}` | `ScheduledTaskResponse` |
+| `PUT` | `/api/scheduler/tasks/{slug}` | `ScheduledTaskResponse` — full update |
+| `DELETE` | `/api/scheduler/tasks/{slug}` | 204 |
+| `POST` | `/api/scheduler/tasks/{slug}/pause` | `ScheduledTaskResponse` |
+| `POST` | `/api/scheduler/tasks/{slug}/resume` | `ScheduledTaskResponse` |
+| `POST` | `/api/scheduler/tasks/{slug}/trigger` | `ScheduledTaskResponse` — fire immediately |
 
 Every task delivers to the **team lead** of the routing target — there
 is no per-agent routing. The target is set by `mode`

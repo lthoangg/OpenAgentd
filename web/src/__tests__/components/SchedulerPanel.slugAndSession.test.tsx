@@ -36,6 +36,7 @@ afterEach(() => {
   useTeamStore.setState({
     sessionId: null,
     sessionTitle: null,
+    _workspace: null,
   })
 })
 
@@ -138,5 +139,38 @@ describe('SchedulerPanel — Title Slugification and Session Target Selector', (
     await waitFor(() => {
       expect(screen.getByText('Please enter a valid UUID (e.g. 123e4567-e89b-12d3-a456-426614174000)')).toBeInTheDocument()
     })
+  })
+
+  it('hides Current Chat Session option when routing is incompatible with active session, and resets selection to new if current is active', async () => {
+    // 1. Set active session in normal mode (workspace = null)
+    useTeamStore.setState({
+      sessionId: 'active-session-uuid-123',
+      sessionTitle: 'Sprint Planning Meeting',
+      _workspace: null,
+    })
+
+    renderSchedulerPanel()
+    const user = userEvent.setup()
+
+    const targetSelect = screen.getByLabelText('Session Target')
+
+    // Since default mode is 'normal' (matching active session's workspace = null),
+    // the "current" option should be present and selectable.
+    await user.selectOptions(targetSelect, 'current')
+    expect(targetSelect).toHaveValue('current')
+
+    // 2. Change routing mode to 'coding' in the form
+    const codingTab = screen.getByRole('tab', { name: 'Coding' })
+    await user.click(codingTab)
+
+    // Since the active session is in 'normal' mode, but the form's selected routing target
+    // is now 'coding', they are incompatible.
+    // The "current" option should be hidden, and the value should have auto-reset to 'new'.
+    expect(targetSelect).not.toHaveValue('current')
+    expect(targetSelect).toHaveValue('new')
+
+    // Verify the "current" option is no longer rendered in the select options
+    const currentOption = screen.queryByRole('option', { name: /Current Chat Session/ })
+    expect(currentOption).toBeNull()
   })
 })

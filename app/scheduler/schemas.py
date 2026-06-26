@@ -9,7 +9,10 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.scheduler.utils import slugify
+
 _NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$")
+_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,99}$")
 
 TaskMode = Literal["normal", "coding"]
 
@@ -18,6 +21,10 @@ class ScheduledTaskCreate(BaseModel):
     """Payload for POST /scheduler/tasks."""
 
     name: str = Field(description="Unique task name.")
+    slug: str | None = Field(
+        default=None,
+        description="Unique, URL-friendly identifier. Auto-generated from name if not provided.",
+    )
     mode: TaskMode = Field(
         default="normal",
         description="'normal' delivers to the default team lead; "
@@ -49,6 +56,15 @@ class ScheduledTaskCreate(BaseModel):
             raise ValueError("name cannot be empty or whitespace only")
         if len(self.name) > 100:
             raise ValueError("name must be 100 characters or less")
+
+        if self.slug:
+            self.slug = self.slug.strip().lower()
+            if not _SLUG_RE.match(self.slug):
+                raise ValueError(
+                    "slug must consist of lowercase letters, numbers, hyphens, underscores, or dots, and start with a letter or number"
+                )
+        else:
+            self.slug = slugify(self.name)
 
         if self.mode == "coding" and not self.workspace:
             raise ValueError("workspace is required when mode='coding'")
@@ -88,8 +104,9 @@ class ScheduledTaskCreate(BaseModel):
 
 
 class ScheduledTaskUpdate(BaseModel):
-    """Payload for PUT /scheduler/tasks/{task_id} — all fields optional."""
+    """Payload for PUT /scheduler/tasks/{slug} — all fields optional."""
 
+    slug: str | None = None
     mode: TaskMode | None = None
     workspace: str | None = None
     schedule_type: str | None = None
@@ -104,6 +121,13 @@ class ScheduledTaskUpdate(BaseModel):
 
     @model_validator(mode="after")
     def _validate_schedule(self) -> "ScheduledTaskUpdate":
+        if self.slug is not None:
+            self.slug = self.slug.strip().lower()
+            if not _SLUG_RE.match(self.slug):
+                raise ValueError(
+                    "slug must consist of lowercase letters, numbers, hyphens, underscores, or dots, and start with a letter or number"
+                )
+
         # Cross-field validation for mode/workspace: only enforce when both
         # parts of the pair are present in the payload.  Otherwise the
         # service layer validates against the merged row state.
@@ -150,6 +174,7 @@ class ScheduledTaskResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
+    slug: str
     name: str
     mode: TaskMode
     workspace: str | None

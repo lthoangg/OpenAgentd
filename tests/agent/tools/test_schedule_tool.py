@@ -28,6 +28,7 @@ def sample_task():
     """Create a sample ScheduledTask-like object for testing."""
     task = MagicMock()
     task.id = uuid7()
+    task.slug = "test-task"
     task.name = "test-task"
     task.mode = "normal"
     task.workspace = None
@@ -82,6 +83,7 @@ async def test_list_single_task(mock_task_scheduler, sample_task, clean_db):
 
     assert "Scheduled tasks (1):" in result
     assert f"id={sample_task.id}" in result
+    assert f"slug={sample_task.slug}" in result
     assert "name=test-task" in result
     assert "mode=normal" in result
     assert "schedule=every 3600s" in result
@@ -624,40 +626,41 @@ async def test_create_scheduler_create_raises(mock_task_scheduler):
 
 
 @pytest.mark.asyncio
-async def test_pause_missing_task_id(mock_task_scheduler):
-    """Returns error when task_id is missing."""
+async def test_pause_missing_slug(mock_task_scheduler):
+    """Returns error when slug is missing."""
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
         result = await schedule_task.arun(action="pause")
 
     assert "Error:" in result
-    assert "task_id" in result
+    assert "slug" in result
     assert "required" in result
 
 
 @pytest.mark.asyncio
-async def test_pause_invalid_uuid(mock_task_scheduler):
-    """Returns error when task_id is not a valid UUID."""
+async def test_pause_nonexistent_slug(mock_task_scheduler):
+    """Returns error when task slug is not found."""
+    mock_task_scheduler.get_task.return_value = None
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
-        result = await schedule_task.arun(action="pause", task_id="not-a-uuid")
+        result = await schedule_task.arun(action="pause", slug="some-ghost-slug")
 
     assert "Error:" in result
-    assert "not a valid UUID" in result
+    assert "no task with slug 'some-ghost-slug'" in result
 
 
 @pytest.mark.asyncio
 async def test_pause_success(mock_task_scheduler, sample_task, clean_db):
     """Successfully pauses a task that is in the caller's scope."""
-    task_id = str(sample_task.id)
+    task_slug = sample_task.slug
     # ``pause`` now goes through ``get_task`` first to enforce scope —
     # tests must seed the lookup as well as the mutation.
     mock_task_scheduler.get_task.return_value = sample_task
     mock_task_scheduler.pause.return_value = sample_task
 
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
-        result = await schedule_task.arun(action="pause", task_id=task_id)
+        result = await schedule_task.arun(action="pause", slug=task_slug)
 
     assert "Task 'test-task' paused." in result
-    mock_task_scheduler.pause.assert_called_once_with(sample_task.id)
+    mock_task_scheduler.pause.assert_called_once_with(sample_task.slug)
 
 
 @pytest.mark.asyncio
@@ -666,7 +669,7 @@ async def test_pause_scheduler_raises(mock_task_scheduler, sample_task):
     successful scope check."""
     from app.agent.errors import ToolExecutionError
 
-    task_id = str(sample_task.id)
+    task_slug = sample_task.slug
     # In-scope lookup so we reach the mutation path; the mutation then
     # blows up and the registry wraps the error.
     mock_task_scheduler.get_task.return_value = sample_task
@@ -674,7 +677,7 @@ async def test_pause_scheduler_raises(mock_task_scheduler, sample_task):
 
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
         with pytest.raises(ToolExecutionError):
-            await schedule_task.arun(action="pause", task_id=task_id)
+            await schedule_task.arun(action="pause", slug=task_slug)
 
 
 # ---------------------------------------------------------------------------
@@ -684,40 +687,41 @@ async def test_pause_scheduler_raises(mock_task_scheduler, sample_task):
 
 @pytest.mark.asyncio
 async def test_resume_missing_task_id(mock_task_scheduler):
-    """Returns error when task_id is missing."""
+    """Returns error when slug is missing."""
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
         result = await schedule_task.arun(action="resume")
 
     assert "Error:" in result
-    assert "task_id" in result
+    assert "slug" in result
     assert "required" in result
 
 
 @pytest.mark.asyncio
-async def test_resume_invalid_uuid(mock_task_scheduler):
-    """Returns error when task_id is not a valid UUID."""
+async def test_resume_nonexistent_slug(mock_task_scheduler):
+    """Returns error when task slug is not found."""
+    mock_task_scheduler.get_task.return_value = None
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
-        result = await schedule_task.arun(action="resume", task_id="not-a-uuid")
+        result = await schedule_task.arun(action="resume", slug="some-ghost-slug")
 
     assert "Error:" in result
-    assert "not a valid UUID" in result
+    assert "no task with slug 'some-ghost-slug'" in result
 
 
 @pytest.mark.asyncio
 async def test_resume_success(mock_task_scheduler, sample_task, clean_db):
     """Successfully resumes a task that is in the caller's scope."""
-    task_id = str(sample_task.id)
+    task_slug = sample_task.slug
     next_fire = datetime.now(timezone.utc)
     sample_task.next_fire_at = next_fire
     mock_task_scheduler.get_task.return_value = sample_task
     mock_task_scheduler.resume.return_value = sample_task
 
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
-        result = await schedule_task.arun(action="resume", task_id=task_id)
+        result = await schedule_task.arun(action="resume", slug=task_slug)
 
     assert "Task 'test-task' resumed." in result
     assert f"Next fire: {next_fire}" in result
-    mock_task_scheduler.resume.assert_called_once_with(sample_task.id)
+    mock_task_scheduler.resume.assert_called_once_with(sample_task.slug)
 
 
 @pytest.mark.asyncio
@@ -726,13 +730,13 @@ async def test_resume_scheduler_raises(mock_task_scheduler, sample_task):
     successful scope check."""
     from app.agent.errors import ToolExecutionError
 
-    task_id = str(sample_task.id)
+    task_slug = sample_task.slug
     mock_task_scheduler.get_task.return_value = sample_task
     mock_task_scheduler.resume.side_effect = RuntimeError("Task not found")
 
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
         with pytest.raises(ToolExecutionError):
-            await schedule_task.arun(action="resume", task_id=task_id)
+            await schedule_task.arun(action="resume", slug=task_slug)
 
 
 # ---------------------------------------------------------------------------
@@ -741,39 +745,40 @@ async def test_resume_scheduler_raises(mock_task_scheduler, sample_task):
 
 
 @pytest.mark.asyncio
-async def test_delete_missing_task_id(mock_task_scheduler):
-    """Returns error when task_id is missing."""
+async def test_delete_missing_slug(mock_task_scheduler):
+    """Returns error when slug is missing."""
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
         result = await schedule_task.arun(action="delete")
 
     assert "Error:" in result
-    assert "task_id" in result
+    assert "slug" in result
     assert "required" in result
 
 
 @pytest.mark.asyncio
-async def test_delete_invalid_uuid(mock_task_scheduler):
-    """Returns error when task_id is not a valid UUID."""
+async def test_delete_nonexistent_slug(mock_task_scheduler):
+    """Returns error when task slug is not found."""
+    mock_task_scheduler.get_task.return_value = None
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
-        result = await schedule_task.arun(action="delete", task_id="not-a-uuid")
+        result = await schedule_task.arun(action="delete", slug="some-ghost-slug")
 
     assert "Error:" in result
-    assert "not a valid UUID" in result
+    assert "no task with slug 'some-ghost-slug'" in result
 
 
 @pytest.mark.asyncio
 async def test_delete_success(mock_task_scheduler, sample_task, clean_db):
     """Successfully deletes a task."""
-    task_id = str(sample_task.id)
+    task_slug = sample_task.slug
     mock_task_scheduler.get_task.return_value = sample_task
     mock_task_scheduler.remove.return_value = None
 
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
-        result = await schedule_task.arun(action="delete", task_id=task_id)
+        result = await schedule_task.arun(action="delete", slug=task_slug)
 
     assert "Task 'test-task' deleted." in result
-    mock_task_scheduler.get_task.assert_called_once_with(sample_task.id)
-    mock_task_scheduler.remove.assert_called_once_with(sample_task.id)
+    mock_task_scheduler.get_task.assert_called_once_with(sample_task.slug)
+    mock_task_scheduler.remove.assert_called_once_with(sample_task.slug)
 
 
 @pytest.mark.asyncio
@@ -786,14 +791,14 @@ async def test_delete_task_not_found_reports_error_and_skips_remove(
     to out-of-scope callers and (b) it issued a write for a non-existent
     row. The scope-check refactor unifies "missing" and "out of scope"
     into a single short-circuit before any mutation."""
-    task_id = str(uuid7())
+    task_slug = "ghost"
     mock_task_scheduler.get_task.return_value = None
 
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
-        result = await schedule_task.arun(action="delete", task_id=task_id)
+        result = await schedule_task.arun(action="delete", slug=task_slug)
 
     assert "Error:" in result
-    assert f"no task with id '{task_id}'" in result
+    assert f"no task with slug '{task_slug}'" in result
     mock_task_scheduler.get_task.assert_called_once()
     mock_task_scheduler.remove.assert_not_called()
 
@@ -804,51 +809,52 @@ async def test_delete_task_not_found_reports_error_and_skips_remove(
 
 
 @pytest.mark.asyncio
-async def test_trigger_missing_task_id(mock_task_scheduler):
-    """Returns error when task_id is missing."""
+async def test_trigger_missing_slug(mock_task_scheduler):
+    """Returns error when slug is missing."""
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
         result = await schedule_task.arun(action="trigger")
 
     assert "Error:" in result
-    assert "task_id" in result
+    assert "slug" in result
     assert "required" in result
 
 
 @pytest.mark.asyncio
-async def test_trigger_invalid_uuid(mock_task_scheduler):
-    """Returns error when task_id is not a valid UUID."""
+async def test_trigger_nonexistent_slug(mock_task_scheduler):
+    """Returns error when task slug is not found."""
+    mock_task_scheduler.get_task.return_value = None
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
-        result = await schedule_task.arun(action="trigger", task_id="not-a-uuid")
+        result = await schedule_task.arun(action="trigger", slug="some-ghost-slug")
 
     assert "Error:" in result
-    assert "not a valid UUID" in result
+    assert "no task with slug 'some-ghost-slug'" in result
 
 
 @pytest.mark.asyncio
 async def test_trigger_task_not_found(mock_task_scheduler):
     """Returns error when task not found."""
-    task_id = str(uuid7())
+    task_slug = "ghost"
     mock_task_scheduler.get_task.return_value = None
 
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
-        result = await schedule_task.arun(action="trigger", task_id=task_id)
+        result = await schedule_task.arun(action="trigger", slug=task_slug)
 
     assert "Error:" in result
-    assert "no task with id" in result
+    assert f"no task with slug '{task_slug}'" in result
 
 
 @pytest.mark.asyncio
 async def test_trigger_success(mock_task_scheduler, sample_task, clean_db):
     """Successfully triggers a task."""
-    task_id = str(sample_task.id)
+    task_slug = sample_task.slug
     mock_task_scheduler.get_task.return_value = sample_task
     mock_task_scheduler.trigger.return_value = None
 
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
-        result = await schedule_task.arun(action="trigger", task_id=task_id)
+        result = await schedule_task.arun(action="trigger", slug=task_slug)
 
     assert "Task 'test-task' triggered immediately." in result
-    mock_task_scheduler.trigger.assert_called_once_with(sample_task.id)
+    mock_task_scheduler.trigger.assert_called_once_with(sample_task.slug)
 
 
 # ---------------------------------------------------------------------------
@@ -956,6 +962,7 @@ def _make_task(mode: str, workspace: str | None, name: str = "t") -> MagicMock:
     """
     task = MagicMock()
     task.id = uuid7()
+    task.slug = name
     task.name = name
     task.mode = mode
     task.workspace = workspace
@@ -1072,7 +1079,7 @@ async def test_mutation_out_of_scope_returns_not_found_and_never_mutates(
 ):
     """For every mutating action: if the row exists but belongs to a
     different mode or workspace, the tool returns the same "no task with
-    id" surface as for a genuinely missing row, AND must NOT call the
+    slug" surface as for a genuinely missing row, AND must NOT call the
     underlying scheduler mutation. This is the core security property —
     callers can neither probe existence nor influence cross-scope tasks."""
     # Target row is owned by a *different* coding workspace than the caller.
@@ -1082,13 +1089,13 @@ async def test_mutation_out_of_scope_returns_not_found_and_never_mutates(
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
         result = await schedule_task.arun(
             action=action,
-            task_id=str(cross_scope.id),
+            slug=cross_scope.slug,
             _injected=_coding_injected("/repo/mine"),
         )
 
     # Same wording as a missing row — no information leak.
     assert "Error:" in result
-    assert f"no task with id '{cross_scope.id}'" in result
+    assert f"no task with slug '{cross_scope.slug}'" in result
     # And no mutation reached the scheduler.
     getattr(mock_task_scheduler, action).assert_not_called()
 
@@ -1099,19 +1106,19 @@ async def test_mutation_normal_caller_cannot_touch_coding_task(
     action, mock_task_scheduler
 ):
     """The default-team lead must not be able to pause/delete a coding
-    task by id-guessing, even though it has no concept of workspaces."""
+    task by slug-guessing, even though it has no concept of workspaces."""
     coding_row = _make_task("coding", "/repo/a", name="coding-a")
     mock_task_scheduler.get_task.return_value = coding_row
 
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
         result = await schedule_task.arun(
             action=action,
-            task_id=str(coding_row.id),
+            slug=coding_row.slug,
             _injected=_NORMAL_INJECTED,
         )
 
     assert "Error:" in result
-    assert "no task with id" in result
+    assert "no task with slug" in result
     getattr(mock_task_scheduler, action).assert_not_called()
 
 
@@ -1121,19 +1128,19 @@ async def test_mutation_coding_caller_cannot_touch_normal_task(
     action, mock_task_scheduler
 ):
     """Symmetric to the previous test: a coding-team lead must not be
-    able to mutate a default-team reminder by id-guessing."""
+    able to mutate a default-team reminder by slug-guessing."""
     normal_row = _make_task("normal", None, name="normal-a")
     mock_task_scheduler.get_task.return_value = normal_row
 
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
         result = await schedule_task.arun(
             action=action,
-            task_id=str(normal_row.id),
+            slug=normal_row.slug,
             _injected=_coding_injected("/repo/a"),
         )
 
     assert "Error:" in result
-    assert "no task with id" in result
+    assert "no task with slug" in result
     getattr(mock_task_scheduler, action).assert_not_called()
 
 
@@ -1152,12 +1159,12 @@ async def test_mutation_in_scope_passes_through_to_scheduler(
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
         result = await schedule_task.arun(
             action="pause",
-            task_id=str(row.id),
+            slug=row.slug,
             _injected=_coding_injected("/repo/a"),
         )
 
     assert "Task 'my-reminder' paused." in result
-    mock_task_scheduler.pause.assert_called_once_with(row.id)
+    mock_task_scheduler.pause.assert_called_once_with(row.slug)
 
 
 # ---------------------------------------------------------------------------

@@ -16,6 +16,9 @@ class ScheduledTask(SQLModel, table=True):
     __tablename__ = "scheduled_task"  # type: ignore[reportIncompatibleVariableOverride]
 
     id: UUID = Field(default_factory=uuid7, primary_key=True)
+    slug: str = Field(
+        sa_column=Column(sa.String(100), nullable=False, unique=True, index=True)
+    )
     name: str = Field(
         sa_column=Column(sa.String(100), nullable=False, unique=True, index=True)
     )

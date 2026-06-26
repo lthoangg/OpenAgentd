@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { AlertCircle, RotateCw, Trash2 } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 import {
   useConnectMcpOAuthMutation,
@@ -173,25 +174,22 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
                 </SettingsSection>
               )}
 
-              <div className="flex items-center justify-between gap-2 text-xs text-(--color-text-muted)">
-                <div className="flex items-center gap-2">
-                  {dirty && (
-                    <>
-                      <Button variant="ghost" size="xs" className="min-h-11 md:min-h-0"
-                        onClick={() => seedDraft && setDraft(seedDraft)}>Discard changes</Button>
-                      <Button variant="ghost" size="xs" className="min-h-11 md:min-h-0"
-                        onClick={onBack}>Leave without saving</Button>
-                    </>
-                  )}
+              {dirty && (
+                <div className="flex items-center gap-2 text-xs text-(--color-text-muted)">
+                  <Button variant="ghost" size="xs" className="min-h-11 md:min-h-0"
+                    onClick={() => seedDraft && setDraft(seedDraft)}>Discard changes</Button>
+                  <Button variant="ghost" size="xs" className="min-h-11 md:min-h-0"
+                    onClick={onBack}>Leave without saving</Button>
                 </div>
-                <Button variant="danger" size="xs" className="min-h-11 md:min-h-0"
-                  onClick={() => setDeleteOpen(true)} disabled={deleteMut.isPending}>
-                  <Trash2 size={11} aria-hidden="true" />
-                  Delete server
-                </Button>
-              </div>
+              )}
 
-              <RestartCard onRestart={handleRestart} pending={restartMut.isPending} enabled={server.enabled} />
+              <RestartCard
+                onRestart={handleRestart}
+                pending={restartMut.isPending}
+                enabled={server.enabled}
+                onDelete={() => setDeleteOpen(true)}
+                deletePending={deleteMut.isPending}
+              />
             </>
           )}
         </div>
@@ -257,19 +255,41 @@ function Stat({ label, children }: { label: string; children: React.ReactNode })
 
 // ── Restart card ─────────────────────────────────────────────────────────────
 
-function RestartCard({ onRestart, pending, enabled }: { onRestart: () => void; pending: boolean; enabled: boolean }) {
+function RestartCard({
+  onRestart, pending, enabled, onDelete, deletePending,
+}: {
+  onRestart: () => void
+  pending: boolean
+  enabled: boolean
+  onDelete: () => void
+  deletePending: boolean
+}) {
   return (
-    <SettingsSection title="Connection" description="restart the server process without changing its configuration">
-      <div className="flex flex-wrap gap-2">
-        <Button variant="default" size="sm" className="min-h-11 md:min-h-0"
-          onClick={onRestart} disabled={pending || !enabled} aria-label={pending ? 'Restarting' : 'Restart server'}>
-          <RotateCw size={12} aria-hidden="true" />
-          {pending ? 'Restarting…' : 'Restart'}
+    <SettingsSection title="Connection" description="restart or remove this server">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Button
+            variant="default" size="sm" className="min-h-11 md:min-h-0"
+            onClick={onRestart} disabled={pending || !enabled}
+            aria-label={pending ? 'Restarting' : 'Restart server'}
+          >
+            <RotateCw size={12} className={cn(pending && 'animate-spin')} aria-hidden="true" />
+            {pending ? 'Restarting…' : 'Restart'}
+          </Button>
+          {!enabled && (
+            <p className="text-[11px] text-(--color-text-muted)">
+              Enable and save first to restart.
+            </p>
+          )}
+        </div>
+        <Button
+          variant="danger" size="sm" className="min-h-11 md:min-h-0"
+          onClick={onDelete} disabled={deletePending}
+        >
+          <Trash2 size={12} aria-hidden="true" />
+          {deletePending ? 'Deleting…' : 'Delete server'}
         </Button>
       </div>
-      {!enabled && (
-        <p className="mt-2 text-[11px] text-(--color-text-muted)">Server is disabled — enable and save first to restart.</p>
-      )}
     </SettingsSection>
   )
 }

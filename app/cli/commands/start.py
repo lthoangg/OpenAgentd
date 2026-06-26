@@ -103,3 +103,43 @@ def cmd_start(args: argparse.Namespace) -> None:
         print(f"  {_dim('Mobile:')} use the LAN address in the mobile app")
     print(f"  {_dim('Stop:')}  {_bold('openagentd stop')}")
     print()
+
+    if getattr(args, "wait", False) or getattr(args, "watch", False):
+        import urllib.request
+        import urllib.error
+        import time
+        from app.cli.ui import _green, _red
+
+        poll_host = "127.0.0.1" if args.host in {"0.0.0.0", "::"} else args.host
+        ready_url = f"http://{poll_host}:{args.port}/api/health/ready"
+
+        print(f"  {_dim('Status:')} waiting for server to become ready...")
+        start_time = time.monotonic()
+        max_wait = 30.0
+        started = False
+
+        while time.monotonic() - start_time < max_wait:
+            if server.poll() is not None:
+                print(f"  {_bold(_red('error'))}: server process died unexpectedly")
+                break
+
+            try:
+                with urllib.request.urlopen(ready_url, timeout=1.0) as resp:
+                    if resp.status == 200:
+                        started = True
+                        break
+            except Exception:
+                pass
+            time.sleep(0.5)
+
+        if started:
+            elapsed = time.monotonic() - start_time
+            print(
+                f"  {_dim('Status:')} {_green('started and ready')} (took {elapsed:.2f}s)"
+            )
+            print()
+        else:
+            print(
+                f"  {_bold(_yellow('warning'))}: server did not become ready within {max_wait}s (check logs)"
+            )
+            print()

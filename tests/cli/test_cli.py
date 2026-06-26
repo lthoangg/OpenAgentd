@@ -216,6 +216,16 @@ class TestBuildParser:
         args = build_parser().parse_args(["--lan", "start"])
         assert args.lan is True
 
+    def test_wait_and_watch_flags(self):
+        args = build_parser().parse_args(["start", "--wait"])
+        assert args.wait is True
+
+        args = build_parser().parse_args(["start", "--watch"])
+        assert args.watch is True
+
+        args = build_parser().parse_args(["restart", "--wait"])
+        assert args.wait is True
+
     def test_stop_subcommand(self):
         args = build_parser().parse_args(["stop"])
         assert args.func is cli.cmd_stop

@@ -161,6 +161,18 @@ def build_parser() -> argparse.ArgumentParser:
                 default=argparse.SUPPRESS,
                 help="Prompt for an access key required by external clients.",
             )
+        p.add_argument(
+            "--wait",
+            action="store_true",
+            default=argparse.SUPPRESS,
+            help="Wait/poll until the background server is fully started and ready.",
+        )
+        p.add_argument(
+            "--watch",
+            action="store_true",
+            default=argparse.SUPPRESS,
+            help="Alias for --wait.",
+        )
 
     # ── start ─────────────────────────────────────────────────────────────────
     p_start = sub.add_parser("start", help="Start the background server")

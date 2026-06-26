@@ -531,6 +531,7 @@ Desktop is primary. CLI / server is the developer path. Deeper doc:
   `brew install lthoangg/tap/openagentd`.
 - **CLI server control** `[v1.41.0]` — `restart`, `address`, `health`, and
   `start --lan --key` make the CLI the control plane for desktop/mobile backends.
+- **CLI start --wait / --watch** `[v1.73.0]` — starts the background server and polls `/api/health/ready` until the database connection and the agent team are fully ready.
 - **CLI upgrade** `[v1.41.0]` — `openagentd upgrade` stops the background
   server, delegates to the detected package manager, then restarts it when it
   was running.

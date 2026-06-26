@@ -3,11 +3,11 @@
  * Navigation is entirely callback-driven; no router Links are used so this
  * component works correctly inside the overlay without any URL changes.
  */
-import { AlertCircle, Plus, Search } from 'lucide-react'
-import { useId, useMemo, useState, type ReactNode } from 'react'
+import { AlertCircle, Plus } from 'lucide-react'
+import { useMemo, useState, type ReactNode } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { SearchBar } from '@/components/ui/search-bar'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 
@@ -72,7 +72,6 @@ export function SettingsListView({
   emptyTitle,
   emptyBody,
 }: SettingsListViewProps) {
-  const filterId = useId()
   const [query, setQuery] = useState('')
 
   const filtered = useMemo(() => {
@@ -87,7 +86,6 @@ export function SettingsListView({
   }, [rows, query])
 
   const total = rows.length
-  const countLabel = total === 1 ? '1 item' : `${total} items`
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto bg-(--bg-page)">
@@ -115,31 +113,13 @@ export function SettingsListView({
 
         {/* ── Filter ────────────────────────────────────────────────────── */}
         {(isLoading || rows.length > 0) && (
-          <div>
-            <label htmlFor={filterId} className="sr-only">
-              {filterPlaceholder}
-            </label>
-            <div className="relative flex h-8 items-center rounded-md border border-(--color-border) bg-(--bg-input) focus-within:border-(--focus-ring) focus-within:ring-2 focus-within:ring-(--focus-ring)/30">
-              <Search
-                size={12}
-                className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-(--color-text-muted)"
-                aria-hidden="true"
-              />
-              <Input
-                id={filterId}
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder={filterPlaceholder}
-                aria-label={filterPlaceholder}
-                className="h-full flex-1 border-0 bg-transparent pr-3 pl-8 text-xs focus:ring-0 focus-visible:ring-0"
-              />
-              {!isLoading && (
-                <span className="pr-2.5 font-mono text-[10px] tabular-nums text-(--color-text-subtle)">
-                  {countLabel}
-                </span>
-              )}
-            </div>
-          </div>
+          <SearchBar
+            placeholder={filterPlaceholder}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            count={total}
+            loading={isLoading}
+          />
         )}
 
         {/* ── Body ──────────────────────────────────────────────────────── */}

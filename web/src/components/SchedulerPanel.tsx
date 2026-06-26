@@ -8,7 +8,7 @@
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Clock, Plus, Loader2, AlertCircle, CalendarClock, ArrowLeft } from 'lucide-react'
-import { Input } from '@/components/ui/input'
+import { SearchBar } from '@/components/ui/search-bar'
 import {
   useScheduledTasksQuery,
 } from '@/queries'
@@ -16,7 +16,6 @@ import type { ScheduledTaskMode } from '@/api/types'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useModalFocus } from '@/hooks/useModalFocus'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
-import { FIELD_CLASS } from './SchedulerPanel/utils'
 import { TaskListItem } from './SchedulerPanel/TaskListItem'
 import { CreateTaskForm } from './SchedulerPanel/CreateTaskForm'
 import { TaskDetailView } from './SchedulerPanel/TaskDetailView'
@@ -203,8 +202,7 @@ export function SchedulerPanel({
                 <div className={`flex flex-col border-r border-(--color-border) ${isMobile ? 'w-full' : 'w-96 shrink-0'}`}>
                   {/* Search bar */}
                   <div className="border-b border-(--color-border) p-3">
-                    <Input
-                      className={FIELD_CLASS}
+                    <SearchBar
                       placeholder="Search tasks…"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}

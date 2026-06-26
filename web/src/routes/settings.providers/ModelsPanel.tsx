@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import fuzzysort from 'fuzzysort'
 import { Check, Copy, Loader2 } from 'lucide-react'
-import { Input } from '@/components/ui/input'
+import { SearchBar } from '@/components/ui/search-bar'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
 import { mediumHapticFeedback } from '@/lib/haptics'
@@ -97,13 +97,10 @@ export function ModelsPanel({
       </button>
       {expanded && (
         <div className="border-t border-(--color-border) p-2">
-          <Input
-            type="search"
+          <SearchBar
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder="Filter models…"
-            className="h-8 text-xs"
-            aria-label="Filter models"
           />
           <p className="mt-2 text-[11px] text-(--color-text-muted)">
             Use the visibility button next to each model to choose which models normal OpenAgentd pickers show. If none are selected, all models are visible.

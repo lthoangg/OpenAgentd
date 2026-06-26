@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ChevronDown, Plug, Search, Wrench } from 'lucide-react'
+import { ChevronDown, Plug, Wrench } from 'lucide-react'
 
 import type { AgentInfo } from '@/api/types'
 import type { ServerStatus } from '@/api/client'
 import { Button } from '@/components/ui/button'
+import { SearchBar } from '@/components/ui/search-bar'
 
 const TOOL_SEARCH_THRESHOLD = 8
 
@@ -166,17 +167,11 @@ export function Tools({
 
       {showSearch && (
         <div className="shrink-0 px-5 pb-2">
-          <div className="flex items-center gap-2 rounded-lg border border-(--color-border) bg-(--bg-page) px-2.5 py-1.5 focus-within:border-(--color-border-strong)">
-            <Search size={12} className="shrink-0 text-(--color-text-muted)" />
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Filter tools…"
-              className="min-w-0 flex-1 bg-transparent text-xs text-(--color-text) placeholder:text-(--color-text-subtle) focus:outline-none"
-              aria-label="Filter tools"
-            />
-          </div>
+          <SearchBar
+            placeholder="Filter tools…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
         </div>
       )}
 

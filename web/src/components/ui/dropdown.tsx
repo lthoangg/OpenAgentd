@@ -127,13 +127,15 @@ function Dropdown({
   const [panelRect, setPanelRect] = useState<DOMRect | null>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
 
-  // Measure once on open. The panel is position:fixed so it stays put in
-  // the viewport without scroll tracking — tracking scroll causes the panel
-  // to visually "chase" momentum scrolling which feels broken.
+  // Measure on open. Close on scroll so the panel never drifts away from
+  // its trigger — far better UX than either chasing scroll or staying frozen.
   useLayoutEffect(() => {
     if (!open) return
     const rect = triggerRef.current?.getBoundingClientRect()
     if (rect) setPanelRect(rect)
+    const onScroll = () => setOpen(false)
+    window.addEventListener('scroll', onScroll, true)
+    return () => window.removeEventListener('scroll', onScroll, true)
   }, [open])
 
   // Close when a pointer-down lands outside both the trigger and the panel.

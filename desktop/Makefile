@@ -46,7 +46,7 @@ sidecar-full:
 	@$(MAKE) sidecar EXTRAS="audio,azure-doc-intel"
 
 icons:
-	cd src-tauri && cargo tauri icon icons/icon.png
+	python3 ../scripts/generate_icons.py
 
 # Dev: load the debug WebView from Vite :5173 and use the same connection
 # model as production: bundled sidecar by default, saved external servers

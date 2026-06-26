@@ -56,6 +56,9 @@ revision: ## Create a new Alembic revision (usage: make revision MSG="message")
 build-web: ## Build web UI into web/dist/ for desktop packaging
 	cd web && bun install && bun run build
 
+icons: ## Centralize and generate all app & platform icons from the master brand icon
+	python3 scripts/generate_icons.py
+
 build: ## Build Python wheel (API server only)
 	uv build
 

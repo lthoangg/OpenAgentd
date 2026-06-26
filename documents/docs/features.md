@@ -16,7 +16,7 @@ exists. When you ship something new, **add it here first** — slides, README,
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 15 providers. Your keys.
 
-**Latest release:** v1.72.0 · June 26, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.72.0)
+**Latest release:** v1.73.0 · June 26, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.73.0)
 
 ---
 
@@ -256,7 +256,7 @@ team against it. Deeper doc: [`web/coding-sessions.md`](./web/coding-sessions.md
   across dock close/reopen; clicking inline `@file` mentions opens the
   referenced file in the dock. Dock, sidebar, and viewer widths are
   independently resizable via drag handles on desktop.
-  - **Git Commits & Commit Tree in workspace dock** `[v1.70.2]` — additional sub-tabs inside the "Changes" panel to see recent git commits and a visual branch graph. The commits list supports high-performance cursor-based infinite scrolling (fetching more commits on scroll using a native `IntersectionObserver`) and inline expansion to view the files modified in any commit and their interactive diff previews. The visual tree graph renders the textual `git log --graph` output with branch splits, merges, and an "All Branches" toggle. **Workspace Git UI state (including the selected sub-tab, All Branches toggle, expanded commits, and expanded file diffs) is persisted in the local browser state, maintaining your context across dock toggles and workspace switches** `[v1.72.1]`.
+  - **Git Commits & Commit Tree in workspace dock** `[v1.70.2]` — additional sub-tabs inside the "Changes" panel to see recent git commits and a visual branch graph. The commits list supports high-performance cursor-based infinite scrolling (fetching more commits on scroll using a native `IntersectionObserver`) and inline expansion to view the files modified in any commit and their interactive diff previews. The visual tree graph renders the textual `git log --graph` output with branch splits, merges, and an "All Branches" toggle. **Workspace Git UI state (including the selected sub-tab, All Branches toggle, expanded commits, and expanded file diffs) is persisted in the local browser state, maintaining your context across dock toggles and workspace switches** `[v1.73.0]`.
 - **Compact coding sidebar** `[v1.61.0]` — single-line session entries with
   status dots and tooltip dates; flattened repository/worktree/session hierarchy
   without nested group labels; scroll-triggered pagination replaces the Load

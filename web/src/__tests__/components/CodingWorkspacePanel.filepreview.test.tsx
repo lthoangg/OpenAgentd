@@ -3,6 +3,7 @@ import type React from 'react'
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { useGitPanelStore } from '@/stores/useGitPanelStore'
 import type { WorkspaceFileInfo } from '@/api/types'
 
 const WORKSPACE = '/repo/project'
@@ -44,6 +45,7 @@ mock.module('framer-motion', () => ({
   },
 }))
 beforeEach(() => {
+  useGitPanelStore.setState({ workspaces: {} })
   diffResponse = { workspace: WORKSPACE, is_git_repo: false, diff: '', untracked: [] }
   isMacOverlay = false
   globalThis.fetch = mock(async (input: unknown) => {

@@ -11,6 +11,7 @@ import { formatBytes } from '@/utils/format'
 import { workspaceLabel } from '@/utils/workspace'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { useResizableWidth } from '@/hooks/use-resizable-width'
+import { useGitPanelStore, DEFAULT_WORKSPACE_STATE } from '@/stores/useGitPanelStore'
 import type { WorkspaceFileInfo, WorkspaceGitDiffResponse } from '@/api/types'
 
 type ChangedFileStatus = 'A' | 'M' | 'D'
@@ -227,7 +228,6 @@ export function CodingWorkspacePanel({
   const [fileSearchOpen, setFileSearchOpen] = useState(false)
   const [fileSearch, setFileSearch] = useState('')
   const [focusedIndex, setFocusedIndex] = useState(-1)
-  const [expandedDiffs, setExpandedDiffs] = useState<Set<string>>(() => new Set())
   const searchInputRef = useRef<HTMLInputElement>(null)
   const searchListRef = useRef<HTMLDivElement>(null)
   const tabButtonRefs = useRef(new Map<string, HTMLButtonElement>())
@@ -246,11 +246,33 @@ export function CodingWorkspacePanel({
   const changedFiles = collectChangedFiles(diff.data)
   const diffSections = collectDiffSections(diff.data)
 
-  const [subTab, setSubTab] = useState<'changes' | 'commits' | 'tree'>('changes')
-  const [allBranches, setAllBranches] = useState(false)
-  const [historyLimit] = useState(50)
-  const [expandedCommitSha, setExpandedCommitSha] = useState<string | null>(null)
-  const [expandedCommitFiles, setExpandedCommitFiles] = useState<Set<string>>(() => new Set())
+  const gitState = useGitPanelStore((s) => s.workspaces[workspace] || DEFAULT_WORKSPACE_STATE)
+
+  const subTab = gitState.subTab
+  const allBranches = gitState.allBranches
+  const expandedCommitSha = gitState.expandedCommitSha
+  const expandedDiffs = useMemo(() => new Set(gitState.expandedDiffs), [gitState.expandedDiffs])
+  const expandedCommitFiles = useMemo(() => new Set(gitState.expandedCommitFiles), [gitState.expandedCommitFiles])
+
+  const setSubTab = (tab: 'changes' | 'commits' | 'tree') => useGitPanelStore.getState().setSubTab(workspace, tab)
+  const setAllBranches = (val: boolean) => useGitPanelStore.getState().setAllBranches(workspace, val)
+  const setExpandedCommitSha = (updater: string | null | ((prev: string | null) => string | null)) => {
+    if (typeof updater === 'function') {
+      const next = updater(gitState.expandedCommitSha)
+      useGitPanelStore.getState().setExpandedCommitSha(workspace, next)
+    } else {
+      useGitPanelStore.getState().setExpandedCommitSha(workspace, updater)
+    }
+  }
+  const setExpandedCommitFiles = (updater: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+    if (typeof updater === 'function') {
+      const next = updater(new Set(gitState.expandedCommitFiles))
+      useGitPanelStore.getState().setExpandedCommitFiles(workspace, Array.from(next))
+    } else {
+      useGitPanelStore.getState().setExpandedCommitFiles(workspace, Array.from(updater))
+    }
+  }
+  const historyLimit = 50
   const [menuOpen, setMenuOpen] = useState(false)
 
   const gitHistory = useInfiniteQuery({
@@ -364,12 +386,7 @@ export function CodingWorkspacePanel({
     if (activeTabId === id) setActiveTabId('review')
   }
   const toggleDiffExpanded = (path: string) => {
-    setExpandedDiffs((current) => {
-      const next = new Set(current)
-      if (next.has(path)) next.delete(path)
-      else next.add(path)
-      return next
-    })
+    useGitPanelStore.getState().toggleDiffExpanded(workspace, path)
   }
   const searchableFiles = useMemo(() => {
     const query = fileSearch.trim().toLowerCase()

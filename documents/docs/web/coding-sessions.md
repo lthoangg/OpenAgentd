@@ -39,6 +39,7 @@ updated: 2026-06-24
 - On mobile, file search is centered inside the workspace panel viewport instead of the browser viewport, keeping it below the app header and safe-area. The mobile search field uses a taller touch target and 16px text to avoid iOS zoom and improve tap ergonomics.
 - File preview tabs only show current file content. The old File/Diff toggle is removed.
 - The Changes tab keeps git review in place: each changed file expands/collapses inline and shows a diff with hunk headers and standard context lines (3 lines of prefix/suffix context). File and diff content wrap long lines so users only scroll vertically.
+- **Git UI state persistence:** The state of the Git feature in the workspace dock (the selected sub-tab like Changes/Commits/Tree, the "All Branches" toggle, which commits are expanded, and which files/diffs are expanded) is persisted per workspace in the browser's local storage. This preserves the developer's exact scroll position and review context when closing/reopening the dock or switching between different workspaces.
 
 ## Running and reload states
 

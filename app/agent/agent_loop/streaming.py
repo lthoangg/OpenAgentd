@@ -151,8 +151,6 @@ async def stream_and_assemble(
     tool_defs: list,
     primary_provider: LLMProviderBase,
     primary_label: str,
-    fallback_provider: LLMProviderBase | None,
-    fallback_label: str,
     agent_name: str,
     agent_id: str,
 ) -> tuple[AssistantMessage, Usage | None]:
@@ -188,9 +186,6 @@ async def stream_and_assemble(
     upstream = stream_with_retry(
         primary_provider=primary_provider,
         primary_label=primary_label,
-        fallback_provider=fallback_provider,
-        fallback_label=fallback_label,
-        agent_name=agent_name,
         ctx=ctx,
         state=state,
         hooks=hooks,

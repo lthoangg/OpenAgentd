@@ -264,17 +264,13 @@ function BlockRenderer({ block, isStreaming, sessionId, onRevert, latestMCPAppBl
     case 'provider_status': {
       const status = block.extra?.status
       const model = block.extra?.model
-      const primary = block.extra?.primary
-      const fallback = block.extra?.fallback
       const attempt = block.extra?.attempt
       const maxAttempts = block.extra?.max_attempts
       const delay = block.extra?.delay_seconds
       const errorType = block.extra?.error_type
       const statusCode = block.extra?.status_code
       let message = 'Provider status updated.'
-      if (status === 'fallback') {
-        message = `Switching model from ${String(primary ?? 'primary')} to ${String(fallback ?? 'fallback')}.`
-      } else if (status === 'retrying') {
+      if (status === 'retrying') {
         const delayText = typeof delay === 'number' ? ` Waiting ${delay.toFixed(1)}s.` : ''
         const errorText = errorType ? ` after ${String(errorType)}${statusCode ? ` ${String(statusCode)}` : ''}` : ''
         message = `Retrying ${String(model ?? 'model')} (${String(attempt ?? '?')}/${String(maxAttempts ?? '?')})${errorText}.${delayText}`

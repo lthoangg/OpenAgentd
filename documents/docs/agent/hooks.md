@@ -57,7 +57,7 @@ before_agent        ← once, before first model call
 after_agent         ← once, after final response
 ```
 
-`on_rate_limit` fires inside `_stream_with_retry` on 429 before each retry sleep. If a `fallback_provider` is configured and the primary model exhausts all retries, the agent switches to the fallback provider (which gets its own retry budget). `on_rate_limit` fires for both primary and fallback providers.
+`on_rate_limit` fires inside `_stream_with_retry` on 429 before each retry sleep.
 
 ---
 

@@ -191,7 +191,7 @@ spawns specialist members on demand. Deeper docs: [`agent/teams.md`](./agent/tea
   the same turn moving instead of silently ending after the tool call. See
   [`agent/loop.md`](./agent/loop.md#empty-after-tool-recovery).
 - **Provider-timeout resume for long tasks** `[v1.37.0]` — when a slow or flaky
-  model endpoint exhausts its retry/fallback budget mid-task (`ReadTimeout` /
+  model endpoint exhausts its retry budget mid-task (`ReadTimeout` /
   `ConnectError`), the loop resumes the same turn from where it left off
   instead of dropping the agent after a tool call. Bounded and interrupt-aware.
   See [`agent/loop.md`](./agent/loop.md#provider-timeout-resume).
@@ -342,10 +342,6 @@ agnostic by design. Deeper doc: [`configuration/providers.md`](./configuration/p
 | CLIProxyAPI (local) | `cliproxy:gemini-2.5-pro` | `CLIPROXY_API_KEY` (optional) |
 | Ollama (local + cloud) | `ollama:llama3.2` · `ollama:kimi-k2.6-cloud` | none (cloud: `ollama signin`) |
 
-- **Auto-fallback chain** `[since v1.0]` — set `fallback_model` in an agent
-  config; rate limits and 5xx errors automatically retry on the fallback.
-- **Fast fallback on long retry-after** `[v1.18.2]` — agents with a configured
-  `fallback_model` skip remaining primary retries when the retry delay ≥ 60s.
 - **Drop-in provider plugins** `[v1.6.0]` — Python files in the configured
   plugins directory register new providers at startup.
 - **Resilient provider construction** `[v1.17.0]` — missing/unavailable

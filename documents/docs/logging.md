@@ -202,7 +202,6 @@ Line numbers drift; the canonical reference is the `logger.info("event_name …"
 | `llm_provider_retry` | WARNING | `model`, `status`, `attempt`, `delay`, `retry_after` | Retrying transient error (429, 5xx, connection) |
 | `llm_provider_rate_limit_too_long` | WARNING | `model`, `status`, `attempt`, `delay`, `retry_after` | 429 retry delay reached 60s; skipping remaining retries for this provider |
 | `llm_provider_exhausted` | WARNING | `model`, `status` or `error`, `attempts` | All retry attempts exhausted for this provider |
-| `llm_provider_fallback` | WARNING | `agent`, `primary`, `fallback` | Switching from primary to fallback model (see [`configuration.md#fallback-model`](configuration.md#fallback-model)) |
 | `agent_run_done` | INFO | `agent`, `elapsed`, `iterations`, `total_messages`, `total_tokens` | Final result before returning |
 | `checkpointer_sync_failed` | ERROR | `session_id`, `error` | DB persistence failed |
 

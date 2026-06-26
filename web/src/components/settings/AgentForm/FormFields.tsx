@@ -103,22 +103,19 @@ export function FormFields({
   const currentModelOptions = useMemo(() => {
     const byId = new Map(modelOptions.map((model) => [model.id, model]))
     const withCurrent = [...modelOptions]
-    for (const id of [fm.model, fm.fallback_model]) {
-      if (!id || byId.has(id) || !id.includes(':')) continue
+    const id = fm.model
+    if (id && !byId.has(id) && id.includes(':')) {
       const [provider, model] = id.split(':', 2)
       withCurrent.push({ id, provider, model, vision: false })
     }
     return withCurrent
-  }, [fm.fallback_model, fm.model, modelOptions])
+  }, [fm.model, modelOptions])
   const validModelIds = useMemo(
     () => currentModelOptions.map((m) => m.id),
     [currentModelOptions],
   )
   const modelError = validateModel(fm.model ?? '', {
     required: true,
-    validValues: validModelIds,
-  })
-  const fallbackError = validateModel(fm.fallback_model ?? '', {
     validValues: validModelIds,
   })
   const hasBuiltInProfile = isBuiltInProfile(fm.name, fm.role, agentPath)
@@ -241,22 +238,6 @@ export function FormFields({
               disabled={disabled}
               invalid={!!modelError}
               placeholder="Type to search models…"
-            />
-          </Field>
-
-          <Field
-            label="Fallback model"
-            error={fallbackError}
-            hint="Used when the primary model errors out. Leave blank for none."
-            className="md:col-span-2"
-          >
-            <ModelCombobox
-              value={fm.fallback_model ?? ''}
-              options={currentModelOptions}
-              onChange={(v) => updateFromForm({ ...fm, fallback_model: v || null }, body)}
-              disabled={disabled}
-              invalid={!!fallbackError}
-              placeholder="Type to search models (or leave blank)…"
             />
           </Field>
 

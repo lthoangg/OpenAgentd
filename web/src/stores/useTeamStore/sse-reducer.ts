@@ -274,10 +274,6 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
             extra: d,
             timestamp: new Date(),
           })
-          if (status === 'fallback' && typeof d.fallback === 'string') {
-            const textBlock = [...draft.agentStreams[agent].currentBlocks].reverse().find((block) => block.type === 'text')
-            if (textBlock) textBlock.extra = { ...(textBlock.extra ?? {}), model: d.fallback }
-          }
         })
         break
       }

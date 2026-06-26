@@ -127,15 +127,6 @@ class BaseAgentHook(ABC):
     ) -> None:
         """Called when a provider exhausts its retry budget."""
 
-    async def on_provider_fallback(
-        self,
-        ctx: "RunContext",
-        state: "AgentState",
-        primary: str,
-        fallback: str,
-    ) -> None:
-        """Called when the agent switches from primary to fallback provider."""
-
     async def wrap_model_call(
         self,
         ctx: "RunContext",

@@ -108,8 +108,7 @@ export function validateSkillForm(
  * Shape of the agent form — keep in sync with
  * ``frontmatter.ts::AgentFrontmatter``.
  *
- * ``model`` is required (every agent needs one).  ``fallback_model`` is
- * optional and only validated when non-empty.  Everything else is
+ * ``model`` is required (every agent needs one). Everything else is
  * optional/nullable to accommodate the "unset" UI state.
  */
 export const agentFrontmatterSchema = z.object({
@@ -117,7 +116,6 @@ export const agentFrontmatterSchema = z.object({
   role: roleSchema,
   description: descriptionSchema.nullable().optional(),
   model: modelSchema,
-  fallback_model: modelSchema.nullable().optional(),
   temperature: temperatureSchema.nullable().optional(),
   thinking_level: thinkingLevelSchema.nullable().optional(),
   tools: z.array(z.string()).optional(),

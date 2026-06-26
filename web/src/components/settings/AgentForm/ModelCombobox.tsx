@@ -25,7 +25,7 @@ export interface ModelOption {
  * — the input itself doesn't gate keystrokes so the user can edit freely.
  *
  * Empty input commits an empty string, which the caller may interpret as
- * "unset" (used for ``fallback_model``).
+ * "unset".
  */
 export function ModelCombobox({
   value,

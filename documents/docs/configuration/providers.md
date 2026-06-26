@@ -18,7 +18,7 @@ A model is selected by setting `model: <prefix>:<model-id>` in an agent's `.md` 
 
 Provider setup replaces the seeded placeholder model without overwriting existing user-edited files.
 
-Provider construction is lazy-tolerant: a missing key, unavailable local daemon, or broken fallback provider does not prevent the app from starting. Agent load logs the unavailable provider and substitutes an unconfigured provider stub for the primary model, or disables the fallback model. The first attempted turn then surfaces an actionable provider-setup error in the UI instead of crashing startup.
+Provider construction is lazy-tolerant: a missing key or unavailable local daemon does not prevent the app from starting. Agent load logs the unavailable provider and substitutes an unconfigured provider stub. The first attempted turn then surfaces an actionable provider-setup error in the UI instead of crashing startup.
 
 ## Registered prefixes
 
@@ -218,22 +218,3 @@ Enables extended reasoning on supporting models.
 | `high` | Maximum reasoning effort. |
 
 Mapping varies per provider. Some use reasoning effort fields, some use provider-specific thinking objects, and non-reasoning models ignore the field.
-
-## Fallback model
-
-When the primary model fails with retryable errors (429, 5xx, timeouts), the agent can automatically switch to a fallback model.
-
-```yaml
-model: zai:glm-5v-turbo             # primary
-fallback_model: copilot:gpt-5-mini  # used after retry exhaustion or quota 429s
-```
-
-- Primary is retried 5× with exponential backoff for transient failures.
-- 429s retry only when the computed retry delay is under 60 seconds; delays of 60 seconds or more skip the remaining retries and switch to fallback immediately.
-- Quota-style 429s, such as usage-limit or insufficient-balance responses, skip retries and switch to fallback immediately.
-- On the last transient attempt, no sleep — switches to fallback immediately.
-- Fallback gets its own 5-retry budget with the same backoff.
-- Non-retryable errors (400, 401, 403) are raised immediately — no fallback.
-- If unset, the existing retry-only behaviour is unchanged.
-
-See [`agent/loop.md#retry-logic-and-fallback-model`](../agent/loop.md#retry-logic-and-fallback-model).

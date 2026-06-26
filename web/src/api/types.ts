@@ -335,7 +335,6 @@ export interface AgentConfig {
   tools?: string[]
   skills?: string[]
   model?: string | null
-  fallback_model?: string | null
   temperature?: number | null
   thinking_level?: string | null
   responses_api?: boolean | null

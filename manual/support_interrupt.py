@@ -110,11 +110,13 @@ class _SlowProvider(LLMProviderBase):
 
 class DefaultProvider(_SlowProvider):
     """support_interrupt=True (the inherited default)."""
+
     pass
 
 
 class NonInterruptibleProvider(_SlowProvider):
     """support_interrupt=False — simulates agy and similar stateful providers."""
+
     support_interrupt = False
 
 
@@ -158,8 +160,6 @@ async def _run_contract_a_direct() -> bool:
         tool_defs=[],
         primary_provider=provider,
         primary_label="mock",
-        fallback_provider=None,
-        fallback_label="",
         agent_name="smoke-agent",
         agent_id="smoke-id",
     )
@@ -184,7 +184,9 @@ async def _run_contract_a_direct() -> bool:
 
 
 async def _run_contract_b_direct() -> bool:
-    print("\n── CONTRACT B (direct): non-interruptible provider completes despite interrupt")
+    print(
+        "\n── CONTRACT B (direct): non-interruptible provider completes despite interrupt"
+    )
     chars = "xyz123"  # 6 chars
     provider = NonInterruptibleProvider(chars, pause=0.03)
     event = asyncio.Event()
@@ -205,8 +207,6 @@ async def _run_contract_b_direct() -> bool:
         tool_defs=[],
         primary_provider=provider,
         primary_label="mock",
-        fallback_provider=None,
-        fallback_label="",
         agent_name="smoke-agent",
         agent_id="smoke-id",
     )
@@ -232,7 +232,9 @@ async def _run_contract_b_direct() -> bool:
 
 async def _run_contract_b_agent_loop() -> bool:
     """Verify the agent loop itself exits cleanly after a non-interruptible stream."""
-    print("\n── CONTRACT B (agent loop): run() exits cleanly after non-interruptible stream finishes")
+    print(
+        "\n── CONTRACT B (agent loop): run() exits cleanly after non-interruptible stream finishes"
+    )
     chars = "pqr"
     provider = NonInterruptibleProvider(chars, pause=0.02)
     agent = Agent(name="smoke-bot", llm_provider=provider)
@@ -248,12 +250,18 @@ async def _run_contract_b_agent_loop() -> bool:
     await setter
 
     yielded_count = len(provider.yielded)
-    assistant = next((m for m in reversed(msgs) if isinstance(m, AssistantMessage)), None)
+    assistant = next(
+        (m for m in reversed(msgs) if isinstance(m, AssistantMessage)), None
+    )
     content = assistant.content if assistant else None
-    print(f"   yielded={yielded_count}/{len(chars)}  assembled={content!r}  msgs={len(msgs)}")
+    print(
+        f"   yielded={yielded_count}/{len(chars)}  assembled={content!r}  msgs={len(msgs)}"
+    )
 
     if yielded_count != len(chars):
-        print(f"   ✗ FAIL: expected all {len(chars)} chunks yielded, got {yielded_count}")
+        print(
+            f"   ✗ FAIL: expected all {len(chars)} chunks yielded, got {yielded_count}"
+        )
         return False
     if content != chars:
         print(f"   ✗ FAIL: assembled {content!r} != {chars!r}")
@@ -285,7 +293,9 @@ def _post_interrupt(base: str, session_id: str) -> None:
 
 
 def _get_history(base: str, session_id: str) -> list[dict]:
-    r = httpx.get(f"{base}/team/{session_id}/history", params={"limit": 1000}, timeout=10)
+    r = httpx.get(
+        f"{base}/team/{session_id}/history", params={"limit": 1000}, timeout=10
+    )
     r.raise_for_status()
     return r.json()["lead"]["messages"]
 
@@ -386,7 +396,9 @@ async def _run_direct() -> int:
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--live", action="store_true", help="Also run live-server CONTRACT A")
+    p.add_argument(
+        "--live", action="store_true", help="Also run live-server CONTRACT A"
+    )
     p.add_argument("--base", default=BASE, help="API base URL (live mode only)")
     args = p.parse_args()
 
@@ -402,8 +414,11 @@ def main() -> int:
         ok = _run_contract_a_live(base)
         if not ok:
             rc = 1
-        print("\n  ✓ PASS  CONTRACT A (live): Stop mid-stream halts the turn" if ok else
-              "\n  ✗ FAIL  CONTRACT A (live): Stop mid-stream did not halt the turn")
+        print(
+            "\n  ✓ PASS  CONTRACT A (live): Stop mid-stream halts the turn"
+            if ok
+            else "\n  ✗ FAIL  CONTRACT A (live): Stop mid-stream did not halt the turn"
+        )
 
     return rc
 

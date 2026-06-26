@@ -233,10 +233,25 @@ A modal interrupts the user to demand a decision or surface critical information
 **Don't**
 
 - Stack modals. If a confirmation is needed mid-flow, replace the current modal or use an inline confirmation step.
-- Add a drop shadow or `ring-*` to the panel — the backdrop and border are sufficient.
+- Add a drop shadow or `ring-*` to the panel: the backdrop and border are sufficient.
 - Use a modal for non-blocking information; toast or inline status patterns are better.
 
-The same chrome is reused by drawers (sheets), popovers, dropdown menus, and command palettes — when a floating surface is needed, pick the primitive that matches the interaction model rather than hand-rolling another portal.
+### Preferences & Settings Modal (IDE Cockpit Style)
+
+For primary settings, preferences, and configuration panels (such as the main Settings modal and the Backend Connection console), OpenAgentd uses a high-density, flat, developer-focused IDE/code-editor cockpit style. This layout prioritizes visual focus, compact data presentation, and zero unnecessary visual clutter.
+
+**Structure & Layout**
+- **Single-Row Header**: The preferences window merges the title bar and tab/navigation bar into a single `h-11` header row. It does not include mock macOS window control dots or other platform-specific decorations.
+- **High-Density Sidebar**: The navigation categories pane is flat, compact (`w-52`), and uses active left vertical indicators (a thin `3px` solid `--color-accent` line on the active category) rather than bulky button shapes.
+- **Flat Section Panels**: Individual settings sections replace rounded-corners cards with thin-bordered rectangular panels (`rounded-md`, border-b headers, sharp clean lines).
+- **Control Density**: Inputs, selectors, and buttons are compact (`h-8.5` or `md:h-9` on desktop) to optimize space, while maintaining touch-friendly heights (`min-h-11`) on mobile for WCAG AA compliance.
+- **Status Lines**: Connected backend status and server lists are represented as flat, terminal-like status lines (monospace font, flat outline panels, active labels) instead of nested dialog boxes.
+
+**Typography & Content Constraints**
+- **Dashes Constraint**: Banned all em-dashes (`—` or `–`) in user-visible strings, labels, hints, and placeholder text. Use simple hyphens (`-`) or colons (`:`) as clean separators.
+- **Clean Inputs**: Do not include any configuration key path copy elements, JSON viewer interfaces, or `settings.json` direct text editors to keep the layout entirely clean and accessible.
+
+The same chrome is reused by drawers (sheets), popovers, dropdown menus, and command palettes: when a floating surface is needed, pick the primitive that matches the interaction model rather than hand-rolling another portal.
 
 ---
 

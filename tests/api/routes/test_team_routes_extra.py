@@ -453,7 +453,6 @@ class TestTeamAgentsRouteExtra:
         # ``git diff`` invoked with the scoped pathspec, not ``.``
         assert captured_diff_args, "git diff was not called"
         diff_cmd = captured_diff_args[0]
-        assert "--unified=999999" in diff_cmd
         assert "--" in diff_cmd
         sep = diff_cmd.index("--")
         assert diff_cmd[sep + 1 :] == ["wanted.py"]

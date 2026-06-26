@@ -312,9 +312,23 @@ export function DiffPreview({ diff }: { diff: string }) {
             oldLine = Number(hunk[1])
             newLine = Number(hunk[2])
           }
-          const isMeta = line.startsWith('diff --git') || line.startsWith('index ') || line.startsWith('new file mode') || line.startsWith('deleted file mode') || line.startsWith('---') || line.startsWith('+++')
+          const isMeta = line.startsWith('diff --git') || line.startsWith('index ') || line.startsWith('new file mode') || line.startsWith('deleted file mode') || line.startsWith('---') || line.startsWith('+++') || line.startsWith('\\ ')
           const isHunk = line.startsWith('@@')
-          if (isMeta || isHunk) return null
+          if (isMeta) return null
+
+          if (isHunk) {
+            return (
+              <div
+                key={index}
+                className="flex min-w-0 items-stretch bg-(--bg-key) text-(--color-text-muted) select-none border-y border-(--color-border)/20"
+              >
+                <div className="sticky left-0 z-[1] flex shrink-0 select-none border-r border-(--color-border)/40 bg-inherit text-right text-[10px] text-(--color-text-subtle)/70">
+                  <span className="w-9 py-0.5 pr-1.5">···</span>
+                </div>
+                <pre className="m-0 min-w-0 flex-1 whitespace-pre-wrap break-words px-2 py-0.5 text-[10px] font-semibold [overflow-wrap:anywhere]">{line}</pre>
+              </div>
+            )
+          }
 
           const isAdded = line.startsWith('+') && !line.startsWith('+++')
           const isRemoved = line.startsWith('-') && !line.startsWith('---')

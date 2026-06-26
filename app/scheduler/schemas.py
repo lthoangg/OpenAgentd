@@ -45,8 +45,10 @@ class ScheduledTaskCreate(BaseModel):
 
     @model_validator(mode="after")
     def _validate_schedule(self) -> "ScheduledTaskCreate":
-        if not _NAME_RE.match(self.name):
-            raise ValueError("name must match ^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$")
+        if not self.name.strip():
+            raise ValueError("name cannot be empty or whitespace only")
+        if len(self.name) > 100:
+            raise ValueError("name must be 100 characters or less")
 
         if self.mode == "coding" and not self.workspace:
             raise ValueError("workspace is required when mode='coding'")

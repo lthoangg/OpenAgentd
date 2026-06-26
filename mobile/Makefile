@@ -21,7 +21,7 @@ ios-init: ## Initialize Tauri iOS project files
 	$(MAKE) ios-icons
 
 $(IOS_ICON_STAMP): src-tauri/icons/icon.png
-	cd src-tauri && cargo tauri icon icons/icon.png --ios-color transparent
+	python3 ../scripts/generate_icons.py
 	@if [ -d src-tauri/icons/ios ]; then \
 		mkdir -p $(IOS_APPICONSET); \
 		cp src-tauri/icons/ios/*.png $(IOS_APPICONSET)/; \
@@ -31,7 +31,7 @@ $(IOS_ICON_STAMP): src-tauri/icons/icon.png
 ios-icons: $(IOS_ICON_STAMP) ## Generate iOS AppIcon assets when missing or stale
 
 ios-icons-force: ## Force-regenerate iOS AppIcon assets from the shared OpenAgentd icon
-	cd src-tauri && cargo tauri icon icons/icon.png --ios-color transparent
+	python3 ../scripts/generate_icons.py
 	@if [ -d src-tauri/icons/ios ]; then \
 		mkdir -p $(IOS_APPICONSET); \
 		cp src-tauri/icons/ios/*.png $(IOS_APPICONSET)/; \

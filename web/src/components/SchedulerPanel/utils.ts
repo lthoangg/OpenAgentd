@@ -36,3 +36,19 @@ export function formatScheduleLabel(task: Pick<ScheduledTaskResponse, 'schedule_
 }
 
 // ── Mode / workspace shared bits ────────────────────────────────────────────
+
+export function slugify(text: string): string {
+  let slug = text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // remove diacritics
+    .replace(/[^a-z0-9._-]/g, '-')   // replace spaces & symbols with dashes
+    .replace(/-+/g, '-')             // collapse multiple dashes
+    .replace(/^[._-]+|[._-]+$/g, '') // trim leading/trailing dots, underscores, and dashes
+
+  if (slug && !/^[a-z0-9]/.test(slug)) {
+    slug = slug.replace(/^[^a-z0-9]+/, '')
+  }
+
+  return slug.substring(0, 64)
+}

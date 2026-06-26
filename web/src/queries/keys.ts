@@ -28,6 +28,10 @@ export const queryKeys = {
       ['coding-workspace-diff', workspace] as const,
     status: (workspace: string) =>
       ['coding-workspace-status', workspace] as const,
+    history: (workspace: string, limit: number, allBranches: boolean) =>
+      ['coding-workspace-history', workspace, limit, allBranches] as const,
+    commitDiff: (workspace: string, sha: string) =>
+      ['coding-workspace-commit-diff', workspace, sha] as const,
   },
   // File references for the input bar's @-mention picker. Keyed by the
   // workspace path (coding mode) or session id (normal mode) so the two

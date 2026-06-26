@@ -21,6 +21,7 @@ import asyncio
 import difflib
 import mimetypes
 import os
+import re
 import subprocess
 import uuid
 from pathlib import Path
@@ -39,6 +40,9 @@ from app.api.schemas.team import (
     CodingWorkspaceFilesResponse,
     WorkspaceFileInfo,
     WorkspaceFilesResponse,
+    GitCommit,
+    WorkspaceGitHistoryResponse,
+    WorkspaceCommitDiffResponse,
 )
 from app.core.db import async_session_factory
 from app.core.paths import session_workspace_dir, uploads_dir, workspace_dir
@@ -383,7 +387,7 @@ async def get_coding_workspace_git_diff(
     try:
         result = await asyncio.to_thread(
             subprocess.run,
-            ["git", "-C", resolved, "diff", "--unified=999999", "--", *diff_paths],
+            ["git", "-C", resolved, "diff", "--", *diff_paths],
             capture_output=True,
             text=True,
             timeout=10,
@@ -548,3 +552,136 @@ async def get_coding_workspace_status(workspace: str) -> dict:
         }
     )
     return payload
+
+
+@router.get("/workspace/git/history", response_model=WorkspaceGitHistoryResponse)
+async def get_coding_workspace_git_history(
+    workspace: str,
+    limit: int = Query(50, ge=1, le=500),
+    cursor: str | None = Query(None),
+    all_branches: bool = Query(False, alias="all"),
+) -> WorkspaceGitHistoryResponse:
+    """Retrieve the recent git commits and textual branch graph for a workspace."""
+    try:
+        resolved = team_manager.validate_workspace(workspace)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    if cursor and not re.match(r"^[a-fA-F0-9]{4,64}$", cursor):
+        raise HTTPException(status_code=422, detail="Invalid cursor SHA format.")
+
+    root = Path(resolved)
+    if not (root / ".git").exists():
+        return WorkspaceGitHistoryResponse(
+            workspace=resolved,
+            is_git_repo=False,
+            commits=[],
+            next_cursor=None,
+            graph="",
+        )
+
+    # 1. Fetch structured commits (limit + 1 to detect next page)
+    log_args = ["log"]
+    if cursor:
+        log_args.extend([cursor, "--skip=1"])
+    log_args.extend(
+        [
+            "-n",
+            str(limit + 1),
+            "--pretty=format:%H%x00%h%x00%an%x00%ae%x00%at%x00%s%x00%d",
+        ]
+    )
+    if all_branches:
+        log_args.append("--all")
+
+    commits_out = await _run_git(resolved, *log_args)
+    commits = []
+    if commits_out:
+        # Split by lines and parse each line
+        for line in commits_out.splitlines():
+            if not line:
+                continue
+            parts = line.split("\x00")
+            if len(parts) >= 6:
+                try:
+                    timestamp = int(parts[4])
+                except ValueError:
+                    timestamp = 0
+
+                refs = (
+                    parts[6].strip(" ()")
+                    if len(parts) > 6 and parts[6].strip()
+                    else None
+                )
+                commits.append(
+                    GitCommit(
+                        sha=parts[0],
+                        short_sha=parts[1],
+                        author_name=parts[2],
+                        author_email=parts[3],
+                        timestamp=timestamp,
+                        subject=parts[5],
+                        refs=refs,
+                    )
+                )
+
+    # 2. Determine next_cursor and slice
+    next_cursor = None
+    if len(commits) > limit:
+        next_cursor = commits[limit].sha
+        commits = commits[:limit]
+
+    # 3. Fetch git log graph
+    graph_args = [
+        "log",
+        "--graph",
+        "--oneline",
+        "--decorate",
+        "--color=never",
+        "-n",
+        str(limit),
+    ]
+    if all_branches:
+        graph_args.append("--all")
+
+    graph_out = await _run_git(resolved, *graph_args)
+    graph = graph_out if graph_out else ""
+
+    return WorkspaceGitHistoryResponse(
+        workspace=resolved,
+        is_git_repo=True,
+        commits=commits,
+        next_cursor=next_cursor,
+        graph=graph,
+    )
+
+
+@router.get("/workspace/git/commit-diff", response_model=WorkspaceCommitDiffResponse)
+async def get_coding_workspace_commit_diff(
+    workspace: str,
+    sha: str,
+) -> WorkspaceCommitDiffResponse:
+    """Retrieve the diff of a specific commit in the workspace, matching git diff format."""
+    try:
+        resolved = team_manager.validate_workspace(workspace)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    if not re.match(r"^[a-fA-F0-9]{4,64}$", sha):
+        raise HTTPException(status_code=422, detail="Invalid commit SHA format.")
+
+    root = Path(resolved)
+    if not (root / ".git").exists():
+        raise HTTPException(status_code=400, detail="Not a git repository.")
+
+    # Get the diff of the commit without the commit message header, matching git diff output
+    diff_out = await _run_git(resolved, "show", "--no-notes", "--pretty=format:", sha)
+    if diff_out is None:
+        raise HTTPException(
+            status_code=404, detail="Commit not found or failed to retrieve diff."
+        )
+
+    return WorkspaceCommitDiffResponse(
+        sha=sha,
+        diff=diff_out,
+    )

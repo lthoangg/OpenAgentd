@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { ChevronRight, Folder, GitCompare, Plus, RefreshCw, Search, X } from 'lucide-react'
-import { getCodingWorkspaceGitDiff, listCodingWorkspaceFiles } from '@/api/client'
+import { ChevronDown, ChevronRight, Folder, GitCompare, Plus, RefreshCw, Search, X } from 'lucide-react'
+import { getCodingWorkspaceGitDiff, listCodingWorkspaceFiles, getCodingWorkspaceGitHistory, getCodingWorkspaceCommitDiff } from '@/api/client'
 import { CodingFilePreviewContent, DiffPreview } from './CodingFileViewerPanel'
 import { FileTypeIcon } from './FileTypeIcon'
 import { cn } from '@/lib/utils'
@@ -15,7 +15,7 @@ import type { WorkspaceFileInfo, WorkspaceGitDiffResponse } from '@/api/types'
 
 type ChangedFileStatus = 'A' | 'M' | 'D'
 type WorkspacePanelTab =
-  | { id: 'review'; type: 'review'; title: 'Changes' }
+  | { id: 'review'; type: 'review'; title: 'Git' }
   | { id: string; type: 'file'; title: string; file: WorkspaceFileInfo }
 
 interface ChangedFileInfo {
@@ -92,6 +92,115 @@ function collectDiffSections(diff?: WorkspaceGitDiffResponse): Map<string, DiffF
   return sections
 }
 
+interface CommitDetailProps {
+  commitDiff: { isLoading: boolean; isError: boolean }
+  commitChangedFiles: ChangedFileInfo[]
+  commitDiffSections: Map<string, DiffFileSection>
+  expandedCommitFiles: Set<string>
+  setExpandedCommitFiles: React.Dispatch<React.SetStateAction<Set<string>>>
+}
+
+function CommitDetail({
+  commitDiff,
+  commitChangedFiles,
+  commitDiffSections,
+  expandedCommitFiles,
+  setExpandedCommitFiles,
+}: CommitDetailProps) {
+  const toggleFileExpanded = (path: string) => {
+    setExpandedCommitFiles((current) => {
+      const next = new Set(current)
+      if (next.has(path)) next.delete(path)
+      else next.add(path)
+      return next
+    })
+  }
+
+  if (commitDiff.isLoading) {
+    return <p className="px-2 py-2 text-[10px] text-(--color-text-subtle)">Loading commit changes…</p>
+  }
+  if (commitDiff.isError) {
+    return <p className="px-2 py-2 text-[10px] text-(--color-error)">Failed to load commit changes</p>
+  }
+
+  if (commitChangedFiles.length === 0) {
+    return <p className="px-2 py-2 text-[10px] text-(--color-text-subtle)">No files changed in this commit.</p>
+  }
+
+  return (
+    <div className="mt-2 space-y-1.5 border-l border-(--color-border-strong) pl-2 pr-0.5 py-0.5">
+      {commitChangedFiles.map((changedFile) => {
+        const expanded = expandedCommitFiles.has(changedFile.path)
+        const fileDiff = commitDiffSections.get(changedFile.path)?.diff
+        return (
+          <div key={changedFile.path} className="overflow-hidden rounded border border-(--color-border-subtle) bg-(--bg-page)">
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); toggleFileExpanded(changedFile.path) }}
+              className="flex w-full items-center gap-1.5 px-1.5 py-1 text-left text-[10px] text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text) cursor-pointer"
+              aria-expanded={expanded}
+            >
+              <ChevronRight size={10} className={cn('shrink-0 text-(--color-text-subtle) transition-transform', expanded && 'rotate-90')} aria-hidden="true" />
+              <FileTypeIcon name={changedFile.path} size={11} />
+              <span className="min-w-0 flex-1 truncate font-mono">{changedFile.path}</span>
+              <span className="shrink-0 font-mono text-[8px] text-(--color-diff-add-text)">{changedFile.additions > 0 ? `+${changedFile.additions}` : ''}</span>
+              <span className="shrink-0 font-mono text-[8px] text-(--color-diff-del-text)">{changedFile.deletions > 0 ? `-${changedFile.deletions}` : ''}</span>
+              <span className="shrink-0 font-mono text-[8px] font-semibold text-(--accent-orange-text)">{changedFile.status}</span>
+            </button>
+            {expanded && (
+              <div className="border-t border-(--color-border-subtle)">
+                {fileDiff ? (
+                  <div className="max-h-[40vh] min-h-0 overflow-y-auto overscroll-contain touch-pan-y">
+                    <DiffPreview diff={fileDiff} />
+                  </div>
+                ) : (
+                  <p className="px-2 py-2 text-[9px] text-(--color-text-subtle)">No diff body for this file.</p>
+                )}
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+interface ParsedGraphLine {
+  key: string
+  raw: string
+  graphPart: string
+  sha?: string
+  decorations?: string
+  message?: string
+}
+
+function renderGraphPrefix(prefix: string) {
+  return prefix.split('').map((char, index) => {
+    if (char === '*') {
+      return (
+        <span key={index} className="text-(--color-accent) font-bold font-mono">
+          ●
+        </span>
+      )
+    }
+    if (char === '|') {
+      return (
+        <span key={index} className="text-slate-400 dark:text-slate-500 opacity-60 font-mono">
+          |
+        </span>
+      )
+    }
+    if (char === '/' || char === '\\' || char === '_') {
+      return (
+        <span key={index} className="text-slate-500 dark:text-slate-400 opacity-85 font-mono">
+          {char}
+        </span>
+      )
+    }
+    return <span key={index} className="font-mono">{char}</span>
+  })
+}
+
 export function CodingWorkspacePanel({
   workspace,
   open,
@@ -113,7 +222,7 @@ export function CodingWorkspacePanel({
   onAddComment?: (path: string, startLine: number, endLine: number) => void
 }) {
   const prefersReducedMotion = useReducedMotion()
-  const [tabs, setTabs] = useState<WorkspacePanelTab[]>([{ id: 'review', type: 'review', title: 'Changes' }])
+  const [tabs, setTabs] = useState<WorkspacePanelTab[]>([{ id: 'review', type: 'review', title: 'Git' }])
   const [activeTabId, setActiveTabId] = useState('review')
   const [fileSearchOpen, setFileSearchOpen] = useState(false)
   const [fileSearch, setFileSearch] = useState('')
@@ -136,6 +245,106 @@ export function CodingWorkspacePanel({
   })
   const changedFiles = collectChangedFiles(diff.data)
   const diffSections = collectDiffSections(diff.data)
+
+  const [subTab, setSubTab] = useState<'changes' | 'commits' | 'tree'>('changes')
+  const [allBranches, setAllBranches] = useState(false)
+  const [historyLimit] = useState(50)
+  const [expandedCommitSha, setExpandedCommitSha] = useState<string | null>(null)
+  const [expandedCommitFiles, setExpandedCommitFiles] = useState<Set<string>>(() => new Set())
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  const gitHistory = useInfiniteQuery({
+    queryKey: queryKeys.coding.history(workspace, historyLimit, allBranches),
+    queryFn: ({ pageParam }) => getCodingWorkspaceGitHistory(workspace, historyLimit, pageParam, allBranches),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.next_cursor ?? null,
+    enabled: open && activeTabId === 'review' && (subTab === 'commits' || subTab === 'tree'),
+    staleTime: 10_000,
+  })
+
+  const commits = useMemo(() => {
+    return gitHistory.data?.pages.flatMap((page) => page.commits) ?? []
+  }, [gitHistory.data?.pages])
+
+  const graph = useMemo(() => {
+    return gitHistory.data?.pages[0]?.graph ?? ''
+  }, [gitHistory.data?.pages])
+
+  const parsedGraphLines = useMemo<ParsedGraphLine[]>(() => {
+    if (!graph) return []
+    return graph.split('\n').filter((line) => line.trim().length > 0).map((line, lineIndex) => {
+      const match = /^(.*?)\b([0-9a-fA-F]{7,10})\b(.*?)$/.exec(line)
+      if (!match) {
+        return {
+          key: `line-${lineIndex}`,
+          raw: line,
+          graphPart: line,
+        }
+      }
+
+      const graphPart = match[1]
+      const sha = match[2]
+      const rest = match[3].trim()
+
+      const decoMatch = /^\((.*?)\)\s*(.*)$/.exec(rest)
+      if (decoMatch) {
+        return {
+          key: `line-${lineIndex}-${sha}`,
+          raw: line,
+          graphPart,
+          sha,
+          decorations: decoMatch[1],
+          message: decoMatch[2],
+        }
+      }
+
+      return {
+        key: `line-${lineIndex}-${sha}`,
+        raw: line,
+        graphPart,
+        sha,
+        message: rest,
+      }
+    })
+  }, [graph])
+
+  const sentinelRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!sentinelRef.current || !gitHistory.hasNextPage) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && gitHistory.hasNextPage && !gitHistory.isFetchingNextPage) {
+          void gitHistory.fetchNextPage()
+        }
+      },
+      { threshold: 0.1 }
+    )
+
+    const el = sentinelRef.current
+    observer.observe(el)
+    return () => {
+      observer.unobserve(el)
+    }
+  }, [gitHistory, subTab])
+
+  const commitDiff = useQuery({
+    queryKey: queryKeys.coding.commitDiff(workspace, expandedCommitSha ?? ''),
+    queryFn: () => getCodingWorkspaceCommitDiff(workspace, expandedCommitSha ?? ''),
+    enabled: open && activeTabId === 'review' && subTab === 'commits' && expandedCommitSha !== null,
+    staleTime: 30_000,
+  })
+
+  const commitChangedFiles = useMemo(() => {
+    if (!commitDiff.data?.diff) return []
+    return collectChangedFiles({ workspace, is_git_repo: true, diff: commitDiff.data.diff })
+  }, [commitDiff.data?.diff, workspace])
+
+  const commitDiffSections = useMemo(() => {
+    if (!commitDiff.data?.diff) return new Map<string, DiffFileSection>()
+    return collectDiffSections({ workspace, is_git_repo: true, diff: commitDiff.data.diff })
+  }, [commitDiff.data?.diff, workspace])
   const activeTab = tabs.find((item) => item.id === activeTabId) ?? tabs[0]
   const openFileTab = useCallback((file: WorkspaceFileInfo) => {
     const id = `file:${file.path}`
@@ -193,7 +402,7 @@ export function CodingWorkspacePanel({
     storageKey: 'oa.codingWorkspacePanel.width',
     defaultWidth: 380,
     minWidth: 300,
-    maxWidth: Math.min(640, Math.max(320, Math.floor((typeof window === 'undefined' ? 720 : window.innerWidth) - 320))),
+    maxWidth: Math.min(800, Math.max(320, Math.floor((typeof window === 'undefined' ? 800 : window.innerWidth) - 320))),
     edge: 'left',
     disabled: mobile,
   })
@@ -361,57 +570,324 @@ export function CodingWorkspacePanel({
         <div className="min-h-0 flex-1 overflow-hidden">
           {activeTab?.type === 'review' ? (
             <div className="flex h-full min-h-0 flex-col">
+              {diff.data?.is_git_repo && (
+                <div className="flex border-b border-(--color-border) bg-(--bg-card) p-1 shrink-0">
+                  {!mobile ? (
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setMenuOpen((prev) => !prev)}
+                        className="flex w-36 items-center justify-between rounded px-2 py-1 text-left text-xs font-medium border border-(--color-border-strong) bg-(--bg-page) text-(--color-text) hover:bg-(--bg-key) cursor-pointer select-none"
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <GitCompare size={12} className="text-(--color-text-subtle)" />
+                          {subTab === 'changes'
+                            ? `Changes (${changedFiles.length})`
+                            : subTab === 'commits'
+                            ? 'Commits'
+                            : 'Tree'}
+                        </span>
+                        <ChevronDown size={12} className="text-(--color-text-subtle)" />
+                      </button>
+
+                      {menuOpen && (
+                        <>
+                          <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
+                          <div className="absolute left-0 right-0 top-full mt-1 z-20 rounded border border-(--color-border) bg-(--bg-card) p-1 shadow-lg flex flex-col gap-0.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSubTab('changes')
+                                setMenuOpen(false)
+                              }}
+                              className={cn(
+                                'w-full rounded px-2 py-1 text-left text-xs font-medium hover:bg-(--bg-key) cursor-pointer transition-colors',
+                                subTab === 'changes' ? 'text-(--color-accent)' : 'text-(--color-text-2)'
+                              )}
+                            >
+                              Changes ({changedFiles.length})
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSubTab('commits')
+                                setMenuOpen(false)
+                              }}
+                              className={cn(
+                                'w-full rounded px-2 py-1 text-left text-xs font-medium hover:bg-(--bg-key) cursor-pointer transition-colors',
+                                subTab === 'commits' ? 'text-(--color-accent)' : 'text-(--color-text-2)'
+                              )}
+                            >
+                              Commits
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSubTab('tree')
+                                setMenuOpen(false)
+                              }}
+                              className={cn(
+                                'w-full rounded px-2 py-1 text-left text-xs font-medium hover:bg-(--bg-key) cursor-pointer transition-colors',
+                                subTab === 'tree' ? 'text-(--color-accent)' : 'text-(--color-text-2)'
+                              )}
+                            >
+                              Tree
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex w-full bg-inherit gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setSubTab('changes')}
+                        className={cn(
+                          'flex-1 rounded py-1 text-center text-[11px] font-medium transition-colors cursor-pointer',
+                          subTab === 'changes'
+                            ? 'bg-(--bg-page) text-(--color-text) shadow-xs border border-(--color-border-strong)'
+                            : 'text-(--color-text-muted) hover:text-(--color-text)'
+                        )}
+                      >
+                        Changes ({changedFiles.length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSubTab('commits')}
+                        className={cn(
+                          'flex-1 rounded py-1 text-center text-[11px] font-medium transition-colors cursor-pointer',
+                          subTab === 'commits'
+                            ? 'bg-(--bg-page) text-(--color-text) shadow-xs border border-(--color-border-strong)'
+                            : 'text-(--color-text-muted) hover:text-(--color-text)'
+                        )}
+                      >
+                        Commits
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSubTab('tree')}
+                        className={cn(
+                          'flex-1 rounded py-1 text-center text-[11px] font-medium transition-colors cursor-pointer',
+                          subTab === 'tree'
+                            ? 'bg-(--bg-page) text-(--color-text) shadow-xs border border-(--color-border-strong)'
+                            : 'text-(--color-text-muted) hover:text-(--color-text)'
+                        )}
+                      >
+                        Tree
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="min-h-0 flex-1 overflow-auto p-2">
-          {
-            diff.isLoading || files.isLoading ? (
-              <p className="px-2 py-4 text-xs text-(--color-text-subtle)">Loading changed files…</p>
-            ) : diff.isError ? (
-              <p className="px-2 py-4 text-xs text-(--color-error)">Failed to load changed files</p>
-            ) : !diff.data?.is_git_repo ? (
-              <p className="px-2 py-4 text-xs text-(--color-text-subtle)">Not a git repository</p>
-            ) : changedFiles.length === 0 ? (
-              <p className="px-2 py-4 text-xs text-(--color-text-subtle)">No changed files</p>
-            ) : (
-              <div>
-                {diff.data.truncated && <p className="mb-2 rounded bg-(--color-warning)/10 px-2 py-1 text-xs text-(--color-warning)">Changed list may be incomplete because the diff was truncated.</p>}
-                <div className="space-y-2">
-                  {changedFiles.map((changedFile) => {
-                    const isSelected = selectedFilePath === changedFile.path
-                    const expanded = expandedDiffs.has(changedFile.path)
-                    const fileDiff = diffSections.get(changedFile.path)?.diff
-                    return (
-                      <div key={changedFile.path} className="overflow-hidden rounded border border-(--color-border-subtle) bg-(--bg-card)">
-                        <button
-                          type="button"
-                          onClick={() => toggleDiffExpanded(changedFile.path)}
-                          className={cn(
-                            'flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs transition-colors hover:bg-(--bg-key) hover:text-(--color-text)',
-                            isSelected ? 'text-(--color-accent)' : 'text-(--color-text-2)',
-                          )}
-                          title={changedFile.path}
-                          aria-label={`${expanded ? 'Collapse' : 'Expand'} diff for ${changedFile.path}`}
-                          aria-expanded={expanded}
-                        >
-                          <ChevronRight size={12} className={cn('shrink-0 text-(--color-text-subtle) transition-transform', expanded && 'rotate-90')} aria-hidden="true" />
-                          <FileTypeIcon name={changedFile.path} size={13} />
-                          <span className="min-w-0 flex-1 truncate font-mono">{changedFile.path}</span>
-                          <span className="shrink-0 font-mono text-[10px] text-(--color-diff-add-text)">{changedFile.additions > 0 ? `+${changedFile.additions}` : ''}</span>
-                          <span className="shrink-0 font-mono text-[10px] text-(--color-diff-del-text)">{changedFile.deletions > 0 ? `-${changedFile.deletions}` : ''}</span>
-                          <span className="shrink-0 font-mono text-[10px] font-semibold text-(--accent-orange-text)" aria-label={CHANGED_STATUS_LABELS[changedFile.status]}>{changedFile.status}</span>
-                        </button>
-                        {expanded && (
-                          <div className="border-t border-(--color-border-subtle)">
-                            {fileDiff ? <div className="max-h-[70vh] min-h-0 overflow-y-auto overscroll-contain touch-pan-y"><DiffPreview diff={fileDiff} /></div>
-                              : <p className="px-2 py-3 text-xs text-(--color-text-subtle)">No diff body for this file.</p>}
+                {subTab === 'changes' ? (
+                  diff.isLoading || files.isLoading ? (
+                    <p className="px-2 py-4 text-xs text-(--color-text-subtle)">Loading changed files…</p>
+                  ) : diff.isError ? (
+                    <p className="px-2 py-4 text-xs text-(--color-error)">Failed to load changed files</p>
+                  ) : !diff.data?.is_git_repo ? (
+                    <p className="px-2 py-4 text-xs text-(--color-text-subtle)">Not a git repository</p>
+                  ) : changedFiles.length === 0 ? (
+                    <p className="px-2 py-4 text-xs text-(--color-text-subtle)">No changed files</p>
+                  ) : (
+                    <div>
+                      {diff.data.truncated && <p className="mb-2 rounded bg-(--color-warning)/10 px-2 py-1 text-xs text-(--color-warning)">Changed list may be incomplete because the diff was truncated.</p>}
+                      <div className="space-y-2">
+                        {changedFiles.map((changedFile) => {
+                          const isSelected = selectedFilePath === changedFile.path
+                          const expanded = expandedDiffs.has(changedFile.path)
+                          const fileDiff = diffSections.get(changedFile.path)?.diff
+                          return (
+                            <div key={changedFile.path} className="overflow-hidden rounded border border-(--color-border-subtle) bg-(--bg-card)">
+                              <button
+                                type="button"
+                                onClick={() => toggleDiffExpanded(changedFile.path)}
+                                className={cn(
+                                  'flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs transition-colors hover:bg-(--bg-key) hover:text-(--color-text) cursor-pointer',
+                                  isSelected ? 'text-(--color-accent)' : 'text-(--color-text-2)',
+                                )}
+                                title={changedFile.path}
+                                aria-label={`${expanded ? 'Collapse' : 'Expand'} diff for ${changedFile.path}`}
+                                aria-expanded={expanded}
+                              >
+                                <ChevronRight size={12} className={cn('shrink-0 text-(--color-text-subtle) transition-transform', expanded && 'rotate-90')} aria-hidden="true" />
+                                <FileTypeIcon name={changedFile.path} size={13} />
+                                <span className="min-w-0 flex-1 truncate font-mono">{changedFile.path}</span>
+                                <span className="shrink-0 font-mono text-[10px] text-(--color-diff-add-text)">{changedFile.additions > 0 ? `+${changedFile.additions}` : ''}</span>
+                                <span className="shrink-0 font-mono text-[10px] text-(--color-diff-del-text)">{changedFile.deletions > 0 ? `-${changedFile.deletions}` : ''}</span>
+                                <span className="shrink-0 font-mono text-[10px] font-semibold text-(--accent-orange-text)" aria-label={CHANGED_STATUS_LABELS[changedFile.status]}>{changedFile.status}</span>
+                              </button>
+                              {expanded && (
+                                <div className="border-t border-(--color-border-subtle)">
+                                  {fileDiff ? <div className="max-h-[70vh] min-h-0 overflow-y-auto overscroll-contain touch-pan-y"><DiffPreview diff={fileDiff} /></div>
+                                    : <p className="px-2 py-3 text-xs text-(--color-text-subtle)">No diff body for this file.</p>}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                ) : subTab === 'commits' ? (
+                  gitHistory.isLoading ? (
+                    <p className="px-2 py-4 text-xs text-(--color-text-subtle)">Loading commits…</p>
+                  ) : gitHistory.isError ? (
+                    <p className="px-2 py-4 text-xs text-(--color-error)">Failed to load commits</p>
+                  ) : gitHistory.data?.pages[0]?.is_git_repo === false ? (
+                    <p className="px-2 py-4 text-xs text-(--color-text-subtle)">Not a git repository</p>
+                  ) : commits.length === 0 ? (
+                    <p className="px-2 py-4 text-xs text-(--color-text-subtle)">No commits found</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {commits.map((commit) => {
+                        const isExpanded = expandedCommitSha === commit.sha
+                        return (
+                          <div key={commit.sha} className="overflow-hidden rounded border border-(--color-border-subtle) bg-(--bg-card) p-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setExpandedCommitSha((prev) => (prev === commit.sha ? null : commit.sha))
+                                setExpandedCommitFiles(new Set())
+                              }}
+                              className="flex w-full cursor-pointer flex-col gap-1 text-left"
+                            >
+                              <div className="flex w-full items-start justify-between gap-1.5">
+                                <div className="flex items-start gap-1.5 min-w-0 flex-1">
+                                  <span className="shrink-0 font-mono text-xs text-(--color-text-subtle) select-none mt-0.5">•</span>
+                                  <span className="truncate font-mono text-[11px] font-semibold text-(--color-text)">
+                                    {commit.subject}
+                                  </span>
+                                </div>
+                                <span className="shrink-0 font-mono text-[9px] text-(--color-text-subtle) bg-(--bg-key) px-1 py-0.5 rounded border border-(--color-border)/30">
+                                  {commit.short_sha}
+                                </span>
+                              </div>
+
+                              {commit.refs && (
+                                <div className="flex flex-wrap gap-1 mt-0.5">
+                                  {commit.refs.split(',').map((ref) => (
+                                    <span key={ref} className="text-[9px] font-semibold px-1 rounded bg-(--color-accent)/10 text-(--color-accent) border border-(--color-accent)/20">
+                                      {ref.trim()}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+
+                              <div className="flex w-full items-center justify-between text-[10px] text-(--color-text-muted) mt-1">
+                                <span>{commit.author_name}</span>
+                                <span>{new Date(commit.timestamp * 1000).toLocaleDateString()}</span>
+                              </div>
+                            </button>
+
+                            {isExpanded && (
+                              <CommitDetail
+                                commitDiff={commitDiff}
+                                commitChangedFiles={commitChangedFiles}
+                                commitDiffSections={commitDiffSections}
+                                expandedCommitFiles={expandedCommitFiles}
+                                setExpandedCommitFiles={setExpandedCommitFiles}
+                              />
+                            )}
+                          </div>
+                        )
+                      })}
+
+                      {gitHistory.isFetchingNextPage && (
+                        <p className="text-center py-2 text-[10px] text-(--color-text-subtle)">Loading more commits…</p>
+                      )}
+                      <div ref={sentinelRef} className="h-1" />
+                    </div>
+                  )
+                ) : (
+                  gitHistory.isLoading ? (
+                    <p className="px-2 py-4 text-xs text-(--color-text-subtle)">Loading tree graph…</p>
+                  ) : gitHistory.isError ? (
+                    <p className="px-2 py-4 text-xs text-(--color-error)">Failed to load tree graph</p>
+                  ) : gitHistory.data?.pages[0]?.is_git_repo === false ? (
+                    <p className="px-2 py-4 text-xs text-(--color-text-subtle)">Not a git repository</p>
+                  ) : (
+                    <div className="flex flex-col h-full min-h-0">
+                      <div className="flex items-center justify-between gap-2 border-b border-(--color-border-subtle) pb-2 mb-2 shrink-0">
+                        <label className="flex items-center gap-1.5 text-xs text-(--color-text-2) cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={allBranches}
+                            onChange={(event) => setAllBranches(event.target.checked)}
+                            className="rounded border-(--color-border) text-(--color-accent) focus:ring-(--color-accent) h-3.5 w-3.5 cursor-pointer"
+                          />
+                          <span>All Branches</span>
+                        </label>
+                      </div>
+                      <div className="min-h-0 flex-1 overflow-auto rounded bg-(--bg-key)/20 border border-(--color-border-subtle) p-2 select-none overscroll-contain">
+                        {parsedGraphLines.length === 0 ? (
+                          <p className="px-2 py-4 text-xs text-(--color-text-subtle)">No graph history.</p>
+                        ) : (
+                          <div className="flex flex-col min-w-max">
+                            {parsedGraphLines.map((line) => (
+                              <div key={line.key} className="flex items-center gap-2 hover:bg-(--bg-key)/40 px-1 py-0.5 rounded transition-colors group h-5">
+                                <span className="font-mono text-[11px] leading-none whitespace-pre select-none shrink-0 tracking-widest">
+                                  {renderGraphPrefix(line.graphPart)}
+                                </span>
+                                {line.sha ? (
+                                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setSubTab('commits')
+                                        setExpandedCommitSha(line.sha ?? null)
+                                        setExpandedCommitFiles(new Set())
+                                      }}
+                                      className="shrink-0 font-mono text-[9px] text-(--color-text-subtle) bg-(--bg-card) px-1 py-0.5 rounded border border-(--color-border-subtle) hover:bg-(--color-accent)/10 hover:text-(--color-accent) hover:border-(--color-accent)/30 transition-colors cursor-pointer"
+                                      title="Click to view commit details"
+                                    >
+                                      {line.sha.substring(0, 7)}
+                                    </button>
+                                    {line.decorations && (
+                                      <div className="flex items-center gap-1 shrink-0 max-w-[200px] overflow-hidden">
+                                        {line.decorations.split(',').map((ref) => {
+                                          const trimmed = ref.trim()
+                                          const isHead = trimmed.includes('HEAD ->')
+                                          const isRemote = trimmed.includes('origin/')
+                                          return (
+                                            <span
+                                              key={ref}
+                                              className={cn(
+                                                "text-[8px] font-semibold px-1 py-0.5 rounded border truncate leading-none select-none",
+                                                isHead
+                                                  ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                                                  : isRemote
+                                                  ? "bg-rose-500/10 text-rose-500 border-rose-500/20"
+                                                  : "bg-(--color-accent)/10 text-(--color-accent) border-(--color-accent)/20"
+                                              )}
+                                              title={trimmed}
+                                            >
+                                              {trimmed}
+                                            </span>
+                                          )
+                                        })}
+                                      </div>
+                                    )}
+                                    <span className="truncate font-mono text-[11px] text-(--color-text-2) group-hover:text-(--color-text) transition-colors flex-1" title={line.message}>
+                                      {line.message}
+                                    </span>
+                                  </div>
+                                ) : (
+                                  line.raw.trim().length > line.graphPart.trim().length && (
+                                    <span className="font-mono text-[11px] text-(--color-text-subtle) truncate flex-1">
+                                      {line.raw.substring(line.graphPart.length)}
+                                    </span>
+                                  )
+                                )}
+                              </div>
+                            ))}
                           </div>
                         )}
                       </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )
-          }
+                    </div>
+                  ))
+                }
               </div>
             </div>
           ) : activeTab?.type === 'file' ? (
@@ -428,7 +904,17 @@ export function CodingWorkspacePanel({
             </div>
           ) : null}
         </div>
-        <button type="button" onClick={() => { void files.refetch(); void diff.refetch() }} className="flex items-center justify-center gap-1.5 border-t border-(--color-border) px-3 py-2 text-xs text-(--color-text-muted) hover:bg-(--bg-key)">
+        <button
+          type="button"
+          onClick={() => {
+            void files.refetch()
+            void diff.refetch()
+            if (subTab === 'commits' || subTab === 'tree') {
+              void gitHistory.refetch()
+            }
+          }}
+          className="flex items-center justify-center gap-1.5 border-t border-(--color-border) px-3 py-2 text-xs text-(--color-text-muted) hover:bg-(--bg-key)"
+        >
           <RefreshCw size={12} /> Refresh
         </button>
       </div>

@@ -190,10 +190,7 @@ jobs:
         run: cargo binstall --no-confirm --force --version 2.11.1 tauri-cli
 
       - name: Generate platform icons
-        working-directory: desktop/src-tauri
-        run: |
-          rm -f icons/32x32.png icons/64x64.png icons/128x128.png icons/128x128@2x.png icons/icon.icns icons/icon.ico
-          cargo tauri icon icons/icon.png
+        run: python3 scripts/generate_icons.py
 
 
       - name: Build Python sidecar bundle

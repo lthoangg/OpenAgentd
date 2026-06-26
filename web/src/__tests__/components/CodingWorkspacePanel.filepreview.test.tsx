@@ -17,6 +17,7 @@ let isMacOverlay = false
 const Icon = () => null
 mock.module('lucide-react', () => ({
   Check: Icon,
+  ChevronDown: Icon,
   ChevronRight: Icon,
   Copy: Icon,
   Download: Icon,
@@ -89,7 +90,7 @@ describe('Coding workspace two-layer file preview', () => {
     await renderWorkspacePanel(onFileSelect, 'README.md')
 
     await waitFor(() => expect(onFileSelect).toHaveBeenCalledWith(readme))
-    expect(screen.getAllByTitle('README.md').length).toBeGreaterThanOrEqual(1)
+    await waitFor(() => expect(screen.getAllByTitle('README.md').length).toBeGreaterThanOrEqual(1))
     await waitFor(() => expect(screen.getByText('const')).toBeTruthy())
   })
 
@@ -98,7 +99,7 @@ describe('Coding workspace two-layer file preview', () => {
     const { CodingWorkspacePanel, queryClient, renderResult } = await renderWorkspacePanel(onFileSelect, 'README.md')
 
     await waitFor(() => expect(onFileSelect).toHaveBeenCalledWith(readme))
-    await userEvent.setup().click(screen.getByRole('button', { name: /changes/i }))
+    await userEvent.setup().click(screen.getByRole('button', { name: /git/i }))
     expect(screen.getByText('Not a git repository')).toBeTruthy()
 
     renderResult.rerender(
@@ -121,7 +122,7 @@ describe('Coding workspace two-layer file preview', () => {
     await user.click(screen.getByTitle('README.md'))
 
     expect(onFileSelect).toHaveBeenCalledWith(readme)
-    expect(screen.getByRole('button', { name: /changes/i })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /git/i })).toBeTruthy()
     expect(screen.getByText('const')).toBeTruthy()
   })
 
@@ -229,7 +230,7 @@ describe('Coding workspace two-layer file preview', () => {
   it('hides the workspace tab scrollbar while keeping horizontal overflow scrollable', async () => {
     await renderWorkspacePanel()
 
-    const tabRow = screen.getByRole('button', { name: /changes/i }).parentElement
+    const tabRow = screen.getByRole('button', { name: /git/i }).parentElement
     expect(tabRow?.className).toContain('overflow-x-auto')
     expect(tabRow?.className).toContain('scrollbar-none')
   })

@@ -7,7 +7,7 @@ import { formatRelativeDate } from '@/utils/format'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
 import { mediumHapticFeedback } from '@/lib/haptics'
-import { formatScheduleLabel, TASK_LONG_PRESS_MOVE_TOLERANCE, TASK_LONG_PRESS_MS } from './utils'
+import { formatScheduleLabel, slugify, TASK_LONG_PRESS_MOVE_TOLERANCE, TASK_LONG_PRESS_MS } from './utils'
 import { ModeBadge } from './ModeBadge'
 
 export function TaskListItem({
@@ -104,7 +104,12 @@ export function TaskListItem({
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-(--color-text)">{task.name}</p>
+          <div className="flex items-baseline gap-2 flex-wrap">
+            <p className="truncate text-sm font-medium text-(--color-text)">{task.name}</p>
+            <span className="font-mono text-[10px] text-(--color-text-muted) break-all">
+              {slugify(task.name)}
+            </span>
+          </div>
           <p className="mt-0.5 truncate text-xs text-(--color-text-muted)">
             {formatScheduleLabel(task)}
           </p>

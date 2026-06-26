@@ -39,20 +39,25 @@ class TestNameValidation:
         )
         assert body.name == "my.task-1_v2"
 
+    def test_valid_friendly_title(self):
+        body = ScheduledTaskCreate(
+            name="Daily Standup Meeting 2026! / Backup",
+            mode="normal",
+            schedule_type="every",
+            every_seconds=60,
+            prompt="hi",
+        )
+        assert body.name == "Daily Standup Meeting 2026! / Backup"
+
     @pytest.mark.parametrize(
-        "bad",
+        "bad,expected_err",
         [
-            "",  # empty
-            ".leading-dot",  # bad first char
-            "-leading-dash",
-            "_leading-underscore",
-            "has space",
-            "has/slash",
-            "x" * 65,  # too long (> 64)
-            "weird!chars",
+            ("", "name cannot be empty"),
+            ("   ", "name cannot be empty"),
+            ("x" * 101, "name must be 100 characters or less"),
         ],
     )
-    def test_invalid_names_rejected(self, bad):
+    def test_invalid_names_rejected(self, bad, expected_err):
         with pytest.raises(ValidationError) as excinfo:
             ScheduledTaskCreate(
                 name=bad,
@@ -61,7 +66,7 @@ class TestNameValidation:
                 every_seconds=60,
                 prompt="hi",
             )
-        assert "name must match" in str(excinfo.value)
+        assert expected_err in str(excinfo.value)
 
 
 # ---------------------------------------------------------------------------

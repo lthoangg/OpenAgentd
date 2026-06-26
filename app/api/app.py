@@ -40,7 +40,7 @@ from app.core.version import VERSION
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup / shutdown lifecycle."""
-    logger.info("server_starting version={}", VERSION)
+    logger.info("server_starting version={} app_env={}", VERSION, settings.APP_ENV)
 
     ensure_workspace_initialized()
 

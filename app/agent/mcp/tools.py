@@ -61,6 +61,12 @@ class MCPTool(Tool):
     Unlike the base ``Tool``, the JSON Schema comes from the MCP server's
     ``inputSchema`` rather than being derived from a Python function signature.
     Calls are forwarded to ``session.call_tool(remote_name, args)``.
+
+    The adapter goes through ``super().__init__`` (overriding :meth:`_build`)
+    so every base ``Tool`` attribute — ``_args_schema``, ``_model_param``,
+    ``_description_factory``, the metadata dunders — is initialised by the
+    parent. This keeps the subclass in lockstep with the base contract instead
+    of re-implementing it by hand.
     """
 
     def __init__(
@@ -70,6 +76,8 @@ class MCPTool(Tool):
         mcp_tool: "MCPToolDef",
         session_provider: "_SessionProvider",
     ) -> None:
+        # These are read by the overridden ``_build`` below, so they must be
+        # set before ``super().__init__`` (which calls ``_build``).
         self._server_name = server_name
         self._remote_name = mcp_tool.name
         self._session_provider = session_provider
@@ -81,29 +89,36 @@ class MCPTool(Tool):
             or f"Tool '{mcp_tool.name}' from MCP server '{server_name}'."
         )
 
-        # ── Build the OpenAI-compatible tool definition directly ─────────
+        # ``_invoke`` is the underlying callable — keeps repr / __wrapped__
+        # behaviour and lets the base ``__init__`` derive metadata consistently.
+        super().__init__(self._invoke, name=local_name, description=description)
+
+        # Surface the server-provided description as the introspection docstring
+        # (the base would otherwise inherit ``_invoke``'s internal docstring).
+        self.__doc__ = description
+
+    def _build(self) -> tuple[type[BaseModel], dict[str, Any], set[str]]:
+        """Override base schema synthesis with the MCP server's ``inputSchema``.
+
+        The base ``Tool`` derives parameters from a Python signature; an MCP
+        tool instead ships its own JSON Schema. We return a no-op validation
+        model (``arun`` is fully overridden, so it is never used) alongside the
+        server-sourced definition and an empty injected-param set.
+        """
         parameters = _sanitize_schema(
-            mcp_tool.inputSchema if hasattr(mcp_tool, "inputSchema") else None
+            self._mcp_tool.inputSchema
+            if hasattr(self._mcp_tool, "inputSchema")
+            else None
         )
-        self._definition = {
+        definition: dict[str, Any] = {
             "type": "function",
             "function": {
-                "name": local_name,
-                "description": description,
+                "name": self.name,
+                "description": self._custom_description,
                 "parameters": parameters,
             },
         }
-        self._model = _NoopParameters
-        self._injected_params: set[str] = set()
-        self._description_factory = None
-
-        self.name = local_name
-        self._custom_description = description
-        self._func = self._invoke  # for repr / __wrapped__ compatibility
-
-        self.__name__ = local_name
-        self.__doc__ = description
-        self.__wrapped__ = self._invoke
+        return _NoopParameters, definition, set()
 
     async def arun(self, _injected: dict[str, Any] | None = None, **kwargs: Any) -> Any:
         """Forward the call to the MCP server.

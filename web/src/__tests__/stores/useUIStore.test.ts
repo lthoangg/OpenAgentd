@@ -6,6 +6,7 @@ function resetUIStore(): void {
   useUIStore.setState({
     schedulerOpen: false,
     agentCapabilitiesOpen: false,
+    paletteOpen: false,
   })
 }
 
@@ -27,5 +28,25 @@ describe('useUIStore utility modals', () => {
 
     expect(useUIStore.getState().agentCapabilitiesOpen).toBe(false)
     expect(useUIStore.getState().schedulerOpen).toBe(false)
+  })
+
+  it('togglePalette closes the other panels', () => {
+    useUIStore.getState().toggleScheduler()
+    expect(useUIStore.getState().schedulerOpen).toBe(true)
+
+    useUIStore.getState().togglePalette()
+    expect(useUIStore.getState().paletteOpen).toBe(true)
+    expect(useUIStore.getState().schedulerOpen).toBe(false)
+    expect(useUIStore.getState().agentCapabilitiesOpen).toBe(false)
+  })
+
+  it('closeAll resets all three panels', () => {
+    useUIStore.setState({ schedulerOpen: true, agentCapabilitiesOpen: true, paletteOpen: true })
+    useUIStore.getState().closeAll()
+    expect(useUIStore.getState()).toMatchObject({
+      schedulerOpen: false,
+      agentCapabilitiesOpen: false,
+      paletteOpen: false,
+    })
   })
 })

@@ -117,7 +117,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const [openWorkspaceDialogKey, setOpenWorkspaceDialogKey] = useState(0)
   const [showTodos, setShowTodos] = useState(false)
   const [showMobileActions, setShowMobileActions] = useState(false)
-  const [showPalette, setShowPalette] = useState(false)
+
   const [fileRefsEnabled, setFileRefsEnabled] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>('agent')
   const draftBySessionRef = useRef<Record<string, SessionDraft>>({})
@@ -166,10 +166,13 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   // Utility modal state lives in useUIStore so only one can be open at a time.
   const schedulerOpen = useUIStore((s) => s.schedulerOpen)
   const agentCapabilitiesOpen = useUIStore((s) => s.agentCapabilitiesOpen)
+  const paletteOpen = useUIStore((s) => s.paletteOpen)
   const toggleScheduler = useUIStore((s) => s.toggleScheduler)
   const toggleAgentCapabilities = useUIStore((s) => s.toggleAgentCapabilities)
+  const togglePalette = useUIStore((s) => s.togglePalette)
   const closeScheduler = useUIStore((s) => s.closeScheduler)
   const closeAgentCapabilities = useUIStore((s) => s.closeAgentCapabilities)
+  const closePalette = useUIStore((s) => s.closePalette)
 
   // Subscribe to active-agent stream fields directly to avoid recomputing on
   // every other agent's tick.
@@ -417,7 +420,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   }, [focusInput])
 
   useEffect(() => {
-    if (isMobile || showPalette || (mode === 'coding' && (!workspace || isCodingSessionLoading))) return
+    if (isMobile || paletteOpen || (mode === 'coding' && (!workspace || isCodingSessionLoading))) return
 
     const isEditableElement = (target: EventTarget | null) => {
       if (!(target instanceof HTMLElement)) return false
@@ -436,7 +439,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
 
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [isCodingSessionLoading, isMobile, mode, showPalette, workspace])
+  }, [isCodingSessionLoading, isMobile, mode, paletteOpen, workspace])
 
   const handleAddFileComment = useCallback((path: string, startLine: number, endLine: number) => {
     const ref = startLine === endLine ? `@${path}#L${startLine}` : `@${path}#L${startLine}-L${endLine}`
@@ -684,7 +687,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     a: toggleAgentCapabilities,
     f: handleWorkspaceFiles,
     t: () => { if (sessionIdState) setShowTodos((v) => !v) },
-    p: isMobile ? undefined : () => setShowPalette((v) => !v),
+    p: isMobile ? undefined : togglePalette,
     b: mode === 'coding' ? handleCodingSidebarToggle : undefined,
     // Ctrl+S — open the scheduler drawer (state in useUIStore).
     s: toggleScheduler,
@@ -828,7 +831,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             workspace={workspace}
             onCollapse={() => setCodingSidebarCollapsed(true)}
             openWorkspaceDialogKey={openWorkspaceDialogKey}
-            onCommandPalette={() => setShowPalette(true)}
+            onCommandPalette={togglePalette}
             desktopCollapsed={codingSidebarCollapsed}
             mobileOpen={mobileSidebarOpen}
             onMobileClose={() => setMobileSidebarOpen(false)}
@@ -836,7 +839,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         ) : (
           <Sidebar
             currentSessionId={sessionIdState || undefined}
-            onCommandPalette={() => setShowPalette(true)}
+            onCommandPalette={togglePalette}
             onNewChat={handleNewSession}
             mobileOpen={mobileSidebarOpen}
             onMobileClose={() => setMobileSidebarOpen(false)}
@@ -1056,9 +1059,9 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         schedulerOpen={schedulerOpen}
         onCloseScheduler={closeScheduler}
         workspace={workspace}
-        showPalette={showPalette}
+        showPalette={paletteOpen}
         paletteCommands={paletteCommands}
-        onClosePalette={() => setShowPalette(false)}
+        onClosePalette={closePalette}
       />    </div>
   )
 }

@@ -6,6 +6,7 @@
  */
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
+import { useUIStore, _registerCloseSettings } from './useUIStore'
 
 export type SettingsSection =
   | 'about'
@@ -35,16 +36,23 @@ interface SettingsStore {
 }
 
 export const useSettingsStore = create<SettingsStore>()(
-  immer((set) => ({
+  immer((set) => {
+    // Register closeSettings with UIStore so its toggle actions can close
+    // the settings modal without creating a circular import.
+    _registerCloseSettings(() => useSettingsStore.getState().closeSettings())
+
+    return {
     open: false,
     section: 'about',
     selectedName: null,
-    openSettings: (section = 'about', name = null) =>
+    openSettings: (section = 'about', name = null) => {
+      useUIStore.getState().closeAll()
       set((state) => {
         state.open = true
         state.section = section
         state.selectedName = name ?? null
-      }),
+      })
+    },
     setSection: (section, name = null) =>
       set((state) => {
         state.section = section
@@ -54,5 +62,6 @@ export const useSettingsStore = create<SettingsStore>()(
       set((state) => {
         state.open = false
       }),
-  })),
+    }
+  }),
 )

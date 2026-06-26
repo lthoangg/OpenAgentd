@@ -10,34 +10,74 @@
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 
+/**
+ * Weak back-reference to closeSettings, set by useSettingsStore at module
+ * init to avoid a circular import. UIStore is the lower-level store; it
+ * cannot import useSettingsStore directly.
+ */
+let _closeSettings: (() => void) | null = null
+export function _registerCloseSettings(fn: () => void): void {
+  _closeSettings = fn
+}
+
 interface UIStore {
   schedulerOpen: boolean
   agentCapabilitiesOpen: boolean
+  paletteOpen: boolean
   toggleScheduler: () => void
   toggleAgentCapabilities: () => void
+  togglePalette: () => void
   closeScheduler: () => void
   closeAgentCapabilities: () => void
+  closePalette: () => void
+  closeAll: () => void
 }
 
 export const useUIStore = create<UIStore>()(
   immer((set) => ({
     schedulerOpen: false,
     agentCapabilitiesOpen: false,
-    toggleScheduler: () => set((state) => {
-      const nextOpen = !state.schedulerOpen
-      state.schedulerOpen = nextOpen
-      if (nextOpen) {
-        state.agentCapabilitiesOpen = false
-      }
-    }),
-    toggleAgentCapabilities: () => set((state) => {
-      const nextOpen = !state.agentCapabilitiesOpen
-      state.agentCapabilitiesOpen = nextOpen
-      if (nextOpen) {
-        state.schedulerOpen = false
-      }
-    }),
+    paletteOpen: false,
+    toggleScheduler: () => {
+      set((state) => {
+        const nextOpen = !state.schedulerOpen
+        state.schedulerOpen = nextOpen
+        if (nextOpen) {
+          state.agentCapabilitiesOpen = false
+          state.paletteOpen = false
+        }
+      })
+      if (useUIStore.getState().schedulerOpen) _closeSettings?.()
+    },
+    toggleAgentCapabilities: () => {
+      set((state) => {
+        const nextOpen = !state.agentCapabilitiesOpen
+        state.agentCapabilitiesOpen = nextOpen
+        if (nextOpen) {
+          state.schedulerOpen = false
+          state.paletteOpen = false
+        }
+      })
+      if (useUIStore.getState().agentCapabilitiesOpen) _closeSettings?.()
+    },
+    togglePalette: () => {
+      set((state) => {
+        const nextOpen = !state.paletteOpen
+        state.paletteOpen = nextOpen
+        if (nextOpen) {
+          state.schedulerOpen = false
+          state.agentCapabilitiesOpen = false
+        }
+      })
+      if (useUIStore.getState().paletteOpen) _closeSettings?.()
+    },
     closeScheduler: () => set((state) => { state.schedulerOpen = false }),
     closeAgentCapabilities: () => set((state) => { state.agentCapabilitiesOpen = false }),
+    closePalette: () => set((state) => { state.paletteOpen = false }),
+    closeAll: () => set((state) => {
+      state.schedulerOpen = false
+      state.agentCapabilitiesOpen = false
+      state.paletteOpen = false
+    }),
   }))
 )

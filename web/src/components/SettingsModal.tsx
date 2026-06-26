@@ -1,5 +1,5 @@
 /**
- * SettingsModal — VS Code–style full-screen settings overlay.
+ * SettingsModal — VS Code–style clean settings overlay.
  *
  * All navigation is internal: sidebar buttons + editor back/onCreated
  * callbacks update `useSettingsStore` without touching the URL.
@@ -85,16 +85,28 @@ function SidebarRow({
       onClick={onClick}
       aria-current={active ? 'page' : undefined}
       className={cn(
-        'group relative mx-2 flex h-9 w-[calc(100%-1rem)] items-center gap-2.5 rounded-md px-3 text-sm transition-colors',
-        'text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text)',
-        'focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-(--focus-ring)/40',
-        active && 'bg-(--bg-key) font-semibold text-(--color-text)',
+        'group relative flex h-8.5 w-full items-center gap-2.5 px-4 text-xs transition-colors text-left focus:outline-none',
+        'text-(--color-text-2) hover:bg-(--bg-key)/40 hover:text-(--color-text)',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40',
+        active && 'bg-(--bg-key)/70 font-semibold text-(--color-text)',
       )}
     >
-      <Icon size={15} className={cn('shrink-0', active ? 'text-(--color-text)' : 'text-(--color-text-muted)')} aria-hidden="true" />
-      <span className="min-w-0 flex-1 truncate text-left">{item.label}</span>
+      {/* VS Code active left vertical line indicator */}
+      {active && (
+        <span
+          className="absolute top-[4px] bottom-[4px] left-0 w-[3px] rounded-r bg-(--color-accent)"
+          aria-hidden="true"
+        />
+      )}
+      <Icon size={13} className={cn('shrink-0', active ? 'text-(--color-text)' : 'text-(--color-text-muted)')} aria-hidden="true" />
+      <span className="min-w-0 flex-1 truncate">{item.label}</span>
       {item.count !== undefined && item.count !== null && (
-        <span className={cn('shrink-0 font-mono text-[10px] tabular-nums', active ? 'font-semibold text-(--color-text-muted)' : 'text-(--color-text-muted)')}>
+        <span className={cn(
+          'shrink-0 font-mono text-[9px] tabular-nums px-1.5 py-0.5 rounded border transition-colors',
+          active
+            ? 'font-semibold text-(--color-text) bg-(--bg-page) border-(--color-border-strong)'
+            : 'text-(--color-text-muted) bg-(--bg-key)/50 border-(--color-border)',
+        )}>
           {item.count}
         </span>
       )}
@@ -104,7 +116,7 @@ function SidebarRow({
 
 function GroupLabel({ children }: { children: string }) {
   return (
-    <p className="px-3 pt-4 pb-1.5 font-mono text-[10px] font-semibold tracking-wider text-(--color-text-muted) uppercase select-none">
+    <p className="px-4 pt-3 pb-1 font-mono text-[9px] font-bold tracking-wider text-(--color-text-subtle)/85 uppercase select-none">
       {children}
     </p>
   )
@@ -133,14 +145,14 @@ function ModalSidebar({ section, onSelect }: { section: SettingsSection; onSelec
   ]
 
   return (
-    <nav aria-label="Settings categories" className="flex h-full w-60 shrink-0 flex-col overflow-y-auto border-r border-(--color-border) bg-(--bg-sidebar)">
+    <nav aria-label="Settings categories" className="flex h-full w-52 shrink-0 flex-col overflow-y-auto border-r border-(--color-border) bg-(--bg-sidebar) select-none">
       <GroupLabel>Configuration</GroupLabel>
       <div className="flex flex-col">
         {configItems.map((item) => (
           <SidebarRow key={item.section} item={item} active={active === item.section} onClick={() => onSelect(item.section)} />
         ))}
       </div>
-      <div className="mx-3 my-3 h-px bg-(--color-border)" role="separator" aria-hidden="true" />
+      <div className="mx-4 my-2.5 h-px bg-(--color-border)" role="separator" aria-hidden="true" />
       <GroupLabel>About</GroupLabel>
       <div className="flex flex-col">
         {aboutItems.map((item) => (
@@ -227,6 +239,36 @@ function SectionContent({ section, selectedName, setSection }: {
   }
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────
+
+function getBreadcrumbs(section: SettingsSection, selectedName: string | null): string[] {
+  const parts = ['Preferences', 'Settings']
+  if (section.startsWith('agents')) {
+    parts.push('Agents')
+    if (section === 'agents-new') parts.push('New')
+    if (section === 'agents-edit' && selectedName) parts.push(selectedName.replace(/^coding\//, ''))
+  } else if (section.startsWith('skills')) {
+    parts.push('Skills')
+    if (section === 'skills-new') parts.push('New')
+    if (section === 'skills-edit' && selectedName) parts.push(selectedName)
+  } else if (section.startsWith('mcp')) {
+    parts.push('MCP Servers')
+    if (section === 'mcp-new') parts.push('New')
+    if (section === 'mcp-edit' && selectedName) parts.push(selectedName)
+  } else {
+    const mapping: Record<string, string> = {
+      providers: 'Providers',
+      sandbox: 'Sandbox',
+      multimodal: 'Multimodal',
+      'title-generation': 'Title Generation',
+      notifications: 'Notifications',
+      about: 'About',
+    }
+    parts.push(mapping[section] || section)
+  }
+  return parts
+}
+
 // ── Modal ─────────────────────────────────────────────────────────────────
 
 export function SettingsModal() {
@@ -244,6 +286,8 @@ export function SettingsModal() {
     return () => window.removeEventListener('keydown', handler)
   }, [open, closeSettings])
 
+  const breadcrumbs = getBreadcrumbs(section, selectedName)
+
   return (
     <AnimatePresence>
       {open && (
@@ -254,7 +298,7 @@ export function SettingsModal() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
-            className="fixed inset-0 z-50 bg-black/50"
+            className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[1px]"
             onClick={closeSettings}
             aria-hidden="true"
           />
@@ -264,41 +308,74 @@ export function SettingsModal() {
             role="dialog"
             aria-modal="true"
             aria-label="Settings"
-            initial={{ opacity: 0, scale: 0.97, y: 6 }}
+            initial={{ opacity: 0, scale: 0.98, y: 4 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.97, y: 6 }}
-            transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+            exit={{ opacity: 0, scale: 0.98, y: 4 }}
+            transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
             className={cn(
-              'fixed inset-4 z-50 flex flex-col overflow-hidden rounded-xl',
+              'fixed inset-2 z-50 flex flex-col overflow-hidden rounded-lg',
               'border border-(--color-border) bg-(--bg-page) shadow-2xl',
-              'md:inset-[5vh_auto] md:left-1/2 md:-translate-x-1/2',
-              'md:w-[min(90vw,72rem)] md:max-h-[90vh]',
+              'md:inset-[4vh_auto] md:left-1/2 md:-translate-x-1/2',
+              'md:w-[min(95vw,76rem)] md:max-h-[92vh]',
             )}
           >
-            {/* Header */}
-            <div className="flex h-12 shrink-0 items-center justify-between border-b border-(--color-border) bg-(--bg-page) px-4">
-              <span className="text-sm font-semibold text-(--color-text)">Settings</span>
+            {/* Header / Title Bar */}
+            <div className="flex h-11 shrink-0 items-center justify-between border-b border-(--color-border) bg-(--bg-sidebar) px-4 select-none">
+              <div className="flex items-center gap-3">
+                {/* macOS traffic light window controls mock */}
+                <div className="flex items-center gap-1.5 pr-3 border-r border-(--color-border)/60 h-4">
+                  <button
+                    type="button"
+                    onClick={closeSettings}
+                    className="h-3 w-3 rounded-full bg-red-500/40 hover:bg-red-500 transition-colors cursor-pointer focus:outline-none"
+                    title="Close"
+                    aria-label="Close"
+                  />
+                  <span className="h-3 w-3 rounded-full bg-yellow-500/25" />
+                  <span className="h-3 w-3 rounded-full bg-green-500/25" />
+                </div>
+                <span className="text-xs font-semibold text-(--color-text)">Settings</span>
+              </div>
+
+              {/* Simple Close Button */}
               <button
                 type="button"
                 onClick={closeSettings}
-                className="flex h-7 w-7 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
+                className="flex h-7 w-7 items-center justify-center rounded text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
                 aria-label="Close settings"
                 title="Close (Esc)"
               >
-                <X size={14} aria-hidden="true" />
+                <X size={13} aria-hidden="true" />
               </button>
             </div>
 
             {/* Body */}
             <div className="flex min-h-0 flex-1 overflow-hidden">
+              {/* Left Sidebar categories panel */}
               <ModalSidebar section={section} onSelect={(s) => setSection(s)} />
-              <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
-                <SectionContent
-                  key={`${section}:${selectedName ?? ''}`}
-                  section={section}
-                  selectedName={selectedName}
-                  setSection={setSection}
-                />
+
+              {/* Right content panel */}
+              <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-(--bg-page)">
+                {/* Breadcrumbs Bar */}
+                <div className="flex h-8.5 shrink-0 items-center gap-1.5 border-b border-(--color-border) bg-(--bg-page) px-6 font-mono text-[10px] text-(--color-text-muted) select-none">
+                  {breadcrumbs.map((crumb, idx) => (
+                    <div key={idx} className="flex items-center gap-1.5">
+                      {idx > 0 && <span className="text-(--color-text-subtle)/50">/</span>}
+                      <span className={cn(idx === breadcrumbs.length - 1 ? 'text-(--color-text) font-semibold' : 'text-(--color-text-subtle)')}>
+                        {crumb}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="min-h-0 flex-1 overflow-hidden flex flex-col">
+                  <SectionContent
+                    key={`${section}:${selectedName ?? ''}`}
+                    section={section}
+                    selectedName={selectedName}
+                    setSection={setSection}
+                  />
+                </div>
               </main>
             </div>
           </motion.div>

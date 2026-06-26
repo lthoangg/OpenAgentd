@@ -38,56 +38,60 @@ export function NotificationSettingsPage() {
 
   return (
     <>
-      <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-3 border-b border-(--color-border) bg-(--bg-page) px-4">
-        <Bell size={15} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
-        <h1 className="flex-1 truncate text-sm font-semibold text-(--color-text)">Notifications</h1>
+      <header className="sticky top-0 z-10 flex h-11 shrink-0 items-center gap-2 border-b border-(--color-border) bg-(--bg-page) px-4 select-none">
+        <Bell size={13} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
+        <h1 className="flex-1 truncate text-xs font-semibold text-(--color-text)">Notifications</h1>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-2xl space-y-5 p-6">
-          <p className="text-sm leading-relaxed text-(--color-text-muted)">
+      <div className="min-h-0 flex-1 overflow-y-auto bg-(--bg-page)">
+        <div className="mx-auto max-w-3xl space-y-4 p-5">
+          <p className="text-xs leading-relaxed text-(--color-text-muted)">
             App notifications appear when OpenAgentd is running in a Tauri
             desktop or mobile app. Desktop notifications are skipped while the
             app window is focused.
           </p>
 
-          <section className="space-y-3 rounded-xl border border-(--color-border) bg-(--bg-card) p-4">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-(--color-text-muted)">
+          <section className="space-y-3 rounded-md border border-(--color-border) bg-(--bg-card) p-4 shadow-sm">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-(--color-text-muted) border-b border-(--color-border)/60 pb-1.5 mb-3">
               Status
             </h2>
 
-            <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm md:min-h-0">
+            <label className="flex min-h-11 cursor-pointer items-center gap-3 text-xs md:min-h-0 select-none">
               <Switch
                 checked={enabled}
                 onCheckedChange={handleEnabledChange}
               />
-              <span className="text-(--color-text)">Enabled</span>
+              <span className="text-(--color-text) font-medium">Enabled</span>
             </label>
-            <p className="text-xs text-(--color-text-muted)">
+
+            <p className="text-xs text-(--color-text-muted) leading-relaxed">
               OpenAgentd will notify you when an assistant finishes responding,
               a background task completes, or a reminder fires. Notifications
               are skipped while the app window is focused.
             </p>
 
-            <p className="text-xs text-(--color-text-muted)">
+            <p className="text-xs text-(--color-text-subtle) leading-relaxed">
               Notification sounds are controlled by your operating system. OpenAgentd does not play an extra in-app sound.
             </p>
           </section>
 
-          <section className="space-y-3 rounded-xl border border-(--color-border) bg-(--bg-card) p-4">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-(--color-text-muted)">
+          <section className="space-y-3 rounded-md border border-(--color-border) bg-(--bg-card) p-4 shadow-sm">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-(--color-text-muted) border-b border-(--color-border)/60 pb-1.5 mb-3">
               Test
             </h2>
-            <p className="text-xs text-(--color-text-muted)">
+
+            <p className="text-xs text-(--color-text-muted) leading-relaxed">
               Send one notification now to confirm OS permissions and native
               app integration are working.
             </p>
+
             <Button size="sm" className="min-h-11 md:min-h-0" onClick={handleTest} disabled={!enabled || testing}>
               <BellRing size={12} aria-hidden="true" />
               {testing ? 'Sending…' : 'Send test notification'}
             </Button>
+
             {testMessage && (
-              <p className="text-xs text-(--color-text-muted)" role="status">
+              <p className="text-xs font-mono text-(--color-text-subtle)" role="status">
                 {testMessage}
               </p>
             )}

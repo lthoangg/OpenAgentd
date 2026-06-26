@@ -90,20 +90,20 @@ export function SettingsListView({
   const countLabel = total === 1 ? '1 item' : `${total} items`
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto">
-      <div className="mx-auto max-w-4xl px-4 pt-8 pb-12 sm:px-8">
+    <div className="min-h-0 flex-1 overflow-y-auto bg-(--bg-page)">
+      <div className="px-6 py-5 space-y-4">
         {/* ── Title row ─────────────────────────────────────────────────── */}
-        <header className="flex items-start gap-4">
+        <header className="flex items-start gap-4 select-none">
           <div className="min-w-0 flex-1">
-            <h1 className="text-2xl font-semibold tracking-tight text-(--color-text)">
+            <h1 className="text-sm font-semibold tracking-tight text-(--color-text)">
               {title}
             </h1>
-            <p className="mt-1 text-sm text-(--color-text-muted)">
+            <p className="mt-1 text-xs text-(--color-text-muted) leading-relaxed">
               {description}
             </p>
           </div>
           {newAction ?? (
-            <Button size="sm" onClick={onNew}>
+            <Button size="sm" onClick={onNew} className="h-8 text-xs">
               <Plus size={13} aria-hidden="true" />
               {newLabel}
             </Button>
@@ -111,18 +111,18 @@ export function SettingsListView({
         </header>
 
         {/* ── Optional tabs ─────────────────────────────────────────────── */}
-        {tabs && <div className="mt-6">{tabs}</div>}
+        {tabs && <div className="mt-2">{tabs}</div>}
 
         {/* ── Filter ────────────────────────────────────────────────────── */}
         {(isLoading || rows.length > 0) && (
-          <div className="mt-4">
+          <div>
             <label htmlFor={filterId} className="sr-only">
               {filterPlaceholder}
             </label>
-            <div className="relative flex h-9 items-center rounded-lg border border-(--color-border) bg-(--bg-card) focus-within:border-(--focus-ring) focus-within:ring-3 focus-within:ring-(--focus-ring)/30">
+            <div className="relative flex h-8 items-center rounded-md border border-(--color-border) bg-(--bg-input) focus-within:border-(--focus-ring) focus-within:ring-2 focus-within:ring-(--focus-ring)/30">
               <Search
-                size={13}
-                className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-(--color-text-muted)"
+                size={12}
+                className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-(--color-text-muted)"
                 aria-hidden="true"
               />
               <Input
@@ -131,10 +131,10 @@ export function SettingsListView({
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder={filterPlaceholder}
                 aria-label={filterPlaceholder}
-                className="h-full flex-1 border-0 bg-transparent pr-3 pl-9 text-sm focus:ring-0 focus-visible:ring-0"
+                className="h-full flex-1 border-0 bg-transparent pr-3 pl-8 text-xs focus:ring-0 focus-visible:ring-0"
               />
               {!isLoading && (
-                <span className="pr-3 font-mono text-[11px] tabular-nums text-(--color-text-muted)">
+                <span className="pr-2.5 font-mono text-[10px] tabular-nums text-(--color-text-subtle)">
                   {countLabel}
                 </span>
               )}
@@ -143,36 +143,36 @@ export function SettingsListView({
         )}
 
         {/* ── Body ──────────────────────────────────────────────────────── */}
-        <div className="mt-3 space-y-2">
+        <div className="space-y-1">
           {isLoading && (
-            <p className="py-10 text-center text-sm text-(--color-text-muted)">
+            <p className="py-8 text-center text-xs text-(--color-text-muted) font-mono">
               Loading…
             </p>
           )}
           {isError && (
-            <p className="py-10 text-center text-sm text-(--color-error)">
+            <p className="py-8 text-center text-xs text-(--color-error) font-mono">
               Failed to load.
             </p>
           )}
           {!isLoading && !isError && total === 0 && (
-            <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-(--color-border) bg-(--bg-card) px-4 py-12 text-center">
-              <p className="text-sm font-medium text-(--color-text)">{emptyTitle}</p>
-              <p className="max-w-md text-xs leading-relaxed text-(--color-text-muted)">
+            <div className="flex flex-col items-center gap-3 rounded-md border border-dashed border-(--color-border) bg-(--bg-card) px-4 py-8 text-center">
+              <p className="text-xs font-semibold text-(--color-text)">{emptyTitle}</p>
+              <p className="max-w-md text-[11px] leading-relaxed text-(--color-text-muted)">
                 {emptyBody}
               </p>
-              <Button size="sm" onClick={onNew}>
+              <Button size="sm" onClick={onNew} className="h-8 text-xs">
                 <Plus size={12} aria-hidden="true" />
                 {newLabel}
               </Button>
             </div>
           )}
           {!isLoading && !isError && total > 0 && filtered.length === 0 && (
-            <p className="py-10 text-center text-sm text-(--color-text-muted)">
+            <p className="py-8 text-center text-xs text-(--color-text-muted) font-mono">
               No matches for &ldquo;{query}&rdquo;.
             </p>
           )}
           {!isLoading && !isError && filtered.length > 0 && (
-            <ul className="space-y-2">
+            <ul className="space-y-1.5">
               {filtered.map((row) => (
                 <li key={row.key}>
                   <ListCard row={row} />
@@ -191,7 +191,7 @@ export function SettingsListView({
 function ListCard({ row }: { row: ListViewRow }) {
   if (row.kind === 'group') {
     return (
-      <div className="px-1 pt-3 pb-1 text-xs font-semibold uppercase tracking-wide text-(--color-text-muted)">
+      <div className="px-1 pt-2 pb-1 font-mono text-[9px] font-bold uppercase tracking-wider text-(--color-text-subtle) select-none">
         {row.title}
       </div>
     )
@@ -203,21 +203,21 @@ function ListCard({ row }: { row: ListViewRow }) {
       onClick={row.onClick}
       aria-current={row.active ? 'page' : undefined}
       className={cn(
-        'group flex min-h-11 w-full items-start gap-3 rounded-lg border bg-(--bg-card) px-4 py-3 text-left transition-colors',
-        'hover:border-(--color-border-strong)',
+        'group flex min-h-11 w-full items-start gap-3 rounded-md border bg-(--bg-card) px-3.5 py-2.5 text-left transition-all',
+        'hover:border-(--color-border-strong) hover:bg-(--bg-key)/10',
         'focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-(--focus-ring)/40',
         row.active
-          ? 'border-(--color-accent)'
+          ? 'border-(--color-accent) bg-(--bg-key)/25'
           : 'border-(--color-border)',
       )}
     >
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="truncate text-sm font-semibold text-(--color-text)">
+          <span className="truncate text-xs font-semibold text-(--color-text)">
             {row.title}
           </span>
           {row.badge && (
-            <span className="rounded-md bg-(--bg-key) px-1.5 py-0.5 font-mono text-[10px] text-(--color-text-muted) ring-1 ring-(--color-border)">
+            <span className="rounded bg-(--bg-key) px-1.5 py-0.5 font-mono text-[9px] text-(--color-text-muted) border border-(--color-border) select-none">
               {row.badge}
             </span>
           )}
@@ -226,7 +226,7 @@ function ListCard({ row }: { row: ListViewRow }) {
               <TooltipTrigger
                 render={
                   <span className="text-(--color-error)">
-                    <AlertCircle size={12} aria-label="Invalid configuration" />
+                    <AlertCircle size={11} aria-label="Invalid configuration" />
                   </span>
                 }
               />
@@ -235,17 +235,17 @@ function ListCard({ row }: { row: ListViewRow }) {
           )}
         </div>
         {row.description && (
-          <p className="mt-0.5 line-clamp-2 text-xs text-(--color-text-muted)">
+          <p className="mt-0.5 line-clamp-1 text-xs text-(--color-text-muted)">
             {row.description}
           </p>
         )}
         {row.meta && (
-          <p className="mt-1 truncate font-mono text-[10px] text-(--color-text-muted)/70">
+          <p className="mt-1 truncate font-mono text-[9px] text-(--color-text-subtle)">
             {row.meta}
           </p>
         )}
       </div>
-      {row.trailing && <div className="shrink-0">{row.trailing}</div>}
+      {row.trailing && <div className="shrink-0 self-center">{row.trailing}</div>}
     </button>
   )
 }

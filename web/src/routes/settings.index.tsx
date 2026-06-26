@@ -85,33 +85,36 @@ function UpdateSettingsCard() {
 
   return (
     <section className="rounded-md border border-(--color-border) bg-(--bg-card) p-4 shadow-sm">
-      <div className="flex items-start gap-3">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-(--bg-key) text-(--color-text-muted) ring-1 ring-(--color-border)" aria-hidden="true">
-          <Download size={18} />
+      <h2 className="text-xs font-semibold uppercase tracking-wider text-(--color-text-muted) border-b border-(--color-border)/60 pb-1.5 mb-3">
+        Updates
+      </h2>
+
+      <div className="flex items-start gap-3 mt-3">
+        <span className="flex h-8.5 w-8.5 shrink-0 items-center justify-center rounded bg-(--bg-key) text-(--color-text-muted) border border-(--color-border)" aria-hidden="true">
+          <Download size={15} />
         </span>
         <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-semibold text-(--color-text)">Updates</h2>
-          <p className="mt-1 text-xs leading-5 text-(--color-text-muted)">{description}</p>
+          <p className="text-xs leading-relaxed text-(--color-text-muted)">{description}</p>
           {status?.version && (status.status === 'available' || status.status === 'downloaded') ? (
-            <button className="mt-2 text-xs font-medium text-(--color-accent) underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)" onClick={() => void openReleaseNotes()}>
+            <button className="mt-1.5 text-[11px] font-medium text-(--color-accent) underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)" onClick={() => void openReleaseNotes()}>
               See release notes
             </button>
           ) : null}
         </div>
-        <span className="rounded-md bg-(--bg-key) px-2 py-0.5 text-[10px] font-medium text-(--color-text-muted)">{title}</span>
+        <span className="rounded bg-(--bg-key) px-1.5 py-0.5 text-[9px] font-semibold text-(--color-text-muted) border border-(--color-border) select-none">{title}</span>
       </div>
 
       <div className="mt-4 flex flex-wrap justify-end gap-2">
-        <button className="rounded-md border border-(--color-border) px-3 py-1.5 text-xs font-medium text-(--color-text) hover:bg-(--bg-page) disabled:cursor-not-allowed disabled:opacity-60" disabled={pending} onClick={() => void onCheck()}>
+        <button className="rounded border border-(--color-border) bg-(--bg-card) px-2.5 py-1 text-xs font-medium text-(--color-text) hover:bg-(--bg-key)/40 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none" disabled={pending} onClick={() => void onCheck()}>
           Check for updates
         </button>
         {status?.status === 'available' ? (
-          <button className="rounded-md border border-(--color-border-strong) bg-(--bg-key) px-3 py-1.5 text-xs font-medium text-(--color-text) hover:bg-(--bg-page) disabled:cursor-not-allowed disabled:opacity-60" disabled={pending} onClick={() => void onDownload()}>
+          <button className="rounded border border-(--color-border-strong) bg-(--bg-key) px-2.5 py-1 text-xs font-medium text-(--color-text) hover:bg-(--bg-key)/80 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none" disabled={pending} onClick={() => void onDownload()}>
             Download
           </button>
         ) : null}
         {status?.status === 'downloaded' ? (
-          <button className="rounded-md border border-(--color-border-strong) bg-(--bg-key) px-3 py-1.5 text-xs font-medium text-(--color-text) hover:bg-(--bg-page) disabled:cursor-not-allowed disabled:opacity-60" disabled={pending} onClick={() => void onInstall()}>
+          <button className="rounded border border-(--color-border-strong) bg-(--bg-key) px-2.5 py-1 text-xs font-medium text-(--color-text) hover:bg-(--bg-key)/80 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none" disabled={pending} onClick={() => void onInstall()}>
             Install and restart
           </button>
         ) : null}
@@ -120,11 +123,11 @@ function UpdateSettingsCard() {
       {notesOpen && status?.notes ? (
         <div className="mobile-safe-overlay fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-label="Release notes" onClick={() => setNotesOpen(false)}>
           <div className="max-h-[min(32rem,calc(100dvh-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)-2rem))] w-full max-w-lg overflow-hidden rounded-md border border-(--color-border) bg-(--bg-card) text-(--color-text) shadow-2xl" onClick={(event) => event.stopPropagation()}>
-            <div className="flex items-center justify-between gap-3 border-b border-(--color-border) px-4 py-3">
+            <div className="flex items-center justify-between gap-3 border-b border-(--color-border) px-4 py-3 select-none">
               <h3 className="text-sm font-semibold">Release notes</h3>
               <div className="flex items-center gap-2">
-                {releaseNotes?.url ? <a className="rounded-md px-2 py-1 text-xs text-(--color-accent) hover:bg-(--bg-page)" href={releaseNotes.url} target="_blank" rel="noopener noreferrer" onClick={(event) => { event.preventDefault(); void openExternalUrl(releaseNotes.url!) }}>View in GitHub</a> : null}
-                <button className="rounded-md px-2 py-1 text-xs text-(--color-text-muted) hover:bg-(--bg-page)" onClick={() => setNotesOpen(false)}>Close</button>
+                {releaseNotes?.url ? <a className="rounded px-2 py-1 text-xs text-(--color-accent) hover:bg-(--bg-page)" href={releaseNotes.url} target="_blank" rel="noopener noreferrer" onClick={(event) => { event.preventDefault(); void openExternalUrl(releaseNotes.url!) }}>View in GitHub</a> : null}
+                <button className="rounded px-2 py-1 text-xs text-(--color-text-muted) hover:bg-(--bg-page)" onClick={() => setNotesOpen(false)}>Close</button>
               </div>
             </div>
             <div className="max-h-[24rem] overflow-y-auto px-4 py-3 text-(--color-text)">
@@ -168,18 +171,18 @@ export function SettingsHubPage() {
   const version = healthQ.data?.version
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto">
-      <div className="mx-auto max-w-3xl space-y-6 px-3 pt-4 pb-8 sm:space-y-8 sm:px-8 sm:pt-8 sm:pb-12">
-        <header className="flex items-center gap-3">
+    <div className="min-h-0 flex-1 overflow-y-auto bg-(--bg-page)">
+      <div className="mx-auto max-w-3xl space-y-4 p-5">
+        <header className="flex items-center gap-3 select-none">
           <span
-            className="flex h-10 w-10 items-center justify-center rounded-xl bg-(--bg-key) text-(--color-text-muted) ring-1 ring-(--color-border)"
+            className="flex h-9 w-9 items-center justify-center rounded bg-(--bg-key) text-(--color-text-muted) border border-(--color-border)"
             aria-hidden="true"
           >
-            <Info size={18} />
+            <Info size={15} />
           </span>
           <div>
-            <h1 className="text-lg font-semibold text-(--color-text)">About openagentd</h1>
-            <p className="text-xs text-(--color-text-muted)">
+            <h1 className="text-xs font-semibold text-(--color-text)">About openagentd</h1>
+            <p className="text-[10px] font-mono text-(--color-text-subtle)">
               {version
                 ? `On-machine AI assistant · v${version}`
                 : 'On-machine AI assistant'}
@@ -188,20 +191,23 @@ export function SettingsHubPage() {
         </header>
 
         <section className="rounded-md border border-(--color-border) bg-(--bg-card) p-4 shadow-sm">
-          <div className="flex items-start gap-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-(--bg-key) text-(--color-text-muted) ring-1 ring-(--color-border)" aria-hidden="true">
-              <Server size={18} />
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-(--color-text-muted) border-b border-(--color-border)/60 pb-1.5 mb-3">
+            Backend Connection
+          </h2>
+
+          <div className="flex items-start gap-3 mt-3">
+            <span className="flex h-8.5 w-8.5 shrink-0 items-center justify-center rounded bg-(--bg-key) text-(--color-text-muted) border border-(--color-border)" aria-hidden="true">
+              <Server size={15} />
             </span>
             <div className="min-w-0 flex-1">
-              <h2 className="text-sm font-semibold text-(--color-text)">Backend connection</h2>
-              <p className="mt-1 text-xs leading-5 text-(--color-text-muted)">
+              <p className="text-xs leading-relaxed text-(--color-text-muted)">
                 Connect this app to an existing OpenAgentd server, or switch back to the bundled local sidecar when available.
               </p>
             </div>
             <button
               type="button"
               onClick={() => setBackendDialogOpen(true)}
-              className="rounded-md border border-(--color-border) px-3 py-1.5 text-xs font-medium text-(--color-text) hover:bg-(--bg-page)"
+              className="rounded border border-(--color-border) bg-(--bg-card) px-2.5 py-1 text-xs font-medium text-(--color-text) hover:bg-(--bg-key)/40 focus-visible:outline-none"
             >
               Configure
             </button>

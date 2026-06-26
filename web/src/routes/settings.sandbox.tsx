@@ -78,10 +78,10 @@ export function SandboxSettingsPage() {
 
   return (
     <>
-      <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-3 border-b border-(--color-border) bg-(--bg-page) px-4">
-        <h1 className="flex-1 truncate text-sm font-semibold text-(--color-text)">Sandbox</h1>
+      <header className="sticky top-0 z-10 flex h-11 shrink-0 items-center gap-2 border-b border-(--color-border) bg-(--bg-page) px-4 select-none">
+        <h1 className="flex-1 truncate text-xs font-semibold text-(--color-text)">Sandbox</h1>
         {dirty && (
-          <span className="text-xs text-(--color-text-muted)" aria-live="polite">
+          <span className="text-xs text-(--color-text-subtle)" aria-live="polite">
             Unsaved
           </span>
         )}
@@ -96,9 +96,9 @@ export function SandboxSettingsPage() {
         </Button>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl space-y-5 p-6">
-          <p className="text-sm leading-relaxed text-(--color-text-muted)">
+      <div className="min-h-0 flex-1 overflow-y-auto bg-(--bg-page)">
+        <div className="mx-auto max-w-3xl space-y-4 p-5">
+          <p className="text-xs leading-relaxed text-(--color-text-muted)">
             Glob patterns matched against the resolved absolute path. Use{' '}
             <code className="rounded bg-(--bg-key) px-1 py-0.5 font-mono text-xs">**</code>{' '}
             for any depth and{' '}
@@ -109,12 +109,12 @@ export function SandboxSettingsPage() {
           </p>
 
           {isLoading && (
-            <p className="text-sm text-(--color-text-muted)">Loading…</p>
+            <p className="text-xs font-mono text-(--color-text-muted)">Loading…</p>
           )}
 
           {error && (
             <div
-              className="flex items-start gap-2 rounded-lg bg-(--color-error-subtle) p-3 text-xs text-(--color-error)"
+              className="flex items-start gap-2 rounded-md bg-(--color-error-subtle) p-3 text-xs text-(--color-error)"
               role="alert"
             >
               <AlertCircle size={13} aria-hidden="true" className="mt-0.5" />
@@ -123,15 +123,19 @@ export function SandboxSettingsPage() {
           )}
 
           {!isLoading && !error && (
-            <>
+            <section className="space-y-3 rounded-md border border-(--color-border) bg-(--bg-card) p-4 shadow-sm">
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-(--color-text-muted) border-b border-(--color-border)/60 pb-1.5 mb-3">
+                Denied Patterns
+              </h2>
+
               {patterns.length === 0 ? (
-                <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-(--color-border) p-10 text-center">
-                  <p className="text-sm font-medium text-(--color-text)">No patterns</p>
-                  <p className="max-w-sm text-xs leading-relaxed text-(--color-text-muted)">
+                <div className="flex flex-col items-center gap-3 rounded-md border border-dashed border-(--color-border) p-8 text-center">
+                  <p className="text-xs font-semibold text-(--color-text)">No patterns</p>
+                  <p className="max-w-sm text-[11px] leading-relaxed text-(--color-text-muted)">
                     Agents have unrestricted filesystem access (apart from the
                     built-in DB / state / cache denial). Add a pattern below to
-                    block files like <code className="font-mono">.env</code> or
-                    folders like <code className="font-mono">secrets/</code>.
+                    block files like <code className="font-mono text-[10px]">.env</code> or
+                    folders like <code className="font-mono text-[10px]">secrets/</code>.
                   </p>
                   <Button size="sm" className="min-h-11 md:min-h-0" onClick={addRow}>
                     <Plus size={12} aria-hidden="true" />
@@ -140,7 +144,7 @@ export function SandboxSettingsPage() {
                 </div>
               ) : (
                 <>
-                  <ul className="space-y-2">
+                  <ul className="space-y-1.5">
                     {patterns.map((pattern, idx) => (
                       <li key={idx} className="flex items-center gap-2">
                         <Input
@@ -148,7 +152,7 @@ export function SandboxSettingsPage() {
                           onChange={(e) => updateAt(idx, e.target.value)}
                           placeholder="**/.env"
                           aria-label={`Pattern ${idx + 1}`}
-                          className="h-9 font-mono text-sm"
+                          className="h-8.5 font-mono text-xs"
                         />
                         <Tooltip>
                           <TooltipTrigger
@@ -160,7 +164,7 @@ export function SandboxSettingsPage() {
                                 onClick={() => removeAt(idx)}
                                 aria-label={`Remove pattern ${idx + 1}`}
                               >
-                                <Trash2 size={13} />
+                                <Trash2 size={12} />
                               </Button>
                             }
                           />
@@ -176,7 +180,7 @@ export function SandboxSettingsPage() {
                   </Button>
                 </>
               )}
-            </>
+            </section>
           )}
         </div>
       </div>
@@ -200,11 +204,6 @@ const EXAMPLES: readonly PatternExample[] = [
   { pattern: 'db/**', description: 'Local database files in db/' },
 ]
 
-/**
- * Inline help: glob primer + concrete examples. Read-only reference.
- * Triggered by a text-link "See examples" button at the end of the
- * helper paragraph. Controlled state so the chevron can flip while open.
- */
 function SandboxHelpPopover() {
   const [open, setOpen] = useState(false)
   return (
@@ -213,11 +212,11 @@ function SandboxHelpPopover() {
         render={
           <button
             type="button"
-            className="inline-flex min-h-11 items-center gap-0.5 rounded text-(--color-text) underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-(--focus-ring)/40 md:min-h-0"
+            className="inline-flex min-h-11 items-center gap-0.5 rounded text-(--color-text) underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 md:min-h-0"
           >
             See examples
             <ChevronDown
-              size={12}
+              size={11}
               aria-hidden="true"
               className={cn(
                 'transition-transform duration-150',
@@ -231,17 +230,17 @@ function SandboxHelpPopover() {
         <ul className="flex flex-col gap-1.5">
           {EXAMPLES.map((ex) => (
             <li key={ex.pattern} className="flex flex-col gap-0.5">
-              <code className="self-start rounded bg-(--bg-key) px-1.5 py-0.5 font-mono text-[11px] text-(--color-text)">
+              <code className="self-start rounded bg-(--bg-key) px-1.5 py-0.5 font-mono text-[10px] text-(--color-text)">
                 {ex.pattern}
               </code>
-              <span className="text-[11px] leading-snug text-(--color-text-muted)">
+              <span className="text-[10px] leading-snug text-(--color-text-muted)">
                 {ex.description}
               </span>
             </li>
           ))}
         </ul>
 
-        <p className="border-t border-(--color-border) pt-2 text-[11px] leading-snug text-(--color-text-muted)">
+        <p className="border-t border-(--color-border) pt-2 text-[10px] leading-snug text-(--color-text-muted)">
           Built-in DB / state / cache paths are always denied; matching is
           logical-OR across patterns &mdash; one match blocks access.
         </p>

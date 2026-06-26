@@ -79,93 +79,76 @@ export function TitleGenerationSettingsPage() {
 
   return (
     <>
-      <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-3 border-b border-(--color-border) bg-(--bg-page) px-4">
-        <Type size={15} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
-        <h1 className="flex-1 truncate text-sm font-semibold text-(--color-text)">Title generation</h1>
-        {dirty && <span className="text-xs text-(--color-text-muted)">Unsaved</span>}
+      <header className="sticky top-0 z-10 flex h-11 shrink-0 items-center gap-2 border-b border-(--color-border) bg-(--bg-page) px-4 select-none">
+        <Type size={13} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
+        <h1 className="flex-1 truncate text-xs font-semibold text-(--color-text)">Title generation</h1>
+        {dirty && <span className="text-xs text-(--color-text-subtle)" aria-live="polite">Unsaved</span>}
         <Button size="sm" className="min-h-11 md:min-h-0" onClick={handleSave} disabled={!dirty || !!modelError || updateMut.isPending}>
           <Save size={12} aria-hidden="true" />
-          <span className="hidden sm:inline">{updateMut.isPending ? 'Saving...' : 'Save'}</span>
+          <span>{updateMut.isPending ? 'Saving…' : 'Save'}</span>
         </Button>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-2xl space-y-5 p-6">
-          <p className="text-sm leading-relaxed text-(--color-text-muted)">
+      <div className="min-h-0 flex-1 overflow-y-auto bg-(--bg-page)">
+        <div className="mx-auto max-w-3xl space-y-4 p-5">
+          <p className="text-xs leading-relaxed text-(--color-text-muted)">
             Title generation creates short session names after the first user message.
             Choose a small, fast model to keep titles quick and cost-efficient.
           </p>
 
-          {isLoading && <p className="text-sm text-(--color-text-muted)">Loading...</p>}
+          {isLoading && <p className="text-xs font-mono text-(--color-text-muted)">Loading…</p>}
           {error && (
-            <p className="text-sm text-(--color-error)">
+            <div className="rounded-md border border-(--color-error)/20 bg-(--color-error-subtle) p-3 text-xs text-(--color-error)">
               {error instanceof Error ? error.message : String(error)}
-            </p>
+            </div>
           )}
 
           {!isLoading && !error && (
-            <div className="space-y-5">
-              <section className="space-y-3 rounded-xl border border-(--color-border) bg-(--bg-card) p-4">
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-(--color-text-muted)">
-                  Status
-                </h2>
-                <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-(--color-text) md:min-h-0">
-                  <Switch
-                    checked={form.enabled}
-                    onCheckedChange={(checked) => setField('enabled', checked)}
-                  />
-                  Enabled
-                </label>
-              </section>
+            <section className="space-y-4 rounded-md border border-(--color-border) bg-(--bg-card) p-4 shadow-sm">
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-(--color-text-muted) border-b border-(--color-border)/60 pb-1.5 mb-3">
+                Configuration
+              </h2>
 
-              <section className="space-y-3 rounded-xl border border-(--color-border) bg-(--bg-card) p-4">
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-(--color-text-muted)">
-                  Model
-                </h2>
-                <div className="grid gap-1.5">
-                  <label htmlFor="title-model" className="text-xs font-medium text-(--color-text-muted)">
-                    Model ID
-                  </label>
-                  <ModelCombobox
-                    value={form.model}
-                    onChange={(value) => setField('model', value)}
-                    options={modelOptions}
-                    invalid={!!modelError}
-                    placeholder="codex:gpt-5.5-mini"
-                  />
-                  {modelError ? (
-                    <p className="text-[11px] text-(--color-error)">{modelError}</p>
-                  ) : (
-                    <p className="text-[11px] text-(--color-text-muted)">
-                      Leave empty to use the current agent model. Prefer small, low-latency models for this background task.
+              <label className="flex min-h-11 cursor-pointer items-center gap-3 text-xs md:min-h-0 select-none">
+                <Switch
+                  checked={form.enabled}
+                  onCheckedChange={(checked) => setField('enabled', checked)}
+                />
+                <span className="text-(--color-text) font-medium">Enabled</span>
+              </label>
+
+              {form.enabled && (
+                <div className="space-y-4 pt-2">
+                  <div className="grid gap-1.5">
+                    <label className="text-xs font-medium text-(--color-text-muted)">Model ID</label>
+                    <ModelCombobox
+                      value={form.model}
+                      onChange={(val) => setField('model', val)}
+                      options={modelOptions}
+                      invalid={!!modelError}
+                    />
+                    {modelError ? <p className="text-[10px] text-(--color-error) font-mono">{modelError}</p> : null}
+                  </div>
+
+                  <div className="grid gap-1.5">
+                    <label htmlFor="timeout-field" className="text-xs font-medium text-(--color-text-muted)">
+                      Wait timeout seconds
+                    </label>
+                    <Input
+                      id="timeout-field"
+                      type="number"
+                      min={0}
+                      value={form.wait_timeout_seconds}
+                      onChange={(e) => setField('wait_timeout_seconds', parseInt(e.target.value) || 0)}
+                      className="min-h-11 md:min-h-9 font-mono text-xs"
+                    />
+                    <p className="text-[10.5px] text-(--color-text-subtle) leading-relaxed">
+                      Delay to wait for backend processing before triggering title generation.
                     </p>
-                  )}
+                  </div>
                 </div>
-              </section>
-
-              <section className="space-y-3 rounded-xl border border-(--color-border) bg-(--bg-card) p-4">
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-(--color-text-muted)">
-                  Timing
-                </h2>
-                <div className="grid gap-1.5">
-                  <label htmlFor="title-wait-timeout" className="text-xs font-medium text-(--color-text-muted)">
-                    Wait timeout seconds
-                  </label>
-                  <Input
-                    id="title-wait-timeout"
-                    type="number"
-                    min={0}
-                    step={0.5}
-                    value={String(form.wait_timeout_seconds)}
-                    onChange={(e) => setField('wait_timeout_seconds', Number(e.target.value))}
-                    className="min-h-11 font-mono text-sm md:min-h-9"
-                  />
-                  <p className="text-[11px] text-(--color-text-muted)">
-                    Best-effort wait before the final done event. Set to 0 for fully background title updates.
-                  </p>
-                </div>
-              </section>
-            </div>
+              )}
+            </section>
           )}
         </div>
       </div>

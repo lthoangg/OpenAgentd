@@ -26,6 +26,7 @@ Manual smoke-test scripts for openagentd. All scripts target `http://localhost:8
 | `team_roster_lifecycle.py` | Verify fresh sessions do not carry member rosters and stop moves running members to `offline` | `--base URL`, `--wait N` |
 | `continue_smoketest.py` | End-to-end test of `/continue`: send long prompt, wait, interrupt, inspect truncated assistant row, dispatch `/continue`, stream resumption inline, print final history | `--wait-before-stop N`, `--wait N`, `--base URL` |
 | `stop_mid_stream.py` | Drive the user-stop matrix (early / text / tool phases, with and without `/undo`) and check phase-agnostic invariants on the persisted history + follow-up SSE. Exits non-zero on any invariant failure | `--only NAME`, `--skip-undo`, `--base URL` |
+| `support_interrupt.py` | Smoke-test the `support_interrupt` provider flag. Direct mode (no server): CONTRACT A — default provider stops mid-stream when interrupt fires; CONTRACT B — `support_interrupt=False` provider always completes the current stream before the loop exits. Pass `--live` to also run CONTRACT A against the real API | `--live`, `--base URL` |
 | `stop_additive.py` | Verify the Stop + additional-message ("I forgot to add ...") additive semantic — send msg_A, Stop, send msg_B, assert the final assistant reply incorporates both. Exits non-zero if either word is missing | `--wait N`, `--base URL` |
 | `queued_injection.py` | Verify queued follow-ups splice into the running turn before `done`: send a slow tool prompt, queue multiple follow-ups, assert `queued_turn_start` arrives before completion, rows become visible history, and the final answer includes exact queued tokens | `--queue-delay N`, `--between-delay N`, `--followup TEXT`, `--expect TEXT`, `--wait N`, `--base URL` |
 | `cancel_queued_message.py` | Verify the × cancel flow hard-deletes a queued row: queue a follow-up, DELETE it (assert 204), DELETE again (assert 404 — row gone), stream to done, assert no `queued_turn_start` and no history entry for that id | `--queue-delay N`, `--base URL` |
@@ -83,6 +84,11 @@ uv run python -m manual.continue_smoketest --wait-before-stop 5     # later stop
 
 # Stop-mid-stream matrix (early/text/tool × undo/no-undo) with invariant checks
 uv run python -m manual.stop_mid_stream
+
+# Smoke-test provider support_interrupt flag (direct, no server)
+uv run python -m manual.support_interrupt
+# Also run the live CONTRACT A against the real API
+uv run python -m manual.support_interrupt --live
 uv run python -m manual.stop_mid_stream --only tool                 # just the tool-call case
 uv run python -m manual.stop_mid_stream --skip-undo                 # skip the /undo half
 

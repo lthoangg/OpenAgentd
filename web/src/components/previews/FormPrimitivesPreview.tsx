@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/number-input'
 import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from '@/components/ui/popover'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
@@ -51,16 +51,11 @@ export function LowLevelComponentsPreview() {
         </PreviewField>
 
         <PreviewField label="Select">
-          <Select value={agent} onValueChange={(value) => value && setAgent(value)}>
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="researcher">Researcher</SelectItem>
-              <SelectItem value="reviewer">Reviewer</SelectItem>
-              <SelectItem value="writer">Writer</SelectItem>
-            </SelectContent>
-          </Select>
+          <Dropdown value={agent} onValueChange={(value) => value && setAgent(value)} trigger="Agent" className="w-full">
+            <DropdownItem value="researcher">Researcher</DropdownItem>
+            <DropdownItem value="reviewer">Reviewer</DropdownItem>
+            <DropdownItem value="writer">Writer</DropdownItem>
+          </Dropdown>
         </PreviewField>
 
         <PreviewField label="Number input">
@@ -149,16 +144,11 @@ export function CreateTaskFormPreview() {
         </PreviewField>
 
         <PreviewField label="Agent">
-          <Select defaultValue="researcher">
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="researcher">Researcher</SelectItem>
-              <SelectItem value="reviewer">Reviewer</SelectItem>
-              <SelectItem value="writer">Writer</SelectItem>
-            </SelectContent>
-          </Select>
+          <Dropdown value="researcher" onValueChange={() => {}} trigger="Agent" className="w-full">
+            <DropdownItem value="researcher">Researcher</DropdownItem>
+            <DropdownItem value="reviewer">Reviewer</DropdownItem>
+            <DropdownItem value="writer">Writer</DropdownItem>
+          </Dropdown>
         </PreviewField>
 
         <div className="grid gap-1.5">

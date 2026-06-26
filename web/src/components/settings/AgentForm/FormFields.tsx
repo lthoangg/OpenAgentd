@@ -4,13 +4,7 @@ import { AlertCircle } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -183,21 +177,16 @@ export function FormFields({
           </Field>
 
           <Field label="Role" required hint="Exactly one agent in the team must be lead.">
-            <Select
+            <Dropdown
               value={fm.role}
-              onValueChange={(v) =>
-                v && updateFromForm({ ...fm, role: v as 'lead' | 'member' }, body)
-              }
+              onValueChange={(v) => v && updateFromForm({ ...fm, role: v as 'lead' | 'member' }, body)}
+              trigger="Role"
+              className="min-h-11 w-full md:min-h-9"
               disabled={disabled}
             >
-              <SelectTrigger className="min-h-11 w-full md:min-h-9">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="lead">Lead</SelectItem>
-                <SelectItem value="member">Member</SelectItem>
-              </SelectContent>
-            </Select>
+              <DropdownItem value="lead">Lead</DropdownItem>
+              <DropdownItem value="member">Member</DropdownItem>
+            </Dropdown>
           </Field>
 
           <Field
@@ -255,28 +244,20 @@ export function FormFields({
           </Field>
 
           <Field label="Thinking level" hint="How much hidden reasoning the model may use.">
-            <Select
-              value={fm.thinking_level ? fm.thinking_level : '__none__'}
+            <Dropdown
+              value={fm.thinking_level ?? '__none__'}
               onValueChange={(v) => {
                 if (v == null) return
-                updateFromForm(
-                  { ...fm, thinking_level: v === '__none__' ? null : v },
-                  body,
-                )
+                updateFromForm({ ...fm, thinking_level: v === '__none__' ? null : v }, body)
               }}
+              trigger="Thinking level"
+              className="min-h-11 w-full md:min-h-9"
               disabled={disabled}
             >
-              <SelectTrigger className="min-h-11 w-full md:min-h-9">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {THINKING_LEVELS.map((lvl) => (
-                  <SelectItem key={lvl.value} value={lvl.value}>
-                    {lvl.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              {THINKING_LEVELS.map((lvl) => (
+                <DropdownItem key={lvl.value} value={lvl.value}>{lvl.label}</DropdownItem>
+              ))}
+            </Dropdown>
           </Field>
         </CardContent>
       </Card>

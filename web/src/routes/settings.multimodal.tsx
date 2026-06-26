@@ -9,7 +9,7 @@ import {
 } from '@/queries'
 import { useToastStore } from '@/stores/useToastStore'
 import { Button } from '@/components/ui/button'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 import { validateModel } from '@/components/settings/schema'
 import type { MultimodalSettings } from '@/api/client'
 import type { ModelOption } from '@/components/settings/AgentForm'
@@ -213,18 +213,19 @@ function ModelField({ value, onChange, options, error }: {
   return (
     <div className="grid gap-1">
       <label className="text-[11px] font-medium text-(--color-text-muted)">Model ID</label>
-      <Select value={value} onValueChange={(next) => next && onChange(next)}>
-        <SelectTrigger className="min-h-11 md:min-h-9 w-full font-mono text-xs" aria-invalid={!!error || undefined}>
-          <SelectValue placeholder="Choose a model" />
-        </SelectTrigger>
-        <SelectContent>
-          {options.map((option) => (
-            <SelectItem key={option.id} value={option.id} className="min-h-8 font-mono text-xs">
-              {option.id}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <Dropdown
+        value={value}
+        onValueChange={(next) => next && onChange(next)}
+        trigger="Choose a model"
+        className="min-h-11 w-full font-mono md:min-h-9"
+        aria-invalid={!!error || undefined}
+      >
+        {options.map((option) => (
+          <DropdownItem key={option.id} value={option.id} className="font-mono">
+            {option.id}
+          </DropdownItem>
+        ))}
+      </Dropdown>
       {error ? <p className="text-[10px] text-(--color-error) font-mono">{error}</p> : null}
     </div>
   )
@@ -241,21 +242,22 @@ function ListField({ label, value, onChange, options, error, optional }: {
   return (
     <div className="grid gap-1">
       <label className="text-[11px] font-medium text-(--color-text-muted)">{label}</label>
-      <Select value={value} onValueChange={(next) => next && onChange(next)}>
-        <SelectTrigger className="min-h-11 md:min-h-9 w-full font-mono text-xs" aria-invalid={!!error || undefined}>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {optional ? (
-            <SelectItem value={PROVIDER_DEFAULT} className="min-h-8 text-xs">Provider default</SelectItem>
-          ) : null}
-          {options.map((option) => (
-            <SelectItem key={option} value={option} className="min-h-8 font-mono text-xs">
-              {option}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <Dropdown
+        value={value}
+        onValueChange={(next) => next && onChange(next)}
+        trigger={label}
+        className="min-h-11 w-full font-mono md:min-h-9"
+        aria-invalid={!!error || undefined}
+      >
+        {optional ? (
+          <DropdownItem value={PROVIDER_DEFAULT}>Provider default</DropdownItem>
+        ) : null}
+        {options.map((option) => (
+          <DropdownItem key={option} value={option} className="font-mono">
+            {option}
+          </DropdownItem>
+        ))}
+      </Dropdown>
       {error ? <p className="text-[10px] text-(--color-error) font-mono">{error}</p> : null}
     </div>
   )

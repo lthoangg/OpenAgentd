@@ -11,7 +11,7 @@ import { FIELD_CLASS, slugify } from './utils'
 import { ScheduleTypeSegmented } from './ScheduleTypeSegmented'
 import { ModeWorkspaceFields } from './ModeWorkspaceFields'
 import { useTeamStore } from '@/stores/useTeamStore'
-import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
+import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 
 export function CreateTaskForm({
   contextMode,
@@ -312,21 +312,21 @@ export function CreateTaskForm({
           <div className="flex flex-wrap items-start gap-4">
             <div className="w-full max-w-md">
               <label htmlFor="session-target" className="block text-sm font-medium text-(--color-text)">Session Target</label>
-              <NativeSelect
-                id="session-target"
-                className="mt-1 w-full"
+              <Dropdown
                 value={sessionType}
-                onChange={(e) => setSessionType(e.target.value as 'new' | 'auto' | 'current' | 'custom')}
+                onValueChange={(v) => setSessionType(v as 'new' | 'auto' | 'current' | 'custom')}
+                trigger="Session Target"
+                className="mt-1 w-full"
               >
-                <NativeSelectOption value="new">New Session</NativeSelectOption>
-                <NativeSelectOption value="auto">Persistent Task Session</NativeSelectOption>
+                <DropdownItem value="new">New Session</DropdownItem>
+                <DropdownItem value="auto">Persistent Task Session</DropdownItem>
                 {isSessionCompatible && (
-                  <NativeSelectOption value="current">
+                  <DropdownItem value="current">
                     Current Chat Session ({currentSessionTitle ? `"${currentSessionTitle}"` : 'Active'})
-                  </NativeSelectOption>
+                  </DropdownItem>
                 )}
-                <NativeSelectOption value="custom">Specific Session ID...</NativeSelectOption>
-              </NativeSelect>
+                <DropdownItem value="custom">Specific Session ID…</DropdownItem>
+              </Dropdown>
               <p className="mt-1 text-xs text-(--color-text-muted)">
                 {sessionType === 'new' && 'Creates a fresh, isolated chat session for every run.'}
                 {sessionType === 'auto' && 'Runs all executions in a single dedicated chat session created for this task.'}

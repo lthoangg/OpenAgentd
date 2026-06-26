@@ -1,8 +1,7 @@
 import { useMemo } from 'react'
 import type { ScheduledTaskMode } from '@/api/types'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 import { loadCodingWorkspaceEntries, workspaceLabel } from '@/utils/workspace'
-import { FIELD_CLASS, SELECT_CONTENT_CLASS } from './utils'
 
 export function ModeWorkspaceFields({
   mode,
@@ -71,27 +70,19 @@ export function ModeWorkspaceFields({
 
         {mode === 'coding' && (
           <div className="w-72 shrink-0">
-            <Select
+            <Dropdown
               value={workspace ?? ''}
               onValueChange={(v) => onChange({ mode, workspace: v || null })}
+              trigger={workspace ? workspaceLabel(workspace) : 'Select a saved workspace…'}
+              className="w-full"
+              aria-label="Select workspace"
             >
-              <SelectTrigger
-                size="sm"
-                className={`w-full ${FIELD_CLASS}`}
-                aria-label="Select workspace"
-              >
-                <SelectValue>
-                  {workspace ? workspaceLabel(workspace) : 'Select a saved workspace…'}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent className={SELECT_CONTENT_CLASS}>
-                {savedWorkspaces.map((path) => (
-                  <SelectItem key={path} value={path}>
-                    {workspaceLabel(path)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              {savedWorkspaces.map((path) => (
+                <DropdownItem key={path} value={path}>
+                  {workspaceLabel(path)}
+                </DropdownItem>
+              ))}
+            </Dropdown>
           </div>
         )}
       </div>

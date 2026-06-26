@@ -121,10 +121,14 @@ bun run build                            # production build
 
 ### Database migrations
 
-Migrations run automatically when the server starts — no manual step needed. For development, you can still run them directly:
+Migrations run automatically when the server starts — no manual step needed. For development, you should run them with `APP_ENV=development` to avoid touching your production database, or use the provided `make` command:
 
 ```bash
-uv run alembic -c app/alembic.ini upgrade head
+# Recommended:
+make migrate
+
+# Or manually:
+APP_ENV=development uv run alembic -c app/alembic.ini upgrade head
 ```
 
 ---

@@ -5,7 +5,7 @@ import { useToastStore } from '@/stores/useToastStore'
 import { ApiValidationError } from '@/api/client'
 import { EditorSubHeader } from '@/components/settings/EditorSubHeader'
 import { validateSkillDraft } from '@/components/settings/schema'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { SettingsSection } from '@/components/settings/SettingsSection'
 import { Textarea } from '@/components/ui/textarea'
 
 const TEMPLATE = `---
@@ -71,28 +71,23 @@ export function NewSkillPage({ onBack, onCreated }: NewSkillPageProps) {
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl p-6">
-          <Card size="sm">
-            <CardHeader>
-              <CardTitle>Skill source</CardTitle>
-              <CardDescription>
-                Frontmatter (<span className="font-mono">name</span>,{' '}
-                <span className="font-mono">description</span>) is required;
-                use <span className="font-mono">parent/sub</span> for a one-level sub-skill.
-                The body is the instruction the agent loads on demand.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Textarea
-                value={content}
-                onChange={(e) => handleContentChange(e.target.value)}
-                disabled={createMut.isPending}
-                rows={28}
-                spellCheck={false}
-                aria-invalid={invalid || undefined}
-                className="min-h-96 font-mono text-[13px] leading-relaxed"
-              />
-            </CardContent>
-          </Card>
+          <SettingsSection title="Skill source" description="frontmatter + body loaded by agents on demand">
+            <p className="mb-2.5 text-[11px] leading-relaxed text-(--color-text-muted)">
+              Frontmatter (<span className="font-mono">name</span>,{' '}
+              <span className="font-mono">description</span>) is required;
+              use <span className="font-mono">parent/sub</span> for a one-level sub-skill.
+              The body is the instruction the agent loads on demand.
+            </p>
+            <Textarea
+              value={content}
+              onChange={(e) => handleContentChange(e.target.value)}
+              disabled={createMut.isPending}
+              rows={28}
+              spellCheck={false}
+              aria-invalid={invalid || undefined}
+              className="min-h-96 font-mono text-[13px] leading-relaxed"
+            />
+          </SettingsSection>
         </div>
       </div>
     </div>

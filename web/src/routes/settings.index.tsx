@@ -12,6 +12,8 @@ import {
 } from 'lucide-react'
 
 import { AppBackendDialog } from '@/components/AppBackendDialog'
+import { SettingsSection } from '@/components/settings/SettingsSection'
+import { Button } from '@/components/ui/button'
 import { checkForUpdates, downloadUpdate, fetchReleaseNotes, installUpdate, type ReleaseNotes, type UpdateStatus } from '@/lib/updater'
 import { openExternalUrl } from '@/lib/open-external'
 import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
@@ -84,12 +86,8 @@ function UpdateSettingsCard() {
   const description = statusDescription(status)
 
   return (
-    <section className="rounded-md border border-(--color-border) bg-(--bg-card) p-4">
-      <h2 className="text-xs font-semibold uppercase tracking-wider text-(--color-text-muted) border-b border-(--color-border)/60 pb-1.5 mb-3">
-        Updates
-      </h2>
-
-      <div className="flex items-start gap-3 mt-3">
+    <SettingsSection title="Updates">
+      <div className="flex items-start gap-3">
         <span className="flex h-8.5 w-8.5 shrink-0 items-center justify-center rounded bg-(--bg-key) text-(--color-text-muted) border border-(--color-border)" aria-hidden="true">
           <Download size={15} />
         </span>
@@ -136,7 +134,7 @@ function UpdateSettingsCard() {
           </div>
         </div>
       ) : null}
-    </section>
+    </SettingsSection>
   )
 }
 
@@ -190,29 +188,21 @@ export function SettingsHubPage() {
           </div>
         </header>
 
-        <section className="rounded-md border border-(--color-border) bg-(--bg-card) p-4">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-(--color-text-muted) border-b border-(--color-border)/60 pb-1.5 mb-3">
-            Backend Connection
-          </h2>
-
-          <div className="flex items-start gap-3 mt-3">
-            <span className="flex h-8.5 w-8.5 shrink-0 items-center justify-center rounded bg-(--bg-key) text-(--color-text-muted) border border-(--color-border)" aria-hidden="true">
-              <Server size={15} />
+        <SettingsSection title="Backend connection">
+          <div className="flex items-start gap-3">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xs border border-(--color-border) bg-(--bg-key) text-(--color-text-muted)" aria-hidden="true">
+              <Server size={14} />
             </span>
             <div className="min-w-0 flex-1">
               <p className="text-xs leading-relaxed text-(--color-text-muted)">
                 Connect this app to an existing OpenAgentd server, or switch back to the bundled local sidecar when available.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => setBackendDialogOpen(true)}
-              className="rounded border border-(--color-border) bg-(--bg-card) px-2.5 py-1 text-xs font-medium text-(--color-text) hover:bg-(--bg-key)/40 focus-visible:outline-none"
-            >
+            <Button type="button" size="sm" variant="default" onClick={() => setBackendDialogOpen(true)}>
               Configure
-            </button>
+            </Button>
           </div>
-        </section>
+        </SettingsSection>
 
         <UpdateSettingsCard />
 

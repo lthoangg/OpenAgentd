@@ -1,16 +1,14 @@
 import { useMemo, useRef, useState } from 'react'
 import fuzzysort from 'fuzzysort'
-import { Check, Copy, Loader2 } from 'lucide-react'
+import { Check, ChevronDown, Copy, Loader2 } from 'lucide-react'
 import { SearchBar } from '@/components/ui/search-bar'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
 import { mediumHapticFeedback } from '@/lib/haptics'
 import { useToastStore } from '@/stores/useToastStore'
+import { cn } from '@/lib/utils'
 import { MODEL_LONG_PRESS_MOVE_TOLERANCE, MODEL_LONG_PRESS_MS } from './providerUtils'
 
-/** Indexed model entry for fuzzysort — qualifiedId is the search target
- *  *and* the value the user sees / copies, so search and display stay in
- *  sync. */
 type IndexedModel = {
   modelId: string
   qualifiedId: string
@@ -37,10 +35,6 @@ export function ModelsPanel({
   onSaveVisibleModels: (models: string[]) => Promise<void>
   savingVisibleModels: boolean
 }) {
-  // Copying is silent on success — feedback is already implicit (the
-  // mouse click triggers the browser's clipboard write). We only surface
-  // a toast if the clipboard API rejects, which is rare and worth
-  // calling out.
   const push = useToastStore((s) => s.push)
   const visibleSet = useMemo(() => new Set(visibleModels), [visibleModels])
   const allVisible = visibleSet.size === 0
@@ -53,26 +47,18 @@ export function ModelsPanel({
     }
   }
 
-  // Materialise once per ``models`` change. Indexing into the qualified
-  // string means searching for ``"openai:gpt-5"`` works just as well as
-  // searching for ``"gpt5"``.
   const indexed = useMemo<IndexedModel[]>(
     () => models.map((id) => ({ modelId: id, qualifiedId: `${providerId}:${id}` })),
     [models, providerId],
   )
 
-  // Fuzzysort: subsequence match with score-based ranking. Empty query
-  // skips ranking entirely (preserves the provider's returned order).
   const visible = useMemo<IndexedModel[]>(() => {
     const q = search.trim()
     if (!q) return indexed
-    const results = fuzzysort.go(q, indexed, {
-      key: 'qualifiedId',
-      threshold: 0.2,
-      limit: 200,
-    })
+    const results = fuzzysort.go(q, indexed, { key: 'qualifiedId', threshold: 0.2, limit: 200 })
     return results.map((r) => r.obj)
   }, [indexed, search])
+
   const visibleCount = allVisible ? indexed.length : visibleSet.size
 
   const toggleVisibleModel = (modelId: string) => {
@@ -83,31 +69,52 @@ export function ModelsPanel({
   }
 
   return (
-    <div className="rounded-md border border-(--color-border) bg-(--bg-page)">
+    <div className="rounded-xs border border-(--color-border) bg-(--bg-key)/20 overflow-hidden">
+      {/* Collapsed toggle row */}
       <button
         type="button"
         onClick={onToggle}
-        className="flex min-h-11 w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-xs font-medium text-(--color-text-muted) hover:text-(--color-text) md:min-h-0"
         aria-expanded={expanded}
+        className={cn(
+          'flex w-full items-center justify-between gap-2 px-3 py-2 text-left',
+          'text-[10.5px] text-(--color-text-muted) transition-colors',
+          'hover:bg-(--bg-key)/40 hover:text-(--color-text)',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40',
+          expanded && 'border-b border-(--color-border)',
+        )}
       >
-        <span>
-          {indexed.length} models available · {allVisible ? 'all visible' : `${visibleCount} visible`} {search && <span className="text-(--color-text-muted)">· {visible.length} shown</span>}
+        <span className="font-mono">
+          {indexed.length} models available
+          {' · '}
+          {allVisible ? 'all visible' : `${visibleCount} visible`}
+          {search && <span className="text-(--color-text-subtle)"> · {visible.length} shown</span>}
         </span>
-        <span className="text-[11px]">{expanded ? 'Hide' : 'Show'}</span>
+        <ChevronDown
+          size={12}
+          aria-hidden="true"
+          className={cn('shrink-0 transition-transform duration-150', expanded && 'rotate-180')}
+        />
       </button>
+
+      {/* Expanded body */}
       {expanded && (
-        <div className="border-t border-(--color-border) p-2">
+        <div className="space-y-2 p-2.5">
           <SearchBar
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder="Filter models…"
           />
-          <p className="mt-2 text-[11px] text-(--color-text-muted)">
-            Use the visibility button next to each model to choose which models normal OpenAgentd pickers show. If none are selected, all models are visible.
+
+          <p className="text-[10.5px] leading-relaxed text-(--color-text-muted)">
+            Use the visibility toggle to choose which models appear in pickers.
+            If none are selected, all models are visible.
           </p>
-          <ul className="mt-2 max-h-64 overflow-y-auto">
+
+          <ul className="max-h-56 overflow-y-auto -mx-0.5">
             {visible.length === 0 ? (
-              <li className="px-2 py-3 text-center text-xs text-(--color-text-muted)">No matching models.</li>
+              <li className="px-2 py-3 text-center text-[10.5px] text-(--color-text-muted)">
+                No matching models.
+              </li>
             ) : (
               visible.map(({ qualifiedId, modelId }) => (
                 <ModelRow
@@ -155,84 +162,99 @@ function ModelRow({
 
   return (
     <li
-      className="flex min-h-11 items-center gap-2 rounded px-2 py-1 hover:bg-(--bg-key) md:min-h-0"
-      onContextMenu={(event) => {
+      className="group flex min-h-9 items-center gap-1.5 rounded-xs px-2 py-1 hover:bg-(--bg-key) md:min-h-0"
+      onContextMenu={(e) => {
         if (isTauriMobile) return
-        event.preventDefault()
-        setActionsPoint({ x: event.clientX, y: event.clientY })
+        e.preventDefault()
+        setActionsPoint({ x: e.clientX, y: e.clientY })
       }}
-      onPointerDown={(event) => {
-        if (!isMobile || !isTauriMobile || event.pointerType === 'mouse') return
-        longPressStartRef.current = { x: event.clientX, y: event.clientY }
+      onPointerDown={(e) => {
+        if (!isMobile || !isTauriMobile || e.pointerType === 'mouse') return
+        longPressStartRef.current = { x: e.clientX, y: e.clientY }
         longPressTimerRef.current = window.setTimeout(() => {
           longPressTimerRef.current = null
           longPressStartRef.current = null
           mediumHapticFeedback()
-          setActionsPoint({ x: event.clientX, y: event.clientY })
+          setActionsPoint({ x: e.clientX, y: e.clientY })
         }, MODEL_LONG_PRESS_MS)
       }}
-      onPointerMove={(event) => {
+      onPointerMove={(e) => {
         const start = longPressStartRef.current
         if (!start) return
         if (
-          Math.abs(event.clientX - start.x) > MODEL_LONG_PRESS_MOVE_TOLERANCE ||
-          Math.abs(event.clientY - start.y) > MODEL_LONG_PRESS_MOVE_TOLERANCE
-        ) {
-          clearLongPress()
-        }
+          Math.abs(e.clientX - start.x) > MODEL_LONG_PRESS_MOVE_TOLERANCE ||
+          Math.abs(e.clientY - start.y) > MODEL_LONG_PRESS_MOVE_TOLERANCE
+        ) clearLongPress()
       }}
       onPointerUp={clearLongPress}
       onPointerCancel={clearLongPress}
       onPointerLeave={clearLongPress}
     >
-      <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-(--color-text)">
+      {/* Model ID */}
+      <span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-(--color-text)">
         {qualifiedId}
       </span>
+
+      {/* Visibility toggle */}
       <button
         type="button"
         onClick={onToggleVisible}
         disabled={savingVisibleModels}
-        className={`flex h-8 min-w-16 items-center justify-center gap-1 rounded px-2 text-[11px] md:h-6 ${selected ? 'bg-(--color-success-subtle) text-(--color-success)' : 'text-(--color-text-muted) hover:bg-(--bg-card) hover:text-(--color-text)'}`}
         aria-label={`${selected ? 'Remove' : 'Show'} ${qualifiedId} in model pickers`}
-        title={selected ? 'Remove from visible models' : 'Show in pickers'}
+        title={selected ? 'Remove from visible models' : 'Add to visible models'}
+        className={cn(
+          'flex h-6 min-w-[4rem] items-center justify-center gap-1 rounded-xs px-1.5',
+          'text-[10px] font-medium transition-colors',
+          selected
+            ? 'bg-(--color-success-subtle) text-(--color-success) border border-(--color-success)/20'
+            : 'border border-(--color-border) text-(--color-text-muted) hover:bg-(--bg-card) hover:text-(--color-text)',
+          savingVisibleModels && 'opacity-50 cursor-not-allowed',
+        )}
       >
-        {savingVisibleModels ? <Loader2 size={12} className="animate-spin" aria-hidden="true" /> : selected ? <Check size={12} aria-hidden="true" /> : null}
+        {savingVisibleModels
+          ? <Loader2 size={10} className="animate-spin" aria-hidden="true" />
+          : selected
+            ? <Check size={10} aria-hidden="true" />
+            : null}
         {selected ? 'Visible' : 'Show'}
       </button>
+
+      {/* Copy button */}
       <button
         type="button"
         onClick={() => void onCopy(qualifiedId)}
-        className="flex h-8 w-8 items-center justify-center rounded text-(--color-text-muted) hover:bg-(--bg-card) hover:text-(--color-text) md:h-6 md:w-6"
         aria-label={`Copy ${qualifiedId}`}
+        className={cn(
+          'flex h-6 w-6 items-center justify-center rounded-xs',
+          'border border-(--color-border) text-(--color-text-muted)',
+          'transition-colors hover:bg-(--bg-card) hover:text-(--color-text)',
+          'opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
+        )}
       >
-        <Copy size={13} className="md:h-[11px] md:w-[11px]" aria-hidden="true" />
+        <Copy size={11} aria-hidden="true" />
       </button>
+
+      {/* Context menu */}
       {actionsPoint && (
         <div
           className="fixed inset-0 z-[70]"
           onClick={() => setActionsPoint(null)}
-          onContextMenu={(event) => {
-            event.preventDefault()
-            setActionsPoint(null)
-          }}
+          onContextMenu={(e) => { e.preventDefault(); setActionsPoint(null) }}
         >
           <div
             role="menu"
             aria-label={`Actions for ${qualifiedId}`}
-            className="fixed min-w-44 rounded-lg border border-(--color-border) bg-(--bg-card) p-1 text-sm text-(--color-text) shadow-xl"
+            className="fixed min-w-40 rounded-sm border border-(--color-border) bg-(--bg-card) p-1 shadow-lg text-xs text-(--color-text)"
             style={{ left: actionsPoint.x, top: actionsPoint.y }}
-            onClick={(event) => event.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
           >
             <button
               type="button"
               role="menuitem"
-              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
-              onClick={() => {
-                setActionsPoint(null)
-                void onCopy(qualifiedId)
-              }}
+              className="flex w-full items-center gap-2 rounded-xs px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+              onClick={() => { setActionsPoint(null); void onCopy(qualifiedId) }}
             >
-              <Copy size={14} aria-hidden="true" />
+              <Copy size={12} aria-hidden="true" />
               Copy model ID
             </button>
           </div>

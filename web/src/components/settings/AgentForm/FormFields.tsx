@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useMemo, useState } from 'react'
 import { AlertCircle } from 'lucide-react'
 
 import { SectionCard, SectionCardHeader, SectionCardRows } from '@/components/ui/section-card'
@@ -6,9 +6,8 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
-
 import { MultiSelect, type MultiSelectOption } from '../MultiSelect'
+import { SettingsField } from '../SettingsField'
 import { type AgentFrontmatter } from '../frontmatter'
 import {
   parseTemperatureInput,
@@ -153,7 +152,7 @@ export function FormFields({
         <SectionCardHeader>Identity — who is this agent and what is its role?</SectionCardHeader>
         <SectionCardRows>
         <div className="px-3 py-3 grid gap-3 md:grid-cols-2">
-          <Field
+          <SettingsField
             label="Name"
             required
             error={nameError}
@@ -172,9 +171,9 @@ export function FormFields({
               aria-invalid={!!nameError || undefined}
               className="min-h-11 font-mono md:min-h-9"
             />
-          </Field>
+          </SettingsField>
 
-          <Field label="Role" required hint="Exactly one agent in the team must be lead.">
+          <SettingsField label="Role" required hint="Exactly one agent in the team must be lead.">
             <Dropdown
               value={fm.role}
               onValueChange={(v) => v && updateFromForm({ ...fm, role: v as 'lead' | 'member' }, body)}
@@ -185,9 +184,9 @@ export function FormFields({
               <DropdownItem value="lead">Lead</DropdownItem>
               <DropdownItem value="member">Member</DropdownItem>
             </Dropdown>
-          </Field>
+          </SettingsField>
 
-          <Field
+          <SettingsField
             label="Description"
             error={descriptionError}
             className="md:col-span-2"
@@ -204,7 +203,7 @@ export function FormFields({
               placeholder="Coordinates the team. Breaks tasks, delegates to members."
               aria-invalid={!!descriptionError || undefined}
             />
-          </Field>
+          </SettingsField>
         </div>
         </SectionCardRows>
       </SectionCard>
@@ -214,7 +213,7 @@ export function FormFields({
         <SectionCardHeader>Model &amp; behaviour — provider, temperature, reasoning depth</SectionCardHeader>
         <SectionCardRows>
         <div className="px-3 py-3 grid gap-3 md:grid-cols-2">
-          <Field label="Model" required error={modelError} className="md:col-span-2">
+          <SettingsField label="Model" required error={modelError} className="md:col-span-2">
             <ModelCombobox
               value={fm.model ?? ''}
               options={currentModelOptions}
@@ -223,9 +222,9 @@ export function FormFields({
               invalid={!!modelError}
               placeholder="Type to search models…"
             />
-          </Field>
+          </SettingsField>
 
-          <Field label="Temperature" error={tempError} hint="0 - 2; higher = more random.">
+          <SettingsField label="Temperature" error={tempError} hint="0 - 2; higher = more random.">
             <Input
               type="text"
               inputMode="decimal"
@@ -236,9 +235,9 @@ export function FormFields({
               aria-invalid={!!tempError || undefined}
               className="min-h-11 font-mono md:min-h-9"
             />
-          </Field>
+          </SettingsField>
 
-          <Field label="Thinking level" hint="How much hidden reasoning the model may use.">
+          <SettingsField label="Thinking level" hint="How much hidden reasoning the model may use.">
             <Dropdown
               value={fm.thinking_level ?? '__none__'}
               onValueChange={(v) => {
@@ -253,7 +252,7 @@ export function FormFields({
                 <DropdownItem key={lvl.value} value={lvl.value}>{lvl.label}</DropdownItem>
               ))}
             </Dropdown>
-          </Field>
+          </SettingsField>
         </div>
         </SectionCardRows>
       </SectionCard>
@@ -267,7 +266,7 @@ export function FormFields({
         </SectionCardHeader>
         <SectionCardRows>
         <div className="px-3 py-3 flex flex-col gap-4">
-          <Field
+          <SettingsField
             label="Tools"
             hint={
               builtInTools.length > 0
@@ -284,9 +283,9 @@ export function FormFields({
               onChange={(v) => updateFromForm({ ...fm, tools: v }, body)}
               placeholder="Pick extra tools this agent may invoke…"
             />
-          </Field>
+          </SettingsField>
 
-          <Field
+          <SettingsField
             label="MCP servers"
             hint={
               mcpOptions.length === 0
@@ -301,9 +300,9 @@ export function FormFields({
               placeholder="Pick MCP servers this agent may use…"
               emptyLabel="No matching servers"
             />
-          </Field>
+          </SettingsField>
 
-          <Field
+          <SettingsField
             label="Skills"
             hint={
               hasBuiltInProfile
@@ -317,7 +316,7 @@ export function FormFields({
               onChange={(v) => updateFromForm({ ...fm, skills: v }, body)}
               placeholder="Pick skills the agent can load on demand…"
             />
-          </Field>
+          </SettingsField>
         </div>
         </SectionCardRows>
       </SectionCard>
@@ -367,40 +366,4 @@ function CapabilityChips({ label, values }: { label: string; values: string[] })
   )
 }
 
-function Field({
-  label,
-  required,
-  className,
-  children,
-  error,
-  hint,
-}: {
-  label: string
-  required?: boolean
-  className?: string
-  children: ReactNode
-  /** Zod-sourced error message. When set, rendered in destructive red
-   *  under the control; when unset, the hint (if any) is rendered instead. */
-  error?: string | null
-  /** Helper text shown when there is no error. */
-  hint?: string | null
-}) {
-  // Intentionally a <div>, not a <label>. A <label> wrapper would cause any
-  // click inside it to activate the first focusable control in DOM order —
-  // in MultiSelect that's the first chip's remove (×) button, which would
-  // silently delete a chip when the user clicks empty space in the field.
-  return (
-    <div className={cn('flex flex-col gap-1.5', className)}>
-      <span className="text-xs font-medium text-(--color-text)">
-        {label}
-        {required && <span className="ml-0.5 text-(--color-error)">*</span>}
-      </span>
-      {children}
-      {error ? (
-        <p className="text-[11px] text-(--color-error)">{error}</p>
-      ) : hint ? (
-        <p className="text-[11px] text-(--color-text-muted)">{hint}</p>
-      ) : null}
-    </div>
-  )
-}
+// SettingsField is imported from '../SettingsField' — the local Field was removed.

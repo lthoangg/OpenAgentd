@@ -12,6 +12,7 @@ import {
 import { useToastStore } from '@/stores/useToastStore'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { SettingsSection } from '@/components/settings/SettingsSection'
 import {
   Popover,
   PopoverContent,
@@ -123,13 +124,9 @@ export function SandboxSettingsPage() {
           )}
 
           {!isLoading && !error && (
-            <section className="space-y-3 rounded-md border border-(--color-border) bg-(--bg-card) p-4">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-(--color-text-muted) border-b border-(--color-border)/60 pb-1.5 mb-3">
-                Denied Patterns
-              </h2>
-
+            <SettingsSection title="Denied patterns">
               {patterns.length === 0 ? (
-                <div className="flex flex-col items-center gap-3 rounded-md border border-dashed border-(--color-border) p-8 text-center">
+                <div className="flex flex-col items-center gap-3 rounded-sm border border-dashed border-(--color-border) p-8 text-center">
                   <p className="text-xs font-semibold text-(--color-text)">No patterns</p>
                   <p className="max-w-sm text-[11px] leading-relaxed text-(--color-text-muted)">
                     Agents have unrestricted filesystem access (apart from the
@@ -180,7 +177,7 @@ export function SandboxSettingsPage() {
                   </Button>
                 </>
               )}
-            </section>
+            </SettingsSection>
           )}
         </div>
       </div>

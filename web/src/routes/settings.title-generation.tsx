@@ -11,6 +11,7 @@ import { useToastStore } from '@/stores/useToastStore'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
+import { SettingsSection } from '@/components/settings/SettingsSection'
 import { ModelCombobox } from '@/components/settings/AgentForm'
 import { validateModel } from '@/components/settings/schema'
 import type { TitleGenerationSettings } from '@/api/client'
@@ -104,51 +105,29 @@ export function TitleGenerationSettingsPage() {
           )}
 
           {!isLoading && !error && (
-            <section className="space-y-4 rounded-md border border-(--color-border) bg-(--bg-card) p-4">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-(--color-text-muted) border-b border-(--color-border)/60 pb-1.5 mb-3">
-                Configuration
-              </h2>
+            <SettingsSection title="Configuration">
+              <div className="space-y-3">
+                <label className="flex min-h-11 cursor-pointer items-center gap-3 text-xs md:min-h-0 select-none">
+                  <Switch checked={form.enabled} onCheckedChange={(checked) => setField('enabled', checked)} />
+                  <span className="text-(--color-text) font-medium">Enabled</span>
+                </label>
 
-              <label className="flex min-h-11 cursor-pointer items-center gap-3 text-xs md:min-h-0 select-none">
-                <Switch
-                  checked={form.enabled}
-                  onCheckedChange={(checked) => setField('enabled', checked)}
-                />
-                <span className="text-(--color-text) font-medium">Enabled</span>
-              </label>
-
-              {form.enabled && (
-                <div className="space-y-4 pt-2">
-                  <div className="grid gap-1.5">
-                    <label className="text-xs font-medium text-(--color-text-muted)">Model ID</label>
-                    <ModelCombobox
-                      value={form.model}
-                      onChange={(val) => setField('model', val)}
-                      options={modelOptions}
-                      invalid={!!modelError}
-                    />
-                    {modelError ? <p className="text-[10px] text-(--color-error) font-mono">{modelError}</p> : null}
+                {form.enabled && (
+                  <div className="space-y-3 pt-1">
+                    <div className="grid gap-1.5">
+                      <label className="text-xs font-medium text-(--color-text-muted)">Model ID</label>
+                      <ModelCombobox value={form.model} onChange={(val) => setField('model', val)} options={modelOptions} invalid={!!modelError} />
+                      {modelError ? <p className="text-[10px] text-(--color-error) font-mono">{modelError}</p> : null}
+                    </div>
+                    <div className="grid gap-1.5">
+                      <label htmlFor="timeout-field" className="text-xs font-medium text-(--color-text-muted)">Wait timeout seconds</label>
+                      <Input id="timeout-field" type="number" min={0} value={form.wait_timeout_seconds} onChange={(e) => setField('wait_timeout_seconds', parseInt(e.target.value) || 0)} className="min-h-11 md:min-h-9 font-mono text-xs" />
+                      <p className="text-[10.5px] text-(--color-text-subtle) leading-relaxed">Delay to wait for backend processing before triggering title generation.</p>
+                    </div>
                   </div>
-
-                  <div className="grid gap-1.5">
-                    <label htmlFor="timeout-field" className="text-xs font-medium text-(--color-text-muted)">
-                      Wait timeout seconds
-                    </label>
-                    <Input
-                      id="timeout-field"
-                      type="number"
-                      min={0}
-                      value={form.wait_timeout_seconds}
-                      onChange={(e) => setField('wait_timeout_seconds', parseInt(e.target.value) || 0)}
-                      className="min-h-11 md:min-h-9 font-mono text-xs"
-                    />
-                    <p className="text-[10.5px] text-(--color-text-subtle) leading-relaxed">
-                      Delay to wait for backend processing before triggering title generation.
-                    </p>
-                  </div>
-                </div>
-              )}
-            </section>
+                )}
+              </div>
+            </SettingsSection>
           )}
         </div>
       </div>

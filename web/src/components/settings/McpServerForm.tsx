@@ -15,8 +15,9 @@ import { Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
+import { SettingsField } from './SettingsField'
+import { SettingsSection } from './SettingsSection'
 import type { KeyValuePair, McpServerDraft } from './McpServerDraft'
 
 interface McpServerFormProps {
@@ -41,13 +42,9 @@ export function McpServerForm({
   return (
     <div className="flex flex-col gap-4">
       {/* Identity ─────────────────────────────────────────────────── */}
-      <Card size="sm">
-        <CardHeader>
-          <CardTitle>Identity</CardTitle>
-          <CardDescription>How agents and the runtime address this server.</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2">
-          <Field
+      <SettingsSection title="Identity" description="how agents and the runtime address this server">
+        <div className="grid gap-3 md:grid-cols-2">
+          <SettingsField
             label="Name"
             required
             error={errors?.name}
@@ -65,9 +62,9 @@ export function McpServerForm({
               aria-invalid={!!errors?.name || undefined}
               className="min-h-11 font-mono md:min-h-9"
             />
-          </Field>
+          </SettingsField>
 
-          <Field
+          <SettingsField
             label="Status"
             hint={value.enabled ? 'Server is started at runtime.' : 'Server is left stopped.'}
           >
@@ -76,36 +73,24 @@ export function McpServerForm({
               onChange={(enabled) => set({ enabled })}
               disabled={disabled}
             />
-          </Field>
-        </CardContent>
-      </Card>
+          </SettingsField>
+        </div>
+      </SettingsSection>
 
       {/* Transport ────────────────────────────────────────────────── */}
-      <Card size="sm">
-        <CardHeader>
-          <CardTitle>Transport</CardTitle>
-          <CardDescription>How the runtime talks to the server process.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <TransportToggle
-            value={value.transport}
-            onChange={(transport) => set({ transport })}
-            disabled={disabled}
-          />
-        </CardContent>
-      </Card>
+      <SettingsSection title="Transport" description="how the runtime talks to the server process">
+        <TransportToggle
+          value={value.transport}
+          onChange={(transport) => set({ transport })}
+          disabled={disabled}
+        />
+      </SettingsSection>
 
       {/* Stdio fields ─────────────────────────────────────────────── */}
       {value.transport === 'stdio' && (
-        <Card size="sm">
-          <CardHeader>
-            <CardTitle>Stdio configuration</CardTitle>
-            <CardDescription>
-              The runtime spawns a subprocess and speaks MCP over stdin/stdout.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <Field
+        <SettingsSection title="Stdio configuration" description="subprocess speaking MCP over stdin/stdout">
+          <div className="flex flex-col gap-3">
+            <SettingsField
               label="Command"
               required
               error={errors?.command}
@@ -119,9 +104,9 @@ export function McpServerForm({
                 aria-invalid={!!errors?.command || undefined}
                 className="min-h-11 font-mono md:min-h-9"
               />
-            </Field>
+            </SettingsField>
 
-            <Field label="Arguments" hint="One per line, in order.">
+            <SettingsField label="Arguments" hint="One per line, in order.">
               <Textarea
                 value={value.argsText}
                 onChange={(e) => set({ argsText: e.target.value })}
@@ -131,7 +116,7 @@ export function McpServerForm({
                 placeholder="-y&#10;@modelcontextprotocol/server-filesystem&#10;/tmp"
                 className="min-h-32 font-mono text-[13px] leading-relaxed"
               />
-            </Field>
+            </SettingsField>
 
             <PairListField
               label="Environment variables"
@@ -142,21 +127,15 @@ export function McpServerForm({
               onChange={(envPairs) => set({ envPairs })}
               disabled={disabled}
             />
-          </CardContent>
-        </Card>
+          </div>
+        </SettingsSection>
       )}
 
       {/* HTTP fields ──────────────────────────────────────────────── */}
       {value.transport === 'http' && (
-        <Card size="sm">
-          <CardHeader>
-            <CardTitle>HTTP configuration</CardTitle>
-            <CardDescription>
-              The runtime opens a Streamable HTTP session against the URL.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <Field
+        <SettingsSection title="HTTP configuration" description="Streamable HTTP session">
+          <div className="flex flex-col gap-3">
+            <SettingsField
               label="URL"
               required
               error={errors?.url}
@@ -170,7 +149,7 @@ export function McpServerForm({
                 aria-invalid={!!errors?.url || undefined}
                 className="min-h-11 font-mono md:min-h-9"
               />
-            </Field>
+            </SettingsField>
 
             <PairListField
               label="Headers"
@@ -182,7 +161,7 @@ export function McpServerForm({
               disabled={disabled}
             />
 
-            <Field
+            <SettingsField
               label="OAuth"
               error={errors?.oauth}
               hint={
@@ -198,20 +177,17 @@ export function McpServerForm({
                 enabledLabel="OAuth"
                 disabledLabel="None"
               />
-            </Field>
+            </SettingsField>
 
             {value.oauthEnabled && (
-              <div className="rounded-md border border-dashed border-(--color-border) p-3">
-                <p className="text-xs text-(--color-text-muted)">
-                  Leave blank only for servers that support dynamic OAuth registration, such
-                  as Notion.
-                </p>
+              <div className="rounded-xs border border-dashed border-(--color-border) px-3 py-2.5 text-xs text-(--color-text-muted)">
+                Leave blank only for servers that support dynamic OAuth registration, such as Notion.
               </div>
             )}
 
             {value.oauthEnabled && (
-              <div className="grid gap-4 md:grid-cols-2">
-                <Field label="Client ID" hint="Paste the OAuth app client ID.">
+              <div className="grid gap-3 md:grid-cols-2">
+                <SettingsField label="Client ID" hint="Paste the OAuth app client ID.">
                   <Input
                     value={value.oauthClientIdEnv}
                     onChange={(e) => set({ oauthClientIdEnv: e.target.value })}
@@ -219,8 +195,8 @@ export function McpServerForm({
                     placeholder="client id"
                     className="min-h-11 font-mono md:min-h-9"
                   />
-                </Field>
-                <Field label="Client secret" hint="Paste the OAuth app client secret.">
+                </SettingsField>
+                <SettingsField label="Client secret" hint="Paste the OAuth app client secret.">
                   <Input
                     value={value.oauthClientSecretEnv}
                     onChange={(e) => set({ oauthClientSecretEnv: e.target.value })}
@@ -228,48 +204,17 @@ export function McpServerForm({
                     placeholder="client secret"
                     className="min-h-11 font-mono md:min-h-9"
                   />
-                </Field>
+                </SettingsField>
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </SettingsSection>
       )}
     </div>
   )
 }
 
-// ── Field wrapper (mirrors AgentForm.Field) ─────────────────────────────────
-
-function Field({
-  label,
-  required,
-  className,
-  children,
-  error,
-  hint,
-}: {
-  label: string
-  required?: boolean
-  className?: string
-  children: React.ReactNode
-  error?: string | null
-  hint?: string | null
-}) {
-  return (
-    <div className={cn('flex flex-col gap-1.5', className)}>
-      <span className="text-xs font-medium text-(--color-text)">
-        {label}
-        {required && <span className="ml-0.5 text-(--color-error)">*</span>}
-      </span>
-      {children}
-      {error ? (
-        <p className="text-[11px] text-(--color-error)">{error}</p>
-      ) : hint ? (
-        <p className="text-[11px] text-(--color-text-muted)">{hint}</p>
-      ) : null}
-    </div>
-  )
-}
+// SettingsField imported from './SettingsField'; local Field removed.
 
 // ── Enabled toggle ──────────────────────────────────────────────────────────
 
@@ -295,7 +240,7 @@ function EnabledToggle({
     <div
       role="radiogroup"
       aria-label="Server enabled state"
-      className="inline-flex min-h-11 rounded-md bg-(--bg-key) p-0.5 ring-1 ring-(--color-border) md:min-h-9"
+      className="inline-flex min-h-11 rounded-sm border border-(--color-border) bg-(--bg-key) p-0.5 md:min-h-9"
     >
       <ToggleOption
         active={value}
@@ -326,7 +271,7 @@ function TransportToggle({
     <div
       role="radiogroup"
       aria-label="MCP transport"
-      className="grid min-h-11 w-full grid-cols-2 rounded-lg bg-(--bg-key) p-1 ring-1 ring-(--color-border) md:min-h-10"
+      className="grid min-h-11 w-full grid-cols-2 rounded-sm border border-(--color-border) bg-(--bg-key) p-1 md:min-h-10"
     >
       <ToggleOption
         active={value === 'stdio'}

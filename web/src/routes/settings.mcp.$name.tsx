@@ -20,7 +20,7 @@ import {
   type McpServerDraft,
 } from '@/components/settings/McpServerDraft'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { SettingsSection } from '@/components/settings/SettingsSection'
 import {
   Dialog,
   DialogContent,
@@ -140,47 +140,37 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
               <StatusCard server={server} />
 
               {server.state === 'error' && server.error && (
-                <Card size="sm" className="border-(--color-error)/40 bg-(--color-error-subtle)">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-(--color-error)">
-                      <AlertCircle size={14} className="text-(--color-error)" />
-                      Runtime error
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="font-mono text-xs text-(--color-error)">{server.error}</p>
-                  </CardContent>
-                </Card>
+                <SettingsSection title="Runtime error" className="border-(--color-error)/40 bg-(--color-error-subtle)">
+                  <div className="flex items-center gap-2 text-(--color-error) mb-2">
+                    <AlertCircle size={13} aria-hidden="true" />
+                    <span className="text-xs font-semibold">Server failed to start</span>
+                  </div>
+                  <p className="font-mono text-xs text-(--color-error)">{server.error}</p>
+                </SettingsSection>
               )}
 
               {server.state === 'auth_required' && (
-                <Card size="sm" className="border-(--accent-orange)/40 bg-(--accent-orange)/10">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-(--accent-orange)">
-                      <AlertCircle size={14} className="text-(--accent-orange)" />
-                      OAuth needed to connect
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="mb-3 text-xs text-(--color-text-muted)">Connect OAuth to authorize this MCP server.</p>
-                    <Button variant="default" size="sm" className="min-h-11 md:min-h-0"
-                      onClick={handleConnectOAuth} disabled={connectOAuthMut.isPending || !server.enabled}>
-                      {connectOAuthMut.isPending ? 'Connecting…' : 'Connect OAuth'}
-                    </Button>
-                  </CardContent>
-                </Card>
+                <SettingsSection title="OAuth required" className="border-(--accent-orange)/40 bg-(--accent-orange)/10">
+                  <div className="flex items-center gap-2 text-(--accent-orange) mb-2">
+                    <AlertCircle size={13} aria-hidden="true" />
+                    <span className="text-xs font-semibold">OAuth needed to connect</span>
+                  </div>
+                  <p className="mb-3 text-xs text-(--color-text-muted)">Connect OAuth to authorize this MCP server.</p>
+                  <Button variant="default" size="sm" className="min-h-11 md:min-h-0"
+                    onClick={handleConnectOAuth} disabled={connectOAuthMut.isPending || !server.enabled}>
+                    {connectOAuthMut.isPending ? 'Connecting…' : 'Connect OAuth'}
+                  </Button>
+                </SettingsSection>
               )}
 
               {draft ? (
                 <McpServerForm value={draft} onChange={setDraft} isNew={false} disabled={updateMut.isPending} errors={fieldErrors} />
               ) : (
-                <Card size="sm">
-                  <CardContent className="pt-4">
-                    <p className="text-xs text-(--color-text-muted)">
-                      No saved configuration found. The server may have been removed from <span className="font-mono">mcp.json</span>.
-                    </p>
-                  </CardContent>
-                </Card>
+                <SettingsSection title="Configuration">
+                  <p className="text-xs text-(--color-text-muted)">
+                    No saved configuration found. The server may have been removed from <span className="font-mono">mcp.json</span>.
+                  </p>
+                </SettingsSection>
               )}
 
               <div className="flex items-center justify-between gap-2 text-xs text-(--color-text-muted)">
@@ -227,12 +217,8 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
 
 function StatusCard({ server }: { server: NonNullable<ReturnType<typeof useMcpServerQuery>['data']> }) {
   return (
-    <Card size="sm">
-      <CardHeader>
-        <CardTitle>Runtime status</CardTitle>
-        <CardDescription>Live state of the running connection.</CardDescription>
-      </CardHeader>
-      <CardContent className="grid gap-3 text-xs sm:grid-cols-2">
+    <SettingsSection title="Runtime status" description="live state of the running connection">
+      <div className="grid gap-3 text-xs sm:grid-cols-2">
         <Stat label="State">
           <span className={
             server.state === 'ready' ? 'text-(--accent-green)'
@@ -247,16 +233,16 @@ function StatusCard({ server }: { server: NonNullable<ReturnType<typeof useMcpSe
         <Stat label="Started">{server.started_at ? new Date(server.started_at).toLocaleString() : '—'}</Stat>
         {server.tool_names.length > 0 && (
           <div className="sm:col-span-2">
-            <p className="mb-1.5 text-xs font-medium text-(--color-text)">Tools ({server.tool_names.length})</p>
+            <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-(--color-text-muted) select-none">Tools ({server.tool_names.length})</p>
             <div className="flex flex-wrap gap-1">
               {server.tool_names.map((tool) => (
-                <span key={tool} className="rounded-md bg-(--bg-key) px-1.5 py-0.5 font-mono text-[11px] text-(--color-text-muted)">{tool}</span>
+                <span key={tool} className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 font-mono text-[10.5px] text-(--color-text-muted)">{tool}</span>
               ))}
             </div>
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </SettingsSection>
   )
 }
 
@@ -273,23 +259,17 @@ function Stat({ label, children }: { label: string; children: React.ReactNode })
 
 function RestartCard({ onRestart, pending, enabled }: { onRestart: () => void; pending: boolean; enabled: boolean }) {
   return (
-    <Card size="sm">
-      <CardHeader>
-        <CardTitle>Connection</CardTitle>
-        <CardDescription>Restart the server process without changing its configuration.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="default" size="sm" className="min-h-11 md:min-h-0"
-            onClick={onRestart} disabled={pending || !enabled} aria-label={pending ? 'Restarting' : 'Restart server'}>
-            <RotateCw size={12} aria-hidden="true" />
-            {pending ? 'Restarting…' : 'Restart'}
-          </Button>
-        </div>
-        {!enabled && (
-          <p className="mt-2 text-[11px] text-(--color-text-muted)">Server is disabled — enable and save first to restart.</p>
-        )}
-      </CardContent>
-    </Card>
+    <SettingsSection title="Connection" description="restart the server process without changing its configuration">
+      <div className="flex flex-wrap gap-2">
+        <Button variant="default" size="sm" className="min-h-11 md:min-h-0"
+          onClick={onRestart} disabled={pending || !enabled} aria-label={pending ? 'Restarting' : 'Restart server'}>
+          <RotateCw size={12} aria-hidden="true" />
+          {pending ? 'Restarting…' : 'Restart'}
+        </Button>
+      </div>
+      {!enabled && (
+        <p className="mt-2 text-[11px] text-(--color-text-muted)">Server is disabled — enable and save first to restart.</p>
+      )}
+    </SettingsSection>
   )
 }

@@ -7,6 +7,7 @@ import {
 } from '@/lib/desktop-notifications'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
+import { SettingsSection } from '@/components/settings/SettingsSection'
 
 export function NotificationSettingsPage() {
   const [enabled, setEnabled] = useState(() => areDesktopNotificationsEnabled())
@@ -51,51 +52,40 @@ export function NotificationSettingsPage() {
             app window is focused.
           </p>
 
-          <section className="space-y-3 rounded-md border border-(--color-border) bg-(--bg-card) p-4">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-(--color-text-muted) border-b border-(--color-border)/60 pb-1.5 mb-3">
-              Status
-            </h2>
-
-            <label className="flex min-h-11 cursor-pointer items-center gap-3 text-xs md:min-h-0 select-none">
-              <Switch
-                checked={enabled}
-                onCheckedChange={handleEnabledChange}
-              />
-              <span className="text-(--color-text) font-medium">Enabled</span>
-            </label>
-
-            <p className="text-xs text-(--color-text-muted) leading-relaxed">
-              OpenAgentd will notify you when an assistant finishes responding,
-              a background task completes, or a reminder fires. Notifications
-              are skipped while the app window is focused.
-            </p>
-
-            <p className="text-xs text-(--color-text-subtle) leading-relaxed">
-              Notification sounds are controlled by your operating system. OpenAgentd does not play an extra in-app sound.
-            </p>
-          </section>
-
-          <section className="space-y-3 rounded-md border border-(--color-border) bg-(--bg-card) p-4">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-(--color-text-muted) border-b border-(--color-border)/60 pb-1.5 mb-3">
-              Test
-            </h2>
-
-            <p className="text-xs text-(--color-text-muted) leading-relaxed">
-              Send one notification now to confirm OS permissions and native
-              app integration are working.
-            </p>
-
-            <Button size="sm" className="min-h-11 md:min-h-0" onClick={handleTest} disabled={!enabled || testing}>
-              <BellRing size={12} aria-hidden="true" />
-              {testing ? 'Sending…' : 'Send test notification'}
-            </Button>
-
-            {testMessage && (
-              <p className="text-xs font-mono text-(--color-text-subtle)" role="status">
-                {testMessage}
+          <SettingsSection title="Status">
+            <div className="space-y-3">
+              <label className="flex min-h-11 cursor-pointer items-center gap-3 text-xs md:min-h-0 select-none">
+                <Switch checked={enabled} onCheckedChange={handleEnabledChange} />
+                <span className="text-(--color-text) font-medium">Enabled</span>
+              </label>
+              <p className="text-xs text-(--color-text-muted) leading-relaxed">
+                OpenAgentd will notify you when an assistant finishes responding,
+                a background task completes, or a reminder fires. Notifications
+                are skipped while the app window is focused.
               </p>
-            )}
-          </section>
+              <p className="text-xs text-(--color-text-subtle) leading-relaxed">
+                Notification sounds are controlled by your operating system. OpenAgentd does not play an extra in-app sound.
+              </p>
+            </div>
+          </SettingsSection>
+
+          <SettingsSection title="Test" description="send a test notification now">
+            <div className="space-y-3">
+              <p className="text-xs text-(--color-text-muted) leading-relaxed">
+                Send one notification now to confirm OS permissions and native
+                app integration are working.
+              </p>
+              <Button size="sm" className="min-h-11 md:min-h-0" onClick={handleTest} disabled={!enabled || testing}>
+                <BellRing size={12} aria-hidden="true" />
+                {testing ? 'Sending…' : 'Send test notification'}
+              </Button>
+              {testMessage && (
+                <p className="text-xs font-mono text-(--color-text-subtle)" role="status">
+                  {testMessage}
+                </p>
+              )}
+            </div>
+          </SettingsSection>
         </div>
       </div>
     </>

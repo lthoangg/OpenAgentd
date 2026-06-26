@@ -10,6 +10,7 @@ import {
 import { useToastStore } from '@/stores/useToastStore'
 import { Button } from '@/components/ui/button'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
+import { SettingsSection } from '@/components/settings/SettingsSection'
 import { validateModel } from '@/components/settings/schema'
 import type { MultimodalSettings } from '@/api/client'
 import type { ModelOption } from '@/components/settings/AgentForm'
@@ -169,11 +170,7 @@ export function MultimodalSettingsPage() {
 
           {!isLoading && !error && (
             <div className="space-y-4">
-              <section className="space-y-3.5 rounded-md border border-(--color-border) bg-(--bg-card) p-4">
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-(--color-text-muted) border-b border-(--color-border)/60 pb-1.5 mb-3">
-                  Image
-                </h2>
-
+              <SettingsSection title="Image" description="default model and options for image generation">
                 <div className="grid gap-3 sm:grid-cols-2">
                   <ModelField value={String(form.image.model ?? '')} onChange={(value) => setImage('model', value)} options={imageModelOptions} error={imageModelError} />
                   <ListField label="Aspect ratio" value={String(form.image.aspect_ratio ?? '')} onChange={(value) => setImage('aspect_ratio', value)} options={IMAGE_ASPECT_RATIOS} error={imageAspectError} />
@@ -182,20 +179,16 @@ export function MultimodalSettingsPage() {
                   <ListField label="Output format" value={optionalValue(form.image.output_format)} onChange={(value) => setImage('output_format', optionalSettingValue(value))} options={IMAGE_OUTPUT_FORMATS} error={imageOutputFormatError} optional />
                   <ListField label="Quality" value={optionalValue(form.image.quality)} onChange={(value) => setImage('quality', optionalSettingValue(value))} options={IMAGE_QUALITIES} error={imageQualityError} optional />
                 </div>
-              </section>
+              </SettingsSection>
 
-              <section className="space-y-3.5 rounded-md border border-(--color-border) bg-(--bg-card) p-4">
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-(--color-text-muted) border-b border-(--color-border)/60 pb-1.5 mb-3">
-                  Video
-                </h2>
-
+              <SettingsSection title="Video" description="default model and options for video generation">
                 <div className="grid gap-3 sm:grid-cols-2">
                   <ModelField value={String(form.video.model ?? '')} onChange={(value) => setVideo('model', value)} options={videoModelOptions} error={videoModelError} />
                   <ListField label="Aspect ratio" value={String(form.video.aspect_ratio ?? '')} onChange={(value) => setVideo('aspect_ratio', value)} options={VIDEO_ASPECT_RATIOS} error={videoAspectError} />
                   <ListField label="Resolution" value={String(form.video.resolution ?? '')} onChange={(value) => setVideo('resolution', value)} options={VIDEO_RESOLUTIONS} error={videoResolutionError} />
                   <ListField label="Duration seconds" value={String(form.video.duration_seconds ?? '')} onChange={(value) => setVideo('duration_seconds', value)} options={VIDEO_DURATIONS} error={videoDurationError} />
                 </div>
-              </section>
+              </SettingsSection>
             </div>
           )}
         </div>

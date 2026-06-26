@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { ChevronDown, ChevronRight, Folder, GitCompare, Plus, RefreshCw, Search, X } from 'lucide-react'
+import { ChevronRight, Folder, GitCompare, Plus, RefreshCw, Search, X } from 'lucide-react'
+import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 import { getCodingWorkspaceGitDiff, listCodingWorkspaceFiles, getCodingWorkspaceGitHistory, getCodingWorkspaceCommitDiff } from '@/api/client'
 import { CodingFilePreviewContent, DiffPreview } from './CodingFileViewerPanel'
 import { FileTypeIcon } from './FileTypeIcon'
@@ -277,7 +278,6 @@ export function CodingWorkspacePanel({
     }
   }
   const historyLimit = 50
-  const [menuOpen, setMenuOpen] = useState(false)
 
   const gitHistory = useInfiniteQuery({
     queryKey: queryKeys.coding.history(workspace, historyLimit, allBranches),
@@ -615,70 +615,29 @@ export function CodingWorkspacePanel({
               {diff.data?.is_git_repo && (
                 <div className="flex items-center justify-between border-b border-(--color-border) bg-(--bg-card) p-1 shrink-0 gap-2 min-h-9">
                   {!mobile ? (
-                    <div className="relative">
-                      <button
-                        type="button"
-                        onClick={() => setMenuOpen((prev) => !prev)}
-                        className="flex w-36 items-center justify-between rounded px-2 py-1 text-left text-xs font-medium border border-(--color-border-strong) bg-(--bg-page) text-(--color-text) hover:bg-(--bg-key) cursor-pointer select-none"
-                      >
-                        <span className="flex items-center gap-1.5">
-                          <GitCompare size={12} className="text-(--color-text-subtle)" />
+                    <Dropdown
+                      className="w-36"
+                      trigger={
+                        <>
+                          <GitCompare size={12} className="shrink-0 text-(--color-text-subtle)" aria-hidden="true" />
                           {subTab === 'changes'
                             ? `Changes (${changedFiles.length})`
                             : subTab === 'commits'
                             ? 'Commits'
                             : 'Tree'}
-                        </span>
-                        <ChevronDown size={12} className="text-(--color-text-subtle)" />
-                      </button>
-
-                      {menuOpen && (
-                        <>
-                          <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-                          <div className="absolute left-0 right-0 top-full mt-1 z-20 rounded border border-(--color-border) bg-(--bg-card) p-1 shadow-lg flex flex-col gap-0.5">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSubTab('changes')
-                                setMenuOpen(false)
-                              }}
-                              className={cn(
-                                'w-full rounded px-2 py-1 text-left text-xs font-medium hover:bg-(--bg-key) cursor-pointer transition-colors',
-                                subTab === 'changes' ? 'text-(--color-accent)' : 'text-(--color-text-2)'
-                              )}
-                            >
-                              Changes ({changedFiles.length})
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSubTab('commits')
-                                setMenuOpen(false)
-                              }}
-                              className={cn(
-                                'w-full rounded px-2 py-1 text-left text-xs font-medium hover:bg-(--bg-key) cursor-pointer transition-colors',
-                                subTab === 'commits' ? 'text-(--color-accent)' : 'text-(--color-text-2)'
-                              )}
-                            >
-                              Commits
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSubTab('tree')
-                                setMenuOpen(false)
-                              }}
-                              className={cn(
-                                'w-full rounded px-2 py-1 text-left text-xs font-medium hover:bg-(--bg-key) cursor-pointer transition-colors',
-                                subTab === 'tree' ? 'text-(--color-accent)' : 'text-(--color-text-2)'
-                              )}
-                            >
-                              Tree
-                            </button>
-                          </div>
                         </>
-                      )}
-                    </div>
+                      }
+                    >
+                      <DropdownItem active={subTab === 'changes'} onSelect={() => setSubTab('changes')}>
+                        Changes ({changedFiles.length})
+                      </DropdownItem>
+                      <DropdownItem active={subTab === 'commits'} onSelect={() => setSubTab('commits')}>
+                        Commits
+                      </DropdownItem>
+                      <DropdownItem active={subTab === 'tree'} onSelect={() => setSubTab('tree')}>
+                        Tree
+                      </DropdownItem>
+                    </Dropdown>
                   ) : (
                     <div className="flex flex-1 bg-inherit gap-1">
                       <button

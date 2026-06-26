@@ -18,17 +18,22 @@
  *   default-variant trigger · crisp 1px border panel · text-xs items ·
  *   active item in --color-text, inactive in --color-text-2 · hover: --bg-key
  *
- * No Radix, no floating-ui. Plain state + fixed backdrop dismiss.
+ * The panel is portalled to document.body and positioned in viewport coords
+ * so it always escapes overflow:hidden ancestors and fixed-modal stacking
+ * contexts regardless of z-index — same approach as ModelCombobox.
  */
 import {
   Children,
   cloneElement,
   isValidElement,
+  useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ComponentPropsWithRef,
   type ReactNode,
 } from 'react'
+import { createPortal } from 'react-dom'
 import { ChevronDown, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { buttonVariants } from '@/components/ui/button'
@@ -119,10 +124,42 @@ function Dropdown({
   disabled,
 }: DropdownProps) {
   const [open, setOpen] = useState(false)
-  const rootRef = useRef<HTMLDivElement>(null)
+  const [panelRect, setPanelRect] = useState<DOMRect | null>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
 
-  // In controlled-select mode: find the label of the selected item
-  // so we can show it in the trigger instead of the static trigger prop.
+  // Measure the trigger in viewport coords whenever we open, and keep it
+  // pinned as the page scrolls or the window resizes.
+  useLayoutEffect(() => {
+    if (!open) return
+    const measure = () => {
+      const rect = triggerRef.current?.getBoundingClientRect()
+      if (rect) setPanelRect(rect)
+    }
+    measure()
+    window.addEventListener('scroll', measure, true)
+    window.addEventListener('resize', measure)
+    return () => {
+      window.removeEventListener('scroll', measure, true)
+      window.removeEventListener('resize', measure)
+    }
+  }, [open])
+
+  // Close when a pointer-down lands outside both the trigger and the panel.
+  useEffect(() => {
+    if (!open) return
+    const onPointerDown = (e: PointerEvent) => {
+      const target = e.target as Node | null
+      if (triggerRef.current?.contains(target)) return
+      // Panel is portalled — check by data attribute on its root
+      const panel = document.querySelector('[data-dropdown-panel]')
+      if (panel?.contains(target)) return
+      setOpen(false)
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => document.removeEventListener('pointerdown', onPointerDown)
+  }, [open])
+
+  // In controlled-select mode: show the selected item's label in the trigger.
   let displayLabel: ReactNode = trigger
   if (value !== undefined) {
     Children.forEach(children, (child) => {
@@ -132,7 +169,7 @@ function Dropdown({
     })
   }
 
-  // Inject active + onSelect into DropdownItem children when in select mode.
+  // Inject active + onSelect into DropdownItem children in select mode.
   const items =
     value !== undefined
       ? Children.map(children, (child) => {
@@ -150,9 +187,10 @@ function Dropdown({
       : children
 
   return (
-    <div ref={rootRef} className="relative">
+    <>
       {/* Trigger */}
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => !disabled && setOpen((prev) => !prev)}
         aria-haspopup="menu"
@@ -178,32 +216,30 @@ function Dropdown({
         />
       </button>
 
-      {/* Panel */}
-      {open && (
-        <>
-          {/* Backdrop — closes on outside click */}
-          <div
-            className="fixed inset-0 z-40"
-            aria-hidden="true"
-            onClick={() => setOpen(false)}
-          />
-          <div
-            role="menu"
-            className={cn(
-              'absolute left-0 top-full z-50 mt-1',
-              'min-w-full',
-              'rounded border border-(--color-border) bg-(--bg-card)',
-              'p-1 shadow-md',
-              'flex flex-col gap-0.5',
-              panelClassName,
-            )}
-            // Don't close on item click here — items handle their own close
-          >
-            {items}
-          </div>
-        </>
+      {/* Panel — portalled to body, positioned in viewport coords */}
+      {open && panelRect && createPortal(
+        <div
+          data-dropdown-panel=""
+          role="menu"
+          style={{
+            position: 'fixed',
+            top: panelRect.bottom + 4,
+            left: panelRect.left,
+            minWidth: panelRect.width,
+            zIndex: 9999,
+          }}
+          className={cn(
+            'rounded border border-(--color-border) bg-(--bg-card)',
+            'p-1 shadow-md',
+            'flex flex-col gap-0.5',
+            panelClassName,
+          )}
+        >
+          {items}
+        </div>,
+        document.body,
       )}
-    </div>
+    </>
   )
 }
 

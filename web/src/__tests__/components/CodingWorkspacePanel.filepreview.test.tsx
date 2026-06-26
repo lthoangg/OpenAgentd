@@ -90,7 +90,7 @@ describe('Coding workspace two-layer file preview', () => {
     await renderWorkspacePanel(onFileSelect, 'README.md')
 
     await waitFor(() => expect(onFileSelect).toHaveBeenCalledWith(readme))
-    expect(screen.getAllByTitle('README.md').length).toBeGreaterThanOrEqual(1)
+    await waitFor(() => expect(screen.getAllByTitle('README.md').length).toBeGreaterThanOrEqual(1))
     await waitFor(() => expect(screen.getByText('const')).toBeTruthy())
   })
 

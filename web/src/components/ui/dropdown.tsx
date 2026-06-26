@@ -183,14 +183,14 @@ function Dropdown({
         <>
           {/* Backdrop — closes on outside click */}
           <div
-            className="fixed inset-0 z-10"
+            className="fixed inset-0 z-40"
             aria-hidden="true"
             onClick={() => setOpen(false)}
           />
           <div
             role="menu"
             className={cn(
-              'absolute left-0 top-full z-20 mt-1',
+              'absolute left-0 top-full z-50 mt-1',
               'min-w-full',
               'rounded border border-(--color-border) bg-(--bg-card)',
               'p-1 shadow-md',

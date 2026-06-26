@@ -25,5 +25,13 @@
   <string>OpenAgentd uses the microphone for voice input.</string>
   <key>NSSpeechRecognitionUsageDescription</key>
   <string>OpenAgentd uses speech recognition to convert your voice input into text.</string>
+  <key>UISupportedInterfaceOrientations</key>
+  <array>
+    <string>UIInterfaceOrientationPortrait</string>
+  </array>
+  <key>UISupportedInterfaceOrientations~ipad</key>
+  <array>
+    <string>UIInterfaceOrientationPortrait</string>
+  </array>
 </dict>
 </plist>

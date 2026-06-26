@@ -13,7 +13,7 @@ The web UI targets phones at 360–430 px as the primary baseline. All layout de
 
 ## Breakpoint & hook
 
-`useIsMobile()` (`web/src/hooks/use-mobile.ts`) returns `true` when `window.innerWidth < 768 px` (Tailwind `md:`). Use this hook — never raw CSS breakpoints — for JS-driven layout branches.
+`useIsMobile()` (`web/src/hooks/use-mobile.ts`) returns `true` when `window.innerWidth < 768px` (Tailwind `md:`) or when the viewport height is `< 580px` (e.g. landscape phones). This ensures landscape-oriented phones stay locked to the single-pane mobile layout instead of breaking into the desktop/split layout. Use this hook — never raw CSS breakpoints — for JS-driven layout branches.
 
 ---
 

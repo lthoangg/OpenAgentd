@@ -1,15 +1,26 @@
 """Tool decorator and Tool class for LLM function-calling.
 
-Parameter descriptions are defined via ``Annotated[type, Field(description=...)]``
-directly on the function signature. The docstring describes the tool's use case
-for the LLM — no ``Args:`` section required.
+There are two ways to describe a tool's arguments:
+
+1. **Inline (default)** — annotate each parameter with
+   ``Annotated[type, Field(description=...)]`` on the function signature.
+   Pydantic builds the validation model and JSON Schema automatically.
+
+2. **Explicit ``args_schema``** — pass a Pydantic ``BaseModel`` subclass to the
+   decorator. The model owns argument validation (including custom validators)
+   and the JSON Schema. The function receives the validated fields as keyword
+   arguments matching the model's field names.
+
+The tool ``name`` and ``description`` can be set on the decorator; both fall
+back to the function name and docstring respectively.
 
 Usage::
 
     from typing import Annotated
-    from pydantic import Field
+    from pydantic import BaseModel, Field
     from app.agent.tools import tool
 
+    # 1. Inline parameter annotations
     @tool
     def search(
         query: Annotated[str, Field(description="The search query string.")],
@@ -23,6 +34,26 @@ Usage::
         url: Annotated[str, Field(description="The URL to fetch.")],
     ) -> str:
         \"\"\"Fetch and convert a web page to Markdown.\"\"\"
+        ...
+
+    # 2. Explicit Pydantic args_schema with input validation
+    class SearchArgs(BaseModel):
+        query: str = Field(description="The search query string.")
+        max_results: int = Field(default=5, ge=1, le=20, description="Max results.")
+
+        @field_validator("query")
+        @classmethod
+        def _not_blank(cls, v: str) -> str:
+            if not v.strip():
+                raise ValueError("query must not be blank")
+            return v
+
+    @tool(
+        name="web_search",
+        description="Search the web for current information.",
+        args_schema=SearchArgs,
+    )
+    async def web_search(query: str, max_results: int = 5) -> list:
         ...
 
 Tools are callable (original function behaviour is preserved) and carry
@@ -130,7 +161,9 @@ class Tool:
       the function (supports both sync and async underlying functions)
 
     Parameter descriptions are sourced from ``Field(description=...)`` inside
-    ``Annotated`` type hints on the function signature.
+    ``Annotated`` type hints on the function signature, or from an explicit
+    Pydantic ``args_schema`` model passed to the constructor / ``@tool``
+    decorator (which also enables custom validators and field constraints).
     """
 
     def __init__(
@@ -139,6 +172,7 @@ class Tool:
         *,
         name: str | None = None,
         description: str | Callable[[], str] | None = None,
+        args_schema: type[BaseModel] | None = None,
     ) -> None:
         self._func = func
         # ``Callable`` is the abstract type; only function objects guarantee
@@ -147,6 +181,11 @@ class Tool:
         # in that case.
         self.name = name or getattr(func, "__name__", repr(func))
         self._custom_description = description
+        self._args_schema = args_schema
+        # When the function takes the validated model as a single argument
+        # (``def fn(args: MyArgs)``) we pass the model instance instead of
+        # unpacking its fields. Resolved in ``_build``.
+        self._model_param: str | None = None
 
         self._model, self._definition, self._injected_params = self._build()
         self._description_factory: Callable[[], str] | None = (
@@ -222,13 +261,17 @@ class Tool:
             raise ToolArgumentError(
                 f"Invalid arguments for tool '{self.name}': {exc}"
             ) from exc
-        # Build kwargs from model attributes — preserves nested Pydantic model
-        # instances (e.g. list[RememberItem]) instead of collapsing them to dicts
-        # as model_dump() would do.
-        validated: dict[str, Any] = {
-            field: getattr(validated_model, field)
-            for field in validated_model.model_fields
-        }
+        if self._model_param is not None:
+            # The function wants the validated model as a single argument.
+            validated: dict[str, Any] = {self._model_param: validated_model}
+        else:
+            # Build kwargs from model attributes — preserves nested Pydantic
+            # model instances (e.g. list[RememberItem]) instead of collapsing
+            # them to dicts as model_dump() would do.
+            validated = {
+                field: getattr(validated_model, field)
+                for field in validated_model.model_fields
+            }
         # Merge injected values (not validated — they come from trusted internal code)
         if _injected and self._injected_params:
             for pname in self._injected_params:
@@ -271,28 +314,47 @@ class Tool:
             else self._custom_description
         )
 
-        # include_extras=True preserves Annotated[..., Field(...)] wrappers so
-        # Pydantic picks up Field metadata (description, constraints) when
-        # generating the JSON Schema.
+        # Injected params always come from the function signature — they are
+        # supplied by the agent at call time and excluded from the LLM schema,
+        # regardless of whether an explicit ``args_schema`` is used.
         type_hints = get_type_hints(func, include_extras=True)
+        injected_params: set[str] = {
+            param_name
+            for param_name, _ in sig.parameters.items()
+            if param_name != "self" and _is_injected(type_hints.get(param_name, Any))
+        }
 
-        fields: dict[str, Any] = {}
-        injected_params: set[str] = set()
+        if self._args_schema is not None:
+            # An explicit Pydantic model owns validation + JSON Schema. The
+            # function receives either the validated fields as keyword
+            # arguments, or — when it declares a single parameter annotated
+            # with the schema type — the validated model instance itself.
+            ParameterModel = self._args_schema
+            for param_name in sig.parameters:
+                if param_name == "self" or param_name in injected_params:
+                    continue
+                if type_hints.get(param_name) is self._args_schema:
+                    self._model_param = param_name
+                    break
+        else:
+            # Build the validation model from the function signature.
+            # include_extras=True preserves Annotated[..., Field(...)] wrappers
+            # so Pydantic picks up Field metadata (description, constraints)
+            # when generating the JSON Schema.
+            fields: dict[str, Any] = {}
+            for param_name, param in sig.parameters.items():
+                if param_name == "self" or param_name in injected_params:
+                    continue
+                annotation = type_hints.get(param_name, Any)
+                default = (
+                    param.default
+                    if param.default is not inspect.Parameter.empty
+                    else ...
+                )
+                fields[param_name] = (annotation, default)
 
-        for param_name, param in sig.parameters.items():
-            if param_name == "self":
-                continue
-            annotation = type_hints.get(param_name, Any)
-            # Skip InjectedArg params — they are not part of the LLM schema
-            if _is_injected(annotation):
-                injected_params.add(param_name)
-                continue
-            default = (
-                param.default if param.default is not inspect.Parameter.empty else ...
-            )
-            fields[param_name] = (annotation, default)
+            ParameterModel = create_model(f"{self.name}_parameters", **fields)
 
-        ParameterModel = create_model(f"{self.name}_parameters", **fields)
         schema = ParameterModel.model_json_schema()
 
         # Resolve $ref pointers — Pydantic emits $defs + $ref for nested
@@ -338,6 +400,7 @@ def tool(
     *,
     name: str | None = None,
     description: str | Callable[[], str] | None = None,
+    args_schema: type[BaseModel] | None = None,
 ) -> Callable[[Callable], Tool]: ...
 
 
@@ -346,12 +409,19 @@ def tool(
     *,
     name: str | None = None,
     description: str | Callable[[], str] | None = None,
+    args_schema: type[BaseModel] | None = None,
 ) -> Tool | Callable[[Callable], Tool]:
     """Decorator that converts a function into a :class:`Tool`.
 
-    Parameter descriptions belong on the signature via
-    ``Annotated[type, Field(description=...)]``.
-    The docstring should describe the tool's use case for the LLM.
+    Argument schemas come from one of two sources:
+
+    * Inline ``Annotated[type, Field(description=...)]`` hints on the signature
+      (default), or
+    * an explicit Pydantic ``args_schema`` model that owns validation and the
+      JSON Schema (enables custom validators, constraints, cross-field checks).
+
+    The docstring describes the tool's use case for the LLM; ``description``
+    overrides it.
 
     Can be used with or without arguments::
 
@@ -365,10 +435,22 @@ def tool(
         @tool(name="custom")
         def my_func(...): ...
 
+        class MyArgs(BaseModel):
+            x: int = Field(ge=0, description="The input value.")
+
+        @tool(name="custom", description="Do a thing.", args_schema=MyArgs)
+        def my_func(x: int) -> str: ...
+
+        # Or receive the validated model directly:
+        @tool(args_schema=MyArgs)
+        def my_func(args: MyArgs) -> str: ...
+
     Args:
         func: The function to wrap (only when used as a bare ``@tool``).
         name: Override the tool name (defaults to the function name).
         description: Override the tool description (defaults to the docstring).
+        args_schema: Pydantic model defining and validating the tool's
+            arguments. When omitted, the schema is derived from the signature.
 
     Returns:
         A :class:`Tool` instance, or a decorator that returns one.
@@ -379,6 +461,6 @@ def tool(
 
     # Used as @tool(...) with keyword arguments
     def decorator(f: Callable) -> Tool:
-        return Tool(f, name=name, description=description)
+        return Tool(f, name=name, description=description, args_schema=args_schema)
 
     return decorator

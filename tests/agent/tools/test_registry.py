@@ -3,9 +3,9 @@
 from typing import Annotated, Literal
 
 import pytest
-from pydantic import Field
+from pydantic import BaseModel, Field, field_validator
 
-from app.agent.errors import ToolExecutionError
+from app.agent.errors import ToolArgumentError, ToolExecutionError
 from app.agent.tools.registry import InjectedArg, Tool, tool
 
 
@@ -485,3 +485,135 @@ async def test_arun_with_optional_field_default():
     # Override optional param
     result = await greet.arun(name="Bob", greeting="Hi")
     assert result == "Hi, Bob!"
+
+
+# ---------------------------------------------------------------------------
+# args_schema — explicit Pydantic model for validation + JSON Schema
+# ---------------------------------------------------------------------------
+
+
+class _SearchArgs(BaseModel):
+    """Search arguments with validation."""
+
+    query: str = Field(description="The search query string.")
+    max_results: int = Field(
+        default=5, ge=1, le=20, description="Number of results (1-20)."
+    )
+
+    @field_validator("query")
+    @classmethod
+    def _not_blank(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("query must not be blank")
+        return v
+
+
+def test_args_schema_builds_definition_from_model():
+    @tool(name="search", description="Search the web.", args_schema=_SearchArgs)
+    def search(query: str, max_results: int = 5) -> list:
+        return []
+
+    defn = search.definition
+    assert defn["function"]["name"] == "search"
+    assert defn["function"]["description"] == "Search the web."
+    props = defn["function"]["parameters"]["properties"]
+    assert props["query"]["description"] == "The search query string."
+    assert props["max_results"]["description"] == "Number of results (1-20)."
+    # Constraints from the model carry into the JSON Schema
+    assert props["max_results"]["minimum"] == 1
+    assert props["max_results"]["maximum"] == 20
+    assert "query" in defn["function"]["parameters"]["required"]
+    assert "max_results" not in defn["function"]["parameters"]["required"]
+
+
+def test_args_schema_description_falls_back_to_docstring():
+    @tool(args_schema=_SearchArgs)
+    def search(query: str, max_results: int = 5) -> list:
+        """Search the web for current information."""
+        return []
+
+    assert search.description == "Search the web for current information."
+
+
+def test_args_schema_strips_property_titles():
+    @tool(args_schema=_SearchArgs)
+    def search(query: str, max_results: int = 5) -> list:
+        """Search."""
+        return []
+
+    props = search.definition["function"]["parameters"]["properties"]
+    assert "title" not in props["query"]
+    assert "title" not in props["max_results"]
+
+
+async def test_args_schema_validation_passes_and_unpacks_fields():
+    @tool(args_schema=_SearchArgs)
+    def search(query: str, max_results: int = 5) -> str:
+        """Search."""
+        return f"{query}:{max_results}"
+
+    result = await search.arun(query="cats", max_results=3)
+    assert result == "cats:3"
+
+
+async def test_args_schema_applies_defaults():
+    @tool(args_schema=_SearchArgs)
+    def search(query: str, max_results: int = 5) -> str:
+        """Search."""
+        return f"{query}:{max_results}"
+
+    result = await search.arun(query="dogs")
+    assert result == "dogs:5"
+
+
+async def test_args_schema_constraint_violation_raises_tool_argument_error():
+    @tool(args_schema=_SearchArgs)
+    def search(query: str, max_results: int = 5) -> str:
+        """Search."""
+        return query
+
+    with pytest.raises(ToolArgumentError):
+        await search.arun(query="cats", max_results=99)  # exceeds le=20
+
+
+async def test_args_schema_custom_validator_raises_tool_argument_error():
+    @tool(args_schema=_SearchArgs)
+    def search(query: str, max_results: int = 5) -> str:
+        """Search."""
+        return query
+
+    with pytest.raises(ToolArgumentError):
+        await search.arun(query="   ")  # blank query rejected by field_validator
+
+
+async def test_args_schema_function_receives_model_instance():
+    """When the function declares a single param typed as the schema, it gets
+    the validated model instance rather than unpacked fields."""
+
+    @tool(args_schema=_SearchArgs)
+    def search(args: _SearchArgs) -> str:
+        """Search."""
+        assert isinstance(args, _SearchArgs)
+        return f"{args.query}:{args.max_results}"
+
+    result = await search.arun(query="birds", max_results=7)
+    assert result == "birds:7"
+
+
+async def test_args_schema_with_injected_arg():
+    """InjectedArg params still work alongside an explicit args_schema."""
+
+    @tool(args_schema=_SearchArgs)
+    async def search(
+        query: str,
+        max_results: int = 5,
+        _state: Annotated[str, InjectedArg()] = "",
+    ) -> str:
+        """Search."""
+        return f"{query}:{max_results}:{_state}"
+
+    # _state is excluded from the schema
+    props = search.definition["function"]["parameters"]["properties"]
+    assert "_state" not in props
+    result = await search.arun(_injected={"_state": "ctx"}, query="x", max_results=2)
+    assert result == "x:2:ctx"

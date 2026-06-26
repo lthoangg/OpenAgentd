@@ -6,14 +6,29 @@ import asyncio
 import json
 import shutil
 from pathlib import Path
-from typing import Annotated
 
 from loguru import logger
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from app.agent.sandbox import get_sandbox
 from app.agent.tools.builtin.filesystem._config_watch import notify_fs_change
 from app.agent.tools.registry import Tool
+
+_DESCRIPTION = (
+    "Permanently delete a file or directory from the workspace. "
+    "Use only when the user asked for removal or deletion is necessary. "
+    "Set recursive=true to remove a non-empty directory tree."
+)
+
+
+class RmArgs(BaseModel):
+    """Arguments for the rm tool."""
+
+    path: str = Field(description="Relative path to the file or directory to remove.")
+    recursive: bool = Field(
+        default=False,
+        description="Remove directories recursively. Required when path is a non-empty directory (default false).",
+    )
 
 
 def _count_lines_for_removed_file(path: Path) -> int | None:
@@ -24,19 +39,8 @@ def _count_lines_for_removed_file(path: Path) -> int | None:
     return len(data.split(b"\n"))
 
 
-async def _remove_path(
-    path: Annotated[
-        str,
-        Field(description="Relative path to the file or directory to remove."),
-    ],
-    recursive: Annotated[
-        bool,
-        Field(
-            description="Remove directories recursively. Required when path is a non-empty directory (default false)."
-        ),
-    ] = False,
-) -> str:
-    """Delete a file or directory from the workspace. Use recursive=true to remove a directory tree."""
+async def _remove_path(path: str, recursive: bool = False) -> str:
+    """Delete a file or directory from the workspace."""
     sandbox = get_sandbox()
     resolved = sandbox.validate_path(path)
     rel = sandbox.display_path(resolved)
@@ -80,9 +84,6 @@ async def _remove_path(
 remove_path = Tool(
     _remove_path,
     name="rm",
-    description=(
-        "Permanently delete a file or directory from the workspace. "
-        "Use only when the user asked for removal or deletion is necessary. "
-        "Set recursive=true to remove a non-empty directory tree."
-    ),
+    description=_DESCRIPTION,
+    args_schema=RmArgs,
 )

@@ -17,9 +17,9 @@ Recipient resolution:
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Annotated, Literal
+from typing import TYPE_CHECKING, Literal
 
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from app.agent.tools.registry import Tool
 
@@ -41,6 +41,27 @@ _MEMBER_DESCRIPTION = (
 )
 
 
+class TeamMessageArgs(BaseModel):
+    """Arguments for the team_message tool."""
+
+    to: list[str] = Field(
+        description=(
+            "Recipient names: exact live handles or an available bare "
+            "blueprint name when exactly one instance is live. "
+            "One call per intended audience; make separate calls for "
+            "different messages."
+        )
+    )
+    content: str = Field(
+        description=(
+            "The message body. Must be addressed ONLY to recipients in `to`. "
+            "Work output only: findings, drafts, data, task instructions, or questions. "
+            "NEVER greetings, status updates, or acknowledgements. "
+            "Do NOT prefix with your name — the system adds [your-name]: automatically."
+        )
+    )
+
+
 def make_team_message_tool(
     mailbox: "TeamMailbox",
     agent_name: str,
@@ -56,30 +77,7 @@ def make_team_message_tool(
     hand.
     """
 
-    async def team_message(
-        to: Annotated[
-            list[str],
-            Field(
-                description=(
-                    "Recipient names: exact live handles or an available bare "
-                    "blueprint name when exactly one instance is live. "
-                    "One call per intended audience; make separate calls for "
-                    "different messages."
-                )
-            ),
-        ],
-        content: Annotated[
-            str,
-            Field(
-                description=(
-                    "The message body. Must be addressed ONLY to recipients in `to`. "
-                    "Work output only: findings, drafts, data, task instructions, or questions. "
-                    "NEVER greetings, status updates, or acknowledgements. "
-                    "Do NOT prefix with your name — the system adds [your-name]: automatically."
-                )
-            ),
-        ],
-    ) -> str:
+    async def team_message(to: list[str], content: str) -> str:
         """Send a message to one or more teammates."""
         from app.agent.mode.team.mailbox import Message
 
@@ -117,7 +115,12 @@ def make_team_message_tool(
         return f"Message sent to {', '.join(resolved)}."
 
     description = _LEAD_DESCRIPTION if role == "lead" else _MEMBER_DESCRIPTION
-    return Tool(team_message, name="team_message", description=description)
+    return Tool(
+        team_message,
+        name="team_message",
+        description=description,
+        args_schema=TeamMessageArgs,
+    )
 
 
 def _resolve(

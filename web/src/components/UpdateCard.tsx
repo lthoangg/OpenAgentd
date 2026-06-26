@@ -37,7 +37,7 @@ export function UpdateCard() {
     setStatus((current) => ({ ...current, status: 'installing' }))
     try {
       // The Tauri command shuts down the sidecar and then calls
-      // `tauri::process::restart`, so this promise intentionally never
+      // `app.restart()`, so this promise intentionally never
       // resolves — the process is replaced before a response can come back.
       // We race it against a 60-second timeout so that if the restart fails
       // for any unexpected reason the card transitions to an error state

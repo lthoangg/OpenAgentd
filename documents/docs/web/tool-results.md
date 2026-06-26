@@ -83,7 +83,7 @@ When expanded, the args and/or result sections slide open below the header insid
 - The container uses `surface-raised`, `rounded-md`, `border border-(--color-border)`, and `bg-(--bg-card)`, matching markdown codeblock chrome.
 - For file-modifying tools (`edit`, `patch`, and `write`), the raw arguments and results are hidden. Instead, an inline Git-like **Diff View** (`DiffView.tsx`) is rendered directly inside the container, filling it completely without nested borders or padding. Completed `edit`, `patch`, and file `rm` calls use tool-result metadata for line-aware stats; multi-hunk patches reset numbering per hunk. Each file diff owns its scroll region (`max-h-80 overflow-auto`), with a local `top-0` sticky file header that remains clickable to collapse the diff.
 - For other tools, each section has a header strip (`bg-(--bg-key)`, bottom divider) with an uppercase 10px mono label (`arguments` / `terminal` / `output` / `result`) and a copy button when applicable.
-- Generic result content uses the renderer's own scroll behavior; live and terminal output use their own scrollable max heights.
+- Generic result and non-shell arguments content use a standard scroll behavior (max-height of 10 lines with vertical scroll); live and terminal output use their own scrollable max heights.
 
 ### Display-size guardrails
 
@@ -147,7 +147,7 @@ Verbs are **deterministic** (no randomised phrase pools). Argument values shown 
 
 > Both `generate_image` and `generate_video` set `suppressResult: true` — their markdown return values (`![prompt](file.png)` / `![prompt](file.mp4)`) are already rendered inline in the assistant reply, so the tool-call accordion does not repeat them. The `.mp4` path is rendered as `<video controls>` by `MarkdownVideo` (see [`docs/agent/tools.md#multimodalities-multimodalities`](../agent/tools.md#multimodalities-multimodalities)).
 
-All other tools use the default: humanized tool label as the header, pretty-printed JSON as args, label `arguments`. Tools called with an empty `{}` args object hide the args section and are not expandable.
+All other tools use the default: humanized tool label as the header, pretty-printed JSON as args, label `arguments`. Tools called with an empty `{}` args object hide the args section and are not expandable. Additionally, any stringified JSON fields inside the arguments are recursively parsed and displayed as formatted JSON for better visibility.
 
 ---
 
@@ -222,7 +222,7 @@ Backend returns compact roster text such as `Spawned: executor#1. Dismissed: exp
 ### `GenericResult` — everything else
 
 - If `result` parses as a JSON **object**, pretty-prints with `JSON.stringify(parsed, null, 2)`.
-- Otherwise renders as-is in a monospace `<pre>` (`max-h-64`, `break-words`). Very large displayed text is clipped by `truncateForDisplay()` and keeps head/tail context with a `... display truncated ...` marker.
+- Otherwise renders as-is in a monospace `<pre>` (`max-h-[calc(10*1.55em)]`, `break-words`). Very large displayed text is clipped by `truncateForDisplay()` and keeps head/tail context with a `... display truncated ...` marker.
 - Default text color is `--color-text-2` — not `--color-success`. (Previously this renderer defaulted to green, which made every unrelated result — `write`, `edit`, `date`, `skill`, … — look "successful" even when the tool had no notion of success/failure.)
 
 ---
@@ -231,7 +231,7 @@ Backend returns compact roster text such as `Spawned: executor#1. Dismissed: exp
 
 Both the **arguments** section and the **result** section have independent copy-to-clipboard buttons (`aria-label="Copy arguments"` / `aria-label="Copy result"`). Each uses its own boolean state (`copiedArgs` / `copiedResult`) and flips to a green check for 1.5 s after a successful copy.
 
-The args copy button is rendered only when an args section is visible. It copies `formattedArgs` — the extracted, human-readable value — not the raw JSON string. For example, copying a `shell` tool call copies the bare command (`date`) rather than the full input object (`{"command":"date","description":"..."}`). When `formattedArgs` is null, the args section and its copy button are hidden.
+The args copy button is rendered only when an args section is visible. It copies `formattedArgs` — the extracted, human-readable value — not the raw JSON string. For example, copying a `shell` tool call copies the bare command (`date`) rather than the full input object (`{"command":"date","description":"..."}`). For arguments containing stringified JSON, the copy button copies the pretty-printed, parsed JSON representation rather than the escaped string. When `formattedArgs` is null, the args section and its copy button are hidden.
 
 ---
 

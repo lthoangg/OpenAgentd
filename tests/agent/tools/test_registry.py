@@ -3,9 +3,9 @@
 from typing import Annotated, Literal
 
 import pytest
-from pydantic import Field
+from pydantic import BaseModel, Field, field_validator
 
-from app.agent.errors import ToolExecutionError
+from app.agent.errors import ToolArgumentError, ToolExecutionError
 from app.agent.tools.registry import InjectedArg, Tool, tool
 
 
@@ -485,3 +485,274 @@ async def test_arun_with_optional_field_default():
     # Override optional param
     result = await greet.arun(name="Bob", greeting="Hi")
     assert result == "Hi, Bob!"
+
+
+# ---------------------------------------------------------------------------
+# args_schema — explicit Pydantic model for validation + JSON Schema
+# ---------------------------------------------------------------------------
+
+
+class _SearchArgs(BaseModel):
+    """Search arguments with validation."""
+
+    query: str = Field(description="The search query string.")
+    max_results: int = Field(
+        default=5, ge=1, le=20, description="Number of results (1-20)."
+    )
+
+    @field_validator("query")
+    @classmethod
+    def _not_blank(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("query must not be blank")
+        return v
+
+
+def test_args_schema_builds_definition_from_model():
+    @tool(name="search", description="Search the web.", args_schema=_SearchArgs)
+    def search(query: str, max_results: int = 5) -> list:
+        return []
+
+    defn = search.definition
+    assert defn["function"]["name"] == "search"
+    assert defn["function"]["description"] == "Search the web."
+    props = defn["function"]["parameters"]["properties"]
+    assert props["query"]["description"] == "The search query string."
+    assert props["max_results"]["description"] == "Number of results (1-20)."
+    # Constraints from the model carry into the JSON Schema
+    assert props["max_results"]["minimum"] == 1
+    assert props["max_results"]["maximum"] == 20
+    assert "query" in defn["function"]["parameters"]["required"]
+    assert "max_results" not in defn["function"]["parameters"]["required"]
+
+
+def test_args_schema_description_falls_back_to_docstring():
+    @tool(args_schema=_SearchArgs)
+    def search(query: str, max_results: int = 5) -> list:
+        """Search the web for current information."""
+        return []
+
+    assert search.description == "Search the web for current information."
+
+
+def test_args_schema_strips_property_titles():
+    @tool(args_schema=_SearchArgs)
+    def search(query: str, max_results: int = 5) -> list:
+        """Search."""
+        return []
+
+    props = search.definition["function"]["parameters"]["properties"]
+    assert "title" not in props["query"]
+    assert "title" not in props["max_results"]
+
+
+async def test_args_schema_validation_passes_and_unpacks_fields():
+    @tool(args_schema=_SearchArgs)
+    def search(query: str, max_results: int = 5) -> str:
+        """Search."""
+        return f"{query}:{max_results}"
+
+    result = await search.arun(query="cats", max_results=3)
+    assert result == "cats:3"
+
+
+async def test_args_schema_applies_defaults():
+    @tool(args_schema=_SearchArgs)
+    def search(query: str, max_results: int = 5) -> str:
+        """Search."""
+        return f"{query}:{max_results}"
+
+    result = await search.arun(query="dogs")
+    assert result == "dogs:5"
+
+
+async def test_args_schema_constraint_violation_raises_tool_argument_error():
+    @tool(args_schema=_SearchArgs)
+    def search(query: str, max_results: int = 5) -> str:
+        """Search."""
+        return query
+
+    with pytest.raises(ToolArgumentError):
+        await search.arun(query="cats", max_results=99)  # exceeds le=20
+
+
+async def test_args_schema_custom_validator_raises_tool_argument_error():
+    @tool(args_schema=_SearchArgs)
+    def search(query: str, max_results: int = 5) -> str:
+        """Search."""
+        return query
+
+    with pytest.raises(ToolArgumentError):
+        await search.arun(query="   ")  # blank query rejected by field_validator
+
+
+async def test_args_schema_function_receives_model_instance():
+    """When the function declares a single param typed as the schema, it gets
+    the validated model instance rather than unpacked fields."""
+
+    @tool(args_schema=_SearchArgs)
+    def search(args: _SearchArgs) -> str:
+        """Search."""
+        assert isinstance(args, _SearchArgs)
+        return f"{args.query}:{args.max_results}"
+
+    result = await search.arun(query="birds", max_results=7)
+    assert result == "birds:7"
+
+
+async def test_args_schema_with_injected_arg():
+    """InjectedArg params still work alongside an explicit args_schema."""
+
+    @tool(args_schema=_SearchArgs)
+    async def search(
+        query: str,
+        max_results: int = 5,
+        _state: Annotated[str, InjectedArg()] = "",
+    ) -> str:
+        """Search."""
+        return f"{query}:{max_results}:{_state}"
+
+    # _state is excluded from the schema
+    props = search.definition["function"]["parameters"]["properties"]
+    assert "_state" not in props
+    result = await search.arun(_injected={"_state": "ctx"}, query="x", max_results=2)
+    assert result == "x:2:ctx"
+
+
+# ---------------------------------------------------------------------------
+# Input-validation failure handling — what happens when args don't validate
+# ---------------------------------------------------------------------------
+#
+# These cover the contract the tool executor relies on: a bad LLM-supplied
+# argument set must raise ``ToolArgumentError`` (never reach the function body,
+# never raise a raw pydantic ``ValidationError``), and the error message must
+# name the tool and explain what failed so the LLM can self-correct.
+
+
+async def test_validation_failure_raises_tool_argument_error_not_validation_error():
+    """A bad arg raises the domain ToolArgumentError, not pydantic's."""
+    from pydantic import ValidationError
+
+    @tool
+    def typed(x: Annotated[int, Field(description="An integer.")]) -> int:
+        """Typed tool."""
+        return x
+
+    with pytest.raises(ToolArgumentError) as exc_info:
+        await typed.arun(x="not_an_int")
+    # It must NOT surface as a raw pydantic ValidationError to callers.
+    assert not isinstance(exc_info.value, ValidationError)
+
+
+async def test_validation_failure_message_names_tool_and_field():
+    """The error message identifies the tool and the offending field."""
+
+    @tool(name="adder")
+    def add(
+        a: Annotated[int, Field(description="First.")],
+        b: Annotated[int, Field(description="Second.")],
+    ) -> int:
+        """Add."""
+        return a + b
+
+    with pytest.raises(ToolArgumentError) as exc_info:
+        await add.arun(a=1, b="oops")
+    msg = str(exc_info.value)
+    assert "adder" in msg  # tool name surfaced
+    assert "b" in msg  # offending field surfaced
+
+
+async def test_validation_failure_does_not_invoke_function_body():
+    """When validation fails, the underlying function never runs."""
+    calls: list[int] = []
+
+    @tool
+    def record(x: Annotated[int, Field(description="An integer.")]) -> int:
+        """Record."""
+        calls.append(x)
+        return x
+
+    with pytest.raises(ToolArgumentError):
+        await record.arun(x="bad")
+    assert calls == []  # body skipped — fail-fast before execution
+
+
+async def test_validation_failure_missing_required_field():
+    """Omitting a required arg raises ToolArgumentError."""
+
+    @tool
+    def needs(
+        required: Annotated[str, Field(description="Required string.")],
+    ) -> str:
+        """Needs a required arg."""
+        return required
+
+    with pytest.raises(ToolArgumentError):
+        await needs.arun()  # required missing
+
+
+async def test_validation_failure_args_schema_constraint_message():
+    """args_schema constraint failures carry a descriptive message."""
+
+    class Args(BaseModel):
+        n: int = Field(ge=1, le=10, description="1-10.")
+
+    @tool(args_schema=Args)
+    def bounded(n: int) -> int:
+        """Bounded."""
+        return n
+
+    with pytest.raises(ToolArgumentError) as exc_info:
+        await bounded.arun(n=999)
+    msg = str(exc_info.value)
+    assert "bounded" in msg
+    assert "n" in msg
+
+
+async def test_validation_failure_nested_model_field():
+    """A bad field inside a nested model raises ToolArgumentError."""
+
+    class Item(BaseModel):
+        name: str
+        value: int
+
+    @tool
+    def process(
+        items: Annotated[list[Item], Field(description="Items.")],
+    ) -> str:
+        """Process."""
+        return ",".join(i.name for i in items)
+
+    with pytest.raises(ToolArgumentError):
+        # value should be int — string that can't coerce fails validation
+        await process.arun(items=[{"name": "a", "value": "not_a_number"}])
+
+
+async def test_validation_unknown_extra_field_is_ignored():
+    """Unexpected extra args are dropped (pydantic default 'ignore'), not fatal.
+
+    The LLM sometimes hallucinates an extra key; we tolerate it rather than
+    erroring so a single stray field doesn't abort an otherwise-valid call.
+    """
+
+    @tool
+    def greet(name: Annotated[str, Field(description="Name.")]) -> str:
+        """Greet."""
+        return f"hi {name}"
+
+    result = await greet.arun(name="Sam", bogus_field="ignored")
+    assert result == "hi Sam"
+
+
+async def test_validation_failure_then_success_on_retry():
+    """A corrected retry after a validation failure succeeds (LLM self-correct)."""
+
+    @tool
+    def squared(x: Annotated[int, Field(description="Integer.")]) -> int:
+        """Square."""
+        return x * x
+
+    with pytest.raises(ToolArgumentError):
+        await squared.arun(x="five")  # first attempt: bad type
+    # LLM corrects and retries with a valid int
+    assert await squared.arun(x=5) == 25

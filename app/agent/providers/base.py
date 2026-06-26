@@ -20,10 +20,17 @@ class LLMProviderBase(ABC):
     everything.
 
     Priority (lowest → highest): named params → model_kwargs → call kwargs.
+
+    ``support_interrupt`` controls whether the agent loop may abort an
+    in-flight stream when the interrupt event fires.  Set to ``False``
+    for providers whose streaming connections are stateful or quota-tracked
+    (e.g. proxy-based providers) so the current LLM call always completes
+    before the loop checks for interruption.
     """
 
     model: str
     provider_name: str | None = None
+    support_interrupt: bool = True
 
     def __init__(
         self,

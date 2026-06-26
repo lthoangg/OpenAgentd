@@ -6,10 +6,10 @@ members, spawn member instances, and dismiss them in batches.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated, Literal
+from typing import TYPE_CHECKING, Literal
 
 from loguru import logger
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from app.agent.tools.registry import Tool
 
@@ -26,33 +26,33 @@ _MANAGE_DESCRIPTION = (
 )
 
 
+class TeamManageArgs(BaseModel):
+    """Arguments for the team_manage tool."""
+
+    action: Literal["spawn", "dismiss", "list"] = Field(
+        description=(
+            "'list' shows the current live member handles and the "
+            "spawnable blueprints for this workspace; 'spawn' brings "
+            "members online; 'dismiss' removes live instances from the "
+            "roster while preserving history."
+        )
+    )
+    members: list[str] = Field(
+        description=(
+            "For list: pass an empty array and read back the live "
+            "member handles plus spawnable blueprints. For spawn: pass "
+            "listed/available blueprint names or restorable handles. "
+            "For dismiss: pass explicit live handles. Multiple entries "
+            "are processed left-to-right."
+        )
+    )
+
+
 def make_team_manage_tool(team: "AgentTeam") -> Tool:
     """Return the roster-management ``team_manage`` tool. Lead-only."""
 
     async def team_manage(
-        action: Annotated[
-            Literal["spawn", "dismiss", "list"],
-            Field(
-                description=(
-                    "'list' shows the current live member handles and the "
-                    "spawnable blueprints for this workspace; 'spawn' brings "
-                    "members online; 'dismiss' removes live instances from the "
-                    "roster while preserving history."
-                )
-            ),
-        ],
-        members: Annotated[
-            list[str],
-            Field(
-                description=(
-                    "For list: pass an empty array and read back the live "
-                    "member handles plus spawnable blueprints. For spawn: pass "
-                    "listed/available blueprint names or restorable handles. "
-                    "For dismiss: pass explicit live handles. Multiple entries "
-                    "are processed left-to-right."
-                )
-            ),
-        ],
+        action: Literal["spawn", "dismiss", "list"], members: list[str]
     ) -> str:
         """Spawn, dismiss, or list live member instances in a batch."""
         if action == "list":
@@ -65,7 +65,12 @@ def make_team_manage_tool(team: "AgentTeam") -> Tool:
             return await _manage_spawn(team, members)
         return await _manage_dismiss(team, members)
 
-    return Tool(team_manage, name="team_manage", description=_MANAGE_DESCRIPTION)
+    return Tool(
+        team_manage,
+        name="team_manage",
+        description=_MANAGE_DESCRIPTION,
+        args_schema=TeamManageArgs,
+    )
 
 
 async def _manage_spawn(team: "AgentTeam", members: list[str]) -> str:

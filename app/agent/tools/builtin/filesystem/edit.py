@@ -9,14 +9,37 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Annotated
 
 from loguru import logger
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from app.agent.sandbox import get_sandbox
 from app.agent.tools.builtin.filesystem._config_watch import notify_fs_change
 from app.agent.tools.registry import Tool
+
+_DESCRIPTION = (
+    "Replace exact text in a file. Use the shortest old_string that uniquely "
+    "identifies the location. Only the matched region changes."
+)
+
+
+class EditArgs(BaseModel):
+    """Arguments for the edit tool."""
+
+    path: str = Field(description="Relative path to the file to modify.")
+    old_string: str = Field(
+        description=(
+            "Exact text to replace. Use the minimum lines needed to uniquely "
+            "identify the location — no more. Must match whitespace/indentation exactly."
+        )
+    )
+    new_string: str = Field(
+        description="Replacement text. Omit unchanged lines; only include what changes."
+    )
+    replace_all: bool = Field(
+        default=False,
+        description="Replace all occurrences of old_string (default false — replace only the unique match).",
+    )
 
 
 def _levenshtein(a: str, b: str) -> int:
@@ -217,31 +240,10 @@ def replace_content(
 
 
 async def _edit_file(
-    path: Annotated[
-        str,
-        Field(description="Relative path to the file to modify."),
-    ],
-    old_string: Annotated[
-        str,
-        Field(
-            description=(
-                "Exact text to replace. Use the minimum lines needed to uniquely "
-                "identify the location — no more. Must match whitespace/indentation exactly."
-            )
-        ),
-    ],
-    new_string: Annotated[
-        str,
-        Field(
-            description="Replacement text. Omit unchanged lines; only include what changes."
-        ),
-    ],
-    replace_all: Annotated[
-        bool,
-        Field(
-            description="Replace all occurrences of old_string (default false — replace only the unique match)."
-        ),
-    ] = False,
+    path: str,
+    old_string: str,
+    new_string: str,
+    replace_all: bool = False,
 ) -> str:
     """Edit a file by replacing an exact string with new content.
 
@@ -289,8 +291,6 @@ async def _edit_file(
 edit_file = Tool(
     _edit_file,
     name="edit",
-    description=(
-        "Replace exact text in a file. Use the shortest old_string that uniquely "
-        "identifies the location. Only the matched region changes."
-    ),
+    description=_DESCRIPTION,
+    args_schema=EditArgs,
 )

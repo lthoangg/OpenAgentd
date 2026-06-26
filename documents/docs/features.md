@@ -16,7 +16,7 @@ exists. When you ship something new, **add it here first** — slides, README,
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 15 providers. Your keys.
 
-**Latest release:** v1.71.0 · June 26, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.71.0)
+**Latest release:** v1.72.0 · June 26, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.72.0)
 
 ---
 
@@ -405,6 +405,8 @@ MCP. Deeper doc: [`agent/tools.md`](./agent/tools.md).
 
 - **Cross-tool `tool_output_delta` streaming** `[since v1.0]` — long-running
   tools (shell, web search) stream output to the inspector as they run.
+- **Rich inline ToolCall rendering & scroll guardrails** `[since v1.0, v1.72.0]` — compact tool summaries and status lines, sticky headers for diffs, and automatic scroll/truncation boundaries for extremely large outputs.
+  - **Tool arguments max-height and recursive JSON formatting** `[v1.72.0]` — tool arguments now respect a compact 10-line max-height scrollable container and recursively parse stringified JSON properties into pretty-printed formatting for optimal readability.
 - **Tool result offload** `[since v1.0]` — bulky tool outputs (large file
   reads, shell spills) move to `{OPENAGENTD_DATA_DIR}/sessions/{id}/.tool_results/` and the inspector
   links to them.

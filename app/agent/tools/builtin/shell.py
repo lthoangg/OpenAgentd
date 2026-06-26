@@ -48,12 +48,88 @@ from pathlib import Path
 from typing import Annotated, Literal
 
 from loguru import logger
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from app.agent.artifacts import shell_output_dir
 from app.agent.sandbox import get_sandbox
 from app.agent.tools.builtin import shell_runtime as _shell_mod
 from app.agent.tools.registry import InjectedArg, Tool
+
+_SHELL_DESCRIPTION = (
+    "Run a shell command via the user's POSIX shell. "
+    "Supports &&, ||, pipes, $VAR, subshells. "
+    "Default CWD is the session workspace. Relative workdir paths resolve inside it; "
+    "use an absolute path to run elsewhere. "
+    "Set background=true for long-running processes; returns a PID. "
+    "Prefer file tools for file ops. "
+    "IMPORTANT: stdin is /dev/null — the shell is non-interactive. "
+    "Always use non-interactive flags to suppress prompts "
+    "(e.g. npm init -y, npm create vite@latest -- --template react, "
+    "pip install -q, apt-get install -y, npx --yes, python3 -m venv --without-pip)."
+)
+
+_BG_DESCRIPTION = (
+    "Manage background processes started with shell(background=true). "
+    "Actions: list, status, output, stop, wait."
+)
+
+
+class ShellArgs(BaseModel):
+    """Arguments for the shell tool."""
+
+    command: str = Field(
+        description=(
+            "Shell command to run. Supports &&, ||, pipes, $VAR, subshells. "
+            "Runs via the user's preferred POSIX shell."
+        )
+    )
+    description: str = Field(
+        default="",
+        description=(
+            "Clear, concise description of what this command does in 5-10 words. "
+            "Example: 'Run tests', 'Install dependencies', 'List directory'."
+        ),
+    )
+    workdir: str | None = Field(
+        default=None,
+        description=(
+            "Working directory for the command. "
+            "Omit (or null) to run in the session workspace root. "
+            "Relative paths (e.g. 'subdir') resolve inside the session workspace. "
+            "Use an absolute path to run outside the workspace. "
+            "Use this instead of 'cd' commands."
+        ),
+    )
+    timeout_seconds: int | None = Field(
+        default=None,
+        description=(
+            "Timeout in seconds. Defaults to 60. Increase for long builds. "
+            "If the command legitimately takes longer, retry with a higher value."
+        ),
+    )
+    background: bool = Field(
+        default=False,
+        description=(
+            "Run without waiting. Use for dev servers/watchers. "
+            "Returns a PID; use bg tool to manage it."
+        ),
+    )
+
+
+class BgArgs(BaseModel):
+    """Arguments for the bg tool."""
+
+    action: Literal["list", "status", "output", "stop", "wait"] = Field(
+        description="Action: 'list' (all processes), 'status', 'output', 'stop', or 'wait' (requires pid)."
+    )
+    pid: int | None = Field(
+        default=None, description="PID (required for status/output/stop)."
+    )
+    last_n_lines: int | None = Field(
+        default=None,
+        description="Lines to return for 'output' and 'wait' actions (default all, max 200).",
+    )
+
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
@@ -259,54 +335,11 @@ async def _emit_tool_output(
 
 
 async def _shell(
-    command: Annotated[
-        str,
-        Field(
-            description=(
-                "Shell command to run. Supports &&, ||, pipes, $VAR, subshells. "
-                "Runs via the user's preferred POSIX shell."
-            )
-        ),
-    ],
-    description: Annotated[
-        str,
-        Field(
-            description=(
-                "Clear, concise description of what this command does in 5-10 words. "
-                "Example: 'Run tests', 'Install dependencies', 'List directory'."
-            )
-        ),
-    ] = "",
-    workdir: Annotated[
-        str | None,
-        Field(
-            description=(
-                "Working directory for the command. "
-                "Omit (or null) to run in the session workspace root. "
-                "Relative paths (e.g. 'subdir') resolve inside the session workspace. "
-                "Use an absolute path to run outside the workspace. "
-                "Use this instead of 'cd' commands."
-            )
-        ),
-    ] = None,
-    timeout_seconds: Annotated[
-        int | None,
-        Field(
-            description=(
-                "Timeout in seconds. Defaults to 60. Increase for long builds. "
-                "If the command legitimately takes longer, retry with a higher value."
-            )
-        ),
-    ] = None,
-    background: Annotated[
-        bool,
-        Field(
-            description=(
-                "Run without waiting. Use for dev servers/watchers. "
-                "Returns a PID; use bg tool to manage it."
-            )
-        ),
-    ] = False,
+    command: str,
+    description: str = "",
+    workdir: str | None = None,
+    timeout_seconds: int | None = None,
+    background: bool = False,
     _tool_output: Annotated[
         Callable[[str], Awaitable[None]] | None,
         InjectedArg(),
@@ -538,18 +571,8 @@ async def _shell(
 shell_tool = Tool(
     _shell,
     name="shell",
-    description=(
-        "Run a shell command via the user's POSIX shell. "
-        "Supports &&, ||, pipes, $VAR, subshells. "
-        "Default CWD is the session workspace. Relative workdir paths resolve inside it; "
-        "use an absolute path to run elsewhere. "
-        "Set background=true for long-running processes; returns a PID. "
-        "Prefer file tools for file ops. "
-        "IMPORTANT: stdin is /dev/null — the shell is non-interactive. "
-        "Always use non-interactive flags to suppress prompts "
-        "(e.g. npm init -y, npm create vite@latest -- --template react, "
-        "pip install -q, apt-get install -y, npx --yes, python3 -m venv --without-pip)."
-    ),
+    description=_SHELL_DESCRIPTION,
+    args_schema=ShellArgs,
 )
 
 
@@ -557,24 +580,11 @@ shell_tool = Tool(
 
 
 async def _background_process(
-    action: Annotated[
-        Literal["list", "status", "output", "stop", "wait"],
-        Field(
-            description="Action: 'list' (all processes), 'status', 'output', 'stop', or 'wait' (requires pid)."
-        ),
-    ],
-    pid: Annotated[
-        int | None,
-        Field(description="PID (required for status/output/stop)."),
-    ] = None,
-    last_n_lines: Annotated[
-        int | None,
-        Field(
-            description="Lines to return for 'output' and 'wait' actions (default all, max 200)."
-        ),
-    ] = None,
+    action: Literal["list", "status", "output", "stop", "wait"],
+    pid: int | None = None,
+    last_n_lines: int | None = None,
 ) -> str:
-    """Manage background processes started with shell(background=true). Actions: list, status, output, stop, wait."""
+    """Manage background processes started with shell(background=true)."""
     if action == "list":
         if not _bg_processes:
             return "No background processes running."
@@ -623,5 +633,6 @@ async def _background_process(
 background_process = Tool(
     _background_process,
     name="bg",
-    description="Manage background processes started with shell(background=true). Actions: list, status, output, stop, wait.",
+    description=_BG_DESCRIPTION,
+    args_schema=BgArgs,
 )

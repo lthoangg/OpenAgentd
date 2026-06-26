@@ -2,21 +2,24 @@
 
 from __future__ import annotations
 
-from typing import Annotated
-
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from app.agent.sandbox import get_sandbox
 from app.agent.tools.registry import Tool
 
+_DESCRIPTION = "List immediate children of a directory with type and size."
 
-async def _list_directory(
-    path: Annotated[
-        str,
-        Field(description="Directory path (default '.' = workspace root)."),
-    ] = ".",
-) -> str:
-    """List immediate children of a directory with type and size."""
+
+class LsArgs(BaseModel):
+    """Arguments for the ls tool."""
+
+    path: str = Field(
+        default=".", description="Directory path (default '.' = workspace root)."
+    )
+
+
+async def _list_directory(path: str = ".") -> str:
+    """List a directory's immediate children with type and size."""
     sandbox = get_sandbox()
     resolved = sandbox.validate_path(path)
     rel = sandbox.display_path(resolved)
@@ -40,5 +43,6 @@ async def _list_directory(
 list_directory = Tool(
     _list_directory,
     name="ls",
-    description="List immediate children of a directory with type and size.",
+    description=_DESCRIPTION,
+    args_schema=LsArgs,
 )

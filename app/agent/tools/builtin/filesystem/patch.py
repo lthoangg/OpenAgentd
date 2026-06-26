@@ -5,10 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import json
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Literal
 
 from loguru import logger
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from app.agent.sandbox import get_sandbox
 from app.agent.tools.builtin.filesystem._config_watch import notify_fs_change
@@ -16,6 +16,19 @@ from app.agent.tools.registry import Tool
 
 
 PatchKind = Literal["add", "update", "delete"]
+
+_DESCRIPTION = (
+    "Apply a stripped-down file patch envelope with add, update, delete, "
+    "and move operations."
+)
+
+
+class PatchArgs(BaseModel):
+    """Arguments for the patch tool."""
+
+    patch_text: str = Field(
+        description="The full patch text describing all file changes to apply."
+    )
 
 
 @dataclass
@@ -150,13 +163,8 @@ def _apply_chunks_with_meta(
     return next_content, hunks
 
 
-async def _patch_file(
-    patch_text: Annotated[
-        str,
-        Field(description="The full patch text describing all file changes to apply."),
-    ],
-) -> str:
-    """Apply a stripped-down patch envelope with add, update, delete, and move operations."""
+async def _patch_file(patch_text: str) -> str:
+    """Apply a parsed patch envelope to the workspace."""
     sandbox = get_sandbox()
     patches = _parse_patch(patch_text)
     planned: list[
@@ -245,5 +253,6 @@ async def _patch_file(
 patch_file = Tool(
     _patch_file,
     name="patch",
-    description="Apply a stripped-down file patch envelope with add, update, delete, and move operations.",
+    description=_DESCRIPTION,
+    args_schema=PatchArgs,
 )

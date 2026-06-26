@@ -15,7 +15,7 @@ from __future__ import annotations
 from typing import Any, Annotated
 
 from loguru import logger
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from app.agent.schemas.chat import ToolResult
 from app.agent.sandbox import get_sandbox
@@ -29,6 +29,25 @@ from app.agent.tools.registry import InjectedArg, Tool
 
 _MAX_READ_BYTES = 5_242_880  # 5 MB read cap
 _MAX_CONTEXT_CHARS = 20_000  # keep read results within typical LLM context budgets
+
+_DESCRIPTION = (
+    "Read a file from the workspace. Supports text files, images "
+    "(PNG, JPG, GIF, WebP), and documents (PDF, DOCX, PPTX, XLSX). "
+    "Images and documents are processed for visual/text analysis. "
+    "Paths are workspace-relative."
+)
+
+
+class ReadArgs(BaseModel):
+    """Arguments for the read tool."""
+
+    path: str = Field(description="Relative path to the file inside the workspace.")
+    offset: int = Field(
+        default=1, description="Line number to start from, 1-indexed (default 1)."
+    )
+    limit: int | None = Field(
+        default=None, description="Max lines to return. Omit for all lines from offset."
+    )
 
 
 def _cap_text_for_context(text: str, rel: object) -> str:
@@ -53,20 +72,12 @@ def _has_vision(state: AgentState | None) -> bool:
 
 
 async def _read_file(
-    path: Annotated[
-        str, Field(description="Relative path to the file inside the workspace.")
-    ],
-    offset: Annotated[
-        int,
-        Field(description="Line number to start from, 1-indexed (default 1)."),
-    ] = 1,
-    limit: Annotated[
-        int | None,
-        Field(description="Max lines to return. Omit for all lines from offset."),
-    ] = None,
+    path: str,
+    offset: int = 1,
+    limit: int | None = None,
     _state: Annotated[Any, InjectedArg()] = None,
 ) -> str | ToolResult:
-    """Read a file from the workspace. Supports text, images, PDFs, and documents.
+    """Read a file, dispatching by kind (text, image, document).
 
     For text files, prepends "[X-Y/N]" header when offset/limit active. Max 5 MB.
     For images, returns base64-encoded image data for visual analysis.
@@ -129,10 +140,6 @@ async def _read_file(
 read_file = Tool(
     _read_file,
     name="read",
-    description=(
-        "Read a file from the workspace. Supports text files, images "
-        "(PNG, JPG, GIF, WebP), and documents (PDF, DOCX, PPTX, XLSX). "
-        "Images and documents are processed for visual/text analysis. "
-        "Paths are workspace-relative."
-    ),
+    description=_DESCRIPTION,
+    args_schema=ReadArgs,
 )

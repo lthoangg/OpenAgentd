@@ -154,7 +154,7 @@ The desktop bundle checks the signed Tauri updater manifest at `https://github.c
 - Download progress is still mirrored in tray status. Downloaded updates are cached in the app cache dir so repeated checks can show the ready-to-install state instead of downloading again.
 - Release notes are fetched from the GitHub release and rendered in an in-app Markdown popup with a **View in GitHub** link.
 
-On install, Rust verifies the updater signature, shuts down the Python sidecar, then calls `tauri::process::restart`. CLI/server installs still upgrade via `openagentd upgrade` or the package manager that installed them; see [CLI reference](./cli.md).
+On install, Rust verifies the updater signature, shuts down the Python sidecar, then calls `app.restart()`. CLI/server installs still upgrade via `openagentd upgrade` or the package manager that installed them; see [CLI reference](./cli.md).
 
 ## Window chrome
 

@@ -37,11 +37,11 @@ import time
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Annotated, Literal, get_args
+from typing import Literal, get_args
 
 from loguru import logger
 from opentelemetry.trace import Status, StatusCode
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from app.agent.sandbox import get_sandbox
 from app.agent.tools.multimodalities import backends as _backends
@@ -71,6 +71,52 @@ ImageOutputFormat = Literal["png", "jpeg", "webp"]
 # foreign values are silently ignored so one tool schema works across providers.
 ImageAspectRatio = Literal["1:1", "3:4", "4:3", "9:16", "16:9"]
 ImageResolution = Literal["0.5K", "1K", "2K", "4K"]
+
+_DESCRIPTION = (
+    "Create or edit an image in the session workspace. "
+    "Returns markdown ``![alt](file.ext)`` to include verbatim so it "
+    "renders inline. On failure returns ``Error: ...``."
+)
+
+
+class ImageArgs(BaseModel):
+    """Arguments for the generate_image tool."""
+
+    prompt: str = Field(
+        description=(
+            "Visual description for text-to-image, or the transformation "
+            "to apply when `images` is provided."
+        )
+    )
+    filename: str | None = Field(
+        default=None, description="Optional slug for the saved file (no extension)."
+    )
+    images: list[str] | None = Field(
+        default=None,
+        description=(
+            "Optional workspace-relative paths of input images to edit "
+            "(1–16). When provided, the tool calls the provider's image "
+            "edit API instead of text-to-image; the `prompt` then "
+            "describes the transformation."
+        ),
+    )
+    size: ImageSize | None = Field(
+        default=None,
+        description=(
+            "Output size. 'auto', '1024x1024' (square), "
+            "'1536x1024' (landscape), or '1024x1536' (portrait)."
+        ),
+    )
+    output_format: ImageOutputFormat | None = Field(
+        default=None, description="Output file format: 'png', 'jpeg', or 'webp'."
+    )
+    aspect_ratio: ImageAspectRatio | None = Field(
+        default=None,
+        description="Aspect ratio: '1:1', '3:4', '4:3', '9:16', or '16:9'.",
+    )
+    image_size: ImageResolution | None = Field(
+        default=None, description="Output resolution: '0.5K', '1K', '2K', or '4K'."
+    )
 
 
 _GenerateFn = Callable[
@@ -143,55 +189,15 @@ def _load_input_images(paths: list[str]) -> list[tuple[str, bytes]] | str:
 
 
 async def _generate_image(
-    prompt: Annotated[
-        str,
-        Field(
-            description=(
-                "Visual description for text-to-image, or the transformation "
-                "to apply when `images` is provided."
-            ),
-        ),
-    ],
-    filename: Annotated[
-        str | None,
-        Field(description="Optional slug for the saved file (no extension)."),
-    ] = None,
-    images: Annotated[
-        list[str] | None,
-        Field(
-            description=(
-                "Optional workspace-relative paths of input images to edit "
-                "(1–16). When provided, the tool calls the provider's image "
-                "edit API instead of text-to-image; the `prompt` then "
-                "describes the transformation."
-            ),
-        ),
-    ] = None,
-    size: Annotated[
-        ImageSize | None,
-        Field(
-            description=(
-                "Output size. 'auto', '1024x1024' (square), "
-                "'1536x1024' (landscape), or '1024x1536' (portrait)."
-            ),
-        ),
-    ] = None,
-    output_format: Annotated[
-        ImageOutputFormat | None,
-        Field(description="Output file format: 'png', 'jpeg', or 'webp'."),
-    ] = None,
-    aspect_ratio: Annotated[
-        ImageAspectRatio | None,
-        Field(
-            description="Aspect ratio: '1:1', '3:4', '4:3', '9:16', or '16:9'.",
-        ),
-    ] = None,
-    image_size: Annotated[
-        ImageResolution | None,
-        Field(description="Output resolution: '0.5K', '1K', '2K', or '4K'."),
-    ] = None,
+    prompt: str,
+    filename: str | None = None,
+    images: list[str] | None = None,
+    size: ImageSize | None = None,
+    output_format: ImageOutputFormat | None = None,
+    aspect_ratio: ImageAspectRatio | None = None,
+    image_size: ImageResolution | None = None,
 ) -> str:
-    """Create or edit an image. Returns markdown ``![alt](file.<ext>)`` — include it verbatim to render inline. On failure returns ``Error: ...``."""
+    """Create or edit an image, saving it to the workspace and returning markdown."""
     # Span covers the whole call. Name is finalised once we know provider/model;
     # until then we use a generic name so configuration-level errors still have
     # something to attach to.
@@ -427,9 +433,6 @@ def _record_duration(
 generate_image = Tool(
     _generate_image,
     name="generate_image",
-    description=(
-        "Create or edit an image in the session workspace. "
-        "Returns markdown ``![alt](file.ext)`` to include verbatim so it "
-        "renders inline. On failure returns ``Error: ...``."
-    ),
+    description=_DESCRIPTION,
+    args_schema=ImageArgs,
 )

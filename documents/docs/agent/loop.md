@@ -2,7 +2,7 @@
 title: Agent Loop & Execution
 description: One-turn reasoning loop with iteration, tool dispatch, checkpointing, recovery, and interrupts.
 status: stable
-updated: 2026-05-30
+updated: 2026-06-26
 ---
 
 # Agent Loop
@@ -282,7 +282,7 @@ unrelated hiccups later in the same turn each get the full allowance.
 Pass an `asyncio.Event` as `interrupt_event`. The loop checks it at four points:
 
 1. **Top of each iteration** — observed before the next `before_model` / LLM call, so an interrupt that fires between iterations (e.g. while `after_model` hooks ran, or between tool dispatch and the next model call) breaks the loop immediately instead of letting another LLM call start.
-2. **During LLM streaming** — each chunk read is awaited concurrently with `interrupt_event.wait()` via the `_interruptible_stream` wrapper in `app/agent/agent_loop/streaming.py`. When the event wins the race, the in-flight `__anext__` task is cancelled and `aclose()` is called on the upstream generator — that cascades through the provider's `async with httpx.AsyncClient` block so the socket is closed instead of waiting on the next SSE event. A long mid-stream pause (e.g. Gemini extended-thinking) no longer hides the user's stop request.
+2. **During LLM streaming** — each chunk read is awaited concurrently with `interrupt_event.wait()` via the `_interruptible_stream` wrapper in `app/agent/agent_loop/streaming.py`. When the event wins the race, the in-flight `__anext__` task is cancelled and `aclose()` is called on the upstream generator — that cascades through the provider's `async with httpx.AsyncClient` block so the socket is closed instead of waiting on the next SSE event. A long mid-stream pause (e.g. Gemini extended-thinking) no longer hides the user's stop request. **Providers with `support_interrupt = False` opt out of this check** — their stream always runs to completion before the loop observes the event (see [Non-interruptible providers](#non-interruptible-providers) below).
 3. **Before tool dispatch** — if already set when tools are about to execute, skips execution entirely and returns `"Cancelled by user."` for every tool call.
 4. **During tool execution** — `_gather_or_cancel()` monitors the event while tools run in parallel. Completed tools keep their real results; still-running tools are cancelled via `asyncio.Task.cancel()` and get `"Cancelled by user."` as their result.
 
@@ -293,6 +293,20 @@ interrupt.set()   # cancel mid-stream or mid-tool-execution
 ```
 
 Team members use this for user-initiated interrupts. After the run, the last assistant message is annotated with `" [interrupted]"` in the DB.
+
+### Non-interruptible providers
+
+Some providers use stateful or quota-tracked streaming connections (e.g. proxy-based providers like `agy`) where cutting an in-flight request mid-stream wastes a quota slot or leaves the connection in a bad state. These providers set `support_interrupt = False` on their `LLMProviderBase` subclass:
+
+```python
+class MyProxyProvider(LLMProviderBase):
+    support_interrupt = False
+    ...
+```
+
+When `support_interrupt = False`, `stream_and_assemble` passes `interrupt_event=None` to both `_interruptible_stream` and `stream_with_retry`, so the current LLM call always completes in full. The interrupt is still observed at points 1, 3, and 4 above — the loop exits cleanly at the **next between-iteration boundary**, tools are still cancelled, and the net latency difference is at most one LLM call's streaming time.
+
+The default is `True` (all built-in providers are interruptible).
 
 ### `_gather_or_cancel` — cancellable parallel tool execution
 

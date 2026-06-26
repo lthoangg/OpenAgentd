@@ -178,6 +178,13 @@ async def stream_and_assemble(
         [SystemMessage(content=req.system_prompt), *req.messages]
     )
 
+    # Providers that don't support mid-stream interruption (e.g. stateful proxy
+    # providers) receive interrupt_event=None so the stream always completes.
+    # The loop still checks for interruption between iterations.
+    effective_interrupt = (
+        interrupt_event if primary_provider.support_interrupt else None
+    )
+
     upstream = stream_with_retry(
         primary_provider=primary_provider,
         primary_label=primary_label,
@@ -187,15 +194,15 @@ async def stream_and_assemble(
         ctx=ctx,
         state=state,
         hooks=hooks,
-        interrupt_event=interrupt_event,
+        interrupt_event=effective_interrupt,
         messages=provider_messages,
         tools=tool_defs or None,
     )
-    async for chunk in _interruptible_stream(upstream, interrupt_event):
+    async for chunk in _interruptible_stream(upstream, effective_interrupt):
         # Preemptive interrupt: break out of streaming early.  The wrapper
         # also races against ``interrupt_event``, so this check fires
         # immediately even if the provider was mid-pause between chunks.
-        if interrupt_event is not None and interrupt_event.is_set():
+        if effective_interrupt is not None and effective_interrupt.is_set():
             logger.debug("agent_streaming_interrupted agent={}", agent_name)
             break
 

@@ -2,31 +2,31 @@
 
 from __future__ import annotations
 
-from typing import Annotated
-
 from loguru import logger
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from app.agent.sandbox import get_sandbox
 from app.agent.tools.builtin.filesystem._config_watch import notify_fs_change
 from app.agent.tools.registry import Tool
 
+_DESCRIPTION = (
+    "Create or overwrite a file with text content. "
+    "Parent directories are created automatically."
+)
 
-async def _write_file(
-    path: Annotated[
-        str,
-        Field(description="Relative path for the file to create or overwrite."),
-    ],
-    content: Annotated[
-        str,
-        Field(description="UTF-8 text content to write."),
-    ],
-    overwrite: Annotated[
-        bool,
-        Field(description="Fail if file exists when false (default true)."),
-    ] = True,
-) -> str:
-    """Create or overwrite a file with text content. Parent directories are created automatically."""
+
+class WriteArgs(BaseModel):
+    """Arguments for the write tool."""
+
+    path: str = Field(description="Relative path for the file to create or overwrite.")
+    content: str = Field(description="UTF-8 text content to write.")
+    overwrite: bool = Field(
+        default=True, description="Fail if file exists when false (default true)."
+    )
+
+
+async def _write_file(path: str, content: str, overwrite: bool = True) -> str:
+    """Write text to a file, creating parent directories as needed."""
     sandbox = get_sandbox()
     resolved = sandbox.validate_path(path)
     rel = sandbox.display_path(resolved)
@@ -44,8 +44,6 @@ async def _write_file(
 write_file = Tool(
     _write_file,
     name="write",
-    description=(
-        "Create or overwrite a file with text content. "
-        "Parent directories are created automatically."
-    ),
+    description=_DESCRIPTION,
+    args_schema=WriteArgs,
 )

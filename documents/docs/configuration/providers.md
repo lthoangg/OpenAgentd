@@ -2,7 +2,7 @@
 title: LLM Providers
 description: Every provider registered in build_provider — keys, model IDs, vision defaults, OAuth flows.
 status: stable
-updated: 2026-05-28
+updated: 2026-06-26
 ---
 
 # LLM Providers
@@ -75,13 +75,21 @@ Drop-in provider plugins live in `{OPENAGENTD_CONFIG_DIR}/plugins/` and export a
 - store provider-owned OAuth tokens under `{OPENAGENTD_CACHE_DIR}/provider-plugins/<provider-id>/`;
 - provide model discovery and a factory returning `LLMProviderBase`;
 - declare `models.dev` metadata aliases with `models_dev_provider_id`, `metadata_source_provider`, or exact `model_registry_aliases` when runtime IDs differ from upstream IDs;
-- surface live OAuth usage in **Settings → Providers** via an optional usage hook.
+- surface live OAuth usage in **Settings → Providers** via an optional usage hook;
+- opt out of mid-stream interrupt by setting `support_interrupt = False` on the provider class (see below).
 
 The same directory can also contain agent hook plugins. Files that export
 `provider = ProviderPlugin(...)` are handled by the provider registry and are
 skipped by the agent hook loader.
 
 OAuth plugins can emit a `code_required` event; the UI then shows a paste field and posts the code to `/api/auth/{provider}/callback`.
+
+**Non-interruptible providers.** Providers that route through stateful or quota-tracked streaming connections (e.g. proxy-based providers) should set `support_interrupt = False` on their `LLMProviderBase` subclass. This prevents the agent loop from cutting the in-flight stream short when the user presses Stop — the current LLM call completes in full, and only the next between-iteration check observes the interrupt. Tools and the between-iteration guard are still cancelled normally. The default is `True`.
+
+```python
+class MyProxyProvider(LLMProviderBase):
+    support_interrupt = False  # stream always completes before interrupt is observed
+```
 
 OAuth plugins without a usage hook are shown as connected but unsupported for
 usage monitoring, rather than as temporarily unavailable.

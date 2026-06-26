@@ -573,11 +573,11 @@ export function CodingWorkspacePanel({
               {diff.data?.is_git_repo && (
                 <div className="flex border-b border-(--color-border) bg-(--bg-card) p-1 shrink-0">
                   {!mobile ? (
-                    <div className="relative w-full">
+                    <div className="relative">
                       <button
                         type="button"
                         onClick={() => setMenuOpen((prev) => !prev)}
-                        className="flex w-full items-center justify-between rounded px-2.5 py-1 text-left text-xs font-medium border border-(--color-border-strong) bg-(--bg-page) text-(--color-text) hover:bg-(--bg-key) cursor-pointer select-none"
+                        className="flex w-36 items-center justify-between rounded px-2 py-1 text-left text-xs font-medium border border-(--color-border-strong) bg-(--bg-page) text-(--color-text) hover:bg-(--bg-key) cursor-pointer select-none"
                       >
                         <span className="flex items-center gap-1.5">
                           <GitCompare size={12} className="text-(--color-text-subtle)" />

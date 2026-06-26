@@ -28,6 +28,7 @@ from app.core import db as app_db
 from app.models.chat import ChatSession
 from app.services.chat_service import save_message
 from tests.agent.mode.team.conftest import MockTeamProvider
+from tests.agent.mode.team.test_activation import _drain_activation
 
 
 class ClaimThenStopProvider(MockTeamProvider):
@@ -235,7 +236,7 @@ class TestOnDemandActivation:
 
         msg = Message(from_agent="lead", to_agent="worker", content="[lead]: do task")
         await team.mailbox.send(to="worker", message=msg)
-        await asyncio.sleep(0.1)
+        await _drain_activation(team.members["worker"])
 
         assert team.members["worker"].state == "idle"
 
@@ -266,7 +267,7 @@ class TestOnDemandActivation:
 
         msg = Message(from_agent="lead", to_agent="worker", content="[lead]: work")
         await team.mailbox.send(to="worker", message=msg)
-        await asyncio.sleep(0.1)
+        await _drain_activation(worker)
 
         assert worker.state == "idle"
 

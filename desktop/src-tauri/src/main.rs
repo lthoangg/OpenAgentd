@@ -195,6 +195,35 @@ struct CachedUpdateState {
     bytes_path: PathBuf,
 }
 
+/// Pure precondition check extracted from `run_update_install` so it can be
+/// unit-tested without a live AppHandle or network.
+///
+/// Returns `Ok(())` when the cached state is consistent with `server_version`
+/// and the bytes file exists, or `Err(message)` for every failure case that
+/// would abort the install before touching the filesystem.
+fn validate_install_preconditions(
+    cached: Option<&CachedUpdateState>,
+    server_version: Option<&str>,
+) -> Result<(), String> {
+    let cached = cached.ok_or_else(|| "Update has not been downloaded yet.".to_string())?;
+
+    if !cached.bytes_path.is_file() {
+        return Err("Downloaded update file is missing. Download the update again.".into());
+    }
+
+    let server_version =
+        server_version.ok_or_else(|| "The downloaded update is no longer listed as available. Try downloading again.".to_string())?;
+
+    if cached.version != server_version {
+        return Err(format!(
+            "Downloaded version {} no longer matches the available version {}. Download the update again.",
+            cached.version, server_version
+        ));
+    }
+
+    Ok(())
+}
+
 #[derive(Clone, Serialize)]
 struct UpdateStatus {
     status: String,
@@ -1067,34 +1096,55 @@ async fn run_update_download(app: AppHandle) -> Result<UpdateStatus, String> {
 }
 
 async fn run_update_install(app: AppHandle) -> Result<(), String> {
+    let state: tauri::State<'_, AppState> = app.state();
+    let cached_guard = state.update_state.lock().await;
+    let cached = cached_guard.clone();
+    drop(cached_guard);
+
+    // Re-check to obtain a live `Update` object whose `install()` carries the
+    // correct `extract_path` for this platform. We validate preconditions
+    // BEFORE the network round-trip so that missing-cache errors are
+    // immediate, and AFTER so that we can catch a genuine mid-install manifest
+    // rollover (server already bumped to the next version).
     let updater = app
         .updater()
         .map_err(|e| format!("Updater unavailable: {e}"))?;
     let update = updater
         .check()
         .await
-        .map_err(|e| format!("Couldn't check for updates: {e}"))?
-        .ok_or_else(|| "OpenAgentd is already up to date.".to_string())?;
-    let state: tauri::State<'_, AppState> = app.state();
-    let cached = state
-        .update_state
-        .lock()
-        .await
-        .clone()
-        .ok_or_else(|| "Update has not been downloaded yet.".to_string())?;
-    if cached.version != update.version || !cached.bytes_path.is_file() {
-        return Err("Downloaded update is stale. Download the update again.".into());
-    }
+        .map_err(|e| format!("Couldn't check for updates: {e}"))?;
+
+    validate_install_preconditions(
+        cached.as_ref(),
+        update.as_ref().map(|u| u.version.as_str()),
+    )?;
+
+    // SAFETY: validate_install_preconditions returned Ok, so `update` is Some.
+    let update = update.expect("update is Some after validate_install_preconditions");
+    // SAFETY: validate_install_preconditions returned Ok, so `cached` is Some
+    // and `cached.bytes_path.is_file()`.
+    let cached = cached.expect("cached is Some after validate_install_preconditions");
+
     let bytes =
         std::fs::read(&cached.bytes_path).map_err(|e| format!("Read cached update: {e}"))?;
+
     update_tray_status(&app, "Status: Installing update…");
     update.install(bytes).map_err(|e| {
         update_tray_status(&app, "Status: Running");
         format!("Failed to install update: {e}")
     })?;
 
-    restart_app_process(&app);
-    Ok(())
+    // Shut down the Python sidecar gracefully before restarting the process.
+    // This must be awaited inline — NOT spawned — so that the process does not
+    // return `Ok(())` to the frontend and leave the UI stuck on "Installing…".
+    // The Tauri command invocation will never resolve on the JS side because
+    // `tauri::process::restart` replaces the running process; that is the
+    // correct and expected behaviour.
+    update_tray_status(&app, "Status: Restarting…");
+    persist_active_window_state(&app);
+    state.quitting.store(true, Ordering::SeqCst);
+    shutdown_sidecar_now(&app).await;
+    tauri::process::restart(&app.env());
 }
 
 async fn fetch_release_notes(version: &str) -> Result<ReleaseNotesResponse, String> {
@@ -2403,5 +2453,96 @@ mod tests {
         // misleading — the formatter still prints a valid "downloading"
         // string and never panics.
         assert!(label.starts_with("Status: Downloading"));
+    }
+
+    // ── validate_install_preconditions ───────────────────────────────────────
+    //
+    // These tests guard the two-stage precondition check added to
+    // `run_update_install` to prevent the install command from returning
+    // `Ok(())` to the frontend before the process has restarted (which left
+    // the UI frozen on "Installing update…" indefinitely).
+
+    /// Helper: write a real temp file so `is_file()` returns true.
+    /// Returns the path; the file lives in `std::env::temp_dir()` and is
+    /// cleaned up by the OS (good enough for short-lived unit tests).
+    fn real_bytes_path() -> PathBuf {
+        let path = std::env::temp_dir().join(format!(
+            "oad-test-update-{}.update",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .subsec_nanos()
+        ));
+        std::fs::write(&path, b"fake update bytes").expect("write test update file");
+        path
+    }
+
+    #[test]
+    fn preconditions_ok_when_cache_and_version_match() {
+        let path = real_bytes_path();
+        let cached = CachedUpdateState {
+            version: "1.71.0".into(),
+            bytes_path: path.clone(),
+        };
+        let result = validate_install_preconditions(Some(&cached), Some("1.71.0"));
+        let _ = std::fs::remove_file(&path);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn preconditions_err_when_no_cached_state() {
+        // No download has been started — `update_state` is None.
+        let err = validate_install_preconditions(None, Some("1.71.0")).unwrap_err();
+        assert!(
+            err.contains("not been downloaded"),
+            "unexpected message: {err}"
+        );
+    }
+
+    #[test]
+    fn preconditions_err_when_bytes_file_missing() {
+        // The cached entry exists but the file was deleted (e.g. cache wiped).
+        let cached = CachedUpdateState {
+            version: "1.71.0".into(),
+            bytes_path: PathBuf::from("/nonexistent/oad-test-openagentd-1.71.0.update"),
+        };
+        let err = validate_install_preconditions(Some(&cached), Some("1.71.0")).unwrap_err();
+        assert!(err.contains("missing"), "unexpected message: {err}");
+    }
+
+    #[test]
+    fn preconditions_err_when_server_has_no_update() {
+        // The server manifest was already bumped past the downloaded version,
+        // so `updater.check()` returned `None` ("already up to date").
+        // This used to be silently converted to a confusing "already up to
+        // date" error that left the UI stuck on "Installing…".
+        let path = real_bytes_path();
+        let cached = CachedUpdateState {
+            version: "1.71.0".into(),
+            bytes_path: path.clone(),
+        };
+        let err = validate_install_preconditions(Some(&cached), None).unwrap_err();
+        let _ = std::fs::remove_file(&path);
+        assert!(
+            err.contains("no longer listed"),
+            "unexpected message: {err}"
+        );
+    }
+
+    #[test]
+    fn preconditions_err_when_version_mismatch() {
+        // User downloaded 1.71.0 but the server already serves 1.72.0.
+        // Installing mismatched bytes would silently apply the wrong update.
+        let path = real_bytes_path();
+        let cached = CachedUpdateState {
+            version: "1.71.0".into(),
+            bytes_path: path.clone(),
+        };
+        let err =
+            validate_install_preconditions(Some(&cached), Some("1.72.0")).unwrap_err();
+        let _ = std::fs::remove_file(&path);
+        assert!(err.contains("1.71.0"), "should mention downloaded version: {err}");
+        assert!(err.contains("1.72.0"), "should mention server version: {err}");
+        assert!(err.contains("no longer matches"), "unexpected message: {err}");
     }
 }

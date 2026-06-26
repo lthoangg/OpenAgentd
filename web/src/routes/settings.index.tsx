@@ -125,7 +125,21 @@ function UpdateSettingsCard() {
     setPending(true)
     setStatus((current) => current ? { ...current, status: 'installing' } : { status: 'installing' })
     try {
-      await installUpdate()
+      // The Tauri command shuts down the sidecar and then calls
+      // `tauri::process::restart`, so this promise intentionally never
+      // resolves — the process is replaced before a response can come back.
+      // Race against a 60-second timeout so a failed restart surfaces an
+      // error instead of leaving the UI frozen on "Installing…" indefinitely.
+      const RESTART_TIMEOUT_MS = 60_000
+      await Promise.race([
+        installUpdate(),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error('Restart timed out — please quit and reopen OpenAgentd.')),
+            RESTART_TIMEOUT_MS,
+          ),
+        ),
+      ])
     } catch (error) {
       setStatus({ status: 'error', message: String(error) })
       setPending(false)

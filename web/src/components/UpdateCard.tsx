@@ -36,7 +36,22 @@ export function UpdateCard() {
   const installUpdate = useCallback(async () => {
     setStatus((current) => ({ ...current, status: 'installing' }))
     try {
-      await invokeInstallUpdate()
+      // The Tauri command shuts down the sidecar and then calls
+      // `tauri::process::restart`, so this promise intentionally never
+      // resolves — the process is replaced before a response can come back.
+      // We race it against a 60-second timeout so that if the restart fails
+      // for any unexpected reason the card transitions to an error state
+      // instead of staying frozen on "Installing update…" indefinitely.
+      const RESTART_TIMEOUT_MS = 60_000
+      await Promise.race([
+        invokeInstallUpdate(),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error('Restart timed out — please quit and reopen OpenAgentd.')),
+            RESTART_TIMEOUT_MS,
+          ),
+        ),
+      ])
     } catch (error) {
       setStatus({ status: 'error', message: String(error) })
     }

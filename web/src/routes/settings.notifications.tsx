@@ -51,7 +51,7 @@ export function NotificationSettingsPage() {
             app window is focused.
           </p>
 
-          <section className="space-y-3 rounded-md border border-(--color-border) bg-(--bg-card) p-4 shadow-sm">
+          <section className="space-y-3 rounded-md border border-(--color-border) bg-(--bg-card) p-4">
             <h2 className="text-xs font-semibold uppercase tracking-wider text-(--color-text-muted) border-b border-(--color-border)/60 pb-1.5 mb-3">
               Status
             </h2>
@@ -75,7 +75,7 @@ export function NotificationSettingsPage() {
             </p>
           </section>
 
-          <section className="space-y-3 rounded-md border border-(--color-border) bg-(--bg-card) p-4 shadow-sm">
+          <section className="space-y-3 rounded-md border border-(--color-border) bg-(--bg-card) p-4">
             <h2 className="text-xs font-semibold uppercase tracking-wider text-(--color-text-muted) border-b border-(--color-border)/60 pb-1.5 mb-3">
               Test
             </h2>

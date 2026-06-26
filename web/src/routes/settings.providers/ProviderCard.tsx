@@ -153,7 +153,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
     hasReachabilityFailure || (provider.kind !== 'oauth' && (provider.is_reachable === false || (provider.is_saved && !provider.is_configured)))
 
   return (
-    <div className="group rounded-md border border-(--color-border) bg-(--bg-card) p-4 shadow-sm space-y-3">
+    <div className="group rounded-md border border-(--color-border) bg-(--bg-card) p-4 space-y-3">
       {/* ── Header ──────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-2 select-none">
         <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-(--bg-key) text-(--color-text-muted) border border-(--color-border)">

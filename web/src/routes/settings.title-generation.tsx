@@ -104,7 +104,7 @@ export function TitleGenerationSettingsPage() {
           )}
 
           {!isLoading && !error && (
-            <section className="space-y-4 rounded-md border border-(--color-border) bg-(--bg-card) p-4 shadow-sm">
+            <section className="space-y-4 rounded-md border border-(--color-border) bg-(--bg-card) p-4">
               <h2 className="text-xs font-semibold uppercase tracking-wider text-(--color-text-muted) border-b border-(--color-border)/60 pb-1.5 mb-3">
                 Configuration
               </h2>

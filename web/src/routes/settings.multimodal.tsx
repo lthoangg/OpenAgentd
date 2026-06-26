@@ -169,7 +169,7 @@ export function MultimodalSettingsPage() {
 
           {!isLoading && !error && (
             <div className="space-y-4">
-              <section className="space-y-3.5 rounded-md border border-(--color-border) bg-(--bg-card) p-4 shadow-sm">
+              <section className="space-y-3.5 rounded-md border border-(--color-border) bg-(--bg-card) p-4">
                 <h2 className="text-xs font-semibold uppercase tracking-wider text-(--color-text-muted) border-b border-(--color-border)/60 pb-1.5 mb-3">
                   Image
                 </h2>
@@ -184,7 +184,7 @@ export function MultimodalSettingsPage() {
                 </div>
               </section>
 
-              <section className="space-y-3.5 rounded-md border border-(--color-border) bg-(--bg-card) p-4 shadow-sm">
+              <section className="space-y-3.5 rounded-md border border-(--color-border) bg-(--bg-card) p-4">
                 <h2 className="text-xs font-semibold uppercase tracking-wider text-(--color-text-muted) border-b border-(--color-border)/60 pb-1.5 mb-3">
                   Video
                 </h2>

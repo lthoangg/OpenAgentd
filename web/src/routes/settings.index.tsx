@@ -84,7 +84,7 @@ function UpdateSettingsCard() {
   const description = statusDescription(status)
 
   return (
-    <section className="rounded-md border border-(--color-border) bg-(--bg-card) p-4 shadow-sm">
+    <section className="rounded-md border border-(--color-border) bg-(--bg-card) p-4">
       <h2 className="text-xs font-semibold uppercase tracking-wider text-(--color-text-muted) border-b border-(--color-border)/60 pb-1.5 mb-3">
         Updates
       </h2>
@@ -190,7 +190,7 @@ export function SettingsHubPage() {
           </div>
         </header>
 
-        <section className="rounded-md border border-(--color-border) bg-(--bg-card) p-4 shadow-sm">
+        <section className="rounded-md border border-(--color-border) bg-(--bg-card) p-4">
           <h2 className="text-xs font-semibold uppercase tracking-wider text-(--color-text-muted) border-b border-(--color-border)/60 pb-1.5 mb-3">
             Backend Connection
           </h2>

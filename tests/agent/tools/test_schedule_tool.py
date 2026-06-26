@@ -153,52 +153,46 @@ async def test_list_task_with_at_schedule(mock_task_scheduler):
 
 @pytest.mark.asyncio
 async def test_create_missing_name(mock_task_scheduler):
-    """Returns error when name is missing."""
+    """Raises ToolArgumentError when name is missing."""
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
-        result = await schedule_task.arun(
-            action="create",
-            schedule_type="every",
-            every_seconds=3600,
-            prompt="Check email",
-            _injected=_NORMAL_INJECTED,
-        )
-
-    assert "Error:" in result
-    assert "name" in result
-    assert "required" in result
+        with pytest.raises(ToolArgumentError) as exc_info:
+            await schedule_task.arun(
+                action="create",
+                schedule_type="every",
+                every_seconds=3600,
+                prompt="Check email",
+                _injected=_NORMAL_INJECTED,
+            )
+    assert "name is required" in str(exc_info.value)
 
 
 @pytest.mark.asyncio
 async def test_create_missing_schedule_type(mock_task_scheduler):
-    """Returns error when schedule_type is missing."""
+    """Raises ToolArgumentError when schedule_type is missing."""
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
-        result = await schedule_task.arun(
-            action="create",
-            name="test-task",
-            prompt="Check email",
-            _injected=_NORMAL_INJECTED,
-        )
-
-    assert "Error:" in result
-    assert "schedule_type" in result
-    assert "required" in result
+        with pytest.raises(ToolArgumentError) as exc_info:
+            await schedule_task.arun(
+                action="create",
+                name="test-task",
+                prompt="Check email",
+                _injected=_NORMAL_INJECTED,
+            )
+    assert "schedule_type is required" in str(exc_info.value)
 
 
 @pytest.mark.asyncio
 async def test_create_missing_prompt(mock_task_scheduler):
-    """Returns error when prompt is missing."""
+    """Raises ToolArgumentError when prompt is missing."""
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
-        result = await schedule_task.arun(
-            action="create",
-            name="test-task",
-            schedule_type="every",
-            every_seconds=3600,
-            _injected=_NORMAL_INJECTED,
-        )
-
-    assert "Error:" in result
-    assert "prompt" in result
-    assert "required" in result
+        with pytest.raises(ToolArgumentError) as exc_info:
+            await schedule_task.arun(
+                action="create",
+                name="test-task",
+                schedule_type="every",
+                every_seconds=3600,
+                _injected=_NORMAL_INJECTED,
+            )
+    assert "prompt is required" in str(exc_info.value)
 
 
 @pytest.mark.asyncio
@@ -627,13 +621,11 @@ async def test_create_scheduler_create_raises(mock_task_scheduler):
 
 @pytest.mark.asyncio
 async def test_pause_missing_slug(mock_task_scheduler):
-    """Returns error when slug is missing."""
+    """Raises ToolArgumentError when slug is missing."""
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
-        result = await schedule_task.arun(action="pause")
-
-    assert "Error:" in result
-    assert "slug" in result
-    assert "required" in result
+        with pytest.raises(ToolArgumentError) as exc_info:
+            await schedule_task.arun(action="pause")
+    assert "slug is required for action='pause'" in str(exc_info.value)
 
 
 @pytest.mark.asyncio
@@ -686,14 +678,12 @@ async def test_pause_scheduler_raises(mock_task_scheduler, sample_task):
 
 
 @pytest.mark.asyncio
-async def test_resume_missing_task_id(mock_task_scheduler):
-    """Returns error when slug is missing."""
+async def test_resume_missing_slug(mock_task_scheduler):
+    """Raises ToolArgumentError when slug is missing."""
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
-        result = await schedule_task.arun(action="resume")
-
-    assert "Error:" in result
-    assert "slug" in result
-    assert "required" in result
+        with pytest.raises(ToolArgumentError) as exc_info:
+            await schedule_task.arun(action="resume")
+    assert "slug is required for action='resume'" in str(exc_info.value)
 
 
 @pytest.mark.asyncio
@@ -746,13 +736,11 @@ async def test_resume_scheduler_raises(mock_task_scheduler, sample_task):
 
 @pytest.mark.asyncio
 async def test_delete_missing_slug(mock_task_scheduler):
-    """Returns error when slug is missing."""
+    """Raises ToolArgumentError when slug is missing."""
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
-        result = await schedule_task.arun(action="delete")
-
-    assert "Error:" in result
-    assert "slug" in result
-    assert "required" in result
+        with pytest.raises(ToolArgumentError) as exc_info:
+            await schedule_task.arun(action="delete")
+    assert "slug is required for action='delete'" in str(exc_info.value)
 
 
 @pytest.mark.asyncio
@@ -810,13 +798,11 @@ async def test_delete_task_not_found_reports_error_and_skips_remove(
 
 @pytest.mark.asyncio
 async def test_trigger_missing_slug(mock_task_scheduler):
-    """Returns error when slug is missing."""
+    """Raises ToolArgumentError when slug is missing."""
     with patch("app.scheduler.scheduler.task_scheduler", mock_task_scheduler):
-        result = await schedule_task.arun(action="trigger")
-
-    assert "Error:" in result
-    assert "slug" in result
-    assert "required" in result
+        with pytest.raises(ToolArgumentError) as exc_info:
+            await schedule_task.arun(action="trigger")
+    assert "slug is required for action='trigger'" in str(exc_info.value)
 
 
 @pytest.mark.asyncio

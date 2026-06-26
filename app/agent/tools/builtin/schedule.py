@@ -24,7 +24,7 @@ from datetime import datetime
 from typing import Annotated, Any, Literal
 
 from loguru import logger
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.agent.tools.registry import InjectedArg, Tool
 
@@ -167,6 +167,49 @@ class ScheduleArgs(BaseModel):
         description="[pause|resume|delete|trigger] Slug of the task to act on.",
     )
 
+    @model_validator(mode="after")
+    def _validate_args(self) -> ScheduleArgs:
+        if self.action in ("pause", "resume", "delete", "trigger"):
+            if not self.slug:
+                raise ValueError(f"slug is required for action='{self.action}'")
+            return self
+
+        if self.action == "create":
+            if not self.name:
+                raise ValueError("name is required for action='create'")
+            if not self.schedule_type:
+                raise ValueError("schedule_type is required for action='create'")
+            if not self.prompt:
+                raise ValueError("prompt is required for action='create'")
+
+            st = self.schedule_type
+            if st == "at":
+                if not self.at_datetime:
+                    raise ValueError("at_datetime is required for schedule_type='at'")
+                if self.every_seconds is not None or self.cron_expression is not None:
+                    raise ValueError(
+                        "Only at_datetime may be set for schedule_type='at'"
+                    )
+            elif st == "every":
+                if self.every_seconds is None:
+                    raise ValueError(
+                        "every_seconds is required for schedule_type='every'"
+                    )
+                if self.at_datetime is not None or self.cron_expression is not None:
+                    raise ValueError(
+                        "Only every_seconds may be set for schedule_type='every'"
+                    )
+            elif st == "cron":
+                if not self.cron_expression:
+                    raise ValueError(
+                        "cron_expression is required for schedule_type='cron'"
+                    )
+                if self.at_datetime is not None or self.every_seconds is not None:
+                    raise ValueError(
+                        "Only cron_expression may be set for schedule_type='cron'"
+                    )
+        return self
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -281,8 +324,7 @@ async def _schedule_task(
 
     # ── pause / resume / delete / trigger ────────────────────────────────────
     if action in ("pause", "resume", "delete", "trigger"):
-        if not slug:
-            return f"Error: 'slug' is required for action='{action}'."
+        assert slug is not None
 
         # Scope check happens before any mutation. ``pause``/``resume``
         # would otherwise mutate via the scheduler before we could inspect
@@ -317,19 +359,6 @@ async def _schedule_task(
 
     # ── create ───────────────────────────────────────────────────────────────
     if action == "create":
-        missing = [
-            f
-            for f, v in [
-                ("name", name),
-                ("schedule_type", schedule_type),
-                ("prompt", prompt),
-            ]
-            if not v
-        ]
-        if missing:
-            return f"Error: the following fields are required for create: {', '.join(missing)}."
-        # Narrow Optional → required for the type checker (the loop above
-        # already guaranteed all three are truthy).
         assert name is not None
         assert schedule_type is not None
         assert prompt is not None

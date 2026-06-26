@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Server } from 'lucide-react'
+import { Server, X } from 'lucide-react'
 
 import { apiBaseUrl, setApiBaseUrl } from '@/api/base-url'
 import { queryClient } from '@/lib/query-client'
@@ -172,51 +172,62 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
       onClick={() => { if (!pending) onOpenChange(false) }}
     >
       <div
-        className="flex max-h-full w-full max-w-md flex-col overflow-hidden rounded-xl border border-(--color-border) bg-(--bg-card) text-(--color-text) shadow-2xl"
+        className="flex max-h-full w-full max-w-md flex-col overflow-hidden rounded-md border border-(--color-border) bg-(--bg-page) text-(--color-text) shadow-2xl"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex items-start gap-3 border-b border-(--color-border) px-4 py-4">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-(--bg-key) text-(--color-text-muted) ring-1 ring-(--color-border)" aria-hidden="true">
-            <Server size={18} />
-          </span>
-          <div className="min-w-0 flex-1">
-            <h2 id="app-backend-title" className="text-sm font-semibold">Backend connection</h2>
-            <p className="mt-1 text-xs leading-5 text-(--color-text-muted)">
-              Use the builtin sidecar or connect to one of your saved OpenAgentd servers.
-            </p>
+        {/* Header / Title Bar */}
+        <div className="flex h-11 shrink-0 items-center justify-between border-b border-(--color-border) bg-(--bg-sidebar) px-4 select-none">
+          <div className="flex items-center gap-2">
+            <Server size={13} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
+            <h2 id="app-backend-title" className="text-xs font-semibold text-(--color-text)">Backend connection</h2>
           </div>
+          <button
+            type="button"
+            onClick={() => onOpenChange(false)}
+            className="flex h-7 w-7 items-center justify-center rounded text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
+            aria-label="Close backend connection"
+            title="Close"
+          >
+            <X size={13} aria-hidden="true" />
+          </button>
         </div>
 
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
-          <div className="rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-2 text-xs text-(--color-text-muted)">
-            Connected backend: <span className="font-mono text-(--color-text)">{status?.base_url || apiBaseUrl().replace(/\/api$/, '')}</span>
-            <span className="ml-2 rounded bg-(--bg-key) px-1.5 py-0.5 text-[10px]">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
+          {/* Connected backend status line */}
+          <div className="rounded border border-(--color-border) bg-(--bg-card) p-3 font-mono text-[11px] text-(--color-text-muted) flex items-center justify-between select-none">
+            <span className="truncate">
+              Connected: <span className="text-(--color-text) font-semibold">{status?.base_url || apiBaseUrl().replace(/\/api$/, '')}</span>
+            </span>
+            <span className="shrink-0 rounded bg-(--bg-key) px-1.5 py-0.5 text-[9px] border border-(--color-border) text-(--color-text-muted)">
               {status?.mode === 'external' || status?.external ? 'saved server' : 'builtin sidecar'}
             </span>
           </div>
 
-          <div>
-            <div className="mb-2 text-xs font-medium text-(--color-text)">Connection options</div>
-            <div className="space-y-1">
+          {/* Connection options list */}
+          <div className="rounded border border-(--color-border) bg-(--bg-card) overflow-hidden">
+            <div className="border-b border-(--color-border)/60 bg-(--bg-key)/30 px-3 py-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-(--color-text-muted) select-none">
+              Connection options
+            </div>
+            <div className="divide-y divide-(--color-border)">
               {status?.supports_bundled !== false ? (
-                <div className="flex items-center gap-2 rounded-md border border-(--color-border) px-3 py-2 text-xs hover:bg-(--bg-page)">
+                <div className="flex items-center gap-2.5 px-3 py-2 text-xs transition-colors hover:bg-(--bg-page)">
                   <button
                     type="button"
                     onClick={() => {}}
-                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                    className="flex min-w-0 flex-1 items-center gap-2 text-left focus:outline-none"
                     disabled={pending}
                   >
                     <ServerStatusDot status={status?.sidecar_running ? 'online' : undefined} />
-                    <span className="truncate font-medium">Builtin sidecar</span>
+                    <span className="truncate font-semibold text-(--color-text)">Builtin sidecar</span>
                   </button>
                   {!status?.external ? (
-                    <span className="rounded bg-(--bg-key) px-1.5 py-0.5 text-[10px] text-(--color-text-muted)">active</span>
+                    <span className="shrink-0 rounded bg-(--bg-key) px-1.5 py-0.5 text-[9px] border border-(--color-border) text-(--color-text-muted) font-semibold select-none">active</span>
                   ) : null}
                   {status?.sidecar_running ? (
                     <button
                       type="button"
                       onClick={() => { void stopBundled() }}
-                      className="rounded bg-(--bg-key) px-1.5 py-0.5 text-[10px] text-(--color-error) hover:bg-(--color-error)/10"
+                      className="h-6 rounded border border-(--color-border) bg-(--bg-card) px-2 text-[10.5px] font-medium text-(--color-error) hover:bg-(--color-error)/10 focus-visible:outline-none transition-colors"
                       disabled={pending}
                     >
                       stop
@@ -225,7 +236,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
                     <button
                       type="button"
                       onClick={() => { void connectBundled() }}
-                      className="rounded bg-(--bg-key) px-1.5 py-0.5 text-[10px] text-(--color-text-muted) hover:text-(--color-text)"
+                      className="h-6 rounded border border-(--color-border) bg-(--bg-card) px-2 text-[10.5px] font-medium text-(--color-text-muted) hover:text-(--color-text) hover:bg-(--bg-key)/40 focus-visible:outline-none transition-colors"
                       disabled={pending}
                     >
                       use builtin
@@ -237,134 +248,155 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
                 const normalizedServerUrl = normalizeServerBaseUrl(server.base_url)
                 const active = status?.mode === 'external' && normalizeServerBaseUrl(status.base_url) === normalizedServerUrl
                 return (
-                <div
-                  key={server.base_url}
-                  className="flex items-center gap-2 rounded-md border border-(--color-border) px-3 py-2 text-xs hover:bg-(--bg-page)"
-                >
-                  <button
-                    type="button"
-                    onClick={() => { setBaseUrl(normalizedServerUrl); setServerName(server.name ?? '') }}
-                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                    disabled={pending}
+                  <div
+                    key={server.base_url}
+                    className="flex items-center gap-2.5 px-3 py-2 text-xs transition-colors hover:bg-(--bg-page)"
                   >
-                    <ServerStatusDot status={serverHealth[normalizedServerUrl] ?? serverHealth[server.base_url]} />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate font-medium">{server.name || server.base_url}</span>
-                      {server.name ? <span className="block truncate font-mono text-[10px] text-(--color-text-muted)">{server.base_url}</span> : null}
-                    </span>
-                  </button>
-                  {active ? (
-                    <span className="rounded bg-(--bg-key) px-1.5 py-0.5 text-[10px] text-(--color-text-muted)">active</span>
-                  ) : null}
-                  <button
-                    type="button"
-                    onClick={() => { void checkExternal(normalizedServerUrl, server.name ?? '', true) }}
-                    className="rounded bg-(--bg-key) px-1.5 py-0.5 text-[10px] text-(--color-text-muted) hover:text-(--color-text)"
-                    disabled={pending}
-                  >
-                    connect
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setBaseUrl(normalizedServerUrl); setServerName(server.name ?? '') }}
-                    className="rounded bg-(--bg-key) px-1.5 py-0.5 text-[10px] text-(--color-text-muted) hover:text-(--color-text)"
-                    disabled={pending}
-                  >
-                    edit
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { void removeServer(server.base_url) }}
-                    className="rounded bg-(--bg-key) px-1.5 py-0.5 text-[10px] text-(--color-error) hover:bg-(--color-error)/10"
-                    disabled={pending}
-                  >
-                    remove
-                  </button>
-                </div>
-              )})}
+                    <button
+                      type="button"
+                      onClick={() => { setBaseUrl(normalizedServerUrl); setServerName(server.name ?? '') }}
+                      className="flex min-w-0 flex-1 items-center gap-2 text-left focus:outline-none"
+                      disabled={pending}
+                    >
+                      <ServerStatusDot status={serverHealth[normalizedServerUrl] ?? serverHealth[server.base_url]} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-semibold text-(--color-text)">{server.name || server.base_url}</span>
+                        {server.name ? <span className="block truncate font-mono text-[10px] text-(--color-text-subtle)">{server.base_url}</span> : null}
+                      </span>
+                    </button>
+                    {active ? (
+                      <span className="shrink-0 rounded bg-(--bg-key) px-1.5 py-0.5 text-[9px] border border-(--color-border) text-(--color-text-muted) font-semibold select-none">active</span>
+                    ) : null}
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => { void checkExternal(normalizedServerUrl, server.name ?? '', true) }}
+                        className="h-6 rounded border border-(--color-border) bg-(--bg-card) px-2 text-[10.5px] font-medium text-(--color-text-muted) hover:text-(--color-text) hover:bg-(--bg-key)/40 focus-visible:outline-none transition-colors"
+                        disabled={pending}
+                      >
+                        connect
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setBaseUrl(normalizedServerUrl); setServerName(server.name ?? '') }}
+                        className="h-6 rounded border border-(--color-border) bg-(--bg-card) px-2 text-[10.5px] font-medium text-(--color-text-muted) hover:text-(--color-text) hover:bg-(--bg-key)/40 focus-visible:outline-none transition-colors"
+                        disabled={pending}
+                      >
+                        edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { void removeServer(server.base_url) }}
+                        className="h-6 rounded border border-(--color-border) bg-(--bg-card) px-2 text-[10.5px] font-medium text-(--color-error) hover:bg-(--color-error)/10 focus-visible:outline-none transition-colors"
+                        disabled={pending}
+                      >
+                        remove
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           </div>
 
-          <label className="block text-xs font-medium text-(--color-text)" htmlFor="app-backend-url">
-            Server URL
-          </label>
-          <div className="flex gap-2">
-            <input
-              id="app-backend-url"
-              value={baseUrl}
-              onChange={(event) => setBaseUrl(event.target.value)}
-              placeholder="http://<backend-host>:4082"
-              className="min-w-0 flex-1 rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-2 font-mono text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-muted) focus:border-(--focus-ring) focus:ring-3 focus:ring-(--focus-ring)/30"
-            />
-            <button
-              type="button"
-              onClick={() => void checkExternal()}
-              className="rounded-md border border-(--color-border-strong) bg-(--bg-key) px-3 py-2 text-xs font-medium text-(--color-text) hover:bg-(--bg-page) disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={pending}
-            >
-              {pending ? 'Connecting…' : 'Connect'}
-            </button>
+          {/* Form Configuration panel */}
+          <div className="rounded border border-(--color-border) bg-(--bg-card) overflow-hidden">
+            <div className="border-b border-(--color-border)/60 bg-(--bg-key)/30 px-3 py-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-(--color-text-muted) select-none">
+              Configure Server
+            </div>
+            <div className="p-3.5 space-y-3.5">
+              <div className="grid gap-1.5">
+                <label className="text-[10.5px] font-semibold text-(--color-text-muted)" htmlFor="app-backend-url">
+                  Server URL
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    id="app-backend-url"
+                    value={baseUrl}
+                    onChange={(event) => setBaseUrl(event.target.value)}
+                    placeholder="http://<backend-host>:4082"
+                    className="min-w-0 flex-1 rounded border border-(--color-border) bg-(--bg-input) px-2.5 py-1.5 font-mono text-xs text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-muted)/60 focus:border-(--focus-ring) focus:ring-2 focus:ring-(--focus-ring)/30"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void checkExternal()}
+                    className="h-8.5 rounded border border-(--color-border-strong) bg-(--bg-key) px-3 text-xs font-medium text-(--color-text) hover:bg-(--bg-key)/80 disabled:cursor-not-allowed disabled:opacity-60 transition-colors"
+                    disabled={pending}
+                  >
+                    {pending ? 'Connecting…' : 'Connect'}
+                  </button>
+                </div>
+              </div>
+
+              <label className="flex min-h-11 items-center gap-2 text-xs text-(--color-text-muted) cursor-pointer select-none md:min-h-0">
+                <input
+                  type="checkbox"
+                  checked={rememberServer}
+                  onChange={(event) => setRememberServer(event.target.checked)}
+                  className="h-3.5 w-3.5 rounded border-(--color-border) bg-(--bg-input) text-(--color-accent) focus:ring-0"
+                  disabled={pending}
+                />
+                <span>Save this server and reconnect to it after reload</span>
+              </label>
+
+              <div className="grid gap-1.5">
+                <label className="text-[10.5px] font-semibold text-(--color-text-muted)" htmlFor="app-backend-key">
+                  Access key
+                </label>
+                <input
+                  id="app-backend-key"
+                  value={accessKey}
+                  onChange={(event) => {
+                    setAccessKeyInput(event.target.value)
+                    setAccessKey(event.target.value)
+                  }}
+                  placeholder="Required when server was started with --key"
+                  type="password"
+                  className="w-full rounded border border-(--color-border) bg-(--bg-input) px-2.5 py-1.5 text-xs text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-muted)/60 focus:border-(--focus-ring) focus:ring-2 focus:ring-(--focus-ring)/30"
+                />
+              </div>
+
+              <div className="grid gap-1.5">
+                <label className="text-[10.5px] font-semibold text-(--color-text-muted)" htmlFor="app-backend-name">
+                  Server name
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    id="app-backend-name"
+                    value={serverName}
+                    onChange={(event) => setServerName(event.target.value)}
+                    placeholder="Work laptop, Home server, Local CLI"
+                    className="min-w-0 flex-1 rounded border border-(--color-border) bg-(--bg-input) px-2.5 py-1.5 text-xs text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-muted)/60 focus:border-(--focus-ring) focus:ring-2 focus:ring-(--focus-ring)/30"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void saveServer()}
+                    className="h-8.5 rounded border border-(--color-border-strong) bg-(--bg-key) px-3 text-xs font-medium text-(--color-text) hover:bg-(--bg-key)/80 disabled:cursor-not-allowed disabled:opacity-60 transition-colors"
+                    disabled={pending}
+                  >
+                    Save server
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
-          <label className="flex items-center gap-2 text-xs text-(--color-text-muted)">
-            <input
-              type="checkbox"
-              checked={rememberServer}
-              onChange={(event) => setRememberServer(event.target.checked)}
-              className="h-3.5 w-3.5 rounded border-(--color-border)"
-              disabled={pending}
-            />
-            Save this server and reconnect to it after reload
-          </label>
-          <label className="block text-xs font-medium text-(--color-text)" htmlFor="app-backend-key">
-            Access key
-          </label>
-          <input
-            id="app-backend-key"
-            value={accessKey}
-            onChange={(event) => {
-              setAccessKeyInput(event.target.value)
-              setAccessKey(event.target.value)
-            }}
-            placeholder="Required when server was started with --key"
-            type="password"
-            className="w-full rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-2 text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-muted) focus:border-(--focus-ring) focus:ring-3 focus:ring-(--focus-ring)/30"
-          />
-          <label className="block text-xs font-medium text-(--color-text)" htmlFor="app-backend-name">
-            Server name
-          </label>
-          <div className="flex gap-2">
-            <input
-              id="app-backend-name"
-              value={serverName}
-              onChange={(event) => setServerName(event.target.value)}
-              placeholder="Work laptop, Home server, Local CLI"
-              className="min-w-0 flex-1 rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-2 text-sm text-(--color-text) outline-none transition-colors placeholder:text-(--color-text-muted) focus:border-(--focus-ring) focus:ring-3 focus:ring-(--focus-ring)/30"
-            />
-            <button
-              type="button"
-              onClick={() => void saveServer()}
-              className="rounded-md border border-(--color-border-strong) bg-(--bg-key) px-3 py-2 text-xs font-medium text-(--color-text) hover:bg-(--bg-page) disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={pending}
-            >
-              Save server
-            </button>
-          </div>
-          <p className="text-xs leading-5 text-(--color-text-muted)">
+
+          <p className="text-[10.5px] leading-relaxed text-(--color-text-subtle)">
             Connect verifies and switches to a saved server. Save only stores or renames an entry. Use builtin returns this app to the bundled sidecar. If a LAN server fails, confirm the backend is not bound to localhost only and that firewall/local-network permissions allow access.
           </p>
 
           {error ? (
-            <div className="rounded-md border border-(--color-error)/40 bg-(--color-error)/10 px-3 py-2 text-xs text-(--color-error)" role="alert">
+            <div className="rounded border border-(--color-error)/25 bg-(--color-error-subtle) px-3.5 py-2.5 text-xs text-(--color-error)" role="alert">
               {error}
             </div>
           ) : null}
         </div>
 
-        <div className="flex flex-wrap justify-end gap-2 border-t border-(--color-border) px-4 py-3">
+        <div className="flex flex-wrap justify-end gap-2 border-t border-(--color-border) bg-(--bg-sidebar) px-4 py-3 select-none">
           <button
             type="button"
             onClick={() => onOpenChange(false)}
-            className="rounded-md px-3 py-1.5 text-xs font-medium text-(--color-text-muted) hover:bg-(--bg-page)"
+            className="rounded border border-(--color-border) bg-(--bg-card) px-3 py-1.5 text-xs font-medium text-(--color-text) hover:bg-(--bg-key)/40 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none transition-colors"
             disabled={pending}
           >
             Cancel

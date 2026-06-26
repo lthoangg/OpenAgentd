@@ -322,18 +322,6 @@ export function SettingsModal() {
             {/* Header / Title Bar */}
             <div className="flex h-11 shrink-0 items-center justify-between border-b border-(--color-border) bg-(--bg-sidebar) px-4 select-none">
               <div className="flex items-center gap-3">
-                {/* macOS traffic light window controls mock */}
-                <div className="flex items-center gap-1.5 pr-3 border-r border-(--color-border)/60 h-4">
-                  <button
-                    type="button"
-                    onClick={closeSettings}
-                    className="h-3 w-3 rounded-full bg-red-500/40 hover:bg-red-500 transition-colors cursor-pointer focus:outline-none"
-                    title="Close"
-                    aria-label="Close"
-                  />
-                  <span className="h-3 w-3 rounded-full bg-yellow-500/25" />
-                  <span className="h-3 w-3 rounded-full bg-green-500/25" />
-                </div>
                 <span className="text-xs font-semibold text-(--color-text)">Settings</span>
               </div>
 

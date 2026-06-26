@@ -126,7 +126,7 @@ function UpdateSettingsCard() {
     setStatus((current) => current ? { ...current, status: 'installing' } : { status: 'installing' })
     try {
       // The Tauri command shuts down the sidecar and then calls
-      // `tauri::process::restart`, so this promise intentionally never
+      // `app.restart()`, so this promise intentionally never
       // resolves — the process is replaced before a response can come back.
       // Race against a 60-second timeout so a failed restart surfaces an
       // error instead of leaving the UI frozen on "Installing…" indefinitely.

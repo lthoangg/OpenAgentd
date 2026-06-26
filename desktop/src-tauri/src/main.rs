@@ -781,7 +781,7 @@ fn restart_app_process(app: &AppHandle) {
     let handle = app.clone();
     tauri::async_runtime::spawn(async move {
         shutdown_sidecar_now(&handle).await;
-        tauri::process::restart(&handle.env());
+        handle.restart();
     });
 }
 
@@ -1138,13 +1138,13 @@ async fn run_update_install(app: AppHandle) -> Result<(), String> {
     // This must be awaited inline — NOT spawned — so that the process does not
     // return `Ok(())` to the frontend and leave the UI stuck on "Installing…".
     // The Tauri command invocation will never resolve on the JS side because
-    // `tauri::process::restart` replaces the running process; that is the
+    // `app.restart()` replaces the running process; that is the
     // correct and expected behaviour.
     update_tray_status(&app, "Status: Restarting…");
     persist_active_window_state(&app);
     state.quitting.store(true, Ordering::SeqCst);
     shutdown_sidecar_now(&app).await;
-    tauri::process::restart(&app.env());
+    app.restart();
 }
 
 async fn fetch_release_notes(version: &str) -> Result<ReleaseNotesResponse, String> {
@@ -2061,7 +2061,7 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         // Updater config (endpoint, pubkey, install mode) lives in
         // ``tauri.conf.json``'s ``plugins.updater`` block. ``process`` is
-        // required for ``tauri::process::restart`` after the new bundle
+        // required for ``app.restart()`` after the new bundle
         // is staged.
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())

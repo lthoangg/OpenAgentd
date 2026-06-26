@@ -16,7 +16,7 @@
  * this module owns only the chrome (collapse, copy, motion).
  */
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ChevronRight, Copy, Check } from 'lucide-react'
 import { ToolResult } from '../ToolResult'
@@ -82,6 +82,41 @@ function formatDuration(ms: number): string {
   return `${minutes}m ${seconds}s`
 }
 
+function tryParseJSON(raw: string): unknown | null {
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
+}
+
+function parseJsonStrings(val: unknown): unknown {
+  if (typeof val === 'string') {
+    const trimmed = val.trim()
+    if (
+      (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+      (trimmed.startsWith('[') && trimmed.endsWith(']'))
+    ) {
+      const parsed = tryParseJSON(trimmed)
+      if (parsed !== null && typeof parsed === 'object') {
+        return parseJsonStrings(parsed)
+      }
+    }
+    return val
+  }
+  if (Array.isArray(val)) {
+    return val.map(parseJsonStrings)
+  }
+  if (val !== null && typeof val === 'object') {
+    const res: Record<string, unknown> = {}
+    for (const key of Object.keys(val)) {
+      res[key] = parseJsonStrings((val as Record<string, unknown>)[key])
+    }
+    return res
+  }
+  return val
+}
+
 export function ToolCall({ name, args, done, liveOutput, result, durationMs, startedAt }: ToolCallProps) {
   // Hooks must be called unconditionally — before any early returns
   const [manualExpanded, setManualExpanded] = useState<boolean | null>(null)
@@ -103,6 +138,15 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
 
   const { header, headerTitle, formattedArgs, language, suppressResult } =
     getToolDisplay(name, args)
+  const displayedArgs = useMemo(() => {
+    if (!formattedArgs) return ''
+    const parsed = tryParseJSON(formattedArgs)
+    if (parsed !== null && typeof parsed === 'object') {
+      const cleaned = parseJsonStrings(parsed)
+      return JSON.stringify(cleaned, null, 2)
+    }
+    return formattedArgs
+  }, [formattedArgs])
   const usesDiffView = name === 'edit' || name === 'patch' || (name === 'write' && done)
   const usesReadView = name === 'read'
   const diffStats = (usesDiffView || name === 'rm') && args
@@ -137,7 +181,7 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
     e.stopPropagation()
     const text = isShellTerminal
       ? `${formattedArgs}${shellOutput ? `\n${shellOutput}` : ''}`
-      : formattedArgs || args || ''
+      : displayedArgs || args || ''
     try {
       await navigator.clipboard.writeText(text)
       setCopiedArgs(true)
@@ -294,8 +338,8 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
                           )}
                         </div>
                       ) : (
-                        <pre className="overflow-auto whitespace-pre-wrap break-all px-3 py-2.5 font-mono text-xs leading-relaxed text-(--color-text)">
-                          {formattedArgs}
+                        <pre className="max-h-[calc(10*1.55em)] overflow-y-auto whitespace-pre-wrap break-all px-3 py-2.5 font-mono text-xs leading-relaxed text-(--color-text)">
+                          {displayedArgs}
                         </pre>
                       )}
                     </div>

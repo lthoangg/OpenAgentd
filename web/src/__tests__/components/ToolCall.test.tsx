@@ -1387,4 +1387,35 @@ describe("ToolCall — getToolDisplay called before copy handlers", () => {
       })
     }
   })
+
+  it("displays nested JSON strings inside arguments as pretty-printed JSON and applies max-height classes", async () => {
+    const user = userEvent.setup()
+    const nestedInput = JSON.stringify([
+      { action: "create", content: "Implement tests" }
+    ])
+    const args = JSON.stringify({
+      filePath: "designs/forms.pen",
+      input: nestedInput,
+    })
+
+    render(<ToolCall name="custom_tool" args={args} done={false} />)
+
+    // Expand the details panel
+    await user.click(screen.getByRole("button"))
+
+    // Find the arguments pre element
+    const preEl = screen.getByText((content, element) => {
+      return element?.tagName.toLowerCase() === "pre" && content.includes("designs/forms.pen")
+    })
+
+    expect(preEl).toBeDefined()
+    // Verify that the nested JSON string was parsed and rendered as a real JSON structure
+    expect(preEl.textContent).toContain('"action": "create"')
+    expect(preEl.textContent).toContain('"content": "Implement tests"')
+    expect(preEl.textContent).not.toContain('\\"') // Ensure it's not escaped
+
+    // Verify that max height classes are applied
+    expect(preEl.className).toContain("max-h-[calc(10*1.55em)]")
+    expect(preEl.className).toContain("overflow-y-auto")
+  })
 })

@@ -239,6 +239,12 @@ export function CodingWorkspacePanel({
   const commitsScrollRef = useRef<HTMLDivElement>(null)
   // Tracks a SHA that was navigated to from Tree and needs to be scrolled into view.
   const pendingScrollShaRef = useRef<string | null>(null)
+  // Tracks the last selection-open request we acted on. We only auto-open a
+  // file tab when the parent bumps `selectedFileOpenKey`, never on background
+  // refreshes of the files query — otherwise a manually closed tab would
+  // reopen itself the next time `files.data` refetches. Starts at -1 so the
+  // very first request (key 0) is still honored.
+  const handledFileOpenKeyRef = useRef(-1)
   const files = useQuery({
     queryKey: queryKeys.coding.files(workspace),
     queryFn: () => listCodingWorkspaceFiles(workspace),
@@ -412,9 +418,17 @@ export function CodingWorkspacePanel({
   }, [fileSearch, files.data?.files])
 
   useEffect(() => {
-    if (!selectedFilePath || files.data?.files == null) return
+    // Only react to a fresh open request from the parent (signaled by a bumped
+    // `selectedFileOpenKey`). Background refetches of the files query change
+    // `files.data` but must NOT reopen a tab the user already closed.
+    if (handledFileOpenKeyRef.current === selectedFileOpenKey) return
+    if (!selectedFilePath) return
+    if (files.data?.files == null) return // files not loaded yet; retry once they arrive
     const file = files.data.files.find((item) => item.path === selectedFilePath)
-    if (file) openFileTab(file)
+    if (file) {
+      handledFileOpenKeyRef.current = selectedFileOpenKey
+      openFileTab(file)
+    }
   }, [files.data?.files, openFileTab, selectedFileOpenKey, selectedFilePath])
 
   useEffect(() => {

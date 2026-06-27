@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { ChevronRight, Folder, GitCompare, Plus, RefreshCw, Search, X } from 'lucide-react'
+import { ChevronRight, GitCompare, Plus, RefreshCw, Search, X } from 'lucide-react'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 import { getCodingWorkspaceGitDiff, listCodingWorkspaceFiles, getCodingWorkspaceGitHistory, getCodingWorkspaceCommitDiff } from '@/api/client'
@@ -11,7 +11,6 @@ import { FileTypeIcon } from './FileTypeIcon'
 import { cn } from '@/lib/utils'
 import { queryKeys } from '@/queries'
 import { formatBytes } from '@/utils/format'
-import { workspaceLabel } from '@/utils/workspace'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { useResizableWidth } from '@/hooks/use-resizable-width'
 import { useGitPanelStore, DEFAULT_WORKSPACE_STATE } from '@/stores/useGitPanelStore'
@@ -484,17 +483,8 @@ export function CodingWorkspacePanel({
             onDoubleClick={resizable.resetWidth}
           />
         )}
-        {mobile && <div className="flex min-h-10 items-center justify-between border-b border-(--color-border) bg-(--bg-sidebar) px-2.5 py-1.5">
-          <div className="flex min-w-0 items-center gap-2">
-            <Folder size={13} className="shrink-0 text-(--color-accent)" aria-hidden="true" />
-            <p className="truncate font-mono text-xs text-(--color-text)" title={workspace}>{workspaceLabel(workspace)}</p>
-          </div>
-          <button type="button" onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) md:h-auto md:w-auto md:p-1" aria-label="Close workspace panel">
-            <X size={16} />
-          </button>
-        </div>}
         <div className="flex min-w-0 items-center gap-1 border-b border-(--color-border) bg-(--bg-card) px-2 py-1">
-          <div className="scrollbar-none flex min-w-0 max-w-[calc(100%-2rem)] items-center gap-1 overflow-x-auto">
+          <div className={cn('scrollbar-none flex min-w-0 items-center gap-1 overflow-x-auto', mobile ? 'max-w-[calc(100%-4rem)]' : 'max-w-[calc(100%-2rem)]')}>
             {tabs.map((tabItem) => (
               <button
                 key={tabItem.id}
@@ -546,6 +536,19 @@ export function CodingWorkspacePanel({
           >
             <Plus size={14} aria-hidden="true" />
           </button>
+          {mobile && (
+            // Full-width on mobile means there's no backdrop to tap, so keep
+            // an explicit close affordance (swipe-to-close also works).
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text)"
+              aria-label="Close workspace panel"
+              title="Close workspace panel"
+            >
+              <X size={16} aria-hidden="true" />
+            </button>
+          )}
         </div>
         {fileSearchOpen && (
           <div

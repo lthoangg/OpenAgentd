@@ -128,10 +128,10 @@ export function TaskListItem({
         </div>
 
         {/* Action buttons */}
-        <div className="flex shrink-0 gap-1">
+        <div className="flex shrink-0 gap-0.5">
           <Button
             variant="ghost"
-            size="icon-sm"
+            size="icon-xs"
             onClick={(e) => {
               e.stopPropagation()
               triggerTask()
@@ -140,14 +140,14 @@ export function TaskListItem({
             title="Trigger now"
           >
             {triggerMutation.isPending ? (
-              <Loader2 size={14} className="animate-spin" />
+              <Loader2 size={13} className="animate-spin" />
             ) : (
-              <Zap size={14} />
+              <Zap size={13} />
             )}
           </Button>
           <Button
             variant="ghost"
-            size="icon-sm"
+            size="icon-xs"
             onClick={(e) => {
               e.stopPropagation()
               togglePaused()
@@ -156,16 +156,16 @@ export function TaskListItem({
             title={task.status === 'paused' ? 'Resume' : 'Pause'}
           >
             {pauseMutation.isPending || resumeMutation.isPending ? (
-              <Loader2 size={14} className="animate-spin" />
+              <Loader2 size={13} className="animate-spin" />
             ) : task.status === 'paused' ? (
-              <Play size={14} />
+              <Play size={13} />
             ) : (
-              <Pause size={14} />
+              <Pause size={13} />
             )}
           </Button>
           <Button
             variant="ghost"
-            size="icon-sm"
+            size="icon-xs"
             onClick={(e) => {
               e.stopPropagation()
               deleteTask()
@@ -175,9 +175,9 @@ export function TaskListItem({
             className="hover:bg-(--color-error-subtle) hover:text-(--color-error)"
           >
             {deleteMutation.isPending ? (
-              <Loader2 size={14} className="animate-spin" />
+              <Loader2 size={13} className="animate-spin" />
             ) : (
-              <Trash2 size={14} />
+              <Trash2 size={13} />
             )}
           </Button>
         </div>
@@ -202,7 +202,7 @@ export function TaskListItem({
           <button
             type="button"
             role="menuitem"
-            className="flex w-full items-center gap-2 rounded-xs px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+            className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
             onClick={() => {
               setActionsPoint(null)
               triggerTask()
@@ -214,7 +214,7 @@ export function TaskListItem({
           <button
             type="button"
             role="menuitem"
-            className="flex w-full items-center gap-2 rounded-xs px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+            className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
             onClick={() => {
               setActionsPoint(null)
               togglePaused()
@@ -226,7 +226,7 @@ export function TaskListItem({
           <button
             type="button"
             role="menuitem"
-            className="flex w-full items-center gap-2 rounded-xs px-2 py-1.5 text-left text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none"
+            className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none"
             onClick={() => {
               setActionsPoint(null)
               deleteTask()

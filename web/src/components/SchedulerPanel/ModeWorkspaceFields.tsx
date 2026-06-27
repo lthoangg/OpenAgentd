@@ -36,7 +36,7 @@ export function ModeWorkspaceFields({
           aria-label="Task mode"
           // ``inline-flex`` so two short labels ("Normal" / "Coding") do not
           // sprawl across the full form width.
-          className="inline-flex max-w-full shrink-0 gap-1 overflow-x-auto rounded-sm border border-(--color-border) bg-(--bg-card) p-1"
+          className="inline-flex max-w-full shrink-0 gap-0.5 overflow-x-auto rounded-sm border border-(--color-border) bg-(--bg-card) p-0.5"
         >
           {modeOptions.map((opt) => {
             const active = mode === opt.key
@@ -56,7 +56,7 @@ export function ModeWorkspaceFields({
                   })
                 }}
                 className={
-                  'rounded-xs border border-transparent px-3 py-1 text-xs font-medium transition-colors ' +
+                  'rounded-xs border border-transparent px-2.5 py-1 text-[11px] font-medium transition-colors ' +
                   (active
                     ? 'border-(--color-border-strong) bg-(--bg-key) text-(--color-text)'
                     : 'text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text-2)')
@@ -74,7 +74,8 @@ export function ModeWorkspaceFields({
               value={workspace ?? ''}
               onValueChange={(v) => onChange({ mode, workspace: v || null })}
               trigger={workspace ? workspaceLabel(workspace) : 'Select a saved workspace…'}
-              className="w-full"
+              className="w-full max-w-full px-2 py-1 text-[11px]"
+              panelClassName="max-w-[min(22rem,calc(100vw-2rem))]"
               aria-label="Select workspace"
             >
               {savedWorkspaces.map((path) => (

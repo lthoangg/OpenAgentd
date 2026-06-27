@@ -143,7 +143,7 @@ export function SchedulerPanel({
                 {isMobile && mobilePane !== 'list' && (
                   <button
                     onClick={handleBackToList}
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
                     aria-label="Back to task list"
                   >
                     <ArrowLeft size={14} />
@@ -177,7 +177,7 @@ export function SchedulerPanel({
                 {isMobile && mobilePane === 'list' && (
                   <button
                     onClick={handleOpenCreate}
-                    className="flex h-8 w-8 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
+                    className="flex h-7 w-7 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
                     aria-label="Create new task"
                     title="Create task"
                   >
@@ -186,7 +186,7 @@ export function SchedulerPanel({
                 )}
                 <button
                   onClick={onClose}
-                  className="flex h-8 w-8 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
+                  className="flex h-7 w-7 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
                   aria-label="Close scheduler panel"
                   title="Close (Esc)"
                 >

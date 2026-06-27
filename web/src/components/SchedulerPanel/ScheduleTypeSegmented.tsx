@@ -18,7 +18,7 @@ export function ScheduleTypeSegmented({
       aria-label="Schedule type"
       // ``inline-flex`` (not ``flex w-full``) so the control sizes to its
       // contents — three short labels do not need the full form width.
-      className="mt-2 inline-flex max-w-full gap-1 overflow-x-auto rounded-sm border border-(--color-border) bg-(--bg-card) p-1"
+      className="mt-2 inline-flex max-w-full gap-0.5 overflow-x-auto rounded-sm border border-(--color-border) bg-(--bg-card) p-0.5"
     >
       {options.map((opt) => {
         const active = value === opt.key
@@ -33,7 +33,7 @@ export function ScheduleTypeSegmented({
               // Drop ``flex-1`` — let each button hug its label with
               // comfortable horizontal padding instead of stretching to
               // fill the container.
-              'rounded-xs border border-transparent px-3 py-1 text-xs font-medium transition-colors ' +
+              'rounded-xs border border-transparent px-2.5 py-1 text-[11px] font-medium transition-colors ' +
               (active
                 ? 'border border-(--color-border-strong) bg-(--bg-key) text-(--color-text)'
                 : 'text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text-2)')

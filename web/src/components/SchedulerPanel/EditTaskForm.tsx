@@ -152,7 +152,7 @@ export function EditTaskForm({
           </div>
           <button
             onClick={onCancel}
-            className="flex h-8 w-8 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
+            className="flex h-7 w-7 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
             aria-label="Cancel edit"
             title="Cancel"
           >
@@ -227,7 +227,7 @@ export function EditTaskForm({
                         <DateTimePicker
                           value={formData.at_datetime ?? ''}
                           onChange={(v) => setFormData({ ...formData, at_datetime: v })}
-                          triggerClassName="bg-(--bg-page) hover:bg-(--bg-page)"
+                          triggerClassName="h-8 rounded-sm bg-(--bg-card) px-2 text-xs hover:bg-(--bg-key)/30"
                         />
                       </div>
                     </div>
@@ -293,7 +293,7 @@ export function EditTaskForm({
                 value={sessionType}
                 onValueChange={(v) => setSessionType(v as 'new' | 'auto' | 'current' | 'custom')}
                 trigger="Session Target"
-                className="mt-1 w-full"
+                className="mt-1 w-full px-2 py-1 text-[11px]"
               >
                 <DropdownItem value="new">New Session</DropdownItem>
                 <DropdownItem value="auto">Persistent Task Session</DropdownItem>
@@ -351,7 +351,8 @@ export function EditTaskForm({
           <Button
             type="button"
             variant="subtle"
-            className="sm:min-w-24"
+            size="sm"
+            className="sm:min-w-20"
             onClick={onCancel}
             disabled={updateMutation.isPending}
           >
@@ -360,8 +361,9 @@ export function EditTaskForm({
           <Button
             type="submit"
             variant="primary"
+            size="sm"
             disabled={updateMutation.isPending}
-            className="sm:min-w-32"
+            className="sm:min-w-28"
           >
             {updateMutation.isPending ? (
               <>

@@ -250,7 +250,7 @@ export function CreateTaskForm({
                         <DateTimePicker
                           value={formData.at_datetime ?? ''}
                           onChange={(v) => setFormData({ ...formData, at_datetime: v })}
-                          triggerClassName="bg-(--bg-page) hover:bg-(--bg-page)"
+                          triggerClassName="h-8 rounded-sm bg-(--bg-card) px-2 text-xs hover:bg-(--bg-key)/30"
                         />
                       </div>
                     </div>
@@ -316,7 +316,7 @@ export function CreateTaskForm({
                 value={sessionType}
                 onValueChange={(v) => setSessionType(v as 'new' | 'auto' | 'current' | 'custom')}
                 trigger="Session Target"
-                className="mt-1 w-full"
+                className="mt-1 w-full px-2 py-1 text-[11px]"
               >
                 <DropdownItem value="new">New Session</DropdownItem>
                 <DropdownItem value="auto">Persistent Task Session</DropdownItem>
@@ -374,6 +374,7 @@ export function CreateTaskForm({
           type="submit"
           variant="primary"
           disabled={createMutation.isPending}
+          size="sm"
           className="mt-6 w-full sm:w-auto sm:self-end"
         >
           {createMutation.isPending ? (

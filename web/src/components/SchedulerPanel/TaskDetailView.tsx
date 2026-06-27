@@ -49,7 +49,7 @@ export function TaskDetailView({
           <div className="flex shrink-0 items-center gap-1">
             <button
               onClick={() => setEditing(true)}
-              className="flex h-8 w-8 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
+              className="flex h-7 w-7 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
               aria-label="Edit task"
               title="Edit task"
             >
@@ -57,7 +57,7 @@ export function TaskDetailView({
             </button>
             <button
               onClick={onClose}
-              className="flex h-8 w-8 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
+              className="flex h-7 w-7 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
               aria-label="Close detail"
               title="Close"
             >

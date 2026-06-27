@@ -189,7 +189,7 @@ export function SettingsHubPage() {
         </header>
 
         <SettingsSection title="Backend connection">
-          <div className="flex items-start gap-3">
+          <div className="flex flex-wrap items-start gap-3">
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xs border border-(--color-border) bg-(--bg-key) text-(--color-text-muted)" aria-hidden="true">
               <Server size={14} />
             </span>
@@ -198,7 +198,7 @@ export function SettingsHubPage() {
                 Connect this app to an existing OpenAgentd server, or switch back to the bundled local sidecar when available.
               </p>
             </div>
-            <Button type="button" size="sm" variant="default" className="min-h-11 md:min-h-0" onClick={() => setBackendDialogOpen(true)}>
+            <Button type="button" size="xs" variant="default" className="h-8 px-2 text-[10.5px]" onClick={() => setBackendDialogOpen(true)}>
               Configure
             </Button>
           </div>

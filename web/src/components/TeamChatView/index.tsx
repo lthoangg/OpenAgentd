@@ -890,7 +890,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         )}
         {/* Content area */}
         {effectiveViewMode === 'split' && splitAgentNames.length > 0 ? (
-          <div className="min-h-0 flex-1 p-3">
+          <div className="min-h-0 flex-1 p-2 sm:p-3">
             <SplitGrid
               agentNames={splitAgentNames}
               leadName={leadName}

@@ -94,11 +94,11 @@ export function UserBubble({ content, timestamp, attachments, onRevert, modelId,
 
   return (
     <div
-      className="group mb-4 flex justify-end"
+      className="group mb-3 flex justify-end"
       onMouseEnter={() => setShowTime(true)}
       onMouseLeave={() => setShowTime(false)}
     >
-      <div className="flex max-w-full flex-col items-end gap-2 md:max-w-[78%]">
+      <div className="flex max-w-full flex-col items-end gap-1.5 md:max-w-[78%]">
          {/* Attachments */}
          {visibleAttachments.length > 0 && (
            <div className="flex flex-wrap justify-end gap-2">
@@ -128,14 +128,14 @@ export function UserBubble({ content, timestamp, attachments, onRevert, modelId,
            </div>
          )}
 
-          <div className={`relative min-w-0 max-w-full overflow-hidden rounded-sm border px-4 py-3 text-sm leading-relaxed text-(--color-text) shadow-sm selectable-text ${shell ? 'border-(--accent-blue)/30 bg-(--bg-key)' : 'border-(--color-border) bg-(--color-surface)'}`}>
+          <div className={`relative min-w-0 max-w-full overflow-hidden rounded-sm border px-3 py-2.5 text-sm leading-relaxed text-(--color-text) shadow-sm selectable-text ${shell ? 'border-(--accent-blue)/30 bg-(--bg-key)' : 'border-(--color-border) bg-(--bg-card)'}`}>
            {/* Expand / collapse button — top-right inside bubble */}
            {needsCollapse && (
              <button
                onClick={() => setExpanded((v) => !v)}
                aria-expanded={expanded}
                title={expanded ? 'Collapse' : 'Expand'}
-               className="absolute top-1.5 right-1.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-(--bg-key) text-(--color-text-2) transition-all duration-150 hover:text-(--color-text) active:scale-90"
+               className="absolute top-1.5 right-1.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-sm bg-(--bg-key) text-(--color-text-2) transition-all duration-150 hover:text-(--color-text) active:scale-90"
              >
                {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
              </button>
@@ -153,7 +153,7 @@ export function UserBubble({ content, timestamp, attachments, onRevert, modelId,
                 className="pointer-events-none absolute inset-x-0 bottom-0 backdrop-blur-[1px]"
                style={{
                  height: '2.4rem',
-                 background: 'linear-gradient(to bottom, transparent 0%, var(--color-surface) 90%)',
+                 background: 'linear-gradient(to bottom, transparent 0%, var(--bg-card) 90%)',
                }}
              />
            )}
@@ -170,7 +170,7 @@ export function UserBubble({ content, timestamp, attachments, onRevert, modelId,
                {onRevert && (
                 <button
                   onClick={onRevert}
-                  className="rounded p-0.5 text-(--color-text-muted) transition-colors hover:text-(--color-text-2)"
+                  className="rounded-xs p-0.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
                   aria-label="Revert latest message"
                   title="Revert latest message"
                 >
@@ -179,7 +179,7 @@ export function UserBubble({ content, timestamp, attachments, onRevert, modelId,
               )}
               <button
                 onClick={handleCopy}
-                className="rounded p-0.5 text-(--color-text-muted) transition-colors hover:text-(--color-text-2)"
+                className="rounded-xs p-0.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
                aria-label="Copy message"
                title="Copy"
              >

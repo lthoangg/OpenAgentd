@@ -109,7 +109,7 @@ function BlockRenderer({ block, isStreaming, sessionId, onRevert, latestMCPAppBl
         const errorText = errorType ? ` after ${String(errorType)}${statusCode ? ` ${String(statusCode)}` : ''}` : ''
         message = `${String(model ?? 'Model')} exhausted retry attempts${errorText}.`
       }
-      return <p className="rounded-md border border-(--color-border) bg-(--bg-muted) px-3 py-2 text-xs text-(--color-text-muted)">{message}</p>
+      return <p className="rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2 text-xs text-(--color-text-muted)">{message}</p>
     }
     case 'tool': {
       const mcpApp = (block.extra as { mcp_app?: unknown } | undefined)?.mcp_app
@@ -297,7 +297,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
     <div ref={scrollRef} className="flex-1 overflow-y-auto">
-      <div className="mx-auto max-w-3xl px-4 py-6">
+      <div className="mx-auto max-w-3xl px-3 py-5 sm:px-4 sm:py-6">
         {isEmpty && (
            emptyState ?? (
              <div className="flex select-none flex-col items-center justify-center gap-4 py-16">
@@ -322,7 +322,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
                   <button
                     type="button"
                     onClick={showEarlierTurns}
-                    className="inline-flex min-h-10 items-center gap-1 rounded-full border border-(--color-border) bg-(--bg-card) px-3 py-1.5 text-xs text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:ring-2 focus-visible:ring-(--focus-ring) focus-visible:outline-none"
+                    className="inline-flex min-h-8 items-center gap-1 rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-1.5 text-xs text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:outline-none"
                     aria-label={`Show ${Math.min(TURN_RENDER_STEP, hiddenTurnCount)} earlier turns`}
                   >
                     <ChevronUp size={13} aria-hidden="true" />
@@ -397,7 +397,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
             <PendingMessageQueue />
 
             {isError && lastError && (
-             <div className="mt-3 rounded-lg border border-(--color-error) bg-(--color-error-subtle) px-3 py-2">
+             <div className="mt-3 rounded-sm border border-(--color-error) bg-(--color-error-subtle) px-3 py-2">
                <p className="text-xs text-(--color-error)">{lastError}</p>
              </div>
            )}
@@ -407,7 +407,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
     {showScrollBtn && (
         <button
           onClick={() => scrollToBottom(true)}
-          className="absolute bottom-16 left-1/2 z-10 -translate-x-1/2 rounded-full border border-(--color-border) bg-(--bg-card) p-1 text-(--color-text-muted) transition-colors hover:text-(--color-text-2)"
+          className="absolute bottom-16 left-1/2 z-10 -translate-x-1/2 rounded-sm border border-(--color-border) bg-(--bg-card) p-1 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
           aria-label="Scroll to bottom"
         >
           <ChevronDown size={16} />

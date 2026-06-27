@@ -1419,3 +1419,20 @@ describe("ToolCall — getToolDisplay called before copy handlers", () => {
     expect(preEl.className).toContain("overflow-y-auto")
   })
 })
+
+describe("ToolCall with incomplete JSON args (streaming)", () => {
+  it("extracts and displays file name for read tool immediately", () => {
+    render(<ToolCall name="read" args='{"path": "src/components/ToolResult.tsx' done={false} />)
+    expect(screen.getByText("ToolResult.tsx")).toBeTruthy()
+  })
+
+  it("extracts and displays file name for write tool immediately", () => {
+    render(<ToolCall name="write" args='{"path": "src/components/ToolResult.tsx", "content": "hello' done={false} />)
+    expect(screen.getByText("ToolResult.tsx")).toBeTruthy()
+  })
+
+  it("extracts and displays query for web_search immediately", () => {
+    render(<ToolCall name="web_search" args='{"query": "how to build a react' done={false} />)
+    expect(screen.getByText(/"how to build a react"/)).toBeTruthy()
+  })
+})

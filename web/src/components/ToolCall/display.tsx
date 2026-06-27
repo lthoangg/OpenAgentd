@@ -17,7 +17,7 @@
 import type { ReactNode } from 'react'
 import type { ToolDisplay } from './types'
 import { parsePatchText } from './diffUtils'
-import { summarizeText } from './displayText'
+import { summarizeText, parsePartialJSON } from './displayText'
 
 /**
  * Keep argument values in headers easy to restyle consistently.
@@ -119,6 +119,19 @@ function formatSchedule(parsed: Record<string, unknown>): string | null {
   return lines.length > 0 ? lines.join('\n') : null
 }
 
+const HIDE_ARGS_TOOLS = new Set([
+  'read',
+  'web_search',
+  'web_fetch',
+  'rm',
+  'ls',
+  'glob',
+  'grep',
+  'team_manage',
+  'bg',
+  'skill',
+])
+
 export function getToolDisplay(name: string, args: string | undefined): ToolDisplay {
   // ── date: no args, no args section ────────────────────────────────
   if (name === 'date') {
@@ -140,8 +153,26 @@ export function getToolDisplay(name: string, args: string | undefined): ToolDisp
   }
 
   let parsed: Record<string, unknown>
-  try { parsed = JSON.parse(args) } catch { return { header: null, headerTitle: null, formattedArgs: args } }
+  let isComplete = false
+  try {
+    parsed = JSON.parse(args)
+    isComplete = true
+  } catch {
+    parsed = parsePartialJSON(args)
+  }
 
+  const resultDisplay = getToolDisplayInternal(name, parsed)
+  if (!isComplete) {
+    const shouldHideArgs = HIDE_ARGS_TOOLS.has(name)
+    return {
+      ...resultDisplay,
+      formattedArgs: shouldHideArgs ? null : args,
+    }
+  }
+  return resultDisplay
+}
+
+function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): ToolDisplay {
   // ── shell: description as header, command as bash block ─────────────
   if (name === 'shell') {
     const description = str(parsed, 'description')

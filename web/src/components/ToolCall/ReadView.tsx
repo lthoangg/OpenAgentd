@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Check, Copy, FileText } from 'lucide-react'
-import { truncateForDisplay } from './displayText'
+import { truncateForDisplay, parsePartialJSON } from './displayText'
 
 interface ReadViewProps {
   args: string
@@ -9,14 +9,10 @@ interface ReadViewProps {
 }
 
 function parseArgs(args: string): { path: string } {
-  try {
-    const parsed = JSON.parse(args) as unknown
-    if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
-      const path = (parsed as Record<string, unknown>).path
-      if (typeof path === 'string' && path.trim()) return { path: path.trim() }
-    }
-  } catch {
-    // Fall through to the stable fallback below.
+  const parsed = parsePartialJSON(args)
+  const path = parsed.path
+  if (typeof path === 'string' && path.trim()) {
+    return { path: path.trim() }
   }
   return { path: 'file' }
 }

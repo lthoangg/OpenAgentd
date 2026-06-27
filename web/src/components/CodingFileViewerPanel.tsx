@@ -295,63 +295,96 @@ function DeletedFilePreview() {
 
 export function DiffPreview({ diff }: { diff: string }) {
   const firstChangeRef = useRef<HTMLDivElement | null>(null)
-  let oldLine = 0
-  let newLine = 0
-  let firstChangeSeen = false
 
   useEffect(() => {
     firstChangeRef.current?.scrollIntoView({ block: 'center', inline: 'nearest' })
   }, [diff])
 
+  // Pre-parse the diff lines so each hunk header knows how many old-file lines
+  // were skipped since the previous hunk ended. We do this outside the render
+  // map so the counters run in a single sequential pass.
+  type ParsedLine =
+    | { kind: 'meta' }
+    | { kind: 'hunk'; skipped: number }
+    | { kind: 'add' | 'del' | 'ctx'; lineNo: number; text: string; isFirstChange: boolean }
+
+  const parsed: ParsedLine[] = []
+  let oldLine = 0
+  let newLine = 0
+  let prevHunkOldEnd = 0
+  let firstChangeSeen = false
+
+  for (const line of diff.split('\n')) {
+    const isMeta = line.startsWith('diff --git') || line.startsWith('index ') ||
+      line.startsWith('new file mode') || line.startsWith('deleted file mode') ||
+      line.startsWith('---') || line.startsWith('+++') || line.startsWith('\\ ')
+    if (isMeta) { parsed.push({ kind: 'meta' }); continue }
+
+    const hunk = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,\d+)? @@/.exec(line)
+    if (hunk) {
+      const nextOldStart = Number(hunk[1])
+      const hunkOldCount = hunk[2] !== undefined ? Number(hunk[2]) : 1
+      const skipped = prevHunkOldEnd > 0 ? nextOldStart - prevHunkOldEnd : nextOldStart - 1
+      oldLine = nextOldStart
+      newLine = Number(hunk[3])
+      prevHunkOldEnd = oldLine + hunkOldCount
+      parsed.push({ kind: 'hunk', skipped: Math.max(0, skipped) })
+      continue
+    }
+
+    const isAdded   = line.startsWith('+') && !line.startsWith('+++')
+    const isRemoved = line.startsWith('-') && !line.startsWith('---')
+    const isFirstChange = !firstChangeSeen && (isAdded || isRemoved)
+    if (isFirstChange) firstChangeSeen = true
+    const lineNo = isRemoved ? oldLine : newLine
+    if (!isAdded)   oldLine += 1
+    if (!isRemoved) newLine += 1
+    parsed.push({
+      kind: isAdded ? 'add' : isRemoved ? 'del' : 'ctx',
+      lineNo,
+      text: line.replace(/^[+-]/, '') || ' ',
+      isFirstChange,
+    })
+  }
+
   return (
     <div className="bg-(--bg-card) font-mono text-[11px] leading-relaxed">
       <div className="min-w-0">
-        {diff.split('\n').map((line, index) => {
-          const hunk = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line)
-          if (hunk) {
-            oldLine = Number(hunk[1])
-            newLine = Number(hunk[2])
-          }
-          const isMeta = line.startsWith('diff --git') || line.startsWith('index ') || line.startsWith('new file mode') || line.startsWith('deleted file mode') || line.startsWith('---') || line.startsWith('+++') || line.startsWith('\\ ')
-          const isHunk = line.startsWith('@@')
-          if (isMeta) return null
+        {parsed.map((p, index) => {
+          if (p.kind === 'meta') return null
 
-          if (isHunk) {
+          if (p.kind === 'hunk') {
             return (
               <div
                 key={index}
-                className="flex min-w-0 items-stretch bg-(--bg-key) text-(--color-text-muted) select-none border-y border-(--color-border)/20"
+                className="flex min-w-0 items-center select-none border-y border-(--color-border)/20 bg-(--bg-page)"
               >
-                <div className="sticky left-0 z-[1] flex shrink-0 select-none border-r border-(--color-border)/40 bg-inherit text-right text-[10px] text-(--color-text-subtle)/70">
-                  <span className="w-9 py-0.5 pr-1.5">···</span>
+                <div className="sticky left-0 z-[1] shrink-0 border-r border-(--color-border)/40 bg-inherit">
+                  <span className="block w-9 py-0.5" />
                 </div>
-                <pre className="m-0 min-w-0 flex-1 whitespace-pre-wrap break-words px-2 py-0.5 text-[10px] font-semibold [overflow-wrap:anywhere]">{line}</pre>
+                <span className="px-3 py-0.5 text-[10px] italic text-(--color-text-subtle)/50">
+                  {p.skipped > 0 ? `${p.skipped} line${p.skipped === 1 ? '' : 's'} unchanged` : ''}
+                </span>
               </div>
             )
           }
 
-          const isAdded = line.startsWith('+') && !line.startsWith('+++')
-          const isRemoved = line.startsWith('-') && !line.startsWith('---')
-          const isFirstChange = !firstChangeSeen && (isAdded || isRemoved)
-          if (isFirstChange) firstChangeSeen = true
-          const lineNumber = isRemoved ? oldLine : newLine
-          if (!isAdded) oldLine += 1
-          if (!isRemoved) newLine += 1
-
+          const isAdded   = p.kind === 'add'
+          const isRemoved = p.kind === 'del'
           return (
             <div
               key={index}
-              ref={isFirstChange ? firstChangeRef : undefined}
+              ref={p.isFirstChange ? firstChangeRef : undefined}
               className={cn(
                 'flex min-w-0 items-stretch whitespace-pre-wrap break-words text-(--color-text) [overflow-wrap:anywhere]',
-                isAdded && 'bg-(--color-diff-add-bg) text-(--color-diff-add-text)',
+                isAdded   && 'bg-(--color-diff-add-bg) text-(--color-diff-add-text)',
                 isRemoved && 'bg-(--color-diff-del-bg) text-(--color-diff-del-text)',
               )}
             >
               <div className="sticky left-0 z-[1] flex shrink-0 select-none border-r border-(--color-border)/40 bg-inherit text-right text-[10px] text-(--color-text-subtle)">
-                <span className="w-9 py-0.5 pr-1.5">{lineNumber}</span>
+                <span className="w-9 py-0.5 pr-1.5">{p.lineNo}</span>
               </div>
-              <pre className="m-0 min-w-0 flex-1 whitespace-pre-wrap break-words px-2 py-0.5 [overflow-wrap:anywhere]">{line.replace(/^[+-]/, '') || ' '}</pre>
+              <pre className="m-0 min-w-0 flex-1 whitespace-pre-wrap break-words px-2 py-0.5 [overflow-wrap:anywhere]">{p.text}</pre>
             </div>
           )
         })}

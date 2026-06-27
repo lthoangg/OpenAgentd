@@ -53,7 +53,7 @@ function CapabilityChips({ chips }: { chips: CapabilityChip[] }) {
       {chips.map(({ key, label, icon: Icon }) => (
         <span
           key={key}
-          className="flex items-center gap-1 rounded-md bg-(--bg-key) px-2 py-0.5 text-xs text-(--color-text-2) ring-1 ring-(--color-border-strong)"
+          className="flex items-center gap-1 rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 text-[10.5px] text-(--color-text-muted)"
           title={label}
         >
           <Icon size={11} className="text-(--color-text-muted)" />
@@ -96,7 +96,7 @@ function Capabilities({
   if (inputChips.length === 0 && outputChips.length === 0) return null
 
   return (
-    <section className="border-t border-(--color-border) px-5 py-4">
+    <section className="border-t border-(--color-border) px-3 py-3 sm:px-5 sm:py-4">
       <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-(--color-text-muted)">
         Capabilities
       </h3>
@@ -210,7 +210,7 @@ export function SessionSettingsPanel({
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
             onClick={onClose}
-            className="mobile-safe-top fixed inset-x-0 bottom-0 z-40 bg-black/40"
+            className="fixed inset-x-0 bottom-0 top-[calc(var(--spacing-app-header)+env(safe-area-inset-top,0px))] z-40 bg-black/40 sm:inset-0"
           />
 
           <motion.aside
@@ -219,13 +219,13 @@ export function SessionSettingsPanel({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.97, y: 8 }}
             transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
-            className="mobile-safe-top fixed inset-x-0 bottom-0 z-50 flex flex-col overflow-hidden border border-(--color-border) bg-(--bg-card) shadow-2xl sm:bottom-auto sm:left-1/2 sm:right-auto sm:top-1/2 sm:h-[min(90vh,860px)] sm:w-[min(90vw,960px)] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-md"
+            className="fixed inset-x-0 bottom-0 top-[calc(var(--spacing-app-header)+env(safe-area-inset-top,0px))] z-50 flex flex-col overflow-hidden border border-(--color-border) bg-(--bg-page) shadow-2xl sm:inset-auto sm:left-1/2 sm:top-1/2 sm:h-[min(90vh,860px)] sm:w-[min(90vw,960px)] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-md"
             role="dialog"
             aria-modal="true"
             aria-label="Session settings"
           >
         {/* Header */}
-        <header className="flex shrink-0 items-start justify-between gap-3 border-b border-(--color-border) px-5 py-4">
+        <header className="flex shrink-0 items-start justify-between gap-3 border-b border-(--color-border) bg-(--bg-sidebar) px-3 py-3 sm:px-5 sm:py-4">
           {isLoading || !leadAgent ? (
             <div className="h-6 w-48 animate-pulse rounded bg-(--bg-key)" />
           ) : (
@@ -242,7 +242,7 @@ export function SessionSettingsPanel({
           )}
           <button
             onClick={onClose}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) md:h-7 md:w-7"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) md:h-7 md:w-7"
             aria-label="Close (Esc)"
             title="Close (Esc)"
           >
@@ -253,10 +253,10 @@ export function SessionSettingsPanel({
         {/* Body */}
         <div className="min-h-0 flex-1 overflow-y-auto">
           {isLoading || !leadAgent ? (
-            <div className="flex-1 space-y-3 p-5">
-              <div className="h-16 animate-pulse rounded-xl bg-(--bg-key)" />
-              <div className="h-24 animate-pulse rounded-xl bg-(--bg-key)" />
-              <div className="h-40 animate-pulse rounded-xl bg-(--bg-key)" />
+            <div className="flex-1 space-y-3 p-3 sm:p-5">
+              <div className="h-16 animate-pulse rounded-sm bg-(--bg-key)" />
+              <div className="h-24 animate-pulse rounded-sm bg-(--bg-key)" />
+              <div className="h-40 animate-pulse rounded-sm bg-(--bg-key)" />
             </div>
           ) : (
             <>
@@ -270,7 +270,7 @@ export function SessionSettingsPanel({
                   onChange={onSessionModelSettingsChange}
                 />
               )}
-              <section className="shrink-0 px-5 py-4">
+              <section className="shrink-0 px-3 py-3 sm:px-5 sm:py-4">
                 <h3 className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-(--color-text-muted)">
                   Lead agent
                 </h3>
@@ -298,7 +298,7 @@ export function SessionSettingsPanel({
         </div>
 
         {/* Footer */}
-        <div className="shrink-0 border-t border-(--color-border) px-5 py-2.5">
+        <div className="shrink-0 border-t border-(--color-border) bg-(--bg-card) px-3 py-2.5 sm:px-5">
           <p className="text-[11px] text-(--color-text-muted)">
             Esc or click outside to close · Ctrl+A to toggle
           </p>

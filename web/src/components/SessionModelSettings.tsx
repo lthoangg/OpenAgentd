@@ -74,8 +74,8 @@ export function SessionModelSettings({
   const selectedThinkingLabel = THINKING_LEVELS.find((level) => level.value === draftThinkingLevel)?.label ?? 'Default'
 
   return (
-    <section className="shrink-0 border-b border-(--color-border) bg-(--bg-page) px-5 py-4">
-      <div className="mb-3 flex items-start justify-between gap-3">
+    <section className="shrink-0 border-b border-(--color-border) bg-(--bg-page) px-3 py-3 sm:px-5 sm:py-4">
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold text-(--color-text)">Current session</h3>
           <p className="mt-0.5 text-xs text-(--color-text-muted)">
@@ -86,7 +86,8 @@ export function SessionModelSettings({
           <Button
             type="button"
             variant="default"
-            size="sm"
+            size="xs"
+            className="h-8 px-2 text-[10.5px]"
             disabled={!dirty}
             onClick={() => {
               setDraftModel(savedModel)
@@ -99,7 +100,8 @@ export function SessionModelSettings({
           </Button>
           <Button
             type="button"
-            size="sm"
+            size="xs"
+            className="h-8 px-2 text-[10.5px]"
             disabled={!dirty || !modelValid}
             onClick={() => {
               onChange(
@@ -114,8 +116,8 @@ export function SessionModelSettings({
           </Button>
         </div>
       </div>
-      <div className="flex flex-wrap gap-3">
-        <label className="w-80 max-w-full text-xs text-(--color-text-muted)">
+      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_11rem_minmax(14rem,0.8fr)]">
+        <label className="min-w-0 text-xs text-(--color-text-muted)">
           <span className="mb-1 block font-medium text-(--color-text-2)">Model</span>
           <div className="relative">
               <input
@@ -125,7 +127,7 @@ export function SessionModelSettings({
                   setModelPickerOpen(true)
                   setActiveModelIndex(0)
                 }}
-                className="w-full rounded border border-(--color-border) bg-(--bg-card) px-2.5 py-1.5 font-mono text-xs text-(--color-text) outline-none transition-colors focus:border-(--focus-ring) focus:ring-2 focus:ring-(--focus-ring)/30"
+                className="min-h-10 w-full rounded-sm border border-(--color-border) bg-(--bg-input) px-2.5 py-1.5 font-mono text-xs text-(--color-text) outline-none transition-colors focus:border-(--focus-ring) focus:ring-2 focus:ring-(--focus-ring)/30 md:min-h-9"
                 aria-label="Search session model"
                 role="combobox"
                 aria-expanded={modelPickerOpen}
@@ -150,7 +152,7 @@ export function SessionModelSettings({
                 }}
               />
             {modelPickerOpen && (
-              <div className="absolute left-0 top-full z-50 mt-1 w-[min(34rem,calc(90vw-3rem))] rounded border border-(--color-border) bg-(--bg-card) p-1 shadow-md">
+              <div className="absolute left-0 top-full z-50 mt-1 w-[min(34rem,calc(90vw-3rem))] rounded-sm border border-(--color-border) bg-(--bg-card) p-1 shadow-md">
                 <div className="max-h-64 overflow-auto">
                 {pickerOptions.map((model, index) => (
                   <button
@@ -159,7 +161,7 @@ export function SessionModelSettings({
                     onMouseDown={(e) => e.preventDefault()}
                     onMouseEnter={() => setActiveModelIndex(index)}
                     onClick={() => selectModel(model.id)}
-                    className={`flex w-full items-center rounded px-2 py-1 text-left font-mono text-xs transition-colors cursor-pointer ${index === activeModelIndex ? 'bg-(--bg-key) text-(--color-text)' : 'text-(--color-text-2) hover:bg-(--bg-key)'}`}
+                    className={`flex min-h-10 w-full cursor-pointer items-center rounded-xs px-2 py-1 text-left font-mono text-xs transition-colors md:min-h-0 ${index === activeModelIndex ? 'bg-(--bg-key) text-(--color-text)' : 'text-(--color-text-2) hover:bg-(--bg-key)'}`}
                   >
                     {model.label}
                   </button>
@@ -185,7 +187,7 @@ export function SessionModelSettings({
             value={draftThinkingLevel}
             onValueChange={selectThinkingLevel}
             trigger={selectedThinkingLabel}
-            className="w-44 max-w-full"
+            className="min-h-10 w-full md:min-h-9"
             aria-label="Thinking level"
           >
             {THINKING_LEVELS.map((level) => (
@@ -195,7 +197,7 @@ export function SessionModelSettings({
             ))}
           </Dropdown>
         </label>
-        <label className="flex min-w-56 max-w-full items-start gap-2 rounded-md border border-(--color-border) bg-(--bg-card) px-3 py-2 text-xs text-(--color-text-muted)">
+        <label className="flex min-w-0 items-start gap-2 rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2 text-xs text-(--color-text-muted)">
           <input
             type="checkbox"
             checked={fastModeAvailable && draftFastMode}

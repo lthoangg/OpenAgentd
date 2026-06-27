@@ -121,7 +121,7 @@ export function SchedulerPanel({
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
             onClick={onClose}
-            className="mobile-safe-top fixed inset-x-0 bottom-0 z-40 bg-black/40"
+            className="fixed inset-x-0 bottom-0 top-[calc(var(--spacing-app-header)+env(safe-area-inset-top,0px))] z-40 bg-black/40 sm:inset-0"
           />
 
           <motion.aside
@@ -130,7 +130,7 @@ export function SchedulerPanel({
             animate={prefersReducedMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 }}
             exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97, y: 8 }}
             transition={{ duration: prefersReducedMotion ? 0.01 : 0.18, ease: [0.4, 0, 0.2, 1] }}
-            className="mobile-safe-top fixed inset-x-0 bottom-0 z-50 flex flex-col overflow-hidden border-(--color-border) bg-(--bg-card) shadow-2xl sm:left-1/2 sm:top-1/2 sm:inset-auto sm:h-[min(90vh,860px)] sm:w-[min(90vw,1180px)] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:border"
+            className="fixed inset-x-0 bottom-0 top-[calc(var(--spacing-app-header)+env(safe-area-inset-top,0px))] z-50 flex flex-col overflow-hidden border-(--color-border) bg-(--bg-card) shadow-2xl sm:inset-auto sm:left-1/2 sm:top-1/2 sm:h-[min(90vh,860px)] sm:w-[min(90vw,1180px)] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:border"
             role="dialog"
             aria-modal="true"
             aria-label="Scheduled tasks"

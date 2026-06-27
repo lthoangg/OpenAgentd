@@ -11,7 +11,7 @@
  * component (see `AssistantTurnFooter.tsx`); only the trailing turn hides its
  * footer while the agent is actively streaming.
  */
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react'
 
 import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
 import { ChevronDown, ChevronUp, Copy, Check, Undo2, Terminal } from 'lucide-react'
@@ -97,13 +97,13 @@ function renderMentionSegments(content: string): React.ReactNode[] {
   return out
 }
 
-function UserBubble({ content, timestamp, attachments, onRevert, modelId, shell }: { content: string; timestamp?: Date; attachments?: MessageAttachment[]; onRevert?: () => void; modelId?: string | null; shell?: boolean }) {
+const UserBubble = memo(function UserBubble({ content, timestamp, attachments, onRevert, modelId, shell }: { content: string; timestamp?: Date; attachments?: MessageAttachment[]; onRevert?: () => void; modelId?: string | null; shell?: boolean }) {
   const [showTime, setShowTime] = useState(false)
   const [copied, setCopied] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const modelName = shortModelName(modelId)
 
-  const handleCopy = async () => {
+  const handleCopy = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(content)
       setCopied(true)
@@ -111,7 +111,7 @@ function UserBubble({ content, timestamp, attachments, onRevert, modelId, shell 
     } catch {
       // ignore
     }
-  }
+  }, [content])
 
   const lines = content.split('\n')
   const needsCollapse = lines.length > USER_COLLAPSE_LINES || content.length > USER_COLLAPSE_CHARS
@@ -233,10 +233,10 @@ function UserBubble({ content, timestamp, attachments, onRevert, modelId, shell 
        </div>
     </div>
   )
-}
+})
 
 
-function BlockRenderer({ block, isStreaming, sessionId, onRevert, latestMCPAppBlockIds }: { block: ContentBlock; isStreaming: boolean; sessionId?: string; onRevert?: () => void; latestMCPAppBlockIds?: Set<string> }) {
+const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionId, onRevert, latestMCPAppBlockIds }: { block: ContentBlock; isStreaming: boolean; sessionId?: string; onRevert?: () => void; latestMCPAppBlockIds?: Set<string> }) {
   switch (block.type) {
     case 'user': {
       const fromAgent = block.extra?.from_agent as string | undefined
@@ -321,7 +321,7 @@ function BlockRenderer({ block, isStreaming, sessionId, onRevert, latestMCPAppBl
     default:
       return null
   }
-}
+})
 
 export function AgentPane({
   name, stream, isLead, isContinuing = false, onContinue,

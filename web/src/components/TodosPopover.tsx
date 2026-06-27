@@ -14,6 +14,7 @@
  *   in_progress → pending → completed → cancelled
  */
 
+import { useMemo } from 'react'
 import { CircleDot, ListTodo, Square, SquareCheck } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -83,8 +84,9 @@ export function TodosPopover({
   const progressPct =
     todos.length > 0 ? Math.round((finishedCount / todos.length) * 100) : 0
   const allDone = todos.length > 0 && finishedCount === todos.length
-  const sortedTodos = [...todos].sort(
-    (a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status],
+  const sortedTodos = useMemo(
+    () => [...todos].sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status]),
+    [todos],
   )
 
   const content = (

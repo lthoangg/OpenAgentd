@@ -2,7 +2,7 @@
 title: Workspace Files Panel
 description: Right-side drawer for browsing, previewing, and downloading agent-generated files with live invalidation.
 status: stable
-updated: 2026-06-10
+updated: 2026-06-13
 ---
 
 # Workspace Files panel

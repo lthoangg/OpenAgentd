@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, type TouchEvent } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo, memo, type TouchEvent } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -122,7 +122,11 @@ export function Sidebar({
   const editTitleInputRef = useRef<HTMLInputElement>(null)
 
   // The query is already mode-filtered server-side.
-  const normalSessions = sessions.data?.pages.flatMap((p) => p.data) ?? []
+  const normalSessions = useMemo(
+    () => sessions.data?.pages.flatMap((p) => p.data) ?? [],
+    [sessions.data],
+  )
+  const dateGroups = useMemo(() => groupByDate(normalSessions), [normalSessions])
 
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     try {
@@ -233,15 +237,15 @@ export function Sidebar({
     return () => observer.disconnect()
   }, [hasNextPage, isFetchingNextPage, fetchNextPage])
 
-  const handleDelete = (e: React.MouseEvent, session: SessionResponse) => {
+  const handleDelete = useCallback((e: React.MouseEvent, session: SessionResponse) => {
     e.stopPropagation()
     setDeleteTarget(session)
-  }
+  }, [])
 
-  const handleEdit = (session: SessionResponse) => {
+  const handleEdit = useCallback((session: SessionResponse) => {
     setEditTarget(session)
     setEditTitle(session.title || '')
-  }
+  }, [])
 
   const submitSessionTitle = (e: React.FormEvent) => {
     e.preventDefault()
@@ -484,7 +488,7 @@ export function Sidebar({
                     )}
                     {sessions.isSuccess && normalSessions.length > 0 && (
                       <div className="space-y-0.5">
-                        {groupByDate(normalSessions).map(({ label, sessions: group }) => (
+                        {dateGroups.map(({ label, sessions: group }) => (
                           <div key={label}>
                             <p className="px-2 pb-0.5 pt-2 text-xs text-(--color-text-subtle) first:pt-1">{label}</p>
                             {group.map((session) => (
@@ -741,7 +745,7 @@ interface SessionRowProps {
  * brightens its text from ``--color-text-2`` to ``--color-text`` as the
  * hover affordance. Active rows keep the solid ``--bg-key`` background.
  */
-function SessionRow({ session, isActive, onSelect, onDelete, onEdit, mobileLongPressActions = false, onLongPress, onContextActions }: SessionRowProps) {
+const SessionRow = memo(function SessionRow({ session, isActive, onSelect, onDelete, onEdit, mobileLongPressActions = false, onLongPress, onContextActions }: SessionRowProps) {
   const isScheduled = Boolean(session.scheduled_task_name)
   const isRunning = session.running === true
 
@@ -834,4 +838,4 @@ function SessionRow({ session, isActive, onSelect, onDelete, onEdit, mobileLongP
       </button>
     </div>
   )
-}
+})

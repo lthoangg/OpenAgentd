@@ -15,7 +15,7 @@
  * `AgentPane` for split/unified modes.
  */
 
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react'
 import OctobotMascot from '@/assets/brand/octobot-agentd-source.png'
 
 import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
@@ -66,7 +66,7 @@ interface AgentViewProps {
   onMentionFileOpen?: (path: string) => void
 }
 
-function BlockRenderer({ block, isStreaming, sessionId, onRevert, latestMCPAppBlockIds, onMentionFileOpen }: { block: ContentBlock; isStreaming: boolean; sessionId?: string; onRevert?: () => void; latestMCPAppBlockIds?: Set<string>; onMentionFileOpen?: (path: string) => void }) {
+const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionId, onRevert, latestMCPAppBlockIds, onMentionFileOpen }: { block: ContentBlock; isStreaming: boolean; sessionId?: string; onRevert?: () => void; latestMCPAppBlockIds?: Set<string>; onMentionFileOpen?: (path: string) => void }) {
   switch (block.type) {
     case 'user': {
       // Me check if this is an inbox message (from another agent, not real user)
@@ -152,7 +152,7 @@ function BlockRenderer({ block, isStreaming, sessionId, onRevert, latestMCPAppBl
     default:
       return null
   }
-}
+})
 
 export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError, isContinuing = false, onContinue, emptyState, onMentionFileOpen }: AgentViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null)

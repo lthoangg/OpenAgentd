@@ -2,7 +2,7 @@
 title: Todos Popover
 description: Chat header popover showing the agent's current task list with live invalidation on tool_end.
 status: stable
-updated: 2026-05-22
+updated: 2026-06-13
 ---
 
 # Todos popover

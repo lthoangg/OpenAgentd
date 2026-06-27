@@ -16,7 +16,7 @@
  *                                       images use the URL directly as src)
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   X,
@@ -130,7 +130,7 @@ function groupByDir(files: WorkspaceFileInfo[]): Group[] {
 
 // ── Tree node ─────────────────────────────────────────────────────────────────
 
-function FileRow({
+const FileRow = memo(function FileRow({
   file,
   selected,
   sessionId,
@@ -261,7 +261,7 @@ function FileRow({
     )}
     </>
   )
-}
+})
 
 function TreeGroup({
   group,

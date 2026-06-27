@@ -337,6 +337,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
                   checked={rememberServer}
                   onChange={(event) => setRememberServer(event.currentTarget.checked)}
                   className="border-(--color-border) bg-(--bg-card) checked:border-(--color-border-strong) checked:bg-(--bg-key)"
+                  checkClassName="peer-checked:text-(--color-text)"
                   disabled={pending}
                 />
                 <span>Save this server and reconnect to it after reload</span>

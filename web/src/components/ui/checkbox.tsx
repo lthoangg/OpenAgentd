@@ -6,9 +6,10 @@ import { cn } from '@/lib/utils'
 interface CheckboxProps extends Omit<ComponentPropsWithRef<'input'>, 'type'> {
   /** Called with the next checked state. */
   onCheckedChange?: (checked: boolean) => void
+  checkClassName?: string
 }
 
-function Checkbox({ className, onChange, onCheckedChange, ...props }: CheckboxProps) {
+function Checkbox({ className, onChange, onCheckedChange, checkClassName, ...props }: CheckboxProps) {
   return (
     <span className="relative inline-flex size-[18px] shrink-0">
       <input
@@ -27,7 +28,13 @@ function Checkbox({ className, onChange, onCheckedChange, ...props }: CheckboxPr
         }}
         {...props}
       />
-      <Check className="pointer-events-none absolute inset-0 m-auto hidden size-3 text-white peer-checked:block" aria-hidden="true" />
+      <Check
+        className={cn(
+          'pointer-events-none absolute inset-0 m-auto hidden size-3 text-white peer-checked:block',
+          checkClassName,
+        )}
+        aria-hidden="true"
+      />
     </span>
   )
 }

@@ -540,14 +540,14 @@ export function CodingWorkspacePanel({
         {fileSearchOpen && (
           <div
             className={cn(
-              'z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm',
+              'z-50 flex items-center justify-center bg-(--color-overlay) p-3 backdrop-blur-sm sm:p-4',
               mobile ? 'absolute inset-0' : 'fixed inset-0',
             )}
             onClick={() => setFileSearchOpen(false)}
           >
-          <div className="flex max-h-[min(32rem,calc(100%-2rem))] w-full max-w-xl flex-col overflow-hidden rounded-md border border-(--color-border) bg-(--bg-card) shadow-2xl" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="Search workspace files">
-            <div className="flex h-12 items-center gap-3 border-b border-(--color-border) bg-(--bg-key)/25 px-3">
-              <Search size={16} className="shrink-0 text-(--color-text-subtle)" aria-hidden="true" />
+          <div className="flex max-h-[min(32rem,calc(100%-2rem))] w-full max-w-xl flex-col overflow-hidden rounded-md border border-(--color-border) bg-(--bg-page) shadow-2xl" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="Search workspace files">
+            <div className="flex items-center gap-2 border-b border-(--color-border) bg-(--bg-sidebar) px-3 py-2.5">
+              <Search size={13} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
               <input
                 ref={searchInputRef}
                 value={fileSearch}
@@ -577,9 +577,18 @@ export function CodingWorkspacePanel({
                   }
                 }}
                 placeholder="Search files…"
-                className="min-w-0 flex-1 bg-transparent font-mono text-sm text-(--color-text) outline-none placeholder:text-(--color-text-subtle)"
+                className="min-w-0 flex-1 bg-transparent text-xs text-(--color-text) outline-none placeholder:text-(--color-text-muted)/60"
                 aria-label="Search workspace files"
               />
+              {fileSearch && (
+                <button
+                  type="button"
+                  onClick={() => setFileSearch('')}
+                  className="rounded-xs px-1.5 py-1 text-[11px] text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text-2)"
+                >
+                  Clear
+                </button>
+              )}
             </div>
             <div ref={searchListRef} className="min-h-0 flex-1 overflow-y-auto p-1.5">
               {searchableFiles.length === 0 ? (
@@ -590,10 +599,10 @@ export function CodingWorkspacePanel({
                   type="button"
                   onClick={() => { openFileTab(file); setFileSearchOpen(false) }}
                   className={cn(
-                    'flex min-h-10 w-full min-w-0 items-center gap-2 rounded-xs px-2 py-1.5 text-left text-xs md:min-h-0',
+                    'flex min-h-9 w-full min-w-0 items-center gap-2 rounded-xs border border-transparent px-2 py-1.5 text-left text-xs md:min-h-0',
                     index === focusedIndex
-                      ? 'bg-(--bg-key) text-(--color-text)'
-                      : 'text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text)',
+                      ? 'border-(--color-border-strong) bg-(--bg-key)/60 text-(--color-text)'
+                      : 'text-(--color-text-2) hover:border-(--color-border) hover:bg-(--bg-card) hover:text-(--color-text)',
                   )}
                   title={file.path}
                 >
@@ -603,7 +612,7 @@ export function CodingWorkspacePanel({
                 </button>
               ))}
             </div>
-            <div className="shrink-0 border-t border-(--color-border) px-4 py-2">
+            <div className="shrink-0 border-t border-(--color-border) bg-(--bg-sidebar) px-3 py-2">
               <p className="text-[10px] text-(--color-text-muted)">↑↓ to navigate · ↵ to open · esc to close</p>
             </div>
           </div>

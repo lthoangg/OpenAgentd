@@ -1,9 +1,12 @@
 import { useMemo, useState } from 'react'
-import fuzzysort from 'fuzzysort'
+import { Info } from 'lucide-react'
 
 import { useRegistryQuery } from '@/queries'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { ModelCombobox } from '@/components/settings/AgentForm/ModelCombobox'
 
 const THINKING_LEVELS = [
   { value: '', label: 'Default' },
@@ -30,15 +33,18 @@ export function SessionModelSettings({
   const [draftModel, setDraftModel] = useState(sessionModel ?? defaultModel ?? '')
   const [draftThinkingLevel, setDraftThinkingLevel] = useState(sessionThinkingLevel ?? '')
   const [draftFastMode, setDraftFastMode] = useState(sessionFastMode)
-  const [modelPickerOpen, setModelPickerOpen] = useState(false)
-  const [activeModelIndex, setActiveModelIndex] = useState(0)
 
   const modelOptions = useMemo(() => registry.data?.models ?? [], [registry.data?.models])
-  const visibleModelOptions = useMemo(() => {
-    const q = draftModel.trim()
-    if (!q) return modelOptions.slice(0, 40)
-    return fuzzysort.go(q, modelOptions, { key: 'id', limit: 40 }).map((result) => result.obj)
-  }, [modelOptions, draftModel])
+  // Keep the saved/draft model visible in the list even if it isn't (yet) in
+  // the registry — mirrors the Settings/Agents combobox so a previously saved
+  // model id never silently disappears from the picker.
+  const currentModelOptions = useMemo(() => {
+    const id = draftModel.trim()
+    if (!id || id.includes(':') === false) return modelOptions
+    if (modelOptions.some((model) => model.id === id)) return modelOptions
+    const [provider, model] = id.split(':', 2)
+    return [...modelOptions, { id, provider, model, vision: false }]
+  }, [draftModel, modelOptions])
   const savedModel = sessionModel ?? defaultModel ?? ''
   const savedThinkingLevel = sessionThinkingLevel ?? ''
   const savedFastMode = sessionFastMode
@@ -57,15 +63,6 @@ export function SessionModelSettings({
     trimmedDraftModel === '' ||
     trimmedDraftModel === defaultModel ||
     validModelIds.has(trimmedDraftModel)
-  const pickerOptions = useMemo(
-    () => visibleModelOptions.map((model) => ({ id: model.id, label: model.id })),
-    [visibleModelOptions],
-  )
-
-  const selectModel = (modelId: string) => {
-    setDraftModel(modelId)
-    setModelPickerOpen(false)
-  }
 
   const selectThinkingLevel = (level: string) => {
     setDraftThinkingLevel(level)
@@ -93,7 +90,6 @@ export function SessionModelSettings({
               setDraftModel(savedModel)
               setDraftThinkingLevel(savedThinkingLevel)
               setDraftFastMode(savedFastMode)
-              setModelPickerOpen(false)
             }}
           >
             Cancel
@@ -109,7 +105,6 @@ export function SessionModelSettings({
                 draftThinkingLevel || null,
                 fastModeAvailable && draftFastMode,
               )
-              setModelPickerOpen(false)
             }}
           >
             Save
@@ -119,57 +114,14 @@ export function SessionModelSettings({
       <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_11rem_minmax(14rem,0.8fr)]">
         <label className="min-w-0 text-xs text-(--color-text-muted)">
           <span className="mb-1 block font-medium text-(--color-text-2)">Model</span>
-          <div className="relative">
-              <input
-                value={draftModel}
-                onChange={(e) => {
-                  setDraftModel(e.target.value)
-                  setModelPickerOpen(true)
-                  setActiveModelIndex(0)
-                }}
-                className="min-h-10 w-full rounded-sm border border-(--color-border) bg-(--bg-input) px-2.5 py-1.5 font-mono text-xs text-(--color-text) outline-none transition-colors focus:border-(--focus-ring) focus:ring-2 focus:ring-(--focus-ring)/30 md:min-h-9"
-                aria-label="Search session model"
-                role="combobox"
-                aria-expanded={modelPickerOpen}
-                aria-invalid={!modelValid}
-                onFocus={() => setModelPickerOpen(true)}
-                onBlur={() => window.setTimeout(() => setModelPickerOpen(false), 120)}
-                onKeyDown={(e) => {
-                  if (e.key === 'ArrowDown') {
-                    e.preventDefault()
-                    setModelPickerOpen(true)
-                    setActiveModelIndex((index) => Math.min(index + 1, pickerOptions.length - 1))
-                  } else if (e.key === 'ArrowUp') {
-                    e.preventDefault()
-                    setActiveModelIndex((index) => Math.max(index - 1, 0))
-                  } else if (e.key === 'Enter' && modelPickerOpen) {
-                    e.preventDefault()
-                    const option = pickerOptions[activeModelIndex]
-                    if (option) selectModel(option.id)
-                  } else if (e.key === 'Escape') {
-                    setModelPickerOpen(false)
-                  }
-                }}
-              />
-            {modelPickerOpen && (
-              <div className="absolute left-0 top-full z-50 mt-1 w-[min(34rem,calc(90vw-3rem))] rounded-sm border border-(--color-border) bg-(--bg-card) p-1 shadow-md">
-                <div className="max-h-64 overflow-auto">
-                {pickerOptions.map((model, index) => (
-                  <button
-                    type="button"
-                    key={`${index}:${model.id}`}
-                    onMouseDown={(e) => e.preventDefault()}
-                    onMouseEnter={() => setActiveModelIndex(index)}
-                    onClick={() => selectModel(model.id)}
-                    className={`flex min-h-10 w-full cursor-pointer items-center rounded-xs px-2 py-1 text-left font-mono text-xs transition-colors md:min-h-0 ${index === activeModelIndex ? 'bg-(--bg-key) text-(--color-text)' : 'text-(--color-text-2) hover:bg-(--bg-key)'}`}
-                  >
-                    {model.label}
-                  </button>
-                ))}
-                </div>
-              </div>
-            )}
-          </div>
+          <ModelCombobox
+            value={draftModel}
+            options={currentModelOptions}
+            onChange={setDraftModel}
+            invalid={!modelValid}
+            placeholder="Search session model…"
+            ariaLabel="Search session model"
+          />
           {!modelValid && (
             <span className="mt-1 block text-[11px] text-(--color-error)">
               Choose a model from the list.
@@ -197,22 +149,39 @@ export function SessionModelSettings({
             ))}
           </Dropdown>
         </label>
-        <label className="flex min-w-0 items-start gap-2 rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2 text-xs text-(--color-text-muted)">
-          <input
-            type="checkbox"
-            checked={fastModeAvailable && draftFastMode}
-            disabled={!fastModeAvailable}
-            onChange={(e) => setDraftFastMode(e.target.checked)}
-            className="mt-0.5 h-4 w-4 accent-(--color-accent)"
-          />
-          <span>
-            <span className="block font-medium text-(--color-text-2)">Fast mode</span>
-            <span className="mt-0.5 block text-[11px]">
-              {fastModeAvailable
-                ? 'Use Codex Fast mode for messages in this session.'
-                : 'Available when the session model is codex:*.'}
-            </span>
+        <label className="min-w-0 text-xs text-(--color-text-muted)">
+          <span className="mb-1 flex items-center gap-1 font-medium text-(--color-text-2)">
+            Fast mode
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <span className="inline-flex shrink-0 cursor-help text-(--color-text-muted) transition-colors hover:text-(--color-text-2)">
+                    <Info size={12} aria-label="About Fast mode" />
+                  </span>
+                }
+              />
+              <TooltipContent>
+                {fastModeAvailable
+                  ? 'Use Codex Fast mode for messages in this session.'
+                  : 'Available when the session model is codex:*.'}
+              </TooltipContent>
+            </Tooltip>
           </span>
+          <div
+            className={`flex min-h-10 w-full items-center gap-2 rounded-sm border border-(--color-border) bg-(--bg-input) px-2.5 py-1.5 transition-colors md:min-h-9 ${
+              fastModeAvailable ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'
+            }`}
+          >
+            <Checkbox
+              checked={fastModeAvailable && draftFastMode}
+              disabled={!fastModeAvailable}
+              onCheckedChange={setDraftFastMode}
+              aria-label="Fast mode"
+            />
+            <span className="truncate text-xs text-(--color-text-2)">
+              {fastModeAvailable && draftFastMode ? 'Enabled' : 'Off'}
+            </span>
+          </div>
         </label>
       </div>
     </section>

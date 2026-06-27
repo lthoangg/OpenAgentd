@@ -4,7 +4,7 @@ import { truncateForDisplay } from './displayText'
 
 interface ReadViewProps {
   args: string
-  result: string
+  result?: string
   onCollapse?: () => void
 }
 
@@ -21,7 +21,8 @@ function parseArgs(args: string): { path: string } {
   return { path: 'file' }
 }
 
-function parseReadResult(result: string): { label: string; body: string; startLine: number } {
+function parseReadResult(result?: string): { label: string; body: string; startLine: number } {
+  if (!result) return { label: 'file contents', body: '', startLine: 1 }
   const match = result.match(/^\[(\d+)-(\d+)\/(\d+)\]\n([\s\S]*)$/)
   if (!match) return { label: 'file contents', body: truncateForDisplay(result), startLine: 1 }
   return {

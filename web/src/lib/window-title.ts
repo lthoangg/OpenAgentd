@@ -25,11 +25,11 @@ export function buildDesktopWindowTitle(options: {
   workspace?: string | null
   sessionTitle?: string | null
 }): string {
+  const title = options.sessionTitle?.trim()
+  if (title) return title
   if (options.mode === 'coding' && options.workspace) {
     return workspaceLabel(options.workspace)
   }
-  const title = options.sessionTitle?.trim()
-  if (title) return title
   return APP_NAME
 }
 

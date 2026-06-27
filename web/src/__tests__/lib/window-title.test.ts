@@ -2,7 +2,11 @@ import { describe, expect, it } from 'bun:test'
 import { buildDesktopWindowTitle } from '@/lib/window-title'
 
 describe('buildDesktopWindowTitle', () => {
-  it('uses only the workspace basename for coding windows', () => {
+  it('uses the session title for coding windows when available', () => {
+    expect(buildDesktopWindowTitle({ mode: 'coding', workspace: '/Users/name/Workspace A', sessionTitle: 'Fix updater restart' })).toBe('Fix updater restart')
+  })
+
+  it('falls back to the workspace basename for coding windows without a session title', () => {
     expect(buildDesktopWindowTitle({ mode: 'coding', workspace: '/Users/name/Workspace A' })).toBe('Workspace A')
   })
 

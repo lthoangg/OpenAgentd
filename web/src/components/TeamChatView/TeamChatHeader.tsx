@@ -139,11 +139,16 @@ export function TeamChatHeader({
           </button>
           {mode === 'coding' && workspace && !isMobile ? (
             <span
-              className="ml-1 flex min-w-0 max-w-60 items-baseline gap-1 text-sm"
-              title={workspace}
+              className="ml-1 flex min-w-0 max-w-72 items-baseline gap-1 text-sm"
+              title={sessionTitle ? `${workspaceLabel(workspace)}: ${sessionTitle}` : workspace}
             >
-              <span className="shrink-0 text-(--color-text-muted)">Workspace:</span>
-              <span className="truncate font-semibold text-(--color-text)">{workspaceLabel(workspace)}</span>
+              <span className="shrink-0 font-semibold text-(--color-text)">{workspaceLabel(workspace)}</span>
+              {sessionTitle && (
+                <>
+                  <span className="shrink-0 text-(--color-text-muted)">·</span>
+                  <span className="truncate text-(--color-text-muted)">{sessionTitle}</span>
+                </>
+              )}
             </span>
           ) : mode !== 'coding' && sessionTitle && !isMobile ? (
             <span
@@ -160,9 +165,20 @@ export function TeamChatHeader({
             own agent. */}
         <div className="flex min-w-0 flex-1 justify-start overflow-hidden px-1">
           {isMobile && (
-            <div className="min-w-0 text-sm font-semibold text-(--color-text)">
-              <div className="truncate">{mode === 'coding' && workspace ? workspaceLabel(workspace) : sessionTitle || 'Cockpit'}</div>
-              {activeAgent && <div className="truncate font-mono text-[10px] font-normal text-(--color-text-muted)">{activeAgent}</div>}
+            <div className="min-w-0 flex items-baseline gap-1 text-sm">
+              {mode === 'coding' && workspace ? (
+                <>
+                  <span className="shrink-0 font-semibold text-(--color-text) truncate max-w-[7rem]">{workspaceLabel(workspace)}</span>
+                  {sessionTitle && (
+                    <>
+                      <span className="shrink-0 text-(--color-text-muted)">·</span>
+                      <span className="truncate text-(--color-text-muted)">{sessionTitle}</span>
+                    </>
+                  )}
+                </>
+              ) : (
+                <span className="truncate font-semibold text-(--color-text)">{sessionTitle || 'Cockpit'}</span>
+              )}
             </div>
           )}
 

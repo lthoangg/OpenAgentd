@@ -2,7 +2,7 @@
 title: App Chrome (Header, Sidebar, Tauri Drag)
 description: Shared header, platform detection, and window-drag plumbing across browser and Tauri desktop.
 status: stable
-updated: 2026-06-12
+updated: 2026-06-27
 ---
 
 # App chrome
@@ -74,7 +74,7 @@ Session titles can be renamed directly in the sidebar by double-clicking a sessi
 
 Cockpit and coding sidebars intentionally do not share one mixed session-list cache anymore: cockpit fetches only normal sessions, while coding fetches coding-only pages under separate query keys. This prevents the cockpit recent-session list from briefly rendering `No sessions yet` when prior conversations exist but the active cache was last populated from coding-mode navigation.
 
-In coding mode, the topbar shows `Workspace: <name>` for the active workspace. The command palette intentionally excludes custom slash commands, Focus Chat Input, and the lead self-switch command; slash commands stay in the composer picker, `Ctrl+I` still focuses the composer, and worker-agent view commands remain available.
+In coding mode, the desktop topbar shows `<workspace-name> · <session-title>` (workspace name bold, session title muted). On mobile the same format appears in the centre title area; the agent name sub-line previously shown there has been removed. The command palette intentionally excludes custom slash commands, Focus Chat Input, and the lead self-switch command; slash commands stay in the composer picker, `Ctrl+I` still focuses the composer, and worker-agent view commands remain available.
 
 ## Chat usage meter
 

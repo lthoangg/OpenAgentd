@@ -126,6 +126,7 @@ uv run python -m manual.mention_attachments
 | `patch_tool.py` | Tell an agent to use filesystem `patch` and verify the tool call | `--base URL`, `--wait N` |
 | `skill_dedupe.py` | Direct smoke for skill loader de-dupe: duplicate skill calls replay the full body for current context, and summarization preserves only the first full skill pair | — |
 | `otel_inspect.py` | Read OTel spans/metrics from `.openagentd/otel/` JSONL files | `--session ID`, `--trace ID`, `--metrics` |
+| `skill_tool_analytics.py` | Real usage frequency of tools and skills from persisted `tool_calls`, split by mode (normal vs coding) — **no server required**. OTel does not trace general tool/skill calls, so the DB is the only complete source for this | `--since-days N`, `--only tools\|skills\|both`, `--top N` (run with `APP_ENV=production` for prod DB) |
 | `summarization_test.py` | Drive summarization hook by sending many turns | requires low `DEFAULT_PROMPT_TOKEN_THRESHOLD` in `app/agent/hooks/summarization.py` |
 | `summarization_max_tokens_test.py` | Test max_token_length cap on summary output | requires `DEFAULT_MAX_TOKEN_LENGTH` set in `app/agent/hooks/summarization.py` |
 | `summarization_sse.py` | Capture `summarization_start` / `_content` / `_end` SSE events from a team turn and verify deltas reconstruct the final summary | `--session ID`, `--warmup N`, `--wait N`, `--out FILE` |

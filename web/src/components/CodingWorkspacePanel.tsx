@@ -136,11 +136,11 @@ function CommitDetail({
         const expanded = expandedCommitFiles.has(changedFile.path)
         const fileDiff = commitDiffSections.get(changedFile.path)?.diff
         return (
-          <div key={changedFile.path} className="overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card)">
+          <div key={changedFile.path} className="overflow-hidden rounded border border-(--color-border-subtle) bg-(--bg-card)">
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); toggleFileExpanded(changedFile.path) }}
-              className="flex min-h-8 w-full cursor-pointer items-center gap-1.5 px-1.5 py-1 text-left text-[10px] text-(--color-text-2) hover:bg-(--bg-key)/40 hover:text-(--color-text)"
+              className="flex w-full cursor-pointer items-center gap-1.5 px-1.5 py-1 text-left text-[10px] text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text)"
               aria-expanded={expanded}
             >
               <ChevronRight size={10} className={cn('shrink-0 text-(--color-text-subtle) transition-transform', expanded && 'rotate-90')} aria-hidden="true" />
@@ -151,7 +151,7 @@ function CommitDetail({
               <span className="shrink-0 font-mono text-[8px] font-semibold text-(--accent-orange-text)">{changedFile.status}</span>
             </button>
             {expanded && (
-              <div className="border-t border-(--color-border)">
+              <div className="border-t border-(--color-border-subtle)">
                 {fileDiff ? (
                   <div className="max-h-[40vh] min-h-0 overflow-y-auto touch-pan-y">
                     <DiffPreview diff={fileDiff} />
@@ -745,19 +745,19 @@ export function CodingWorkspacePanel({
                     <p className="px-2 py-4 text-xs text-(--color-text-subtle)">No changed files</p>
                   ) : (
                     <div>
-                      {diff.data.truncated && <p className="mb-2 rounded-xs bg-(--color-warning)/10 px-2 py-1 text-xs text-(--color-warning)">Changed list may be incomplete because the diff was truncated.</p>}
+                      {diff.data.truncated && <p className="mb-2 rounded bg-(--color-warning)/10 px-2 py-1 text-xs text-(--color-warning)">Changed list may be incomplete because the diff was truncated.</p>}
                       <div className="space-y-2">
                         {changedFiles.map((changedFile) => {
                           const isSelected = selectedFilePath === changedFile.path
                           const expanded = expandedDiffs.has(changedFile.path)
                           const fileDiff = diffSections.get(changedFile.path)?.diff
                           return (
-                            <div key={changedFile.path} className="overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card)">
+                            <div key={changedFile.path} className="overflow-hidden rounded border border-(--color-border-subtle) bg-(--bg-card)">
                               <button
                                 type="button"
                                 onClick={() => toggleDiffExpanded(changedFile.path)}
                                 className={cn(
-                                  'flex min-h-10 w-full items-center gap-2 px-2 py-1.5 text-left text-xs transition-colors hover:bg-(--bg-key)/40 hover:text-(--color-text) cursor-pointer md:min-h-0',
+                                  'flex w-full cursor-pointer items-center gap-2 px-2 py-1.5 text-left text-xs transition-colors hover:bg-(--bg-key) hover:text-(--color-text)',
                                   isSelected ? 'text-(--color-accent)' : 'text-(--color-text-2)',
                                 )}
                                 title={changedFile.path}
@@ -772,7 +772,7 @@ export function CodingWorkspacePanel({
                                 <span className="shrink-0 font-mono text-[10px] font-semibold text-(--accent-orange-text)" aria-label={CHANGED_STATUS_LABELS[changedFile.status]}>{changedFile.status}</span>
                               </button>
                               {expanded && (
-                                <div className="border-t border-(--color-border)">
+                                <div className="border-t border-(--color-border-subtle)">
                                   {fileDiff ? <div className="max-h-[70vh] min-h-0 overflow-y-auto touch-pan-y"><DiffPreview diff={fileDiff} /></div>
                                     : <p className="px-2 py-3 text-xs text-(--color-text-subtle)">No diff body for this file.</p>}
                                 </div>
@@ -797,7 +797,7 @@ export function CodingWorkspacePanel({
                       {commits.map((commit) => {
                         const isExpanded = expandedCommitSha === commit.sha
                         return (
-                          <div key={commit.sha} data-commit-sha={commit.sha} className="overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) p-2">
+                          <div key={commit.sha} data-commit-sha={commit.sha} className="overflow-hidden rounded border border-(--color-border-subtle) bg-(--bg-card) p-2">
                             <button
                               type="button"
                               onClick={(e) => {
@@ -828,7 +828,7 @@ export function CodingWorkspacePanel({
                                     {commit.subject}
                                   </span>
                                 </div>
-                                <span className="shrink-0 font-mono text-[9px] text-(--color-text-subtle) bg-(--bg-key) px-1 py-0.5 rounded border border-(--color-border)/30">
+                                <span className="shrink-0 rounded border border-(--color-border-subtle) bg-(--bg-card) px-1 py-0.5 font-mono text-[9px] text-(--color-text-subtle)">
                                   {commit.short_sha}
                                 </span>
                               </div>
@@ -904,8 +904,8 @@ export function CodingWorkspacePanel({
                                         setExpandedCommitSha(fullSha)
                                         setSubTab('commits')
                                       }}
-                                      className="shrink-0 font-mono text-[9px] text-(--color-text-subtle) bg-(--bg-key) px-1 py-0.5 rounded-xs border border-(--color-border) hover:bg-(--color-accent)/10 hover:text-(--color-accent) hover:border-(--color-accent)/30 transition-colors cursor-pointer"
-                                      title="Open commit details"
+                                      className="shrink-0 cursor-pointer rounded border border-(--color-border-subtle) bg-(--bg-card) px-1 py-0.5 font-mono text-[9px] text-(--color-text-subtle) transition-colors hover:border-(--color-accent)/30 hover:bg-(--color-accent)/10 hover:text-(--color-accent)"
+                                      title="Click to view commit details"
                                     >
                                       {line.sha.substring(0, 7)}
                                     </button>

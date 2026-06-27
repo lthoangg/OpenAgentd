@@ -62,12 +62,12 @@ export function ReadView({ args, result, onCollapse }: ReadViewProps) {
   }
 
   return (
-    <div className="flex max-h-80 flex-col overflow-y-auto overflow-x-hidden rounded-md">
-      <div className="sticky top-0 z-10 flex w-full items-center border-b border-(--color-border) bg-(--bg-key) font-mono text-xs font-semibold text-(--color-text-2) shadow-sm">
+    <div className="flex max-h-80 flex-col overflow-hidden rounded-sm">
+      <div className="sticky top-0 z-10 flex w-full items-center rounded-t-sm border-b border-(--color-border) bg-(--bg-sidebar) font-mono text-xs font-semibold text-(--color-text-2) shadow-sm">
         <button
           type="button"
           onClick={handleCollapse}
-          className="flex min-w-0 flex-1 items-center gap-2 px-3 py-1.5 text-left transition-colors hover:text-(--color-accent) focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
+          className="flex min-w-0 flex-1 items-center gap-2 px-3 py-1.5 text-left transition-colors hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40"
           aria-expanded={expanded}
           aria-label="Collapse read result"
         >
@@ -85,7 +85,7 @@ export function ReadView({ args, result, onCollapse }: ReadViewProps) {
             event.stopPropagation()
             void copyBody()
           }}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-all hover:bg-(--bg-card) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring) md:h-6 md:w-6"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40 md:h-6 md:w-6"
           aria-label="Copy read result"
           title="Copy read result"
         >
@@ -98,14 +98,14 @@ export function ReadView({ args, result, onCollapse }: ReadViewProps) {
       </div>
 
       {expanded && (
-        <div className="overflow-y-auto bg-(--bg-card) font-mono text-xs leading-relaxed">
-          <div className="min-w-max">
+        <div className="overflow-y-auto rounded-b-sm bg-(--bg-input) font-mono text-xs leading-relaxed">
+          <div className="min-w-0">
             {lines.map((line, idx) => (
-              <div key={idx} className="flex items-stretch bg-(--bg-card) text-(--color-text) hover:bg-(--bg-key)/30">
-                <div className="sticky left-0 z-[1] flex shrink-0 select-none border-r border-(--color-border)/40 bg-(--bg-card) text-right text-[10px] text-(--color-text-subtle)">
+              <div key={idx} className="flex items-stretch text-(--color-text)">
+                <div className="sticky left-0 z-[1] flex shrink-0 select-none border-r border-(--color-border)/40 bg-(--bg-input) text-right text-[10px] text-(--color-text-subtle)">
                   <span className="w-9 py-0.5 pr-1.5">{startLine + idx}</span>
                 </div>
-                <pre className="flex-1 whitespace-pre-wrap px-2 py-0.5">{line || ' '}</pre>
+                <pre className="min-w-0 flex-1 whitespace-pre-wrap break-words px-2 py-0.5 [overflow-wrap:anywhere]">{line || ' '}</pre>
               </div>
             ))}
           </div>

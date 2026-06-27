@@ -199,8 +199,8 @@ function FileReadResult({ result }: { result: string }) {
   const body = truncateForDisplay(match ? match[4] : result)
 
   return (
-    <div className="min-w-0 overflow-hidden rounded-md border border-(--color-border) bg-(--bg-card)">
-      <div className="flex items-center gap-2 border-b border-(--color-border) bg-(--bg-key) px-2.5 py-1 font-mono text-[10px] font-semibold tracking-wider text-(--color-text-muted) uppercase">
+    <div className="min-w-0 overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card)">
+      <div className="flex items-center gap-2 border-b border-(--color-border) bg-(--bg-sidebar) px-2.5 py-1 font-mono text-[10px] font-semibold tracking-wider text-(--color-text-muted) uppercase">
         <FileText size={12} className="shrink-0" aria-hidden />
         <span className="truncate">read</span>
         <span className="ml-auto shrink-0 font-normal normal-case tracking-normal">

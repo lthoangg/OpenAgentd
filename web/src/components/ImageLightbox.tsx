@@ -64,14 +64,14 @@ function LightboxIconButton({
     <div className="group relative">
       <button
         onClick={onClick}
-        className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-lg bg-(--bg-card) text-(--color-text) transition-colors hover:bg-(--bg-key) focus-visible:ring-2 focus-visible:ring-(--color-text) focus-visible:outline-none"
+        className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-(--color-text) transition-colors hover:bg-(--bg-key) focus-visible:ring-2 focus-visible:ring-(--color-text) focus-visible:outline-none"
         aria-label={label}
       >
         {icon}
       </button>
       <span
         role="tooltip"
-        className="pointer-events-none absolute top-full right-0 mt-2 whitespace-nowrap rounded-md bg-(--bg-key) px-2 py-1 text-xs text-(--color-text) opacity-0 shadow-md transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
+        className="pointer-events-none absolute top-full right-0 mt-2 whitespace-nowrap rounded-sm border border-(--color-border) bg-(--bg-key) px-2 py-1 text-xs text-(--color-text) opacity-0 shadow-md transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
       >
         {tooltip}
       </span>
@@ -228,7 +228,7 @@ export function ImageLightbox({ src, alt, isOpen, onClose }: ImageLightboxProps)
         <img
           src={src}
           alt={alt}
-          className="max-h-[75vh] max-w-[75vw] rounded-lg object-contain shadow-2xl transition-transform duration-150"
+          className="max-h-[75vh] max-w-[75vw] rounded-sm object-contain shadow-2xl transition-transform duration-150"
           style={{ transform: `translateY(${translateY}px) scale(${scale})` }}
           onClick={handleImageClick}
         />

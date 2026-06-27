@@ -720,7 +720,7 @@ export function CodingWorkspacePanel({
                       </button>
                     )}
                     {subTab === 'tree' && (
-                      <label className="flex h-7 cursor-pointer select-none items-center gap-1.5 rounded border border-transparent px-1.5 text-[11px] text-(--color-text-muted) transition-colors hover:border-(--color-border-subtle) hover:bg-(--bg-key) hover:text-(--color-text)">
+                      <label className="flex h-7 cursor-pointer select-none items-center gap-1.5 rounded border border-transparent px-1.5 text-[11px] text-(--color-text-muted) transition-colors">
                         <Checkbox
                           checked={allBranches}
                           onChange={(event) => setAllBranches(event.currentTarget.checked)}

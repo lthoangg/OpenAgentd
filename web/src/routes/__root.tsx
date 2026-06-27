@@ -96,7 +96,7 @@ export function NotFound() {
       </div>
       <Link
         to="/"
-        className="interactive-weight flex items-center gap-2 rounded-lg bg-(--bg-key) px-4 py-2 text-sm text-(--color-accent) ring-1 ring-(--color-border-strong) transition-colors hover:bg-(--bg-key)"
+        className="interactive-weight flex items-center gap-2 rounded-sm border border-(--color-border-strong) bg-(--bg-key) px-4 py-2 text-sm text-(--color-accent) transition-colors hover:bg-(--bg-key)"
       >
         <Home size={14} />
         Go home

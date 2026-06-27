@@ -240,7 +240,7 @@ export function TeamChatHeader({
                   onClick: onWorkspaceFiles,
                   title: codingPanel === null ? 'Changed files and workspace files' : 'Close changed files and workspace files',
                   ariaLabel: 'Changed files and workspace files',
-                  className: codingPanel !== null ? 'bg-(--bg-key) text-(--color-text) ring-1 ring-(--color-border-strong)' : undefined,
+                  className: codingPanel !== null ? 'border border-(--color-border-strong) bg-(--bg-key) text-(--color-text)' : undefined,
                 } : undefined
               : {
                   Icon: FolderOpen,
@@ -248,7 +248,7 @@ export function TeamChatHeader({
                   disabled: !sessionId,
                   title: sessionId ? 'Workspace files (Ctrl+F)' : 'No active session',
                   ariaLabel: 'Workspace files',
-                  className: showFilesPanel ? 'bg-(--bg-key) text-(--color-text) ring-1 ring-(--color-border-strong)' : undefined,
+                  className: showFilesPanel ? 'border border-(--color-border-strong) bg-(--bg-key) text-(--color-text)' : undefined,
                 }}
             agentsAction={{
               Icon: SlidersHorizontal,

@@ -860,7 +860,7 @@ export function CodingSidebar({
                   Coding mode grants agents filesystem and shell access inside this exact directory.
                 </DialogDescription>
               </DialogHeader>
-              <div className="rounded-lg border border-(--color-border) bg-(--bg-page) px-3 py-2">
+              <div className="rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2">
                 <p className="break-all font-mono text-xs text-(--color-text-muted)">{trustWorkspace}</p>
               </div>
               <DialogFooter>
@@ -878,7 +878,7 @@ export function CodingSidebar({
               </DialogHeader>
               <div className="min-w-0 space-y-2">
                 {selectedWorkspace && (
-                  <div className="min-w-0 rounded-lg border border-(--color-border) bg-(--bg-page) px-3 py-2">
+                  <div className="min-w-0 rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2">
                     <p className="min-w-0 font-mono text-xs text-(--color-text-muted) [overflow-wrap:anywhere]" title={selectedWorkspace}>
                       {selectedWorkspace}
                     </p>
@@ -900,12 +900,12 @@ export function CodingSidebar({
                 <DialogDescription>Choose a server-local project folder.</DialogDescription>
               </DialogHeader>
               <div className="min-w-0 space-y-2">
-                <div className="min-w-0 rounded-lg border border-(--color-border) bg-(--bg-page) px-3 py-2">
+                <div className="min-w-0 rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2">
                   <p className="min-w-0 font-mono text-xs text-(--color-text-muted) [overflow-wrap:anywhere]" title={browserPath ?? undefined}>
                     {browserPath ?? 'Loading folders…'}
                   </p>
                 </div>
-                <div className="max-h-64 space-y-1 overflow-y-auto rounded-lg border border-(--color-border) p-1">
+                <div className="max-h-64 space-y-1 overflow-y-auto rounded-sm border border-(--color-border) bg-(--bg-card) p-1">
                   {parentPath && (
                     <button
                       type="button"
@@ -1036,7 +1036,7 @@ export function CodingSidebar({
         open={worktreeTarget !== null}
         onOpenChange={(open) => { if (!open) setWorktreeTarget(null) }}
       >
-        <DialogContent showCloseButton={false} className="flex max-h-[min(86dvh,520px)] w-[calc(100vw-1.5rem)] max-w-md flex-col overflow-hidden rounded-lg border border-(--color-border) bg-(--bg-card) p-0 shadow-xl sm:w-[min(560px,calc(100vw-2rem))] sm:max-w-none">
+        <DialogContent showCloseButton={false} className="flex max-h-[min(86dvh,520px)] w-[calc(100vw-1.5rem)] max-w-md flex-col overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) p-0 shadow-xl sm:w-[min(560px,calc(100vw-2rem))] sm:max-w-none">
           <form onSubmit={submitWorktree} className="flex h-full min-h-0 flex-col">
             <DialogHeader className="shrink-0 gap-0 border-b border-(--color-border) bg-(--bg-page) px-3 py-2.5 sm:px-4">
               <div className="flex items-start gap-2">
@@ -1150,7 +1150,7 @@ export function CodingSidebar({
           <div
             role="menu"
             aria-label={`Actions for ${workspaceLabel(desktopWorkspaceActions.path)}`}
-            className="fixed min-w-48 rounded-lg border border-(--color-border) bg-(--bg-card) p-1 text-sm text-(--color-text) shadow-xl"
+            className="fixed min-w-48 rounded-sm border border-(--color-border) bg-(--bg-card) p-1 text-xs text-(--color-text) shadow-md"
             style={{ left: desktopWorkspaceActions.x, top: desktopWorkspaceActions.y }}
             onClick={(event) => event.stopPropagation()}
           >
@@ -1244,7 +1244,7 @@ export function CodingSidebar({
           <div
             role="menu"
             aria-label={`Actions for ${desktopSessionActions.session.title || 'Untitled'}`}
-            className="fixed min-w-44 rounded-lg border border-(--color-border) bg-(--bg-card) p-1 text-sm text-(--color-text) shadow-xl"
+            className="fixed min-w-44 rounded-sm border border-(--color-border) bg-(--bg-card) p-1 text-xs text-(--color-text) shadow-md"
             style={{ left: desktopSessionActions.x, top: desktopSessionActions.y }}
             onClick={(event) => event.stopPropagation()}
           >

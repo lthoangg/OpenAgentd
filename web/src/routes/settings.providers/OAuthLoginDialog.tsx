@@ -116,7 +116,7 @@ export function OAuthLoginDialog({
         </DialogHeader>
         <div className="min-w-0 space-y-4">
           <div className="flex items-center gap-3 rounded-sm border border-(--color-border) bg-(--bg-key) p-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-(--bg-card) text-(--color-accent) ring-1 ring-(--color-border)">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-(--color-accent)">
               {isWorking ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <CheckCircle2 className="h-4 w-4" aria-hidden="true" />}
             </div>
             <div>

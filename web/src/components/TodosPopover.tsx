@@ -166,7 +166,7 @@ export function TodosPopover({
         <section
           role="dialog"
           aria-label="Tasks"
-          className="absolute right-2 top-[calc(var(--spacing-app-header)+env(safe-area-inset-top,0px)+0.5rem)] w-[min(calc(100vw-1rem),24rem)] overflow-hidden rounded-md bg-(--color-surface) p-0 shadow-md ring-1 ring-(--color-border)"
+          className="absolute right-2 top-[calc(var(--spacing-app-header)+env(safe-area-inset-top,0px)+0.5rem)] w-[min(calc(100vw-1rem),24rem)] overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) p-0 shadow-md"
         >
           <button
             type="button"
@@ -203,7 +203,7 @@ export function TodosPopover({
         align="end"
         // ``ring-0`` cancels the shadcn default; outline comes from the
         // ``--color-border`` ring so the chrome matches Files / Agents.
-        className="w-[min(calc(100vw-1rem),24rem)] overflow-hidden rounded-md bg-(--color-surface) p-0 shadow-md ring-1 ring-(--color-border)"
+        className="w-[min(calc(100vw-1rem),24rem)] overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) p-0 shadow-md"
       >
         {content}
       </PopoverContent>

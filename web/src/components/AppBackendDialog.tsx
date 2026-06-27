@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Server, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { SectionCard, SectionCardHeader, SectionCardRows, SectionCardRow, SectionCardBadge } from '@/components/ui/section-card'
 
@@ -331,12 +332,11 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
                 </div>
               </div>
 
-              <label className="flex min-h-11 items-center gap-2 text-xs text-(--color-text-muted) cursor-pointer select-none md:min-h-0">
-                <input
-                  type="checkbox"
+              <label className="flex min-h-11 cursor-pointer select-none items-center gap-2 rounded-sm border border-transparent px-1 text-xs text-(--color-text-muted) transition-colors md:min-h-0">
+                <Checkbox
                   checked={rememberServer}
-                  onChange={(event) => setRememberServer(event.target.checked)}
-                  className="h-3.5 w-3.5 rounded border-(--color-border) bg-(--bg-input) text-(--color-accent) focus:ring-0"
+                  onChange={(event) => setRememberServer(event.currentTarget.checked)}
+                  className="border-(--color-border) bg-(--bg-card) checked:border-(--color-border-strong) checked:bg-(--bg-key)"
                   disabled={pending}
                 />
                 <span>Save this server and reconnect to it after reload</span>

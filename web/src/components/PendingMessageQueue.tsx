@@ -16,7 +16,7 @@ function QueuedMessageContent({ content }: { content: string }) {
     : content
 
   return (
-    <div className="relative overflow-hidden rounded-sm border border-(--color-border) bg-(--color-surface) px-4 py-3 text-sm leading-relaxed text-(--color-text) opacity-75 shadow-sm">
+    <div className="relative overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) px-4 py-3 text-sm leading-relaxed text-(--color-text) opacity-75 shadow-sm">
       {needsCollapse && (
         <button
           onClick={() => setExpanded((v) => !v)}
@@ -33,7 +33,7 @@ function QueuedMessageContent({ content }: { content: string }) {
           className="pointer-events-none absolute inset-x-0 bottom-0 backdrop-blur-[1px]"
           style={{
             height: '2.4rem',
-            background: 'linear-gradient(to bottom, transparent 0%, var(--color-surface) 90%)',
+            background: 'linear-gradient(to bottom, transparent 0%, var(--bg-card) 90%)',
           }}
         />
       )}

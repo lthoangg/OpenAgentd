@@ -403,9 +403,9 @@ checksum = "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649"
 
 [[package]]
 name = "byte-unit"
-version = "5.2.3"
+version = "5.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "37bcaa4a0975bed4a760af3efe4368825098ce5f9d37a30c5a021d635dc63d8f"
+checksum = "ea91eef119026f16da52985896b3572d9abbb14f1ea5c9417fdf05da8309b66e"
 dependencies = [
  "rust_decimal",
  "schemars 1.2.1",
@@ -2603,7 +2603,7 @@ dependencies = [
 
 [[package]]
 name = "openagentd-desktop"
-version = "1.76.1"
+version = "1.76.2"
 dependencies = [
  "anyhow",
  "block2",

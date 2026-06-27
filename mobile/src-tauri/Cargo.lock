@@ -2308,7 +2308,7 @@ dependencies = [
 
 [[package]]
 name = "openagentd-mobile"
-version = "1.76.1"
+version = "1.76.2"
 dependencies = [
  "anyhow",
  "serde",

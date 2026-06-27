@@ -390,6 +390,10 @@
  * Apply to the outermost layout shells, not every element.
  * ───────────────────────────────────────────────────────────── */
 .pb-safe { padding-bottom: max(env(safe-area-inset-bottom, 0px), 8px); }
+/* While the soft keyboard is up the home indicator is hidden behind it, so the
+ * safe-area inset would only waste a strip of space above the keyboard. Drop to
+ * a flat 8px so the composer sits flush on the keyboard. */
+html[data-keyboard-open] .pb-safe { padding-bottom: 8px; }
 .pt-safe { padding-top:    env(safe-area-inset-top,    0px); }
 .pl-safe { padding-left:   env(safe-area-inset-left,   0px); }
 .pr-safe { padding-right:  env(safe-area-inset-right,  0px); }
@@ -509,6 +513,41 @@ html[data-mobile-shell] .text-\[10px\] {
   .mobile-viewport {
     height: 100svh;
   }
+}
+
+/* Mobile shell only: bind the app shell to the *visual* viewport so the
+ * whole UI tracks the soft keyboard as one rigid unit. ``--app-vh`` /
+ * ``--app-vt`` are written imperatively by ``useMobileViewportGuards`` from
+ * ``window.visualViewport`` on every keyboard frame. The shell shrinks to the
+ * visible region (composer rides up on the keyboard via flexbox; the scroll
+ * content just gets a shorter scrollport — no content reflow) and translates
+ * to follow ``offsetTop`` for the scrolled/zoomed edge case.
+ *
+ * Guarded behind ``data-mobile-shell`` + a variable-presence check so desktop
+ * and any environment where the hook didn't run keep the ``100svh`` fallback
+ * above. ``transform`` is GPU-composited, so the follow is cheap and smooth. */
+html[data-mobile-shell] .mobile-viewport {
+  height: var(--app-vh, 100svh);
+  transform: translateY(var(--app-vt, 0px));
+}
+
+/* ``will-change`` is only promoted while the keyboard is actually moving.
+ * Leaving it on permanently keeps the entire shell on a composited layer and
+ * wastes memory; any repaint inside it can also flicker on iOS. Scope it to
+ * the keyboard-open / dismiss-glide windows only. */
+html[data-mobile-shell][data-keyboard-open] .mobile-viewport,
+html[data-mobile-shell][data-vp-anim] .mobile-viewport {
+  will-change: height, transform;
+}
+
+/* Keyboard *open* stays frame-locked (no transition) so the composer rises in
+ * lockstep with the keyboard. On *dismiss* we set `data-vp-anim` and write the
+ * full height optimistically, so the shell glides back with a short ease
+ * instead of crawling down with iOS's slow keyboard-retract animation. */
+html[data-mobile-shell][data-vp-anim] .mobile-viewport {
+  transition:
+    height 0.2s cubic-bezier(0.32, 0.72, 0, 1),
+    transform 0.2s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 /* ─────────────────────────────────────────────────────────────

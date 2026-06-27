@@ -4,7 +4,7 @@ import { GripHorizontal } from 'lucide-react'
 import { InputBar, type FileRef, type InputBarHandle, type SlashCommand, type SnippetCommand } from './InputBar'
 import { RevertNotice } from './RevertNotice'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { useVisualKeyboardInset } from '@/hooks/use-visual-keyboard-inset'
+import { dismissKeyboard } from '@/hooks/use-mobile-viewport'
 import type { AgentCapabilities } from '@/api/types'
 
 // ── Storage ──────────────────────────────────────────────────────────────────
@@ -116,7 +116,6 @@ interface FloatingInputBarProps {
 export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps>(
   function FloatingInputBar({ boundsRef, ...inputProps }, ref) {
     const isMobile = useIsMobile()
-    const keyboardInset = useVisualKeyboardInset()
     const dragControls = useDragControls()
     const panelRef = useRef<HTMLDivElement>(null)
     const [offset, setOffset] = useState<StoredOffset>(() => loadOffset())
@@ -383,12 +382,13 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
       const diffY = currentY - touchStartY.current
       const diffX = Math.abs(currentX - touchStartX.current)
 
-      // If the user swipes down by more than 30px, and the swipe is mostly vertical:
-      if (diffY > 30 && diffY > diffX * 1.5) {
-        const active = document.activeElement
-        if (active instanceof HTMLElement && active.matches('input, textarea')) {
-          active.blur()
-        }
+      // If the user swipes down by more than 24px, and the swipe is mostly
+      // vertical: dismiss the keyboard. `dismissKeyboard` blurs the input AND
+      // snaps the app shell back to full height with a short ease, so the UI
+      // glides up immediately instead of crawling with iOS's slow keyboard
+      // retract. Lower threshold (24px) makes the gesture feel more responsive.
+      if (diffY > 24 && diffY > diffX * 1.5) {
+        dismissKeyboard()
         touchStartY.current = null
         touchStartX.current = null
       }
@@ -403,14 +403,22 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
     if (isMobile) {
       return (
         // border-t separates from chat content; pb-safe clears the home
-        // indicator, and the visualViewport inset lifts the composer above
-        // the soft keyboard on iOS/Android Tauri shells.
+        // indicator. The composer no longer chases the keyboard itself — the
+        // app shell (`.mobile-viewport`) is bound to `window.visualViewport`
+        // in `useMobileViewportGuards`, so it shrinks to the visible region and
+        // this bottom-docked bar rides up on the keyboard via flexbox. That
+        // moves the whole UI as one rigid, GPU-composited unit instead of
+        // re-rendering the composer subtree every keyboard frame.
         <div
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
-          className="pointer-events-auto border-t border-(--color-border) bg-(--bg-key)/20 px-3 pb-safe pt-2 backdrop-blur-xl"
-          style={keyboardInset > 0 ? { paddingBottom: `calc(${keyboardInset}px + 0.5rem)` } : undefined}
+          // Solid opaque background (no backdrop-blur): on iOS WebKit a
+          // translucent + blurred bar re-rasterises its whole backdrop on any
+          // content change (e.g. shell-mode toggle mounting/unmounting
+          // buttons), which flickers. A solid fill is cheaper, flicker-free,
+          // and more legible over scrolling chat content.
+          className="pointer-events-auto border-t border-(--color-border) bg-(--bg-page) px-3 pb-safe pt-2"
         >
           <RevertNotice count={inputProps.revertedCount ?? 0} messages={inputProps.revertedMessages ?? []} onRedo={inputProps.onRedo} />
           <InputBar ref={setInputRefs} floating filesBelow={false} {...inputProps} onValueChange={inputProps.onValueChange} onSubmit={handleSubmit} />

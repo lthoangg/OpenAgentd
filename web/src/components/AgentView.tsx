@@ -294,6 +294,31 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
     if (scrollRef.current) scrollRef.current.scrollTop = 0
   }, [isEmpty])
 
+  // Keep the latest message visible when the scrollport *resizes* — the soft
+  // keyboard opening (the shell binds its height to the visual viewport),
+  // shell-mode toggling the composer height, or an orientation change all
+  // shrink/grow this container. Without re-pinning, focusing the input would
+  // push the newest message up behind the keyboard. We only re-pin when the
+  // user was already at the bottom, so reading scrollback is never yanked.
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    let frame = 0
+    const ro = new ResizeObserver(() => {
+      if (!pinnedRef.current) return
+      // Defer one frame so the new layout has settled before we measure.
+      if (frame) cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => {
+        el.scrollTop = el.scrollHeight
+      })
+    })
+    ro.observe(el)
+    return () => {
+      if (frame) cancelAnimationFrame(frame)
+      ro.disconnect()
+    }
+  }, [])
+
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
     <div ref={scrollRef} className="flex-1 overflow-y-auto">

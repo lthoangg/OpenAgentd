@@ -897,10 +897,14 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   // Reusable pill button styles for the action row (attach, mic — pencil
   // calls these `inputBarAttach`, `inputBarMic`: 32×32, rounded-sm border,
   // warm card fill).
+  // ``active:scale-90`` gives a tactile press response on touch (``hover``
+  // never fires on a finger), and ``motion-reduce`` opts out for users who
+  // disable animation. The transition is transform+color only — both
+  // GPU-cheap, no layout.
   const actionBtnClass =
-    'flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-(--color-border) bg-(--bg-card) text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:cursor-not-allowed disabled:opacity-50'
+    'flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-(--color-border) bg-(--bg-card) text-(--color-text-2) transition duration-100 hover:bg-(--bg-key) hover:text-(--color-text) active:scale-90 active:bg-(--bg-key) motion-reduce:transition-none motion-reduce:active:scale-100 disabled:cursor-not-allowed disabled:opacity-50'
   const shellBtnClass = shellMode
-    ? 'flex h-7 shrink-0 items-center gap-1 rounded-md border border-(--color-accent) bg-(--bg-key) px-2 font-mono text-xs text-(--color-text) transition-colors hover:bg-(--bg-card) disabled:cursor-not-allowed disabled:opacity-50'
+    ? 'flex h-7 shrink-0 items-center gap-1 rounded-md border border-(--color-accent) bg-(--bg-key) px-2 font-mono text-xs text-(--color-text) transition duration-100 hover:bg-(--bg-card) active:scale-95 motion-reduce:transition-none motion-reduce:active:scale-100 disabled:cursor-not-allowed disabled:opacity-50'
     : actionBtnClass
 
   // Three states share one DOM tree: minimized, single-line, multi-line.
@@ -938,12 +942,20 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   const shellEl = !minimized ? (
     <button
       type="button"
+      // ``preventDefault`` on the press stops the button from stealing focus,
+      // so in the common case the textarea keeps focus and the keyboard never
+      // drops — avoiding the blur→refocus round-trip that blipped the visual
+      // viewport and flickered the shell on iOS. The guarded refocus in
+      // ``onClick`` is a safety net: it only re-focuses if focus actually left
+      // the textarea, so it doesn't reintroduce the blip when focus was held.
+      onPointerDown={(e) => e.preventDefault()}
       onClick={(e) => {
         stopClick(e)
         setShellMode((next) => !next)
         setMentionRange(null)
         setSnippetRange(null)
-        requestAnimationFrame(() => textareaRef.current?.focus())
+        const el = textareaRef.current
+        if (el && document.activeElement !== el) el.focus({ preventScroll: true })
       }}
       disabled={disabled}
       aria-label={shellMode ? 'Exit shell mode' : 'Use shell mode'}
@@ -992,7 +1004,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       type="button"
       onClick={(e) => { stopClick(e); onStop?.() }}
       aria-label="Stop generation"
-      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-(--color-error) bg-(--color-error) text-(--bg-page) transition-colors hover:opacity-90"
+      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-(--color-error) bg-(--color-error) text-(--bg-page) transition duration-100 hover:opacity-90 active:scale-90 motion-reduce:transition-none motion-reduce:active:scale-100"
     >
       <Square size={12} fill="currentColor" />
     </button>
@@ -1006,7 +1018,14 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       disabled={!canSend}
       aria-label="Send message"
       title={isMobile ? 'Send message' : 'Send (Enter) · New line (Shift+Enter) · Commands (/)'}
-      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-(--color-border) bg-(--bg-card) text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:cursor-not-allowed disabled:opacity-50"
+      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition duration-100 active:scale-90 motion-reduce:transition-none motion-reduce:active:scale-100 disabled:cursor-not-allowed disabled:opacity-50 ${
+        canSend
+          // When there's something to send, promote the button to an accent
+          // fill so the primary action reads clearly — a small but meaningful
+          // clarity win over the flat grey it always was.
+          ? 'border-(--color-accent) bg-(--color-accent) text-(--bg-page) hover:opacity-90'
+          : 'border-(--color-border) bg-(--bg-card) text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text)'
+      }`}
     >
       {disabled && !minimized ? (
         <Loader2 size={14} className="animate-spin" aria-hidden="true" />
@@ -1110,6 +1129,90 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     </div>
   )
 
+  const pillClassName = `relative block rounded-lg border bg-(--color-surface) transition-[border-color,box-shadow,background-color] duration-200 ${
+    minimized
+      ? 'w-fit border-(--color-border) shadow-sm hover:bg-(--bg-key)'
+      : shellMode
+        // Shell mode: accent ring instantly signals the distinct "running a
+        // command" state — a clear, animation-free UX cue.
+        ? 'w-full border-(--color-accent) shadow-md ring-1 ring-(--color-accent)/40'
+        : 'w-full border-(--color-border-strong) shadow-md focus-within:ring-1 focus-within:ring-(--color-accent)'
+  }`
+
+  const pillInner = (
+    // Click-anywhere-to-expand on bare strip whitespace. Action buttons call
+    // stopClick so they don't trigger this. No ARIA role — the Send button is
+    // the keyboard-accessible "Expand input bar" affordance.
+    <div
+      onClick={minimized ? handleExpand : undefined}
+      className={`flex w-full flex-wrap items-center gap-2 ${minimized ? 'cursor-text' : ''}`}
+    >
+      {shellEl}
+      {!shellMode && (
+        <>
+          {attachEl}
+          {voiceEl}
+          {chatEl}
+        </>
+      )}
+      {/* Slot snaps w-0 ↔ flex-1 in lockstep with the card's w-fit ↔ w-full.
+          ``-ml-2`` absorbs the parent gap-2 when collapsed. */}
+      <div
+        style={{
+          flexBasis: !minimized && isMultiLine ? '100%' : undefined,
+          order: !minimized && isMultiLine ? -1 : 0,
+        }}
+        className={`min-w-0 overflow-hidden ${minimized ? 'w-0 -ml-2' : 'flex-1'}`}
+      >
+        {messageSlot}
+      </div>
+      {!minimized && showCharCount && (
+        <span
+          className={`shrink-0 font-mono text-xs ${
+            charCount > 2000 ? 'text-(--color-error)' : 'text-(--color-text-muted)'
+          }`}
+        >
+          {charCount}
+        </span>
+      )}
+      {/* Spacer pushes Send to the right edge in multi-line. */}
+      {!minimized && isMultiLine && <div className="flex-1" />}
+      {sendOrStopEl}
+    </div>
+  )
+
+  // Mobile renders a plain ``div`` — no framer-motion. The pill has no
+  // animation on mobile (no ``layout``, static padding), and rendering it
+  // through ``motion.div`` still made framer reconcile inline styles on every
+  // shell-mode toggle, which flickered in the WebView. A bare div makes the
+  // toggle a pure, cheap class swap. Desktop keeps the polished morph.
+  const pill = isMobile ? (
+    <div
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+      className={pillClassName}
+      style={{ padding: 8 }}
+    >
+      {pillInner}
+    </div>
+  ) : (
+    <motion.div
+      layout
+      initial={false}
+      animate={{ padding: minimized ? 6 : 8 }}
+      transition={{ duration: prefersReducedMotion ? 0.01 : 0.24, ease: [0.32, 0.72, 0, 1] }}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+      className={pillClassName}
+    >
+      {pillInner}
+    </motion.div>
+  )
+
   return (
     <div className={floating ? '' : 'border-t border-(--color-border) bg-(--bg-page) px-4 py-3'}>
       <div className={floating ? 'relative' : 'relative mx-auto max-w-3xl'}>
@@ -1141,67 +1244,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         {/* ``flex justify-center`` centers the self-sized minimized pill. */}
         <div className={`relative ${minimized ? 'flex justify-center' : ''}`}>
           {renderDragHandle?.()}
-          <motion.div
-            layout
-            initial={false}
-            animate={{ padding: minimized ? 6 : 8 }}
-            transition={{ duration: prefersReducedMotion ? 0.01 : 0.24, ease: [0.32, 0.72, 0, 1] }}
-            onDragEnter={handleDragEnter}
-            onDragLeave={handleDragLeave}
-            onDragOver={handleDragOver}
-            onDrop={handleDrop}
-            className={`relative block rounded-lg border bg-(--color-surface) transition-[border-color,box-shadow,background-color] duration-200 ${
-              minimized
-                ? 'w-fit border-(--color-border) shadow-sm hover:bg-(--bg-key)'
-                : 'w-full border-(--color-border-strong) shadow-md focus-within:ring-1 focus-within:ring-(--color-accent)'
-            }`}
-          >
-            {/* Click-anywhere-to-expand on bare strip whitespace. Action
-                buttons call stopClick so they don't trigger this. No ARIA
-                role here — the Send button is the keyboard-accessible
-                "Expand input bar" affordance. */}
-            <div
-              onClick={minimized ? handleExpand : undefined}
-              className={`flex w-full flex-wrap items-center gap-2 ${
-                minimized ? 'cursor-text' : ''
-              }`}
-            >
-              {shellEl}
-              {!shellMode && (
-                <>
-                  {attachEl}
-                  {voiceEl}
-                  {chatEl}
-                </>
-              )}
-              {/* Slot snaps w-0 ↔ flex-1 in lockstep with the card's
-                  w-fit ↔ w-full. ``-ml-2`` absorbs the parent gap-2
-                  when collapsed. */}
-              <div
-                style={{
-                  flexBasis: !minimized && isMultiLine ? '100%' : undefined,
-                  order: !minimized && isMultiLine ? -1 : 0,
-                }}
-                className={`min-w-0 overflow-hidden ${
-                  minimized ? 'w-0 -ml-2' : 'flex-1'
-                }`}
-              >
-                {messageSlot}
-              </div>
-              {!minimized && showCharCount && (
-                <span
-                  className={`shrink-0 font-mono text-xs ${
-                    charCount > 2000 ? 'text-(--color-error)' : 'text-(--color-text-muted)'
-                  }`}
-                >
-                  {charCount}
-                </span>
-              )}
-              {/* Spacer pushes Send to the right edge in multi-line. */}
-              {!minimized && isMultiLine && <div className="flex-1" />}
-              {sendOrStopEl}
-            </div>
-          </motion.div>
+          {pill}
         </div>
 
         {!minimized && filesBelow && filePreviews}

@@ -30,13 +30,25 @@ function detectOS(): OS {
   if (typeof navigator === 'undefined') return 'unknown'
 
   const legacy = navigator.platform || ''
+  const ua = navigator.userAgent || ''
+  const maxTouch = navigator.maxTouchPoints ?? 0
+
+  // iOS first — iPhone/iPod are unambiguous, but iPadOS 13+ masquerades as
+  // desktop Safari and reports ``navigator.platform === "MacIntel"``. The
+  // reliable tell-tale is a touch-capable "Mac": real Macs report
+  // ``maxTouchPoints === 0``, iPads report > 1. Checking this *before* the
+  // ``/Mac/`` branch is what keeps the soft-keyboard inset working in the
+  // iOS WKWebView shell (otherwise it's misdetected as macOS and the
+  // composer never lifts above the keyboard).
+  if (/iPhone|iPad|iPod/i.test(legacy) || /iPhone|iPad|iPod/i.test(ua)) return 'ios'
+  if (/Mac/i.test(legacy) && maxTouch > 1) return 'ios'
   if (/Mac/i.test(legacy)) return 'macos'
   if (/Win/i.test(legacy)) return 'windows'
   if (/Linux/i.test(legacy)) {
     // Android UAs include "Linux" — disambiguate before claiming Linux desktop.
-    return /Android/i.test(navigator.userAgent) ? 'android' : 'linux'
+    return /Android/i.test(ua) ? 'android' : 'linux'
   }
-  if (/iPhone|iPad|iPod/i.test(legacy)) return 'ios'
+  if (/Android/i.test(ua)) return 'android'
 
   const uaData = (navigator as unknown as { userAgentData?: UAClientHints }).userAgentData
   const uaPlatform = uaData?.platform?.toLowerCase() ?? ''

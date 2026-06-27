@@ -62,7 +62,7 @@ describe('SettingsHubPage — desktop updates card', () => {
   it('renders desktop update controls without the old Application update heading', () => {
     renderHub({ status: 'ok', version: '1.2.3' })
 
-    expect(screen.getByRole('heading', { name: /^updates$/i })).toBeInTheDocument()
+    expect(screen.getByText(/^updates$/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /check for updates?/i })).toBeInTheDocument()
     expect(screen.queryByText(/application update/i)).toBeNull()
     expect(screen.queryByRole('button', { name: /^install$/i })).toBeNull()

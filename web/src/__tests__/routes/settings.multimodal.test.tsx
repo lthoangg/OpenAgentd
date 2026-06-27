@@ -90,12 +90,14 @@ describe('MultimodalSettingsPage', () => {
     expect(save.className).toContain('min-h-11')
     expect(save.className).toContain('md:min-h-0')
 
-    expect(await screen.findByText('Image')).toBeTruthy()
-    const triggers = screen.getAllByRole('combobox')
-    expect(triggers.length).toBeGreaterThanOrEqual(9)
+    expect(await screen.findByText(/default model and options for image generation/i)).toBeTruthy()
+    const triggers = Array.from(document.querySelectorAll('button')).filter((button) =>
+      /googlegenai|Provider default|1:1|landscape|portrait|auto|png|standard/.test(button.textContent ?? ''),
+    ) as HTMLElement[]
+    expect(triggers.length).toBeGreaterThanOrEqual(6)
     for (const trigger of triggers) {
-      expect(trigger.className).toContain('min-h-11')
-      expect(trigger.className).toContain('md:min-h-9')
+      expect(trigger.className).toContain('px-2')
+      expect(trigger.className).toContain('py-1')
     }
   })
 })

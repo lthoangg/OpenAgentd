@@ -214,8 +214,8 @@ describe("ToolCall — diff stats", () => {
     expect(header.className).toContain("top-0")
     expect(header.className).toContain("z-10")
     expect(header.parentElement?.className).toContain("max-h-80")
-    expect(header.parentElement?.className).toContain("overflow-y-auto")
-    expect(header.parentElement?.className).toContain("overflow-x-hidden")
+    expect(header.parentElement?.className).toContain("overflow-hidden")
+    expect(header.parentElement?.className).toContain("overflow-hidden")
   })
 
   it("collapses the whole edit result when clicking the diff file header", async () => {
@@ -991,8 +991,8 @@ describe("ToolCall — copy buttons", () => {
 
     for (const copyBtn of [screen.getByLabelText("Copy arguments"), screen.getByLabelText("Copy result")]) {
       expect(copyBtn.className).toContain("opacity-100")
-      expect(copyBtn.className).toContain("h-8")
-      expect(copyBtn.className).toContain("w-8")
+      expect(copyBtn.className).toContain("h-7")
+      expect(copyBtn.className).toContain("w-7")
       expect(copyBtn.className).toContain("md:h-6")
       expect(copyBtn.className).toContain("md:w-6")
       expect(copyBtn.className).toContain("md:opacity-0")

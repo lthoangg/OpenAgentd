@@ -120,6 +120,7 @@ mock.module('@/components/ui/button', () => ({
     void variant
     return <button {...props}>{children}</button>
   },
+  buttonVariants: () => '',
 }))
 
 mock.module('@/components/ui/dialog', () => ({

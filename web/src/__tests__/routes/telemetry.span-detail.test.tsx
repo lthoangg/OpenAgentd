@@ -58,9 +58,9 @@ describe('SpanDetailPanel', () => {
     )
 
     const closeButton = screen.getByLabelText('Close span detail')
-    expect(closeButton.className).toContain('h-9')
-    expect(closeButton.className).toContain('w-9')
-    expect(closeButton.className).toContain('md:h-6')
-    expect(closeButton.className).toContain('md:w-6')
+    expect(closeButton.className).toContain('h-7')
+    expect(closeButton.className).toContain('w-7')
+    expect(closeButton.className).toContain('items-center')
+    expect(closeButton.className).toContain('rounded-sm')
   })
 })

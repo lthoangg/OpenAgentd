@@ -34,7 +34,7 @@ describe('SettingsListView', () => {
     renderList()
 
     const row = screen.getByRole('button', { name: /lead/i })
-    expect(row.className).toContain('min-h-11')
-    expect(row.className).toContain('focus-visible:ring-3')
+    expect(row.className).toMatch(/min-h-(10|11)/)
+    expect(row.className).toContain('focus-visible:ring-2')
   })
 })

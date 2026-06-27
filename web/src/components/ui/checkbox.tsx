@@ -1,4 +1,4 @@
-import { CheckIcon } from 'lucide-react'
+import { Check } from 'lucide-react'
 import { type ComponentPropsWithRef } from 'react'
 
 import { cn } from '@/lib/utils'
@@ -27,7 +27,7 @@ function Checkbox({ className, onChange, onCheckedChange, ...props }: CheckboxPr
         }}
         {...props}
       />
-      <CheckIcon className="pointer-events-none absolute inset-0 m-auto hidden size-3 text-white peer-checked:block" aria-hidden="true" />
+      <Check className="pointer-events-none absolute inset-0 m-auto hidden size-3 text-white peer-checked:block" aria-hidden="true" />
     </span>
   )
 }

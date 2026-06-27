@@ -85,6 +85,8 @@ interface DropdownProps {
   className?: string
   /** Extra classes on the dropdown panel. */
   panelClassName?: string
+  /** id for form label association. */
+  id?: string
   /** aria-label for the trigger button. */
   'aria-label'?: string
   /** aria-invalid for form validation styling. */
@@ -99,6 +101,7 @@ function Dropdown({
   onValueChange,
   className,
   panelClassName,
+  id,
   'aria-label': ariaLabel,
   'aria-invalid': ariaInvalid,
   disabled,
@@ -133,6 +136,7 @@ function Dropdown({
     <Menu.Root>
       {/* Trigger */}
       <Menu.Trigger
+        id={id}
         disabled={disabled}
         aria-label={ariaLabel}
         aria-invalid={ariaInvalid}

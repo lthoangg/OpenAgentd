@@ -116,14 +116,16 @@ describe('McpServerForm — Transport tabs', () => {
     const draft = { ...emptyDraft(), transport: 'stdio' as const }
     const onChange = mock(() => {})
     renderForm(draft, onChange)
-    expect(screen.getByText(/Stdio configuration/i)).toBeTruthy()
+    expect(screen.getByText(/Transport — Stdio/i)).toBeTruthy()
+    expect(screen.getByPlaceholderText('npx')).toBeTruthy()
   })
 
   it('shows http section when transport is http', () => {
     const draft = { ...emptyDraft(), transport: 'http' as const }
     const onChange = mock(() => {})
     renderForm(draft, onChange)
-    expect(screen.getByText(/HTTP configuration/i)).toBeTruthy()
+    expect(screen.getByText(/Transport — HTTP/i)).toBeTruthy()
+    expect(screen.getByPlaceholderText('https://mcp.example.com/v1')).toBeTruthy()
   })
 
   it('switches to http tab when http tab is clicked', async () => {

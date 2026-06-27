@@ -187,7 +187,7 @@ describe("ToolResult — read", () => {
   it("uses compact file chrome without diff line markers", () => {
     const { container } = render(<ToolResult toolName="read" result={"line one\nline two"} />)
 
-    expect(container.querySelector("div[class*='bg-(--bg-key)']")).toBeTruthy()
+    expect(container.querySelector("div[class*='bg-(--bg-card)']")).toBeTruthy()
     expect(container.querySelector("div[class*='border-(--color-border)']")).toBeTruthy()
     expect(screen.queryByText("+")).toBeNull()
     expect(screen.queryByText("-")).toBeNull()

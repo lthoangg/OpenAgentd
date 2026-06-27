@@ -88,10 +88,10 @@ describe('TitleGenerationSettingsPage', () => {
     expect(model.className).toContain('md:min-h-9')
 
     const toggle = screen.getByLabelText('Open model list')
-    expect(toggle.className).toContain('h-11')
-    expect(toggle.className).toContain('w-11')
-    expect(toggle.className).toContain('md:h-8')
-    expect(toggle.className).toContain('md:w-8')
+    expect(toggle.className).toContain('h-9')
+    expect(toggle.className).toContain('w-9')
+    expect(toggle.className).toContain('md:h-7')
+    expect(toggle.className).toContain('md:w-7')
 
     const waitTimeout = screen.getByLabelText('Wait timeout seconds')
     expect(waitTimeout.className).toContain('min-h-11')

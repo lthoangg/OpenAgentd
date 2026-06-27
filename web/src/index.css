@@ -463,6 +463,10 @@ html[data-mobile-shell] .text-\[10px\] {
 }
 
 .mobile-safe-header {
+  min-height: var(--spacing-app-header);
+}
+
+html[data-mobile-shell] .mobile-safe-header {
   min-height: calc(var(--spacing-app-header) + env(safe-area-inset-top, 0px));
   padding-top: env(safe-area-inset-top, 0px);
 }

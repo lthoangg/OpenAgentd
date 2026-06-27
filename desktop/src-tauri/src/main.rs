@@ -19,6 +19,7 @@ use tauri::{
     WindowEvent, Wry,
 };
 use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_log::{Target, TargetKind};
 
 #[cfg(test)]
 use std::collections::HashMap as StdHashMap;
@@ -129,6 +130,7 @@ const MENU_ZOOM_OUT: &str = "zoom_out";
 const MENU_ZOOM_RESET: &str = "zoom_reset";
 const MENU_CHECK_UPDATES: &str = "check_updates";
 const MENU_OPEN_CONFIG_DIR: &str = "open_config_dir";
+const MENU_REVEAL_DESKTOP_LOG: &str = "reveal_desktop_log";
 const MENU_REVEAL_BACKEND_LOG: &str = "reveal_backend_log";
 const MENU_QUIT: &str = "quit";
 
@@ -173,6 +175,29 @@ fn configure_window_chrome(
     {
         builder
     }
+}
+
+/// Re-assert the macOS overlay title-bar chrome on `window`.
+///
+/// New windows occasionally lose their traffic-light vertical centring after
+/// the webview triggers an AppKit relayout (e.g. navigating into
+/// cockpit/coding mode). Re-applying ``TitleBarStyle::Overlay`` toggles the
+/// window style mask (tao `set_style_mask_sync`), which forces AppKit to
+/// recompute the standard window buttons and marks the content view for
+/// redraw. tao's `draw_rect` then re-runs its stored `inset_traffic_lights`,
+/// restoring the configured 12/22 pt position. No-op off macOS.
+#[tauri::command]
+fn reapply_window_chrome(window: tauri::WebviewWindow) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        use tauri::TitleBarStyle;
+        window
+            .set_title_bar_style(TitleBarStyle::Overlay)
+            .map_err(|e| format!("{e:#}"))?;
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = window;
+    Ok(())
 }
 
 #[derive(Clone, Serialize)]
@@ -370,6 +395,13 @@ async fn backend_logs_path(state: tauri::State<'_, AppState>) -> Result<String, 
         Some(s) => Ok(s.log_path().to_string_lossy().into_owned()),
         None => Err("backend not started".into()),
     }
+}
+
+#[tauri::command]
+fn desktop_logs_path(app: AppHandle) -> Result<String, String> {
+    desktop_log_path(&app)
+        .map(|p| p.to_string_lossy().into_owned())
+        .map_err(|e| format!("desktop log path unavailable: {e}"))
 }
 
 #[tauri::command]
@@ -677,6 +709,21 @@ fn open_config_dir(app: &AppHandle) {
     }
 }
 
+fn desktop_log_path(app: &AppHandle) -> Result<PathBuf> {
+    Ok(app.path().app_log_dir()?.join("desktop.log"))
+}
+
+fn reveal_desktop_log(app: &AppHandle) {
+    match desktop_log_path(app) {
+        Ok(path) => {
+            if let Err(e) = app.opener().reveal_item_in_dir(&path) {
+                log::warn!("failed to reveal desktop log {}: {e}", path.display());
+            }
+        }
+        Err(e) => log::warn!("desktop log path unavailable: {e:#}"),
+    }
+}
+
 fn reveal_backend_log(app: &AppHandle) {
     let state: tauri::State<'_, AppState> = app.state();
     let sidecar = state.sidecar.clone();
@@ -889,6 +936,7 @@ fn handle_desktop_menu(app: &AppHandle, id: &str) {
         MENU_ZOOM_RESET => set_zoom(app, ZOOM_DEFAULT),
         MENU_CHECK_UPDATES => request_update_check(app),
         MENU_OPEN_CONFIG_DIR => open_config_dir(app),
+        MENU_REVEAL_DESKTOP_LOG => reveal_desktop_log(app),
         MENU_REVEAL_BACKEND_LOG => reveal_backend_log(app),
         MENU_QUIT => quit_app(app),
         _ => {}
@@ -972,11 +1020,13 @@ async fn updater_release_notes(version: String) -> Result<ReleaseNotesResponse, 
 }
 
 async fn run_update_check(app: AppHandle, silent: bool) -> Result<UpdateStatus, String> {
+    log::info!("updater check started silent={silent}");
     let updater = app
         .updater()
         .map_err(|e| format!("Updater unavailable: {e}"))?;
     match updater.check().await {
         Ok(Some(update)) => {
+            log::info!("updater check found version={}", update.version);
             let state: tauri::State<'_, AppState> = app.state();
             let cached = state.update_state.lock().await.clone();
             let status = if cached
@@ -1007,6 +1057,7 @@ async fn run_update_check(app: AppHandle, silent: bool) -> Result<UpdateStatus, 
             Ok(status)
         }
         Ok(None) => {
+            log::info!("updater check found no update silent={silent}");
             let status = UpdateStatus {
                 status: "up_to_date".into(),
                 version: None,
@@ -1025,11 +1076,15 @@ async fn run_update_check(app: AppHandle, silent: bool) -> Result<UpdateStatus, 
             }
             Ok(status)
         }
-        Err(e) => Err(format!("Couldn't check for updates: {e}")),
+        Err(e) => {
+            log::warn!("updater check failed: {e}");
+            Err(format!("Couldn't check for updates: {e}"))
+        }
     }
 }
 
 async fn run_update_download(app: AppHandle) -> Result<UpdateStatus, String> {
+    log::info!("updater download started");
     let updater = app
         .updater()
         .map_err(|e| format!("Updater unavailable: {e}"))?;
@@ -1041,6 +1096,7 @@ async fn run_update_download(app: AppHandle) -> Result<UpdateStatus, String> {
 
     update_tray_status(&app, "Status: Downloading update…");
     let version = update.version.clone();
+    log::info!("updater download available version={version}");
     let mut downloaded: u64 = 0;
     let app_for_progress = app.clone();
     let bytes = update
@@ -1076,6 +1132,7 @@ async fn run_update_download(app: AppHandle) -> Result<UpdateStatus, String> {
     let path =
         cached_update_path(&app, &update.version).map_err(|e| format!("Cache update: {e}"))?;
     std::fs::write(&path, bytes).map_err(|e| format!("Write cached update: {e}"))?;
+    log::info!("updater download cached version={} path={}", update.version, path.display());
     let state: tauri::State<'_, AppState> = app.state();
     *state.update_state.lock().await = Some(CachedUpdateState {
         version: update.version.clone(),
@@ -1096,6 +1153,7 @@ async fn run_update_download(app: AppHandle) -> Result<UpdateStatus, String> {
 }
 
 async fn run_update_install(app: AppHandle) -> Result<(), String> {
+    log::info!("updater install started");
     let state: tauri::State<'_, AppState> = app.state();
     let cached_guard = state.update_state.lock().await;
     let cached = cached_guard.clone();
@@ -1124,6 +1182,11 @@ async fn run_update_install(app: AppHandle) -> Result<(), String> {
     // SAFETY: validate_install_preconditions returned Ok, so `cached` is Some
     // and `cached.bytes_path.is_file()`.
     let cached = cached.expect("cached is Some after validate_install_preconditions");
+    log::info!(
+        "updater install preconditions ok version={} path={}",
+        cached.version,
+        cached.bytes_path.display()
+    );
 
     let bytes =
         std::fs::read(&cached.bytes_path).map_err(|e| format!("Read cached update: {e}"))?;
@@ -1141,50 +1204,31 @@ async fn run_update_install(app: AppHandle) -> Result<(), String> {
     shutdown_sidecar_now(&app).await;
 
     update_tray_status(&app, "Status: Installing update…");
+    log::info!("updater install applying version={}", update.version);
     update.install(bytes).map_err(|e| {
         update_tray_status(&app, "Status: Running");
         format!("Failed to install update: {e}")
     })?;
 
-    // Relaunch. Platform behaviour differs and getting this wrong is exactly
-    // why the app previously installed the update but never came back up:
-    //
-    //   • macOS: `install()` extracts the new `.app` over the running bundle
-    //     and spawns a *detached* helper that re-launches it. Calling
-    //     `app.restart()` here re-execs the OLD executable path while that
-    //     bundle is mid-swap — the exec target is momentarily invalid, the
-    //     spawn fails silently, and the process just exits. The correct move
-    //     is to exit cleanly and let the updater helper bring the new bundle
-    //     back up. (Docs: "restarting immediately after install is not
-    //     required.")
-    //
-    //   • Windows: the NSIS/MSI installer already terminates the app itself,
-    //     so reaching a manual restart is unusual; `restart()` is still the
-    //     supported call when we get here.
-    //
-    //   • Linux (AppImage): the binary is replaced in place, so `restart()`
-    //     re-execs the new image correctly.
+    // Relaunch. Tauri's updater installs the new bundle but does not reliably
+    // bring the app back on macOS/Linux unless the host process explicitly
+    // relaunches. Call `restart()` on the main thread so Tauri can run its
+    // cleanup immediately before re-execing the updated app; calling it from
+    // this worker task requests an event-loop exit and can hang behind window
+    // close guards during the update flow.
     update_tray_status(&app, "Status: Restarting…");
-    #[cfg(target_os = "macos")]
-    {
-        // Give the detached relaunch helper a beat to register before we tear
-        // the process down, then exit so it can bring the new bundle up.
-        // `cleanup_before_exit()` + `process::exit()` MUST run on the main
-        // thread — calling them from this worker task can crash on macOS
-        // (tauri-apps/tauri#12534) — so hop onto the run loop.
-        tokio::time::sleep(Duration::from_millis(300)).await;
-        let handle = app.clone();
-        let _ = app.run_on_main_thread(move || {
-            handle.cleanup_before_exit();
-            std::process::exit(0);
-        });
-        // The line above never returns once the closure runs; this keeps the
-        // function type-correct on the off chance the dispatch is dropped.
-        return Ok(());
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        app.restart();
+    log::info!("updater install complete; dispatching app restart");
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        log::info!("updater restart executing on main thread");
+        handle.restart();
+    });
+
+    // `restart()` never returns once the closure runs. Keep the command pending
+    // so the frontend remains on the installing/restarting state if dispatch is
+    // delayed, instead of resolving successfully without a relaunch.
+    loop {
+        tokio::time::sleep(Duration::from_secs(60)).await;
     }
 }
 
@@ -1344,6 +1388,13 @@ fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         true,
         None::<&str>,
     )?;
+    let app_reveal_desktop_log = MenuItem::with_id(
+        app,
+        MENU_REVEAL_DESKTOP_LOG,
+        "View Desktop Log",
+        true,
+        None::<&str>,
+    )?;
     let app_reveal_backend_log = MenuItem::with_id(
         app,
         MENU_REVEAL_BACKEND_LOG,
@@ -1428,6 +1479,7 @@ fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         .item(&app_telemetry)
         .separator()
         .item(&app_open_config_dir)
+        .item(&app_reveal_desktop_log)
         .item(&app_reveal_backend_log)
         .separator()
         .item(&app_quit)
@@ -1499,6 +1551,13 @@ fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         true,
         None::<&str>,
     )?;
+    let tray_reveal_desktop_log = MenuItem::with_id(
+        app,
+        MENU_REVEAL_DESKTOP_LOG,
+        "View Desktop Log",
+        true,
+        None::<&str>,
+    )?;
     let tray_reveal_backend_log = MenuItem::with_id(
         app,
         MENU_REVEAL_BACKEND_LOG,
@@ -1522,6 +1581,7 @@ fn install_desktop_menus(app: &tauri::App) -> Result<()> {
             &PredefinedMenuItem::separator(app)?,
             &tray_settings,
             &tray_open_config_dir,
+            &tray_reveal_desktop_log,
             &tray_reveal_backend_log,
             &tray_reload,
             &PredefinedMenuItem::separator(app)?,
@@ -2093,6 +2153,12 @@ fn main() {
 
     let log_plugin = tauri_plugin_log::Builder::new()
         .level(log::LevelFilter::Info)
+        .targets([
+            Target::new(TargetKind::Stdout),
+            Target::new(TargetKind::LogDir {
+                file_name: Some("desktop".into()),
+            }),
+        ])
         .build();
 
     tauri::Builder::default()
@@ -2116,6 +2182,7 @@ fn main() {
             save_workspace_file,
             backend_health,
             backend_logs_path,
+            desktop_logs_path,
             app_backend_status,
             app_remove_backend_server,
             app_save_backend_server,
@@ -2123,6 +2190,7 @@ fn main() {
             app_use_bundled_backend,
             app_stop_bundled_backend,
             app_new_window,
+            reapply_window_chrome,
             set_tray_session,
             updater_check,
             updater_download,
@@ -2131,6 +2199,16 @@ fn main() {
         ])
         .setup(|app| {
             install_desktop_menus(app)?;
+            match desktop_log_path(app.handle()) {
+                Ok(path) => log::info!("desktop log path={}", path.display()),
+                Err(e) => log::warn!("desktop log path unavailable: {e:#}"),
+            }
+            log::info!(
+                "desktop app starting version={} pid={} target_os={}",
+                env!("CARGO_PKG_VERSION"),
+                std::process::id(),
+                std::env::consts::OS
+            );
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 let updater_handle = handle.clone();

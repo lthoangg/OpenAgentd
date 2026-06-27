@@ -36,6 +36,7 @@
     "allow-app-use-external-backend",
     "allow-app-use-bundled-backend",
     "allow-app-new-window",
+    "allow-reapply-window-chrome",
     "allow-app-stop-bundled-backend",
     "allow-set-tray-session",
     "allow-updater-check",

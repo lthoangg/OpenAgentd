@@ -204,7 +204,7 @@ describe("ToolCall — diff stats", () => {
     expect(screen.queryByText("line 20")).toBeNull()
   })
 
-  it("keeps diff file headers sticky within their own scroll container", async () => {
+  it("renders diff file headers without sticky positioning", async () => {
     const user = userEvent.setup()
     const args = JSON.stringify({
       path: "src/main.py",
@@ -217,11 +217,10 @@ describe("ToolCall — diff stats", () => {
     await user.click(screen.getByRole("button", { name: "Expand edit details" }))
     const header = screen.getByRole("button", { name: "Collapse diff for src/main.py" })
 
-    expect(header.className).toContain("sticky")
-    expect(header.className).toContain("top-0")
-    expect(header.className).toContain("z-10")
+    expect(header.className).not.toContain("sticky")
+    expect(header.className).not.toContain("top-0")
+    expect(header.className).not.toContain("z-10")
     expect(header.parentElement?.className).toContain("max-h-80")
-    expect(header.parentElement?.className).toContain("overflow-hidden")
     expect(header.parentElement?.className).toContain("overflow-hidden")
   })
 

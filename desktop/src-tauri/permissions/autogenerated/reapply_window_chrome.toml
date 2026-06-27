@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-reapply-window-chrome"
+description = "Enables the reapply_window_chrome command without any pre-configured scope."
+commands.allow = ["reapply_window_chrome"]
+
+[[permission]]
+identifier = "deny-reapply-window-chrome"
+description = "Denies the reapply_window_chrome command without any pre-configured scope."
+commands.deny = ["reapply_window_chrome"]

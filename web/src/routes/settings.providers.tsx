@@ -35,7 +35,7 @@ function FilterChip({
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        'inline-flex h-6 items-center gap-1 rounded-xs border px-2',
+        'inline-flex min-h-10 items-center gap-1 rounded-xs border px-2 sm:min-h-6',
         'text-[10.5px] font-medium transition-colors select-none',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40',
         active
@@ -169,29 +169,30 @@ export function ProvidersSettingsPage() {
 
   return (
     <>
-      <header className="sticky top-0 z-10 flex h-11 shrink-0 items-center gap-2 border-b border-(--color-border) bg-(--bg-page) px-4 select-none">
+      <header className="sticky top-0 z-10 flex h-11 shrink-0 items-center gap-2 border-b border-(--color-border) bg-(--bg-page) px-3 select-none sm:px-4">
         <KeyRound size={13} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
         <h1 className="truncate text-xs font-semibold text-(--color-text)">Providers</h1>
-        <div className="flex-1" />
-        {showFilterBar && (
-          <SearchBar
-            placeholder="Filter providers…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            wrapperClassName="w-44"
-          />
-        )}
-        <span className="shrink-0 text-[10px] font-medium text-(--color-text-subtle)">
+        <div className="min-w-1 flex-1" />
+        <span className="hidden shrink-0 text-[10px] font-medium text-(--color-text-subtle) sm:inline">
           {connectedCount} connected
         </span>
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto bg-(--bg-page)">
-        <div className="mx-auto max-w-3xl space-y-4 p-5">
+        <div className="mx-auto max-w-3xl space-y-4 p-3 sm:p-5">
           <p className="text-xs leading-relaxed text-(--color-text-muted)">
             Add the model provider OpenAgentd should use. API keys are written to your local config; OAuth tokens are stored in your local cache. Click{' '}
             <span className="font-medium">List models</span> to verify a key before saving.
           </p>
+
+          {showFilterBar && (
+            <SearchBar
+              placeholder="Filter providers…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              count={providers.length}
+            />
+          )}
 
           {/* ── Filter bar ──────────────────────────────────────────── */}
           {showFilterBar && (

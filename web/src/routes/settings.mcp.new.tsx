@@ -82,7 +82,7 @@ export function NewMcpServerPage({ onBack, onCreated }: NewMcpServerPageProps) {
       />
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl p-6">
+        <div className="mx-auto max-w-3xl p-3 sm:p-5">
           <McpServerForm value={draft} onChange={setDraft} isNew disabled={createMut.isPending} errors={fieldErrors} />
         </div>
       </div>

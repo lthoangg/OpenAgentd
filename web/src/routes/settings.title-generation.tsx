@@ -91,7 +91,7 @@ export function TitleGenerationSettingsPage() {
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto bg-(--bg-page)">
-        <div className="mx-auto max-w-3xl space-y-4 p-5">
+        <div className="mx-auto max-w-3xl space-y-4 p-3 sm:p-5">
           <p className="text-xs leading-relaxed text-(--color-text-muted)">
             Title generation creates short session names after the first user message.
             Choose a small, fast model to keep titles quick and cost-efficient.

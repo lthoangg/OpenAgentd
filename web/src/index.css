@@ -483,6 +483,28 @@ html[data-mobile-shell] .text-\[10px\] {
   left: max(1rem, env(safe-area-inset-left, 0px));
 }
 
+/* Settings is an app-level overlay, so its bounds must respect both mobile
+   cutouts/home indicators and the desktop shell header / macOS traffic-light
+   region. Keep this geometry in CSS instead of Tailwind arbitrary classes so
+   every platform gets the same safe-area contract. */
+.settings-modal-shell {
+  position: fixed;
+  top: max(0.5rem, env(safe-area-inset-top, 0px));
+  right: max(0.5rem, env(safe-area-inset-right, 0px));
+  bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
+  left: max(0.5rem, env(safe-area-inset-left, 0px));
+}
+
+@media (min-width: 768px) {
+  .settings-modal-shell {
+    top: calc(var(--spacing-app-header) + 4vh);
+    right: max(2.5vw, calc((100vw - 76rem) / 2));
+    bottom: 4vh;
+    left: max(2.5vw, calc((100vw - 76rem) / 2));
+    max-height: calc(100vh - var(--spacing-app-header) - 8vh);
+  }
+}
+
 @supports (height: 100svh) {
   .mobile-viewport {
     height: 100svh;

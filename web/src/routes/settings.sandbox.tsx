@@ -98,7 +98,7 @@ export function SandboxSettingsPage() {
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto bg-(--bg-page)">
-        <div className="mx-auto max-w-3xl space-y-4 p-5">
+        <div className="mx-auto max-w-3xl space-y-4 p-3 sm:p-5">
           <p className="text-xs leading-relaxed text-(--color-text-muted)">
             Glob patterns matched against the resolved absolute path. Use{' '}
             <code className="rounded bg-(--bg-key) px-1 py-0.5 font-mono text-xs">**</code>{' '}
@@ -149,7 +149,7 @@ export function SandboxSettingsPage() {
                           onChange={(e) => updateAt(idx, e.target.value)}
                           placeholder="**/.env"
                           aria-label={`Pattern ${idx + 1}`}
-                          className="h-8.5 font-mono text-xs"
+                          className="min-h-11 font-mono text-xs md:min-h-9"
                         />
                         <Tooltip>
                           <TooltipTrigger
@@ -157,7 +157,7 @@ export function SandboxSettingsPage() {
                               <Button
                                 size="icon-sm"
                                 variant="ghost"
-                                className="h-11 w-11 md:h-7 md:w-7"
+                                className="h-9 w-9 md:h-7 md:w-7"
                                 onClick={() => removeAt(idx)}
                                 aria-label={`Remove pattern ${idx + 1}`}
                               >

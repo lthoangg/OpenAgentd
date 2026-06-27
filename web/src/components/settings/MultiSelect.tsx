@@ -1,6 +1,6 @@
 /**
  * MultiSelect — combobox-style multi-select built on the project's
- * shadcn Popover (which wraps `@base-ui/react`'s Popover primitive).
+ * OpenAgentd Popover (which wraps `@base-ui/react` for positioning).
  *
  * Used for picking tools and skills in the agent editor.
  *

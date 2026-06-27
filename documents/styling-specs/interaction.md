@@ -1,333 +1,51 @@
----
-title: Interaction
-description: Hover, focus, active states, keyboard model, touch adaptation, and state choreography
-status: stable
-updated: 2026-05-27
----
+# OpenAgentd interaction model
 
-# Interaction
+_Last updated: 2026-06-26_
 
-The interaction language defines how the OpenAgentd UI responds to pointer, keyboard, and touch input. It consumes tokens from [motion.md](./motion.md) and [typography.md](./typography.md) and applies them consistently across every component.
+## Rest, hover, focus
 
----
+OpenAgentd controls should feel calm at rest and precise in motion.
 
-## Core rules
+- Rest state uses muted text and a crisp 1px border.
+- Hover should gently warm the surface (`bg-(--bg-key)/30` or `/40`) without changing border thickness or causing layout jumps.
+- Focus uses `focus-visible:ring-2 focus-visible:ring-(--focus-ring)/30` or `/40`.
+- Disabled controls use opacity and `cursor-not-allowed`; do not add extra muted wrappers.
 
-### 1. Hover is a promise
+## Buttons
 
-Hover previews what will happen if the user acts — it never *reveals* new functionality. An element that only exists on hover is hidden UI, which breaks discoverability on touch devices and for keyboard users.
+Buttons are plain `<button>` elements styled by `buttonVariants`.
 
-**Allowed hover effects:**
-- Brightness/contrast shift on the element itself
-- Font-weight shift (400 → 500)
-- Underline on links
-- Tooltip appearance (after 500ms delay)
-- Cursor change
+- `default`: paper/card action surface.
+- `primary`: strongest positive action.
+- `subtle`: low-emphasis toolbar/list action.
+- `ghost`: icon or contextual action with transparent rest state.
+- `danger` / `danger-subtle`: destructive flows.
+- `link`: inline text action.
 
-**Not allowed:**
-- Revealing buttons that weren't visible before
-- Showing actions in a table row that are hidden otherwise (use persistent visibility or an explicit "…" menu instead)
-- Expanding content that isn't already indicated as expandable
+`LongPressButton` must not inject default button styling. Variant styling is opt-in so it can be used as a navigation row.
 
-**Exception — secondary destructive/utility actions on desktop only.** Some actions (session delete, code-block copy) are hidden until hover on desktop for density reasons (`opacity-0 group-hover:opacity-100`). These must be **always visible on mobile** because touch has no hover state. Use `opacity-100 md:opacity-0 md:group-hover:opacity-100` so the button is visible by default and hidden-until-hover only on `md+` screens.
+## Inputs and textareas
 
-### 2. Focus is a right, not a privilege
+Inputs, textareas, and search fields use warm input surfaces, small type, and stable borders. Avoid hover border jumps. Validation should use `aria-invalid` plus error text, not color alone.
 
-Every interactive element is reachable by keyboard, in a logical order, with a visible focus ring. Removing focus rings (`outline: none` without a replacement) is never acceptable.
+## Selection controls
 
-Focus appears only on `:focus-visible` — meaning keyboard navigation or programmatic focus. Mouse clicks don't produce a ring, because the user already knows what they clicked.
+- `Switch`: pill track, warm rest state, blue checked state, white circular thumb.
+- `Tabs`: custom semantic tab buttons for segmented toggles; labels can collapse to icons on narrow screens.
+- `SegmentedControl`: use for binary or short enum choices in settings forms.
+- `Checkbox`, `RadioGroup`, and `NumberInput`: plain semantic inputs styled with Tailwind tokens.
 
-### 3. Active is a receipt
+## Search and filtering
 
-When the user presses an interactive element, the UI acknowledges receipt before the action completes. For buttons, this is the pressed state (font-weight 600, slight background darkening). For forms, this is the disabled state plus a progress indicator.
+Use `SearchBar` for list filtering. It supports a leading icon, clear button, optional result count, loading state, and submit callback. Filter chips should be stable: clicking an active chip returns to the all/default state, and counts should not disappear mid-filter.
 
-The gap between "user pressed" and "result appeared" is where perceived responsiveness lives. Acknowledge within 80ms, even if the real work takes longer.
+## Settings navigation
 
-### 4. One interaction per input
+- Primary desktop navigation lives in the settings sidebar.
+- Mobile primary navigation lives in the bottom tab bar.
+- Detail/new/editor screens are drill-downs and expose a back affordance.
+- Breadcrumbs are desktop-only; they are hidden on mobile to preserve vertical space.
 
-A click is a click. A hover is a hover. A keypress is a keypress. Don't combine — e.g. long-press-to-reveal, or double-click-for-secondary-action — unless the platform already establishes the convention.
+## Motion
 
----
-
-## State choreography
-
-Every interactive element moves through a subset of these states. The transitions between them are where the OpenAgentd product identity lives.
-
-```
-idle  →  hover  →  focus  →  active  →  loading  →  (success | error)  →  idle
-```
-
-### State specifications
-
-| State | Visual change | Motion token |
-|-------|---------------|--------------|
-| **Idle** | Default — border, text, and background at their resting values | — |
-| **Hover** | Background lifts one opacity step toward `--bg-key` (buttons: `/25`–`/40` depending on variant; nav rows: full `--bg-key`); text may step one token warmer (`--color-text-muted` → `--color-text-2`); cursor `pointer`. Border does **not** change — a jumping border reads as jerky. | `var(--motion-fast)` + `var(--ease-out)` |
-| **Focus** | 2px `--focus-ring` outline with 2px offset, fades in from opacity 0 → 1 | `var(--motion-fast)` + `var(--ease-out)` |
-| **Active** | Font-weight 500 → 600; background → next-step warm neutral (`--color-surface-2`); slight scale 1 → 0.98 (buttons only) | `var(--motion-instant)` + `var(--ease-in-out)` |
-| **Loading** | Label replaced with progressive text (`Thinking…`, `Saving…`); input locked; keyboard Escape cancels | — |
-| **Success** | Brief opacity pulse (0.6 → 1.0), no color flash, returns to idle | `var(--motion-base)` + `var(--ease-out)` |
-| **Error** | Label updates to error message; border → `--color-error`; no shake, no bounce | `var(--motion-fast)` + `var(--ease-out)` |
-
-### Direction stays consistent across modes
-
-In light mode, hover moves to a *slightly warmer/darker* paper tone (`--bg-key` is one shade darker than `--bg-page`). In dark mode, hover moves to a *slightly lighter* warm surface (`--bg-key` is one shade lighter than `--bg-page`). The perceptual rule is the same in both — "hover separates from the surrounding surface" — and because `--bg-key` is mode-aware, a single CSS rule does both:
-
-```css
-/* Button hover — opacity fraction keeps the lift subtle */
-.button:hover { background: color-mix(in srgb, var(--bg-key) 25%, transparent); }
-
-/* Nav row hover — full --bg-key, row separates from the ambient surface */
-.nav-row:hover { background: var(--bg-key); }
-```
-
-Don't write mode-specific rules unless the *behavior* genuinely differs. Token-based rules give correct light/dark behavior automatically.
-
----
-
-## Font-weight transitions (signature)
-
-A signature of the OpenAgentd interaction language. Text shifts weight under the cursor — subtly, without moving. See [typography.md](./typography.md#font-weight-transitions-signature-interaction) for the full rule.
-
-```css
-.interactive {
-  font-weight: 400;
-  transition: font-weight var(--motion-fast) var(--ease-in-out);
-}
-
-.interactive:hover  { font-weight: 500; }
-.interactive:active { font-weight: 600; }
-```
-
-**Where it applies**: buttons, nav items, tabs, menu items, links in controls (not in prose).
-
-**Where it doesn't**: body text, headings, disabled elements, elements inside a scrolling list where the weight shift would cause reflow.
-
----
-
-## Focus ring specification
-
-### Visual
-
-- **Width**: 2px
-- **Offset**: 2px (outside the element)
-- **Color**: `var(--focus-ring)` — resolves to `var(--accent-blue)` (`#5AA8E2` on light, `#7CC2F0` on dark). Blue is used rather than `--color-accent` (near-black on light / near-white on dark) because the paper accent would render as a hard rectangle indistinguishable from a border; blue gives the standard focus affordance while staying inside the brand palette.
-- **Radius**: matches element's `border-radius`
-- **Fade-in**: opacity 0 → 1, `var(--motion-fast)`, `var(--ease-out)`
-
-### CSS
-
-```css
-:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
-  transition: outline-color var(--motion-fast) var(--ease-out);
-}
-
-/* Remove the default :focus ring only for mouse users */
-:focus:not(:focus-visible) {
-  outline: none;
-}
-```
-
-### Never do
-
-- `outline: none` without a replacement.
-- Custom ring that fails 3:1 contrast against the element's background.
-- Ring on `:focus` — that shows on mouse click and produces a ring the user didn't ask for.
-- Ring that is part of the element's border — breaks focus visibility for non-rectangular shapes.
-
----
-
-## Proximity effects
-
-Proximity — where hover state fades in based on cursor distance rather than binary "hovered or not" — is used sparingly for **dense lists** where binary hover would cause too much visual noise as the cursor travels.
-
-### When to use
-
-- Agent/session lists with many rows
-- Command palette results
-- Sidebar navigation with 10+ items
-
-### When not to use
-
-- Single buttons
-- Sparse navigation (fewer than 6 items — binary hover is clearer)
-- Anything outside a scrollable list
-
-### Implementation sketch
-
-```tsx
-function ProximityRow({ mouseY, rowY }: Props) {
-  const distance = Math.abs(mouseY - rowY);
-  const intensity = Math.max(0, 1 - distance / 120); // fade over 120px radius
-  return (
-    <div
-      style={{
-        backgroundColor: `color-mix(in srgb, var(--bg-key) ${intensity * 100}%, transparent)`,
-      }}
-    />
-  );
-}
-```
-
-Proximity should never *replace* the binary hover state — it should coexist. A directly-hovered row still gets the full `hover` treatment; adjacent rows get the fade.
-
----
-
-## Keyboard model
-
-### Global shortcuts
-
-| Keys | Action | Mobile |
-|------|--------|--------|
-| `⌘P` / `Ctrl+P` | Open command palette | disabled |
-| `⌘N` / `Ctrl+N` | Start new chat | active |
-| `⌘K` / `Ctrl+K` | Split active pane to the right (team view, unified mode) | disabled |
-| `Ctrl+A` | Toggle Agent Capabilities panel (team view) | active |
-| `Ctrl+T` | Toggle Todos popover (team view, requires active session) | active |
-| `Ctrl+I` | Focus chat input (team view) | active |
-| `Esc` | Close top-most modal/panel; cancel in-flight action; blur focused input | active |
-| `Tab` / `Shift+Tab` | Move focus forward / backward | active |
-| `/` | Focus primary search input (when present) | active |
-| `?` | Open keyboard shortcuts cheat sheet | active |
-| `⌘\` / `Ctrl+\` | Toggle sidebar | active |
-| `⌘,` / `Ctrl+,` | Open settings | active |
-| `v` | Cycle view mode (agent / split / unified) | disabled |
-
-> **Note**: Command palette moved from `Ctrl+K` to `Ctrl+P` so that `Ctrl+K` can remain available for context-local actions like "split pane right" inside the team view. Keep both labels accurate anywhere a shortcut is surfaced (tooltip, keycap, status bar, palette header).
-
-### Within controls
-
-| Control | Keys |
-|---------|------|
-| **Button** | `Space` or `Enter` to activate |
-| **Link** | `Enter` to follow |
-| **Checkbox** | `Space` to toggle |
-| **Radio group** | Arrow keys to navigate, `Space` to select |
-| **Tabs** | `←` `→` to navigate, `Home` / `End` for first/last |
-| **Listbox / Select** | `↑` `↓` to navigate, `Enter` to confirm, type-to-search |
-| **Modal** | `Esc` to close; focus trapped inside |
-| **Drawer** | `Esc` to close; focus moves to trigger on close |
-| **Menu** | `↑` `↓` to navigate items, `Esc` to close, `Enter` to activate |
-
-### Skip links
-
-Every page has a "Skip to main content" link that appears on the first `Tab` press. It moves focus past navigation to the main content area.
-
-```html
-<a href="#main" class="skip-link">Skip to main content</a>
-```
-
-```css
-.skip-link {
-  position: absolute;
-  top: -40px;
-  left: 0;
-  padding: 8px 16px;
-  background: var(--bg-send);
-  color: var(--color-text-on-accent);
-  transition: top var(--motion-fast) var(--ease-out);
-  z-index: 100;
-}
-
-.skip-link:focus-visible {
-  top: 0;
-}
-```
-
-### Focus trap rules
-
-- Modals and drawers trap focus — `Tab` cycles within the panel
-- Trap is released on close; focus returns to the element that opened the panel
-- Trap is never permanent — `Esc` always escapes (except in explicit confirmation dialogs where an action is required)
-
----
-
-## Touch adaptation
-
-### Minimum target sizes
-
-- **Touch targets**: 44×44 CSS pixels minimum (iOS/Android HIG)
-- **Spacing between targets**: 8px minimum to prevent mistaps
-- **Inline links in text**: `padding: 2px 0` to increase tap area without disrupting layout
-
-### Hover → press
-
-On touch devices, the `hover` state does not exist. It's replaced by the `active` (pressed) state.
-
-```css
-@media (hover: hover) {
-  /* Pointer device — hover is valid */
-  .button:hover { /* … */ }
-}
-
-@media (hover: none) {
-  /* Touch device — skip hover, use active */
-  .button:active { /* … */ }
-}
-```
-
-### Gestures
-
-OpenAgentd does not rely on custom gestures (swipe, pinch, etc.) for core functionality. Platform-standard gestures work — back-swipe on iOS, pull-to-refresh on Android — and they are respected, not overridden.
-
----
-
-## Loading & disabled states
-
-### Loading
-
-- Label changes to progressive text: `Start session` → `Starting…` → `Connecting…` → result
-- Input is disabled (pointer-events: none, reduced opacity)
-- Spinner only if the operation is truly opaque and text progress isn't possible
-- `Esc` cancels the loading action when the underlying operation supports cancellation
-
-### Disabled
-
-- Opacity reduced to 0.5
-- `cursor: not-allowed`
-- `pointer-events: none`
-- Still focusable via `Tab` if the disabled state can change (so users can discover why it's disabled via tooltip)
-- `aria-disabled="true"` on the element
-- Explanatory tooltip on hover/focus: "Disabled — sign in to start a session"
-
-Never combine loading + disabled visually — the two states look the same but mean different things. A loading button is *busy*; a disabled button is *unavailable*. Use distinct affordances (loading = progressive text, disabled = reduced opacity).
-
----
-
-## Anti-patterns
-
-| Anti-pattern | Why it's wrong |
-|-------------|----------------|
-| **Hover-only buttons in tables** | Inaccessible on touch and for keyboard users. Use persistent or menu-based reveal. Exception: secondary desktop-only actions may use `md:opacity-0 md:group-hover:opacity-100` provided they are always visible (`opacity-100`) below `md`. |
-| **Focus ring removed without replacement** | Breaks keyboard accessibility entirely. |
-| **Different focus ring styles per component** | Fragments the visual language. One ring style, system-wide. |
-| **`ring-1 ring-foreground/N` (or `/10`, `/15`) on flat surfaces or floating overlays** | `--color-text` is near-black on cream `--bg-page`, so a low-alpha ring reads as a brown smudge, not separation. Use `border border-(--color-border)` for separation; reserve `ring-*` for focus and decorative chip outlines. |
-| **Drop shadow on a flat card** | The warm border alone carries the elevation. Reserve `--shadow-depth` for genuinely floating chrome (input bar, queue banner, popovers). |
-| **Custom gestures for core functions** | Undiscoverable. Use platform-standard gestures only. |
-| **Double-click for primary actions** | Non-standard on web. Keep single-click primary. |
-| **Hover content that isn't also reachable by focus** | Screen reader and keyboard users are locked out. |
-| **Weight shift on static text** | Only interactive elements shift weight. |
-| **Weight shift on Caveat** | Hand-drawn weights aren't perceptually distinct the way Inter weights are. |
-| **Agent chip color used outside its role** | Chip colors are role-identity-reserved — using mint anywhere that isn't the openagentd role breaks the language. |
-| **Native `<input type="checkbox">` for a feature flag** | Feature flags are runtime state and read as on/off; use the `Switch` primitive. Reserve checkboxes for multi-select and consent. |
-| **Sub-44px touch targets** | Fails touch usability guidelines. |
-| **Proximity effects on sparse lists** | Adds complexity without payoff. |
-
----
-
-## Checklist
-
-Before shipping an interactive component:
-
-- [ ] Hover, focus, active, loading, disabled states all defined
-- [ ] Focus ring visible on `:focus-visible`, 2px, 2px offset
-- [ ] Keyboard-accessible (Tab reaches it, Enter/Space activates)
-- [ ] Escape key behavior defined (if in a modal/drawer/menu)
-- [ ] Font-weight transition applied (if it's a text-based control)
-- [ ] Touch target ≥ 44×44 CSS pixels
-- [ ] `prefers-reduced-motion` honored
-- [ ] No hover-only functionality
-- [ ] Hover uses `--bg-key` (or role-specific `--accent-{role}-soft`) — works in both modes via tokens
-- [ ] ARIA roles and labels where semantic HTML isn't sufficient
+Prefer short color/opacity transitions. Avoid transform-heavy effects in dense settings surfaces. Loading indicators should be small and local; for restart actions, rotate the restart icon while pending.

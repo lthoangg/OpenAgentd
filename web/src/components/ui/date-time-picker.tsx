@@ -18,7 +18,6 @@ import { cn } from '@/lib/utils'
 import { buttonVariants } from '@/components/ui/button'
 import { Calendar } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import type { PopoverRoot } from '@base-ui/react/popover'
 
 interface DateTimePickerProps {
   /** ISO-8601 local string: "2026-04-23T14:30" or empty string / undefined */
@@ -85,7 +84,7 @@ export function DateTimePicker({
 }: DateTimePickerProps) {
   const [open, setOpen] = React.useState(false)
 
-  const handleOpenChange: PopoverRoot.Props['onOpenChange'] = (next) => setOpen(next)
+  const handleOpenChange = (next: boolean) => setOpen(next)
 
   const parsed = React.useMemo(() => {
     if (!value) return undefined

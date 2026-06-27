@@ -70,7 +70,7 @@ export function NewSkillPage({ onBack, onCreated }: NewSkillPageProps) {
       />
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl p-6">
+        <div className="mx-auto max-w-3xl p-3 sm:p-5">
           <SettingsSection title="Skill source" description="frontmatter + body loaded by agents on demand">
             <p className="mb-2.5 text-[11px] leading-relaxed text-(--color-text-muted)">
               Frontmatter (<span className="font-mono">name</span>,{' '}

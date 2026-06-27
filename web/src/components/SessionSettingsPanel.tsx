@@ -210,7 +210,7 @@ export function SessionSettingsPanel({
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
             onClick={onClose}
-            className="fixed inset-0 z-40 bg-black/40"
+            className="mobile-safe-top fixed inset-x-0 bottom-0 z-40 bg-black/40"
           />
 
           <motion.aside
@@ -219,7 +219,7 @@ export function SessionSettingsPanel({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.97, y: 8 }}
             transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
-            className="fixed bottom-0 left-0 right-0 top-[env(safe-area-inset-top,0px)] z-50 flex flex-col overflow-hidden border border-(--color-border) bg-(--bg-card) shadow-2xl sm:bottom-auto sm:left-1/2 sm:right-auto sm:top-1/2 sm:h-[min(90vh,860px)] sm:w-[min(90vw,960px)] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-md"
+            className="mobile-safe-top fixed inset-x-0 bottom-0 z-50 flex flex-col overflow-hidden border border-(--color-border) bg-(--bg-card) shadow-2xl sm:bottom-auto sm:left-1/2 sm:right-auto sm:top-1/2 sm:h-[min(90vh,860px)] sm:w-[min(90vw,960px)] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-md"
             role="dialog"
             aria-modal="true"
             aria-label="Session settings"
@@ -242,7 +242,7 @@ export function SessionSettingsPanel({
           )}
           <button
             onClick={onClose}
-            className="shrink-0 rounded-md p-1.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) md:h-7 md:w-7"
             aria-label="Close (Esc)"
             title="Close (Esc)"
           >

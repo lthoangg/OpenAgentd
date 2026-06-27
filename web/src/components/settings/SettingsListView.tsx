@@ -91,7 +91,7 @@ export function SettingsListView({
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto bg-(--bg-page)">
-      <div className="px-6 py-5 space-y-4">
+      <div className="space-y-4 px-3 py-3 sm:px-6 sm:py-5">
         {/* ── Title row ─────────────────────────────────────────────────── */}
         <header className="flex items-start gap-4 select-none">
           <div className="min-w-0 flex-1">
@@ -103,7 +103,7 @@ export function SettingsListView({
             </p>
           </div>
           {newAction ?? (
-            <Button size="sm" onClick={onNew} className="h-8 text-xs">
+            <Button size="sm" onClick={onNew} className="min-h-11 text-xs md:min-h-0">
               <Plus size={13} aria-hidden="true" />
               {newLabel}
             </Button>
@@ -142,7 +142,7 @@ export function SettingsListView({
               <p className="max-w-md text-[11px] leading-relaxed text-(--color-text-muted)">
                 {emptyBody}
               </p>
-              <Button size="sm" onClick={onNew} className="h-8 text-xs">
+              <Button size="sm" onClick={onNew} className="min-h-11 text-xs md:min-h-0">
                 <Plus size={12} aria-hidden="true" />
                 {newLabel}
               </Button>
@@ -186,7 +186,7 @@ function ListCard({ row }: { row: ListViewRow }) {
       aria-current={row.active ? 'page' : undefined}
       className={cn(
         // Base layout — rounded-sm = 8px, crisp enough for a dense list card
-        'group flex w-full items-center gap-3 rounded-sm border px-3 py-2.5 text-left',
+        'group flex min-h-11 w-full items-center gap-3 rounded-sm border px-3 py-2.5 text-left md:min-h-0',
         // Surface & transition
         'bg-(--bg-card) transition-colors duration-100',
         // Hover — gentle warm lift, no border jump

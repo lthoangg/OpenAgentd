@@ -89,7 +89,7 @@ export function NewAgentPage({ initialMode = 'normal', onBack, onCreated }: NewA
       />
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl p-6">
+        <div className="mx-auto max-w-3xl p-3 sm:p-5">
           <div className="mb-4 rounded-lg border border-(--color-border) bg-(--bg-card) px-4 py-3">
             <p className="text-xs font-medium text-(--color-text)">Create in</p>
             <div className="mt-2 flex gap-2">

@@ -33,7 +33,7 @@ export function DetailEmptyState({
           <h2 className="text-sm font-semibold text-(--color-text)">{title}</h2>
           <p className="text-xs leading-relaxed text-(--color-text-muted)">{body}</p>
         </div>
-        <Button size="sm" onClick={onCta}>
+        <Button size="sm" className="min-h-11 md:min-h-0" onClick={onCta}>
           <Plus size={12} aria-hidden="true" />
           {ctaLabel}
         </Button>

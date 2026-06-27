@@ -160,7 +160,7 @@ export function MultimodalSettingsPage() {
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto bg-(--bg-page)">
-        <div className="mx-auto max-w-3xl space-y-4 p-5">
+        <div className="mx-auto max-w-3xl space-y-4 p-3 sm:p-5">
           <p className="text-xs leading-relaxed text-(--color-text-muted)">
             Configure default models and options for image and video generation tools.
           </p>

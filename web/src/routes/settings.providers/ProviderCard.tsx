@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertCircle, CheckCircle2, ExternalLink, KeyRound, Loader2, ShieldCheck } from 'lucide-react'
+import { AlertCircle, CheckCircle2, ExternalLink, Loader2, ShieldCheck } from 'lucide-react'
 
 import { ApiValidationError, type ProviderInfo } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { SectionCard, SectionCardHeader } from '@/components/ui/section-card'
 import { queryKeys, useProviderModelsMutation, useProviderUsageQuery, useSaveProviderMutation, useSaveProviderVisibleModelsMutation } from '@/queries'
 import { openExternalUrl } from '@/lib/open-external'
 import { useToastStore } from '@/stores/useToastStore'
@@ -153,17 +154,14 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
     hasReachabilityFailure || (provider.kind !== 'oauth' && (provider.is_reachable === false || (provider.is_saved && !provider.is_configured)))
 
   return (
-    <div className="group rounded-sm border border-(--color-border) bg-(--bg-card) p-4 space-y-3">
+    <SectionCard className="group">
       {/* ── Header ──────────────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-center gap-2 select-none">
-        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-(--bg-key) text-(--color-text-muted) border border-(--color-border)">
-          {provider.kind === 'oauth' ? <ShieldCheck size={13} aria-hidden="true" /> : <KeyRound size={13} aria-hidden="true" />}
-        </div>
-        <p className="text-xs font-semibold text-(--color-text)">{provider.label}</p>
+      <SectionCardHeader className="flex flex-wrap items-center gap-2 py-2 normal-case tracking-normal">
+        <p className="min-w-0 flex-1 basis-32 truncate text-xs font-semibold text-(--color-text)">{provider.label}</p>
 
-        <div className="flex-1" />
+        <div className="hidden flex-1 sm:block" />
 
-        <span className="rounded bg-(--bg-key) px-1.5 py-0.5 text-[9px] font-semibold text-(--color-text-muted) border border-(--color-border)">
+        <span className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 text-[9px] font-semibold text-(--color-text-muted)">
           {providerKindLabel(provider.kind)}
         </span>
 
@@ -184,21 +182,23 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
             type="button"
             size="sm"
             variant="ghost"
-            className="h-6.5 text-[10.5px] px-2"
+            className="h-8 px-2 text-[10.5px] sm:h-6.5"
             onClick={() => void openExternalUrl(provider.docs_url)}
           >
             Docs <ExternalLink size={10.5} aria-hidden="true" className="ml-1" />
           </Button>
         )}
-      </div>
+      </SectionCardHeader>
+
+      <div className="space-y-3 px-3 py-3">
 
       <p className="text-xs text-(--color-text-muted) leading-relaxed">{provider.description}</p>
 
       {/* ── API-key controls ─────────────────────────────────────────── */}
       {provider.kind === 'api_key' && (
         <div className="space-y-2 pt-1">
-          <div className="grid gap-2 sm:grid-cols-[minmax(220px,1fr)_auto_auto] sm:items-center">
-            <label className="min-w-0">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-[minmax(220px,1fr)_auto_auto] sm:items-center">
+            <label className="col-span-2 min-w-0 sm:col-span-1">
               <span className="sr-only">{primaryCredential?.label || provider.env_var}</span>
               <Input
                 type="password"
@@ -209,14 +209,14 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
                 }}
                 placeholder={primaryCredential?.placeholder || (provider.is_configured ? 'Enter a new key to replace current key' : 'Paste API key')}
                 autoComplete="off"
-                className="h-8.5 text-xs font-mono"
+                className="h-10 text-xs font-mono sm:h-8.5"
               />
             </label>
             <Button
               type="button"
               size="sm"
               variant="default"
-              className=""
+              className="h-10 w-full sm:h-8 sm:w-auto"
               onClick={handleListModels}
               disabled={!hasCandidateKey || listing}
             >
@@ -226,7 +226,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
             <Button
               type="button"
               size="sm"
-              className=""
+              className="h-10 w-full sm:h-8 sm:w-auto"
               onClick={handleSave}
               disabled={!canSave || saveMutation.isPending}
             >
@@ -243,7 +243,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
                 onChange={(e) => setBaseUrl(e.target.value)}
                 placeholder={daemon.placeholder}
                 autoComplete="off"
-                className="mt-1 font-mono"
+                className="mt-1 h-10 font-mono sm:h-9"
                 spellCheck={false}
               />
             </label>
@@ -263,12 +263,12 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
 
       {/* ── OAuth providers ──────────────────────────────────────────── */}
       {provider.kind === 'oauth' && (
-        <div className="flex items-center justify-end gap-2 pt-1">
+        <div className="grid grid-cols-2 gap-2 pt-1 sm:flex sm:items-center sm:justify-end">
           <Button
             type="button"
             size="sm"
             variant="default"
-            className=""
+            className="h-10 w-full sm:h-8 sm:w-auto"
             onClick={handleListModels}
             disabled={!provider.is_configured || listing}
           >
@@ -278,7 +278,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
           <Button
             type="button"
             size="sm"
-            className=""
+            className="h-10 w-full sm:h-8 sm:w-auto"
             onClick={() => setOauthOpen(true)}
           >
             <ShieldCheck size={12} aria-hidden="true" className="mr-1.5" />
@@ -309,8 +309,8 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
       {/* ── Local daemon (Ollama) — optional base URL only ─────────── */}
       {provider.kind === 'local' && daemon && (
         <div className="space-y-2 pt-1">
-          <div className="grid gap-2 sm:grid-cols-[minmax(220px,1fr)_auto_auto] sm:items-center">
-            <label className="min-w-0">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-[minmax(220px,1fr)_auto_auto] sm:items-center">
+            <label className="col-span-2 min-w-0 sm:col-span-1">
               <span className="sr-only">{daemon.var}</span>
               <Input
                 type="url"
@@ -318,7 +318,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
                 onChange={(e) => setBaseUrl(e.target.value)}
                 placeholder={daemon.placeholder}
                 autoComplete="off"
-                className="font-mono"
+                className="h-10 font-mono sm:h-9"
                 spellCheck={false}
               />
             </label>
@@ -326,7 +326,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
               type="button"
               size="sm"
               variant="default"
-              className=""
+              className="h-10 w-full sm:h-8 sm:w-auto"
               onClick={handleListModels}
               disabled={listing}
             >
@@ -336,7 +336,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
             <Button
               type="button"
               size="sm"
-              className=""
+              className="h-10 w-full sm:h-8 sm:w-auto"
               onClick={handleSave}
               disabled={saveMutation.isPending}
             >
@@ -366,18 +366,18 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
                   }}
                   placeholder={credential.placeholder}
                   autoComplete="off"
-                  className="mt-1 font-mono"
+                  className="mt-1 h-10 font-mono sm:h-9"
                   spellCheck={false}
                 />
               </label>
             ))}
           </div>
-          <div className="flex items-center justify-end gap-2 pt-1">
+          <div className="grid grid-cols-2 gap-2 pt-1 sm:flex sm:items-center sm:justify-end">
             <Button
               type="button"
               size="sm"
               variant="default"
-              className=""
+              className="h-10 w-full sm:h-8 sm:w-auto"
               onClick={handleListModels}
               disabled={!hasCloudCandidate || listing}
             >
@@ -387,7 +387,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
             <Button
               type="button"
               size="sm"
-              className=""
+              className="h-10 w-full sm:h-8 sm:w-auto"
               onClick={handleSave}
               disabled={!canSave || saveMutation.isPending}
             >
@@ -432,6 +432,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
       {provider.kind === 'oauth' && oauthOpen && (
         <OAuthLoginDialog provider={provider} open={oauthOpen} onOpenChange={setOauthOpen} />
       )}
-    </div>
+      </div>
+    </SectionCard>
   )
 }

@@ -8,6 +8,7 @@
 import { useEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
+  ArrowLeft,
   Bell,
   Image,
   Info,
@@ -21,6 +22,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { useSettingsStore, type SettingsSection } from '@/stores/useSettingsStore'
 import {
@@ -145,7 +147,7 @@ function ModalSidebar({ section, onSelect }: { section: SettingsSection; onSelec
   ]
 
   return (
-    <nav aria-label="Settings categories" className="flex h-full w-52 shrink-0 flex-col overflow-y-auto border-r border-(--color-border) bg-(--bg-sidebar) select-none">
+    <nav aria-label="Settings categories" className="hidden h-full w-52 shrink-0 flex-col overflow-y-auto border-r border-(--color-border) bg-(--bg-sidebar) select-none md:flex">
       <GroupLabel>Configuration</GroupLabel>
       <div className="flex flex-col">
         {configItems.map((item) => (
@@ -159,6 +161,44 @@ function ModalSidebar({ section, onSelect }: { section: SettingsSection; onSelec
           <SidebarRow key={item.section} item={item} active={active === item.section} onClick={() => onSelect(item.section)} />
         ))}
       </div>
+    </nav>
+  )
+}
+
+
+function MobileTabBar({ section, onSelect }: { section: SettingsSection; onSelect: (s: TopLevelSection) => void }) {
+  const active = parentSection(section)
+  const items: SidebarItem[] = [
+    { section: 'agents', label: 'Agents', icon: Wrench },
+    { section: 'skills', label: 'Skills', icon: Sparkles },
+    { section: 'mcp', label: 'MCP', icon: Plug },
+    { section: 'providers', label: 'Providers', icon: KeyRound },
+    { section: 'about', label: 'About', icon: Info },
+  ]
+
+  return (
+    <nav aria-label="Settings sections" className="grid h-14 shrink-0 grid-cols-5 border-t border-(--color-border) bg-(--bg-sidebar) md:hidden">
+      {items.map((item) => {
+        const Icon = item.icon
+        const isActive = active === item.section
+        return (
+          <button
+            key={item.section}
+            type="button"
+            onClick={() => onSelect(item.section)}
+            aria-current={isActive ? 'page' : undefined}
+            className={cn(
+              'flex min-w-0 flex-col items-center justify-center gap-0.5 px-1 text-[9px] font-medium transition-colors',
+              'text-(--color-text-muted) hover:bg-(--bg-key)/40 hover:text-(--color-text)',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--focus-ring)/40',
+              isActive && 'bg-(--bg-key)/55 text-(--color-text)',
+            )}
+          >
+            <Icon size={14} aria-hidden="true" />
+            <span className="truncate">{item.label}</span>
+          </button>
+        )
+      })}
     </nav>
   )
 }
@@ -287,6 +327,8 @@ export function SettingsModal() {
   }, [open, closeSettings])
 
   const breadcrumbs = getBreadcrumbs(section, selectedName)
+  const isDrillDown = section !== parentSection(section)
+  const mobileBackSection = parentSection(section)
 
   return (
     <AnimatePresence>
@@ -313,15 +355,25 @@ export function SettingsModal() {
             exit={{ opacity: 0, scale: 0.98, y: 4 }}
             transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
             className={cn(
-              'fixed inset-2 z-50 flex flex-col overflow-hidden rounded-lg',
+              'settings-modal-shell z-50 flex flex-col overflow-hidden rounded-lg',
               'border border-(--color-border) bg-(--bg-page) shadow-2xl',
-              'md:inset-[4vh_auto] md:left-1/2 md:-translate-x-1/2',
-              'md:w-[min(95vw,76rem)] md:max-h-[92vh]',
             )}
           >
             {/* Header / Title Bar */}
-            <div className="flex h-11 shrink-0 items-center justify-between border-b border-(--color-border) bg-(--bg-sidebar) px-4 select-none">
-              <div className="flex items-center gap-3">
+            <div className="flex h-11 shrink-0 items-center justify-between border-b border-(--color-border) bg-(--bg-sidebar) px-2 select-none sm:px-4">
+              <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+                {isDrillDown && (
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    variant="ghost"
+                    className="md:hidden"
+                    onClick={() => setSection(mobileBackSection)}
+                    aria-label="Back to list"
+                  >
+                    <ArrowLeft size={14} aria-hidden="true" />
+                  </Button>
+                )}
                 <span className="text-xs font-semibold text-(--color-text)">Settings</span>
               </div>
 
@@ -329,7 +381,7 @@ export function SettingsModal() {
               <button
                 type="button"
                 onClick={closeSettings}
-                className="flex h-7 w-7 items-center justify-center rounded text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
+                className="flex h-7 w-7 items-center justify-center rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
                 aria-label="Close settings"
                 title="Close (Esc)"
               >
@@ -345,7 +397,7 @@ export function SettingsModal() {
               {/* Right content panel */}
               <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-(--bg-page)">
                 {/* Breadcrumbs Bar */}
-                <div className="flex h-8.5 shrink-0 items-center gap-1.5 border-b border-(--color-border) bg-(--bg-page) px-6 font-mono text-[10px] text-(--color-text-muted) select-none">
+                <div className="hidden h-8.5 shrink-0 items-center gap-1.5 border-b border-(--color-border) bg-(--bg-page) px-6 font-mono text-[10px] text-(--color-text-muted) select-none md:flex">
                   {breadcrumbs.map((crumb, idx) => (
                     <div key={idx} className="flex items-center gap-1.5">
                       {idx > 0 && <span className="text-(--color-text-subtle)/50">/</span>}
@@ -366,6 +418,7 @@ export function SettingsModal() {
                 </div>
               </main>
             </div>
+            <MobileTabBar section={section} onSelect={(s) => setSection(s)} />
           </motion.div>
         </>
       )}

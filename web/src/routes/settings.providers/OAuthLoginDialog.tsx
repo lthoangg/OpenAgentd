@@ -115,7 +115,7 @@ export function OAuthLoginDialog({
           <DialogDescription>Approve the browser prompt. This window will update when the token is saved.</DialogDescription>
         </DialogHeader>
         <div className="min-w-0 space-y-4">
-          <div className="flex items-center gap-3 rounded-lg border border-(--color-border) bg-(--bg-key) p-3">
+          <div className="flex items-center gap-3 rounded-sm border border-(--color-border) bg-(--bg-key) p-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-(--bg-card) text-(--color-accent) ring-1 ring-(--color-border)">
               {isWorking ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <CheckCircle2 className="h-4 w-4" aria-hidden="true" />}
             </div>
@@ -125,20 +125,22 @@ export function OAuthLoginDialog({
             </div>
           </div>
           {deviceEvent?.user_code && (
-            <div className="overflow-hidden rounded-xl border border-(--accent-blue)/25 bg-(--accent-blue-soft)">
-              <div className="p-5 text-center">
+            <div className="overflow-hidden rounded-md border border-(--accent-blue)/25 bg-(--accent-blue-soft)">
+              <div className="p-3 text-center sm:p-5">
                 <p className="text-xs font-medium tracking-[0.18em] text-(--color-text-muted) uppercase">Device code</p>
                 <div className="mt-2 flex flex-col items-center justify-center gap-3 sm:flex-row">
-                  <p className="font-mono text-3xl font-semibold tracking-[0.18em] text-(--color-text)">{deviceEvent.user_code}</p>
-                  <button
+                  <p className="min-w-0 max-w-full break-all font-mono text-2xl font-semibold tracking-[0.12em] text-(--color-text) sm:text-3xl sm:tracking-[0.18em]">{deviceEvent.user_code}</p>
+                  <Button
                     type="button"
                     onClick={() => { void copyDeviceCode() }}
-                    className="flex h-9 w-9 items-center justify-center rounded-md border border-(--color-border) bg-(--bg-card) text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+                    variant="default"
+                    size="icon-sm"
+                    className="min-h-9 min-w-9 sm:min-h-0 sm:min-w-0"
                     aria-label="Copy device code"
                     title="Copy device code"
                   >
                     {codeCopied ? <Check size={15} className="text-(--color-success)" /> : <Copy size={15} />}
-                  </button>
+                  </Button>
                 </div>
                 <p className="mx-auto mt-2 max-w-sm text-xs leading-relaxed text-(--color-text-muted)">
                   {deviceCodeHelp(provider.id)}
@@ -150,7 +152,7 @@ export function OAuthLoginDialog({
                 )}
               </div>
               {provider.id === 'codex' && authMode !== 'browser' && !isSuccess && (
-                <div className="border-t border-(--accent-blue)/20 bg-(--bg-page)/70 p-4 text-left">
+                <div className="border-t border-(--accent-blue)/20 bg-(--bg-page)/70 p-3 text-left sm:p-4">
                   <p className="text-xs font-medium text-(--color-text)">Workspace account?</p>
                   <p className="mt-1 text-xs leading-relaxed text-(--color-text-muted)">
                     If the Codex page says your admin must enable device-code authentication, switch to browser sign-in.
@@ -173,7 +175,7 @@ export function OAuthLoginDialog({
           )}
           {latest?.event === 'code_required' && (
             <form
-              className="space-y-2 rounded-lg border border-(--color-border) bg-(--bg-page) p-3"
+              className="space-y-2 rounded-sm border border-(--color-border) bg-(--bg-page) p-3"
               onSubmit={(event) => {
                 event.preventDefault()
                 setSubmittingCode(true)
@@ -192,20 +194,20 @@ export function OAuthLoginDialog({
             >
               <label className="block text-xs font-medium text-(--color-text-muted)">
                 Paste authorization callback URL/code
-                <Input value={code} onChange={(event) => setCode(event.target.value)} className="mt-1" autoComplete="off" />
+                <Input value={code} onChange={(event) => setCode(event.target.value)} className="mt-1 min-h-11 sm:min-h-9" autoComplete="off" />
               </label>
-              <Button type="submit" size="sm" disabled={!code.trim() || submittingCode}>
+              <Button type="submit" size="sm" className="min-h-11 w-full sm:min-h-0 sm:w-auto" disabled={!code.trim() || submittingCode}>
                 {submittingCode && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
                 Finish connection
               </Button>
             </form>
           )}
           {isSuccess && (
-            <p className="rounded-md bg-(--color-success-subtle) p-3 text-sm text-(--color-success)">Connected successfully.</p>
+            <p className="rounded-sm bg-(--color-success-subtle) p-3 text-sm text-(--color-success)">Connected successfully.</p>
           )}
-          {error && <p className="rounded-md bg-(--color-error)/10 p-3 text-sm text-(--color-error)">{error}</p>}
+          {error && <p className="rounded-sm bg-(--color-error)/10 p-3 text-sm text-(--color-error)">{error}</p>}
           {events.length > 0 && (
-            <details className="rounded-md border border-(--color-border) bg-(--bg-page) p-3">
+            <details className="rounded-sm border border-(--color-border) bg-(--bg-page) p-3">
               <summary className="flex cursor-pointer items-center gap-2 text-xs font-medium text-(--color-text-muted)">
                 <TerminalSquare size={13} aria-hidden="true" />
                 Technical details

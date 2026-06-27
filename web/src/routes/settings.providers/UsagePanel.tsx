@@ -37,7 +37,7 @@ function UsageBar({
 
   return (
     <div className="space-y-1">
-      <div className="flex items-center justify-between gap-2 text-[10.5px] text-(--color-text-muted)">
+      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 text-[10.5px] text-(--color-text-muted)">
         <span className="truncate">{label}</span>
         <span className="shrink-0 tabular-nums">
           {Math.round(percent)}%{reset ? ` · resets ${reset}` : ''}
@@ -96,7 +96,7 @@ export function UsagePanel({ limits }: { limits: ProviderUsageLimit[] }) {
   return (
     <div className="rounded-xs border border-(--color-border) bg-(--bg-key)/30 px-3 py-2.5 space-y-2.5">
       {/* Header strip */}
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5">
         <p className="text-[10px] font-semibold uppercase tracking-wide text-(--color-text-muted) select-none">
           Active usage
         </p>

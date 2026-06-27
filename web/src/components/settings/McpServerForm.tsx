@@ -402,7 +402,7 @@ function PairListField({
               <Button
                 size="icon-xs"
                 variant="ghost"
-                className="h-11 w-11 sm:justify-self-end md:h-6 md:w-6"
+                className="h-9 w-9 justify-self-end md:h-6 md:w-6"
                 onClick={() => removeAt(idx)}
                 disabled={disabled}
                 aria-label={`Remove ${pair.key || 'entry'}`}

@@ -83,7 +83,7 @@ export function EditorSubHeader({
         : null
 
   return (
-    <header className="sticky top-0 z-10 flex h-14 items-center gap-3 border-b border-(--color-border) bg-(--bg-page) px-4">
+    <header className="sticky top-0 z-10 flex h-14 items-center gap-2 border-b border-(--color-border) bg-(--bg-page) px-2 sm:gap-3 sm:px-4">
       {/* Title block ─────────────────────────────────────────────── */}
       <Tooltip>
         <TooltipTrigger
@@ -122,13 +122,13 @@ export function EditorSubHeader({
       {showToggle && (
         <Tabs value={mode} onValueChange={(v) => onModeChange(v as 'form' | 'raw')}>
           <TabsList className="h-7">
-            <TabsTrigger value="form" className="px-2 text-xs">
+            <TabsTrigger value="form" className="px-2 text-xs" aria-label="Form mode">
               <FormInput size={11} aria-hidden="true" />
-              Form
+              <span className="hidden sm:inline">Form</span>
             </TabsTrigger>
-            <TabsTrigger value="raw" className="px-2 text-xs">
+            <TabsTrigger value="raw" className="px-2 text-xs" aria-label="Raw mode">
               <Code2 size={11} aria-hidden="true" />
-              Raw
+              <span className="hidden sm:inline">Raw</span>
             </TabsTrigger>
           </TabsList>
         </Tabs>
@@ -163,7 +163,7 @@ export function EditorSubHeader({
           </Tooltip>
         )}
         {!error && !invalid && dirty && (
-          <span className="flex items-center gap-1.5 text-xs text-(--color-text-muted)">
+          <span className="hidden items-center gap-1.5 text-xs text-(--color-text-muted) sm:flex">
             <span
               className={cn(
                 'h-1.5 w-1.5 rounded-full bg-(--color-text)',

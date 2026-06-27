@@ -89,7 +89,7 @@ function SearchBar({
       <div
         className={cn(
           // Shape
-          'flex h-8 items-center gap-1.5 rounded border',
+          'flex min-h-10 items-center gap-1.5 rounded-sm border md:min-h-8',
           // Surface
           'border-(--color-border) bg-(--bg-input)',
           // Focus-within ring — matches Input primitive behaviour
@@ -114,7 +114,7 @@ function SearchBar({
           onChange={handleChange}
           placeholder={placeholder}
           className={cn(
-            'min-w-0 flex-1 bg-transparent py-1.5 text-xs text-(--color-text)',
+            'min-w-0 flex-1 bg-transparent py-2 text-xs text-(--color-text) md:py-1.5',
             'placeholder:text-(--color-text-muted)/60',
             'outline-none',
             // Remove browser-default search cancel button — we render our own
@@ -131,7 +131,7 @@ function SearchBar({
             aria-label="Clear search"
             onClick={handleClear}
             className={cn(
-              'mr-1 flex h-5 w-5 shrink-0 items-center justify-center rounded',
+              'mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-sm md:h-5 md:w-5',
               'text-(--color-text-subtle) transition-colors',
               'hover:bg-(--bg-key) hover:text-(--color-text)',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40',

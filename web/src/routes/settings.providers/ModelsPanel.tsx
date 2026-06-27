@@ -76,18 +76,21 @@ export function ModelsPanel({
         onClick={onToggle}
         aria-expanded={expanded}
         className={cn(
-          'flex w-full items-center justify-between gap-2 px-3 py-2 text-left',
+          'flex min-h-11 w-full items-center justify-between gap-2 px-3 py-2 text-left md:min-h-0',
           'text-[10.5px] text-(--color-text-muted) transition-colors',
           'hover:bg-(--bg-key)/40 hover:text-(--color-text)',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40',
           expanded && 'border-b border-(--color-border)',
         )}
       >
-        <span className="font-mono">
-          {indexed.length} models available
-          {' · '}
-          {allVisible ? 'all visible' : `${visibleCount} visible`}
-          {search && <span className="text-(--color-text-subtle)"> · {visible.length} shown</span>}
+        <span className="min-w-0 flex-1 space-y-0.5 font-mono">
+          <span className="block truncate text-[11px] text-(--color-text)">
+            {indexed.length} models available
+          </span>
+          <span className="block truncate text-[10px] text-(--color-text-muted)">
+            {allVisible ? 'All visible' : `${visibleCount} visible`}
+            {search ? ` · ${visible.length} shown` : ''}
+          </span>
         </span>
         <ChevronDown
           size={12}
@@ -98,7 +101,7 @@ export function ModelsPanel({
 
       {/* Expanded body */}
       {expanded && (
-        <div className="space-y-2 p-2.5">
+        <div className="space-y-2 p-2 sm:p-2.5">
           <SearchBar
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
@@ -110,7 +113,7 @@ export function ModelsPanel({
             If none are selected, all models are visible.
           </p>
 
-          <ul className="max-h-56 overflow-y-auto -mx-0.5">
+          <ul className="-mx-0.5 max-h-[45svh] overflow-y-auto md:max-h-56">
             {visible.length === 0 ? (
               <li className="px-2 py-3 text-center text-[10.5px] text-(--color-text-muted)">
                 No matching models.
@@ -162,7 +165,7 @@ function ModelRow({
 
   return (
     <li
-      className="group flex min-h-9 items-center gap-1.5 rounded-xs px-2 py-1 hover:bg-(--bg-key) md:min-h-0"
+      className="group grid min-h-11 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1.5 rounded-xs px-2 py-1 hover:bg-(--bg-key) md:flex md:min-h-0"
       onContextMenu={(e) => {
         if (isTauriMobile) return
         e.preventDefault()
@@ -203,11 +206,11 @@ function ModelRow({
         aria-label={`${selected ? 'Remove' : 'Show'} ${qualifiedId} in model pickers`}
         title={selected ? 'Remove from visible models' : 'Add to visible models'}
         className={cn(
-          'flex h-6 min-w-[4rem] items-center justify-center gap-1 rounded-xs px-1.5',
+          'flex h-8 min-w-[3.5rem] items-center justify-center gap-1 rounded-xs px-2 md:h-6 md:min-w-[3.5rem] md:px-1.5',
           'text-[10px] font-medium transition-colors',
           selected
-            ? 'bg-(--color-success-subtle) text-(--color-success) border border-(--color-success)/20'
-            : 'border border-(--color-border) text-(--color-text-muted) hover:bg-(--bg-card) hover:text-(--color-text)',
+            ? 'bg-(--color-success-subtle) text-(--color-success)'
+            : 'text-(--color-text-muted) hover:bg-(--bg-card) hover:text-(--color-text)',
           savingVisibleModels && 'opacity-50 cursor-not-allowed',
         )}
       >
@@ -225,10 +228,10 @@ function ModelRow({
         onClick={() => void onCopy(qualifiedId)}
         aria-label={`Copy ${qualifiedId}`}
         className={cn(
-          'flex h-6 w-6 items-center justify-center rounded-xs',
-          'border border-(--color-border) text-(--color-text-muted)',
+          'flex h-8 w-8 items-center justify-center rounded-xs md:h-6 md:w-6',
+          'text-(--color-text-muted)',
           'transition-colors hover:bg-(--bg-card) hover:text-(--color-text)',
-          'opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
+          'opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100',
         )}
       >
         <Copy size={11} aria-hidden="true" />

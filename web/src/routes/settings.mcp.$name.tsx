@@ -132,7 +132,7 @@ export function McpServerDetailPage({ name, onBack }: McpServerDetailPageProps) 
       />
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex max-w-3xl flex-col gap-4 p-6">
+        <div className="mx-auto flex max-w-3xl flex-col gap-4 p-3 sm:p-5">
           {serverQ.isLoading && <p className="text-sm text-(--color-text-muted)">Loading server…</p>}
           {serverQ.isError && <p className="text-sm text-(--color-error)">Failed to load: {String(serverQ.error)}</p>}
 
@@ -269,7 +269,7 @@ function RestartCard({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Button
-            variant="default" size="sm" className="min-h-11 md:min-h-0"
+            variant="default" size="xs" className="h-8 px-2 text-[10.5px]"
             onClick={onRestart} disabled={pending || !enabled}
             aria-label={pending ? 'Restarting' : 'Restart server'}
           >
@@ -283,7 +283,7 @@ function RestartCard({
           )}
         </div>
         <Button
-          variant="danger" size="sm" className="min-h-11 md:min-h-0"
+          variant="danger-subtle" size="xs" className="h-8 px-2 text-[10.5px]"
           onClick={onDelete} disabled={deletePending}
         >
           <Trash2 size={12} aria-hidden="true" />

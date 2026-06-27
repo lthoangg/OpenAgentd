@@ -75,7 +75,7 @@ export function AgentsListPage({ selectedName, onSelect, onNew }: AgentsListPage
         newLabel="New agent"
         onNew={() => setModeDialogOpen(true)}
         newAction={
-          <Button size="sm" onClick={() => setModeDialogOpen(true)}>
+          <Button size="sm" className="min-h-11 md:min-h-0" onClick={() => setModeDialogOpen(true)}>
             <Plus size={13} aria-hidden="true" />
             New agent
           </Button>

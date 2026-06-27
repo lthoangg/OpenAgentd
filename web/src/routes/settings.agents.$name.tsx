@@ -100,7 +100,7 @@ export function AgentEditorPage({ name, onBack }: AgentEditorPageProps) {
       />
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl p-6">
+        <div className="mx-auto max-w-3xl p-3 sm:p-5">
           {isLoading && <p className="text-sm text-(--color-text-muted)">Loading…</p>}
           {isError && <p className="text-sm text-(--color-error)">Failed to load: {String(error)}</p>}
           {data && (

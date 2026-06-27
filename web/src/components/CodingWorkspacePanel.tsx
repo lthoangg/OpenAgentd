@@ -3,6 +3,7 @@ import { flushSync } from 'react-dom'
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { ChevronRight, Folder, GitCompare, Plus, RefreshCw, Search, X } from 'lucide-react'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 import { getCodingWorkspaceGitDiff, listCodingWorkspaceFiles, getCodingWorkspaceGitHistory, getCodingWorkspaceCommitDiff } from '@/api/client'
 import { CodingFilePreviewContent, DiffPreview } from './CodingFileViewerPanel'
@@ -719,14 +720,13 @@ export function CodingWorkspacePanel({
                       </button>
                     )}
                     {subTab === 'tree' && (
-                      <label className="flex items-center gap-1.5 text-xs text-(--color-text-2) cursor-pointer select-none">
-                        <input
-                          type="checkbox"
+                      <label className="flex h-7 cursor-pointer select-none items-center gap-1.5 rounded border border-transparent px-1.5 text-[11px] text-(--color-text-muted) transition-colors hover:border-(--color-border-subtle) hover:bg-(--bg-key) hover:text-(--color-text)">
+                        <Checkbox
                           checked={allBranches}
-                          onChange={(event) => setAllBranches(event.target.checked)}
-                          className="h-4 w-4 cursor-pointer rounded border-(--color-border) text-(--color-accent) focus:ring-(--focus-ring)"
+                          onChange={(event) => setAllBranches(event.currentTarget.checked)}
+                          className="border-(--color-border) bg-(--bg-card) checked:border-(--color-border-strong) checked:bg-(--bg-key)"
                         />
-                        <span>All Branches</span>
+                        <span className="whitespace-nowrap">All branches</span>
                       </label>
                     )}
                   </div>

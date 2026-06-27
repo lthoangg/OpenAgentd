@@ -93,18 +93,27 @@ def _split_messages(
                 }
             )
         elif isinstance(message, ToolMessage):
-            out.append(
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "tool_result",
-                            "tool_use_id": message.tool_call_id,
-                            "content": message.content or "",
-                        }
-                    ],
-                }
-            )
+            result_block: dict[str, Any] = {
+                "type": "tool_result",
+                "tool_use_id": message.tool_call_id,
+                "content": message.content or "",
+            }
+            if (message.content or "").startswith("Error:"):
+                result_block["is_error"] = True
+            # Batch consecutive tool results into the same user turn — Anthropic
+            # requires all tool_result blocks from one assistant turn to arrive in
+            # a single {"role": "user", "content": [...]} message. Emitting
+            # separate user turns for each result causes a 400 error.
+            if (
+                out
+                and out[-1]["role"] == "user"
+                and isinstance(out[-1]["content"], list)
+                and out[-1]["content"]
+                and out[-1]["content"][0].get("type") == "tool_result"
+            ):
+                out[-1]["content"].append(result_block)
+            else:
+                out.append({"role": "user", "content": [result_block]})
     system_text = "\n\n".join(system_parts)
     system_blocks = (
         [{"type": "text", "text": system_text, "cache_control": {"type": "ephemeral"}}]

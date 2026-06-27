@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { FileCode, ArrowRight, Trash2, PlusCircle, ChevronRight } from 'lucide-react'
 import { diffLines, parseDiffMeta, parsePatchText, type DiffLine } from './diffUtils'
+import { parsePartialJSON } from './displayText'
 
 interface SingleFileDiffProps {
   path: string
@@ -129,12 +130,15 @@ export function DiffView({ toolName, args, result, onCollapse }: DiffViewProps) 
     try {
       return JSON.parse(args)
     } catch {
-      return null
+      return parsePartialJSON(args)
     }
   }, [args])
   const diffMeta = useMemo(() => parseDiffMeta(result), [result])
 
-  if (!parsed) {
+  const hasPath = typeof parsed?.path === 'string' && parsed.path.trim().length > 0
+  const hasPatchText = typeof parsed?.patch_text === 'string' && parsed.patch_text.trim().length > 0
+
+  if (!parsed || (toolName === 'edit' && !hasPath) || (toolName === 'write' && !hasPath) || (toolName === 'patch' && !hasPatchText)) {
     return <pre className="p-3 font-mono text-xs">{args}</pre>
   }
 

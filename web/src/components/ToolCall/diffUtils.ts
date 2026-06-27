@@ -84,7 +84,7 @@ export function parsePatchText(patchText: string, meta?: DiffMeta | null): FileD
   if (lines.length > 0 && lines[lines.length - 1] === '') {
     lines.pop()
   }
-  if (lines.length < 2 || lines[0] !== '*** Begin Patch' || lines[lines.length - 1] !== '*** End Patch') {
+  if (lines.length < 1 || lines[0] !== '*** Begin Patch') {
     return []
   }
 
@@ -106,7 +106,10 @@ export function parsePatchText(patchText: string, meta?: DiffMeta | null): FileD
     current.lines.push(line)
   }
 
-  for (let i = 1; i < lines.length - 1; i++) {
+  const hasEnd = lines.length > 0 && lines[lines.length - 1] === '*** End Patch'
+  const endLimit = hasEnd ? lines.length - 1 : lines.length
+
+  for (let i = 1; i < endLimit; i++) {
     const line = lines[i]
     if (line.startsWith('*** Add File: ')) {
       current = {

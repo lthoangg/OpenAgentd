@@ -1435,4 +1435,21 @@ describe("ToolCall with incomplete JSON args (streaming)", () => {
     render(<ToolCall name="web_search" args='{"query": "how to build a react' done={false} />)
     expect(screen.getByText(/"how to build a react"/)).toBeTruthy()
   })
+
+  it("renders diff view and displays path for edit tool immediately when streaming", async () => {
+    const user = userEvent.setup()
+    render(<ToolCall name="edit" args='{"path": "src/components/ToolResult.tsx", "old_string": "hello", "new_string": "hello world"' done={false} />)
+    expect(screen.getByText("ToolResult.tsx")).toBeTruthy()
+    await user.click(screen.getByRole("button"))
+    expect(screen.getByText("src/components/ToolResult.tsx")).toBeTruthy()
+  })
+
+  it("renders diff view and displays path for patch tool immediately when streaming", async () => {
+    const user = userEvent.setup()
+    const partialArgs = '{"patch_text": "*** Begin Patch\\n*** Update File: src/components/ToolResult.tsx\\n@@ -1,1 +1,2 @@\\n hello\\n+world'
+    render(<ToolCall name="patch" args={partialArgs} done={false} />)
+    expect(screen.getByText("src/components/ToolResult.tsx")).toBeTruthy()
+    await user.click(screen.getByRole("button"))
+    expect(screen.getAllByText("src/components/ToolResult.tsx").length).toBeGreaterThan(0)
+  })
 })

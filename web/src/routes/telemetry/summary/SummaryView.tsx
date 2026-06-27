@@ -21,7 +21,7 @@ export function SummaryView({ data }: { data: ObservabilitySummary }) {
   return (
     <div className="flex flex-col gap-5">
       {sampled && (
-        <div className="flex items-start gap-2 rounded-lg border border-(--color-border) bg-(--bg-key)/40 p-3">
+        <div className="flex items-start gap-2 rounded-sm border border-(--color-border) bg-(--bg-card) p-3">
           <Info size={14} className="mt-0.5 shrink-0 text-(--color-accent)" />
           <p className="text-xs text-(--color-text-2)">
             Spans are sampled at <strong>{Math.round(data.sample_ratio * 100)}%</strong>.

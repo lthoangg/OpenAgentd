@@ -15,7 +15,7 @@ export function DailyBars({
   }
   const max = Math.max(...rows.map((r) => r.turns), 1)
   return (
-    <div className="rounded-lg border border-(--color-border) bg-(--bg-card) p-4">
+    <div className="rounded-sm border border-(--color-border) bg-(--bg-card) p-4">
       <div className="flex h-28 items-end gap-2">
         {rows.map((r) => {
           const pct = (r.turns / max) * 100

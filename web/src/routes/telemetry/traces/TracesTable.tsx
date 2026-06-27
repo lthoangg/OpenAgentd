@@ -38,7 +38,7 @@ export function TracesTable({
   const table = (
     <table className="min-w-[720px] w-full text-xs">
       <thead className="sticky top-0 z-10">
-        <tr className="border-b border-(--color-border) bg-(--bg-key)">
+        <tr className="border-b border-(--color-border) bg-(--bg-sidebar)">
           <Th>When</Th>
           <Th>Session</Th>
           <Th>Agent</Th>
@@ -62,7 +62,7 @@ export function TracesTable({
   if (embedded) return table
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-(--color-border) bg-(--bg-card)">
+    <div className="overflow-x-auto rounded-sm border border-(--color-border) bg-(--bg-card)">
       {table}
     </div>
   )
@@ -136,7 +136,7 @@ function TraceRow({
         tabIndex={0}
         role="button"
         aria-label={`Open trace ${formatShortId(trace.trace_id)}`}
-        className="cursor-pointer border-b border-(--color-border) transition-colors last:border-b-0 hover:bg-(--bg-key)/40 focus:bg-(--bg-key)/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--focus-ring)"
+        className="cursor-pointer border-b border-(--color-border) transition-colors last:border-b-0 hover:bg-(--bg-key)/35 focus:bg-(--bg-key)/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--focus-ring)/40"
       >
         <Td>
           <span title={new Date(trace.start_ms).toLocaleString()}>
@@ -158,7 +158,7 @@ function TraceRow({
         <Td align="right" muted>{formatUsd(trace.estimated_cost_usd)}</Td>
         <Td align="right">
           {trace.error ? (
-            <span className="rounded bg-(--color-error-subtle) px-1.5 py-0.5 text-[10px] font-medium text-(--color-error)">
+            <span className="rounded-xs border border-(--color-error)/20 bg-(--color-error-subtle) px-1.5 py-0.5 text-[10px] font-medium text-(--color-error)">
               error
             </span>
           ) : (
@@ -166,7 +166,7 @@ function TraceRow({
           )}
         </Td>
         <Td align="right">
-          <span className="inline-flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) md:h-6 md:w-6">
+          <span className="inline-flex h-7 w-7 items-center justify-center rounded-sm text-(--color-text-muted) md:h-6 md:w-6">
             <ChevronRight size={15} className="md:h-3.5 md:w-3.5" aria-hidden="true" />
           </span>
         </Td>
@@ -185,14 +185,14 @@ function TraceRow({
               <div
                 role="menu"
                 aria-label={`Actions for trace ${formatShortId(trace.trace_id)}`}
-                className="fixed min-w-44 rounded-lg border border-(--color-border) bg-(--bg-card) p-1 text-sm text-(--color-text) shadow-xl"
+                className="fixed min-w-44 rounded-sm border border-(--color-border) bg-(--bg-card) p-1 text-sm text-(--color-text) shadow-xl"
                 style={{ left: actionsPoint.x, top: actionsPoint.y }}
                 onClick={(event) => event.stopPropagation()}
               >
                 <button
                   type="button"
                   role="menuitem"
-                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+                  className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
                   onClick={() => {
                     setActionsPoint(null)
                     openTrace()
@@ -204,7 +204,7 @@ function TraceRow({
                 <button
                   type="button"
                   role="menuitem"
-                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+                  className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
                   onClick={() => {
                     setActionsPoint(null)
                     void copyTraceId()

@@ -36,7 +36,7 @@ export function ModeWorkspaceFields({
           aria-label="Task mode"
           // ``inline-flex`` so two short labels ("Normal" / "Coding") do not
           // sprawl across the full form width.
-          className="inline-flex gap-1 rounded-md border border-(--color-border) bg-(--bg-page) p-1 shrink-0"
+          className="inline-flex max-w-full shrink-0 gap-1 overflow-x-auto rounded-sm border border-(--color-border) bg-(--bg-card) p-1"
         >
           {modeOptions.map((opt) => {
             const active = mode === opt.key
@@ -56,9 +56,9 @@ export function ModeWorkspaceFields({
                   })
                 }}
                 className={
-                  'rounded-sm px-3 py-1 text-xs font-medium transition-colors ' +
+                  'rounded-xs border border-transparent px-3 py-1 text-xs font-medium transition-colors ' +
                   (active
-                    ? 'bg-(--bg-card) text-(--color-text) shadow-sm ring-1 ring-(--color-border-strong)'
+                    ? 'border-(--color-border-strong) bg-(--bg-key) text-(--color-text)'
                     : 'text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text-2)')
                 }
               >
@@ -69,7 +69,7 @@ export function ModeWorkspaceFields({
         </div>
 
         {mode === 'coding' && (
-          <div className="w-72 shrink-0">
+          <div className="w-full min-w-0 sm:w-72 sm:shrink-0">
             <Dropdown
               value={workspace ?? ''}
               onValueChange={(v) => onChange({ mode, workspace: v || null })}

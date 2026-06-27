@@ -6,7 +6,7 @@ export function ModeBadge({ task }: { task: Pick<ScheduledTaskResponse, 'mode' |
   if (task.mode === 'coding' && task.workspace) {
     return (
       <span
-        className="inline-flex max-w-full items-center gap-1 truncate rounded-md bg-(--bg-key) px-2 py-0.5 text-xs text-(--color-text-2) ring-1 ring-(--color-border-strong)"
+        className="inline-flex max-w-full items-center gap-1 truncate rounded-xs border border-(--color-border) bg-(--bg-key)/70 px-2 py-0.5 text-xs text-(--color-text-2)"
         title={task.workspace}
       >
         <FolderOpen size={10} className="shrink-0" />
@@ -15,7 +15,7 @@ export function ModeBadge({ task }: { task: Pick<ScheduledTaskResponse, 'mode' |
     )
   }
   return (
-    <span className="inline-flex items-center rounded-md bg-(--bg-key) px-2 py-0.5 text-xs text-(--color-text-2) ring-1 ring-(--color-border-strong)">
+    <span className="inline-flex items-center rounded-xs border border-(--color-border) bg-(--bg-key)/70 px-2 py-0.5 text-xs text-(--color-text-2)">
       normal
     </span>
   )

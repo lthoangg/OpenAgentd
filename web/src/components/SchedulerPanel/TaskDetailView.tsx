@@ -35,9 +35,9 @@ export function TaskDetailView({
   }[task.status] ?? 'text-(--color-text-muted)'
 
   return (
-    <div className="flex flex-col overflow-hidden">
+    <div className="flex flex-col overflow-hidden bg-(--bg-page)">
       {/* Header */}
-      <div className="border-b border-(--color-border) px-5 py-4">
+      <div className="border-b border-(--color-border) bg-(--bg-sidebar) px-3 py-3 sm:px-5 sm:py-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <h2 className="truncate text-base font-semibold text-(--color-text)">{task.name}</h2>
@@ -49,7 +49,7 @@ export function TaskDetailView({
           <div className="flex shrink-0 items-center gap-1">
             <button
               onClick={() => setEditing(true)}
-              className="rounded-md p-1.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
+              className="flex h-8 w-8 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
               aria-label="Edit task"
               title="Edit task"
             >
@@ -57,7 +57,7 @@ export function TaskDetailView({
             </button>
             <button
               onClick={onClose}
-              className="rounded-md p-1.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
+              className="flex h-8 w-8 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
               aria-label="Close detail"
               title="Close"
             >
@@ -70,7 +70,7 @@ export function TaskDetailView({
       {/* Content — sectioned layout matches AgentCapabilities drawer:
           uppercase muted headings, bordered sections, no outer padding. */}
       <div className="flex-1 overflow-y-auto">
-        <section className="px-5 py-4">
+        <section className="px-3 py-4 sm:px-5">
           <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-(--color-text-muted)">
             Status
           </h3>
@@ -89,7 +89,7 @@ export function TaskDetailView({
           </div>
         </section>
 
-        <section className="border-t border-(--color-border) px-5 py-4">
+        <section className="border-t border-(--color-border) px-3 py-4 sm:px-5">
           <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-(--color-text-muted)">
             Schedule
           </h3>
@@ -120,14 +120,14 @@ export function TaskDetailView({
           </div>
         </section>
 
-        <section className="border-t border-(--color-border) px-5 py-4">
+        <section className="border-t border-(--color-border) px-3 py-4 sm:px-5">
           <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-(--color-text-muted)">
             Configuration
           </h3>
           <div className="space-y-3">
             <div>
               <span className="text-xs text-(--color-text-muted)">Routing</span>
-              <p className="mt-1 rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-2 text-sm text-(--color-text)">
+              <p className="mt-1 rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2 text-sm text-(--color-text)">
                 {task.mode === 'coding' ? (
                   <>
                     Coding team
@@ -144,13 +144,13 @@ export function TaskDetailView({
             </div>
             <div>
               <span className="text-xs text-(--color-text-muted)">Prompt</span>
-              <p className="mt-1 rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-2 text-sm leading-relaxed text-(--color-text) whitespace-pre-wrap">
+              <p className="mt-1 rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2 text-sm leading-relaxed text-(--color-text) whitespace-pre-wrap">
                 {task.prompt}
               </p>
             </div>
             <div>
               <span className="text-xs text-(--color-text-muted)">Session Target</span>
-              <p className="mt-1 rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-2 text-sm text-(--color-text)">
+              <p className="mt-1 rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2 text-sm text-(--color-text)">
                 {!task.session_id && 'New Session (fresh thread each run)'}
                 {task.session_id === 'auto' && 'Persistent Session (reused dedicated thread)'}
                 {task.session_id && task.session_id !== 'auto' && (
@@ -171,7 +171,7 @@ export function TaskDetailView({
           </div>
         </section>
 
-        <section className="border-t border-(--color-border) px-5 py-4">
+        <section className="border-t border-(--color-border) px-3 py-4 sm:px-5">
           <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-(--color-text-muted)">
             Run History
           </h3>
@@ -196,7 +196,7 @@ export function TaskDetailView({
             {task.last_error && (
               <div className="pt-1">
                 <span className="text-xs text-(--color-text-muted)">Last Error</span>
-                <p className="mt-1 rounded-md border border-(--color-error) bg-(--color-error-subtle) px-3 py-2 text-xs text-(--color-error) whitespace-pre-wrap">
+                <p className="mt-1 rounded-sm border border-(--color-error) bg-(--color-error-subtle) px-3 py-2 text-xs text-(--color-error) whitespace-pre-wrap">
                   {task.last_error}
                 </p>
               </div>
@@ -204,7 +204,7 @@ export function TaskDetailView({
           </div>
         </section>
 
-        <section className="border-t border-(--color-border) px-5 py-3">
+        <section className="border-t border-(--color-border) px-3 py-3 sm:px-5">
           <div className="space-y-1 text-[11px] text-(--color-text-muted)">
             <div>Created: {formatRelativeDate(task.created_at)}</div>
             <div>Updated: {formatRelativeDate(task.updated_at)}</div>

@@ -1,7 +1,8 @@
 """Manual E2E smoketest for the ``generate_image`` tool itself.
 
 Usage:
-    uv run python manual/image_tool_smoketest.py
+    uv run python -m manual.image_tool_smoketest
+    uv run python -m manual.image_tool_smoketest --model gpt-image-2-mini
 
 Exercises the full tool code path:
 
@@ -18,6 +19,7 @@ Writes outputs to ``/tmp/image_tool_smoke/workspace/``.
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import sys
 from pathlib import Path
@@ -30,13 +32,14 @@ from app.agent.tools.multimodalities.image import _generate_image
 ROOT = Path("/tmp/image_tool_smoke")
 WORKSPACE = ROOT / "workspace"
 CONFIG_DIR = ROOT / "config"
+DEFAULT_MODEL = "gpt-image-2"
 
 
-async def _seed_sources() -> None:
+async def _seed_sources(model: str) -> None:
     """Pre-create two source PNGs in the workspace via the generate backend."""
     cfg = MediaSectionConfig(
         provider="openai",
-        model="gpt-image-2",
+        model=model,
         extras={"size": "1024x1024", "quality": "low"},
     )
     for name, prompt in [
@@ -54,14 +57,15 @@ async def _seed_sources() -> None:
         target.write_bytes(result)
 
 
-async def main() -> None:
+async def main(model: str) -> None:
+    print(f"model: {model}")
     ROOT.mkdir(parents=True, exist_ok=True)
     WORKSPACE.mkdir(parents=True, exist_ok=True)
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 
     # Point the multimodal loader at our tmp config.
     (CONFIG_DIR / "multimodal.yaml").write_text(
-        "image:\n  model: openai:gpt-image-2\n  size: 1024x1024\n  quality: low\n",
+        f"image:\n  model: openai:{model}\n  size: 1024x1024\n  quality: low\n",
         encoding="utf-8",
     )
 
@@ -77,7 +81,7 @@ async def main() -> None:
     set_sandbox(sandbox)
 
     print("Seeding source images...")
-    await _seed_sources()
+    await _seed_sources(model)
 
     print("\n→ Mode 1: generate (no images)")
     out = await _generate_image(prompt="a green pyramid", filename="green-pyramid")
@@ -105,4 +109,9 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    ap = argparse.ArgumentParser(description="generate_image tool smoke-test")
+    ap.add_argument(
+        "--model", default=DEFAULT_MODEL, help=f"Image model (default: {DEFAULT_MODEL})"
+    )
+    args = ap.parse_args()
+    asyncio.run(main(args.model))

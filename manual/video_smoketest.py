@@ -8,6 +8,7 @@ Usage:
     uv run python -m manual.video_smoketest --mode image --img path/to/frame.png
     uv run python -m manual.video_smoketest --mode interp --img first.png --last last.png
     uv run python -m manual.video_smoketest --mode ref --img a.png --img b.png
+    uv run python -m manual.video_smoketest --model veo-3.1-fast-generate-preview
 
 Requires GOOGLE_API_KEY in .env or environment.
 Writes output mp4 to /tmp/video_smoke/.
@@ -20,17 +21,13 @@ import asyncio
 import json
 import sys
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 from app.agent.tools.multimodalities._config import MediaSectionConfig
 from app.agent.tools.multimodalities.backends import googlegenai_video as _backend
 
 OUT_DIR = Path("/tmp/video_smoke")
-CFG = MediaSectionConfig(
-    provider="googlegenai",
-    model="veo-3.1-generate-preview",
-    extras={},
-)
+DEFAULT_MODEL = "veo-3.1-generate-preview"
 
 
 def _load(path: str) -> tuple[str, bytes]:
@@ -40,12 +37,12 @@ def _load(path: str) -> tuple[str, bytes]:
     return p.name, p.read_bytes()
 
 
-
 def _redact_payload(payload: dict | None) -> dict:
     """Replace base64 data blobs with <N bytes> for readable output."""
     if payload is None:
         return {}
     import copy
+
     p = copy.deepcopy(payload)
     for inst in p.get("instances", []):
         _redact_inline(inst.get("image"))
@@ -62,6 +59,7 @@ def _redact_inline(obj: dict | None) -> None:
         if key in obj and isinstance(obj[key], dict) and "data" in obj[key]:
             raw = obj[key]["data"]
             import base64
+
             byte_len = len(base64.b64decode(raw)) if raw else 0
             obj[key]["data"] = f"<{byte_len:,} bytes>"
 
@@ -70,9 +68,11 @@ def pretty(d: dict) -> str:
     return json.dumps(d, indent=2)
 
 
-async def run(mode: str, imgs: list[str], last: str | None) -> None:
+async def run(mode: str, imgs: list[str], last: str | None, model: str) -> None:
     import httpx as _httpx
 
+    cfg = MediaSectionConfig(provider="googlegenai", model=model, extras={})
+    print(f"  model: {model}")
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     image: tuple[str, bytes] | None = None
@@ -111,7 +111,9 @@ async def run(mode: str, imgs: list[str], last: str | None) -> None:
     print(f"\n→ Mode: {mode}")
     print(f"  image     : {image[0] if image else None}")
     print(f"  last_frame: {last_frame[0] if last_frame else None}")
-    print(f"  ref_images: {[r[0] for r in reference_images] if reference_images else None}")
+    print(
+        f"  ref_images: {[r[0] for r in reference_images] if reference_images else None}"
+    )
 
     # Build DebugClient here so it captures the real httpx.AsyncClient before patching.
     _RealClient = _httpx.AsyncClient
@@ -141,7 +143,7 @@ async def run(mode: str, imgs: list[str], last: str | None) -> None:
         new=DebugClient,
     ):
         result = await _backend.generate(
-            CFG,
+            cfg,
             prompt,
             image=image,
             last_frame=last_frame,
@@ -179,8 +181,13 @@ def main() -> None:
         metavar="PATH",
         help="Last-frame image path (interp mode)",
     )
+    ap.add_argument(
+        "--model",
+        default=DEFAULT_MODEL,
+        help=f"Veo model id (default: {DEFAULT_MODEL})",
+    )
     args = ap.parse_args()
-    asyncio.run(run(args.mode, args.imgs, args.last))
+    asyncio.run(run(args.mode, args.imgs, args.last, args.model))
 
 
 if __name__ == "__main__":

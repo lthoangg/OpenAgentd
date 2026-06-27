@@ -12,21 +12,18 @@ Workflow:
    - If the report is ambiguous, inspect available evidence first; ask only when a missing decision blocks safe progress.
 
 2. **Choose the fastest evidence path**
-   - **Live session / agent behavior:** prefer `manual/` helpers before ad-hoc probing:
+   - **Live session / agent behavior:** prefer `manual/` helpers before ad-hoc probing. Start with the no-server diagnostics, then live ones:
      ```bash
-     uv run python -m manual.health
-     uv run python -m manual.backend_log
-     uv run python -m manual.backend_log --contains drop_partial_tool_call_bad_json
-     uv run python -m manual.team_sessions --id <SESSION_ID>
+     uv run python -m manual.backend_log              # repeated WARNING/ERROR (no server)
+     uv run python -m manual.health                   # server + agent roster
      uv run python -m manual.team_history <SESSION_ID>
      uv run python -m manual.team_timeline <SESSION_ID> --full
      uv run python -m manual.team_sse "message" --session <SESSION_ID>
-     uv run python -m manual.queued_injection
      ```
    - **Backend/API issue:** hit the smallest route/service path, inspect logs, then add/adjust pytest coverage.
    - **Frontend issue:** inspect relevant components/hooks/stores, run focused `bun` checks/tests, and use existing UI state patterns.
-   - **Desktop/CLI/provider issue:** inspect the specific command/provider path, environment assumptions, and existing smoke scripts under `manual/` or `manual/try_providers/`.
-   - See `manual/AGENTS.md` for the full manual script catalogue.
+   - **Desktop/CLI/provider issue:** inspect the specific command/provider path and environment assumptions; reach for the smoke scripts under `manual/` or `manual/try_providers/`.
+   - **See `manual/AGENTS.md` for the full script catalogue** (every script also supports `-h`).
 
 3. **Reproduce narrowly**
    - Recreate the smallest scenario that demonstrates the bug.

@@ -19,6 +19,7 @@ No flags. Hits three configurations:
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import time
 
@@ -34,9 +35,7 @@ CASE_A_ASSISTANT = "1, 2, 3, 4,"
 # Me: case B — realistic English prose cut mid-sentence. Mirrors the
 # real /continue case where the model was streaming prose and Stop was
 # pressed.  No "[interrupted]" suffix.
-CASE_B_USER = (
-    "Write a detailed, ~200 word response describing the history of Python."
-)
+CASE_B_USER = "Write a detailed, ~200 word response describing the history of Python."
 CASE_B_ASSISTANT = (
     "Python began in the late 1980s when Guido van Rossum, working at CWI in "
     "the Netherlands, set out to build a language that was easier to read and "
@@ -119,7 +118,7 @@ async def probe(
     print(f"  [verdict]  {verdict}")
 
 
-async def main() -> None:
+async def main(model: str) -> None:
     openai_key = (
         settings.OPENAI_API_KEY.get_secret_value() if settings.OPENAI_API_KEY else None
     )
@@ -131,7 +130,8 @@ async def main() -> None:
     # Stick to one provider for clear A/B/C comparison.  The original probe
     # already proved all three providers tolerate trailing assistant; this
     # round is about content shape, not provider compatibility.
-    provider = OpenAIProvider(api_key=openai_key, model="gpt-5.4-mini")
+    print(f"model: {model}")
+    provider = OpenAIProvider(api_key=openai_key, model=model)
 
     print(f"\n{'#' * 70}")
     print("# CASE A — numeric baseline (control)")
@@ -167,4 +167,9 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    ap = argparse.ArgumentParser(description="Trailing-assistant continuation probe")
+    ap.add_argument(
+        "--model", default="gpt-5.4-mini", help="OpenAI model (default: gpt-5.4-mini)"
+    )
+    args = ap.parse_args()
+    asyncio.run(main(args.model))

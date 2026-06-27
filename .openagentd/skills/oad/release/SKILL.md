@@ -72,6 +72,21 @@ git diff --stat main..HEAD -- documents/docs/features.md documents/docs/roadmap.
 
 6. Version PR:
 
+- **Before bumping, verify CI is green on `main`.** Check both the `Core` (pytest) and `Web` (lint + typecheck + tests) workflows on the latest commit:
+
+```bash
+# Get the SHA of the commit you are about to release from
+git rev-parse HEAD
+
+# List the most recent runs of each CI workflow and confirm conclusion=success
+gh run list --workflow=core.yml --branch=main --limit=3
+gh run list --workflow=web.yml  --branch=main --limit=3
+
+# If either shows failure, inspect and fix before continuing:
+gh run view <run-id> --log-failed
+```
+
+- Do **not** proceed with the version bump if any required CI workflow is failing on `main`. Fix the failures first, push the fix to `main`, confirm CI goes green, then resume the release.
 - Reuse the existing feature branch when present; do not spin a fresh `release/` branch on top of it.
 - `app/version.txt` is the **single human-edited source of truth** for release versioning.
 - Use the release helper to propagate that version to every release-facing file, refresh lockfiles, and update release docs metadata:

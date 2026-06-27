@@ -13,6 +13,8 @@ mock.module('@tanstack/react-router', () => ({
 
 mock.module('@tanstack/react-query', () => ({
   useQueryClient: () => ({}),
+  useQuery: () => ({ data: undefined, isLoading: false }),
+  QueryClientProvider: ({ children }: { children: unknown }) => children,
 }))
 
 mock.module('@/queries/useTodosQuery', () => ({ useTodosQuery: () => ({ data: { todos: [] } }) }))

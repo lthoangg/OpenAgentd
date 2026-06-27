@@ -849,3 +849,52 @@ class TestGeminiMultimodalConversion:
         )
         contents, _ = prov._convert_messages_to_gemini([msg])
         assert len(contents[0].parts) == 2
+
+
+# ---------------------------------------------------------------------------
+# stream() — Gemini re-emission: full args snapshot repeated across chunks
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_stream_tool_call_args_not_duplicated_on_re_emission(google_provider):
+    """Each Gemini SSE chunk is a full snapshot, not a delta.
+
+    The same function_call (same id, same args) is re-emitted verbatim in
+    every subsequent chunk.  The provider must emit args only on the first
+    chunk for each tool call id so the generic accumulator in streaming.py
+    receives exactly one copy and produces valid JSON.
+    """
+    # Two SSE chunks both carrying the complete function_call snapshot.
+    stream_content = (
+        'data: {"candidates":[{"content":{"parts":[{"functionCall":{"name":"search","args":{"q":"test"},"id":"tc1"}}],"role":"model"},"finishReason":null}],'
+        '"usageMetadata":{"promptTokenCount":2,"candidatesTokenCount":2,"totalTokenCount":4}}\n'
+        'data: {"candidates":[{"content":{"parts":[{"functionCall":{"name":"search","args":{"q":"test"},"id":"tc1"}}],"role":"model"},"finishReason":"STOP"}],'
+        '"usageMetadata":{"promptTokenCount":2,"candidatesTokenCount":4,"totalTokenCount":6}}\n'
+    )
+
+    respx.post(
+        f"{google_provider.base_url}/models/gemini-1.5-flash:streamGenerateContent?alt=sse"
+    ).mock(return_value=httpx.Response(200, content=stream_content))
+
+    chunks = []
+    async for chunk in google_provider.stream(
+        messages=[HumanMessage(content="search")]
+    ):
+        chunks.append(chunk)
+
+    assert len(chunks) == 2
+
+    # First chunk: name + args emitted normally.
+    tc0 = chunks[0].choices[0].delta.tool_calls
+    assert tc0 is not None and len(tc0) == 1
+    assert tc0[0].function.name == "search"
+    assert tc0[0].function.arguments == '{"q": "test"}'
+
+    # Second chunk: same id re-emitted — name and args must be suppressed.
+    tc1 = chunks[1].choices[0].delta.tool_calls
+    assert tc1 is not None and len(tc1) == 1
+    assert tc1[0].id == "tc1"
+    assert tc1[0].function.name is None
+    assert tc1[0].function.arguments is None

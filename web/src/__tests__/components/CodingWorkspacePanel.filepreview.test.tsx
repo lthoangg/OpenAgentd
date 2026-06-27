@@ -60,18 +60,18 @@ beforeEach(() => {
 
 afterEach(cleanup)
 
-async function renderWorkspacePanel(onFileSelect = mock(() => {}), selectedFilePath: string | null = null, mobile = false) {
+async function renderWorkspacePanel(onFileSelect = mock(() => {}), selectedFilePath: string | null = null, mobile = false, onOpenPalette = mock(() => {})) {
   const { CodingWorkspacePanel } = await import('@/components/CodingWorkspacePanel')
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   let renderResult: ReturnType<typeof render> | null = null
   await act(async () => {
     renderResult = render(
       <QueryClientProvider client={queryClient}>
-        <CodingWorkspacePanel workspace={WORKSPACE} open initialTab="files" selectedFilePath={selectedFilePath} onFileSelect={onFileSelect} onClose={() => {}} mobile={mobile} />
+        <CodingWorkspacePanel workspace={WORKSPACE} open initialTab="files" selectedFilePath={selectedFilePath} onFileSelect={onFileSelect} onClose={() => {}} mobile={mobile} onOpenPalette={onOpenPalette} />
       </QueryClientProvider>,
     )
   })
-  return { CodingWorkspacePanel, queryClient, renderResult: renderResult! }
+  return { CodingWorkspacePanel, queryClient, renderResult: renderResult!, onOpenPalette }
 }
 
 async function renderViewer(file: WorkspaceFileInfo | null = readme, onAddComment = mock(() => {}), mobile = false) {
@@ -139,30 +139,26 @@ describe('Coding workspace two-layer file preview', () => {
   })
 
   it('opens file tabs from the plus file search', async () => {
+    // The + button delegates to the parent-owned Command Palette via onOpenPalette.
+    // File search, filtering, and tab-opening all happen at the TeamChatView level;
+    // CodingWorkspacePanel's responsibility is only to call the callback.
     const user = userEvent.setup()
-    const onFileSelect = mock(() => {})
-    await renderWorkspacePanel(onFileSelect)
+    const { onOpenPalette } = await renderWorkspacePanel()
 
-    await user.click(screen.getByRole('button', { name: /open file search/i }))
-    await waitFor(() => expect(screen.getByRole('textbox', { name: /search workspace files/i })).toBeTruthy())
-    await user.type(screen.getByRole('textbox', { name: /search workspace files/i }), 'readme')
-    await user.click(screen.getByTitle('README.md'))
+    await user.click(screen.getByRole('button', { name: /search files/i }))
 
-    expect(onFileSelect).toHaveBeenCalledWith(readme)
-    expect(screen.getByRole('button', { name: /git/i })).toBeTruthy()
-    expect(screen.getByText('const')).toBeTruthy()
+    expect(onOpenPalette).toHaveBeenCalledTimes(1)
   })
 
   it('opens the first matching file with Enter from file search', async () => {
+    // Same delegation — clicking the + button fires onOpenPalette so the
+    // parent can open the palette; palette interaction is tested at that level.
     const user = userEvent.setup()
-    const onFileSelect = mock(() => {})
-    await renderWorkspacePanel(onFileSelect)
+    const { onOpenPalette } = await renderWorkspacePanel()
 
-    await user.click(screen.getByRole('button', { name: /open file search/i }))
-    await user.type(screen.getByRole('textbox', { name: /search workspace files/i }), 'readme{Enter}')
+    await user.click(screen.getByRole('button', { name: /search files/i }))
 
-    expect(onFileSelect).toHaveBeenCalledWith(readme)
-    await waitFor(() => expect(screen.getAllByTitle('README.md').length).toBeGreaterThanOrEqual(1))
+    expect(onOpenPalette).toHaveBeenCalledTimes(1)
   })
 
   it('expands changed-file diffs in the Changes tab without opening a file tab', async () => {
@@ -283,27 +279,26 @@ describe('Coding workspace two-layer file preview', () => {
   })
 
   it('keeps mobile file search inside the workspace panel viewport', async () => {
+    // The inline file-search dialog was removed; the + button now opens the
+    // parent-owned Command Palette via onOpenPalette.  Palette positioning
+    // (fixed vs absolute) is handled at the TeamChatView level and tested
+    // in the CommandPalette unit tests.
     const user = userEvent.setup()
-    await renderWorkspacePanel(mock(() => {}), null, true)
+    const { onOpenPalette } = await renderWorkspacePanel(mock(() => {}), null, true)
 
-    await user.click(screen.getByRole('button', { name: /open file search/i }))
+    await user.click(screen.getByRole('button', { name: /search files/i }))
 
-    const overlay = screen.getByRole('dialog', { name: /search workspace files/i }).parentElement
-    expect(overlay?.className).toContain('absolute')
-    expect(overlay?.className).toContain('inset-0')
-    expect(overlay?.className).not.toContain('fixed')
+    expect(onOpenPalette).toHaveBeenCalledTimes(1)
   })
 
   it('keeps desktop file search anchored to the full viewport', async () => {
+    // Same — palette positioning is the parent's concern, not the panel's.
     const user = userEvent.setup()
-    await renderWorkspacePanel(mock(() => {}), null, false)
+    const { onOpenPalette } = await renderWorkspacePanel(mock(() => {}), null, false)
 
-    await user.click(screen.getByRole('button', { name: /open file search/i }))
+    await user.click(screen.getByRole('button', { name: /search files/i }))
 
-    const overlay = screen.getByRole('dialog', { name: /search workspace files/i }).parentElement
-    expect(overlay?.className).toContain('fixed')
-    expect(overlay?.className).toContain('inset-0')
-    expect(overlay?.className).not.toContain('absolute')
+    expect(onOpenPalette).toHaveBeenCalledTimes(1)
   })
 
   it('does not extend the desktop workspace panel into the macOS overlay header', async () => {

@@ -413,7 +413,17 @@ class GeminiProviderBase(LLMProviderBase):
                 # and emit a second, never-completed tool_call SSE event.
                 # Track id → idx once and reuse so the buffer sees stable
                 # slots regardless of intra-chunk part ordering.
+                #
+                # Me each Gemini SSE chunk is a full snapshot, not a delta —
+                # the same function_call (same id, same args) is re-emitted
+                # verbatim in every subsequent chunk until the stream ends.
+                # The generic accumulator in streaming.py appends each chunk's
+                # args to the buffer, so a re-emitted chunk doubles the JSON
+                # and breaks validation.  Suppress args (and name) on every
+                # chunk after the first for a given tool call id so the
+                # accumulator receives exactly one copy.
                 tool_idx_by_id: dict[str, int] = {}
+                tool_args_emitted: set[str] = set()
 
                 async for data in iter_sse_data(response, sentinel=None):
                     gemini_resp = GeminiChatResponse.model_validate(data)
@@ -444,13 +454,20 @@ class GeminiProviderBase(LLMProviderBase):
                             stable_idx = tool_idx_by_id.setdefault(
                                 fc_id, len(tool_idx_by_id)
                             )
+                            first_emission = fc_id not in tool_args_emitted
+                            if first_emission:
+                                tool_args_emitted.add(fc_id)
                             delta_tool_calls.append(
                                 ToolCallDelta(
                                     index=stable_idx,
                                     id=fc_id,
                                     function=FunctionCallDelta(
-                                        name=part.function_call.name,
-                                        arguments=json.dumps(part.function_call.args),
+                                        name=part.function_call.name
+                                        if first_emission
+                                        else None,
+                                        arguments=json.dumps(part.function_call.args)
+                                        if first_emission
+                                        else None,
                                         thought_signature=part.thought_signature,
                                     ),
                                 )

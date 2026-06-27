@@ -1170,87 +1170,11 @@ async def test_stream_with_retry_exhausted_raises():
 # ---------------------------------------------------------------------------
 # Tool call argument accumulation edge cases (lines 237-244)
 # ---------------------------------------------------------------------------
-
-
-async def test_tool_call_args_gemini_re_emission_skipped():
-    """When the args buffer already has valid JSON, re-emission is skipped."""
-    tool_chunk_1 = ChatCompletionChunk(
-        id="c1",
-        created=0,
-        model="m",
-        choices=[
-            ChatCompletionChunkChoice(
-                index=0,
-                delta=ChatCompletionDelta(
-                    tool_calls=[
-                        ToolCallDelta(
-                            index=0,
-                            id="tc1",
-                            function=FunctionCallDelta(
-                                name="search",
-                                arguments='{"q": "test"}',
-                            ),
-                        )
-                    ]
-                ),
-                finish_reason=None,
-            )
-        ],
-    )
-    # Second chunk re-emits same complete args (Gemini behavior)
-    tool_chunk_2 = ChatCompletionChunk(
-        id="c2",
-        created=0,
-        model="m",
-        choices=[
-            ChatCompletionChunkChoice(
-                index=0,
-                delta=ChatCompletionDelta(
-                    tool_calls=[
-                        ToolCallDelta(
-                            index=0,
-                            function=FunctionCallDelta(
-                                arguments='{"q": "test"}',
-                            ),
-                        )
-                    ]
-                ),
-                finish_reason="tool_calls",
-            )
-        ],
-    )
-    final_chunk = ChatCompletionChunk(
-        id="c3",
-        created=0,
-        model="m",
-        choices=[
-            ChatCompletionChunkChoice(
-                index=0,
-                delta=ChatCompletionDelta(content="done"),
-                finish_reason="stop",
-            )
-        ],
-    )
-
-    # Two response sequences: first yields tool call, second yields final
-    provider = MockProvider(
-        [
-            [tool_chunk_1, tool_chunk_2],
-            [final_chunk],
-        ]
-    )
-
-    @Tool
-    def search(q: str) -> str:
-        return f"results for {q}"
-
-    agent = Agent(name="bot", llm_provider=provider, tools=[search])
-    result = await agent.run([HumanMessage(content="search for test")])
-
-    tool_msgs = [m for m in result if isinstance(m, ToolMessage)]
-    assert len(tool_msgs) == 1
-    assert tool_msgs[0].content is not None
-    assert "results for test" in tool_msgs[0].content
+# Note: Gemini re-emission (same full args JSON repeated across SSE chunks)
+# is handled inside the googlegenai provider's stream() method, not in the
+# generic accumulator.  The corresponding test lives in:
+#   tests/agent/providers/googlegenai/test_googlegenai.py
+#   :: test_stream_tool_call_args_not_duplicated_on_re_emission
 
 
 # ---------------------------------------------------------------------------

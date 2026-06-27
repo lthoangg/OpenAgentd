@@ -167,15 +167,7 @@ export function TeamChatHeader({
           {isMobile && (
             <div className="min-w-0 flex items-baseline gap-1 text-sm">
               {mode === 'coding' && workspace ? (
-                <>
-                  <span className="shrink-0 font-semibold text-(--color-text) truncate max-w-[7rem]">{workspaceLabel(workspace)}</span>
-                  {sessionTitle && (
-                    <>
-                      <span className="shrink-0 text-(--color-text-muted)">·</span>
-                      <span className="truncate text-(--color-text-muted)">{sessionTitle}</span>
-                    </>
-                  )}
-                </>
+                <span className="truncate font-semibold text-(--color-text)">{workspaceLabel(workspace)}</span>
               ) : (
                 <span className="truncate font-semibold text-(--color-text)">{sessionTitle || 'Cockpit'}</span>
               )}

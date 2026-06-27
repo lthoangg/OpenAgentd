@@ -15,6 +15,13 @@
   background: transparent;
   color: var(--color-text);
 }
+/* When hljs <code> is used inline (e.g. shell terminal prompt), the
+ * `pre code.hljs` rule from the hljs base sheet sets display:block and
+ * padding:1em, which pushes the command off the $ prefix.  Reset it. */
+pre code.hljs {
+  display: inline;
+  padding: 0;
+}
 .hljs-comment,
 .hljs-quote          { color: var(--color-syn-comment); font-style: italic; }
 .hljs-keyword,

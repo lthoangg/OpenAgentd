@@ -117,7 +117,11 @@ describe("ToolCall — shell display", () => {
     const args = JSON.stringify({ command: "npm test", description: "Run unit tests" })
     render(<ToolCall name="shell" args={args} done={false} />)
     await user.click(screen.getByRole("button"))
-    expect(screen.getByText("npm test")).toBeTruthy()
+    // The command is now syntax-highlighted and may be split across spans —
+    // assert via the <pre>'s full textContent rather than exact text match.
+    const pre = document.querySelector("pre")
+    expect(pre).toBeTruthy()
+    expect(pre!.textContent).toContain("npm test")
     expect(screen.queryByText(/"command"/)).toBeNull()
   })
 
@@ -138,7 +142,10 @@ describe("ToolCall — shell display", () => {
     render(<ToolCall name="shell" args={args} done={false} liveOutput={"hi\n"} />)
 
     expect(screen.getByText("terminal")).toBeTruthy()
-    expect(screen.getByText("hi")).toBeTruthy()
+    // "hi" may be a hljs keyword span — query the pre's full textContent
+    const pre = document.querySelector("pre")
+    expect(pre).toBeTruthy()
+    expect(pre!.textContent).toContain("hi")
   })
 
   it("does not keep auto-expanded state after final result replaces live output", () => {
@@ -1015,17 +1022,18 @@ describe("ToolCall — shell terminal label and formatting", () => {
     expect(screen.queryByText("arguments")).toBeNull()
   })
 
-  it("renders shell command with $ prefix and accent color", async () => {
+  it("renders shell command with $ prefix and syntax-highlighted code", async () => {
     const user = userEvent.setup()
     const args = JSON.stringify({ command: "npm test", description: "Run tests" })
     render(<ToolCall name="shell" args={args} done={false} />)
     await user.click(screen.getByRole("button"))
-    const pre = screen.getByText("npm test").closest("pre")
+    // The pre contains $ + highlighted command; textContent collapses spans
+    const pre = document.querySelector("pre")
     expect(pre).toBeTruthy()
-    // Check for $ prefix in the pre element
     expect(pre!.textContent).toContain("$ npm test")
-    // Check for accent color class on the command text
-    expect(screen.getByText("npm test").className).toContain("color-accent")
+    // The command is wrapped in a <code class="hljs"> for syntax highlighting
+    const code = pre!.querySelector("code.hljs")
+    expect(code).toBeTruthy()
   })
 
   it("renders completed shell command and output as one terminal block", async () => {
@@ -1041,9 +1049,11 @@ describe("ToolCall — shell terminal label and formatting", () => {
     )
 
     await user.click(screen.getByRole("button"))
-    const pre = screen.getByText("npm test").closest("pre")
+    // Highlighted command splits tokens across spans — use textContent
+    const pre = document.querySelector("pre")
     expect(pre).toBeTruthy()
-    expect(pre!.textContent).toContain("$ npm test\nall tests passed")
+    expect(pre!.textContent).toContain("npm test")
+    expect(pre!.textContent).toContain("all tests passed")
     expect(screen.getByText("terminal")).toBeTruthy()
     expect(screen.queryByText("result")).toBeNull()
   })
@@ -1053,7 +1063,10 @@ describe("ToolCall — shell terminal label and formatting", () => {
     const args = JSON.stringify({ command: "ls -la", description: "List files" })
     render(<ToolCall name="shell" args={args} done={false} />)
     await user.click(screen.getByRole("button"))
-    const pre = screen.getByText("ls -la").closest("pre")
+    // pre textContent contains the full command string even when highlighted
+    const pre = document.querySelector("pre")
+    expect(pre).toBeTruthy()
+    expect(pre!.textContent).toContain("ls")
     const dollarSpan = pre!.querySelector("span")
     expect(dollarSpan).toBeTruthy()
     expect(dollarSpan!.className).toContain("select-none")
@@ -1094,6 +1107,63 @@ describe("ToolCall — shell terminal label and formatting", () => {
         writable: true,
       })
     }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Shell syntax highlighting — ShellCommand uses hljs bash to tokenise the
+// command string.  Tokens end up as <span class="hljs-*"> children inside a
+// <code class="hljs"> element; the pre's textContent stays intact for copy.
+// ---------------------------------------------------------------------------
+
+describe("ToolCall — shell syntax highlighting", () => {
+  it("wraps the command in <code class='hljs'> for syntax highlighting", async () => {
+    const user = userEvent.setup()
+    const args = JSON.stringify({ command: "git status", description: "Check status" })
+    render(<ToolCall name="shell" args={args} done={false} />)
+    await user.click(screen.getByRole("button"))
+    const code = document.querySelector("code.hljs")
+    expect(code).toBeTruthy()
+    expect(code!.textContent).toContain("git status")
+  })
+
+  it("pre textContent still contains the full command for copy purposes", async () => {
+    const user = userEvent.setup()
+    const args = JSON.stringify({ command: "bun run build --minify", description: "Build" })
+    render(<ToolCall name="shell" args={args} done={false} />)
+    await user.click(screen.getByRole("button"))
+    const pre = document.querySelector("pre")
+    expect(pre!.textContent).toContain("bun run build --minify")
+  })
+
+  it("hljs tokenises bash keywords into hljs-built_in spans", async () => {
+    const user = userEvent.setup()
+    // "export" is a recognised bash built-in
+    const args = JSON.stringify({ command: "export NODE_ENV=production", description: "Set env" })
+    render(<ToolCall name="shell" args={args} done={false} />)
+    await user.click(screen.getByRole("button"))
+    const builtIn = document.querySelector("code.hljs .hljs-built_in")
+    expect(builtIn).toBeTruthy()
+    expect(builtIn!.textContent).toBe("export")
+  })
+
+  it("hljs tokenises quoted strings into hljs-string spans", async () => {
+    const user = userEvent.setup()
+    const args = JSON.stringify({ command: 'echo "hello world"', description: "Echo" })
+    render(<ToolCall name="shell" args={args} done={false} />)
+    await user.click(screen.getByRole("button"))
+    const str = document.querySelector("code.hljs .hljs-string")
+    expect(str).toBeTruthy()
+    expect(str!.textContent).toContain("hello world")
+  })
+
+  it("falls back gracefully and still renders when command is an empty string", () => {
+    // formattedArgs is falsy → isShellTerminal is false; no terminal block rendered
+    const args = JSON.stringify({ command: "", description: "Empty" })
+    render(<ToolCall name="shell" args={args} done={false} />)
+    // No expand button — nothing to show
+    const btn = screen.getByRole("button")
+    expect(btn.className).toContain("cursor-default")
   })
 })
 
@@ -1451,5 +1521,97 @@ describe("ToolCall with incomplete JSON args (streaming)", () => {
     expect(screen.getByText("src/components/ToolResult.tsx")).toBeTruthy()
     await user.click(screen.getByRole("button"))
     expect(screen.getAllByText("src/components/ToolResult.tsx").length).toBeGreaterThan(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Background bleed regression — outer section must use bg-(--bg-input) so the
+// card background never shows through the rounded corners of inner content
+// blocks.  In light mode bg-card (#FFFBF1) ≠ bg-input (#FAF6EC), so a
+// section with the wrong token produces a visually-distinct "bleed" at the
+// bottom-left and bottom-right corners.
+// ---------------------------------------------------------------------------
+
+describe("ToolCall — outer section background token (bg-bleed regression)", () => {
+  it("expanded section has bg-(--bg-input) not bg-(--bg-card) for diff tools", async () => {
+    const user = userEvent.setup()
+    const args = JSON.stringify({
+      path: "src/foo.ts",
+      old_string: "old",
+      new_string: "new",
+    })
+    render(<ToolCall name="edit" args={args} done={true} result="ok" />)
+
+    await user.click(screen.getByRole("button"))
+
+    const section = document.querySelector("section.surface-raised")
+    expect(section).not.toBeNull()
+    expect(section!.className).toContain("bg-(--bg-input)")
+    expect(section!.className).not.toContain("bg-(--bg-card)")
+  })
+
+  it("expanded section has bg-(--bg-input) not bg-(--bg-card) for patch tool", async () => {
+    const user = userEvent.setup()
+    const patchText = [
+      "*** Begin Patch",
+      "*** Update File: src/utils.ts",
+      "@@",
+      "-old",
+      "+new",
+      "*** End Patch",
+    ].join("\n")
+    render(<ToolCall name="patch" args={JSON.stringify({ patch_text: patchText })} done={true} result="ok" />)
+
+    await user.click(screen.getByRole("button"))
+
+    const section = document.querySelector("section.surface-raised")
+    expect(section).not.toBeNull()
+    expect(section!.className).toContain("bg-(--bg-input)")
+    expect(section!.className).not.toContain("bg-(--bg-card)")
+  })
+
+  it("expanded section has bg-(--bg-input) not bg-(--bg-card) for read tool", async () => {
+    const user = userEvent.setup()
+    render(
+      <ToolCall
+        name="read"
+        args={JSON.stringify({ path: "src/foo.ts" })}
+        done={true}
+        result="[1-1/1]\nconsole.log('hi')"
+      />,
+    )
+
+    await user.click(screen.getByRole("button"))
+
+    const section = document.querySelector("section.surface-raised")
+    expect(section).not.toBeNull()
+    expect(section!.className).toContain("bg-(--bg-input)")
+    expect(section!.className).not.toContain("bg-(--bg-card)")
+  })
+
+  it("expanded section has bg-(--bg-input) not bg-(--bg-card) for shell tool", async () => {
+    const user = userEvent.setup()
+    const args = JSON.stringify({ command: "echo hi", description: "Print hi" })
+    render(<ToolCall name="shell" args={args} done={true} result="[Succeeded]\nhi" />)
+
+    await user.click(screen.getByRole("button"))
+
+    const section = document.querySelector("section.surface-raised")
+    expect(section).not.toBeNull()
+    expect(section!.className).toContain("bg-(--bg-input)")
+    expect(section!.className).not.toContain("bg-(--bg-card)")
+  })
+
+  it("expanded section has bg-(--bg-input) not bg-(--bg-card) for write tool", async () => {
+    const user = userEvent.setup()
+    const args = JSON.stringify({ path: "src/new.ts", content: "export {}" })
+    render(<ToolCall name="write" args={args} done={true} result="ok" />)
+
+    await user.click(screen.getByRole("button"))
+
+    const section = document.querySelector("section.surface-raised")
+    expect(section).not.toBeNull()
+    expect(section!.className).toContain("bg-(--bg-input)")
+    expect(section!.className).not.toContain("bg-(--bg-card)")
   })
 })

@@ -19,6 +19,8 @@
 import { useEffect, useRef, useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ChevronRight, Copy, Check } from 'lucide-react'
+import hljs from 'highlight.js/lib/core'
+import bash from 'highlight.js/lib/languages/bash'
 import { ToolResult } from '../ToolResult'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
 import { getToolDisplay } from './display'
@@ -26,6 +28,8 @@ import { DiffView } from './DiffView'
 import { ReadView } from './ReadView'
 import { getDiffStats } from './diffUtils'
 import type { ToolCallState } from './types'
+
+hljs.registerLanguage('bash', bash)
 
 interface ToolCallProps {
   name: string
@@ -115,6 +119,27 @@ function parseJsonStrings(val: unknown): unknown {
     return res
   }
   return val
+}
+
+/**
+ * Syntax-highlights a bash command string using highlight.js.
+ *
+ * Rendered inline inside the `<pre>` terminal block — sits right after the
+ * `$ ` prompt. Uses `dangerouslySetInnerHTML` because hljs returns an HTML
+ * string; the input is the tool's own `command` arg (never user-supplied
+ * free text arriving from the network), so XSS risk is negligible.
+ */
+function ShellCommand({ command }: { command: string }) {
+  const highlighted = useMemo(() => {
+    try {
+      return hljs.highlight(command, { language: 'bash' }).value
+    } catch {
+      // hljs can throw on pathological input — fall back to escaped plain text
+      return command.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    }
+  }, [command])
+
+  return <code className="hljs" dangerouslySetInnerHTML={{ __html: highlighted }} />
 }
 
 export function ToolCall({ name, args, done, liveOutput, result, durationMs, startedAt }: ToolCallProps) {
@@ -279,7 +304,7 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
             transition={{ duration: DURATIONS_S.base, ease: EASINGS.out }}
             className="overflow-hidden"
           >
-            <section className="surface-raised group relative mt-1 overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card)">
+            <section className="surface-raised group relative mt-1 overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-input)">
               {usesDiffView ? (
                 <DiffView
                   toolName={name}
@@ -321,9 +346,7 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
                             ref={shownLiveOutput ? liveOutputRef : undefined}
                             className="max-h-64 overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-(--color-text)"
                           >
-                            <span className="select-none text-(--color-text-muted)">$ </span>
-                            <span className="text-(--color-accent)">{formattedArgs}</span>
-                            {shellOutput ? `\n${shellOutput}` : ''}
+                            <span className="select-none text-(--color-text-muted)">$ </span><ShellCommand command={formattedArgs} />{shellOutput ? `\n${shellOutput}` : ''}
                           </pre>
                           {shellResult?.statusLine && (
                             <span

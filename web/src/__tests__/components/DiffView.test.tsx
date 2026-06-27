@@ -265,3 +265,73 @@ describe("DiffView", () => {
     expect(screen.getByText("invalid json")).toBeTruthy()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Background bleed regression — inner wrappers must NOT carry their own
+// border-radius that creates a pixel gap against the outer overflow-hidden
+// section.  Redundant rounded-* classes were the second cause of the bleed.
+// ---------------------------------------------------------------------------
+
+describe("DiffView — no redundant inner border-radius (bg-bleed regression)", () => {
+  it("SingleFileDiff wrapper has no first:rounded-t-sm / last:rounded-b-sm on outer div", () => {
+    const args = JSON.stringify({
+      path: "src/foo.ts",
+      old_string: "old",
+      new_string: "new",
+    })
+    render(<DiffView toolName="edit" args={args} />)
+
+    // The container holding the diff lines must not carry border-radius that
+    // would create a gap against the clipping parent.
+    const contentArea = document.querySelector(".overflow-y-auto.bg-\\(--bg-input\\)")
+    expect(contentArea).not.toBeNull()
+    expect(contentArea!.className).not.toContain("rounded-b-sm")
+  })
+
+  it("edit outer DiffView wrapper has no rounded-sm", () => {
+    const args = JSON.stringify({
+      path: "src/foo.ts",
+      old_string: "a",
+      new_string: "b",
+    })
+    render(<DiffView toolName="edit" args={args} />)
+
+    // The immediate child of DiffView (overflow-hidden div) must not add its
+    // own rounding — the parent section already clips with overflow:hidden.
+    const wrapper = document.querySelector(".overflow-hidden:not(section)")
+    // If it exists it must not contain rounded-sm
+    if (wrapper) {
+      expect(wrapper.className).not.toContain("rounded-sm")
+    }
+  })
+
+  it("write outer DiffView wrapper has no rounded-sm", () => {
+    const args = JSON.stringify({
+      path: "src/new.ts",
+      content: "export {}",
+    })
+    render(<DiffView toolName="write" args={args} />)
+
+    const wrapper = document.querySelector(".overflow-hidden:not(section)")
+    if (wrapper) {
+      expect(wrapper.className).not.toContain("rounded-sm")
+    }
+  })
+
+  it("patch outer DiffView wrapper has no rounded-sm", () => {
+    const patchText = [
+      "*** Begin Patch",
+      "*** Update File: src/utils.ts",
+      "@@",
+      "-old",
+      "+new",
+      "*** End Patch",
+    ].join("\n")
+    render(<DiffView toolName="patch" args={JSON.stringify({ patch_text: patchText })} />)
+
+    const wrapper = document.querySelector(".overflow-hidden:not(section)")
+    if (wrapper) {
+      expect(wrapper.className).not.toContain("rounded-sm")
+    }
+  })
+})

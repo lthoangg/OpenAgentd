@@ -59,8 +59,8 @@ export function ReadView({ args, result, onCollapse }: ReadViewProps) {
   }
 
   return (
-    <div className="flex max-h-80 flex-col overflow-hidden rounded-sm">
-      <div className="sticky top-0 z-10 flex w-full items-center rounded-t-sm border-b border-(--color-border) bg-(--bg-sidebar) font-mono text-xs font-semibold text-(--color-text-2) shadow-sm">
+    <div className="flex max-h-80 flex-col overflow-hidden">
+      <div className="sticky top-0 z-10 flex w-full items-center border-b border-(--color-border) bg-(--bg-sidebar) font-mono text-xs font-semibold text-(--color-text-2) shadow-sm">
         <button
           type="button"
           onClick={handleCollapse}
@@ -95,7 +95,7 @@ export function ReadView({ args, result, onCollapse }: ReadViewProps) {
       </div>
 
       {expanded && (
-        <div className="overflow-y-auto rounded-b-sm bg-(--bg-input) font-mono text-xs leading-relaxed">
+        <div className="overflow-y-auto bg-(--bg-input) font-mono text-xs leading-relaxed">
           <div className="min-w-0">
             {lines.map((line, idx) => (
               <div key={idx} className="flex items-stretch text-(--color-text)">

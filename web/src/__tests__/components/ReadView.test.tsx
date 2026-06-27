@@ -31,3 +31,54 @@ describe("ReadView", () => {
     expect(screen.getByText(/-last/)).toBeTruthy()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Background bleed regression — ReadView's outer div and content div must not
+// carry border-radius that creates a gap against the outer overflow-hidden
+// section.
+// ---------------------------------------------------------------------------
+
+describe("ReadView — no redundant inner border-radius (bg-bleed regression)", () => {
+  it("outer flex container has no rounded-sm", () => {
+    render(
+      <ReadView
+        args={JSON.stringify({ path: "src/foo.ts" })}
+        result="[1-1/1]\nconsole.log('hi')"
+      />,
+    )
+
+    // The outermost div rendered by ReadView must not carry rounded-sm —
+    // the parent section already handles rounding via overflow:hidden.
+    const outerDiv = document.querySelector(".flex.max-h-80.flex-col.overflow-hidden")
+    expect(outerDiv).not.toBeNull()
+    expect(outerDiv!.className).not.toContain("rounded-sm")
+  })
+
+  it("content area has no rounded-b-sm", () => {
+    render(
+      <ReadView
+        args={JSON.stringify({ path: "src/foo.ts" })}
+        result="[1-2/2]\nline one\nline two"
+      />,
+    )
+
+    const contentArea = document.querySelector(".overflow-y-auto.bg-\\(--bg-input\\)")
+    expect(contentArea).not.toBeNull()
+    expect(contentArea!.className).not.toContain("rounded-b-sm")
+  })
+
+  it("header bar has no rounded-t-sm", () => {
+    render(
+      <ReadView
+        args={JSON.stringify({ path: "src/bar.ts" })}
+        result="[1-1/1]\nconst x = 1"
+      />,
+    )
+
+    // The sticky header must not add its own rounded-t-sm — the parent's
+    // overflow:hidden takes care of top-corner clipping.
+    const header = document.querySelector(".sticky.top-0")
+    expect(header).not.toBeNull()
+    expect(header!.className).not.toContain("rounded-t-sm")
+  })
+})

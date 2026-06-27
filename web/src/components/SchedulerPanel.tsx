@@ -8,7 +8,7 @@
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Clock, Plus, Loader2, AlertCircle, CalendarClock, ArrowLeft } from 'lucide-react'
-import { Input } from '@/components/ui/input'
+import { SearchBar } from '@/components/ui/search-bar'
 import {
   useScheduledTasksQuery,
 } from '@/queries'
@@ -16,7 +16,6 @@ import type { ScheduledTaskMode } from '@/api/types'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useModalFocus } from '@/hooks/useModalFocus'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
-import { FIELD_CLASS } from './SchedulerPanel/utils'
 import { TaskListItem } from './SchedulerPanel/TaskListItem'
 import { CreateTaskForm } from './SchedulerPanel/CreateTaskForm'
 import { TaskDetailView } from './SchedulerPanel/TaskDetailView'
@@ -122,7 +121,7 @@ export function SchedulerPanel({
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
             onClick={onClose}
-            className="fixed inset-0 z-40 bg-black/40"
+            className="fixed inset-x-0 bottom-0 top-[calc(var(--spacing-app-header)+env(safe-area-inset-top,0px))] z-40 bg-black/40 sm:inset-0"
           />
 
           <motion.aside
@@ -131,20 +130,20 @@ export function SchedulerPanel({
             animate={prefersReducedMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 }}
             exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97, y: 8 }}
             transition={{ duration: prefersReducedMotion ? 0.01 : 0.18, ease: [0.4, 0, 0.2, 1] }}
-            className="fixed inset-x-0 bottom-0 top-[env(safe-area-inset-top,0px)] z-50 flex flex-col overflow-hidden border-(--color-border) bg-(--bg-card) shadow-2xl sm:left-1/2 sm:top-1/2 sm:inset-auto sm:h-[min(90vh,860px)] sm:w-[min(90vw,1180px)] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:border"
+            className="fixed inset-x-0 bottom-0 top-[calc(var(--spacing-app-header)+env(safe-area-inset-top,0px))] z-50 flex flex-col overflow-hidden border-(--color-border) bg-(--bg-page) shadow-2xl sm:inset-auto sm:left-1/2 sm:top-1/2 sm:h-[min(90vh,860px)] sm:w-[min(90vw,1180px)] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-md sm:border"
             role="dialog"
             aria-modal="true"
             aria-label="Scheduled tasks"
             data-modal-focus="true"
           >
             {/* Header */}
-            <header className="flex shrink-0 items-center justify-between gap-3 border-b border-(--color-border) px-5 py-4">
+            <header className="flex shrink-0 items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-sidebar) px-3 py-3 sm:px-5 sm:py-4">
               <div className="flex min-w-0 flex-1 items-center gap-2">
                 {/* Mobile back button — shown in detail/create pane */}
                 {isMobile && mobilePane !== 'list' && (
                   <button
                     onClick={handleBackToList}
-                    className="shrink-0 rounded-md p-1.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
                     aria-label="Back to task list"
                   >
                     <ArrowLeft size={14} />
@@ -178,7 +177,7 @@ export function SchedulerPanel({
                 {isMobile && mobilePane === 'list' && (
                   <button
                     onClick={handleOpenCreate}
-                    className="rounded-md p-1.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
+                    className="flex h-7 w-7 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
                     aria-label="Create new task"
                     title="Create task"
                   >
@@ -187,7 +186,7 @@ export function SchedulerPanel({
                 )}
                 <button
                   onClick={onClose}
-                  className="rounded-md p-1.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
+                  className="flex h-7 w-7 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
                   aria-label="Close scheduler panel"
                   title="Close (Esc)"
                 >
@@ -200,11 +199,10 @@ export function SchedulerPanel({
             <div className="flex flex-1 overflow-hidden">
               {/* List panel */}
               {showList && (
-                <div className={`flex flex-col border-r border-(--color-border) ${isMobile ? 'w-full' : 'w-96 shrink-0'}`}>
+                <div className={`flex flex-col bg-(--bg-sidebar) ${isMobile ? 'w-full' : 'w-96 shrink-0 border-r border-(--color-border)'}`}>
                   {/* Search bar */}
-                  <div className="border-b border-(--color-border) p-3">
-                    <Input
-                      className={FIELD_CLASS}
+                  <div className="border-b border-(--color-border) bg-(--bg-sidebar) p-3">
+                    <SearchBar
                       placeholder="Search tasks…"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
@@ -235,7 +233,7 @@ export function SchedulerPanel({
                         )}
                       </div>
                     ) : (
-                      <div className="space-y-1 p-2">
+                      <div className="space-y-1.5 p-2.5">
                         {filteredTasks.map((task) => (
                           <TaskListItem
                             key={task.id}

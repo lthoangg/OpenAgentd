@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ChevronDown, Plug, Search, Wrench } from 'lucide-react'
+import { ChevronDown, Plug, Wrench } from 'lucide-react'
 
 import type { AgentInfo } from '@/api/types'
 import type { ServerStatus } from '@/api/client'
 import { Button } from '@/components/ui/button'
+import { SearchBar } from '@/components/ui/search-bar'
 
 const TOOL_SEARCH_THRESHOLD = 8
 
@@ -49,10 +50,10 @@ function ToolRow({ name, description }: { name: string; description: string }) {
   const [open, setOpen] = useState(false)
   const hasDesc = description.trim().length > 0
   return (
-    <div className="overflow-hidden rounded-lg border border-(--color-border) bg-(--bg-page) transition-colors hover:border-(--color-border-strong)">
+    <div className="overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) transition-colors hover:bg-(--bg-key)/20">
       <button
         onClick={() => hasDesc && setOpen((v) => !v)}
-        className={`flex w-full items-center gap-2.5 px-3 py-2 text-left ${hasDesc ? 'cursor-pointer' : 'cursor-default'}`}
+        className={`flex min-h-9 w-full items-center gap-2.5 px-3 py-1.5 text-left md:min-h-0 ${hasDesc ? 'cursor-pointer' : 'cursor-default'}`}
       >
         <Wrench size={12} className="shrink-0 text-(--color-text-muted)" />
         <code className="flex-1 truncate font-mono text-xs font-medium text-(--color-text)">{name}</code>
@@ -91,23 +92,23 @@ function ToolGroupHeader({
 }) {
   if (server === null) {
     return (
-      <div className="flex items-center gap-2 px-5 pt-3 pb-1.5">
+      <div className="flex items-center gap-2 px-3 pt-3 pb-1.5 sm:px-5">
         <h4 className="text-[10px] font-semibold uppercase tracking-widest text-(--color-text-muted)">
           Built-in
         </h4>
-        <span className="rounded-md bg-(--bg-key) px-2 py-0.5 text-[10px] text-(--color-text-muted)">
+        <span className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 text-[10px] text-(--color-text-muted)">
           {count}
         </span>
       </div>
     )
   }
   return (
-    <div className="flex items-center gap-2 px-5 pt-3 pb-1.5">
+    <div className="flex items-center gap-2 px-3 pt-3 pb-1.5 sm:px-5">
       <Plug size={11} className="text-(--color-text-muted)" aria-hidden />
       <h4 className="text-[10px] font-semibold uppercase tracking-widest text-(--color-text-muted)">
         MCP · {server}
       </h4>
-      <span className="rounded-md bg-(--bg-key) px-2 py-0.5 text-[10px] text-(--color-text-muted)">
+      <span className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 text-[10px] text-(--color-text-muted)">
         {count}
       </span>
     </div>
@@ -155,34 +156,28 @@ export function Tools({
 
   return (
     <section className="border-t border-(--color-border)">
-      <div className="flex shrink-0 items-center gap-2 px-5 pt-4 pb-2">
+      <div className="flex shrink-0 items-center gap-2 px-3 pt-3 pb-2 sm:px-5 sm:pt-4">
         <h3 className="text-[10px] font-semibold uppercase tracking-widest text-(--color-text-muted)">
           Tools
         </h3>
-        <span className="rounded-md bg-(--bg-key) px-2 py-0.5 text-[10px] text-(--color-text-muted)">
+        <span className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 text-[10px] text-(--color-text-muted)">
           {tools.length}
         </span>
       </div>
 
       {showSearch && (
-        <div className="shrink-0 px-5 pb-2">
-          <div className="flex items-center gap-2 rounded-lg border border-(--color-border) bg-(--bg-page) px-2.5 py-1.5 focus-within:border-(--color-border-strong)">
-            <Search size={12} className="shrink-0 text-(--color-text-muted)" />
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Filter tools…"
-              className="min-w-0 flex-1 bg-transparent text-xs text-(--color-text) placeholder:text-(--color-text-subtle) focus:outline-none"
-              aria-label="Filter tools"
-            />
-          </div>
+        <div className="shrink-0 px-3 pb-2 sm:px-5">
+          <SearchBar
+            placeholder="Filter tools…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
         </div>
       )}
 
-      <div className="pb-5">
+      <div className="pb-3 sm:pb-5">
         {filteredTools.length === 0 && query.trim() ? (
-          <p className="px-5 pt-2 text-xs italic text-(--color-text-muted)">
+          <p className="px-3 pt-2 text-xs italic text-(--color-text-muted) sm:px-5">
             No tools match “{query}”.
           </p>
         ) : (
@@ -192,14 +187,15 @@ export function Tools({
               <div key={group.server ?? '__builtin__'}>
                 <ToolGroupHeader server={group.server} count={group.tools.length} />
                 {status && (
-                  <div className="mb-2 flex flex-wrap items-center gap-2 px-5">
-                    <span className="rounded-md bg-(--bg-key) px-2 py-0.5 text-[10px] font-medium text-(--color-text-muted)">
+                  <div className="mb-2 flex flex-wrap items-center gap-2 px-3 sm:px-5">
+                    <span className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 text-[10px] font-medium text-(--color-text-muted)">
                       {status.enabled ? (status.state === 'auth_required' ? 'OAuth required' : status.state) : 'disabled'}
                     </span>
                     <Button
                       type="button"
-                      variant="outline"
-                      size="sm"
+                      variant="default"
+                      size="xs"
+                      className="h-7 px-2 text-[10.5px]"
                       disabled={!status.config || busyServer === status.name}
                       onClick={() => onToggleServer(status)}
                     >
@@ -208,8 +204,9 @@ export function Tools({
                     {status.transport === 'http' && status.config?.transport === 'http' && status.config.oauth && (
                       <Button
                         type="button"
-                        variant="outline"
-                        size="sm"
+                        variant="default"
+                        size="xs"
+                        className="h-7 px-2 text-[10.5px]"
                         disabled={!status.enabled || busyServer === status.name}
                         onClick={() => onConnectOAuth(status)}
                       >
@@ -221,7 +218,7 @@ export function Tools({
                     )}
                   </div>
                 )}
-                <div className="space-y-1.5 px-5">
+                <div className="space-y-1.5 px-3 sm:px-5">
                   {group.tools.length === 0 ? (
                     <p className="text-xs italic text-(--color-text-muted)">
                       Server not ready — no tools available.

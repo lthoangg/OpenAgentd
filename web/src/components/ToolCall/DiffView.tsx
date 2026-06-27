@@ -40,7 +40,7 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1,
         : 'text-(--color-text-muted)'
 
   return (
-    <div className="flex max-h-80 flex-col overflow-y-auto overflow-x-hidden border-b border-(--color-border) last:border-b-0">
+    <div className="flex max-h-80 flex-col overflow-hidden border-b border-(--color-border) first:rounded-t-sm last:rounded-b-sm last:border-b-0">
       {/* File Header */}
       <button
         type="button"
@@ -51,7 +51,7 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1,
           }
           setExpanded((value) => !value)
         }}
-        className="sticky top-0 z-10 flex w-full items-center gap-2 border-b border-(--color-border) bg-(--bg-key) px-3 py-1.5 text-left font-mono text-xs font-semibold text-(--color-text-2) shadow-sm transition-colors hover:text-(--color-accent) focus-visible:outline-2 focus-visible:outline-(--focus-ring)"
+        className="sticky top-0 z-10 flex w-full items-center gap-2 border-b border-(--color-border) bg-(--bg-sidebar) px-3 py-1.5 text-left font-mono text-xs font-semibold text-(--color-text-2) shadow-sm transition-colors rounded-t-sm hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40"
         aria-expanded={expanded}
         aria-label={`${expanded ? 'Collapse' : 'Expand'} diff for ${path}`}
       >
@@ -75,7 +75,7 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1,
 
       {/* Diff Content */}
       {expanded && (
-        <div className="overflow-y-auto bg-(--bg-card) font-mono text-xs leading-relaxed">
+        <div className="overflow-y-auto rounded-b-sm bg-(--bg-input) font-mono text-xs leading-relaxed">
         {linesWithNumbers.length === 0 ? (
           <div className="px-3 py-4 text-center text-(--color-text-muted) italic">
             No content changes
@@ -90,7 +90,7 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1,
                 ? 'bg-[var(--color-diff-add-bg)]'
                 : isRemoved
                   ? 'bg-[var(--color-diff-del-bg)]'
-                  : 'bg-(--bg-card) hover:bg-(--bg-key)/30'
+                  : 'bg-(--bg-input)'
 
               const lineText = isAdded
                 ? 'text-[var(--color-diff-add-text)]'
@@ -145,7 +145,7 @@ export function DiffView({ toolName, args, result, onCollapse }: DiffViewProps) 
     const lines = diffLines(oldStr, newStr)
 
     return (
-      <div className="overflow-hidden rounded-md">
+      <div className="overflow-hidden rounded-sm">
         <SingleFileDiff
           path={path}
           kind="update"
@@ -164,7 +164,7 @@ export function DiffView({ toolName, args, result, onCollapse }: DiffViewProps) 
     const lines = content.replace(/\r\n/g, '\n').split('\n').map((line: string) => ({ type: 'added' as const, value: line }))
 
     return (
-      <div className="overflow-hidden rounded-md">
+      <div className="overflow-hidden rounded-sm">
         <SingleFileDiff path={path} kind="add" lines={lines} onCollapse={onCollapse} />
       </div>
     )
@@ -183,7 +183,7 @@ export function DiffView({ toolName, args, result, onCollapse }: DiffViewProps) 
     }
 
     return (
-      <div className="flex flex-col overflow-hidden rounded-md">
+      <div className="flex flex-col overflow-hidden rounded-sm">
         {diffs.map((diff, idx) => (
           <SingleFileDiff
             key={idx}

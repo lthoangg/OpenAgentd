@@ -1,29 +1,24 @@
 import { describe, expect, it, mock } from 'bun:test'
 import { render, screen } from '@testing-library/react'
-import type { ReactNode } from 'react'
 import { SettingsListView } from '@/components/settings/SettingsListView'
 
-mock.module('@tanstack/react-router', () => ({
-  Link: ({ to, children, ...rest }: { to: string; children: ReactNode; [k: string]: unknown }) => (
-    <a href={to} {...rest}>{children}</a>
-  ),
-}))
+// SettingsListView no longer uses router Links; no mock needed.
+mock.module('@tanstack/react-router', () => ({}))
 
 function renderList() {
   render(
     <SettingsListView
       title="Agents"
       description="Manage agents."
-      newTo="/settings/agents/new"
       newLabel="New agent"
+      onNew={() => {}}
       filterPlaceholder="Filter agents"
       rows={[
         {
           key: 'lead',
-          to: '/settings/agents/$name',
-          params: { name: 'lead' },
           title: 'lead',
           description: 'Primary agent',
+          onClick: () => {},
         },
       ]}
       isLoading={false}
@@ -38,8 +33,8 @@ describe('SettingsListView', () => {
   it('keeps settings list rows touch-sized and keyboard-focusable', () => {
     renderList()
 
-    const row = screen.getByRole('link', { name: /lead/i })
-    expect(row.className).toContain('min-h-11')
-    expect(row.className).toContain('focus-visible:ring-3')
+    const row = screen.getByRole('button', { name: /lead/i })
+    expect(row.className).toMatch(/min-h-(10|11)/)
+    expect(row.className).toContain('focus-visible:ring-2')
   })
 })

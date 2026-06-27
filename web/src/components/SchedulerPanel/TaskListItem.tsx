@@ -96,15 +96,15 @@ export function TaskListItem({
       onPointerUp={clearLongPress}
       onPointerCancel={clearLongPress}
       onPointerLeave={clearLongPress}
-      className={`w-full rounded-lg border px-3 py-2 text-left transition-colors ${
+      className={`w-full rounded-sm border px-3 py-2 text-left transition-colors ${
         isSelected
-          ? 'border-(--color-accent) bg-(--bg-key)'
-          : 'border-(--color-border) bg-(--bg-page) hover:border-(--color-border-strong)'
+          ? 'border-(--color-border-strong) bg-(--bg-key)/40'
+          : 'border-(--color-border) bg-(--bg-card) hover:border-(--color-border-strong) hover:bg-(--color-surface)'
       }`}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <div className="flex items-baseline gap-2 flex-wrap">
+          <div className="flex flex-wrap items-baseline gap-2">
             <p className="truncate text-sm font-medium text-(--color-text)">{task.name}</p>
             <span className="font-mono text-[10px] text-(--color-text-muted) break-all">
               {slugify(task.name)}
@@ -113,7 +113,7 @@ export function TaskListItem({
           <p className="mt-0.5 truncate text-xs text-(--color-text-muted)">
             {formatScheduleLabel(task)}
           </p>
-          <div className="mt-1 flex items-center gap-2">
+          <div className="mt-1 flex flex-wrap items-center gap-2">
             <ModeBadge task={task} />
             <span className={`text-xs font-medium ${statusColor}`}>{task.status}</span>
           </div>
@@ -128,10 +128,10 @@ export function TaskListItem({
         </div>
 
         {/* Action buttons */}
-        <div className="flex shrink-0 gap-1">
+        <div className="flex shrink-0 gap-0.5">
           <Button
             variant="ghost"
-            size="icon-sm"
+            size="icon-xs"
             onClick={(e) => {
               e.stopPropagation()
               triggerTask()
@@ -140,14 +140,14 @@ export function TaskListItem({
             title="Trigger now"
           >
             {triggerMutation.isPending ? (
-              <Loader2 size={14} className="animate-spin" />
+              <Loader2 size={13} className="animate-spin" />
             ) : (
-              <Zap size={14} />
+              <Zap size={13} />
             )}
           </Button>
           <Button
             variant="ghost"
-            size="icon-sm"
+            size="icon-xs"
             onClick={(e) => {
               e.stopPropagation()
               togglePaused()
@@ -156,16 +156,16 @@ export function TaskListItem({
             title={task.status === 'paused' ? 'Resume' : 'Pause'}
           >
             {pauseMutation.isPending || resumeMutation.isPending ? (
-              <Loader2 size={14} className="animate-spin" />
+              <Loader2 size={13} className="animate-spin" />
             ) : task.status === 'paused' ? (
-              <Play size={14} />
+              <Play size={13} />
             ) : (
-              <Pause size={14} />
+              <Pause size={13} />
             )}
           </Button>
           <Button
             variant="ghost"
-            size="icon-sm"
+            size="icon-xs"
             onClick={(e) => {
               e.stopPropagation()
               deleteTask()
@@ -175,9 +175,9 @@ export function TaskListItem({
             className="hover:bg-(--color-error-subtle) hover:text-(--color-error)"
           >
             {deleteMutation.isPending ? (
-              <Loader2 size={14} className="animate-spin" />
+              <Loader2 size={13} className="animate-spin" />
             ) : (
-              <Trash2 size={14} />
+              <Trash2 size={13} />
             )}
           </Button>
         </div>
@@ -195,14 +195,14 @@ export function TaskListItem({
         <div
           role="menu"
           aria-label={`Actions for ${task.name}`}
-          className="fixed min-w-44 rounded-lg border border-(--color-border) bg-(--bg-card) p-1 text-sm text-(--color-text) shadow-xl"
+          className="fixed min-w-44 rounded-sm border border-(--color-border) bg-(--bg-card) p-1 text-sm text-(--color-text) shadow-xl"
           style={{ left: actionsPoint.x, top: actionsPoint.y }}
           onClick={(event) => event.stopPropagation()}
         >
           <button
             type="button"
             role="menuitem"
-            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+            className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
             onClick={() => {
               setActionsPoint(null)
               triggerTask()
@@ -214,7 +214,7 @@ export function TaskListItem({
           <button
             type="button"
             role="menuitem"
-            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+            className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
             onClick={() => {
               setActionsPoint(null)
               togglePaused()
@@ -226,7 +226,7 @@ export function TaskListItem({
           <button
             type="button"
             role="menuitem"
-            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none"
+            className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none"
             onClick={() => {
               setActionsPoint(null)
               deleteTask()

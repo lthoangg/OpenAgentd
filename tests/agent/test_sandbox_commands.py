@@ -122,16 +122,17 @@ def test_expands_tilde_against_home(
 
 
 def test_relative_path_resolves_against_workspace(tmp_path: Path) -> None:
-    """A relative path outside the workspace mustn't slip past the denylist."""
+    """Relative workspace paths should match user deny patterns too."""
     sandbox = _make(tmp_path, denied_patterns=["**/secrets/**"])
     workspace = tmp_path / "ws"
     (workspace / "secrets").mkdir()
 
-    # `secrets/key.pem` inside the workspace would resolve under workspace
-    # — but the workspace is exempt from denial, so this should NOT match.
-    assert sandbox.check_command("cat secrets/key.pem") is None
+    hit_workspace = sandbox.check_command("cat secrets/key.pem")
+    assert hit_workspace is not None
+    _, denied_workspace = hit_workspace
+    assert denied_workspace == "**/secrets/**"
 
-    # An absolute path to a non-workspace `secrets/` SHOULD match.
+    # An absolute path to a non-workspace `secrets/` SHOULD also match.
     other = tmp_path / "other_proj" / "secrets" / "key.pem"
     other.parent.mkdir(parents=True)
     hit = sandbox.check_command(f"cat {other}")
@@ -160,14 +161,21 @@ def test_no_path_tokens_means_no_match(tmp_path: Path) -> None:
     assert sandbox.check_command("") is None
 
 
-def test_workspace_paths_are_exempt(tmp_path: Path) -> None:
-    """Workspace remains reachable even when a pattern would otherwise match."""
+def test_workspace_paths_match_user_denied_patterns(tmp_path: Path) -> None:
+    """Workspace paths should be flagged when they match a user deny pattern."""
     sandbox = _make(tmp_path, denied_patterns=["**/.env"])
     workspace = tmp_path / "ws"
     (workspace / ".env").touch()
 
-    assert sandbox.check_command(f"cat {workspace}/.env") is None
-    assert sandbox.check_command("cat .env") is None  # relative to workspace
+    hit_abs = sandbox.check_command(f"cat {workspace}/.env")
+    assert hit_abs is not None
+    _, denied_abs = hit_abs
+    assert denied_abs == "**/.env"
+
+    hit_rel = sandbox.check_command("cat .env")
+    assert hit_rel is not None
+    _, denied_rel = hit_rel
+    assert denied_rel == "**/.env"
 
 
 def test_unbalanced_quotes_do_not_raise(tmp_path: Path) -> None:

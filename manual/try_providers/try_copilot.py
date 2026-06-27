@@ -41,9 +41,6 @@ async def run_stream_with_retry(provider: CopilotProvider, prompt: str, *, label
         async for chunk in stream_with_retry(
             primary_provider=provider,
             primary_label=f"copilot:{provider.model}",
-            fallback_provider=None,
-            fallback_label="fallback",
-            agent_name="manual-copilot",
             ctx=None,
             state=None,
             hooks=None,

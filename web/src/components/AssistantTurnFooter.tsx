@@ -84,7 +84,7 @@ export function AssistantTurnFooter({ turnBlocks, size = 'compact', onContinue }
       {textContent && (
         <button
           onClick={handleCopy}
-          className="rounded p-0.5 text-(--color-text-muted) transition-colors hover:text-(--color-text-2)"
+          className="rounded-xs p-0.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
           aria-label="Copy response"
           title="Copy"
         >
@@ -96,7 +96,7 @@ export function AssistantTurnFooter({ turnBlocks, size = 'compact', onContinue }
       {canContinue && onContinue && (
         <button
           onClick={onContinue}
-          className="rounded p-0.5 text-(--color-text-muted) transition-colors hover:text-(--color-text-2)"
+          className="rounded-xs p-0.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
           aria-label="Continue response"
           title="Continue"
         >

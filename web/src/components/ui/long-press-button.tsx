@@ -1,11 +1,16 @@
 import { useRef, useState } from 'react'
+import type { ComponentPropsWithRef } from 'react'
 import { mediumHapticFeedback } from '@/lib/haptics'
 import { cn } from '@/lib/utils'
+import { buttonVariants } from '@/components/ui/button'
+import type { VariantProps } from 'class-variance-authority'
 
 const LONG_PRESS_MS = 520
 const LONG_PRESS_MOVE_TOLERANCE = 10
 
-interface LongPressButtonProps extends React.ComponentPropsWithoutRef<'button'> {
+interface LongPressButtonProps
+  extends ComponentPropsWithRef<'button'>,
+    VariantProps<typeof buttonVariants> {
   enabled: boolean
   onLongPress: () => void
 }
@@ -13,21 +18,28 @@ interface LongPressButtonProps extends React.ComponentPropsWithoutRef<'button'> 
 /**
  * Button with iOS-style press-and-hold affordance for touch input.
  *
+ * Pass `variant` + `size` to opt into Button styling.
+ * Omit both to get a completely unstyled <button> — safe for nav rows
+ * that supply their own className (SessionRow, WorkspaceSessionList).
+ *
  * While a touch press is armed the button scales down slightly
  * (mimicking the system context-menu "lift" cue); when the hold
- * threshold is reached it fires a medium haptic and ``onLongPress``.
+ * threshold is reached it fires a medium haptic and `onLongPress`.
  * Mouse pointers are ignored — desktop keeps plain click semantics.
  */
 function LongPressButton({
   enabled,
   onLongPress,
+  variant,
+  size,
+  className,
+  ref,
   onPointerDown,
   onPointerMove,
   onPointerUp,
   onPointerCancel,
   onPointerLeave,
   onContextMenu,
-  className,
   ...props
 }: LongPressButtonProps) {
   const timerRef = useRef<number | null>(null)
@@ -43,10 +55,12 @@ function LongPressButton({
 
   return (
     <button
+      ref={ref}
       {...props}
       data-pressing={pressing || undefined}
       className={cn(
-        'origin-center transition-transform duration-200 ease-out data-pressing:scale-[0.97] data-pressing:duration-300',
+        variant != null ? buttonVariants({ variant, size }) : undefined,
+        'data-pressing:scale-[0.97]',
         className,
       )}
       onPointerDown={(event) => {

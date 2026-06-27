@@ -29,7 +29,6 @@ Each file::
     thinking_level: low
     tools: [date, read, ls]
     skills: [mcp-installer]
-    fallback_model: copilot:gpt-5-mini
     ---
 
     You are the team orchestrator. Coordinate — do not do the work yourself.
@@ -108,7 +107,6 @@ class AgentConfig(BaseModel):
     mcp: list[str] = []  # MCP server names; agent gets all tools from each
     skills: list[str] = []
     model: str | None = None  # e.g. "googlegenai:gemini-3.1-flash"
-    fallback_model: str | None = None
     temperature: float | None = None
     thinking_level: str | None = None
     responses_api: bool | None = None
@@ -448,21 +446,6 @@ def _build_agent(
             )
         provider = UnconfiguredProvider(agent_name=cfg.name)
 
-    fallback_provider = None
-    if cfg.fallback_model:
-        try:
-            fallback_provider = provider_factory(
-                cfg.fallback_model, model_kwargs=model_kwargs
-            )
-        except Exception as exc:
-            logger.warning(
-                "agent_fallback_provider_unavailable agent={} model={} error={}",
-                cfg.name,
-                cfg.fallback_model,
-                exc,
-            )
-            fallback_provider = None
-
     agent = Agent[AgentContext](
         name=cfg.name,
         description=cfg.description,
@@ -472,8 +455,6 @@ def _build_agent(
         tools=tools,
         skills=cfg.skills,
         mcp_servers=cfg.mcp,
-        fallback_provider=fallback_provider,
-        fallback_model_id=cfg.fallback_model,
     )
 
     # Stamp config dependencies for end-of-turn drift detection.

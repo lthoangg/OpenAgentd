@@ -3,7 +3,7 @@
  */
 
 import { afterEach, beforeEach, describe, it, expect, mock } from 'bun:test'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
@@ -55,6 +55,17 @@ function renderSchedulerPanel() {
   )
 }
 
+function getSessionTargetTrigger() {
+  return screen.getAllByRole('button').find((button) =>
+    /New Session|Persistent Task Session|Current Chat Session|Specific Session ID/.test(button.textContent ?? ''),
+  )!
+}
+
+async function chooseSessionTarget(label: RegExp) {
+  fireEvent.click(getSessionTargetTrigger())
+  fireEvent.click(await screen.findByRole('menuitem', { name: label }))
+}
+
 describe('SchedulerPanel — Title Slugification and Session Target Selector', () => {
   it('displays the Task Title input and auto-slugifies user input in real-time', async () => {
     renderSchedulerPanel()
@@ -75,18 +86,15 @@ describe('SchedulerPanel — Title Slugification and Session Target Selector', (
 
   it('renders standard Session Target choices and displays adaptive descriptions', async () => {
     renderSchedulerPanel()
-    const user = userEvent.setup()
-
     // Find session target select
-    const targetSelect = screen.getByLabelText('Session Target')
+    const targetSelect = getSessionTargetTrigger()
     expect(targetSelect).toBeInTheDocument()
 
     // By default, should select New Session and show its helper description
-    expect(targetSelect).toHaveValue('new')
     expect(screen.getByText('Creates a fresh, isolated chat session for every run.')).toBeInTheDocument()
 
     // Switch to Persistent Task Session (auto)
-    await user.selectOptions(targetSelect, 'auto')
+    await chooseSessionTarget(/Persistent Task Session/i)
     expect(screen.getByText('Runs all executions in a single dedicated chat session created for this task.')).toBeInTheDocument()
   })
 
@@ -98,12 +106,8 @@ describe('SchedulerPanel — Title Slugification and Session Target Selector', (
     })
 
     renderSchedulerPanel()
-    const user = userEvent.setup()
-
-    const targetSelect = screen.getByLabelText('Session Target')
-
     // Switch to Current Chat Session
-    await user.selectOptions(targetSelect, 'current')
+    await chooseSessionTarget(/Current Chat Session/i)
     expect(screen.getByText('Delivers the prompt directly into your active chat thread.')).toBeInTheDocument()
   })
 
@@ -112,8 +116,7 @@ describe('SchedulerPanel — Title Slugification and Session Target Selector', (
     const user = userEvent.setup()
 
     // 1. Switch to custom session ID
-    const targetSelect = screen.getByLabelText('Session Target')
-    await user.selectOptions(targetSelect, 'custom')
+    await chooseSessionTarget(/Specific Session ID/i)
 
     expect(screen.getByText('Delivers the prompt to a specific chat session by its UUID.')).toBeInTheDocument()
 
@@ -152,12 +155,10 @@ describe('SchedulerPanel — Title Slugification and Session Target Selector', (
     renderSchedulerPanel()
     const user = userEvent.setup()
 
-    const targetSelect = screen.getByLabelText('Session Target')
-
     // Since default mode is 'normal' (matching active session's workspace = null),
     // the "current" option should be present and selectable.
-    await user.selectOptions(targetSelect, 'current')
-    expect(targetSelect).toHaveValue('current')
+    await chooseSessionTarget(/Current Chat Session/i)
+    expect(getSessionTargetTrigger().textContent).toContain('Current Chat Session')
 
     // 2. Change routing mode to 'coding' in the form
     const codingTab = screen.getByRole('tab', { name: 'Coding' })
@@ -166,11 +167,11 @@ describe('SchedulerPanel — Title Slugification and Session Target Selector', (
     // Since the active session is in 'normal' mode, but the form's selected routing target
     // is now 'coding', they are incompatible.
     // The "current" option should be hidden, and the value should have auto-reset to 'new'.
-    expect(targetSelect).not.toHaveValue('current')
-    expect(targetSelect).toHaveValue('new')
+    expect(getSessionTargetTrigger().textContent).toContain('New Session')
 
-    // Verify the "current" option is no longer rendered in the select options
-    const currentOption = screen.queryByRole('option', { name: /Current Chat Session/ })
+    // Verify the "current" option is no longer rendered in the menu options
+    fireEvent.click(getSessionTargetTrigger())
+    const currentOption = screen.queryByRole('menuitem', { name: /Current Chat Session/ })
     expect(currentOption).toBeNull()
   })
 })

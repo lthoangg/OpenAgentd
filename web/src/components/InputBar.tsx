@@ -896,11 +896,11 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
 
   // Reusable pill button styles for the action row (attach, mic — pencil
   // calls these `inputBarAttach`, `inputBarMic`: 32×32, rounded-sm border,
-  // --color-surface fill).
+  // warm card fill).
   const actionBtnClass =
-    'flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-(--color-border) bg-(--color-surface) text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:cursor-not-allowed disabled:opacity-50'
+    'flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-(--color-border) bg-(--bg-card) text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:cursor-not-allowed disabled:opacity-50'
   const shellBtnClass = shellMode
-    ? 'flex h-7 shrink-0 items-center gap-1 rounded-md border border-(--color-accent) bg-(--bg-key) px-2 font-mono text-xs text-(--color-text) transition-colors hover:bg-(--color-surface) disabled:cursor-not-allowed disabled:opacity-50'
+    ? 'flex h-7 shrink-0 items-center gap-1 rounded-md border border-(--color-accent) bg-(--bg-key) px-2 font-mono text-xs text-(--color-text) transition-colors hover:bg-(--bg-card) disabled:cursor-not-allowed disabled:opacity-50'
     : actionBtnClass
 
   // Three states share one DOM tree: minimized, single-line, multi-line.
@@ -1006,7 +1006,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       disabled={!canSend}
       aria-label="Send message"
       title={isMobile ? 'Send message' : 'Send (Enter) · New line (Shift+Enter) · Commands (/)'}
-      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-(--color-border) bg-(--color-surface) text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:cursor-not-allowed disabled:opacity-50"
+      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-(--color-border) bg-(--bg-card) text-(--color-text-2) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:cursor-not-allowed disabled:opacity-50"
     >
       {disabled && !minimized ? (
         <Loader2 size={14} className="animate-spin" aria-hidden="true" />

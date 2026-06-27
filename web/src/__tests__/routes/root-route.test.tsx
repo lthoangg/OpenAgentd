@@ -11,8 +11,13 @@ describe('closestRestorableRoute', () => {
   })
 
   it('preserves stable top-level routes', () => {
-    expect(closestRestorableRoute('/settings/providers')).toBe('/settings/providers')
     expect(closestRestorableRoute('/telemetry')).toBe('/telemetry')
+  })
+
+  it('redirects all /settings/* paths to home (settings is now a modal)', () => {
+    expect(closestRestorableRoute('/settings/providers')).toBe('/')
+    expect(closestRestorableRoute('/settings/agents')).toBe('/')
+    expect(closestRestorableRoute('/settings')).toBe('/')
   })
 
   it('preserves query/hash suffixes when falling back', () => {

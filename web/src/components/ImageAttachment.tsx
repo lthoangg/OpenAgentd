@@ -29,7 +29,7 @@ export function ImageAttachment({ src, alt = 'Image', onRemove, removable, compa
 
   if (imageError) {
     return (
-      <div className={`flex ${errorSizeClass} items-center justify-center rounded-lg border border-(--color-border) bg-(--bg-card) text-xs text-(--color-text-muted)`}>
+      <div className={`flex ${errorSizeClass} items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-xs text-(--color-text-muted)`}>
         Failed to load image
       </div>
     )
@@ -41,7 +41,7 @@ export function ImageAttachment({ src, alt = 'Image', onRemove, removable, compa
         <button
           type="button"
           onClick={() => setLightboxOpen(true)}
-          className="text-left focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:outline-none"
+          className="overflow-hidden rounded-sm text-left focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:outline-none"
           aria-label={`Open ${alt} preview`}
         >
           <img
@@ -59,7 +59,7 @@ export function ImageAttachment({ src, alt = 'Image', onRemove, removable, compa
               e.stopPropagation()
               onRemove()
             }}
-            className="absolute -right-2 -top-2 flex h-7 w-7 items-center justify-center rounded-full bg-(--bg-key) text-(--color-text-muted) ring-1 ring-(--color-border) shadow-sm transition-opacity opacity-100 hover:text-(--color-text) md:-right-1.5 md:-top-1.5 md:h-4 md:w-4 md:opacity-0 md:group-hover:opacity-100"
+            className="absolute -right-2 -top-2 flex h-7 w-7 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-(--color-text-muted) shadow-sm opacity-100 transition-colors hover:border-(--color-border-strong) hover:text-(--color-text) md:-right-1.5 md:-top-1.5 md:h-4 md:w-4 md:opacity-0 md:group-hover:opacity-100"
             aria-label="Remove image"
             title="Remove"
           >

@@ -13,7 +13,6 @@ export interface AgentFrontmatter {
   role: 'lead' | 'member'
   description?: string | null
   model?: string | null
-  fallback_model?: string | null
   temperature?: number | null
   thinking_level?: string | null
   tools?: string[]
@@ -41,7 +40,6 @@ export function buildFrontmatter(fm: AgentFrontmatter): string {
   lines.push(`role: ${fm.role}`)
   if (fm.description) lines.push(`description: ${escapeScalar(fm.description)}`)
   if (fm.model) lines.push(`model: ${fm.model}`)
-  if (fm.fallback_model) lines.push(`fallback_model: ${fm.fallback_model}`)
   if (fm.temperature != null && !Number.isNaN(fm.temperature)) {
     lines.push(`temperature: ${fm.temperature}`)
   }

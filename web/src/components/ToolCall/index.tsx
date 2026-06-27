@@ -217,9 +217,9 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
       <button
         type="button"
         onClick={() => hasDetails && setManualExpanded(!expanded)}
-        className={`group inline-flex max-w-full items-center gap-1.5 py-1 text-left text-xs transition-colors duration-(--motion-fast) ease-(--ease-out) focus-visible:outline-2 focus-visible:outline-(--focus-ring) ${
+        className={`group inline-flex max-w-full items-center gap-1.5 py-1 text-left text-xs transition-colors duration-(--motion-fast) ease-(--ease-out) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40 ${
           hasDetails
-            ? 'cursor-pointer text-(--color-text) hover:text-(--color-accent)'
+            ? 'cursor-pointer text-(--color-text) hover:text-(--color-text)'
             : 'cursor-default'
         }`}
         aria-expanded={expanded}
@@ -279,7 +279,7 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
             transition={{ duration: DURATIONS_S.base, ease: EASINGS.out }}
             className="overflow-hidden"
           >
-            <section className="surface-raised group relative mt-1 overflow-hidden rounded-md border border-(--color-border) bg-(--bg-card)">
+            <section className="surface-raised group relative mt-1 overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card)">
               {usesDiffView ? (
                 <DiffView
                   toolName={name}
@@ -298,13 +298,13 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
                   {/* Args section — caption + copy sit above the content. */}
                   {formattedArgs && (
                     <div>
-                      <div className="flex items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-key) py-0.5 pr-1.5 pl-3">
+                      <div className="flex items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-sidebar) py-0.5 pr-1.5 pl-3">
                         <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted)">
                           {isShellTerminal ? 'terminal' : 'arguments'}
                         </span>
                         <button
                           onClick={handleCopyArgs}
-                          className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) opacity-100 transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring) md:h-6 md:w-6 md:opacity-0 md:group-hover:opacity-100"
+                          className="flex h-7 w-7 items-center justify-center rounded-sm text-(--color-text-muted) opacity-100 transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40 md:h-6 md:w-6 md:opacity-0 md:group-hover:opacity-100"
                           aria-label="Copy arguments"
                           title="Copy"
                         >
@@ -316,7 +316,7 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
                         </button>
                       </div>
                       {isShellTerminal ? (
-                        <div className="flex flex-col gap-1 p-2.5">
+                        <div className="flex flex-col gap-1 bg-(--bg-input) p-2.5">
                           <pre
                             ref={shownLiveOutput ? liveOutputRef : undefined}
                             className="max-h-64 overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-(--color-text)"
@@ -338,7 +338,7 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
                           )}
                         </div>
                       ) : (
-                        <pre className="max-h-[calc(10*1.55em)] overflow-y-auto whitespace-pre-wrap break-all px-3 py-2.5 font-mono text-xs leading-relaxed text-(--color-text)">
+                        <pre className="max-h-[calc(10*1.55em)] overflow-y-auto whitespace-pre-wrap break-all bg-(--bg-input) px-3 py-2.5 font-mono text-xs leading-relaxed text-(--color-text)">
                           {displayedArgs}
                         </pre>
                       )}
@@ -347,14 +347,14 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
 
                   {shownLiveOutput && !isShellTerminal && (
                     <div>
-                      <div className={`flex items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-key) py-0.5 pr-1.5 pl-3 ${formattedArgs ? 'border-t' : ''}`}>
+                      <div className={`flex items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-sidebar) py-0.5 pr-1.5 pl-3 ${formattedArgs ? 'border-t' : ''}`}>
                         <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted)">
                           output
                         </span>
                       </div>
                       <pre
                         ref={liveOutputRef}
-                        className="max-h-64 overflow-auto whitespace-pre-wrap break-words px-3 py-2.5 font-mono text-[11px] leading-relaxed text-(--color-text)"
+                        className="max-h-64 overflow-auto whitespace-pre-wrap break-words bg-(--bg-input) px-3 py-2.5 font-mono text-[11px] leading-relaxed text-(--color-text)"
                       >
                         {shownLiveOutput}
                       </pre>
@@ -364,13 +364,13 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
                   {/* Result section — same caption treatment as args. */}
                   {shownResult && !isShellTerminal && (
                     <div>
-                      <div className={`flex items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-key) py-0.5 pr-1.5 pl-3 ${formattedArgs || shownLiveOutput ? 'border-t' : ''}`}>
+                      <div className={`flex items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-sidebar) py-0.5 pr-1.5 pl-3 ${formattedArgs || shownLiveOutput ? 'border-t' : ''}`}>
                         <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted)">
                           result
                         </span>
                         <button
                           onClick={handleCopyResult}
-                          className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) opacity-100 transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring) md:h-6 md:w-6 md:opacity-0 md:group-hover:opacity-100"
+                          className="flex h-7 w-7 items-center justify-center rounded-sm text-(--color-text-muted) opacity-100 transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40 md:h-6 md:w-6 md:opacity-0 md:group-hover:opacity-100"
                           aria-label="Copy result"
                           title="Copy result"
                         >
@@ -381,7 +381,7 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
                           )}
                         </button>
                       </div>
-                      <div className="px-3 py-2.5 text-xs leading-relaxed text-(--color-text)">
+                      <div className="bg-(--bg-input) px-3 py-2.5 text-xs leading-relaxed text-(--color-text)">
                         <ToolResult toolName={name} result={shownResult} />
                       </div>
                     </div>

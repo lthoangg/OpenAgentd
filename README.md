@@ -48,7 +48,7 @@ A short list of the most important shipped capabilities. The canonical, version-
 ![Unified team view — lead and specialist agents visible together](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/team-unified.png)
 
 **Pick your model, no lock-in.** 15 providers — Anthropic, Gemini, OpenAI, OpenRouter, Bedrock, Grok, DeepSeek, Ollama, and more. Switch with one line in your agent config, or override the lead model/thinking level per session from Session Settings.
-Assistant replies show the effective model that generated them, so fallback or per-session overrides stay visible in history.
+Assistant replies show the effective model that generated them, so per-session overrides stay visible in history.
 
 **Local-first operations.** Voice input uses your browser or OS speech recognizer without backend audio transcription, scheduled tasks run on cron/interval/one-shot timers, todos update a live board, and the telemetry dashboard stays local with no third-party SaaS.
 
@@ -171,7 +171,7 @@ Switch models with a single line in your agent's `.md` config file. Every provid
 | CLIProxyAPI (local) | `cliproxy:gemini-2.5-pro` | `CLIPROXY_API_KEY` (optional `CLIPROXY_BASE_URL`) |
 | Ollama (local + cloud) | `ollama:llama3.2` · `ollama:kimi-k2.6-cloud` | none (cloud: `ollama signin`) |
 
-Set a `fallback_model` in your agent config for automatic failover on rate limits or 5xx errors. In the cockpit, Session Settings can override the lead agent's model and thinking level for the current chat; history keeps the model used for each user turn, and assistant reply footers show the effective model that produced the response.
+In the cockpit, Session Settings can override the lead agent's model and thinking level for the current chat; history keeps the model used for each user turn, and assistant reply footers show the effective model that produced the response.
 
 ---
 
@@ -217,7 +217,6 @@ role: member
 description: Handles deep research tasks
 model: googlegenai:gemini-3.1-flash
 thinking_level: high
-fallback_model: openrouter:qwen/qwen3.6-plus:free
 tools:
   - web_search
   - web_fetch

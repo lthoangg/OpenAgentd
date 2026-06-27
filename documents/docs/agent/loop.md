@@ -46,8 +46,6 @@ agent = Agent(
 | `max_concurrent_tools` | `10` (`MAX_CONCURRENT_TOOLS`) | Semaphore for parallel tool execution |
 | `context` | `None` | Optional `AgentContext` subclass; accessible as `state.context` in hooks |
 | `model_id` | `None` | `"provider:model"` string used for capability lookup (`get_capabilities`) and logs |
-| `fallback_provider` | `None` | Secondary `LLMProviderBase` used when primary exhausts retries on retryable errors |
-| `fallback_model_id` | `None` | `"provider:model"` string for logging (e.g. `"copilot:gpt-5-mini"`) |
 
 ---
 
@@ -166,13 +164,13 @@ The loop buffers streaming tool-call deltas by `tc.index` — providers stream a
 
 ---
 
-## Retry logic and fallback model
+## Retry logic
 
-`_stream_with_retry()` wraps the provider call with exponential-backoff retry and optional fallback:
+`_stream_with_retry()` wraps the provider call with exponential-backoff retry:
 
 | Status | Behaviour |
 |--------|-----------|
-| `429 Too Many Requests` | Parse `Retry-After`; retry only when delay is under 60s, otherwise move to fallback or raise |
+| `429 Too Many Requests` | Parse `Retry-After`; retry only when delay is under 60s, otherwise raise |
 | `500 / 502 / 503 / 504` | Retry with exponential backoff |
 | `401 / 403` | Classify into `ProviderAuthenticationError` and raise — credentials are missing/expired/rejected |
 | `400 / 404 / 422 / other 4xx` | Classify into `ProviderRequestError` (carrying the provider's own error message) and raise — malformed request won't self-heal |
@@ -185,31 +183,9 @@ domain error. The original `httpx.HTTPStatusError` is preserved as `__cause__`.
 This turns an opaque `400 Bad Request` into an actionable message (bad model,
 unsupported parameter, context too long, …) that the UI renders directly.
 
-Retry schedule: `min(1 × 3^attempt, 60)` seconds (1s, 3s, 9s, 27s, 60s). On the **last** attempt, no sleep — immediately move to fallback (or raise). For `429`, a computed delay of 60 seconds or more also skips the remaining retries and moves to fallback (or raises if no fallback is configured).
+Retry schedule: `min(1 × 3^attempt, 60)` seconds (1s, 3s, 9s, 27s, 60s). On the **last** attempt, no sleep — immediately raise. For `429`, a computed delay of 60 seconds or more also skips the remaining retries and raises.
 
 On `429`, fires `on_rate_limit(ctx, state, retry_after, attempt, max_attempts)` on all hooks before any retry sleep, so `StreamingHook` can push a `rate_limit` SSE event to the client.
-
-### Fallback model
-
-If `fallback_provider` is set on the Agent, the retry loop iterates over two providers:
-
-```
-Primary provider (5 retries for transient failures)
-  → quota-style 429 or all retries exhausted?
-    → llm_provider_exhausted logged
-    → llm_provider_fallback logged
-    → Fallback provider (5 retries)
-      → success? return
-      → all retries exhausted? raise last exception
-```
-
-- 429s with retry delays of 60 seconds or more skip retries and move to fallback immediately.
-- Quota-style 429s skip retries and move to fallback immediately.
-- Non-retryable errors (400, 401, 403, 404, 422) are classified into typed
-  `ProviderAuthenticationError` / `ProviderRequestError` and raised immediately
-  — no fallback.
-- The fallback provider gets the same retry budget (5 attempts with backoff).
-- Configured via `fallback_model` in the agent's `.md` frontmatter (see [configuration.md](../configuration.md#fallback-model)).
 
 ## Empty-after-tool recovery
 
@@ -234,10 +210,10 @@ Log events:
 
 ## Provider-timeout resume
 
-The retry/fallback layer ([above](#retry--fallback)) handles transient errors
-*within* a single model call. When the primary **and** fallback providers both
-exhaust their retry budget on a connectivity failure (`ReadTimeout` /
-`ConnectError`), the exception used to propagate straight out of `run()` —
+The retry layer ([above](#retry-logic)) handles transient errors
+*within* a single model call. When the provider exhausts its retry budget on a
+connectivity failure (`ReadTimeout` / `ConnectError`), the exception used to
+propagate straight out of `run()` —
 ending the turn mid-task and abandoning all tool work already completed in that
 turn. This is the most common "the agent stopped after a tool call" symptom on
 slow or flaky model endpoints.
@@ -265,14 +241,13 @@ unrelated hiccups later in the same turn each get the full allowance.
 | `agent_provider_resume` | WARNING | Provider exhausted its retry budget on a transient failure; the loop will retry the same turn after a backoff. |
 | `agent_provider_resume_exhausted` | ERROR | Resume budget exhausted; the failure is wrapped in `ProviderConnectionError` and raised, ending the turn. |
 
-### Key log events (retry/fallback)
+### Key log events (retry)
 
 | Log event | Level | Meaning |
 |-----------|-------|---------|
 | `llm_provider_retry` | WARNING | Retrying after a transient error (includes model, status, attempt, delay) |
 | `llm_provider_non_retryable_rate_limit` | WARNING | Quota-style 429 detected; retry skipped for that provider |
 | `llm_provider_exhausted` | WARNING | All retry attempts exhausted for a provider |
-| `llm_provider_fallback` | WARNING | Switching from primary to fallback provider |
 | `llm_provider_error` | ERROR | Non-retryable error — raised immediately |
 
 ---

@@ -1,4 +1,3 @@
-import { useNavigate, useParams } from '@tanstack/react-router'
 import { useState } from 'react'
 import { Trash2 } from 'lucide-react'
 
@@ -24,42 +23,30 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 
-/**
- * Edit an existing agent. Loads the raw .md, renders the hybrid form,
- * saves via PUT (which auto-reloads the team server-side). On save
- * success the toast shows the reload diff.
- */
-export function AgentEditorPage() {
-  const { name } = useParams({ from: '/settings/agents/$name' })
-  const navigate = useNavigate()
+interface AgentEditorPageProps {
+  name: string
+  onBack: () => void
+}
+
+export function AgentEditorPage({ name, onBack }: AgentEditorPageProps) {
   const push = useToastStore((s) => s.push)
   const { data, isLoading, isError, error, refetch } = useAgentFileQuery(name)
   const { data: agentsData } = useAgentFilesQuery()
   const updateMut = useUpdateAgentMutation()
   const deleteMut = useDeleteAgentMutation()
 
-  // `draft` is the editor's working copy. Seed it once per `name` with the
-  // server content; subsequent saves call `setDraft` explicitly from the
-  // mutation response.
   const [draft, setDraft] = useState<string>(() => data?.content ?? '')
   const [saveError, setSaveError] = useState<string | null>(null)
   const [mode, setMode] = useState<'form' | 'raw'>('form')
   const [deleteOpen, setDeleteOpen] = useState(false)
 
-  // If the query finished *after* mount (common case), adopt its content
-  // once. We derive this from state by tracking whether we've ever seeded.
   const [seeded, setSeeded] = useState(!!data?.content)
   if (!seeded && data?.content) {
     setSeeded(true)
     setDraft(data.content)
   }
 
-  // Compare semantically: list-fields (tools, skills) are sets, body
-  // trailing whitespace doesn't count. See ``contentEquals`` for rules.
   const dirty = !!data && !contentEquals(draft, data.content)
-
-  // Client-side validation via zod — first error to report. Backend still
-  // revalidates on save, but blocking here avoids a round-trip.
   const draftErrors = dirty ? validateAgentDraft(draft) : null
   const invalid = draftErrors !== null
   const firstDraftError = draftErrors ? Object.values(draftErrors)[0] : null
@@ -74,11 +61,7 @@ export function AgentEditorPage() {
     }
     try {
       const res = await updateMut.mutateAsync({ name, content: draft })
-      push({
-        tone: 'success',
-        title: `Saved "${name}"`,
-        description: 'Active on next turn.',
-      })
+      push({ tone: 'success', title: `Saved "${name}"`, description: 'Active on next turn.' })
       setDraft(res.content)
       refetch()
     } catch (err) {
@@ -92,7 +75,7 @@ export function AgentEditorPage() {
     try {
       await deleteMut.mutateAsync(name)
       push({ tone: 'success', title: `Deleted "${name}"` })
-      navigate({ to: '/settings/agents' })
+      onBack()
     } catch (err) {
       const msg = err instanceof ApiValidationError ? err.message : String(err)
       push({ tone: 'error', title: 'Delete failed', description: msg })
@@ -113,16 +96,13 @@ export function AgentEditorPage() {
         mode={mode}
         onModeChange={setMode}
         onSave={handleSave}
+        onBack={onBack}
       />
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl p-6">
-          {isLoading && (
-            <p className="text-sm text-(--color-text-muted)">Loading…</p>
-          )}
-          {isError && (
-            <p className="text-sm text-(--color-error)">Failed to load: {String(error)}</p>
-          )}
+        <div className="mx-auto max-w-3xl p-3 sm:p-5">
+          {isLoading && <p className="text-sm text-(--color-text-muted)">Loading…</p>}
+          {isError && <p className="text-sm text-(--color-error)">Failed to load: {String(error)}</p>}
           {data && (
             <AgentForm
               initial={data.content}
@@ -138,33 +118,20 @@ export function AgentEditorPage() {
             <div className="flex items-center gap-2">
               {dirty && (
                 <>
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    className="min-h-11 md:min-h-0"
-                    onClick={() => data && setDraft(data.content)}
-                  >
+                  <Button variant="ghost" size="xs" className="min-h-11 md:min-h-0"
+                    onClick={() => data && setDraft(data.content)}>
                     Discard changes
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    className="min-h-11 md:min-h-0"
-                    onClick={() => navigate({ to: '/settings/agents' })}
-                  >
+                  <Button variant="ghost" size="xs" className="min-h-11 md:min-h-0"
+                    onClick={onBack}>
                     Leave without saving
                   </Button>
                 </>
               )}
             </div>
             {data && !isBuiltIn && (
-              <Button
-                variant="destructive"
-                size="xs"
-                className="min-h-11 md:min-h-0"
-                onClick={() => setDeleteOpen(true)}
-                disabled={deleteMut.isPending}
-              >
+              <Button variant="danger" size="xs" className="min-h-11 md:min-h-0"
+                onClick={() => setDeleteOpen(true)} disabled={deleteMut.isPending}>
                 <Trash2 size={11} aria-hidden="true" />
                 Delete agent
               </Button>
@@ -182,17 +149,8 @@ export function AgentEditorPage() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="p-3">
-            <Button type="button" variant="outline" onClick={() => setDeleteOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              onClick={handleDelete}
-              disabled={deleteMut.isPending}
-            >
-              Delete
-            </Button>
+            <Button type="button" variant="default" onClick={() => setDeleteOpen(false)}>Cancel</Button>
+            <Button type="button" variant="danger" onClick={handleDelete} disabled={deleteMut.isPending}>Delete</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

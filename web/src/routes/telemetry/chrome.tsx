@@ -60,7 +60,7 @@ export function ErrorState({
   onRetry: () => void
 }) {
   return (
-    <div className="rounded-xl border border-(--color-error-subtle) bg-(--color-error-subtle)/30 p-5">
+    <div className="rounded-sm border border-(--color-error)/25 bg-(--color-error-subtle) p-4">
       <div className="flex items-start gap-3">
         <AlertTriangle size={18} className="mt-0.5 shrink-0 text-(--color-error)" />
         <div className="min-w-0 flex-1">
@@ -70,7 +70,7 @@ export function ErrorState({
           <p className="mt-1 text-xs text-(--color-text-muted)">{message}</p>
           <button
             onClick={onRetry}
-            className="mt-3 rounded-md border border-(--color-border) bg-(--bg-card) px-3 py-1.5 text-xs font-medium text-(--color-text) transition-colors hover:bg-(--bg-key)"
+            className="mt-3 rounded-sm border border-(--color-border) bg-(--bg-card) px-2.5 py-1.5 text-xs font-medium text-(--color-text) transition-colors hover:bg-(--bg-key)"
           >
             Retry
           </button>

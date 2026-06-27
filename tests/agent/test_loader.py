@@ -91,11 +91,6 @@ def test_agent_config_valid_model():
     assert cfg.model == "googlegenai:gemini-3.1-flash"
 
 
-def test_agent_config_fallback_model_defaults_to_none():
-    cfg = AgentConfig(name="bot")
-    assert cfg.fallback_model is None
-
-
 # ---------------------------------------------------------------------------
 # parse_agent_md
 # ---------------------------------------------------------------------------
@@ -374,33 +369,6 @@ def test_build_agent_passes_responses_api():
     cfg = AgentConfig(name="bot", system_prompt="hello", responses_api=True)
     _build_agent(cfg, _default_tool_registry(), capturing_factory)
     assert received.get("responses_api") is True
-
-
-def test_build_agent_fallback_provider_created():
-    received_models: list = []
-
-    def capturing_factory(model_str, model_kwargs=None):
-        received_models.append(model_str)
-        return MagicMock()
-
-    cfg = AgentConfig(
-        name="bot",
-        system_prompt="Hi",
-        model="primary:model",
-        fallback_model="fallback:model",
-    )
-    agent = _build_agent(cfg, {}, capturing_factory)
-    assert agent.fallback_provider is not None
-    assert agent.fallback_model_id == "fallback:model"
-    assert received_models == ["primary:model", "fallback:model"]
-
-
-def test_build_agent_no_fallback_when_not_configured():
-    factory, _ = _make_provider_factory()
-    cfg = AgentConfig(name="bot", system_prompt="Hi")
-    agent = _build_agent(cfg, {}, factory)
-    assert agent.fallback_provider is None
-    assert agent.fallback_model_id is None
 
 
 def test_build_agent_skill_tool_deduped():
@@ -856,33 +824,6 @@ def test_load_team_from_dir_degrades_when_lead_provider_missing_key(tmp_path):
     assert team is not None
     assert team.lead.name == "lead"
     assert isinstance(team.lead.agent.llm_provider, UnconfiguredProvider)
-
-
-def test_load_team_from_dir_skips_unavailable_fallback_provider(tmp_path):
-    from app.agent.loader import load_team_from_dir
-
-    d = _make_agents_dir(
-        tmp_path,
-        [
-            {
-                "name": "lead",
-                "role": "lead",
-                "model": "openai:gpt-5.4",
-                "fallback_model": "anthropic:claude-sonnet-4",
-            },
-        ],
-    )
-    mock_provider = MagicMock()
-
-    def factory(model_str: str | None, model_kwargs: dict | None = None):
-        if model_str == "anthropic:claude-sonnet-4":
-            raise ValueError("Anthropic API key is required. Set ANTHROPIC_API_KEY.")
-        return mock_provider
-
-    team = load_team_from_dir(d, provider_factory=factory)
-    assert team is not None
-    assert team.lead.agent.llm_provider is mock_provider
-    assert team.lead.agent.fallback_provider is None
 
 
 def test_load_team_from_dir_with_members(tmp_path):

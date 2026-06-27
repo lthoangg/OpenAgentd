@@ -2,7 +2,7 @@
 title: Roadmap
 description: Public roadmap for OpenAgentd — short priority list plus links to GitHub issues.
 status: living
-updated: 2026-06-25
+updated: 2026-06-27
 ---
 
 # Roadmap

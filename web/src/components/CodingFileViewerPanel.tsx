@@ -272,10 +272,10 @@ function BinaryPreview({ workspace, file }: { workspace: string; file: Workspace
         <p className="mt-0.5 text-xs text-(--color-text-subtle)">{file.mime} · {formatBytes(file.size)}</p>
       </div>
       <div className="flex items-center gap-2">
-        <a href={url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 rounded-md bg-(--bg-key) px-3 py-1.5 text-xs text-(--color-accent) transition-colors hover:bg-(--bg-key)">
+        <a href={url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 rounded-sm border border-(--color-border-strong) bg-(--bg-key) px-2.5 py-1.5 text-xs text-(--color-accent) transition-colors hover:bg-(--bg-key)">
           <ExternalLink size={12} /> Open in new tab
         </a>
-        <button type="button" onClick={() => void downloadCodingWorkspaceFile(workspace, file)} className="flex items-center gap-1.5 rounded-md border border-(--color-border) px-3 py-1.5 text-xs text-(--color-text-2) transition-colors hover:border-(--color-border-strong)">
+        <button type="button" onClick={() => void downloadCodingWorkspaceFile(workspace, file)} className="flex items-center gap-1.5 rounded-sm border border-(--color-border) bg-(--bg-card) px-2.5 py-1.5 text-xs text-(--color-text-2) transition-colors hover:border-(--color-border-strong)">
           <Download size={12} /> Download
         </button>
       </div>
@@ -410,7 +410,7 @@ export function CodingFileViewerPanel({
       exit={prefersReducedMotion ? { opacity: 0 } : mobile ? { opacity: 0 } : { width: 0 }}
       transition={{ duration: resizable.isResizing || prefersReducedMotion ? 0.01 : 0.22, ease: [0.4, 0, 0.2, 1] }}
       className={cn(
-        'fixed bottom-0 right-0 z-40 min-h-0 w-full overflow-hidden border-l border-(--color-border) bg-(--bg-card) shadow-xl md:relative md:inset-y-auto md:right-auto md:z-auto md:w-auto md:shrink-0 md:shadow-none',
+        'fixed bottom-0 right-0 z-40 min-h-0 w-full overflow-hidden border-l border-(--color-border) bg-(--bg-page) shadow-xl md:relative md:inset-y-auto md:right-auto md:z-auto md:w-auto md:shrink-0 md:shadow-none',
         mobile ? 'mobile-safe-top max-w-none' : '',
       )}
       aria-label="File viewer"

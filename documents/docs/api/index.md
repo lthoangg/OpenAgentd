@@ -450,7 +450,7 @@ data: {"name": "web_search", "tool_call_id": "tc_abc"}
 | `tool_output_delta` | `{name, text, stream, sequence, tool_call_id, agent?}` | Live output from a running tool. Currently emitted by foreground `shell`. |
 | `tool_end` | `{name, result, tool_call_id, agent?}` | Tool result returned |
 | `usage` | `{prompt_tokens, completion_tokens, cached_tokens?, agent?}` | End of turn |
-| `rate_limit` | `{retry_after?, attempt?, max_attempts?}` | Transient provider rate limit hit. If `fallback_model` is configured, quota-style 429s skip retries and switch to fallback immediately; transient 429s switch after primary retries are exhausted. |
+| `rate_limit` | `{retry_after?, attempt?, max_attempts?}` | Transient provider rate limit hit before a retry sleep. |
 | `error` | `{message, metadata?: {agent, exception}}` | Unrecoverable error. In team mode, emitted when the **lead** fails (member failures are routed to the lead via mailbox — see [`agent/teams.md`](../agent/teams.md#sse-events-team-specific)). The frontend surfaces this as an error toast via `useToastStore`. |
 | `done` | `{metadata?: {cancelled?: true}}` | Turn complete — DB is now authoritative. `cancelled: true` present when interrupted. Agent streams in `error` or `offline` status are **not** reset to `idle` by this event — those states persist until an explicit later lifecycle event. |
 | `title_update` | `{title}` | LLM-generated session title is ready. Fired on the first turn only, concurrently with the agent run. Pub/sub only — not replayed on reconnect. |

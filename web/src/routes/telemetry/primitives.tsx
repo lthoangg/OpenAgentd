@@ -23,7 +23,7 @@ export function Stat({
   tone?: 'danger'
 }) {
   return (
-    <div className="rounded-lg border border-(--color-border) bg-(--bg-card) p-3">
+    <div className="rounded-sm border border-(--color-border) bg-(--bg-card) p-3">
       <p className="text-[10px] uppercase tracking-wide text-(--color-text-muted)">
         {label}
       </p>
@@ -50,10 +50,10 @@ export function Table({
   align: ('left' | 'right')[]
 }) {
   return (
-    <div className="overflow-x-auto rounded-lg border border-(--color-border) bg-(--bg-card)">
+    <div className="overflow-x-auto rounded-sm border border-(--color-border) bg-(--bg-card)">
       <table className="w-full min-w-[320px] text-xs sm:min-w-[360px]">
         <thead>
-          <tr className="border-b border-(--color-border) bg-(--bg-key)">
+          <tr className="border-b border-(--color-border) bg-(--bg-sidebar)">
             {headers.map((h, i) => (
               <th
                 key={h}
@@ -92,7 +92,7 @@ export function Table({
 
 export function EmptyTable({ label }: { label: string }) {
   return (
-    <div className="rounded-lg border border-dashed border-(--color-border) bg-(--bg-key) p-6 text-center">
+    <div className="rounded-sm border border-dashed border-(--color-border) bg-(--bg-card) p-6 text-center">
       <p className="text-xs text-(--color-text-muted)">{label}</p>
     </div>
   )

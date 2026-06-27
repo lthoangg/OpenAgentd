@@ -316,7 +316,7 @@ model: openai:gpt-5.4
 `, 'coding/coder')
 
     expect(screen.getByText('Built-in OpenAgentd profile')).toBeTruthy()
-    expect(screen.getByText('Extra prompt')).toBeTruthy()
+    expect(screen.getByText(/Extra prompt/)).toBeTruthy()
     expect(screen.getByText(/Built-in tools are always included/i)).toBeTruthy()
   })
 

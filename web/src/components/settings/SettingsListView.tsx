@@ -1,33 +1,13 @@
 /**
- * SettingsListView — single-column list shown inside the settings detail
- * pane (right of the sidebar). Renders cards stacked vertically with a
- * page title, description, filter input, and a primary "+ New X" CTA.
- *
- *   ┌─────────────────────────────────────────────┐
- *   │ Agents                          [+ New …]   │
- *   │ short description sentence                  │
- *   │                                             │
- *   │ [tabs slot — optional]                      │
- *   │ ┌─────────────────────────────────┐         │
- *   │ │ 🔎  Filter …            6 items │         │
- *   │ └─────────────────────────────────┘         │
- *   │ ┌─────────────────────────────────┐         │
- *   │ │ ▌ name        description  ⋯   │         │  ← active card
- *   │ └─────────────────────────────────┘         │
- *   │ ┌─────────────────────────────────┐         │
- *   │ │   name        description  ⋯   │         │
- *   │ └─────────────────────────────────┘         │
- *   └─────────────────────────────────────────────┘
- *
- * The view is purely presentational — callers are responsible for
- * producing the `rows` array, including any per-card actions.
+ * SettingsListView — single-column list rendered inside the settings modal.
+ * Navigation is entirely callback-driven; no router Links are used so this
+ * component works correctly inside the overlay without any URL changes.
  */
-import { Link } from '@tanstack/react-router'
-import { AlertCircle, Plus, Search } from 'lucide-react'
-import { useId, useMemo, useState, type ReactNode } from 'react'
+import { AlertCircle, Plus } from 'lucide-react'
+import { useMemo, useState, type ReactNode } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { SearchBar } from '@/components/ui/search-bar'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 
@@ -36,11 +16,7 @@ import { cn } from '@/lib/utils'
 export interface ListViewRow {
   /** Stable key per row. */
   key: string
-  /** Route target rendered as a `<Link>`. Omit for non-clickable group rows. */
-  to?: string
-  /** Path params for parameterised routes (e.g. `{ name }`). */
-  params?: Record<string, string>
-  /** Whether the row is selected in the URL (controls highlight). */
+  /** Whether the row is selected (controls highlight). */
   active?: boolean
   /** Render as a non-clickable group header. */
   kind?: 'item' | 'group'
@@ -52,23 +28,23 @@ export interface ListViewRow {
   description?: string
   /** File path or other monospace meta line shown under the description. */
   meta?: string
+  /** Icon rendered in the left icon-well. Replaces the generic trailing icon slot. */
+  icon?: ReactNode
   /** Validation error message. When set, an error icon is shown next to the title. */
   invalidReason?: string
-  /** Optional trailing content (e.g. status dot). */
+  /** Optional trailing content (e.g. status dot). Kept for back-compat; prefer icon. */
   trailing?: ReactNode
+  /** Called when the row is clicked. */
+  onClick?: () => void
 }
-
-type NewRoute =
-  | '/settings/agents/new'
-  | '/settings/skills/new'
-  | '/settings/mcp/new'
 
 export interface SettingsListViewProps {
   title: string
   description: string
-  /** Route for the primary "+ New" CTA. */
-  newTo: NewRoute
   newLabel: string
+  /** Called when the "+ New" button is clicked. */
+  onNew: () => void
+  /** Optional custom element to replace the default "+ New" button. */
   newAction?: ReactNode
   /** Placeholder for the filter input. */
   filterPlaceholder: string
@@ -87,8 +63,8 @@ export interface SettingsListViewProps {
 export function SettingsListView({
   title,
   description,
-  newTo,
   newLabel,
+  onNew,
   newAction,
   filterPlaceholder,
   tabs,
@@ -98,7 +74,6 @@ export function SettingsListView({
   emptyTitle,
   emptyBody,
 }: SettingsListViewProps) {
-  const filterId = useId()
   const [query, setQuery] = useState('')
 
   const filtered = useMemo(() => {
@@ -113,24 +88,22 @@ export function SettingsListView({
   }, [rows, query])
 
   const total = rows.length
-  const countLabel =
-    total === 1 ? '1 item' : `${total} items`
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto">
-      <div className="mx-auto max-w-4xl px-4 pt-8 pb-12 sm:px-8">
+    <div className="min-h-0 flex-1 overflow-y-auto bg-(--bg-page)">
+      <div className="space-y-4 px-3 py-3 sm:px-6 sm:py-5">
         {/* ── Title row ─────────────────────────────────────────────────── */}
-        <header className="flex items-start gap-4">
+        <header className="flex items-start gap-4 select-none">
           <div className="min-w-0 flex-1">
-            <h1 className="text-2xl font-semibold tracking-tight text-(--color-text)">
+            <h1 className="text-sm font-semibold tracking-tight text-(--color-text)">
               {title}
             </h1>
-            <p className="mt-1 text-sm text-(--color-text-muted)">
+            <p className="mt-1 text-xs text-(--color-text-muted) leading-relaxed">
               {description}
             </p>
           </div>
           {newAction ?? (
-            <Button size="sm" render={<Link to={newTo} />}>
+            <Button size="sm" onClick={onNew} className="min-h-11 text-xs md:min-h-0">
               <Plus size={13} aria-hidden="true" />
               {newLabel}
             </Button>
@@ -138,71 +111,53 @@ export function SettingsListView({
         </header>
 
         {/* ── Optional tabs ─────────────────────────────────────────────── */}
-        {tabs && <div className="mt-6">{tabs}</div>}
+        {tabs && <div className="mt-2">{tabs}</div>}
 
         {/* ── Filter ────────────────────────────────────────────────────── */}
         {(isLoading || rows.length > 0) && (
-          <div className="mt-4">
-            <label htmlFor={filterId} className="sr-only">
-              {filterPlaceholder}
-            </label>
-            <div className="relative flex h-9 items-center rounded-lg border border-(--color-border) bg-(--bg-card) focus-within:border-(--focus-ring) focus-within:ring-3 focus-within:ring-(--focus-ring)/30">
-              <Search
-                size={13}
-                className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-(--color-text-muted)"
-                aria-hidden="true"
-              />
-              <Input
-                id={filterId}
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder={filterPlaceholder}
-                aria-label={filterPlaceholder}
-                className="h-full flex-1 border-0 bg-transparent pr-3 pl-9 text-sm focus:ring-0 focus-visible:ring-0"
-              />
-              {!isLoading && (
-                <span className="pr-3 font-mono text-[11px] tabular-nums text-(--color-text-muted)">
-                  {countLabel}
-                </span>
-              )}
-            </div>
-          </div>
+          <SearchBar
+            placeholder={filterPlaceholder}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            count={total}
+            loading={isLoading}
+          />
         )}
 
         {/* ── Body ──────────────────────────────────────────────────────── */}
-        <div className="mt-3 space-y-2">
+        <div className="space-y-1">
           {isLoading && (
-            <p className="py-10 text-center text-sm text-(--color-text-muted)">
+            <p className="py-8 text-center text-xs text-(--color-text-muted) font-mono">
               Loading…
             </p>
           )}
           {isError && (
-            <p className="py-10 text-center text-sm text-(--color-error)">
+            <p className="py-8 text-center text-xs text-(--color-error) font-mono">
               Failed to load.
             </p>
           )}
           {!isLoading && !isError && total === 0 && (
-            <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-(--color-border) bg-(--bg-card) px-4 py-12 text-center">
-              <p className="text-sm font-medium text-(--color-text)">{emptyTitle}</p>
-              <p className="max-w-md text-xs leading-relaxed text-(--color-text-muted)">
+            <div className="flex flex-col items-center gap-3 rounded-sm border border-dashed border-(--color-border) bg-(--bg-card) px-4 py-8 text-center">
+              <p className="text-xs font-semibold text-(--color-text)">{emptyTitle}</p>
+              <p className="max-w-md text-[11px] leading-relaxed text-(--color-text-muted)">
                 {emptyBody}
               </p>
-              <Button size="sm" render={<Link to={newTo} />}>
+              <Button size="sm" onClick={onNew} className="min-h-11 text-xs md:min-h-0">
                 <Plus size={12} aria-hidden="true" />
                 {newLabel}
               </Button>
             </div>
           )}
           {!isLoading && !isError && total > 0 && filtered.length === 0 && (
-            <p className="py-10 text-center text-sm text-(--color-text-muted)">
+            <p className="py-8 text-center text-xs text-(--color-text-muted) font-mono">
               No matches for &ldquo;{query}&rdquo;.
             </p>
           )}
           {!isLoading && !isError && filtered.length > 0 && (
-            <ul className="space-y-2">
+            <ul className="space-y-1.5">
               {filtered.map((row) => (
                 <li key={row.key}>
-                  <ListCardLink row={row} />
+                  <ListCard row={row} />
                 </li>
               ))}
             </ul>
@@ -215,45 +170,76 @@ export function SettingsListView({
 
 // ─── Card ──────────────────────────────────────────────────────────────────
 
-function ListCardLink({ row }: { row: ListViewRow }) {
+function ListCard({ row }: { row: ListViewRow }) {
   if (row.kind === 'group') {
     return (
-      <div className="px-1 pt-3 pb-1 text-xs font-semibold uppercase tracking-wide text-(--color-text-muted)">
+      <div className="px-1 pt-3 pb-1 font-mono text-[9px] font-bold uppercase tracking-wider text-(--color-text-subtle) select-none">
         {row.title}
       </div>
     )
   }
 
   return (
-    <Link
-      to={row.to}
-      params={row.params as never}
+    <button
+      type="button"
+      onClick={row.onClick}
       aria-current={row.active ? 'page' : undefined}
       className={cn(
-        'group flex min-h-11 items-start gap-3 rounded-lg border bg-(--bg-card) px-4 py-3 transition-colors',
-        'hover:border-(--color-border-strong)',
-        'focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-(--focus-ring)/40',
+        // Base layout — rounded-sm = 8px, crisp enough for a dense list card
+        'group flex min-h-11 w-full items-center gap-3 rounded-sm border px-3 py-2.5 text-left md:min-h-0',
+        // Surface & transition
+        'bg-(--bg-card) transition-colors duration-100',
+        // Hover — gentle warm lift, no border jump
+        'hover:bg-(--bg-key)/30',
+        // Focus ring
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40',
+        // Active vs rest border
         row.active
-          ? 'border-(--color-accent)'
-          : 'border-(--color-border)',
+          ? 'border-(--color-border-strong) bg-(--bg-key)/40'
+          : 'border-(--color-border) hover:border-(--color-border)',
       )}
     >
+      {/* ── Left icon well ──────────────────────────────────────────── */}
+      {row.icon && (
+        <div
+          className={cn(
+            'flex h-8 w-8 shrink-0 items-center justify-center rounded-xs',
+            'border border-(--color-border) bg-(--bg-key)',
+            'text-(--color-text-muted) transition-colors duration-100',
+            // Warm lift when the card is active
+            row.active && 'border-(--color-border-strong) bg-(--bg-key)/70',
+          )}
+          aria-hidden="true"
+        >
+          {row.icon}
+        </div>
+      )}
+
+      {/* ── Body ────────────────────────────────────────────────────── */}
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="truncate text-sm font-semibold text-(--color-text)">
+        {/* Title row */}
+        <div className="flex items-center gap-1.5">
+          <span className={cn(
+            'truncate text-xs font-semibold leading-tight',
+            row.active ? 'text-(--color-text)' : 'text-(--color-text)',
+          )}>
             {row.title}
           </span>
+
+          {/* Role / type badge */}
           {row.badge && (
-            <span className="rounded-md bg-(--bg-key) px-1.5 py-0.5 font-mono text-[10px] text-(--color-text-muted) ring-1 ring-(--color-border)">
+            <span className="shrink-0 rounded border border-(--color-border) bg-(--bg-key) px-1.5 py-px font-mono text-[9px] font-semibold uppercase tracking-wide text-(--color-text-muted) select-none">
               {row.badge}
             </span>
           )}
+
+          {/* Invalid config warning */}
           {row.invalidReason && (
             <Tooltip>
               <TooltipTrigger
                 render={
-                  <span className="text-(--color-error)">
-                    <AlertCircle size={12} aria-label="Invalid configuration" />
+                  <span className="shrink-0 text-(--color-error)">
+                    <AlertCircle size={11} aria-label="Invalid configuration" />
                   </span>
                 }
               />
@@ -261,18 +247,28 @@ function ListCardLink({ row }: { row: ListViewRow }) {
             </Tooltip>
           )}
         </div>
+
+        {/* Description */}
         {row.description && (
-          <p className="mt-0.5 line-clamp-2 text-xs text-(--color-text-muted)">
+          <p className="mt-0.5 line-clamp-1 text-[11px] leading-snug text-(--color-text-muted)">
             {row.description}
           </p>
         )}
+
+        {/* Meta / path line */}
         {row.meta && (
-          <p className="mt-1 truncate font-mono text-[10px] text-(--color-text-muted)/70">
+          <p className="mt-0.5 truncate font-mono text-[9px] text-(--color-text-subtle)">
             {row.meta}
           </p>
         )}
       </div>
-      {row.trailing && <div className="shrink-0">{row.trailing}</div>}
-    </Link>
+
+      {/* ── Trailing right-side content (status dots, etc.) ─────────── */}
+      {row.trailing && (
+        <div className="shrink-0 self-center text-(--color-text-muted)">
+          {row.trailing}
+        </div>
+      )}
+    </button>
   )
 }

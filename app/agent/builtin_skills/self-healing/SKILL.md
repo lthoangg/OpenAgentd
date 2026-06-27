@@ -20,7 +20,7 @@ under `{OPENAGENTD_CONFIG_DIR}/`. No code changes, no restarts. Agent
 
 | Target | File | Typical request |
 |--------|------|-----------------|
-| Agent model / params | `{OPENAGENTD_CONFIG_DIR}/agents/{name}.md` frontmatter | "switch to gpt-5", "use Claude", "lower temperature", "turn on high thinking", "add a fallback model" |
+| Agent model / params | `{OPENAGENTD_CONFIG_DIR}/agents/{name}.md` frontmatter | "switch to gpt-5", "use Claude", "lower temperature", "turn on high thinking" |
 | Agent tools | same file, `tools:` list | Additive local overrides on top of any built-in first-party profile tools. "give yourself shell access", "let yourself browse the web" |
 | Agent skill metadata | same file, `skills:` list | Rare additive explicit metadata/drift hooks. Installing a new skill normally does **not** require editing agent files; the `skill` tool discovers skills from project/global roots. |
 | Agent MCP tools | same file, `mcp:` list (bulk) or `tools:` list (selective) | Additive local overrides on top of any built-in first-party profile MCP servers/tools. "let yourself use the filesystem MCP", "remove the github MCP from yourself" — see "MCP tools on agents" below |
@@ -44,7 +44,7 @@ Use this self-healing workflow for root/blueprint config changes:
 - Edits to the **lead's own** `.md`.
 - Multi-field changes (e.g. model + temperature + tools in one diff).
 - Anything outside `tools` / `skills` / `mcp` — `model`, `temperature`,
-  `thinking_level`, `fallback_model`, system prompt body. (Summarisation
+  `thinking_level`, system prompt body. (Summarisation
   tuning is not editable per-agent — it lives in code; refuse and refer
   the user to `app/agent/hooks/summarization.py`.)
 - Editing `multimodal.yaml`.
@@ -187,7 +187,6 @@ Only these keys are valid. Reject any request to invent new ones.
 | Field | Values |
 |-------|--------|
 | `model` | `provider:model` — e.g. `googlegenai:gemini-3.1-flash`, `openai:gpt-5.5`, `zai:glm-5-turbo`, `openrouter:...`, `copilot:...`, `codex:...`, `vertexai:...`, `nvidia:...`, `xai:grok-4.20`, `ollama:llama3.2`, `ollama:kimi-k2.6-cloud` |
-| `fallback_model` | same format as `model` |
 | `temperature` | float, typically `0.0`–`1.0` |
 | `thinking_level` | `none` \| `low` \| `medium` \| `high` |
 | `tools` | extra tools layered on top of any built-in first-party profile tools: `web_search`, `web_fetch`, `date`, `read`, `write`, `edit`, `ls`, `grep`, `glob`, `rm`, `shell`, `bg`, `generate_image`, `generate_video`, plus `<server>_<tool>` entries from configured MCP servers. Never list `skill` or `team_message` — injected automatically. Lead-only tools (`schedule_task`, `todo_manage`) are also injected automatically. |

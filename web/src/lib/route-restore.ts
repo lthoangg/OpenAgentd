@@ -7,5 +7,6 @@ export function closestRestorableRoute(route: string): string {
   const suffix = trimmed.slice(pathOnly.length)
   if (pathOnly.startsWith('/coding/')) return `/coding${suffix}`
   if (pathOnly.startsWith('/cockpit/')) return `/cockpit${suffix}`
+  if (pathOnly.startsWith('/settings')) return '/'
   return trimmed
 }

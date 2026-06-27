@@ -1,7 +1,6 @@
 /** /settings/multimodal — edit image/video generation defaults. */
 import { useMemo, useState } from 'react'
-import { ArrowLeft, Image, Save } from 'lucide-react'
-import { Link } from '@tanstack/react-router'
+import { Image as ImageIcon, Save } from 'lucide-react'
 
 import {
   useMultimodalSettingsQuery,
@@ -9,9 +8,9 @@ import {
   useUpdateMultimodalSettingsMutation,
 } from '@/queries'
 import { useToastStore } from '@/stores/useToastStore'
-import { useIsMobile } from '@/hooks/use-mobile'
 import { Button } from '@/components/ui/button'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
+import { SettingsSection } from '@/components/settings/SettingsSection'
 import { validateModel } from '@/components/settings/schema'
 import type { MultimodalSettings } from '@/api/client'
 import type { ModelOption } from '@/components/settings/AgentForm'
@@ -71,7 +70,6 @@ function normalized(form: MultimodalSettings): MultimodalSettings {
 }
 
 export function MultimodalSettingsPage() {
-  const isMobile = useIsMobile()
   const { data, isLoading, error } = useMultimodalSettingsQuery()
   const updateMut = useUpdateMultimodalSettingsMutation()
   const registry = useRegistryQuery()
@@ -151,49 +149,46 @@ export function MultimodalSettingsPage() {
 
   return (
     <>
-      <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-3 border-b border-(--color-border) bg-(--bg-page) px-4">
-        {isMobile && (
-          <Link to="/settings" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)" aria-label="Back to settings">
-            <ArrowLeft size={14} />
-          </Link>
-        )}
-        <Image size={15} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
-        <h1 className="flex-1 truncate text-sm font-semibold text-(--color-text)">Multimodal</h1>
-        {dirty && <span className="text-xs text-(--color-text-muted)">Unsaved</span>}
+      <header className="sticky top-0 z-10 flex h-11 shrink-0 items-center gap-2 border-b border-(--color-border) bg-(--bg-page) px-4 select-none">
+        <ImageIcon size={13} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
+        <h1 className="flex-1 truncate text-xs font-semibold text-(--color-text)">Multimodal</h1>
+        {dirty && <span className="text-xs text-(--color-text-subtle)" aria-live="polite">Unsaved</span>}
         <Button size="sm" className="min-h-11 md:min-h-0" onClick={handleSave} disabled={!dirty || hasError || updateMut.isPending}>
           <Save size={12} aria-hidden="true" />
-          <span className="hidden sm:inline">{updateMut.isPending ? 'Saving...' : 'Save'}</span>
+          <span>{updateMut.isPending ? 'Saving…' : 'Save'}</span>
         </Button>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-2xl space-y-5 p-6">
-          <p className="text-sm leading-relaxed text-(--color-text-muted)">
+      <div className="min-h-0 flex-1 overflow-y-auto bg-(--bg-page)">
+        <div className="mx-auto max-w-3xl space-y-4 p-3 sm:p-5">
+          <p className="text-xs leading-relaxed text-(--color-text-muted)">
             Configure default models and options for image and video generation tools.
           </p>
 
-          {isLoading && <p className="text-sm text-(--color-text-muted)">Loading...</p>}
-          {error && <p className="text-sm text-(--color-error)">{error instanceof Error ? error.message : String(error)}</p>}
+          {isLoading && <p className="text-xs font-mono text-(--color-text-muted)">Loading…</p>}
+          {error && <p className="text-xs text-(--color-error)">{error instanceof Error ? error.message : String(error)}</p>}
 
           {!isLoading && !error && (
-            <div className="space-y-5">
-              <section className="space-y-3 rounded-xl border border-(--color-border) bg-(--bg-card) p-4">
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-(--color-text-muted)">Image</h2>
-                <ModelField value={String(form.image.model ?? '')} onChange={(value) => setImage('model', value)} options={imageModelOptions} error={imageModelError} />
-                <ListField label="Aspect ratio" value={String(form.image.aspect_ratio ?? '')} onChange={(value) => setImage('aspect_ratio', value)} options={IMAGE_ASPECT_RATIOS} error={imageAspectError} />
-                <ListField label="Image size" value={String(form.image.image_size ?? '')} onChange={(value) => setImage('image_size', value)} options={IMAGE_SIZES} error={imageSizeError} />
-                <ListField label="OpenAI size" value={optionalValue(form.image.size)} onChange={(value) => setImage('size', optionalSettingValue(value))} options={IMAGE_OPENAI_SIZES} error={imageOpenAiSizeError} optional />
-                <ListField label="Output format" value={optionalValue(form.image.output_format)} onChange={(value) => setImage('output_format', optionalSettingValue(value))} options={IMAGE_OUTPUT_FORMATS} error={imageOutputFormatError} optional />
-                <ListField label="Quality" value={optionalValue(form.image.quality)} onChange={(value) => setImage('quality', optionalSettingValue(value))} options={IMAGE_QUALITIES} error={imageQualityError} optional />
-              </section>
+            <div className="space-y-4">
+              <SettingsSection title="Image" description="default model and options for image generation">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <ModelField value={String(form.image.model ?? '')} onChange={(value) => setImage('model', value)} options={imageModelOptions} error={imageModelError} />
+                  <ListField label="Aspect ratio" value={String(form.image.aspect_ratio ?? '')} onChange={(value) => setImage('aspect_ratio', value)} options={IMAGE_ASPECT_RATIOS} error={imageAspectError} />
+                  <ListField label="Image size" value={String(form.image.image_size ?? '')} onChange={(value) => setImage('image_size', value)} options={IMAGE_SIZES} error={imageSizeError} />
+                  <ListField label="OpenAI size" value={optionalValue(form.image.size)} onChange={(value) => setImage('size', optionalSettingValue(value))} options={IMAGE_OPENAI_SIZES} error={imageOpenAiSizeError} optional />
+                  <ListField label="Output format" value={optionalValue(form.image.output_format)} onChange={(value) => setImage('output_format', optionalSettingValue(value))} options={IMAGE_OUTPUT_FORMATS} error={imageOutputFormatError} optional />
+                  <ListField label="Quality" value={optionalValue(form.image.quality)} onChange={(value) => setImage('quality', optionalSettingValue(value))} options={IMAGE_QUALITIES} error={imageQualityError} optional />
+                </div>
+              </SettingsSection>
 
-              <section className="space-y-3 rounded-xl border border-(--color-border) bg-(--bg-card) p-4">
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-(--color-text-muted)">Video</h2>
-                <ModelField value={String(form.video.model ?? '')} onChange={(value) => setVideo('model', value)} options={videoModelOptions} error={videoModelError} />
-                <ListField label="Aspect ratio" value={String(form.video.aspect_ratio ?? '')} onChange={(value) => setVideo('aspect_ratio', value)} options={VIDEO_ASPECT_RATIOS} error={videoAspectError} />
-                <ListField label="Resolution" value={String(form.video.resolution ?? '')} onChange={(value) => setVideo('resolution', value)} options={VIDEO_RESOLUTIONS} error={videoResolutionError} />
-                <ListField label="Duration seconds" value={String(form.video.duration_seconds ?? '')} onChange={(value) => setVideo('duration_seconds', value)} options={VIDEO_DURATIONS} error={videoDurationError} />
-              </section>
+              <SettingsSection title="Video" description="default model and options for video generation">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <ModelField value={String(form.video.model ?? '')} onChange={(value) => setVideo('model', value)} options={videoModelOptions} error={videoModelError} />
+                  <ListField label="Aspect ratio" value={String(form.video.aspect_ratio ?? '')} onChange={(value) => setVideo('aspect_ratio', value)} options={VIDEO_ASPECT_RATIOS} error={videoAspectError} />
+                  <ListField label="Resolution" value={String(form.video.resolution ?? '')} onChange={(value) => setVideo('resolution', value)} options={VIDEO_RESOLUTIONS} error={videoResolutionError} />
+                  <ListField label="Duration seconds" value={String(form.video.duration_seconds ?? '')} onChange={(value) => setVideo('duration_seconds', value)} options={VIDEO_DURATIONS} error={videoDurationError} />
+                </div>
+              </SettingsSection>
             </div>
           )}
         </div>
@@ -209,21 +204,22 @@ function ModelField({ value, onChange, options, error }: {
   error: string | null
 }) {
   return (
-    <div className="grid gap-1.5">
-      <label className="text-xs font-medium text-(--color-text-muted)">Model ID</label>
-      <Select value={value} onValueChange={(next) => next && onChange(next)}>
-        <SelectTrigger className="min-h-11 w-full font-mono md:min-h-9" aria-invalid={!!error || undefined}>
-          <SelectValue placeholder="Choose a model" />
-        </SelectTrigger>
-        <SelectContent>
-          {options.map((option) => (
-            <SelectItem key={option.id} value={option.id} className="min-h-11 font-mono md:min-h-8">
-              {option.id}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      {error ? <p className="text-[11px] text-(--color-error)">{error}</p> : null}
+    <div className="grid gap-1">
+      <label className="text-[11px] font-medium text-(--color-text-muted)">Model ID</label>
+      <Dropdown
+        value={value}
+        onValueChange={(next) => next && onChange(next)}
+        trigger="Choose a model"
+        className="min-h-11 w-full font-mono md:min-h-9"
+        aria-invalid={!!error || undefined}
+      >
+        {options.map((option) => (
+          <DropdownItem key={option.id} value={option.id} className="font-mono">
+            {option.id}
+          </DropdownItem>
+        ))}
+      </Dropdown>
+      {error ? <p className="text-[10px] text-(--color-error) font-mono">{error}</p> : null}
     </div>
   )
 }
@@ -237,24 +233,25 @@ function ListField({ label, value, onChange, options, error, optional }: {
   optional?: boolean
 }) {
   return (
-    <div className="grid gap-1.5">
-      <label className="text-xs font-medium text-(--color-text-muted)">{label}</label>
-      <Select value={value} onValueChange={(next) => next && onChange(next)}>
-        <SelectTrigger className="min-h-11 w-full font-mono md:min-h-9" aria-invalid={!!error || undefined}>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {optional ? (
-            <SelectItem value={PROVIDER_DEFAULT} className="min-h-11 md:min-h-8">Provider default</SelectItem>
-          ) : null}
-          {options.map((option) => (
-            <SelectItem key={option} value={option} className="min-h-11 font-mono md:min-h-8">
-              {option}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      {error ? <p className="text-[11px] text-(--color-error)">{error}</p> : null}
+    <div className="grid gap-1">
+      <label className="text-[11px] font-medium text-(--color-text-muted)">{label}</label>
+      <Dropdown
+        value={value}
+        onValueChange={(next) => next && onChange(next)}
+        trigger={label}
+        className="min-h-11 w-full font-mono md:min-h-9"
+        aria-invalid={!!error || undefined}
+      >
+        {optional ? (
+          <DropdownItem value={PROVIDER_DEFAULT}>Provider default</DropdownItem>
+        ) : null}
+        {options.map((option) => (
+          <DropdownItem key={option} value={option} className="font-mono">
+            {option}
+          </DropdownItem>
+        ))}
+      </Dropdown>
+      {error ? <p className="text-[10px] text-(--color-error) font-mono">{error}</p> : null}
     </div>
   )
 }

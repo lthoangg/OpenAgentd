@@ -32,6 +32,7 @@ function resetUIStore(): void {
   useUIStore.setState({
     schedulerOpen: false,
     agentCapabilitiesOpen: false,
+    paletteOpen: false,
   })
   listener = null
   unlistenCalls = 0

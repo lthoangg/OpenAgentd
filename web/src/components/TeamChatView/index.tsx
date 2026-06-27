@@ -37,6 +37,7 @@ import { useTeamStore } from '@/stores/useTeamStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { prependSession, prependWorkspaceSession } from '@/stores/cache-invalidation-bridge'
 import { useUIStore } from '@/stores/useUIStore'
+import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { useTeamAgentsQuery } from '@/queries/useAgentsQuery'
 import { useFileRefsQuery } from '@/queries/useFileRefsQuery'
@@ -93,6 +94,7 @@ async function attachmentToFile(att: MessageAttachment): Promise<File | null> {
 
 export function TeamChatView({ sessionId, mode = 'normal', workspace = null, codingSessionLoading = false }: TeamChatViewProps) {
   const navigate = useNavigate()
+  const openSettings = useSettingsStore((s) => s.openSettings)
   const queryClient = useQueryClient()
   const isMobile = useIsMobile()
   const { isMacOverlay, os } = usePlatform()
@@ -115,7 +117,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const [openWorkspaceDialogKey, setOpenWorkspaceDialogKey] = useState(0)
   const [showTodos, setShowTodos] = useState(false)
   const [showMobileActions, setShowMobileActions] = useState(false)
-  const [showPalette, setShowPalette] = useState(false)
+
   const [fileRefsEnabled, setFileRefsEnabled] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>('agent')
   const draftBySessionRef = useRef<Record<string, SessionDraft>>({})
@@ -164,10 +166,13 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   // Utility modal state lives in useUIStore so only one can be open at a time.
   const schedulerOpen = useUIStore((s) => s.schedulerOpen)
   const agentCapabilitiesOpen = useUIStore((s) => s.agentCapabilitiesOpen)
+  const paletteOpen = useUIStore((s) => s.paletteOpen)
   const toggleScheduler = useUIStore((s) => s.toggleScheduler)
   const toggleAgentCapabilities = useUIStore((s) => s.toggleAgentCapabilities)
+  const togglePalette = useUIStore((s) => s.togglePalette)
   const closeScheduler = useUIStore((s) => s.closeScheduler)
   const closeAgentCapabilities = useUIStore((s) => s.closeAgentCapabilities)
+  const closePalette = useUIStore((s) => s.closePalette)
 
   // Subscribe to active-agent stream fields directly to avoid recomputing on
   // every other agent's tick.
@@ -415,7 +420,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   }, [focusInput])
 
   useEffect(() => {
-    if (isMobile || showPalette || (mode === 'coding' && (!workspace || isCodingSessionLoading))) return
+    if (isMobile || paletteOpen || (mode === 'coding' && (!workspace || isCodingSessionLoading))) return
 
     const isEditableElement = (target: EventTarget | null) => {
       if (!(target instanceof HTMLElement)) return false
@@ -434,7 +439,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
 
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [isCodingSessionLoading, isMobile, mode, showPalette, workspace])
+  }, [isCodingSessionLoading, isMobile, mode, paletteOpen, workspace])
 
   const handleAddFileComment = useCallback((path: string, startLine: number, endLine: number) => {
     const ref = startLine === endLine ? `@${path}#L${startLine}` : `@${path}#L${startLine}-L${endLine}`
@@ -682,7 +687,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     a: toggleAgentCapabilities,
     f: handleWorkspaceFiles,
     t: () => { if (sessionIdState) setShowTodos((v) => !v) },
-    p: isMobile ? undefined : () => setShowPalette((v) => !v),
+    p: isMobile ? undefined : togglePalette,
     b: mode === 'coding' ? handleCodingSidebarToggle : undefined,
     // Ctrl+S — open the scheduler drawer (state in useUIStore).
     s: toggleScheduler,
@@ -826,7 +831,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             workspace={workspace}
             onCollapse={() => setCodingSidebarCollapsed(true)}
             openWorkspaceDialogKey={openWorkspaceDialogKey}
-            onCommandPalette={() => setShowPalette(true)}
+            onCommandPalette={togglePalette}
             desktopCollapsed={codingSidebarCollapsed}
             mobileOpen={mobileSidebarOpen}
             onMobileClose={() => setMobileSidebarOpen(false)}
@@ -834,7 +839,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         ) : (
           <Sidebar
             currentSessionId={sessionIdState || undefined}
-            onCommandPalette={() => setShowPalette(true)}
+            onCommandPalette={togglePalette}
             onNewChat={handleNewSession}
             mobileOpen={mobileSidebarOpen}
             onMobileClose={() => setMobileSidebarOpen(false)}
@@ -843,7 +848,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
 
         <main id="main" ref={mainColumnRef} className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
         {setupRequired && (
-          <div className="mx-3 mt-3 flex flex-col gap-3 rounded-xl border border-(--accent-blue)/35 bg-(--accent-blue-soft) p-3 text-sm text-(--color-text) shadow-sm sm:flex-row sm:items-center sm:justify-between">
+          <div className="mx-3 mt-3 flex flex-col gap-3 rounded-sm border border-(--accent-blue)/35 bg-(--accent-blue-soft) p-3 text-sm text-(--color-text) shadow-sm sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 gap-3">
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-(--accent-blue)" aria-hidden="true" />
               <div className="min-w-0">
@@ -854,7 +859,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             <div className="flex shrink-0 items-center gap-2 self-start sm:self-center">
               <Button
                 size="sm"
-                onClick={() => navigate({ to: '/settings/providers' })}
+                onClick={() => openSettings('providers')}
               >
                 Open Providers
               </Button>
@@ -870,7 +875,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
           </div>
         )}
         {!setupRequired && !hasConfiguredModelProvider && (
-          <div className="mx-3 mt-3 flex flex-col gap-3 rounded-xl border border-(--color-border) bg-(--bg-card) p-3 text-sm text-(--color-text) shadow-sm sm:flex-row sm:items-center sm:justify-between">
+          <div className="mx-3 mt-3 flex flex-col gap-3 rounded-sm border border-(--color-border) bg-(--bg-card) p-3 text-sm text-(--color-text) shadow-sm sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 gap-3">
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-(--color-accent)" aria-hidden="true" />
               <div className="min-w-0">
@@ -878,14 +883,14 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
                 <p className="mt-0.5 text-xs text-(--color-text-muted)">Connect a provider once, then OpenAgentd can seed and run the default team.</p>
               </div>
             </div>
-            <Button size="sm" onClick={() => navigate({ to: '/settings/providers' })}>
+            <Button size="sm" onClick={() => openSettings('providers')}>
               Open Providers
             </Button>
           </div>
         )}
         {/* Content area */}
         {effectiveViewMode === 'split' && splitAgentNames.length > 0 ? (
-          <div className="min-h-0 flex-1 p-3">
+          <div className="min-h-0 flex-1 p-2 sm:p-3">
             <SplitGrid
               agentNames={splitAgentNames}
               leadName={leadName}
@@ -1054,9 +1059,9 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         schedulerOpen={schedulerOpen}
         onCloseScheduler={closeScheduler}
         workspace={workspace}
-        showPalette={showPalette}
+        showPalette={paletteOpen}
         paletteCommands={paletteCommands}
-        onClosePalette={() => setShowPalette(false)}
+        onClosePalette={closePalette}
       />    </div>
   )
 }

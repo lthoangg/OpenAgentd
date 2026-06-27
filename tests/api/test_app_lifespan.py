@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, call
 
 import pytest
 from fastapi import FastAPI
@@ -23,9 +23,11 @@ async def _run_lifespan() -> FastAPI:
 
 
 @pytest.fixture
-def slim_lifespan(monkeypatch: pytest.MonkeyPatch):
+def slim_lifespan(monkeypatch: pytest.MonkeyPatch) -> Mock:
     monkeypatch.setattr(app_module.settings, "APP_ENV", "test")
     monkeypatch.setattr(app_module, "ensure_workspace_initialized", Mock())
+    startup_logger = Mock()
+    monkeypatch.setattr(app_module.logger, "info", startup_logger)
     monkeypatch.setattr(app_module, "setup_otel", Mock())
     monkeypatch.setattr(app_module, "start_otel_retention", Mock())
     monkeypatch.setattr(app_module, "stop_otel_retention", AsyncMock())
@@ -37,11 +39,12 @@ def slim_lifespan(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(app_module.team_manager, "stop", AsyncMock())
     monkeypatch.setattr(app_module.task_scheduler, "stop", AsyncMock())
     monkeypatch.setattr(app_module.mcp_manager, "stop", AsyncMock())
+    return startup_logger
 
 
 @pytest.mark.asyncio
 async def test_lifespan_skips_idle_startup_services(
-    monkeypatch: pytest.MonkeyPatch, slim_lifespan
+    monkeypatch: pytest.MonkeyPatch, slim_lifespan: Mock
 ) -> None:
     monkeypatch.setattr(
         app_module, "load_mcp_config", Mock(return_value=SimpleNamespace(servers={}))
@@ -56,11 +59,15 @@ async def test_lifespan_skips_idle_startup_services(
 
     app_module.mcp_manager.start.assert_not_awaited()
     app_module.task_scheduler.start.assert_not_awaited()
+    assert slim_lifespan.mock_calls[:2] == [
+        call("server_starting version={} app_env={}", app_module.VERSION, "test"),
+        call("mcp_no_servers_configured"),
+    ]
 
 
 @pytest.mark.asyncio
 async def test_lifespan_starts_configured_services(
-    monkeypatch: pytest.MonkeyPatch, slim_lifespan
+    monkeypatch: pytest.MonkeyPatch, slim_lifespan: Mock
 ) -> None:
     monkeypatch.setattr(
         app_module,
@@ -77,3 +84,6 @@ async def test_lifespan_starts_configured_services(
 
     app_module.mcp_manager.start.assert_awaited_once()
     app_module.task_scheduler.start.assert_awaited_once()
+    assert slim_lifespan.mock_calls[0] == call(
+        "server_starting version={} app_env={}", app_module.VERSION, "test"
+    )

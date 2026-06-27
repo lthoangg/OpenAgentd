@@ -4,7 +4,7 @@ import { useNavigate } from '@tanstack/react-router'
 import OpenAgentdAppIcon from '@/assets/brand/openagentd-app-icon.png'
 
 import { AppBackendDialog } from '@/components/AppBackendDialog'
-import { Activity, AlertCircle, Code2, Gauge, Settings, Wifi } from 'lucide-react'
+import { Activity, AlertCircle, Code2, Gauge, Wifi } from 'lucide-react'
 import { useHealthQuery } from '@/queries/useHealthQuery'
 import { useTeamStatusQuery } from '@/queries/useTeamStatusQuery'
 import { usePlatform } from '@/hooks/use-platform'
@@ -52,14 +52,14 @@ export function HomePage() {
         initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 24 }}
         animate={prefersReducedMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
         transition={{ duration: prefersReducedMotion ? 0.01 : 0.45, ease: 'easeOut' }}
-        className={`mx-auto flex w-full max-w-sm flex-1 flex-col items-center justify-center ${isTauriMobile ? 'gap-5 py-[max(1.25rem,env(safe-area-inset-top))]' : 'gap-8 py-6'}`}
+        className={`mx-auto flex w-full max-w-sm flex-1 flex-col items-center justify-center ${isTauriMobile ? 'gap-5 py-[max(1.25rem,env(safe-area-inset-top))]' : 'gap-7 py-6'}`}
       >
         {/* Logo */}
         <div className={`flex select-none flex-col items-center ${isTauriMobile ? 'gap-3' : 'gap-4'}`}>
           <div className="relative">
-            <div className="absolute inset-0 rounded-3xl bg-(--bg-key) blur-2xl" />
-            <div className={`relative flex items-center justify-center rounded-3xl bg-(--bg-key) ring-1 ring-(--bg-key) ${isTauriMobile ? 'h-16 w-16' : 'h-20 w-20'}`}>
-              <img src={OpenAgentdAppIcon} width={isTauriMobile ? 58 : 72} height={isTauriMobile ? 58 : 72} alt="OpenAgentd logo" className="rounded-2xl" />
+            <div className="absolute inset-0 rounded-2xl bg-(--bg-key) blur-2xl" />
+            <div className={`relative flex items-center justify-center rounded-2xl border border-(--color-border) bg-(--bg-card) shadow-sm ${isTauriMobile ? 'h-16 w-16' : 'h-20 w-20'}`}>
+              <img src={OpenAgentdAppIcon} width={isTauriMobile ? 58 : 72} height={isTauriMobile ? 58 : 72} alt="OpenAgentd logo" className="rounded-xl" />
             </div>
           </div>
           <div className="text-center">
@@ -107,15 +107,6 @@ export function HomePage() {
              compact={isTauriMobile}
              onClick={() => navigate({ to: '/telemetry' })}
            />
-           <ModeCard
-             icon={Settings}
-             title="Settings"
-             description="Agents, skills, MCP servers, sandbox"
-             disabled={!backendOk}
-             loading={loading && !error}
-             compact={isTauriMobile}
-             onClick={() => navigate({ to: '/settings' })}
-           />
         </div>
 
         {/* Backend status */}
@@ -124,7 +115,7 @@ export function HomePage() {
             <button
               type="button"
               onClick={() => setBackendDialogOpen(true)}
-              className="flex items-center gap-2 rounded-md px-2 py-1 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
+              className="flex items-center gap-2 rounded-sm border border-transparent px-2 py-1 text-(--color-text-muted) transition-colors hover:border-(--color-border) hover:bg-(--bg-card) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40"
             >
               <Wifi size={12} className="animate-pulse" />
               <span>Connecting…</span>
@@ -134,7 +125,7 @@ export function HomePage() {
             <button
               type="button"
               onClick={() => setBackendDialogOpen(true)}
-              className="flex items-center gap-2 rounded-md px-2 py-1 text-(--color-error) transition-colors hover:bg-(--color-error)/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
+              className="flex items-center gap-2 rounded-sm border border-transparent px-2 py-1 text-(--color-error) transition-colors hover:border-(--color-error)/25 hover:bg-(--color-error)/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40"
             >
               <AlertCircle size={12} />
               <span>Backend unreachable</span>
@@ -144,7 +135,7 @@ export function HomePage() {
             <button
               type="button"
               onClick={() => setBackendDialogOpen(true)}
-              className="flex items-center gap-2 rounded-md px-2 py-1 transition-colors hover:bg-(--bg-key) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
+              className="flex items-center gap-2 rounded-sm border border-transparent px-2 py-1 transition-colors hover:border-(--color-border) hover:bg-(--bg-card) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40"
             >
               <Wifi size={12} className="text-(--color-success)" />
               <span className="text-(--color-text-muted)">Connected</span>
@@ -181,21 +172,21 @@ function ModeCard({
       whileTap={disabled ? {} : { scale: 0.985 }}
       onClick={disabled ? undefined : onClick}
       disabled={disabled}
-      className={`flex w-full items-center rounded-2xl border text-left transition-all ${compact ? 'gap-3 px-4 py-3' : 'gap-4 px-5 py-4'} ${
+      className={`flex w-full items-center rounded-sm border text-left transition-colors ${compact ? 'gap-3 px-3 py-2.5' : 'gap-3 px-4 py-3'} ${
         disabled
-          ? 'cursor-not-allowed border-(--bg-key) bg-(--bg-key) opacity-40'
-          : 'border-(--bg-key) bg-(--bg-key) hover:border-(--color-border-strong) hover:bg-(--bg-key)'
+          ? 'cursor-not-allowed border-(--color-border) bg-(--bg-card) opacity-45'
+          : 'border-(--color-border) bg-(--bg-card) hover:border-(--color-border-strong) hover:bg-(--bg-key)/40'
       }`}
     >
       <div
-        className={`flex shrink-0 items-center justify-center rounded-xl ${compact ? 'h-9 w-9' : 'h-10 w-10'} ${
+        className={`flex shrink-0 items-center justify-center rounded-sm border ${compact ? 'h-8 w-8' : 'h-9 w-9'} ${
           disabled
-            ? 'bg-(--bg-key)'
-            : 'bg-(--bg-key) ring-1 ring-(--color-border-strong)'
+            ? 'border-(--color-border) bg-(--bg-input)'
+            : 'border-(--color-border) bg-(--bg-key)/60'
         }`}
       >
         <Icon
-          size={compact ? 16 : 18}
+          size={compact ? 15 : 16}
           className={
             disabled
               ? 'text-(--color-text-muted)'

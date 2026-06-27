@@ -15,7 +15,7 @@ export function AgentTabs({
   onSelect,
 }: AgentTabsProps) {
   return (
-    <div className="scrollbar-none flex shrink-0 items-center gap-1.5 border-b border-(--color-border) bg-(--bg-page) px-3 py-1.5 overflow-x-auto">
+    <div className="scrollbar-none flex shrink-0 items-center gap-1 border-b border-(--color-border) bg-(--bg-sidebar) px-3 py-1.5 overflow-x-auto">
       {agents.map((name) => {
         const isActive = name === activeAgent
         const stream = streams[name]
@@ -25,9 +25,9 @@ export function AgentTabs({
             key={name}
             type="button"
             onClick={() => onSelect(name)}
-            className={`flex items-center gap-1.5 rounded-full px-3 py-1 font-mono text-[10px] font-semibold tracking-wide uppercase transition-all outline-none ${
+            className={`flex items-center gap-1.5 rounded-xs border border-transparent px-2.5 py-1 font-mono text-[10px] font-semibold tracking-wide uppercase transition-colors outline-none ${
               isActive
-                ? 'bg-(--bg-key) text-(--color-text) ring-1 ring-(--color-border-strong)'
+                ? 'border-(--color-border-strong) bg-(--bg-key) text-(--color-text)'
                 : 'text-(--color-text-subtle) hover:bg-(--bg-key)/40 hover:text-(--color-text-2)'
             }`}
           >

@@ -51,7 +51,7 @@ export function TracesSection({
         <EmptyTable label="No traces in this window." />
       ) : (
         <div
-          className="max-h-[34rem] overflow-y-auto rounded-lg border border-(--color-border) bg-(--bg-card)"
+          className="max-h-[34rem] overflow-y-auto rounded-sm border border-(--color-border) bg-(--bg-card)"
           onScroll={(event) => {
             const el = event.currentTarget
             if (el.scrollTop + el.clientHeight >= el.scrollHeight - 80) {

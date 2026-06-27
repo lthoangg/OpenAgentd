@@ -27,7 +27,7 @@ export function formatCompact(n: number): string {
 }
 
 export function formatUsd(n: number): string {
-  if (!Number.isFinite(n) || n <= 0) return '—'
+  if (!Number.isFinite(n) || n <= 0) return '-'
   return usdFmt.format(n)
 }
 
@@ -37,12 +37,12 @@ export function formatPercent(n: number): string {
 }
 
 /**
- * Format a millisecond duration.  0 becomes an em-dash so empty cells read
- * cleanly in tables; sub-second values render as whole ms; values ≥1s switch
+ * Format a millisecond duration.  0 becomes a hyphen so empty cells read
+ * cleanly in tables; sub-second values render as whole ms; values >=1s switch
  * to seconds with one decimal.
  */
 export function formatMs(n: number): string {
-  if (n === 0) return '—'
+  if (n === 0) return '-'
   if (n < 1000) return `${n.toFixed(0)} ms`
   return `${(n / 1000).toFixed(1)} s`
 }
@@ -65,7 +65,7 @@ export function timeAgo(pastMs: number, nowMs: number): string {
 }
 
 /**
- * Truncate long hex-ish ids for table cells — full id shows on hover.
+ * Truncate long hex-ish ids for table cells: full id shows on hover.
  * Differs from `@/utils/format.shortId` by stripping the `0x` prefix and
  * adding a mid-ellipsis for very long values.
  */

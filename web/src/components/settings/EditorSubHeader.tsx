@@ -9,7 +9,6 @@
  * The Form/Raw toggle is optional; the skill editor (which has only a raw
  * mode) hides it by passing ``mode={undefined}``.
  */
-import { Link } from '@tanstack/react-router'
 import {
   AlertCircle,
   ArrowLeft,
@@ -50,6 +49,8 @@ interface EditorSubHeaderProps {
   saveDisabledReason?: string | null
   /** Save handler; the button manages its own disabled state. */
   onSave: () => void
+  /** Called when the back arrow is clicked. */
+  onBack: () => void
 }
 
 export function EditorSubHeader({
@@ -65,14 +66,9 @@ export function EditorSubHeader({
   mode,
   onModeChange,
   onSave,
+  onBack,
 }: EditorSubHeaderProps) {
   const KindIcon = kind === 'agent' ? Wrench : kind === 'skill' ? Sparkles : Plug
-  const backTo =
-    kind === 'agent'
-      ? '/settings/agents'
-      : kind === 'skill'
-        ? '/settings/skills'
-        : '/settings/mcp'
   const showToggle = mode != null && onModeChange != null
 
   // Save is disabled when there is nothing to save, when the draft is
@@ -87,7 +83,7 @@ export function EditorSubHeader({
         : null
 
   return (
-    <header className="sticky top-0 z-10 flex h-14 items-center gap-3 border-b border-(--color-border) bg-(--bg-page) px-4">
+    <header className="sticky top-0 z-10 flex h-14 items-center gap-2 border-b border-(--color-border) bg-(--bg-page) px-2 sm:gap-3 sm:px-4">
       {/* Title block ─────────────────────────────────────────────── */}
       <Tooltip>
         <TooltipTrigger
@@ -96,7 +92,8 @@ export function EditorSubHeader({
               size="icon-sm"
               variant="ghost"
               className="h-11 w-11 md:h-7 md:w-7"
-              render={<Link to={backTo} aria-label="Back to list" />}
+              onClick={onBack}
+              aria-label="Back to list"
             >
               <ArrowLeft size={14} />
             </Button>
@@ -106,7 +103,7 @@ export function EditorSubHeader({
       </Tooltip>
 
       <span
-        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-(--bg-key) text-(--color-text-muted) ring-1 ring-(--color-border)"
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xs border border-(--color-border) bg-(--bg-key) text-(--color-text-muted)"
         aria-hidden="true"
       >
         <KindIcon size={13} />
@@ -125,13 +122,13 @@ export function EditorSubHeader({
       {showToggle && (
         <Tabs value={mode} onValueChange={(v) => onModeChange(v as 'form' | 'raw')}>
           <TabsList className="h-7">
-            <TabsTrigger value="form" className="px-2 text-xs">
+            <TabsTrigger value="form" className="px-2 text-xs" aria-label="Form mode">
               <FormInput size={11} aria-hidden="true" />
-              Form
+              <span className="hidden sm:inline">Form</span>
             </TabsTrigger>
-            <TabsTrigger value="raw" className="px-2 text-xs">
+            <TabsTrigger value="raw" className="px-2 text-xs" aria-label="Raw mode">
               <Code2 size={11} aria-hidden="true" />
-              Raw
+              <span className="hidden sm:inline">Raw</span>
             </TabsTrigger>
           </TabsList>
         </Tabs>
@@ -143,7 +140,7 @@ export function EditorSubHeader({
           <Tooltip>
             <TooltipTrigger
               render={
-                <span className="flex items-center gap-1 rounded-md bg-(--color-error-subtle) px-2 py-1 text-xs text-(--color-error)">
+                <span className="flex items-center gap-1 rounded-xs bg-(--color-error-subtle) px-2 py-1 text-xs text-(--color-error)">
                   <AlertCircle size={11} />
                   Error
                 </span>
@@ -156,7 +153,7 @@ export function EditorSubHeader({
           <Tooltip>
             <TooltipTrigger
               render={
-                <span className="flex items-center gap-1 rounded-md bg-(--color-error-subtle) px-2 py-1 text-xs text-(--color-error)">
+                <span className="flex items-center gap-1 rounded-xs bg-(--color-error-subtle) px-2 py-1 text-xs text-(--color-error)">
                   <AlertCircle size={11} />
                   Invalid
                 </span>
@@ -166,7 +163,7 @@ export function EditorSubHeader({
           </Tooltip>
         )}
         {!error && !invalid && dirty && (
-          <span className="flex items-center gap-1.5 text-xs text-(--color-text-muted)">
+          <span className="hidden items-center gap-1.5 text-xs text-(--color-text-muted) sm:flex">
             <span
               className={cn(
                 'h-1.5 w-1.5 rounded-full bg-(--color-text)',

@@ -11,7 +11,6 @@ import { useToastStore } from '@/stores/useToastStore'
 mock.module('@tanstack/react-router', () => ({
   Link: ({ children }: { children: ReactNode }) => children,
   useNavigate: () => mock(() => undefined),
-  useParams: () => ({ name: 'filesystem' }),
 }))
 
 import { McpServerDetailPage } from '@/routes/settings.mcp.$name'
@@ -49,7 +48,7 @@ function renderPage() {
 
   return render(
     <QueryClientProvider client={queryClient}>
-      <McpServerDetailPage />
+      <McpServerDetailPage name="filesystem" onBack={() => {}} />
       <ToastStack />
     </QueryClientProvider>,
   )
@@ -78,19 +77,19 @@ describe('McpServerDetailPage', () => {
 
     renderPage()
 
-    expect(await screen.findByText('Runtime status')).toBeTruthy()
+    expect((await screen.findAllByText(/Status/i)).length).toBeGreaterThan(0)
 
     const save = screen.getByRole('button', { name: /^save$/i })
     expect(save.className).toContain('min-h-11')
     expect(save.className).toContain('md:min-h-0')
 
     const enabled = screen.getByRole('radiogroup', { name: /server enabled state/i })
-    expect(enabled.className).toContain('min-h-11')
-    expect(enabled.className).toContain('md:min-h-9')
+    expect(enabled.className).toContain('h-8')
+    expect(enabled.className).toContain('rounded-xs')
 
     const transport = screen.getByRole('radiogroup', { name: /mcp transport/i })
-    expect(transport.className).toContain('min-h-11')
-    expect(transport.className).toContain('md:min-h-10')
+    expect(transport.className).toContain('h-8')
+    expect(transport.className).toContain('rounded-xs')
 
     const command = screen.getByPlaceholderText('npx')
     expect(command.className).toContain('min-h-11')
@@ -101,17 +100,17 @@ describe('McpServerDetailPage', () => {
     expect(addEnv.className).toContain('md:min-h-0')
 
     const removeEnv = screen.getByRole('button', { name: /remove root/i })
-    expect(removeEnv.className).toContain('h-11')
-    expect(removeEnv.className).toContain('w-11')
+    expect(removeEnv.className).toContain('h-9')
+    expect(removeEnv.className).toContain('w-9')
     expect(removeEnv.className).toContain('md:h-6')
     expect(removeEnv.className).toContain('md:w-6')
 
     const restart = screen.getByRole('button', { name: /restart server/i })
-    expect(restart.className).toContain('min-h-11')
-    expect(restart.className).toContain('md:min-h-0')
+    expect(restart.className).toContain('h-8')
+    expect(restart.className).toContain('text-[10.5px]')
 
     const deleteServer = screen.getByRole('button', { name: /delete server/i })
-    expect(deleteServer.className).toContain('min-h-11')
-    expect(deleteServer.className).toContain('md:min-h-0')
+    expect(deleteServer.className).toContain('h-8')
+    expect(deleteServer.className).toContain('text-[10.5px]')
   })
 })

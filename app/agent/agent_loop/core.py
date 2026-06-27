@@ -103,8 +103,6 @@ class Agent(Generic[TContext]):
         context: TContext | None = None,
         max_concurrent_tools: int = MAX_CONCURRENT_TOOLS,
         model_id: str | None = None,
-        fallback_provider: LLMProviderBase | None = None,
-        fallback_model_id: str | None = None,
     ):
         self.id = _uuid7()
         self.name = name
@@ -127,10 +125,6 @@ class Agent(Generic[TContext]):
         self._tool_semaphore = asyncio.Semaphore(max_concurrent_tools)
         # Cumulative agent-level statistics (updated per run)
         self.stats = AgentStats(agent_id=self.id)
-        # Fallback provider — used when primary exhausts retries on retryable errors
-        self.fallback_provider: LLMProviderBase | None = fallback_provider
-        self.fallback_model_id: str | None = fallback_model_id
-
         # Build internal tool lookup from Tool objects or plain callables
         self._tools: dict[str, Tool] = {}
         for fn in tools or []:
@@ -356,8 +350,6 @@ class Agent(Generic[TContext]):
                     tool_defs=tool_defs,
                     primary_provider=active_provider,
                     primary_label=active_model_id or "primary",
-                    fallback_provider=self.fallback_provider,
-                    fallback_label=self.fallback_model_id or "fallback",
                     agent_name=self.name,
                     agent_id=str(self.id),
                 )
@@ -436,7 +428,6 @@ class Agent(Generic[TContext]):
             tc_list = assistant_msg.tool_calls or []
             last_usage = iter_usage_holder[0]
             effective_model = state.metadata.pop("effective_model", None)
-            provider_fallback = state.metadata.pop("provider_fallback", None)
             stream_elapsed = time.monotonic() - iter_start
 
             logger.info(
@@ -487,10 +478,6 @@ class Agent(Generic[TContext]):
                 (time.monotonic() - run_start) * 1000, 3
             )
             message_extra["model"] = effective_model or active_model_id
-            if provider_fallback:
-                message_extra["requested_model"] = active_model_id
-                message_extra["provider_fallback"] = provider_fallback
-
             # Me attach usage to message + state (single dict, shared reference)
             if last_usage:
                 usage_dict = usage_to_dict(

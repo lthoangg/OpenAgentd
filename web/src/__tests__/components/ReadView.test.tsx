@@ -15,7 +15,7 @@ describe("ReadView", () => {
 
     const gutterClassName = screen.getByText('42').parentElement?.className ?? ''
     expect(gutterClassName).toContain('sticky left-0')
-    expect(gutterClassName).toContain('bg-(--bg-card)')
+    expect(gutterClassName).toContain('bg-(--bg-input)')
   })
 
   it("truncates very large read bodies for display", () => {

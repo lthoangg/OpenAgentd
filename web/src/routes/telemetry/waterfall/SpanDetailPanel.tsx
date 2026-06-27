@@ -34,20 +34,20 @@ export function SpanDetailPanel({
   )
 
   return (
-    <aside className={`flex shrink-0 flex-col overflow-hidden border-l border-(--color-border) bg-(--bg-key) ${fullWidth ? 'w-full' : 'w-96'}`}>
-      <div className="flex h-12 shrink-0 items-center justify-between border-b border-(--color-border) px-4">
+    <aside className={`flex shrink-0 flex-col overflow-hidden border-l border-(--color-border) bg-(--bg-page) ${fullWidth ? 'w-full' : 'w-96'}`}>
+      <div className="flex h-11 shrink-0 items-center justify-between border-b border-(--color-border) bg-(--bg-sidebar) px-3">
         <h3 className="truncate text-sm font-semibold text-(--color-text)" title={span.name}>
           {span.name}
         </h3>
         <button
           onClick={onClose}
-          className="flex h-9 w-9 items-center justify-center rounded text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-6 md:w-6"
+          className="flex h-7 w-7 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
           aria-label="Close span detail"
         >
-          <X size={16} className="md:h-3.5 md:w-3.5" />
+          <X size={14} />
         </button>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+      <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
         <dl className="flex flex-col gap-3 text-xs">
           <Kv label="Kind" value={span.kind || '—'} />
           <Kv
@@ -79,7 +79,7 @@ export function SpanDetailPanel({
               {tokens.map((t) => (
                 <div
                   key={t.label}
-                  className="rounded-md border border-(--color-border) bg-(--bg-card) p-2"
+                  className="rounded-sm border border-(--color-border) bg-(--bg-card) p-2"
                 >
                   <p className="text-[9px] uppercase tracking-wide text-(--color-text-muted)">
                     {t.label}
@@ -98,7 +98,7 @@ export function SpanDetailPanel({
             <h4 className="mb-2 mt-5 text-[10px] font-semibold uppercase tracking-wide text-(--color-text-muted)">
               Estimated cost
             </h4>
-            <div className="rounded-md border border-(--color-border) bg-(--bg-card) p-3">
+            <div className="rounded-sm border border-(--color-border) bg-(--bg-card) p-3">
               <p className="text-lg font-semibold tabular-nums text-(--color-text)">
                 {formatUsd(estimatedCost)}
               </p>
@@ -115,7 +115,7 @@ export function SpanDetailPanel({
         {attrs.length === 0 ? (
           <p className="text-xs text-(--color-text-muted)">No attributes.</p>
         ) : (
-          <dl className="flex flex-col divide-y divide-(--color-border) rounded-md border border-(--color-border) bg-(--bg-card) text-[11px]">
+          <dl className="flex flex-col divide-y divide-(--color-border) rounded-sm border border-(--color-border) bg-(--bg-card) text-[11px]">
             {attrs.map(([key, value]) => (
               <div key={key} className="flex flex-col gap-0.5 px-3 py-2">
                 <dt className="font-medium text-(--color-text-muted)">{key}</dt>

@@ -1,16 +1,13 @@
-"""Retry + fallback streaming for LLM provider calls.
+"""Retry streaming for LLM provider calls.
 
 Wraps a provider's ``stream()`` so transient errors (429, 5xx,
 connection errors) that surface mid-stream are retried from the
 beginning.  Non-retryable HTTP errors (4xx except 429) are raised
 immediately.
 
-If a fallback provider is supplied and the primary exhausts its
-retry budget, the fallback is tried with the same budget.
-
 Lives outside the :class:`~app.agent.agent_loop.Agent` class because
-none of this depends on instance state — only the provider, the
-fallback (if any), and a couple of labels for logging.
+none of this depends on instance state — only the provider and a label
+for logging.
 """
 
 from __future__ import annotations
@@ -38,7 +35,7 @@ if TYPE_CHECKING:
 
 # Public retry budget.  Tests reference this directly to assert that
 # ``stream_with_retry`` performed exactly ``MAX_RETRIES`` attempts before
-# falling back / raising.
+# raising.
 MAX_RETRIES = 5
 
 
@@ -106,30 +103,6 @@ async def _notify_provider_exhausted(
             error_type,
             status_code=status_code,
         )
-
-
-async def _notify_provider_fallback(
-    hooks: list[BaseAgentHook] | None,
-    ctx: RunContext | None,
-    state: AgentState | None,
-    *,
-    primary: str,
-    fallback: str,
-    error_type: str | None = None,
-    status_code: int | None = None,
-) -> None:
-    if ctx is None or state is None:
-        return
-    state.metadata["effective_model"] = fallback
-    state.metadata["provider_fallback"] = {
-        "primary": primary,
-        "fallback": fallback,
-        "reason": "primary_exhausted",
-        **({"error_type": error_type} if error_type else {}),
-        **({"status_code": status_code} if status_code is not None else {}),
-    }
-    for hook in hooks or []:
-        await hook.on_provider_fallback(ctx, state, primary, fallback)
 
 
 # Module-private timing knobs.
@@ -281,16 +254,13 @@ async def stream_with_retry(
     *,
     primary_provider: LLMProviderBase,
     primary_label: str,
-    fallback_provider: LLMProviderBase | None,
-    fallback_label: str,
-    agent_name: str,
     ctx: RunContext | None,
     state: AgentState | None,
     hooks: list[BaseAgentHook] | None,
     interrupt_event: asyncio.Event | None = None,
     **kwargs,
 ) -> AsyncIterator:
-    """Stream from ``primary_provider`` with retry; fall back if exhausted.
+    """Stream from ``primary_provider`` with retry.
 
     Wraps both the provider call *and* the full stream iteration so
     that transient errors surfacing mid-stream are retried from the
@@ -300,185 +270,156 @@ async def stream_with_retry(
     ``on_rate_limit`` on each 429 so the streaming hook can push the
     event to the SSE consumer.
     """
-    providers: list[tuple[LLMProviderBase, str]] = [(primary_provider, primary_label)]
-    if fallback_provider is not None:
-        providers.append((fallback_provider, fallback_label))
-
     last_exc: Exception | None = None
     # Set once any provider attempt has yielded a real chunk downstream.  When a
     # subsequent attempt begins we must tell the assembler to drop the partial
     # buffer from the failed attempt (see ``StreamRestart``).
     emitted_any = False
-    for provider, provider_label in providers:
-        for attempt in range(MAX_RETRIES):
-            if interrupt_event is not None and interrupt_event.is_set():
-                return
-            try:
-                if emitted_any:
-                    yield STREAM_RESTART
-                    emitted_any = False
-                async for chunk in provider.stream(**kwargs):
-                    emitted_any = True
-                    yield chunk
-                return  # successful completion — stop retry loop
-            except httpx.HTTPStatusError as exc:
-                if exc.response.status_code not in _RETRYABLE_STATUS_CODES:
-                    try:
-                        await exc.response.aread()
-                        body = exc.response.text[:500]
-                    except Exception:
-                        body = "<unreadable>"
-                    logger.error(
-                        "llm_provider_error model={} status={} body={}",
-                        provider_label,
-                        exc.response.status_code,
-                        body,
-                    )
-                    raise classify_provider_http_error(
-                        exc, provider_label=provider_label
-                    ) from exc
-                last_exc = exc
-                retry_after = 0
-                if exc.response.status_code == 429:
-                    try:
-                        await exc.response.aread()
-                    except Exception:
-                        pass
-                    if is_non_retryable_429(exc):
-                        logger.warning(
-                            "llm_provider_non_retryable_rate_limit model={} status={} attempt={}/{}",
-                            provider_label,
-                            exc.response.status_code,
-                            attempt + 1,
-                            MAX_RETRIES,
-                        )
-                        break
-                    retry_after = parse_retry_after(exc)
-                    if state and ctx:
-                        for hook in hooks or []:
-                            await hook.on_rate_limit(
-                                ctx,
-                                state,
-                                retry_after=retry_after,
-                                attempt=attempt + 1,
-                                max_attempts=MAX_RETRIES,
-                            )
-                # Skip sleep on the last attempt — move to fallback (or raise) immediately
-                if attempt + 1 >= MAX_RETRIES:
-                    logger.warning(
-                        "llm_provider_exhausted model={} status={} attempts={}",
-                        provider_label,
-                        exc.response.status_code,
-                        MAX_RETRIES,
-                    )
-                    await _notify_provider_exhausted(
-                        hooks,
-                        ctx,
-                        state,
-                        model=provider_label,
-                        error_type="HTTPStatusError",
-                        status_code=exc.response.status_code,
-                    )
-                    break
-                delay = min(
-                    retry_after if retry_after > 0 else _BASE_DELAY * (3**attempt),
-                    _MAX_DELAY,
+    for attempt in range(MAX_RETRIES):
+        if interrupt_event is not None and interrupt_event.is_set():
+            return
+        try:
+            if emitted_any:
+                yield STREAM_RESTART
+                emitted_any = False
+            async for chunk in primary_provider.stream(**kwargs):
+                emitted_any = True
+                yield chunk
+            return  # successful completion — stop retry loop
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code not in _RETRYABLE_STATUS_CODES:
+                try:
+                    await exc.response.aread()
+                    body = exc.response.text[:500]
+                except Exception:
+                    body = "<unreadable>"
+                logger.error(
+                    "llm_provider_error model={} status={} body={}",
+                    primary_label,
+                    exc.response.status_code,
+                    body,
                 )
-                if exc.response.status_code == 429 and delay >= _MAX_DELAY:
+                raise classify_provider_http_error(
+                    exc, provider_label=primary_label
+                ) from exc
+            last_exc = exc
+            retry_after = 0
+            if exc.response.status_code == 429:
+                try:
+                    await exc.response.aread()
+                except Exception:
+                    pass
+                if is_non_retryable_429(exc):
                     logger.warning(
-                        "llm_provider_rate_limit_too_long model={} status={} attempt={}/{} delay={:.1f}s retry_after={}s",
-                        provider_label,
+                        "llm_provider_non_retryable_rate_limit model={} status={} attempt={}/{}",
+                        primary_label,
                         exc.response.status_code,
                         attempt + 1,
                         MAX_RETRIES,
-                        delay,
-                        retry_after,
                     )
                     break
+                retry_after = parse_retry_after(exc)
+                if state and ctx:
+                    for hook in hooks or []:
+                        await hook.on_rate_limit(
+                            ctx,
+                            state,
+                            retry_after=retry_after,
+                            attempt=attempt + 1,
+                            max_attempts=MAX_RETRIES,
+                        )
+            # Skip sleep on the last attempt — raise immediately.
+            if attempt + 1 >= MAX_RETRIES:
                 logger.warning(
-                    "llm_provider_retry model={} status={} attempt={}/{} delay={:.1f}s retry_after={}s",
-                    provider_label,
+                    "llm_provider_exhausted model={} status={} attempts={}",
+                    primary_label,
+                    exc.response.status_code,
+                    MAX_RETRIES,
+                )
+                await _notify_provider_exhausted(
+                    hooks,
+                    ctx,
+                    state,
+                    model=primary_label,
+                    error_type="HTTPStatusError",
+                    status_code=exc.response.status_code,
+                )
+                break
+            delay = min(
+                retry_after if retry_after > 0 else _BASE_DELAY * (3**attempt),
+                _MAX_DELAY,
+            )
+            if exc.response.status_code == 429 and delay >= _MAX_DELAY:
+                logger.warning(
+                    "llm_provider_rate_limit_too_long model={} status={} attempt={}/{} delay={:.1f}s retry_after={}s",
+                    primary_label,
                     exc.response.status_code,
                     attempt + 1,
                     MAX_RETRIES,
                     delay,
                     retry_after,
                 )
-                await _notify_provider_retry(
-                    hooks,
-                    ctx,
-                    state,
-                    model=provider_label,
-                    attempt=attempt + 1,
-                    delay=delay,
-                    error_type="HTTPStatusError",
-                    status_code=exc.response.status_code,
-                    retry_after=retry_after,
-                )
-                if await _sleep_or_interrupted(delay, interrupt_event):
-                    return
-            except (httpx.ConnectError, httpx.ReadTimeout, TimeoutError) as exc:
-                last_exc = exc
-                # Skip sleep on the last attempt
-                if attempt + 1 >= MAX_RETRIES:
-                    logger.warning(
-                        "llm_provider_exhausted model={} error={} attempts={}",
-                        provider_label,
-                        type(exc).__name__,
-                        MAX_RETRIES,
-                    )
-                    await _notify_provider_exhausted(
-                        hooks,
-                        ctx,
-                        state,
-                        model=provider_label,
-                        error_type=type(exc).__name__,
-                    )
-                    break
-                delay = min(_BASE_DELAY * (3**attempt), _MAX_DELAY)
-                logger.warning(
-                    "llm_provider_retry model={} error={} attempt={}/{} delay={:.1f}s",
-                    provider_label,
-                    type(exc).__name__,
-                    attempt + 1,
-                    MAX_RETRIES,
-                    delay,
-                )
-                await _notify_provider_retry(
-                    hooks,
-                    ctx,
-                    state,
-                    model=provider_label,
-                    attempt=attempt + 1,
-                    delay=delay,
-                    error_type=type(exc).__name__,
-                )
-                if await _sleep_or_interrupted(delay, interrupt_event):
-                    return
-
-        # Primary model exhausted all retries — try fallback
-        if fallback_provider is not None and provider is primary_provider:
+                break
             logger.warning(
-                "llm_provider_fallback agent={} primary={} fallback={}",
-                agent_name,
+                "llm_provider_retry model={} status={} attempt={}/{} delay={:.1f}s retry_after={}s",
                 primary_label,
-                fallback_label,
+                exc.response.status_code,
+                attempt + 1,
+                MAX_RETRIES,
+                delay,
+                retry_after,
             )
-            error_type = type(last_exc).__name__ if last_exc is not None else None
-            status_code = (
-                last_exc.response.status_code
-                if isinstance(last_exc, httpx.HTTPStatusError)
-                else None
-            )
-            await _notify_provider_fallback(
+            await _notify_provider_retry(
                 hooks,
                 ctx,
                 state,
-                primary=primary_label,
-                fallback=fallback_label,
-                error_type=error_type,
-                status_code=status_code,
+                model=primary_label,
+                attempt=attempt + 1,
+                delay=delay,
+                error_type="HTTPStatusError",
+                status_code=exc.response.status_code,
+                retry_after=retry_after,
             )
+            if await _sleep_or_interrupted(delay, interrupt_event):
+                return
+        except (httpx.ConnectError, httpx.ReadTimeout, TimeoutError) as exc:
+            last_exc = exc
+            # Skip sleep on the last attempt.
+            if attempt + 1 >= MAX_RETRIES:
+                logger.warning(
+                    "llm_provider_exhausted model={} error={} attempts={}",
+                    primary_label,
+                    type(exc).__name__,
+                    MAX_RETRIES,
+                )
+                await _notify_provider_exhausted(
+                    hooks,
+                    ctx,
+                    state,
+                    model=primary_label,
+                    error_type=type(exc).__name__,
+                )
+                break
+            delay = min(_BASE_DELAY * (3**attempt), _MAX_DELAY)
+            logger.warning(
+                "llm_provider_retry model={} error={} attempt={}/{} delay={:.1f}s",
+                primary_label,
+                type(exc).__name__,
+                attempt + 1,
+                MAX_RETRIES,
+                delay,
+            )
+            await _notify_provider_retry(
+                hooks,
+                ctx,
+                state,
+                model=primary_label,
+                attempt=attempt + 1,
+                delay=delay,
+                error_type=type(exc).__name__,
+            )
+            if await _sleep_or_interrupted(delay, interrupt_event):
+                return
 
     assert last_exc is not None
     if (
@@ -486,7 +427,7 @@ async def stream_with_retry(
         and last_exc.response.status_code == 429
     ):
         raise ProviderRateLimitError(
-            "All configured LLM providers are rate-limited or quota-exhausted."
+            "The configured LLM provider is rate-limited or quota-exhausted."
         ) from last_exc
     raise last_exc
 

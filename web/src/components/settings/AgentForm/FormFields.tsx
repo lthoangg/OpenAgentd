@@ -1,20 +1,13 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useMemo, useState } from 'react'
 import { AlertCircle } from 'lucide-react'
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { SectionCard, SectionCardHeader, SectionCardRows } from '@/components/ui/section-card'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
-
 import { MultiSelect, type MultiSelectOption } from '../MultiSelect'
+import { SettingsField } from '../SettingsField'
 import { type AgentFrontmatter } from '../frontmatter'
 import {
   parseTemperatureInput,
@@ -41,13 +34,13 @@ export function ParseErrorBanner({
   onSwitchToRaw: () => void
 }) {
   return (
-    <div className="flex items-start gap-2 rounded-lg border border-(--color-error)/30 bg-(--color-error-subtle) px-3 py-2 text-xs text-(--color-error)">
+    <div className="flex items-start gap-2 rounded-sm border border-(--color-error)/30 bg-(--color-error-subtle) px-3 py-2 text-xs text-(--color-error)">
       <AlertCircle size={14} className="mt-0.5 shrink-0" />
       <div className="flex-1">
         <p className="font-medium">Parse error</p>
         <p className="mt-0.5 opacity-90">{message}</p>
       </div>
-      <Button size="xs" variant="outline" className="min-h-11 md:min-h-0" onClick={onSwitchToRaw}>
+      <Button size="xs" variant="default" className="min-h-11 md:min-h-0" onClick={onSwitchToRaw}>
         Open raw
       </Button>
     </div>
@@ -103,22 +96,19 @@ export function FormFields({
   const currentModelOptions = useMemo(() => {
     const byId = new Map(modelOptions.map((model) => [model.id, model]))
     const withCurrent = [...modelOptions]
-    for (const id of [fm.model, fm.fallback_model]) {
-      if (!id || byId.has(id) || !id.includes(':')) continue
+    const id = fm.model
+    if (id && !byId.has(id) && id.includes(':')) {
       const [provider, model] = id.split(':', 2)
       withCurrent.push({ id, provider, model, vision: false })
     }
     return withCurrent
-  }, [fm.fallback_model, fm.model, modelOptions])
+  }, [fm.model, modelOptions])
   const validModelIds = useMemo(
     () => currentModelOptions.map((m) => m.id),
     [currentModelOptions],
   )
   const modelError = validateModel(fm.model ?? '', {
     required: true,
-    validValues: validModelIds,
-  })
-  const fallbackError = validateModel(fm.fallback_model ?? '', {
     validValues: validModelIds,
   })
   const hasBuiltInProfile = isBuiltInProfile(fm.name, fm.role, agentPath)
@@ -149,22 +139,20 @@ export function FormFields({
   return (
     <div className="flex flex-col gap-4">
       {hasBuiltInProfile && (
-        <div className="rounded-lg border border-(--color-border) bg-(--bg-card) px-4 py-3 text-sm text-(--color-text-muted)">
-          <p className="font-medium text-(--color-text)">Built-in OpenAgentd profile</p>
-          <p className="mt-1">
+        <div className="rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2.5 text-xs text-(--color-text-muted)">
+          <p className="font-semibold text-(--color-text)">Built-in OpenAgentd profile</p>
+          <p className="mt-1 leading-relaxed">
             OpenAgentd provides the default description, tools, skills, and prompt in code. Values saved here are additive overrides, so versioned built-ins can improve without overwriting your file.
           </p>
         </div>
       )}
 
       {/* Identity ─────────────────────────────────────────────── */}
-      <Card size="sm">
-        <CardHeader>
-          <CardTitle>Identity</CardTitle>
-          <CardDescription>Who is this agent and what is its role?</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2">
-          <Field
+      <SectionCard>
+        <SectionCardHeader>Identity — who is this agent and what is its role?</SectionCardHeader>
+        <SectionCardRows>
+        <div className="px-3 py-3 grid gap-3 md:grid-cols-2">
+          <SettingsField
             label="Name"
             required
             error={nameError}
@@ -183,27 +171,22 @@ export function FormFields({
               aria-invalid={!!nameError || undefined}
               className="min-h-11 font-mono md:min-h-9"
             />
-          </Field>
+          </SettingsField>
 
-          <Field label="Role" required hint="Exactly one agent in the team must be lead.">
-            <Select
+          <SettingsField label="Role" required hint="Exactly one agent in the team must be lead.">
+            <Dropdown
               value={fm.role}
-              onValueChange={(v) =>
-                v && updateFromForm({ ...fm, role: v as 'lead' | 'member' }, body)
-              }
+              onValueChange={(v) => v && updateFromForm({ ...fm, role: v as 'lead' | 'member' }, body)}
+              trigger="Role"
+              className="min-h-11 w-full md:min-h-9"
               disabled={disabled}
             >
-              <SelectTrigger className="min-h-11 w-full md:min-h-9">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="lead">Lead</SelectItem>
-                <SelectItem value="member">Member</SelectItem>
-              </SelectContent>
-            </Select>
-          </Field>
+              <DropdownItem value="lead">Lead</DropdownItem>
+              <DropdownItem value="member">Member</DropdownItem>
+            </Dropdown>
+          </SettingsField>
 
-          <Field
+          <SettingsField
             label="Description"
             error={descriptionError}
             className="md:col-span-2"
@@ -220,20 +203,17 @@ export function FormFields({
               placeholder="Coordinates the team. Breaks tasks, delegates to members."
               aria-invalid={!!descriptionError || undefined}
             />
-          </Field>
-        </CardContent>
-      </Card>
+          </SettingsField>
+        </div>
+        </SectionCardRows>
+      </SectionCard>
 
       {/* Model & behaviour ─────────────────────────────────────── */}
-      <Card size="sm">
-        <CardHeader>
-          <CardTitle>Model &amp; behaviour</CardTitle>
-          <CardDescription>
-            Which provider, plus sampling temperature and reasoning depth.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2">
-          <Field label="Model" required error={modelError} className="md:col-span-2">
+      <SectionCard>
+        <SectionCardHeader>Model &amp; behaviour — provider, temperature, reasoning depth</SectionCardHeader>
+        <SectionCardRows>
+        <div className="px-3 py-3 grid gap-3 md:grid-cols-2">
+          <SettingsField label="Model" required error={modelError} className="md:col-span-2">
             <ModelCombobox
               value={fm.model ?? ''}
               options={currentModelOptions}
@@ -242,25 +222,9 @@ export function FormFields({
               invalid={!!modelError}
               placeholder="Type to search models…"
             />
-          </Field>
+          </SettingsField>
 
-          <Field
-            label="Fallback model"
-            error={fallbackError}
-            hint="Used when the primary model errors out. Leave blank for none."
-            className="md:col-span-2"
-          >
-            <ModelCombobox
-              value={fm.fallback_model ?? ''}
-              options={currentModelOptions}
-              onChange={(v) => updateFromForm({ ...fm, fallback_model: v || null }, body)}
-              disabled={disabled}
-              invalid={!!fallbackError}
-              placeholder="Type to search models (or leave blank)…"
-            />
-          </Field>
-
-          <Field label="Temperature" error={tempError} hint="0 – 2; higher = more random.">
+          <SettingsField label="Temperature" error={tempError} hint="0 - 2; higher = more random.">
             <Input
               type="text"
               inputMode="decimal"
@@ -271,47 +235,38 @@ export function FormFields({
               aria-invalid={!!tempError || undefined}
               className="min-h-11 font-mono md:min-h-9"
             />
-          </Field>
+          </SettingsField>
 
-          <Field label="Thinking level" hint="How much hidden reasoning the model may use.">
-            <Select
-              value={fm.thinking_level ? fm.thinking_level : '__none__'}
+          <SettingsField label="Thinking level" hint="How much hidden reasoning the model may use.">
+            <Dropdown
+              value={fm.thinking_level ?? '__none__'}
               onValueChange={(v) => {
                 if (v == null) return
-                updateFromForm(
-                  { ...fm, thinking_level: v === '__none__' ? null : v },
-                  body,
-                )
+                updateFromForm({ ...fm, thinking_level: v === '__none__' ? null : v }, body)
               }}
+              trigger="Thinking level"
+              className="min-h-11 w-full md:min-h-9"
               disabled={disabled}
             >
-              <SelectTrigger className="min-h-11 w-full md:min-h-9">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {THINKING_LEVELS.map((lvl) => (
-                  <SelectItem key={lvl.value} value={lvl.value}>
-                    {lvl.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-        </CardContent>
-      </Card>
+              {THINKING_LEVELS.map((lvl) => (
+                <DropdownItem key={lvl.value} value={lvl.value}>{lvl.label}</DropdownItem>
+              ))}
+            </Dropdown>
+          </SettingsField>
+        </div>
+        </SectionCardRows>
+      </SectionCard>
 
       {/* Capabilities ──────────────────────────────────────────── */}
-      <Card size="sm">
-        <CardHeader>
-          <CardTitle>Capabilities</CardTitle>
-          <CardDescription>
-            {hasBuiltInProfile
-              ? 'Add extra tools, MCP servers, and skills on top of the built-in profile.'
-              : 'Tools the agent may invoke, MCP servers it has access to, and skills it can load on demand.'}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <Field
+      <SectionCard>
+        <SectionCardHeader>
+          {hasBuiltInProfile
+            ? 'Capabilities \u2014 extra tools, MCP servers, and skills on top of the built-in profile'
+            : 'Capabilities \u2014 tools, MCP servers, and skills'}
+        </SectionCardHeader>
+        <SectionCardRows>
+        <div className="px-3 py-3 flex flex-col gap-4">
+          <SettingsField
             label="Tools"
             hint={
               builtInTools.length > 0
@@ -328,9 +283,9 @@ export function FormFields({
               onChange={(v) => updateFromForm({ ...fm, tools: v }, body)}
               placeholder="Pick extra tools this agent may invoke…"
             />
-          </Field>
+          </SettingsField>
 
-          <Field
+          <SettingsField
             label="MCP servers"
             hint={
               mcpOptions.length === 0
@@ -345,9 +300,9 @@ export function FormFields({
               placeholder="Pick MCP servers this agent may use…"
               emptyLabel="No matching servers"
             />
-          </Field>
+          </SettingsField>
 
-          <Field
+          <SettingsField
             label="Skills"
             hint={
               hasBuiltInProfile
@@ -361,21 +316,18 @@ export function FormFields({
               onChange={(v) => updateFromForm({ ...fm, skills: v }, body)}
               placeholder="Pick skills the agent can load on demand…"
             />
-          </Field>
-        </CardContent>
-      </Card>
+          </SettingsField>
+        </div>
+        </SectionCardRows>
+      </SectionCard>
 
       {/* System prompt ─────────────────────────────────────────── */}
-      <Card size="sm">
-        <CardHeader>
-          <CardTitle>{hasBuiltInProfile ? 'Extra prompt' : 'System prompt'}</CardTitle>
-          <CardDescription>
-            {hasBuiltInProfile
-              ? 'Additional instructions appended after the built-in prompt.'
-              : 'The instructions placed at the top of every conversation with this agent.'}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+      <SectionCard>
+        <SectionCardHeader>
+          {hasBuiltInProfile ? 'Extra prompt \u2014 appended after the built-in prompt' : 'System prompt \u2014 instructions at the top of every conversation'}
+        </SectionCardHeader>
+        <SectionCardRows>
+        <div className="px-3 py-3">
           <Textarea
             value={body}
             onChange={(e) => updateFromForm(fm, e.target.value)}
@@ -384,8 +336,9 @@ export function FormFields({
             placeholder="You are …"
             className="min-h-72 font-mono text-[13px] leading-relaxed"
           />
-        </CardContent>
-      </Card>
+        </div>
+        </SectionCardRows>
+      </SectionCard>
     </div>
   )
 }
@@ -395,15 +348,15 @@ export function FormFields({
 
 function CapabilityChips({ label, values }: { label: string; values: string[] }) {
   return (
-    <div className="rounded-md border border-(--color-border) bg-(--bg-surface) px-3 py-2">
-      <p className="mb-1.5 text-[11px] font-medium text-(--color-text-muted)">
+    <div className="rounded-xs border border-(--color-border) bg-(--bg-key)/30 px-2.5 py-2">
+      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-(--color-text-muted) select-none">
         {label}
       </p>
       <div className="flex flex-wrap gap-1.5">
         {values.map((value) => (
           <span
             key={value}
-            className="rounded bg-(--bg-key) px-1.5 py-0.5 font-mono text-[11px] text-(--color-text) ring-1 ring-(--color-border)"
+            className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 font-mono text-[10.5px] text-(--color-text-muted)"
           >
             {value}
           </span>
@@ -413,40 +366,4 @@ function CapabilityChips({ label, values }: { label: string; values: string[] })
   )
 }
 
-function Field({
-  label,
-  required,
-  className,
-  children,
-  error,
-  hint,
-}: {
-  label: string
-  required?: boolean
-  className?: string
-  children: ReactNode
-  /** Zod-sourced error message. When set, rendered in destructive red
-   *  under the control; when unset, the hint (if any) is rendered instead. */
-  error?: string | null
-  /** Helper text shown when there is no error. */
-  hint?: string | null
-}) {
-  // Intentionally a <div>, not a <label>. A <label> wrapper would cause any
-  // click inside it to activate the first focusable control in DOM order —
-  // in MultiSelect that's the first chip's remove (×) button, which would
-  // silently delete a chip when the user clicks empty space in the field.
-  return (
-    <div className={cn('flex flex-col gap-1.5', className)}>
-      <span className="text-xs font-medium text-(--color-text)">
-        {label}
-        {required && <span className="ml-0.5 text-(--color-error)">*</span>}
-      </span>
-      {children}
-      {error ? (
-        <p className="text-[11px] text-(--color-error)">{error}</p>
-      ) : hint ? (
-        <p className="text-[11px] text-(--color-text-muted)">{hint}</p>
-      ) : null}
-    </div>
-  )
-}
+// SettingsField is imported from '../SettingsField' — the local Field was removed.

@@ -390,23 +390,6 @@ class StreamPublisherHook(BaseAgentHook):
             )
         )
 
-    async def on_provider_fallback(
-        self,
-        ctx: "RunContext",
-        state: "AgentState",
-        primary: str,
-        fallback: str,
-    ) -> None:
-        self._current_model = fallback
-        await self._push(
-            ProviderStatusEvent(
-                agent=self._agent_name,
-                status="fallback",
-                primary=primary,
-                fallback=fallback,
-            )
-        )
-
     async def after_agent(
         self, ctx: "RunContext", state: "AgentState", response: "AssistantMessage"
     ) -> None:

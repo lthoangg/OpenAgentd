@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertCircle, CheckCircle2, ExternalLink, KeyRound, Loader2, ShieldCheck } from 'lucide-react'
+import { AlertCircle, CheckCircle2, ExternalLink, Loader2, ShieldCheck } from 'lucide-react'
 
 import { ApiValidationError, type ProviderInfo } from '@/api/client'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { SectionCard, SectionCardHeader } from '@/components/ui/section-card'
 import { queryKeys, useProviderModelsMutation, useProviderUsageQuery, useSaveProviderMutation, useSaveProviderVisibleModelsMutation } from '@/queries'
 import { openExternalUrl } from '@/lib/open-external'
 import { useToastStore } from '@/stores/useToastStore'
@@ -43,7 +43,6 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
   const cloudSignature = useMemo(() => JSON.stringify(cloudExtra), [cloudExtra])
   const hasCloudCandidate = Object.values(cloudExtra).some((value) => value.length > 0)
   const hasCandidateKey = trimmedKey.length > 0
-  // Save is enabled only after List models succeeded for *this exact* key.
   const hasVerifiedKey = verifiedKey === trimmedKey && hasCandidateKey
   const hasVerifiedCloud = verifiedCloudSignature === cloudSignature && hasCloudCandidate
   const canSave =
@@ -51,19 +50,11 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
     (provider.kind === 'cloud_creds' && hasVerifiedCloud)
 
   const daemon = DAEMON_BASE_URL[provider.id]
-  // Only sends ``extra`` when the user actually typed something. An empty
-  // override means "use the daemon's default" — the backend would write
-  // an empty line and confuse things.
   const extraForRequest = useMemo<Record<string, string> | undefined>(() => {
     if (!daemon || !trimmedBaseUrl) return undefined
     return { [daemon.var]: trimmedBaseUrl }
   }, [daemon, trimmedBaseUrl])
 
-  // Auto-list models for already-connected providers (no new key typed).
-  // OAuth providers (Copilot, Codex) also surface their model list here
-  // once the user has completed the device-flow login. Cloud credential
-  // providers (Bedrock / Vertex AI) use the saved .env values when the
-  // fields are blank after a page refresh.
   const autoFetchEnabled = false
 
   const autoModelsQ = useQuery({
@@ -77,7 +68,6 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
     provider.kind === 'oauth' && provider.is_configured,
   )
 
-  // Derived (not state) — single source of truth is the query cache.
   const models = useMemo<string[]>(
     () => autoModelsQ.data?.models ?? provider.cached_models ?? [],
     [autoModelsQ.data?.models, provider.cached_models],
@@ -90,8 +80,6 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
         apiKey: trimmedKey,
         extra: provider.kind === 'cloud_creds' ? cloudExtra : extraForRequest,
       })
-      // Write into the shared query cache so the derived ``models`` /
-      // ``modelSource`` above pick it up without a parallel local state.
       queryClient.setQueryData(queryKeys.settings.providerModels(provider.id), listed)
       const reachedProvider = listed.source === 'provider' && listed.models.length > 0
       setHasReachabilityFailure(!reachedProvider)
@@ -105,9 +93,6 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
           description: `${listed.models.length} models available.`,
         })
       } else {
-        // Live discovery returned no models, so don't mark the candidate
-        // credentials as verified; the user should retry after fixing the
-        // provider connection or model-listing permissions.
         push({
           tone: 'error',
           title: 'Failed',
@@ -126,9 +111,6 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
 
   const handleSave = async () => {
     try {
-      // Always include the base-URL field for daemon providers (even
-      // when empty) so the backend's ``write_env_credentials`` removes
-      // a previously-set line when the user clears the input.
       const extraForSave =
         provider.kind === 'cloud_creds'
           ? cloudExtra
@@ -172,264 +154,285 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
     hasReachabilityFailure || (provider.kind !== 'oauth' && (provider.is_reachable === false || (provider.is_saved && !provider.is_configured)))
 
   return (
-    <Card size="sm" className="rounded-md border-(--color-border) bg-(--bg-card)">
-      <CardContent className="space-y-3">
-        {/* ── Header ──────────────────────────────────────────────────── */}
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-(--bg-key) text-(--color-text-muted) ring-1 ring-(--color-border)">
-            {provider.kind === 'oauth' ? <ShieldCheck size={13} aria-hidden="true" /> : <KeyRound size={13} aria-hidden="true" />}
-          </div>
-          <p className="text-sm font-semibold text-(--color-text)">{provider.label}</p>
-          <span className="rounded-md bg-(--bg-key) px-2 py-0.5 text-[11px] font-medium text-(--color-text-muted)">
-            {providerKindLabel(provider.kind)}
+    <SectionCard className="group">
+      {/* ── Header ──────────────────────────────────────────────────── */}
+      <SectionCardHeader className="flex flex-wrap items-center gap-2 py-2 normal-case tracking-normal">
+        <p className="min-w-0 flex-1 basis-32 truncate text-xs font-semibold text-(--color-text)">{provider.label}</p>
+
+        <div className="hidden flex-1 sm:block" />
+
+        <span className="rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 text-[9px] font-semibold text-(--color-text-muted)">
+          {providerKindLabel(provider.kind)}
+        </span>
+
+        {isConfiguredButUnreachable ? (
+          <span className="inline-flex items-center gap-1 rounded bg-(--color-error-subtle) px-1.5 py-0.5 text-[9px] font-semibold text-(--color-error) border border-(--color-error)/15">
+            <AlertCircle size={10} aria-hidden="true" />
+            Failed
           </span>
-          {isConfiguredButUnreachable ? (
-            <span className="inline-flex items-center gap-1 rounded-md bg-(--color-error-subtle) px-2 py-0.5 text-[11px] font-medium text-(--color-error)">
-              <AlertCircle size={12} aria-hidden="true" />
-              Failed
-            </span>
-          ) : isConnected ? (
-            <span className="inline-flex items-center gap-1 rounded-md bg-(--color-success-subtle) px-2 py-0.5 text-[11px] font-medium text-(--color-success)">
-              <CheckCircle2 size={12} aria-hidden="true" />
-              Connected
-            </span>
-          ) : null}
-          <div className="flex-1" />
-          {provider.docs_url && (
-            <Button type="button" size="sm" variant="ghost" onClick={() => void openExternalUrl(provider.docs_url)}>
-              Docs <ExternalLink size={12} aria-hidden="true" />
-            </Button>
-          )}
-        </div>
-        <p className="text-xs text-(--color-text-muted)">{provider.description}</p>
+        ) : isConnected ? (
+          <span className="inline-flex items-center gap-1 rounded bg-(--color-success-subtle) px-1.5 py-0.5 text-[9px] font-semibold text-(--color-success) border border-(--color-success)/15">
+            <CheckCircle2 size={10} aria-hidden="true" />
+            Connected
+          </span>
+        ) : null}
 
-        {/* ── API-key controls ─────────────────────────────────────────── */}
-        {provider.kind === 'api_key' && (
-          <div className="space-y-2">
-            <div className="grid gap-2 sm:grid-cols-[minmax(220px,1fr)_auto_auto] sm:items-center">
-              <label className="min-w-0">
-                <span className="sr-only">{primaryCredential?.label || provider.env_var}</span>
-                <Input
-                  type="password"
-                  value={apiKey}
-                  onChange={(event) => {
-                    setApiKey(event.target.value)
-                    setVerifiedKey('')
-                  }}
-                  placeholder={primaryCredential?.placeholder || (provider.is_configured ? 'Enter a new key to replace current key' : 'Paste API key')}
-                  autoComplete="off"
-                  className="h-9"
-                />
-              </label>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={handleListModels}
-                disabled={!hasCandidateKey || listing}
-              >
-                {listing && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
-                List models
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                onClick={handleSave}
-                disabled={!canSave || saveMutation.isPending}
-              >
-                {saveMutation.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
-                Save
-              </Button>
-            </div>
-            {daemon && (
-              <label className="block">
-                <span className="text-[11px] font-medium text-(--color-text-muted)">Base URL (optional)</span>
-                <Input
-                  type="url"
-                  value={baseUrl}
-                  onChange={(e) => setBaseUrl(e.target.value)}
-                  placeholder={daemon.placeholder}
-                  autoComplete="off"
-                  className="mt-1 h-9 font-mono text-xs"
-                  spellCheck={false}
-                />
-              </label>
-            )}
-            {hasCandidateKey && !hasVerifiedKey && (
-              <p className="text-xs text-(--color-text-muted)">
-                Click <span className="font-medium">List models</span> to verify this key before saving.
-              </p>
-            )}
-            {!hasCandidateKey && provider.is_configured && (
-              <p className="text-xs text-(--color-text-muted)">
-                Key saved. Type a new one above only if you want to replace it.
-              </p>
-            )}
-          </div>
+        {provider.docs_url && (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="h-8 px-2 text-[10.5px] sm:h-6.5"
+            onClick={() => void openExternalUrl(provider.docs_url)}
+          >
+            Docs <ExternalLink size={10.5} aria-hidden="true" className="ml-1" />
+          </Button>
         )}
+      </SectionCardHeader>
 
-        {/* ── OAuth providers ──────────────────────────────────────────── */}
-        {provider.kind === 'oauth' && (
-          <div className="flex items-center justify-end gap-2">
+      <div className="space-y-3 px-3 py-3">
+
+      <p className="text-xs text-(--color-text-muted) leading-relaxed">{provider.description}</p>
+
+      {/* ── API-key controls ─────────────────────────────────────────── */}
+      {provider.kind === 'api_key' && (
+        <div className="space-y-2 pt-1">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-[minmax(220px,1fr)_auto_auto] sm:items-center">
+            <label className="col-span-2 min-w-0 sm:col-span-1">
+              <span className="sr-only">{primaryCredential?.label || provider.env_var}</span>
+              <Input
+                type="password"
+                value={apiKey}
+                onChange={(event) => {
+                  setApiKey(event.target.value)
+                  setVerifiedKey('')
+                }}
+                placeholder={primaryCredential?.placeholder || (provider.is_configured ? 'Enter a new key to replace current key' : 'Paste API key')}
+                autoComplete="off"
+                className="h-10 text-xs font-mono sm:h-8.5"
+              />
+            </label>
             <Button
               type="button"
               size="sm"
-              variant="outline"
+              variant="default"
+              className="h-10 w-full sm:h-8 sm:w-auto"
               onClick={handleListModels}
-              disabled={!provider.is_configured || listing}
+              disabled={!hasCandidateKey || listing}
             >
-              {listing && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
+              {listing && <Loader2 className="h-3 w-3 animate-spin mr-1.5" aria-hidden="true" />}
               List models
             </Button>
-            <Button type="button" size="sm" onClick={() => setOauthOpen(true)}>
-              <ShieldCheck size={14} aria-hidden="true" />
-              Connect
+            <Button
+              type="button"
+              size="sm"
+              className="h-10 w-full sm:h-8 sm:w-auto"
+              onClick={handleSave}
+              disabled={!canSave || saveMutation.isPending}
+            >
+              {saveMutation.isPending && <Loader2 className="h-3 w-3 animate-spin mr-1.5" aria-hidden="true" />}
+              Save
             </Button>
           </div>
-        )}
+          {daemon && (
+            <label className="block">
+              <span className="text-[10.5px] font-medium text-(--color-text-muted)">Base URL (optional)</span>
+              <Input
+                type="url"
+                value={baseUrl}
+                onChange={(e) => setBaseUrl(e.target.value)}
+                placeholder={daemon.placeholder}
+                autoComplete="off"
+                className="mt-1 h-10 font-mono sm:h-9"
+                spellCheck={false}
+              />
+            </label>
+          )}
+          {hasCandidateKey && !hasVerifiedKey && (
+            <p className="text-[10.5px] text-(--color-text-subtle) leading-normal">
+              Click <span className="font-medium text-(--color-text)">List models</span> to verify this key before saving.
+            </p>
+          )}
+          {!hasCandidateKey && provider.is_configured && (
+            <p className="text-[10.5px] text-(--color-text-subtle) leading-normal">
+              Key saved. Type a new one above only if you want to replace it.
+            </p>
+          )}
+        </div>
+      )}
 
-        {provider.kind === 'oauth' && provider.is_configured && (
-          <div className="space-y-2">
-            {usageQ.isLoading ? (
-              <p className="inline-flex items-center gap-1 text-xs text-(--color-text-muted)">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
-                Loading active usage…
-              </p>
-            ) : usageQ.data ? (
-              <UsagePanel limits={usageQ.data.limits} />
-            ) : usageQ.isError ? (
-              <p className="text-xs text-(--color-text-muted)">
-                {usageQ.error instanceof ApiValidationError && usageQ.error.status === 404
-                  ? 'Usage monitoring is not supported for this OAuth provider yet.'
-                  : 'Usage monitor unavailable right now.'}
-              </p>
-            ) : null}
+      {/* ── OAuth providers ──────────────────────────────────────────── */}
+      {provider.kind === 'oauth' && (
+        <div className="grid grid-cols-2 gap-2 pt-1 sm:flex sm:items-center sm:justify-end">
+          <Button
+            type="button"
+            size="sm"
+            variant="default"
+            className="h-10 w-full sm:h-8 sm:w-auto"
+            onClick={handleListModels}
+            disabled={!provider.is_configured || listing}
+          >
+            {listing && <Loader2 className="h-3 w-3 animate-spin mr-1.5" aria-hidden="true" />}
+            List models
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            className="h-10 w-full sm:h-8 sm:w-auto"
+            onClick={() => setOauthOpen(true)}
+          >
+            <ShieldCheck size={12} aria-hidden="true" className="mr-1.5" />
+            Connect
+          </Button>
+        </div>
+      )}
+
+      {provider.kind === 'oauth' && provider.is_configured && (
+        <div className="space-y-2 pt-1">
+          {usageQ.isLoading ? (
+            <p className="inline-flex items-center gap-1 text-[11px] text-(--color-text-subtle) font-mono">
+              <Loader2 className="h-3 w-3 animate-spin mr-1" aria-hidden="true" />
+              Loading active usage…
+            </p>
+          ) : usageQ.data ? (
+            <UsagePanel limits={usageQ.data.limits} />
+          ) : usageQ.isError ? (
+            <p className="text-[11px] text-(--color-text-subtle) font-mono">
+              {usageQ.error instanceof ApiValidationError && usageQ.error.status === 404
+                ? 'Usage monitoring is not supported for this OAuth provider yet.'
+                : 'Usage monitor unavailable right now.'}
+            </p>
+          ) : null}
+        </div>
+      )}
+
+      {/* ── Local daemon (Ollama) — optional base URL only ─────────── */}
+      {provider.kind === 'local' && daemon && (
+        <div className="space-y-2 pt-1">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-[minmax(220px,1fr)_auto_auto] sm:items-center">
+            <label className="col-span-2 min-w-0 sm:col-span-1">
+              <span className="sr-only">{daemon.var}</span>
+              <Input
+                type="url"
+                value={baseUrl}
+                onChange={(e) => setBaseUrl(e.target.value)}
+                placeholder={daemon.placeholder}
+                autoComplete="off"
+                className="h-10 font-mono sm:h-9"
+                spellCheck={false}
+              />
+            </label>
+            <Button
+              type="button"
+              size="sm"
+              variant="default"
+              className="h-10 w-full sm:h-8 sm:w-auto"
+              onClick={handleListModels}
+              disabled={listing}
+            >
+              {listing && <Loader2 className="h-3 w-3 animate-spin mr-1.5" aria-hidden="true" />}
+              List models
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              className="h-10 w-full sm:h-8 sm:w-auto"
+              onClick={handleSave}
+              disabled={saveMutation.isPending}
+            >
+              {saveMutation.isPending && <Loader2 className="h-3 w-3 animate-spin mr-1.5" aria-hidden="true" />}
+              Save
+            </Button>
           </div>
-        )}
+          <p className="text-[10.5px] text-(--color-text-subtle) leading-normal">
+            Leave blank to use the default daemon at <span className="font-mono text-(--color-text)">{daemon.placeholder}</span>.
+          </p>
+        </div>
+      )}
 
-        {/* ── Local daemon (Ollama) — optional base URL only ─────────── */}
-        {provider.kind === 'local' && daemon && (
-          <div className="space-y-2">
-            <div className="grid gap-2 sm:grid-cols-[minmax(220px,1fr)_auto_auto] sm:items-center">
-              <label className="min-w-0">
-                <span className="sr-only">{daemon.var}</span>
+      {/* ── Cloud credential providers (Bedrock, Vertex AI) ─────────── */}
+      {provider.kind === 'cloud_creds' && (
+        <div className="space-y-2 pt-1">
+          <div className="grid gap-2 sm:grid-cols-2">
+            {provider.credentials.map((credential) => (
+              <label key={credential.name} className="block">
+                <span className="text-[10.5px] font-medium text-(--color-text-muted)">{credential.label}</span>
                 <Input
-                  type="url"
-                  value={baseUrl}
-                  onChange={(e) => setBaseUrl(e.target.value)}
-                  placeholder={daemon.placeholder}
+                  type={credential.secret ? 'password' : 'text'}
+                  value={cloudValues[credential.name] ?? provider.saved_credentials[credential.name] ?? ''}
+                  onChange={(e) => {
+                    setCloudValues((values) => ({ ...values, [credential.name]: e.target.value }))
+                    setVerifiedCloudSignature('')
+                  }}
+                  placeholder={credential.placeholder}
                   autoComplete="off"
-                  className="h-9 font-mono text-xs"
+                  className="mt-1 h-10 font-mono sm:h-9"
                   spellCheck={false}
                 />
               </label>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={handleListModels}
-                disabled={listing}
-              >
-                {listing && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
-                List models
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                onClick={handleSave}
-                disabled={saveMutation.isPending}
-              >
-                {saveMutation.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
-                Save
-              </Button>
-            </div>
-            <p className="text-xs text-(--color-text-muted)">
-              Leave blank to use the default daemon at <span className="font-mono">{daemon.placeholder}</span>.
+            ))}
+          </div>
+          <div className="grid grid-cols-2 gap-2 pt-1 sm:flex sm:items-center sm:justify-end">
+            <Button
+              type="button"
+              size="sm"
+              variant="default"
+              className="h-10 w-full sm:h-8 sm:w-auto"
+              onClick={handleListModels}
+              disabled={!hasCloudCandidate || listing}
+            >
+              {listing && <Loader2 className="h-3 w-3 animate-spin mr-1.5" aria-hidden="true" />}
+              List models
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              className="h-10 w-full sm:h-8 sm:w-auto"
+              onClick={handleSave}
+              disabled={!canSave || saveMutation.isPending}
+            >
+              {saveMutation.isPending && <Loader2 className="h-3 w-3 animate-spin mr-1.5" aria-hidden="true" />}
+              Save
+            </Button>
+          </div>
+          {hasCloudCandidate && !hasVerifiedCloud && (
+            <p className="text-[10.5px] text-(--color-text-subtle) leading-normal">
+              Click <span className="font-medium text-(--color-text)">List models</span> to verify these credentials before saving.
             </p>
-          </div>
-        )}
+          )}
+          {!hasCloudCandidate && provider.is_configured && (
+            <p className="text-[10.5px] text-(--color-text-subtle) leading-normal">
+              Credentials saved. Type new values above only if you want to replace them.
+            </p>
+          )}
+        </div>
+      )}
 
-        {/* ── Cloud credential providers (Bedrock, Vertex AI) ─────────── */}
-        {provider.kind === 'cloud_creds' && (
-          <div className="space-y-2">
-            <div className="grid gap-2 sm:grid-cols-2">
-              {provider.credentials.map((credential) => (
-                <label key={credential.name} className="block">
-                  <span className="text-[11px] font-medium text-(--color-text-muted)">{credential.label}</span>
-                  <Input
-                    type={credential.secret ? 'password' : 'text'}
-                    value={cloudValues[credential.name] ?? provider.saved_credentials[credential.name] ?? ''}
-                    onChange={(e) => {
-                      setCloudValues((values) => ({ ...values, [credential.name]: e.target.value }))
-                      setVerifiedCloudSignature('')
-                    }}
-                    placeholder={credential.placeholder}
-                    autoComplete="off"
-                    className="mt-1 h-9 font-mono text-xs"
-                    spellCheck={false}
-                  />
-                </label>
-              ))}
-            </div>
-            <div className="flex items-center justify-end gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={handleListModels}
-                disabled={!hasCloudCandidate || listing}
-              >
-                {listing && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
-                List models
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                onClick={handleSave}
-                disabled={!canSave || saveMutation.isPending}
-              >
-                {saveMutation.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
-                Save
-              </Button>
-            </div>
-            {hasCloudCandidate && !hasVerifiedCloud && (
-              <p className="text-xs text-(--color-text-muted)">
-                Click <span className="font-medium">List models</span> to verify these credentials before saving.
-              </p>
-            )}
-            {!hasCloudCandidate && provider.is_configured && (
-              <p className="text-xs text-(--color-text-muted)">
-                Credentials saved. Type new values above only if you want to replace them.
-              </p>
-            )}
-          </div>
-        )}
+      {/* ── Detected providers (local without base URL) ─────────────── */}
+      {provider.kind !== 'api_key' && provider.kind !== 'oauth' && provider.kind !== 'cloud_creds' && !daemon && (
+        <p className="text-[10.5px] text-(--color-text-subtle) leading-normal">
+          Detected from local environment or system credentials.
+        </p>
+      )}
 
-        {/* ── Detected providers (local without base URL) ─────────────── */}
-        {provider.kind !== 'api_key' && provider.kind !== 'oauth' && provider.kind !== 'cloud_creds' && !daemon && (
-          <p className="text-xs text-(--color-text-muted)">
-            Detected from local environment or system credentials.
-          </p>
-        )}
-
-        {/* ── Models panel ────────────────────────────────────────────── */}
-        {models.length > 0 && (
-          <ModelsPanel
-            providerId={provider.id}
-            models={models}
-            visibleModels={provider.visible_models}
-            search={modelSearch}
-            onSearchChange={setModelSearch}
-            expanded={modelsExpanded}
-            onToggle={() => setModelsExpanded((v) => !v)}
-            onSaveVisibleModels={handleSaveVisibleModels}
-            savingVisibleModels={saveVisibleModelsMutation.isPending}
-          />
-        )}
-      </CardContent>
+      {/* ── Models panel ────────────────────────────────────────────── */}
+      {models.length > 0 && (
+        <ModelsPanel
+          providerId={provider.id}
+          models={models}
+          visibleModels={provider.visible_models}
+          search={modelSearch}
+          onSearchChange={setModelSearch}
+          expanded={modelsExpanded}
+          onToggle={() => setModelsExpanded((v) => !v)}
+          onSaveVisibleModels={handleSaveVisibleModels}
+          savingVisibleModels={saveVisibleModelsMutation.isPending}
+        />
+      )}
       {provider.kind === 'oauth' && oauthOpen && (
         <OAuthLoginDialog provider={provider} open={oauthOpen} onOpenChange={setOauthOpen} />
       )}
-    </Card>
+      </div>
+    </SectionCard>
   )
 }

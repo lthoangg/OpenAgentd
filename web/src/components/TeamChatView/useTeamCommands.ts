@@ -16,6 +16,7 @@
 import type { useNavigate } from '@tanstack/react-router'
 import type { Command } from '../CommandPalette'
 import type { ViewMode } from './types'
+import { useSettingsStore } from '@/stores/useSettingsStore'
 
 /**
  * Dispatch a synthetic Ctrl+key event so the window-level shortcut
@@ -62,6 +63,7 @@ export function useTeamCommands({
   handleNewSession,
   navigate,
 }: UseTeamCommandsArgs): Command[] {
+  const openSettings = useSettingsStore((s) => s.openSettings)
   const commands: Command[] = [
     { id: 'new-chat', group: 'Team', label: 'New Team Chat', description: 'Start a fresh team conversation', shortcut: 'Ctrl+N', action: handleNewSession },
     {
@@ -78,7 +80,7 @@ export function useTeamCommands({
     { id: 'scheduled-tasks',  group: 'View',       label: 'Scheduled Tasks',   description: 'Manage cron and scheduled agent tasks', shortcut: 'Ctrl+S', action: () => dispatchCtrlKey('s') },
     { id: 'go-home',     group: 'Navigation', label: 'Go to Home',     description: '', action: () => navigate({ to: '/' }) },
     ...(mode === 'normal' ? [{ id: 'go-coding', group: 'Navigation', label: 'Go to Coding Mode', description: 'Open the coding workbench', action: () => navigate({ to: '/coding' }) }] : []),
-    { id: 'go-settings', group: 'Navigation', label: 'Open Settings',  description: 'Manage agents & skills', action: () => navigate({ to: '/settings/agents' }) },
+    { id: 'go-settings', group: 'Navigation', label: 'Open Settings',  description: 'Manage agents, skills, providers & more', shortcut: 'Ctrl+.', action: () => openSettings('agents') },
   ]
   return commands
 }

@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { ChevronDown, ChevronRight, Folder, GitCompare, Plus, RefreshCw, Search, X } from 'lucide-react'
+import { ChevronRight, Folder, GitCompare, Plus, RefreshCw, Search, X } from 'lucide-react'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 import { getCodingWorkspaceGitDiff, listCodingWorkspaceFiles, getCodingWorkspaceGitHistory, getCodingWorkspaceCommitDiff } from '@/api/client'
 import { CodingFilePreviewContent, DiffPreview } from './CodingFileViewerPanel'
 import { FileTypeIcon } from './FileTypeIcon'
@@ -130,16 +132,16 @@ function CommitDetail({
   }
 
   return (
-    <div className="mt-2 space-y-1.5 border-l border-(--color-border-strong) pl-2 pr-0.5 py-0.5">
+    <div className="mt-2 space-y-1.5 border-l border-(--color-border-strong) py-0.5 pr-0.5 pl-2">
       {commitChangedFiles.map((changedFile) => {
         const expanded = expandedCommitFiles.has(changedFile.path)
         const fileDiff = commitDiffSections.get(changedFile.path)?.diff
         return (
-          <div key={changedFile.path} className="overflow-hidden rounded border border-(--color-border-subtle) bg-(--bg-page)">
+          <div key={changedFile.path} className="overflow-hidden rounded border border-(--color-border-subtle) bg-(--bg-card)">
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); toggleFileExpanded(changedFile.path) }}
-              className="flex w-full items-center gap-1.5 px-1.5 py-1 text-left text-[10px] text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text) cursor-pointer"
+              className="flex w-full cursor-pointer items-center gap-1.5 px-1.5 py-1 text-left text-[10px] text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text)"
               aria-expanded={expanded}
             >
               <ChevronRight size={10} className={cn('shrink-0 text-(--color-text-subtle) transition-transform', expanded && 'rotate-90')} aria-hidden="true" />
@@ -277,7 +279,6 @@ export function CodingWorkspacePanel({
     }
   }
   const historyLimit = 50
-  const [menuOpen, setMenuOpen] = useState(false)
 
   const gitHistory = useInfiniteQuery({
     queryKey: queryKeys.coding.history(workspace, historyLimit, allBranches),
@@ -474,16 +475,16 @@ export function CodingWorkspacePanel({
             onDoubleClick={resizable.resetWidth}
           />
         )}
-        {mobile && <div className="flex min-h-10 items-center justify-between border-b border-(--color-border) px-2.5 py-1.5">
+        {mobile && <div className="flex min-h-10 items-center justify-between border-b border-(--color-border) bg-(--bg-sidebar) px-2.5 py-1.5">
           <div className="flex min-w-0 items-center gap-2">
             <Folder size={13} className="shrink-0 text-(--color-accent)" aria-hidden="true" />
             <p className="truncate font-mono text-xs text-(--color-text)" title={workspace}>{workspaceLabel(workspace)}</p>
           </div>
-          <button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-md text-(--color-text-muted) hover:bg-(--bg-key) md:h-auto md:w-auto md:p-1" aria-label="Close workspace panel">
+          <button type="button" onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) md:h-auto md:w-auto md:p-1" aria-label="Close workspace panel">
             <X size={16} />
           </button>
         </div>}
-        <div className="flex min-w-0 items-center gap-1 border-b border-(--color-border) px-2 py-1">
+        <div className="flex min-w-0 items-center gap-1 border-b border-(--color-border) bg-(--bg-card) px-2 py-1">
           <div className="scrollbar-none flex min-w-0 max-w-[calc(100%-2rem)] items-center gap-1 overflow-x-auto">
             {tabs.map((tabItem) => (
               <button
@@ -495,11 +496,11 @@ export function CodingWorkspacePanel({
                 type="button"
                 onClick={() => setActiveTabId(tabItem.id)}
                 className={cn(
-                  'group flex h-7 max-w-40 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs',
+                  'group flex h-7 max-w-40 shrink-0 items-center gap-1.5 rounded-xs px-2 text-xs',
                   activeTabId === tabItem.id
                     ? tabItem.type === 'file'
-                      ? 'border border-(--color-border-strong) text-(--color-accent)'
-                      : 'border border-(--color-border-strong) text-(--color-text)'
+                      ? 'border border-(--color-border-strong) bg-(--bg-key)/35 text-(--color-accent)'
+                      : 'border border-(--color-border-strong) bg-(--bg-key)/35 text-(--color-text)'
                     : 'border border-transparent text-(--color-text-muted) hover:text-(--color-text-2)',
                 )}
                 title={tabItem.type === 'file' ? tabItem.file.path : tabItem.title}
@@ -530,7 +531,7 @@ export function CodingWorkspacePanel({
           <button
             type="button"
             onClick={() => { setFileSearchOpen((value) => !value); setFileSearch('') }}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text)"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
             aria-label="Open file search"
             title="Open file search"
           >
@@ -540,14 +541,14 @@ export function CodingWorkspacePanel({
         {fileSearchOpen && (
           <div
             className={cn(
-              'z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm',
+              'z-50 flex items-center justify-center bg-(--color-overlay) p-3 backdrop-blur-sm sm:p-4',
               mobile ? 'absolute inset-0' : 'fixed inset-0',
             )}
             onClick={() => setFileSearchOpen(false)}
           >
-          <div className="flex max-h-[min(32rem,calc(100%-2rem))] w-full max-w-xl flex-col overflow-hidden rounded-lg border border-(--color-border) bg-(--bg-card) shadow-2xl" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="Search workspace files">
-            <div className="flex h-14 items-center gap-3 border-b border-(--color-border) px-4">
-              <Search size={16} className="shrink-0 text-(--color-text-subtle)" aria-hidden="true" />
+          <div className="flex max-h-[min(32rem,calc(100%-2rem))] w-full max-w-xl flex-col overflow-hidden rounded-md border border-(--color-border) bg-(--bg-page) shadow-2xl" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="Search workspace files">
+            <div className="flex items-center gap-2 border-b border-(--color-border) bg-(--bg-sidebar) px-3 py-2.5">
+              <Search size={13} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
               <input
                 ref={searchInputRef}
                 value={fileSearch}
@@ -577,9 +578,18 @@ export function CodingWorkspacePanel({
                   }
                 }}
                 placeholder="Search files…"
-                className="min-w-0 flex-1 bg-transparent font-mono text-base text-(--color-text) outline-none placeholder:text-(--color-text-subtle) md:text-sm"
+                className="min-w-0 flex-1 bg-transparent text-xs text-(--color-text) outline-none placeholder:text-(--color-text-muted)/60"
                 aria-label="Search workspace files"
               />
+              {fileSearch && (
+                <button
+                  type="button"
+                  onClick={() => setFileSearch('')}
+                  className="rounded-xs px-1.5 py-1 text-[11px] text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text-2)"
+                >
+                  Clear
+                </button>
+              )}
             </div>
             <div ref={searchListRef} className="min-h-0 flex-1 overflow-y-auto p-1.5">
               {searchableFiles.length === 0 ? (
@@ -590,10 +600,10 @@ export function CodingWorkspacePanel({
                   type="button"
                   onClick={() => { openFileTab(file); setFileSearchOpen(false) }}
                   className={cn(
-                    'flex w-full min-w-0 items-center gap-2 rounded px-2 py-1.5 text-left text-xs',
+                    'flex min-h-9 w-full min-w-0 items-center gap-2 rounded-xs border border-transparent px-2 py-1.5 text-left text-xs md:min-h-0',
                     index === focusedIndex
-                      ? 'bg-(--bg-key) text-(--color-text)'
-                      : 'text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text)',
+                      ? 'border-(--color-border-strong) bg-(--bg-key)/60 text-(--color-text)'
+                      : 'text-(--color-text-2) hover:border-(--color-border) hover:bg-(--bg-card) hover:text-(--color-text)',
                   )}
                   title={file.path}
                 >
@@ -603,7 +613,7 @@ export function CodingWorkspacePanel({
                 </button>
               ))}
             </div>
-            <div className="shrink-0 border-t border-(--color-border) px-4 py-2">
+            <div className="shrink-0 border-t border-(--color-border) bg-(--bg-sidebar) px-3 py-2">
               <p className="text-[10px] text-(--color-text-muted)">↑↓ to navigate · ↵ to open · esc to close</p>
             </div>
           </div>
@@ -613,74 +623,33 @@ export function CodingWorkspacePanel({
           {activeTab?.type === 'review' ? (
             <div className="flex h-full min-h-0 flex-col">
               {diff.data?.is_git_repo && (
-                <div className="flex items-center justify-between border-b border-(--color-border) bg-(--bg-card) p-1 shrink-0 gap-2 min-h-9">
+                <div className="flex min-h-9 shrink-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-card) p-1">
                   {!mobile ? (
-                    <div className="relative">
-                      <button
-                        type="button"
-                        onClick={() => setMenuOpen((prev) => !prev)}
-                        className="flex w-36 items-center justify-between rounded px-2 py-1 text-left text-xs font-medium border border-(--color-border-strong) bg-(--bg-page) text-(--color-text) hover:bg-(--bg-key) cursor-pointer select-none"
-                      >
-                        <span className="flex items-center gap-1.5">
-                          <GitCompare size={12} className="text-(--color-text-subtle)" />
+                    <Dropdown
+                      className="w-36"
+                      trigger={
+                        <>
+                          <GitCompare size={12} className="shrink-0 text-(--color-text-subtle)" aria-hidden="true" />
                           {subTab === 'changes'
                             ? `Changes (${changedFiles.length})`
                             : subTab === 'commits'
                             ? 'Commits'
                             : 'Tree'}
-                        </span>
-                        <ChevronDown size={12} className="text-(--color-text-subtle)" />
-                      </button>
-
-                      {menuOpen && (
-                        <>
-                          <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-                          <div className="absolute left-0 right-0 top-full mt-1 z-20 rounded border border-(--color-border) bg-(--bg-card) p-1 shadow-lg flex flex-col gap-0.5">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSubTab('changes')
-                                setMenuOpen(false)
-                              }}
-                              className={cn(
-                                'w-full rounded px-2 py-1 text-left text-xs font-medium hover:bg-(--bg-key) cursor-pointer transition-colors',
-                                subTab === 'changes' ? 'text-(--color-accent)' : 'text-(--color-text-2)'
-                              )}
-                            >
-                              Changes ({changedFiles.length})
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSubTab('commits')
-                                setMenuOpen(false)
-                              }}
-                              className={cn(
-                                'w-full rounded px-2 py-1 text-left text-xs font-medium hover:bg-(--bg-key) cursor-pointer transition-colors',
-                                subTab === 'commits' ? 'text-(--color-accent)' : 'text-(--color-text-2)'
-                              )}
-                            >
-                              Commits
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSubTab('tree')
-                                setMenuOpen(false)
-                              }}
-                              className={cn(
-                                'w-full rounded px-2 py-1 text-left text-xs font-medium hover:bg-(--bg-key) cursor-pointer transition-colors',
-                                subTab === 'tree' ? 'text-(--color-accent)' : 'text-(--color-text-2)'
-                              )}
-                            >
-                              Tree
-                            </button>
-                          </div>
                         </>
-                      )}
-                    </div>
+                      }
+                    >
+                      <DropdownItem active={subTab === 'changes'} onSelect={() => setSubTab('changes')}>
+                        Changes ({changedFiles.length})
+                      </DropdownItem>
+                      <DropdownItem active={subTab === 'commits'} onSelect={() => setSubTab('commits')}>
+                        Commits
+                      </DropdownItem>
+                      <DropdownItem active={subTab === 'tree'} onSelect={() => setSubTab('tree')}>
+                        Tree
+                      </DropdownItem>
+                    </Dropdown>
                   ) : (
-                    <div className="flex flex-1 bg-inherit gap-1">
+                    <div className="flex flex-1 gap-1 bg-inherit">
                       <button
                         type="button"
                         onClick={() => setSubTab('changes')}
@@ -727,7 +696,7 @@ export function CodingWorkspacePanel({
                         role="switch"
                         aria-checked={allExpanded}
                         onClick={() => handleExpandCollapseChange(!allExpanded)}
-                        className="flex cursor-pointer select-none items-center gap-1.5 rounded px-0.5 py-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-accent)/50"
+                        className="flex cursor-pointer select-none items-center gap-1.5 rounded-xs px-1 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40"
                       >
                         <span className="text-[11px] text-(--color-text-muted)">Expand all</span>
                         <span
@@ -751,14 +720,13 @@ export function CodingWorkspacePanel({
                       </button>
                     )}
                     {subTab === 'tree' && (
-                      <label className="flex items-center gap-1.5 text-xs text-(--color-text-2) cursor-pointer select-none">
-                        <input
-                          type="checkbox"
+                      <label className="flex h-7 cursor-pointer select-none items-center gap-1.5 rounded border border-transparent px-1.5 text-[11px] text-(--color-text-muted) transition-colors">
+                        <Checkbox
                           checked={allBranches}
-                          onChange={(event) => setAllBranches(event.target.checked)}
-                          className="rounded border-(--color-border) text-(--color-accent) focus:ring-(--color-accent) h-3.5 w-3.5 cursor-pointer"
+                          onChange={(event) => setAllBranches(event.currentTarget.checked)}
+                          className="border-(--color-border) bg-(--bg-card) checked:border-(--color-border-strong) checked:bg-(--bg-key)"
                         />
-                        <span>All Branches</span>
+                        <span className="whitespace-nowrap">All branches</span>
                       </label>
                     )}
                   </div>
@@ -789,7 +757,7 @@ export function CodingWorkspacePanel({
                                 type="button"
                                 onClick={() => toggleDiffExpanded(changedFile.path)}
                                 className={cn(
-                                  'flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs transition-colors hover:bg-(--bg-key) hover:text-(--color-text) cursor-pointer',
+                                  'flex w-full cursor-pointer items-center gap-2 px-2 py-1.5 text-left text-xs transition-colors hover:bg-(--bg-key) hover:text-(--color-text)',
                                   isSelected ? 'text-(--color-accent)' : 'text-(--color-text-2)',
                                 )}
                                 title={changedFile.path}
@@ -860,7 +828,7 @@ export function CodingWorkspacePanel({
                                     {commit.subject}
                                   </span>
                                 </div>
-                                <span className="shrink-0 font-mono text-[9px] text-(--color-text-subtle) bg-(--bg-key) px-1 py-0.5 rounded border border-(--color-border)/30">
+                                <span className="shrink-0 rounded border border-(--color-border-subtle) bg-(--bg-card) px-1 py-0.5 font-mono text-[9px] text-(--color-text-subtle)">
                                   {commit.short_sha}
                                 </span>
                               </div>
@@ -909,13 +877,13 @@ export function CodingWorkspacePanel({
                     <p className="px-2 py-4 text-xs text-(--color-text-subtle)">Not a git repository</p>
                   ) : (
                     <div className="flex flex-col h-full min-h-0">
-                      <div className="min-h-0 flex-1 overflow-auto rounded bg-(--bg-key)/20 border border-(--color-border-subtle) p-2 select-none">
+                      <div className="min-h-0 flex-1 overflow-auto rounded-sm border border-(--color-border) bg-(--bg-card) p-2 select-none">
                         {parsedGraphLines.length === 0 ? (
                           <p className="px-2 py-4 text-xs text-(--color-text-subtle)">No graph history.</p>
                         ) : (
                           <div className="flex flex-col min-w-max">
                             {parsedGraphLines.map((line) => (
-                              <div key={line.key} className="flex items-center gap-2 hover:bg-(--bg-key)/40 px-1 py-0.5 rounded transition-colors group h-5">
+                              <div key={line.key} className="flex items-center gap-2 hover:bg-(--bg-key)/40 px-1 py-0.5 rounded-xs transition-colors group h-5">
                                 <span className="font-mono text-[11px] leading-none whitespace-pre select-none shrink-0 tracking-widest">
                                   {renderGraphPrefix(line.graphPart)}
                                 </span>
@@ -936,8 +904,8 @@ export function CodingWorkspacePanel({
                                         setExpandedCommitSha(fullSha)
                                         setSubTab('commits')
                                       }}
-                                      className="shrink-0 font-mono text-[9px] text-(--color-text-subtle) bg-(--bg-card) px-1 py-0.5 rounded border border-(--color-border-subtle) hover:bg-(--color-accent)/10 hover:text-(--color-accent) hover:border-(--color-accent)/30 transition-colors cursor-pointer"
-                                      title="Open commit details"
+                                      className="shrink-0 cursor-pointer rounded border border-(--color-border-subtle) bg-(--bg-card) px-1 py-0.5 font-mono text-[9px] text-(--color-text-subtle) transition-colors hover:border-(--color-accent)/30 hover:bg-(--color-accent)/10 hover:text-(--color-accent)"
+                                      title="Click to view commit details"
                                     >
                                       {line.sha.substring(0, 7)}
                                     </button>
@@ -989,7 +957,7 @@ export function CodingWorkspacePanel({
             </div>
           ) : activeTab?.type === 'file' ? (
             <div className="flex h-full min-h-0 flex-col">
-              <div className="flex shrink-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-card) px-3 py-2">
+              <div className="flex shrink-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-key)/25 px-3 py-2">
                 <div className="flex min-w-0 items-center gap-2">
                   <FileTypeIcon name={activeTab.file.name || activeTab.file.path} size={16} />
                   <p className="truncate font-mono text-xs font-medium text-(--color-text)" title={activeTab.file.path}>{activeTab.file.path}</p>
@@ -1010,7 +978,7 @@ export function CodingWorkspacePanel({
               void gitHistory.refetch()
             }
           }}
-          className="flex items-center justify-center gap-1.5 border-t border-(--color-border) px-3 py-2 text-xs text-(--color-text-muted) hover:bg-(--bg-key)"
+          className="flex h-9 items-center justify-center gap-1.5 border-t border-(--color-border) bg-(--bg-card) px-3 text-xs text-(--color-text-muted) hover:bg-(--bg-key)"
         >
           <RefreshCw size={12} /> Refresh
         </button>

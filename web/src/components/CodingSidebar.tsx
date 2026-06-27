@@ -48,6 +48,7 @@ import { ThemeToggle } from './ThemeToggle'
 import { HealthDot } from './HealthDot'
 import { Button } from '@/components/ui/button'
 import { useToastStore } from '@/stores/useToastStore'
+import { useSettingsStore } from '@/stores/useSettingsStore'
 import {
   Dialog,
   DialogContent,
@@ -141,6 +142,7 @@ export function CodingSidebar({
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const pushToast = useToastStore((s) => s.push)
+  const openSettings = useSettingsStore((s) => s.openSettings)
   const sessions = useTeamSessionsQuery('coding')
   const deleteSession = useDeleteTeamSessionMutation()
   const updateSessionTitle = useUpdateTeamSessionTitleMutation()
@@ -817,10 +819,10 @@ export function CodingSidebar({
         <div className="flex items-center gap-1">
           <button
             type="button"
-            onClick={() => { navigate({ to: '/settings' }); onMobileClose?.() }}
+            onClick={() => { openSettings(); onMobileClose?.() }}
             className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
             aria-label="Settings"
-            title="Settings"
+            title="Settings (Ctrl+.)"
           >
             <Settings size={14} aria-hidden="true" />
           </button>
@@ -858,11 +860,11 @@ export function CodingSidebar({
                   Coding mode grants agents filesystem and shell access inside this exact directory.
                 </DialogDescription>
               </DialogHeader>
-              <div className="rounded-lg border border-(--color-border) bg-(--bg-page) px-3 py-2">
+              <div className="rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2">
                 <p className="break-all font-mono text-xs text-(--color-text-muted)">{trustWorkspace}</p>
               </div>
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setTrustWorkspace(null)}>Back</Button>
+                <Button type="button" variant="default" onClick={() => setTrustWorkspace(null)}>Back</Button>
                 <Button type="button" onClick={confirmTrustedWorkspace}>Trust and open</Button>
               </DialogFooter>
             </>
@@ -876,7 +878,7 @@ export function CodingSidebar({
               </DialogHeader>
               <div className="min-w-0 space-y-2">
                 {selectedWorkspace && (
-                  <div className="min-w-0 rounded-lg border border-(--color-border) bg-(--bg-page) px-3 py-2">
+                  <div className="min-w-0 rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2">
                     <p className="min-w-0 font-mono text-xs text-(--color-text-muted) [overflow-wrap:anywhere]" title={selectedWorkspace}>
                       {selectedWorkspace}
                     </p>
@@ -885,7 +887,7 @@ export function CodingSidebar({
                 {error && <p className="text-xs text-(--color-error)">{error}</p>}
               </div>
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
+                <Button type="button" variant="default" onClick={() => setDialogOpen(false)}>Cancel</Button>
                 <Button type="button" disabled={loading} onClick={() => { void openWorkspaceDialog() }}>
                   {loading ? 'Opening…' : 'Choose folder…'}
                 </Button>
@@ -898,12 +900,12 @@ export function CodingSidebar({
                 <DialogDescription>Choose a server-local project folder.</DialogDescription>
               </DialogHeader>
               <div className="min-w-0 space-y-2">
-                <div className="min-w-0 rounded-lg border border-(--color-border) bg-(--bg-page) px-3 py-2">
+                <div className="min-w-0 rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2">
                   <p className="min-w-0 font-mono text-xs text-(--color-text-muted) [overflow-wrap:anywhere]" title={browserPath ?? undefined}>
                     {browserPath ?? 'Loading folders…'}
                   </p>
                 </div>
-                <div className="max-h-64 space-y-1 overflow-y-auto rounded-lg border border-(--color-border) p-1">
+                <div className="max-h-64 space-y-1 overflow-y-auto rounded-sm border border-(--color-border) bg-(--bg-card) p-1">
                   {parentPath && (
                     <button
                       type="button"
@@ -934,7 +936,7 @@ export function CodingSidebar({
                 {error && <p className="text-xs text-(--color-error)">{error}</p>}
               </div>
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
+                <Button type="button" variant="default" onClick={() => setDialogOpen(false)}>Cancel</Button>
                 <Button type="button" disabled={!browserPath || loading} onClick={openSelectedFolder}>Open this folder</Button>
               </DialogFooter>
             </>
@@ -954,7 +956,7 @@ export function CodingSidebar({
           <DialogFooter className="flex-col items-stretch gap-2 p-3 sm:flex-col">
             <Button
               type="button"
-              variant="outline"
+              variant="ghost"
               className="justify-start"
               onClick={() => {
                 const action = mobileWorkspaceActions
@@ -969,7 +971,7 @@ export function CodingSidebar({
               <>
                 <Button
                   type="button"
-                  variant="outline"
+                  variant="ghost"
                   className="justify-start"
                   onClick={() => {
                     const action = mobileWorkspaceActions
@@ -982,8 +984,8 @@ export function CodingSidebar({
                 </Button>
                 <Button
                   type="button"
-                  variant="outline"
-                  className="justify-start text-(--color-error)"
+                  variant="danger-subtle"
+                  className="justify-start"
                   onClick={() => {
                     const action = mobileWorkspaceActions
                     setMobileWorkspaceActions(null)
@@ -998,7 +1000,7 @@ export function CodingSidebar({
               <>
                 <Button
                   type="button"
-                  variant="outline"
+                  variant="ghost"
                   className="justify-start"
                   onClick={() => {
                     const item = mobileWorkspaceActions.worktree
@@ -1012,8 +1014,8 @@ export function CodingSidebar({
                 {mobileWorkspaceActions.worktree.managed ? (
                   <Button
                     type="button"
-                    variant="outline"
-                    className="justify-start text-(--color-error)"
+                    variant="danger-subtle"
+                    className="justify-start"
                     onClick={() => {
                       const item = mobileWorkspaceActions.worktree
                       setMobileWorkspaceActions(null)
@@ -1034,7 +1036,7 @@ export function CodingSidebar({
         open={worktreeTarget !== null}
         onOpenChange={(open) => { if (!open) setWorktreeTarget(null) }}
       >
-        <DialogContent showCloseButton={false} className="flex max-h-[min(86dvh,520px)] w-[calc(100vw-1.5rem)] max-w-md flex-col overflow-hidden rounded-lg border border-(--color-border) bg-(--bg-card) p-0 shadow-xl sm:w-[min(560px,calc(100vw-2rem))] sm:max-w-none">
+        <DialogContent showCloseButton={false} className="flex max-h-[min(86dvh,520px)] w-[calc(100vw-1.5rem)] max-w-md flex-col overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) p-0 shadow-xl sm:w-[min(560px,calc(100vw-2rem))] sm:max-w-none">
           <form onSubmit={submitWorktree} className="flex h-full min-h-0 flex-col">
             <DialogHeader className="shrink-0 gap-0 border-b border-(--color-border) bg-(--bg-page) px-3 py-2.5 sm:px-4">
               <div className="flex items-start gap-2">
@@ -1127,7 +1129,7 @@ export function CodingSidebar({
               {error && <p className="rounded-md border border-(--color-error)/30 bg-(--color-error-subtle) px-3 py-2 text-xs text-(--color-error)">{error}</p>}
             </div>
             <DialogFooter className="mx-0 mb-0 shrink-0 flex-row justify-end gap-2 rounded-none border-t border-(--color-border) bg-(--bg-page) px-3 py-2.5 sm:px-4">
-              <Button type="button" variant="outline" onClick={() => setWorktreeTarget(null)} className="h-8 w-auto px-3 text-xs">Cancel</Button>
+              <Button type="button" variant="default" onClick={() => setWorktreeTarget(null)} className="h-8 w-auto px-3 text-xs">Cancel</Button>
               <Button type="submit" disabled={worktreeLoading} className="h-8 w-auto px-3 text-xs">
                 {worktreeLoading ? 'Creating…' : 'Create and open'}
               </Button>
@@ -1148,7 +1150,7 @@ export function CodingSidebar({
           <div
             role="menu"
             aria-label={`Actions for ${workspaceLabel(desktopWorkspaceActions.path)}`}
-            className="fixed min-w-48 rounded-lg border border-(--color-border) bg-(--bg-card) p-1 text-sm text-(--color-text) shadow-xl"
+            className="fixed min-w-48 rounded-sm border border-(--color-border) bg-(--bg-card) p-1 text-xs text-(--color-text) shadow-md"
             style={{ left: desktopWorkspaceActions.x, top: desktopWorkspaceActions.y }}
             onClick={(event) => event.stopPropagation()}
           >
@@ -1242,7 +1244,7 @@ export function CodingSidebar({
           <div
             role="menu"
             aria-label={`Actions for ${desktopSessionActions.session.title || 'Untitled'}`}
-            className="fixed min-w-44 rounded-lg border border-(--color-border) bg-(--bg-card) p-1 text-sm text-(--color-text) shadow-xl"
+            className="fixed min-w-44 rounded-sm border border-(--color-border) bg-(--bg-card) p-1 text-xs text-(--color-text) shadow-md"
             style={{ left: desktopSessionActions.x, top: desktopSessionActions.y }}
             onClick={(event) => event.stopPropagation()}
           >
@@ -1288,7 +1290,7 @@ export function CodingSidebar({
           <DialogFooter className="flex-col items-stretch gap-2 p-3 sm:flex-col">
             <Button
               type="button"
-              variant="outline"
+              variant="ghost"
               className="justify-start"
               onClick={() => {
                 const session = mobileSessionActions
@@ -1301,8 +1303,8 @@ export function CodingSidebar({
             </Button>
             <Button
               type="button"
-              variant="outline"
-              className="justify-start text-(--color-error)"
+              variant="danger-subtle"
+              className="justify-start"
               onClick={() => {
                 const session = mobileSessionActions
                 setMobileSessionActions(null)
@@ -1328,8 +1330,8 @@ export function CodingSidebar({
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="p-3">
-            <Button type="button" variant="outline" onClick={() => setDeleteTarget(null)}>Cancel</Button>
-            <Button type="button" variant="destructive" onClick={confirmSessionDelete}>Delete</Button>
+            <Button type="button" variant="default" onClick={() => setDeleteTarget(null)}>Cancel</Button>
+            <Button type="button" variant="danger" onClick={confirmSessionDelete}>Delete</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1360,7 +1362,7 @@ export function CodingSidebar({
               )}
             </div>
             <DialogFooter className="mx-0 mb-0 flex-row justify-end gap-2 rounded-none border-0 bg-transparent p-0">
-              <Button type="button" variant="outline" className="h-8 px-3 text-xs" onClick={() => setEditTarget(null)}>Cancel</Button>
+              <Button type="button" variant="default" className="h-8 px-3 text-xs" onClick={() => setEditTarget(null)}>Cancel</Button>
               <Button type="submit" className="h-8 px-3 text-xs" disabled={!editTitle.trim() || updateSessionTitle.isPending}>
                 {updateSessionTitle.isPending ? 'Saving…' : 'Save'}
               </Button>
@@ -1393,7 +1395,7 @@ export function CodingSidebar({
               {error && <p className="mt-2 text-xs text-(--color-error)">{error}</p>}
             </div>
             <DialogFooter className="mx-0 mb-0 flex-row justify-end gap-2 rounded-none border-0 bg-transparent p-0">
-              <Button type="button" variant="outline" className="h-8 px-3 text-xs" onClick={() => setWorktreeEditTarget(null)}>Cancel</Button>
+              <Button type="button" variant="default" className="h-8 px-3 text-xs" onClick={() => setWorktreeEditTarget(null)}>Cancel</Button>
               <Button type="submit" className="h-8 px-3 text-xs" disabled={!worktreeEditTitle.trim() || worktreeEditLoading}>
                 {worktreeEditLoading ? 'Saving…' : 'Save'}
               </Button>
@@ -1415,8 +1417,8 @@ export function CodingSidebar({
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="p-3">
-            <Button type="button" variant="outline" onClick={() => setRemoveWorkspaceTarget(null)}>Cancel</Button>
-              <Button type="button" variant="destructive" onClick={confirmRemoveWorkspace}>Remove from sidebar</Button>
+            <Button type="button" variant="default" onClick={() => setRemoveWorkspaceTarget(null)}>Cancel</Button>
+              <Button type="button" variant="danger" onClick={confirmRemoveWorkspace}>Remove from sidebar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -1,6 +1,6 @@
 /**
  * MultiSelect — combobox-style multi-select built on the project's
- * shadcn Popover (which wraps `@base-ui/react`'s Popover primitive).
+ * OpenAgentd Popover (which wraps `@base-ui/react` for positioning).
  *
  * Used for picking tools and skills in the agent editor.
  *
@@ -120,8 +120,8 @@ export function MultiSelect({
             aria-haspopup="listbox"
             tabIndex={0}
             className={cn(
-              'flex min-h-11 w-full cursor-text flex-wrap items-center gap-1 rounded-lg border border-(--color-border) bg-(--bg-input) px-1.5 py-1 text-sm text-(--color-text) transition-colors outline-none md:min-h-8',
-              'focus-visible:border-(--focus-ring) focus-visible:ring-3 focus-visible:ring-(--focus-ring)/50',
+              'flex min-h-11 w-full cursor-text flex-wrap items-center gap-1 rounded border border-(--color-border) bg-(--bg-input) px-1.5 py-1 text-xs text-(--color-text) transition-colors outline-none md:min-h-8',
+              'focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/30',
               'aria-expanded:border-(--focus-ring)',
             )}
           >
@@ -174,7 +174,7 @@ export function MultiSelect({
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKey}
             placeholder="Search…"
-            className="flex-1 bg-transparent text-sm text-(--color-text) outline-none placeholder:text-(--color-text-muted)"
+            className="flex-1 bg-transparent text-xs text-(--color-text) outline-none placeholder:text-(--color-text-muted)"
             aria-label="Search options"
           />
           <span className="shrink-0 text-[11px] text-(--color-text-muted)">
@@ -187,7 +187,7 @@ export function MultiSelect({
           className="max-h-64 overflow-y-auto overscroll-contain py-1"
         >
           {filtered.length === 0 ? (
-            <li className="px-3 py-4 text-center text-sm text-(--color-text-muted)">
+            <li className="px-3 py-4 text-center text-xs text-(--color-text-muted)">
               {emptyLabel}
             </li>
           ) : (
@@ -208,8 +208,8 @@ export function MultiSelect({
                     }}
                     onMouseEnter={() => setHighlight(i)}
                     className={cn(
-                      'flex min-h-11 w-full items-start gap-2 px-2.5 py-1.5 text-left transition-colors md:min-h-0',
-                      isHi && 'bg-(--bg-key)',
+                      'flex min-h-11 w-full cursor-pointer items-start gap-2 rounded px-2 py-1.5 text-left transition-colors md:min-h-0',
+                      isHi ? 'bg-(--bg-key)' : 'hover:bg-(--bg-key)',
                     )}
                   >
                     <span

@@ -1,33 +1,80 @@
-import { Radio as RadioPrimitive } from "@base-ui/react/radio"
-import { RadioGroup as RadioGroupPrimitive } from "@base-ui/react/radio-group"
+import { createContext, useContext, useMemo, useState, type ComponentPropsWithRef, type ReactNode } from 'react'
 
-import { cn } from "@/lib/utils"
+import { cn } from '@/lib/utils'
 
-function RadioGroup({ className, ...props }: RadioGroupPrimitive.Props) {
+interface RadioGroupContextValue {
+  name: string | undefined
+  value: string | undefined
+  setValue: (value: string) => void
+}
+
+const RadioGroupContext = createContext<RadioGroupContextValue | null>(null)
+
+interface RadioGroupProps extends Omit<ComponentPropsWithRef<'div'>, 'defaultValue' | 'onChange'> {
+  /** Controlled selected value. */
+  value?: string
+  /** Initial selected value for uncontrolled usage. */
+  defaultValue?: string
+  /** Called when the selected value changes. */
+  onValueChange?: (value: string) => void
+  /** Shared radio name. */
+  name?: string
+  /** Radio items. */
+  children?: ReactNode
+}
+
+function RadioGroup({ className, value, defaultValue, onValueChange, name, children, ...props }: RadioGroupProps) {
+  const [internalValue, setInternalValue] = useState(defaultValue)
+  const currentValue = value ?? internalValue
+  const contextValue = useMemo<RadioGroupContextValue>(() => ({
+    name,
+    value: currentValue,
+    setValue: (next) => {
+      if (value === undefined) setInternalValue(next)
+      onValueChange?.(next)
+    },
+  }), [currentValue, name, onValueChange, value])
+
   return (
-    <RadioGroupPrimitive
-      data-slot="radio-group"
-      className={cn("grid gap-2", className)}
-      {...props}
-    />
+    <RadioGroupContext.Provider value={contextValue}>
+      <div data-slot="radio-group" role="radiogroup" className={cn('grid gap-2', className)} {...props}>
+        {children}
+      </div>
+    </RadioGroupContext.Provider>
   )
 }
 
-function RadioGroupItem({ className, ...props }: RadioPrimitive.Root.Props) {
+interface RadioGroupItemProps extends Omit<ComponentPropsWithRef<'input'>, 'type'> {
+  /** Radio item value. */
+  value: string
+}
+
+function RadioGroupItem({ className, value, onChange, name, checked, ...props }: RadioGroupItemProps) {
+  const context = useContext(RadioGroupContext)
+  const isChecked = checked ?? context?.value === value
+
   return (
-    <RadioPrimitive.Root
-      data-slot="radio-group-item"
-      className={cn(
-        "flex size-[18px] shrink-0 items-center justify-center rounded-full border border-(--color-border-strong) bg-(--bg-page) transition-colors outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25 disabled:cursor-not-allowed disabled:opacity-50 data-checked:border-(--accent-blue) aria-invalid:border-(--color-error) aria-invalid:ring-2 aria-invalid:ring-(--color-error)/20",
-        className
-      )}
-      {...props}
-    >
-      <RadioPrimitive.Indicator
-        keepMounted
-        className="size-2 rounded-full bg-(--accent-blue) opacity-0 transition-opacity data-checked:opacity-100"
+    <span className="relative inline-flex size-[18px] shrink-0">
+      <input
+        type="radio"
+        data-slot="radio-group-item"
+        name={name ?? context?.name}
+        value={value}
+        checked={isChecked}
+        className={cn(
+          'peer size-[18px] appearance-none rounded-full border border-(--color-border-strong) bg-(--bg-page) transition-colors outline-none',
+          'checked:border-(--accent-blue) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25',
+          'disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-(--color-error) aria-invalid:ring-2 aria-invalid:ring-(--color-error)/20',
+          className,
+        )}
+        onChange={(event) => {
+          if (event.currentTarget.checked) context?.setValue(value)
+          onChange?.(event)
+        }}
+        {...props}
       />
-    </RadioPrimitive.Root>
+      <span className="pointer-events-none absolute inset-0 m-auto size-2 rounded-full bg-(--accent-blue) opacity-0 transition-opacity peer-checked:opacity-100" aria-hidden="true" />
+    </span>
   )
 }
 

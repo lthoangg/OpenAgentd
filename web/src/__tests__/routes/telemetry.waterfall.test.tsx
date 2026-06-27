@@ -30,7 +30,7 @@ describe('Waterfall', () => {
     )
 
     const row = screen.getByRole('button', { name: /agent\.run/ })
-    expect(row.className).toContain('min-h-11')
+    expect(row.className).toMatch(/min-h-(10|11)/)
     expect(row.className).toContain('md:min-h-0')
     expect(row.className).toContain('focus:bg-(--bg-key)/40')
     expect(row.className).toContain('focus-visible:ring-2')

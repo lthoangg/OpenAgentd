@@ -129,14 +129,12 @@ class RateLimitEvent(BaseModel):
 
 
 class ProviderStatusEvent(BaseModel):
-    """Provider retry/exhaustion/fallback status for the active model call."""
+    """Provider retry/exhaustion status for the active model call."""
 
     type: Literal["provider_status"] = "provider_status"
     agent: str
-    status: Literal["retrying", "exhausted", "fallback"]
+    status: Literal["retrying", "exhausted"]
     model: str | None = None
-    primary: str | None = None
-    fallback: str | None = None
     attempt: int | None = None
     max_attempts: int | None = None
     delay_seconds: float | None = None

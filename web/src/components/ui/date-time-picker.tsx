@@ -18,7 +18,6 @@ import { cn } from '@/lib/utils'
 import { buttonVariants } from '@/components/ui/button'
 import { Calendar } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import type { PopoverRoot } from '@base-ui/react/popover'
 
 interface DateTimePickerProps {
   /** ISO-8601 local string: "2026-04-23T14:30" or empty string / undefined */
@@ -85,7 +84,7 @@ export function DateTimePicker({
 }: DateTimePickerProps) {
   const [open, setOpen] = React.useState(false)
 
-  const handleOpenChange: PopoverRoot.Props['onOpenChange'] = (next) => setOpen(next)
+  const handleOpenChange = (next: boolean) => setOpen(next)
 
   const parsed = React.useMemo(() => {
     if (!value) return undefined
@@ -119,7 +118,7 @@ export function DateTimePicker({
         <PopoverTrigger
           disabled={disabled}
           className={cn(
-            buttonVariants({ variant: 'outline' }),
+            buttonVariants({ variant: 'default' }),
             'h-9 w-full justify-start gap-2 rounded-[10px] border border-(--color-border) bg-(--bg-page) px-3 text-sm font-normal text-(--color-text) hover:border-(--color-border-strong) hover:bg-(--bg-key)',
             !parsed && 'text-(--color-text-muted)',
             triggerClassName,

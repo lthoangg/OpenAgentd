@@ -1,12 +1,11 @@
 import { useState } from 'react'
-import { useNavigate } from '@tanstack/react-router'
 
 import { useCreateSkillMutation } from '@/queries'
 import { useToastStore } from '@/stores/useToastStore'
 import { ApiValidationError } from '@/api/client'
 import { EditorSubHeader } from '@/components/settings/EditorSubHeader'
 import { validateSkillDraft } from '@/components/settings/schema'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { SettingsSection } from '@/components/settings/SettingsSection'
 import { Textarea } from '@/components/ui/textarea'
 
 const TEMPLATE = `---
@@ -20,12 +19,16 @@ Replace this with the instructions an agent should follow when applying
 this skill. Keep it focused on a single concern.
 `
 
-export function NewSkillPage() {
+interface NewSkillPageProps {
+  onBack: () => void
+  onCreated: (name: string) => void
+}
+
+export function NewSkillPage({ onBack, onCreated }: NewSkillPageProps) {
   const [content, setContent] = useState(TEMPLATE)
   const [name, setName] = useState('new-skill')
   const createMut = useCreateSkillMutation()
   const push = useToastStore((s) => s.push)
-  const navigate = useNavigate()
   const [saveError, setSaveError] = useState<string | null>(null)
 
   const handleContentChange = (raw: string) => {
@@ -40,18 +43,11 @@ export function NewSkillPage() {
 
   const handleCreate = async () => {
     setSaveError(null)
-    if (invalid) {
-      setSaveError(firstDraftError ?? 'Form has validation errors.')
-      return
-    }
+    if (invalid) { setSaveError(firstDraftError ?? 'Form has validation errors.'); return }
     try {
       await createMut.mutateAsync({ name, content })
-      push({
-        tone: 'success',
-        title: `Created skill "${name}"`,
-        description: 'Active on next turn.',
-      })
-      navigate({ to: '/settings/skills/$name', params: { name } })
+      push({ tone: 'success', title: `Created skill "${name}"`, description: 'Active on next turn.' })
+      onCreated(name)
     } catch (err) {
       const msg = err instanceof ApiValidationError ? err.message : String(err)
       setSaveError(msg)
@@ -70,32 +66,28 @@ export function NewSkillPage() {
         error={saveError}
         validationHint={firstDraftError}
         onSave={handleCreate}
+        onBack={onBack}
       />
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl p-6">
-          <Card size="sm">
-            <CardHeader>
-              <CardTitle>Skill source</CardTitle>
-              <CardDescription>
-                Frontmatter (<span className="font-mono">name</span>,{' '}
-                <span className="font-mono">description</span>) is required;
-                use <span className="font-mono">parent/sub</span> for a one-level sub-skill.
-                The body is the instruction the agent loads on demand.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Textarea
-                value={content}
-                onChange={(e) => handleContentChange(e.target.value)}
-                disabled={createMut.isPending}
-                rows={28}
-                spellCheck={false}
-                aria-invalid={invalid || undefined}
-                className="min-h-96 font-mono text-[13px] leading-relaxed"
-              />
-            </CardContent>
-          </Card>
+        <div className="mx-auto max-w-3xl p-3 sm:p-5">
+          <SettingsSection title="Skill source" description="frontmatter + body loaded by agents on demand">
+            <p className="mb-2.5 text-[11px] leading-relaxed text-(--color-text-muted)">
+              Frontmatter (<span className="font-mono">name</span>,{' '}
+              <span className="font-mono">description</span>) is required;
+              use <span className="font-mono">parent/sub</span> for a one-level sub-skill.
+              The body is the instruction the agent loads on demand.
+            </p>
+            <Textarea
+              value={content}
+              onChange={(e) => handleContentChange(e.target.value)}
+              disabled={createMut.isPending}
+              rows={28}
+              spellCheck={false}
+              aria-invalid={invalid || undefined}
+              className="min-h-96 font-mono text-[13px] leading-relaxed"
+            />
+          </SettingsSection>
         </div>
       </div>
     </div>

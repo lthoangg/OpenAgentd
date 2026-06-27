@@ -130,7 +130,7 @@ export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         transition={{ duration: 0.15 }}
-        className={`fixed inset-0 z-50 flex items-start justify-center bg-black/60 px-3 backdrop-blur-sm sm:px-0 sm:pt-[15vh] ${isTauriMobile ? 'pt-[max(5rem,calc(env(safe-area-inset-top)+3.5rem))]' : 'pt-4'}`}
+        className={`fixed inset-0 z-50 flex items-start justify-center bg-(--color-overlay) px-3 backdrop-blur-sm sm:px-0 sm:pt-[15vh] ${isTauriMobile ? 'pt-[max(5rem,calc(env(safe-area-inset-top)+3.5rem))]' : 'pt-4'}`}
         onClick={onClose}
       >
         <motion.div
@@ -140,7 +140,7 @@ export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
           exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97, y: -8 }}
           transition={{ duration: prefersReducedMotion ? 0.01 : 0.12, ease: [0.2, 0, 0, 1] }}
           onClick={(e) => e.stopPropagation()}
-          className="flex w-full max-w-md flex-col overflow-hidden rounded-lg border border-(--color-border) bg-(--bg-card) shadow-2xl"
+          className="flex w-full max-w-md flex-col overflow-hidden rounded-md border border-(--color-border) bg-(--bg-page) shadow-2xl"
           role="dialog"
           aria-modal="true"
           aria-label="Command palette"
@@ -148,20 +148,20 @@ export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
           onKeyDown={handleKeyDown}
         >
           {/* Search input */}
-          <div className="flex items-center gap-3 border-b border-(--color-border) px-4 py-3">
-            <Search size={15} className="shrink-0 text-(--color-text-muted)" />
+          <div className="flex items-center gap-2 border-b border-(--color-border) bg-(--bg-sidebar) px-3 py-2.5">
+            <Search size={13} className="shrink-0 text-(--color-text-muted)" />
             <input
               ref={inputRef}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search commands…"
-              className="flex-1 bg-transparent text-sm text-(--color-text) placeholder-(--color-text-muted) outline-none"
+              className="min-w-0 flex-1 bg-transparent text-xs text-(--color-text) placeholder-(--color-text-muted)/60 outline-none"
               aria-label="Search commands"
             />
             {query && (
               <button
                 onClick={() => setQuery('')}
-                className="text-xs text-(--color-text-muted) hover:text-(--color-text-2)"
+                className="rounded-xs px-1.5 py-1 text-[11px] text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text-2)"
               >
                 Clear
               </button>
@@ -169,7 +169,7 @@ export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
           </div>
 
           {/* Command list */}
-          <div ref={listRef} className="max-h-80 overflow-y-auto overscroll-contain py-1.5">
+          <div ref={listRef} className="max-h-80 overflow-y-auto overscroll-contain p-1.5">
             {filtered.length === 0 ? (
               <p className="px-4 py-6 text-center text-sm text-(--color-text-muted)">
                 No commands match "{query}"
@@ -180,7 +180,7 @@ export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
                   return (
                     <p
                       key={`h-${i}`}
-                      className="px-4 pb-1 pt-3 text-xs font-semibold uppercase tracking-widest text-(--color-text-muted)"
+                      className="px-2 pb-1 pt-2.5 text-[10px] font-semibold uppercase tracking-widest text-(--color-text-muted)"
                     >
                       {row.label}
                     </p>
@@ -201,12 +201,12 @@ export function CommandPalette({ commands, onClose }: CommandPaletteProps) {
             )}
           </div>
 
-          <div className="flex items-center gap-2 border-t border-(--color-border) px-4 py-2">
-            <kbd className="rounded border border-(--color-border) bg-(--bg-page) px-1 py-0.5 font-mono text-[10px] text-(--color-text-muted)">↑↓</kbd>
+          <div className="flex items-center gap-2 border-t border-(--color-border) bg-(--bg-sidebar) px-3 py-2">
+            <kbd className="rounded-xs border border-(--color-border) bg-(--bg-card) px-1 py-0.5 font-mono text-[10px] text-(--color-text-muted)">↑↓</kbd>
             <span className="text-xs text-(--color-text-muted)">navigate</span>
-            <kbd className="rounded border border-(--color-border) bg-(--bg-page) px-1 py-0.5 font-mono text-[10px] text-(--color-text-muted)">↵</kbd>
+            <kbd className="rounded-xs border border-(--color-border) bg-(--bg-card) px-1 py-0.5 font-mono text-[10px] text-(--color-text-muted)">↵</kbd>
             <span className="text-xs text-(--color-text-muted)">run</span>
-            <kbd className="rounded border border-(--color-border) bg-(--bg-page) px-1 py-0.5 font-mono text-[10px] text-(--color-text-muted)">Esc</kbd>
+            <kbd className="rounded-xs border border-(--color-border) bg-(--bg-card) px-1 py-0.5 font-mono text-[10px] text-(--color-text-muted)">Esc</kbd>
             <span className="text-xs text-(--color-text-muted)">close</span>
           </div>
         </motion.div>
@@ -230,14 +230,14 @@ function CommandRow({ cmd, idx, isActive, onRun, onActivate }: CommandRowProps) 
         data-idx={idx}
         onClick={() => onRun(cmd)}
         onMouseEnter={() => onActivate(idx)}
-        className={`flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors ${
+        className={`flex w-full items-center gap-2 rounded-sm border border-transparent px-2.5 py-2 text-left transition-colors ${
           isActive
-            ? 'bg-(--bg-key) text-(--color-text)'
-            : 'text-(--color-text-2) hover:bg-(--bg-key)'
+            ? 'border-(--color-border-strong) bg-(--bg-key)/60 text-(--color-text)'
+            : 'text-(--color-text-2) hover:border-(--color-border) hover:bg-(--bg-card)'
         }`}
       >
         <div className="min-w-0 flex-1">
-          <span className="block text-sm font-medium">{cmd.label}</span>
+          <span className="block text-xs font-medium">{cmd.label}</span>
           {cmd.description && (
             <span className="block truncate text-xs text-(--color-text-muted)">
               {cmd.description}
@@ -245,7 +245,7 @@ function CommandRow({ cmd, idx, isActive, onRun, onActivate }: CommandRowProps) 
           )}
         </div>
         {cmd.shortcut && (
-          <kbd className="shrink-0 rounded border border-(--color-border) bg-(--bg-page) px-1.5 py-0.5 font-mono text-xs text-(--color-text-muted)">
+          <kbd className="shrink-0 rounded-xs border border-(--color-border) bg-(--bg-card) px-1.5 py-0.5 font-mono text-[10px] text-(--color-text-muted)">
             {cmd.shortcut}
           </kbd>
         )}

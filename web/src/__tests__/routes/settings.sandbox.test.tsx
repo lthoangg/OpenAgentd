@@ -74,8 +74,8 @@ describe('SandboxSettingsPage', () => {
     expect(screen.getByRole('button', { name: /Save/i }).className).toContain('min-h-11')
 
     const remove = screen.getByRole('button', { name: /Remove pattern 1/i })
-    expect(remove.className).toContain('h-11')
-    expect(remove.className).toContain('w-11')
+    expect(remove.className).toContain('h-9')
+    expect(remove.className).toContain('w-9')
     expect(remove.className).toContain('md:h-7')
     expect(remove.className).toContain('md:w-7')
 

@@ -93,15 +93,15 @@ function SummaryRoute({
         isFetching={isFetching}
         right={
           <>
-            <div className="flex items-center gap-1 rounded-lg border border-(--color-border) bg-(--bg-card) p-0.5">
+            <div className="flex items-center gap-0.5 rounded-sm border border-(--color-border) bg-(--bg-card) p-0.5">
               {RANGES.map((r) => (
                 <button
                   key={r.value}
                   onClick={() => changeDays(r.value)}
-                  className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                  className={`rounded-xs border border-transparent px-2 py-1 text-[11px] font-medium transition-colors ${
                     days === r.value
-                      ? 'bg-(--bg-key) text-(--color-accent)'
-                      : 'text-(--color-text-muted) hover:text-(--color-text)'
+                      ? 'border-(--color-border-strong) bg-(--bg-key) text-(--color-text)'
+                      : 'text-(--color-text-muted) hover:bg-(--bg-key)/40 hover:text-(--color-text)'
                   }`}
                 >
                   {r.label}
@@ -163,7 +163,7 @@ function TraceDetailRoute({
         left={
           <button
             onClick={onBack}
-            className="flex h-9 w-9 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) sm:h-7 sm:w-7"
+            className="flex h-8 w-8 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) sm:h-7 sm:w-7"
             aria-label="Back to list"
           >
             <ArrowLeft size={14} />
@@ -175,7 +175,7 @@ function TraceDetailRoute({
       {/* On mobile: span detail overlays the waterfall full-width (absolute).
           On desktop: span detail is a fixed-width flex sibling on the right. */}
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
-        <div className="min-w-0 flex-1 overflow-y-auto p-5">
+        <div className="min-w-0 flex-1 overflow-y-auto p-3 sm:p-5">
           {isLoading ? (
             <LoadingState label="Loading trace…" />
           ) : isError ? (
@@ -184,7 +184,7 @@ function TraceDetailRoute({
               onRetry={() => refetch()}
             />
           ) : !data ? (
-            <div className="rounded-xl border border-(--color-border) bg-(--bg-key) p-6 text-center">
+            <div className="rounded-sm border border-(--color-border) bg-(--bg-card) p-6 text-center">
               <p className="text-sm font-medium text-(--color-text)">
                 Trace not found
               </p>
@@ -203,7 +203,7 @@ function TraceDetailRoute({
         {selectedSpan && (
           isMobile ? (
             // Full-width overlay on mobile
-            <div className="absolute inset-0 z-10 overflow-y-auto bg-(--bg-card)">
+            <div className="absolute inset-0 z-10 overflow-y-auto bg-(--bg-page)">
               <SpanDetailPanel
                 span={selectedSpan}
                 onClose={() => setSelectedSpanId(null)}

@@ -11,7 +11,7 @@ import { FIELD_CLASS, slugify } from './utils'
 import { ScheduleTypeSegmented } from './ScheduleTypeSegmented'
 import { ModeWorkspaceFields } from './ModeWorkspaceFields'
 import { useTeamStore } from '@/stores/useTeamStore'
-import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
+import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 
 export function CreateTaskForm({
   contextMode,
@@ -154,9 +154,9 @@ export function CreateTaskForm({
   }
 
   return (
-    <div className="flex flex-col overflow-hidden">
+    <div className="flex flex-col overflow-hidden bg-(--bg-page)">
       {/* Header */}
-      <div className="border-b border-(--color-border) px-5 py-4">
+      <div className="border-b border-(--color-border) bg-(--bg-sidebar) px-3 py-3 sm:px-5 sm:py-4">
         <div className="flex items-center gap-2">
           <Plus size={18} className="text-(--color-accent)" />
           <h2 className="text-base font-semibold text-(--color-text)">Create Task</h2>
@@ -164,7 +164,7 @@ export function CreateTaskForm({
       </div>
 
       {/* Form */}
-      <form onSubmit={handleSubmit} className="flex flex-1 flex-col overflow-y-auto px-5 py-4">
+      <form onSubmit={handleSubmit} className="flex flex-1 flex-col overflow-y-auto px-3 py-4 sm:px-5">
         <div className="space-y-4">
           {/* Title */}
           <div>
@@ -214,7 +214,7 @@ export function CreateTaskForm({
                     />
                   </div>
                 </div>
-                <div className="w-56 shrink-0">
+                <div className="w-full sm:w-56 sm:shrink-0">
                   <label className="block text-sm font-medium text-(--color-text)">Interval (seconds)</label>
                   <Input
                     className={`mt-1 w-full ${FIELD_CLASS}`}
@@ -243,18 +243,18 @@ export function CreateTaskForm({
 
               {formData.schedule_type === 'at' && (
                 <div>
-                  <div className="flex items-end gap-2">
+                  <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_11rem] sm:items-end">
                     <div className="flex-1">
                       <label className="block text-sm font-medium text-(--color-text)">Date & Time</label>
                       <div className="mt-1">
                         <DateTimePicker
                           value={formData.at_datetime ?? ''}
                           onChange={(v) => setFormData({ ...formData, at_datetime: v })}
-                          triggerClassName="bg-(--bg-page) hover:bg-(--bg-page)"
+                          triggerClassName="h-8 rounded-sm bg-(--bg-card) px-2 text-xs hover:bg-(--bg-key)/30"
                         />
                       </div>
                     </div>
-                    <div className="w-44 shrink-0">
+                    <div className="w-full min-w-0">
                       <label className="block text-sm font-medium text-(--color-text)">Timezone</label>
                       <Input
                         className={`mt-1 ${FIELD_CLASS}`}
@@ -270,7 +270,7 @@ export function CreateTaskForm({
 
               {formData.schedule_type === 'cron' && (
                 <div>
-                  <div className="flex items-end gap-2">
+                  <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_11rem] sm:items-end">
                     <div className="flex-1">
                       <label className="block text-sm font-medium text-(--color-text)">Cron Expression</label>
                       <Input
@@ -280,7 +280,7 @@ export function CreateTaskForm({
                         placeholder="e.g., 0 9 * * MON-FRI"
                       />
                     </div>
-                    <div className="w-44 shrink-0">
+                    <div className="w-full min-w-0">
                       <label className="block text-sm font-medium text-(--color-text)">Timezone</label>
                       <Input
                         className={`mt-1 ${FIELD_CLASS}`}
@@ -312,21 +312,21 @@ export function CreateTaskForm({
           <div className="flex flex-wrap items-start gap-4">
             <div className="w-full max-w-md">
               <label htmlFor="session-target" className="block text-sm font-medium text-(--color-text)">Session Target</label>
-              <NativeSelect
-                id="session-target"
-                className="mt-1 w-full"
+              <Dropdown
                 value={sessionType}
-                onChange={(e) => setSessionType(e.target.value as 'new' | 'auto' | 'current' | 'custom')}
+                onValueChange={(v) => setSessionType(v as 'new' | 'auto' | 'current' | 'custom')}
+                trigger="Session Target"
+                className="mt-1 w-full px-2 py-1 text-[11px]"
               >
-                <NativeSelectOption value="new">New Session</NativeSelectOption>
-                <NativeSelectOption value="auto">Persistent Task Session</NativeSelectOption>
+                <DropdownItem value="new">New Session</DropdownItem>
+                <DropdownItem value="auto">Persistent Task Session</DropdownItem>
                 {isSessionCompatible && (
-                  <NativeSelectOption value="current">
+                  <DropdownItem value="current">
                     Current Chat Session ({currentSessionTitle ? `"${currentSessionTitle}"` : 'Active'})
-                  </NativeSelectOption>
+                  </DropdownItem>
                 )}
-                <NativeSelectOption value="custom">Specific Session ID...</NativeSelectOption>
-              </NativeSelect>
+                <DropdownItem value="custom">Specific Session ID…</DropdownItem>
+              </Dropdown>
               <p className="mt-1 text-xs text-(--color-text-muted)">
                 {sessionType === 'new' && 'Creates a fresh, isolated chat session for every run.'}
                 {sessionType === 'auto' && 'Runs all executions in a single dedicated chat session created for this task.'}
@@ -346,7 +346,7 @@ export function CreateTaskForm({
               )}
             </div>
 
-            <div className="w-44 shrink-0">
+            <div className="w-full min-w-0">
               <label className="block text-sm font-medium text-(--color-text)">Max runs (optional)</label>
               <Input
                 type="number"
@@ -362,7 +362,7 @@ export function CreateTaskForm({
 
           {/* Error message */}
           {error && (
-            <div className="flex gap-2 rounded-lg border border-(--color-error) bg-(--color-error-subtle) p-3">
+            <div className="flex gap-2 rounded-sm border border-(--color-error) bg-(--color-error-subtle) p-3">
               <AlertCircle size={16} className="shrink-0 text-(--color-error)" />
               <p className="text-sm text-(--color-error)">{error}</p>
             </div>
@@ -372,8 +372,10 @@ export function CreateTaskForm({
         {/* Submit */}
         <Button
           type="submit"
+          variant="primary"
           disabled={createMutation.isPending}
-          className="mt-6 w-full"
+          size="sm"
+          className="mt-6 w-full sm:w-auto sm:self-end"
         >
           {createMutation.isPending ? (
             <>

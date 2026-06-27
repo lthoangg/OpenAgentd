@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { useNavigate } from '@tanstack/react-router'
 
 import { useCreateMcpServerMutation } from '@/queries'
 import { useToastStore } from '@/stores/useToastStore'
@@ -36,12 +35,16 @@ function isPristine(draft: McpServerDraft): boolean {
   )
 }
 
-export function NewMcpServerPage() {
+interface NewMcpServerPageProps {
+  onBack: () => void
+  onCreated: (name: string) => void
+}
+
+export function NewMcpServerPage({ onBack, onCreated }: NewMcpServerPageProps) {
   const [draft, setDraft] = useState<McpServerDraft>(TEMPLATE)
   const [saveError, setSaveError] = useState<string | null>(null)
   const createMut = useCreateMcpServerMutation()
   const push = useToastStore((s) => s.push)
-  const navigate = useNavigate()
 
   const fieldErrors = validateDraft(draft, { isNew: true })
   const invalid = fieldErrors !== null
@@ -50,23 +53,13 @@ export function NewMcpServerPage() {
 
   const handleCreate = async () => {
     setSaveError(null)
-    if (invalid) {
-      setSaveError(firstError ?? 'Form has validation errors.')
-      return
-    }
+    if (invalid) { setSaveError(firstError ?? 'Form has validation errors.'); return }
     const result = draftToServerBody(draft)
-    if (!result.ok) {
-      setSaveError(result.error)
-      return
-    }
+    if (!result.ok) { setSaveError(result.error); return }
     try {
       await createMut.mutateAsync({ name: draft.name, server: result.body })
-      push({
-        tone: 'success',
-        title: `Created MCP server "${draft.name}"`,
-        description: 'Available on next turn.',
-      })
-      navigate({ to: '/settings/mcp/$name', params: { name: draft.name } })
+      push({ tone: 'success', title: `Created MCP server "${draft.name}"`, description: 'Available on next turn.' })
+      onCreated(draft.name)
     } catch (err) {
       const msg = err instanceof ApiValidationError ? err.message : String(err)
       setSaveError(msg)
@@ -85,17 +78,12 @@ export function NewMcpServerPage() {
         error={saveError}
         validationHint={firstError}
         onSave={handleCreate}
+        onBack={onBack}
       />
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl p-6">
-          <McpServerForm
-            value={draft}
-            onChange={setDraft}
-            isNew
-            disabled={createMut.isPending}
-            errors={fieldErrors}
-          />
+        <div className="mx-auto max-w-3xl p-3 sm:p-5">
+          <McpServerForm value={draft} onChange={setDraft} isNew disabled={createMut.isPending} errors={fieldErrors} />
         </div>
       </div>
     </div>

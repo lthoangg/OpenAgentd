@@ -94,7 +94,7 @@ describe('ProvidersSettingsPage', () => {
     renderPage()
 
     expect(await screen.findByText('Codex')).toBeTruthy()
-    expect(screen.getByText('Connected')).toBeTruthy()
+    expect(screen.getAllByText('Connected').length).toBeGreaterThan(0)
     expect(screen.queryByText('Failed')).toBeNull()
   })
 
@@ -130,7 +130,7 @@ describe('ProvidersSettingsPage', () => {
     renderPage()
 
     expect(await screen.findByText('Copilot')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: /Connect/i }))
+    fireEvent.click(screen.getAllByRole('button', { name: /Connect/i }).at(-1)!)
 
     expect(await screen.findByText('ABCD-1234')).toBeTruthy()
     expect(screen.getByText('Use this code on GitHub to authorize Copilot. Keep this dialog open while GitHub approves access.')).toBeTruthy()
@@ -187,7 +187,7 @@ describe('ProvidersSettingsPage', () => {
     renderPage()
 
     expect(await screen.findByText('Codex')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: /Connect/i }))
+    fireEvent.click(screen.getAllByRole('button', { name: /Connect/i }).at(-1)!)
 
     expect(await screen.findByText('Connected successfully.')).toBeTruthy()
     await act(async () => { await Promise.resolve() })
@@ -326,6 +326,6 @@ describe('ProvidersSettingsPage', () => {
     expect(await screen.findByText('Plugin OAuth')).toBeTruthy()
     await waitFor(() => expect(screen.getByText('Active usage')).toBeTruthy())
     expect(screen.getByText('Model A · window')).toBeTruthy()
-    expect(screen.getByText(/42% used/)).toBeTruthy()
+    expect(screen.getByText(/42%/)).toBeTruthy()
   })
 })

@@ -2,7 +2,7 @@
 title: OpenAgentd Styling
 description: Design-system reference for OpenAgentd brand assets, tokens, components, interaction, and motion
 status: stable
-updated: 2026-05-09
+updated: 2026-05-27
 ---
 
 # OpenAgentd Styling
@@ -15,7 +15,7 @@ Design-system reference for OpenAgentd. Brand assets, tokens, components, intera
 
 | | |
 |---|---|
-| **Aesthetic** | Warm paper notebook — cream surfaces, hand-drawn headlines, calm utility chrome |
+| **Aesthetic** | Warm paper notebook (cream surfaces, hand-drawn headlines) for chat, with a high-density, flat developer IDE cockpit style for settings |
 | **Palette** | Octobot brand pigments on a warm `#FAF6EC` paper background; pastel agent chips for role identity |
 | **Type** | Inter (UI/body) + JetBrains Mono (code) + Caveat (handwritten headlines) |
 | **Modes** | Light-first paper, dark-equal — both rendered with equal care |

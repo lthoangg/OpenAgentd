@@ -1,16 +1,40 @@
-import * as React from "react"
-import { Input as InputPrimitive } from "@base-ui/react/input"
+/**
+ * Input — OpenAgentd's own primitive.
+ *
+ * Design language lifted from the inputs in AppBackendDialog:
+ *   --bg-input surface · crisp 1px border · text-xs · natural height ·
+ *   focus shifts border to --focus-ring with a soft /30 ring · no hover border jump
+ *
+ * No base-ui. Plain <input> only.
+ */
+import { type ComponentPropsWithRef } from 'react'
+import { cn } from '@/lib/utils'
 
-import { cn } from "@/lib/utils"
+type InputProps = ComponentPropsWithRef<'input'>
 
-function Input({ className, type, ...props }: React.ComponentProps<"input">) {
+function Input({ className, ref, ...props }: InputProps) {
   return (
-    <InputPrimitive
-      type={type}
+    <input
+      ref={ref}
       data-slot="input"
       className={cn(
-        "h-9 w-full min-w-0 rounded-[10px] border border-(--color-border) bg-(--bg-page) px-3 py-1 text-sm text-(--color-text) transition-colors outline-none file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-(--color-text) placeholder:text-(--color-text-subtle) hover:border-(--color-border-strong) focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-(--bg-key) disabled:text-(--color-text-muted) disabled:opacity-60 aria-invalid:border-(--color-error) aria-invalid:ring-2 aria-invalid:ring-(--color-error)/20",
-        className
+        // Layout
+        'w-full min-w-0 rounded border',
+        // Surface
+        'border-(--color-border) bg-(--bg-input)',
+        // Typography
+        'px-2.5 py-1.5 text-xs text-(--color-text)',
+        // Placeholder
+        'placeholder:text-(--color-text-muted)/60',
+        // Interaction
+        'outline-none transition-colors',
+        'focus:border-(--focus-ring) focus:ring-2 focus:ring-(--focus-ring)/30',
+        // States
+        'disabled:cursor-not-allowed disabled:opacity-50',
+        'aria-invalid:border-(--color-error) aria-invalid:ring-2 aria-invalid:ring-(--color-error)/20',
+        // File input
+        'file:border-0 file:bg-transparent file:text-xs file:font-medium file:text-(--color-text)',
+        className,
       )}
       {...props}
     />
@@ -18,3 +42,4 @@ function Input({ className, type, ...props }: React.ComponentProps<"input">) {
 }
 
 export { Input }
+export type { InputProps }

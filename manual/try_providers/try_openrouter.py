@@ -51,9 +51,6 @@ async def main() -> int:
         async for chunk in stream_with_retry(
             primary_provider=provider,
             primary_label=model_id,
-            fallback_provider=None,
-            fallback_label="fallback",
-            agent_name="manual-openrouter",
             ctx=None,
             state=None,
             hooks=None,

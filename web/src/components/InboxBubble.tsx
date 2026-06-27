@@ -65,8 +65,8 @@ export function InboxBubble({ content, fromAgent, compact = false }: InboxBubble
           maxWidth,
           padding,
           textSize,
-          'relative rounded-lg rounded-bl-sm',
-          'border border-(--color-border) bg-(--color-surface)',
+          'relative rounded-sm',
+          'border border-(--color-border) bg-(--bg-card)',
           'leading-relaxed text-(--color-text) shadow-sm',
           'overflow-hidden',
         ].join(' ')}
@@ -109,7 +109,7 @@ export function InboxBubble({ content, fromAgent, compact = false }: InboxBubble
             className="pointer-events-none absolute inset-x-0 bottom-0 backdrop-blur-[1px]"
             style={{
               height: fadeHeight,
-              background: 'linear-gradient(to bottom, transparent 0%, var(--color-surface) 90%)',
+              background: 'linear-gradient(to bottom, transparent 0%, var(--bg-card) 90%)',
             }}
           />
         )}

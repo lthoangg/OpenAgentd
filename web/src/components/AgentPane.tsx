@@ -158,14 +158,14 @@ function UserBubble({ content, timestamp, attachments, onRevert, modelId, shell 
            </div>
          )}
 
-          <div className={`relative min-w-0 max-w-full overflow-hidden rounded-sm border px-3 py-2 text-xs leading-relaxed text-(--color-text) shadow-sm selectable-text ${shell ? 'border-(--accent-blue)/30 bg-(--bg-key)' : 'border-(--color-border) bg-(--color-surface)'}`}>
+          <div className={`relative min-w-0 max-w-full overflow-hidden rounded-sm border px-3 py-2 text-xs leading-relaxed text-(--color-text) shadow-sm selectable-text ${shell ? 'border-(--accent-blue)/30 bg-(--bg-key)' : 'border-(--color-border) bg-(--bg-card)'}`}>
            {/* Expand / collapse button — top-right inside bubble (compact) */}
            {needsCollapse && (
              <button
                onClick={() => setExpanded((v) => !v)}
                aria-expanded={expanded}
                title={expanded ? 'Collapse' : 'Expand'}
-               className="absolute top-1 right-1 flex h-4 w-4 shrink-0 items-center justify-center rounded-md bg-(--bg-key) text-(--color-text-2) transition-all duration-150 hover:text-(--color-text) active:scale-90"
+               className="absolute top-1 right-1 flex h-4 w-4 shrink-0 items-center justify-center rounded-sm bg-(--bg-key) text-(--color-text-2) transition-all duration-150 hover:text-(--color-text) active:scale-90"
              >
                {expanded ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
              </button>
@@ -183,7 +183,7 @@ function UserBubble({ content, timestamp, attachments, onRevert, modelId, shell 
                 className="pointer-events-none absolute inset-x-0 bottom-0 backdrop-blur-[1px]"
                style={{
                  height: '1.9rem',
-                 background: 'linear-gradient(to bottom, transparent 0%, var(--color-surface) 90%)',
+                 background: 'linear-gradient(to bottom, transparent 0%, var(--bg-card) 90%)',
                }}
              />
            )}
@@ -200,7 +200,7 @@ function UserBubble({ content, timestamp, attachments, onRevert, modelId, shell 
               {onRevert && (
                 <button
                   onClick={onRevert}
-                  className="rounded p-0.5 text-(--color-text-muted) transition-colors hover:text-(--color-text-2)"
+                  className="rounded-xs p-0.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
                   aria-label="Revert latest message"
                   title="Revert latest message"
                 >
@@ -209,7 +209,7 @@ function UserBubble({ content, timestamp, attachments, onRevert, modelId, shell 
               )}
               <button
                 onClick={handleCopy}
-                className="rounded p-0.5 text-(--color-text-muted) transition-colors hover:text-(--color-text-2)"
+                className="rounded-xs p-0.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
                aria-label="Copy message"
                title="Copy"
              >
@@ -264,17 +264,13 @@ function BlockRenderer({ block, isStreaming, sessionId, onRevert, latestMCPAppBl
     case 'provider_status': {
       const status = block.extra?.status
       const model = block.extra?.model
-      const primary = block.extra?.primary
-      const fallback = block.extra?.fallback
       const attempt = block.extra?.attempt
       const maxAttempts = block.extra?.max_attempts
       const delay = block.extra?.delay_seconds
       const errorType = block.extra?.error_type
       const statusCode = block.extra?.status_code
       let message = 'Provider status updated.'
-      if (status === 'fallback') {
-        message = `Switching model from ${String(primary ?? 'primary')} to ${String(fallback ?? 'fallback')}.`
-      } else if (status === 'retrying') {
+      if (status === 'retrying') {
         const delayText = typeof delay === 'number' ? ` Waiting ${delay.toFixed(1)}s.` : ''
         const errorText = errorType ? ` after ${String(errorType)}${statusCode ? ` ${String(statusCode)}` : ''}` : ''
         message = `Retrying ${String(model ?? 'model')} (${String(attempt ?? '?')}/${String(maxAttempts ?? '?')})${errorText}.${delayText}`
@@ -282,7 +278,7 @@ function BlockRenderer({ block, isStreaming, sessionId, onRevert, latestMCPAppBl
         const errorText = errorType ? ` after ${String(errorType)}${statusCode ? ` ${String(statusCode)}` : ''}` : ''
         message = `${String(model ?? 'Model')} exhausted retry attempts${errorText}.`
       }
-      return <p className="rounded-md border border-(--color-border) bg-(--bg-muted) px-3 py-2 text-xs text-(--color-text-muted)">{message}</p>
+      return <p className="rounded-sm border border-(--color-border) bg-(--bg-card) px-3 py-2 text-xs text-(--color-text-muted)">{message}</p>
     }
     case 'tool': {
       const mcpApp = (block.extra as { mcp_app?: unknown } | undefined)?.mcp_app
@@ -450,16 +446,16 @@ export function AgentPane({
 
   return (
     <div
-      className={`flex h-full flex-col overflow-hidden rounded-lg border bg-(--bg-page) transition-all duration-150 ${borderClass}`}
+      className={`flex h-full flex-col overflow-hidden rounded-sm border bg-(--bg-page) transition-colors duration-150 ${borderClass}`}
     >
       {/* Header */}
-      <div className={`flex items-center gap-2 border-b px-3 py-2.5 ${headerAccent}`}>
+      <div className={`flex items-center gap-2 border-b bg-(--bg-sidebar) px-3 py-2 ${headerAccent}`}>
          <div className="flex min-w-0 flex-1 items-center gap-1.5">
            <span className={`truncate text-xs font-semibold ${isLead ? 'text-(--color-text)' : 'text-(--color-text-2)'}`}>
              {name}
            </span>
            {isLead && (
-             <span className="shrink-0 rounded-sm bg-(--bg-key) px-1 py-0.5 text-xs text-(--color-accent)">
+             <span className="shrink-0 rounded-xs border border-(--color-border) bg-(--bg-key)/60 px-1 py-0.5 text-[10px] text-(--color-text-2)">
                lead
              </span>
            )}
@@ -488,7 +484,7 @@ export function AgentPane({
           )}
 
          {allBlocks.length > 0 && (
-            <div className="space-y-3 px-3 py-3">
+            <div className="space-y-3 px-2.5 py-2.5">
                {turnItems.map((item, k) => {
                    if (item.kind === 'user') {
                      return (
@@ -545,7 +541,7 @@ export function AgentPane({
           )}
 
           {isError && stream.lastError && (
-           <div className="mx-3 mt-3 rounded-lg border border-(--color-error) bg-(--color-error-subtle) px-3 py-2">
+           <div className="mx-3 mt-3 rounded-sm border border-(--color-error) bg-(--color-error-subtle) px-3 py-2">
              <p className="text-xs text-(--color-error)">{stream.lastError}</p>
            </div>
           )}
@@ -553,7 +549,7 @@ export function AgentPane({
       {showScrollBtn && (
         <button
           onClick={() => scrollToBottom(true)}
-          className="absolute bottom-2 left-1/2 z-10 -translate-x-1/2 rounded-full border border-(--color-border) bg-(--bg-card) p-1 text-(--color-text-muted) transition-colors hover:text-(--color-text-2)"
+          className="absolute bottom-2 left-1/2 z-10 -translate-x-1/2 rounded-sm border border-(--color-border) bg-(--bg-card) p-1 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
           aria-label="Scroll to bottom"
         >
           <ChevronDown size={16} />

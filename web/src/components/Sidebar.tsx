@@ -21,6 +21,7 @@ import { formatRelativeDate } from '@/utils/format'
 import { ThemeToggle } from './ThemeToggle'
 import { Skeleton } from './ui/skeleton'
 import { HealthDot } from './HealthDot'
+import { useSettingsStore } from '@/stores/useSettingsStore'
 import { SidebarItem } from '@/components/ui/sidebar-item'
 import {
   Dialog,
@@ -105,6 +106,7 @@ export function Sidebar({
   const mobileLongPressActions = isMobile && isTauriMobile && mobileOpen
   const prefersReducedMotion = useReducedMotion()
   const navigate = useNavigate()
+  const openSettings = useSettingsStore((s) => s.openSettings)
   const sessions = useTeamSessionsQuery('normal')
   const deleteSession = useDeleteTeamSessionMutation()
   const updateSessionTitle = useUpdateTeamSessionTitleMutation()
@@ -520,10 +522,10 @@ export function Sidebar({
                   <div className="flex items-center gap-1">
                     <button
                       type="button"
-                      onClick={() => { navigate({ to: '/settings' }); onMobileClose?.() }}
+                      onClick={() => { openSettings(); onMobileClose?.() }}
                       className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
                       aria-label="Settings"
-                      title="Settings"
+                      title="Settings (Ctrl+.)"
                     >
                       <Settings size={14} aria-hidden="true" />
                     </button>
@@ -605,7 +607,7 @@ export function Sidebar({
           <DialogFooter className="flex-col items-stretch gap-2 p-3 sm:flex-col">
             <Button
               type="button"
-              variant="outline"
+              variant="ghost"
               className="justify-start"
               onClick={() => {
                 const session = mobileSessionActions
@@ -618,8 +620,8 @@ export function Sidebar({
             </Button>
             <Button
               type="button"
-              variant="outline"
-              className="justify-start text-(--color-error)"
+              variant="danger-subtle"
+              className="justify-start"
               onClick={() => {
                 const session = mobileSessionActions
                 setMobileSessionActions(null)
@@ -643,10 +645,10 @@ export function Sidebar({
              </DialogDescription>
            </DialogHeader>
             <DialogFooter className="p-3">
-              <Button variant="outline" onClick={() => setDeleteTarget(null)}>
+              <Button variant="default" onClick={() => setDeleteTarget(null)}>
                 Cancel
               </Button>
-             <Button variant="destructive" onClick={confirmDelete}>
+             <Button variant="danger" onClick={confirmDelete}>
                Delete
              </Button>
            </DialogFooter>
@@ -675,7 +677,7 @@ export function Sidebar({
                )}
              </div>
              <DialogFooter className="p-3">
-               <Button type="button" variant="outline" onClick={() => setEditTarget(null)}>
+               <Button type="button" variant="default" onClick={() => setEditTarget(null)}>
                  Cancel
                </Button>
                <Button type="submit" disabled={!editTitle.trim() || updateSessionTitle.isPending}>

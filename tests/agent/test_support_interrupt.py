@@ -168,8 +168,6 @@ async def test_interruptible_stream_stops_mid_stream():
         tool_defs=[],
         primary_provider=provider,
         primary_label="mock",
-        fallback_provider=None,
-        fallback_label="",
         agent_name="test-agent",
         agent_id="test-id",
     )
@@ -201,8 +199,6 @@ async def test_non_interruptible_stream_completes_despite_interrupt():
         tool_defs=[],
         primary_provider=provider,
         primary_label="mock",
-        fallback_provider=None,
-        fallback_label="",
         agent_name="test-agent",
         agent_id="test-id",
     )
@@ -229,8 +225,6 @@ async def test_interruptible_provider_pre_set_event_stops_immediately():
         tool_defs=[],
         primary_provider=provider,
         primary_label="mock",
-        fallback_provider=None,
-        fallback_label="",
         agent_name="test-agent",
         agent_id="test-id",
     )

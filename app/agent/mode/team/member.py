@@ -828,6 +828,9 @@ class TeamMemberBase(abc.ABC):
                     session_id=self.session_id,
                     agent_name=self.name,
                     db_factory=self.db_factory,
+                    support_interrupt=(
+                        runtime_provider or self.agent.llm_provider
+                    ).support_interrupt,
                 )
             )
         if self._team.mode == "coding":

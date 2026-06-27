@@ -42,10 +42,12 @@ class QueuedMessageInjectionHook(BaseAgentHook):
         session_id: str,
         agent_name: str,
         db_factory: DbFactory,
+        support_interrupt: bool = True,
     ) -> None:
         self._session_id = session_id
         self._agent_name = agent_name
         self._db_factory = db_factory
+        self._support_interrupt = support_interrupt
 
     async def before_model(
         self,
@@ -53,6 +55,9 @@ class QueuedMessageInjectionHook(BaseAgentHook):
         state: "AgentState",
         request: "ModelRequest",
     ) -> "ModelRequest | None":
+        if not self._support_interrupt:
+            return None
+
         try:
             session_uuid = UUID(self._session_id)
         except ValueError:

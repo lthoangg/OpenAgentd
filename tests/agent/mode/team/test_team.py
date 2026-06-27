@@ -423,6 +423,22 @@ class TestAgentTeamDoneDetection:
 
         team._activate_queued_user_messages.assert_not_awaited()
 
+    async def test_activates_queue_after_lead_done_when_provider_disables_interrupt(
+        self, basic_team
+    ):
+        team = basic_team
+        team.lead.agent.llm_provider.support_interrupt = False
+        team._has_active_turn = True
+        team.lead.session_id = str(uuid.uuid7())
+        team.lead.state = "idle"
+        team._activate_queued_user_messages = AsyncMock(return_value=True)
+
+        await team._try_activate_queued_after_lead_turn()
+
+        team._activate_queued_user_messages.assert_awaited_once_with(
+            team.lead.session_id
+        )
+
     async def test_does_not_activate_queue_without_active_turn(self, basic_team):
         """No queued handoff should happen after cancellation/done reset the turn."""
         team = basic_team

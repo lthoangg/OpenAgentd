@@ -77,6 +77,37 @@ async def test_invalid_session_id_returns_none(db_factory):
 
 
 @pytest.mark.asyncio
+async def test_support_interrupt_false_ignores_queued_messages(db_factory):
+    async with db_factory() as db:
+        chat = await create_chat_session(db, title="t")
+        await save_queued_user_message(db, chat.id, "wait until next turn")
+        await db.commit()
+
+    hook = QueuedMessageInjectionHook(
+        session_id=str(chat.id),
+        agent_name="lead",
+        db_factory=db_factory,
+        support_interrupt=False,
+    )
+
+    with patch(
+        "app.services.memory_stream_store.push_event", new_callable=AsyncMock
+    ) as push:
+        state = _state()
+        result = await hook.before_model(_ctx(str(chat.id)), state, _request())
+
+    assert result is None
+    assert state.messages == []
+    push.assert_not_awaited()
+
+    async with db_factory() as db:
+        visible = await get_messages(db, chat.id)
+    assert len(visible) == 1
+    assert visible[0].extra is not None
+    assert visible[0].extra.get("queue_status") == "queued"
+
+
+@pytest.mark.asyncio
 async def test_queued_messages_are_drained_and_appended(db_factory):
     async with db_factory() as db:
         chat = await create_chat_session(db, title="t")

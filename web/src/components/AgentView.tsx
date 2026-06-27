@@ -156,7 +156,13 @@ function BlockRenderer({ block, isStreaming, sessionId, onRevert, latestMCPAppBl
 
 export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError, isContinuing = false, onContinue, emptyState, onMentionFileOpen }: AgentViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
   const pinnedRef = useRef(true)
+  // Timestamp of the last programmatic scroll. The scroll listener uses it to
+  // ignore the scroll events our own ``scrollToBottom`` generates — otherwise
+  // the auto-stick scroll during streaming can look like a user scroll and
+  // spuriously detach.
+  const programmaticScrollAtRef = useRef(0)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
   const [renderedTurnCount, setRenderedTurnCount] = useState(INITIAL_RENDERED_TURNS)
   const sessionId = useTeamStore((s) => s.sessionId) ?? undefined
@@ -203,6 +209,9 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
     if (!el) return
     pinnedRef.current = true
     setShowScrollBtn(false)
+    // Mark this as a programmatic scroll so the scroll listener doesn't mistake
+    // the resulting events for a user gesture and detach.
+    programmaticScrollAtRef.current = performance.now()
     if (smooth) {
       el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
     } else {
@@ -231,7 +240,16 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
     }
     const onScroll = () => {
       const nextScrollTop = el.scrollTop
-      if (nextScrollTop < lastScrollTop - USER_SCROLL_DETACH_DELTA) {
+      // Ignore scroll events caused by our own ``scrollToBottom`` (auto-stick
+      // during streaming): those move scrollTop programmatically and must not
+      // be read as the user scrolling up. Without this guard, fast streaming —
+      // where content height grows and we re-pin every frame — would
+      // intermittently look like an upward scroll and detach mid-stream, which
+      // is the "scroll to bottom doesn't keep up" bug. 150ms covers the gap
+      // between setting scrollTop and the resulting scroll event(s) firing.
+      const sinceProgrammatic = performance.now() - programmaticScrollAtRef.current
+      const isProgrammatic = sinceProgrammatic < 150
+      if (!isProgrammatic && nextScrollTop < lastScrollTop - USER_SCROLL_DETACH_DELTA) {
         detachFromBottom()
       }
       lastScrollTop = nextScrollTop
@@ -294,35 +312,36 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
     if (scrollRef.current) scrollRef.current.scrollTop = 0
   }, [isEmpty])
 
-  // Keep the latest message visible when the scrollport *resizes* — the soft
-  // keyboard opening (the shell binds its height to the visual viewport),
-  // shell-mode toggling the composer height, or an orientation change all
-  // shrink/grow this container. Without re-pinning, focusing the input would
-  // push the newest message up behind the keyboard. We only re-pin when the
-  // user was already at the bottom, so reading scrollback is never yanked.
+  // Keep the latest message glued to the bottom whenever the content grows or
+  // the scrollport resizes, as long as the user is pinned. This is the single
+  // robust auto-stick mechanism and it fixes the streaming case the React
+  // effect alone could not: the effect runs right after commit, but markdown
+  // reflow, syntax highlighting, and images settle their final height a frame
+  // or two *later*, so a scrollTop set inside the effect lands a few hundred
+  // pixels short and the view trails the stream. A ResizeObserver on the
+  // *content* element fires on every one of those late height changes (and on
+  // scrollport resizes: soft keyboard, shell-mode toggle, orientation), so we
+  // re-stick after the layout has actually settled. Pinned-only, so reading
+  // scrollback is never yanked.
   useEffect(() => {
     const el = scrollRef.current
+    const content = contentRef.current
     if (!el || typeof ResizeObserver === 'undefined') return
-    let frame = 0
-    const ro = new ResizeObserver(() => {
+    const stick = () => {
       if (!pinnedRef.current) return
-      // Defer one frame so the new layout has settled before we measure.
-      if (frame) cancelAnimationFrame(frame)
-      frame = requestAnimationFrame(() => {
-        el.scrollTop = el.scrollHeight
-      })
-    })
-    ro.observe(el)
-    return () => {
-      if (frame) cancelAnimationFrame(frame)
-      ro.disconnect()
+      programmaticScrollAtRef.current = performance.now()
+      el.scrollTop = el.scrollHeight
     }
+    const ro = new ResizeObserver(stick)
+    if (content) ro.observe(content)
+    ro.observe(el)
+    return () => ro.disconnect()
   }, [])
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
     <div ref={scrollRef} className="flex-1 overflow-y-auto">
-      <div className="mx-auto max-w-3xl px-3 py-5 sm:px-4 sm:py-6">
+      <div ref={contentRef} className="mx-auto max-w-3xl px-3 py-5 sm:px-4 sm:py-6">
         {isEmpty && (
            emptyState ?? (
              <div className="flex select-none flex-col items-center justify-center gap-4 py-16">

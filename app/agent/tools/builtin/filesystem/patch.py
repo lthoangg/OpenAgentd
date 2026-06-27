@@ -22,13 +22,39 @@ _DESCRIPTION = (
     "and move operations."
 )
 
+_PATCH_TEXT_DESCRIPTION = """\
+The full patch text. Must start with '*** Begin Patch' and end with '*** End Patch'.
+
+Each file section starts with one of:
+  *** Add File: <path>      — create a new file; every content line starts with +
+  *** Update File: <path>   — patch an existing file; optionally followed by:
+      *** Move to: <path>   — rename/move the file after patching
+  *** Delete File: <path>   — remove a file; no content follows
+
+Update hunks start with @@ and use +/- prefixes (space = context):
+  @@
+  -old line
+  +new line
+   context line
+
+Example:
+*** Begin Patch
+*** Add File: hello.txt
++Hello world
+*** Update File: src/app.py
+*** Move to: src/main.py
+@@
+-print("Hi")
++print("Hello, world!")
+*** Delete File: obsolete.txt
+*** End Patch\
+"""
+
 
 class PatchArgs(BaseModel):
     """Arguments for the patch tool."""
 
-    patch_text: str = Field(
-        description="The full patch text describing all file changes to apply."
-    )
+    patch_text: str = Field(description=_PATCH_TEXT_DESCRIPTION)
 
     @field_validator("patch_text")
     @classmethod

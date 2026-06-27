@@ -5,6 +5,7 @@ import pytest
 from app.agent.errors import ToolExecutionError
 from app.agent.sandbox import SandboxConfig, set_sandbox
 from app.agent.tools.builtin.filesystem import patch_file
+from app.agent.tools.builtin.filesystem.patch import PatchArgs, _parse_patch
 
 
 @pytest.fixture
@@ -130,3 +131,52 @@ async def test_patch_rejects_ambiguous_update(sandbox_workspace):
         )
 
     assert target.read_text(encoding="utf-8") == "same\nsame\n"
+
+
+# ── schema description ────────────────────────────────────────────────────────
+
+
+def test_patch_args_schema_description_contains_format_keywords():
+    """patch_text field description must include all format keywords the LLM needs."""
+    desc = PatchArgs.model_json_schema()["properties"]["patch_text"]["description"]
+    for keyword in (
+        "*** Begin Patch",
+        "*** End Patch",
+        "*** Add File:",
+        "*** Update File:",
+        "*** Delete File:",
+        "*** Move to:",
+        "@@",
+    ):
+        assert keyword in desc, (
+            f"Missing keyword in patch_text description: {keyword!r}"
+        )
+
+
+def test_patch_args_schema_example_is_valid():
+    """The embedded example in _PATCH_TEXT_DESCRIPTION must parse without errors."""
+    from app.agent.tools.builtin.filesystem.patch import _PATCH_TEXT_DESCRIPTION
+
+    # Extract the example block (everything after 'Example:\n')
+    example_marker = "Example:\n"
+    idx = _PATCH_TEXT_DESCRIPTION.index(example_marker) + len(example_marker)
+    example = _PATCH_TEXT_DESCRIPTION[idx:].strip()
+    patches = _parse_patch(example)
+    kinds = {p.kind for p in patches}
+    assert "add" in kinds
+    assert "update" in kinds
+    assert "delete" in kinds
+
+
+# ── parser edge cases ─────────────────────────────────────────────────────────
+
+
+def test_parse_patch_rejects_missing_envelope():
+    with pytest.raises(ValueError, match="Begin Patch"):
+        _parse_patch("*** Add File: foo.txt\n+hello")
+
+
+def test_parse_patch_rejects_unknown_star_header():
+    """'*** Add <path>' without 'File:' must raise — not silently skip."""
+    with pytest.raises(ValueError, match="file operation header"):
+        _parse_patch("*** Begin Patch\n*** Add foo.txt\n+hello\n*** End Patch")

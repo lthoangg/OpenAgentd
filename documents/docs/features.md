@@ -300,7 +300,11 @@ team against it. Deeper doc: [`web/coding-sessions.md`](./web/coding-sessions.md
 - **`/init` scaffolds AGENTS.md** `[v1.9.0]` — writes AGENTS.md files at the
   repo root and meaningful subfolders from the workspace.
 - **Inline patch tool for multi-file edits** `[v1.5.0]` — structured patches
-  with multiple hunks, real line numbers, collapsible previews.
+  with multiple hunks, real line numbers, collapsible previews. The `patch`
+  tool accepts a `*** Begin Patch` / `*** End Patch` envelope with
+  `*** Add File:`, `*** Update File:`, `*** Delete File:`, and `*** Move to:`
+  operations; the full format spec is embedded in the tool's schema so the
+  LLM always has it in context.
 - **Workspace status card** `[v1.18.0]` — empty coding sessions show the
   workspace path, branch, dirty state, last commit instead of the old
   agent-selection fallback.

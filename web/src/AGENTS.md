@@ -34,6 +34,35 @@ bunx tsc -p tsconfig.test.json --noEmit
 bun run test
 ```
 
+## Mobile touch gestures
+
+Touch/swipe behaviour is centralised so drawers can never conflict:
+
+- `hooks/use-edge-swipe.ts` — single controller for all mobile drawers
+  (left = sidebar, right = chat-actions / coding-workspace panel).
+  Guarantees **one drawer open at a time**, supports swipe-to-close,
+  emits a live `drag` descriptor for finger-tracking, and commits on a
+  fast fling (velocity) or fixed distance. Active only on Tauri
+  iOS/Android shells.
+- `hooks/use-history-swipe-navigation.ts` — desktop-Tauri back/forward
+  edge swipes. Mutually exclusive with `use-edge-swipe` (gated by OS).
+- Opt an element out of edge swipe with `data-swipe-ignore` (e.g.
+  toasts, carousels) so its own drag wins.
+- `lib/haptics.ts` — `softHapticFeedback` / `mediumHapticFeedback`, plus
+  the semantic `haptic('tick'|'select'|'commit')` wrapper. No-ops off a
+  touch shell; never make UX depend on haptics succeeding.
+- Drag-follow drawers (`Sidebar`, `CodingSidebar`, `MobileChatActions`,
+  `CodingWorkspacePanel`) accept a `mobileDragOffset`/`dragOffset` prop:
+  apply it as the `x` transform with `transition: { duration: 0 }` while
+  dragging, and fall back to the spring when it's `null`.
+- `ImageLightbox` supports an optional `images[]` + `index` gallery with
+  horizontal swipe, ←/→ keys, and chevrons; single-image callers are
+  unaffected. Axis-lock keeps horizontal (navigate) and vertical
+  (swipe-to-close) gestures from fighting.
+
+When adding a new mobile panel, route it through `use-edge-swipe` rather
+than hand-rolling `onTouch*` handlers.
+
 ## Gotchas
 
 - Use static ESM imports and `@/` aliases.

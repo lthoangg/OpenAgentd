@@ -7,6 +7,8 @@ import { dotClassFor } from './agentDots'
 export interface MobileChatActionsProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** Live edge-swipe drag offset (px, positive = pushed off-screen right). */
+  dragOffset?: number | null
   mode: 'normal' | 'coding'
   workspace: string | null
   activeAgent: string | null
@@ -19,6 +21,7 @@ export interface MobileChatActionsProps {
 export function MobileChatActions({
   open,
   onOpenChange,
+  dragOffset = null,
   mode,
   workspace,
   activeAgent,
@@ -41,14 +44,14 @@ export function MobileChatActions({
       </button>
 
       <AnimatePresence>
-        {open && (
+        {(open || dragOffset !== null) && (
           <>
             <motion.div
               key="mobile-actions-backdrop"
               initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
+              animate={{ opacity: dragOffset !== null ? Math.max(0, Math.min(1, 1 - dragOffset / 280)) : 1 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.18 }}
+              transition={{ duration: dragOffset !== null ? 0 : 0.18 }}
               className="mobile-safe-top fixed inset-x-0 bottom-0 z-30 bg-black/60 md:hidden"
               aria-hidden="true"
               onClick={() => onOpenChange(false)}
@@ -56,9 +59,9 @@ export function MobileChatActions({
             <motion.aside
               key="mobile-actions-drawer"
               initial={{ x: 280 }}
-              animate={{ x: 0 }}
+              animate={{ x: dragOffset ?? 0 }}
               exit={{ x: 280 }}
-              transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+              transition={dragOffset !== null ? { duration: 0 } : { duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
               className="mobile-safe-top fixed bottom-0 right-0 z-40 flex w-[min(272px,calc(100vw-2rem))] flex-col overflow-hidden border-l border-(--color-border) bg-(--bg-page) shadow-xl md:hidden"
               role="dialog"
               aria-modal="true"

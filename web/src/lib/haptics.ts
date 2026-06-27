@@ -49,3 +49,15 @@ export function mediumHapticFeedback(): void {
     if (!ok) webVibrate(20)
   })
 }
+
+/**
+ * Semantic wrapper for gesture code that thinks in intents rather than
+ * impact strengths.
+ *
+ *   - ``tick`` / ``select`` → soft impact (drawer snap, gallery page)
+ *   - ``commit``            → medium impact (deliberate/destructive)
+ */
+export function haptic(pattern: 'tick' | 'select' | 'commit' = 'tick'): void {
+  if (pattern === 'commit') mediumHapticFeedback()
+  else softHapticFeedback()
+}

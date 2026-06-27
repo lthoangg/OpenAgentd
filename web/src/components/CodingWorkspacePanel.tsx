@@ -210,6 +210,7 @@ export function CodingWorkspacePanel({
   open,
   onClose,
   mobile = false,
+  mobileDragOffset = null,
   selectedFilePath = null,
   selectedFileOpenKey = 0,
   onFileSelect,
@@ -220,6 +221,8 @@ export function CodingWorkspacePanel({
   initialTab?: 'files' | 'changed'
   onClose: () => void
   mobile?: boolean
+  /** Mobile only: live edge-swipe drag offset (px) for finger-tracking. */
+  mobileDragOffset?: number | null
   selectedFilePath?: string | null
   selectedFileOpenKey?: number
   onFileSelect?: (file: WorkspaceFileInfo | null) => void
@@ -455,9 +458,15 @@ export function CodingWorkspacePanel({
   return (
     <motion.aside
       initial={prefersReducedMotion ? { opacity: 0 } : mobile ? { opacity: 0 } : { width: 0 }}
-      animate={prefersReducedMotion ? { opacity: 1 } : mobile ? { opacity: 1 } : { width: resizable.width }}
+      animate={
+        prefersReducedMotion
+          ? { opacity: 1 }
+          : mobile
+            ? (mobileDragOffset !== null ? { opacity: 1, x: mobileDragOffset } : { opacity: 1, x: 0 })
+            : { width: resizable.width }
+      }
       exit={prefersReducedMotion ? { opacity: 0 } : mobile ? { opacity: 0 } : { width: 0 }}
-      transition={{ duration: resizable.isResizing || prefersReducedMotion ? 0.01 : 0.22, ease: [0.4, 0, 0.2, 1] }}
+      transition={mobile && mobileDragOffset !== null ? { duration: 0 } : { duration: resizable.isResizing || prefersReducedMotion ? 0.01 : 0.22, ease: [0.4, 0, 0.2, 1] }}
       className={cn(
         'fixed bottom-0 right-0 z-40 min-h-0 w-full overflow-hidden border-l border-(--color-border) bg-(--bg-page) shadow-xl md:relative md:inset-y-auto md:right-auto md:z-auto md:w-auto md:shrink-0 md:shadow-none',
         mobile ? 'mobile-safe-top max-w-none' : 'h-full',

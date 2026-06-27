@@ -111,3 +111,41 @@ describe('mediumHapticFeedback', () => {
     expect(vibrateCalls).toEqual([20])
   })
 })
+
+describe('haptic (semantic wrapper)', () => {
+  it("maps 'tick' to a soft impact", async () => {
+    const { haptic } = await haptics()
+
+    haptic('tick')
+    await flush()
+
+    expect(impactCalls).toEqual(['soft'])
+  })
+
+  it("maps 'select' to a soft impact", async () => {
+    const { haptic } = await haptics()
+
+    haptic('select')
+    await flush()
+
+    expect(impactCalls).toEqual(['soft'])
+  })
+
+  it("maps 'commit' to a medium impact", async () => {
+    const { haptic } = await haptics()
+
+    haptic('commit')
+    await flush()
+
+    expect(impactCalls).toEqual(['medium'])
+  })
+
+  it('defaults to a soft tick when called with no argument', async () => {
+    const { haptic } = await haptics()
+
+    haptic()
+    await flush()
+
+    expect(impactCalls).toEqual(['soft'])
+  })
+})

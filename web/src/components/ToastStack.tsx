@@ -76,6 +76,7 @@ function ToastItem({ t, dismiss }: ToastItemProps) {
       dragMomentum={false}
       onDragEnd={handleDragEnd}
       whileDrag={{ cursor: 'grabbing' }}
+      data-swipe-ignore
       className="pointer-events-auto flex cursor-grab items-start gap-3 rounded-sm border border-(--color-border) bg-(--bg-card) p-3 shadow-md select-none"
       role="status"
       aria-live="polite"

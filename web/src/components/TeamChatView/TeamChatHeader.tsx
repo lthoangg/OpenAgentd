@@ -38,6 +38,7 @@ interface TeamChatHeaderProps {
   onToggleAgentCapabilities: () => void
   showMobileActions: boolean
   setShowMobileActions: Dispatch<SetStateAction<boolean>>
+  mobileActionsDragOffset?: number | null
   agentNames: string[]
   agentStreams: Record<string, AgentStream>
   onSelectAgent: (agent: string) => void
@@ -73,6 +74,7 @@ export function TeamChatHeader({
   onToggleAgentCapabilities,
   showMobileActions,
   setShowMobileActions,
+  mobileActionsDragOffset = null,
   agentNames,
   agentStreams,
   onSelectAgent,
@@ -211,6 +213,7 @@ export function TeamChatHeader({
             <MobileChatActions
               open={showMobileActions}
               onOpenChange={setShowMobileActions}
+              dragOffset={mobileActionsDragOffset}
               mode={mode}
               workspace={workspace}
               activeAgent={activeAgent}

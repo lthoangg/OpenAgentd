@@ -115,6 +115,8 @@ interface CodingSidebarProps {
   desktopCollapsed?: boolean
   /** Mobile only: whether the overlay drawer is open. */
   mobileOpen?: boolean
+  /** Mobile only: live edge-swipe drag offset (px) for finger-tracking. */
+  mobileDragOffset?: number | null
   /** Mobile only: called when the drawer should close (backdrop tap, navigation). */
   onMobileClose?: () => void
 }
@@ -127,6 +129,7 @@ export function CodingSidebar({
   onCommandPalette,
   desktopCollapsed = false,
   mobileOpen = false,
+  mobileDragOffset = null,
   onMobileClose,
 }: CodingSidebarProps) {
   const isMobile = useIsMobile()
@@ -552,15 +555,15 @@ export function CodingSidebar({
 
   return (
     <>
-      {/* Mobile backdrop — closes the drawer on tap. */}
+      {/* Mobile backdrop — closes the drawer on tap. Fades with the drag. */}
       <AnimatePresence>
-        {isMobile && mobileOpen && (
+        {isMobile && (mobileOpen || mobileDragOffset !== null) && (
           <motion.div
             key="coding-sidebar-backdrop"
             initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
+            animate={{ opacity: mobileDragOffset !== null ? Math.max(0, Math.min(1, 1 + mobileDragOffset / 280)) : 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: prefersReducedMotion ? 0.01 : 0.2 }}
+            transition={{ duration: mobileDragOffset !== null ? 0 : (prefersReducedMotion ? 0.01 : 0.2) }}
             className="mobile-safe-top fixed inset-x-0 bottom-0 z-30 bg-black/60 md:hidden"
             aria-hidden="true"
             onClick={onMobileClose}
@@ -572,10 +575,14 @@ export function CodingSidebar({
       initial={false}
       animate={
         isMobile
-          ? { x: mobileOpen ? 0 : -280, width: 'min(272px, calc(100vw - 2rem))' }
+          ? { x: mobileDragOffset ?? (mobileOpen ? 0 : -280), width: 'min(272px, calc(100vw - 2rem))' }
           : { width: desktopCollapsed ? 0 : resizable.width }
       }
-      transition={{ duration: resizable.isResizing || prefersReducedMotion ? 0.01 : 0.22, ease: [0.4, 0, 0.2, 1] }}
+      transition={
+        mobileDragOffset !== null
+          ? { duration: 0 }
+          : { duration: resizable.isResizing || prefersReducedMotion ? 0.01 : 0.22, ease: [0.4, 0, 0.2, 1] }
+      }
       className={
         isMobile
           ? 'mobile-safe-top fixed bottom-0 left-0 z-40 flex w-[min(272px,calc(100vw-2rem))] shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page) shadow-xl'

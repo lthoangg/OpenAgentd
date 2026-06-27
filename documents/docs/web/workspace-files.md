@@ -191,9 +191,7 @@ with an opencode-style tab strip:
 - **File tabs** open inside the dock. They render the same read-only preview
   content as the standalone file viewer, including the touch-friendly
   **File / Diff** toggle and scoped file diffs.
-- **+ file search** opens a command-palette-style overlay for searching files
-  from `GET /api/team/workspace/files/list`. Selecting a result opens it as a
-  dock tab.
+- **+** opens the **Command Palette** (`Ctrl+P`) — the unified entry point for file search and commands. See [coding-sessions.md](./coding-sessions.md#workspace-dock-file-search-and-review).
 
 When the workspace dock is open, file content stays inside the dock instead of
 opening an additional right-side file viewer. The standalone

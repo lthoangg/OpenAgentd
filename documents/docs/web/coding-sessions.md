@@ -36,7 +36,8 @@ updated: 2026-06-24
 
 - The `+` button beside the dock tabs opens the **Command Palette** (`Ctrl+P`), which is the single unified entry point for both file search and commands in coding mode. The old inline file-search dialog has been removed.
 - File preview tabs only show current file content. The old File/Diff toggle is removed.
-- The Changes tab keeps git review in place: each changed file expands/collapses inline and shows a diff with hunk headers and standard context lines (3 lines of prefix/suffix context). File and diff content wrap long lines so users only scroll vertically.
+- The Changes tab keeps git review in place: each changed file expands/collapses inline. Diff hunk separators show `N lines unchanged` (italic, de-emphasised) instead of the raw `@@ … @@` header, reducing visual noise. File and diff content wrap long lines so users only scroll vertically.
+- On desktop, each changed-file row shows an **open file** icon (ExternalLink) on hover, next to the filename. Clicking it opens the file as a dock tab (hidden for deleted files). If the file no longer exists on disk, the preview shows "File no longer exists" instead of an HTTP 404 error.
 - **Git UI state persistence:** The state of the Git feature in the workspace dock (the selected sub-tab like Changes/Commits/Tree, the "All Branches" toggle, which commits are expanded, and which files/diffs are expanded) is persisted per workspace in the browser's local storage. This preserves the developer's exact scroll position and review context when closing/reopening the dock or switching between different workspaces.
 
 ## Running and reload states

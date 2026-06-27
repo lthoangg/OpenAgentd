@@ -207,7 +207,6 @@ function renderGraphPrefix(prefix: string) {
 export function CodingWorkspacePanel({
   workspace,
   open,
-  onClose,
   mobile = false,
   mobileDragOffset = null,
   selectedFilePath = null,
@@ -218,7 +217,13 @@ export function CodingWorkspacePanel({
   workspace: string
   open: boolean
   initialTab?: 'files' | 'changed'
-  onClose: () => void
+  /**
+   * Closing the panel is owned by the parent (mobile edge-swipe-to-close and
+   * the topbar Files toggle), so the panel no longer renders its own close
+   * button. Kept optional for API compatibility with callers that still pass
+   * it.
+   */
+  onClose?: () => void
   mobile?: boolean
   /** Mobile only: live edge-swipe drag offset (px) for finger-tracking. */
   mobileDragOffset?: number | null
@@ -550,19 +555,6 @@ export function CodingWorkspacePanel({
           >
             <Plus size={14} aria-hidden="true" />
           </button>
-          {mobile && (
-            // Full-width on mobile means there's no backdrop to tap, so keep
-            // an explicit close affordance (swipe-to-close also works).
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text)"
-              aria-label="Close workspace panel"
-              title="Close workspace panel"
-            >
-              <X size={16} aria-hidden="true" />
-            </button>
-          )}
         </div>
         {fileSearchOpen && (
           <div

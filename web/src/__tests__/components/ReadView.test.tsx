@@ -67,7 +67,7 @@ describe("ReadView — no redundant inner border-radius (bg-bleed regression)", 
     expect(contentArea!.className).not.toContain("rounded-b-sm")
   })
 
-  it("header bar has no rounded-t-sm", () => {
+  it("header bar has no sticky positioning or rounded-t-sm", () => {
     render(
       <ReadView
         args={JSON.stringify({ path: "src/bar.ts" })}
@@ -75,10 +75,12 @@ describe("ReadView — no redundant inner border-radius (bg-bleed regression)", 
       />,
     )
 
-    // The sticky header must not add its own rounded-t-sm — the parent's
-    // overflow:hidden takes care of top-corner clipping.
-    const header = document.querySelector(".sticky.top-0")
+    // The parent already clips the header; avoid sticky positioning here because
+    // Tauri WebViews can paint the body before the sticky header text settles.
+    const header = screen.getByRole("button", { name: "Collapse read result" }).parentElement
     expect(header).not.toBeNull()
+    expect(header!.className).not.toContain("sticky")
+    expect(header!.className).not.toContain("top-0")
     expect(header!.className).not.toContain("rounded-t-sm")
   })
 })

@@ -52,6 +52,20 @@ describe("DiffView", () => {
     expect(gutterClassName).toContain('bg-inherit')
   })
 
+  it("does not make the file header sticky", () => {
+    const args = JSON.stringify({
+      path: "src/main.py",
+      old_string: "old line",
+      new_string: "new line",
+    })
+
+    render(<DiffView toolName="edit" args={args} />)
+
+    const headerClassName = screen.getByRole("button", { name: "Collapse diff for src/main.py" }).className
+    expect(headerClassName).not.toContain('sticky')
+    expect(headerClassName).not.toContain('top-0')
+  })
+
   it("toggles edit diff when no outer collapse handler is provided", () => {
     const args = JSON.stringify({
       path: "src/main.py",

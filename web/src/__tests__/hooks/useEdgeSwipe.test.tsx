@@ -58,7 +58,7 @@ describe('useEdgeSwipe', () => {
     )
     const el = getByTestId('surface')
     fireEvent.touchStart(el, touchEvt(10, 200))
-    fireEvent.touchMove(el, touchEvt(90, 205))
+    fireEvent.touchMove(el, touchEvt(120, 205))
 
     expect(onLeft).toHaveBeenCalledTimes(1)
     expect(onRight).not.toHaveBeenCalled()
@@ -74,7 +74,7 @@ describe('useEdgeSwipe', () => {
     )
     const el = getByTestId('surface')
     fireEvent.touchStart(el, touchEvt(392, 200))
-    fireEvent.touchMove(el, touchEvt(300, 205))
+    fireEvent.touchMove(el, touchEvt(280, 205))
 
     expect(onRight).toHaveBeenCalledTimes(1)
     expect(onLeft).not.toHaveBeenCalled()
@@ -106,7 +106,7 @@ describe('useEdgeSwipe', () => {
     const el = getByTestId('surface')
     // Swipe leftward (back toward the left edge) to dismiss.
     fireEvent.touchStart(el, touchEvt(200, 200))
-    fireEvent.touchMove(el, touchEvt(100, 205))
+    fireEvent.touchMove(el, touchEvt(80, 205))
 
     expect(onClose).toHaveBeenCalledTimes(1)
     expect(onLeft).not.toHaveBeenCalled()
@@ -142,8 +142,6 @@ describe('useEdgeSwipe', () => {
     fireEvent.touchStart(el, touchEvt(8, 200))
     // A short move (under commit distance) should not open but should drag.
     fireEvent.touchMove(el, touchEvt(40, 202))
-    // At least one render saw a partial offset: negative (still hidden) and
-    // greater than -272 (peeking in toward open).
     expect(offsets.length).toBeGreaterThan(0)
     const last = offsets[offsets.length - 1]
     expect(last).toBeLessThan(0)

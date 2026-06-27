@@ -44,8 +44,6 @@ Touch/swipe behaviour is centralised so drawers can never conflict:
   emits a live `drag` descriptor for finger-tracking, and commits on a
   fast fling (velocity) or fixed distance. Active only on Tauri
   iOS/Android shells.
-- `hooks/use-history-swipe-navigation.ts` — desktop-Tauri back/forward
-  edge swipes. Mutually exclusive with `use-edge-swipe` (gated by OS).
 - Opt an element out of edge swipe with `data-swipe-ignore` (e.g.
   toasts, carousels) so its own drag wins.
 - `lib/haptics.ts` — `softHapticFeedback` / `mediumHapticFeedback`, plus

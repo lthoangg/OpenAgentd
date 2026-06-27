@@ -89,17 +89,15 @@ export interface EdgeSwipeDrag {
 }
 
 /** px from the screen edge that counts as an edge-start for opening. */
-const EDGE_ZONE = 24
+const EDGE_ZONE = 16
 /** px of horizontal travel required to commit a *slow* gesture. */
-const COMMIT_DISTANCE = 56
+const COMMIT_DISTANCE = 96
 /** px/ms flick speed that commits regardless of distance. */
-const FLING_VELOCITY = 0.5
+const FLING_VELOCITY = 0.8
 /** min travel (px) before a fling is allowed to commit (avoid jitter). */
-const FLING_MIN_DISTANCE = 16
-/** max vertical drift (px) before we treat the gesture as a scroll. */
-const MAX_VERTICAL_DRIFT = 40
+const FLING_MIN_DISTANCE = 32
 /** px move before we lock the axis. */
-const AXIS_LOCK_SLOP = 6
+const AXIS_LOCK_SLOP = 8
 /** default drawer width (matches CSS ``min(272px, 100vw-2rem)``). */
 const DEFAULT_DRAWER_WIDTH = 272
 
@@ -205,9 +203,9 @@ export function useEdgeSwipe({
     const now = event.timeStamp || performance.now()
 
     // Lock to horizontal on first meaningful move; bail to scroll if the
-    // gesture is dominantly vertical.
+    // gesture has vertical dominance.
     if (!state.locked) {
-      if (Math.abs(deltaY) > MAX_VERTICAL_DRIFT && Math.abs(deltaY) > Math.abs(deltaX)) {
+      if (Math.abs(deltaY) > 15 && Math.abs(deltaY) > Math.abs(deltaX) * 0.5) {
         stateRef.current = null
         clearDrag()
         return
@@ -222,10 +220,7 @@ export function useEdgeSwipe({
     const towardOpen = state.edge === 'left' ? deltaX : -deltaX
     const signed = state.intent === 'open' ? towardOpen : -towardOpen
 
-    // Velocity (px/ms) in the committing direction, EMA-smoothed. Samples
-    // closer than 4ms apart are skipped: their dt is dominated by timer
-    // quantisation and would produce wild velocity spikes (a 32px jump in
-    // a 1ms window reads as 32px/ms, ~40× a real flick).
+    // Velocity (px/ms) in the committing direction, EMA-smoothed.
     const dt = now - state.lastT
     if (dt >= 4) {
       const instX = (touch.clientX - state.lastX) / dt

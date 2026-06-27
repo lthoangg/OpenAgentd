@@ -83,7 +83,7 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   Cockpit, Coding, Command Palette, Wiki, Scheduled Tasks, Session Settings,
   key settings pages, updates, reload, config folder, and backend log; compact
   tray dropdown for status, quick navigation, reload, settings, and quit.
-- **Touch back/forward navigation** `[v1.53.1]` — desktop Tauri windows support
+- **Touch back/forward navigation** `[v1.53.1]` *(deprecated)* — desktop Tauri windows support
   edge swipes on touch/pen devices: right from the left edge goes back, left
   from the right edge goes forward, while editable fields and scroll-like
   vertical gestures are ignored.

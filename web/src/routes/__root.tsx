@@ -10,7 +10,6 @@ import { SettingsModal } from '@/components/SettingsModal'
 import { SkipLink } from '@/components/motion'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { MacTitleBar } from '@/components/MacTitleBar'
-import { useHistorySwipeNavigation } from '@/hooks/use-history-swipe-navigation'
 import { useMobileViewportGuards } from '@/hooks/use-mobile-viewport'
 import { useDesktopCommands } from '@/lib/desktop-commands'
 import { closestRestorableRoute } from '@/lib/route-restore'
@@ -18,7 +17,6 @@ import { closestRestorableRoute } from '@/lib/route-restore'
 export function Root() {
   useMobileViewportGuards()
   useDesktopCommands()
-  useHistorySwipeNavigation()
 
   // Global Ctrl+. shortcut — opens/toggles the Settings modal from any page.
   const openSettings = useSettingsStore((s) => s.openSettings)

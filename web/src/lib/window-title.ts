@@ -48,3 +48,24 @@ export async function syncDesktopWindowTitle(options: {
     // Ignore — title sync is cosmetic and must not break chat.
   }
 }
+
+/**
+ * Re-assert the macOS overlay title-bar chrome for the current window.
+ *
+ * New windows can lose the traffic-light vertical centring after the
+ * webview triggers an AppKit relayout (navigating into cockpit/coding
+ * mode). Re-applying the overlay style forces macOS to re-lay-out the
+ * standard window buttons and re-run tao's stored traffic-light inset.
+ *
+ * No-op outside the Tauri runtime; failures are swallowed because chrome
+ * realignment is cosmetic and must not break chat.
+ */
+export async function reapplyDesktopWindowChrome(): Promise<void> {
+  if (!isTauriRuntime()) return
+  try {
+    const { invoke } = await import('@tauri-apps/api/core')
+    await invoke('reapply_window_chrome')
+  } catch {
+    // Ignore — chrome realignment is cosmetic and must not break chat.
+  }
+}

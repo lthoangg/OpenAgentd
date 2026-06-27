@@ -733,7 +733,7 @@ export function CodingWorkspacePanel({
                       {commits.map((commit) => {
                         const isExpanded = expandedCommitSha === commit.sha
                         return (
-                          <div key={commit.sha} data-commit-sha={commit.sha} className="overflow-hidden rounded border border-(--color-border-subtle) bg-(--bg-card) p-2">
+                          <div key={commit.sha} data-commit-sha={commit.sha} className="overflow-hidden rounded border border-(--color-border-subtle) bg-(--bg-card) p-2 transition-colors hover:border-(--color-border) hover:bg-(--bg-key)">
                             <button
                               type="button"
                               onClick={(e) => {

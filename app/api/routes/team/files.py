@@ -384,10 +384,20 @@ async def get_coding_workspace_git_diff(
     # restricts to those pathspecs (which can be files or directories).
     diff_paths = scoped if scoped else ["."]
 
+    # We want changes to show whether or not they've been staged. Plain
+    # ``git diff`` only reports working-tree-vs-index (unstaged) changes, so a
+    # file disappears from the panel the moment it's ``git add``-ed.
+    # ``git diff HEAD`` instead reports working-tree-vs-HEAD, i.e. the combined
+    # staged + unstaged changes for every tracked file in a single diff with no
+    # duplicate per-file sections. When there is no HEAD yet (a repo with zero
+    # commits) ``git diff HEAD`` fails, so we fall back to a plain ``git diff``.
+    has_head = await _run_git(resolved, "rev-parse", "--verify", "HEAD") is not None
+    diff_args = ["diff", "HEAD"] if has_head else ["diff"]
+
     try:
         result = await asyncio.to_thread(
             subprocess.run,
-            ["git", "-C", resolved, "diff", "--", *diff_paths],
+            ["git", "-C", resolved, *diff_args, "--", *diff_paths],
             capture_output=True,
             text=True,
             timeout=10,

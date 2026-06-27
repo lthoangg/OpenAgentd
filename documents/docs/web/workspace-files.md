@@ -187,7 +187,8 @@ with an opencode-style tab strip:
 - **Changes** is the permanent tab. It parses
   `GET /api/team/workspace/git-diff/view` into changed paths with status badges
   (`A` / `M` / `D`) and `+N/-N` counts. Selecting a changed row opens that file
-  as a dock tab in **Diff** mode.
+  as a dock tab in **Diff** mode. The endpoint uses `git diff HEAD` (plus an
+  untracked-file scan), so changes stay listed whether or not they are staged.
 - **File tabs** open inside the dock. They render the same read-only preview
   content as the standalone file viewer, including the touch-friendly
   **File / Diff** toggle and scoped file diffs.

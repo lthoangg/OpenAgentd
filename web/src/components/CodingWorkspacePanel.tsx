@@ -684,23 +684,25 @@ export function CodingWorkspacePanel({
                                 <ChevronRight size={12} className={cn('shrink-0 text-(--color-text-subtle) transition-transform', expanded && 'rotate-90')} aria-hidden="true" />
                                 <FileTypeIcon name={changedFile.path} size={13} />
                                 <span className="min-w-0 flex-1 truncate font-mono">{changedFile.path}</span>
-                                <span
-                                  role="button"
-                                  tabIndex={0}
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    const name = changedFile.path.split('/').pop() ?? changedFile.path
-                                    const file: WorkspaceFileInfo = files.data?.files.find((f) => f.path === changedFile.path)
-                                      ?? { path: changedFile.path, name, size: 0, mtime: 0, mime: 'text/plain' }
-                                    openFileTab(file)
-                                  }}
-                                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.currentTarget.click() }}
-                                  className="hidden shrink-0 rounded p-0.5 text-(--color-text-subtle) opacity-0 group-hover:opacity-100 hover:text-(--color-text) md:block"
-                                  title="Open file"
-                                  aria-label={`Open ${changedFile.path}`}
-                                >
-                                  <ExternalLink size={11} aria-hidden="true" />
-                                </span>
+                                {changedFile.status !== 'D' && (
+                                  <span
+                                    role="button"
+                                    tabIndex={0}
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      const name = changedFile.path.split('/').pop() ?? changedFile.path
+                                      const file: WorkspaceFileInfo = files.data?.files.find((f) => f.path === changedFile.path)
+                                        ?? { path: changedFile.path, name, size: 0, mtime: 0, mime: 'text/plain' }
+                                      openFileTab(file)
+                                    }}
+                                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.currentTarget.click() }}
+                                    className="hidden shrink-0 rounded p-0.5 text-(--color-text-subtle) opacity-0 group-hover:opacity-100 hover:text-(--color-text) md:block"
+                                    title="Open file"
+                                    aria-label={`Open ${changedFile.path}`}
+                                  >
+                                    <ExternalLink size={11} aria-hidden="true" />
+                                  </span>
+                                )}
                                 <span className="shrink-0 font-mono text-[10px] text-(--color-diff-add-text)">{changedFile.additions > 0 ? `+${changedFile.additions}` : ''}</span>
                                 <span className="shrink-0 font-mono text-[10px] text-(--color-diff-del-text)">{changedFile.deletions > 0 ? `-${changedFile.deletions}` : ''}</span>
                                 <span className="shrink-0 font-mono text-[10px] font-semibold text-(--accent-orange-text)" aria-label={CHANGED_STATUS_LABELS[changedFile.status]}>{changedFile.status}</span>

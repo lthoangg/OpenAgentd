@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, memo, type ReactNode } from 'react'
 import { motion } from 'framer-motion'
 import { Check, Copy, Download, ExternalLink, FileText, Loader2, Plus, X } from 'lucide-react'
 import { codingWorkspaceFileUrl } from '@/api/client'
@@ -131,6 +131,11 @@ function highlightCodeLine(line: string): ReactNode[] {
   return out.length > 0 ? out : [' ']
 }
 
+// Memoized so re-selection of a line doesn't re-highlight the entire file.
+const HighlightedCode = memo(function HighlightedCode({ line }: { line: string }) {
+  return <span className="min-w-0 flex-1">{highlightCodeLine(line)}</span>
+})
+
 function TextPreview({
   workspace,
   file,
@@ -173,6 +178,10 @@ function TextPreview({
     }
   }, [workspace, file.path, tooLarge, deleted])
 
+  // Memoize lines so highlightCodeLine isn't re-run on selection changes.
+  // Must be above early returns to satisfy Rules of Hooks.
+  const lines = useMemo(() => content?.split('\n') ?? [], [content])
+
   if (deleted) {
     return <DeletedFilePreview />
   }
@@ -189,8 +198,6 @@ function TextPreview({
   if (loading) return <div className="flex h-full items-center justify-center"><Loader2 size={16} className="animate-spin text-(--color-text-subtle)" /></div>
   if (error) return <div className="flex h-full items-center justify-center px-4 text-center text-xs text-(--color-text-muted)">{error.includes('404') ? 'File no longer exists' : `Failed to load: ${error}`}</div>
   if (content === null) return null
-
-  const lines = content.split('\n')
   const selectedStart = selection ? Math.min(selection.anchor, selection.focus) : null
   const selectedEnd = selection ? Math.max(selection.anchor, selection.focus) : null
   const selectLine = (line: number) => {
@@ -242,7 +249,7 @@ function TextPreview({
               >
                 <LineGutter value={lineNo} />
               </button>
-              <span className="min-w-0 flex-1">{highlightCodeLine(line)}</span>
+              <HighlightedCode line={line} />
             </div>
           )
         })}

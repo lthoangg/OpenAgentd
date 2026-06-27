@@ -168,9 +168,11 @@ class TestResponsesStreaming:
         assert (
             chunks[1].choices[0].delta.tool_calls[0].function.arguments == '": "NYC"}'
         )
-        # Third chunk is the done event with function name
+        # Third chunk is the done event — name is present, arguments suppressed
+        # (deltas already streamed the full args; re-emitting would double JSON)
         assert chunks[2].choices[0].delta.tool_calls[0].function.name == "get_weather"
         assert chunks[2].choices[0].delta.tool_calls[0].id == "fc_456"
+        assert chunks[2].choices[0].delta.tool_calls[0].function.arguments is None
 
     async def test_parse_stream_reasoning_and_text(self, handler):
         """Parse streaming response with reasoning and text."""
@@ -553,6 +555,67 @@ class TestResponsesStreamingEdgeCases:
         # Third chunk is the done for fc_2 (first seen in done, so index 1)
         assert chunks[2].choices[0].delta.tool_calls[0].index == 1
         assert chunks[2].choices[0].delta.tool_calls[0].id == "fc_2"
+
+    async def test_stream_tool_call_args_not_duplicated_on_done_event(self, handler):
+        """Done event must NOT re-emit arguments when delta events were already sent.
+
+        Regression test for the doubled-JSON bug:
+        The /responses API emits both .delta chunks (partial args, streaming)
+        AND a final .done event (complete args).  Before the fix, the assembler
+        in streaming.py appended every arguments fragment it received, so the
+        complete fn_args from .done was concatenated onto the already-full delta
+        string, producing e.g. '{"path":"."}{"path":"."}' which fails
+        json.loads with "Extra data: line 1 column N (char N-1)".
+
+        After the fix, .done suppresses arguments when deltas were already
+        streamed; it only emits arguments when no deltas arrived (edge case).
+        """
+        import json as _json
+
+        lines = [
+            "event: response.created",
+            'data: {"type": "response.created", "response": {"id": "resp_123"}}',
+            "event: response.output_item.added",
+            'data: {"type": "response.output_item.added", "item": {"id": "fc_abc", "type": "function_call", "name": "ls"}}',
+            "event: response.function_call_arguments.delta",
+            'data: {"type": "response.function_call_arguments.delta", "item_id": "fc_abc", "delta": "{\\"path\\": \\".\\"}"}',
+            "event: response.function_call_arguments.done",
+            'data: {"type": "response.function_call_arguments.done", "item_id": "fc_abc", "arguments": "{\\"path\\": \\".\\"}"}',
+            "event: response.completed",
+            'data: {"type": "response.completed", "response": {"id": "resp_123", "usage": {"input_tokens": 5, "output_tokens": 3, "total_tokens": 8}}}',
+        ]
+
+        async def async_iter_lines():
+            for line in lines:
+                yield line
+
+        response = MagicMock()
+        response.aiter_lines = lambda: async_iter_lines()
+
+        chunks = []
+        async for chunk in handler._parse_stream(response):
+            chunks.append(chunk)
+
+        # Collect all argument fragments across all chunks for fc_abc
+        assembled = ""
+        for chunk in chunks:
+            if not chunk.choices:
+                continue
+            for tc in chunk.choices[0].delta.tool_calls or []:
+                if tc.function and tc.function.arguments:
+                    assembled += tc.function.arguments
+
+        # Must be valid JSON — not doubled
+        parsed = _json.loads(assembled)
+        assert parsed == {"path": "."}
+
+        # The .done chunk (second chunk) must have arguments=None
+        done_chunk = chunks[1]
+        tc_done = done_chunk.choices[0].delta.tool_calls[0]
+        assert tc_done.function.arguments is None, (
+            f"done event leaked arguments={tc_done.function.arguments!r}; "
+            "expected None when deltas were already emitted"
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -7,7 +7,7 @@
  * view. Each view passes its own `renderBlock` so the per-view block visuals
  * (e.g. compact vs roomy `UserBubble`) stay independent.
  */
-import { useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { Copy, Check, Play } from 'lucide-react'
 import { formatTime, lastTurnText } from '@/utils/format'
 import type { ContentBlock } from '@/api/types'
@@ -66,15 +66,15 @@ export function AssistantTurnFooter({ turnBlocks, size = 'compact', onContinue }
   const { textContent, timestamp, responseDurationMs, modelId, modelName, hasTool } = footerData
   const canContinue = Boolean(onContinue && (textContent || hasTool))
 
-  if (!textContent && !timestamp && !canContinue && responseDurationMs === undefined && !modelName) return null
-
-  const handleCopy = async () => {
+  const handleCopy = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(textContent)
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
     } catch { /* ignore */ }
-  }
+  }, [textContent])
+
+  if (!textContent && !timestamp && !canContinue && responseDurationMs === undefined && !modelName) return null
 
   const wrapperClass = size === 'roomy' ? 'mt-1 flex items-center gap-1.5' : 'mt-0.5 flex items-center gap-1'
   const iconSize = size === 'roomy' ? 11 : 10

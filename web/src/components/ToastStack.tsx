@@ -99,9 +99,13 @@ function ToastItem({ t, dismiss }: ToastItemProps) {
   )
 }
 
+// Stable selector — `dismiss` is a function defined once on the store so
+// this always returns the same reference and never triggers a re-render.
+const dismissSelector = (s: ReturnType<typeof useToastStore.getState>) => s.dismiss
+
 export function ToastStack() {
   const toasts = useToastStore((s) => s.toasts)
-  const dismiss = useToastStore((s) => s.dismiss)
+  const dismiss = useToastStore(dismissSelector)
 
   return (
     <div className="mobile-safe-toast pointer-events-none fixed z-[60] flex w-auto flex-col gap-2 sm:left-auto sm:w-full sm:max-w-sm">

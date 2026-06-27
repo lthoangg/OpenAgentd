@@ -340,6 +340,13 @@ class ResponsesHandler:
         current_tool_call_index = -1
         tool_call_map: dict[str, int] = {}  # item_id -> index
         tool_names: dict[str, str] = {}  # item_id -> function_name
+        # Me: OpenAI /responses streams both delta events (partial args) AND
+        # a final .done event (complete args).  The assembler in streaming.py
+        # appends every arguments fragment it receives, so emitting the full
+        # args string on .done after all deltas doubles the JSON and breaks
+        # json.loads with "Extra data".  Track which call_ids have received
+        # at least one .delta so .done can skip re-emitting arguments.
+        tool_had_deltas: set[str] = set()  # call_ids that received delta chunks
         # Me: OpenAI's /responses API emits reasoning as multiple
         # ``summary_part`` items per response. Each part starts with its
         # own bold header (``**Title**``) and its deltas carry NO separator
@@ -449,6 +456,7 @@ class ResponsesHandler:
                     tool_call_map[call_id] = current_tool_call_index
                 if inline_name and call_id and call_id not in tool_names:
                     tool_names[call_id] = inline_name
+                tool_had_deltas.add(call_id)
 
                 idx = tool_call_map[call_id]
                 emit_name = inline_name if first_delta and inline_name else None
@@ -490,6 +498,11 @@ class ResponsesHandler:
 
                 idx = tool_call_map[call_id]
 
+                # Suppress arguments when deltas were already streamed — the
+                # assembler has the full string from concatenated delta chunks.
+                # Only fall back to fn_args when no deltas arrived (edge case).
+                emit_args = fn_args if call_id not in tool_had_deltas else None
+
                 yield ChatCompletionChunk(
                     id=response_id,
                     created=int(time.time()),
@@ -504,7 +517,7 @@ class ResponsesHandler:
                                         id=call_id,
                                         function=FunctionCallDelta(
                                             name=fn_name,
-                                            arguments=fn_args,
+                                            arguments=emit_args,
                                         ),
                                     )
                                 ]

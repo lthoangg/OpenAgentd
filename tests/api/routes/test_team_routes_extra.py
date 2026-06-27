@@ -414,6 +414,57 @@ class TestTeamAgentsRouteExtra:
         assert "--- /dev/null\n+++ b/test.py\n@@" in body["diff"]
         assert '+print("hello")' in body["diff"]
 
+    def test_workspace_git_diff_includes_staged(self, app_without_team, tmp_path):
+        """A staged (``git add``-ed) tracked change must still appear.
+
+        Plain ``git diff`` only reports unstaged changes, so a file vanished
+        from the panel once staged. The route uses ``git diff HEAD`` so staged
+        and unstaged tracked changes both show. Uses a real git repo.
+        """
+        import shutil
+        import subprocess
+
+        if shutil.which("git") is None:
+            pytest.skip("git not available")
+
+        env = {
+            "GIT_AUTHOR_NAME": "t",
+            "GIT_AUTHOR_EMAIL": "t@t",
+            "GIT_COMMITTER_NAME": "t",
+            "GIT_COMMITTER_EMAIL": "t@t",
+        }
+
+        def git(*args):
+            subprocess.run(
+                ["git", "-C", str(tmp_path), *args],
+                check=True,
+                capture_output=True,
+                env={**__import__("os").environ, **env},
+            )
+
+        git("init")
+        tracked = tmp_path / "tracked.py"
+        tracked.write_text("original\n", encoding="utf-8")
+        git("add", "tracked.py")
+        git("commit", "-m", "initial")
+
+        # Modify the committed file and stage the modification.
+        tracked.write_text("changed\n", encoding="utf-8")
+        git("add", "tracked.py")
+
+        client = TestClient(app_without_team)
+        resp = client.get(
+            "/api/team/workspace/git-diff/view", params={"workspace": str(tmp_path)}
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        # The staged modification is present in the diff even though plain
+        # ``git diff`` would report nothing.
+        assert "diff --git a/tracked.py b/tracked.py" in body["diff"]
+        assert "-original" in body["diff"]
+        assert "+changed" in body["diff"]
+
     def test_workspace_git_diff_scoped_paths(
         self, app_without_team, tmp_path, monkeypatch
     ):

@@ -16,7 +16,7 @@ exists. When you ship something new, **add it here first** — slides, README,
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 15 providers. Your keys.
 
-**Latest release:** v1.76.0 · June 27, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.76.0)
+**Latest release:** v1.76.1 · June 27, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.76.1)
 
 ---
 
@@ -243,7 +243,8 @@ Coding mode (`/coding`) opens a local project folder and runs a workspace-aware
 team against it. Deeper doc: [`web/coding-sessions.md`](./web/coding-sessions.md).
 
 - **Open any local project folder** `[since v1.0]` — server-local paths only.
-  Coding mode shows file tree + live git diff (including untracked files) in
+  Coding mode shows file tree + live git diff (staged, unstaged, and untracked
+  files) in
   the side drawer. Desktop uses the native folder picker only for the bundled
   sidecar or loopback backends; LAN/external backends use the web folder browser
   so the selected path exists on the backend host.

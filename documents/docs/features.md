@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of every user-visible OpenAgentd feature. Source of truth for slides, README, comparison docs, and marketing copy.
 status: stable
-updated: 2026-06-26
+updated: 2026-06-27
 ---
 
 # Features
@@ -16,7 +16,7 @@ exists. When you ship something new, **add it here first** — slides, README,
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 15 providers. Your keys.
 
-**Latest release:** v1.73.0 · June 26, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.73.0)
+**Latest release:** v1.74.0 · June 27, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.74.0)
 
 ---
 
@@ -74,6 +74,8 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
 - **Command palette** `[since v1.0, v1.61.0]` — `Ctrl+P` (or `Cmd+P`). Search
   sessions, agents, files, slash commands, settings. Cleaner, faster with a
   tighter animation and a curated command set that drops low-value entries.
+  Command and file search overlays use the compact warm-paper surface treatment
+  across desktop and mobile `[v1.74.0]`.
 - **Type-to-focus composer** `[v1.40.0]` — in cockpit and coding chat, start
   typing on the chat surface to expand/focus the composer and capture the first
   character without pressing `Ctrl+I` first. See [`web/chat-input.md`](./web/chat-input.md).
@@ -115,7 +117,9 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
 - **Tool-call inspector** `[since v1.0]` — every tool call expands to show
   arguments, status, results, and inline Git-like diffs for file edits. Read
   results and file-change diffs keep line numbers visible while scrolling
-  horizontally.
+  horizontally. Long read-result lines wrap safely without forcing horizontal
+  page overflow, and diff/read cards clip cleanly inside rounded warm-paper
+  containers `[v1.74.0]`.
 - **Inline diff previews with real line numbers** `[v1.20.0]` — file-changing tools
   show affected file's actual line numbers (not "starting at 1"), including
   multiple hunks. Collapsible per file. Delete counts shown in headers.
@@ -247,6 +251,11 @@ team against it. Deeper doc: [`web/coding-sessions.md`](./web/coding-sessions.md
   from an existing coding workspace, start a new coding session in that worktree,
   list existing worktrees, edit sidebar titles without renaming git directories,
   and remove OpenAgentd-managed worktrees.
+- **Warm-paper cockpit refresh** `[v1.74.0]` — coding panels, chat-adjacent
+  surfaces, scheduled tasks, telemetry, home, provider/settings detail views,
+  command/file search, and input attachments now share the custom warm-paper
+  visual system: compact controls, crisp 1px borders, muted text hierarchy,
+  mobile-safe overlays, and balanced secondary actions.
 - **Coding workspace dock** `[v1.61.0]` — right-side dock panel for coding
   sessions with a permanent Changes tab showing staged/unstaged diff hunks with
   context lines and expand/collapse rows and status badges, file tabs for read-only
@@ -374,7 +383,9 @@ agnostic by design. Deeper doc: [`configuration/providers.md`](./configuration/p
   settings and other pickers read a cached provider model list for instant
   open; when the cache is empty, `/api/agents/registry` warms configured
   providers' caches on demand, and **List models** remains the per-provider
-  manual refresh / verification action.
+  manual refresh / verification action. The providers page now includes a
+  search plus status/kind filter bar for quickly narrowing long provider lists
+  `[v1.74.0]`.
 - **Curated multimodal model registry** `[v1.34.0]` — model modality gates,
   token limits, cost, support flags, and thinking-level metadata are maintained
   in one exact-match registry: bundled JSON snapshot, runtime `models.dev`
@@ -461,8 +472,9 @@ doc: [`configuration/sandbox.md`](./configuration/sandbox.md).
 - **Path denylist** `[since v1.0]` — absolute paths anywhere on disk are accepted
   *unless* they resolve under a denied root (`OPENAGENTD_DATA_DIR`,
   `OPENAGENTD_STATE_DIR`, `OPENAGENTD_CACHE_DIR`) or match a user-defined glob
-  in `sandbox.yaml`. Symlinks are rejected only when targeting a denied root.
-  Tilde paths are always rejected.
+  in `sandbox.yaml`. User-defined sandbox globs are enforced inside the active
+  workspace too, not only outside it `[v1.74.0]`. Symlinks are rejected only
+  when targeting a denied root. Tilde paths are always rejected.
 - **Permission system: allow / deny / ask** `[since v1.0]` — wildcard rule
   matching per tool. Auto-allow, blocking on user reply, or persistent rules.
 - **Shell command pre-scan** `[since v1.0]` — best-effort path-token scan

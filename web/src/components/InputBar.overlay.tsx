@@ -18,7 +18,7 @@
  */
 import { memo, useEffect, useMemo, useRef } from 'react'
 
-import { findCommittedMentions, type FileRef } from './InputBar.mentions'
+import { buildMentionLookup, findCommittedMentions, type FileRef } from './InputBar.mentions'
 
 interface MentionOverlayProps {
   /** Current textarea value. */
@@ -45,7 +45,12 @@ function MentionOverlayComponent({
   fileRefs,
 }: MentionOverlayProps) {
   const mirrorRef = useRef<HTMLDivElement>(null)
-  const ranges = findCommittedMentions(value, activeRange, fileRefs)
+  // Build the token-resolution sets once per ``fileRefs`` change. Without this
+  // memo, ``findCommittedMentions`` would rebuild two Sets from the entire
+  // (potentially thousands-long) file list on every keystroke — the main
+  // source of input lag on mobile.
+  const mentionLookup = useMemo(() => buildMentionLookup(fileRefs), [fileRefs])
+  const ranges = findCommittedMentions(value, activeRange, mentionLookup)
 
   // Build a token → kind lookup so each committed mention can pick its
   // color (file = blue, directory = orange). Same key shape used by

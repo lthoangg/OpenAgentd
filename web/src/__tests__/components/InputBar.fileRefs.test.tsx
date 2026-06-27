@@ -16,6 +16,7 @@ import { InputBar, type FileRef } from "@/components/InputBar"
 import {
   findActiveMention,
   findCommittedMentions,
+  buildMentionLookup,
   rankFileRefs,
 } from "@/components/InputBar.mentions"
 
@@ -381,6 +382,48 @@ describe("findCommittedMentions", () => {
     // semantics are explicit.
     const out = findCommittedMentions("see @anything")
     expect(out).toEqual([{ start: 4, end: 13 }])
+  })
+})
+
+// ── Unit: buildMentionLookup (per-keystroke perf optimisation) ─────────────
+
+describe("buildMentionLookup", () => {
+  const fxRefs: FileRef[] = [
+    { path: "src/api.ts", name: "api.ts", type: "file" },
+    { path: "a.ts", name: "a.ts", type: "file" },
+    { path: "src", name: "src", type: "directory" },
+  ]
+
+  it("includes @path for files and @path + @path/ for directories", () => {
+    const lookup = buildMentionLookup(fxRefs)
+    expect(lookup.valid.has("@src/api.ts")).toBe(true)
+    expect(lookup.valid.has("@a.ts")).toBe(true)
+    expect(lookup.valid.has("@src")).toBe(true)
+    expect(lookup.valid.has("@src/")).toBe(true)
+    // Line bases are file-only — used to validate @file#L1-L2 refs.
+    expect(lookup.validLineBases.has("@src/api.ts")).toBe(true)
+    expect(lookup.validLineBases.has("@src")).toBe(false)
+  })
+
+  it("a prebuilt lookup resolves mentions identically to passing refs", () => {
+    // This is the optimisation the overlay relies on: build the sets once
+    // and reuse them across keystrokes instead of rebuilding per call.
+    const lookup = buildMentionLookup(fxRefs)
+    const value = "see @src/api.ts and @a.ts here"
+    expect(findCommittedMentions(value, null, lookup)).toEqual(
+      findCommittedMentions(value, null, fxRefs),
+    )
+  })
+
+  it("a prebuilt lookup still validates line-reference mentions", () => {
+    const lookup = buildMentionLookup(fxRefs)
+    const out = findCommittedMentions("hi @src/api.ts#L2-L4", null, lookup)
+    expect(out).toEqual([{ start: 3, end: 20 }])
+  })
+
+  it("a prebuilt lookup rejects unresolved tokens just like refs", () => {
+    const lookup = buildMentionLookup(fxRefs)
+    expect(findCommittedMentions("see @nonexistent x", null, lookup)).toEqual([])
   })
 })
 

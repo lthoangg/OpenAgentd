@@ -113,6 +113,31 @@ describe('Coding workspace two-layer file preview', () => {
     await waitFor(() => expect(screen.getByText('const')).toBeTruthy())
   })
 
+  it('does not reopen a closed file tab when the files query refetches', async () => {
+    const user = userEvent.setup()
+    const onFileSelect = mock(() => {})
+    // Open README via a selection request (key bumps from 0).
+    const { queryClient } = await renderWorkspacePanel(onFileSelect, 'README.md')
+    await waitFor(() => expect(onFileSelect).toHaveBeenCalledWith(readme))
+    await waitFor(() => expect(screen.getByText('const')).toBeTruthy())
+
+    // User closes the README tab.
+    await user.click(screen.getByRole('button', { name: 'Close README.md' }))
+    await waitFor(() => expect(screen.queryByText('const')).toBeNull())
+
+    // A background refetch of the files list resolves with a fresh array
+    // reference (same as a poll / window-focus refetch). This must NOT
+    // reopen the tab the user just closed — selectedFileOpenKey is unchanged.
+    await act(async () => {
+      await queryClient.invalidateQueries()
+      // Give any errant effect a chance to fire before asserting.
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
+
+    expect(screen.queryByText('const')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Close README.md' })).toBeNull()
+  })
+
   it('opens file tabs from the plus file search', async () => {
     const user = userEvent.setup()
     const onFileSelect = mock(() => {})

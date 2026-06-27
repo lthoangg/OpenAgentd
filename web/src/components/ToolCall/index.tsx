@@ -160,7 +160,7 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
   const visibleHeader = header
   const shownResult = suppressResult ? undefined : result
   const shownLiveOutput = shownResult ? undefined : liveOutput
-  const hasReadResult = usesReadView && Boolean(result)
+  const hasReadResult = usesReadView
   const isShell = language === 'bash'
   const isShellTerminal = isShell && Boolean(formattedArgs)
   const shellResult = isShell ? formatShellResult(shownResult) : null
@@ -287,7 +287,7 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
                   result={result}
                   onCollapse={() => setManualExpanded(false)}
                 />
-              ) : usesReadView && result ? (
+              ) : usesReadView ? (
                 <ReadView
                   args={args || ''}
                   result={result}

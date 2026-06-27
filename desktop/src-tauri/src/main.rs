@@ -1128,23 +1128,64 @@ async fn run_update_install(app: AppHandle) -> Result<(), String> {
     let bytes =
         std::fs::read(&cached.bytes_path).map_err(|e| format!("Read cached update: {e}"))?;
 
+    // Flip the quit guard BEFORE the relaunch sequence so the window
+    // `CloseRequested` handler stops calling `prevent_close()`. If it did not,
+    // the bundle swap below could leave a hidden window alive and trap the exit
+    // half-way, which is one way the relaunch silently fails.
+    persist_active_window_state(&app);
+    state.quitting.store(true, Ordering::SeqCst);
+
+    // Shut the Python sidecar down *before* the bundle swap so the child
+    // receives SIGTERM while we still own a clean process tree. Doing it after
+    // `install()` races the updater's relaunch.
+    shutdown_sidecar_now(&app).await;
+
     update_tray_status(&app, "Status: Installing update…");
     update.install(bytes).map_err(|e| {
         update_tray_status(&app, "Status: Running");
         format!("Failed to install update: {e}")
     })?;
 
-    // Shut down the Python sidecar gracefully before restarting the process.
-    // This must be awaited inline — NOT spawned — so that the process does not
-    // return `Ok(())` to the frontend and leave the UI stuck on "Installing…".
-    // The Tauri command invocation will never resolve on the JS side because
-    // `app.restart()` replaces the running process; that is the
-    // correct and expected behaviour.
+    // Relaunch. Platform behaviour differs and getting this wrong is exactly
+    // why the app previously installed the update but never came back up:
+    //
+    //   • macOS: `install()` extracts the new `.app` over the running bundle
+    //     and spawns a *detached* helper that re-launches it. Calling
+    //     `app.restart()` here re-execs the OLD executable path while that
+    //     bundle is mid-swap — the exec target is momentarily invalid, the
+    //     spawn fails silently, and the process just exits. The correct move
+    //     is to exit cleanly and let the updater helper bring the new bundle
+    //     back up. (Docs: "restarting immediately after install is not
+    //     required.")
+    //
+    //   • Windows: the NSIS/MSI installer already terminates the app itself,
+    //     so reaching a manual restart is unusual; `restart()` is still the
+    //     supported call when we get here.
+    //
+    //   • Linux (AppImage): the binary is replaced in place, so `restart()`
+    //     re-execs the new image correctly.
     update_tray_status(&app, "Status: Restarting…");
-    persist_active_window_state(&app);
-    state.quitting.store(true, Ordering::SeqCst);
-    shutdown_sidecar_now(&app).await;
-    app.restart();
+    #[cfg(target_os = "macos")]
+    {
+        // Give the detached relaunch helper a beat to register before we tear
+        // the process down, then exit so it can bring the new bundle up.
+        // `cleanup_before_exit()` + `process::exit()` MUST run on the main
+        // thread — calling them from this worker task can crash on macOS
+        // (tauri-apps/tauri#12534) — so hop onto the run loop.
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        let handle = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            handle.cleanup_before_exit();
+            std::process::exit(0);
+        });
+        // The line above never returns once the closure runs; this keeps the
+        // function type-correct on the off chance the dispatch is dropped.
+        return Ok(());
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        app.restart();
+    }
 }
 
 async fn fetch_release_notes(version: &str) -> Result<ReleaseNotesResponse, String> {
@@ -2163,8 +2204,17 @@ fn main() {
                 show_main_window(app);
             }
             RunEvent::ExitRequested { .. } => {
-                persist_active_window_state(app);
                 let state: tauri::State<'_, AppState> = app.state();
+                // If we are already tearing down via an explicit quit/restart/
+                // update path, the sidecar has been shut down inline and state
+                // persisted. Running another `block_on` here stalls the
+                // run-loop thread during a restart/relaunch — on macOS that is
+                // enough to abort the updater's relaunch, so the app exits
+                // without coming back. Bail out fast in that case.
+                if state.quitting.load(Ordering::SeqCst) {
+                    return;
+                }
+                persist_active_window_state(app);
                 let sidecar = state.sidecar.clone();
                 // Block so the child receives SIGTERM before the parent exits.
                 tauri::async_runtime::block_on(async move {

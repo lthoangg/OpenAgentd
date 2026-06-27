@@ -56,10 +56,36 @@ uv run python -m manual.queued_injection
 
 See [`manual/AGENTS.md`](manual/AGENTS.md) for the full script catalogue.
 
+## Design principle: mobile-first, multi-platform
+
+OpenAgentd is **one codebase that must feel native on every surface** —
+touch phones (Tauri iOS/Android), desktop apps (Tauri macOS/Windows/Linux),
+and the browser. Build mobile-first, then progressively enhance for larger
+screens. Never ship a layout that only works on one form factor.
+
+- **Mobile-first, then scale up.** Author the base/unprefixed styles for the
+  smallest viewport; add `sm:`/`md:`/`lg:` overrides for wider screens. Use
+  `useIsMobile()` (and `usePlatform()` for OS/Tauri checks) to branch
+  behaviour, not just CSS.
+- **Responsive multi-screen views.** Features that show side panels, splits,
+  or multi-pane layouts on desktop must collapse to overlay drawers / single
+  column / stacked views on mobile — and vice-versa. Test both. Reuse the
+  shared drawer + gesture primitives (see `web/src/AGENTS.md` → *Mobile touch
+  gestures*) rather than hand-rolling per-screen behaviour.
+- **Touch + pointer parity.** Every action reachable by hover/right-click on
+  desktop needs a touch equivalent (tap, long-press, edge-swipe). Keep
+  desktop keyboard shortcuts working; don't make them mobile-only or
+  mobile-broken.
+- **Respect the platform chrome.** Account for mobile safe areas/notches and
+  the macOS traffic-light overlay without wasting header space; use the
+  existing `mobile-safe-*` utilities and `useTauriDrag`.
+- **One feature, all surfaces.** When adding UI, verify it on a narrow
+  (≤768px) and a wide viewport before calling it done.
+
 ## Code style (summary)
 
 - **Python 3.14+** — `|` unions, `from __future__ import annotations`, strict type hints, Pydantic v2, absolute imports from `app`, loguru `logger.info("event key={}", val)`.
-- **TypeScript** — `strict: true`, functional components with explicit props, TanStack for server state, Zustand + Immer for client state, ESM only, mobile-first design before desktop layouts; account for mobile safe areas/notches without wasting header space.
+- **TypeScript** — `strict: true`, functional components with explicit props, TanStack for server state, Zustand + Immer for client state, ESM only. Mobile-first design before desktop layouts; ensure the same component renders correctly across desktop/mobile and large/small screens; account for mobile safe areas/notches without wasting header space.
 - **General** — thin routes, logic in services/hooks, no unnecessary abstractions, always invoke the `guidelines` skill.
 
 ## Post-implementation checklist

@@ -88,6 +88,12 @@ interface SidebarProps {
   onNewChat?: () => void
   /** Mobile only: whether the overlay drawer is open */
   mobileOpen?: boolean
+  /**
+   * Mobile only: live drag offset (px) applied to the drawer's x while an
+   * edge-swipe is in progress. ``null`` hands control back to the spring
+   * animation. Lets the drawer track the finger instead of snapping.
+   */
+  mobileDragOffset?: number | null
   /** Mobile only: called when the drawer should close (backdrop tap, session select) */
   onMobileClose?: () => void
 }
@@ -97,6 +103,7 @@ export function Sidebar({
   onCommandPalette,
   onNewChat,
   mobileOpen = false,
+  mobileDragOffset = null,
   onMobileClose,
 }: SidebarProps) {
   const isMobile = useIsMobile()
@@ -132,6 +139,8 @@ export function Sidebar({
   const [editTitle, setEditTitle] = useState('')
   const [pullDistance, setPullDistance] = useState(0)
   const pullStartYRef = useRef<number | null>(null)
+  const pullStartXRef = useRef<number | null>(null)
+  const pullAxisRef = useRef<'vertical' | 'horizontal' | null>(null)
 
   const toggleCollapse = useCallback(() => {
     setCollapsed((prev) => {
@@ -151,23 +160,40 @@ export function Sidebar({
   const handleSessionListTouchStart = useCallback((event: TouchEvent<HTMLDivElement>) => {
     if (!canPullRefresh || sessionListRef.current?.scrollTop !== 0) return
     pullStartYRef.current = event.touches[0]?.clientY ?? null
+    pullStartXRef.current = event.touches[0]?.clientX ?? null
+    pullAxisRef.current = null
   }, [canPullRefresh])
 
   const handleSessionListTouchMove = useCallback((event: TouchEvent<HTMLDivElement>) => {
-    if (!canPullRefresh || pullStartYRef.current === null) return
-    const delta = (event.touches[0]?.clientY ?? 0) - pullStartYRef.current
-    if (delta <= 0) {
+    if (!canPullRefresh || pullStartYRef.current === null || pullStartXRef.current === null) return
+    const deltaY = (event.touches[0]?.clientY ?? 0) - pullStartYRef.current
+    const deltaX = (event.touches[0]?.clientX ?? 0) - pullStartXRef.current
+
+    // Shared axis-lock convention (mirrors useEdgeSwipe): commit to an
+    // axis on the first significant move. A horizontal-dominant gesture
+    // belongs to the drawer-close swipe, not pull-to-refresh — bail so the
+    // two never fire together on a diagonal drag.
+    if (pullAxisRef.current === null && (Math.abs(deltaX) > 6 || Math.abs(deltaY) > 6)) {
+      pullAxisRef.current = Math.abs(deltaX) > Math.abs(deltaY) ? 'horizontal' : 'vertical'
+    }
+    if (pullAxisRef.current === 'horizontal') {
       setPullDistance(0)
       return
     }
-    setPullDistance(Math.min(72, delta * 0.5))
+    if (deltaY <= 0) {
+      setPullDistance(0)
+      return
+    }
+    setPullDistance(Math.min(72, deltaY * 0.5))
   }, [canPullRefresh])
 
   const handleSessionListTouchEnd = useCallback(() => {
-    if (canPullRefresh && pullDistance >= 54) {
+    if (canPullRefresh && pullAxisRef.current !== 'horizontal' && pullDistance >= 54) {
       void refetchSessions()
     }
     pullStartYRef.current = null
+    pullStartXRef.current = null
+    pullAxisRef.current = null
     setPullDistance(0)
   }, [canPullRefresh, pullDistance, refetchSessions])
 
@@ -300,15 +326,16 @@ export function Sidebar({
 
   return (
     <>
-      {/* Mobile backdrop — closes the drawer on tap */}
+      {/* Mobile backdrop — closes the drawer on tap. During an edge-drag
+          it fades in proportionally so the dimming tracks the finger. */}
       <AnimatePresence>
-        {isMobile && mobileOpen && (
+        {isMobile && (mobileOpen || mobileDragOffset !== null) && (
           <motion.div
             key="sidebar-backdrop"
             initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
+            animate={{ opacity: mobileDragOffset !== null ? Math.max(0, Math.min(1, 1 + mobileDragOffset / 280)) : 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: prefersReducedMotion ? 0.01 : 0.2 }}
+            transition={{ duration: mobileDragOffset !== null ? 0 : (prefersReducedMotion ? 0.01 : 0.2) }}
             className="mobile-safe-top fixed inset-x-0 bottom-0 z-30 bg-black/60 md:hidden"
             aria-hidden="true"
             onClick={onMobileClose}
@@ -319,10 +346,16 @@ export function Sidebar({
     <motion.aside
       animate={
         isMobile
-          ? { x: mobileOpen ? 0 : -280, width: 'min(272px, calc(100vw - 2rem))' }
+          ? { x: mobileDragOffset ?? (mobileOpen ? 0 : -280), width: 'min(272px, calc(100vw - 2rem))' }
           : { width: desktopWidth }
       }
-      transition={{ duration: resizable.isResizing || prefersReducedMotion ? 0.01 : 0.22, ease: [0.4, 0, 0.2, 1] }}
+      transition={
+        // While the finger drives the drawer, snap to the offset with no
+        // tween so motion tracks 1:1. Otherwise use the open/close spring.
+        mobileDragOffset !== null
+          ? { duration: 0 }
+          : { duration: resizable.isResizing || prefersReducedMotion ? 0.01 : 0.22, ease: [0.4, 0, 0.2, 1] }
+      }
       className={
         isMobile
           ? 'mobile-safe-top fixed bottom-0 left-0 z-40 flex w-[min(272px,calc(100vw-2rem))] shrink-0 flex-col overflow-hidden border-r border-(--color-border) bg-(--bg-page) shadow-xl'

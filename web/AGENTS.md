@@ -37,6 +37,14 @@ bun run build
 - Prefer functional components with explicit props.
 - Use TanStack Query for server state and Zustand stores for client state.
 - Keep UI mobile-first and consistent with existing Tailwind v4 patterns.
+- **Multi-platform / multi-screen:** the same components run on Tauri
+  mobile (iOS/Android), Tauri desktop (macOS/Windows/Linux), and the
+  browser. Author base styles for the smallest viewport, then enhance with
+  `sm:`/`md:`/`lg:`. Desktop side-panels/splits must collapse to overlay
+  drawers or a single column on mobile. Branch behaviour with
+  `useIsMobile()` / `usePlatform()`, route touch gestures through
+  `use-edge-swipe` (see *Mobile touch gestures* in `src/AGENTS.md`), and
+  verify every change on both a narrow (≤768px) and a wide viewport.
 
 ## Post-implementation checklist
 

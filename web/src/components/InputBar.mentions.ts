@@ -17,6 +17,50 @@ export interface FileRef {
 }
 
 /**
+ * Precomputed token sets used by {@link findCommittedMentions} to resolve
+ * ``@mention`` tokens in O(1). Building these from a large ``fileRefs`` list
+ * is O(refs); doing it on every keystroke is the dominant cost when the input
+ * has thousands of workspace files, so callers that re-run resolution on every
+ * change (the overlay) should build this once via {@link buildMentionLookup}
+ * and memoize it against ``fileRefs``.
+ */
+export interface MentionLookup {
+  /** All valid mention tokens: ``@path`` (and ``@path/`` for directories). */
+  valid: Set<string>
+  /** File-only ``@path`` bases, used to validate ``@path#L1-L2`` line refs. */
+  validLineBases: Set<string>
+}
+
+/**
+ * Build the {@link MentionLookup} for a set of workspace refs. O(refs).
+ * Memoize the result against the ``fileRefs`` identity so per-keystroke
+ * resolution stays O(1) instead of rebuilding both sets every change.
+ */
+export function buildMentionLookup(refs: readonly FileRef[]): MentionLookup {
+  const valid = new Set<string>()
+  const validLineBases = new Set<string>()
+  for (const r of refs) {
+    if (r.type === 'directory') {
+      valid.add(`@${r.path}`)
+      valid.add(`@${r.path}/`)
+    } else {
+      valid.add(`@${r.path}`)
+      validLineBases.add(`@${r.path}`)
+    }
+  }
+  return { valid, validLineBases }
+}
+
+function isMentionLookup(value: unknown): value is MentionLookup {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'valid' in value &&
+    (value as { valid: unknown }).valid instanceof Set
+  )
+}
+
+/**
  * Find an active `@token` immediately to the left of the caret.
  *
  * Returns the start/end indices in ``value`` and the partial token (the chars
@@ -84,21 +128,19 @@ export function findActiveMention(
 export function findCommittedMentions(
   value: string,
   activeRange?: { start: number; end: number } | null,
-  refs?: readonly FileRef[],
+  refs?: readonly FileRef[] | MentionLookup,
 ): { start: number; end: number }[] {
-  // Build a set of valid mention tokens once per call — O(refs) up-front,
-  // O(1) per candidate. Files are matched as ``@path``; directories
-  // additionally allow a trailing slash since the picker inserts one.
-  const valid = refs
-    ? new Set(
-        refs.flatMap((r) =>
-          r.type === 'directory' ? [`@${r.path}`, `@${r.path}/`] : [`@${r.path}`],
-        ),
-      )
+  // Resolve the token sets. Callers that re-run on every keystroke (the
+  // overlay) pass a prebuilt {@link MentionLookup} so we don't rebuild both
+  // sets — O(refs) — on each change. A raw ``FileRef[]`` is still accepted for
+  // one-shot callers and tests; ``undefined`` means syntax-only (no resolution).
+  const lookup = refs
+    ? isMentionLookup(refs)
+      ? refs
+      : buildMentionLookup(refs)
     : null
-  const validLineBases = refs
-    ? new Set(refs.filter((r) => r.type === 'file').map((r) => `@${r.path}`))
-    : null
+  const valid = lookup?.valid ?? null
+  const validLineBases = lookup?.validLineBases ?? null
 
   const out: { start: number; end: number }[] = []
   for (let i = 0; i < value.length; i++) {

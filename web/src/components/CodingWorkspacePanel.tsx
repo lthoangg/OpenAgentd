@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { ChevronRight, Folder, GitCompare, Plus, RefreshCw, Search, X } from 'lucide-react'
+import { ChevronRight, GitCompare, Plus, RefreshCw, Search, X } from 'lucide-react'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 import { getCodingWorkspaceGitDiff, listCodingWorkspaceFiles, getCodingWorkspaceGitHistory, getCodingWorkspaceCommitDiff } from '@/api/client'
@@ -11,7 +11,6 @@ import { FileTypeIcon } from './FileTypeIcon'
 import { cn } from '@/lib/utils'
 import { queryKeys } from '@/queries'
 import { formatBytes } from '@/utils/format'
-import { workspaceLabel } from '@/utils/workspace'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { useResizableWidth } from '@/hooks/use-resizable-width'
 import { useGitPanelStore, DEFAULT_WORKSPACE_STATE } from '@/stores/useGitPanelStore'
@@ -210,6 +209,7 @@ export function CodingWorkspacePanel({
   open,
   onClose,
   mobile = false,
+  mobileDragOffset = null,
   selectedFilePath = null,
   selectedFileOpenKey = 0,
   onFileSelect,
@@ -220,6 +220,8 @@ export function CodingWorkspacePanel({
   initialTab?: 'files' | 'changed'
   onClose: () => void
   mobile?: boolean
+  /** Mobile only: live edge-swipe drag offset (px) for finger-tracking. */
+  mobileDragOffset?: number | null
   selectedFilePath?: string | null
   selectedFileOpenKey?: number
   onFileSelect?: (file: WorkspaceFileInfo | null) => void
@@ -237,6 +239,12 @@ export function CodingWorkspacePanel({
   const commitsScrollRef = useRef<HTMLDivElement>(null)
   // Tracks a SHA that was navigated to from Tree and needs to be scrolled into view.
   const pendingScrollShaRef = useRef<string | null>(null)
+  // Tracks the last selection-open request we acted on. We only auto-open a
+  // file tab when the parent bumps `selectedFileOpenKey`, never on background
+  // refreshes of the files query — otherwise a manually closed tab would
+  // reopen itself the next time `files.data` refetches. Starts at -1 so the
+  // very first request (key 0) is still honored.
+  const handledFileOpenKeyRef = useRef(-1)
   const files = useQuery({
     queryKey: queryKeys.coding.files(workspace),
     queryFn: () => listCodingWorkspaceFiles(workspace),
@@ -410,9 +418,17 @@ export function CodingWorkspacePanel({
   }, [fileSearch, files.data?.files])
 
   useEffect(() => {
-    if (!selectedFilePath || files.data?.files == null) return
+    // Only react to a fresh open request from the parent (signaled by a bumped
+    // `selectedFileOpenKey`). Background refetches of the files query change
+    // `files.data` but must NOT reopen a tab the user already closed.
+    if (handledFileOpenKeyRef.current === selectedFileOpenKey) return
+    if (!selectedFilePath) return
+    if (files.data?.files == null) return // files not loaded yet; retry once they arrive
     const file = files.data.files.find((item) => item.path === selectedFilePath)
-    if (file) openFileTab(file)
+    if (file) {
+      handledFileOpenKeyRef.current = selectedFileOpenKey
+      openFileTab(file)
+    }
   }, [files.data?.files, openFileTab, selectedFileOpenKey, selectedFilePath])
 
   useEffect(() => {
@@ -455,9 +471,15 @@ export function CodingWorkspacePanel({
   return (
     <motion.aside
       initial={prefersReducedMotion ? { opacity: 0 } : mobile ? { opacity: 0 } : { width: 0 }}
-      animate={prefersReducedMotion ? { opacity: 1 } : mobile ? { opacity: 1 } : { width: resizable.width }}
+      animate={
+        prefersReducedMotion
+          ? { opacity: 1 }
+          : mobile
+            ? (mobileDragOffset !== null ? { opacity: 1, x: mobileDragOffset } : { opacity: 1, x: 0 })
+            : { width: resizable.width }
+      }
       exit={prefersReducedMotion ? { opacity: 0 } : mobile ? { opacity: 0 } : { width: 0 }}
-      transition={{ duration: resizable.isResizing || prefersReducedMotion ? 0.01 : 0.22, ease: [0.4, 0, 0.2, 1] }}
+      transition={mobile && mobileDragOffset !== null ? { duration: 0 } : { duration: resizable.isResizing || prefersReducedMotion ? 0.01 : 0.22, ease: [0.4, 0, 0.2, 1] }}
       className={cn(
         'fixed bottom-0 right-0 z-40 min-h-0 w-full overflow-hidden border-l border-(--color-border) bg-(--bg-page) shadow-xl md:relative md:inset-y-auto md:right-auto md:z-auto md:w-auto md:shrink-0 md:shadow-none',
         mobile ? 'mobile-safe-top max-w-none' : 'h-full',
@@ -475,17 +497,8 @@ export function CodingWorkspacePanel({
             onDoubleClick={resizable.resetWidth}
           />
         )}
-        {mobile && <div className="flex min-h-10 items-center justify-between border-b border-(--color-border) bg-(--bg-sidebar) px-2.5 py-1.5">
-          <div className="flex min-w-0 items-center gap-2">
-            <Folder size={13} className="shrink-0 text-(--color-accent)" aria-hidden="true" />
-            <p className="truncate font-mono text-xs text-(--color-text)" title={workspace}>{workspaceLabel(workspace)}</p>
-          </div>
-          <button type="button" onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) md:h-auto md:w-auto md:p-1" aria-label="Close workspace panel">
-            <X size={16} />
-          </button>
-        </div>}
         <div className="flex min-w-0 items-center gap-1 border-b border-(--color-border) bg-(--bg-card) px-2 py-1">
-          <div className="scrollbar-none flex min-w-0 max-w-[calc(100%-2rem)] items-center gap-1 overflow-x-auto">
+          <div className={cn('scrollbar-none flex min-w-0 items-center gap-1 overflow-x-auto', mobile ? 'max-w-[calc(100%-4rem)]' : 'max-w-[calc(100%-2rem)]')}>
             {tabs.map((tabItem) => (
               <button
                 key={tabItem.id}
@@ -537,6 +550,19 @@ export function CodingWorkspacePanel({
           >
             <Plus size={14} aria-hidden="true" />
           </button>
+          {mobile && (
+            // Full-width on mobile means there's no backdrop to tap, so keep
+            // an explicit close affordance (swipe-to-close also works).
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text)"
+              aria-label="Close workspace panel"
+              title="Close workspace panel"
+            >
+              <X size={16} aria-hidden="true" />
+            </button>
+          )}
         </div>
         {fileSearchOpen && (
           <div

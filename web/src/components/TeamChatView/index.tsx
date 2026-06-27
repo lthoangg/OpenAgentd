@@ -44,6 +44,7 @@ import { useFileRefsQuery } from '@/queries/useFileRefsQuery'
 import { AlertCircle, FolderCode, X } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
+import { useEdgeSwipe } from '@/hooks/use-edge-swipe'
 import { useTauriDrag } from '@/hooks/use-tauri-drag'
 import { Button } from '@/components/ui/button'
 import { type InputBarHandle, type SlashCommand, type SnippetCommand } from '../InputBar'
@@ -55,6 +56,7 @@ import { TeamChatPanels } from './TeamChatPanels'
 import { AgentTabs } from './AgentTabs'
 import { useTeamCommands } from './useTeamCommands'
 import { VIEW_MODES, type ViewMode } from './types'
+import { overlaysToClose, type MobileOverlay } from './mobileOverlays'
 import { saveLastCodingWorkspace, workspaceLabel } from '@/utils/workspace'
 import { setTraySession } from '@/lib/tray'
 
@@ -97,7 +99,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const openSettings = useSettingsStore((s) => s.openSettings)
   const queryClient = useQueryClient()
   const isMobile = useIsMobile()
-  const { isMacOverlay, os } = usePlatform()
+  const { isMacOverlay } = usePlatform()
   // Manual drag pattern: a mousedown handler that only starts a drag
   // when the user pressed on the bare header, not on a child button.
   // The hook returns `{}` outside Tauri so the spread is a no-op in
@@ -106,8 +108,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const inputRef = useRef<InputBarHandle>(null)
   const mainColumnRef = useRef<HTMLDivElement>(null)
-  const mobileSidebarSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
-  const mobileActionsSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
   const [showFilesPanel, setShowFilesPanel] = useState(false)
   const [codingPanel, setCodingPanel] = useState<null | 'changed' | 'files'>(null)
   const [codingFileViewer, setCodingFileViewer] = useState<WorkspaceFileInfo | null>(null)
@@ -362,10 +362,41 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     })()
   }, [beginResolvedSession, isEmptyIdleSession, mode, navigate, queryClient, sessionIdState, sessionModel, sessionThinkingLevel, workspace])
 
+  // ── Mobile single-overlay rule ─────────────────────────────────────────────
+  //
+  // On mobile every large surface — the session sidebar, chat-actions menu,
+  // coding workspace panel, session settings (agent capabilities), the
+  // scheduler, todos, the (normal-mode) files panel and the command palette
+  // — is a full-screen or near-full-screen overlay. Having two open at once
+  // is always a layering bug, so opening any one closes all the others.
+  //
+  // ``useUIStore`` already enforces this *among* scheduler / capabilities /
+  // palette, and ``useEdgeSwipe`` enforces it among the drawers — but the
+  // two islands plus todos / files panel never coordinated across each
+  // other. This single coordinator bridges them. Desktop keeps its
+  // multi-panel layout untouched (the helper no-ops when ``!isMobile``).
+  const closeOtherMobileOverlays = useCallback((keep: MobileOverlay) => {
+    if (!isMobile) return
+    const toClose = new Set(overlaysToClose(keep))
+    if (toClose.has('sidebar') || toClose.has('actions') || toClose.has('coding-panel')) {
+      setMobileSidebarOpen(false)
+      setShowMobileActions(false)
+      setCodingPanel(null)
+      setCodingFileViewer(null)
+      setCodingFileViewerDetached(false)
+    }
+    if (toClose.has('todos')) setShowTodos(false)
+    if (toClose.has('files')) setShowFilesPanel(false)
+    const ui = useUIStore.getState()
+    if (toClose.has('scheduler')) ui.closeScheduler()
+    if (toClose.has('capabilities')) ui.closeAgentCapabilities()
+    if (toClose.has('palette')) ui.closePalette()
+  }, [isMobile])
+
   const handleWorkspaceFiles = useCallback(() => {
     if (mode === 'coding') {
       if (workspace) {
-        if (isMobile) setMobileSidebarOpen(false)
+        if (isMobile) { setMobileSidebarOpen(false); closeOtherMobileOverlays('coding-panel') }
         setCodingPanel((value) => {
           const next = value === null ? 'changed' : null
           if (next === null) setCodingFileViewerDetached(false)
@@ -377,18 +408,28 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
       }
       return
     }
-    if (sessionIdState) setShowFilesPanel((value) => !value)
-  }, [isMobile, mode, workspace, sessionIdState])
+    if (sessionIdState) {
+      setShowFilesPanel((value) => {
+        const next = !value
+        if (next) closeOtherMobileOverlays('files')
+        return next
+      })
+    }
+  }, [closeOtherMobileOverlays, isMobile, mode, workspace, sessionIdState])
 
   const handleCodingSidebarToggle = useCallback(() => {
     if (isMobile) {
       setCodingPanel(null)
       setCodingFileViewer(null)
-      setMobileSidebarOpen((value) => !value)
+      setMobileSidebarOpen((value) => {
+        const next = !value
+        if (next) closeOtherMobileOverlays('sidebar')
+        return next
+      })
       return
     }
     setCodingSidebarCollapsed((value) => !value)
-  }, [isMobile])
+  }, [closeOtherMobileOverlays, isMobile])
 
   const handleOpenWorkspaceDialog = useCallback(() => {
     setCodingSidebarCollapsed(false)
@@ -668,11 +709,47 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
 
   const closeMobileActionsMenu = useCallback(() => setShowMobileActions(false), [])
 
+  const handleSetShowMobileActions = useCallback<typeof setShowMobileActions>((value) => {
+    setShowMobileActions((prev) => {
+      const next = typeof value === 'function' ? value(prev) : value
+      if (next && !prev) {
+        closeOtherMobileOverlays('actions')
+        setMobileSidebarOpen(false)
+      }
+      return next
+    })
+  }, [closeOtherMobileOverlays])
+
+  // Mobile-aware toggles: when opening one overlay, close the rest. On
+  // desktop these fall through to the raw toggles (multi-panel layout).
+  const handleToggleAgentCapabilities = useCallback(() => {
+    if (!useUIStore.getState().agentCapabilitiesOpen) closeOtherMobileOverlays('capabilities')
+    toggleAgentCapabilities()
+  }, [closeOtherMobileOverlays, toggleAgentCapabilities])
+
+  const handleToggleScheduler = useCallback(() => {
+    if (!useUIStore.getState().schedulerOpen) closeOtherMobileOverlays('scheduler')
+    toggleScheduler()
+  }, [closeOtherMobileOverlays, toggleScheduler])
+
+  const handleTogglePalette = useCallback(() => {
+    if (!useUIStore.getState().paletteOpen) closeOtherMobileOverlays('palette')
+    togglePalette()
+  }, [closeOtherMobileOverlays, togglePalette])
+
+  const handleSetShowTodos = useCallback<typeof setShowTodos>((value) => {
+    setShowTodos((prev) => {
+      const next = typeof value === 'function' ? value(prev) : value
+      if (next && !prev) closeOtherMobileOverlays('todos')
+      return next
+    })
+  }, [closeOtherMobileOverlays])
+
   const commands = useTeamCommands({
     viewMode,
     cycleViewMode,
-    toggleAgentCapabilities,
-    setShowTodos,
+    toggleAgentCapabilities: handleToggleAgentCapabilities,
+    setShowTodos: handleSetShowTodos,
     handleWorkspaceFiles,
     handleCodingSidebarToggle,
     mode,
@@ -684,13 +761,13 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   useKeyboardShortcuts({
     n: handleNewSession,
     v: isMobile ? undefined : cycleViewMode,
-    a: toggleAgentCapabilities,
+    a: handleToggleAgentCapabilities,
     f: handleWorkspaceFiles,
-    t: () => { if (sessionIdState) setShowTodos((v) => !v) },
-    p: isMobile ? undefined : togglePalette,
+    t: () => { if (sessionIdState) handleSetShowTodos((v) => !v) },
+    p: isMobile ? undefined : handleTogglePalette,
     b: mode === 'coding' ? handleCodingSidebarToggle : undefined,
     // Ctrl+S — open the scheduler drawer (state in useUIStore).
-    s: toggleScheduler,
+    s: handleToggleScheduler,
     // Ctrl+I — focus the chat input (dispatched via CustomEvent so future
     // callers don't need a ref to the input).
     'i': () => window.dispatchEvent(new CustomEvent('focus-chat-input')),
@@ -708,57 +785,72 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     return () => window.removeEventListener('keydown', handler)
   }, [cycleActiveAgent])
 
-  const handleMobileSidebarSwipeStart = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
-    if ((os !== 'ios' && os !== 'android') || !isMobile || mobileSidebarOpen) return
-    const touch = event.touches[0]
-    if (!touch || touch.clientX > 24) return
-    mobileSidebarSwipeStartRef.current = { x: touch.clientX, y: touch.clientY }
-  }, [isMobile, mobileSidebarOpen, os])
+  // ── Mobile edge-swipe drawers ──────────────────────────────────────────────
+  //
+  // One controller owns every mobile drawer so only ONE can be open at a
+  // time. The previous implementation tracked each drawer's open state in
+  // isolation, which let a left-edge swipe open the sidebar while the
+  // right-side actions/coding panel was already open (and vice-versa).
+  //
+  // Right-edge target depends on context: in a coding workspace it opens
+  // the workspace panel (changed files / tree); otherwise the chat-actions
+  // menu. Left-edge always opens the session sidebar.
+  const codingPanelOpenForSwipe = mode === 'coding' && Boolean(workspace)
 
-  const handleMobileSidebarSwipeMove = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
-    const start = mobileSidebarSwipeStartRef.current
-    if (!start || (os !== 'ios' && os !== 'android') || !isMobile || mobileSidebarOpen) return
-    const touch = event.touches[0]
-    if (!touch) return
-    const deltaX = touch.clientX - start.x
-    const deltaY = touch.clientY - start.y
-    if (deltaX > 56 && Math.abs(deltaY) < 36) {
-      if (mode === 'coding') {
-        setCodingPanel(null)
-        setCodingFileViewer(null)
-      }
-      setMobileSidebarOpen(true)
-      mobileSidebarSwipeStartRef.current = null
-    }
-  }, [isMobile, mobileSidebarOpen, mode, os])
+  // Single source of truth for "what is open right now". Closing routes to
+  // whichever drawer the id names, so swipe-to-close hits the right one.
+  const activeDrawer: string | null = mobileSidebarOpen
+    ? 'sidebar'
+    : showMobileActions
+      ? 'actions'
+      : codingPanel !== null
+        ? 'coding-panel'
+        : null
 
-  const handleMobileSidebarSwipeEnd = useCallback(() => {
-    mobileSidebarSwipeStartRef.current = null
+  const closeAllDrawers = useCallback(() => {
+    setMobileSidebarOpen(false)
+    setShowMobileActions(false)
+    setCodingPanel(null)
+    setCodingFileViewer(null)
+    setCodingFileViewerDetached(false)
   }, [])
 
-  const handleMobileActionsSwipeStart = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
-    if ((os !== 'ios' && os !== 'android') || !isMobile || showMobileActions) return
-    const touch = event.touches[0]
-    if (!touch || window.innerWidth - touch.clientX > 24) return
-    mobileActionsSwipeStartRef.current = { x: touch.clientX, y: touch.clientY }
-  }, [isMobile, os, showMobileActions])
+  const openLeftDrawer = useCallback(() => {
+    // Opening the sidebar must vacate every other overlay first.
+    closeOtherMobileOverlays('sidebar')
+    setShowMobileActions(false)
+    if (mode === 'coding') {
+      setCodingPanel(null)
+      setCodingFileViewer(null)
+    }
+    setMobileSidebarOpen(true)
+  }, [closeOtherMobileOverlays, mode])
 
-  const handleMobileActionsSwipeMove = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
-    const start = mobileActionsSwipeStartRef.current
-    if (!start || (os !== 'ios' && os !== 'android') || !isMobile || showMobileActions) return
-    const touch = event.touches[0]
-    if (!touch) return
-    const deltaX = touch.clientX - start.x
-    const deltaY = touch.clientY - start.y
-    if (deltaX < -56 && Math.abs(deltaY) < 36) {
+  const openRightDrawer = useCallback(() => {
+    // Opening a right drawer must vacate the sidebar + other overlays first.
+    setMobileSidebarOpen(false)
+    if (codingPanelOpenForSwipe) {
+      closeOtherMobileOverlays('coding-panel')
+      setShowMobileActions(false)
+      setCodingPanel((value) => value ?? 'changed')
+    } else {
+      closeOtherMobileOverlays('actions')
       setShowMobileActions(true)
-      mobileActionsSwipeStartRef.current = null
     }
-  }, [isMobile, os, showMobileActions])
+  }, [closeOtherMobileOverlays, codingPanelOpenForSwipe])
 
-  const handleMobileActionsSwipeEnd = useCallback(() => {
-    mobileActionsSwipeStartRef.current = null
-  }, [])
+  const { handlers: edgeSwipeHandlers, drag: edgeSwipeDrag } = useEdgeSwipe({
+    activeDrawer,
+    left: { id: 'sidebar', open: openLeftDrawer },
+    right: { id: codingPanelOpenForSwipe ? 'coding-panel' : 'actions', open: openRightDrawer },
+    close: closeAllDrawers,
+  })
+
+  // Live drag offset (px) per drawer, fed to each drawer so it tracks the
+  // finger. Each drawer reads only its own id; null when not being dragged.
+  const sidebarDragOffset = edgeSwipeDrag?.drawerId === 'sidebar' ? edgeSwipeDrag.offset : null
+  const actionsDragOffset = edgeSwipeDrag?.drawerId === 'actions' ? edgeSwipeDrag.offset : null
+  const codingPanelDragOffset = edgeSwipeDrag?.drawerId === 'coding-panel' ? edgeSwipeDrag.offset : null
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -766,22 +858,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     // h-dvh handles iOS Safari's dynamic toolbar.
     <div
       className="mobile-safe-shell mobile-viewport flex h-dvh flex-col bg-(--bg-page)"
-      onTouchStart={(event) => {
-        handleMobileSidebarSwipeStart(event)
-        handleMobileActionsSwipeStart(event)
-      }}
-      onTouchMove={(event) => {
-        handleMobileSidebarSwipeMove(event)
-        handleMobileActionsSwipeMove(event)
-      }}
-      onTouchEnd={() => {
-        handleMobileSidebarSwipeEnd()
-        handleMobileActionsSwipeEnd()
-      }}
-      onTouchCancel={() => {
-        handleMobileSidebarSwipeEnd()
-        handleMobileActionsSwipeEnd()
-      }}
+      {...edgeSwipeHandlers}
     >
       {/* 40 px header above the sidebar/content row. On macOS Tauri it
           doubles as the window drag region via useTauriDrag, with a
@@ -798,24 +875,25 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         splitAgentCount={splitAgentNames.length}
         navigate={navigate}
         onCodingSidebarToggle={handleCodingSidebarToggle}
-        onMobileSidebarOpen={() => setMobileSidebarOpen(true)}
+        onMobileSidebarOpen={openLeftDrawer}
         headerTokens={headerTokens}
         sessionId={sessionIdState}
         todos={todos}
         showTodos={showTodos}
-        setShowTodos={setShowTodos}
+        setShowTodos={handleSetShowTodos}
         showFilesPanel={showFilesPanel}
         setShowFilesPanel={setShowFilesPanel}
         codingPanel={codingPanel}
         onWorkspaceFiles={handleWorkspaceFiles}
         agentCapabilitiesOpen={agentCapabilitiesOpen}
-        onToggleAgentCapabilities={toggleAgentCapabilities}
+        onToggleAgentCapabilities={handleToggleAgentCapabilities}
         showMobileActions={showMobileActions}
-        setShowMobileActions={setShowMobileActions}
+        setShowMobileActions={handleSetShowMobileActions}
+        mobileActionsDragOffset={actionsDragOffset}
         agentNames={agentNames}
         agentStreams={agentStreams}
         onSelectAgent={setActiveAgent}
-        onToggleScheduler={toggleScheduler}
+        onToggleScheduler={handleToggleScheduler}
         onCloseMobileActionsMenu={closeMobileActionsMenu}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
@@ -831,17 +909,19 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             workspace={workspace}
             onCollapse={() => setCodingSidebarCollapsed(true)}
             openWorkspaceDialogKey={openWorkspaceDialogKey}
-            onCommandPalette={togglePalette}
+            onCommandPalette={handleTogglePalette}
             desktopCollapsed={codingSidebarCollapsed}
             mobileOpen={mobileSidebarOpen}
+            mobileDragOffset={sidebarDragOffset}
             onMobileClose={() => setMobileSidebarOpen(false)}
           />
         ) : (
           <Sidebar
             currentSessionId={sessionIdState || undefined}
-            onCommandPalette={togglePalette}
+            onCommandPalette={handleTogglePalette}
             onNewChat={handleNewSession}
             mobileOpen={mobileSidebarOpen}
+            mobileDragOffset={sidebarDragOffset}
             onMobileClose={() => setMobileSidebarOpen(false)}
           />
         )}
@@ -1027,6 +1107,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             open
             initialTab={codingPanel}
             mobile={isMobile}
+            mobileDragOffset={codingPanelDragOffset}
             selectedFilePath={codingFileViewer?.path ?? null}
             selectedFileOpenKey={codingFileOpenKey}
             onFileSelect={handleCodingFileSelect}
@@ -1054,7 +1135,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         onCloseFilesPanel={() => setShowFilesPanel(false)}
         isMobile={isMobile}
         showTodos={showTodos}
-        onShowTodosChange={setShowTodos}
+        onShowTodosChange={handleSetShowTodos}
         todos={todos}
         schedulerOpen={schedulerOpen}
         onCloseScheduler={closeScheduler}

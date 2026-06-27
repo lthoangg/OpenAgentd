@@ -34,6 +34,7 @@ export function ModelCombobox({
   disabled,
   invalid,
   placeholder,
+  ariaLabel,
 }: {
   value: string
   onChange: (v: string) => void
@@ -41,6 +42,8 @@ export function ModelCombobox({
   disabled?: boolean
   invalid?: boolean
   placeholder?: string
+  /** Accessible name for the input when no visible <label> is associated. */
+  ariaLabel?: string
 }) {
   const [query, setQuery] = useState(value)
   const [open, setOpen] = useState(false)
@@ -154,6 +157,7 @@ export function ModelCombobox({
           aria-expanded={open}
           aria-autocomplete="list"
           aria-controls="model-combobox-list"
+          aria-label={ariaLabel}
           value={query}
           onChange={(e) => {
             setQuery(e.target.value)

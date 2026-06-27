@@ -154,6 +154,17 @@ describe("ToolResult — file list tools", () => {
     expect(screen.getByText("a/b.ts")).toBeTruthy()
     expect(screen.getByText("c/d.ts")).toBeTruthy()
   })
+
+  it("wraps long grep lines instead of overflowing horizontally", () => {
+    // grep emits "file:line: content" rows that can be very long; they must
+    // wrap so mobile users never get a horizontally clipped/scrolling result.
+    const longLine =
+      "src/very/deeply/nested/module/path/file.ts:128: const reallyLongIdentifierThatHasNoBreakingSpacesForAGoodWhile = true"
+    render(<ToolResult toolName="grep" result={longLine} />)
+    const li = screen.getByText(longLine)
+    expect(li.className).toContain("break-words")
+    expect(li.className).toContain("whitespace-pre-wrap")
+  })
 })
 
 // ---------------------------------------------------------------------------

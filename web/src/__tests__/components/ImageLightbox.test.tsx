@@ -631,4 +631,78 @@ describe("ImageLightbox", () => {
 
     expect(actionBar?.className).toContain("[[data-mobile-shell='ios']_&]:top-[max(4rem,calc(env(safe-area-inset-top)+1rem))]")
   })
+
+  // ── Gallery navigation ───────────────────────────────────────────────────────
+
+  const GALLERY = [
+    { src: "https://example.com/a.jpg", alt: "Image A" },
+    { src: "https://example.com/b.jpg", alt: "Image B" },
+    { src: "https://example.com/c.jpg", alt: "Image C" },
+  ]
+
+  it("shows prev/next controls and a counter only for galleries", () => {
+    const { rerender } = render(
+      <ImageLightbox src="https://example.com/a.jpg" alt="Image A" isOpen onClose={mock(() => {})} />
+    )
+    // Single image: no nav controls.
+    expect(screen.queryByLabelText("Next image")).toBeNull()
+
+    rerender(
+      <ImageLightbox src="https://example.com/a.jpg" alt="Image A" isOpen onClose={mock(() => {})} images={GALLERY} index={0} />
+    )
+    expect(screen.getByLabelText("Next image")).toBeTruthy()
+    expect(screen.getByLabelText("Previous image")).toBeTruthy()
+    expect(screen.getByText("1 / 3")).toBeTruthy()
+  })
+
+  it("advances to the next image via the chevron", () => {
+    render(
+      <ImageLightbox src="https://example.com/a.jpg" alt="Image A" isOpen onClose={mock(() => {})} images={GALLERY} index={0} />
+    )
+    fireEvent.click(screen.getByLabelText("Next image"))
+    expect(screen.getByText("2 / 3")).toBeTruthy()
+    expect((screen.getByRole("img") as HTMLImageElement).src).toContain("b.jpg")
+  })
+
+  it("wraps around when navigating past the ends", () => {
+    render(
+      <ImageLightbox src="https://example.com/a.jpg" alt="Image A" isOpen onClose={mock(() => {})} images={GALLERY} index={0} />
+    )
+    // Prev from first → wraps to last.
+    fireEvent.click(screen.getByLabelText("Previous image"))
+    expect(screen.getByText("3 / 3")).toBeTruthy()
+  })
+
+  it("navigates with arrow keys", () => {
+    render(
+      <ImageLightbox src="https://example.com/a.jpg" alt="Image A" isOpen onClose={mock(() => {})} images={GALLERY} index={0} />
+    )
+    fireEvent.keyDown(document, { key: "ArrowRight" })
+    expect(screen.getByText("2 / 3")).toBeTruthy()
+    fireEvent.keyDown(document, { key: "ArrowLeft" })
+    expect(screen.getByText("1 / 3")).toBeTruthy()
+  })
+
+  it("advances on a horizontal swipe-left gesture", () => {
+    render(
+      <ImageLightbox src="https://example.com/a.jpg" alt="Image A" isOpen onClose={mock(() => {})} images={GALLERY} index={0} />
+    )
+    const target = screen.getByRole("img").parentElement as HTMLElement
+    fireEvent.touchStart(target, { touches: [{ clientX: 200, clientY: 100 }] })
+    fireEvent.touchMove(target, { touches: [{ clientX: 100, clientY: 102 }] })
+    fireEvent.touchEnd(target)
+    expect(screen.getByText("2 / 3")).toBeTruthy()
+  })
+
+  it("does not close on a horizontal swipe within a gallery", () => {
+    const onClose = mock(() => {})
+    render(
+      <ImageLightbox src="https://example.com/a.jpg" alt="Image A" isOpen onClose={onClose} images={GALLERY} index={0} />
+    )
+    const target = screen.getByRole("img").parentElement as HTMLElement
+    fireEvent.touchStart(target, { touches: [{ clientX: 200, clientY: 100 }] })
+    fireEvent.touchMove(target, { touches: [{ clientX: 100, clientY: 105 }] })
+    fireEvent.touchEnd(target)
+    expect(onClose).not.toHaveBeenCalled()
+  })
 })

@@ -102,15 +102,28 @@ export function UserBubble({ content, timestamp, attachments, onRevert, modelId,
          {/* Attachments */}
          {visibleAttachments.length > 0 && (
            <div className="flex flex-wrap justify-end gap-2">
-             {visibleAttachments.map((att: MessageAttachment, idx: number) => {
+             {(() => {
+               // Build a gallery of all image attachments so the lightbox can
+               // swipe between siblings, and map each thumbnail to its index.
+               const imageGallery = visibleAttachments
+                 .filter((a: MessageAttachment) => a.category === 'image')
+                 .map((a: MessageAttachment, i: number) => ({
+                   src: resolveApiUrl(a.url) || '',
+                   alt: a.original_name || `Attachment ${i + 1}`,
+                 }))
+               let imageCursor = -1
+               return visibleAttachments.map((att: MessageAttachment, idx: number) => {
                const isImage = att.category === 'image'
 
                if (isImage) {
+                 imageCursor += 1
                  return (
                    <ImageAttachment
                      key={idx}
                      src={resolveApiUrl(att.url) || ''}
                      alt={att.original_name || `Attachment ${idx + 1}`}
+                     gallery={imageGallery}
+                     galleryIndex={imageCursor}
                    />
                  )
                }
@@ -124,7 +137,8 @@ export function UserBubble({ content, timestamp, attachments, onRevert, modelId,
                    clickable={!!att.url}
                  />
                )
-             })}
+             })
+             })()}
            </div>
          )}
 

@@ -9,6 +9,13 @@ interface ImageAttachmentProps {
   /** If true, show a remove button (for pending attachments) */
   removable?: boolean
   /**
+   * Sibling images for the lightbox gallery. When provided with length > 1,
+   * opening this thumbnail lets the user swipe / arrow between all of them.
+   * ``galleryIndex`` is this image's position within ``gallery``.
+   */
+  gallery?: { src: string; alt?: string }[]
+  galleryIndex?: number
+  /**
    * If true, render the thumbnail at a compact size (160×160) suitable for
    * a horizontal preview strip next to an input bar. The full-size lightbox
    * preview on click is unchanged. Defaults to false (200×200).
@@ -16,7 +23,7 @@ interface ImageAttachmentProps {
   compact?: boolean
 }
 
-export function ImageAttachment({ src, alt = 'Image', onRemove, removable, compact = false }: ImageAttachmentProps) {
+export function ImageAttachment({ src, alt = 'Image', onRemove, removable, compact = false, gallery, galleryIndex }: ImageAttachmentProps) {
   const [imageError, setImageError] = useState(false)
   const [lightboxOpen, setLightboxOpen] = useState(false)
 
@@ -73,6 +80,8 @@ export function ImageAttachment({ src, alt = 'Image', onRemove, removable, compa
         alt={alt}
         isOpen={lightboxOpen}
         onClose={() => setLightboxOpen(false)}
+        images={gallery && gallery.length > 1 ? gallery : undefined}
+        index={galleryIndex}
       />
     </>
   )

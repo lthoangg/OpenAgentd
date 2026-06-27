@@ -281,6 +281,8 @@ class MyProxyProvider(LLMProviderBase):
 
 When `support_interrupt = False`, `stream_and_assemble` passes `interrupt_event=None` to both `_interruptible_stream` and `stream_with_retry`, so the current LLM call always completes in full. The interrupt is still observed at points 1, 3, and 4 above — the loop exits cleanly at the **next between-iteration boundary**, tools are still cancelled, and the net latency difference is at most one LLM call's streaming time.
 
+Team queued follow-ups follow the same rule: they are not spliced into a running lead loop by `QueuedMessageInjectionHook` for non-interruptible providers. The queued rows stay persisted with `extra.queue_status="queued"` and are activated by the normal after-loop queue handoff once the lead activation returns to `idle`.
+
 The default is `True` (all built-in providers are interruptible).
 
 ### `_gather_or_cancel` — cancellable parallel tool execution

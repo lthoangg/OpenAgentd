@@ -24,10 +24,13 @@ from app.agent.sandbox import SandboxConfig, set_sandbox
 from app.agent.tools.builtin.todo import (
     AnyAction,
     ClaimAction,
+    ClearAction,
     CreateAction,
     DeleteAction,
     ReadAction,
     TODOS_FILENAME,
+    TodoArgs,
+    TodoMemberArgs,
     UpdateAction,
     _todo_manage,
     release_in_progress_for_actor,
@@ -1093,3 +1096,140 @@ async def test_create_after_delete_all_then_read(
     assert "task_2" in result
     assert "Task 2" in result
     assert "task_1" not in result
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test: lenient `actions` coercion (the recurring list_type failure)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_actions_accepts_json_string() -> None:
+    """A stringified actions array (some providers emit this) is parsed."""
+    model = TodoArgs(actions='[{"action": "read"}]')
+    assert len(model.actions) == 1
+    assert isinstance(model.actions[0], ReadAction)
+
+
+def test_actions_accepts_single_object() -> None:
+    """A single action object is wrapped into a one-element list."""
+    model = TodoArgs(
+        actions={
+            "action": "create",
+            "content": "x",
+            "status": "pending",
+            "priority": "low",
+        }
+    )
+    assert len(model.actions) == 1
+    assert isinstance(model.actions[0], CreateAction)
+
+
+def test_actions_string_still_validates_contents() -> None:
+    """Coercion only reshapes the container — invalid actions still raise."""
+    with pytest.raises(ValidationError):
+        TodoArgs(actions='[{"action": "bogus"}]')
+
+
+def test_member_actions_accepts_json_string() -> None:
+    """Member schema gets the same lenient coercion."""
+    model = TodoMemberArgs(actions='[{"action": "read"}]')
+    assert len(model.actions) == 1
+    assert isinstance(model.actions[0], ReadAction)
+
+
+@pytest.mark.asyncio
+async def test_todo_manage_arun_with_stringified_actions(
+    tmp_sandbox: SandboxConfig, todos_file: Path
+) -> None:
+    """End-to-end: the live Tool validates a stringified actions arg via arun."""
+    result = await todo_manage.arun(
+        _injected={"_state": None},
+        actions=(
+            '[{"action": "create", "content": "From string", '
+            '"status": "pending", "priority": "high"}]'
+        ),
+    )
+    assert "task_1" in result
+    assert "From string" in result
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test: clear action (bulk-remove finished tasks)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_clear_finished_removes_completed_and_cancelled(
+    tmp_sandbox: SandboxConfig, todos_file: Path
+) -> None:
+    await _todo_manage(
+        actions=[
+            CreateAction(
+                action="create", content="done", status="completed", priority="low"
+            ),
+            CreateAction(
+                action="create", content="dropped", status="cancelled", priority="low"
+            ),
+            CreateAction(
+                action="create", content="active", status="pending", priority="high"
+            ),
+        ],
+        _state=None,
+    )
+
+    result = await _todo_manage(actions=[ClearAction(action="clear")], _state=None)
+
+    assert "active" in result
+    assert "done" not in result
+    assert "dropped" not in result
+    store = json.loads(todos_file.read_text())
+    assert [i["content"] for i in store["items"]] == ["active"]
+
+
+@pytest.mark.asyncio
+async def test_clear_specific_status_keeps_the_other(
+    tmp_sandbox: SandboxConfig, todos_file: Path
+) -> None:
+    await _todo_manage(
+        actions=[
+            CreateAction(
+                action="create", content="done", status="completed", priority="low"
+            ),
+            CreateAction(
+                action="create", content="dropped", status="cancelled", priority="low"
+            ),
+        ],
+        _state=None,
+    )
+
+    result = await _todo_manage(
+        actions=[ClearAction(action="clear", status="completed")], _state=None
+    )
+
+    assert "done" not in result
+    assert "dropped" in result
+
+
+@pytest.mark.asyncio
+async def test_clear_preserves_in_progress(
+    tmp_sandbox: SandboxConfig, todos_file: Path
+) -> None:
+    await _todo_manage(
+        actions=[
+            CreateAction(
+                action="create",
+                content="working",
+                status="in_progress",
+                priority="high",
+            ),
+            CreateAction(
+                action="create", content="done", status="completed", priority="low"
+            ),
+        ],
+        _state=None,
+    )
+
+    result = await _todo_manage(actions=[ClearAction(action="clear")], _state=None)
+
+    assert "working" in result
+    assert "done" not in result

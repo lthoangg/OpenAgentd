@@ -151,8 +151,20 @@ class ReadAction(BaseModel):
     action: Literal["read"]
 
 
+class ClearAction(BaseModel):
+    action: Literal["clear"]
+    status: Literal["completed", "cancelled", "finished"] = Field(
+        default="finished",
+        description=(
+            "Which tasks to remove: 'completed', 'cancelled', or 'finished' "
+            "(both completed and cancelled — the default). Active tasks "
+            "(pending / in_progress) are always kept."
+        ),
+    )
+
+
 AnyAction = Annotated[
-    CreateAction | UpdateAction | DeleteAction | ReadAction,
+    CreateAction | UpdateAction | DeleteAction | ReadAction | ClearAction,
     Field(discriminator="action"),
 ]
 
@@ -168,13 +180,44 @@ ActionModel = (
     | ClaimAction
     | DeleteAction
     | ReadAction
+    | ClearAction
 )
+
+
+def _coerce_actions(value: Any) -> Any:
+    """Accept ``actions`` the way real models actually emit it.
+
+    Some providers stringify nested-array arguments, sending ``actions`` as a
+    JSON string (``'[{"action": "read"}]'``) instead of a real list, which
+    Pydantic's ``list[...]`` then rejects with a confusing ``list_type`` error.
+    Others send a single action object instead of a one-element list. Normalise
+    both here (``mode="before"``) so the tool is forgiving of these common
+    shapes rather than failing the whole call — this is the agent's own task
+    list, robustness matters more than strictness.
+    """
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return value
+        try:
+            value = json.loads(text)
+        except (json.JSONDecodeError, ValueError):
+            return value
+    # A single action object → wrap as a one-element list.
+    if isinstance(value, dict):
+        return [value]
+    return value
 
 
 class TodoArgs(BaseModel):
     """Arguments for the lead todo_manage tool."""
 
     actions: list[AnyAction] = Field(description="Ordered list of actions to execute.")
+
+    @field_validator("actions", mode="before")
+    @classmethod
+    def _coerce(cls, value: Any) -> Any:
+        return _coerce_actions(value)
 
 
 class TodoMemberArgs(BaseModel):
@@ -183,6 +226,11 @@ class TodoMemberArgs(BaseModel):
     actions: list[MemberAnyAction] = Field(
         description="Ordered list of claim/read/update actions to execute."
     )
+
+    @field_validator("actions", mode="before")
+    @classmethod
+    def _coerce(cls, value: Any) -> Any:
+        return _coerce_actions(value)
 
 
 # ---------------------------------------------------------------------------
@@ -369,12 +417,18 @@ create  — Add a new task (returns the assigned task_id).
 update  — Update an existing task by task_id (change any combination of
           content, status, priority, dependencies, assigned_to).
 delete  — Remove a task permanently by task_id.
+clear   — Bulk-remove finished tasks in one call. status='finished' (default)
+          removes completed AND cancelled; or pass 'completed' / 'cancelled'.
+          Active tasks (pending / in_progress) are always kept.
 read    — Return the full task list with task_ids.
 
 Rules
 -----
 - Batch related changes into a single call (e.g. complete the current task
   and start the next one together).
+- Start a fresh, unrelated task by clearing finished items first
+  (`clear`), so the list reflects current work instead of accumulating
+  stale done/cancelled entries.
 - Assign member work with assigned_to and model ordering with dependencies.
 - Only ONE task per agent should be in_progress at a time.
 - Mark tasks completed immediately when done; do not batch updates across turns.
@@ -585,6 +639,16 @@ async def _apply_actions(
                 log_parts.append(f"deleted {act.task_id}")
             else:
                 log_parts.append(f"not_found {act.task_id}")
+
+        elif isinstance(act, ClearAction):
+            if act.status == "finished":
+                drop = {"completed", "cancelled"}
+            else:
+                drop = {act.status}
+            before = len(store["items"])
+            store["items"] = [i for i in store["items"] if i.get("status") not in drop]
+            removed = before - len(store["items"])
+            log_parts.append(f"cleared {removed} {'/'.join(sorted(drop))}")
 
     _save_store(store)
     if _state is not None:

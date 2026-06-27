@@ -199,7 +199,7 @@ export function TeamChatHeader({
             <MobileHeaderAction
               Icon={ListTodo}
               label="Tasks"
-              onClick={() => setShowTodos(true)}
+              onClick={() => setShowTodos((v) => !v)}
               disabled={!sessionId}
               badge={activeTodoCount}
               active={showTodos}

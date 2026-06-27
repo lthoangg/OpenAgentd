@@ -374,12 +374,15 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   // ``useUIStore`` already enforces this *among* scheduler / capabilities /
   // palette, and ``useEdgeSwipe`` enforces it among the drawers — but the
   // two islands plus todos / files panel never coordinated across each
-  // other. This single coordinator bridges them. Desktop keeps its
-  // multi-panel layout untouched (the helper no-ops when ``!isMobile``).
+  // other. This single coordinator bridges them.
+  //
+  // Mobile-only: sidebar / chat-actions / coding-panel are full-screen
+  // overlays that shouldn't stack — guard those behind ``isMobile``.
+  // Todos / files / capabilities / scheduler / palette are shared surfaces
+  // that must not stack on *either* platform, so those run unconditionally.
   const closeOtherMobileOverlays = useCallback((keep: MobileOverlay) => {
-    if (!isMobile) return
     const toClose = new Set(overlaysToClose(keep))
-    if (toClose.has('sidebar') || toClose.has('actions') || toClose.has('coding-panel')) {
+    if (isMobile && (toClose.has('sidebar') || toClose.has('actions') || toClose.has('coding-panel'))) {
       setMobileSidebarOpen(false)
       setShowMobileActions(false)
       setCodingPanel(null)
@@ -739,8 +742,9 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     })
   }, [closeOtherMobileOverlays])
 
-  // Mobile-aware toggles: when opening one overlay, close the rest. On
-  // desktop these fall through to the raw toggles (multi-panel layout).
+  // Cross-platform overlay toggles: when opening one overlay, close the rest.
+  // closeOtherMobileOverlays now coordinates todos/files/capabilities on both
+  // desktop and mobile; sidebar/actions guards stay mobile-only.
   const handleToggleAgentCapabilities = useCallback(() => {
     if (!useUIStore.getState().agentCapabilitiesOpen) closeOtherMobileOverlays('capabilities')
     toggleAgentCapabilities()

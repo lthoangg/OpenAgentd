@@ -72,6 +72,7 @@ Right-side workspace explorer for `/coding` mode.
 - `CommandPalette` is never rendered on mobile (`!isMobile && showPalette`).
 - User and queued-message bubbles can use the full chat width on mobile; `md:` and wider viewports keep the narrower desktop caps.
 - Long single-agent transcripts render the newest 80 turns first and expose **Show earlier messages** to reveal older turns in chunks, reducing initial mobile layout cost.
+- The **Tasks** header button toggles the todos overlay (tap again to close). All header overlays (todos, files, capabilities, scheduler, palette) are mutually exclusive on both mobile and desktop via `closeOtherMobileOverlays`; sidebar/actions/coding-panel guards remain mobile-only.
 
 ### FloatingInputBar (`FloatingInputBar.tsx`) / InputBar (`InputBar.tsx`)
 - Mobile: static docked `<div>` at the bottom with `border-t`, `backdrop-blur`, `.pb-safe`. No drag, no localStorage position.

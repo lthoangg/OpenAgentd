@@ -2,7 +2,7 @@
 title: Todos Popover
 description: Chat header popover showing the agent's current task list with live invalidation on tool_end.
 status: stable
-updated: 2026-06-13
+updated: 2026-07-05
 ---
 
 # Todos popover
@@ -14,17 +14,20 @@ the agent's current task list as a flat scrollable checklist managed by
 
 ---
 
-## Opening the popover
+## Opening and closing the popover
 
 | Trigger | Notes |
 |---------|-------|
-| **"Todos" button** in the chat header | Between the view toggles and the **Files** button; disabled when no session is active. |
+| **"Todos" button** in the chat header | Toggles the popover; click/tap again to close. Disabled when no session is active. |
 | **`Ctrl+T`** | Keyboard shortcut registered in `useKeyboardShortcuts`. Disabled when no session is active. |
 | **Command Palette** (`Ctrl+P`) | "Task List" entry under the **View** group. |
+| **Opening Files or Agent Settings** | Closes the Todos popover automatically (and vice versa) on both desktop and mobile. |
 
 The popover is controlled (`open` / `onOpenChange`) so the keyboard shortcut
 can toggle it programmatically. It is rendered via the shared `Popover` /
 `PopoverContent` / `PopoverTrigger` primitives (`@base-ui/react/popover`).
+
+Mutual exclusion is handled by `closeOtherMobileOverlays` in `TeamChatView/index.tsx`. The sidebar/actions/coding-panel guards are mobile-only, but todos, files, capabilities, scheduler, and palette coordinate on both platforms.
 
 ---
 

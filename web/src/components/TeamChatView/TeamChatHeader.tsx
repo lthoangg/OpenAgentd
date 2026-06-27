@@ -194,6 +194,7 @@ export function TeamChatHeader({
               onClick={() => setShowTodos(true)}
               disabled={!sessionId}
               badge={activeTodoCount}
+              active={showTodos}
             />
             <MobileHeaderAction
               Icon={FolderOpen}

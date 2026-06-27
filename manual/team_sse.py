@@ -27,7 +27,9 @@ from pathlib import Path
 
 import httpx
 
-BASE = "http://localhost:8000/api"
+from manual._common import DEFAULT_BASE, require_dev_server
+
+BASE = DEFAULT_BASE
 DEFAULT_WAIT = 180
 
 # ── Colors ──────────────────────────────────────────────────────────────────
@@ -242,6 +244,7 @@ def main() -> None:
     args = p.parse_args()
 
     base = args.base.rstrip("/")
+    require_dev_server(base)
     sid = post_message(base, args.message, args.session)
     event_counts, per_agent = stream_events(base, sid, args.wait, args.out)
     if not args.no_summary:

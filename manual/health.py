@@ -6,7 +6,9 @@ Usage: uv run python -m manual.health [--base URL]
 import argparse
 import httpx
 
-BASE = "http://localhost:8000/api"
+from manual._common import DEFAULT_BASE, require_dev_server
+
+BASE = DEFAULT_BASE
 
 
 def main():
@@ -14,6 +16,7 @@ def main():
     p.add_argument("--base", default=BASE)
     args = p.parse_args()
     base = args.base.rstrip("/")
+    require_dev_server(base)
 
     # Health endpoint — the legacy ``/api/health`` alias was removed; use
     # the readiness probe so a "healthy" report covers DB + team too.

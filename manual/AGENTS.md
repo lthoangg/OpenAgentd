@@ -3,7 +3,7 @@
 Manual smoke-test scripts for openagentd.
 
 - **Run as:** `uv run python -m manual.<script> [args]` (try-providers: `uv run python -m manual.try_providers.<script>`).
-- **Default target:** `http://localhost:8000/api` — override with `--base URL`.
+- **Default target:** dev API at `http://localhost:8000/api` with `APP_ENV=development`. Scripts should fail fast rather than accidentally smoke-test the production install; override with `--base URL` only intentionally.
 - **Server needed?** Most scripts need a running server (`make run`). Scripts marked **(no server)** run in-process or read the DB/logs directly.
 - **Discoverability:** every script supports `-h/--help`. This file is a map, not a full flag reference.
 

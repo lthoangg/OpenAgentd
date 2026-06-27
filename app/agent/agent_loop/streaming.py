@@ -277,18 +277,9 @@ async def stream_and_assemble(
                                     tc.function.name
                                 )
                         if tc.function.arguments:
-                            buf = tool_calls_buffer[idx]["function"]["arguments"]
-                            if not buf:
-                                tool_calls_buffer[idx]["function"]["arguments"] = (
-                                    tc.function.arguments
-                                )
-                            else:
-                                try:
-                                    json.loads(buf)
-                                except json.JSONDecodeError:
-                                    tool_calls_buffer[idx]["function"]["arguments"] += (
-                                        tc.function.arguments
-                                    )
+                            tool_calls_buffer[idx]["function"]["arguments"] += (
+                                tc.function.arguments
+                            )
                         if tc.function.thought:
                             tool_calls_buffer[idx]["function"]["thought"] = (
                                 tc.function.thought
@@ -318,13 +309,16 @@ async def stream_and_assemble(
         if fn_args:
             try:
                 json.loads(fn_args)
-            except (json.JSONDecodeError, ValueError):
+            except (json.JSONDecodeError, ValueError) as exc:
                 logger.warning(
-                    "drop_partial_tool_call_bad_json agent={} idx={} name={} args_prefix={!r}",
+                    "drop_partial_tool_call_bad_json agent={} idx={} name={} chars={} args_prefix={!r} args_suffix={!r} error={}",
                     agent_name,
                     i,
                     fn_name,
-                    fn_args[:80],
+                    len(fn_args),
+                    fn_args[:120],
+                    fn_args[-120:],
+                    exc,
                 )
                 continue
         tc_list.append(ToolCall(**buf))

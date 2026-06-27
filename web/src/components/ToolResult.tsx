@@ -88,12 +88,12 @@ function WebSearchResult({ result }: { result: string }) {
                   href={link}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex-1 font-mono text-xs font-semibold leading-snug text-(--color-accent) underline-offset-2 hover:underline"
+                  className="min-w-0 flex-1 font-mono text-xs font-semibold leading-snug break-words text-(--color-accent) underline-offset-2 hover:underline"
                 >
                   {title}
                 </a>
               ) : (
-                <span className="flex-1 font-mono text-xs font-semibold leading-snug text-(--color-text)">
+                <span className="min-w-0 flex-1 font-mono text-xs font-semibold leading-snug break-words text-(--color-text)">
                   {title}
                 </span>
               )}
@@ -179,9 +179,12 @@ function FileListResult({ result }: { result: string }) {
       <span className="font-mono text-[10px] text-(--color-text-muted)">
         {entries.length} {entries.length === 1 ? 'entry' : 'entries'}
       </span>
-      <ul className="max-h-[calc(10*1.55em)] space-y-0.5 overflow-y-auto">
+      <ul className="max-h-[calc(10*1.55em)] min-w-0 space-y-0.5 overflow-y-auto">
         {entries.map((e, i) => (
-          <li key={i} className="font-mono text-[11px] leading-relaxed text-(--color-text-2)">
+          <li
+            key={i}
+            className="font-mono text-[11px] leading-relaxed break-words whitespace-pre-wrap text-(--color-text-2)"
+          >
             {e}
           </li>
         ))}
@@ -225,7 +228,7 @@ function TeamMessageResult({ result }: { result: string }) {
 
   return (
     <span
-      className={`font-mono text-[11px] leading-relaxed ${
+      className={`font-mono text-[11px] leading-relaxed break-words whitespace-pre-wrap ${
         isError ? 'text-(--color-error)' : 'text-(--color-text-2)'
       }`}
     >
@@ -254,11 +257,11 @@ function TeamManageResult({ result }: { result: string }) {
       {groups.map((group) => {
         const isError = group.label.toLowerCase().includes('error')
         return (
-          <li key={`${group.label}:${group.value}`} className="flex gap-2 font-mono text-[11px] leading-relaxed">
-            <span className={isError ? 'text-(--color-error)' : 'text-(--color-text-muted)'}>
+          <li key={`${group.label}:${group.value}`} className="flex min-w-0 gap-2 font-mono text-[11px] leading-relaxed">
+            <span className={`shrink-0 ${isError ? 'text-(--color-error)' : 'text-(--color-text-muted)'}`}>
               {group.label}
             </span>
-            <span className={isError ? 'text-(--color-error)' : 'text-(--color-text-2)'}>
+            <span className={`min-w-0 break-words ${isError ? 'text-(--color-error)' : 'text-(--color-text-2)'}`}>
               {group.value}
             </span>
           </li>

@@ -2,7 +2,7 @@
 title: Chat Input & Message Queue
 description: How queued follow-up messages work while the team lead is streaming.
 status: stable
-updated: 2026-06-11
+updated: 2026-07-10
 ---
 
 # Chat Input & Message Queue

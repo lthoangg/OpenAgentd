@@ -1956,3 +1956,163 @@ describe("loadOlderMessages", () => {
     expect(blocks[1].content).toBe("newer")
   })
 })
+
+// ── Ghost-message regression: late SSE after /undo ────────────────────────────
+// When a user undoes a message before the backend SSE events (queued_turn_start
+// / done) arrive, those late events must NOT re-introduce the reverted user
+// block as a ghost message in the chat area.
+
+describe("ghost message regression: queued_turn_start after /undo", () => {
+  it("drops a pending user block when _leadRevertTime covers its submittedAt", () => {
+    // Simulate: user sent a message at t=1000, undo ran setting revert boundary
+    // to t=1000, then queued_turn_start fires (race condition).
+    const revertTime = 1000
+    useTeamStore.setState({
+      sessionId: "session-a",
+      leadName: "lead",
+      isTeamWorking: false,
+      _leadRevertTime: revertTime,
+      agentStreams: {
+        lead: makeStream({ status: "idle" as const }),
+      },
+      _pendingMessages: [
+        { id: "pm-1", sessionId: "session-a", content: "undone message", submittedAt: revertTime },
+      ],
+    })
+
+    useTeamStore.getState()._handleSSEEvent("queued_turn_start", { agent: "lead", message_ids: ["pm-1"] })
+
+    const blocks = useTeamStore.getState().agentStreams.lead.currentBlocks
+    // The reverted user block must NOT appear
+    expect(blocks.filter((b) => b.type === "user")).toHaveLength(0)
+  })
+
+  it("keeps user blocks that are strictly before the revert boundary", () => {
+    const revertTime = 2000
+    useTeamStore.setState({
+      sessionId: "session-a",
+      leadName: "lead",
+      isTeamWorking: false,
+      _leadRevertTime: revertTime,
+      agentStreams: {
+        lead: makeStream({ status: "idle" as const }),
+      },
+      _pendingMessages: [
+        { id: "pm-1", sessionId: "session-a", content: "safe message", submittedAt: 1000 },
+        { id: "pm-2", sessionId: "session-a", content: "reverted message", submittedAt: 2000 },
+      ],
+    })
+
+    useTeamStore.getState()._handleSSEEvent("queued_turn_start", { agent: "lead" })
+
+    const userBlocks = useTeamStore.getState().agentStreams.lead.currentBlocks.filter((b) => b.type === "user")
+    expect(userBlocks).toHaveLength(1)
+    expect(userBlocks[0].content).toBe("safe message")
+  })
+
+  it("allows all user blocks when no revert boundary is active", () => {
+    useTeamStore.setState({
+      sessionId: "session-a",
+      leadName: "lead",
+      isTeamWorking: false,
+      _leadRevertTime: null,
+      agentStreams: {
+        lead: makeStream({ status: "idle" as const }),
+      },
+      _pendingMessages: [
+        { id: "pm-1", sessionId: "session-a", content: "hello", submittedAt: 1000 },
+      ],
+    })
+
+    useTeamStore.getState()._handleSSEEvent("queued_turn_start", { agent: "lead" })
+
+    const userBlocks = useTeamStore.getState().agentStreams.lead.currentBlocks.filter((b) => b.type === "user")
+    expect(userBlocks).toHaveLength(1)
+    expect(userBlocks[0].content).toBe("hello")
+  })
+})
+
+describe("ghost message regression: done event after /undo", () => {
+  it("does not commit reverted blocks from currentBlocks when done fires", () => {
+    const revertTime = new Date("2024-01-01T00:00:02Z").getTime()
+    useTeamStore.setState({
+      sessionId: "session-a",
+      leadName: "lead",
+      isTeamWorking: true,
+      _leadRevertTime: revertTime,
+      agentStreams: {
+        lead: makeStream({
+          status: "working" as const,
+          blocks: [
+            { id: "u1", type: "user", content: "kept", timestamp: new Date("2024-01-01T00:00:00Z") },
+          ],
+          currentBlocks: [
+            // This is the reverted user message that slipped through
+            { id: "u2", type: "user", content: "reverted", timestamp: new Date("2024-01-01T00:00:02Z") },
+            // And an assistant response to it
+            { id: "a1", type: "text", content: "response", timestamp: new Date("2024-01-01T00:00:03Z") },
+          ],
+        }),
+      },
+    })
+
+    useTeamStore.getState()._handleSSEEvent("done", {})
+
+    const blocks = useTeamStore.getState().agentStreams.lead.blocks
+    // Only "kept" should survive — the reverted user block and its
+    // assistant response are both at/after the boundary.
+    expect(blocks.map((b) => b.id)).toEqual(["u1"])
+    expect(useTeamStore.getState().agentStreams.lead.currentBlocks).toEqual([])
+  })
+
+  it("commits blocks before the revert boundary and drops those at/after", () => {
+    const revertTime = new Date("2024-01-01T00:00:02Z").getTime()
+    useTeamStore.setState({
+      sessionId: "session-a",
+      leadName: "lead",
+      isTeamWorking: true,
+      _leadRevertTime: revertTime,
+      agentStreams: {
+        lead: makeStream({
+          status: "working" as const,
+          blocks: [],
+          currentBlocks: [
+            { id: "u1", type: "user", content: "first", timestamp: new Date("2024-01-01T00:00:00Z") },
+            { id: "a1", type: "text", content: "ok", timestamp: new Date("2024-01-01T00:00:01Z") },
+            { id: "u2", type: "user", content: "reverted", timestamp: new Date("2024-01-01T00:00:02Z") },
+            { id: "a2", type: "text", content: "ghost", timestamp: new Date("2024-01-01T00:00:03Z") },
+          ],
+        }),
+      },
+    })
+
+    useTeamStore.getState()._handleSSEEvent("done", {})
+
+    const blocks = useTeamStore.getState().agentStreams.lead.blocks
+    expect(blocks.map((b) => b.id)).toEqual(["u1", "a1"])
+  })
+
+  it("commits all blocks normally when no revert boundary is set", () => {
+    useTeamStore.setState({
+      sessionId: "session-a",
+      leadName: "lead",
+      isTeamWorking: true,
+      _leadRevertTime: null,
+      agentStreams: {
+        lead: makeStream({
+          status: "working" as const,
+          blocks: [],
+          currentBlocks: [
+            { id: "u1", type: "user", content: "hello", timestamp: new Date("2024-01-01T00:00:00Z") },
+            { id: "a1", type: "text", content: "hi", timestamp: new Date("2024-01-01T00:00:01Z") },
+          ],
+        }),
+      },
+    })
+
+    useTeamStore.getState()._handleSSEEvent("done", {})
+
+    const blocks = useTeamStore.getState().agentStreams.lead.blocks
+    expect(blocks.map((b) => b.id)).toEqual(["u1", "a1"])
+  })
+})

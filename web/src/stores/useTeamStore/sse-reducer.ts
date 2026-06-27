@@ -363,14 +363,23 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
             stream._turnStartedAt,
           )
           const nextTurnStartedAt = messages[0]?.submittedAt ?? now
-          stream.currentBlocks.push(
-            ...messages.map((msg) => ({
+          // Guard: if a /undo ran before this SSE event arrived, drop any user
+          // blocks whose timestamp is at or after the revert boundary so they
+          // do not re-appear as ghost messages in the chat area.
+          const revertTime = draft._leadRevertTime
+          const newUserBlocks = messages
+            .filter((msg) => {
+              if (revertTime === null) return true
+              const t = msg.submittedAt ?? now
+              return t < revertTime
+            })
+            .map((msg) => ({
               id: msg.id,
               type: 'user' as const,
               content: msg.content,
               timestamp: new Date(msg.submittedAt ?? now),
-            })),
-          )
+            }))
+          stream.currentBlocks.push(...newUserBlocks)
           stream._turnStartedAt = nextTurnStartedAt
           draft._pendingMessages = draft._pendingMessages.filter((msg) => !queuedIds.has(msg.id))
         })
@@ -426,6 +435,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
           draft.isContinuing = false
           const completedAtMs = Date.now()
           const completedAt = new Date(completedAtMs)
+          const revertTime = draft._leadRevertTime
           Object.keys(draft.agentStreams).forEach((name) => {
             const stream = draft.agentStreams[name]
             if (stream.currentBlocks.length > 0) {
@@ -433,7 +443,13 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
                 ...b,
                 timestamp: b.timestamp ?? completedAt,
               }))
-              stream.blocks = [...stream.blocks, ...stamped]
+              // Guard: if a /undo ran while the turn was still in flight, drop
+              // any blocks at or after the revert boundary so they don't
+              // re-surface as ghost messages when currentBlocks are finalised.
+              const toCommit = revertTime === null
+                ? stamped
+                : stamped.filter((b) => (b.timestamp?.getTime() ?? 0) < revertTime)
+              stream.blocks = [...stream.blocks, ...toCommit]
               stream.currentBlocks = []
             }
             stream._completionBase = stream.usage.completionTokens

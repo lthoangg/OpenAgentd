@@ -3,7 +3,7 @@ import { SchedulerPanel } from '../SchedulerPanel'
 import { SessionSettingsPanel } from '../SessionSettingsPanel'
 import { TodosPopover } from '../TodosPopover'
 import { WorkspaceFilesPanel } from '../WorkspaceFilesPanel'
-import type { TodoItem } from '@/api/types'
+import type { TodoItem, WorkspaceFileInfo } from '@/api/types'
 import type { Command } from '../CommandPalette'
 
 interface TeamChatPanelsProps {
@@ -28,6 +28,8 @@ interface TeamChatPanelsProps {
   workspace: string | null
   showPalette: boolean
   paletteCommands: Command[]
+  paletteWorkspaceFiles: WorkspaceFileInfo[]
+  onPaletteFileOpen: (file: WorkspaceFileInfo) => void
   onClosePalette: () => void
 }
 
@@ -53,6 +55,8 @@ export function TeamChatPanels({
   workspace,
   showPalette,
   paletteCommands,
+  paletteWorkspaceFiles,
+  onPaletteFileOpen,
   onClosePalette,
 }: TeamChatPanelsProps) {
   return (
@@ -86,7 +90,7 @@ export function TeamChatPanels({
         contextWorkspace={workspace ?? null}
       />
       {showPalette && (
-        <CommandPalette commands={paletteCommands} onClose={onClosePalette} />
+        <CommandPalette commands={paletteCommands} workspaceFiles={paletteWorkspaceFiles} onFileOpen={onPaletteFileOpen} onClose={onClosePalette} />
       )}
     </>
   )

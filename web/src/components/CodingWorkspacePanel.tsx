@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { ChevronRight, GitCompare, Plus, RefreshCw, Search, X } from 'lucide-react'
+import { ChevronRight, GitCompare, Plus, RefreshCw, X } from 'lucide-react'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 import { getCodingWorkspaceGitDiff, listCodingWorkspaceFiles, getCodingWorkspaceGitHistory, getCodingWorkspaceCommitDiff } from '@/api/client'
@@ -10,7 +10,7 @@ import { CodingFilePreviewContent, DiffPreview } from './CodingFileViewerPanel'
 import { FileTypeIcon } from './FileTypeIcon'
 import { cn } from '@/lib/utils'
 import { queryKeys } from '@/queries'
-import { formatBytes } from '@/utils/format'
+
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { useResizableWidth } from '@/hooks/use-resizable-width'
 import { useGitPanelStore, DEFAULT_WORKSPACE_STATE } from '@/stores/useGitPanelStore'
@@ -213,6 +213,7 @@ export function CodingWorkspacePanel({
   selectedFileOpenKey = 0,
   onFileSelect,
   onAddComment,
+  onOpenPalette,
 }: {
   workspace: string
   open: boolean
@@ -231,15 +232,11 @@ export function CodingWorkspacePanel({
   selectedFileOpenKey?: number
   onFileSelect?: (file: WorkspaceFileInfo | null) => void
   onAddComment?: (path: string, startLine: number, endLine: number) => void
+  onOpenPalette?: () => void
 }) {
   const prefersReducedMotion = useReducedMotion()
   const [tabs, setTabs] = useState<WorkspacePanelTab[]>([{ id: 'review', type: 'review', title: 'Git' }])
   const [activeTabId, setActiveTabId] = useState('review')
-  const [fileSearchOpen, setFileSearchOpen] = useState(false)
-  const [fileSearch, setFileSearch] = useState('')
-  const [focusedIndex, setFocusedIndex] = useState(-1)
-  const searchInputRef = useRef<HTMLInputElement>(null)
-  const searchListRef = useRef<HTMLDivElement>(null)
   const tabButtonRefs = useRef(new Map<string, HTMLButtonElement>())
   const commitsScrollRef = useRef<HTMLDivElement>(null)
   // Tracks a SHA that was navigated to from Tree and needs to be scrolled into view.
@@ -415,13 +412,6 @@ export function CodingWorkspacePanel({
       useGitPanelStore.getState().setExpandedDiffs(workspace, [])
     }
   }
-  const searchableFiles = useMemo(() => {
-    const query = fileSearch.trim().toLowerCase()
-    const allFiles = files.data?.files ?? []
-    if (!query) return allFiles.slice(0, 30)
-    return allFiles.filter((file) => file.path.toLowerCase().includes(query)).slice(0, 30)
-  }, [fileSearch, files.data?.files])
-
   useEffect(() => {
     // Only react to a fresh open request from the parent (signaled by a bumped
     // `selectedFileOpenKey`). Background refetches of the files query change
@@ -436,17 +426,6 @@ export function CodingWorkspacePanel({
     }
   }, [files.data?.files, openFileTab, selectedFileOpenKey, selectedFilePath])
 
-  useEffect(() => {
-    if (fileSearchOpen) searchInputRef.current?.focus()
-  }, [fileSearchOpen])
-  useEffect(() => {
-    setFocusedIndex(-1)
-  }, [fileSearch])
-  useEffect(() => {
-    if (focusedIndex < 0 || !searchListRef.current) return
-    const item = searchListRef.current.children[focusedIndex] as HTMLElement | undefined
-    item?.scrollIntoView({ block: 'nearest' })
-  }, [focusedIndex])
   useEffect(() => {
     tabButtonRefs.current.get(activeTabId)?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
   }, [activeTabId, tabs.length])
@@ -548,95 +527,14 @@ export function CodingWorkspacePanel({
           </div>
           <button
             type="button"
-            onClick={() => { setFileSearchOpen((value) => !value); setFileSearch('') }}
+            onClick={onOpenPalette}
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
-            aria-label="Open file search"
-            title="Open file search"
+            aria-label="Search files (Ctrl+P)"
+            title="Search files (Ctrl+P)"
           >
             <Plus size={14} aria-hidden="true" />
           </button>
         </div>
-        {fileSearchOpen && (
-          <div
-            className={cn(
-              'z-50 flex items-center justify-center bg-(--color-overlay) p-3 backdrop-blur-sm sm:p-4',
-              mobile ? 'absolute inset-0' : 'fixed inset-0',
-            )}
-            onClick={() => setFileSearchOpen(false)}
-          >
-          <div className="flex max-h-[min(32rem,calc(100%-2rem))] w-full max-w-xl flex-col overflow-hidden rounded-md border border-(--color-border) bg-(--bg-page) shadow-2xl" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="Search workspace files">
-            <div className="flex items-center gap-2 border-b border-(--color-border) bg-(--bg-sidebar) px-3 py-2.5">
-              <Search size={13} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
-              <input
-                ref={searchInputRef}
-                value={fileSearch}
-                onChange={(event) => setFileSearch(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Escape') {
-                    setFileSearchOpen(false)
-                    return
-                  }
-                  if (event.key === 'ArrowDown') {
-                    event.preventDefault()
-                    setFocusedIndex((prev) => Math.min(prev + 1, searchableFiles.length - 1))
-                    return
-                  }
-                  if (event.key === 'ArrowUp') {
-                    event.preventDefault()
-                    setFocusedIndex((prev) => Math.max(prev - 1, 0))
-                    return
-                  }
-                  if (event.key === 'Enter') {
-                    event.preventDefault()
-                    const targetIndex = focusedIndex >= 0 ? focusedIndex : 0
-                    if (searchableFiles[targetIndex]) {
-                      openFileTab(searchableFiles[targetIndex])
-                      setFileSearchOpen(false)
-                    }
-                  }
-                }}
-                placeholder="Search files…"
-                className="min-w-0 flex-1 bg-transparent text-xs text-(--color-text) outline-none placeholder:text-(--color-text-muted)/60"
-                aria-label="Search workspace files"
-              />
-              {fileSearch && (
-                <button
-                  type="button"
-                  onClick={() => setFileSearch('')}
-                  className="rounded-xs px-1.5 py-1 text-[11px] text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text-2)"
-                >
-                  Clear
-                </button>
-              )}
-            </div>
-            <div ref={searchListRef} className="min-h-0 flex-1 overflow-y-auto p-1.5">
-              {searchableFiles.length === 0 ? (
-                <p className="px-2 py-3 text-xs text-(--color-text-subtle)">No files found</p>
-              ) : searchableFiles.map((file, index) => (
-                <button
-                  key={file.path}
-                  type="button"
-                  onClick={() => { openFileTab(file); setFileSearchOpen(false) }}
-                  className={cn(
-                    'flex min-h-9 w-full min-w-0 items-center gap-2 rounded-xs border border-transparent px-2 py-1.5 text-left text-xs md:min-h-0',
-                    index === focusedIndex
-                      ? 'border-(--color-border-strong) bg-(--bg-key)/60 text-(--color-text)'
-                      : 'text-(--color-text-2) hover:border-(--color-border) hover:bg-(--bg-card) hover:text-(--color-text)',
-                  )}
-                  title={file.path}
-                >
-                  <FileTypeIcon name={file.name || file.path} size={13} />
-                  <span className="min-w-0 flex-1 truncate font-mono">{file.path}</span>
-                  <span className="shrink-0 text-[10px] text-(--color-text-subtle)">{formatBytes(file.size)}</span>
-                </button>
-              ))}
-            </div>
-            <div className="shrink-0 border-t border-(--color-border) bg-(--bg-sidebar) px-3 py-2">
-              <p className="text-[10px] text-(--color-text-muted)">↑↓ to navigate · ↵ to open · esc to close</p>
-            </div>
-          </div>
-          </div>
-        )}
         <div className="min-h-0 flex-1 overflow-hidden">
           {activeTab?.type === 'review' ? (
             <div className="flex h-full min-h-0 flex-col">

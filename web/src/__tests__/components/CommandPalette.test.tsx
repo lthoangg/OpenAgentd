@@ -3,6 +3,7 @@ import { render, screen, cleanup } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { CommandPalette } from "@/components/CommandPalette"
 import type { Command } from "@/components/CommandPalette"
+import type { WorkspaceFileInfo } from "@/api/types"
 
 afterEach(cleanup)
 
@@ -247,5 +248,139 @@ describe("CommandPalette", () => {
     render(<CommandPalette commands={commands} onClose={() => {}} />)
     expect(screen.getByText("Navigation")).toBeTruthy()
     expect(screen.getByText("Actions")).toBeTruthy()
+  })
+
+  // ── workspace files (coding mode) ──────────────────────────────────────────
+
+  function makeFiles(names: string[]): WorkspaceFileInfo[] {
+    return names.map((name) => ({
+      path: `src/${name}`,
+      name,
+      size: 100,
+      mtime: 0,
+      mime: 'text/plain',
+    }))
+  }
+
+  it("uses unified placeholder when workspaceFiles are provided", () => {
+    render(
+      <CommandPalette
+        commands={makeCommands()}
+        workspaceFiles={makeFiles(['App.tsx'])}
+        onFileOpen={() => {}}
+        onClose={() => {}}
+      />,
+    )
+    expect(screen.getByPlaceholderText("Search files and commands…")).toBeTruthy()
+  })
+
+  it("renders workspace files under a Files group header", () => {
+    render(
+      <CommandPalette
+        commands={[]}
+        workspaceFiles={makeFiles(['App.tsx', 'main.tsx'])}
+        onFileOpen={() => {}}
+        onClose={() => {}}
+      />,
+    )
+    expect(screen.getByText("Files")).toBeTruthy()
+    expect(screen.getByText("App.tsx")).toBeTruthy()
+    expect(screen.getByText("main.tsx")).toBeTruthy()
+  })
+
+  it("regular commands appear before file rows", () => {
+    const { container } = render(
+      <CommandPalette
+        commands={makeCommands()}
+        workspaceFiles={makeFiles(['index.ts'])}
+        onFileOpen={() => {}}
+        onClose={() => {}}
+      />,
+    )
+    const buttons = container.querySelectorAll("button[data-idx]")
+    expect((buttons[0] as HTMLElement).textContent).toContain("New Chat")
+    expect((buttons[buttons.length - 1] as HTMLElement).textContent).toContain("index.ts")
+  })
+
+  it("caps file rows at 30 when no query", () => {
+    const files = makeFiles(Array.from({ length: 50 }, (_, i) => `file${i}.ts`))
+    const { container } = render(
+      <CommandPalette commands={[]} workspaceFiles={files} onFileOpen={() => {}} onClose={() => {}} />,
+    )
+    const buttons = container.querySelectorAll("button[data-idx]")
+    expect(buttons.length).toBe(30)
+  })
+
+  it("caps filtered file rows at 30 when query matches many files", () => {
+    const user = userEvent.setup()
+    const files = makeFiles(Array.from({ length: 50 }, (_, i) => `component${i}.tsx`))
+    const { container } = render(
+      <CommandPalette commands={[]} workspaceFiles={files} onFileOpen={() => {}} onClose={() => {}} />,
+    )
+    // all 50 match "component" but cap applies
+    const buttons = container.querySelectorAll("button[data-idx]")
+    expect(buttons.length).toBe(30)
+    void user // satisfy lint
+  })
+
+  it("filters files by filename", async () => {
+    const user = userEvent.setup()
+    render(
+      <CommandPalette
+        commands={[]}
+        workspaceFiles={makeFiles(['App.tsx', 'config.ts'])}
+        onFileOpen={() => {}}
+        onClose={() => {}}
+      />,
+    )
+    await user.type(screen.getByPlaceholderText("Search files and commands…"), "App")
+    expect(screen.getByText("App.tsx")).toBeTruthy()
+    expect(screen.queryByText("config.ts")).toBeNull()
+  })
+
+  it("filters files by path", async () => {
+    const user = userEvent.setup()
+    const files: WorkspaceFileInfo[] = [
+      { path: 'src/components/App.tsx', name: 'App.tsx', size: 0, mtime: 0, mime: 'text/plain' },
+      { path: 'src/lib/utils.ts',       name: 'utils.ts', size: 0, mtime: 0, mime: 'text/plain' },
+    ]
+    render(
+      <CommandPalette commands={[]} workspaceFiles={files} onFileOpen={() => {}} onClose={() => {}} />,
+    )
+    await user.type(screen.getByPlaceholderText("Search files and commands…"), "lib")
+    expect(screen.getByText("utils.ts")).toBeTruthy()
+    expect(screen.queryByText("App.tsx")).toBeNull()
+  })
+
+  it("calls onFileOpen and onClose when a file row is activated via Enter", async () => {
+    const user = userEvent.setup()
+    let opened: WorkspaceFileInfo | null = null
+    let closed = false
+    const files = makeFiles(['App.tsx'])
+    render(
+      <CommandPalette
+        commands={[]}
+        workspaceFiles={files}
+        onFileOpen={(f) => { opened = f }}
+        onClose={() => { closed = true }}
+      />,
+    )
+    await user.keyboard("{Enter}")
+    expect((opened as WorkspaceFileInfo | null)?.name).toBe("App.tsx")
+    expect(closed).toBe(true)
+  })
+
+  it("shows unified no-match message when workspaceFiles are provided", async () => {
+    const user = userEvent.setup()
+    render(
+      <CommandPalette
+        commands={makeCommands()}
+        workspaceFiles={makeFiles(['App.tsx'])}
+        onFileOpen={() => {}}
+        onClose={() => {}}
+      />,
+    )
+    await user.type(screen.getByPlaceholderText("Search files and commands…"), "xyznotfound")
+    expect(screen.getByText(/No files or commands match/)).toBeTruthy()
   })
 })

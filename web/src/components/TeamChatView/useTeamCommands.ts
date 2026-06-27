@@ -13,6 +13,7 @@
  *   - ``View``       — view-mode + panel toggles
  *   - ``Navigation`` — top-level routes
  */
+import { useMemo } from 'react'
 import type { useNavigate } from '@tanstack/react-router'
 import type { Command } from '../CommandPalette'
 import type { ViewMode } from './types'
@@ -64,7 +65,7 @@ export function useTeamCommands({
   navigate,
 }: UseTeamCommandsArgs): Command[] {
   const openSettings = useSettingsStore((s) => s.openSettings)
-  const commands: Command[] = [
+  return useMemo<Command[]>(() => [
     { id: 'new-chat', group: 'Team', label: 'New Team Chat', description: 'Start a fresh team conversation', shortcut: 'Ctrl+N', action: handleNewSession },
     {
       id: 'toggle-view', group: 'View',
@@ -81,6 +82,5 @@ export function useTeamCommands({
     { id: 'go-home',     group: 'Navigation', label: 'Go to Home',     description: '', action: () => navigate({ to: '/' }) },
     ...(mode === 'normal' ? [{ id: 'go-coding', group: 'Navigation', label: 'Go to Coding Mode', description: 'Open the coding workbench', action: () => navigate({ to: '/coding' }) }] : []),
     { id: 'go-settings', group: 'Navigation', label: 'Open Settings',  description: 'Manage agents, skills, providers & more', shortcut: 'Ctrl+.', action: () => openSettings('agents') },
-  ]
-  return commands
+  ], [viewMode, cycleViewMode, toggleAgentCapabilities, setShowTodos, handleWorkspaceFiles, handleCodingSidebarToggle, mode, handleNewSession, navigate, openSettings])
 }

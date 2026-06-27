@@ -21,7 +21,7 @@
  */
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AgentView } from '../AgentView'
 import { WorkspaceInfoCard } from '../WorkspaceInfoCard'
 import { CodingSidebar } from '../CodingSidebar'
@@ -30,6 +30,7 @@ import { CodingFileViewerPanel } from '../CodingFileViewerPanel'
 import { Sidebar } from '../Sidebar'
 import { useTodosQuery } from '@/queries/useTodosQuery'
 import { useProvidersQuery } from '@/queries'
+import { queryKeys } from '@/queries/keys'
 import { useCommandsQuery } from '@/queries/useCommandsQuery'
 import { useSnippetsQuery } from '@/queries/useSnippetsQuery'
 import { listCodingWorkspaceFiles, renderCommand, renderSnippet, resolveApiUrl, resolveTeamSession } from '@/api/client'
@@ -776,6 +777,31 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   })
   const paletteCommands = commands
 
+  // ── Coding-mode file search in the palette ─────────────────────────────────
+  //
+  // Fetch the workspace file listing when the palette is open (coding mode
+  // only). We reuse the same query key as the @-mention picker so the two
+  // share a cache entry — no extra network request when both are warm.
+  const isCodingPaletteOpen = mode === 'coding' && Boolean(workspace) && paletteOpen
+  const { data: paletteFilesData } = useQuery<{ files: WorkspaceFileInfo[] }>({
+    queryKey: queryKeys.fileRefs.coding(workspace ?? ''),
+    queryFn: async () => {
+      const res = await listCodingWorkspaceFiles(workspace as string)
+      return { files: res.files }
+    },
+    enabled: isCodingPaletteOpen,
+    staleTime: 30_000,
+  })
+
+  const paletteWorkspaceFiles = isCodingPaletteOpen ? (paletteFilesData?.files ?? []) : []
+
+  const handlePaletteFileOpen = useCallback((file: WorkspaceFileInfo) => {
+    setCodingFileViewer(file)
+    setCodingFileViewerDetached(false)
+    setCodingFileOpenKey((k) => k + 1)
+    setCodingPanel((prev) => prev ?? 'files')
+  }, [])
+
   useKeyboardShortcuts({
     n: handleNewSession,
     v: isMobile ? undefined : cycleViewMode,
@@ -1130,6 +1156,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             selectedFileOpenKey={codingFileOpenKey}
             onFileSelect={handleCodingFileSelect}
             onAddComment={handleAddFileComment}
+            onOpenPalette={handleTogglePalette}
             onClose={() => {
               setCodingPanel(null)
               setCodingFileViewerDetached(false)
@@ -1160,6 +1187,8 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         workspace={workspace}
         showPalette={paletteOpen}
         paletteCommands={paletteCommands}
+        paletteWorkspaceFiles={paletteWorkspaceFiles}
+        onPaletteFileOpen={handlePaletteFileOpen}
         onClosePalette={closePalette}
       />    </div>
   )

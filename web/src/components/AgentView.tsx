@@ -172,7 +172,15 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
   const loadingOlderRef = useRef(false)
 
   const handleRevert = useCallback(() => {
-    void useTeamStore.getState().undoTeam()
+    void useTeamStore.getState().undoTeam().then(async (response) => {
+      const message = response?.message
+      if (!message || message.role !== 'user' || message.is_summary) return
+      window.dispatchEvent(
+        new CustomEvent('undo:restore-draft', {
+          detail: { content: message.content ?? '', attachments: message.attachments ?? [] },
+        }),
+      )
+    })
   }, [])
 
   const allBlocks = useMemo(() => mergeBlocks(blocks, currentBlocks), [blocks, currentBlocks])

@@ -533,6 +533,24 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     return () => window.removeEventListener('queue:restore-draft', handler)
   }, [])
 
+  // Restore an undone message into the composer (fired by the undo button on
+  // UserBubble in AgentView/AgentPane, which cannot access inputRef directly).
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ content?: string; attachments?: MessageAttachment[] }>).detail
+      const content = detail?.content ?? ''
+      const attachments = detail?.attachments ?? []
+      inputRef.current?.setValue(content)
+      void Promise.all(attachments.map((att) => attachmentToFile(att)))
+        .then((files) => {
+          inputRef.current?.setFiles(files.filter((f): f is File => f !== null))
+          inputRef.current?.focus()
+        })
+    }
+    window.addEventListener('undo:restore-draft', handler)
+    return () => window.removeEventListener('undo:restore-draft', handler)
+  }, [])
+
   // Push the active session/workspace label to the desktop tray. The
   // command is a no-op outside Tauri so this is safe to fire from the
   // web build too.

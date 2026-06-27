@@ -16,11 +16,36 @@ under `{OPENAGENTD_CONFIG_DIR}/`. No code changes, no restarts. Agent
 `.md` edits take effect on the **next turn** of the affected agent;
 `multimodal.yaml` is read on every image/video generation call.
 
+## Pick the right team first — modes matter
+
+OpenAgentd runs two team **modes**, and each has its own agent files. Editing
+the wrong team's lead is the most common mistake here — resolve this before
+touching any file.
+
+| Mode | When active | Agent files |
+|------|-------------|-------------|
+| `normal` (cockpit / team chat) | default; no workspace attached | `{AGENTS_DIR}/*.md` — lead + `executor`, `explorer` |
+| `coding` (workspace) | a coding workspace is attached (fs + shell scoped to it) | `{AGENTS_DIR}/coding/*.md` — lead + `coder`, `explorer` |
+
+Both leads are named `openagentd` with `role: lead`; they differ only by
+directory. **Match the team you are currently running as:** if this turn is a
+coding-workspace turn, edit `{AGENTS_DIR}/coding/openagentd.md`; otherwise edit
+`{AGENTS_DIR}/openagentd.md`. When unsure which mode you are in, say so and ask
+rather than guessing — a model swap applied to the wrong team is silently
+ineffective. MCP servers and `multimodal.yaml` are **global** (shared by both
+modes); only the agent-file *wiring* is per-mode.
+
+The two leads also ship **different built-in tool profiles**: the `normal` lead
+includes `generate_image` / `generate_video` by default; the `coding` lead does
+**not** (it is shell/filesystem-focused). So "let yourself generate images"
+while in coding mode is a real additive change — add `generate_image` to that
+agent's `tools:`; it is not already there.
+
 ## Scope — what this skill can change
 
 | Target | File | Typical request |
 |--------|------|-----------------|
-| Agent model / params | `{OPENAGENTD_CONFIG_DIR}/agents/{name}.md` frontmatter | "switch to gpt-5", "use Claude", "lower temperature", "turn on high thinking" |
+| Agent model / params | `{AGENTS_DIR}/{name}.md` (normal) or `{AGENTS_DIR}/coding/{name}.md` (coding) frontmatter — see "Pick the right team first" | "switch to gpt-5", "use Claude", "lower temperature", "turn on high thinking" |
 | Agent tools | same file, `tools:` list | Additive local overrides on top of any built-in first-party profile tools. "give yourself shell access", "let yourself browse the web" |
 | Agent skill metadata | same file, `skills:` list | Rare additive explicit metadata/drift hooks. Installing a new skill normally does **not** require editing agent files; the `skill` tool discovers skills from project/global roots. |
 | Agent MCP tools | same file, `mcp:` list (bulk) or `tools:` list (selective) | Additive local overrides on top of any built-in first-party profile MCP servers/tools. "let yourself use the filesystem MCP", "remove the github MCP from yourself" — see "MCP tools on agents" below |
@@ -78,14 +103,19 @@ For those, follow the read → diff → confirm → edit recipe.
 ### Find your own agent file
 
 When the user says "upgrade *yourself*", you (the lead) need your own
-`.md` path. The lead is the only file with `role: lead`:
+`.md` path. There is one lead **per mode** (`role: lead`), so search both roots
+and pick the one for the team you are currently running as (see "Pick the right
+team first"):
 
 ```bash
-grep -l 'role: lead' {AGENTS_DIR}/*.md
+# normal/cockpit lead  → top level;  coding lead → coding/ subdir
+grep -l 'role: lead' {AGENTS_DIR}/*.md {AGENTS_DIR}/coding/*.md
 ```
 
-For member agents, match by `name:` — e.g. the executor has `name: executor`
-in its frontmatter. Don't hard-code filenames; agent files are user-renamable.
+For member agents, match by `name:` within the active mode's directory — normal
+has `executor` / `explorer`, coding has `coder` / `explorer` (note `explorer`
+exists in both, so scope the glob to the right dir). Don't hard-code filenames;
+agent files are user-renamable.
 
 ### Setting up `multimodal.yaml` from scratch
 
@@ -126,6 +156,7 @@ key var (matches `openagentd init`):
 
 | Provider | Env var |
 |----------|---------|
+| `anthropic` | `ANTHROPIC_API_KEY` |
 | `googlegenai` | `GOOGLE_API_KEY` (agent model **and** image/video generation) |
 | `openai` | `OPENAI_API_KEY` |
 | `openrouter` | `OPENROUTER_API_KEY` |
@@ -136,11 +167,11 @@ key var (matches `openagentd init`):
 | `router9` | `ROUTER9_API_KEY` |
 | `cliproxy` | `CLIPROXY_API_KEY` |
 
-Providers with managed credentials (`copilot`, `codex`, `vertexai`,
-`ollama`) have no env var to check — `copilot` / `codex` use their
-own CLI, `vertexai` uses ADC, and `ollama` talks to the local
-daemon (or to Ollama Cloud after `ollama signin`). Skip this step
-for them.
+Providers with managed credentials (`copilot`, `codex`, `bedrock`,
+`vertexai`, `ollama`) have no env var to check — `copilot` / `codex` use
+their own CLI, `bedrock` uses AWS credentials/ADC, `vertexai` uses ADC,
+and `ollama` talks to the local daemon (or to Ollama Cloud after
+`ollama signin`). Skip this step for them.
 
 ### Relative tweaks ("a bit", "more", "less")
 
@@ -186,10 +217,10 @@ Only these keys are valid. Reject any request to invent new ones.
 
 | Field | Values |
 |-------|--------|
-| `model` | `provider:model` — e.g. `googlegenai:gemini-3.1-flash`, `openai:gpt-5.5`, `zai:glm-5-turbo`, `openrouter:...`, `copilot:...`, `codex:...`, `vertexai:...`, `nvidia:...`, `xai:grok-4.20`, `ollama:llama3.2`, `ollama:kimi-k2.6-cloud` |
+| `model` | `provider:model` (provider must be a registered id: `anthropic`, `googlegenai`, `openai`, `openrouter`, `zai`, `nvidia`, `xai`, `deepseek`, `router9`, `cliproxy`, `copilot`, `codex`, `bedrock`, `vertexai`, `ollama`) — e.g. `anthropic:claude-...`, `googlegenai:gemini-...`, `openai:gpt-...`, `zai:glm-...`, `openrouter:...`, `copilot:...`, `codex:...`, `vertexai:...`, `nvidia:...`, `xai:grok-...`, `ollama:...`, `ollama:...-cloud`. Use the exact model id the user names; do not invent version numbers. |
 | `temperature` | float, typically `0.0`–`1.0` |
 | `thinking_level` | `none` \| `low` \| `medium` \| `high` |
-| `tools` | extra tools layered on top of any built-in first-party profile tools: `web_search`, `web_fetch`, `date`, `read`, `write`, `edit`, `ls`, `grep`, `glob`, `rm`, `shell`, `bg`, `generate_image`, `generate_video`, plus `<server>_<tool>` entries from configured MCP servers. Never list `skill` or `team_message` — injected automatically. Lead-only tools (`schedule_task`, `todo_manage`) are also injected automatically. |
+| `tools` | extra tools layered on top of any built-in first-party profile tools: `web_search`, `web_fetch`, `date`, `read`, `write`, `edit`, `patch`, `ls`, `grep`, `glob`, `rm`, `shell`, `bg`, `generate_image`, `generate_video`, plus `<server>_<tool>` entries from configured MCP servers. Never list `skill` or `team_message` — injected automatically. Lead-only tools (`schedule_task`, `todo_manage`) are also injected automatically. |
 | `skills` | optional explicit skill metadata/drift hooks; names of discovered skill directories (project/global OpenAgentd, opencode-compatible, or bundled read-only skills). Do not use this as the normal skill-install wiring step. |
 | `responses_api` | `true` to force OpenAI Responses API |
 

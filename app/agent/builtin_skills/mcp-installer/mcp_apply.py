@@ -43,12 +43,30 @@ from pathlib import Path
 from typing import Any
 
 DEFAULT_BASE = "http://localhost:4082/api/mcp"
-DEFAULT_MCP_JSON = (
-    Path(
-        os.environ.get("OPENAGENTD_CONFIG_DIR", Path.home() / ".openagentd" / "config")
-    )
-    / "mcp.json"
-)
+
+
+def _default_config_dir() -> Path:
+    """Resolve the config dir the same way the daemon does.
+
+    The daemon is the source of truth and performs the real ``mcp.json`` write
+    via the API; this path is only the *offline fallback* used when the daemon
+    is unreachable. We must still land in the right file, so mirror
+    ``app/core/config.py``'s derivation instead of guessing a single layout:
+
+    * ``OPENAGENTD_CONFIG_DIR`` env var wins when set.
+    * ``APP_ENV=development`` → ``./.openagentd/dev/config``.
+    * Otherwise (``APP_ENV`` unset or ``production`` — the daemon's default)
+      → ``~/.config/openagentd``.
+    """
+    explicit = os.environ.get("OPENAGENTD_CONFIG_DIR")
+    if explicit:
+        return Path(explicit)
+    if os.environ.get("APP_ENV", "production") == "development":
+        return (Path(".openagentd") / "dev" / "config").absolute()
+    return Path.home() / ".config" / "openagentd"
+
+
+DEFAULT_MCP_JSON = _default_config_dir() / "mcp.json"
 DEFAULT_ENV_FILE = DEFAULT_MCP_JSON.parent / ".env"
 MASKED_SECRET = "********"
 

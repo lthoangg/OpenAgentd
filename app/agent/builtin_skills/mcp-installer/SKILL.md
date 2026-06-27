@@ -21,8 +21,23 @@ python3 "$SCRIPT" <command> [options]
 ```
 
 The script talks to the daemon at `http://localhost:4082/api/mcp` by default.
-Pass `--base <url>` to override. MCP server config is global in
-`{OPENAGENTD_CONFIG_DIR}/mcp.json`.
+Pass `--base <url>` to override (the daemon owns the canonical
+`{OPENAGENTD_CONFIG_DIR}/mcp.json` write — the script's local path is only a
+fallback used when the daemon is unreachable).
+
+### Modes — read this before wiring
+
+The **server config is global**: one `{OPENAGENTD_CONFIG_DIR}/mcp.json` shared by
+both team modes. Installing it is mode-independent. **Wiring it onto an agent is
+per-mode**, and that is the step people get wrong in coding mode:
+
+- Normal / cockpit agents live at `{AGENTS_DIR}/*.md`.
+- Coding-workspace agents live at `{AGENTS_DIR}/coding/*.md`.
+
+If the user asks for an MCP **while working in a coding workspace**, wire it onto
+the coding lead (`{AGENTS_DIR}/coding/openagentd.md`), not the normal lead — the
+self-healing skill handles the actual edit. Adding it to the wrong team's agent
+means the tools never appear in the mode you are using.
 
 ## Commands
 
@@ -166,10 +181,12 @@ always proceed to wiring after these commands regardless of daemon state.
 
 ## Workflow — removal
 
-1. **Strip agent references first.** Check all agent files:
+1. **Strip agent references first.** Check all agent files in **both** team
+   modes — normal agents live at `{AGENTS_DIR}/*.md`, coding agents at
+   `{AGENTS_DIR}/coding/*.md`. A recursive search covers both:
 
    ```bash
-   rg '<name>' {OPENAGENTD_CONFIG_DIR}/agents/
+   rg '<name>' {AGENTS_DIR}/
    ```
 
    If any agent has the server in `mcp:` or `<name>_*` in `tools:`,
@@ -207,8 +224,9 @@ Verify package names with the user — npm names drift.
   as fallback. Proceed to step 6 (wire into agent) as normal. Changes
   take effect on next daemon restart.
 - **`agent_config_refresh_failed`** (next turn's logs) → an agent's `tools:`
-  list references a removed tool. Run `rg '<server>_' {OPENAGENTD_CONFIG_DIR}/agents/` with the removed server name
-  then call `skill("self-healing")`.
+  list references a removed tool. Run `rg '<server>_' {AGENTS_DIR}/` (covers both
+  normal and `coding/` agents) with the removed server name, then call
+  `skill("self-healing")`.
 
 A failing MCP server does NOT block other servers, the team, or any
 in-flight turn — tell the user that, they often assume the worst.

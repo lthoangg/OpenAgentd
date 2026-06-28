@@ -700,7 +700,7 @@ def get_trace(trace_id: str, days: int = 30) -> TraceDetail | None:
               status,
               attributes
             FROM spans_window
-            WHERE lower(trace_id) = ?
+            WHERE trace_id = ?
             ORDER BY start_time ASC
             """,
             [tid],

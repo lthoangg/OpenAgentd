@@ -113,7 +113,21 @@ Previously, `delete_session` retrieved all `SessionMessage` records for a sessio
 
 - Session deletion is done in a single database roundtrip, significantly reducing disk I/O and locking times.
 
-### 7. Lazy-load large tool results and artifacts
+### 7. Optimize DuckDB trace detail queries (Completed)
+
+**Problem**
+
+In `get_trace_detail`, spans were queried using `WHERE lower(trace_id) = ?`. In DuckDB, applying a function like `lower()` on a column in the `WHERE` clause prevents the query engine from using columnar zone maps (metadata block skipping), forcing a full scan and CPU-heavy string transformation on all rows in the JSONL files.
+
+**Changes**
+
+- Changed the query to `WHERE trace_id = ?`. Since trace IDs are already lowercase hex strings prefixed with `0x` when exported by `otel.py`, and normalized in Python, they are guaranteed to match.
+
+**Success criteria**
+
+- DuckDB uses zone maps to skip irrelevant data blocks, leading to near-instantaneous trace details fetching.
+
+### 8. Lazy-load large tool results and artifacts
 
 **Problem**
 

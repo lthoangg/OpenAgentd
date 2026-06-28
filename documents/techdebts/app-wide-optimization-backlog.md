@@ -99,7 +99,21 @@ Token/tool streaming can produce many events per second. Rendering per event was
 
 ## Priority 3 — Payload and persistence efficiency
 
-### 6. Lazy-load large tool results and artifacts
+### 6. Optimize session deletion database queries (Completed)
+
+**Problem**
+
+Previously, `delete_session` retrieved all `SessionMessage` records for a session and deleted them one-by-one in a loop. For long-running sessions with hundreds of messages, this generated $N$ separate `DELETE` queries, causing transaction bottlenecks and lock contention in SQLite.
+
+**Changes**
+
+- Replaced the loop of individual deletes with a single bulk delete using `sqlmodel.delete`.
+
+**Success criteria**
+
+- Session deletion is done in a single database roundtrip, significantly reducing disk I/O and locking times.
+
+### 7. Lazy-load large tool results and artifacts
 
 **Problem**
 

@@ -561,15 +561,11 @@ async def delete_session(db: AsyncSession, session_id: UUID) -> bool:
         if not session:
             return False
         delete_workspace = session.workspace is None
-        messages = (
-            await db.exec(
-                select(SessionMessage).where(
-                    col(SessionMessage.session_id) == session_id
-                )
-            )
-        ).all()
-        for msg in messages:
-            await db.delete(msg)
+        from sqlmodel import delete
+
+        await db.exec(
+            delete(SessionMessage).where(col(SessionMessage.session_id) == session_id)
+        )
         await db.delete(session)
 
     sid_str = str(session_id)

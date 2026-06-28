@@ -14,7 +14,9 @@ from app.agent.schemas.chat import (
     HumanMessage,
     ToolCall,
     FunctionCall,
+    ToolMessage,
 )
+from app.agent.providers.anthropic.anthropic import _split_messages
 from app.services.chat_service import (
     create_chat_session,
     save_message,
@@ -268,6 +270,98 @@ async def run(engine):
 
         llm = await get_messages_for_llm(s, sess.id)
         check("N3: LLM also sees [u1, a1]", [m.content for m in llm], ["u1", "a1"])
+
+    # ── O: interrupted tool stub is removed before Anthropic replay ─────────
+    print("\n── O: interrupted tool stub sanitized for Anthropic replay ──")
+    async with factory() as s:
+        sess = await create_chat_session(s)
+        await save_message(s, sess.id, HumanMessage(content="first"))
+        await save_message(
+            s,
+            sess.id,
+            AssistantMessage(
+                content="calling tools",
+                tool_calls=[
+                    ToolCall(
+                        id="call_1",
+                        function=FunctionCall(name="ls", arguments="{}"),
+                    )
+                ],
+            ),
+        )
+        await save_message(s, sess.id, HumanMessage(content="follow-up"))
+        await s.commit()
+
+        llm = await get_messages_for_llm(s, sess.id)
+        check(
+            "O1: LLM history strips incomplete assistant tool_calls",
+            [
+                len(m.tool_calls or []) if isinstance(m, AssistantMessage) else None
+                for m in llm
+            ],
+            [None, 0, None],
+        )
+        _, anthropic = _split_messages(llm)
+        check(
+            "O2: Anthropic replay omits bare tool_use stub",
+            anthropic,
+            [
+                {"role": "user", "content": [{"type": "text", "text": "first"}]},
+                {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "calling tools"}],
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "follow-up",
+                            "cache_control": {"type": "ephemeral"},
+                        }
+                    ],
+                },
+            ],
+        )
+
+    # ── P: complete tool pair still survives Anthropic replay ───────────────
+    print("\n── P: complete tool pair preserved for Anthropic replay ──")
+    async with factory() as s:
+        sess = await create_chat_session(s)
+        await save_message(s, sess.id, HumanMessage(content="first"))
+        await save_message(
+            s,
+            sess.id,
+            AssistantMessage(
+                content="calling tools",
+                tool_calls=[
+                    ToolCall(
+                        id="call_1",
+                        function=FunctionCall(name="ls", arguments="{}"),
+                    )
+                ],
+            ),
+        )
+        await save_message(
+            s,
+            sess.id,
+            ToolMessage(content="done", tool_call_id="call_1", name="ls"),
+        )
+        await save_message(s, sess.id, HumanMessage(content="follow-up"))
+        await s.commit()
+
+        llm = await get_messages_for_llm(s, sess.id)
+        _, anthropic = _split_messages(llm)
+        check(
+            "P1: Anthropic replay keeps assistant tool_use when result exists",
+            anthropic[1]["content"][1]["type"],
+            "tool_use",
+        )
+        check(
+            "P2: Anthropic replay keeps matching tool_result block",
+            anthropic[2]["content"][0]["type"],
+            "tool_result",
+        )
 
     # ── Summary ────────────────────────────────────────────────────────────
     print("\n" + "═" * 60)

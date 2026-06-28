@@ -272,3 +272,51 @@ def test_split_messages_does_not_batch_tool_results_across_human_turn() -> None:
     assert len(tool_turns) == 2
     assert tool_turns[0]["content"][0]["tool_use_id"] == "t1"
     assert tool_turns[1]["content"][0]["tool_use_id"] == "t2"
+
+
+def test_split_messages_omits_assistant_tool_stub_without_matching_result() -> None:
+    """Incomplete assistant tool stubs must not be replayed to Anthropic.
+
+    A persisted assistant tool_use without the required following tool_result
+    block is what triggers Anthropic 400s on resumed turns.
+    """
+    assistant = _make_assistant_with_tools("t1")
+    _, out = _split_messages(
+        [HumanMessage(content="first"), assistant, HumanMessage(content="follow-up")]
+    )
+
+    assert out == [
+        {"role": "user", "content": [{"type": "text", "text": "first"}]},
+        {
+            "role": "assistant",
+            "content": [{"type": "text", "text": "calling tools"}],
+        },
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "follow-up",
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
+        },
+    ]
+
+
+def test_split_messages_keeps_complete_assistant_tool_pair() -> None:
+    """Complete assistant tool_use + tool_result pairs are preserved."""
+    assistant = _make_assistant_with_tools("t1")
+    _, out = _split_messages(
+        [
+            HumanMessage(content="first"),
+            assistant,
+            ToolMessage(content="done", tool_call_id="t1", name="tool"),
+            HumanMessage(content="follow-up"),
+        ]
+    )
+
+    assert out[1]["role"] == "assistant"
+    assert out[1]["content"][1]["type"] == "tool_use"
+    assert out[2]["role"] == "user"
+    assert out[2]["content"][0]["type"] == "tool_result"

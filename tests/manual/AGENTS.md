@@ -20,7 +20,7 @@ Each script prints a ✅/❌ line per check and exits non-zero on any failure.
 | File | Scenarios | What it covers |
 |---|---|---|
 | `manual_scenarios.py` | A – G (21 checks) | Core paths: normal compaction, undo summary (user + LLM view), two-summary over-restore guard, queued message visibility, redo, restore-all |
-| `extended_scenarios.py` | H – N (20 checks) | Edge cases: no-undo baseline, `hidden_from_user` summary, `heal_orphaned` respects boundary, double-undo layering, `keep_last_n` undo, empty session, plain-message undo |
+| `extended_scenarios.py` | H – P (24 checks) | Edge cases: no-undo baseline, `hidden_from_user` summary, `heal_orphaned` respects boundary, double-undo layering, `keep_last_n` undo, empty session, plain-message undo, Anthropic replay sanitization for interrupted tool stubs |
 
 ## When to re-run
 

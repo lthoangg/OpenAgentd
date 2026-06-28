@@ -33,6 +33,7 @@ function placeholderRegistryFromProviders(data: ProvidersListBody | undefined): 
         vision: false,
         output_image: false,
         output_video: false,
+        thinking_levels: [],
         summary_trigger_tokens: 0,
       })
     }

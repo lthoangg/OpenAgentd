@@ -11,9 +11,12 @@ import { ModelCombobox } from '@/components/settings/AgentForm/ModelCombobox'
 const THINKING_LEVELS = [
   { value: '', label: 'Default' },
   { value: 'none', label: 'None' },
+  { value: 'minimal', label: 'Minimal' },
   { value: 'low', label: 'Low' },
   { value: 'medium', label: 'Medium' },
   { value: 'high', label: 'High' },
+  { value: 'xhigh', label: 'Extra high' },
+  { value: 'max', label: 'Max' },
 ]
 
 export function SessionModelSettings({
@@ -54,6 +57,20 @@ export function SessionModelSettings({
     draftFastMode !== savedFastMode
   const trimmedDraftModel = draftModel.trim()
   const effectiveDraftModel = trimmedDraftModel || defaultModel || ''
+  const effectiveModelEntry = modelOptions.find((model) => model.id === effectiveDraftModel)
+  const thinkingLevelOptions = useMemo(() => {
+    const modelThinkingLevels = effectiveModelEntry?.thinking_levels ?? []
+    const allowed = modelThinkingLevels.length > 0 ? new Set(['', 'none', ...modelThinkingLevels]) : null
+    const options = THINKING_LEVELS.filter((level) => !allowed || allowed.has(level.value))
+    if (draftThinkingLevel && !options.some((level) => level.value === draftThinkingLevel)) {
+      const label = draftThinkingLevel
+        .split('-')
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(' ')
+      return [...options, { value: draftThinkingLevel, label }]
+    }
+    return options
+  }, [draftThinkingLevel, effectiveModelEntry])
   const fastModeAvailable = effectiveDraftModel.startsWith('codex:')
   const validModelIds = useMemo(
     () => new Set(modelOptions.map((model) => model.id)),
@@ -68,7 +85,7 @@ export function SessionModelSettings({
     setDraftThinkingLevel(level)
   }
 
-  const selectedThinkingLabel = THINKING_LEVELS.find((level) => level.value === draftThinkingLevel)?.label ?? 'Default'
+  const selectedThinkingLabel = thinkingLevelOptions.find((level) => level.value === draftThinkingLevel)?.label ?? 'Default'
 
   return (
     <section className="shrink-0 border-b border-(--color-border) bg-(--bg-page) px-3 py-3 sm:px-5 sm:py-4">
@@ -142,7 +159,7 @@ export function SessionModelSettings({
             className="min-h-10 w-full md:min-h-9"
             aria-label="Thinking level"
           >
-            {THINKING_LEVELS.map((level) => (
+            {thinkingLevelOptions.map((level) => (
               <DropdownItem key={level.value} value={level.value}>
                 {level.label}
               </DropdownItem>

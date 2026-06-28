@@ -58,6 +58,7 @@ class ModelCatalogEntry(BaseModel):
     vision: bool
     output_image: bool = False
     output_video: bool = False
+    thinking_levels: list[str] = []
     summary_trigger_tokens: int
 
 

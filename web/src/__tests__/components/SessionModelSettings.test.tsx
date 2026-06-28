@@ -46,7 +46,7 @@ describe('SessionModelSettings', () => {
         tools: [],
         skills: [],
         providers: ['openai'],
-        models: [{ id: 'openai:gpt-5.5-mini', provider: 'openai', model: 'gpt-5.5-mini', vision: false, output_image: false, output_video: false, summary_trigger_tokens: 0 }],
+        models: [{ id: 'openai:gpt-5.5-mini', provider: 'openai', model: 'gpt-5.5-mini', vision: false, output_image: false, output_video: false, thinking_levels: [], summary_trigger_tokens: 0 }],
       }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -68,7 +68,7 @@ describe('SessionModelSettings', () => {
         tools: [],
         skills: [],
         providers: ['openai'],
-        models: [{ id: 'openai:gpt-5', provider: 'openai', model: 'gpt-5', vision: false, output_image: false, output_video: false, summary_trigger_tokens: 0 }],
+        models: [{ id: 'openai:gpt-5', provider: 'openai', model: 'gpt-5', vision: false, output_image: false, output_video: false, thinking_levels: [], summary_trigger_tokens: 0 }],
       }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -81,6 +81,28 @@ describe('SessionModelSettings', () => {
     fireEvent.focus(input)
 
     expect(await screen.findByText('openai:gpt-5')).toBeTruthy()
+  })
+
+  it('limits thinking choices to the selected model metadata when available', async () => {
+    globalThis.fetch = mock(async () =>
+      new Response(JSON.stringify({
+        tools: [],
+        skills: [],
+        providers: ['openai'],
+        models: [{ id: 'openai:gpt-5.5', provider: 'openai', model: 'gpt-5.5', vision: false, output_image: false, output_video: false, thinking_levels: ['none', 'low', 'medium', 'high', 'xhigh'], summary_trigger_tokens: 0 }],
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    ) as typeof fetch
+
+    renderPanel({ sessionModel: 'openai:gpt-5.5' })
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Thinking level' }))
+
+    expect(await screen.findByText('Extra high')).toBeTruthy()
+    expect(screen.queryByText('Minimal')).toBeNull()
+    expect(screen.queryByText('Max')).toBeNull()
   })
 })
 
@@ -112,7 +134,7 @@ describe('SessionModelSettings — Fast mode', () => {
         tools: [],
         skills: [],
         providers: ['codex'],
-        models: [{ id: 'codex:gpt-5', provider: 'codex', model: 'gpt-5', vision: false, output_image: false, output_video: false, summary_trigger_tokens: 0 }],
+        models: [{ id: 'codex:gpt-5', provider: 'codex', model: 'gpt-5', vision: false, output_image: false, output_video: false, thinking_levels: [], summary_trigger_tokens: 0 }],
       }), { status: 200, headers: { 'Content-Type': 'application/json' } })
     ) as typeof fetch
 

@@ -469,6 +469,7 @@ export interface ModelCatalogEntry {
   vision: boolean
   output_image: boolean
   output_video: boolean
+  thinking_levels: string[]
   summary_trigger_tokens: number
 }
 

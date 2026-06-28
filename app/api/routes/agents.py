@@ -19,6 +19,7 @@ from app.agent.loader import AgentConfig
 from app.agent.hooks.summarization import prompt_token_threshold_for_model
 from app.agent.providers.capabilities import get_capabilities
 from app.agent.providers.catalog import all_providers
+from app.agent.providers.model_metadata import get_model_thinking_levels
 from app.agent.providers.model_discovery import filter_agent_model_ids
 from app.core.runtime_settings import (
     provider_cached_models,
@@ -319,6 +320,7 @@ async def get_registry() -> RegistryResponse:
                 vision=caps.input.vision,
                 output_image=caps.output.image,
                 output_video=caps.output.video,
+                thinking_levels=list(get_model_thinking_levels(model_id)),
                 summary_trigger_tokens=prompt_token_threshold_for_model(model_id),
             )
         )

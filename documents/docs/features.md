@@ -233,9 +233,10 @@ spawns specialist members on demand. Deeper docs: [`agent/teams.md`](./agent/tea
 - **Stop pauses queued follow-ups instead of dropping them** `[v1.17.0]` — Stop
   releases queued hidden user messages into visible history so you can
   `/undo`, edit, or append before resuming.
-- **Session-level model + thinking-level override** `[v1.16.0]` — override the
-  lead agent's model and thinking level for the current chat. History keeps
-  the model used for each user turn.
+- **Session-level model + thinking-level override** `[v1.16.0, v1.66.1]` — override the
+  lead agent's model and thinking level for the current chat. The thinking
+  picker uses each model's advertised reasoning levels when registry metadata is
+  available, and history keeps the model used for each user turn.
 - **Coding team variant** `[since v1.0]` — `agents/coding/` ships a separate
   compact team (`coding/openagentd`, `coding/coder`, `coding/explorer`) tuned for
   workspace-aware sessions; the coding explorer focuses on inspecting the current

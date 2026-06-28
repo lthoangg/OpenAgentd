@@ -283,6 +283,24 @@ def _features_from_model(model: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def _thinking_from_model(model: dict[str, Any]) -> dict[str, list[str]]:
+    options = model.get("reasoning_options")
+    if not isinstance(options, list):
+        return {}
+
+    levels: list[str] = []
+    for option in options:
+        if not isinstance(option, dict) or option.get("type") != "effort":
+            continue
+        values = option.get("values")
+        if not isinstance(values, list):
+            continue
+        for value in values:
+            if isinstance(value, str) and value and value not in levels:
+                levels.append(value)
+    return {"levels": levels} if levels else {}
+
+
 def _normalize_models_dev(data: Any, *, include_plugins: bool = True) -> ModelRegistry:
     if not isinstance(data, dict):
         return {}
@@ -306,6 +324,7 @@ def _normalize_models_dev(data: Any, *, include_plugins: bool = True) -> ModelRe
             limits = _limits_from_model(model)
             cost = _cost_from_model(model)
             features = _features_from_model(model)
+            thinking = _thinking_from_model(model)
             if capabilities:
                 entry["capabilities"] = capabilities
             if limits:
@@ -314,6 +333,8 @@ def _normalize_models_dev(data: Any, *, include_plugins: bool = True) -> ModelRe
                 entry["cost"] = cost
             if features:
                 entry["features"] = features
+            if thinking:
+                entry["thinking"] = thinking
             if entry:
                 registry[f"{provider_id}:{model_id}".lower()] = entry
     return registry

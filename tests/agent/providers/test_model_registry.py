@@ -10,6 +10,7 @@ from app.agent.providers.model_metadata import (
     get_model_cost,
     get_model_features,
     get_model_limits,
+    get_model_thinking_levels,
 )
 
 
@@ -59,6 +60,13 @@ def test_models_dev_metadata_is_normalized(
                         "attachment": True,
                         "temperature": False,
                         "reasoning": True,
+                        "reasoning_options": [
+                            {
+                                "type": "effort",
+                                "values": ["none", "low", "medium", "high", "xhigh"],
+                            },
+                            {"type": "budget_tokens", "min": 1024},
+                        ],
                         "status": "beta",
                         "release_date": "2026-01-02",
                     }
@@ -81,6 +89,13 @@ def test_models_dev_metadata_is_normalized(
     assert features.attachment is True
     assert features.temperature is False
     assert features.reasoning is True
+    assert get_model_thinking_levels("openai:gpt-live") == (
+        "none",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+    )
     assert features.status == "beta"
     assert features.release_date == "2026-01-02"
 

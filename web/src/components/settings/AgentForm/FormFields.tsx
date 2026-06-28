@@ -21,9 +21,12 @@ import { isBuiltInProfile } from './utils'
 const THINKING_LEVELS: Array<{ value: string; label: string }> = [
   { value: '__none__', label: '(default)' },
   { value: 'none', label: 'none' },
+  { value: 'minimal', label: 'minimal' },
   { value: 'low', label: 'low' },
   { value: 'medium', label: 'medium' },
   { value: 'high', label: 'high' },
+  { value: 'xhigh', label: 'xhigh' },
+  { value: 'max', label: 'max' },
 ]
 
 export function ParseErrorBanner({

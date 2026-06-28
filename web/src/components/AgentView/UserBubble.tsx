@@ -5,8 +5,38 @@ import { ImageAttachment } from '../ImageAttachment'
 import { FileCard } from '../FileCard'
 import { findCommittedMentions } from '../InputBar.mentions'
 import { resolveApiUrl } from '@/api/client'
+import { openExternalUrl } from '@/lib/open-external'
 import { formatTime } from '@/utils/format'
 import type { MessageAttachment } from '@/api/types'
+
+/** Matches http:// and https:// URLs (greedy, stops at whitespace or common trailing punctuation). */
+const URL_RE = /https?:\/\/[^\s<>"')\]]+/g
+
+/** Split a plain string into text and URL segments and render URLs as links. */
+function renderUrlSegments(text: string, keyPrefix: string): React.ReactNode[] {
+  const out: React.ReactNode[] = []
+  let last = 0
+  let match: RegExpExecArray | null
+  URL_RE.lastIndex = 0
+  while ((match = URL_RE.exec(text)) !== null) {
+    if (match.index > last) out.push(text.slice(last, match.index))
+    const url = match[0]
+    out.push(
+      <a
+        key={`${keyPrefix}-${match.index}`}
+        href={url}
+        onClick={(e) => { e.preventDefault(); void openExternalUrl(url) }}
+        className="text-(--accent-blue-text) underline underline-offset-2 hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) rounded-sm"
+        rel="noopener noreferrer"
+      >
+        {url}
+      </a>
+    )
+    last = match.index + url.length
+  }
+  if (last < text.length) out.push(text.slice(last))
+  return out
+}
 
 const USER_COLLAPSE_LINES = 10
 const USER_COLLAPSE_CHARS = 700
@@ -32,11 +62,11 @@ function shortModelName(modelId: string | null | undefined): string | null {
  */
 function renderMentionSegments(content: string, onMentionFileOpen?: (path: string) => void): React.ReactNode[] {
   const ranges = findCommittedMentions(content, null)
-  if (ranges.length === 0) return [content]
+  if (ranges.length === 0) return renderUrlSegments(content, 'url')
   const out: React.ReactNode[] = []
   let cursor = 0
   for (const r of ranges) {
-    if (r.start > cursor) out.push(content.slice(cursor, r.start))
+    if (r.start > cursor) out.push(...renderUrlSegments(content.slice(cursor, r.start), `pre-${cursor}`))
     const token = content.slice(r.start, r.end)
     const isFolder = token.endsWith('/')
     const path = token.slice(1)
@@ -63,7 +93,7 @@ function renderMentionSegments(content: string, onMentionFileOpen?: (path: strin
     ))
     cursor = r.end
   }
-  if (cursor < content.length) out.push(content.slice(cursor))
+  if (cursor < content.length) out.push(...renderUrlSegments(content.slice(cursor), `post-${cursor}`))
   return out
 }
 

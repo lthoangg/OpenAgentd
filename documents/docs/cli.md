@@ -130,7 +130,7 @@ openagentd logs           # tail last 50 lines and follow
 openagentd logs -n 100    # tail last 100 lines and follow
 ```
 
-Tails the server log file (equivalent to `tail -n <lines> -f`). Reads from `~/.local/state/openagentd/logs/app/app.log`.
+Tails the server log file (equivalent to `tail -n <lines> -f`). Reads from `~/.local/state/openagentd/logs/app/app.log`. Errors are also written separately to `~/.local/state/openagentd/logs/app/app-error.log`.
 
 ---
 

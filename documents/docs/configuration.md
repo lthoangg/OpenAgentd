@@ -29,7 +29,7 @@ openagentd             # start the API server in the background
 openagentd doctor      # health checks
 ```
 
-`init` writes config to `~/.config/openagentd/` (XDG standard). The database lives at `~/.local/share/openagentd/openagentd.db`. Logs live at `~/.local/state/openagentd/logs/app/app.log`.
+`init` writes config to `~/.config/openagentd/` (XDG standard). The database lives at `~/.local/share/openagentd/openagentd.db`. Logs live at `~/.local/state/openagentd/logs/app/app.log`, with a separate error-only stream at `~/.local/state/openagentd/logs/app/app-error.log`.
 
 Two `.env` files are loaded if present: `~/.config/openagentd/.env` takes priority over `.env` in the project root.
 

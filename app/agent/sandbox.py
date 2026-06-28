@@ -264,7 +264,8 @@ def _path_is_under(child: Path, parent: Path) -> bool:
 
 def _allowed_internal_roots(session_id: str | None) -> list[Path]:
     """Return internal OpenAgentd paths agents may inspect."""
-    roots = [Path(settings.OPENAGENTD_STATE_DIR).resolve() / "logs"]
+    logs_root = Path(settings.OPENAGENTD_STATE_DIR).resolve() / "logs"
+    roots = [logs_root, logs_root / "app"]
     if session_id:
         from app.agent.artifacts import session_artifact_dir
 

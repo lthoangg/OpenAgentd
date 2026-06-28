@@ -3,7 +3,7 @@
 Returns a redacted snapshot the user can copy-paste into bug reports
 without leaking secrets. Covers: version, runtime, configured dirs (paths
 only, never contents), provider keys (boolean ``present`` only), MCP
-status, last N lines of the app log, OS/arch.
+status, last N lines of the app log, app error log path, OS/arch.
 
 Used by the desktop "Copy diagnostics" button. CLI users can hit it
 directly with ``curl /api/diagnostics``.
@@ -148,6 +148,7 @@ async def diagnostics(tail: int = 200) -> dict[str, Any]:
 
     state_dir = Path(settings.OPENAGENTD_STATE_DIR)
     log_path = state_dir / "logs" / "app" / "app.log"
+    error_log_path = state_dir / "logs" / "app" / "app-error.log"
 
     def _agents_dir_loadable() -> bool | None:
         """``True`` if the agents directory parses, ``False`` if missing/empty,
@@ -195,4 +196,5 @@ async def diagnostics(tail: int = 200) -> dict[str, Any]:
         },
         "log_tail": _tail(log_path, tail),
         "log_path": str(log_path),
+        "error_log_path": str(error_log_path),
     }

@@ -69,7 +69,8 @@ Dev-mode paths shown below — substitute the production columns from the table 
 │   │   └── plugins/                       # user plugin .py drop-ins (OPENAGENTD_PLUGINS_DIRS)
 │   ├── state/                             # OPENAGENTD_STATE_DIR
 │   │   ├── logs/
-│   │   │   ├── app/app.log                # JSON app log (10 MB / 7 days)
+│   │   │   ├── app/app.log                # JSON app log (DEBUG+, 10 MB / 7 days)
+│   │   │   ├── app/app-error.log          # JSON error log (ERROR+, 10 MB / 14 days)
 │   │   │   └── sessions/{session_id}/
 │   │   │       ├── session.log            # human-readable per-session sink
 │   │   │       └── {agent}.jsonl          # structured events (SessionLogHook)

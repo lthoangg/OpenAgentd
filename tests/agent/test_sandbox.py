@@ -141,6 +141,19 @@ def test_state_logs_under_denied_root_allowed(tmp_path):
     assert sandbox.validate_path(str(log_path)) == log_path
 
 
+def test_state_error_logs_under_denied_root_allowed(tmp_path):
+    sandbox = SandboxConfig(
+        workspace=str(tmp_path / "ws"),
+        denied_roots=[Path(settings.OPENAGENTD_STATE_DIR).resolve()],
+        denied_patterns=[],
+    )
+    log_path = (
+        Path(settings.OPENAGENTD_STATE_DIR) / "logs" / "app" / "app-error.log"
+    ).resolve()
+
+    assert sandbox.validate_path(str(log_path)) == log_path
+
+
 def test_state_non_log_paths_still_rejected(tmp_path):
     sandbox = SandboxConfig(
         workspace=str(tmp_path / "ws"),

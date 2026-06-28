@@ -28,6 +28,7 @@ def test_returns_expected_shape():
         "mcp",
         "log_tail",
         "log_path",
+        "error_log_path",
     ):
         assert key in body, f"missing {key}"
 
@@ -72,3 +73,5 @@ def test_log_path_present_even_when_log_missing():
     body = _client().get("/api/diagnostics").json()
     assert isinstance(body["log_path"], str)
     assert body["log_path"].endswith("app.log")
+    assert isinstance(body["error_log_path"], str)
+    assert body["error_log_path"].endswith("app-error.log")

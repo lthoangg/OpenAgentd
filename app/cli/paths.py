@@ -52,5 +52,9 @@ def _server_log() -> Path:
     return _state_dir() / "logs" / "app" / "app.log"
 
 
+def _server_error_log() -> Path:
+    return _state_dir() / "logs" / "app" / "app-error.log"
+
+
 def _web_log() -> Path:
     return _state_dir() / "logs" / "web.log"

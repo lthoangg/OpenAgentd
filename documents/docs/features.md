@@ -16,7 +16,7 @@ exists. When you ship something new, **add it here first** — slides, README,
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 15 providers. Your keys.
 
-**Latest release:** v1.78.0 · June 28, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.78.0)
+**Latest release:** v1.79.0 · June 28, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.79.0)
 
 ---
 
@@ -114,8 +114,9 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
 - **Bang shell commands** `[v1.39.0]` — start a message with `!` to run the
   remainder directly through the shell tool without a model turn; history stores
   the run as structured shell tool output. See [`shell-commands.md`](./shell-commands.md).
-- **Drag-and-drop files into chat** `[since v1.0]` — images, PDFs, text. Multimodal
-  parts attach to the user message.
+- **Drag-and-drop files into chat** `[since v1.0, v1.79.0]` — images, PDFs, text. Multimodal
+  parts attach to the user message, with full attachment and cancellation support
+  on queued messages.
 - **Composer history navigation** `[v1.32.0]` — when the input is empty, `↑` / `↓`
   walks previous user prompts from the current chat plus local submissions. See
   [`web/chat-input.md`](./web/chat-input.md#composer-history-navigation).
@@ -233,7 +234,7 @@ spawns specialist members on demand. Deeper docs: [`agent/teams.md`](./agent/tea
 - **Stop pauses queued follow-ups instead of dropping them** `[v1.17.0]` — Stop
   releases queued hidden user messages into visible history so you can
   `/undo`, edit, or append before resuming.
-- **Session-level model + thinking-level override** `[v1.16.0, v1.66.1]` — override the
+- **Session-level model + thinking-level override** `[v1.16.0, v1.66.1, v1.79.0]` — override the
   lead agent's model and thinking level for the current chat. The thinking
   picker uses each model's advertised reasoning levels when registry metadata is
   available, and history keeps the model used for each user turn.

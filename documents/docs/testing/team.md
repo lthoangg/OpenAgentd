@@ -184,7 +184,7 @@ curl -X POST http://localhost:8000/api/team/chat \
   -F 'files=@/path/to/file.pdf'
 ```
 
-Uploads land at `{OPENAGENTD_WORKSPACE_DIR}/{lead_session_id}/uploads/<uuid>.<ext>` and the agent's filesystem tools see them as `uploads/<filename>`. See [`configuration.md#sandbox`](../configuration.md#sandbox) for path semantics.
+Uploads land at `{OPENAGENTD_WORKSPACE_DIR}/{lead_session_id}/uploads/<filename>` (sanitized original names, with ` (n)` suffixes when duplicates exist) and the agent's filesystem tools see them as `uploads/<filename>`. See [`configuration.md#sandbox`](../configuration.md#sandbox) for path semantics.
 
 ---
 

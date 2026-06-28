@@ -54,7 +54,7 @@ Dev-mode paths shown below — substitute the production columns from the table 
 │   │           └── {agent}/*.txt          # large tool-result offloads
 │   ├── workspace/                         # OPENAGENTD_WORKSPACE_DIR
 │   │   └── {lead_session_id}/             # normal-mode workspace
-│   │       └── uploads/<uuid>.<ext>       # user uploads (reachable as `uploads/<filename>`)
+│   │       └── uploads/<filename>         # user uploads (deduped original names; reachable as `uploads/<filename>`)
 │   ├── config/                            # OPENAGENTD_CONFIG_DIR
 │   │   ├── .env                           # secrets (gitignored)
 │   │   ├── agents/*.md                    # per-agent config
@@ -90,7 +90,7 @@ Backend code never constructs session paths inline. Two pure helpers return the 
 | Helper | Path | Ownership |
 |--------|------|-----------|
 | `workspace_dir(sid)` | `{OPENAGENTD_WORKSPACE_DIR}/{sid}` | Agent workspace root. File bytes served at `GET /api/team/{sid}/media/{path}`; flat recursive listing at `GET /api/team/{sid}/files`. |
-| `uploads_dir(sid)` | `{workspace_dir(sid)}/uploads` | User uploads (flat, UUID names). Served at `GET /api/team/{sid}/uploads/{filename}`. Lives **inside** the session workspace so filesystem tools can pass uploads to workspace-bound tools as `uploads/<filename>`. |
+| `uploads_dir(sid)` | `{workspace_dir(sid)}/uploads` | User uploads (flat, sanitized original names with ` (n)` dedupe suffixes when needed). Served at `GET /api/team/{sid}/uploads/{filename}`. Lives **inside** the session workspace so filesystem tools can pass uploads to workspace-bound tools as `uploads/<filename>`. |
 
 Session-scoped agent artifacts are centralized in `app/agent/artifacts.py` and live below `{OPENAGENTD_DATA_DIR}/sessions/{session_id}/`:
 

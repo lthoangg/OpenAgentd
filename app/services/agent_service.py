@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import html
 import io
+import re
 import threading
 import uuid
 from dataclasses import dataclass
@@ -101,7 +102,53 @@ MAGIC_BYTES: dict[str, list[tuple[bytes, int]]] = {
     ],
 }
 MAX_FILENAME_LEN = 200
+_FILENAME_STEM_MAX_LEN = 160
+_FILENAME_RE = re.compile(r"[\x00-\x1f\x7f/\\]+")
 MARKITDOWN_TIMEOUT_SECS = 30
+
+
+def _sanitize_upload_filename(raw_name: str, category: str) -> str:
+    """Return a filesystem-safe upload filename preserving the extension.
+
+    - strips path components
+    - removes control chars and path separators
+    - trims surrounding whitespace/dots
+    - preserves extension when possible
+    - falls back to ``upload.<ext>`` when the name becomes empty
+    """
+    leaf = Path(raw_name or "upload").name
+    cleaned = _FILENAME_RE.sub("_", leaf).strip().strip(".")
+    if not cleaned:
+        cleaned = f"upload{_default_ext(category)}"
+
+    ext_source = cleaned.split("#L", 1)[0]
+    ext = Path(ext_source).suffix or _default_ext(category)
+    stem = Path(ext_source).stem or "upload"
+    stem = stem[:_FILENAME_STEM_MAX_LEN].rstrip()
+    if not stem:
+        stem = "upload"
+
+    candidate = f"{stem}{ext}"
+    if len(candidate) <= MAX_FILENAME_LEN:
+        return candidate
+
+    allowed_stem = max(1, MAX_FILENAME_LEN - len(ext))
+    return f"{stem[:allowed_stem].rstrip()}{ext}"
+
+
+def _dedupe_upload_filename(uploads_dir: Path, filename: str) -> str:
+    """Return ``filename`` or the first available ``name (n).ext`` variant."""
+    candidate = filename
+    stem = Path(filename).stem or "upload"
+    ext = Path(filename).suffix
+    index = 1
+    while (uploads_dir / candidate).exists():
+        suffix = f" ({index})"
+        allowed_stem = max(1, MAX_FILENAME_LEN - len(ext) - len(suffix))
+        trimmed_stem = stem[:allowed_stem].rstrip() or "upload"
+        candidate = f"{trimmed_stem}{suffix}{ext}"
+        index += 1
+    return candidate
 
 
 # ── Transport-neutral attachment input ───────────────────────────────────────
@@ -239,24 +286,20 @@ async def _persist_attachment(
         )
     mime = (att.content_type or "").split(";")[0].strip() or "application/octet-stream"
     original_name = att.filename or "upload"
-    if len(original_name) > MAX_FILENAME_LEN:
-        ext = Path(original_name).suffix
-        original_name = original_name[: MAX_FILENAME_LEN - len(ext)] + ext
-    safe_original_name = html.escape(original_name)
+    safe_storage_name = _sanitize_upload_filename(original_name, category)
+    safe_original_name = html.escape(safe_storage_name)
     if not _validate_magic_bytes(data, mime):
         raise AttachmentError(
             f"'{safe_original_name}' content does not match its declared type '{mime}'.",
             status=422,
         )
-    if not _validate_ext_mime_consistency(original_name, mime):
+    if not _validate_ext_mime_consistency(safe_storage_name, mime):
         raise AttachmentError(
             f"'{safe_original_name}' extension does not match its content type '{mime}'.",
             status=422,
         )
-    ext_source = original_name.split("#L", 1)[0]
-    ext = Path(ext_source).suffix or _default_ext(category)
-    filename = f"{uuid.uuid4().hex}{ext}"
     uploads_dir.mkdir(parents=True, exist_ok=True)
+    filename = _dedupe_upload_filename(uploads_dir, safe_storage_name)
     dest = uploads_dir / filename
     await asyncio.to_thread(dest.write_bytes, data)
     logger.debug(

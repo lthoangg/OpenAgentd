@@ -20,7 +20,7 @@ app/agent/
 │   ├── tool_dispatch.py    # Parallel tool dispatch with interrupt
 │   └── tool_executor.py    # Per-tool execution + sanitize_error
 ├── state.py            # RunContext, ModelRequest, AgentState (usage, capabilities, tool_names, metadata), UsageInfo, build_tool_chain
-├── multimodal.py       # build_parts_from_metas() — attachment hydration for user uploads
+├── multimodal.py       # build_parts_from_metas() — attachment hint hydration for uploads
 ├── checkpointer.py     # Abstract Checkpointer + InMemoryCheckpointer + SQLiteCheckpointer
 ├── errors.py           # Domain exceptions
 ├── sandbox.py          # SandboxConfig, get_sandbox, set_sandbox (context var)

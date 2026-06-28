@@ -29,10 +29,15 @@ kill-dev-ports: ## Stop processes listening on dev ports (:8000, :5173)
 	done
 
 dev: kill-dev-ports ## Start backend (:8000 + reload) and frontend (Vite :5173) together
-	@command -v bun >/dev/null 2>&1 || { echo "error: 'bun' not found — install from https://bun.sh"; exit 1; }
 	@trap 'kill 0' INT TERM EXIT; \
 	(APP_ENV=development uv run uvicorn app.server:app --reload --reload-dir app 2>&1 | sed 's/^/[api] /') & \
 	(cd web && bun dev 2>&1 | sed 's/^/[web] /') & \
+	wait
+
+dev-lan: kill-dev-ports ## Start backend (:8000 + reload) and frontend (Vite :5173) together, accessible on LAN
+	@trap 'kill 0' INT TERM EXIT; \
+	(APP_ENV=development uv run uvicorn app.server:app --reload --reload-dir app --host 0.0.0.0 2>&1 | sed 's/^/[api] /') & \
+	(cd web && bun dev --host 0.0.0.0 2>&1 | sed 's/^/[web] /') & \
 	wait
 
 test: ## Run tests

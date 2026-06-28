@@ -5,9 +5,22 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.agent.schemas.chat import HumanMessage
+from app.agent.schemas.chat import (
+    AssistantMessage,
+    FunctionCall,
+    HumanMessage,
+    ImageDataBlock,
+    TextBlock,
+    ToolCall,
+    ToolMessage,
+)
 from app.models.chat import SessionMessage
-from app.services.chat_service import create_chat_session, get_messages, save_message
+from app.services.chat_service import (
+    create_chat_session,
+    get_messages,
+    get_messages_for_llm,
+    save_message,
+)
 from app.services.chat_service_queue import (
     cancel_queued_user_message,
     pop_queued_user_messages,
@@ -163,6 +176,96 @@ async def test_cancel_queued_message_tolerates_missing_attachment_file(
 
     assert result is True
     assert await session.get(SessionMessage, queued.id) is None
+
+
+@pytest.mark.asyncio
+async def test_get_messages_for_llm_hydrates_image_attachment_hint_and_skips_synthetic_shadow(
+    session: AsyncSession,
+):
+    chat_session = await create_chat_session(session)
+    user = await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="whats in this image"),
+        extra={
+            "attachments": [
+                {
+                    "filename": "Screenshot.png",
+                    "original_name": "Screenshot.png",
+                    "category": "image",
+                    "media_type": "image/png",
+                    "path": "/tmp/should-not-be-read-for-llm-hint.png",
+                }
+            ]
+        },
+    )
+    await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="[Attached image: Screenshot.png]"),
+        extra={
+            "hidden_from_user": True,
+            "hidden_from_summary": True,
+            "attachment_for_message_id": str(user.id),
+        },
+    )
+    await session.commit()
+
+    messages = await get_messages_for_llm(session, chat_session.id)
+
+    assert len(messages) == 1
+    msg = messages[0]
+    assert isinstance(msg, HumanMessage)
+    assert msg.parts is not None
+    assert [part.type for part in msg.parts] == ["text", "text"]
+    assert (
+        msg.parts[0].text
+        == "[Attached image path: ./uploads/Screenshot.png. Use the read tool to inspect it.]"
+    )
+    assert msg.parts[1].text == "whats in this image"
+
+
+@pytest.mark.asyncio
+async def test_tool_message_multimodal_parts_round_trip_from_db(session: AsyncSession):
+    chat_session = await create_chat_session(session)
+    await save_message(
+        session,
+        chat_session.id,
+        AssistantMessage(
+            content="",
+            tool_calls=[
+                ToolCall(
+                    id="tool-1",
+                    function=FunctionCall(
+                        name="read", arguments='{"path":"./uploads/Screenshot.png"}'
+                    ),
+                )
+            ],
+        ),
+    )
+    tool_msg = ToolMessage(
+        content="[Image: ./uploads/Screenshot.png]",
+        tool_call_id="tool-1",
+        name="read",
+        parts=[
+            TextBlock(text="[Image: ./uploads/Screenshot.png]"),
+            ImageDataBlock(data="ZmFrZQ==", media_type="image/png"),
+        ],
+    )
+    await save_message(session, chat_session.id, tool_msg)
+    await session.commit()
+
+    messages = await get_messages_for_llm(session, chat_session.id)
+
+    assert len(messages) == 2
+    assert isinstance(messages[0], AssistantMessage)
+    msg = messages[1]
+    assert isinstance(msg, ToolMessage)
+    assert msg.parts is not None
+    assert msg.parts[0].type == "text"
+    assert msg.parts[1].type == "image_data"
+    assert msg.parts[1].data == "ZmFrZQ=="
+    assert msg.parts[1].media_type == "image/png"
 
 
 @pytest.mark.asyncio

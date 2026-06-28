@@ -336,7 +336,7 @@ Paperclip uploads leave `truncate_inline_to = None`, so the full body always rea
 [End file: notes.txt]
 ```
 
-(Documents use `[Document: …]` / `[End document: …]`.) Without the close tag, agents tended to re-call `Read` on already-inlined files. Images are emitted as a separate `ImageDataBlock` and don't need a fence — their boundary is structural.
+(Documents use `[Document: …]` / `[End document: …]`.) Without the close tag, agents tended to re-call `Read` on already-inlined files. Image uploads are different: unread uploads contribute only a stable text hint (for example `[Attached image path: ./uploads/photo.png. Use the read tool to inspect it.]`). Actual image bytes enter LLM context only after an explicit `read("uploads/<filename>")` tool call, whose multimodal `ToolMessage.parts` are then replayed durably from the DB.
 
 ---
 
@@ -528,14 +528,16 @@ media/listing, while uploads still live under `OPENAGENTD_WORKSPACE_DIR`.
 
 | Endpoint | Source | Scope |
 |----------|--------|-------|
-| `GET /api/team/{session_id}/uploads/{filename}` | `{OPENAGENTD_WORKSPACE_DIR}/{session_id}/uploads/` | User-uploaded attachments (flat, UUID-named) |
+| `GET /api/team/{session_id}/uploads/{filename}` | `{OPENAGENTD_WORKSPACE_DIR}/{session_id}/uploads/` | User-uploaded attachments (flat, sanitized original names with ` (n)` dedupe suffixes when needed) |
 | `GET /api/team/{session_id}/media/{path}` | session or coding workspace | Agent workspace output (nested paths allowed) |
 
-User-uploaded files reach the LLM via the curated multimodal rehydration
-pipeline in `app/agent/multimodal.py`, and are *also* reachable by the
-agent's filesystem tools as the relative path `uploads/<filename>` — so
-user-uploaded images can feed workspace-bound tools (image/video
-generation, etc.) without a staging step.
+User-uploaded files are also reachable by the agent's filesystem tools as
+the relative path `uploads/<filename>` — so user-uploaded images can feed
+workspace-bound tools (image/video generation, etc.) without a staging
+step. Unread image uploads contribute only a stable text hint to LLM
+history; actual image bytes enter context after an explicit
+`read("uploads/<filename>")` tool call, and that multimodal tool result is
+then replayed durably from the DB.
 
 Both endpoints:
 

@@ -242,6 +242,10 @@ async def save_message(
             name,
             tool_call_id,
         )
+        if message.parts:
+            next_extra = dict(extra or {})
+            next_extra["parts"] = [part.model_dump() for part in message.parts]
+            extra = next_extra
 
     try:
         kwargs: dict = dict(

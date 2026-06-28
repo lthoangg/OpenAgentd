@@ -107,20 +107,22 @@ def build_parts_from_metas(
                 parts.append(TextBlock(text=f"[File not found: {original_name}]"))
                 continue
             # Path hint precedes the pixels so the model binds image →
-            # absolute saved path before it reaches for tool calls, while
-            # preserving a workspace-relative path for markdown rendering.
-            # Image-only by design — text/document use the fast path above
-            # and inline their content directly.
+            # workspace-relative uploads path before it reaches for file
+            # tools or markdown rendering. Image-only by design —
+            # text/document use the fast path above and inline their
+            # content directly.
             if category == "image":
                 stored_filename = att.get("filename")
-                markdown_path = (
-                    f"uploads/{stored_filename}" if stored_filename else None
-                )
-                hint = f"[Attached image saved at {path}"
-                if markdown_path:
-                    hint += f"; render in markdown as {markdown_path}"
-                hint += "]"
-                parts.append(TextBlock(text=hint))
+                if stored_filename:
+                    parts.append(
+                        TextBlock(
+                            text=(
+                                f"[Attached image available at ./uploads/{stored_filename}]"
+                            )
+                        )
+                    )
+                else:
+                    parts.append(TextBlock(text=f"[Attached image: {original_name}]"))
             b64 = base64.b64encode(raw).decode("ascii")
             parts.append(
                 ImageDataBlock(data=b64, media_type=att.get("media_type", "image/jpeg"))

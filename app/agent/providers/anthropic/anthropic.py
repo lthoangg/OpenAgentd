@@ -18,7 +18,10 @@ from app.agent.schemas.chat import (
     FunctionCall,
     FunctionCallDelta,
     HumanMessage,
+    ImageDataBlock,
+    ImageUrlBlock,
     SystemMessage,
+    TextBlock,
     ToolCall,
     ToolCallDelta,
     ToolMessage,
@@ -65,12 +68,41 @@ def _split_messages(
                 system_parts.append(message.content)
             continue
         if isinstance(message, HumanMessage):
-            out.append(
-                {
-                    "role": "user",
-                    "content": [{"type": "text", "text": message.content or ""}],
-                }
-            )
+            if message.parts:
+                blocks: list[dict[str, Any]] = []
+                for part in message.parts:
+                    if isinstance(part, TextBlock):
+                        blocks.append({"type": "text", "text": part.text})
+                    elif isinstance(part, ImageUrlBlock):
+                        source: dict[str, Any] = {"type": "url", "url": part.url}
+                        if part.media_type:
+                            source["media_type"] = part.media_type
+                        blocks.append({"type": "image", "source": source})
+                    elif isinstance(part, ImageDataBlock):
+                        blocks.append(
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": part.media_type,
+                                    "data": part.data,
+                                },
+                            }
+                        )
+                out.append(
+                    {
+                        "role": "user",
+                        "content": blocks
+                        or [{"type": "text", "text": message.content or ""}],
+                    }
+                )
+            else:
+                out.append(
+                    {
+                        "role": "user",
+                        "content": [{"type": "text", "text": message.content or ""}],
+                    }
+                )
         elif isinstance(message, AssistantMessage) and message.tool_calls:
             blocks: list[dict[str, Any]] = []
             if message.content:
@@ -93,10 +125,34 @@ def _split_messages(
                 }
             )
         elif isinstance(message, ToolMessage):
+            tool_content: str | list[dict[str, Any]] = message.content or ""
+            if message.parts:
+                blocks: list[dict[str, Any]] = []
+                for part in message.parts:
+                    if isinstance(part, TextBlock):
+                        blocks.append({"type": "text", "text": part.text})
+                    elif isinstance(part, ImageUrlBlock):
+                        source: dict[str, Any] = {"type": "url", "url": part.url}
+                        if part.media_type:
+                            source["media_type"] = part.media_type
+                        blocks.append({"type": "image", "source": source})
+                    elif isinstance(part, ImageDataBlock):
+                        blocks.append(
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": part.media_type,
+                                    "data": part.data,
+                                },
+                            }
+                        )
+                if blocks:
+                    tool_content = blocks
             result_block: dict[str, Any] = {
                 "type": "tool_result",
                 "tool_use_id": message.tool_call_id,
-                "content": message.content or "",
+                "content": tool_content,
             }
             if (message.content or "").startswith("Error:"):
                 result_block["is_error"] = True

@@ -7,10 +7,13 @@ from uuid import UUID
 from loguru import logger
 from pydantic import TypeAdapter
 
+from app.agent.multimodal import build_parts_from_metas
 from app.agent.schemas.chat import (
     AssistantMessage,
     ChatMessage,
+    ContentBlock,
     HumanMessage,
+    TextBlock,
     ToolMessage,
 )
 from app.models.chat import SessionMessage
@@ -18,6 +21,32 @@ from app.models.chat import SessionMessage
 USER_SHELL_LLM_CONTENT = "The following tool was executed by the user"
 
 _chat_message_adapter: TypeAdapter[ChatMessage] = TypeAdapter(ChatMessage)
+_content_block_adapter: TypeAdapter[ContentBlock] = TypeAdapter(ContentBlock)
+
+
+def _attachment_hint_parts(message: str, attachments: list[dict]) -> list[TextBlock]:
+    parts: list[TextBlock] = []
+    for att in attachments:
+        category = att.get("category", "image")
+        original_name = att.get("original_name", att.get("filename", "file"))
+        if category == "image":
+            filename = att.get("filename")
+            hint = (
+                f"[Attached image path: ./uploads/{filename}. Use the read tool to inspect it.]"
+                if filename
+                else f"[Attached image: {original_name}. Use the read tool to inspect it.]"
+            )
+            parts.append(TextBlock(text=hint))
+        else:
+            parts.extend(
+                [
+                    part
+                    for part in build_parts_from_metas("", [att])
+                    if isinstance(part, TextBlock) and part.text
+                ]
+            )
+    parts.append(TextBlock(text=message))
+    return parts
 
 
 def deserialize_messages(
@@ -31,6 +60,15 @@ def deserialize_messages(
                 d["tool_call_id"] = ""
             msg = _chat_message_adapter.validate_python(d)
             msg.db_id = m.id
+            if (
+                isinstance(msg, ToolMessage)
+                and m.extra
+                and isinstance(m.extra.get("parts"), list)
+            ):
+                msg.parts = [
+                    _content_block_adapter.validate_python(part)
+                    for part in m.extra["parts"]
+                ]
 
             result.append(msg)
         except Exception:
@@ -84,12 +122,25 @@ def deserialize_messages(
 
 
 def apply_llm_content_overrides(messages: list[ChatMessage]) -> list[ChatMessage]:
+    out: list[ChatMessage] = []
     for msg in messages:
-        if not isinstance(msg, HumanMessage) or not msg.extra:
-            continue
-        if msg.extra.get("kind") == "user_shell":
-            msg.content = USER_SHELL_LLM_CONTENT
-    return messages
+        if isinstance(msg, HumanMessage) and msg.extra:
+            if msg.extra.get("attachment_for_message_id"):
+                # Synthetic attachment rows stay in the DB for queue/history
+                # bookkeeping, but the LLM should consume the canonical
+                # attachment hint from the parent user row instead.
+                continue
+            if msg.extra.get("kind") == "user_shell":
+                msg.content = USER_SHELL_LLM_CONTENT
+            attachments = msg.extra.get("attachments")
+            if isinstance(attachments, list) and attachments:
+                msg = msg.model_copy(
+                    update={
+                        "parts": _attachment_hint_parts(msg.content or "", attachments)
+                    }
+                )
+        out.append(msg)
+    return out
 
 
 def message_row_by_id(

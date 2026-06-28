@@ -501,7 +501,9 @@ async def test_persist_attachment_truncates_long_filename_preserving_extension(
 
     meta, synthetic = await _persist_attachment(att, "text", tmp_path, "sid")
 
-    assert len(meta["original_name"]) == 200
+    assert len(meta["filename"]) <= 200
+    assert len(meta["original_name"]) <= 200
+    assert meta["filename"].endswith(".txt")
     assert meta["original_name"].endswith(".txt")
     assert synthetic.startswith(f"[File: {meta['original_name']}]")
 
@@ -559,7 +561,56 @@ async def test_persist_attachment_line_ref_filename_uses_real_extension(tmp_path
     meta, synthetic = await _persist_attachment(att, "text", tmp_path, "sid")
 
     assert meta["filename"].endswith(".py")
-    assert "selected lines already loaded" in synthetic
+    assert meta["filename"] == "app.py"
+    assert synthetic.startswith("[File: app.py]")
+
+
+@pytest.mark.asyncio
+async def test_persist_attachment_uses_sanitized_original_filename(tmp_path):
+    att = RawAttachment(
+        filename="Screenshot 2026-06-28 at 19.59.23.png",
+        content_type="image/png",
+        data=b"\x89PNG\r\n\x1a\n",
+    )
+
+    meta, _ = await _persist_attachment(att, "image", tmp_path, "sid")
+
+    assert meta["filename"] == "Screenshot 2026-06-28 at 19.59.23.png"
+    assert meta["original_name"] == "Screenshot 2026-06-28 at 19.59.23.png"
+    assert (tmp_path / "Screenshot 2026-06-28 at 19.59.23.png").is_file()
+
+
+@pytest.mark.asyncio
+async def test_persist_attachment_dedupes_duplicate_names(tmp_path):
+    att1 = RawAttachment(
+        filename="image.png", content_type="image/png", data=b"\x89PNG\r\n\x1a\n"
+    )
+    att2 = RawAttachment(
+        filename="image.png", content_type="image/png", data=b"\x89PNG\r\n\x1a\n"
+    )
+
+    meta1, _ = await _persist_attachment(att1, "image", tmp_path, "sid")
+    meta2, _ = await _persist_attachment(att2, "image", tmp_path, "sid")
+
+    assert meta1["filename"] == "image.png"
+    assert meta2["filename"] == "image (1).png"
+    assert (tmp_path / "image.png").is_file()
+    assert (tmp_path / "image (1).png").is_file()
+
+
+@pytest.mark.asyncio
+async def test_persist_attachment_strips_path_components(tmp_path):
+    att = RawAttachment(
+        filename="../../nested/evil.png",
+        content_type="image/png",
+        data=b"\x89PNG\r\n\x1a\n",
+    )
+
+    meta, _ = await _persist_attachment(att, "image", tmp_path, "sid")
+
+    assert meta["filename"] == "evil.png"
+    assert meta["original_name"] == "evil.png"
+    assert (tmp_path / "evil.png").is_file()
 
 
 @pytest.mark.asyncio

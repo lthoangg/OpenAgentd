@@ -115,9 +115,7 @@ def test_image_read_from_disk(tmp_path):
     # [path-hint TextBlock, ImageDataBlock, user-message TextBlock]
     assert len(parts) == 3
     assert isinstance(parts[0], TextBlock)
-    assert parts[0].text == (
-        f"[Attached image saved at {img}; render in markdown as uploads/photo.jpg]"
-    )
+    assert parts[0].text == "[Attached image available at ./uploads/photo.jpg]"
     assert isinstance(parts[1], ImageDataBlock)
     assert parts[1].media_type == "image/jpeg"
 
@@ -137,26 +135,22 @@ def test_image_media_type_passed_through(tmp_path):
     assert parts[1].media_type == "image/png"
 
 
-def test_image_path_hint_uses_absolute_path(tmp_path):
-    """The path hint must reference the absolute saved path agents can pass
-    directly to tools."""
-    img = tmp_path / "abc123.png"
+def test_image_path_hint_uses_relative_uploads_path(tmp_path):
+    """The path hint should use the workspace-relative uploads path only."""
+    img = tmp_path / "My Photo (1).png"
     img.write_bytes(b"\x89PNG\r\n\x1a\n")
     att = {
         "path": str(img),
-        "filename": "abc123.png",  # stored UUID name
-        "original_name": "My Photo (1).png",  # raw user name
+        "filename": "My Photo (1).png",
+        "original_name": "My Photo (1).png",
         "category": "image",
         "media_type": "image/png",
     }
     parts = build_parts_from_metas("describe", [att])
     hint = parts[0]
     assert isinstance(hint, TextBlock)
-    assert hint.text == (
-        f"[Attached image saved at {img}; render in markdown as uploads/abc123.png]"
-    )
-    # The raw user name must NOT leak into the path hint.
-    assert "My Photo" not in hint.text
+    assert hint.text == ("[Attached image available at ./uploads/My Photo (1).png]")
+    assert str(img) not in hint.text
 
 
 def test_text_attachment_has_no_path_hint():
@@ -240,7 +234,7 @@ def test_no_attachments_returns_single_text_block():
     assert parts[0].text == "only message"
 
 
-def test_image_without_filename_field_omits_markdown_render_hint(tmp_path):
+def test_image_without_filename_field_falls_back_to_original_name_hint(tmp_path):
     img = tmp_path / "photo.jpg"
     img.write_bytes(b"\xff\xd8\xff" + b"\x00" * 10)
     att = {
@@ -253,7 +247,7 @@ def test_image_without_filename_field_omits_markdown_render_hint(tmp_path):
     parts = build_parts_from_metas("describe", [att])
 
     assert isinstance(parts[0], TextBlock)
-    assert parts[0].text == f"[Attached image saved at {img}]"
+    assert parts[0].text == "[Attached image: photo.jpg]"
     assert isinstance(parts[1], ImageDataBlock)
 
 

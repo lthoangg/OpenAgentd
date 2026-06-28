@@ -1190,7 +1190,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             voiceUnavailableReason={voiceUnavailableReason}
             revertedCount={leadName ? agentStreams[leadName]?.revertedCount ?? 0 : 0}
             revertedMessages={leadName ? agentStreams[leadName]?.revertedMessages ?? [] : []}
-            onRedo={() => { void useTeamStore.getState().redoTeam() }}
+            onRedo={() => { void handleSlashCommand('redo') }}
           />
         )}
         </main>

@@ -116,6 +116,7 @@ export interface GitCommit {
   author_email: string
   timestamp: number
   subject: string
+  body?: string | null
   refs?: string | null
 }
 

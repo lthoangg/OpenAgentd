@@ -2,7 +2,7 @@
 title: Workspace Files Panel
 description: Right-side drawer for browsing, previewing, and downloading agent-generated files with live invalidation.
 status: stable
-updated: 2026-06-13
+updated: 2026-06-17
 ---
 
 # Workspace Files panel
@@ -189,6 +189,12 @@ with an opencode-style tab strip:
   (`A` / `M` / `D`) and `+N/-N` counts. Selecting a changed row opens that file
   as a dock tab in **Diff** mode. The endpoint uses `git diff HEAD` (plus an
   untracked-file scan), so changes stay listed whether or not they are staged.
+- **Commits** lists recent git history via `GET /api/team/workspace/git/history`.
+  Each card shows the subject, short SHA, author, date, and branch refs. Clicking
+  a card expands it to reveal (in order): the **commit body** (if present) and the
+  **changed-files diff**. The body is hidden by default and only shown when the
+  card is expanded; clicking the card again collapses both. Only one commit is
+  expanded at a time — opening a second one collapses the previous.
 - **File tabs** open inside the dock. They render the same read-only preview
   content as the standalone file viewer, including the touch-friendly
   **File / Diff** toggle and scoped file diffs.

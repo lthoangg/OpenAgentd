@@ -590,7 +590,11 @@ async def get_coding_workspace_git_history(
             graph="",
         )
 
-    # 1. Fetch structured commits (limit + 1 to detect next page)
+    # 1. Fetch structured commits (limit + 1 to detect next page).
+    #    Fields: sha, short_sha, author_name, author_email, timestamp, subject,
+    #            body, refs — separated by NUL (\x00).  Each *record* ends with
+    #    the ASCII Record Separator (\x1e) so that multi-line body text doesn't
+    #    break parsing.
     log_args = ["log"]
     if cursor:
         log_args.extend([cursor, "--skip=1"])
@@ -598,7 +602,7 @@ async def get_coding_workspace_git_history(
         [
             "-n",
             str(limit + 1),
-            "--pretty=format:%H%x00%h%x00%an%x00%ae%x00%at%x00%s%x00%d",
+            "--pretty=format:%H%x00%h%x00%an%x00%ae%x00%at%x00%s%x00%b%x00%d%x1e",
         ]
     )
     if all_branches:
@@ -607,33 +611,36 @@ async def get_coding_workspace_git_history(
     commits_out = await _run_git(resolved, *log_args)
     commits = []
     if commits_out:
-        # Split by lines and parse each line
-        for line in commits_out.splitlines():
-            if not line:
+        # Split records on \x1e (each record ends with it, so the last split
+        # element will be an empty string — skip it).
+        for record in commits_out.split("\x1e"):
+            record = record.strip("\n")
+            if not record:
                 continue
-            parts = line.split("\x00")
-            if len(parts) >= 6:
-                try:
-                    timestamp = int(parts[4])
-                except ValueError:
-                    timestamp = 0
+            parts = record.split("\x00")
+            if len(parts) < 6:
+                continue
+            try:
+                timestamp = int(parts[4])
+            except ValueError:
+                timestamp = 0
 
-                refs = (
-                    parts[6].strip(" ()")
-                    if len(parts) > 6 and parts[6].strip()
-                    else None
+            body_raw = parts[6].strip() if len(parts) > 6 else ""
+            refs = (
+                parts[7].strip(" ()\n") if len(parts) > 7 and parts[7].strip() else None
+            )
+            commits.append(
+                GitCommit(
+                    sha=parts[0],
+                    short_sha=parts[1],
+                    author_name=parts[2],
+                    author_email=parts[3],
+                    timestamp=timestamp,
+                    subject=parts[5],
+                    body=body_raw or None,
+                    refs=refs,
                 )
-                commits.append(
-                    GitCommit(
-                        sha=parts[0],
-                        short_sha=parts[1],
-                        author_name=parts[2],
-                        author_email=parts[3],
-                        timestamp=timestamp,
-                        subject=parts[5],
-                        refs=refs,
-                    )
-                )
+            )
 
     # 2. Determine next_cursor and slice
     next_cursor = None

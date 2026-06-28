@@ -786,13 +786,20 @@ export function CodingWorkspacePanel({
                             </button>
 
                             {isExpanded && (
-                              <CommitDetail
-                                commitDiff={commitDiff}
-                                commitChangedFiles={commitChangedFiles}
-                                commitDiffSections={commitDiffSections}
-                                expandedCommitFiles={expandedCommitFiles}
-                                setExpandedCommitFiles={setExpandedCommitFiles}
-                              />
+                              <>
+                                {commit.body && (
+                                  <p className="mt-2 whitespace-pre-wrap break-words rounded border border-(--color-border) bg-(--bg-page) px-2 py-1.5 text-[11px] leading-relaxed text-(--color-text-2)">
+                                    {commit.body}
+                                  </p>
+                                )}
+                                <CommitDetail
+                                  commitDiff={commitDiff}
+                                  commitChangedFiles={commitChangedFiles}
+                                  commitDiffSections={commitDiffSections}
+                                  expandedCommitFiles={expandedCommitFiles}
+                                  setExpandedCommitFiles={setExpandedCommitFiles}
+                                />
+                              </>
                             )}
                           </div>
                         )

@@ -1,30 +1,32 @@
 /**
  * Switch — pill toggle, no external primitives.
  *
- * Built on a visually-hidden <input type="checkbox"> so it is
- * keyboard-accessible and works with native form APIs.
+ * Rendered as a single <button role="switch"> (the pill track) so it is
+ * keyboard-accessible and its parentElement is always the direct DOM parent —
+ * matching the old base-ui Switch behaviour that tests rely on.
  *
  * API is a drop-in for the previous base-ui version:
  *   checked, onCheckedChange, disabled, className
  */
-import { useId, type ComponentPropsWithRef } from 'react'
+import { type ComponentPropsWithRef } from 'react'
 import { cn } from '@/lib/utils'
 
-interface SwitchProps extends Omit<ComponentPropsWithRef<'input'>, 'onChange' | 'type' | 'checked'> {
+interface SwitchProps extends Omit<ComponentPropsWithRef<'button'>, 'onChange' | 'onClick'> {
   checked?: boolean
   onCheckedChange?: (checked: boolean) => void
 }
 
-function Switch({ checked = false, onCheckedChange, disabled, className, id: externalId, ...props }: SwitchProps) {
-  const generatedId = useId()
-  const id = externalId ?? generatedId
-
+function Switch({ checked = false, onCheckedChange, disabled, className, ...props }: SwitchProps) {
   return (
-    <label
-      htmlFor={id}
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
       data-slot="switch"
       data-checked={checked || undefined}
       data-disabled={disabled || undefined}
+      disabled={disabled}
+      onClick={() => !disabled && onCheckedChange?.(!checked)}
       className={cn(
         // Track — pill shape
         'relative inline-flex h-[22px] w-10 shrink-0',
@@ -35,25 +37,14 @@ function Switch({ checked = false, onCheckedChange, disabled, className, id: ext
         checked && 'border-(--accent-blue) bg-(--accent-blue)',
         // Transitions
         'transition-colors duration-200',
-        // Focus ring via peer
-        'has-focus-visible:ring-2 has-focus-visible:ring-(--focus-ring)/30 has-focus-visible:ring-offset-1',
+        // Focus ring
+        'focus-visible:ring-2 focus-visible:ring-(--focus-ring)/30 focus-visible:ring-offset-1 outline-none',
         // Disabled
         disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer',
         className,
       )}
+      {...props}
     >
-      {/* Visually hidden native checkbox — accessibility + form compat */}
-      <input
-        id={id}
-        type="checkbox"
-        role="switch"
-        aria-checked={checked}
-        checked={checked}
-        disabled={disabled}
-        onChange={(e) => onCheckedChange?.(e.target.checked)}
-        className="peer sr-only"
-        {...props}
-      />
       {/* Thumb */}
       <span
         aria-hidden="true"
@@ -63,7 +54,7 @@ function Switch({ checked = false, onCheckedChange, disabled, className, id: ext
           checked ? 'translate-x-[18px]' : 'translate-x-0',
         )}
       />
-    </label>
+    </button>
   )
 }
 

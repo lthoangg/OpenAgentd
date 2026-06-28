@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'bun:test'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { DateTimePicker } from '@/components/ui/date-time-picker'
 
@@ -55,6 +55,9 @@ describe('DateTimePicker', () => {
 
     const doneButton = screen.getByRole('button', { name: 'Done' })
     await user.click(doneButton)
+
+    // Flush the close-animation timer (useDeferredUnmount uses a real setTimeout)
+    await act(async () => { await new Promise((r) => setTimeout(r, 200)) })
 
     // Calendar should no longer be visible
     expect(screen.queryByRole('grid')).toBeNull()

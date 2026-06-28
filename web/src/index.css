@@ -301,7 +301,8 @@ pre code.hljs {
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    border-color: var(--color-border);
+    outline-color: color-mix(in srgb, var(--focus-ring) 50%, transparent);
     /* Eliminate 300ms tap delay on mobile without blocking scroll */
     touch-action: manipulation;
     /* Remove iOS blue tap flash */
@@ -320,7 +321,8 @@ pre code.hljs {
     overscroll-behavior: none;
   }
   body {
-    @apply bg-background text-foreground;
+    background-color: var(--bg-page);
+    color: var(--color-text);
   }
   html {
     @apply font-sans;

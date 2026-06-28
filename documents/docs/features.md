@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of every user-visible OpenAgentd feature. Source of truth for slides, README, comparison docs, and marketing copy.
 status: stable
-updated: 2026-06-27
+updated: 2026-06-28
 ---
 
 # Features
@@ -16,7 +16,7 @@ exists. When you ship something new, **add it here first** — slides, README,
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 15 providers. Your keys.
 
-**Latest release:** v1.76.2 · June 27, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.76.2)
+**Latest release:** v1.77.0 · June 28, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.77.0)
 
 ---
 
@@ -76,6 +76,11 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   tighter animation and a curated command set that drops low-value entries.
   Command and file search overlays use the compact warm-paper surface treatment
   across desktop and mobile `[v1.74.0]`.
+- **Smooth close animations on UI components** `[v1.77.0]` — dropdown, tooltip,
+  and popover now play a 100–150 ms exit animation (fade-out + zoom-out) before
+  unmounting, matching the open transitions. Dialog and sheet retain their
+  existing close animations. Tooltip gains a CSS arrow and correctly appears
+  over disabled buttons via a transparent span wrapper.
 - **Type-to-focus composer** `[v1.40.0]` — in cockpit and coding chat, start
   typing on the chat surface to expand/focus the composer and capture the first
   character without pressing `Ctrl+I` first. See [`web/chat-input.md`](./web/chat-input.md).
@@ -114,6 +119,16 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
 - **Composer history navigation** `[v1.32.0]` — when the input is empty, `↑` / `↓`
   walks previous user prompts from the current chat plus local submissions. See
   [`web/chat-input.md`](./web/chat-input.md#composer-history-navigation).
+- **Clickable URLs in user message bubbles** `[v1.77.0]` — plain-text URLs typed
+  or pasted into a user message are rendered as tappable links; style matches
+  agent response links.
+- **Stream auto-stick restored after scroll-to-bottom on mobile** `[v1.77.0]` —
+  tapping the scroll-to-bottom button no longer detaches the stream
+  auto-follow; direction-based detach logic removed from `onScroll` (was
+  indistinguishable from smooth-button animation on mobile); user intent is
+  now detected via `onWheel` / `onTouchMove` only. `AgentPane` gains a
+  `ResizeObserver` so content reflow (markdown, images, syntax highlight) also
+  re-sticks correctly.
 - **Tool-call inspector** `[since v1.0]` — every tool call expands to show
   arguments, status, results, and inline Git-like diffs for file edits. Read
   results and file-change diffs keep line numbers visible while scrolling
@@ -415,6 +430,15 @@ MCP. Deeper doc: [`agent/tools.md`](./agent/tools.md).
 | Team coordination | `team_message`, `team_manage` |
 | Utility | `date`, `skill` |
 
+- **Clean tool argument validation errors** `[v1.77.0]` — when a tool call
+  fails Pydantic validation, the LLM receives a compact `field: message`
+  summary instead of the full Pydantic noise (type codes, raw input value,
+  docs URL). Errors with multiple fields are joined with `; `; nested field
+  paths use ` -> ` separators.
+- **Gemini zero-argument tool calls no longer crash** `[v1.77.0]` — Gemini
+  omits the `args` key entirely for tools that take no arguments; the schema
+  now defaults `FunctionCall.args` to `{}` so the response parses correctly
+  on both streaming and non-streaming paths.
 - **Cross-tool `tool_output_delta` streaming** `[since v1.0]` — long-running
   tools (shell, web search) stream output to the inspector as they run.
 - **Rich inline ToolCall rendering & scroll guardrails** `[since v1.0, v1.72.0]` — compact tool summaries and status lines, sticky headers for diffs, and automatic scroll/truncation boundaries for extremely large outputs.

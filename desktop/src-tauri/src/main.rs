@@ -1205,7 +1205,17 @@ async fn run_update_install(app: AppHandle) -> Result<(), String> {
 
     update_tray_status(&app, "Status: Installing update…");
     log::info!("updater install applying version={}", update.version);
-    update.install(bytes).map_err(|e| {
+    // `tauri_plugin_updater`'s `install()` performs heavy filesystem work
+    // (decompression, bundle copy, codesign verification on macOS). Running it
+    // directly on an async task blocks the tokio thread, which can starve the
+    // logger and prevent the subsequent `run_on_main_thread` closure from being
+    // scheduled — causing `restart()` to never fire and the 60 s frontend
+    // timeout to trigger. Off-load to a dedicated blocking thread so the async
+    // runtime stays responsive throughout the install.
+    let install_result = tokio::task::spawn_blocking(move || update.install(bytes))
+        .await
+        .map_err(|e| format!("Install task panicked: {e}"))?;
+    install_result.map_err(|e| {
         update_tray_status(&app, "Status: Running");
         format!("Failed to install update: {e}")
     })?;

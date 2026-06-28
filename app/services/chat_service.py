@@ -25,13 +25,11 @@ from app.services.chat_service_messages import (
 )
 from app.services.chat_service_revert import (
     BoundaryShift,
-    before_boundary as _before_boundary,
     boundary_created_at as _boundary_created_at,
     exclude_messages_before_summary,
+    get_dynamically_visible_messages as _get_dynamically_visible_messages,
     history_messages_stmt as _history_messages_stmt,
     is_hidden_from_user as _is_hidden_from_user,
-    is_history_visible as _is_history_visible,
-    visible_messages_stmt as _visible_messages_stmt,
 )
 
 
@@ -99,28 +97,10 @@ async def heal_orphaned_tool_calls(db: AsyncSession, session_id: UUID) -> int:
     case).  Caller is responsible for the commit.
     """
     boundary = await _boundary_created_at(db, session_id)
-    summary_stmt = (
-        select(SessionMessage)
-        .where(col(SessionMessage.session_id) == session_id)
-        .where(col(SessionMessage.is_summary))
-        .where(~col(SessionMessage.exclude_from_context))
+    rows = (await db.exec(_history_messages_stmt(session_id, boundary))).all()
+    db_messages = await _get_dynamically_visible_messages(
+        db, session_id, boundary, rows
     )
-    summary_stmt = (
-        _before_boundary(summary_stmt, boundary)
-        .order_by(col(SessionMessage.created_at).desc())
-        .limit(1)
-    )
-    latest_summary = (await db.exec(summary_stmt)).first()
-
-    if latest_summary is None:
-        db_messages = list(
-            (await db.exec(_visible_messages_stmt(session_id, boundary))).all()
-        )
-    else:
-        rest_stmt = _visible_messages_stmt(session_id, boundary).where(
-            ~col(SessionMessage.is_summary)
-        )
-        db_messages = [latest_summary] + list((await db.exec(rest_stmt)).all())
 
     assistant_rows = [
         row for row in db_messages if row.role == "assistant" and row.tool_calls
@@ -284,10 +264,9 @@ async def save_message(
 
 
 async def get_messages(db: AsyncSession, session_id: UUID) -> list[ChatMessage]:
-    """Retrieves all *visible* ChatMessages for a session.
+    """Return the full conversation history for the session.
 
-    Excluded messages (``exclude_from_context=True``) are filtered out — this
-    is the list shown to the end user.  Summary messages (``is_summary=True``)
+    This is the list shown to the end user.  Summary messages (``is_summary=True``)
     are included so the UI can render them.
 
     To get the context window sent to the LLM, use
@@ -297,7 +276,9 @@ async def get_messages(db: AsyncSession, session_id: UUID) -> list[ChatMessage]:
     try:
         boundary = await _boundary_created_at(db, session_id)
         rows = (await db.exec(_history_messages_stmt(session_id, boundary))).all()
-        db_messages = [row for row in rows if _is_history_visible(row)]
+        db_messages = await _get_dynamically_visible_messages(
+            db, session_id, boundary, rows
+        )
         logger.debug(
             "messages_fetched session_id={} count={}", session_id, len(db_messages)
         )
@@ -331,49 +312,24 @@ async def get_messages_for_llm(db: AsyncSession, session_id: UUID) -> list[ChatM
     logger.debug("loading_llm_messages session_id={}", session_id)
     try:
         boundary = await _boundary_created_at(db, session_id)
-        # Find the latest summary message
-        summary_stmt = (
-            select(SessionMessage)
-            .where(col(SessionMessage.session_id) == session_id)
-            .where(col(SessionMessage.is_summary))
-            .where(~col(SessionMessage.exclude_from_context))
+        rows = (await db.exec(_history_messages_stmt(session_id, boundary))).all()
+        db_messages = await _get_dynamically_visible_messages(
+            db, session_id, boundary, rows
         )
-        summary_stmt = (
-            _before_boundary(summary_stmt, boundary)
-            .order_by(col(SessionMessage.created_at).desc())
-            .limit(1)
-        )
-        latest_summary = (await db.exec(summary_stmt)).first()
 
-        if latest_summary is None:
-            # No summary yet — use all visible messages
-            db_messages = (
-                await db.exec(_visible_messages_stmt(session_id, boundary))
-            ).all()
-            messages = await asyncio.to_thread(
-                _deserialize_messages, db_messages, sanitize_tool_pairs=True
-            )
-            return _apply_llm_content_overrides(messages)
-
-        # Fetch all non-hidden, non-summary messages.  This naturally includes:
-        #   - keep_last_n messages (not hidden, created before the summary)
-        #   - fresh messages added after the summary
-        # It excludes:
-        #   - hidden messages (superseded by the summary)
-        #   - other summary rows (older summaries are also excluded)
-        #   - the latest summary itself (prepended explicitly below)
-        rest_stmt = _visible_messages_stmt(session_id, boundary).where(
-            ~col(SessionMessage.is_summary)
-        )
-        rest_messages = list((await db.exec(rest_stmt)).all())
-
-        db_messages = [latest_summary] + rest_messages
-
+        # Move the active summary to position 0 so the LLM always sees the
+        # context window as [summary → kept_last_n → post-summary messages].
+        # This is a no-op when there is no active summary (e.g. after undo).
+        active_summary = next((m for m in db_messages if m.is_summary), None)
+        if active_summary is not None:
+            db_messages = [active_summary] + [
+                m for m in db_messages if m.id != active_summary.id
+            ]
         logger.debug(
             "llm_messages_fetched session_id={} count={} summary_id={}",
             session_id,
             len(db_messages),
-            latest_summary.id,
+            active_summary.id if active_summary else None,
         )
         # Me run in thread — _deserialize_messages does disk I/O for image hydration
         messages = await asyncio.to_thread(

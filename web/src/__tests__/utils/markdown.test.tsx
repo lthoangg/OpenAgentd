@@ -405,6 +405,49 @@ describe("extractText", () => {
 });
 
 // ---------------------------------------------------------------------------
+// MarkdownBlock GFM tables
+// ---------------------------------------------------------------------------
+
+describe("MarkdownBlock tables", () => {
+  it("wraps table in a scroll container with oa-table-wrap class", () => {
+    render(
+      <MarkdownBlock
+        content={["| A | B |", "|---|---|", "| 1 | 2 |"].join("\n")}
+      />,
+    );
+
+    const table = document.querySelector("table");
+    expect(table).not.toBeNull();
+    expect(table!.parentElement?.className).toContain("oa-table-wrap");
+  });
+
+  it("renders table headers and cells correctly", () => {
+    render(
+      <MarkdownBlock
+        content={["| Name | Age |", "|------|-----|", "| Alice | 30 |"].join("\n")}
+      />,
+    );
+
+    expect(screen.getByText("Name")).toBeTruthy();
+    expect(screen.getByText("Age")).toBeTruthy();
+    expect(screen.getByText("Alice")).toBeTruthy();
+    expect(screen.getByText("30")).toBeTruthy();
+  });
+
+  it("scroll container is a direct div parent of the table", () => {
+    render(
+      <MarkdownBlock
+        content={["| X |", "|---|", "| Y |"].join("\n")}
+      />,
+    );
+
+    const wrapper = document.querySelector(".oa-table-wrap");
+    expect(wrapper?.tagName.toLowerCase()).toBe("div");
+    expect(wrapper?.querySelector("table")).not.toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // MarkdownBlock code fences
 // ---------------------------------------------------------------------------
 

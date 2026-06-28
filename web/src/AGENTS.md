@@ -86,6 +86,24 @@ All UI primitives are **zero external-dependency** implementations — no shadcn
 conditional `return null` — place it at the top of the component, above all
 `useEffect` calls, to avoid Rules-of-Hooks violations.
 
+## Markdown rendering (`utils/markdown.tsx`)
+
+`MarkdownBlock` renders GFM markdown via `react-markdown` + `remark-gfm`.
+Custom component overrides live in the `components` map (memoised on `sessionId`):
+
+| Override | Purpose |
+|---|---|
+| `pre` | Wraps code fences in the styled `CodeBlock` with copy button |
+| `table` | Wraps `<table>` in a `<div class="oa-table-wrap">` for bidirectional scroll on mobile |
+| `a` | Forces `target="_blank"` on all links |
+| `img` | Routes through `MarkdownImage` for lightbox and workspace-file proxy |
+
+**Table scroll pattern** — `.oa-table-wrap` (defined in `index.css`) sets
+`overflow-x: auto` with `-webkit-overflow-scrolling: touch` on the wrapper div,
+while the `<table>` itself uses `min-width: max-content` so columns never
+compress. Do not add `display: block` or `overflow` directly to `table` —
+browsers treat table layout specially and it breaks column alignment.
+
 ## Gotchas
 
 - Use static ESM imports and `@/` aliases.

@@ -409,6 +409,11 @@ export const MarkdownBlock = memo(function MarkdownBlock({
           </CodeBlock>
         )
       },
+      table: (props: React.HTMLAttributes<HTMLTableElement>) => (
+        <div className="oa-table-wrap">
+          <table {...props} />
+        </div>
+      ),
       a: (props: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
         <a {...props} target="_blank" rel="noopener noreferrer" />
       ),

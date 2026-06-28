@@ -764,13 +764,19 @@ html[data-mobile-shell][data-vp-anim] .mobile-viewport {
   border-color: var(--color-border);
   margin: 1em 0;
 }
-.oa-prose table {
-  display: block;
-  width: 100%;
-  max-width: 100%;
+.oa-prose .oa-table-wrap {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 0.75em 0;
+}
+.oa-prose .oa-table-wrap:last-child {
+  margin-bottom: 0;
+}
+.oa-prose table {
   border-collapse: collapse;
   font-size: 0.875em;
+  min-width: max-content;
+  width: 100%;
 }
 .oa-prose th, .oa-prose td {
   border: 1px solid var(--color-border);

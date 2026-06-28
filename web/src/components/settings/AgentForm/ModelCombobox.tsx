@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronDown } from 'lucide-react'
+import { X } from 'lucide-react'
 import fuzzysort from 'fuzzysort'
 
 import { Input } from '@/components/ui/input'
@@ -177,21 +177,23 @@ export function ModelCombobox({
           spellCheck={false}
           className="min-h-11 pr-9 font-mono md:min-h-9"
         />
-        <button
-          type="button"
-          tabIndex={-1}
-          aria-label={open ? 'Close model list' : 'Open model list'}
-          onMouseDown={(e) => {
-            // Toggle without stealing focus from the input.
-            e.preventDefault()
-            setOpen((v) => !v)
-            inputRef.current?.focus()
-          }}
-          disabled={disabled}
-          className="absolute top-1/2 right-1 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:text-(--color-text) disabled:opacity-50 md:h-7 md:w-7"
-        >
-          <ChevronDown size={14} aria-hidden="true" />
-        </button>
+        {query && (
+          <button
+            type="button"
+            tabIndex={-1}
+            aria-label="Clear model"
+            onMouseDown={(e) => {
+              // Clear without stealing focus from the input.
+              e.preventDefault()
+              commit('')
+              inputRef.current?.focus()
+            }}
+            disabled={disabled}
+            className="absolute top-1/2 right-1 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:text-(--color-text) disabled:opacity-50 md:h-7 md:w-7"
+          >
+            <X size={13} aria-hidden="true" />
+          </button>
+        )}
       </div>
 
       {open && !disabled && anchorRect &&

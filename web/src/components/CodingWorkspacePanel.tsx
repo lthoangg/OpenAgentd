@@ -259,8 +259,8 @@ export function CodingWorkspacePanel({
     enabled: open,
     staleTime: 5_000,
   })
-  const changedFiles = collectChangedFiles(diff.data)
-  const diffSections = collectDiffSections(diff.data)
+  const changedFiles = useMemo(() => collectChangedFiles(diff.data), [diff.data])
+  const diffSections = useMemo(() => collectDiffSections(diff.data), [diff.data])
 
   const gitState = useGitPanelStore((s) => s.workspaces[workspace] || DEFAULT_WORKSPACE_STATE)
 

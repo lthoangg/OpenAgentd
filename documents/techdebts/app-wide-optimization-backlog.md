@@ -61,6 +61,21 @@ Markdown blocks can be expensive due to GFM, math, syntax highlighting, image ha
 - Profiler shows markdown work only for changed blocks.
 - Large histories with code fences scroll without repeated parse spikes.
 
+### 4. Memoize Git Diff and Workspace parsing in the Frontend (Completed)
+
+**Problem**
+
+Previously, `changedFiles` and `diffSections` were computed on every single render of `CodingWorkspacePanel` by calling `collectChangedFiles(diff.data)` and `collectDiffSections(diff.data)`. Similarly, in the `DiffPreview` component, the diff string was parsed line-by-line to build the `parsed` array on every render. In repositories with large diffs (thousands of lines), this caused massive CPU utilization and UI lag on minor state changes.
+
+**Changes**
+
+- Wrapped `collectChangedFiles(diff.data)` and `collectDiffSections(diff.data)` in `useMemo` hooks.
+- Wrapped the diff parsing loop in `DiffPreview` in a `useMemo` hook.
+
+**Success criteria**
+
+- React only parses git diffs when the underlying diff data actually changes, drastically reducing CPU usage and eliminating scroll stuttering in the coding cockpit.
+
 ## Priority 2 — Store and SSE update efficiency
 
 ### 4. Normalize message and block state

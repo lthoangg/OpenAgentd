@@ -315,44 +315,47 @@ export function DiffPreview({ diff }: { diff: string }) {
     | { kind: 'hunk'; skipped: number }
     | { kind: 'add' | 'del' | 'ctx'; lineNo: number; text: string; isFirstChange: boolean }
 
-  const parsed: ParsedLine[] = []
-  let oldLine = 0
-  let newLine = 0
-  let prevHunkOldEnd = 0
-  let firstChangeSeen = false
+  const parsed = useMemo<ParsedLine[]>(() => {
+    const result: ParsedLine[] = []
+    let oldLine = 0
+    let newLine = 0
+    let prevHunkOldEnd = 0
+    let firstChangeSeen = false
 
-  for (const line of diff.split('\n')) {
-    const isMeta = line.startsWith('diff --git') || line.startsWith('index ') ||
-      line.startsWith('new file mode') || line.startsWith('deleted file mode') ||
-      line.startsWith('---') || line.startsWith('+++') || line.startsWith('\\ ')
-    if (isMeta) { parsed.push({ kind: 'meta' }); continue }
+    for (const line of diff.split('\n')) {
+      const isMeta = line.startsWith('diff --git') || line.startsWith('index ') ||
+        line.startsWith('new file mode') || line.startsWith('deleted file mode') ||
+        line.startsWith('---') || line.startsWith('+++') || line.startsWith('\\ ')
+      if (isMeta) { result.push({ kind: 'meta' }); continue }
 
-    const hunk = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,\d+)? @@/.exec(line)
-    if (hunk) {
-      const nextOldStart = Number(hunk[1])
-      const hunkOldCount = hunk[2] !== undefined ? Number(hunk[2]) : 1
-      const skipped = prevHunkOldEnd > 0 ? nextOldStart - prevHunkOldEnd : nextOldStart - 1
-      oldLine = nextOldStart
-      newLine = Number(hunk[3])
-      prevHunkOldEnd = oldLine + hunkOldCount
-      parsed.push({ kind: 'hunk', skipped: Math.max(0, skipped) })
-      continue
+      const hunk = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,\d+)? @@/.exec(line)
+      if (hunk) {
+        const nextOldStart = Number(hunk[1])
+        const hunkOldCount = hunk[2] !== undefined ? Number(hunk[2]) : 1
+        const skipped = prevHunkOldEnd > 0 ? nextOldStart - prevHunkOldEnd : nextOldStart - 1
+        oldLine = nextOldStart
+        newLine = Number(hunk[3])
+        prevHunkOldEnd = oldLine + hunkOldCount
+        result.push({ kind: 'hunk', skipped: Math.max(0, skipped) })
+        continue
+      }
+
+      const isAdded   = line.startsWith('+') && !line.startsWith('+++')
+      const isRemoved = line.startsWith('-') && !line.startsWith('---')
+      const isFirstChange = !firstChangeSeen && (isAdded || isRemoved)
+      if (isFirstChange) firstChangeSeen = true
+      const lineNo = isRemoved ? oldLine : newLine
+      if (!isAdded)   oldLine += 1
+      if (!isRemoved) newLine += 1
+      result.push({
+        kind: isAdded ? 'add' : isRemoved ? 'del' : 'ctx',
+        lineNo,
+        text: line.replace(/^[+-]/, '') || ' ',
+        isFirstChange,
+      })
     }
-
-    const isAdded   = line.startsWith('+') && !line.startsWith('+++')
-    const isRemoved = line.startsWith('-') && !line.startsWith('---')
-    const isFirstChange = !firstChangeSeen && (isAdded || isRemoved)
-    if (isFirstChange) firstChangeSeen = true
-    const lineNo = isRemoved ? oldLine : newLine
-    if (!isAdded)   oldLine += 1
-    if (!isRemoved) newLine += 1
-    parsed.push({
-      kind: isAdded ? 'add' : isRemoved ? 'del' : 'ctx',
-      lineNo,
-      text: line.replace(/^[+-]/, '') || ' ',
-      isFirstChange,
-    })
-  }
+    return result
+  }, [diff])
 
   return (
     <div className="bg-(--bg-card) font-mono text-[11px] leading-relaxed">

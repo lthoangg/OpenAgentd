@@ -1,56 +1,69 @@
 /**
- * Switch — pill toggle in the warm-paper design language.
+ * Switch — pill toggle, no external primitives.
  *
- * Track is a rounded pill. At rest: warm `--bg-key` fill with a
- * `--color-border` outline so it reads as a form control, not a button.
- * When checked the track fills with `--accent-blue`; the border disappears
- * into the fill so the shape stays clean.
+ * Built on a visually-hidden <input type="checkbox"> so it is
+ * keyboard-accessible and works with native form APIs.
  *
- * Thumb is a white circle that slides — circular because the circular
- * thumb inside a pill is the universal "this slides" affordance.
- * A square thumb inside a pill reads as a dead slider with no motion cue.
- *
- * Sizing is slightly taller than the old shadcn version (h-[22px] w-10)
- * so the thumb has breathing room and the outline reads at text-xs density.
+ * API is a drop-in for the previous base-ui version:
+ *   checked, onCheckedChange, disabled, className
  */
-import { Switch as SwitchPrimitive } from "@base-ui/react/switch"
-import { cn } from "@/lib/utils"
+import { useId, type ComponentPropsWithRef } from 'react'
+import { cn } from '@/lib/utils'
 
-function Switch({ className, ...props }: SwitchPrimitive.Root.Props) {
+interface SwitchProps extends Omit<ComponentPropsWithRef<'input'>, 'onChange' | 'type' | 'checked'> {
+  checked?: boolean
+  onCheckedChange?: (checked: boolean) => void
+}
+
+function Switch({ checked = false, onCheckedChange, disabled, className, id: externalId, ...props }: SwitchProps) {
+  const generatedId = useId()
+  const id = externalId ?? generatedId
+
   return (
-    <SwitchPrimitive.Root
+    <label
+      htmlFor={id}
       data-slot="switch"
+      data-checked={checked || undefined}
+      data-disabled={disabled || undefined}
       className={cn(
         // Track — pill shape
-        "relative inline-flex h-[22px] w-10 shrink-0 cursor-pointer",
-        "items-center rounded-full border p-[3px]",
+        'relative inline-flex h-[22px] w-10 shrink-0',
+        'items-center rounded-full border p-[3px]',
         // At rest: warm neutral, visible border
-        "border-(--color-border-strong) bg-(--bg-key)",
-        // Checked: accent-blue fill, border dissolves into fill
-        "data-checked:border-(--accent-blue) data-checked:bg-(--accent-blue)",
-        // Smooth color transition
-        "transition-colors duration-200",
-        // Focus ring
-        "outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/30 focus-visible:ring-offset-1",
+        'border-(--color-border-strong) bg-(--bg-key)',
+        // Checked: accent-blue fill, border dissolves
+        checked && 'border-(--accent-blue) bg-(--accent-blue)',
+        // Transitions
+        'transition-colors duration-200',
+        // Focus ring via peer
+        'has-focus-visible:ring-2 has-focus-visible:ring-(--focus-ring)/30 has-focus-visible:ring-offset-1',
         // Disabled
-        "disabled:cursor-not-allowed disabled:opacity-50",
+        disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer',
         className,
       )}
-      {...props}
     >
-      <SwitchPrimitive.Thumb
+      {/* Visually hidden native checkbox — accessibility + form compat */}
+      <input
+        id={id}
+        type="checkbox"
+        role="switch"
+        aria-checked={checked}
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => onCheckedChange?.(e.target.checked)}
+        className="peer sr-only"
+        {...props}
+      />
+      {/* Thumb */}
+      <span
+        aria-hidden="true"
         className={cn(
-          // Thumb — circle, slightly smaller than track height
-          "block size-4 rounded-full",
-          // White fill, subtle shadow so it reads against the warm track
-          "bg-white shadow-sm",
-          // Slides to the right when checked
-          "translate-x-0 data-checked:translate-x-[18px]",
-          // Smooth slide
-          "transition-transform duration-200",
+          'block size-4 rounded-full bg-white shadow-sm',
+          'transition-transform duration-200',
+          checked ? 'translate-x-[18px]' : 'translate-x-0',
         )}
       />
-    </SwitchPrimitive.Root>
+    </label>
   )
 }
 

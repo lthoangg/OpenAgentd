@@ -125,7 +125,9 @@ def apply_llm_content_overrides(messages: list[ChatMessage]) -> list[ChatMessage
     out: list[ChatMessage] = []
     for msg in messages:
         if isinstance(msg, HumanMessage) and msg.extra:
-            if msg.extra.get("attachment_for_message_id"):
+            if msg.extra.get("attachment_for_message_id") and not msg.extra.get(
+                "mention_context"
+            ):
                 # Synthetic attachment rows stay in the DB for queue/history
                 # bookkeeping, but the LLM should consume the canonical
                 # attachment hint from the parent user row instead.

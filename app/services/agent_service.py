@@ -488,6 +488,7 @@ async def dispatch_user_message(
     content: str,
     session_id: str | None,
     attachments: list[RawAttachment] | None = None,
+    mention_context_blocks: list[str] | None = None,
     mode: str = "normal",
     workspace: str | None = None,
     model: str | None = None,
@@ -527,6 +528,9 @@ async def dispatch_user_message(
         interrupt=False,
         attachment_metas=metas if metas else None,
         attachment_synthetics=synthetics if synthetics else None,
+        mention_context_blocks=mention_context_blocks
+        if mention_context_blocks
+        else None,
         mode=mode,
         workspace=workspace,
         model=model,

@@ -19,7 +19,7 @@ The input bar (`FloatingInputBar` + `InputBar`) is never disabled. Submitting te
 
 Only the **lead turn** matters. Members running background sub-tasks do not block new input.
 
-File attachments (both explicit uploads and `@mention` auto-attachments) are now supported on queued messages. The backend validates and persists the files to disk at queue time, and the queued row carries `extra.attachments` just like a directly-dispatched message. If the queued message is cancelled, its persisted files are deleted.
+Explicit file attachments are supported on queued messages. The backend validates and persists uploaded files to disk at queue time, and the queued row carries `extra.attachments` just like a directly-dispatched message. If the queued message is cancelled, its persisted files are deleted. `@mention` context is queued too, but only as hidden inline context rows — not as uploads.
 
 ---
 
@@ -123,19 +123,18 @@ The same colours apply in rendered user message bubbles (`AgentView.tsx` → `re
 
 Tokens chip **only** when they resolve to a known workspace ref — `@@`, `@nonexistent`, and `@foo@bar` produce no chip. Trailing sentence punctuation (`,` `.` `;` `:` `!` `?` `)`) is stripped before resolution. The actively-typed mention is excluded so the colour doesn't flash on every keystroke.
 
-### Send-time auto-attachment
+### Send-time mention context
 
-When the message is dispatched (`POST /api/team/chat`), the backend resolves committed mentions against the session workspace and may attach the referenced file as a `RawAttachment`. This applies to both the immediate and queued paths — mentions are persisted at queue time, not at activation.
+When the message is dispatched (`POST /api/team/chat`), the backend resolves committed mentions against the session workspace and injects hidden context rows. This applies to both the immediate and queued paths.
 
-| Mention | Auto-attach behaviour |
+| Mention | Send-time behaviour |
 |---|---|
-| Text file (`.md`, `.txt`, `.json`, …) | Inlined into the prompt with a head + tail window capped at 32K chars (see [API — mention attachments](../api/index.md#mention-auto-attachment)). |
-| Document (`.pdf`, `.docx`) | Same — markitdown-converted then truncated head + tail. |
-| Image (`.png`, `.jpg`, …) | Reference only. Agent uses its vision-aware `Read` tool on demand. |
-| Folder | Resolves to that folder's `AGENTS.md` and inlines it when present; otherwise skipped. |
+| Text file (`.md`, `.txt`, `.json`, …) | Inline the file body into hidden context using the same fenced format as file attachments, without creating an upload. |
+| Document / image | Reference only — no inline mention context. |
+| Folder | Inline a lightweight directory listing (`ls`-style), without creating an upload. |
 | Unresolvable path | Silently skipped — also no chip. |
 
-Helpers live in `InputBar.mentions.ts` (`findActiveMention`, `findCommittedMentions`, `rankFileRefs`). The overlay is `InputBar.overlay.tsx`. The query hook is `useFileRefsQuery.ts`. Backend resolution is `app/api/routes/team/_helpers.py::collect_mention_attachments`.
+Helpers live in `InputBar.mentions.ts` (`findActiveMention`, `findCommittedMentions`, `rankFileRefs`). The overlay is `InputBar.overlay.tsx`. The query hook is `useFileRefsQuery.ts`. Backend resolution is `app/api/routes/team/_helpers.py::build_mention_context_blocks`.
 
 ---
 

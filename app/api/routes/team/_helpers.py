@@ -73,7 +73,7 @@ async def _read_upload_as_attachment(file: UploadFile) -> RawAttachment | None:
     )
 
 
-# ── @-mention attachments ────────────────────────────────────────────────────
+# ── @-mention context helpers ────────────────────────────────────────────────
 #
 # Mirrors the frontend's `findCommittedMentions` semantics:
 #
@@ -83,10 +83,10 @@ async def _read_upload_as_attachment(file: UploadFile) -> RawAttachment | None:
 #
 # Tokens are resolved against the session workspace (normal session
 # sandbox, or the coding workspace root if `workspace` is provided).
-# Only files are auto-attached. Folder mentions stay as visual prose
-# references — the agent already has ``LS`` / ``Glob`` / ``Read``
-# tools to inspect a directory on demand, and pre-feeding an ``ls``
-# would add noise to the context for context the agent didn't ask for.
+# File mentions can be turned into hidden inline context blocks; folder
+# mentions can be turned into hidden directory-listing context blocks.
+# Neither path is treated as an uploaded attachment or persisted into
+# ``uploads/``.
 
 # Anchored at start-of-string or after a whitespace / opening-bracket /
 # quote / comma character. Users routinely write quoted or parenthesised
@@ -98,8 +98,8 @@ _MENTION_RE = re.compile(r"(?:^|(?<=[\s\"'(\[{,]))@(\S+)")
 # wrappers like `(@foo.txt)` resolve to `foo.txt`.
 _TRAILING_PUNCT = ",.;:!?)\"']}>"
 
-# Per-message ceiling on auto-attached mentions. Defensive — a user pasting
-# a wall of `@paths` shouldn't trigger an unbounded read storm.
+# Per-message ceiling on mention-derived context blocks. Defensive — a user
+# pasting a wall of `@paths` shouldn't trigger an unbounded read storm.
 _MAX_MENTION_ATTACHMENTS = 20
 
 # Cap on inlined text per mention attachment. Mentions are implicit
@@ -114,10 +114,10 @@ _LINE_REF_RE = re.compile(r"^(?P<path>.+)#L(?P<start>\d+)(?:-L?(?P<end>\d+))?$")
 def _extract_mention_paths(message: str) -> list[str]:
     """Return the unique, ordered list of @file tokens from ``message``.
 
-    Directory mentions (trailing ``/``) are resolved to that folder's
-    ``AGENTS.md`` so folder-specific instructions can be loaded. The bare
-    ``@`` is dropped. Trailing sentence punctuation is stripped before
-    deduplication so "see @a.ts, please" yields ``["a.ts"]``.
+    Directory mentions are not auto-expanded — only explicit file mentions are
+    converted into implicit attachments. The bare ``@`` is dropped. Trailing
+    sentence punctuation is stripped before deduplication so
+    "see @a.ts, please" yields ``["a.ts"]``.
     """
     seen: set[str] = set()
     out: list[str] = []
@@ -129,7 +129,7 @@ def _extract_mention_paths(message: str) -> list[str]:
         if not token:
             continue
         if token.endswith("/"):
-            token = f"{token}AGENTS.md"
+            continue
         if token in seen:
             continue
         seen.add(token)
@@ -279,6 +279,9 @@ async def collect_mention_attachments(
     ``existing_total_bytes`` is the cumulative size of the message's
     explicit attachments so far. We deduct it from the global budget so
     a mention can't push the message over the limit on its own.
+
+    This helper is used to build ephemeral inline context for explicit file
+    mentions without treating them as persisted uploads.
     """
     paths = _extract_mention_paths(message)
     if not paths:
@@ -319,3 +322,111 @@ async def collect_mention_attachments(
             sum(len(a.data) for a in out),
         )
     return out
+
+
+async def build_mention_context_blocks(
+    *,
+    message: str,
+    team: AgentTeam,
+    session_id: str,
+    workspace: str | None,
+    existing_total_bytes: int,
+) -> list[str]:
+    """Return hidden inline context blocks for ``@file`` / ``@folder/`` mentions.
+
+    File mentions inline their text content using the same fenced format as
+    synthetic attachment rows, but without writing anything into ``uploads/`` or
+    ``extra.attachments``. Folder mentions inject a lightweight directory listing
+    so the model can see the subtree shape without pre-running tools.
+    """
+    root = session_workspace_dir(session_id, workspace)
+    raw_paths = []
+    seen: set[str] = set()
+    for match in _MENTION_RE.finditer(message):
+        token = match.group(1)
+        while token and token[-1] in _TRAILING_PUNCT:
+            token = token[:-1]
+        if not token or token in seen:
+            continue
+        seen.add(token)
+        raw_paths.append(token)
+        if len(raw_paths) >= _MAX_MENTION_ATTACHMENTS:
+            break
+    if not raw_paths:
+        return []
+
+    out: list[str] = []
+    running_total = existing_total_bytes
+    for rel in raw_paths:
+        if rel.endswith("/"):
+            abs_dir = _safe_join_dir(root, rel[:-1])
+            if abs_dir is None:
+                continue
+            block = _build_directory_listing_block(rel, abs_dir)
+            running_total += len(block.encode("utf-8"))
+            if running_total > GLOBAL_SIZE_LIMIT:
+                break
+            out.append(block)
+            continue
+
+        file_rel, label, line_start, line_end = _parse_line_ref(rel)
+        abs_path = _safe_join(root, file_rel)
+        if abs_path is None:
+            continue
+        att = await _read_mention_as_attachment(
+            label,
+            abs_path,
+            team.lead.agent.capabilities,
+            line_start=line_start,
+            line_end=line_end,
+        )
+        if att is None:
+            continue
+        synthetic = agent_service._build_synthetic_content(
+            att,
+            "text",
+            label,
+            att.content_type or "text/plain",
+        )
+        running_total += len(att.data)
+        if running_total > GLOBAL_SIZE_LIMIT:
+            break
+        out.append(synthetic)
+    return out
+
+
+def _safe_join_dir(root: Path, rel: str) -> Path | None:
+    if not rel:
+        return None
+    candidate = Path(rel)
+    if candidate.is_absolute() or (len(rel) >= 2 and rel[1] == ":"):
+        return None
+    try:
+        resolved = (root / candidate).resolve(strict=False)
+        root_resolved = root.resolve(strict=False)
+    except (OSError, RuntimeError):
+        return None
+    try:
+        resolved.relative_to(root_resolved)
+    except ValueError:
+        return None
+    if not resolved.exists() or not resolved.is_dir():
+        return None
+    return resolved
+
+
+def _build_directory_listing_block(rel: str, abs_dir: Path) -> str:
+    entries: list[str] = []
+    try:
+        children = sorted(abs_dir.iterdir(), key=lambda p: (not p.is_dir(), p.name))
+    except OSError:
+        return (
+            f"[Directory: {rel}]\n[Unable to list directory.]\n[End directory: {rel}]"
+        )
+    for child in children[:50]:
+        suffix = "/" if child.is_dir() else ""
+        entries.append(f"- {child.name}{suffix}")
+    if len(children) > 50:
+        entries.append(f"... ({len(children) - 50} more entries)")
+    body = "\n".join(entries) if entries else "[Empty directory]"
+    return f"[Directory: {rel}]\n{body}\n[End directory: {rel}]"

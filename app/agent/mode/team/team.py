@@ -500,6 +500,7 @@ class AgentTeam:
         interrupt: bool = False,
         attachment_metas: list[dict] | None = None,
         attachment_synthetics: list[str] | None = None,
+        mention_context_blocks: list[str] | None = None,
         mode: str | None = None,
         workspace: str | None = None,
         model: str | None = None,
@@ -623,8 +624,16 @@ class AgentTeam:
                 # immediately after the real user message.  Content is baked
                 # in once at write time so history loads never need to
                 # reconstruct it from metadata — same pattern as opencode.
-                for synthetic_content in attachment_synthetics or []:
+                for synthetic_content in [
+                    *(attachment_synthetics or []),
+                    *(mention_context_blocks or []),
+                ]:
                     synthetic_msg = HumanMessage(content=synthetic_content)
+                    is_mention_context = (
+                        synthetic_content.startswith("[File: ")
+                        or synthetic_content.startswith("[Document: ")
+                        or synthetic_content.startswith("[Directory: ")
+                    )
                     await save_message(
                         db,
                         lead_uuid,
@@ -633,6 +642,7 @@ class AgentTeam:
                             "hidden_from_user": True,
                             "hidden_from_summary": True,
                             "attachment_for_message_id": str(saved_user_msg.id),
+                            "mention_context": is_mention_context,
                         },
                     )
 

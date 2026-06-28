@@ -40,7 +40,7 @@ def test_message_response_strips_internal_attachment_paths():
 
     resp = _message_response(msg)
 
-    assert resp.attachments == [
+    expected = [
         {
             "filename": "abc.png",
             "original_name": "photo.png",
@@ -48,6 +48,8 @@ def test_message_response_strips_internal_attachment_paths():
             "url": "/api/team/sid/uploads/abc.png",
         }
     ]
+    assert resp.attachments == expected
+    assert resp.extra == {"attachments": expected}
 
 
 class MockTestProvider(LLMProviderBase):
@@ -428,11 +430,13 @@ class TestTeamChatRoute:
                     "filename": a.filename,
                     "original_name": a.filename,
                     "category": "text",
-                    "converted_text": "hi",
                 }
                 for a in atts
             ]
-            return sid, metas
+            synthetics = [
+                f"[File: {a.filename}]\nhi\n[End file: {a.filename}]" for a in atts
+            ]
+            return sid, metas, synthetics
 
         client = TestClient(app_with_team)
         with (
@@ -442,6 +446,7 @@ class TestTeamChatRoute:
                 "app.api.routes.team.chat.agent_service.validate_and_persist_attachments",
                 fake_persist,
             ),
+            patch("app.api.routes.team.chat.save_message", AsyncMock()),
         ):
             response = client.post(
                 "/api/team/chat",
@@ -453,7 +458,6 @@ class TestTeamChatRoute:
         atts = captured["extra"]["attachments"]
         assert len(atts) == 1
         assert atts[0]["original_name"] == "note.txt"
-        assert atts[0]["converted_text"] == "hi"
 
     def test_team_chat_queued_message_persists_explicit_uploads(
         self, app_with_team, test_team
@@ -484,11 +488,14 @@ class TestTeamChatRoute:
                     "original_name": a.filename,
                     "category": "text",
                     "path": f"/fake/uploads/{a.filename}",
-                    "converted_text": a.data.decode(),
                 }
                 for a in atts
             ]
-            return sid, metas
+            synthetics = [
+                f"[File: {a.filename}]\n{a.data.decode()}\n[End file: {a.filename}]"
+                for a in atts
+            ]
+            return sid, metas, synthetics
 
         client = TestClient(app_with_team)
         with (
@@ -497,6 +504,7 @@ class TestTeamChatRoute:
                 "app.api.routes.team.chat.agent_service.validate_and_persist_attachments",
                 fake_persist,
             ),
+            patch("app.api.routes.team.chat.save_message", AsyncMock()),
         ):
             response = client.post(
                 "/api/team/chat",
@@ -509,7 +517,6 @@ class TestTeamChatRoute:
         atts = captured["extra"]["attachments"]
         assert len(atts) == 1
         assert atts[0]["original_name"] == "report.txt"
-        assert atts[0]["converted_text"] == "hello"
 
     def test_team_chat_message_validation_empty_raises(self, app_with_team):
         client = TestClient(app_with_team)

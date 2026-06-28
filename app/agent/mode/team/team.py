@@ -38,7 +38,6 @@ from app.agent.mode.team.member import (
 )
 from app.agent.mode.team.manage import make_team_manage_tool
 from app.agent.mode.team.tools import make_team_message_tool
-from app.agent.multimodal import build_parts_from_metas
 from app.agent.schemas.chat import AssistantMessage, HumanMessage, ToolMessage
 from app.agent.schemas.events import DoneEvent
 from app.agent.tools.registry import Tool
@@ -500,6 +499,7 @@ class AgentTeam:
         session_id: str,
         interrupt: bool = False,
         attachment_metas: list[dict] | None = None,
+        attachment_synthetics: list[str] | None = None,
         mode: str | None = None,
         workspace: str | None = None,
         model: str | None = None,
@@ -593,13 +593,10 @@ class AgentTeam:
                 else:
                     effective_model = model or self.lead.agent.model_id
 
-                if attachment_metas:
-                    parts = build_parts_from_metas(content, attachment_metas)
-                    user_msg = HumanMessage(content=content, parts=parts)
-                    msg_extra: dict | None = {"attachments": attachment_metas}
-                else:
-                    user_msg = HumanMessage(content=content)
-                    msg_extra = None
+                user_msg = HumanMessage(content=content)
+                msg_extra: dict | None = (
+                    {"attachments": attachment_metas} if attachment_metas else None
+                )
 
                 workspace_path = session_workspace_dir(str(lead_uuid), self.workspace)
                 snapshot_hash = await snapshot_service.track(
@@ -618,7 +615,26 @@ class AgentTeam:
                     extra_with_model["service_tier"] = service_tier
                 msg_extra = extra_with_model
 
-                await save_message(db, lead_uuid, user_msg, extra=msg_extra)
+                saved_user_msg = await save_message(
+                    db, lead_uuid, user_msg, extra=msg_extra
+                )
+
+                # Persist each attachment as a hidden synthetic user row
+                # immediately after the real user message.  Content is baked
+                # in once at write time so history loads never need to
+                # reconstruct it from metadata — same pattern as opencode.
+                for synthetic_content in attachment_synthetics or []:
+                    synthetic_msg = HumanMessage(content=synthetic_content)
+                    await save_message(
+                        db,
+                        lead_uuid,
+                        synthetic_msg,
+                        extra={
+                            "hidden_from_user": True,
+                            "hidden_from_summary": True,
+                            "attachment_for_message_id": str(saved_user_msg.id),
+                        },
+                    )
 
                 for member in self.members.values():
                     try:

@@ -338,7 +338,7 @@ class TestHandleUserMessageInitTurn:
 class TestHandleUserMessageAttachments:
     @pytest.mark.asyncio
     async def test_handle_user_message_with_attachment_metas(self):
-        """attachment_metas path builds multimodal HumanMessage (lines 243-250)."""
+        """attachment_metas are stored in extra; synthetics become hidden rows."""
         import uuid
         from unittest.mock import patch
 
@@ -348,22 +348,18 @@ class TestHandleUserMessageAttachments:
 
         session_id = str(uuid.uuid7())
 
-        attachment_metas = [{"filename": "image.png", "mime_type": "image/png"}]
+        attachment_metas = [{"filename": "notes.txt", "category": "text"}]
+        attachment_synthetics = ["[File: notes.txt]\nhello\n[End file: notes.txt]"]
 
-        # Patch build_parts_from_metas so we don't need real files
-        fake_parts = [{"type": "text", "text": "hello"}, {"type": "image_url"}]
         with (
             patch("app.services.memory_stream_store.push_event", new=AsyncMock()),
             patch("app.services.memory_stream_store.init_turn", new=AsyncMock()),
-            patch(
-                "app.agent.mode.team.team.build_parts_from_metas",
-                return_value=fake_parts,
-            ),
         ):
             returned = await team.handle_user_message(
-                "check this image",
+                "check this file",
                 session_id=session_id,
                 attachment_metas=attachment_metas,
+                attachment_synthetics=attachment_synthetics,
             )
 
         assert returned == session_id

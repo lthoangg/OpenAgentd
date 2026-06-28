@@ -238,3 +238,40 @@ def test_no_attachments_returns_single_text_block():
     parts = build_parts_from_metas("only message", [])
     assert len(parts) == 1
     assert parts[0].text == "only message"
+
+
+def test_image_without_filename_field_omits_markdown_render_hint(tmp_path):
+    img = tmp_path / "photo.jpg"
+    img.write_bytes(b"\xff\xd8\xff" + b"\x00" * 10)
+    att = {
+        "path": str(img),
+        "original_name": "photo.jpg",
+        "category": "image",
+        "media_type": "image/jpeg",
+    }
+
+    parts = build_parts_from_metas("describe", [att])
+
+    assert isinstance(parts[0], TextBlock)
+    assert parts[0].text == f"[Attached image saved at {img}]"
+    assert isinstance(parts[1], ImageDataBlock)
+
+
+def test_document_without_converted_text_uses_raw_disk_slow_path(tmp_path):
+    doc = tmp_path / "report.pdf"
+    doc.write_bytes(b"%PDF-1.4")
+    att = {
+        "path": str(doc),
+        "filename": "report.pdf",
+        "original_name": "report.pdf",
+        "category": "document",
+        "media_type": "application/pdf",
+    }
+
+    parts = build_parts_from_metas("summarize", [att])
+
+    assert len(parts) == 2
+    assert isinstance(parts[0], ImageDataBlock)
+    assert parts[0].media_type == "application/pdf"
+    assert isinstance(parts[1], TextBlock)
+    assert parts[1].text == "summarize"

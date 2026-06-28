@@ -133,6 +133,8 @@ def workspace(tmp_path: Path) -> Path:
     (tmp_path / "notes.txt").write_text("hello", encoding="utf-8")
     (tmp_path / "code.py").write_text("one\ntwo\nthree\nfour\n", encoding="utf-8")
     (tmp_path / "img.png").write_bytes(b"\x89PNG\r\n\x1a\nfake")
+    (tmp_path / "report.pdf").write_bytes(b"%PDF-1.4\n")
+    (tmp_path / "spec.docx").write_bytes(b"PK\x03\x04fake")
     return tmp_path
 
 
@@ -200,6 +202,32 @@ async def test_image_mention_is_skipped_even_without_vision(workspace):
     team = _make_team(vision=False)
     out = await collect_mention_attachments(
         message="see @img.png",
+        team=team,
+        session_id="sid",
+        workspace=str(workspace),
+        existing_total_bytes=0,
+    )
+    assert out == []
+
+
+@pytest.mark.asyncio
+async def test_document_mentions_are_reference_only(workspace):
+    team = _make_team(document_text=True)
+    out = await collect_mention_attachments(
+        message="read @report.pdf and @spec.docx and @notes.txt",
+        team=team,
+        session_id="sid",
+        workspace=str(workspace),
+        existing_total_bytes=0,
+    )
+    assert [a.filename for a in out] == ["notes.txt"]
+
+
+@pytest.mark.asyncio
+async def test_document_mentions_are_skipped_without_document_capability(workspace):
+    team = _make_team(document_text=False)
+    out = await collect_mention_attachments(
+        message="read @report.pdf and @spec.docx",
         team=team,
         session_id="sid",
         workspace=str(workspace),

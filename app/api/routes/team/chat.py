@@ -54,6 +54,7 @@ from app.services.coding_workspace_service import (
     list_visible_coding_workspaces,
     upsert_coding_workspace,
 )
+from app.agent.schemas.chat import HumanMessage
 from app.services.chat_service import (
     BoundaryShift,
     cancel_queued_user_message,
@@ -62,6 +63,7 @@ from app.services.chat_service import (
     get_team_history,
     get_latest_top_level_session,
     list_sessions_page,
+    save_message,
     save_queued_user_message,
     update_session_title,
 )
@@ -315,11 +317,13 @@ async def team_chat(
             # the model may change before dequeue but that is an accepted
             # edge case (documented in the queue design notes).
             queued_attachment_metas: list[dict] = []
+            queued_attachment_synthetics: list[str] = []
             if attachments:
                 try:
                     (
                         _,
                         queued_attachment_metas,
+                        queued_attachment_synthetics,
                     ) = await agent_service.validate_and_persist_attachments(
                         team_obj, attachments, session_id
                     )
@@ -358,6 +362,20 @@ async def team_chat(
                     message,
                     extra=queued_extra,
                 )
+                # Write synthetic attachment rows at queue time so the agent
+                # sees the file content when the queued message is activated.
+                for synthetic_content in queued_attachment_synthetics:
+                    synthetic_msg = HumanMessage(content=synthetic_content)
+                    await save_message(
+                        db,
+                        session_uuid,
+                        synthetic_msg,
+                        extra={
+                            "hidden_from_user": True,
+                            "hidden_from_summary": True,
+                            "attachment_for_message_id": str(queued.id),
+                        },
+                    )
             logger.info(
                 "team_chat_queued session_id={} message_id={} attachments={}",
                 session_id,

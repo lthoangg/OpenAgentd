@@ -2,21 +2,24 @@
 
 Sets up a temp coding workspace with fixtures, sends a chat message that
 mentions a small text file, a large text file, an image, and a folder,
-then reads the persisted user row directly from the DB and verifies:
+then reads:
 
-  * the small text file was attached with the [File: ...] fence
-  * the large text file was attached and head+tail truncated
-  * the image mention did NOT produce an attachment (reference-only)
-  * the folder mention attached that folder's AGENTS.md with its relative path
-  * a mention written inside quotes / parens (e.g. ``"@note.txt"``)
-    still resolves — guard for the regex boundary fix
+  * the API history response — verifies attachment metadata (no internal
+    fields leaked, no converted_text in the public response)
+  * the DB directly — verifies synthetic hidden rows were written with
+    the correct fenced content, and that file content / truncation
+    markers are present in those rows
+
+Checks:
+  * note.txt   → attached, synthetic row has [File: note.txt] fence
+  * big.txt    → attached, synthetic row truncated head+tail
+  * photo.png  → NOT attached (image mentions are reference-only)
+  * report.pdf / spec.docx → NOT attached (document mentions are Read-tool references)
+  * subdir/    → resolved to subdir/AGENTS.md, synthetic row present
+  * "@quoted.txt" (inside quotes) → still resolves
 
 The queue-path branch (mentions when the lead is busy) is covered by
-unit tests; reproducing it here would require driving a real LLM turn
-to keep the lead in ``working`` state, which is out of scope for this
-fast smoke test.
-
-Exits non-zero on any invariant failure.
+unit tests.
 
 Usage:
   uv run python -m manual.mention_attachments
@@ -26,15 +29,19 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import asyncio
 import shutil
 import sys
 import tempfile
 import time
 from pathlib import Path
+from uuid import UUID
 
 import httpx
+from sqlmodel import col, select
 
-from app.agent.multimodal import build_parts_from_metas
+from app.core.db import async_session_factory
+from app.models.chat import SessionMessage
 
 BASE = "http://localhost:8000/api"
 BIG_HEAD = "HEAD_MARKER_ALPHA"
@@ -58,6 +65,8 @@ def make_fixtures(root: Path) -> None:
         "ae426082"
     )
     (root / "photo.png").write_bytes(png)
+    (root / "report.pdf").write_bytes(b"%PDF-1.4\n")
+    (root / "spec.docx").write_bytes(b"PK\x03\x04fake")
 
     sub = root / "subdir"
     sub.mkdir()
@@ -75,17 +84,35 @@ def post_chat(base: str, workspace: str, message: str) -> str:
     return r.json()["session_id"]
 
 
-def fetch_user_attachments(base: str, sid: str) -> list[dict]:
-    """Read the first user row via the running API history endpoint."""
+def fetch_user_attachments(base: str, sid: str) -> tuple[list[dict], list[dict]]:
+    """Read messages from the API history endpoint.
+
+    Returns ``(user_messages, all_messages)`` — hidden synthetic rows are
+    stripped by the API, so user_messages contains only the real user turn.
+    """
     r = httpx.get(f"{base}/team/{sid}/history", timeout=30)
     r.raise_for_status()
     messages = r.json()["lead"]["messages"]
     users = [m for m in messages if m.get("role") == "user"]
-    if not users:
-        return []
-    extra = users[0].get("extra") or {}
-    atts = extra.get("attachments") or []
-    return list(atts)
+    atts: list[dict] = []
+    if users:
+        atts = (users[0].get("extra") or {}).get("attachments") or []
+    return list(atts), messages
+
+
+async def fetch_synthetic_rows(sid: str) -> list[SessionMessage]:
+    """Read hidden synthetic attachment rows directly from the DB."""
+    async with async_session_factory() as db:
+        rows = await db.exec(
+            select(SessionMessage)
+            .where(col(SessionMessage.session_id) == UUID(sid))
+            .where(col(SessionMessage.role) == "user")
+            .where(
+                col(SessionMessage.extra)["hidden_from_user"].as_boolean() == True  # noqa: E712
+            )
+            .order_by(col(SessionMessage.created_at).asc())
+        )
+        return list(rows.all())
 
 
 def check(name: str, ok: bool, detail: str = "") -> bool:
@@ -106,64 +133,110 @@ def main() -> int:
     try:
         make_fixtures(workspace)
         msg = (
-            "Look at @note.txt and @big.txt and @photo.png and @subdir/ "
+            "Look at @note.txt and @big.txt and @photo.png and @report.pdf "
+            "and @spec.docx and @subdir/ "
             'and also "@quoted.txt".'
         )
         sid = post_chat(base, str(workspace), msg)
         print(f"session : {sid}")
 
-        # The user row is persisted before the LLM runs; a short wait is
-        # enough. We don't care about the assistant reply for this test.
+        # The user row is persisted before the LLM runs; a short wait is enough.
         time.sleep(2.0)
-        atts = fetch_user_attachments(base, sid)
+
+        atts, all_msgs = fetch_user_attachments(base, sid)
         by_name = {a.get("original_name") or a.get("filename"): a for a in atts}
-        print(f"attached: {sorted(by_name)}")
+        print(f"attached (API): {sorted(by_name)}")
 
         results = [
             check("note.txt attached", "note.txt" in by_name),
             check("big.txt attached", "big.txt" in by_name),
             check("quoted.txt attached (inside quotes)", "quoted.txt" in by_name),
             check("photo.png NOT attached", "photo.png" not in by_name),
+            check("report.pdf NOT attached", "report.pdf" not in by_name),
+            check("spec.docx NOT attached", "spec.docx" not in by_name),
             check("subdir/AGENTS.md attached", "subdir/AGENTS.md" in by_name),
             check("bare AGENTS.md label not used", "AGENTS.md" not in by_name),
         ]
 
-        # Render the LLM-facing parts to verify fence + truncation, since
-        # the fence is applied at build-time, not at persistence time.
-        parts = build_parts_from_metas(msg, atts)
-        rendered = {
-            (a.get("original_name") or a.get("filename")): p.text
-            for a, p in zip(atts, parts[: len(atts)])
-            if hasattr(p, "text")
-        }
+        # Attachment metadata must not leak internal fields to the API.
+        for att in atts:
+            for bad_field in ("converted_text", "path", "workspace_path"):
+                results.append(
+                    check(
+                        f"internal field '{bad_field}' not in API response for {att.get('original_name')}",
+                        bad_field not in att,
+                    )
+                )
 
-        note_text = rendered.get("note.txt", "")
+        # Synthetic hidden rows in the DB carry the actual fenced content.
+        # The API hides them (hidden_from_user=True), so we query the DB directly.
+        synthetic_rows = asyncio.run(fetch_synthetic_rows(sid))
+        synthetic_contents = [r.content or "" for r in synthetic_rows]
+        print(f"synthetic rows in DB: {len(synthetic_rows)}")
+        for i, row in enumerate(synthetic_rows):
+            snippet = (row.content or "")[:80].replace("\n", "\\n")
+            print(f"  [{i}] {snippet!r}")
+
+        # Expect one synthetic row per auto-attached text file
+        # (note.txt, big.txt, quoted.txt, subdir/AGENTS.md = 4 text files)
         results.append(
             check(
-                "note.txt fenced",
-                note_text.startswith("[File: note.txt]")
-                and note_text.rstrip().endswith("[End file: note.txt]"),
+                "synthetic rows count matches text attachment count",
+                len(synthetic_rows)
+                == sum(1 for a in atts if a.get("category") == "text"),
+                f"got {len(synthetic_rows)} rows, {len(atts)} atts",
             )
         )
 
-        big_text = rendered.get("big.txt", "")
+        # Synthetic rows must NOT appear in the API history response
+        api_ids = {m.get("id") for m in all_msgs}
+        synth_ids = {str(r.id) for r in synthetic_rows}
         results.append(
             check(
-                "big.txt head preserved",
-                BIG_HEAD in big_text,
+                "synthetic rows absent from API history",
+                synth_ids.isdisjoint(api_ids),
+                f"leaked: {synth_ids & api_ids}",
+            )
+        )
+
+        # note.txt → fenced content in its synthetic row
+        note_synthetic = next(
+            (c for c in synthetic_contents if "[File: note.txt]" in c), ""
+        )
+        results.append(
+            check(
+                "note.txt synthetic row has opening fence",
+                "[File: note.txt]" in note_synthetic,
             )
         )
         results.append(
             check(
-                "big.txt tail preserved",
-                BIG_TAIL in big_text,
+                "note.txt synthetic row has closing fence",
+                "[End file: note.txt]" in note_synthetic,
             )
         )
         results.append(
             check(
-                "big.txt truncated",
-                MIDDLE_MARKER in big_text and len(big_text) < 60_000,
-                f"len={len(big_text)}",
+                "note.txt content present in synthetic row",
+                "hello from note.txt" in note_synthetic,
+            )
+        )
+
+        # big.txt → head/tail truncation in its synthetic row
+        big_synthetic = next(
+            (c for c in synthetic_contents if "[File: big.txt]" in c), ""
+        )
+        results.append(
+            check("big.txt head preserved in synthetic", BIG_HEAD in big_synthetic)
+        )
+        results.append(
+            check("big.txt tail preserved in synthetic", BIG_TAIL in big_synthetic)
+        )
+        results.append(
+            check(
+                "big.txt truncated in synthetic",
+                MIDDLE_MARKER in big_synthetic and len(big_synthetic) < 60_000,
+                f"len={len(big_synthetic)}",
             )
         )
 

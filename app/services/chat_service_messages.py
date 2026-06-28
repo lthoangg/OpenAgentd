@@ -7,7 +7,6 @@ from uuid import UUID
 from loguru import logger
 from pydantic import TypeAdapter
 
-from app.agent.multimodal import build_parts_from_metas
 from app.agent.schemas.chat import (
     AssistantMessage,
     ChatMessage,
@@ -32,13 +31,6 @@ def deserialize_messages(
                 d["tool_call_id"] = ""
             msg = _chat_message_adapter.validate_python(d)
             msg.db_id = m.id
-
-            if isinstance(msg, HumanMessage) and m.extra:
-                attachments = m.extra.get("attachments")
-                if attachments and isinstance(attachments, list):
-                    parts = build_parts(msg.content or "", attachments)
-                    if parts:
-                        msg.parts = parts
 
             result.append(msg)
         except Exception:
@@ -169,11 +161,3 @@ def sanitize_tool_message_pairs(
         result.append(msg)
 
     return result
-
-
-def build_parts(text: str, attachments: list[dict]) -> list | None:
-    parts = build_parts_from_metas(text, attachments)
-    has_file_blocks = any(
-        not (hasattr(p, "text") and getattr(p, "text") == text) for p in parts
-    )
-    return parts if has_file_blocks else None

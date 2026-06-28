@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app.agent.schemas.chat import HumanMessage
 from app.models.chat import SessionMessage
 from app.services.chat_service import create_chat_session, get_messages, save_message
 from app.services.chat_service_queue import (
@@ -162,3 +163,48 @@ async def test_cancel_queued_message_tolerates_missing_attachment_file(
 
     assert result is True
     assert await session.get(SessionMessage, queued.id) is None
+
+
+@pytest.mark.asyncio
+async def test_cancel_queued_message_deletes_synthetic_attachment_rows(
+    session: AsyncSession,
+):
+    chat_session = await create_chat_session(session)
+    queued = await save_queued_user_message(
+        session,
+        chat_session.id,
+        "with hidden attachment",
+        extra={"attachments": [{"filename": "a.txt", "category": "text"}]},
+        save_message=save_message,
+    )
+    synthetic = await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="[File: a.txt]\nhello\n[End file: a.txt]"),
+        exclude_from_context=False,
+        extra={
+            "hidden_from_user": True,
+            "hidden_from_summary": True,
+            "attachment_for_message_id": str(queued.id),
+        },
+    )
+    unrelated = await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="[File: other.txt]\nkeep\n[End file: other.txt]"),
+        exclude_from_context=False,
+        extra={
+            "hidden_from_user": True,
+            "hidden_from_summary": True,
+            "attachment_for_message_id": "different-message",
+        },
+    )
+    await session.commit()
+
+    result = await cancel_queued_user_message(session, chat_session.id, queued.id)
+    await session.commit()
+
+    assert result is True
+    assert await session.get(SessionMessage, queued.id) is None
+    assert await session.get(SessionMessage, synthetic.id) is None
+    assert await session.get(SessionMessage, unrelated.id) is not None

@@ -219,8 +219,14 @@ async def _persist_attachment(
     category: str,
     uploads_dir: Path,
     session_id: str,
-) -> dict:
-    """Validate + save one attachment; return its metadata dict."""
+) -> tuple[dict, str]:
+    """Validate + save one attachment.
+
+    Returns ``(meta, synthetic_content)`` where:
+    - ``meta`` is the UI-facing metadata dict stored in ``extra.attachments``
+    - ``synthetic_content`` is the fenced text written once to a hidden DB row
+      so the LLM sees it without any per-turn reprocessing
+    """
     data = att.data
     if len(data) == 0:
         raise AttachmentError(f"'{att.filename}' is empty (0 bytes).", status=422)
@@ -276,27 +282,62 @@ async def _persist_attachment(
     }
     if att.source:
         meta["source"] = att.source
+    synthetic = await asyncio.to_thread(
+        _build_synthetic_content, att, category, safe_original_name, mime
+    )
+    return meta, synthetic
+
+
+def _build_synthetic_content(
+    att: RawAttachment,
+    category: str,
+    safe_original_name: str,
+    mime: str,
+) -> str:
+    """Build the fenced text content for a synthetic attachment row.
+
+    Text/document: inline the file body (with head+tail truncation for
+    mentions).  Images: a path-hint only — the model uses its Read tool
+    for pixel data on demand.
+
+    This is the content written once to the DB as a hidden user row so
+    subsequent history loads never need to re-read from disk or
+    reconstruct from metadata.
+    """
+    if category == "image":
+        return f"[Attached image: {safe_original_name}]"
+
     if category == "text":
         try:
-            text = data.decode("utf-8")
+            text = att.data.decode("utf-8")
         except UnicodeDecodeError:
             try:
-                text = data.decode("latin-1")
+                text = att.data.decode("latin-1")
             except Exception:
-                meta["converted_text"] = f"[Unable to read file {safe_original_name}.]"
-                return meta
-        meta["converted_text"] = _maybe_truncate_inline(text, att.truncate_inline_to)
+                return f"[Unable to read file {safe_original_name}.]"
+        body = _maybe_truncate_inline(text, att.truncate_inline_to)
+
     elif category == "document":
-        converted = await asyncio.to_thread(
-            _convert_with_markitdown, data, mime, original_name
-        )
+        converted = _convert_with_markitdown(att.data, mime, att.filename or "")
         body = (
             converted
             if converted is not None
             else f"[Unable to read file {safe_original_name}.]"
         )
-        meta["converted_text"] = _maybe_truncate_inline(body, att.truncate_inline_to)
-    return meta
+        body = _maybe_truncate_inline(body, att.truncate_inline_to)
+    else:
+        return f"[Attached file: {safe_original_name}]"
+
+    kind = "File" if category == "text" else "Document"
+    label = safe_original_name
+    if "#L" in label:
+        return (
+            f"[{kind}: {label} — selected lines already loaded; "
+            f"use this block directly instead of reading the same range]\n"
+            f"{body}\n"
+            f"[End {kind.lower()}: {label}]"
+        )
+    return f"[{kind}: {label}]\n{body}\n[End {kind.lower()}: {label}]"
 
 
 def _maybe_truncate_inline(text: str, cap: int | None) -> str:
@@ -339,14 +380,19 @@ async def validate_and_persist_attachments(
     team: "AgentTeam",
     attachments: list[RawAttachment],
     session_id: str | None = None,
-) -> tuple[str, list[dict]]:
+) -> tuple[str, list[dict], list[str]]:
     """Validate attachments against lead capabilities and save them to disk.
 
     If ``session_id`` is ``None`` a fresh UUIDv7 is minted; otherwise the
     provided id is used so uploads land under the same workspace as the
     chat session that owns them.
 
-    Returns ``(session_id, attachment_metas)``.
+    Returns ``(session_id, attachment_metas, synthetic_contents)`` where:
+    - ``attachment_metas`` — UI-facing dicts stored in ``extra.attachments``
+    - ``synthetic_contents`` — one fenced string per attachment to be written
+      as a hidden user row immediately after the real user message, so the
+      LLM context is built from durable DB rows rather than reconstructed
+      from metadata on every turn.
 
     Raises :class:`AttachmentError` on the first invalid attachment. On that
     error, previously-persisted files in the batch stay on disk; the caller
@@ -383,11 +429,13 @@ async def validate_and_persist_attachments(
     session_uploads = _uploads_dir(sid)
 
     metas: list[dict] = []
+    synthetics: list[str] = []
     for att, category in valid:
-        meta = await _persist_attachment(att, category, session_uploads, sid)
+        meta, synthetic = await _persist_attachment(att, category, session_uploads, sid)
         metas.append(meta)
+        synthetics.append(synthetic)
 
-    return sid, metas
+    return sid, metas, synthetics
 
 
 async def dispatch_user_message(
@@ -422,15 +470,17 @@ async def dispatch_user_message(
     sid = session_id or str(uuid7())
 
     if atts:
-        _, metas = await validate_and_persist_attachments(team, atts, sid)
+        _, metas, synthetics = await validate_and_persist_attachments(team, atts, sid)
     else:
         metas = []
+        synthetics = []
 
     await team.handle_user_message(
         content=content,
         session_id=sid,
         interrupt=False,
         attachment_metas=metas if metas else None,
+        attachment_synthetics=synthetics if synthetics else None,
         mode=mode,
         workspace=workspace,
         model=model,

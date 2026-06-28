@@ -40,10 +40,12 @@ def _message_response(m) -> MessageResponse:
     if m.extra and m.extra.get("is_continuation"):
         resp.reasoning_content = None
     if m.extra and isinstance(m.extra.get("attachments"), list):
-        resp.attachments = [
+        public_attachments = [
             {k: v for k, v in att.items() if k not in _INTERNAL_ATTACHMENT_FIELDS}
             for att in m.extra["attachments"]
         ]
+        resp.attachments = public_attachments
+        resp.extra = {**m.extra, "attachments": public_attachments}
         resp.file_message = True
     return resp
 
@@ -197,15 +199,14 @@ async def _read_mention_as_attachment(
 ) -> RawAttachment | None:
     """Read one mentioned file as a ``RawAttachment`` when the lead can use it.
 
-    Only text and document categories auto-attach. Images are skipped
-    intentionally — they are visual references, and the agent's ``Read``
-    tool is already image-aware: it can fetch + inline the pixels on
-    demand. Auto-attaching images would force a base64-encoded payload
-    on every history rehydration even when the agent never needs to
-    look at them.
+    Only text categories auto-attach. Images and documents are skipped
+    intentionally — they are file references, and the agent's ``Read``
+    tool can fetch/convert them on demand. Auto-attaching non-text mentions
+    would force conversion or base64 payloads into context even when the
+    agent never needs to inspect them.
 
     Returns ``None`` (and logs at debug level) when the file fails any of
-    the soft constraints — image category, capability mismatch,
+    the soft constraints — non-text category, capability mismatch,
     unsupported type, oversize. Hard read failures (``OSError``) also
     return ``None``. Mentions are an implicit attachment surface; we
     never surface a 4xx to the user just because they typed
@@ -219,11 +220,9 @@ async def _read_mention_as_attachment(
         category = "text"
     if category is None:
         return None
-    if category == "image":
-        # Image mentions are reference-only. The agent uses ``Read``
-        # (vision-aware) to look at them on demand.
-        return None
-    if category == "document" and not capabilities.input.document_text:
+    if category != "text":
+        # Non-text mentions are reference-only. The agent uses ``Read``
+        # to convert documents or inspect images on demand.
         return None
     try:
         data = await _read_bytes(abs_path)

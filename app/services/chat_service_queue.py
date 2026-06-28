@@ -11,6 +11,8 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.agent.schemas.chat import HumanMessage
 from app.models.chat import SessionMessage
 
+_ATTACHMENT_FOR_KEY = "attachment_for_message_id"
+
 
 async def save_queued_user_message(
     db: AsyncSession,
@@ -111,6 +113,18 @@ async def cancel_queued_user_message(
             logger.warning(
                 "queued_attachment_delete_failed path={} error={}", raw_path, exc
             )
+
+    # Delete synthetic attachment rows that were written at queue time.
+    synthetic_rows = await db.exec(
+        select(SessionMessage)
+        .where(col(SessionMessage.session_id) == session_id)
+        .where(
+            col(SessionMessage.extra)[_ATTACHMENT_FOR_KEY].as_string()
+            == str(message_id)
+        )
+    )
+    for synthetic in synthetic_rows.all():
+        await db.delete(synthetic)
 
     await db.delete(row)
     await db.flush()

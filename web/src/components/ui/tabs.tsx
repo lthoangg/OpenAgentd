@@ -1,6 +1,4 @@
 import { createContext, useContext, useId, useMemo, useState, type ComponentPropsWithRef, type ReactNode } from 'react'
-import { cva, type VariantProps } from 'class-variance-authority'
-
 import { cn } from '@/lib/utils'
 
 interface TabsContextValue {
@@ -56,22 +54,14 @@ function Tabs({ className, value, defaultValue, onValueChange, orientation = 'ho
   )
 }
 
-const tabsListVariants = cva(
-  'group/tabs-list inline-flex w-fit max-w-full items-center justify-center overflow-x-auto rounded-md border border-(--color-border) bg-(--bg-key) p-0.5 text-(--color-text-muted) data-[orientation=horizontal]:h-8 data-[orientation=vertical]:h-fit data-[orientation=vertical]:flex-col data-[orientation=vertical]:overflow-x-visible data-[variant=line]:border-transparent data-[variant=line]:bg-transparent data-[variant=line]:p-0',
-  {
-    variants: {
-      variant: {
-        default: '',
-        line: 'gap-1',
-      },
-    },
-    defaultVariants: {
-      variant: 'default',
-    },
-  },
-)
+const TABS_LIST_BASE = 'group/tabs-list inline-flex w-fit max-w-full items-center justify-center overflow-x-auto rounded-md border border-(--color-border) bg-(--bg-key) p-0.5 text-(--color-text-muted) data-[orientation=horizontal]:h-8 data-[orientation=vertical]:h-fit data-[orientation=vertical]:flex-col data-[orientation=vertical]:overflow-x-visible data-[variant=line]:border-transparent data-[variant=line]:bg-transparent data-[variant=line]:p-0'
+const TABS_LIST_VARIANT: Record<string, string> = { default: '', line: 'gap-1' }
 
-interface TabsListProps extends ComponentPropsWithRef<'div'>, VariantProps<typeof tabsListVariants> {
+function tabsListVariants({ variant = 'default' }: { variant?: 'default' | 'line' | null } = {}): string {
+  return cn(TABS_LIST_BASE, TABS_LIST_VARIANT[variant ?? 'default'])
+}
+
+interface TabsListProps extends ComponentPropsWithRef<'div'> {
   /** Visual treatment. */
   variant?: 'default' | 'line' | null
 }

@@ -2,15 +2,14 @@ import { useRef, useState } from 'react'
 import type { ComponentPropsWithRef } from 'react'
 import { mediumHapticFeedback } from '@/lib/haptics'
 import { cn } from '@/lib/utils'
-import { buttonVariants } from '@/components/ui/button'
-import type { VariantProps } from 'class-variance-authority'
+import { buttonVariants, type ButtonProps } from '@/components/ui/button'
 
 const LONG_PRESS_MS = 520
 const LONG_PRESS_MOVE_TOLERANCE = 10
 
 interface LongPressButtonProps
   extends ComponentPropsWithRef<'button'>,
-    VariantProps<typeof buttonVariants> {
+    Pick<ButtonProps, 'variant' | 'size'> {
   enabled: boolean
   onLongPress: () => void
 }

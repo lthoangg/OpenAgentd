@@ -144,6 +144,8 @@ interface InputBarProps {
   onHasContentChange?: (hasContent: boolean) => void
   /** Called whenever the current unsent text changes. */
   onValueChange?: (value: string) => void
+  /** Called when the suggestions menu open state changes (slash, snippet, or mention). */
+  onSuggestionsMenuChange?: (open: boolean) => void
   /** Newest-first prompt history supplied by the parent, e.g. loaded chat history. */
   historyPrompts?: string[]
 }
@@ -182,6 +184,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   onBlur,
   onHasContentChange,
   onValueChange,
+  onSuggestionsMenuChange,
   historyPrompts = [],
 }, ref) {
   const [value, setValue] = useState('')
@@ -692,6 +695,11 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       })
     }
   }, [mentionRange, value, resize])
+
+  const suggestionsOpen = !minimized && (slashMenuOpen || snippetMenuOpen || mentionMenuOpen)
+  useEffect(() => {
+    onSuggestionsMenuChange?.(suggestionsOpen)
+  }, [suggestionsOpen, onSuggestionsMenuChange])
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // IME composition guard: when a user is mid-composition (CJK, etc.) the

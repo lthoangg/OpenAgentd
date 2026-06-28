@@ -1,10 +1,24 @@
-import { describe, it, expect, afterEach, beforeEach } from 'bun:test'
+import { describe, it, expect, afterEach, beforeEach, mock } from 'bun:test'
 import { createRef, useRef } from 'react'
-import { render, screen, cleanup, act } from '@testing-library/react'
+import { render, screen, cleanup, act, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { FloatingInputBar } from '@/components/FloatingInputBar'
 import { useTeamStore } from '@/stores/useTeamStore'
 import type { InputBarHandle } from '@/components/InputBar'
+
+let mockIsMobile = false
+let dismissedCalled = false
+
+mock.module('@/hooks/use-mobile', () => ({
+  useIsMobile: () => mockIsMobile,
+}))
+
+mock.module('@/hooks/use-mobile-viewport', () => ({
+  dismissKeyboard: () => {
+    dismissedCalled = true
+  },
+  useMobileViewportGuards: () => {},
+}))
 
 const STORAGE_KEY = 'oa-input-position'
 
@@ -12,6 +26,8 @@ afterEach(cleanup)
 beforeEach(() => {
   localStorage.clear()
   useTeamStore.setState({ _pendingMessages: [] })
+  mockIsMobile = false
+  dismissedCalled = false
 })
 
 function nextFrame(): Promise<void> {
@@ -255,5 +271,63 @@ describe('FloatingInputBar', () => {
 
     expect(textarea.getAttribute('disabled')).not.toBeNull()
     expect(screen.getByRole('button', { name: 'Expand input bar' })).toBeTruthy()
+  })
+
+  describe('Mobile swipe-down gesture', () => {
+    beforeEach(() => {
+      mockIsMobile = true
+      dismissedCalled = false
+    })
+
+    it('dismisses the keyboard when swiping down and suggestions are closed', () => {
+      render(
+        <FloatingInputBar
+          boundsRef={{ current: null }}
+          onSubmit={() => {}}
+        />
+      )
+
+      const container = screen.getByTestId('mobile-inputbar-container')
+
+      fireEvent.touchStart(container, {
+        touches: [{ clientX: 100, clientY: 100 } as unknown as Touch],
+      })
+      fireEvent.touchMove(container, {
+        touches: [{ clientX: 100, clientY: 150 } as unknown as Touch],
+      })
+
+      expect(dismissedCalled).toBe(true)
+    })
+
+    it('does NOT dismiss the keyboard when swiping down and suggestions are open', async () => {
+      const user = userEvent.setup()
+      const fileRefs = [{ id: '1', path: 'file.txt', name: 'file.txt', type: 'file' as const }]
+      render(
+        <FloatingInputBar
+          boundsRef={{ current: null }}
+          onSubmit={() => {}}
+          fileRefs={fileRefs}
+        />
+      )
+
+      const textarea = screen.getByRole('textbox', { name: 'Message input' })
+      await user.type(textarea, '@')
+
+      const mentionMenu = await screen.findByRole('listbox', { name: 'Reference workspace file' })
+      expect(mentionMenu).toBeTruthy()
+
+      dismissedCalled = false
+
+      const container = screen.getByTestId('mobile-inputbar-container')
+
+      fireEvent.touchStart(container, {
+        touches: [{ clientX: 100, clientY: 100 } as unknown as Touch],
+      })
+      fireEvent.touchMove(container, {
+        touches: [{ clientX: 100, clientY: 150 } as unknown as Touch],
+      })
+
+      expect(dismissedCalled).toBe(false)
+    })
   })
 })

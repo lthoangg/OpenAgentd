@@ -327,6 +327,7 @@ export function AgentPane({
   name, stream, isLead, isContinuing = false, onContinue,
 }: AgentPaneProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
   const sessionId = useTeamStore((s) => s.sessionId) ?? undefined
   const handleRevert = useCallback(() => {
     void useTeamStore.getState().undoTeam().then(async (response) => {
@@ -346,6 +347,7 @@ export function AgentPane({
   const isPending = !isWorking && !isError && !isOffline && stream.currentBlocks.some(isDirectUserBlock)
 
   const pinnedRef = useRef(true)
+  const lastTouchYRef = useRef<number | null>(null)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
 
   const isAtBottom = useCallback(() => {
@@ -367,18 +369,16 @@ export function AgentPane({
   }, [])
 
   // Me detect user scroll intent before stream updates can snap the pane back
-  // to the bottom. Scroll catches scrollbar/keyboard movement; wheel/touchmove
-  // detach immediately when the user starts moving upward.
+  // to the bottom. onScroll only reads position (can't distinguish programmatic
+  // from user on mobile); intent detection lives in onWheel / onTouchMove.
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
-    let lastScrollTop = el.scrollTop
-    let lastTouchY: number | null = null
     const updatePinnedFromPosition = () => {
       const atBottom = isAtBottom()
       pinnedRef.current = atBottom
       // Me: only flip state when the boolean actually changes. Calling
-      // setState with the current value on every wheel tick still
+      // setState with the current value on every scroll tick still
       // schedules a re-render, which can cascade through MarkdownBlock /
       // ReactMarkdown and re-mount inline media elements mid-playback.
       setShowScrollBtn((prev) => (prev === !atBottom ? prev : !atBottom))
@@ -388,11 +388,9 @@ export function AgentPane({
       setShowScrollBtn(true)
     }
     const onScroll = () => {
-      const nextScrollTop = el.scrollTop
-      if (nextScrollTop < lastScrollTop - USER_SCROLL_DETACH_DELTA) {
-        detachFromBottom()
-      }
-      lastScrollTop = nextScrollTop
+      // Do NOT infer user intent from scroll direction here — scroll events
+      // fire for both programmatic and user gestures and are
+      // indistinguishable on mobile (momentum, kinetic, smooth animation).
       requestAnimationFrame(updatePinnedFromPosition)
     }
     const onWheel = (e: WheelEvent) => {
@@ -401,12 +399,12 @@ export function AgentPane({
     const onTouchMove = (e: TouchEvent) => {
       const y = e.touches[0]?.clientY
       if (y == null) return
-      if (lastTouchY !== null && y > lastTouchY + USER_SCROLL_DETACH_DELTA) detachFromBottom()
-      lastTouchY = y
+      if (lastTouchYRef.current !== null && y > lastTouchYRef.current + USER_SCROLL_DETACH_DELTA) {
+        detachFromBottom()
+      }
+      lastTouchYRef.current = y
     }
-    const onTouchEnd = () => {
-      lastTouchY = null
-    }
+    const onTouchEnd = () => { lastTouchYRef.current = null }
     el.addEventListener('scroll', onScroll, { passive: true })
     el.addEventListener('wheel', onWheel, { passive: true })
     el.addEventListener('touchmove', onTouchMove, { passive: true })
@@ -444,6 +442,23 @@ export function AgentPane({
     setShowScrollBtn(false)
     if (scrollRef.current) scrollRef.current.scrollTop = 0
   }, [isEmpty])
+
+  // ResizeObserver re-sticks on every content height change (markdown reflow,
+  // image load, syntax highlight) — catches the cases the block-change effect
+  // misses because layout settles a frame or two after the React commit.
+  useEffect(() => {
+    const el = scrollRef.current
+    const content = contentRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const stick = () => {
+      if (!pinnedRef.current) return
+      el.scrollTop = el.scrollHeight
+    }
+    const ro = new ResizeObserver(stick)
+    if (content) ro.observe(content)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
 
   const borderClass = isError
     ? 'border-(--color-error)'
@@ -492,7 +507,7 @@ export function AgentPane({
           )}
 
          {allBlocks.length > 0 && (
-            <div className="space-y-3 px-2.5 py-2.5">
+            <div ref={contentRef} className="space-y-3 px-2.5 py-2.5">
                {turnItems.map((item, k) => {
                    if (item.kind === 'user') {
                      return (

@@ -213,6 +213,8 @@ function PopoverContent({
 
   if (!open) return null
 
+  const anchorWidth = triggerRef.current?.getBoundingClientRect().width ?? 0
+
   return createPortal(
     <div
       ref={contentRef}
@@ -226,7 +228,11 @@ function PopoverContent({
         'animate-in fade-in-0 zoom-in-95 duration-100',
         className,
       )}
-      style={{ top: pos.top, left: pos.left }}
+      style={{
+        top: pos.top,
+        left: pos.left,
+        '--anchor-width': `${anchorWidth}px`,
+      } as React.CSSProperties}
       onClick={(e) => e.stopPropagation()}
       {...props}
     >

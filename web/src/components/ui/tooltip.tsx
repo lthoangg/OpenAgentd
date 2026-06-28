@@ -82,7 +82,15 @@ function TooltipTrigger({ render: renderProp, children, className, ...props }: T
   }
 
   if (renderProp && isValidElement(renderProp)) {
-    return cloneElement(renderProp as ReactElement<Record<string, unknown>>, handlers)
+    // Wrap in a span so hover events work even when the rendered element is
+    // a disabled <button> (disabled buttons suppress mouse events in browsers).
+    return (
+      <span className="inline-flex" {...handlers}>
+        {cloneElement(renderProp as ReactElement<Record<string, unknown>>, {
+          'aria-describedby': id,
+        })}
+      </span>
+    )
   }
 
   return (

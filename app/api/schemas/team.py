@@ -84,6 +84,7 @@ class GitCommit(BaseModel):
     author_email: str
     timestamp: int
     subject: str
+    body: str | None = None
     refs: str | None = None
 
 

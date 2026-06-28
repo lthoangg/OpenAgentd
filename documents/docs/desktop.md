@@ -160,7 +160,7 @@ On install, Rust verifies the updater signature, shuts down the Python sidecar, 
 
 macOS uses the **Overlay** title-bar style (`tauri.conf.json` + `configure_window_chrome` in `main.rs`) — the OS keeps drawing the traffic-light buttons but the WebView extends edge-to-edge underneath. The React app reserves a 70 px left inset and provides the window-drag region itself.
 
-Each desktop window also syncs its native macOS title from the active surface: coding windows use the workspace basename, while cockpit windows use the session title. That title is what macOS shows in the Dock's per-window list when multiple OpenAgentd windows are open.
+The native macOS window title stays as "OpenAgentd" — we do **not** call `NSWindow.setTitle` after the window is shown because it triggers an AppKit titlebar relayout that resets the traffic-light vertical position. `document.title` (the browser tab title) is still updated with the session/workspace name for the web context.
 
 The bundle includes `Info.plist` with `NSMicrophoneUsageDescription` and `NSSpeechRecognitionUsageDescription` so WebView voice input can show native permission prompts. `entitlements.plist` grants `com.apple.security.device.audio-input` for signed builds. macOS voice input also requires the system speech service: if **Siri & Dictation** / **Dictation** is disabled in System Settings, Screen Time, or device management policy, WebKit speech recognition can fail with `Siri and Dictation are disabled` or `Microphone permission check has failed`. Enable **System Settings → Keyboard → Dictation**, then retry.
 

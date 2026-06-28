@@ -177,28 +177,6 @@ fn configure_window_chrome(
     }
 }
 
-/// Re-assert the macOS overlay title-bar chrome on `window`.
-///
-/// New windows occasionally lose their traffic-light vertical centring after
-/// the webview triggers an AppKit relayout (e.g. navigating into
-/// cockpit/coding mode). Re-applying ``TitleBarStyle::Overlay`` toggles the
-/// window style mask (tao `set_style_mask_sync`), which forces AppKit to
-/// recompute the standard window buttons and marks the content view for
-/// redraw. tao's `draw_rect` then re-runs its stored `inset_traffic_lights`,
-/// restoring the configured 12/22 pt position. No-op off macOS.
-#[tauri::command]
-fn reapply_window_chrome(window: tauri::WebviewWindow) -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    {
-        use tauri::TitleBarStyle;
-        window
-            .set_title_bar_style(TitleBarStyle::Overlay)
-            .map_err(|e| format!("{e:#}"))?;
-    }
-    #[cfg(not(target_os = "macos"))]
-    let _ = window;
-    Ok(())
-}
 
 #[derive(Clone, Serialize)]
 struct BackendReady {
@@ -1205,7 +1183,17 @@ async fn run_update_install(app: AppHandle) -> Result<(), String> {
 
     update_tray_status(&app, "Status: Installing update…");
     log::info!("updater install applying version={}", update.version);
-    update.install(bytes).map_err(|e| {
+    // `tauri_plugin_updater`'s `install()` performs heavy filesystem work
+    // (decompression, bundle copy, codesign verification on macOS). Running it
+    // directly on an async task blocks the tokio thread, which can starve the
+    // logger and prevent the subsequent `run_on_main_thread` closure from being
+    // scheduled — causing `restart()` to never fire and the 60 s frontend
+    // timeout to trigger. Off-load to a dedicated blocking thread so the async
+    // runtime stays responsive throughout the install.
+    let install_result = tokio::task::spawn_blocking(move || update.install(bytes))
+        .await
+        .map_err(|e| format!("Install task panicked: {e}"))?;
+    install_result.map_err(|e| {
         update_tray_status(&app, "Status: Running");
         format!("Failed to install update: {e}")
     })?;
@@ -2190,7 +2178,6 @@ fn main() {
             app_use_bundled_backend,
             app_stop_bundled_backend,
             app_new_window,
-            reapply_window_chrome,
             set_tray_session,
             updater_check,
             updater_download,

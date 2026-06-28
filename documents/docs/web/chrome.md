@@ -2,7 +2,7 @@
 title: App Chrome (Header, Sidebar, Tauri Drag)
 description: Shared header, platform detection, and window-drag plumbing across browser and Tauri desktop.
 status: stable
-updated: 2026-06-27
+updated: 2026-06-28
 ---
 
 # App chrome
@@ -62,7 +62,9 @@ core:window:allow-internal-toggle-maximize
 
 ## Traffic-light alignment
 
-The position is set programmatically in `configure_window_chrome` (`desktop/src-tauri/src/main.rs`) because Tauri ignores `tauri.conf.json` values when the window is built from Rust. `y` is a *bottom* inset — Tao resizes the native title-bar container to `button_height + y`. For our 40 px header, **`y = 22`** centres the buttons. Documented tuning notes live in the function's Rust comment.
+The position is set programmatically in `configure_window_chrome` (`desktop/src-tauri/src/main.rs`) because Tauri ignores `tauri.conf.json` values when the window is built from Rust. `y` is a *bottom* inset — wry's `WryWebViewParent::drawRect` resizes the native title-bar container to `button_height + y` on every redraw. For our 40 px header, **`y = 22`** centres the buttons.
+
+**Do not call `NSWindow.setTitle` after the window is shown.** Under Tauri 2 / wry 0.55, `setTitle` triggers an AppKit titlebar relayout that resets the `_titlebarContainerView` frame, undoing the custom `y` inset and pushing the traffic lights off-centre. `syncDesktopWindowTitle` therefore only updates `document.title` (the browser tab); the native window title stays as "OpenAgentd" and is invisible inside the app.
 
 ## Sidebar and command palette
 

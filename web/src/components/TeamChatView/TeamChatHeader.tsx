@@ -88,7 +88,7 @@ export function TeamChatHeader({
   return (
     <header
       {...dragHandlers}
-      className={`mobile-safe-header flex h-10 items-center border-b border-(--color-border) bg-(--bg-page) ${
+      className={`mobile-safe-header flex h-10 shrink-0 items-center overflow-hidden border-b border-(--color-border) bg-(--bg-page) ${
         isMacOverlay ? 'select-none pl-[70px]' : ''
       }`}
     >

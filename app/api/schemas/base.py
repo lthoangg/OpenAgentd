@@ -21,4 +21,9 @@ class _ExcludeNoneModel(BaseModel):
 
 def _validation_detail(exc: ValidationError) -> str:
     """Extract a human-readable detail string from a Pydantic ValidationError."""
-    return "; ".join(e["msg"] for e in exc.errors())
+    return "; ".join(
+        f"{'.'.join(str(loc) for loc in e['loc'])}: {e['msg']}"
+        if e.get("loc")
+        else e["msg"]
+        for e in exc.errors(include_url=False)
+    )

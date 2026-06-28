@@ -78,7 +78,11 @@ from pydantic import BaseModel, ValidationError, create_model
 
 from loguru import logger
 
-from app.agent.errors import ToolArgumentError, ToolExecutionError
+from app.agent.errors import (
+    ToolArgumentError,
+    ToolExecutionError,
+    format_validation_error,
+)
 
 
 class InjectedArg:
@@ -259,7 +263,7 @@ class Tool:
             validated_model = self._model(**llm_kwargs)
         except ValidationError as exc:
             raise ToolArgumentError(
-                f"Invalid arguments for tool '{self.name}': {exc}"
+                f"Invalid arguments for tool '{self.name}': {format_validation_error(exc)}"
             ) from exc
         if self._model_param is not None:
             # The function wants the validated model as a single argument.

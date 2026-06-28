@@ -424,7 +424,7 @@ class TestTeamChatRoute:
         async def fake_collect(**_kwargs):
             return [fake_att]
 
-        async def fake_persist(_team, atts, sid):
+        async def fake_persist(_team, atts, sid, workspace=None):
             metas = [
                 {
                     "filename": a.filename,
@@ -481,7 +481,7 @@ class TestTeamChatRoute:
             queued.id = uuid.uuid7()
             return queued
 
-        async def fake_persist(_team, atts, sid):
+        async def fake_persist(_team, atts, sid, workspace=None):
             metas = [
                 {
                     "filename": a.filename,

@@ -823,65 +823,19 @@ describe("InputBar — buildAcceptString (hidden file input accept attribute)", 
     const accept = buildAcceptString()
     expect(accept).toContain("text/plain")
     expect(accept).toContain(".md")
-    expect(accept).not.toContain("image/*")
+    expect(accept).toContain("image/*")
+    expect(accept).toContain("application/pdf")
+    expect(accept).toContain("audio/*")
+    expect(accept).toContain("video/*")
   })
 
-  it("includes only text types when no capabilities provided", () => {
+  it("includes all types by default", () => {
     render(<InputBar onSubmit={() => {}} />)
     const input = document.querySelector('input[type="file"]') as HTMLInputElement
     const accept = input.getAttribute("accept") ?? ""
     expect(accept).toContain("text/plain")
     expect(accept).toContain(".txt")
     expect(accept).toContain("application/json")
-    expect(accept).not.toContain("image/*")
-    expect(accept).not.toContain("application/pdf")
-    expect(accept).not.toContain("audio/*")
-    expect(accept).not.toContain("video/*")
-  })
-
-  it("includes image/* when capabilities.vision is true", () => {
-    const caps: AgentCapabilities = { input: { vision: true, document_text: false, audio: false, video: false }, output: { text: true, image: false, audio: false } }
-    render(<InputBar onSubmit={() => {}} capabilities={caps} />)
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    const accept = input.getAttribute("accept") ?? ""
-    expect(accept).toContain("image/*")
-    expect(accept).not.toContain("application/pdf")
-  })
-
-  it("includes pdf and docx types when capabilities.document_text is true", () => {
-    const caps: AgentCapabilities = { input: { vision: false, document_text: true, audio: false, video: false }, output: { text: true, image: false, audio: false } }
-    render(<InputBar onSubmit={() => {}} capabilities={caps} />)
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    const accept = input.getAttribute("accept") ?? ""
-    expect(accept).toContain("application/pdf")
-    expect(accept).toContain(".pdf")
-    expect(accept).toContain("application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-    expect(accept).toContain(".docx")
-  })
-
-  it("includes audio/* when capabilities.audio is true", () => {
-    const caps: AgentCapabilities = { input: { vision: false, document_text: false, audio: true, video: false }, output: { text: true, image: false, audio: false } }
-    render(<InputBar onSubmit={() => {}} capabilities={caps} />)
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    const accept = input.getAttribute("accept") ?? ""
-    expect(accept).toContain("audio/*")
-    expect(accept).not.toContain("video/*")
-  })
-
-  it("includes video/* when capabilities.video is true", () => {
-    const caps: AgentCapabilities = { input: { vision: false, document_text: false, audio: false, video: true }, output: { text: true, image: false, audio: false } }
-    render(<InputBar onSubmit={() => {}} capabilities={caps} />)
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    const accept = input.getAttribute("accept") ?? ""
-    expect(accept).toContain("video/*")
-    expect(accept).not.toContain("audio/*")
-  })
-
-  it("includes all types when all capabilities are enabled", () => {
-    const caps: AgentCapabilities = { input: { vision: true, document_text: true, audio: true, video: true }, output: { text: true, image: false, audio: false } }
-    render(<InputBar onSubmit={() => {}} capabilities={caps} />)
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    const accept = input.getAttribute("accept") ?? ""
     expect(accept).toContain("image/*")
     expect(accept).toContain("application/pdf")
     expect(accept).toContain("audio/*")
@@ -912,15 +866,10 @@ describe("InputBar — isFileTypeAllowed / addFile filtering", () => {
     const textFile = new File(["hello"], "notes.txt", { type: "text/plain" })
     const zipFile = new File(["zip"], "archive.zip", { type: "application/zip" })
     const imageFile = new File(["img"], "photo.png", { type: "image/png" })
-    const caps: AgentCapabilities = {
-      input: { vision: true, document_text: false, audio: false, video: false },
-      output: { text: true, image: false, audio: false },
-    }
 
     expect(isFileTypeAllowed(textFile)).toBe(true)
     expect(isFileTypeAllowed(zipFile)).toBe(false)
-    expect(isFileTypeAllowed(imageFile)).toBe(false)
-    expect(isFileTypeAllowed(imageFile, caps)).toBe(true)
+    expect(isFileTypeAllowed(imageFile)).toBe(true)
   })
 
   it("always allows plain text files by MIME type", async () => {
@@ -956,10 +905,9 @@ describe("InputBar — isFileTypeAllowed / addFile filtering", () => {
     expect(screen.getByText("readme.md")).toBeTruthy()
   })
 
-  it("allows image files when vision capability is enabled", async () => {
+  it("allows image files", async () => {
     const user = userEvent.setup()
-    const caps: AgentCapabilities = { input: { vision: true, document_text: false, audio: false, video: false }, output: { text: true, image: false, audio: false } }
-    render(<InputBar onSubmit={() => {}} capabilities={caps} />)
+    render(<InputBar onSubmit={() => {}} />)
 
     const file = new File(["img"], "photo.png", { type: "image/png" })
     const input = document.querySelector('input[type="file"]') as HTMLInputElement
@@ -969,22 +917,9 @@ describe("InputBar — isFileTypeAllowed / addFile filtering", () => {
     expect(screen.getByRole("img", { name: "photo.png" })).toBeTruthy()
   })
 
-  it("rejects image files when vision capability is disabled", async () => {
+  it("allows PDF files", async () => {
     const user = userEvent.setup()
-    const caps: AgentCapabilities = { input: { vision: false, document_text: false, audio: false, video: false }, output: { text: true, image: false, audio: false } }
-    render(<InputBar onSubmit={() => {}} capabilities={caps} />)
-
-    const file = new File(["img"], "photo.png", { type: "image/png" })
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    await user.upload(input, file)
-
-    expect(screen.queryByRole("img", { name: "photo.png" })).toBeNull()
-  })
-
-  it("allows PDF files when document_text capability is enabled", async () => {
-    const user = userEvent.setup()
-    const caps: AgentCapabilities = { input: { vision: false, document_text: true, audio: false, video: false }, output: { text: true, image: false, audio: false } }
-    render(<InputBar onSubmit={() => {}} capabilities={caps} />)
+    render(<InputBar onSubmit={() => {}} />)
 
     const file = new File(["%PDF"], "report.pdf", { type: "application/pdf" })
     const input = document.querySelector('input[type="file"]') as HTMLInputElement
@@ -993,10 +928,9 @@ describe("InputBar — isFileTypeAllowed / addFile filtering", () => {
     expect(screen.getByText("report.pdf")).toBeTruthy()
   })
 
-  it("allows DOCX files when document_text capability is enabled", async () => {
+  it("allows DOCX files", async () => {
     const user = userEvent.setup()
-    const caps: AgentCapabilities = { input: { vision: false, document_text: true, audio: false, video: false }, output: { text: true, image: false, audio: false } }
-    render(<InputBar onSubmit={() => {}} capabilities={caps} />)
+    render(<InputBar onSubmit={() => {}} />)
 
     const file = new File(["docx"], "doc.docx", {
       type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -1007,22 +941,9 @@ describe("InputBar — isFileTypeAllowed / addFile filtering", () => {
     expect(screen.getByText("doc.docx")).toBeTruthy()
   })
 
-  it("rejects PDF files when document_text capability is disabled", async () => {
+  it("allows audio files", async () => {
     const user = userEvent.setup()
-    const caps: AgentCapabilities = { input: { vision: false, document_text: false, audio: false, video: false }, output: { text: true, image: false, audio: false } }
-    render(<InputBar onSubmit={() => {}} capabilities={caps} />)
-
-    const file = new File(["%PDF"], "report.pdf", { type: "application/pdf" })
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    await user.upload(input, file)
-
-    expect(screen.queryByText("report.pdf")).toBeNull()
-  })
-
-  it("allows audio files when audio capability is enabled", async () => {
-    const user = userEvent.setup()
-    const caps: AgentCapabilities = { input: { vision: false, document_text: false, audio: true, video: false }, output: { text: true, image: false, audio: false } }
-    render(<InputBar onSubmit={() => {}} capabilities={caps} />)
+    render(<InputBar onSubmit={() => {}} />)
 
     const file = new File(["audio"], "clip.mp3", { type: "audio/mpeg" })
     const input = document.querySelector('input[type="file"]') as HTMLInputElement
@@ -1031,22 +952,9 @@ describe("InputBar — isFileTypeAllowed / addFile filtering", () => {
     expect(screen.getByText("clip.mp3")).toBeTruthy()
   })
 
-  it("rejects audio files when audio capability is disabled", async () => {
+  it("allows video files", async () => {
     const user = userEvent.setup()
-    const caps: AgentCapabilities = { input: { vision: false, document_text: false, audio: false, video: false }, output: { text: true, image: false, audio: false } }
-    render(<InputBar onSubmit={() => {}} capabilities={caps} />)
-
-    const file = new File(["audio"], "clip.mp3", { type: "audio/mpeg" })
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    await user.upload(input, file)
-
-    expect(screen.queryByText("clip.mp3")).toBeNull()
-  })
-
-  it("allows video files when video capability is enabled", async () => {
-    const user = userEvent.setup()
-    const caps: AgentCapabilities = { input: { vision: false, document_text: false, audio: false, video: true }, output: { text: true, image: false, audio: false } }
-    render(<InputBar onSubmit={() => {}} capabilities={caps} />)
+    render(<InputBar onSubmit={() => {}} />)
 
     const file = new File(["video"], "movie.mp4", { type: "video/mp4" })
     const input = document.querySelector('input[type="file"]') as HTMLInputElement
@@ -1055,22 +963,9 @@ describe("InputBar — isFileTypeAllowed / addFile filtering", () => {
     expect(screen.getByText("movie.mp4")).toBeTruthy()
   })
 
-  it("rejects video files when video capability is disabled", async () => {
+  it("rejects unknown file types", async () => {
     const user = userEvent.setup()
-    const caps: AgentCapabilities = { input: { vision: false, document_text: false, audio: false, video: false }, output: { text: true, image: false, audio: false } }
-    render(<InputBar onSubmit={() => {}} capabilities={caps} />)
-
-    const file = new File(["video"], "movie.mp4", { type: "video/mp4" })
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    await user.upload(input, file)
-
-    expect(screen.queryByText("movie.mp4")).toBeNull()
-  })
-
-  it("rejects unknown file types regardless of capabilities", async () => {
-    const user = userEvent.setup()
-    const caps: AgentCapabilities = { input: { vision: true, document_text: true, audio: true, video: true }, output: { text: true, image: false, audio: false } }
-    render(<InputBar onSubmit={() => {}} capabilities={caps} />)
+    render(<InputBar onSubmit={() => {}} />)
 
     const file = new File(["data"], "archive.zip", { type: "application/zip" })
     const input = document.querySelector('input[type="file"]') as HTMLInputElement
@@ -1479,7 +1374,7 @@ describe("InputBar — handlePaste (clipboard paste with files)", () => {
     render(<InputBar onSubmit={() => {}} />)
 
     const textarea = screen.getByLabelText("Message input")
-    const file = new File(["img"], "pasted.png", { type: "image/png" })
+    const file = new File(["zip"], "archive.zip", { type: "application/zip" })
 
     const clipboardData = {
       items: [
@@ -1494,7 +1389,7 @@ describe("InputBar — handlePaste (clipboard paste with files)", () => {
       fireEvent.paste(textarea, { clipboardData })
     })
 
-    expect(screen.queryByRole("img", { name: "pasted.png" })).toBeNull()
+    expect(screen.queryByText("archive.zip")).toBeNull()
   })
 
   it("ignores non-file clipboard items", () => {

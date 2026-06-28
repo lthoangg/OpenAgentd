@@ -190,25 +190,23 @@ async def test_validate_unsupported_extension(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_validate_image_rejected_when_no_vision(tmp_path):
+async def test_validate_image_not_rejected_when_no_vision(tmp_path):
     team = _make_team(vision=False)
     data = b"\x89PNG\r\n\x1a\n" + b"\x00" * 50
     att = RawAttachment(filename="img.png", content_type="image/png", data=data)
-    with pytest.raises(AttachmentError) as exc_info:
-        await validate_and_persist_attachments(team, [att])
-    assert exc_info.value.status == 422
-    assert "image" in str(exc_info.value).lower()
+    sid, metas, synthetics = await validate_and_persist_attachments(team, [att])
+    assert len(metas) == 1
+    assert metas[0]["category"] == "image"
 
 
 @pytest.mark.asyncio
-async def test_validate_document_rejected_when_no_document_text(tmp_path):
+async def test_validate_document_not_rejected_when_no_document_text(tmp_path):
     team = _make_team(document_text=False)
     data = b"%PDF-1.4" + b"\x00" * 50
     att = RawAttachment(filename="doc.pdf", content_type="application/pdf", data=data)
-    with pytest.raises(AttachmentError) as exc_info:
-        await validate_and_persist_attachments(team, [att])
-    assert exc_info.value.status == 422
-    assert "document" in str(exc_info.value).lower()
+    sid, metas, synthetics = await validate_and_persist_attachments(team, [att])
+    assert len(metas) == 1
+    assert metas[0]["category"] == "document"
 
 
 @pytest.mark.asyncio

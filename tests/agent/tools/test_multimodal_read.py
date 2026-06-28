@@ -319,26 +319,27 @@ class TestReadFileNoVision:
     """read_file with a model that does NOT support vision."""
 
     @pytest.mark.asyncio
-    async def test_image_returns_text_notice(self, workspace):
+    async def test_image_returns_tool_result_even_without_vision(self, workspace):
         (workspace / "img.png").write_bytes(b"\x89PNG" + b"\x00" * 100)
 
         result = await read_file.arun(
             _injected={"_state": _make_state(vision=False)}, path="img.png"
         )
 
-        assert isinstance(result, str)
-        assert "does not support vision" in result
-        assert "img.png" in result
+        assert isinstance(result, ToolResult)
+        assert len(result.parts) == 2
+        assert isinstance(result.parts[1], ImageDataBlock)
 
     @pytest.mark.asyncio
-    async def test_image_without_state_returns_text_notice(self, workspace):
-        """When _state is None (e.g. direct call), treat as no-vision."""
+    async def test_image_without_state_returns_tool_result(self, workspace):
+        """When _state is None (e.g. direct call), it returns the image."""
         (workspace / "img.png").write_bytes(b"\x89PNG" + b"\x00" * 100)
 
         result = await read_file.arun(path="img.png")
 
-        assert isinstance(result, str)
-        assert "does not support vision" in result
+        assert isinstance(result, ToolResult)
+        assert len(result.parts) == 2
+        assert isinstance(result.parts[1], ImageDataBlock)
 
     @pytest.mark.asyncio
     async def test_text_file_unaffected(self, workspace):
@@ -369,8 +370,8 @@ class TestReadFileNoVision:
         assert "# Extracted" in text
 
     @pytest.mark.asyncio
-    async def test_pdf_no_image_fallback_without_vision(self, workspace):
-        """PDF conversion failure without vision -> no raw image fallback."""
+    async def test_pdf_image_fallback_regardless_of_vision(self, workspace):
+        """PDF conversion failure regardless of vision -> falls back to raw image."""
         (workspace / "doc.pdf").write_bytes(b"%PDF-1.4" + b"\x00" * 100)
 
         with patch(
@@ -382,9 +383,9 @@ class TestReadFileNoVision:
             )
 
         assert isinstance(result, ToolResult)
-        # Should only have a text block, no ImageDataBlock
+        # Should have an ImageDataBlock for PDF fallback
         image_blocks = [p for p in result.parts if isinstance(p, ImageDataBlock)]
-        assert len(image_blocks) == 0
+        assert len(image_blocks) == 1
 
 
 # ─────────────────────────────────────────────────────────────────────────────

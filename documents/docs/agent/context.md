@@ -61,7 +61,7 @@ The loop populates `state.usage` after each LLM response. `SummarizationHook` re
 
 | Field | Type | Written by | Read by |
 |-------|------|-----------|--------|
-| `capabilities` | `ModelCapabilities` (composite `.input`, `.output`) | `agent.run()` start | `read` tool (vision gating), providers |
+| `capabilities` | `ModelCapabilities` (composite `.input`, `.output`) | `agent.run()` start | providers, etc. |
 | `tool_names` | `list[str]` | `agent.run()` start | `SessionLogHook` |
 
 These are proper typed fields on `AgentState` — not entries in `metadata`. Use `state.capabilities` and `state.tool_names` directly.

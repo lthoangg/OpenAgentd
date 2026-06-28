@@ -1,27 +1,23 @@
 import type { AgentCapabilities } from '@/api/types'
 
-export function buildAcceptString(capabilities?: AgentCapabilities): string {
+export function buildAcceptString(_capabilities?: AgentCapabilities): string {
   const parts: string[] = [
     'text/plain', 'text/csv', 'text/tab-separated-values', 'text/markdown',
     'application/json', '.txt', '.csv', '.tsv', '.json', '.md',
+    'image/*',
+    'application/pdf',
+    '.pdf',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    '.docx',
+    'audio/*',
+    'video/*',
   ]
-  if (capabilities?.input.vision) parts.push('image/*')
-  if (capabilities?.input.document_text) {
-    parts.push(
-      'application/pdf',
-      '.pdf',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      '.docx',
-    )
-  }
-  if (capabilities?.input.audio) parts.push('audio/*')
-  if (capabilities?.input.video) parts.push('video/*')
   return parts.join(',')
 }
 
 export function isFileTypeAllowed(
   file: File,
-  capabilities?: AgentCapabilities,
+  _capabilities?: AgentCapabilities,
 ): boolean {
   const mimeType = file.type
   const name = file.name.toLowerCase()
@@ -30,13 +26,13 @@ export function isFileTypeAllowed(
     name.endsWith('.txt') || name.endsWith('.csv') || name.endsWith('.tsv') ||
     name.endsWith('.json') || name.endsWith('.md')
   ) return true
-  if (capabilities?.input.vision && mimeType.startsWith('image/')) return true
-  if (capabilities?.input.document_text && (
+  if (mimeType.startsWith('image/')) return true
+  if (
     mimeType === 'application/pdf' ||
     mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
     name.endsWith('.pdf') || name.endsWith('.docx')
-  )) return true
-  if (capabilities?.input.audio && mimeType.startsWith('audio/')) return true
-  if (capabilities?.input.video && mimeType.startsWith('video/')) return true
+  ) return true
+  if (mimeType.startsWith('audio/')) return true
+  if (mimeType.startsWith('video/')) return true
   return false
 }

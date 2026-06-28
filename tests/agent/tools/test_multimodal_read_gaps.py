@@ -507,15 +507,16 @@ class TestReadFileWithoutState:
         yield tmp_path
 
     @pytest.mark.asyncio
-    async def test_image_without_state_defaults_to_no_vision(self, workspace):
-        """When _state is not injected, treat as no-vision model."""
+    async def test_image_without_state_returns_tool_result(self, workspace):
+        """When _state is not injected, it still returns the image as a ToolResult."""
         (workspace / "img.png").write_bytes(b"\x89PNG" + b"\x00" * 100)
 
         # Call without _injected parameter
         result = await read_file.arun(path="img.png")
 
-        assert isinstance(result, str)
-        assert "does not support vision" in result
+        assert isinstance(result, ToolResult)
+        assert len(result.parts) == 2
+        assert isinstance(result.parts[1], ImageDataBlock)
 
     @pytest.mark.asyncio
     async def test_text_file_without_state_works(self, workspace):

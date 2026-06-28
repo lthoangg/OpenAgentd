@@ -420,7 +420,7 @@ Accepts `multipart/form-data`:
 
 Global limit: 20 MB total across all files in one request.
 
-File upload requires matching model capabilities — images need `input.vision=true`, documents need `input.document_text=true`. Returns HTTP 422 if capability is missing.
+Any file of the above categories can be uploaded. If the selected model does not support a particular modality (e.g. sending an image to a non-vision model), the provider API call will raise an error (which is shown to the user).
 
 ---
 

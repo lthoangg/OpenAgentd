@@ -443,8 +443,6 @@ async def validate_and_persist_attachments(
     is expected to abort the turn, and a future cleanup task can sweep any
     orphaned uploads that never got referenced.
     """
-    caps = team.lead.agent.capabilities
-
     valid: list[tuple[RawAttachment, str]] = []
     total_size = 0
     for att in attachments:
@@ -454,14 +452,6 @@ async def validate_and_persist_attachments(
         if category is None:
             ext = Path(att.filename).suffix.lower()
             raise AttachmentError(f"Unsupported file type '{ext}'.", status=415)
-        if category == "image" and not caps.input.vision:
-            raise AttachmentError(
-                "This model does not support image inputs.", status=422
-            )
-        if category == "document" and not caps.input.document_text:
-            raise AttachmentError(
-                "This model does not support document inputs.", status=422
-            )
         total_size += len(att.data)
         if total_size > GLOBAL_SIZE_LIMIT:
             raise AttachmentError(

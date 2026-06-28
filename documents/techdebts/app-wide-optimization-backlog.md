@@ -95,7 +95,21 @@ Large arrays encourage broad invalidation. A single streaming delta can cause su
 - SSE deltas update only the affected block id and live-turn selectors.
 - Session list, sidebars, settings, and inactive panes do not re-render during token streams.
 
-### 5. Batch high-frequency SSE events
+### 5. Consolidate Zustand store subscriptions in `TeamChatView` (Completed)
+
+**Problem**
+
+`TeamChatView` previously declared over 20 separate `useTeamStore` calls (one for each primitive). While Zustand subscriptions are fast, registering 20+ independent listeners on a single component is verbose and adds unnecessary subscription overhead.
+
+**Changes**
+
+- Consolidated all 20+ selectors into a single `useTeamStore` call using `useShallow` from `zustand/react/shallow`.
+
+**Success criteria**
+
+- The component has exactly one subscription listener instead of 20+, improving rendering setup performance and simplifying code maintainability.
+
+### 6. Batch high-frequency SSE events
 
 **Problem**
 

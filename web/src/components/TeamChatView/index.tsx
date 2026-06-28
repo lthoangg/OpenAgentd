@@ -35,6 +35,7 @@ import { useCommandsQuery } from '@/queries/useCommandsQuery'
 import { useSnippetsQuery } from '@/queries/useSnippetsQuery'
 import { listCodingWorkspaceFiles, renderCommand, renderSnippet, resolveApiUrl, resolveTeamSession } from '@/api/client'
 import { useTeamStore } from '@/stores/useTeamStore'
+import { useShallow } from 'zustand/react/shallow'
 import { useToastStore } from '@/stores/useToastStore'
 import { prependSession, prependWorkspaceSession } from '@/stores/cache-invalidation-bridge'
 import { useUIStore } from '@/stores/useUIStore'
@@ -138,32 +139,86 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     }
   }, [isMobile])
 
-  const connectStream  = useTeamStore((s) => s.connectStream)
-  const loadTeamStatus = useTeamStore((s) => s.loadTeamStatus)
-  const loadSession    = useTeamStore((s) => s.loadSession)
-  const sendMessage    = useTeamStore((s) => s.sendMessage)
-  const continueTeam   = useTeamStore((s) => s.continueTeam)
-  const beginResolvedSession = useTeamStore((s) => s.beginResolvedSession)
-  const consumeResolvedSessionReady = useTeamStore((s) => s.consumeResolvedSessionReady)
-  const cycleActiveAgent = useTeamStore((s) => s.cycleActiveAgent)
-  const setActiveAgent   = useTeamStore((s) => s.setActiveAgent)
-  const setSessionModelSettings = useTeamStore((s) => s.setSessionModelSettings)
-  const setupRequired = useTeamStore((s) => s.setupRequired)
-  const dismissSetupRequired = useTeamStore((s) => s.dismissSetupRequired)
+  const storeState = useTeamStore(
+    useShallow((s) => {
+      const activeStream = s.activeAgent ? s.agentStreams[s.activeAgent] : undefined
+      const leadStream = s.leadName ? s.agentStreams[s.leadName] : undefined
+      return {
+        connectStream: s.connectStream,
+        loadTeamStatus: s.loadTeamStatus,
+        loadSession: s.loadSession,
+        sendMessage: s.sendMessage,
+        continueTeam: s.continueTeam,
+        beginResolvedSession: s.beginResolvedSession,
+        consumeResolvedSessionReady: s.consumeResolvedSessionReady,
+        cycleActiveAgent: s.cycleActiveAgent,
+        setActiveAgent: s.setActiveAgent,
+        setSessionModelSettings: s.setSessionModelSettings,
+        setupRequired: s.setupRequired,
+        dismissSetupRequired: s.dismissSetupRequired,
+
+        activeAgent: s.activeAgent,
+        agentStreams: s.agentStreams,
+        agentNames: s.agentNames,
+        isTeamWorking: s.isTeamWorking,
+        isContinuing: s.isContinuing,
+        sessionId: s.sessionId,
+        sessionTitle: s.sessionTitle,
+        sessionModel: s.sessionModel,
+        sessionThinkingLevel: s.sessionThinkingLevel,
+        sessionFastMode: s.sessionFastMode,
+        leadName: s.leadName,
+
+        activeBlocks: activeStream?.blocks,
+        activeCurrentBlocks: activeStream?.currentBlocks,
+        activeStatus: activeStream?.status,
+
+        leadPromptTokens: leadStream?.usage.promptTokens ?? 0,
+        leadCompletionTokens: leadStream?.usage.completionTokens ?? 0,
+        leadCachedTokens: leadStream?.usage.cachedTokens ?? 0,
+        leadTotalTokens: leadStream?.usage.totalTokens ?? 0,
+      }
+    })
+  )
+
+  const {
+    connectStream,
+    loadTeamStatus,
+    loadSession,
+    sendMessage,
+    continueTeam,
+    beginResolvedSession,
+    consumeResolvedSessionReady,
+    cycleActiveAgent,
+    setActiveAgent,
+    setSessionModelSettings,
+    setupRequired,
+    dismissSetupRequired,
+
+    activeAgent,
+    agentStreams,
+    agentNames,
+    isTeamWorking,
+    isContinuing,
+    sessionId: sessionIdState,
+    sessionTitle,
+    sessionModel,
+    sessionThinkingLevel,
+    sessionFastMode,
+    leadName,
+
+    activeBlocks,
+    activeCurrentBlocks,
+    activeStatus,
+
+    leadPromptTokens,
+    leadCompletionTokens,
+    leadCachedTokens,
+    leadTotalTokens,
+  } = storeState
 
   const pushToast = useToastStore((s) => s.push)
 
-  const activeAgent    = useTeamStore((s) => s.activeAgent)
-  const agentStreams   = useTeamStore((s) => s.agentStreams)
-  const agentNames     = useTeamStore((s) => s.agentNames)
-  const isTeamWorking  = useTeamStore((s) => s.isTeamWorking)
-  const isContinuing   = useTeamStore((s) => s.isContinuing)
-  const sessionIdState = useTeamStore((s) => s.sessionId)
-  const sessionTitle   = useTeamStore((s) => s.sessionTitle)
-  const sessionModel   = useTeamStore((s) => s.sessionModel)
-  const sessionThinkingLevel = useTeamStore((s) => s.sessionThinkingLevel)
-  const sessionFastMode = useTeamStore((s) => s.sessionFastMode)
-  const leadName       = useTeamStore((s) => s.leadName)
   // Utility modal state lives in useUIStore so only one can be open at a time.
   const schedulerOpen = useUIStore((s) => s.schedulerOpen)
   const agentCapabilitiesOpen = useUIStore((s) => s.agentCapabilitiesOpen)
@@ -174,12 +229,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const closeScheduler = useUIStore((s) => s.closeScheduler)
   const closeAgentCapabilities = useUIStore((s) => s.closeAgentCapabilities)
   const closePalette = useUIStore((s) => s.closePalette)
-
-  // Subscribe to active-agent stream fields directly to avoid recomputing on
-  // every other agent's tick.
-  const activeBlocks        = useTeamStore((s) => s.activeAgent ? s.agentStreams[s.activeAgent]?.blocks : undefined)
-  const activeCurrentBlocks = useTeamStore((s) => s.activeAgent ? s.agentStreams[s.activeAgent]?.currentBlocks : undefined)
-  const activeStatus        = useTeamStore((s) => s.activeAgent ? s.agentStreams[s.activeAgent]?.status : undefined)
 
   const splitAgentNames = agentNames.filter((name) => agentStreams[name]?.status !== 'offline')
   const historyPrompts = useMemo(() => {
@@ -221,10 +270,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     enabled: fileRefsEnabled && (mode === 'coding' ? Boolean(workspace) : Boolean(sessionIdState)),
   })
 
-  const leadPromptTokens = useTeamStore((s) => leadName ? (s.agentStreams[leadName]?.usage.promptTokens ?? 0) : 0)
-  const leadCompletionTokens = useTeamStore((s) => leadName ? (s.agentStreams[leadName]?.usage.completionTokens ?? 0) : 0)
-  const leadCachedTokens = useTeamStore((s) => leadName ? (s.agentStreams[leadName]?.usage.cachedTokens ?? 0) : 0)
-  const leadTotalTokens = useTeamStore((s) => leadName ? (s.agentStreams[leadName]?.usage.totalTokens ?? 0) : 0)
+
   const headerTokens = leadTotalTokens > 0
     ? {
         input: leadPromptTokens,

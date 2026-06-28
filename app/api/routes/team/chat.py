@@ -286,8 +286,6 @@ async def team_chat(
         raw = await _read_upload_as_attachment(file)
         if raw is not None:
             attachments.append(raw)
-    explicit_attachment_count = len(attachments)
-
     # Resolve any ``@path`` mentions in the message text against the
     # session workspace and attach the matched files. Done before the
     # queue branch so a queued message keeps its mention attachments
@@ -311,24 +309,19 @@ async def team_chat(
                 await cleanup_reverted_tail(db, session_uuid)
 
         if session_uuid is not None and team_obj.has_active_user_turn():
-            # Explicit uploads still 409 — they need the live capability check
-            # + persistence pipeline that only runs on the dispatch path. But
-            # mentions are derived from workspace files the agent will see
-            # anyway, so we persist them onto the queued row so the dequeue
-            # path rehydrates the same context the user typed.
-            if explicit_attachment_count > 0:
-                raise HTTPException(
-                    status_code=409,
-                    detail="Cannot queue messages with attachments while the agent is working.",
-                )
+            # Persist all attachments (explicit uploads + @mentions) now so
+            # the queued row carries the same context the user composed.
+            # Capability checks run at queue time against the current model;
+            # the model may change before dequeue but that is an accepted
+            # edge case (documented in the queue design notes).
             queued_attachment_metas: list[dict] = []
-            if mention_attachments:
+            if attachments:
                 try:
                     (
                         _,
                         queued_attachment_metas,
                     ) = await agent_service.validate_and_persist_attachments(
-                        team_obj, mention_attachments, session_id
+                        team_obj, attachments, session_id
                     )
                 except AttachmentError as exc:
                     raise HTTPException(
@@ -366,7 +359,7 @@ async def team_chat(
                     extra=queued_extra,
                 )
             logger.info(
-                "team_chat_queued session_id={} message_id={} mentions={}",
+                "team_chat_queued session_id={} message_id={} attachments={}",
                 session_id,
                 queued.id,
                 len(queued_attachment_metas),

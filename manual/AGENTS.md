@@ -34,6 +34,7 @@ Multi-agent turns, history, todos, lifecycle, stop/continue/undo, queued message
 | `stop_additive` | Stop + "I forgot to add…" — final reply must include both messages | `--wait` |
 | `queued_injection` | Queued follow-ups splice into a running turn before `done` | `--queue-delay`, `--followup`, `--expect`, `--wait` |
 | `cancel_queued_message` | × cancel hard-deletes a queued row (204 → 404, absent from history) | `--queue-delay`, `--base` |
+| `queued_file_attach` | Explicit file uploads are accepted on queued messages; cancel deletes persisted files | `--scenario a\|b\|both`, `--base` |
 | `undo_mid_second_turn` | Interrupt turn 2, `/undo` (202), boundary rolls back for a clean follow-up | `--base` |
 | `fast_mode` | `fast_mode=true` ignored for non-Codex, persists `service_tier=fast` for Codex | `--non-codex-model`, `--codex-model` |
 | `mention_attachments` | `@`-mention auto-attach: text fenced + head/tail truncated, image/folder reference-only | `--base` |

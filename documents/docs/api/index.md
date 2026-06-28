@@ -299,7 +299,9 @@ Accepts `multipart/form-data` validated via `ChatForm`.
 
 ### Mention auto-attachment
 
-On the immediate dispatch path (not the queued path), the route scans `message` for `@<path>` tokens and resolves each against the session workspace via `app/api/routes/team/_helpers.py::collect_mention_attachments`. Resolved files are appended to the same `attachments: list[RawAttachment]` as the multipart `files`, then flow through the standard `validate_and_persist_attachments` + `build_parts_from_metas` pipeline.
+The route scans `message` for `@<path>` tokens and resolves each against the session workspace via `app/api/routes/team/_helpers.py::collect_mention_attachments`. Resolved files are appended to the same `attachments: list[RawAttachment]` as the multipart `files`, then flow through the standard `validate_and_persist_attachments` + `build_parts_from_metas` pipeline.
+
+This runs on both the **immediate dispatch path** and the **queued path** — when a lead turn is active, mention attachments and explicit file uploads are persisted to disk at queue time and stored in `extra.attachments` on the queued row. Cancelling a queued message also deletes its persisted files.
 
 | Mention kind | Auto-attached? | Notes |
 |---|---|---|

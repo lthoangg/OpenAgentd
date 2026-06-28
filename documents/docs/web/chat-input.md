@@ -19,7 +19,7 @@ The input bar (`FloatingInputBar` + `InputBar`) is never disabled. Submitting te
 
 Only the **lead turn** matters. Members running background sub-tasks do not block new input.
 
-Attachments are not queued while the lead is working. The UI asks the user to wait for the current response to finish before sending files.
+File attachments (both explicit uploads and `@mention` auto-attachments) are now supported on queued messages. The backend validates and persists the files to disk at queue time, and the queued row carries `extra.attachments` just like a directly-dispatched message. If the queued message is cancelled, its persisted files are deleted.
 
 ---
 
@@ -125,7 +125,7 @@ Tokens chip **only** when they resolve to a known workspace ref — `@@`, `@none
 
 ### Send-time auto-attachment
 
-When the message is dispatched (`POST /api/team/chat`, immediate path only — queued messages are not re-parsed at activation), the backend resolves committed mentions against the session workspace and may attach the referenced file as a `RawAttachment`:
+When the message is dispatched (`POST /api/team/chat`), the backend resolves committed mentions against the session workspace and may attach the referenced file as a `RawAttachment`. This applies to both the immediate and queued paths — mentions are persisted at queue time, not at activation.
 
 | Mention | Auto-attach behaviour |
 |---|---|

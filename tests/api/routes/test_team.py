@@ -455,20 +455,61 @@ class TestTeamChatRoute:
         assert atts[0]["original_name"] == "note.txt"
         assert atts[0]["converted_text"] == "hi"
 
-    def test_team_chat_queue_still_409s_on_explicit_uploads(
+    def test_team_chat_queued_message_persists_explicit_uploads(
         self, app_with_team, test_team
     ):
-        """Paperclip uploads keep the 409; only mentions get the queue path."""
+        """Explicit file uploads are persisted and attached to the queued row.
+
+        Previously this returned 409.  Now the upload bytes are validated and
+        written to disk at queue time so the dequeue path rehydrates the same
+        context the user composed.
+        """
+
         session_id = str(uuid.uuid7())
         test_team.lead.state = "working"
+        test_team._activate_queued_user_messages = AsyncMock(return_value=False)
+
+        captured: dict = {}
+
+        async def save_queue(_db, _session_id, _message, *, extra=None):
+            captured["extra"] = extra
+            queued = AsyncMock()
+            queued.id = uuid.uuid7()
+            return queued
+
+        async def fake_persist(_team, atts, sid):
+            metas = [
+                {
+                    "filename": a.filename,
+                    "original_name": a.filename,
+                    "category": "text",
+                    "path": f"/fake/uploads/{a.filename}",
+                    "converted_text": a.data.decode(),
+                }
+                for a in atts
+            ]
+            return sid, metas
+
         client = TestClient(app_with_team)
-        response = client.post(
-            "/api/team/chat",
-            data={"message": "msg", "session_id": session_id},
-            files={"files": ("a.txt", b"hi", "text/plain")},
-        )
-        assert response.status_code == 409
-        assert "while the agent is working" in response.json()["detail"]
+        with (
+            patch("app.api.routes.team.chat.save_queued_user_message", save_queue),
+            patch(
+                "app.api.routes.team.chat.agent_service.validate_and_persist_attachments",
+                fake_persist,
+            ),
+        ):
+            response = client.post(
+                "/api/team/chat",
+                data={"message": "check this", "session_id": session_id},
+                files={"files": ("report.txt", b"hello", "text/plain")},
+            )
+
+        assert response.status_code == 202
+        assert response.json()["status"] == "queued"
+        atts = captured["extra"]["attachments"]
+        assert len(atts) == 1
+        assert atts[0]["original_name"] == "report.txt"
+        assert atts[0]["converted_text"] == "hello"
 
     def test_team_chat_message_validation_empty_raises(self, app_with_team):
         client = TestClient(app_with_team)

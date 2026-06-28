@@ -1,5 +1,6 @@
 import pytest
 import pytest_asyncio
+from pathlib import Path
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -93,4 +94,71 @@ async def test_cancel_queued_message_deletes_row(session: AsyncSession):
 
     assert await cancel_queued_user_message(session, chat_session.id, queued.id) is True
     await session.commit()
+    assert await session.get(SessionMessage, queued.id) is None
+
+
+@pytest.mark.asyncio
+async def test_cancel_queued_message_deletes_attachment_files(
+    session: AsyncSession, tmp_path: Path
+):
+    """Cancelling a queued message with attachments removes the persisted files."""
+    file_a = tmp_path / "a.txt"
+    file_b = tmp_path / "b.png"
+    file_a.write_text("hello")
+    file_b.write_bytes(b"\x89PNG")
+
+    chat_session = await create_chat_session(session)
+    queued = await save_queued_user_message(
+        session,
+        chat_session.id,
+        "with files",
+        extra={
+            "attachments": [
+                {"filename": "a.txt", "path": str(file_a), "category": "text"},
+                {"filename": "b.png", "path": str(file_b), "category": "image"},
+            ]
+        },
+        save_message=save_message,
+    )
+    await session.commit()
+
+    assert file_a.exists()
+    assert file_b.exists()
+
+    result = await cancel_queued_user_message(session, chat_session.id, queued.id)
+    await session.commit()
+
+    assert result is True
+    assert await session.get(SessionMessage, queued.id) is None
+    assert not file_a.exists(), "attachment file should be deleted on cancel"
+    assert not file_b.exists(), "attachment file should be deleted on cancel"
+
+
+@pytest.mark.asyncio
+async def test_cancel_queued_message_tolerates_missing_attachment_file(
+    session: AsyncSession, tmp_path: Path
+):
+    """Cancel succeeds even if an attachment file was already removed from disk."""
+    missing = tmp_path / "gone.txt"
+    # deliberately do NOT create the file
+
+    chat_session = await create_chat_session(session)
+    queued = await save_queued_user_message(
+        session,
+        chat_session.id,
+        "ghost file",
+        extra={
+            "attachments": [
+                {"filename": "gone.txt", "path": str(missing), "category": "text"},
+            ]
+        },
+        save_message=save_message,
+    )
+    await session.commit()
+
+    # Should not raise even though the file is absent
+    result = await cancel_queued_user_message(session, chat_session.id, queued.id)
+    await session.commit()
+
+    assert result is True
     assert await session.get(SessionMessage, queued.id) is None

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from uuid import UUID
 
+from loguru import logger
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -94,6 +96,22 @@ async def cancel_queued_user_message(
         or row.extra.get("queue_status") != "queued"
     ):
         return False
+
+    # Delete any attachment files persisted at queue time.  Each meta dict
+    # carries the absolute ``path`` written by ``_persist_attachment``.
+    for att in row.extra.get("attachments") or []:
+        raw_path = att.get("path")
+        if not raw_path:
+            continue
+        try:
+            Path(raw_path).unlink(missing_ok=True)
+            logger.debug("queued_attachment_deleted path={}", raw_path)
+        except OSError as exc:
+            # Best-effort — log and continue; the DB row is still removed.
+            logger.warning(
+                "queued_attachment_delete_failed path={} error={}", raw_path, exc
+            )
+
     await db.delete(row)
     await db.flush()
     return True

@@ -232,7 +232,7 @@ function PopoverContent({
         'duration-100',
         closing
           ? 'animate-out fade-out-0 zoom-out-95'
-          : 'animate-in fade-in-0 zoom-in-95',
+          : 'animate-in fade-in-0',
         className,
       )}
       style={{

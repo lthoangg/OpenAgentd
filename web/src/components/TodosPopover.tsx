@@ -90,50 +90,46 @@ export function TodosPopover({
 
   const content = (
     <>
-      {/* Header: title + completion counter + thin progress bar. */}
-      <div className="border-b border-(--color-border) bg-(--color-surface)/30">
-        <div className="flex items-center justify-between px-3 py-2">
-          <span className="flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-(--color-text-2)">
-            <ListTodo size={11} aria-hidden="true" className="text-(--color-text-muted)" />
-            Tasks
-          </span>
-          {todos.length > 0 && (
-            <span
-              className={`font-mono text-[10px] tabular-nums tracking-wide ${
-                allDone ? 'text-(--color-success)' : 'text-(--color-text-subtle)'
-              }`}
-            >
-              {finishedCount}/{todos.length} done
-            </span>
-          )}
-        </div>
-        {/* Slim progress track — only meaningful when there are tasks. */}
+      <div className="flex items-center justify-between border-b border-(--color-border-subtle) px-2.5 py-2">
+        <span className="text-[11px] font-medium text-(--color-text)">Tasks</span>
         {todos.length > 0 && (
-          <div
-            className="h-0.5 w-full bg-(--color-border)"
-            role="progressbar"
-            aria-valuenow={progressPct}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-label="Task completion"
+          <span
+            className={cn(
+              'font-mono text-[10px] tabular-nums text-(--color-text-subtle)',
+              allDone && 'text-(--color-success)',
+            )}
           >
-            <div
-              className={`h-full rounded-r-full transition-[width] duration-500 ease-out ${
-                allDone ? 'bg-(--color-success)' : 'bg-(--color-info)'
-              }`}
-              style={{ width: `${progressPct}%` }}
-            />
-          </div>
+            {finishedCount}/{todos.length} done
+          </span>
         )}
       </div>
+
+      {todos.length > 0 && (
+        <div
+          className="h-px w-full bg-(--color-border-subtle)"
+          role="progressbar"
+          aria-valuenow={progressPct}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label="Task completion"
+        >
+          <div
+            className={cn(
+              'h-full transition-[width] duration-300 ease-out',
+              allDone ? 'bg-(--color-success)' : 'bg-(--color-info)'
+            )}
+            style={{ width: `${progressPct}%` }}
+          />
+        </div>
+      )}
 
       {todos.length === 0 ? (
         <div
           role="status"
-          className="flex flex-col items-center gap-1 px-3 py-6 text-center"
+          className="flex flex-col items-center gap-1 px-3 py-5 text-center"
         >
           <ListTodo
-            size={16}
+            size={14}
             aria-hidden="true"
             className="text-(--color-text-subtle) opacity-40"
           />
@@ -144,7 +140,7 @@ export function TodosPopover({
       ) : (
         <ul
           aria-label="Task list"
-          className="scrollbar-none max-h-[min(50vh,20rem)] overflow-y-auto overscroll-contain p-1"
+          className="scrollbar-none max-h-[min(46vh,17rem)] overflow-y-auto overscroll-contain px-1.5 py-1"
         >
           {sortedTodos.map((todo) => {
             const Icon = STATUS_ICON[todo.status]
@@ -156,15 +152,15 @@ export function TodosPopover({
               <li
                 key={todo.task_id}
                 className={cn(
-                  'group relative flex items-start gap-2 rounded px-2 py-1 transition-colors',
+                  'group flex items-start gap-2 rounded-md px-2 py-1.5 transition-colors',
                   isInProgress
-                    ? 'bg-(--color-info-subtle)/20'
-                    : 'hover:bg-(--color-surface)/60'
+                    ? 'bg-(--color-info-subtle)/12'
+                    : 'hover:bg-(--bg-key)/50'
                 )}
               >
-                <span className="relative mt-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center">
+                <span className="mt-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center">
                   <Icon
-                    size={12}
+                    size={11}
                     aria-hidden="true"
                     className={cn(
                       STATUS_ICON_COLOR[todo.status],
@@ -172,26 +168,25 @@ export function TodosPopover({
                     )}
                   />
                 </span>
-                <span
-                  className={cn(
-                    'min-w-0 flex-1 text-xs leading-snug',
-                    isStruck
-                      ? 'text-(--color-text-subtle) line-through decoration-(--color-text-subtle)/40'
-                      : isInProgress
-                        ? 'font-medium text-(--color-text)'
-                        : 'text-(--color-text-2)'
-                  )}
-                >
-                  {todo.content}
-                </span>
-                {agent && (
-                  <span
-                    className="mt-0.5 shrink-0 rounded-xs border border-(--color-border) bg-(--bg-page) px-1 py-0.5 font-mono text-[8px] uppercase tracking-wider text-(--color-text-muted)"
-                    title={`Assigned to ${agent}`}
+                <div className="min-w-0 flex-1">
+                  <div
+                    className={cn(
+                      'truncate text-[12px] leading-4',
+                      isStruck
+                        ? 'text-(--color-text-subtle) line-through decoration-(--color-text-subtle)/40'
+                        : isInProgress
+                          ? 'font-medium text-(--color-text)'
+                          : 'text-(--color-text-2)'
+                    )}
                   >
-                    {agent}
-                  </span>
-                )}
+                    {todo.content}
+                  </div>
+                  {agent && (
+                    <div className="mt-0.5 text-[10px] text-(--color-text-subtle)">
+                      {agent}
+                    </div>
+                  )}
+                </div>
               </li>
             )
           })}

@@ -123,4 +123,19 @@ describe('TodosPopover', () => {
     expect(dialog.className).toContain('fade-in-0')
   })
 
+  it('does not apply the desktop popover zoom-in animation', () => {
+    render(
+      <TodosPopover
+        open
+        onOpenChange={() => {}}
+        todos={[]}
+        sessionId="session-123"
+      />,
+    )
+
+    const panel = document.querySelector('[data-slot="popover-content"]')
+    expect(panel?.className).not.toContain('zoom-in-95')
+    expect(panel?.className).toContain('fade-in-0')
+  })
+
 })

@@ -325,7 +325,7 @@ async def team_chat(
                         queued_attachment_metas,
                         queued_attachment_synthetics,
                     ) = await agent_service.validate_and_persist_attachments(
-                        team_obj, attachments, session_id
+                        team_obj, attachments, session_id, workspace
                     )
                 except AttachmentError as exc:
                     raise HTTPException(

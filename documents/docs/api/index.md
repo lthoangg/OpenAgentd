@@ -2,7 +2,7 @@
 title: API Reference
 description: HTTP routes, SSE event protocol, file upload, workspace listing, media proxy, team chat, and planned speech endpoints.
 status: stable
-updated: 2026-05-30
+updated: 2026-06-28
 ---
 
 # API Reference
@@ -280,6 +280,7 @@ Accepts `multipart/form-data` validated via `ChatForm`.
 - `workspace` must be an existing directory.
 - One live team is kept per resolved workspace; multiple workspaces can run at the same time.
 - Concurrent sends to the same workspace are serialized per team: if a lead turn is active, the new message is queued and drained in order; otherwise it starts a fresh activation. Same model as normal mode.
+- Uploaded files are stored under `<workspace>/uploads/` so the unread hint `./uploads/<filename>` matches the coding sandbox root and explicit `read("uploads/<filename>")` works directly.
 - The workspace root's `AGENTS.md`, when present and under the size limit, is appended to the model system prompt.
 - The web UI enters coding mode at `/coding`; the last opened workspace is restored locally. Persisted coding session routes use `/coding/{session_id}` without a workspace query param; the workspace is resolved from session detail.
 

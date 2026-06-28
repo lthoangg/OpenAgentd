@@ -49,11 +49,11 @@ def uploads_dir(session_id: str) -> Path:
     return workspace_dir(session_id) / "uploads"
 
 
-def session_uploads_dir(session_id: str) -> Path:
-    """Return app-managed uploads storage for the session.
+def session_uploads_dir(session_id: str, workspace: str | None = None) -> Path:
+    """Return uploads storage for the session or coding workspace.
 
-    Coding mode still uses the exact project directory as the sandbox root,
-    but uploads remain under ``OPENAGENTD_WORKSPACE_DIR`` so production/dev
-    storage follows the same APP_ENV-derived roots as normal sessions.
+    Normal mode stores uploads under the app-managed per-session workspace.
+    Coding mode stores uploads under the selected workspace so the agent can
+    reach them directly as ``uploads/<filename>`` from its sandbox root.
     """
-    return uploads_dir(session_id)
+    return session_workspace_dir(session_id, workspace) / "uploads"

@@ -32,8 +32,8 @@ from app.services.shell_service import dispatch_shell_command
 from app.services.stream_envelope import StreamEnvelope
 
 
-def _uploads_dir(session_id: str) -> Path:
-    return session_uploads_dir(session_id)
+def _uploads_dir(session_id: str, workspace: str | None = None) -> Path:
+    return session_uploads_dir(session_id, workspace)
 
 
 if TYPE_CHECKING:
@@ -423,6 +423,7 @@ async def validate_and_persist_attachments(
     team: "AgentTeam",
     attachments: list[RawAttachment],
     session_id: str | None = None,
+    workspace: str | None = None,
 ) -> tuple[str, list[dict], list[str]]:
     """Validate attachments against lead capabilities and save them to disk.
 
@@ -469,7 +470,7 @@ async def validate_and_persist_attachments(
         valid.append((att, category))
 
     sid = session_id or str(uuid7())
-    session_uploads = _uploads_dir(sid)
+    session_uploads = _uploads_dir(sid, workspace)
 
     metas: list[dict] = []
     synthetics: list[str] = []
@@ -513,7 +514,9 @@ async def dispatch_user_message(
     sid = session_id or str(uuid7())
 
     if atts:
-        _, metas, synthetics = await validate_and_persist_attachments(team, atts, sid)
+        _, metas, synthetics = await validate_and_persist_attachments(
+            team, atts, sid, workspace
+        )
     else:
         metas = []
         synthetics = []

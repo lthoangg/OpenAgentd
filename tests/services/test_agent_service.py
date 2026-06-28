@@ -291,6 +291,31 @@ async def test_validate_and_persist_uses_provided_session_id(tmp_path):
     assert len(synthetics) == 1
 
 
+@pytest.mark.asyncio
+async def test_validate_and_persist_uses_coding_workspace_uploads_dir(tmp_path):
+    team = _make_team()
+    workspace = tmp_path / "repo"
+    att = RawAttachment(
+        filename="image.png", content_type="image/png", data=b"\x89PNG\r\n\x1a\n"
+    )
+
+    sid, metas, synthetics = await validate_and_persist_attachments(
+        team,
+        [att],
+        session_id="existing-sid-xyz",
+        workspace=str(workspace),
+    )
+
+    assert sid == "existing-sid-xyz"
+    assert len(metas) == 1
+    saved = workspace / "uploads" / metas[0]["filename"]
+    assert saved.is_file()
+    assert metas[0]["path"] == str(saved)
+    assert metas[0]["workspace_path"] == str(saved)
+    assert metas[0]["url"] == "/api/team/existing-sid-xyz/uploads/image.png"
+    assert synthetics == ["[Attached image: image.png]"]
+
+
 # ── _build_synthetic_content / _maybe_truncate_inline ────────────────────────
 
 

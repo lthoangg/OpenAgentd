@@ -2,7 +2,7 @@
 title: Paths & XDG Roots
 description: Six XDG-aligned roots, development vs production layout, on-disk file map.
 status: stable
-updated: 2026-05-30
+updated: 2026-06-28
 ---
 
 # Paths & XDG Roots
@@ -27,7 +27,7 @@ OpenAgentd splits runtime files across **six** XDG-aligned roots, one per catego
 - **Config** — hand-edited configuration. Agents (`agents/`), skills (`skills/`), runtime settings (`settings.yaml`), generation config (`multimodal.yaml`), MCP (`mcp.json`), sandbox (`sandbox.yaml`), `.env`. (Summarisation has no file-based config — all tuning lives in `app/agent/hooks/summarization.py`.)
 - **State** — historical bookkeeping. Logs (`logs/`), telemetry (`telemetry/`), OTEL rollups (`otel/`), `openagentd.pid`. Safe to archive.
 - **Cache** — regeneratable throwaway. `quoteoftheday.json`, `copilot_oauth.json`, `codex_oauth.json`. Safe to delete any time.
-- **Workspace** — per-session agent workspaces (`{root}/<sid>/`). User uploads live at `{root}/<sid>/uploads/`. Allowed by the sandbox so filesystem tools (`read`/`write`/`shell`) can operate there.
+- **Workspace** — per-session agent workspaces (`{root}/<sid>/`). Normal-mode uploads live at `{root}/<sid>/uploads/`; coding-mode uploads live at `<coding-workspace>/uploads/`. Allowed by the sandbox so filesystem tools (`read`/`write`/`shell`) can operate there.
 
 ## `.env` location
 
@@ -100,7 +100,7 @@ Session-scoped agent artifacts are centralized in `app/agent/artifacts.py` and l
 | Shell output spills | `.tool_results/shell/*.txt` | Deleted with the session artifact directory or cleanup. |
 | Tool-result offloads | `.tool_results/{agent}/*.txt` | Deleted with the session artifact directory or cleanup. |
 
-Coding sessions use the selected project directory as the sandbox workspace, but runtime artifacts never write into the repo. Upload storage remains under `OPENAGENTD_WORKSPACE_DIR`. `DELETE /api/team/sessions/{id}` purges normal session workspaces and the XDG session artifact directory; coding sessions keep the project directory.
+Coding sessions use the selected project directory as the sandbox workspace. Runtime artifacts still stay under the XDG roots, but file uploads now live under `<coding-workspace>/uploads/` so `read("uploads/<filename>")` resolves from the sandbox root exactly as hinted. `DELETE /api/team/sessions/{id}` purges normal session workspaces and the XDG session artifact directory; coding sessions keep the project directory.
 
 ## Generated artifact cleanup
 

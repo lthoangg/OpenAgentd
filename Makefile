@@ -41,7 +41,7 @@ dev-lan: kill-dev-ports ## Start backend (:8000 + reload) and frontend (Vite :51
 	wait
 
 test: ## Run tests
-	uv run pytest -q
+	uv run pytest -n auto -q
 
 coverage: ## Run tests with coverage report
 	uv run pytest --cov=app --cov-report=term-missing tests/

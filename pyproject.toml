@@ -68,6 +68,7 @@ dev = [
     "pytest-cov>=7.1.0",
     "pytest-env>=1.6.0",
     "pytest-randomly>=4.1.0",
+    "pytest-xdist>=3.6.1",
     "respx>=0.22.0",
     "ruff>=0.15.8",
     "tiktoken>=0.12.0",

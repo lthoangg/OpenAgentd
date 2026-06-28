@@ -47,6 +47,7 @@ uv run ruff format app/ tests/
 uv run ty check app/
 
 # tests
+uv run pytest -n auto --no-cov -q    # parallel — fastest, skips coverage
 uv run pytest --no-cov -q            # fast — skip coverage
 uv run pytest                        # full — with coverage report (htmlcov/)
 uv run pytest tests/path/to/test.py::TestClass::test_name  # single test

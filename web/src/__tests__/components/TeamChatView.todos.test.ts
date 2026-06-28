@@ -118,20 +118,20 @@ describe('Todos Popover - Sorting Logic', () => {
 
 // ── Status Icon Mapping ────────────────────────────────────────────────────
 //
-// The popover now renders lucide icons (Check / X / Play / Circle)
+// The popover now renders lucide icons (Check / Minus / Loader2 / Circle)
 // instead of unicode glyphs so the visuals scale and theme cleanly
 // alongside the rest of the design system. We assert by component
 // identity — referentially comparing the lucide components imported
 // from the same module the production code uses.
 
-import { Check, Circle, Play, X } from 'lucide-react'
+import { Check, Circle, Loader2, Minus } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 function getStatusIcon(status: TodoItem['status']): LucideIcon {
   const icons: Record<TodoItem['status'], LucideIcon> = {
     completed: Check,
-    cancelled: X,
-    in_progress: Play,
+    cancelled: Minus,
+    in_progress: Loader2,
     pending: Circle,
   }
   return icons[status]
@@ -142,12 +142,12 @@ describe('Todos Popover - Status Icon Mapping', () => {
     expect(getStatusIcon('completed')).toBe(Check)
   })
 
-  it('maps cancelled status to an X icon', () => {
-    expect(getStatusIcon('cancelled')).toBe(X)
+  it('maps cancelled status to a minus icon', () => {
+    expect(getStatusIcon('cancelled')).toBe(Minus)
   })
 
-  it('maps in_progress status to a play icon', () => {
-    expect(getStatusIcon('in_progress')).toBe(Play)
+  it('maps in_progress status to a loader icon', () => {
+    expect(getStatusIcon('in_progress')).toBe(Loader2)
   })
 
   it('maps pending status to a circle icon', () => {
@@ -157,7 +157,7 @@ describe('Todos Popover - Status Icon Mapping', () => {
   it('returns correct icon for all statuses', () => {
     const statuses: TodoItem['status'][] = ['completed', 'cancelled', 'in_progress', 'pending']
     const icons = statuses.map(getStatusIcon)
-    expect(icons).toEqual([Check, X, Play, Circle])
+    expect(icons).toEqual([Check, Minus, Loader2, Circle])
   })
 })
 

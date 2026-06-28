@@ -24,8 +24,8 @@ the agent's current task list as a flat scrollable checklist managed by
 | **Opening Files or Agent Settings** | Closes the Todos popover automatically (and vice versa) on both desktop and mobile. |
 
 The popover is controlled (`open` / `onOpenChange`) so the keyboard shortcut
-can toggle it programmatically. It is rendered via the shared `Popover` /
-`PopoverContent` / `PopoverTrigger` primitives (`@base-ui/react/popover`).
+can toggle it programmatically. It is rendered via the custom `Popover` /
+`PopoverContent` / `PopoverTrigger` primitives in `web/src/components/ui/popover.tsx`. On mobile, it utilizes `useDeferredUnmount` for smooth entry/exit animations and a semi-transparent backdrop (`bg-black/15` + `backdrop-blur-[1px]`) that leaves the app header interactive.
 
 Mutual exclusion is handled by `closeOtherMobileOverlays` in `TeamChatView/index.tsx`. The sidebar/actions/coding-panel guards are mobile-only, but todos, files, capabilities, scheduler, and palette coordinate on both platforms.
 
@@ -67,18 +67,18 @@ on page refresh too — both `parseTeamBlocks` (team history) and
 
 ## Display
 
-Items render as a flat checklist sorted `in_progress → pending → completed → cancelled`. Each row is a status-aware checkbox icon followed by the task content; the optional claimed/assigned agent is shown as a small mono-uppercase tag at the row end.
+Items render as a flat checklist sorted `in_progress → pending → completed → cancelled`. Each row is a status-aware icon followed by the task content; the optional claimed/assigned agent is shown as a small mono-uppercase tag at the row end.
 
 | Status | Icon | Style |
 |--------|------|-------|
-| `in_progress` | filled `CircleDot` with a soft `animate-ping` halo — `--color-info` | Bolded text, tinted row (`--color-info-subtle`) + left accent rail |
-| `pending` | empty square — `--color-text-muted` | Normal text |
-| `completed` | checked square — `--color-success` | Dimmed + strikethrough |
-| `cancelled` | empty square — `--color-text-subtle` | Dimmed + strikethrough |
+| `in_progress` | spinning `Loader2` — `--color-info` | Font-medium, tinted row (`bg-(--color-info-subtle)/20`) |
+| `pending` | empty `Circle` (thin bullet-like) — `--color-text-muted` | Normal text |
+| `completed` | green `Check` (no box) — `--color-success` | Dimmed + strikethrough |
+| `cancelled` | muted `Minus` — `--color-text-subtle` | Dimmed + strikethrough |
 
 Note: `--color-accent` is **not** used for status hue — in the dark palette it resolves to the same value as `--color-text` and would lose contrast. The `in_progress` icon uses `--color-info` (which resolves to `--accent-blue`) so it stays distinct in both themes.
 
-The popover header shows a title with a `ListTodo` glyph, a `{done}/{total}` counter (which turns green when everything is finished), and a slim animated progress bar (`role="progressbar"`) underneath. The bar is blue while work remains and green at 100%. A dot indicator on the button itself appears when any item has `status === 'in_progress'`. The assigned/claimed agent renders as a small pill chip at the row end. Empty state: a faded `ListTodo` glyph above a `No tasks yet` line.
+The popover header shows a title with a `ListTodo` glyph, a `{done}/{total}` counter (which turns green when everything is finished), and a slim progress bar (`role="progressbar"`) underneath. The bar is blue while work remains and green at 100%. A dot indicator on the button itself appears when any item has `status === 'in_progress'`. The assigned/claimed agent renders as a small pill chip at the row end. Empty state: a faded `ListTodo` glyph above a `No tasks yet` line.
 
 Priority badges, task ids, and dependency lists from the underlying schema are intentionally not rendered — the popover is a quick-glance affordance, not a full task manager. Schema details are still available via `GET /api/team/sessions/{id}/todos`.
 

@@ -34,6 +34,7 @@ import { createPortal } from 'react-dom'
 import { ChevronDown, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { buttonVariants } from '@/components/ui/button'
+import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
 
 // ─── Context ────────────────────────────────────────────────────────────────
 
@@ -110,6 +111,7 @@ function Dropdown({
   disabled,
 }: DropdownProps) {
   const [open, setOpen] = useState(false)
+  const { mounted: panelMounted, closing: panelClosing } = useDeferredUnmount(open, 100)
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const panelRef = useRef<HTMLDivElement | null>(null)
   const [pos, setPos] = useState({ top: 0, left: 0, width: 0 })
@@ -128,7 +130,7 @@ function Dropdown({
   }, [])
 
   useEffect(() => {
-    if (!open) return
+    if (!panelMounted) return
     reposition()
     window.addEventListener('scroll', reposition, { passive: true, capture: true })
     window.addEventListener('resize', reposition)
@@ -136,7 +138,7 @@ function Dropdown({
       window.removeEventListener('scroll', reposition, { capture: true })
       window.removeEventListener('resize', reposition)
     }
-  }, [open, reposition])
+  }, [panelMounted, reposition])
 
   // Outside click closes
   useEffect(() => {
@@ -206,7 +208,7 @@ function Dropdown({
         />
       </button>
 
-      {open && createPortal(
+      {panelMounted && createPortal(
         <div
           ref={panelRef}
           role="menu"
@@ -216,7 +218,10 @@ function Dropdown({
             'min-w-[var(--dropdown-anchor-width)]',
             'rounded border border-(--color-border) bg-(--bg-card)',
             'p-1 shadow-md outline-none',
-            'animate-in fade-in-0 zoom-in-95 duration-100',
+            'duration-100',
+            panelClosing
+              ? 'animate-out fade-out-0 zoom-out-95'
+              : 'animate-in fade-in-0 zoom-in-95',
             panelClassName,
           )}
           style={{ top: pos.top, left: pos.left, '--dropdown-anchor-width': `${pos.width}px` } as React.CSSProperties}

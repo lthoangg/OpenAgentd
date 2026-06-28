@@ -23,6 +23,7 @@ import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
 
 // ─── Context ────────────────────────────────────────────────────────────────
 
@@ -83,15 +84,28 @@ interface SheetContentProps extends ComponentPropsWithRef<'div'> {
   showCloseButton?: boolean
 }
 
-const sideClasses: Record<SheetSide, string> = {
-  top: 'inset-x-0 top-0 border-b rounded-b-xl slide-in-from-top',
-  bottom: 'inset-x-0 bottom-0 border-t rounded-t-xl slide-in-from-bottom',
-  left: 'inset-y-0 left-0 h-full w-3/4 max-w-sm border-r rounded-r-xl slide-in-from-left',
-  right: 'inset-y-0 right-0 h-full w-3/4 max-w-sm border-l rounded-l-xl slide-in-from-right',
+const sideIn: Record<SheetSide, string> = {
+  top:    'slide-in-from-top',
+  bottom: 'slide-in-from-bottom',
+  left:   'slide-in-from-left',
+  right:  'slide-in-from-right',
+}
+const sideOut: Record<SheetSide, string> = {
+  top:    'slide-out-to-top',
+  bottom: 'slide-out-to-bottom',
+  left:   'slide-out-to-left',
+  right:  'slide-out-to-right',
+}
+const sideLayout: Record<SheetSide, string> = {
+  top:    'inset-x-0 top-0 border-b rounded-b-xl',
+  bottom: 'inset-x-0 bottom-0 border-t rounded-t-xl',
+  left:   'inset-y-0 left-0 h-full w-3/4 max-w-sm border-r rounded-r-xl',
+  right:  'inset-y-0 right-0 h-full w-3/4 max-w-sm border-l rounded-l-xl',
 }
 
 function SheetContent({ className, children, side = 'right', showCloseButton = true, ...props }: SheetContentProps) {
   const { open, setOpen, titleId } = useSheet()
+  const { mounted, closing } = useDeferredUnmount(open, 200)
   const contentRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -111,13 +125,16 @@ function SheetContent({ className, children, side = 'right', showCloseButton = t
     return () => { prev?.focus() }
   }, [open])
 
-  if (!open) return null
+  if (!mounted) return null
 
   return createPortal(
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 z-50 bg-black/20 backdrop-blur-[2px] animate-in fade-in-0 duration-200"
+        className={cn(
+          'fixed inset-0 z-50 bg-black/10 supports-backdrop-filter:backdrop-blur-xs duration-200',
+          closing ? 'animate-out fade-out-0' : 'animate-in fade-in-0',
+        )}
         onClick={() => setOpen(false)}
         aria-hidden="true"
       />
@@ -132,8 +149,11 @@ function SheetContent({ className, children, side = 'right', showCloseButton = t
           'fixed z-50 flex flex-col overflow-y-auto overscroll-contain',
           'border border-(--color-border) bg-(--bg-card)',
           'text-sm text-(--color-text) shadow-xl outline-none',
-          'animate-in duration-200',
-          sideClasses[side],
+          'duration-200',
+          sideLayout[side],
+          closing
+            ? cn('animate-out fade-out-0', sideOut[side])
+            : cn('animate-in fade-in-0', sideIn[side]),
           className,
         )}
         onClick={(e) => e.stopPropagation()}

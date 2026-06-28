@@ -25,6 +25,7 @@ import {
   type ReactNode,
 } from 'react'
 import { createPortal } from 'react-dom'
+import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
 import { cn } from '@/lib/utils'
 
 // ─── Context ────────────────────────────────────────────────────────────────
@@ -171,6 +172,9 @@ function PopoverContent({
   const contentRef = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState<Pos>({ top: 0, left: 0 })
 
+  // Must be called before any conditional returns (Rules of Hooks)
+  const { mounted, closing } = useDeferredUnmount(open, 100)
+
   const reposition = useCallback(() => {
     const trigger = triggerRef.current
     const content = contentRef.current
@@ -179,7 +183,7 @@ function PopoverContent({
   }, [triggerRef, side, align, sideOffset])
 
   useEffect(() => {
-    if (!open) return
+    if (!mounted) return
     reposition()
     window.addEventListener('scroll', reposition, { passive: true, capture: true })
     window.addEventListener('resize', reposition)
@@ -187,7 +191,7 @@ function PopoverContent({
       window.removeEventListener('scroll', reposition, { capture: true })
       window.removeEventListener('resize', reposition)
     }
-  }, [open, reposition])
+  }, [mounted, reposition])
 
   // Close on outside click
   useEffect(() => {
@@ -211,7 +215,7 @@ function PopoverContent({
     return () => document.removeEventListener('keydown', handler)
   }, [open, setOpen])
 
-  if (!open) return null
+  if (!mounted) return null
 
   const anchorWidth = triggerRef.current?.getBoundingClientRect().width ?? 0
 
@@ -225,7 +229,10 @@ function PopoverContent({
         'flex w-[min(18rem,calc(100vw-1rem))] flex-col gap-2.5',
         'rounded border border-(--color-border) bg-(--bg-card)',
         'p-3.5 text-xs text-(--color-text) shadow-md outline-none',
-        'animate-in fade-in-0 zoom-in-95 duration-100',
+        'duration-100',
+        closing
+          ? 'animate-out fade-out-0 zoom-out-95'
+          : 'animate-in fade-in-0 zoom-in-95',
         className,
       )}
       style={{

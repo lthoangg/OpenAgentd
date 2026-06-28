@@ -30,6 +30,7 @@ import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
 
 // ─── Context ────────────────────────────────────────────────────────────────
 
@@ -87,14 +88,16 @@ function DialogPortal({ children }: { children: ReactNode }) {
   return createPortal(children, document.body)
 }
 
-function DialogOverlay({ className, ...props }: ComponentPropsWithRef<'div'>) {
+function DialogOverlay({ className, closing, ...props }: ComponentPropsWithRef<'div'> & { closing?: boolean }) {
   const { setOpen } = useDialog()
   return (
     <div
       data-slot="dialog-overlay"
       className={cn(
-        'fixed inset-0 z-50 bg-black/20 backdrop-blur-[2px]',
-        'animate-in fade-in-0 duration-150',
+        'fixed inset-0 z-50 bg-black/10 supports-backdrop-filter:backdrop-blur-xs',
+        closing
+          ? 'animate-out fade-out-0 duration-100'
+          : 'animate-in fade-in-0 duration-100',
         className,
       )}
       onClick={() => setOpen(false)}
@@ -110,6 +113,7 @@ interface DialogContentProps extends ComponentPropsWithRef<'div'> {
 
 function DialogContent({ className, children, showCloseButton = true, ...props }: DialogContentProps) {
   const { open, setOpen, titleId } = useDialog()
+  const { mounted, closing } = useDeferredUnmount(open, 100)
   const contentRef = useRef<HTMLDivElement>(null)
 
   // Close on Escape
@@ -131,11 +135,11 @@ function DialogContent({ className, children, showCloseButton = true, ...props }
     return () => { prev?.focus() }
   }, [open])
 
-  if (!open) return null
+  if (!mounted) return null
 
   return (
     <DialogPortal>
-      <DialogOverlay />
+      <DialogOverlay closing={closing} />
       <div
         ref={contentRef}
         data-slot="dialog-content"
@@ -148,7 +152,9 @@ function DialogContent({ className, children, showCloseButton = true, ...props }
           'max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain',
           'rounded-xl border border-(--color-border) bg-(--bg-card)',
           'p-4 text-sm text-(--color-text) shadow-xl outline-none',
-          'animate-in fade-in-0 zoom-in-95 duration-150',
+          closing
+            ? 'animate-out fade-out-0 zoom-out-95 duration-100'
+            : 'animate-in fade-in-0 zoom-in-95 duration-100',
           className,
         )}
         onClick={(e) => e.stopPropagation()}

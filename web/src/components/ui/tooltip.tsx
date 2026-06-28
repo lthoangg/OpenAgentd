@@ -15,8 +15,6 @@
  * A small CSS triangle arrow points toward the trigger.
  *
  * Accessibility: trigger gets aria-describedby pointing at the content.
- * The content panel is role="tooltip" and always rendered in the DOM
- * (visibility toggled via CSS so screen readers can read it).
  */
 import {
   createContext,
@@ -30,6 +28,7 @@ import {
   type ComponentPropsWithRef,
 } from 'react'
 import { cn } from '@/lib/utils'
+import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
 
 // ─── Context ────────────────────────────────────────────────────────────────
 
@@ -113,12 +112,34 @@ interface TooltipContentProps extends ComponentPropsWithRef<'div'> {
 
 function TooltipContent({ className, side = 'top', children, ...props }: TooltipContentProps) {
   const { id, open } = useTooltip()
+  // Deferred unmount so the close animation plays before removal
+  const { mounted, closing } = useDeferredUnmount(open, 150)
 
+  if (!mounted) return null
+
+  // Animation classes per side
+  const slideIn = {
+    top: 'slide-in-from-bottom-1',
+    bottom: 'slide-in-from-top-1',
+    left: 'slide-in-from-right-1',
+    right: 'slide-in-from-left-1',
+  }[side]
+
+  // Arrow: a 5×5 rotated square positioned at the edge facing the trigger
+  const arrowClass = {
+    top: 'bottom-[-3px] left-1/2 -translate-x-1/2',
+    bottom: 'top-[-3px] left-1/2 -translate-x-1/2',
+    left: 'right-[-3px] top-1/2 -translate-y-1/2',
+    right: 'left-[-3px] top-1/2 -translate-y-1/2',
+  }[side]
+
+  // Position the panel relative to the trigger via absolute within the Tooltip
+  // wrapper (which is `relative inline-flex`)
   const positionClass = {
-    top: 'bottom-full left-1/2 -translate-x-1/2 mb-1.5',
-    bottom: 'top-full left-1/2 -translate-x-1/2 mt-1.5',
-    left: 'right-full top-1/2 -translate-y-1/2 mr-1.5',
-    right: 'left-full top-1/2 -translate-y-1/2 ml-1.5',
+    top: 'bottom-full left-1/2 -translate-x-1/2 mb-2',
+    bottom: 'top-full left-1/2 -translate-x-1/2 mt-2',
+    left: 'right-full top-1/2 -translate-y-1/2 mr-2',
+    right: 'left-full top-1/2 -translate-y-1/2 ml-2',
   }[side]
 
   return (
@@ -131,14 +152,24 @@ function TooltipContent({ className, side = 'top', children, ...props }: Tooltip
         'rounded-md px-2.5 py-1.5 text-xs',
         'bg-(--color-text) text-(--bg-page)',
         'shadow-sm',
-        'transition-opacity duration-150',
-        open ? 'opacity-100' : 'opacity-0',
+        'duration-150',
+        closing
+          ? 'animate-out fade-out-0 zoom-out-95'
+          : `animate-in fade-in-0 zoom-in-95 ${slideIn}`,
         positionClass,
         className,
       )}
       {...props}
     >
       {children}
+      {/* CSS arrow triangle */}
+      <span
+        aria-hidden="true"
+        className={cn(
+          'absolute size-[6px] rotate-45 bg-(--color-text)',
+          arrowClass,
+        )}
+      />
     </div>
   )
 }

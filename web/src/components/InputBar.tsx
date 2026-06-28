@@ -419,9 +419,45 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     ? value.slice(1).toLowerCase()
     : null
 
+  const executeSlashCommand = useCallback((cmd: SlashCommand) => {
+    if (cmd.isSeparator) return
+    setShellMode(false)
+    if (cmd.keepInputOpen) {
+      // Insert ``/<id> `` and keep the textarea focused so the user can
+      // append arguments. Submission is what triggers the action — the
+      // parent's onSubmit handler inspects the raw text.
+      const next = `/${cmd.insertText ?? cmd.displayName ?? cmd.id} `
+      setValue(next)
+      const el = textareaRef.current
+      if (el) {
+        requestAnimationFrame(() => {
+          el.focus()
+          el.setSelectionRange(next.length, next.length)
+          resize()
+        })
+      }
+      return
+    }
+    setValue('')
+    if (textareaRef.current) textareaRef.current.style.height = 'auto'
+    onSlashCommand?.(cmd.id)
+  }, [onSlashCommand, resize])
+
   const submit = useCallback(() => {
     const trimmed = value.trim()
-    if (!trimmed || disabled || slashFilter !== null) return
+    if (!trimmed || disabled) return
+    if (slashFilter !== null) {
+      const matching = slashCommands?.find(
+        (cmd) =>
+          !cmd.isSeparator &&
+          (cmd.id === slashFilter ||
+            (cmd.insertText && cmd.insertText.toLowerCase() === slashFilter)),
+      )
+      if (matching) {
+        executeSlashCommand(matching)
+      }
+      return
+    }
     const submitted = shellMode ? `!${trimmed}` : trimmed
     onSubmit(submitted, files.length > 0 ? files : undefined)
     setLocalHistory((prev) =>
@@ -446,6 +482,8 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     files,
     shellMode,
     slashFilter,
+    slashCommands,
+    executeSlashCommand,
   ])
 
   const addFile = useCallback((file: File) => {
@@ -577,30 +615,6 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     const el = slashOptionRefs.current[clampedIndex]
     el?.scrollIntoView({ block: 'nearest' })
   }, [clampedIndex, slashMenuOpen, selectableSlashCommands])
-
-  const executeSlashCommand = useCallback((cmd: SlashCommand) => {
-    if (cmd.isSeparator) return
-    setShellMode(false)
-    if (cmd.keepInputOpen) {
-      // Insert ``/<id> `` and keep the textarea focused so the user can
-      // append arguments. Submission is what triggers the action — the
-      // parent's onSubmit handler inspects the raw text.
-      const next = `/${cmd.insertText ?? cmd.displayName ?? cmd.id} `
-      setValue(next)
-      const el = textareaRef.current
-      if (el) {
-        requestAnimationFrame(() => {
-          el.focus()
-          el.setSelectionRange(next.length, next.length)
-          resize()
-        })
-      }
-      return
-    }
-    setValue('')
-    if (textareaRef.current) textareaRef.current.style.height = 'auto'
-    onSlashCommand?.(cmd.id)
-  }, [onSlashCommand, resize])
 
   const insertSnippet = useCallback(async (cmd: SnippetCommand) => {
     if (!snippetRange) return

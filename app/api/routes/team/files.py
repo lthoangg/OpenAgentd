@@ -45,7 +45,7 @@ from app.api.schemas.team import (
     WorkspaceCommitDiffResponse,
 )
 from app.core.db import async_session_factory
-from app.core.paths import session_workspace_dir, uploads_dir, workspace_dir
+from app.core.paths import session_uploads_dir, session_workspace_dir, workspace_dir
 from app.models.chat import ChatSession
 from app.services import team_manager
 
@@ -93,6 +93,15 @@ def _guess_media_type(path: Path) -> str:
     return mime or "application/octet-stream"
 
 
+async def _session_row(session_id: str) -> ChatSession | None:
+    """Best-effort load of the chat session row for path resolution."""
+    try:
+        async with async_session_factory() as db:
+            return await db.get(ChatSession, uuid.UUID(session_id))
+    except Exception:
+        return None
+
+
 async def _session_workspace(session_id: str) -> Path:
     """Resolve a session's workspace root, tolerating absent DB rows.
 
@@ -102,12 +111,7 @@ async def _session_workspace(session_id: str) -> Path:
     ``OPENAGENTD_WORKSPACE_DIR``. The fallback uses this module's local
     ``workspace_dir`` reference so tests can monkey-patch it.
     """
-    row = None
-    try:
-        async with async_session_factory() as db:
-            row = await db.get(ChatSession, uuid.UUID(session_id))
-    except Exception:
-        row = None
+    row = await _session_row(session_id)
     if row is not None and row.workspace:
         return session_workspace_dir(session_id, row.workspace)
     return workspace_dir(session_id)
@@ -131,7 +135,11 @@ async def get_uploaded_file(session_id: str, filename: str) -> FileResponse:
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid session id.")
 
-    resolved = _safe_resolve(uploads_dir(session_id), filename)
+    row = await _session_row(session_id)
+    resolved = _safe_resolve(
+        session_uploads_dir(session_id, row.workspace if row is not None else None),
+        filename,
+    )
     return FileResponse(
         path=str(resolved),
         media_type=_guess_media_type(resolved),

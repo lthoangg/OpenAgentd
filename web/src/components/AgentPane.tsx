@@ -137,22 +137,24 @@ const UserBubble = memo(function UserBubble({ content, timestamp, attachments, o
 
                if (isImage) {
                  return (
-                   <ImageAttachment
-                     key={idx}
-                     src={resolveApiUrl(att.url) || ''}
-                     alt={att.original_name || `Attachment ${idx + 1}`}
-                   />
+                  <ImageAttachment
+                    key={idx}
+                    src={resolveApiUrl(att.url) || ''}
+                    alt={att.filename || att.original_name || `Attachment ${idx + 1}`}
+                  />
+
                  )
                }
 
                return (
-                 <FileCard
-                   key={idx}
-                   name={att.original_name || att.filename || `File ${idx + 1}`}
-                   mediaType={att.media_type}
-                   url={resolveApiUrl(att.url)}
-                   clickable={!!att.url}
-                 />
+                  <FileCard
+                    key={idx}
+                    name={att.filename || att.original_name || `File ${idx + 1}`}
+                    mediaType={att.media_type}
+                    url={resolveApiUrl(att.url)}
+                    clickable={!!att.url}
+                  />
+
                )
              })}
            </div>

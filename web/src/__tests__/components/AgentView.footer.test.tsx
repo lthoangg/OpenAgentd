@@ -69,7 +69,7 @@ describe("AgentView — mentioned files", () => {
     expect(screen.queryByText("Makefile#L4-L6")).toBeNull()
   })
 
-  it("shows explicit upload attachment cards", () => {
+  it("shows explicit upload attachment cards using stored filename", () => {
     renderStream({
       blocks: [{
         ...makeUserBlock("u1", "Use attached notes"),
@@ -83,7 +83,8 @@ describe("AgentView — mentioned files", () => {
       }],
     })
 
-    expect(screen.getByText("notes.txt")).toBeTruthy()
+    expect(screen.getByText("generated.txt")).toBeTruthy()
+    expect(screen.queryByText("notes.txt")).toBeNull()
   })
 
   it("opens a clicked file mention", async () => {

@@ -137,10 +137,11 @@ export function UserBubble({ content, timestamp, attachments, onRevert, modelId,
                // swipe between siblings, and map each thumbnail to its index.
                const imageGallery = visibleAttachments
                  .filter((a: MessageAttachment) => a.category === 'image')
-                 .map((a: MessageAttachment, i: number) => ({
-                   src: resolveApiUrl(a.url) || '',
-                   alt: a.original_name || `Attachment ${i + 1}`,
-                 }))
+                  .map((a: MessageAttachment, i: number) => ({
+                    src: resolveApiUrl(a.url) || '',
+                    alt: a.filename || a.original_name || `Attachment ${i + 1}`,
+                  }))
+
                let imageCursor = -1
                return visibleAttachments.map((att: MessageAttachment, idx: number) => {
                const isImage = att.category === 'image'
@@ -148,24 +149,26 @@ export function UserBubble({ content, timestamp, attachments, onRevert, modelId,
                if (isImage) {
                  imageCursor += 1
                  return (
-                   <ImageAttachment
-                     key={idx}
-                     src={resolveApiUrl(att.url) || ''}
-                     alt={att.original_name || `Attachment ${idx + 1}`}
-                     gallery={imageGallery}
-                     galleryIndex={imageCursor}
-                   />
+                    <ImageAttachment
+                      key={idx}
+                      src={resolveApiUrl(att.url) || ''}
+                      alt={att.filename || att.original_name || `Attachment ${idx + 1}`}
+                      gallery={imageGallery}
+                      galleryIndex={imageCursor}
+                    />
+
                  )
                }
 
                return (
-                 <FileCard
-                   key={idx}
-                   name={att.original_name || att.filename || `File ${idx + 1}`}
-                   mediaType={att.media_type}
-                   url={resolveApiUrl(att.url)}
-                   clickable={!!att.url}
-                 />
+                  <FileCard
+                    key={idx}
+                    name={att.filename || att.original_name || `File ${idx + 1}`}
+                    mediaType={att.media_type}
+                    url={resolveApiUrl(att.url)}
+                    clickable={!!att.url}
+                  />
+
                )
              })
              })()}

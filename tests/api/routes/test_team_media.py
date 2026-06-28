@@ -15,6 +15,7 @@ Both endpoints must enforce:
 from __future__ import annotations
 
 import uuid
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -82,11 +83,9 @@ class TestUploadsEndpoint:
             assert "text/html" in resp.headers.get("content-type", "")
 
     def test_happy_path_serves_file(self, client, session_id, tmp_path, monkeypatch):
-        # Redirect uploads_dir into a tmp path.
         fake_root = tmp_path / "uploads"
         fake_root.mkdir(parents=True)
         target = fake_root / "hello.png"
-        # 1x1 transparent PNG bytes
         png = (
             b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00"
             b"\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\rIDATx\x9c"
@@ -97,11 +96,35 @@ class TestUploadsEndpoint:
 
         from app.api.routes.team import files as team_routes
 
+        async def fake_session_row(_sid: str):
+            return None
+
+        monkeypatch.setattr(team_routes, "_session_row", fake_session_row)
         monkeypatch.setattr(
-            team_routes,
-            "uploads_dir",
-            lambda sid: fake_root,
+            team_routes, "session_uploads_dir", lambda sid, workspace=None: fake_root
         )
+
+        resp = client.get(f"/api/team/{session_id}/uploads/hello.png")
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("image/png")
+        assert resp.content == png
+
+    def test_coding_session_uploads_use_workspace_uploads_dir(
+        self, client, session_id, tmp_path, monkeypatch
+    ):
+        workspace = tmp_path / "repo"
+        uploads = workspace / "uploads"
+        uploads.mkdir(parents=True)
+        target = uploads / "hello.png"
+        png = b"\x89PNG\r\n\x1a\n"
+        target.write_bytes(png)
+
+        from app.api.routes.team import files as team_routes
+
+        async def fake_session_row(_sid: str):
+            return SimpleNamespace(workspace=str(workspace))
+
+        monkeypatch.setattr(team_routes, "_session_row", fake_session_row)
 
         resp = client.get(f"/api/team/{session_id}/uploads/hello.png")
         assert resp.status_code == 200
@@ -147,7 +170,13 @@ class TestUploadsEndpoint:
 
         from app.api.routes.team import files as team_routes
 
-        monkeypatch.setattr(team_routes, "uploads_dir", lambda sid: fake_root)
+        async def fake_session_row(_sid: str):
+            return None
+
+        monkeypatch.setattr(team_routes, "_session_row", fake_session_row)
+        monkeypatch.setattr(
+            team_routes, "session_uploads_dir", lambda sid, workspace=None: fake_root
+        )
 
         resp = client.get(f"/api/team/{session_id}/uploads/%2e%2e%2fsecret.txt")
         # The URL-encoded traversal should be rejected, not found, or hit SPA fallback
@@ -162,13 +191,18 @@ class TestUploadsEndpoint:
         fake_root = tmp_path / "uploads"
         fake_root.mkdir(parents=True)
         target = fake_root / "photo.jpg"
-        # Minimal JPEG magic bytes
         jpeg = b"\xff\xd8\xff\xe0\x00\x10JFIF"
         target.write_bytes(jpeg)
 
         from app.api.routes.team import files as team_routes
 
-        monkeypatch.setattr(team_routes, "uploads_dir", lambda sid: fake_root)
+        async def fake_session_row(_sid: str):
+            return None
+
+        monkeypatch.setattr(team_routes, "_session_row", fake_session_row)
+        monkeypatch.setattr(
+            team_routes, "session_uploads_dir", lambda sid, workspace=None: fake_root
+        )
 
         resp = client.get(f"/api/team/{session_id}/uploads/photo.jpg")
         assert resp.status_code == 200
@@ -179,13 +213,18 @@ class TestUploadsEndpoint:
         fake_root = tmp_path / "uploads"
         fake_root.mkdir(parents=True)
         target = fake_root / "image.webp"
-        # Minimal WebP magic bytes (RIFF...WEBP)
         webp = b"RIFF\x00\x00\x00\x00WEBP"
         target.write_bytes(webp)
 
         from app.api.routes.team import files as team_routes
 
-        monkeypatch.setattr(team_routes, "uploads_dir", lambda sid: fake_root)
+        async def fake_session_row(_sid: str):
+            return None
+
+        monkeypatch.setattr(team_routes, "_session_row", fake_session_row)
+        monkeypatch.setattr(
+            team_routes, "session_uploads_dir", lambda sid, workspace=None: fake_root
+        )
 
         resp = client.get(f"/api/team/{session_id}/uploads/image.webp")
         assert resp.status_code == 200
@@ -204,7 +243,13 @@ class TestUploadsEndpoint:
 
         from app.api.routes.team import files as team_routes
 
-        monkeypatch.setattr(team_routes, "uploads_dir", lambda sid: fake_uploads)
+        async def fake_session_row(_sid: str):
+            return None
+
+        monkeypatch.setattr(team_routes, "_session_row", fake_session_row)
+        monkeypatch.setattr(
+            team_routes, "session_uploads_dir", lambda sid, workspace=None: fake_uploads
+        )
 
         # Try to access workspace file via uploads endpoint — must fail.
         resp = client.get(f"/api/team/{session_id}/uploads/secret.txt")

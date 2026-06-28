@@ -14,10 +14,9 @@
  *   in_progress → pending → completed → cancelled
  */
 
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check, Circle, ListTodo, Loader2, Minus } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { TopbarAction } from '@/components/ui/topbar-action'
 import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
 import { cn } from '@/lib/utils'
@@ -49,6 +48,11 @@ const STATUS_ORDER: Record<TodoItem['status'], number> = {
 
 function getAgentLabel(todo: TodoItem): string | null {
   return todo.claimed_by ?? todo.assigned_to ?? null
+}
+
+interface DesktopPopoverPosition {
+  top: number
+  left: number
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -87,6 +91,65 @@ export function TodosPopover({
   )
 
   const { mounted, closing } = useDeferredUnmount(open, 100)
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const desktopPanelRef = useRef<HTMLDivElement | null>(null)
+  const [desktopPosition, setDesktopPosition] = useState<DesktopPopoverPosition | null>(null)
+
+  useEffect(() => {
+    if (!trigger || !open) {
+      setDesktopPosition(null)
+      return
+    }
+
+    const updateDesktopPosition = () => {
+      const triggerEl = triggerRef.current
+      const panelEl = desktopPanelRef.current
+      if (!triggerEl) return
+
+      const triggerRect = triggerEl.getBoundingClientRect()
+      const panelWidth = panelEl?.offsetWidth ?? Math.min(window.innerWidth - 16, 320)
+      const panelHeight = panelEl?.offsetHeight ?? 280
+      const gap = 8
+      const left = Math.max(8, Math.min(triggerRect.right - panelWidth, window.innerWidth - panelWidth - 8))
+      const preferredTop = triggerRect.bottom + gap
+      const top = preferredTop + panelHeight > window.innerHeight
+        ? Math.max(8, triggerRect.top - panelHeight - gap)
+        : preferredTop
+
+      setDesktopPosition({ top, left })
+    }
+
+    updateDesktopPosition()
+    window.addEventListener('resize', updateDesktopPosition)
+    window.addEventListener('scroll', updateDesktopPosition, { passive: true, capture: true })
+
+    return () => {
+      window.removeEventListener('resize', updateDesktopPosition)
+      window.removeEventListener('scroll', updateDesktopPosition, { capture: true })
+    }
+  }, [open, trigger])
+
+  useEffect(() => {
+    if (!trigger || !open) return
+
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node
+      if (triggerRef.current?.contains(target) || desktopPanelRef.current?.contains(target)) return
+      onOpenChange(false)
+    }
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onOpenChange(false)
+    }
+
+    document.addEventListener('mousedown', handlePointerDown)
+    document.addEventListener('keydown', handleEscape)
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown)
+      document.removeEventListener('keydown', handleEscape)
+    }
+  }, [onOpenChange, open, trigger])
 
   const content = (
     <>
@@ -231,39 +294,49 @@ export function TodosPopover({
   }
 
   return (
-    <Popover open={open} onOpenChange={onOpenChange}>
+    <>
       {trigger && (
-        <PopoverTrigger
-          render={
-            <TopbarAction
-              Icon={ListTodo}
-              indicator={hasInProgress}
-              badge={progressLabel}
-              title={sessionId ? 'Task list (Ctrl+T)' : 'No active session'}
-              aria-label="Task list"
-              // Selected/active highlight while the popover is open — matches
-              // the Files / Agents active treatment in the topbar so the
-              // whole cluster reads consistently (team + coding modes).
-              data-state={open ? 'open' : 'closed'}
-              className={
-                open
-                  ? 'border border-(--color-border-strong) bg-(--bg-key) text-(--color-text)'
-                  : undefined
-              }
-            />
-          }
+        <TopbarAction
+          ref={triggerRef}
+          Icon={ListTodo}
+          indicator={hasInProgress}
+          badge={progressLabel}
+          title={sessionId ? 'Task list (Ctrl+T)' : 'No active session'}
+          aria-label="Task list"
+          aria-expanded={open}
           disabled={!sessionId}
+          onClick={() => {
+            if (!sessionId) return
+            onOpenChange(!open)
+          }}
+          data-state={open ? 'open' : 'closed'}
+          className={
+            open
+              ? 'border border-(--color-border-strong) bg-(--bg-key) text-(--color-text)'
+              : undefined
+          }
         />
       )}
-      <PopoverContent
-        side="bottom"
-        align="end"
-        // ``ring-0`` cancels the shadcn default; outline comes from the
-        // ``--color-border`` ring so the chrome matches Files / Agents.
-        className="w-[min(calc(100vw-1rem),20rem)] overflow-hidden rounded-lg border border-(--color-border) bg-(--bg-card) p-0 shadow-lg ring-1 ring-black/5"
-      >
-        {content}
-      </PopoverContent>
-    </Popover>
+
+      {trigger && mounted && (
+        <div
+          ref={desktopPanelRef}
+          data-slot="popover-content"
+          className={cn(
+            'fixed z-50 w-[min(calc(100vw-1rem),20rem)] overflow-hidden rounded-lg border border-(--color-border) bg-(--bg-card) p-0 shadow-lg ring-1 ring-black/5',
+            closing
+              ? 'animate-out fade-out-0 zoom-out-95 duration-100 ease-out'
+              : 'animate-in fade-in-0 duration-100 ease-out'
+          )}
+          style={{
+            top: desktopPosition?.top ?? 0,
+            left: desktopPosition?.left ?? 0,
+            visibility: desktopPosition ? 'visible' : 'hidden',
+          }}
+        >
+          {content}
+        </div>
+      )}
+    </>
   )
 }

@@ -61,6 +61,31 @@ Touch/swipe behaviour is centralised so drawers can never conflict:
 When adding a new mobile panel, route it through `use-edge-swipe` rather
 than hand-rolling `onTouch*` handlers.
 
+## UI primitives (`components/ui/`)
+
+All UI primitives are **zero external-dependency** implementations — no shadcn, no
+`@base-ui/react`, no `class-variance-authority`, no `clsx`, no `tailwind-merge`.
+
+| File | What it provides |
+|---|---|
+| `button.tsx` | Variants via plain record maps; `buttonVariants()` helper |
+| `dialog.tsx` | React portal + backdrop; Escape/click-outside; focus trap; `animate-in`/`animate-out` |
+| `sheet.tsx` | Same as dialog but slides in from an edge |
+| `popover.tsx` | Portal-anchored via `getBoundingClientRect`; `--anchor-width` CSS var set |
+| `dropdown.tsx` | Portal panel; select or action-menu mode; flip-up logic |
+| `tooltip.tsx` | Absolute-positioned within `relative` wrapper; directional `slide-in-from-*` |
+| `switch.tsx` | `<input type=checkbox role=switch>` in a styled label |
+| `tabs.tsx` | Plain record maps for variant classes |
+| `_use-deferred-unmount.ts` | `useDeferredUnmount(open, ms)` — plays exit animation before unmount |
+| `lib/utils.ts` | `cn()` — 20-line inline class concatenator; no external deps |
+
+**Animations** come from `tw-animate-css` (`animate-in`, `animate-out`, `fade-in-0`,
+`zoom-in-95`, `slide-in-from-*`, `slide-out-to-*`). Do **not** remove it.
+
+**Hook order rule:** `useDeferredUnmount` must always be called *before* any
+conditional `return null` — place it at the top of the component, above all
+`useEffect` calls, to avoid Rules-of-Hooks violations.
+
 ## Gotchas
 
 - Use static ESM imports and `@/` aliases.

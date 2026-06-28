@@ -4,8 +4,10 @@ React/Vite frontend for OpenAgentd, embedded in the Tauri shell and served by th
 
 ## Tech stack
 
-- Bun, React 19, TypeScript 5.9, Vite 7, Tailwind v4.
-- TanStack Router/Query, Zustand + Immer, Base UI, Tauri JS plugins.
+- Bun, React 19, TypeScript 5.9, Vite 7, Tailwind v4 + `tw-animate-css`.
+- TanStack Router/Query, Zustand + Immer, Tauri JS plugins.
+- UI primitives are **zero-dependency** hand-rolled components in `src/components/ui/`
+  (no shadcn, no Base UI, no CVA, no clsx/tailwind-merge — see `src/AGENTS.md`).
 - Tests use Bun test with Happy DOM and Testing Library.
 
 ## Layout
@@ -15,7 +17,6 @@ src/           Application code, routes, components, stores, queries, tests
 public/        Static assets
 vite.config.ts Vite config and API/SSE dev proxy
 eslint.config.js ESLint config
-components.json shadcn/ui-style component config
 ```
 
 ## Essential commands

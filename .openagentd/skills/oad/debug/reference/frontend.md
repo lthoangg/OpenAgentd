@@ -24,6 +24,9 @@ For live UI issues (visual regression, interaction bugs, DOM/CSS state) load and
 ```
 web/src/
   components/            UI components
+    ui/                  Zero-dep primitives (button, dialog, sheet, popover,
+                           dropdown, tooltip, switch, tabs — no shadcn/Base UI/CVA)
+      _use-deferred-unmount.ts  Exit-animation hook; must be called before any return null
     AgentView/
       UserBubble.tsx     User message bubble (mention highlighting, collapse, copy)
     InboxBubble.tsx      Inter-agent inbox messages
@@ -52,6 +55,7 @@ web/src/
 | API shape mismatch | `api/types.ts`, query/mutation in `queries/` |
 | Hook misfire | Custom hook in `hooks/` + React rules (StrictMode double-invoke) |
 | CSS / layout | Tailwind classes, `index.css` design tokens, dark-mode variants |
+| UI primitive bug | `components/ui/*.tsx`; check portal positioning, `useDeferredUnmount` hook order, `tw-animate-css` classes |
 | Streaming / SSE | `hooks/` streaming hook, `stores/` pending message queue |
 | Mention / file ref | `InputBar.mentions.ts`, `UserBubble.tsx` → `renderMentionSegments` |
 

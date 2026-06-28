@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from loguru import logger
 
 from app.agent.mcp import load_config as load_mcp_config, mcp_manager
@@ -112,6 +113,7 @@ def create_app() -> FastAPI:
     # true end-to-end latency, including CORS / size-limit rejects.
     app.add_middleware(HTTPMetricsMiddleware)
     app.add_middleware(RequestSizeLimitMiddleware)
+    app.add_middleware(GZipMiddleware, minimum_size=1000)
     # Desktop token auth — no-op unless OPENAGENTD_DESKTOP_TOKEN is set
     # (Tauri shell sets it; CLI/server users get the existing open behaviour).
     app.add_middleware(DesktopTokenMiddleware)

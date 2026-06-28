@@ -170,7 +170,21 @@ All custom middlewares (`HTTPMetricsMiddleware`, `DesktopTokenMiddleware`, `Secu
 
 - Zero task-spawning overhead per request, reducing baseline API latency and memory usage.
 
-### 9. Lazy-load large tool results and artifacts
+### 9. Enable Gzip payload compression (Completed)
+
+**Problem**
+
+Large JSON payloads (e.g. trace details, workspace file listings, and long chat histories) were transferred without compression. This increased network overhead and slowed down cockpit loading times, especially on remote or slower network connections.
+
+**Changes**
+
+- Added `GZipMiddleware` to the FastAPI application stack with a `minimum_size=1000` bytes threshold.
+
+**Success criteria**
+
+- Responses larger than 1KB are compressed using Gzip, resulting in 5x-10x smaller payload transfer sizes for large datasets.
+
+### 10. Lazy-load large tool results and artifacts
 
 **Problem**
 

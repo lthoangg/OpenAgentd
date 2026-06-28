@@ -12,11 +12,9 @@ Usage::
 
 from __future__ import annotations
 
-from fastapi import Request
 from fastapi.responses import JSONResponse
 from loguru import logger
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.types import ASGIApp
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 # Default: 4 MB
 _DEFAULT_MAX_BYTES = 4 * 1024 * 1024
@@ -58,7 +56,7 @@ _DEFAULT_SECURITY_HEADERS: dict[str, str] = {
 }
 
 
-class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+class SecurityHeadersMiddleware:
     """Attach defensive security headers to every response.
 
     Defaults are tuned for a same-origin, on-machine SPA + API.  HSTS is
@@ -84,7 +82,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         extra_headers: dict[str, str] | None = None,
         enable_hsts: bool = False,
     ) -> None:
-        super().__init__(app)
+        self.app = app
         headers = dict(_DEFAULT_SECURITY_HEADERS)
         if enable_hsts:
             headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
@@ -94,16 +92,26 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # Drop keys explicitly cleared by caller (empty string value).
         self._headers = {k: v for k, v in headers.items() if v != ""}
 
-    async def dispatch(self, request: Request, call_next):
-        response = await call_next(request)
-        for name, value in self._headers.items():
-            # Do not overwrite headers the route explicitly set.
-            if name not in response.headers:
-                response.headers[name] = value
-        return response
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def send_wrapper(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                headers = list(message.get("headers", []))
+                existing_headers = {name.lower() for name, _ in headers}
+                for name, value in self._headers.items():
+                    name_bytes = name.encode("latin-1")
+                    if name_bytes.lower() not in existing_headers:
+                        headers.append((name_bytes, value.encode("latin-1")))
+                message["headers"] = headers
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)
 
 
-class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
+class RequestSizeLimitMiddleware:
     """Reject requests whose ``Content-Length`` header exceeds ``max_bytes``.
 
     Returns HTTP 413 before the body is read, guarding against DoS via large
@@ -116,19 +124,28 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
     """
 
     def __init__(self, app: ASGIApp, max_bytes: int = _DEFAULT_MAX_BYTES) -> None:
-        super().__init__(app)
+        self.app = app
         self._max_bytes = max_bytes
 
-    async def dispatch(self, request: Request, call_next):
-        content_length = request.headers.get("content-length")
-        if content_length and int(content_length) > self._max_bytes:
-            logger.warning(
-                "request_too_large content_length={} limit={}",
-                content_length,
-                self._max_bytes,
-            )
-            return JSONResponse(
-                status_code=413,
-                content={"detail": "Request body too large."},
-            )
-        return await call_next(request)
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http":
+            headers = dict(scope.get("headers", []))
+            content_length_bytes = headers.get(b"content-length")
+            if content_length_bytes:
+                try:
+                    content_length = int(content_length_bytes)
+                except ValueError:
+                    content_length = 0
+                if content_length > self._max_bytes:
+                    logger.warning(
+                        "request_too_large content_length={} limit={}",
+                        content_length,
+                        self._max_bytes,
+                    )
+                    response = JSONResponse(
+                        status_code=413,
+                        content={"detail": "Request body too large."},
+                    )
+                    await response(scope, receive, send)
+                    return
+        await self.app(scope, receive, send)

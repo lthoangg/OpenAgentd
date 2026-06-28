@@ -36,8 +36,7 @@ from fastapi import Request
 from app.core.runtime_settings import load_runtime_settings
 from fastapi.responses import JSONResponse
 from loguru import logger
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.types import ASGIApp
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 
 _ENV_VAR = "OPENAGENTD_DESKTOP_TOKEN"
@@ -128,7 +127,7 @@ def _strip_token_from_scope(request: Request) -> None:
     request.scope["query_string"] = urlencode(kept).encode("latin-1")
 
 
-class DesktopTokenMiddleware(BaseHTTPMiddleware):
+class DesktopTokenMiddleware:
     """Reject unauthenticated API requests when a desktop token is configured.
 
     The expected token is read **once** at construction time so a leaked
@@ -137,7 +136,7 @@ class DesktopTokenMiddleware(BaseHTTPMiddleware):
     """
 
     def __init__(self, app: ASGIApp, *, expected_token: str | None = None) -> None:
-        super().__init__(app)
+        self.app = app
         self._token = (
             expected_token
             if expected_token is not None
@@ -151,13 +150,16 @@ class DesktopTokenMiddleware(BaseHTTPMiddleware):
         if self._enabled:
             logger.info("desktop_token_auth_enabled token_len={}", len(self._token))
 
-    async def dispatch(self, request: Request, call_next):
-        if not self._enabled:
-            return await call_next(request)
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or not self._enabled:
+            await self.app(scope, receive, send)
+            return
 
+        request = Request(scope, receive)
         path = request.url.path
         if _path_is_exempt(path):
-            return await call_next(request)
+            await self.app(scope, receive, send)
+            return
 
         token = _extract_token(request)
         if not token or not hmac.compare_digest(token, self._token):
@@ -166,11 +168,14 @@ class DesktopTokenMiddleware(BaseHTTPMiddleware):
                 path,
                 bool(token),
             )
-            return JSONResponse(
+            response = JSONResponse(
                 status_code=401,
                 content={"detail": "Unauthorized — OpenAgentd access key required."},
             )
+            await response(scope, receive, send)
+            return
+
         # Scrub the QS-param token so it never reaches access logs,
         # metrics, or downstream handlers (which can log full URLs).
         _strip_token_from_scope(request)
-        return await call_next(request)
+        await self.app(scope, receive, send)

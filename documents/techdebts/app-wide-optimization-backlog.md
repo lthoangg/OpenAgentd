@@ -156,7 +156,21 @@ In `get_trace_detail`, spans were queried using `WHERE lower(trace_id) = ?`. In 
 
 - DuckDB uses zone maps to skip irrelevant data blocks, leading to near-instantaneous trace details fetching.
 
-### 8. Lazy-load large tool results and artifacts
+### 8. Convert custom middlewares to pure ASGI (Completed)
+
+**Problem**
+
+All custom middlewares (`HTTPMetricsMiddleware`, `DesktopTokenMiddleware`, `SecurityHeadersMiddleware`, `RequestSizeLimitMiddleware`) inherited from `BaseHTTPMiddleware`. In Starlette, `BaseHTTPMiddleware` spawns a separate asyncio task per request and uses a proxy send/receive channel. Stacking 4 of these middlewares added significant per-request overhead and latency, and risked memory growth.
+
+**Changes**
+
+- Converted all 4 middlewares to pure ASGI middlewares by implementing `__call__(scope, receive, send)` directly and wrapping the `send` channel where response modification is required.
+
+**Success criteria**
+
+- Zero task-spawning overhead per request, reducing baseline API latency and memory usage.
+
+### 9. Lazy-load large tool results and artifacts
 
 **Problem**
 

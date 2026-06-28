@@ -35,7 +35,7 @@ from prometheus_client import (
     Histogram,
     generate_latest,
 )
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from starlette.responses import Response
 from starlette.routing import Match
 
@@ -127,19 +127,36 @@ def _status_class(status_code: int) -> str:
     return f"{status_code // 100}xx"
 
 
-class HTTPMetricsMiddleware(BaseHTTPMiddleware):
+class HTTPMetricsMiddleware:
     """Record per-request duration + status counter."""
 
-    async def dispatch(self, request: Request, call_next):
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
         # Skip the /metrics endpoint itself — otherwise every scrape would
         # bump the counter and the histogram would drown in self-traffic.
-        if request.url.path == "/metrics":
-            return await call_next(request)
+        path = scope.get("path", "")
+        if path == "/metrics":
+            await self.app(scope, receive, send)
+            return
 
+        request = Request(scope, receive)
         start = time.perf_counter()
+        status_code = 500
+
+        async def send_wrapper(message: Message) -> None:
+            nonlocal status_code
+            if message["type"] == "http.response.start":
+                status_code = message.get("status", 500)
+            await send(message)
+
         try:
-            response = await call_next(request)
-            status_code = response.status_code
+            await self.app(scope, receive, send_wrapper)
         except Exception:
             elapsed = time.perf_counter() - start
             route = _route_template(request)
@@ -157,7 +174,6 @@ class HTTPMetricsMiddleware(BaseHTTPMiddleware):
         HTTP_REQUEST_DURATION.labels(method=request.method, route=route).observe(
             elapsed
         )
-        return response
 
 
 # ── /metrics endpoint ─────────────────────────────────────────────────────────

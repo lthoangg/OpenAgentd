@@ -96,6 +96,48 @@ async def test_release_queued_messages_clears_queue_metadata(session: AsyncSessi
 
 
 @pytest.mark.asyncio
+async def test_pop_queued_messages_clears_queue_metadata(session: AsyncSession):
+    chat_session = await create_chat_session(session)
+    queued = await save_queued_user_message(
+        session,
+        chat_session.id,
+        "queued image turn",
+        extra={
+            "attachments": [
+                {
+                    "filename": "img-to-be-used.png",
+                    "original_name": "img-to-be-used.png",
+                    "category": "image",
+                    "media_type": "image/png",
+                    "path": "/tmp/img-to-be-used.png",
+                }
+            ]
+        },
+        save_message=save_message,
+    )
+    await session.commit()
+
+    released = await pop_queued_user_messages(session, chat_session.id)
+    await session.commit()
+
+    assert [row.id for row in released] == [queued.id]
+    row = await session.get(SessionMessage, queued.id)
+    assert row is not None
+    assert row.exclude_from_context is False
+    assert row.extra == {
+        "attachments": [
+            {
+                "filename": "img-to-be-used.png",
+                "original_name": "img-to-be-used.png",
+                "category": "image",
+                "media_type": "image/png",
+                "path": "/tmp/img-to-be-used.png",
+            }
+        ]
+    }
+
+
+@pytest.mark.asyncio
 async def test_cancel_queued_message_deletes_row(session: AsyncSession):
     chat_session = await create_chat_session(session)
     queued = await save_queued_user_message(

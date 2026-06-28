@@ -77,6 +77,7 @@ async def pop_queued_user_messages(
     for i, row in enumerate(queued):
         extra = dict(row.extra or {})
         extra.pop("queue_status", None)
+        extra.pop("queued_at", None)
         row.extra = extra or None
         row.exclude_from_context = False
         row.created_at = activated_at + timedelta(microseconds=i)

@@ -514,7 +514,7 @@ async def test_queued_user_messages_are_hidden_until_popped(session):
 
     assert [row.id for row in popped] == [queued.id]
     assert popped[0].exclude_from_context is False
-    assert popped[0].extra and isinstance(popped[0].extra.get("queued_at"), str)
+    assert popped[0].extra is None
     visible = await get_messages(session, chat_session.id)
     assert [msg.content for msg in visible] == ["current response", "next"]
 
@@ -541,7 +541,7 @@ async def test_queued_user_message_preserves_model_metadata_when_popped(session)
     assert popped[0].extra is not None
     assert popped[0].extra["model"] == "openai:gpt-5.5"
     assert popped[0].extra["thinking_level"] == "high"
-    assert popped[0].extra["queued_at"] == queued.extra["queued_at"]
+    assert "queued_at" not in popped[0].extra
     assert "queue_status" not in popped[0].extra
 
 

@@ -5,7 +5,8 @@ exact order of tool calls, inbox deliveries, and responses.
 
 Usage:
   uv run python -m manual.team_timeline SESSION_ID
-  uv run python -m manual.team_timeline SESSION_ID --full   # no content truncation
+  uv run python -m manual.team_timeline SESSION_ID --full        # no content truncation
+  uv run python -m manual.team_timeline SESSION_ID --env production
 """
 
 from __future__ import annotations
@@ -16,8 +17,7 @@ from uuid import UUID
 
 from sqlmodel import select
 
-from app.core.db import async_session_factory
-from app.models.chat import ChatSession, SessionMessage
+from manual._common import add_env_argument, apply_env_override
 
 
 async def run(session_id: str, *, full: bool = False) -> None:
@@ -27,6 +27,10 @@ async def run(session_id: str, *, full: bool = False) -> None:
     XDG-based DB layout, pool sizing, and pragmas as the running server —
     no separate engine, no leaked connections.
     """
+    # Lazy import so APP_ENV is already in os.environ before settings loads.
+    from app.core.db import async_session_factory
+    from app.models.chat import ChatSession, SessionMessage
+
     trunc = None if full else 100
     sid = UUID(session_id)
 
@@ -102,9 +106,11 @@ def main() -> None:
     p = argparse.ArgumentParser(
         description="Timeline of all messages in a team session"
     )
+    add_env_argument(p)
     p.add_argument("session_id", help="Lead session ID")
     p.add_argument("--full", action="store_true", help="Don't truncate message content")
     args = p.parse_args()
+    apply_env_override(args)  # must run before asyncio.run() triggers app imports
     asyncio.run(run(args.session_id, full=args.full))
 
 

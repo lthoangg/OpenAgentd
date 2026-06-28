@@ -5,6 +5,7 @@ compact summary of repeated warning/error messages plus sample records.
 
 Usage:
   uv run python -m manual.backend_log
+  uv run python -m manual.backend_log --env production
   uv run python -m manual.backend_log --level WARNING --limit 20
   uv run python -m manual.backend_log --contains drop_partial_tool_call_bad_json
   uv run python -m manual.backend_log --path /custom/app.log
@@ -19,6 +20,8 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
+from manual._common import add_env_argument, apply_env_override
+
 _LEVELS = ("WARNING", "ERROR", "CRITICAL")
 
 
@@ -26,7 +29,7 @@ def _default_log_path() -> Path:
     state_dir = os.getenv("OPENAGENTD_STATE_DIR")
     if state_dir:
         return Path(state_dir) / "logs" / "app" / "app.log"
-    if os.getenv("APP_ENV", "production") == "production":
+    if os.getenv("APP_ENV", "development") == "production":
         return Path.home() / ".local" / "state" / "openagentd" / "logs" / "app" / "app.log"
     return Path(".openagentd") / "dev" / "state" / "logs" / "app" / "app.log"
 
@@ -62,6 +65,10 @@ def _sample_context(record: dict[str, Any]) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Inspect repeated backend warnings/errors")
+    add_env_argument(parser)
+    # Parse --env first so apply_env_override can set APP_ENV before _default_log_path runs.
+    args, remaining = parser.parse_known_args()
+    apply_env_override(args)
     parser.add_argument("--path", type=Path, default=_default_log_path())
     parser.add_argument("--level", choices=_LEVELS, help="Only show one severity")
     parser.add_argument("--contains", help="Only include messages containing this substring")

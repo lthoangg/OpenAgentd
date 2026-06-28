@@ -4,12 +4,14 @@ Reads span/metric partition files written by the OTel exporter and prints
 them in a human-readable format.  No server needed — reads files directly.
 
 Default location follows XDG_STATE_HOME:
+  - development : ``.openagentd/dev/state/otel/``  (default)
   - production  : ``~/.local/state/openagentd/otel/``
-  - development : ``.openagentd/state/otel/``
-Override with ``OPENAGENTD_STATE_DIR`` or pass ``--spans`` / ``--metrics-file``.
+Override with ``OPENAGENTD_STATE_DIR``, ``--env production``, or pass
+``--spans`` / ``--metrics-file`` directly.
 
 Usage:
   uv run python -m manual.otel_inspect                          # last 20 spans
+  uv run python -m manual.otel_inspect --env production        # production state dir
   uv run python -m manual.otel_inspect --limit 50              # last 50 spans
   uv run python -m manual.otel_inspect --session SESSION_ID    # filter by session
   uv run python -m manual.otel_inspect --agent researcher      # filter by agent name
@@ -29,6 +31,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from manual._common import add_env_argument, apply_env_override
+
 # ── Defaults ──────────────────────────────────────────────────────────────────
 
 
@@ -37,14 +41,9 @@ def _default_state_dir() -> Path:
     env = os.getenv("OPENAGENTD_STATE_DIR")
     if env:
         return Path(env)
-    if os.getenv("APP_ENV", "production") == "production":
+    if os.getenv("APP_ENV", "development") == "production":
         return Path.home() / ".local" / "state" / "openagentd"
-    return Path(".openagentd") / "state"
-
-
-_STATE_DIR = _default_state_dir()
-_DEFAULT_SPANS = _STATE_DIR / "otel" / "spans.jsonl"
-_DEFAULT_METRICS = _STATE_DIR / "otel" / "metrics.jsonl"
+    return Path(".openagentd") / "dev" / "state"
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -412,17 +411,25 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Inspect OTel spans and metrics from the state directory"
     )
+    add_env_argument(parser)
+    # Two-pass: resolve --env before computing path defaults (which read APP_ENV).
+    args, _ = parser.parse_known_args()
+    apply_env_override(args)
+    state_dir = _default_state_dir()
+    default_spans = state_dir / "otel" / "spans.jsonl"
+    default_metrics = state_dir / "otel" / "metrics.jsonl"
+
     parser.add_argument(
         "--spans",
         type=Path,
-        default=_DEFAULT_SPANS,
-        help=f"spans JSONL file (default: {_DEFAULT_SPANS})",
+        default=default_spans,
+        help=f"spans JSONL file (default: {default_spans})",
     )
     parser.add_argument(
         "--metrics-file",
         type=Path,
-        default=_DEFAULT_METRICS,
-        help=f"metrics JSONL file (default: {_DEFAULT_METRICS})",
+        default=default_metrics,
+        help=f"metrics JSONL file (default: {default_metrics})",
     )
     parser.add_argument(
         "--session", metavar="ID", help="filter spans by gen_ai.conversation.id prefix"

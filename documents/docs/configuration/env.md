@@ -2,7 +2,7 @@
 title: Environment Variables
 description: Every env var read by OpenAgentd — provider keys, ports, paths, optional extras.
 status: stable
-updated: 2026-05-16
+updated: 2026-06-28
 ---
 
 # Environment Variables
@@ -11,11 +11,13 @@ updated: 2026-05-16
 
 All settings live in `app/core/config.py`. Copy `.env.example` to the right `.env` location ([`paths.md`](./paths.md)) and fill in the keys you need.
 
+`APP_ENV` now defaults to `development` when you run from a source checkout. Installed / CLI-managed server entry points still run in `production` because `openagentd start` / `openagentd serve` inject `APP_ENV=production`, and `openagentd init` writes `APP_ENV=production` into the generated user `.env`.
+
 ## Core
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `APP_ENV` | `production` | `production` or `development` — controls data directory, log level, and config YAML defaults. |
+| `APP_ENV` | `development` | `production` or `development` — controls data directory, log level, and config YAML defaults. Source-checkout runs default to `development`; CLI-launched servers force `production`. |
 | `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR`. |
 | `API_HOST` | `0.0.0.0` | Bind address. |
 | `API_PORT` | `4082` | Bind port. `make dev` overrides via uvicorn flags to use `:8000`. |

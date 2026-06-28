@@ -121,15 +121,17 @@ bun run build                            # production build
 
 ### Database migrations
 
-Migrations run automatically when the server starts — no manual step needed. For development, you should run them with `APP_ENV=development` to avoid touching your production database, or use the provided `make` command:
+Migrations run automatically when the server starts — no manual step needed. In a source checkout, development now defaults to the project-local `.openagentd/dev/` paths, so the provided `make` command is enough:
 
 ```bash
 # Recommended:
 make migrate
 
 # Or manually:
-APP_ENV=development uv run alembic -c app/alembic.ini upgrade head
+uv run alembic -c app/alembic.ini upgrade head
 ```
+
+Use `APP_ENV=production` only when you intentionally want to target the installed production database.
 
 ---
 

@@ -2,7 +2,7 @@
 title: Paths & XDG Roots
 description: Six XDG-aligned roots, development vs production layout, on-disk file map.
 status: stable
-updated: 2026-06-29
+updated: 2026-06-28
 ---
 
 # Paths & XDG Roots
@@ -10,6 +10,8 @@ updated: 2026-06-29
 **Sources:** `app/core/config.py`, `app/core/paths.py`
 
 OpenAgentd splits runtime files across **six** XDG-aligned roots, one per category of data. Each is overridable via an environment variable; all six are derived automatically from `APP_ENV` when unset.
+
+In a source checkout, `APP_ENV` now defaults to `development`, so plain `uv run ...` commands land under `.openagentd/dev/` unless you override them. Installed / CLI-managed server entry points still force `production`.
 
 ## Roots
 

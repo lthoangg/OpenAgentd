@@ -106,4 +106,21 @@ describe('TodosPopover', () => {
     expect(screen.getByText('Done').className).toContain('line-through')
     expect(screen.getByText('Cancelled').className).toContain('line-through')
   })
+
+  it('does not apply the mobile first-open zoom-in animation', () => {
+    render(
+      <TodosPopover
+        open
+        onOpenChange={() => {}}
+        todos={[]}
+        sessionId="session-123"
+        trigger={false}
+      />,
+    )
+
+    const dialog = screen.getByRole('dialog', { name: 'Tasks' })
+    expect(dialog.className).not.toContain('zoom-in-95')
+    expect(dialog.className).toContain('fade-in-0')
+  })
+
 })

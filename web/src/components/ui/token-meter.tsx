@@ -6,7 +6,8 @@
  * detail; click covers touch platforms where hover is unavailable.
  */
 
-import { useState } from 'react'
+import { createPortal } from 'react-dom'
+import { useEffect, useRef, useState } from 'react'
 
 import { cn } from '@/lib/utils'
 
@@ -32,7 +33,12 @@ export function TokenMeter({
   className,
   title,
 }: TokenMeterProps) {
-  const [open, setOpen] = useState(false)
+  const [hoverOpen, setHoverOpen] = useState(false)
+  const [pinnedOpen, setPinnedOpen] = useState(false)
+  const [tooltipPosition, setTooltipPosition] = useState<{ top: number; left: number } | null>(null)
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const tooltipRef = useRef<HTMLDivElement | null>(null)
   const safeTrigger = Math.max(trigger, 1)
   const progress = Math.min(input / safeTrigger, 1)
   const percent = Math.round(progress * 100)
@@ -46,19 +52,113 @@ export function TokenMeter({
       cached > 0 ? ` · Cache: ${cached.toLocaleString()}` : ''
     }`
 
+  const open = hoverOpen || pinnedOpen
+
+  const updateTooltipPosition = () => {
+    const trigger = triggerRef.current
+    if (!trigger) return
+
+    const rect = trigger.getBoundingClientRect()
+    const tooltipWidth = 160
+    const tooltipHeight = 112
+    const gap = 8
+    const left = Math.max(8, Math.min(rect.right - tooltipWidth, window.innerWidth - tooltipWidth - 8))
+    const preferredTop = rect.bottom + gap
+    const top = preferredTop + tooltipHeight > window.innerHeight
+      ? Math.max(8, rect.top - tooltipHeight - gap)
+      : preferredTop
+
+    setTooltipPosition({ top, left })
+  }
+
+  const clearCloseTimer = () => {
+    if (closeTimerRef.current !== null) {
+      clearTimeout(closeTimerRef.current)
+      closeTimerRef.current = null
+    }
+  }
+
+  const openHoverTooltip = () => {
+    clearCloseTimer()
+    updateTooltipPosition()
+    setHoverOpen(true)
+  }
+
+  const closeHoverTooltip = () => {
+    if (pinnedOpen) return
+    clearCloseTimer()
+    closeTimerRef.current = setTimeout(() => {
+      setHoverOpen(false)
+      closeTimerRef.current = null
+    }, 0)
+  }
+
+  useEffect(() => {
+    if (!open) return
+
+    updateTooltipPosition()
+    window.addEventListener('resize', updateTooltipPosition)
+    window.addEventListener('scroll', updateTooltipPosition, { passive: true, capture: true })
+
+    return () => {
+      window.removeEventListener('resize', updateTooltipPosition)
+      window.removeEventListener('scroll', updateTooltipPosition, { capture: true })
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (!pinnedOpen) return
+
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node | null
+      if (
+        triggerRef.current?.contains(target) ||
+        tooltipRef.current?.contains(target)
+      ) return
+      setPinnedOpen(false)
+      setHoverOpen(false)
+    }
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setPinnedOpen(false)
+        setHoverOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handlePointerDown)
+    document.addEventListener('touchstart', handlePointerDown)
+    document.addEventListener('keydown', handleEscape)
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown)
+      document.removeEventListener('touchstart', handlePointerDown)
+      document.removeEventListener('keydown', handleEscape)
+    }
+  }, [pinnedOpen])
+
   return (
     <div
       className={cn('group relative inline-flex items-center', className)}
-      onMouseLeave={() => setOpen(false)}
+      onMouseEnter={openHoverTooltip}
+      onMouseLeave={closeHoverTooltip}
     >
       <button
+        ref={triggerRef}
         type="button"
         className="relative flex h-9 min-w-9 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) focus-visible:outline-none md:h-7 md:min-w-7 md:rounded-sm"
         aria-label={tooltip}
         aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-        onFocus={() => setOpen(true)}
-        onBlur={() => setOpen(false)}
+        onClick={() => {
+          clearCloseTimer()
+          updateTooltipPosition()
+          setPinnedOpen((value) => {
+            const next = !value
+            if (!next) setHoverOpen(false)
+            return next
+          })
+        }}
+        onFocus={openHoverTooltip}
+        onBlur={closeHoverTooltip}
       >
         <svg className="h-[17px] w-[17px] -rotate-90" viewBox="0 0 18 18" aria-hidden="true">
           <circle
@@ -83,19 +183,23 @@ export function TokenMeter({
           />
         </svg>
       </button>
-      <div
-        className={cn(
-          'pointer-events-none absolute right-0 top-full z-50 mt-2 min-w-40 rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-2 font-mono text-[11px] leading-5 text-(--color-text) shadow-lg opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100',
-          open && 'opacity-100',
-        )}
-        role="tooltip"
-      >
-        <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">input</span><span>{input.toLocaleString()}</span></div>
-        <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">trigger</span><span>{safeTrigger.toLocaleString()}</span></div>
-        <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">used</span><span>{percent}%</span></div>
-        <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">output</span><span>{output.toLocaleString()}</span></div>
-        <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">cache</span><span>{cached.toLocaleString()}</span></div>
-      </div>
+      {open && tooltipPosition && createPortal(
+        <div
+          ref={tooltipRef}
+          className="fixed z-50 min-w-40 rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-2 font-mono text-[11px] leading-5 text-(--color-text) shadow-lg"
+          style={{ top: tooltipPosition.top, left: tooltipPosition.left }}
+          role="tooltip"
+          onMouseEnter={openHoverTooltip}
+          onMouseLeave={closeHoverTooltip}
+        >
+          <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">input</span><span>{input.toLocaleString()}</span></div>
+          <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">trigger</span><span>{safeTrigger.toLocaleString()}</span></div>
+          <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">used</span><span>{percent}%</span></div>
+          <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">output</span><span>{output.toLocaleString()}</span></div>
+          <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">cache</span><span>{cached.toLocaleString()}</span></div>
+        </div>,
+        document.body,
+      )}
     </div>
   )
 }

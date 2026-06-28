@@ -223,10 +223,10 @@ export function TodosPopover({
           role="dialog"
           aria-label="Tasks"
           className={cn(
-            'absolute right-2 top-[calc(var(--spacing-app-header)+env(safe-area-inset-top,0px)+0.5rem)] w-[min(calc(100vw-1rem),20rem)] overflow-hidden rounded-lg border border-(--color-border) bg-(--bg-card) p-0 shadow-lg ring-1 ring-black/5 duration-100 ease-out pointer-events-auto',
+            'absolute right-2 top-[calc(var(--spacing-app-header)+env(safe-area-inset-top,0px)+0.5rem)] w-[min(calc(100vw-1rem),20rem)] overflow-hidden rounded-lg border border-(--color-border) bg-(--bg-card) p-0 shadow-lg ring-1 ring-black/5 pointer-events-auto',
             closing
-              ? 'animate-out fade-out-0 zoom-out-95'
-              : 'animate-in fade-in-0 zoom-in-95'
+              ? 'animate-out fade-out-0 zoom-out-95 duration-100 ease-out'
+              : 'animate-in fade-in-0 duration-100 ease-out'
           )}
         >
           {content}

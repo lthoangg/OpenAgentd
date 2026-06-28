@@ -26,7 +26,7 @@ function renderUrlSegments(text: string, keyPrefix: string): React.ReactNode[] {
         key={`${keyPrefix}-${match.index}`}
         href={url}
         onClick={(e) => { e.preventDefault(); void openExternalUrl(url) }}
-        className="text-(--accent-blue-text) underline underline-offset-2 hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) rounded-sm"
+        className="font-medium underline [text-decoration-color:var(--color-border-strong)] [text-decoration-thickness:1px] underline-offset-[3px] transition-colors duration-[120ms] hover:text-(--color-accent) hover:[text-decoration-color:currentColor] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--focus-ring) rounded-sm"
         rel="noopener noreferrer"
       >
         {url}

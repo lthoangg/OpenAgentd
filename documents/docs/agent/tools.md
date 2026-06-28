@@ -122,8 +122,27 @@ doesn't abort an otherwise-valid call.
 
 When validation fails, `arun()` raises **`ToolArgumentError`** (never a raw
 pydantic `ValidationError`), and the function body **never runs** — failures are
-fail-fast. The error message names the tool and the offending field so the LLM
-can self-correct, e.g. `Invalid arguments for tool 'web_search': ...`.
+fail-fast.
+
+The error message is formatted by **`format_validation_error()`**
+(`app/agent/errors.py`), which strips all Pydantic internal noise — type codes,
+raw `input_value`, and the `pydantic.dev` docs URL — and emits only the field
+path and human message the LLM needs to self-correct:
+
+```
+# before (raw Pydantic str)
+1 validation error for TeamManageArgs
+members
+  Input should be a valid list [type=list_type, input_value='["x"]', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.13/v/list_type
+
+# after (ToolArgumentError message)
+Invalid arguments for tool 'team_manage': members: Input should be a valid list
+```
+
+Multiple errors are joined with `"; "`. Nested field paths use `" -> "` as
+separator (e.g. `items -> 0 -> value: Input should be a valid integer`).
+Model-level validator errors (empty `loc`) emit just the message with no prefix.
 
 In the agent loop the **tool executor** (`app/agent/agent_loop/tool_executor.py`)
 catches this and turns it into a short `"Error: ..."` *string* — it is **not**
@@ -134,9 +153,12 @@ to malformed-JSON arguments (`ToolArgumentError`), unknown tools
 (`ToolExecutionError`) — every failure mode is stringified rather than crashing
 the turn.
 
-Coverage: `tests/agent/tools/test_registry.py` (the `arun` contract) and
-`tests/agent/agent_loop/test_tool_executor.py` (the end-to-end executor
-handling, including corrected-retry-after-failure).
+Coverage: `tests/agent/tools/test_registry.py` (`arun` contract + 9
+`test_error_message_*` tests covering each Pydantic error shape),
+`tests/core/test_errors.py` (`TestFormatValidationError` — 15 tests covering
+wrong type, missing fields, constraints, nested loc, model validators, and
+absence of URL/type-code/input_value noise), and
+`tests/agent/agent_loop/test_tool_executor.py` (end-to-end executor handling).
 
 ### JSON Schema `$ref` resolution
 

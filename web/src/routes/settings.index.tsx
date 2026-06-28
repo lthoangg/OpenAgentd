@@ -198,7 +198,7 @@ export function SettingsHubPage() {
                 Connect this app to an existing OpenAgentd server, or switch back to the bundled local sidecar when available.
               </p>
             </div>
-            <Button type="button" size="xs" variant="default" className="h-8 px-2 text-[10.5px]" onClick={() => setBackendDialogOpen(true)}>
+            <Button type="button" size="sm" variant="default" onClick={() => setBackendDialogOpen(true)}>
               Configure
             </Button>
           </div>

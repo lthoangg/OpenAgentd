@@ -1167,3 +1167,125 @@ describe("AgentView — UserBubble @mention highlighting", () => {
     expect(screen.getByText("just a regular message with no mentions")).toBeTruthy()
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UserBubble — URL link rendering
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("AgentView — UserBubble URL link rendering", () => {
+  afterEach(cleanup)
+
+  it("renders a bare URL as a clickable anchor", () => {
+    const blocks: ContentBlock[] = [
+      {
+        id: "1",
+        type: "user",
+        content: "Check out https://example.com for more info",
+        timestamp: new Date(),
+      },
+    ]
+
+    render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
+
+    const link = screen.getByRole("link", { name: "https://example.com" })
+    expect(link).toBeTruthy()
+    expect(link.getAttribute("href")).toBe("https://example.com")
+  })
+
+  it("renders plain text that has no URL without any anchor", () => {
+    const blocks: ContentBlock[] = [
+      {
+        id: "1",
+        type: "user",
+        content: "just a regular message",
+        timestamp: new Date(),
+      },
+    ]
+
+    render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
+
+    expect(screen.queryByRole("link")).toBeNull()
+  })
+
+  it("renders multiple URLs as separate anchors", () => {
+    const blocks: ContentBlock[] = [
+      {
+        id: "1",
+        type: "user",
+        content: "See https://foo.com and https://bar.org for details",
+        timestamp: new Date(),
+      },
+    ]
+
+    render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
+
+    const links = screen.getAllByRole("link")
+    expect(links.length).toBe(2)
+    expect(links[0].getAttribute("href")).toBe("https://foo.com")
+    expect(links[1].getAttribute("href")).toBe("https://bar.org")
+  })
+
+  it("preserves surrounding text around a URL", () => {
+    const blocks: ContentBlock[] = [
+      {
+        id: "1",
+        type: "user",
+        content: "Visit https://example.com today!",
+        timestamp: new Date(),
+      },
+    ]
+
+    render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
+
+    expect(screen.getByText(/Visit/)).toBeTruthy()
+    expect(screen.getByRole("link", { name: "https://example.com" })).toBeTruthy()
+  })
+
+  it("URL anchor calls openExternalUrl on click and prevents default navigation", async () => {
+    const user = userEvent.setup()
+    const openCalls: string[] = []
+    const originalOpen = window.open
+    window.open = ((url?: string | URL) => {
+      openCalls.push(String(url))
+      return null
+    }) as typeof window.open
+
+    const blocks: ContentBlock[] = [
+      {
+        id: "1",
+        type: "user",
+        content: "Go to https://example.com now",
+        timestamp: new Date(),
+      },
+    ]
+
+    render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
+
+    const link = screen.getByRole("link", { name: "https://example.com" })
+    await user.click(link)
+
+    // openExternalUrl falls back to window.open in non-Tauri test environment
+    expect(openCalls).toContain("https://example.com")
+    window.open = originalOpen
+  })
+
+  it("renders URL mixed with @mention, keeping both highlighted", () => {
+    const blocks: ContentBlock[] = [
+      {
+        id: "1",
+        type: "user",
+        content: "See @README.md and https://docs.example.com",
+        timestamp: new Date(),
+      },
+    ]
+
+    render(<AgentView blocks={blocks} currentBlocks={[]} isWorking={false} />)
+
+    const mention = document.querySelector('[data-mention-kind="file"]')
+    expect(mention).toBeTruthy()
+    expect(mention!.textContent).toBe("@README.md")
+
+    const link = screen.getByRole("link", { name: "https://docs.example.com" })
+    expect(link).toBeTruthy()
+  })
+})

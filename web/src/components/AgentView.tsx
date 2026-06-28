@@ -158,11 +158,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
   const scrollRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   const pinnedRef = useRef(true)
-  // Timestamp of the last programmatic scroll. The scroll listener uses it to
-  // ignore the scroll events our own ``scrollToBottom`` generates — otherwise
-  // the auto-stick scroll during streaming can look like a user scroll and
-  // spuriously detach.
-  const programmaticScrollAtRef = useRef(0)
+  const lastTouchYRef = useRef<number | null>(null)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
   const [renderedTurnCount, setRenderedTurnCount] = useState(INITIAL_RENDERED_TURNS)
   const sessionId = useTeamStore((s) => s.sessionId) ?? undefined
@@ -217,9 +213,6 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
     if (!el) return
     pinnedRef.current = true
     setShowScrollBtn(false)
-    // Mark this as a programmatic scroll so the scroll listener doesn't mistake
-    // the resulting events for a user gesture and detach.
-    programmaticScrollAtRef.current = performance.now()
     if (smooth) {
       el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
     } else {
@@ -231,7 +224,6 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
-    let lastScrollTop = el.scrollTop
     const updatePinnedFromPosition = () => {
       const atBottom = isAtBottom()
       pinnedRef.current = atBottom
@@ -247,20 +239,12 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
       setShowScrollBtn(true)
     }
     const onScroll = () => {
-      const nextScrollTop = el.scrollTop
-      // Ignore scroll events caused by our own ``scrollToBottom`` (auto-stick
-      // during streaming): those move scrollTop programmatically and must not
-      // be read as the user scrolling up. Without this guard, fast streaming —
-      // where content height grows and we re-pin every frame — would
-      // intermittently look like an upward scroll and detach mid-stream, which
-      // is the "scroll to bottom doesn't keep up" bug. 150ms covers the gap
-      // between setting scrollTop and the resulting scroll event(s) firing.
-      const sinceProgrammatic = performance.now() - programmaticScrollAtRef.current
-      const isProgrammatic = sinceProgrammatic < 150
-      if (!isProgrammatic && nextScrollTop < lastScrollTop - USER_SCROLL_DETACH_DELTA) {
-        detachFromBottom()
-      }
-      lastScrollTop = nextScrollTop
+      // Do NOT infer user intent from scroll direction here — scroll events
+      // fire for both programmatic (auto-stick, smooth button) and user
+      // gestures and are indistinguishable on mobile (momentum, kinetic).
+      // Intent detection lives in onWheel / onTouchMove instead.
+      // Just read the actual position and update pinned state accordingly.
+
       // Me: check + arm the load flag synchronously on the event, before any
       // rAF. Multiple scroll events can fire before a single rAF executes, so
       // if the guard lived inside rAF all queued callbacks would see the flag
@@ -281,13 +265,30 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
       requestAnimationFrame(updatePinnedFromPosition)
     }
     const onWheel = (e: WheelEvent) => {
+      // Wheel direction reliably signals user intent: upward wheel → detach.
       if (e.deltaY < -USER_SCROLL_DETACH_DELTA) detachFromBottom()
     }
+    const onTouchMove = (e: TouchEvent) => {
+      // Touch direction also reliably signals intent on mobile.
+      const y = e.touches[0]?.clientY
+      if (y == null) return
+      if (lastTouchYRef.current !== null && y > lastTouchYRef.current + USER_SCROLL_DETACH_DELTA) {
+        detachFromBottom()
+      }
+      lastTouchYRef.current = y
+    }
+    const onTouchEnd = () => { lastTouchYRef.current = null }
     el.addEventListener('scroll', onScroll, { passive: true })
     el.addEventListener('wheel', onWheel, { passive: true })
+    el.addEventListener('touchmove', onTouchMove, { passive: true })
+    el.addEventListener('touchend', onTouchEnd, { passive: true })
+    el.addEventListener('touchcancel', onTouchEnd, { passive: true })
     return () => {
       el.removeEventListener('scroll', onScroll)
       el.removeEventListener('wheel', onWheel)
+      el.removeEventListener('touchmove', onTouchMove)
+      el.removeEventListener('touchend', onTouchEnd)
+      el.removeEventListener('touchcancel', onTouchEnd)
     }
   }, [hiddenTurnCount, isAtBottom, showEarlierTurns])
 
@@ -337,7 +338,6 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
     if (!el || typeof ResizeObserver === 'undefined') return
     const stick = () => {
       if (!pinnedRef.current) return
-      programmaticScrollAtRef.current = performance.now()
       el.scrollTop = el.scrollHeight
     }
     const ro = new ResizeObserver(stick)

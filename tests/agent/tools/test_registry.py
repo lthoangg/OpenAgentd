@@ -756,3 +756,199 @@ async def test_validation_failure_then_success_on_retry():
         await squared.arun(x="five")  # first attempt: bad type
     # LLM corrects and retries with a valid int
     assert await squared.arun(x=5) == 25
+
+
+# ---------------------------------------------------------------------------
+# ToolArgumentError message cleanliness
+#
+# The LLM reads the error message to self-correct.  It must contain exactly
+# the field path and human message — no Pydantic internals leaked through.
+# ---------------------------------------------------------------------------
+
+
+async def test_error_message_list_passed_as_string():
+    """Regression: list field passed as a JSON string → clean message.
+
+    Original bug: the full Pydantic repr including [type=list_type,
+    input_value='[...]', input_type=str] and the docs URL was returned.
+    """
+
+    @tool(name="team_manage")
+    def manage(members: Annotated[list[str], Field(description="Members.")]) -> str:
+        """Manage team."""
+        return ",".join(members)
+
+    with pytest.raises(ToolArgumentError) as exc_info:
+        await manage.arun(members='["explorer#1"]')
+
+    msg = str(exc_info.value)
+    assert "team_manage" in msg
+    assert "members" in msg
+    # must NOT contain Pydantic noise
+    assert "pydantic.dev" not in msg
+    assert "type=" not in msg
+    assert "input_value" not in msg
+    assert "input_type" not in msg
+
+
+async def test_error_message_no_docs_url():
+    """No pydantic.dev URL appears in any ToolArgumentError message."""
+
+    @tool
+    def f(x: Annotated[int, Field(description="Int.")]) -> int:
+        """F."""
+        return x
+
+    with pytest.raises(ToolArgumentError) as exc_info:
+        await f.arun(x="bad")
+
+    assert "pydantic.dev" not in str(exc_info.value)
+    assert "errors.pydantic" not in str(exc_info.value)
+
+
+async def test_error_message_no_type_code():
+    """Pydantic type codes like 'type=int_parsing' are absent from the message."""
+
+    @tool
+    def f(x: Annotated[int, Field(description="Int.")]) -> int:
+        """F."""
+        return x
+
+    with pytest.raises(ToolArgumentError) as exc_info:
+        await f.arun(x="bad")
+
+    assert "type=" not in str(exc_info.value)
+
+
+async def test_error_message_no_raw_input_value():
+    """The raw input value is not echoed back in the error message."""
+
+    @tool(name="team_manage")
+    def manage(members: Annotated[list[str], Field(description="Members.")]) -> str:
+        """Manage."""
+        return ""
+
+    raw = '["explorer#1"]'
+    with pytest.raises(ToolArgumentError) as exc_info:
+        await manage.arun(members=raw)
+
+    assert raw not in str(exc_info.value)
+
+
+async def test_error_message_multiple_errors_joined():
+    """Multiple validation errors are joined with '; ' in one message."""
+
+    @tool(name="multi")
+    def f(
+        a: Annotated[str, Field(description="A.")],
+        b: Annotated[int, Field(description="B.")],
+    ) -> str:
+        """F."""
+        return f"{a}{b}"
+
+    with pytest.raises(ToolArgumentError) as exc_info:
+        await f.arun()  # both required fields missing
+
+    msg = str(exc_info.value)
+    assert "multi" in msg
+    assert "a" in msg
+    assert "b" in msg
+    assert "; " in msg
+
+
+async def test_error_message_nested_loc_path():
+    """Nested loc is rendered as 'outer -> index -> field: msg'."""
+
+    class Item(BaseModel):
+        value: int
+
+    @tool(name="processor")
+    def process(
+        items: Annotated[list[Item], Field(description="Items.")],
+    ) -> str:
+        """Process."""
+        return ""
+
+    with pytest.raises(ToolArgumentError) as exc_info:
+        await process.arun(items=[{"value": "not_an_int"}])
+
+    msg = str(exc_info.value)
+    assert "processor" in msg
+    assert "items" in msg
+    assert "value" in msg
+    assert " -> " in msg  # nested separator
+
+
+async def test_error_message_model_validator_no_loc():
+    """model_validator errors (empty loc) surface just the message, no prefix."""
+    from pydantic import model_validator
+
+    class Args(BaseModel):
+        a: str = ""
+        b: str = ""
+
+        @model_validator(mode="after")
+        def _exclusive(self):
+            if self.a and self.b:
+                raise ValueError("a and b are mutually exclusive")
+            return self
+
+    @tool(name="exclusive_tool", args_schema=Args)
+    def f(a: str, b: str) -> str:
+        """F."""
+        return a
+
+    with pytest.raises(ToolArgumentError) as exc_info:
+        await f.arun(a="x", b="y")
+
+    msg = str(exc_info.value)
+    assert "exclusive_tool" in msg
+    assert "a and b are mutually exclusive" in msg
+    # no ' -> ' prefix for root-level error
+    assert "pydantic.dev" not in msg
+
+
+async def test_error_message_range_constraint():
+    """Numeric constraint violation produces a descriptive clean message."""
+
+    @tool(name="bounded")
+    def f(n: Annotated[int, Field(ge=1, le=10, description="1-10.")]) -> int:
+        """Bounded."""
+        return n
+
+    with pytest.raises(ToolArgumentError) as exc_info:
+        await f.arun(n=999)
+
+    msg = str(exc_info.value)
+    assert "bounded" in msg
+    assert "n" in msg
+    assert "less than or equal to 10" in msg
+    assert "pydantic.dev" not in msg
+
+
+async def test_error_message_field_validator():
+    """Custom field_validator message is preserved verbatim."""
+    from pydantic import field_validator
+
+    class Args(BaseModel):
+        query: str
+
+        @field_validator("query")
+        @classmethod
+        def _not_blank(cls, v):
+            if not v.strip():
+                raise ValueError("query must not be blank")
+            return v
+
+    @tool(name="searcher", args_schema=Args)
+    def search(query: str) -> str:
+        """Search."""
+        return query
+
+    with pytest.raises(ToolArgumentError) as exc_info:
+        await search.arun(query="   ")
+
+    msg = str(exc_info.value)
+    assert "searcher" in msg
+    assert "query must not be blank" in msg
+    assert "pydantic.dev" not in msg

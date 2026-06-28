@@ -13,7 +13,7 @@ class GeminiBaseModel(BaseModel):
 
 class FunctionCall(GeminiBaseModel):
     name: str
-    args: dict[str, Any]
+    args: dict[str, Any] = Field(default_factory=dict)
     id: str | None = None
 
 

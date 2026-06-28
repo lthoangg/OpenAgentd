@@ -27,6 +27,31 @@ Hierarchy::
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pydantic import ValidationError
+
+
+def format_validation_error(exc: "ValidationError") -> str:
+    """Return a clean, single-line summary of a Pydantic ValidationError.
+
+    Strips the docs URL, type codes, and raw input values that Pydantic
+    appends by default — leaving only the field path and human message,
+    which is all an LLM (or a user) needs to self-correct.
+
+    Example output::
+
+        members: Input should be a valid list
+        a -> 0 -> value: Input should be a valid integer; b: Field required
+    """
+    return "; ".join(
+        f"{' -> '.join(str(loc) for loc in e['loc'])}: {e['msg']}"
+        if e.get("loc")
+        else e["msg"]
+        for e in exc.errors(include_url=False)
+    )
+
 
 class OpenAgentdError(Exception):
     """Base exception for all OpenAgentd domain errors."""

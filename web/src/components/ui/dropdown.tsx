@@ -1,8 +1,5 @@
 /**
- * Dropdown — select/menu primitive built on @base-ui/react/menu.
- *
- * base-ui's Positioner handles all anchor tracking, scroll, resize,
- * viewport-flip, and portal — no manual getBoundingClientRect needed.
+ * Dropdown — select/menu primitive, zero external dependencies.
  *
  * Two modes:
  *
@@ -16,80 +13,87 @@
  *      <DropdownItem value="a">Option A</DropdownItem>
  *      <DropdownItem value="b">Option B</DropdownItem>
  *    </Dropdown>
+ *
+ * The panel is portal-rendered and anchored below (flip to top if needed).
+ * Panel min-width matches the trigger width via inline style.
  */
 import {
   Children,
   cloneElement,
+  createContext,
   isValidElement,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
   type ComponentPropsWithRef,
   type ReactNode,
 } from 'react'
-import { Menu } from '@base-ui/react/menu'
+import { createPortal } from 'react-dom'
 import { ChevronDown, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { buttonVariants } from '@/components/ui/button'
+import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
 
-// ─── Item ─────────────────────────────────────────────────────────────────────
+// ─── Context ────────────────────────────────────────────────────────────────
 
-interface DropdownItemProps extends ComponentPropsWithRef<'div'> {
-  /** Highlights this item as the currently active/selected one. */
+interface DropdownCtx {
+  open: boolean
+  setOpen: (v: boolean) => void
+  triggerRef: React.RefObject<HTMLButtonElement | null>
+}
+const DropdownContext = createContext<DropdownCtx | null>(null)
+
+function useDropdownCtx() {
+  const ctx = useContext(DropdownContext)
+  if (!ctx) throw new Error('DropdownItem must be inside Dropdown')
+  return ctx
+}
+
+// ─── Item ────────────────────────────────────────────────────────────────────
+
+export interface DropdownItemProps extends ComponentPropsWithRef<'button'> {
   active?: boolean
-  /** Value used when the parent <Dropdown> is in controlled-select mode. */
   value?: string
-  /** Called when the item is selected. */
   onSelect?: () => void
 }
 
-function DropdownItem({
-  active,
-  value: _value,
-  onSelect,
-  className,
-  children,
-  ref,
-  ...props
-}: DropdownItemProps) {
+function DropdownItem({ active, value: _value, onSelect, className, children, ...props }: DropdownItemProps) {
+  const { setOpen } = useDropdownCtx()
   return (
-    <Menu.Item
-      ref={ref}
-      onClick={onSelect}
+    <button
+      type="button"
+      role="menuitem"
       className={cn(
         'flex w-full cursor-pointer items-center gap-2 rounded px-2 py-1 text-left text-xs font-medium outline-none',
-        'transition-colors',
-        'data-highlighted:bg-(--bg-key)',
+        'transition-colors hover:bg-(--bg-key) focus-visible:bg-(--bg-key)',
         active ? 'text-(--color-text)' : 'text-(--color-text-2)',
         className,
       )}
+      onClick={() => {
+        onSelect?.()
+        setOpen(false)
+      }}
       {...props}
     >
       <span className="flex-1">{children}</span>
-      {active && (
-        <Check size={11} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
-      )}
-    </Menu.Item>
+      {active && <Check size={11} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />}
+    </button>
   )
 }
 
-// ─── Root ─────────────────────────────────────────────────────────────────────
+// ─── Root ────────────────────────────────────────────────────────────────────
 
-interface DropdownProps {
-  /** Content rendered inside the trigger button. */
+export interface DropdownProps {
   trigger: ReactNode
-  /** Menu items — use <DropdownItem> children. */
   children: ReactNode
-  /** Controlled select: currently selected value. */
   value?: string
-  /** Controlled select: called with the new value when an item is picked. */
   onValueChange?: (value: string) => void
-  /** Extra classes on the trigger button (e.g. width, min-h-11). */
   className?: string
-  /** Extra classes on the dropdown panel. */
   panelClassName?: string
-  /** id for form label association. */
   id?: string
-  /** aria-label for the trigger button. */
   'aria-label'?: string
-  /** aria-invalid for form validation styling. */
   'aria-invalid'?: boolean | 'true' | 'false'
   disabled?: boolean
 }
@@ -106,84 +110,128 @@ function Dropdown({
   'aria-invalid': ariaInvalid,
   disabled,
 }: DropdownProps) {
-  // In controlled-select mode: show the selected item's label in the trigger.
-  let displayLabel: ReactNode = trigger
-  if (value !== undefined) {
-    Children.forEach(children, (child) => {
-      if (isValidElement<DropdownItemProps>(child) && child.props.value === value) {
-        displayLabel = child.props.children
-      }
-    })
-  }
+  const [open, setOpen] = useState(false)
+  const { mounted: panelMounted, closing: panelClosing } = useDeferredUnmount(open, 100)
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const panelRef = useRef<HTMLDivElement | null>(null)
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 })
 
-  // Inject active + onSelect into DropdownItem children in select mode.
-  const items =
-    value !== undefined
-      ? Children.map(children, (child) => {
-          if (!isValidElement<DropdownItemProps>(child)) return child
-          const isActive = child.props.value === value
-          return cloneElement(child, {
-            active: isActive,
-            onSelect: () => {
-              if (child.props.value !== undefined) onValueChange?.(child.props.value)
-              child.props.onSelect?.()
-            },
-          })
-        })
-      : children
+  const reposition = useCallback(() => {
+    const t = triggerRef.current
+    if (!t) return
+    const rect = t.getBoundingClientRect()
+    const panelH = panelRef.current?.offsetHeight ?? 200
+    const flipsUp = rect.bottom + 4 + window.scrollY + panelH > window.innerHeight + window.scrollY
+    setPos({
+      top: flipsUp ? rect.top - panelH - 4 + window.scrollY : rect.bottom + 4 + window.scrollY,
+      left: rect.left + window.scrollX,
+      width: rect.width,
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!panelMounted) return
+    reposition()
+    window.addEventListener('scroll', reposition, { passive: true, capture: true })
+    window.addEventListener('resize', reposition)
+    return () => {
+      window.removeEventListener('scroll', reposition, { capture: true })
+      window.removeEventListener('resize', reposition)
+    }
+  }, [panelMounted, reposition])
+
+  // Outside click closes
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => {
+      if (
+        panelRef.current?.contains(e.target as Node) ||
+        triggerRef.current?.contains(e.target as Node)
+      ) return
+      setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  // Escape closes
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [open])
+
+  // In select mode: derive display label + inject active+onSelect into items
+  let displayLabel: ReactNode = trigger
+  const items = Children.map(children, (child) => {
+    if (!isValidElement<DropdownItemProps>(child)) return child
+    if (value !== undefined) {
+      if (child.props.value === value) displayLabel = child.props.children
+      return cloneElement(child, {
+        active: child.props.value === value,
+        onSelect: () => {
+          if (child.props.value !== undefined) onValueChange?.(child.props.value)
+          child.props.onSelect?.()
+        },
+      })
+    }
+    return child
+  })
 
   return (
-    <Menu.Root>
-      {/* Trigger */}
-      <Menu.Trigger
+    <DropdownContext.Provider value={{ open, setOpen, triggerRef }}>
+      <button
+        ref={triggerRef}
         id={id}
+        type="button"
         disabled={disabled}
         aria-label={ariaLabel}
         aria-invalid={ariaInvalid}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        data-popup-open={open || undefined}
         className={cn(
           buttonVariants({ variant: 'default', size: 'trigger' }),
           'justify-between',
-          'data-popup-open:border-(--focus-ring)',
+          open && 'border-(--focus-ring)',
           'aria-invalid:border-(--color-error) aria-invalid:ring-2 aria-invalid:ring-(--color-error)/20',
           className,
         )}
+        onClick={() => { setOpen((v) => !v); reposition() }}
       >
         <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate">{displayLabel}</span>
         <ChevronDown
           size={11}
-          className="shrink-0 text-(--color-text-muted) transition-transform duration-150 group-data-popup-open:rotate-180"
+          className={cn('shrink-0 text-(--color-text-muted) transition-transform duration-150', open && 'rotate-180')}
           aria-hidden="true"
         />
-      </Menu.Trigger>
+      </button>
 
-      {/* Panel — base-ui Positioner handles portal + anchor + scroll + flip */}
-      <Menu.Portal>
-        <Menu.Positioner
-          side="bottom"
-          align="start"
-          sideOffset={4}
-          alignOffset={0}
-          className="isolate z-50"
+      {panelMounted && createPortal(
+        <div
+          ref={panelRef}
+          role="menu"
+          data-slot="dropdown-panel"
+          className={cn(
+            'fixed z-50 flex flex-col gap-0.5',
+            'min-w-[var(--dropdown-anchor-width)]',
+            'rounded border border-(--color-border) bg-(--bg-card)',
+            'p-1 shadow-md outline-none',
+            'duration-100',
+            panelClosing
+              ? 'animate-out fade-out-0 zoom-out-95'
+              : 'animate-in fade-in-0 zoom-in-95',
+            panelClassName,
+          )}
+          style={{ top: pos.top, left: pos.left, '--dropdown-anchor-width': `${pos.width}px` } as React.CSSProperties}
         >
-          <Menu.Popup
-            className={cn(
-              'min-w-(--anchor-width) origin-(--transform-origin)',
-              'rounded border border-(--color-border) bg-(--bg-card)',
-              'p-1 shadow-md',
-              'flex flex-col gap-0.5',
-              'duration-100 outline-none',
-              'data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95',
-              'data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95',
-              panelClassName,
-            )}
-          >
-            {items}
-          </Menu.Popup>
-        </Menu.Positioner>
-      </Menu.Portal>
-    </Menu.Root>
+          {items}
+        </div>,
+        document.body,
+      )}
+    </DropdownContext.Provider>
   )
 }
 
 export { Dropdown, DropdownItem }
-export type { DropdownProps, DropdownItemProps }

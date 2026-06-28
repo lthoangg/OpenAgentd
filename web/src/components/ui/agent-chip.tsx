@@ -23,51 +23,38 @@
  * (the wrapper renders as a `<button>`); read-only variants render a `<span>`.
  */
 
-import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
 import type { AgentRole } from '@/lib/agent-roles'
 
-const chipVariants = cva(
-  'inline-flex items-center gap-2 rounded-md px-3 py-1.5 font-mono text-xs leading-none transition-all',
-  {
-    variants: {
-      role: {
-        openagentd: '',
-        executor: '',
-        consultant: '',
-        explorer: '',
-      },
-      active: {
-        true: 'border font-semibold text-(--color-text)',
-        false: 'border-transparent font-medium text-(--color-text-2)',
-      },
-    },
-    compoundVariants: [
-      // Lead is almost always active — mint border on mint dot reads
-      // as visual noise. Foreground weight carries the active state.
-      { role: 'openagentd', active: true, className: 'border-transparent' },
-      { role: 'executor', active: true, className: 'border-(--color-marker-orange)' },
-      { role: 'consultant', active: true, className: 'border-(--color-marker-blue)' },
-      { role: 'explorer', active: true, className: 'border-(--color-text-muted)' },
-    ],
-    defaultVariants: {
-      role: 'openagentd',
-      active: false,
-    },
-  },
-)
+const CHIP_BASE = 'inline-flex items-center gap-2 rounded-md px-3 py-1.5 font-mono text-xs leading-none transition-all'
+
+const ACTIVE_BORDER: Record<AgentRole, string> = {
+  openagentd: 'border-transparent',
+  executor:   'border-(--color-marker-orange)',
+  consultant: 'border-(--color-marker-blue)',
+  explorer:   'border-(--color-text-muted)',
+}
+
+function chipVariants({ role = 'openagentd', active = false }: { role?: AgentRole; active?: boolean } = {}): string {
+  return cn(
+    CHIP_BASE,
+    active
+      ? cn('border font-semibold text-(--color-text)', ACTIVE_BORDER[role])
+      : 'border-transparent font-medium text-(--color-text-2)',
+  )
+}
 
 const dotColorByRole: Record<AgentRole, string> = {
   openagentd: 'bg-(--color-marker-mint)',
-  executor: 'bg-(--color-marker-orange)',
+  executor:   'bg-(--color-marker-orange)',
   consultant: 'bg-(--color-marker-blue)',
-  explorer: 'bg-(--color-text-muted)',
+  explorer:   'bg-(--color-text-muted)',
 }
 
 export interface AgentChipProps
-  extends Omit<React.ComponentPropsWithoutRef<'button'>, 'role'>,
-    VariantProps<typeof chipVariants> {
+  extends Omit<React.ComponentPropsWithoutRef<'button'>, 'role'> {
   role: AgentRole
+  active?: boolean
   /** Optional override for the visible label (defaults to the role name). */
   label?: string
   /** Optional override of the dot color when an agent's status diverges from idle. */

@@ -30,6 +30,7 @@ from app.api.routes.settings import (
     _provider_is_configured,
     _provider_saved_overrides,
 )
+from app.api.schemas.base import _validation_detail
 from app.api.schemas.agents import (
     AgentDeleteResponse,
     AgentDetail,
@@ -147,10 +148,7 @@ def _parse_content(name: str, content: str) -> AgentConfig:
     try:
         return AgentConfig.model_validate(raw_meta)
     except ValidationError as exc:
-        errors = "; ".join(
-            f"{'.'.join(str(p) for p in e['loc'])}: {e['msg']}" for e in exc.errors()
-        )
-        raise ValueError(errors) from exc
+        raise ValueError(_validation_detail(exc)) from exc
 
 
 def _require_frontmatter_name(name: str, content: str) -> None:

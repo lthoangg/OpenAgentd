@@ -16,7 +16,9 @@ from app.agent.schemas.chat import (
 
 
 from app.agent.providers.googlegenai.schemas import (
+    FunctionCall,
     GeminiChatRequest,
+    GeminiChatResponse,
     Content,
     Part,
     GenerationConfig,
@@ -898,3 +900,86 @@ async def test_stream_tool_call_args_not_duplicated_on_re_emission(google_provid
     assert tc1[0].id == "tc1"
     assert tc1[0].function.name is None
     assert tc1[0].function.arguments is None
+
+
+# ---------------------------------------------------------------------------
+# FunctionCall.args — missing args key from Gemini for zero-arg tools
+# ---------------------------------------------------------------------------
+
+
+def test_function_call_args_defaults_to_empty_dict_when_missing():
+    """Regression: Gemini omits 'args' when a tool takes no arguments.
+
+    Previously FunctionCall.args was a required field, so model_validate()
+    raised a ValidationError for zero-arg tool calls like 'ls' or 'date'.
+    """
+    fc = FunctionCall.model_validate({"name": "ls", "id": "call_abc"})
+    assert fc.name == "ls"
+    assert fc.args == {}
+    assert fc.id == "call_abc"
+
+
+def test_gemini_response_parse_function_call_without_args():
+    """Regression: GeminiChatResponse.model_validate() must not raise when
+    a functionCall part has no 'args' key (zero-arg tool, e.g. ls, date).
+    """
+    data = {
+        "candidates": [
+            {
+                "content": {
+                    "role": "model",
+                    "parts": [
+                        {
+                            "functionCall": {
+                                "name": "ls",
+                                "id": "call_xyz",
+                                # no 'args' key — Gemini omits it for zero-arg tools
+                            }
+                        }
+                    ],
+                },
+                "finishReason": "STOP",
+            }
+        ],
+        "usageMetadata": {
+            "promptTokenCount": 10,
+            "candidatesTokenCount": 5,
+            "totalTokenCount": 15,
+        },
+    }
+    resp = GeminiChatResponse.model_validate(data)
+    fc = resp.candidates[0].content.parts[0].function_call
+    assert fc is not None
+    assert fc.name == "ls"
+    assert fc.args == {}
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_stream_zero_arg_tool_call(google_provider):
+    """Regression: streaming a tool call with no args must not raise.
+
+    Gemini omits the 'args' key entirely when calling a zero-argument tool.
+    The stream() path hits GeminiChatResponse.model_validate() on each SSE
+    chunk, so it raised the same ValidationError as the non-streaming path.
+    """
+    stream_content = (
+        'data: {"candidates":[{"content":{"parts":['
+        '{"functionCall":{"name":"ls","id":"call_ls1"}}'
+        '],"role":"model"},"finishReason":"STOP"}],'
+        '"usageMetadata":{"promptTokenCount":5,"candidatesTokenCount":3,"totalTokenCount":8}}\n'
+    )
+
+    respx.post(
+        f"{google_provider.base_url}/models/gemini-1.5-flash:streamGenerateContent?alt=sse"
+    ).mock(return_value=httpx.Response(200, content=stream_content))
+
+    chunks = []
+    async for chunk in google_provider.stream(messages=[HumanMessage(content="list")]):
+        chunks.append(chunk)
+
+    assert len(chunks) == 1
+    tc_delta = chunks[0].choices[0].delta.tool_calls
+    assert tc_delta is not None and len(tc_delta) == 1
+    assert tc_delta[0].function.name == "ls"
+    assert tc_delta[0].function.arguments == "{}"

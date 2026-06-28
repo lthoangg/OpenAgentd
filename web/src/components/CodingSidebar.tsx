@@ -1136,8 +1136,8 @@ export function CodingSidebar({
               {error && <p className="rounded-md border border-(--color-error)/30 bg-(--color-error-subtle) px-3 py-2 text-xs text-(--color-error)">{error}</p>}
             </div>
             <DialogFooter className="mx-0 mb-0 shrink-0 flex-row justify-end gap-2 rounded-none border-t border-(--color-border) bg-(--bg-page) px-3 py-2.5 sm:px-4">
-              <Button type="button" variant="default" onClick={() => setWorktreeTarget(null)} className="h-8 w-auto px-3 text-xs">Cancel</Button>
-              <Button type="submit" disabled={worktreeLoading} className="h-8 w-auto px-3 text-xs">
+              <Button type="button" size="sm" variant="default" onClick={() => setWorktreeTarget(null)}>Cancel</Button>
+              <Button type="submit" size="sm" disabled={worktreeLoading}>
                 {worktreeLoading ? 'Creating…' : 'Create and open'}
               </Button>
             </DialogFooter>
@@ -1369,8 +1369,8 @@ export function CodingSidebar({
               )}
             </div>
             <DialogFooter className="mx-0 mb-0 flex-row justify-end gap-2 rounded-none border-0 bg-transparent p-0">
-              <Button type="button" variant="default" className="h-8 px-3 text-xs" onClick={() => setEditTarget(null)}>Cancel</Button>
-              <Button type="submit" className="h-8 px-3 text-xs" disabled={!editTitle.trim() || updateSessionTitle.isPending}>
+              <Button type="button" size="sm" variant="default" onClick={() => setEditTarget(null)}>Cancel</Button>
+              <Button type="submit" size="sm" disabled={!editTitle.trim() || updateSessionTitle.isPending}>
                 {updateSessionTitle.isPending ? 'Saving…' : 'Save'}
               </Button>
             </DialogFooter>
@@ -1402,8 +1402,8 @@ export function CodingSidebar({
               {error && <p className="mt-2 text-xs text-(--color-error)">{error}</p>}
             </div>
             <DialogFooter className="mx-0 mb-0 flex-row justify-end gap-2 rounded-none border-0 bg-transparent p-0">
-              <Button type="button" variant="default" className="h-8 px-3 text-xs" onClick={() => setWorktreeEditTarget(null)}>Cancel</Button>
-              <Button type="submit" className="h-8 px-3 text-xs" disabled={!worktreeEditTitle.trim() || worktreeEditLoading}>
+              <Button type="button" size="sm" variant="default" onClick={() => setWorktreeEditTarget(null)}>Cancel</Button>
+              <Button type="submit" size="sm" disabled={!worktreeEditTitle.trim() || worktreeEditLoading}>
                 {worktreeEditLoading ? 'Saving…' : 'Save'}
               </Button>
             </DialogFooter>

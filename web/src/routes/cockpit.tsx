@@ -7,7 +7,7 @@ import { useTeamStore } from '@/stores/useTeamStore'
 import { applyCacheInvalidations, patchSessionTitle } from '@/stores/cache-invalidation-bridge'
 import { queryKeys } from '@/queries'
 import { loadLastCodingWorkspace, removeCodingWorkspace, saveLastCodingWorkspace, shouldRestoreLastCodingWorkspace, workspaceFromSession } from '@/utils/workspace'
-import { syncDesktopWindowTitle, reapplyDesktopWindowChrome } from '@/lib/window-title'
+import { syncDesktopWindowTitle } from '@/lib/window-title'
 
 /**
  * Layout route for /cockpit, /coding, and their session routes.
@@ -42,13 +42,10 @@ function TeamLayoutBase({ forcedMode }: { forcedMode?: 'normal' | 'coding' }) {
   }, [mode, workspace])
 
   useEffect(() => {
-    void syncDesktopWindowTitle({ mode, workspace, sessionTitle: useTeamStore.getState().sessionTitle })
-    // Re-center the macOS traffic lights: navigating into cockpit/coding can
-    // trigger an AppKit relayout that pushes them off-center in new windows.
-    void reapplyDesktopWindowChrome()
+    syncDesktopWindowTitle({ mode, workspace, sessionTitle: useTeamStore.getState().sessionTitle })
     return useTeamStore.subscribe((state, prev) => {
       if (state.sessionTitle !== prev.sessionTitle) {
-        void syncDesktopWindowTitle({ mode, workspace, sessionTitle: state.sessionTitle })
+        syncDesktopWindowTitle({ mode, workspace, sessionTitle: state.sessionTitle })
       }
     })
   }, [mode, workspace])

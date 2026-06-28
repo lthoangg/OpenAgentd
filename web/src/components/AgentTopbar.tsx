@@ -100,7 +100,11 @@ export function AgentTopbar({
   return (
     <div
       className={cn(
-        'flex shrink-0 items-center gap-0.5 py-0.5 md:gap-1.5 md:py-2',
+        // py-0 keeps the element within h-10 on desktop so the
+        // AgentTopbar never grows the header's intrinsic height —
+        // an oversized header confuses AppKit's titlebar measurement
+        // and pushes the macOS traffic lights off-centre.
+        'flex shrink-0 items-center gap-0.5 py-0 md:gap-1.5 md:py-0',
         className,
       )}
     >

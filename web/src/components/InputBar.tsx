@@ -465,10 +465,15 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     const wasMinimized = prevMinimizedRef.current
     prevMinimizedRef.current = minimized
     if (!wasMinimized || minimized) return
+    // Reset multi-line state so an empty textarea doesn't re-expand
+    // to a stale multi-row height from a previous session.
+    setIsMultiLine(false)
+    promoteLengthRef.current = 0
     // ``rAF`` lets framer's parent ``layout`` tween start before
-    // focus, so the caret doesn't appear mid-morph at the wrong
-    // position.
+    // focus + resize, so the caret doesn't appear mid-morph at the
+    // wrong position and the height is measured on the now-visible element.
     const id = requestAnimationFrame(() => {
+      resize()
       textareaRef.current?.focus()
     })
     return () => cancelAnimationFrame(id)
@@ -1147,7 +1152,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     <div
       aria-hidden={minimized}
       className={`flex w-full items-center transition-opacity duration-150 ${
-        minimized ? 'pointer-events-none opacity-0' : 'opacity-100'
+        minimized ? 'pointer-events-none opacity-0 h-0 overflow-hidden' : 'opacity-100'
       }`}
     >
       {/* Position context for the chip overlay. ``relative`` + ``w-full``

@@ -573,3 +573,50 @@ def test_split_messages_drops_thinking_block_when_signature_missing_plain() -> N
     assert "thinking" not in block_types
     assert block_types == ["text"]
     assert assistant_turn["content"][0]["text"] == "My answer."
+
+
+def test_anthropic_provider_8k_output_sonnet_v2() -> None:
+    # Sonnet v2 should NOT have 8k max_tokens or beta header now (defaults to 4096)
+    provider_v2 = AnthropicProvider(
+        api_key="sk-ant-test",
+        model="claude-3-5-sonnet-20241022",
+    )
+    assert "anthropic-beta" not in provider_v2.headers
+    payload_v2 = provider_v2._payload([HumanMessage(content="hi")], None, {})
+    assert payload_v2["max_tokens"] == 4096
+
+    # Sonnet v1 should also default to 4096
+    provider_v1 = AnthropicProvider(
+        api_key="sk-ant-test",
+        model="claude-3-5-sonnet-20240620",
+    )
+    assert "anthropic-beta" not in provider_v1.headers
+    payload_v1 = provider_v1._payload([HumanMessage(content="hi")], None, {})
+    assert payload_v1["max_tokens"] == 4096
+
+    # Claude 3.7 should default to 4k max_tokens and have no beta header
+    provider_37 = AnthropicProvider(
+        api_key="sk-ant-test",
+        model="claude-3-7-sonnet",
+    )
+    assert "anthropic-beta" not in provider_37.headers
+    payload_37 = provider_37._payload([HumanMessage(content="hi")], None, {})
+    assert payload_37["max_tokens"] == 4096
+
+    # Claude 4.6 Sonnet should have its registry limit or 4k fallback
+    provider_46 = AnthropicProvider(
+        api_key="sk-ant-test",
+        model="claude-sonnet-4-6",
+    )
+    assert "anthropic-beta" not in provider_46.headers
+    payload_46 = provider_46._payload([HumanMessage(content="hi")], None, {})
+    assert payload_46["max_tokens"] in (64000, 4096)
+
+    # Claude 4.8 Opus should have its registry limit or 4k fallback
+    provider_48 = AnthropicProvider(
+        api_key="sk-ant-test",
+        model="claude-opus-4-8",
+    )
+    assert "anthropic-beta" not in provider_48.headers
+    payload_48 = provider_48._payload([HumanMessage(content="hi")], None, {})
+    assert payload_48["max_tokens"] in (128000, 4096)

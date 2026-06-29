@@ -245,7 +245,9 @@ unrelated hiccups later in the same turn each get the full allowance.
 
 When a model hits its output token limit (`finish_reason="max_tokens"` or `"length"`), it is cut off mid-sentence or mid-action. This is especially problematic during tool calls (like writing or patching files) because the JSON payload becomes truncated and malformed, resulting in the tool call being dropped.
 
-The loop handles this by:
+To minimize truncation, the agent loop dynamically resolves the maximum output token limit (`max_tokens`) for each model from the central model registry (`models.dev`). For example, newer models like Claude 4+ natively support up to 128k output tokens, which are resolved dynamically. For models without a registered limit, or legacy models (such as Claude 3.5 and Claude 3.7, which do not use beta headers), the provider defaults to 4k (4,096 tokens).
+
+The loop handles truncation by:
 1. **Detecting Truncation:** Checking if `finish_reason` is `"max_tokens"` or `"length"`.
 2. **Identifying Dropped Tool Calls:** The streaming assembler tracks if a partial tool call was dropped due to bad JSON or missing names during truncation (`dropped_tool_calls`).
 3. **Injecting a Recovery Prompt:**

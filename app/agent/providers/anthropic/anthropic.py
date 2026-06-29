@@ -372,6 +372,16 @@ def _stream_chunk(
     )
 
 
+def _max_output_tokens_for_model(model: str) -> int:
+    from app.agent.providers.model_metadata import get_model_limits
+
+    limits = get_model_limits(f"anthropic:{model}")
+    if limits.max_completion_tokens is not None:
+        return limits.max_completion_tokens
+
+    return 4096
+
+
 class AnthropicProvider(LLMProviderBase):
     def __init__(
         self,
@@ -414,10 +424,11 @@ class AnthropicProvider(LLMProviderBase):
         kwargs: dict[str, Any],
     ) -> dict[str, Any]:
         system, anthropic_messages = _split_messages(messages)
+        default_max = _max_output_tokens_for_model(self.model)
         payload: dict[str, Any] = {
             "model": self.model,
             "messages": anthropic_messages,
-            "max_tokens": int(kwargs.pop("max_tokens", 4096) or 4096),
+            "max_tokens": int(kwargs.pop("max_tokens", default_max) or default_max),
         }
         if system:
             payload["system"] = system

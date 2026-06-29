@@ -33,10 +33,9 @@ updates:
     commit-message:
       prefix: "deps"
     groups:
-      web-minor-patch:
-        update-types:
-          - "minor"
-          - "patch"
+      web-all:
+        patterns:
+          - "*"
 
   - package-ecosystem: "cargo"
     directory: "/desktop/src-tauri"

@@ -115,16 +115,4 @@ class ChatForm(BaseModel):
             and ":" not in self.model.strip()
         ):
             raise ValueError("model must use 'provider:model' format.")
-        if (
-            self.thinking_level is not None
-            and self.thinking_level.strip()
-            and self.thinking_level.strip()
-            not in {
-                "none",
-                "low",
-                "medium",
-                "high",
-            }
-        ):
-            raise ValueError("thinking_level must be one of: none, low, medium, high.")
         return self

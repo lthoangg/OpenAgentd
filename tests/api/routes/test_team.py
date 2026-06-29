@@ -645,3 +645,10 @@ class TestTeamChatFormValidation:
         client = TestClient(app_with_team)
         response = client.post("/api/team/chat", data={})
         assert response.status_code == 422
+
+    def test_thinking_level_accepts_any_string(self):
+        from app.api.schemas.chat import ChatForm
+
+        for level in ["none", "low", "medium", "high", "xhigh", "max", "custom-level"]:
+            form = ChatForm(message="hello", thinking_level=level)
+            assert form.thinking_level == level

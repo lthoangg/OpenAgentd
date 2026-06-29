@@ -210,11 +210,15 @@ ollama pull llama3.2        # pull any model
 
 Enables extended reasoning on supporting models.
 
+The common baseline values are:
+
 | Value | Behaviour |
 |-------|-----------|
 | `none` (default) | Thinking disabled. |
 | `low` | Lightweight reasoning pass. |
 | `medium` | Balanced reasoning. |
 | `high` | Maximum reasoning effort. |
+
+**Valid values are model-specific.** Each model advertises its supported levels via `thinking_levels` in the model registry (`GET /api/registry`). Some models expose additional levels beyond the baseline (e.g. `minimal`, `xhigh`, `max`). The settings UI populates the thinking level picker from the selected model's metadata and falls back to the baseline list when the model reports none.
 
 Mapping varies per provider. Some use reasoning effort fields, some use provider-specific thinking objects, and non-reasoning models ignore the field.

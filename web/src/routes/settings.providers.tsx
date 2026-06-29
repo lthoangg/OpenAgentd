@@ -70,11 +70,12 @@ export function ProvidersSettingsPage() {
   const providers = useMemo(() => providersQ.data?.providers ?? [], [providersQ.data?.providers])
   const connectedCount = providers.filter((p) => p.is_configured).length
 
-  // Pre-fetch models for configured providers
+  // Pre-fetch models for configured providers — skip if already cached
   useEffect(() => {
     if (!providersQ.data) return
     for (const provider of providersQ.data.providers) {
       if (!provider.is_configured) continue
+      if (queryClient.getQueryData(queryKeys.settings.providerModels(provider.id))) continue
       void listProviderModels(provider.id, {}).then((listed) => {
         queryClient.setQueryData(queryKeys.settings.providerModels(provider.id), listed)
         queryClient.setQueryData<ProvidersListBody>(queryKeys.settings.providers(), (current) => {

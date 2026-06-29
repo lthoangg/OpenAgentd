@@ -40,10 +40,14 @@ export function AgentEditorPage({ name, onBack }: AgentEditorPageProps) {
   const [mode, setMode] = useState<'form' | 'raw'>('form')
   const [deleteOpen, setDeleteOpen] = useState(false)
 
-  const [seeded, setSeeded] = useState(!!data?.content)
-  if (!seeded && data?.content) {
-    setSeeded(true)
+  // Re-seed draft when navigating to a different agent or when the query
+  // first resolves. Using the agent name as the sentinel means switching
+  // between agents always resets the draft to the freshly loaded content.
+  const [seededFor, setSeededFor] = useState<string | null>(data?.content ? name : null)
+  if (data?.content && seededFor !== name) {
+    setSeededFor(name)
     setDraft(data.content)
+    setSaveError(null)
   }
 
   const dirty = !!data && !contentEquals(draft, data.content)

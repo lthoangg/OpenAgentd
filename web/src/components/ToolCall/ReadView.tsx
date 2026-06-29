@@ -18,9 +18,9 @@ function parseArgs(args: string): { path: string } {
 }
 
 function parseReadResult(result?: string): { label: string; body: string; startLine: number } {
-  if (!result) return { label: 'file contents', body: '', startLine: 1 }
+  if (!result) return { label: '', body: '', startLine: 1 }
   const match = result.match(/^\[(\d+)-(\d+)\/(\d+)\]\n([\s\S]*)$/)
-  if (!match) return { label: 'file contents', body: truncateForDisplay(result), startLine: 1 }
+  if (!match) return { label: '', body: truncateForDisplay(result), startLine: 1 }
   return {
     label: `lines ${match[1]}-${match[2]} of ${match[3]}`,
     body: truncateForDisplay(match[4]),

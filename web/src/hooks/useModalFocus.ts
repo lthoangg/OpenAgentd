@@ -1,6 +1,13 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 
 export function useModalFocus(open: boolean, onClose?: () => void) {
+  // Keep a ref so the keydown handler always calls the latest onClose without
+  // needing to be re-registered every time the parent re-renders with a new
+  // callback reference. Without this, the listener briefly vanishes during
+  // the teardown+re-add window, dropping any Escape press that lands there.
+  const onCloseRef = useRef(onClose)
+  useEffect(() => { onCloseRef.current = onClose })
+
   useEffect(() => {
     if (!open) return
     const previousActive = document.activeElement instanceof HTMLElement
@@ -22,7 +29,7 @@ export function useModalFocus(open: boolean, onClose?: () => void) {
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        onClose?.()
+        onCloseRef.current?.()
         return
       }
       if (event.key !== 'Tab') return
@@ -49,5 +56,5 @@ export function useModalFocus(open: boolean, onClose?: () => void) {
       document.removeEventListener('keydown', handleKeyDown)
       if (previousActive?.isConnected) previousActive.focus()
     }
-  }, [open, onClose])
+  }, [open]) // onClose intentionally omitted — read via ref above
 }

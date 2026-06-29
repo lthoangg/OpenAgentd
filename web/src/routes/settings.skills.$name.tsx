@@ -32,10 +32,12 @@ export function SkillEditorPage({ name, onBack }: SkillEditorPageProps) {
   const [draft, setDraft] = useState<string>(() => data?.content ?? '')
   const [saveError, setSaveError] = useState<string | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
-  const [seeded, setSeeded] = useState(!!data?.content)
-  if (!seeded && data?.content) {
-    setSeeded(true)
+
+  const [seededFor, setSeededFor] = useState<string | null>(data?.content ? name : null)
+  if (data?.content && seededFor !== name) {
+    setSeededFor(name)
     setDraft(data.content)
+    setSaveError(null)
   }
 
   const readOnly = data ? !data.editable : false

@@ -43,6 +43,12 @@ from app.api.schemas.team import (
     GitCommit,
     WorkspaceGitHistoryResponse,
     WorkspaceCommitDiffResponse,
+    CodingWorkspaceGitDiffResponse,
+    CodingWorkspaceStatusResponse,
+    CodingWorkspaceStatusDirty,
+    CodingWorkspaceStatusHead,
+    DiscardWorkspaceFileRequest,
+    DiscardWorkspaceFileResponse,
 )
 from app.core.db import async_session_factory
 from app.core.paths import session_uploads_dir, session_workspace_dir, workspace_dir
@@ -205,7 +211,7 @@ def _is_gitignored(rel: str, *, is_dir: bool, rules: list[tuple[str, bool]]) -> 
     return _shared_is_gitignored(rel, is_dir=is_dir, rules=rules)
 
 
-@router.get("/{session_id}/files", response_model=WorkspaceFilesResponse)
+@router.get("/{session_id}/files")
 async def list_workspace_files(session_id: str) -> WorkspaceFilesResponse:
     """List every file under the session's agent workspace, recursively.
 
@@ -331,7 +337,7 @@ async def read_coding_workspace_file(
     )
 
 
-@router.get("/workspace/files/list", response_model=CodingWorkspaceFilesResponse)
+@router.get("/workspace/files/list")
 async def list_coding_workspace_files(workspace: str) -> CodingWorkspaceFilesResponse:
     try:
         resolved = team_manager.validate_workspace(workspace)
@@ -353,7 +359,7 @@ async def list_coding_workspace_files(workspace: str) -> CodingWorkspaceFilesRes
 async def get_coding_workspace_git_diff(
     workspace: str,
     paths: list[str] | None = Query(None),
-) -> dict:
+) -> CodingWorkspaceGitDiffResponse:
     """Return the workspace's git diff, optionally scoped to ``paths``.
 
     Without ``paths`` the diff covers the entire repo (``git diff -- .``) —
@@ -371,7 +377,9 @@ async def get_coding_workspace_git_diff(
 
     root = Path(resolved)
     if not (root / ".git").exists():
-        return {"workspace": resolved, "is_git_repo": False, "diff": ""}
+        return CodingWorkspaceGitDiffResponse(
+            workspace=resolved, is_git_repo=False, diff=""
+        )
 
     # Normalise + validate paths: drop empties, reject absolute or
     # parent-traversal paths so the scoped call can't leak diffs from
@@ -432,13 +440,13 @@ async def get_coding_workspace_git_diff(
     full_diff = tracked_diff + _untracked_diff(root, untracked)
     truncated = len(full_diff) > _MAX_GIT_DIFF_CHARS
     diff = full_diff[:_MAX_GIT_DIFF_CHARS]
-    return {
-        "workspace": resolved,
-        "is_git_repo": True,
-        "diff": diff,
-        "untracked": untracked,
-        "truncated": truncated,
-    }
+    return CodingWorkspaceGitDiffResponse(
+        workspace=resolved,
+        is_git_repo=True,
+        diff=diff,
+        untracked=untracked,
+        truncated=truncated,
+    )
 
 
 def _untracked_diff(root: Path, paths: list[str]) -> str:
@@ -522,7 +530,9 @@ def _parse_porcelain_v2(stdout: str) -> tuple[str | None, dict[str, int]]:
 
 
 @router.get("/workspace/status")
-async def get_coding_workspace_status(workspace: str) -> dict:
+async def get_coding_workspace_status(
+    workspace: str,
+) -> CodingWorkspaceStatusResponse:
     """Lightweight workspace overview for the coding-mode empty state.
 
     Returns workspace path + name (always), and git metadata (branch, dirty
@@ -537,14 +547,17 @@ async def get_coding_workspace_status(workspace: str) -> dict:
 
     root = Path(resolved)
     name = root.name or resolved
-    payload: dict = {"workspace": resolved, "name": name, "is_git_repo": False}
 
     if not (root / ".git").exists():
-        return payload
+        return CodingWorkspaceStatusResponse(
+            workspace=resolved, name=name, is_git_repo=False
+        )
 
     status_out = await _run_git(resolved, "status", "--porcelain=v2", "--branch")
     if status_out is None:
-        return payload
+        return CodingWorkspaceStatusResponse(
+            workspace=resolved, name=name, is_git_repo=False
+        )
     branch, counts = _parse_porcelain_v2(status_out)
 
     head: dict | None = None
@@ -561,18 +574,20 @@ async def get_coding_workspace_status(workspace: str) -> dict:
             except ValueError:
                 head = None
 
-    payload.update(
-        {
-            "is_git_repo": True,
-            "branch": branch,
-            "dirty": counts,
-            "head": head,
-        }
+    dirty_model = CodingWorkspaceStatusDirty(**counts) if counts else None
+    head_model = CodingWorkspaceStatusHead(**head) if head else None
+
+    return CodingWorkspaceStatusResponse(
+        workspace=resolved,
+        name=name,
+        is_git_repo=True,
+        branch=branch,
+        dirty=dirty_model,
+        head=head_model,
     )
-    return payload
 
 
-@router.get("/workspace/git/history", response_model=WorkspaceGitHistoryResponse)
+@router.get("/workspace/git/history")
 async def get_coding_workspace_git_history(
     workspace: str,
     limit: int = Query(50, ge=1, le=500),
@@ -683,8 +698,8 @@ async def get_coding_workspace_git_history(
 
 @router.post("/workspace/git/discard")
 async def discard_coding_workspace_file(
-    payload: dict,
-) -> dict:
+    body: DiscardWorkspaceFileRequest,
+) -> DiscardWorkspaceFileResponse:
     """Discard changes for a single file in the workspace.
 
     - Modified / deleted (tracked): ``git checkout -- <path>``
@@ -692,9 +707,9 @@ async def discard_coding_workspace_file(
 
     The caller supplies ``{"workspace": "...", "path": "...", "status": "M"|"D"|"A"}``.
     """
-    workspace: str = payload.get("workspace", "")
-    rel_path: str = payload.get("path", "")
-    status: str = payload.get("status", "M")
+    workspace: str = body.workspace
+    rel_path: str = body.path
+    status: str = body.status
 
     if not workspace or not rel_path:
         raise HTTPException(status_code=400, detail="workspace and path are required.")
@@ -745,10 +760,12 @@ async def discard_coding_workspace_file(
                 detail=f"git checkout failed: {result.stderr.strip()}",
             )
 
-    return {"workspace": workspace, "path": rel_path, "status": status}
+    return DiscardWorkspaceFileResponse(
+        workspace=workspace, path=rel_path, status=status
+    )
 
 
-@router.get("/workspace/git/commit-diff", response_model=WorkspaceCommitDiffResponse)
+@router.get("/workspace/git/commit-diff")
 async def get_coding_workspace_commit_diff(
     workspace: str,
     sha: str,

@@ -68,6 +68,10 @@ class WorktreeCreateResponse(WorktreeInfo):
     source_workspace: str
 
 
+class WorktreeRemoveResponse(BaseModel):
+    removed: bool
+
+
 def _run_git(workspace: Path, *args: str) -> subprocess.CompletedProcess[str]:
     try:
         return subprocess.run(
@@ -222,7 +226,7 @@ def find_managed_worktree_source(directory: Path) -> str | None:
     return str(source)
 
 
-@router.get("/workspace/worktrees", response_model=list[WorktreeInfo])
+@router.get("/workspace/worktrees")
 async def list_coding_workspace_worktrees(source_workspace: str) -> list[WorktreeInfo]:
     try:
         source = Path(team_manager.validate_workspace(source_workspace))
@@ -253,7 +257,7 @@ async def list_coding_workspace_worktrees(source_workspace: str) -> list[Worktre
 @router.delete("/workspace/worktrees")
 async def remove_coding_workspace_worktree(
     body: WorktreeRemoveRequest,
-) -> dict[str, bool]:
+) -> WorktreeRemoveResponse:
     try:
         source = Path(team_manager.validate_workspace(body.source_workspace))
     except ValueError as exc:
@@ -272,7 +276,7 @@ async def remove_coding_workspace_worktree(
         async with db_module.async_session_factory() as db:
             async with db.begin():
                 await mark_coding_workspace_deleted(db, str(directory))
-        return {"removed": True}
+        return WorktreeRemoveResponse(removed=True)
 
     removed = _run_git(source, "worktree", "remove", "--force", str(directory))
     if removed.returncode != 0:
@@ -289,10 +293,10 @@ async def remove_coding_workspace_worktree(
     async with db_module.async_session_factory() as db:
         async with db.begin():
             await mark_coding_workspace_deleted(db, str(directory))
-    return {"removed": True}
+    return WorktreeRemoveResponse(removed=True)
 
 
-@router.patch("/workspace/worktrees", response_model=WorktreeInfo)
+@router.patch("/workspace/worktrees")
 async def rename_coding_workspace_worktree(
     body: WorktreeRenameRequest,
 ) -> WorktreeInfo:
@@ -310,7 +314,7 @@ async def rename_coding_workspace_worktree(
     )
 
 
-@router.post("/workspace/worktrees", response_model=WorktreeCreateResponse)
+@router.post("/workspace/worktrees")
 async def create_coding_workspace_worktree(
     body: WorktreeCreateRequest,
 ) -> WorktreeCreateResponse:

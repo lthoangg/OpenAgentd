@@ -34,8 +34,21 @@ from app.api.schemas.sessions import (
     TeamSessionResolveResponse,
     TeamSessionUpdateRequest,
     TeamWorkspaceVisibilityRequest,
+    CodingWorkspaceVisibilityResponse,
 )
-from app.api.schemas.team import TeamHistoryMember, TeamHistoryResponse
+from app.api.schemas.team import (
+    AgentInfoResponse,
+    BlueprintInfoResponse,
+    ChangedPathsPayload,
+    CodingWorkspaceBrowseResponse,
+    CodingWorkspaceFolder,
+    CodingWorkspaceValidateResponse,
+    TeamAgentsResponse,
+    TeamChatResponse,
+    TeamCommandResponse,
+    TeamHistoryMember,
+    TeamHistoryResponse,
+)
 from app.api.routes.team.worktrees import (
     WorktreeCreateRequest,
     create_coding_workspace_worktree,
@@ -148,7 +161,7 @@ async def team_chat(
     db: DbSession,
     body: ChatFormDep,
     files: list[UploadFile] = File(default=[]),
-) -> dict:
+) -> TeamChatResponse:
     """Deliver a message to the team lead (202). Accepts multipart/form-data.
 
     Modes:
@@ -237,7 +250,7 @@ async def team_chat(
     # ── Interrupt (mutually exclusive with message) ─────────────────────────
     if interrupt:
         await agent_service.interrupt_team(team_obj, session_id)
-        return {"status": "interrupted", "session_id": session_id}
+        return TeamChatResponse(status="interrupted", session_id=session_id)
 
     assert message is not None
     if body.shell:
@@ -264,7 +277,7 @@ async def team_chat(
             service_tier=fast_mode_service_tier,
         )
         logger.info("team_chat_shell_received session_id={}", sid)
-        return {"status": "accepted", "session_id": sid}
+        return TeamChatResponse(status="accepted", session_id=sid)
 
     # Materialise the multipart uploads into transport-neutral attachments
     # so agent_service can validate + persist them without knowing about
@@ -375,11 +388,11 @@ async def team_chat(
             )
             if not team_obj.has_active_user_turn():
                 await team_obj._activate_queued_user_messages(session_id)
-            return {
-                "status": "queued",
-                "session_id": session_id,
-                "message_id": str(queued.id),
-            }
+            return TeamChatResponse(
+                status="queued",
+                session_id=session_id,
+                message_id=str(queued.id),
+            )
 
         try:
             sid, n_attachments = await agent_service.dispatch_user_message(
@@ -405,7 +418,7 @@ async def team_chat(
             sid,
             n_attachments,
         )
-        return {"status": "accepted", "session_id": sid}
+        return TeamChatResponse(status="accepted", session_id=sid)
 
 
 @router.delete("/sessions/{session_id}/queued-messages/{message_id}", status_code=204)
@@ -431,7 +444,7 @@ class CommandRequest(BaseModel):
 async def team_command(
     body: CommandRequest,
     db: DbSession,
-) -> dict:
+) -> TeamCommandResponse:
     """Run a slash-command on a session — no new user message persisted.
 
     Currently supported:
@@ -477,7 +490,9 @@ async def team_command(
         except ContinuePreconditionError as exc:
             raise HTTPException(status_code=exc.status, detail=exc.reason) from exc
         logger.info("team_command_continue session_id={}", sid)
-        return {"status": "accepted", "session_id": sid, "command": "continue"}
+        return TeamCommandResponse(
+            status="accepted", session_id=sid, command="continue"
+        )
 
     if body.command == "compact":
         try:
@@ -485,7 +500,7 @@ async def team_command(
         except ContinuePreconditionError as exc:
             raise HTTPException(status_code=exc.status, detail=exc.reason) from exc
         logger.info("team_command_compact session_id={}", sid)
-        return {"status": "accepted", "session_id": sid, "command": "compact"}
+        return TeamCommandResponse(status="accepted", session_id=sid, command="compact")
 
     if body.command == "undo":
         try:
@@ -494,13 +509,13 @@ async def team_command(
             raise HTTPException(status_code=exc.status, detail=exc.reason) from exc
         logger.info("team_command_undo session_id={}", sid)
         assert shift.target is not None
-        return {
-            "status": "accepted",
-            "session_id": sid,
-            "command": "undo",
-            "message": _message_response(shift.target).model_dump(mode="json"),
-            "changed_paths": _changed_paths_payload(shift),
-        }
+        return TeamCommandResponse(
+            status="accepted",
+            session_id=sid,
+            command="undo",
+            message=_message_response(shift.target),
+            changed_paths=ChangedPathsPayload(**_changed_paths_payload(shift)),
+        )
 
     if body.command == "redo":
         try:
@@ -508,17 +523,15 @@ async def team_command(
         except ContinuePreconditionError as exc:
             raise HTTPException(status_code=exc.status, detail=exc.reason) from exc
         logger.info("team_command_redo session_id={}", sid)
-        return {
-            "status": "accepted",
-            "session_id": sid,
-            "command": "redo",
-            "message": (
-                _message_response(shift.target).model_dump(mode="json")
-                if shift.target is not None
-                else None
+        return TeamCommandResponse(
+            status="accepted",
+            session_id=sid,
+            command="redo",
+            message=(
+                _message_response(shift.target) if shift.target is not None else None
             ),
-            "changed_paths": _changed_paths_payload(shift),
-        }
+            changed_paths=ChangedPathsPayload(**_changed_paths_payload(shift)),
+        )
 
     # Defensive — the Literal makes this unreachable, but pyright/ty wants it.
     raise HTTPException(status_code=400, detail=f"Unknown command: {body.command}")
@@ -555,7 +568,7 @@ async def team_stream(session_id: str, request: Request):
 async def list_team_agents(
     team: TeamDep,
     workspace: str | None = Query(None, description="Coding workspace directory."),
-) -> dict:
+) -> TeamAgentsResponse:
     """Return info on the lead, all live member instances, and spawnable blueprints.
 
     Refreshes drifted-but-idle agents from disk before serializing so the
@@ -597,36 +610,37 @@ async def list_team_agents(
     blueprints = [
         _serialize_blueprint(team_obj, bp) for bp in team_obj.blueprints.values()
     ]
-    return {
-        "agents": [
-            _serialize_agent(m.agent, is_lead=(m is team_obj.lead)) for m in all_members
+    return TeamAgentsResponse(
+        agents=[
+            AgentInfoResponse(**_serialize_agent(m.agent, is_lead=(m is team_obj.lead)))
+            for m in all_members
         ],
-        "blueprints": blueprints,
-        "mode": team_obj.mode,
-        "workspace": team_obj.workspace,
-    }
+        blueprints=[BlueprintInfoResponse(**bp) for bp in blueprints],
+        mode=team_obj.mode,
+        workspace=team_obj.workspace,
+    )
 
 
 @router.get("/workspace/validate")
 async def validate_coding_workspace(
     workspace: str = Query(..., description="Coding workspace directory."),
-) -> dict:
+) -> CodingWorkspaceValidateResponse:
     try:
         resolved = team_manager.validate_workspace(workspace)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return {"workspace": resolved}
+    return CodingWorkspaceValidateResponse(workspace=resolved)
 
 
 @router.get("/workspace/browse")
 async def browse_coding_workspace(
     path: str | None = Query(None, description="Directory to list."),
-) -> dict:
+) -> CodingWorkspaceBrowseResponse:
     root = Path(path).expanduser().resolve() if path else Path.home().resolve()
     if not root.is_dir():
         raise HTTPException(status_code=422, detail=f"Not a directory: {root}")
 
-    directories: list[dict[str, str]] = []
+    directories: list[CodingWorkspaceFolder] = []
     try:
         entries = sorted(root.iterdir(), key=lambda entry: entry.name.lower())
     except OSError as exc:
@@ -639,15 +653,17 @@ async def browse_coding_workspace(
             continue
         try:
             if entry.is_dir():
-                directories.append({"name": entry.name, "path": str(entry.resolve())})
+                directories.append(
+                    CodingWorkspaceFolder(name=entry.name, path=str(entry.resolve()))
+                )
         except OSError:
             continue
 
-    return {
-        "path": str(root),
-        "parent": str(root.parent) if root.parent != root else None,
-        "directories": directories,
-    }
+    return CodingWorkspaceBrowseResponse(
+        path=str(root),
+        parent=str(root.parent) if root.parent != root else None,
+        directories=directories,
+    )
 
 
 @router.get("/sessions")
@@ -698,7 +714,7 @@ async def list_team_sessions(
     )
 
 
-@router.post("/sessions/resolve", response_model=TeamSessionResolveResponse)
+@router.post("/sessions/resolve")
 async def resolve_team_session(
     body: TeamSessionResolveRequest, db: DbSession
 ) -> TeamSessionResolveResponse:
@@ -789,7 +805,7 @@ async def resolve_team_session(
 @router.patch("/workspace/visibility")
 async def update_coding_workspace_visibility(
     body: TeamWorkspaceVisibilityRequest, db: DbSession
-) -> dict:
+) -> CodingWorkspaceVisibilityResponse:
     workspace = (
         str(Path(body.workspace).expanduser().resolve())
         if body.hidden
@@ -800,10 +816,10 @@ async def update_coding_workspace_visibility(
             await hide_coding_workspace(db, workspace)
         else:
             await upsert_coding_workspace(db, path=workspace, kind="repo", hidden=False)
-    return {"workspace": workspace, "hidden": body.hidden}
+    return CodingWorkspaceVisibilityResponse(workspace=workspace, hidden=body.hidden)
 
 
-@router.get("/workspace/tree", response_model=CodingWorkspaceTreeResponse)
+@router.get("/workspace/tree")
 async def list_coding_workspace_tree(db: DbSession) -> CodingWorkspaceTreeResponse:
     rows = await list_visible_coding_workspaces(db)
     repositories: dict[str, CodingWorkspaceTreeRepository] = {}
@@ -837,7 +853,7 @@ async def list_coding_workspace_tree(db: DbSession) -> CodingWorkspaceTreeRespon
     return CodingWorkspaceTreeResponse(repositories=list(repositories.values()))
 
 
-@router.get("/sessions/{session_id}", response_model=SessionDetailResponse)
+@router.get("/sessions/{session_id}")
 async def get_team_session_detail(
     session_id: UUID, db: DbSession
 ) -> SessionDetailResponse:

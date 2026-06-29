@@ -51,10 +51,20 @@ class OAuthCallbackBody(BaseModel):
     code: str
 
 
+class AuthCheckResponse(BaseModel):
+    ok: bool
+
+
+class OAuthCallbackResponse(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    ok: bool
+
+
 @router.get("/check")
-async def auth_check() -> dict[str, bool]:
+async def auth_check() -> AuthCheckResponse:
     """Protected no-op endpoint for clients to verify access credentials."""
-    return {"ok": True}
+    return AuthCheckResponse(ok=True)
 
 
 # Sentinel queued by the worker thread once login() returns or raises.
@@ -162,7 +172,9 @@ async def oauth_login(provider_id: str, request: Request):
 
 
 @router.post("/{provider_id}/callback")
-async def oauth_callback(provider_id: str, body: OAuthCallbackBody) -> dict[str, Any]:
+async def oauth_callback(
+    provider_id: str, body: OAuthCallbackBody
+) -> OAuthCallbackResponse:
     from app.agent.providers.plugin_registry import find_provider_plugin
 
     plugin = find_provider_plugin(provider_id)
@@ -188,4 +200,4 @@ async def oauth_callback(provider_id: str, body: OAuthCallbackBody) -> dict[str,
             status_code=400, detail=failed.get("message", "OAuth callback failed")
         )
     success = next((data for event, data in events if event == "success"), {})
-    return {"ok": True, **success}
+    return OAuthCallbackResponse(ok=True, **success)

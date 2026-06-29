@@ -125,3 +125,124 @@ class PermissionRequestResponse(BaseModel):
     tool: str
     patterns: list[str]
     metadata: dict
+
+
+class PermissionListResponse(BaseModel):
+    permissions: list[PermissionRequestResponse]
+
+
+class PermissionReplyResponse(BaseModel):
+    status: str
+    request_id: str
+    reply: str
+
+
+class CodingWorkspaceGitDiffResponse(BaseModel):
+    workspace: str
+    is_git_repo: bool
+    diff: str
+    untracked: list[str] = Field(default_factory=list)
+    truncated: bool = False
+
+
+class CodingWorkspaceStatusDirty(BaseModel):
+    staged: int
+    unstaged: int
+    untracked: int
+
+
+class CodingWorkspaceStatusHead(BaseModel):
+    sha: str
+    subject: str
+    timestamp: int
+
+
+class CodingWorkspaceStatusResponse(BaseModel):
+    workspace: str
+    name: str
+    is_git_repo: bool
+    branch: str | None = None
+    dirty: CodingWorkspaceStatusDirty | None = None
+    head: CodingWorkspaceStatusHead | None = None
+
+
+class DiscardWorkspaceFileRequest(BaseModel):
+    workspace: str
+    path: str
+    status: str
+
+
+class DiscardWorkspaceFileResponse(BaseModel):
+    workspace: str
+    path: str
+    status: str
+
+
+class AgentToolInfo(BaseModel):
+    name: str
+    description: str
+
+
+class AgentInfoResponse(BaseModel):
+    name: str
+    description: str
+    model: str | None = None
+    summary_trigger_tokens: int
+    tools: list[AgentToolInfo]
+    mcp_servers: list[str]
+    is_lead: bool
+    capabilities: dict
+
+
+class BlueprintInfoResponse(BaseModel):
+    name: str
+    description: str
+    model: str | None = None
+    summary_trigger_tokens: int
+    tools: list[AgentToolInfo]
+    mcp_servers: list[str]
+    is_lead: bool
+    capabilities: dict
+    live_instances: list[str]
+
+
+class TeamAgentsResponse(BaseModel):
+    agents: list[AgentInfoResponse]
+    blueprints: list[BlueprintInfoResponse]
+    mode: str
+    workspace: str | None = None
+
+
+class CodingWorkspaceValidateResponse(BaseModel):
+    workspace: str
+
+
+class CodingWorkspaceFolder(BaseModel):
+    name: str
+    path: str
+
+
+class CodingWorkspaceBrowseResponse(BaseModel):
+    path: str
+    parent: str | None = None
+    directories: list[CodingWorkspaceFolder]
+
+
+class TeamChatResponse(BaseModel):
+    status: str
+    session_id: str
+    message_id: str | None = None
+
+
+class ChangedPathsPayload(BaseModel):
+    added: list[str]
+    modified: list[str]
+    removed: list[str]
+
+
+class TeamCommandResponse(BaseModel):
+    status: str
+    session_id: str
+    command: str
+    message: MessageResponse | None = None
+    changed_paths: ChangedPathsPayload | None = None

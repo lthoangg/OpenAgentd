@@ -35,6 +35,11 @@ class TeamWorkspaceVisibilityRequest(BaseModel):
     hidden: bool
 
 
+class CodingWorkspaceVisibilityResponse(BaseModel):
+    workspace: str
+    hidden: bool
+
+
 class CodingWorkspaceTreeWorktree(BaseModel):
     path: str
     name: str

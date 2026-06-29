@@ -13,18 +13,18 @@ FastAPI backend running on `:4082`. All routes are served under the `/api` prefi
 
 | Method | Path | Returns |
 |--------|------|---------|
-| `POST` | `/api/team/chat` | `{status, session_id}` 202 — multipart/form-data |
+| `POST` | `/api/team/chat` | `TeamChatResponse` 202 — multipart/form-data |
 | `GET` | `/api/team/{session_id}/stream` | SSE stream (all agents) |
 | `GET` | `/api/team/{session_id}/history` | `TeamHistoryResponse` (lead + members) |
 | `GET` | `/api/team/{session_id}/uploads/{filename}` | File bytes — user-uploaded attachments |
 | `GET` | `/api/team/{session_id}/media/{path}` | File bytes — agent workspace output (images, etc.) |
 | `GET` | `/api/team/{session_id}/files` | `WorkspaceFilesResponse` — flat recursive listing of the agent workspace |
-| `GET` | `/api/team/agents` | `{agents, blueprints, mode, workspace}`. Pass `?workspace=/path` for coding-mode agents. |
-| `GET` | `/api/team/workspace/validate` | `{workspace}` — validates and resolves a coding workspace path |
-| `GET` | `/api/team/workspace/browse` | `{path, parent, directories}` — browse server-local folders for coding mode |
-| `GET` | `/api/team/workspace/files/list` | `{workspace, files, truncated}` for a selected coding workspace |
-| `GET` | `/api/team/workspace/git-diff/view` | `{workspace, is_git_repo, diff, truncated}` for the selected coding workspace |
-| `GET` | `/api/team/workspace/status` | `{workspace, name, is_git_repo, branch?, dirty?, head?}` — lightweight overview for the coding-mode empty state |
+| `GET` | `/api/team/agents` | `TeamAgentsResponse`. Pass `?workspace=/path` for coding-mode agents. |
+| `GET` | `/api/team/workspace/validate` | `CodingWorkspaceValidateResponse` — validates and resolves a coding workspace path |
+| `GET` | `/api/team/workspace/browse` | `CodingWorkspaceBrowseResponse` — browse server-local folders for coding mode |
+| `GET` | `/api/team/workspace/files/list` | `CodingWorkspaceFilesResponse` for a selected coding workspace |
+| `GET` | `/api/team/workspace/git-diff/view` | `CodingWorkspaceGitDiffResponse` for the selected coding workspace |
+| `GET` | `/api/team/workspace/status` | `CodingWorkspaceStatusResponse` — lightweight overview for the coding-mode empty state |
 | `GET` | `/api/team/sessions` | `SessionPageResponse` — cursor-paginated, newest-first |
 | `POST` | `/api/team/sessions/resolve` | `TeamSessionResolveResponse` — latest matching session or newly-created empty session |
 | `GET` | `/api/team/sessions/{id}` | `SessionDetailResponse` — includes `mode`, `workspace`, and `running` for direct `/coding/{id}` loads |
@@ -166,7 +166,7 @@ in-flight turn are not disrupted.
 | `DELETE` | `/api/scheduler/tasks/{slug}` | 204 |
 | `POST` | `/api/scheduler/tasks/{slug}/pause` | `ScheduledTaskResponse` |
 | `POST` | `/api/scheduler/tasks/{slug}/resume` | `ScheduledTaskResponse` |
-| `POST` | `/api/scheduler/tasks/{slug}/trigger` | `ScheduledTaskResponse` — fire immediately |
+| `POST` | `/api/scheduler/tasks/{slug}/trigger` | `TaskTriggerResponse` — fire immediately |
 
 Every task delivers to the **team lead** of the routing target — there
 is no per-agent routing. The target is set by `mode`
@@ -220,8 +220,8 @@ Tauri updater from **OpenAgentd → Check for Updates…** or
 
 | Method | Path | Returns |
 |--------|------|---------|
-| `GET` | `/api/team/{session_id}/permissions` | `{permissions: PermissionRequest[]}` — all pending approval requests |
-| `POST` | `/api/team/{session_id}/permissions/{request_id}/reply` | `{status, request_id, reply}` |
+| `GET` | `/api/team/{session_id}/permissions` | `PermissionListResponse` — all pending approval requests |
+| `POST` | `/api/team/{session_id}/permissions/{request_id}/reply` | `PermissionReplyResponse` |
 
 ### GET /api/team/{session_id}/permissions
 
@@ -236,7 +236,7 @@ Reply to a pending permission request. Body fields:
 | `reply` | `"once"` \| `"always"` \| `"reject"` | `once`: allow single invocation. `always`: allow this pattern for the session. `reject`: deny and surface error to agent. |
 | `message` | `string \| null` | Optional feedback (currently unused). |
 
-Returns `{status: "ok", request_id, reply}` on success; 404 if not found or already resolved.
+Returns a `PermissionReplyResponse` on success; 404 if not found or already resolved.
 
 ---
 
@@ -244,13 +244,13 @@ Returns `{status: "ok", request_id, reply}` on success; 404 if not found or alre
 
 | Method | Path | Returns |
 |--------|------|---------|
-| `GET` | `/api/health/live` | `{status:"ok",version:"..."}` — always 200 |
-| `GET` | `/api/health/ready` | 200 when DB is reachable; 503 otherwise |
+| `GET` | `/api/health/live` | `HealthLiveResponse` — always 200 |
+| `GET` | `/api/health/ready` | `HealthReadyResponse` — 200 when DB is healthy; 503 otherwise |
 | `GET` | `/metrics`         | Prometheus exposition (scrape target) |
-| `GET` | `/api/observability/summary?days=N` | span-derived aggregates (turns, tokens, latency, errors, `sample_ratio`) |
-| `GET` | `/api/observability/traces?days=N&limit=L&offset=O` | trace list (one row per root `agent_run`), newest first |
-| `GET` | `/api/observability/traces/{trace_id}?days=N` | full span tree for one trace; 404 when outside the `days` window |
-| `GET` | `/api/quote` | `{quote: string, author: string}` — cached daily, fetched from API Ninjas |
+| `GET` | `/api/observability/summary?days=N` | `ObservabilitySummaryResponse` — span-derived aggregates (turns, tokens, latency, errors, `sample_ratio`) |
+| `GET` | `/api/observability/traces?days=N&limit=L&offset=O` | `TracesListResponse` — trace list (one row per root `agent_run`), newest first |
+| `GET` | `/api/observability/traces/{trace_id}?days=N` | `TraceDetailResponse` — full span tree for one trace; 404 when outside the `days` window |
+| `GET` | `/api/quote` | `QuoteResponse` — cached daily, fetched from API Ninjas |
 
 ---
 

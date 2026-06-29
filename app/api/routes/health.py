@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from loguru import logger
+from pydantic import BaseModel
 from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import text
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -22,16 +23,27 @@ from app.services import team_manager
 router = APIRouter()
 
 
+class HealthLiveResponse(BaseModel):
+    status: str
+    version: str
+
+
+class HealthReadyResponse(BaseModel):
+    status: str
+    version: str
+    checks: dict[str, str]
+
+
 @router.get("/live")
-async def health_live() -> dict:
+async def health_live() -> HealthLiveResponse:
     """Liveness probe — returns 200 as long as the event loop is alive.
 
     Never touches the DB; safe for high-frequency orchestrator polling.
     """
-    return {"status": "ok", "version": VERSION}
+    return HealthLiveResponse(status="ok", version=VERSION)
 
 
-async def _check_ready(session: AsyncSession) -> dict:
+async def _check_ready(session: AsyncSession) -> HealthReadyResponse:
     checks: dict[str, str] = {}
 
     # ── DB ────────────────────────────────────────────────────────────────
@@ -56,20 +68,22 @@ async def _check_ready(session: AsyncSession) -> dict:
         checks["team"] = "invalid"
 
     ready = checks["db"] == "ok"  # team "missing" is tolerable (empty agents dir)
-    return {
-        "status": "ok" if ready else "degraded",
-        "version": VERSION,
-        "checks": checks,
-    }
+    return HealthReadyResponse(
+        status="ok" if ready else "degraded",
+        version=VERSION,
+        checks=checks,
+    )
 
 
 @router.get("/ready")
-async def health_ready(session: AsyncSession = Depends(get_session)) -> dict:
+async def health_ready(
+    session: AsyncSession = Depends(get_session),
+) -> HealthReadyResponse:
     """Readiness probe — 200 when dependencies are healthy, 503 otherwise."""
     result = await _check_ready(session)
-    if result["status"] != "ok":
+    if result.status != "ok":
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=result,
+            detail=result.model_dump(),
         )
     return result

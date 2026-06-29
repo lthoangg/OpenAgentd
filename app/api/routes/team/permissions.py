@@ -7,13 +7,18 @@ from typing import Literal, cast
 from fastapi import APIRouter, HTTPException
 from loguru import logger
 
-from app.api.schemas.team import PermissionReplyRequest, PermissionRequestResponse
+from app.api.schemas.team import (
+    PermissionListResponse,
+    PermissionReplyRequest,
+    PermissionReplyResponse,
+    PermissionRequestResponse,
+)
 
 router = APIRouter()
 
 
 @router.get("/{session_id}/permissions")
-async def list_permissions(session_id: str) -> dict:
+async def list_permissions(session_id: str) -> PermissionListResponse:
     """Return all pending permission requests for *session_id*.
 
     Permissions accumulate while a tool execution is blocked awaiting user
@@ -23,21 +28,21 @@ async def list_permissions(session_id: str) -> dict:
 
     service = get_permission_service()
     if service.session_id != session_id:
-        return {"permissions": []}
+        return PermissionListResponse(permissions=[])
 
     pending = service.list_pending()
-    return {
-        "permissions": [
+    return PermissionListResponse(
+        permissions=[
             PermissionRequestResponse(
                 id=req.id,
                 session_id=req.session_id,
                 tool=req.tool,
                 patterns=req.patterns,
                 metadata=req.metadata,
-            ).model_dump()
+            )
             for req in pending
         ]
-    }
+    )
 
 
 @router.post("/{session_id}/permissions/{request_id}/reply", status_code=200)
@@ -45,7 +50,7 @@ async def reply_permission(
     session_id: str,
     request_id: str,
     body: PermissionReplyRequest,
-) -> dict:
+) -> PermissionReplyResponse:
     """Reply to a pending permission request.
 
     ``reply`` must be one of:
@@ -79,4 +84,4 @@ async def reply_permission(
         request_id,
         body.reply,
     )
-    return {"status": "ok", "request_id": request_id, "reply": body.reply}
+    return PermissionReplyResponse(status="ok", request_id=request_id, reply=body.reply)

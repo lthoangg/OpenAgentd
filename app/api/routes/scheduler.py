@@ -23,6 +23,7 @@ from app.scheduler.schemas import (
     ScheduledTaskListResponse,
     ScheduledTaskResponse,
     ScheduledTaskUpdate,
+    TaskTriggerResponse,
 )
 from app.scheduler.scheduler import (
     InvalidTaskTargetError,
@@ -55,7 +56,6 @@ def _task_or_404(task: ScheduledTask | None) -> ScheduledTask:
 
 @router.post(
     "/tasks",
-    response_model=ScheduledTaskResponse,
     status_code=201,
     summary="Create a scheduled task",
 )
@@ -78,7 +78,6 @@ async def create_task(
 
 @router.get(
     "/tasks",
-    response_model=ScheduledTaskListResponse,
     summary="List all scheduled tasks",
 )
 async def list_tasks(
@@ -92,7 +91,6 @@ async def list_tasks(
 
 @router.get(
     "/tasks/{slug}",
-    response_model=ScheduledTaskResponse,
     summary="Get a scheduled task",
 )
 async def get_task(
@@ -105,7 +103,6 @@ async def get_task(
 
 @router.put(
     "/tasks/{slug}",
-    response_model=ScheduledTaskResponse,
     summary="Update a scheduled task",
 )
 async def update_task(
@@ -139,7 +136,6 @@ async def delete_task(
 
 @router.post(
     "/tasks/{slug}/pause",
-    response_model=ScheduledTaskResponse,
     summary="Pause a scheduled task",
 )
 async def pause_task(
@@ -153,7 +149,6 @@ async def pause_task(
 
 @router.post(
     "/tasks/{slug}/resume",
-    response_model=ScheduledTaskResponse,
     summary="Resume a paused scheduled task",
 )
 async def resume_task(
@@ -173,7 +168,7 @@ async def resume_task(
 async def trigger_task(
     slug: str,
     scheduler: TaskScheduler = Depends(get_scheduler),
-) -> dict[str, str]:
+) -> TaskTriggerResponse:
     _task_or_404(await scheduler.get_task(slug))
     await scheduler.trigger(slug)
-    return {"status": "dispatched"}
+    return TaskTriggerResponse(status="dispatched")

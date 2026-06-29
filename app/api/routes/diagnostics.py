@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter
-from pydantic import SecretStr
+from pydantic import BaseModel, SecretStr
 
 from app.core.config import settings
 from app.core.version import VERSION
@@ -30,6 +30,55 @@ router = APIRouter()
 # Cap entry counts so listing a 50k-session workspace dir doesn't make
 # /api/diagnostics take seconds.
 _MAX_DIR_ENTRIES = 1000
+
+
+class DiagnosticsDirInfo(BaseModel):
+    path: str
+    exists: bool
+    entries: int | None = None
+    entries_truncated: bool | None = None
+
+
+class DiagnosticsRuntimeInfo(BaseModel):
+    python: str
+    implementation: str
+    os: str
+    machine: str
+    executable: str
+    desktop_session: bool
+    sidecar_version: str
+
+
+class DiagnosticsDirs(BaseModel):
+    data: DiagnosticsDirInfo
+    config: DiagnosticsDirInfo
+    state: DiagnosticsDirInfo
+    cache: DiagnosticsDirInfo
+    workspace: DiagnosticsDirInfo
+    agents: DiagnosticsDirInfo
+    skills: DiagnosticsDirInfo
+
+
+class DiagnosticsTeam(BaseModel):
+    loaded: bool
+    loadable: bool | None
+
+
+class DiagnosticsMcp(BaseModel):
+    servers: int
+
+
+class DiagnosticsResponse(BaseModel):
+    version: str
+    runtime: DiagnosticsRuntimeInfo
+    dirs: DiagnosticsDirs
+    providers: dict[str, bool]
+    env: dict[str, str]
+    team: DiagnosticsTeam
+    mcp: DiagnosticsMcp
+    log_tail: list[str]
+    log_path: str
+    error_log_path: str
 
 
 def _annotation_contains_secret(annotation: object) -> bool:
@@ -133,7 +182,7 @@ def _safe_env_keys(allowed_prefixes: Iterable[str]) -> dict[str, str]:
 
 
 @router.get("")
-async def diagnostics(tail: int = 200) -> dict[str, Any]:
+async def diagnostics(tail: int = 200) -> DiagnosticsResponse:
     """Return a redacted diagnostics snapshot.
 
     Query params:
@@ -158,43 +207,38 @@ async def diagnostics(tail: int = 200) -> dict[str, Any]:
         except Exception:
             return None
 
-    return {
-        "version": VERSION,
-        "runtime": {
-            "python": sys.version.split()[0],
-            "implementation": platform.python_implementation(),
-            "os": platform.platform(),
-            "machine": platform.machine(),
-            "executable": sys.executable,
-            "desktop_session": bool(os.environ.get("OPENAGENTD_DESKTOP_TOKEN")),
-            # Versions of the two components that can drift independently
-            # in an auto-update window: the Tauri shell and the Python
-            # sidecar. Frontend matches whichever bundle is mounted.
-            "sidecar_version": VERSION,
-        },
-        "dirs": {
-            "data": _dir_info(settings.OPENAGENTD_DATA_DIR),
-            "config": _dir_info(settings.OPENAGENTD_CONFIG_DIR),
-            "state": _dir_info(settings.OPENAGENTD_STATE_DIR),
-            "cache": _dir_info(settings.OPENAGENTD_CACHE_DIR),
-            "workspace": _dir_info(settings.OPENAGENTD_WORKSPACE_DIR),
-            "agents": _dir_info(settings.AGENTS_DIR),
-            "skills": _dir_info(settings.SKILLS_DIR),
-        },
-        "providers": _provider_status(),
-        "env": _safe_env_keys(("OPENAGENTD_", "APP_", "PYTHON")),
-        "team": {
-            # Teams build lazily on first use.  ``loaded`` reflects current
-            # in-memory state — ``loadable`` reflects whether the agents
-            # directory parses (the useful indicator for "is the system
-            # configured correctly?").
-            "loaded": team_manager.current_team() is not None,
-            "loadable": _agents_dir_loadable(),
-        },
-        "mcp": {
-            "servers": len(mcp_manager.server_names()),
-        },
-        "log_tail": _tail(log_path, tail),
-        "log_path": str(log_path),
-        "error_log_path": str(error_log_path),
-    }
+    return DiagnosticsResponse(
+        version=VERSION,
+        runtime=DiagnosticsRuntimeInfo(
+            python=sys.version.split()[0],
+            implementation=platform.python_implementation(),
+            os=platform.platform(),
+            machine=platform.machine(),
+            executable=sys.executable,
+            desktop_session=bool(os.environ.get("OPENAGENTD_DESKTOP_TOKEN")),
+            sidecar_version=VERSION,
+        ),
+        dirs=DiagnosticsDirs(
+            data=DiagnosticsDirInfo(**_dir_info(settings.OPENAGENTD_DATA_DIR)),
+            config=DiagnosticsDirInfo(**_dir_info(settings.OPENAGENTD_CONFIG_DIR)),
+            state=DiagnosticsDirInfo(**_dir_info(settings.OPENAGENTD_STATE_DIR)),
+            cache=DiagnosticsDirInfo(**_dir_info(settings.OPENAGENTD_CACHE_DIR)),
+            workspace=DiagnosticsDirInfo(
+                **_dir_info(settings.OPENAGENTD_WORKSPACE_DIR)
+            ),
+            agents=DiagnosticsDirInfo(**_dir_info(settings.AGENTS_DIR)),
+            skills=DiagnosticsDirInfo(**_dir_info(settings.SKILLS_DIR)),
+        ),
+        providers=_provider_status(),
+        env=_safe_env_keys(("OPENAGENTD_", "APP_", "PYTHON")),
+        team=DiagnosticsTeam(
+            loaded=team_manager.current_team() is not None,
+            loadable=_agents_dir_loadable(),
+        ),
+        mcp=DiagnosticsMcp(
+            servers=len(mcp_manager.server_names()),
+        ),
+        log_tail=_tail(log_path, tail),
+        log_path=str(log_path),
+        error_log_path=str(error_log_path),
+    )

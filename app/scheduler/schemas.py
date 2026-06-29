@@ -198,3 +198,7 @@ class ScheduledTaskResponse(BaseModel):
 
 class ScheduledTaskListResponse(BaseModel):
     tasks: list[ScheduledTaskResponse]
+
+
+class TaskTriggerResponse(BaseModel):
+    status: str

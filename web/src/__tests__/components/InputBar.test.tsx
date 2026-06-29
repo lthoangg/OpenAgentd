@@ -1574,3 +1574,102 @@ describe("InputBar — minimized height and expand reset", () => {
     expect(slot?.className).not.toContain("h-0")
   })
 })
+
+describe("InputBarSuggestions — dynamic positioning and height clamping", () => {
+  it("adjusts position and max-height based on available screen space", async () => {
+    const user = userEvent.setup()
+    render(
+      <InputBar
+        onSubmit={() => {}}
+        slashCommands={[{ id: "stop", label: "Stop", description: "Stop streaming" }]}
+      />,
+    )
+
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+    await user.type(textarea, "/")
+
+    const listbox = screen.getByRole("listbox", { name: "Slash commands" })
+    expect(listbox).toBeTruthy()
+
+    // The listbox is wrapped in the "contents" div (listbox.parentElement).
+    // The parent of that is the "relative" wrapper (listbox.parentElement.parentElement).
+    const parent = listbox.parentElement?.parentElement
+    expect(parent).toBeTruthy()
+
+    // Scenario 1: Input bar is near the top of the screen (e.g. top = 50px, bottom = 100px).
+    // Viewport height is 800px.
+    // Space above: 50px. Space below: 800 - 100 = 700px.
+    // It should render below (top-full mt-1) with maxHeight = min(256, 700 - 12) = 256px.
+    parent!.getBoundingClientRect = () => ({
+      top: 50,
+      bottom: 100,
+      left: 0,
+      right: 500,
+      width: 500,
+      height: 50,
+    } as unknown as DOMRect)
+
+    // Set innerHeight to 800
+    const originalInnerHeight = window.innerHeight
+    Object.defineProperty(window, 'innerHeight', { writable: true, configurable: true, value: 800 })
+
+    await act(async () => {
+      window.dispatchEvent(new Event('resize'))
+      // Wait for resize observer / state updates
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+
+    expect(listbox.className).toContain("top-full")
+    expect(listbox.className).toContain("mt-1")
+    expect(listbox.className).not.toContain("bottom-full")
+    expect(listbox.style.maxHeight).toBe("256px")
+
+    // Scenario 2: Input bar is near the bottom of the screen (e.g. top = 700px, bottom = 750px).
+    // Viewport height is 800px.
+    // Space above: 700px. Space below: 800 - 750 = 50px.
+    // It should render above (bottom-full mb-1) with maxHeight = min(256, 700 - 12) = 256px.
+    parent!.getBoundingClientRect = () => ({
+      top: 700,
+      bottom: 750,
+      left: 0,
+      right: 500,
+      width: 500,
+      height: 50,
+    } as unknown as DOMRect)
+
+    await act(async () => {
+      window.dispatchEvent(new Event('resize'))
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+
+    expect(listbox.className).toContain("bottom-full")
+    expect(listbox.className).toContain("mb-1")
+    expect(listbox.className).not.toContain("top-full")
+    expect(listbox.style.maxHeight).toBe("256px")
+
+    // Scenario 3: Viewport height is small (e.g. 200px) and input bar is near the bottom.
+    // Space above: 120px. Space below: 200 - 170 = 30px.
+    // It should render above (bottom-full mb-1) with maxHeight clamped to Math.max(80, 120 - 12) = 108px.
+    Object.defineProperty(window, 'innerHeight', { writable: true, configurable: true, value: 200 })
+    parent!.getBoundingClientRect = () => ({
+      top: 120,
+      bottom: 170,
+      left: 0,
+      right: 500,
+      width: 500,
+      height: 50,
+    } as unknown as DOMRect)
+
+    await act(async () => {
+      window.dispatchEvent(new Event('resize'))
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+
+    expect(listbox.className).toContain("bottom-full")
+    expect(listbox.className).toContain("mb-1")
+    expect(listbox.style.maxHeight).toBe("108px")
+
+    // Restore window.innerHeight
+    Object.defineProperty(window, 'innerHeight', { writable: true, configurable: true, value: originalInnerHeight })
+  })
+})

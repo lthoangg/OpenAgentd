@@ -1583,6 +1583,183 @@ describe("InputBar — minimized height and expand reset", () => {
   })
 })
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Height / multi-line reset on submit
+// The textarea must collapse back to a single row after the user sends a
+// message, regardless of how many lines it had grown to before sending.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("InputBar — height reset after submit", () => {
+  /**
+   * Simulate the browser's scrollHeight growing when the textarea contains
+   * multiple lines of text. Happy-DOM always returns 0 for layout measurements,
+   * so we stub the properties on the element before triggering resize.
+   *
+   * We also stub getComputedStyle to return a stable lineHeight so the
+   * `resize()` callback can calculate the "wrapped" threshold.
+   */
+  function simulateMultiLineContent(textarea: HTMLTextAreaElement, lineHeight = 24) {
+    // Stub a scrollHeight that exceeds 1.4 × lineHeight → triggers multi-line
+    Object.defineProperty(textarea, "scrollHeight", {
+      configurable: true,
+      get: () => lineHeight * 3, // 72px > 1.4 * 24 = 33.6px
+    })
+    const origGetComputedStyle = window.getComputedStyle.bind(window)
+    const stub = (el: Element) => {
+      const styles = origGetComputedStyle(el)
+      if (el === textarea) {
+        return new Proxy(styles, {
+          get(target, prop) {
+            if (prop === "lineHeight") return `${lineHeight}px`
+            if (prop === "fontSize") return "14px"
+            return (target as unknown as Record<string | symbol, unknown>)[prop]
+          },
+        })
+      }
+      return styles
+    }
+    Object.defineProperty(window, "getComputedStyle", {
+      configurable: true,
+      writable: true,
+      value: stub,
+    })
+    return () => {
+      // Restore scrollHeight to 0 (empty textarea)
+      Object.defineProperty(textarea, "scrollHeight", {
+        configurable: true,
+        get: () => 0,
+      })
+    }
+  }
+
+  it("resets textarea height to 'auto' after submitting multiline content (desktop Enter)", async () => {
+    const user = userEvent.setup()
+    render(<InputBar onSubmit={() => {}} />)
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+
+    // Simulate the textarea growing to a multi-line height before typing
+    const restore = simulateMultiLineContent(textarea)
+
+    await user.type(textarea, "line one\nline two\nline three")
+
+    // Force a resize measurement so the component picks up the stubbed scrollHeight
+    act(() => { fireEvent.input(textarea) })
+
+    // Set an explicit pixel height the way the resize() callback would
+    textarea.style.height = "72px"
+
+    // Submit via Enter (desktop default)
+    await user.keyboard("{Enter}")
+    restore()
+
+    // After React flushes + rAF, height must be back to 'auto'
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+    })
+
+    expect(textarea.style.height).toBe("auto")
+    expect(textarea.value).toBe("")
+  })
+
+  it("resets textarea height to 'auto' after submitting via the Send button (desktop)", async () => {
+    const user = userEvent.setup()
+    render(<InputBar onSubmit={() => {}} />)
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+
+    const restore = simulateMultiLineContent(textarea)
+    await user.type(textarea, "a long message that wraps across multiple lines in the input bar")
+    act(() => { fireEvent.input(textarea) })
+    textarea.style.height = "72px"
+
+    await user.click(screen.getByLabelText("Send message"))
+    restore()
+
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+    })
+
+    expect(textarea.style.height).toBe("auto")
+    expect(textarea.value).toBe("")
+  })
+
+  it("resets textarea height to 'auto' after submitting on mobile (Send button)", async () => {
+    isMobile = true
+    const user = userEvent.setup()
+    render(<InputBar onSubmit={() => {}} />)
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+
+    const restore = simulateMultiLineContent(textarea)
+    await user.type(textarea, "mobile multiline message\ncontinued on next line")
+    act(() => { fireEvent.input(textarea) })
+    textarea.style.height = "72px"
+
+    // On mobile Enter inserts a newline — submit via the Send button instead
+    await user.click(screen.getByLabelText("Send message"))
+    restore()
+
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+    })
+
+    expect(textarea.style.height).toBe("auto")
+    expect(textarea.value).toBe("")
+
+    isMobile = false
+  })
+
+  it("collapses the multi-line action row layout after submit", async () => {
+    const user = userEvent.setup()
+    render(<InputBar onSubmit={() => {}} />)
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+
+    const restore = simulateMultiLineContent(textarea)
+    await user.type(textarea, "wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap")
+    act(() => { fireEvent.input(textarea) })
+
+    // Before submit: the resize() callback should have promoted isMultiLine.
+    // We can't read component state directly, but we can confirm the style
+    // was set (a proxy for the component having applied the multi-line layout).
+    textarea.style.height = "72px"
+
+    await user.keyboard("{Enter}")
+    restore()
+
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+    })
+
+    // The textarea must be empty and collapsed
+    expect(textarea.value).toBe("")
+    expect(textarea.style.height).toBe("auto")
+
+    // The flex container that wraps the textarea must NOT apply the multi-line
+    // flex-basis override (the style attribute should be absent / empty after reset).
+    const wrapper = textarea.closest("div.relative") as HTMLElement
+    // flex-basis is set as an inline style when isMultiLine is true.
+    // After reset it should be gone (undefined / empty).
+    expect(wrapper?.style.flexBasis).toBeFalsy()
+  })
+
+  it("does not leave a stale expanded height when submitting a single-line message", async () => {
+    const user = userEvent.setup()
+    render(<InputBar onSubmit={() => {}} />)
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+
+    // Single-line: scrollHeight never exceeds the threshold — still verify height
+    // resets after submit in the common single-line case.
+    await user.type(textarea, "quick single line")
+    textarea.style.height = "24px"
+
+    await user.keyboard("{Enter}")
+
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+    })
+
+    expect(textarea.value).toBe("")
+    expect(textarea.style.height).toBe("auto")
+  })
+})
+
 describe("InputBarSuggestions — dynamic positioning and height clamping", () => {
   it("adjusts position and max-height based on available screen space", async () => {
     const user = userEvent.setup()

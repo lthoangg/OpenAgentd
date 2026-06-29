@@ -2,7 +2,7 @@
 title: Chat Input & Message Queue
 description: How queued follow-up messages work while the team lead is streaming.
 status: stable
-updated: 2026-07-10
+updated: 2026-07-15
 ---
 
 # Chat Input & Message Queue
@@ -64,6 +64,8 @@ Stored in `useTeamStore._pendingMessages: PendingMessage[]`.
 The desktop floating composer starts as a compact action strip and expands on explicit focus, `Ctrl+I`, attachment/content insertion, the Chat affordance, or type-to-focus: when no editable element is focused, pressing a printable key on the cockpit/coding chat surface focuses the composer and inserts that first character. Pressing `Escape` while focus is inside the expanded composer minimizes it back to the compact strip; sending a message also returns the composer to the compact strip. If the desktop composer is empty and focus moves outside it, it auto-minimizes back to the compact strip. While the lead is streaming, the composer may still minimize when empty and blurred; the compact strip remains recoverable with File, Voice, Chat/Expand, and Send/Stop controls. The streaming placeholder tells the user they can queue a follow-up, type `/stop`, or click stop.
 
 Keyboard submit differs by viewport: desktop `Enter` submits and `Shift+Enter` inserts a newline; mobile `Enter` inserts a newline and the Send button submits.
+
+After a message is submitted the textarea resets to a single row on both desktop and mobile: `isMultiLine` state is cleared synchronously and `el.style.height` is set to `'auto'` in a `requestAnimationFrame` that runs after React flushes the value clear. This prevents the input bar from remaining expanded at its pre-send height.
 
 ### Word-by-word keyboard navigation
 

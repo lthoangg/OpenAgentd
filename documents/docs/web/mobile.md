@@ -2,7 +2,7 @@
 title: Mobile Layout
 description: Phone-first responsive design — breakpoints, safe areas, master/detail patterns, and per-component mobile behaviour.
 status: stable
-updated: 2026-06-10
+updated: 2026-07-15
 ---
 
 # Mobile layout
@@ -14,6 +14,8 @@ The web UI targets phones at 360–430 px as the primary baseline. All layout de
 ## Breakpoint & hook
 
 `useIsMobile()` (`web/src/hooks/use-mobile.ts`) returns `true` when `window.innerWidth < 768px` (Tailwind `md:`) or when the viewport height is `< 580px` (e.g. landscape phones). This ensures landscape-oriented phones stay locked to the single-pane mobile layout instead of breaking into the desktop/split layout. Use this hook — never raw CSS breakpoints — for JS-driven layout branches.
+
+The hook initialises synchronously from `window.matchMedia` so the first render already knows the correct value, preventing a one-frame flash of the desktop layout on mobile devices. The shared media-query string is exported as `MOBILE_QUERY` from `use-mobile.ts` and reused by `useMobileViewportGuards` so both the layout branch and the `--app-vh` / `--app-vt` CSS-variable binding always activate and deactivate together — no split-brain on large-screen tablets that cross the 768 px threshold during an orientation change.
 
 ---
 
@@ -75,11 +77,15 @@ Right-side workspace explorer for `/coding` mode.
 - The **Tasks** header button toggles the todos overlay (tap again to close). All header overlays (todos, files, capabilities, scheduler, palette) are mutually exclusive on both mobile and desktop via `closeOtherMobileOverlays`; sidebar/actions/coding-panel guards remain mobile-only.
 
 ### FloatingInputBar (`FloatingInputBar.tsx`) / InputBar (`InputBar.tsx`)
-- Mobile: static docked `<div>` at the bottom with `border-t`, `backdrop-blur`, `.pb-safe`. No drag, no localStorage position.
-- On Tauri iOS/Android, `useVisualKeyboardInset()` listens to `visualViewport` and adds keyboard occlusion to bottom padding so the composer stays above the soft keyboard. The mobile shell also applies a CSS `position: fixed` reset to `html`/`body` combined with a window scroll guard that locks the layout viewport scroll position to `(0, 0)`, preventing the software keyboard from pushing the page/header off-screen.
+- Mobile: static docked `<div>` at the bottom with `border-t`, `.pb-safe`. No drag, no localStorage position.
+- On Tauri iOS/Android, `useMobileViewportGuards()` listens to `window.visualViewport` and writes `--app-vh` / `--app-vt` CSS variables to `:root` so the entire app shell resizes to the visible region as one GPU-composited unit — the bottom-docked composer rides up on the keyboard via normal flexbox without per-frame React re-renders. The viewport guard and the layout breakpoint use the same shared `MOBILE_QUERY` constant, so they always activate and deactivate together (no split-brain on landscape iPads).
 - Desktop: draggable floating bar (existing behaviour unchanged).
+- **Height reset after submit**: after sending a message the textarea collapses back to a single row immediately — `isMultiLine` state is reset synchronously and `el.style.height` is set to `'auto'` in a `requestAnimationFrame` after React flushes the value clear, so the bar never stays expanded at the old multi-line height.
+- **`onFocus` / `onBlur` / `onHasContentChange`**: all three callbacks are now wired on both the mobile and desktop `<InputBar>` paths in `FloatingInputBar`. Previously they were only passed in the desktop branch, meaning the blur-timer and `hasContent` state were never updated on mobile.
+- **Snippet picker on blur**: both the `@mention` and `#snippet` pickers are now closed when the textarea loses focus. Previously only the mention picker was closed, leaving the snippet picker open after blur.
 - Mobile keyboard: plain `Enter` inserts a newline; users submit with the Send button. Desktop keeps `Enter` to send and `Shift+Enter` for newline.
-- Swipe-to-dismiss: on mobile, swiping down on the input bar container dismisses the keyboard. This gesture is automatically disabled when any suggestion menu (mention `@`, slash `/`, or snippet `#`) is open, allowing users to scroll the suggestion lists without accidentally dismissing the input bar.
+- Swipe-to-dismiss: on mobile, swiping down on the input bar container dismisses the keyboard. The gesture handler is registered as a native `{ passive: false }` `touchmove` listener (not a JSX `onTouchMove`) so it can call `e.preventDefault()` and prevent the page from rubber-banding simultaneously with the keyboard retract. The gesture is suppressed when any suggestion menu (`@`, `/`, `#`) is open.
+- `minimize()` is no longer called on submit when `isMobile` is true, preventing the `minimized` state flag from drifting to `true` on mobile sessions (which would cause the bar to snap collapsed if the viewport later crosses the breakpoint).
 - Voice input: the mic button sits beside Send on mobile and desktop. It uses the current browser/WebView speech recognizer when available; unsupported runtimes show a disabled button with a tooltip. Listening starts and stops only from button taps/clicks; no mobile-specific silence auto-stop.
 
 ### MemoryPanel, WorkspaceFilesPanel, SchedulerPanel

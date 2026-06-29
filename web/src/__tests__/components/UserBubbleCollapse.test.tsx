@@ -1175,7 +1175,7 @@ describe("AgentView — UserBubble @mention highlighting", () => {
 describe("AgentView — UserBubble URL link rendering", () => {
   afterEach(cleanup)
 
-  it("renders a bare URL as a clickable anchor", () => {
+  it("renders a bare URL as a clickable anchor with correct blue styling and break-all class", () => {
     const blocks: ContentBlock[] = [
       {
         id: "1",
@@ -1190,6 +1190,43 @@ describe("AgentView — UserBubble URL link rendering", () => {
     const link = screen.getByRole("link", { name: "https://example.com" })
     expect(link).toBeTruthy()
     expect(link.getAttribute("href")).toBe("https://example.com")
+    expect(link.className).toContain("text-(--accent-blue-text)")
+    expect(link.className).toContain("break-all")
+  })
+
+  it("renders a bare URL as a clickable anchor in AgentPane's UserBubble", () => {
+    const blocks: ContentBlock[] = [
+      {
+        id: "1",
+        type: "user",
+        content: "Check out https://example.com for more info in pane",
+        timestamp: new Date(),
+      },
+    ]
+
+    render(
+      <AgentPane
+        name="TestAgent"
+        stream={{
+          blocks,
+          currentBlocks: [],
+          currentText: "",
+          currentThinking: "",
+          status: "idle",
+          usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0 },
+          _completionBase: 0,
+          model: "gpt-4",
+          lastError: null,
+        }}
+        isLead={true}
+      />
+    )
+
+    const link = screen.getByRole("link", { name: "https://example.com" })
+    expect(link).toBeTruthy()
+    expect(link.getAttribute("href")).toBe("https://example.com")
+    expect(link.className).toContain("text-(--accent-blue-text)")
+    expect(link.className).toContain("break-all")
   })
 
   it("renders plain text that has no URL without any anchor", () => {

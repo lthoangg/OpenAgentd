@@ -5,7 +5,14 @@ Rust/Tauri app that launches the Python sidecar, injects desktop auth, owns tray
 ## Where to look first
 
 ```
-src/                         Rust application code
+src/                         Rust application code:
+                             - main.rs: AppState, app lifecycle, startup orchestration, and unit tests
+                             - config.rs: Config and window state load/save logic
+                             - window.rs: Window creation, custom chrome/styling, zoom, and webview scripts
+                             - updater.rs: Update checking, downloading, and installation
+                             - menu.rs: Menu bar, system tray setup, and event routing
+                             - commands.rs: Tauri command handlers exposed to the frontend
+                             - sidecar.rs: Sidecar process supervisor
 Cargo.toml                   Rust package, Tauri/plugin deps, minimum Rust version
 tauri.conf.json              Production Tauri config
 tauri.dev.conf.json          Dev shell config against external Vite/backend
@@ -17,7 +24,10 @@ build.rs                     Tauri build integration
 
 ## Common feature checks
 
-- Sidecar startup/auth change: inspect Rust supervisor code, `app.cli serve`, `app.core.desktop_auth`, and desktop tests.
+- Sidecar startup/auth change: inspect supervisor code in `src/sidecar.rs`, startup orchestration in `src/main.rs`, and commands in `src/commands.rs`.
+- Window/Tray behavior: inspect `src/window.rs` for window behavior/zoom, and `src/menu.rs` for tray/menu setups.
+- Updater/Installer behavior: inspect `src/updater.rs` and `src/main.rs`'s unit tests.
+- Config/Persisted State: inspect `src/config.rs`.
 - Bundle/config change: update all relevant Tauri config variants, not just production.
 - Permission/plugin change: update Tauri capabilities and verify frontend plugin usage.
 - Release/update change: check `desktop/Makefile`, `scripts/make_updater_manifest.py`, and `documents/docs/desktop.md`.

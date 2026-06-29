@@ -90,8 +90,7 @@ def _render_tokens(text: str, *, skill_dir: Path | None = None) -> str:
     ``{SKILL_DIR}`` placeholders so the agent sees concrete paths it can
     hand straight to its file and shell tools.
 
-    Only the four names below are substituted — anything else inside
-    braces (JSON examples, format strings) is left untouched.
+    Supports both `{TOKEN}` and `${TOKEN}` syntax.
     """
     if not text:
         return text
@@ -106,8 +105,32 @@ def _render_tokens(text: str, *, skill_dir: Path | None = None) -> str:
         "SKILLS_DIR": settings.SKILLS_DIR,
     }
     if skill_dir is not None:
-        tokens["SKILL_DIR"] = str(skill_dir.resolve())
+        try:
+            workspace = get_sandbox().workspace_root
+        except Exception:
+            workspace = None
+
+        is_project_skill = False
+        if workspace is not None:
+            project_roots = [
+                (workspace / ".openagentd" / "skills").resolve(),
+                (workspace / ".opencode" / "skills").resolve(),
+            ]
+            is_project_skill = any(
+                skill_dir.resolve().is_relative_to(root) for root in project_roots
+            )
+
+        if is_project_skill and workspace is not None:
+            # Project skill: resolve to a relative path within the workspace
+            tokens["SKILL_DIR"] = str(
+                skill_dir.resolve().relative_to(workspace.resolve())
+            )
+        else:
+            # Global or bundled skill: resolve to an absolute path
+            tokens["SKILL_DIR"] = str(skill_dir.resolve())
+
     for name, value in tokens.items():
+        text = text.replace("${" + name + "}", value)
         text = text.replace("{" + name + "}", value)
     return text
 

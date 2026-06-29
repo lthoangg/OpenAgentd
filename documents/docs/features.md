@@ -492,6 +492,11 @@ Four orthogonal ways to add capability. Deeper docs:
   lists the full runtime-visible catalog and can edit/delete non-bundled skills
   in place `[v1.27.x]`. Bundled first-party skills include `browser-use` for
   CLI-driven browser automation `[v1.43.4]`.
+  - **Reference files and scripts support** `[v1.87.0]` — fully compatible with the
+    `agentskills.io` specification. Resolves `{SKILL_DIR}` and `${SKILL_DIR}` placeholders
+    inside loaded skill instructions. Project-level skill directories resolve to clean relative
+    paths (e.g. `.openagentd/skills/my-skill`), while global/bundled skill directories resolve
+    to absolute paths, allowing the agent to use standard `read` and `shell` tools to access them.
 - **Plugins** `[v1.6.0]` — Python files dropped into `OPENAGENTD_PLUGINS_DIRS`.
   Register `@plugin` functions or `Plugin(BaseAgentHook)` classes with
   `tool.before` / `tool.after` / agent lifecycle hooks. Per `(agent, role)` filter.

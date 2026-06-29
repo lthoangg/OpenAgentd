@@ -95,6 +95,50 @@ OpenAgentd ships these read-only operational skills inside the app package. They
 
 > Other curated skills (office documents, lightpanda, etc.) are not builtin and must be installed manually via `skill-installer` or by dropping a `SKILL.md` into the skills directory.
 
+## Reference Files and Scripts (agentskills.io)
+
+OpenAgentd supports the [agentskills.io](https://agentskills.io) specification, allowing skills to bundle supporting documentation (`references/`), static assets (`assets/`), and executable scripts (`scripts/`):
+
+```
+my-skill/
+├── SKILL.md                 # Required: core instructions
+├── references/              # Supporting documentation
+│   └── API_SPEC.md
+├── scripts/                 # Executable scripts
+│   └── validate.py
+└── assets/                  # Templates and static assets
+    └── template.json
+```
+
+### Path Resolution: `{SKILL_DIR}` and `${SKILL_DIR}`
+
+When a skill is loaded via the `skill` tool, OpenAgentd automatically replaces any occurrences of `{SKILL_DIR}` or `${SKILL_DIR}` in the skill's instructions with the resolved directory path:
+
+- **Project Skills:** If the skill is located inside the active coding workspace (e.g., `.openagentd/skills/my-skill`), the path is resolved as a **relative path** from the workspace root (e.g., `.openagentd/skills/my-skill`).
+- **Global & Bundled Skills:** If the skill is located outside the workspace (e.g., in the global user configuration or bundled within the app), the path is resolved as an **absolute path** (e.g., `/Users/username/.config/openagentd/skills/my-skill`).
+
+### Using Standard Tools
+
+The agent interacts with skill assets using its standard, general-purpose tools (like `read` and `shell`) via the resolved paths:
+
+* **Reading Reference Files:**
+  ```python
+  # Resolved to absolute path for a global skill
+  read(path="/Users/username/.config/openagentd/skills/my-skill/references/API_SPEC.md")
+
+  # Resolved to relative path for a project skill
+  read(path=".openagentd/skills/my-skill/references/API_SPEC.md")
+  ```
+
+* **Running Scripts:**
+  ```bash
+  # Resolved to absolute path for a global skill
+  python3 /Users/username/.config/openagentd/skills/my-skill/scripts/validate.py --input data.json
+
+  # Resolved to relative path for a project skill
+  python3 .openagentd/skills/my-skill/scripts/validate.py --input data.json
+  ```
+
 ## Authoring guidelines
 
 - **One paragraph in `description`.** It goes into every system prompt registered with the skill — keep it tight.

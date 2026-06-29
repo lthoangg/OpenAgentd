@@ -421,6 +421,23 @@ class TestTokenSubstitution:
         assert str(d.resolve()) in body
 
     @pytest.mark.asyncio
+    async def test_body_skill_dir_replaced_on_load(self, tmp_path, monkeypatch):
+        d = tmp_path / "custom-skill"
+        d.mkdir()
+        (d / "SKILL.md").write_text(
+            "---\nname: custom-skill\n---\n"
+            "Run {SKILL_DIR}/scripts/run.sh "
+            "and ${SKILL_DIR}/test."
+        )
+        monkeypatch.setattr("app.agent.tools.builtin.skill._SKILLS_DIR", tmp_path)
+
+        body = await load_skill("custom-skill")
+
+        assert "{SKILL_DIR}" not in body
+        assert "${SKILL_DIR}" not in body
+        assert f"Run {d.resolve()}/scripts/run.sh and {d.resolve()}/test." in body
+
+    @pytest.mark.asyncio
     async def test_body_unknown_braces_preserved(self, tmp_path, monkeypatch):
         """JSON examples and other ``{...}`` content inside the body must
         survive substitution untouched — only the four whitelisted token
@@ -865,3 +882,118 @@ class TestSubSkills:
 
         assert await load_skill("search") == "Search body."
         assert await load_skill("git/push") == "Push body."
+
+
+# ---------------------------------------------------------------------------
+# Skill Directory Resolution (Global vs Project Skills)
+# ---------------------------------------------------------------------------
+
+
+class TestSkillDirResolution:
+    @pytest.mark.asyncio
+    async def test_project_skill_resolves_to_relative_path(self, tmp_path, monkeypatch):
+        # Set up active sandbox workspace
+        from app.agent.sandbox import SandboxConfig, set_sandbox, _sandbox_ctx
+
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        token = set_sandbox(
+            SandboxConfig(workspace=str(workspace), session_id="s_test")
+        )
+
+        # Write project skill under workspace/.openagentd/skills
+        project_skills_dir = workspace / ".openagentd" / "skills"
+        project_skills_dir.mkdir(parents=True)
+        d = project_skills_dir / "proj-skill"
+        d.mkdir()
+        (d / "SKILL.md").write_text(
+            "---\nname: proj-skill\n---\n"
+            "Run {SKILL_DIR}/scripts/test.sh "
+            "and ${SKILL_DIR}/another."
+        )
+
+        # Force discovery roots to check project skill
+        monkeypatch.setattr(
+            "app.agent.tools.builtin.skill._iter_skill_roots",
+            lambda: [project_skills_dir],
+        )
+
+        try:
+            body = await load_skill("proj-skill")
+            # Should be relative to workspace root
+            assert "Run .openagentd/skills/proj-skill/scripts/test.sh" in body
+            assert "and .openagentd/skills/proj-skill/another." in body
+        finally:
+            _sandbox_ctx.reset(token)
+
+    @pytest.mark.asyncio
+    async def test_global_skill_resolves_to_absolute_path(self, tmp_path, monkeypatch):
+        # Set up active sandbox workspace
+        from app.agent.sandbox import SandboxConfig, set_sandbox, _sandbox_ctx
+
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        token = set_sandbox(
+            SandboxConfig(workspace=str(workspace), session_id="s_test")
+        )
+
+        # Write global skill outside the workspace
+        global_skills_dir = tmp_path / "global_skills"
+        global_skills_dir.mkdir()
+        d = global_skills_dir / "global-skill"
+        d.mkdir()
+        (d / "SKILL.md").write_text(
+            "---\nname: global-skill\n---\n"
+            "Run {SKILL_DIR}/scripts/test.sh "
+            "and ${SKILL_DIR}/another."
+        )
+
+        monkeypatch.setattr(
+            "app.agent.tools.builtin.skill._iter_skill_roots",
+            lambda: [global_skills_dir],
+        )
+
+        try:
+            body = await load_skill("global-skill")
+            # Should be absolute path since it's outside workspace
+            expected_abs_path = str(d.resolve())
+            assert f"Run {expected_abs_path}/scripts/test.sh" in body
+            assert f"and {expected_abs_path}/another." in body
+        finally:
+            _sandbox_ctx.reset(token)
+
+    @pytest.mark.asyncio
+    async def test_builtin_skill_resolves_to_absolute_path_even_if_under_workspace(
+        self, tmp_path, monkeypatch
+    ):
+        # Set up active sandbox workspace where the workspace contains the builtin skills dir
+        from app.agent.sandbox import SandboxConfig, set_sandbox, _sandbox_ctx
+
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        token = set_sandbox(
+            SandboxConfig(workspace=str(workspace), session_id="s_test")
+        )
+
+        # Create a mock builtin skills dir inside the workspace (reproducing the dev environment)
+        builtin_skills_dir = workspace / "app" / "agent" / "builtin_skills"
+        builtin_skills_dir.mkdir(parents=True)
+        d = builtin_skills_dir / "builtin-skill"
+        d.mkdir()
+        (d / "SKILL.md").write_text(
+            "---\nname: builtin-skill\n---\nRun {SKILL_DIR}/scripts/test.sh."
+        )
+
+        monkeypatch.setattr(
+            "app.agent.tools.builtin.skill._iter_skill_roots",
+            lambda: [builtin_skills_dir],
+        )
+
+        try:
+            body = await load_skill("builtin-skill")
+            # Even though it is inside the workspace directory, it is a builtin skill,
+            # so it must resolve to an absolute path, NOT relative.
+            expected_abs_path = str(d.resolve())
+            assert f"Run {expected_abs_path}/scripts/test.sh." in body
+        finally:
+            _sandbox_ctx.reset(token)

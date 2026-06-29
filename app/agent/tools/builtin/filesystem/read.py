@@ -30,17 +30,19 @@ _MAX_READ_BYTES = 5_242_880  # 5 MB read cap
 _MAX_CONTEXT_CHARS = 20_000  # keep read results within typical LLM context budgets
 
 _DESCRIPTION = (
-    "Read a file from the workspace. Supports text files, images "
+    "Read a file. Supports text files, images "
     "(PNG, JPG, GIF, WebP), and documents (PDF, DOCX, PPTX, XLSX). "
     "Images and documents are processed for visual/text analysis. "
-    "Paths are workspace-relative."
+    "Paths can be relative to the workspace or absolute."
 )
 
 
 class ReadArgs(BaseModel):
     """Arguments for the read tool."""
 
-    path: str = Field(description="Relative path to the file inside the workspace.")
+    path: str = Field(
+        description="Path to the file. Can be relative to the workspace or an absolute path."
+    )
     offset: int = Field(
         default=1, ge=1, description="Line number to start from, 1-indexed (default 1)."
     )

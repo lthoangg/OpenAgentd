@@ -72,7 +72,8 @@ def _split_messages(
                 blocks: list[dict[str, Any]] = []
                 for part in message.parts:
                     if isinstance(part, TextBlock):
-                        blocks.append({"type": "text", "text": part.text})
+                        if part.text:
+                            blocks.append({"type": "text", "text": part.text})
                     elif isinstance(part, ImageUrlBlock):
                         source: dict[str, Any] = {"type": "url", "url": part.url}
                         if part.media_type:
@@ -89,18 +90,23 @@ def _split_messages(
                                 },
                             }
                         )
+                content = message.content or ""
+                if not blocks and not content:
+                    continue
                 out.append(
                     {
                         "role": "user",
-                        "content": blocks
-                        or [{"type": "text", "text": message.content or ""}],
+                        "content": blocks or [{"type": "text", "text": content}],
                     }
                 )
             else:
+                content = message.content or ""
+                if not content:
+                    continue
                 out.append(
                     {
                         "role": "user",
-                        "content": [{"type": "text", "text": message.content or ""}],
+                        "content": [{"type": "text", "text": content}],
                     }
                 )
         elif isinstance(message, AssistantMessage) and message.tool_calls:
@@ -121,10 +127,13 @@ def _split_messages(
             if blocks:
                 out.append({"role": "assistant", "content": blocks})
         elif isinstance(message, AssistantMessage):
+            content = message.content or ""
+            if not content:
+                continue
             out.append(
                 {
                     "role": "assistant",
-                    "content": [{"type": "text", "text": message.content or ""}],
+                    "content": [{"type": "text", "text": content}],
                 }
             )
         elif isinstance(message, ToolMessage):
@@ -133,7 +142,8 @@ def _split_messages(
                 blocks: list[dict[str, Any]] = []
                 for part in message.parts:
                     if isinstance(part, TextBlock):
-                        blocks.append({"type": "text", "text": part.text})
+                        if part.text:
+                            blocks.append({"type": "text", "text": part.text})
                     elif isinstance(part, ImageUrlBlock):
                         source: dict[str, Any] = {"type": "url", "url": part.url}
                         if part.media_type:

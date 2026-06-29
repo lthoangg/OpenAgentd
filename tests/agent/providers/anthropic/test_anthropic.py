@@ -347,6 +347,72 @@ def test_split_messages_omits_assistant_tool_stub_without_matching_result() -> N
     ]
 
 
+def test_split_messages_skips_empty_human_message() -> None:
+    """HumanMessages with no content and no parts must be silently dropped.
+
+    Anthropic rejects text content blocks with empty strings (HTTP 400:
+    "text content blocks must be non-empty").
+    """
+    _, out = _split_messages(
+        [
+            HumanMessage(content=""),
+            HumanMessage(content="hello"),
+        ]
+    )
+
+    assert len(out) == 1
+    assert out[0]["content"][0]["text"] == "hello"
+
+
+def test_split_messages_skips_empty_assistant_message() -> None:
+    """AssistantMessages with no content (and no tool calls) must be dropped."""
+    _, out = _split_messages(
+        [
+            HumanMessage(content="hi"),
+            AssistantMessage(content=None, tool_calls=None),
+            AssistantMessage(content="", tool_calls=None),
+            AssistantMessage(content="ok", tool_calls=None),
+        ]
+    )
+
+    assistant_turns = [m for m in out if m["role"] == "assistant"]
+    assert len(assistant_turns) == 1
+    assert assistant_turns[0]["content"][0]["text"] == "ok"
+
+
+def test_split_messages_skips_empty_text_parts_in_human_message() -> None:
+    """Empty TextBlock parts inside a HumanMessage must not produce empty text blocks."""
+    from app.agent.schemas.chat import TextBlock
+
+    _, out = _split_messages(
+        [
+            HumanMessage(
+                content=None, parts=[TextBlock(text=""), TextBlock(text="hi")]
+            ),
+        ]
+    )
+
+    assert len(out) == 1
+    blocks = out[0]["content"]
+    assert all(b["text"] for b in blocks if b["type"] == "text")
+    assert blocks[0]["text"] == "hi"
+
+
+def test_split_messages_skips_human_message_with_only_empty_text_parts() -> None:
+    """A HumanMessage whose parts are all empty TextBlocks must be dropped entirely."""
+    from app.agent.schemas.chat import TextBlock
+
+    _, out = _split_messages(
+        [
+            HumanMessage(content=None, parts=[TextBlock(text=""), TextBlock(text="")]),
+            HumanMessage(content="keep"),
+        ]
+    )
+
+    assert len(out) == 1
+    assert out[0]["content"][0]["text"] == "keep"
+
+
 def test_split_messages_keeps_complete_assistant_tool_pair() -> None:
     """Complete assistant tool_use + tool_result pairs are preserved."""
     assistant = _make_assistant_with_tools("t1")

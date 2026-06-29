@@ -16,7 +16,7 @@ exists. When you ship something new, **add it here first** — slides, README,
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 15 providers. Your keys.
 
-**Latest release:** v1.85.0 · June 29, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.85.0)
+**Latest release:** v1.86.0 · June 29, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.86.0)
 
 ---
 
@@ -84,7 +84,7 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
 - **Type-to-focus composer** `[v1.40.0]` — in cockpit and coding chat, start
   typing on the chat surface to expand/focus the composer and capture the first
   character without pressing `Ctrl+I` first. See [`web/chat-input.md`](./web/chat-input.md).
-- **Developer-friendly word navigation in composer** `[v1.85.1]` — `Option + Arrow` (macOS) and `Ctrl + Arrow` (Windows/Linux) stop at programming separators like `.`, `-`, `_`, `/`, and `@` for precise navigation and text selection (`Shift` modified). See [`web/chat-input.md`](./web/chat-input.md).
+- **Developer-friendly word navigation in composer** `[v1.86.0]` — `Option + Arrow` (macOS) and `Ctrl + Arrow` (Windows/Linux) stop at programming separators like `.`, `-`, `_`, `/`, and `@` for precise navigation and text selection (`Shift` modified). See [`web/chat-input.md`](./web/chat-input.md).
 - **Native menu/tray shortcuts** `[v1.39.0]` — menubar shortcuts for Home,
   Cockpit, Coding, Command Palette, Wiki, Scheduled Tasks, Session Settings,
   key settings pages, updates, reload, config folder, and backend log; compact

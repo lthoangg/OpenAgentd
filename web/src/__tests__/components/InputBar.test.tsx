@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event"
 import { createRef } from "react"
 import { InputBar } from "@/components/InputBar"
 import type { InputBarHandle } from "@/components/InputBar"
+import { getPreviousWordBoundary, getNextWordBoundary } from "@/components/InputBar.helpers"
 import { buildAcceptString, isFileTypeAllowed } from "@/components/InputBar.files"
 import {
   buildHistoryEntries,
@@ -17,6 +18,13 @@ let isMobile = false
 
 mock.module("@/hooks/use-mobile", () => ({
   useIsMobile: () => isMobile,
+}))
+
+let mockOS = "macos"
+
+mock.module("@/hooks/use-platform", () => ({
+  usePlatform: () => ({ isTauri: false, os: mockOS, isMacOverlay: false }),
+  getPlatform: () => ({ isTauri: false, os: mockOS, isMacOverlay: false }),
 }))
 
 class MockSpeechRecognition {
@@ -1671,5 +1679,80 @@ describe("InputBarSuggestions — dynamic positioning and height clamping", () =
 
     // Restore window.innerHeight
     Object.defineProperty(window, 'innerHeight', { writable: true, configurable: true, value: originalInnerHeight })
+  })
+})
+
+describe("InputBar — word navigation helper functions", () => {
+  it("getPreviousWordBoundary correctly finds word boundaries moving left", () => {
+    const text = "com.openagentd.desktop"
+    expect(getPreviousWordBoundary(text, 22)).toBe(15)
+    expect(getPreviousWordBoundary(text, 15)).toBe(4)
+    expect(getPreviousWordBoundary(text, 4)).toBe(0)
+
+    const textWithSpaces = "hello   world"
+    expect(getPreviousWordBoundary(textWithSpaces, 13)).toBe(8)
+    expect(getPreviousWordBoundary(textWithSpaces, 8)).toBe(0)
+  })
+
+  it("getNextWordBoundary correctly finds word boundaries moving right", () => {
+    const text = "com.openagentd.desktop"
+    expect(getNextWordBoundary(text, 0)).toBe(3)
+    expect(getNextWordBoundary(text, 3)).toBe(14)
+    expect(getNextWordBoundary(text, 14)).toBe(22)
+  })
+})
+
+describe("InputBar — word-by-word keyboard navigation", () => {
+  beforeEach(() => {
+    mockOS = "macos"
+  })
+
+  it("navigates word-by-word using Option + Arrow on macOS", async () => {
+    const user = userEvent.setup()
+    render(<InputBar onSubmit={() => {}} />)
+
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+    await user.type(textarea, "com.openagentd.desktop")
+
+    expect(textarea.selectionStart).toBe(22)
+
+    await user.keyboard("{Alt>}{ArrowLeft}{/Alt}")
+    expect(textarea.selectionStart).toBe(15)
+
+    await user.keyboard("{Alt>}{ArrowLeft}{/Alt}")
+    expect(textarea.selectionStart).toBe(4)
+
+    await user.keyboard("{Alt>}{ArrowRight}{/Alt}")
+    expect(textarea.selectionStart).toBe(14)
+  })
+
+  it("navigates word-by-word using Ctrl + Arrow on Windows/Linux", async () => {
+    mockOS = "windows"
+    const user = userEvent.setup()
+    render(<InputBar onSubmit={() => {}} />)
+
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+    await user.type(textarea, "com.openagentd.desktop")
+
+    expect(textarea.selectionStart).toBe(22)
+
+    await user.keyboard("{Control>}{ArrowLeft}{/Control}")
+    expect(textarea.selectionStart).toBe(15)
+  })
+
+  it("selects word-by-word using Shift + Option + Arrow on macOS", async () => {
+    const user = userEvent.setup()
+    render(<InputBar onSubmit={() => {}} />)
+
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+    await user.type(textarea, "com.openagentd.desktop")
+
+    expect(textarea.selectionStart).toBe(22)
+    expect(textarea.selectionEnd).toBe(22)
+
+    await user.keyboard("{Shift>}{Alt>}{ArrowLeft}{/Alt}{/Shift}")
+    expect(textarea.selectionStart).toBe(15)
+    expect(textarea.selectionEnd).toBe(22)
+    expect(textarea.selectionDirection).toBe("backward")
   })
 })

@@ -5,7 +5,7 @@ import { FilePreviewStrip } from './FilePreviewStrip'
 import { VoiceMicButton } from './VoiceMicButton'
 import { findActiveMention, getExplicitMentionRanges, type FileRef } from './InputBar.mentions'
 import { MentionOverlay } from './InputBar.overlay'
-import { CHAR_WARN_THRESHOLD, findActiveSnippet } from './InputBar.helpers'
+import { CHAR_WARN_THRESHOLD, findActiveSnippet, handleWordNavigation } from './InputBar.helpers'
 import { InputBarSuggestions } from './InputBar.suggestions'
 import type { AgentCapabilities } from '@/api/types'
 import { buildAcceptString, isFileTypeAllowed } from './InputBar.files'
@@ -16,6 +16,7 @@ import {
   filterSnippetCommands,
 } from './InputBar.menus'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { usePlatform } from '@/hooks/use-platform'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 
 // Re-export the public type so callers can import ``FileRef`` from this module
@@ -248,6 +249,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   const fileInputRef = useRef<HTMLInputElement>(null)
   const dragCounterRef = useRef(0)
   const isMobile = useIsMobile()
+  const platform = usePlatform()
   const prefersReducedMotion = useReducedMotion()
 
   const history = useMemo(
@@ -773,6 +775,19 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     // legacy fallback for browsers that don't surface ``isComposing`` on the
     // React synthetic event.
     if (e.nativeEvent.isComposing || e.keyCode === 229) return
+
+    // Custom word-by-word navigation (Option+Arrow on macOS, Ctrl+Arrow on Windows/Linux)
+    // to treat periods, hyphens, slashes, etc. as word boundaries.
+    const isMac = platform.os === 'macos' || platform.os === 'ios'
+    const isWordJump = isMac ? e.altKey : e.ctrlKey
+    const isArrow = e.key === 'ArrowLeft' || e.key === 'ArrowRight'
+    if (isWordJump && isArrow) {
+      e.preventDefault()
+      const direction = e.key === 'ArrowLeft' ? 'left' : 'right'
+      handleWordNavigation(e.currentTarget, direction, e.shiftKey)
+      syncMention()
+      return
+    }
 
     // Atomic mention deletion: if the user presses Backspace or Delete on an
     // explicit mention, delete the entire mention instead of a single character.

@@ -65,6 +65,12 @@ The desktop floating composer starts as a compact action strip and expands on ex
 
 Keyboard submit differs by viewport: desktop `Enter` submits and `Shift+Enter` inserts a newline; mobile `Enter` inserts a newline and the Send button submits.
 
+### Word-by-word keyboard navigation
+
+The composer intercepts standard word-by-word keyboard navigation and text selection to stop at common programming separators (such as `.`, `-`, `_`, `/`, and `@`) rather than jumping over entire paths or domain names.
+- **macOS**: `Option + ArrowLeft` / `ArrowRight` (move cursor), `Shift + Option + ArrowLeft` / `ArrowRight` (select text).
+- **Windows/Linux**: `Ctrl + ArrowLeft` / `ArrowRight` (move cursor), `Shift + Ctrl + ArrowLeft` / `ArrowRight` (select text).
+
 ### Shell mode
 
 Typing `!` as the first character enters shell mode, matching opencode's shortcut.

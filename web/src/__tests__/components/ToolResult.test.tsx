@@ -180,7 +180,7 @@ describe("ToolResult — read", () => {
   it("renders multi-line file content in a compact pre block", () => {
     render(<ToolResult toolName="read" result={"const x = 1\nconst y = 2"} />)
     expect(screen.getByText("read")).toBeTruthy()
-    expect(screen.getByText("file contents")).toBeTruthy()
+    expect(screen.queryByText("file contents")).toBeNull()
     expect(screen.getByText(/const x = 1/)).toBeTruthy()
     expect(screen.getByText(/const y = 2/)).toBeTruthy()
   })

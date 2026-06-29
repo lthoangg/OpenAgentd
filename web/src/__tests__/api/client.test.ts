@@ -270,7 +270,7 @@ describe('setCodingWorkspaceVisibility', () => {
     globalThis.fetch = mock((input, requestInit) => {
       url = String(input)
       init = requestInit as RequestInit | undefined
-      return Promise.resolve(new Response(JSON.stringify({ workspace: '/repo/app', hidden: true, updated: 2 })))
+      return Promise.resolve(new Response(JSON.stringify({ workspace: '/repo/app', hidden: true })))
     }) as typeof fetch
 
     const result = await setCodingWorkspaceVisibility('/repo/app', true)
@@ -279,7 +279,8 @@ describe('setCodingWorkspaceVisibility', () => {
     expect(init?.method).toBe('PATCH')
     expect(init?.headers).toEqual({ 'Content-Type': 'application/json' })
     expect(JSON.parse(init?.body as string)).toEqual({ workspace: '/repo/app', hidden: true })
-    expect(result.updated).toBe(2)
+    expect(result.workspace).toBe('/repo/app')
+    expect(result.hidden).toBe(true)
   })
 })
 

@@ -557,3 +557,28 @@ export interface TodoItem {
 export interface TodosResponse {
   todos: TodoItem[]
 }
+
+export interface TeamChatResponse {
+  status: string
+  session_id: string
+  message_id?: string | null
+}
+
+export interface DiscardWorkspaceFileResponse {
+  workspace: string
+  path: string
+  status: string
+}
+
+export interface CodingWorkspaceVisibilityResponse {
+  workspace: string
+  hidden: boolean
+}
+
+export interface TaskTriggerResponse {
+  status: string
+}
+
+export interface WorktreeRemoveResponse {
+  removed: boolean
+}

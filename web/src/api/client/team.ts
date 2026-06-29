@@ -27,6 +27,10 @@ import type {
   WorkspaceFilesResponse,
   CodingWorkspaceFilesResponse,
   TodosResponse,
+  TeamChatResponse,
+  DiscardWorkspaceFileResponse,
+  CodingWorkspaceVisibilityResponse,
+  WorktreeRemoveResponse,
 } from '../types'
 
 export async function postTeamChat(
@@ -41,7 +45,7 @@ export async function postTeamChat(
   shell = false,
   fastMode = false,
   mentions?: string[],
-): Promise<{ status: string; session_id: string; message_id?: string }> {
+): Promise<TeamChatResponse> {
   const formData = new FormData()
   if (message) {
     formData.append('message', message)
@@ -186,7 +190,7 @@ export async function listWorktrees(sourceWorkspace: string): Promise<WorktreeIn
   return res.json()
 }
 
-export async function removeWorktree(sourceWorkspace: string, directory: string): Promise<{ removed: boolean }> {
+export async function removeWorktree(sourceWorkspace: string, directory: string): Promise<WorktreeRemoveResponse> {
   const res = await fetch(`${apiBaseUrl()}/team/workspace/worktrees`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
@@ -287,13 +291,14 @@ export async function discardCodingWorkspaceFile(
   workspace: string,
   path: string,
   status: 'M' | 'D' | 'A',
-): Promise<void> {
+): Promise<DiscardWorkspaceFileResponse> {
   const res = await fetch(`${apiBaseUrl()}/team/workspace/git/discard`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ workspace, path, status }),
   })
   if (!res.ok) await parseDetailOrThrow(res, 'discardCodingWorkspaceFile')
+  return res.json()
 }
 
 export async function listTeamSessions(
@@ -311,7 +316,7 @@ export async function listTeamSessions(
   return res.json()
 }
 
-export async function setCodingWorkspaceVisibility(workspace: string, hidden: boolean): Promise<{ workspace: string; hidden: boolean; updated: number }> {
+export async function setCodingWorkspaceVisibility(workspace: string, hidden: boolean): Promise<CodingWorkspaceVisibilityResponse> {
   const res = await fetch(`${apiBaseUrl()}/team/workspace/visibility`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },

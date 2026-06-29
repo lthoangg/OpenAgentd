@@ -8,6 +8,7 @@ import type {
   ScheduledTaskResponse,
   ScheduledTaskCreate,
   ScheduledTaskListResponse,
+  TaskTriggerResponse,
 } from '../types'
 
 export async function listScheduledTasks(): Promise<ScheduledTaskListResponse> {
@@ -59,7 +60,7 @@ export async function resumeScheduledTask(slug: string): Promise<ScheduledTaskRe
   return res.json()
 }
 
-export async function triggerScheduledTask(slug: string): Promise<{ status: string }> {
+export async function triggerScheduledTask(slug: string): Promise<TaskTriggerResponse> {
   const res = await fetch(`${apiBaseUrl()}/scheduler/tasks/${encodeURIComponent(slug)}/trigger`, { method: 'POST' })
   if (!res.ok) await parseDetailOrThrow(res, `POST /scheduler/tasks/${slug}/trigger`)
   return res.json()

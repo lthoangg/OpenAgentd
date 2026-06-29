@@ -169,6 +169,14 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
   // Me mirror store _loadingOlder in a ref so the wheel handler can check
   // it synchronously without subscribing to store state changes.
   const loadingOlderRef = useRef(false)
+  // Me keep live refs for values the onScroll closure needs to read without
+  // requiring the scroll useEffect to re-register its listeners every time
+  // hiddenTurnCount or showEarlierTurns identity changes. Stale closures
+  // over these caused loadOlderMessages to never fire after a page loaded
+  // (the effect re-ran with a fresh hiddenTurnCount > 0, so every
+  // subsequent scroll-to-top called showEarlierTurns instead of fetching).
+  const hiddenTurnCountRef = useRef(0)
+  const showEarlierTurnsRef = useRef<() => void>(() => {})
 
   const handleRevert = useCallback(() => {
     void useTeamStore.getState().undoTeam().then(async (response) => {
@@ -205,11 +213,10 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
     setRenderedTurnCount((count) => Math.min(turnItems.length, count + TURN_RENDER_STEP))
   }, [turnItems.length])
 
-  const isAtBottom = useCallback(() => {
-    const el = scrollRef.current
-    if (!el) return true
-    return el.scrollHeight - el.scrollTop - el.clientHeight <= SCROLL_THRESHOLD
-  }, [])
+  // Keep the refs in sync every render so the scroll handler always sees
+  // the latest values without needing to re-register listeners.
+  hiddenTurnCountRef.current = hiddenTurnCount
+  showEarlierTurnsRef.current = showEarlierTurns
 
   const scrollToBottom = useCallback((smooth = false) => {
     const el = scrollRef.current
@@ -272,8 +279,8 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
       // if the guard lived inside rAF all queued callbacks would see the flag
       // as false and fire duplicate requests.
       if (el.scrollTop <= LOAD_OLDER_THRESHOLD) {
-        if (hiddenTurnCount > 0) {
-          showEarlierTurns()
+        if (hiddenTurnCountRef.current > 0) {
+          showEarlierTurnsRef.current()
         } else if (useTeamStore.getState().hasMore && !loadingOlderRef.current) {
           loadingOlderRef.current = true
           prevScrollHeightRef.current = el.scrollHeight
@@ -325,7 +332,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
       el.removeEventListener('touchend', onTouchEnd)
       el.removeEventListener('touchcancel', onTouchEnd)
     }
-  }, [hiddenTurnCount, isAtBottom, showEarlierTurns])
+  }, [])
 
   // Me restore scroll position after older messages are prepended.
   // We track a "pending restore" flag separately from blocks.length so
@@ -336,6 +343,10 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
     const el = scrollRef.current
     if (!el || !pendingRestoreRef.current || prevScrollHeightRef.current === null) return
     pendingRestoreRef.current = false
+    // Me: unpin BEFORE setting scrollTop so that the resulting scroll event's
+    // rAF (updatePinnedFromPosition) sees dimensionsChanged=true but
+    // pinnedRef.current=false and does NOT snap back to the bottom.
+    pinnedRef.current = false
     el.scrollTop = el.scrollHeight - prevScrollHeightRef.current
     prevScrollHeightRef.current = null
   }, [blocks.length, renderedTurnCount])

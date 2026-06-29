@@ -146,7 +146,13 @@ class GeminiProviderBase(LLMProviderBase):
                             )
                         )
                 elif msg.reasoning_content:
-                    parts.append(Part(text=msg.reasoning_content, thought=True))
+                    parts.append(
+                        Part(
+                            text=msg.reasoning_content,
+                            thought=True,
+                            thought_signature=msg.reasoning_signature or None,
+                        )
+                    )
 
                 if not parts:
                     continue
@@ -326,10 +332,13 @@ class GeminiProviderBase(LLMProviderBase):
         reasoning = ""
         tool_calls = []
 
+        reasoning_signature = ""
         for part in candidate.content.parts:
             if part.thought:
                 if part.text:
                     reasoning += part.text
+                if part.thought_signature:
+                    reasoning_signature += part.thought_signature
             elif part.text:
                 content += part.text
             if part.function_call:
@@ -357,11 +366,18 @@ class GeminiProviderBase(LLMProviderBase):
                 tool_use_tokens=meta.tool_use_prompt_token_count,
             )
 
+        extra: dict | None = (
+            {"usage": usage_to_dict(usage, self.model)} if usage else None
+        )
+        if reasoning_signature:
+            extra = extra or {}
+            extra["reasoning_signature"] = reasoning_signature
         return AssistantMessage(
             content=content if content else None,
             reasoning_content=reasoning if reasoning else None,
+            reasoning_signature=reasoning_signature or None,
             tool_calls=tool_calls if tool_calls else None,
-            extra={"usage": usage_to_dict(usage, self.model)} if usage else None,
+            extra=extra,
         )
 
     async def stream(
@@ -436,10 +452,13 @@ class GeminiProviderBase(LLMProviderBase):
                     delta_reasoning = ""
                     delta_tool_calls: list[ToolCallDelta] = []
 
+                    delta_reasoning_signature = ""
                     for part in candidate.content.parts:
                         if part.thought:
                             if part.text:
                                 delta_reasoning += part.text
+                            if part.thought_signature:
+                                delta_reasoning_signature += part.thought_signature
                         elif part.text:
                             delta_content += part.text
                         if part.function_call:
@@ -498,6 +517,9 @@ class GeminiProviderBase(LLMProviderBase):
                                     content=delta_content if delta_content else None,
                                     reasoning_content=delta_reasoning
                                     if delta_reasoning
+                                    else None,
+                                    reasoning_signature=delta_reasoning_signature
+                                    if delta_reasoning_signature
                                     else None,
                                     tool_calls=delta_tool_calls
                                     if delta_tool_calls

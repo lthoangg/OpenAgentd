@@ -983,3 +983,116 @@ async def test_stream_zero_arg_tool_call(google_provider):
     assert tc_delta is not None and len(tc_delta) == 1
     assert tc_delta[0].function.name == "ls"
     assert tc_delta[0].function.arguments == "{}"
+
+
+# ---------------------------------------------------------------------------
+# thoughtSignature round-trip for thought parts (implicit caching / history)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_chat_captures_thought_signature_from_thought_part(google_provider):
+    """_parse_response must capture thoughtSignature from thought parts and
+    store it on AssistantMessage.reasoning_signature + extra so it can be
+    round-tripped in subsequent requests for implicit caching."""
+    respx.post(
+        f"{google_provider.base_url}/models/gemini-1.5-flash:generateContent"
+    ).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "candidates": [
+                    {
+                        "content": {
+                            "parts": [
+                                {
+                                    "text": "I'm reasoning here.",
+                                    "thought": True,
+                                    "thoughtSignature": "opaque-sig-xyz",
+                                },
+                                {"text": "The answer is 42."},
+                            ],
+                            "role": "model",
+                        },
+                        "finishReason": "STOP",
+                    }
+                ],
+                "usageMetadata": {
+                    "promptTokenCount": 10,
+                    "candidatesTokenCount": 20,
+                    "totalTokenCount": 30,
+                },
+            },
+        )
+    )
+
+    resp = await google_provider.chat(messages=[HumanMessage(content="hi")])
+
+    assert resp.reasoning_content == "I'm reasoning here."
+    assert resp.reasoning_signature == "opaque-sig-xyz"
+    assert resp.extra is not None
+    assert resp.extra.get("reasoning_signature") == "opaque-sig-xyz"
+
+
+def test_convert_messages_emits_thought_signature_on_thought_part(google_provider):
+    """When an AssistantMessage carries reasoning_signature, the thought Part
+    re-emitted during history reconstruction must include thoughtSignature so
+    Gemini can resolve implicit cache hits on the thought."""
+    messages = [
+        AssistantMessage(
+            content="The answer is 42.",
+            reasoning_content="I'm reasoning here.",
+            reasoning_signature="opaque-sig-xyz",
+        )
+    ]
+    contents, _ = google_provider._convert_messages_to_gemini(messages)
+
+    model_turn = contents[0]
+    thought_parts = [p for p in model_turn.parts if p.thought]
+    assert len(thought_parts) == 1
+    assert thought_parts[0].text == "I'm reasoning here."
+    assert thought_parts[0].thought_signature == "opaque-sig-xyz"
+
+
+def test_convert_messages_thought_part_no_signature_when_absent(google_provider):
+    """AssistantMessage without reasoning_signature must still emit the thought
+    Part — just without thoughtSignature (pre-fix rows / non-thinking turns)."""
+    messages = [
+        AssistantMessage(
+            content="answer",
+            reasoning_content="thoughts",
+            reasoning_signature=None,
+        )
+    ]
+    contents, _ = google_provider._convert_messages_to_gemini(messages)
+
+    thought_parts = [p for p in contents[0].parts if p.thought]
+    assert len(thought_parts) == 1
+    assert thought_parts[0].thought_signature is None
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_stream_captures_thought_signature(google_provider):
+    """Streaming: thoughtSignature on a thought Part must surface as
+    reasoning_signature on the ChatCompletionDelta chunk."""
+    stream_content = (
+        'data: {"candidates":[{"content":{"parts":['
+        '{"text":"deep thought","thought":true,"thoughtSignature":"stream-sig-abc"}'
+        '],"role":"model"},"finishReason":"STOP"}],'
+        '"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":5,"totalTokenCount":6}}\n'
+    )
+
+    respx.post(
+        f"{google_provider.base_url}/models/gemini-1.5-flash:streamGenerateContent?alt=sse"
+    ).mock(return_value=httpx.Response(200, content=stream_content))
+
+    chunks = []
+    async for chunk in google_provider.stream(messages=[HumanMessage(content="hi")]):
+        chunks.append(chunk)
+
+    assert len(chunks) == 1
+    delta = chunks[0].choices[0].delta
+    assert delta.reasoning_content == "deep thought"
+    assert delta.reasoning_signature == "stream-sig-abc"

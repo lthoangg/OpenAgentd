@@ -1,6 +1,6 @@
 [package]
 name = "openagentd-desktop"
-version = "1.84.0"
+version = "1.85.0"
 description = "OpenAgentd — on-machine AI agents (desktop shell)"
 authors = ["openagentd contributors"]
 license = "Apache-2.0"

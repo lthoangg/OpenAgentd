@@ -161,3 +161,56 @@ def test_deserialize_messages_with_sanitize_tool_pairs_drops_orphan_tool(
     assert isinstance(result[0], AssistantMessage)
     assert result[0].tool_calls is None
     assert isinstance(result[1], HumanMessage)
+
+
+def test_deserialize_messages_restores_reasoning_signature_from_extra(
+    session_id,
+) -> None:
+    """reasoning_signature stored in extra must be restored onto AssistantMessage
+    after deserialization so _split_messages can round-trip it to Anthropic."""
+    db_messages = [
+        SessionMessage(
+            id=uuid7(),
+            session_id=session_id,
+            role="assistant",
+            content="Here is my answer.",
+            reasoning_content="Let me think.",
+            extra={
+                "reasoning_signature": "sig-opaque-token",
+                "finish_reason": "end_turn",
+            },
+        ),
+    ]
+
+    result = deserialize_messages(db_messages)
+
+    assert len(result) == 1
+    msg = result[0]
+    assert isinstance(msg, AssistantMessage)
+    assert msg.reasoning_content == "Let me think."
+    assert msg.reasoning_signature == "sig-opaque-token"
+
+
+def test_deserialize_messages_reasoning_signature_absent_when_extra_missing(
+    session_id,
+) -> None:
+    """Pre-fix rows with no reasoning_signature in extra must deserialize cleanly
+    with reasoning_signature=None — no KeyError or attribute error."""
+    db_messages = [
+        SessionMessage(
+            id=uuid7(),
+            session_id=session_id,
+            role="assistant",
+            content="answer",
+            reasoning_content="thoughts",
+            extra={"finish_reason": "end_turn"},  # no reasoning_signature key
+        ),
+    ]
+
+    result = deserialize_messages(db_messages)
+
+    assert len(result) == 1
+    msg = result[0]
+    assert isinstance(msg, AssistantMessage)
+    assert msg.reasoning_content == "thoughts"
+    assert msg.reasoning_signature is None

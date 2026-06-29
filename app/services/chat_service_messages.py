@@ -60,6 +60,10 @@ def deserialize_messages(
                 d["tool_call_id"] = ""
             msg = _chat_message_adapter.validate_python(d)
             msg.db_id = m.id
+            if isinstance(msg, AssistantMessage) and m.extra:
+                sig = m.extra.get("reasoning_signature")
+                if isinstance(sig, str) and sig:
+                    msg.reasoning_signature = sig
             if (
                 isinstance(msg, ToolMessage)
                 and m.extra
@@ -90,10 +94,15 @@ def deserialize_messages(
                 clean.append(tc)
             except (json.JSONDecodeError, ValueError):
                 bad_tool_call_ids.add(tc.id)
+                finish_reason = (
+                    (msg.extra or {}).get("finish_reason") if msg.extra else None
+                )
                 logger.warning(
-                    "deserialize_drop_partial_tool_call tool={} id={} args_prefix={!r}",
+                    "deserialize_drop_partial_tool_call tool={} id={} finish_reason={} args_len={} args_prefix={!r}",
                     tc.function.name,
                     tc.id,
+                    finish_reason,
+                    len(tc.function.arguments),
                     tc.function.arguments[:80],
                 )
         if len(clean) != len(msg.tool_calls):

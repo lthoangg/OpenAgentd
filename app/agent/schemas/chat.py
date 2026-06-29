@@ -176,6 +176,9 @@ class AssistantMessage(BaseMessage):
     role: Literal["assistant"] = "assistant"
     # Me: receive-only — provider sends this, but no API accepts it back
     reasoning_content: str | None = Field(default=None, exclude=True)
+    # Me: Anthropic requires the opaque signature to be round-tripped with
+    # thinking blocks in history; store it alongside reasoning_content.
+    reasoning_signature: str | None = Field(default=None, exclude=True)
     tool_calls: list[ToolCall] | None = None
 
     # Me: agent tracking — internal only, never sent to provider
@@ -210,6 +213,9 @@ class ChatCompletionDelta(BaseModel):
     content: str | None = None
     # Me: ZAI may send reasoning_content as int (token count) in final chunk — accept and discard
     reasoning_content: str | None = None
+    # Me: Anthropic opaque signature for thinking blocks — must be stored and
+    # round-tripped in history; surfaced here so callers can persist it.
+    reasoning_signature: str | None = None
 
     @field_validator("reasoning_content", mode="before")
     @classmethod

@@ -1,4 +1,4 @@
-import type { MutableRefObject } from 'react'
+import { useRef, useState, useEffect, useCallback, type MutableRefObject } from 'react'
 import { File, Folder } from 'lucide-react'
 import type { SlashCommand, SnippetCommand } from './InputBar'
 import type { FileRef } from './InputBar.mentions'
@@ -46,7 +46,58 @@ export function InputBarSuggestions({
   clampedMentionIndex: number
   onMentionSelect: (ref: FileRef) => void
 }) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [position, setPosition] = useState<{ showBelow: boolean; maxHeight: number }>({
+    showBelow: false,
+    maxHeight: 256,
+  })
+
+  const updatePosition = useCallback(() => {
+    const parentEl = containerRef.current?.parentElement
+    if (!parentEl) return
+
+    const rect = parentEl.getBoundingClientRect()
+    const spaceAbove = rect.top
+    const spaceBelow = window.innerHeight - rect.bottom
+
+    // Threshold (in pixels) below which we prefer to render the menu downwards
+    // if there is more space below than above.
+    const threshold = 280
+    const showBelow = spaceAbove < threshold && spaceBelow > spaceAbove
+    const availableSpace = showBelow ? spaceBelow : spaceAbove
+    // 12px padding from the screen edge
+    const maxHeight = Math.max(80, Math.min(256, availableSpace - 12))
+
+    setPosition({ showBelow, maxHeight })
+  }, [])
+
+  useEffect(() => {
+    const isOpen = slashMenuOpen || mentionMenuOpen || snippetMenuOpen
+    if (!isOpen) return
+
+    updatePosition()
+
+    window.addEventListener('resize', updatePosition)
+    window.addEventListener('scroll', updatePosition, { capture: true })
+
+    let resizeObserver: ResizeObserver | null = null
+    const parentEl = containerRef.current?.parentElement
+    if (parentEl && typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(() => {
+        updatePosition()
+      })
+      resizeObserver.observe(parentEl)
+    }
+
+    return () => {
+      window.removeEventListener('resize', updatePosition)
+      window.removeEventListener('scroll', updatePosition, { capture: true })
+      resizeObserver?.disconnect()
+    }
+  }, [slashMenuOpen, mentionMenuOpen, snippetMenuOpen, updatePosition])
+
   if (minimized) return null
+
   const slashDisplayParts = (cmd: SlashCommand) => {
     const displayName = cmd.displayName ?? cmd.id
     const colon = displayName.indexOf(':')
@@ -56,10 +107,20 @@ export function InputBarSuggestions({
     }
   }
 
+  const menuClassName = `absolute left-0 right-0 z-10 overflow-y-auto overscroll-contain rounded-sm border border-(--color-border) bg-(--bg-card) p-1 shadow-md ${
+    position.showBelow ? 'top-full mt-1' : 'bottom-full mb-1'
+  }`
+
   return (
-    <>
+    <div ref={containerRef} className="contents">
       {slashMenuOpen && filteredSlashCommands.length > 0 && (
-        <div id={slashMenuId} role="listbox" aria-label="Slash commands" className="absolute bottom-full left-0 right-0 z-10 mb-1 max-h-64 overflow-y-auto overscroll-contain rounded-sm border border-(--color-border) bg-(--bg-card) p-1 shadow-md">
+        <div
+          id={slashMenuId}
+          role="listbox"
+          aria-label="Slash commands"
+          className={menuClassName}
+          style={{ maxHeight: position.maxHeight }}
+        >
           {filteredSlashCommands.map((cmd) => {
             if ('isSeparator' in cmd && cmd.isSeparator) {
               return (
@@ -99,7 +160,13 @@ export function InputBarSuggestions({
         </div>
       )}
       {mentionMenuOpen && filteredMentions.length > 0 && (
-        <div id={mentionMenuId} role="listbox" aria-label="Reference workspace file" className="absolute bottom-full left-0 right-0 z-10 mb-1 max-h-64 overflow-y-auto overscroll-contain rounded-sm border border-(--color-border) bg-(--bg-card) p-1 shadow-md">
+        <div
+          id={mentionMenuId}
+          role="listbox"
+          aria-label="Reference workspace file"
+          className={menuClassName}
+          style={{ maxHeight: position.maxHeight }}
+        >
           {filteredMentions.map((ref, index) => {
             const active = index === clampedMentionIndex
             const isDir = ref.type === 'directory'
@@ -124,7 +191,13 @@ export function InputBarSuggestions({
         </div>
       )}
       {snippetMenuOpen && filteredSnippetCommands.length > 0 && (
-        <div id={snippetMenuId} role="listbox" aria-label="Snippets" className="absolute bottom-full left-0 right-0 z-10 mb-1 max-h-64 overflow-y-auto overscroll-contain rounded-sm border border-(--color-border) bg-(--bg-card) p-1 shadow-md">
+        <div
+          id={snippetMenuId}
+          role="listbox"
+          aria-label="Snippets"
+          className={menuClassName}
+          style={{ maxHeight: position.maxHeight }}
+        >
           {filteredSnippetCommands.map((cmd, index) => {
             const active = index === clampedSnippetIndex
             return (
@@ -141,6 +214,6 @@ export function InputBarSuggestions({
           })}
         </div>
       )}
-    </>
+    </div>
   )
 }

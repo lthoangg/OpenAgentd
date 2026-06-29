@@ -2,7 +2,7 @@
 title: Frontend Performance
 description: Render optimization patterns used across the web UI — memo, useMemo, useCallback.
 status: stable
-updated: 2026-06-13
+updated: 2026-06-20
 ---
 
 # Frontend performance
@@ -63,6 +63,58 @@ Hooks must not appear after early returns. In `TextPreview` the `useMemo`
 for `lines` is declared **before** the `deleted` / `tooLarge` / `loading`
 early returns — even though `content` may be `null` at that point — using a
 `?? []` fallback to keep the call unconditional.
+
+---
+
+---
+
+## AgentView scroll and pagination
+
+`AgentView` manages two interrelated concerns in a single stable scroll
+`useEffect` (dep array `[]`):
+
+### Auto-stick (pinned mode)
+
+`pinnedRef` tracks whether the viewport is glued to the bottom.
+`ResizeObserver` on the content element re-sticks after every late layout
+reflow (syntax highlighting, image load). Intentional user upward scroll
+is detected via `onWheel` (desktop) and `onTouchMove` (mobile) — NOT from
+the `scroll` event alone, which fires for programmatic scrolls too.
+
+### Scroll-to-top pagination
+
+When the user scrolls within `LOAD_OLDER_THRESHOLD` (300 px) of the top,
+`onScroll` chooses one of two paths:
+
+1. **Local hidden turns** (`hiddenTurnCount > 0`) — `showEarlierTurns()`
+   expands the rendered window by `TURN_RENDER_STEP` (80) turns and
+   restores the viewport position so the user stays at the same visual
+   content. No network request.
+2. **Server fetch** (`hiddenTurnCount === 0 && hasMore`) —
+   `useTeamStore.getState().loadOlderMessages()` is called. On success,
+   older blocks are prepended to the store and the viewport is restored to
+   the same visual position.
+
+**Ref pattern for live values** — `hiddenTurnCount` and `showEarlierTurns`
+are written to `hiddenTurnCountRef` / `showEarlierTurnsRef` on every render
+so `onScroll` always reads the current value without the effect needing to
+re-register its listeners. Putting these values directly in the dep array
+caused a stale-closure bug: after each `loadOlderMessages` call the effect
+re-ran with `hiddenTurnCount > 0` (new pages pushed turn count above the
+render window), trapping every subsequent scroll-to-top in the local-turns
+branch and blocking further server fetches.
+
+**Restore unpin** — the scroll-position restore effect sets
+`pinnedRef.current = false` *before* writing `el.scrollTop`. This prevents
+the `dimensionsChanged` guard inside `updatePinnedFromPosition` from
+snapping the user back to the bottom when `scrollHeight` has grown.
+
+### Tests
+
+| File | Coverage |
+|---|---|
+| `AgentView.scroll.test.tsx` | Scroll-to-bottom button, pinning, touch/wheel detach |
+| `AgentView.pagination.test.tsx` | Threshold boundary, local-vs-server priority, stale-closure regression, restore-unpin regression |
 
 ---
 

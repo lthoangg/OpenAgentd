@@ -1,4 +1,4 @@
-"""Drift-detection helpers in app/agent/loader.py."""
+"""Drift-detection helpers in app/agent/drift.py."""
 
 from __future__ import annotations
 
@@ -15,28 +15,25 @@ def _touch(path: Path, content: str = "x") -> None:
 def test_stamp_records_existing_and_missing(tmp_path: Path) -> None:
     agent_md = tmp_path / "a.md"
     agent_md.write_text("---\nname: a\n---\n")
-    skills = tmp_path / "skills"
-    skills.mkdir()
     mcp = tmp_path / "mcp.json"  # missing on purpose
 
-    stamp = stamp_agent_files(agent_md, ["unknown"], skills, mcp)
+    stamp = stamp_agent_files(agent_md, mcp)
 
     assert stamp[str(agent_md)] is not None
     assert stamp[str(mcp)] is None
-    assert stamp[str(skills / "unknown" / "SKILL.md")] is None
 
 
 def test_detect_drift_clean(tmp_path: Path) -> None:
     md = tmp_path / "a.md"
     md.write_text("hi")
-    stamp = stamp_agent_files(md, [], tmp_path, tmp_path / "mcp.json")
+    stamp = stamp_agent_files(md, tmp_path / "mcp.json")
     assert detect_drift(stamp) == []
 
 
 def test_detect_drift_when_file_changes(tmp_path: Path) -> None:
     md = tmp_path / "a.md"
     md.write_text("hi")
-    stamp = stamp_agent_files(md, [], tmp_path, tmp_path / "mcp.json")
+    stamp = stamp_agent_files(md, tmp_path / "mcp.json")
 
     # Sleep-free mtime bump: rewrite via os.utime.
     import os
@@ -52,7 +49,7 @@ def test_detect_drift_when_file_appears(tmp_path: Path) -> None:
     md = tmp_path / "a.md"
     md.write_text("hi")
     mcp = tmp_path / "mcp.json"  # absent at stamp time
-    stamp = stamp_agent_files(md, [], tmp_path, mcp)
+    stamp = stamp_agent_files(md, mcp)
 
     mcp.write_text("{}")  # appearance
 
@@ -62,7 +59,7 @@ def test_detect_drift_when_file_appears(tmp_path: Path) -> None:
 def test_detect_drift_when_file_disappears(tmp_path: Path) -> None:
     md = tmp_path / "a.md"
     md.write_text("hi")
-    stamp = stamp_agent_files(md, [], tmp_path, tmp_path / "mcp.json")
+    stamp = stamp_agent_files(md, tmp_path / "mcp.json")
 
     md.unlink()
 

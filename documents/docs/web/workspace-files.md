@@ -118,9 +118,44 @@ cannot carry the fetch `Authorization` header. The thumbnail has
 
 ### Text preview
 
-Displays the raw file content as-is in a plain `<pre>` with a monospace
-font — no markdown rendering, no syntax highlighting, no transformation.
-What's on disk is exactly what appears.
+Displays file content in a monospace, line-numbered view with **syntax
+highlighting via `highlight.js`** (the same library already bundled for
+markdown code blocks — no extra bundle cost).
+
+`highlightFile(content, ext)` runs `hljs.highlight()` on the full file
+content, then splits the resulting HTML on `\n` to produce per-line strings
+that are rendered via `dangerouslySetInnerHTML` (hljs HTML-entity-escapes all
+user content). The extension-to-language map covers every entry in
+`TEXT_EXTENSIONS`:
+
+| Extension(s) | hljs language |
+|---|---|
+| `ts`, `tsx` | `typescript` |
+| `js`, `jsx`, `mjs`, `cjs` | `javascript` |
+| `py` | `python` |
+| `rs` | `rust` |
+| `go` | `go` |
+| `sh`, `bash`, `zsh`, `fish` | `bash` |
+| `sql` | `sql` |
+| `yaml`, `yml` | `yaml` |
+| `toml`, `ini`, `env` | `ini` |
+| `html` | `html` |
+| `css`, `scss`, `sass` | `css` / `scss` |
+| `json`, `jsonl` | `json` |
+| `xml`, `svg` | `xml` |
+| `md`, `markdown` | `markdown` |
+| `java` | `java` |
+| `kt` | `kotlin` |
+| `swift` | `swift` |
+| `rb` | `ruby` |
+| `php` | `php` |
+| `c`, `h` | `c` |
+| `cpp`, `hpp` | `cpp` |
+| `csv`, `tsv`, `log`, `txt`, `gitignore` | `plaintext` |
+
+Unknown extensions fall back to `hljs.highlightAuto()` with a sensible
+candidate language list. The `hljs-*` CSS classes map to the existing
+`--color-syn-*` design tokens defined in `index.css`.
 
 **Size cap — 512 KB.** Larger files show a "File too large to preview"
 notice with the size and the limit. No request is fired. The Download

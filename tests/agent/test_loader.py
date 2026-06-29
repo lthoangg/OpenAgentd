@@ -150,7 +150,7 @@ def test_parse_agent_md_full_frontmatter(tmp_path):
             "temperature": 0.3,
             "thinking_level": "low",
             "tools": ["read", "shell"],
-            "skills": ["example-skill"],
+            "mcp": ["example-skill"],
             "description": "Does things.",
         },
         "Custom prompt.",
@@ -159,7 +159,7 @@ def test_parse_agent_md_full_frontmatter(tmp_path):
     assert cfg.temperature == 0.3
     assert cfg.thinking_level == "low"
     assert cfg.tools == ["read", "shell"]
-    assert cfg.skills == ["example-skill"]
+    assert cfg.mcp == ["example-skill"]
     assert cfg.description == "Does things."
     assert cfg.system_prompt == "Custom prompt."
 
@@ -391,10 +391,10 @@ def test_build_agent_skills_do_not_inject_prompt_descriptions(tmp_path, monkeypa
     )
     monkeypatch.setattr("app.agent.tools.builtin.skill._SKILLS_DIR", tmp_path)
     factory, _ = _make_provider_factory()
-    cfg = AgentConfig(name="bot", system_prompt="Base prompt", skills=["myskill"])
+    cfg = AgentConfig(name="bot", system_prompt="Base prompt", mcp=["myskill"])
     agent = _build_agent(cfg, {}, factory)
     assert agent.system_prompt == "Base prompt"
-    assert agent.skills == ["myskill"]
+    assert agent.mcp_servers == ["myskill"]
 
 
 # ---------------------------------------------------------------------------
@@ -553,7 +553,7 @@ def test_openagentd_lead_uses_builtin_prompt_with_extra(tmp_path):
     assert "personal on-machine AI assistant" in team.lead.agent.description
     assert "shell" in team.lead.agent._tools
     assert "generate_image" in team.lead.agent._tools
-    assert team.lead.agent.skills == []
+    assert team.lead.agent.mcp_servers == []
 
 
 def test_openagentd_seed_comment_is_not_injected_as_extra_prompt(tmp_path):
@@ -590,7 +590,7 @@ def test_openagentd_file_can_add_tools_and_skills(tmp_path):
                 "role": "lead",
                 "model": "zai:glm-5-turbo",
                 "tools": ["generate_image"],
-                "skills": ["custom-skill"],
+                "mcp": ["custom-skill"],
             },
         ],
     )
@@ -599,7 +599,7 @@ def test_openagentd_file_can_add_tools_and_skills(tmp_path):
     assert team is not None
     assert "generate_image" in team.lead.agent._tools
     assert "shell" in team.lead.agent._tools
-    assert team.lead.agent.skills == ["custom-skill"]
+    assert team.lead.agent.mcp_servers == ["custom-skill"]
 
 
 def test_openagentd_builtin_and_user_capabilities_are_deduped(tmp_path):
@@ -614,7 +614,7 @@ def test_openagentd_builtin_and_user_capabilities_are_deduped(tmp_path):
                 "role": "lead",
                 "model": "zai:glm-5-turbo",
                 "tools": ["shell", "generate_image"],
-                "skills": ["self-healing", "custom-skill"],
+                "mcp": ["self-healing", "custom-skill"],
             },
         ],
     )
@@ -623,8 +623,8 @@ def test_openagentd_builtin_and_user_capabilities_are_deduped(tmp_path):
     assert team is not None
     assert list(team.lead.agent._tools).count("shell") == 1
     assert list(team.lead.agent._tools).count("generate_image") == 1
-    assert team.lead.agent.skills.count("self-healing") == 1
-    assert team.lead.agent.skills.count("custom-skill") == 1
+    assert team.lead.agent.mcp_servers.count("self-healing") == 1
+    assert team.lead.agent.mcp_servers.count("custom-skill") == 1
 
 
 def test_openagentd_user_description_overrides_builtin_description(tmp_path):

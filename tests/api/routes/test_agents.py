@@ -185,7 +185,6 @@ model: zai:glm-5-turbo
     assert {"todo_manage", "schedule_task", "note"}.issubset(row["tools"])
     assert "shell" in row["tools"]
     assert row["mcp"] == []
-    assert row["skills"] == []
 
 
 @pytest.mark.asyncio
@@ -202,7 +201,7 @@ model: zai:glm-5-turbo
 tools:
   - shell
   - web_search
-skills:
+mcp:
   - self-healing
   - custom-skill
 ---
@@ -218,8 +217,8 @@ Extra prompt.
     assert row["tools"].count("todo_manage") == 1
     assert row["tools"].count("shell") == 1
     assert row["tools"].count("web_search") == 1
-    assert row["skills"].count("self-healing") == 1
-    assert row["skills"].count("custom-skill") == 1
+    assert row["mcp"].count("self-healing") == 1
+    assert row["mcp"].count("custom-skill") == 1
 
 
 @pytest.mark.asyncio

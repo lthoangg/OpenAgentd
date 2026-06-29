@@ -7,11 +7,15 @@ import { useGitPanelStore } from '@/stores/useGitPanelStore'
 import type { WorkspaceFileInfo } from '@/api/types'
 
 const WORKSPACE = '/repo/project'
-const readme: WorkspaceFileInfo = { path: 'README.md', name: 'README.md', size: 24, mtime: 1, mime: 'text/markdown' }
+// NOTE: Use a .ts extension so hljs keyword-highlights 'const' as a standalone
+// token, keeping getByText('const') and getByText('return') assertions valid.
+const readme: WorkspaceFileInfo = { path: 'main.ts', name: 'main.ts', size: 24, mtime: 1, mime: 'text/plain' }
 const image: WorkspaceFileInfo = { path: 'assets/logo.png', name: 'logo.png', size: 100, mtime: 1, mime: 'image/png' }
 const binary: WorkspaceFileInfo = { path: 'dist/app.bin', name: 'app.bin', size: 1024 * 1024, mtime: 1, mime: 'application/octet-stream' }
 const envExample: WorkspaceFileInfo = { path: '.env.example', name: '.env.example', size: 32, mtime: 1, mime: 'application/octet-stream' }
 const filesResponse = { workspace: WORKSPACE, truncated: false, files: [readme, image, binary, envExample] }
+// Alias used in assertions that reference the old 'README.md' filename.
+const readmePath = readme.path
 let diffResponse = { workspace: WORKSPACE, is_git_repo: false, diff: '', untracked: [] as string[] }
 let isMacOverlay = false
 
@@ -89,16 +93,16 @@ async function renderViewer(file: WorkspaceFileInfo | null = readme, onAddCommen
 describe('Coding workspace two-layer file preview', () => {
   it('opens the selected file path as a file tab', async () => {
     const onFileSelect = mock(() => {})
-    await renderWorkspacePanel(onFileSelect, 'README.md')
+    await renderWorkspacePanel(onFileSelect, readmePath)
 
     await waitFor(() => expect(onFileSelect).toHaveBeenCalledWith(readme))
-    await waitFor(() => expect(screen.getAllByTitle('README.md').length).toBeGreaterThanOrEqual(1))
+    await waitFor(() => expect(screen.getAllByTitle(readmePath).length).toBeGreaterThanOrEqual(1))
     await waitFor(() => expect(screen.getByText('const')).toBeTruthy())
   })
 
   it('reopens the selected file tab when the open key changes', async () => {
     const onFileSelect = mock(() => {})
-    const { CodingWorkspacePanel, queryClient, renderResult } = await renderWorkspacePanel(onFileSelect, 'README.md')
+    const { CodingWorkspacePanel, queryClient, renderResult } = await renderWorkspacePanel(onFileSelect, readmePath)
 
     await waitFor(() => expect(onFileSelect).toHaveBeenCalledWith(readme))
     await userEvent.setup().click(screen.getByRole('button', { name: /git/i }))
@@ -106,7 +110,7 @@ describe('Coding workspace two-layer file preview', () => {
 
     renderResult.rerender(
       <QueryClientProvider client={queryClient}>
-        <CodingWorkspacePanel workspace={WORKSPACE} open selectedFilePath="README.md" selectedFileOpenKey={1} onFileSelect={onFileSelect} onClose={() => {}} />
+        <CodingWorkspacePanel workspace={WORKSPACE} open selectedFilePath={readmePath} selectedFileOpenKey={1} onFileSelect={onFileSelect} onClose={() => {}} />
       </QueryClientProvider>,
     )
 
@@ -117,12 +121,12 @@ describe('Coding workspace two-layer file preview', () => {
     const user = userEvent.setup()
     const onFileSelect = mock(() => {})
     // Open README via a selection request (key bumps from 0).
-    const { queryClient } = await renderWorkspacePanel(onFileSelect, 'README.md')
+    const { queryClient } = await renderWorkspacePanel(onFileSelect, readmePath)
     await waitFor(() => expect(onFileSelect).toHaveBeenCalledWith(readme))
     await waitFor(() => expect(screen.getByText('const')).toBeTruthy())
 
-    // User closes the README tab.
-    await user.click(screen.getByRole('button', { name: 'Close README.md' }))
+    // User closes the file tab.
+    await user.click(screen.getByRole('button', { name: `Close ${readmePath}` }))
     await waitFor(() => expect(screen.queryByText('const')).toBeNull())
 
     // A background refetch of the files list resolves with a fresh array
@@ -135,7 +139,7 @@ describe('Coding workspace two-layer file preview', () => {
     })
 
     expect(screen.queryByText('const')).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Close README.md' })).toBeNull()
+    expect(screen.queryByRole('button', { name: `Close ${readmePath}` })).toBeNull()
   })
 
   it('opens file tabs from the plus file search', async () => {
@@ -246,7 +250,7 @@ describe('Coding workspace two-layer file preview', () => {
   it('previews small unknown non-media files as text', async () => {
     await renderViewer(envExample)
 
-    await waitFor(() => expect(screen.getByText('OPENAGENTD_PORT')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText(/OPENAGENTD_PORT/, { exact: false })).toBeTruthy())
     expect(screen.queryByText('No inline preview for this file type')).toBeNull()
   })
 
@@ -346,6 +350,6 @@ describe('Coding workspace two-layer file preview', () => {
     await user.click(screen.getByRole('button', { name: /select line 1/i }))
     await user.click(screen.getByRole('button', { name: /add comment for line 1/i }))
 
-    expect(onAddComment).toHaveBeenCalledWith('README.md', 1, 1)
+    expect(onAddComment).toHaveBeenCalledWith(readmePath, 1, 1)
   })
 })

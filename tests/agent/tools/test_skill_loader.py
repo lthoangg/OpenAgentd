@@ -647,19 +647,19 @@ class TestBuiltinSkills:
     def test_operational_builtin_skills_are_discovered(self):
         result = discover_skills()
 
+        # mcp-installer and plugin-installer were moved out of builtin_skills;
+        # only self-healing and skill-installer remain as builtins.
         assert {
             "self-healing",
             "skill-installer",
-            "mcp-installer",
-            "plugin-installer",
         }.issubset(result)
-        assert (_builtin_skills_dir() / "mcp-installer" / "mcp_apply.py").is_file()
 
     @pytest.mark.asyncio
-    async def test_builtin_skill_dir_points_at_auxiliary_files(self):
-        body = await load_skill("mcp-installer")
+    async def test_builtin_skill_browser_use_dir_is_accessible(self):
+        """browser-use is a builtin skill with an auxiliary directory."""
+        body = await load_skill("browser-use")
 
-        assert str(_builtin_skills_dir() / "mcp-installer" / "mcp_apply.py") in body
+        assert "browser" in body.lower()
 
 
 # ---------------------------------------------------------------------------

@@ -46,27 +46,27 @@ describe('buildFrontmatter', () => {
     expect(out).not.toContain('model')
   })
 
-  it('emits tools and skills as bullet lists', () => {
+  it('emits tools and mcp servers as bullet lists', () => {
     const out = buildFrontmatter({
       name: 'a',
       role: 'member',
       tools: ['date', 'read'],
-      skills: ['example-skill'],
+      mcp: ['example-skill'],
     })
     expect(out).toContain('tools:\n  - date\n  - read')
-    expect(out).toContain('skills:\n  - example-skill')
+    expect(out).toContain('mcp:\n  - example-skill')
   })
 
-  it('sorts tools and skills alphabetically — order is not semantic', () => {
+  it('sorts tools and mcp servers alphabetically — order is not semantic', () => {
     const out = buildFrontmatter({
       name: 'a',
       role: 'member',
       tools: ['shell', 'date', 'read'],
-      skills: ['example-skill', 'lightpanda'],
+      mcp: ['example-skill', 'lightpanda'],
     })
     // Sorted alphabetically regardless of input order.
     expect(out).toContain('tools:\n  - date\n  - read\n  - shell')
-    expect(out).toContain('skills:\n  - example-skill\n  - lightpanda')
+    expect(out).toContain('mcp:\n  - example-skill\n  - lightpanda')
   })
 
   it('produces identical output for reordered input', () => {
@@ -74,13 +74,13 @@ describe('buildFrontmatter', () => {
       name: 'x',
       role: 'member',
       tools: ['shell', 'date', 'read'],
-      skills: ['b', 'a'],
+      mcp: ['b', 'a'],
     })
     const b = buildFrontmatter({
       name: 'x',
       role: 'member',
       tools: ['read', 'shell', 'date'],
-      skills: ['a', 'b'],
+      mcp: ['a', 'b'],
     })
     expect(a).toBe(b)
   })
@@ -131,9 +131,9 @@ describe('contentEquals', () => {
     expect(contentEquals(a, b)).toBe(true)
   })
 
-  it('ignores skills list ordering', () => {
-    const a = '---\nname: a\nrole: member\nskills:\n  - b\n  - a\n---\n\nbody\n'
-    const b = '---\nname: a\nrole: member\nskills:\n  - a\n  - b\n---\n\nbody\n'
+  it('ignores mcp list ordering', () => {
+    const a = '---\nname: a\nrole: member\nmcp:\n  - b\n  - a\n---\n\nbody\n'
+    const b = '---\nname: a\nrole: member\nmcp:\n  - a\n  - b\n---\n\nbody\n'
     expect(contentEquals(a, b)).toBe(true)
   })
 

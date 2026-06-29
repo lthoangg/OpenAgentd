@@ -121,12 +121,12 @@ class TestTeamAgentsRouteExtra:
         worker_entry = next(a for a in data["agents"] if a["name"] == "worker")
         assert worker_entry["is_lead"] is False
 
-    def test_agents_response_has_tools_and_skills_keys(self, app_with_team):
+    def test_agents_response_has_tools_and_mcp_servers_keys(self, app_with_team):
         client = TestClient(app_with_team)
         data = client.get("/api/team/agents").json()
         for agent in data["agents"]:
             assert "tools" in agent
-            assert "skills" in agent
+            assert "mcp_servers" in agent
             assert "model" in agent
 
     def test_agents_blueprints_include_agent_details_and_live_instances(
@@ -156,7 +156,7 @@ class TestTeamAgentsRouteExtra:
         assert blueprint["description"] == "writes code"
         assert blueprint["live_instances"] == ["executor#1"]
         assert "tools" in blueprint
-        assert "skills" in blueprint
+        assert "mcp_servers" in blueprint
         assert "model" in blueprint
         assert "capabilities" in blueprint
 
@@ -790,18 +790,15 @@ class TestSerializeAgent:
         result = _serialize_agent(agent, is_lead=False)
         assert result["model"] is None
 
-    def test_serialize_skills_fallback_on_discover_error(self):
+    def test_serialize_mcp_servers_present_in_response(self):
         from app.api.routes.team import _serialize_agent
         from app.agent.agent_loop import Agent
 
         provider = MagicMock()
-        agent = Agent(llm_provider=provider, name="bot", skills=["my-skill"])
-        with patch(
-            "app.api.routes.team.chat.discover_skills",
-            side_effect=Exception("error"),
-        ):
-            result = _serialize_agent(agent)
-        assert result["skills"] == [{"name": "my-skill", "description": ""}]
+        agent = Agent(llm_provider=provider, name="bot", mcp_servers=["my-server"])
+        result = _serialize_agent(agent)
+        assert "mcp_servers" in result
+        assert result["mcp_servers"] == ["my-server"]
 
     def test_serialize_includes_mcp_servers(self):
         """Configured MCP servers surface even when they contribute zero tools.

@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState, memo, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, memo } from 'react'
+import hljs from 'highlight.js/lib/common'
 import { motion } from 'framer-motion'
 import { Check, Copy, Download, ExternalLink, FileText, Loader2, Plus, X } from 'lucide-react'
 import { codingWorkspaceFileUrl } from '@/api/client'
@@ -87,53 +88,61 @@ function LineGutter({ value }: { value: number }) {
   )
 }
 
-const KEYWORDS = new Set([
-  'and', 'as', 'async', 'await', 'break', 'case', 'catch', 'class', 'const', 'continue', 'def', 'default',
-  'do', 'elif', 'else', 'enum', 'export', 'extends', 'false', 'finally', 'for', 'from', 'function', 'if',
-  'import', 'in', 'interface', 'let', 'match', 'new', 'none', 'null', 'or', 'pass', 'return', 'self', 'static',
-  'struct', 'switch', 'this', 'throw', 'true', 'try', 'type', 'undefined', 'var', 'while', 'with', 'yield',
-])
+// ---------------------------------------------------------------------------
+// Syntax highlighting via highlight.js (already bundled for markdown blocks)
+// ---------------------------------------------------------------------------
 
-function commentIndex(line: string): number {
-  const markers = ['//', '#', '--']
-  let found = -1
-  for (const marker of markers) {
-    const index = line.indexOf(marker)
-    if (index >= 0 && (found < 0 || index < found)) found = index
-  }
-  return found
+/**
+ * Map common file extensions to highlight.js language names.
+ * hljs uses its own canonical names — this covers every ext in TEXT_EXTENSIONS
+ * plus a few extras. Unknown extensions fall back to plaintext.
+ */
+const EXT_TO_HLJS_LANG: Record<string, string> = {
+  // Web
+  ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript',
+  mjs: 'javascript', cjs: 'javascript',
+  html: 'html', css: 'css', scss: 'scss', sass: 'scss',
+  // Data / config
+  json: 'json', jsonl: 'json', yaml: 'yaml', yml: 'yaml',
+  toml: 'ini', ini: 'ini', env: 'ini',
+  xml: 'xml', svg: 'xml',
+  // Markup / docs
+  md: 'markdown', markdown: 'markdown', rst: 'plaintext',
+  // Shell
+  sh: 'bash', bash: 'bash', zsh: 'bash', fish: 'bash',
+  // Systems / compiled
+  rs: 'rust', go: 'go', c: 'c', cpp: 'cpp', h: 'cpp', hpp: 'cpp',
+  java: 'java', kt: 'kotlin', swift: 'swift',
+  // Scripting
+  py: 'python', rb: 'ruby', php: 'php',
+  // Query
+  sql: 'sql',
+  // Data files (no highlighting)
+  csv: 'plaintext', tsv: 'plaintext', log: 'plaintext', txt: 'plaintext',
+  gitignore: 'plaintext',
 }
 
-function highlightCodeLine(line: string): ReactNode[] {
-  const out: React.ReactNode[] = []
-  const commentAt = commentIndex(line)
-  const code = commentAt >= 0 ? line.slice(0, commentAt) : line
-  const comment = commentAt >= 0 ? line.slice(commentAt) : ''
-  const tokenRe = /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\b\d+(?:\.\d+)?\b|\b[A-Za-z_][A-Za-z0-9_]*\b)/g
-  let last = 0
-  let match: RegExpExecArray | null
-  while ((match = tokenRe.exec(code)) !== null) {
-    if (match.index > last) out.push(code.slice(last, match.index))
-    const token = match[0]
-    const lower = token.toLowerCase()
-    const cls = token.startsWith('"') || token.startsWith("'") || token.startsWith('`')
-      ? 'text-(--color-syn-string)'
-      : /^\d/.test(token)
-        ? 'text-(--color-syn-number)'
-        : KEYWORDS.has(lower)
-          ? 'text-(--color-syn-keyword)'
-          : 'text-(--color-text-2)'
-    out.push(<span key={`${match.index}-${token}`} className={cls}>{token}</span>)
-    last = match.index + token.length
+/**
+ * Highlight the full file content with hljs, returning one HTML string per
+ * line. hljs preserves newlines in its output, so splitting on \n is safe.
+ * Falls back to plain text if the language is unknown or highlighting fails.
+ */
+function highlightFile(content: string, ext: string): string[] {
+  const lang = EXT_TO_HLJS_LANG[ext]
+  try {
+    const result = lang && lang !== 'plaintext'
+      ? hljs.highlight(content, { language: lang, ignoreIllegals: true })
+      : hljs.highlightAuto(content, ['javascript', 'typescript', 'python', 'bash', 'json', 'yaml', 'sql', 'css', 'html', 'rust', 'go'])
+    return result.value.split('\n')
+  } catch {
+    return content.split('\n')
   }
-  if (last < code.length) out.push(code.slice(last))
-  if (comment) out.push(<span key="comment" className="text-(--color-syn-comment) italic">{comment}</span>)
-  return out.length > 0 ? out : [' ']
 }
 
 // Memoized so re-selection of a line doesn't re-highlight the entire file.
-const HighlightedCode = memo(function HighlightedCode({ line }: { line: string }) {
-  return <span className="min-w-0 flex-1">{highlightCodeLine(line)}</span>
+// hljs output is safe — user content is HTML-entity-escaped by highlight.js.
+const HighlightedCode = memo(function HighlightedCode({ html }: { html: string }) {
+  return <span className="min-w-0 flex-1" dangerouslySetInnerHTML={{ __html: html || ' ' }} />
 })
 
 function TextPreview({
@@ -178,9 +187,13 @@ function TextPreview({
     }
   }, [workspace, file.path, tooLarge, deleted])
 
-  // Memoize lines so highlightCodeLine isn't re-run on selection changes.
+  // Run hljs on the full content, then split into per-line HTML strings.
   // Must be above early returns to satisfy Rules of Hooks.
-  const lines = useMemo(() => content?.split('\n') ?? [], [content])
+  const ext = extOf(file.name)
+  const highlightedLines = useMemo(
+    () => content !== null ? highlightFile(content, ext) : [],
+    [content, ext],
+  )
 
   if (deleted) {
     return <DeletedFilePreview />
@@ -211,7 +224,7 @@ function TextPreview({
   return (
     <div className="flex h-full min-h-0 flex-col" onMouseLeave={() => setDragging(false)} onMouseUp={() => setDragging(false)}>
       <div className="min-h-0 flex-1 overflow-auto font-mono text-xs leading-relaxed">
-        {lines.map((line, index) => {
+        {highlightedLines.map((lineHtml, index) => {
           const lineNo = index + 1
           const selected = selectedStart !== null && selectedEnd !== null && lineNo >= selectedStart && lineNo <= selectedEnd
           return (
@@ -249,7 +262,7 @@ function TextPreview({
               >
                 <LineGutter value={lineNo} />
               </button>
-              <HighlightedCode line={line} />
+              <HighlightedCode html={lineHtml} />
             </div>
           )
         })}

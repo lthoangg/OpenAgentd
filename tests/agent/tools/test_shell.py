@@ -521,7 +521,7 @@ async def test_background_process_wait(sandbox_workspace, fast_bg):
 async def test_background_process_wait_limits_final_output(sandbox_workspace, fast_bg):
     """wait caps final output to the same inline limits as shell."""
     await shell_tool.arun(
-        command="python - <<'PY'\nfor i in range(400):\n    print(f'line{i:03d}-' + 'x' * 1000)\nPY\nsleep 0.05",
+        command="python3 - <<'PY'\nfor i in range(400):\n    print(f'line{i:03d}-' + 'x' * 1000)\nPY\nsleep 0.05",
         background=True,
         timeout_seconds=1,
     )

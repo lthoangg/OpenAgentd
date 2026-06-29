@@ -312,9 +312,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const { data: teamAgentsData, isLoading: teamAgentsLoading } = useTeamAgentsQuery(agentWorkspace, hasCodingWorkspace)
   const leadAgent = teamAgentsData?.agents?.find((a) => a.is_lead)
   const leadCapabilities: AgentCapabilitiesType | undefined = leadAgent?.capabilities
-  const selectedModel = sessionModel ?? ''
   const summaryTriggerTokens = leadAgent?.summary_trigger_tokens
-  const selectedThinkingLevel = sessionThinkingLevel ?? ''
   const voiceEnabled = true
   const voiceUnavailableReason = null
 
@@ -1237,8 +1235,8 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
               sendMessage(expanded, files, {
                 mode,
                 workspace,
-                model: current.sessionId ? selectedModel || null : null,
-                thinkingLevel: current.sessionId ? selectedThinkingLevel || null : null,
+                model: current.sessionId ? current.sessionModel || null : null,
+                thinkingLevel: current.sessionId ? current.sessionThinkingLevel || null : null,
                 fastMode: current.sessionFastMode,
                 shell,
                 mentions,

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Info } from 'lucide-react'
 
 import { useRegistryQuery } from '@/queries'
@@ -36,15 +36,38 @@ export function SessionModelSettings({
   const [draftThinkingLevel, setDraftThinkingLevel] = useState(sessionThinkingLevel ?? '')
   const [draftFastMode, setDraftFastMode] = useState(sessionFastMode)
 
+  // When the saved values change externally (e.g. after the user saves from
+  // this very panel, or after loadSession restores a different session model),
+  // sync the draft — but only if the draft hasn't diverged from the previous
+  // saved snapshot (i.e. the user hasn't started editing a new draft).
+  const prevSavedRef = useRef({ model: sessionModel, thinkingLevel: sessionThinkingLevel, fastMode: sessionFastMode })
+  useEffect(() => {
+    const prev = prevSavedRef.current
+    const modelChanged = sessionModel !== prev.model
+    const thinkingChanged = sessionThinkingLevel !== prev.thinkingLevel
+    const fastChanged = sessionFastMode !== prev.fastMode
+    if (!modelChanged && !thinkingChanged && !fastChanged) return
+
+    // Only reset a field if the draft is still tracking the old saved value
+    // (i.e. the user hasn't touched it since the last external update).
+    setDraftModel((d) => (d === (prev.model ?? defaultModel ?? '') ? (sessionModel ?? defaultModel ?? '') : d))
+    setDraftThinkingLevel((d) => (d === (prev.thinkingLevel ?? '') ? (sessionThinkingLevel ?? '') : d))
+    setDraftFastMode((d) => (d === prev.fastMode ? sessionFastMode : d))
+    prevSavedRef.current = { model: sessionModel, thinkingLevel: sessionThinkingLevel, fastMode: sessionFastMode }
+  }, [sessionModel, sessionThinkingLevel, sessionFastMode, defaultModel])
+
   const modelOptions = useMemo(() => registry.data?.models ?? [], [registry.data?.models])
   // Keep the saved/draft model visible in the list even if it isn't (yet) in
   // the registry — mirrors the Settings/Agents combobox so a previously saved
   // model id never silently disappears from the picker.
   const currentModelOptions = useMemo(() => {
     const id = draftModel.trim()
-    if (!id || id.includes(':') === false) return modelOptions
+    if (!id) return modelOptions
     if (modelOptions.some((model) => model.id === id)) return modelOptions
-    const [provider, model] = id.split(':', 2)
+    // Keep a previously-saved model visible even if it isn't in the registry yet.
+    const colonIdx = id.indexOf(':')
+    const provider = colonIdx >= 0 ? id.slice(0, colonIdx) : id
+    const model = colonIdx >= 0 ? id.slice(colonIdx + 1) : id
     return [...modelOptions, { id, provider, model, vision: false }]
   }, [draftModel, modelOptions])
   const savedModel = sessionModel ?? defaultModel ?? ''

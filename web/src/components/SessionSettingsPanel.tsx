@@ -262,7 +262,6 @@ export function SessionSettingsPanel({
             <>
               {onSessionModelSettingsChange && (
                 <SessionModelSettings
-                  key={`${leadAgent.model ?? ''}:${sessionModel ?? ''}:${sessionThinkingLevel ?? ''}:${sessionFastMode}`}
                   defaultModel={leadAgent.model}
                   sessionModel={sessionModel}
                   sessionThinkingLevel={sessionThinkingLevel}

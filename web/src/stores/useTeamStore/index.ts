@@ -236,7 +236,7 @@ export const useTeamStore = create<TeamStore>()(
       return true
     },
 
-    sendMessage: async (content: string, files?: File[], options?: { mode?: string; workspace?: string | null; model?: string | null; thinkingLevel?: string | null; fastMode?: boolean; shell?: boolean }) => {
+    sendMessage: async (content: string, files?: File[], options?: { mode?: string; workspace?: string | null; model?: string | null; thinkingLevel?: string | null; fastMode?: boolean; shell?: boolean; mentions?: string[] }) => {
       const { leadName, agentStreams } = get()
       const leadWorking = leadName ? agentStreams[leadName]?.status === 'working' : false
 
@@ -259,6 +259,7 @@ export const useTeamStore = create<TeamStore>()(
             options?.thinkingLevel ?? get().sessionThinkingLevel,
             options?.shell ?? false,
             options?.fastMode ?? get().sessionFastMode,
+            options?.mentions,
           )
           if (result.status === 'queued' && !result.message_id) {
             throw new Error('Backend did not return a queued message id')
@@ -319,6 +320,7 @@ export const useTeamStore = create<TeamStore>()(
               ...(effectiveThinkingLevel ? { thinking_level: effectiveThinkingLevel } : {}),
               ...((options?.fastMode ?? draft.sessionFastMode) ? { service_tier: 'fast' } : {}),
               ...(options?.shell ? { kind: 'user_shell', command: content.replace(/^!/, '').trim() } : {}),
+              ...(options?.mentions && options.mentions.length > 0 ? { mentions: options.mentions } : {}),
             },
           })
         }
@@ -336,6 +338,7 @@ export const useTeamStore = create<TeamStore>()(
           options?.thinkingLevel ?? get().sessionThinkingLevel,
           options?.shell ?? false,
           options?.fastMode ?? get().sessionFastMode,
+          options?.mentions,
         )
         set((draft) => {
           draft.sessionId = result.session_id

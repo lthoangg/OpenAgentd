@@ -3,7 +3,7 @@
 Manual smoke-test scripts for openagentd.
 
 - **Run as:** `uv run python -m manual.<script> [args]` (try-providers: `uv run python -m manual.try_providers.<script>`).
-- **Default target:** dev API at `http://localhost:8000/api` with `APP_ENV=development`. Scripts should fail fast rather than accidentally smoke-test the production install; override with `--base URL` only intentionally.
+- **Default target:** dev API at `http://localhost:8000/api`. Source-checkout runs now default to `APP_ENV=development`, so most `uv run python -m manual.<script>` commands hit `.openagentd/dev/` automatically. HTTP smoke scripts should still fail fast rather than accidentally target a production server; override `--base URL` only intentionally.
 - **Server needed?** Most scripts need a running server (`make run`). Scripts marked **(no server)** run in-process or read the DB/logs directly.
 - **Discoverability:** every script supports `-h/--help`. This file is a map, not a full flag reference.
 
@@ -19,7 +19,7 @@ Multi-agent turns, history, todos, lifecycle, stop/continue/undo, queued message
 | `team_sessions` | List team sessions or inspect one | `--id`, `--all` |
 | `session_resolve` | Verify resolve-or-create for normal + coding sessions | `--workspace`, `--base` |
 | `team_history` | Print lead + member messages for a session | `SESSION_ID` |
-| `team_timeline` | Chronological cross-agent timeline (reads DB) | `SESSION_ID`, `--full` |
+| `team_timeline` | Chronological cross-agent timeline (reads DB) | `SESSION_ID`, `--full`, `--env production` |
 | `team_todos` | Print session todos; flag dependency/claim issues | `SESSION_ID` |
 | `team_usage` | Per-message usage metadata for a session | `SESSION_ID`, `--base` |
 | `team_sse` | Capture + pretty-print every SSE event (incl. lifecycle states) | `--session`, `--wait`, `--out`, `--no-summary` |
@@ -57,10 +57,10 @@ uv run python -m manual.fast_mode --codex-model codex:gpt-5.4
 |--------|---------|-----------|
 | `health` | `GET /health/ready` + agent roster (tools/skills/vision) | `--base` |
 | `provider_models` | List discovered provider models (falls back to catalog) | provider IDs, `--limit` |
-| `backend_log` | **(no server)** Summarise repeated WARNING/ERROR/CRITICAL in structured logs | `--path`, `--level`, `--contains`, `--limit`, `--samples` |
+| `backend_log` | **(no server)** Summarise repeated WARNING/ERROR/CRITICAL in structured logs | `--env production`, `--path`, `--level`, `--contains`, `--limit`, `--samples` |
 | `inspect_prompt` | **(no server)** Reconstruct full LLM payload (system prompt + tools JSON) | `--dir`, `--agent`, `--no-date`, `--out`, `--stats-only` |
-| `otel_inspect` | Read OTel spans/metrics from `.openagentd/otel/*.jsonl` | `--session`, `--trace`, `--metrics` |
-| `skill_tool_analytics` | **(no server)** Real tool/skill usage frequency from persisted `tool_calls`, split by mode (the DB is the only complete source) | `--since-days`, `--only`, `--top` |
+| `otel_inspect` | Read OTel spans/metrics from `.openagentd/dev/state/otel/*.jsonl` by default | `--env production`, `--session`, `--trace`, `--metrics` |
+| `skill_tool_analytics` | **(no server)** Real tool/skill usage frequency from persisted `tool_calls`, split by mode (the DB is the only complete source) | `--env production`, `--since-days`, `--only`, `--top` |
 | `scheduler` | Smoke-test the scheduler API (create/trigger/pause/resume/delete + demos) | `list\|create\|trigger\|…`, `--type`, `--every`, `--cron`, `--at`, `--prompt` |
 | `patch_tool` | Agent uses filesystem `patch`; verify the tool call | `--base`, `--wait` |
 | `shell_output_delta` | Verify live `tool_output_delta` events from shell output | `--base`, `--message`, `--wait` |
@@ -73,8 +73,10 @@ uv run python -m manual.provider_models openai googlegenai openrouter codex
 uv run python -m manual.backend_log --contains drop_partial_tool_call_bad_json
 uv run python -m manual.inspect_prompt --stats-only                      # char/token breakdown
 uv run python -m manual.inspect_prompt --agent explorer --out .openagentd/chat/payload.json
-uv run python -m manual.skill_tool_analytics --since-days 7              # add APP_ENV=production for prod DB
+uv run python -m manual.skill_tool_analytics --since-days 7
+uv run python -m manual.skill_tool_analytics --env production --since-days 7
 uv run python -m manual.otel_inspect --session <ID>                      # or --trace <ID> / --metrics
+uv run python -m manual.otel_inspect --env production --session <ID>
 uv run python -m manual.scheduler create --type every --every 60 --prompt "Say hello"
 uv run python -m manual.bang_shell --command "pwd && echo ok"
 ```

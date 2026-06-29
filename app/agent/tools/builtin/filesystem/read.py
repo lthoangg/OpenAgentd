@@ -19,7 +19,6 @@ from pydantic import BaseModel, Field
 
 from app.agent.schemas.chat import ToolResult
 from app.agent.sandbox import get_sandbox
-from app.agent.state import AgentState
 from app.agent.tools.builtin.filesystem.handlers import (
     classify_file,
     handle_document,
@@ -66,13 +65,6 @@ def _cap_text_for_context(text: str, rel: object) -> str:
     )
 
 
-def _has_vision(state: AgentState | None) -> bool:
-    """Return True if the current model supports vision."""
-    if state is None:
-        return False
-    return state.capabilities.input.vision
-
-
 async def _read_file(
     path: str,
     offset: int = 1,
@@ -94,25 +86,17 @@ async def _read_file(
         raise IsADirectoryError(f"Path is a directory: {rel}")
 
     category = classify_file(resolved)
-    vision = _has_vision(_state)
 
     # ── Image files ───────────────────────────────────────────────────────
     if category == "image":
         size = resolved.stat().st_size
-        logger.info("read_image path={} size={} vision={}", rel, size, vision)
-        if not vision:
-            return (
-                f"[Image: {rel}] ({size:,} bytes)\n"
-                f"The file was read successfully but the current model "
-                f"does not support vision — image content cannot be displayed. "
-                f"Switch to a vision-capable model to analyze this image."
-            )
+        logger.info("read_image path={} size={}", rel, size)
         return handle_image(resolved, rel)
 
     # ── Document files → markitdown conversion ────────────────────────────
     if category == "document":
         logger.info("read_document path={} size={}", rel, resolved.stat().st_size)
-        return handle_document(resolved, rel, vision=vision)
+        return handle_document(resolved, rel)
 
     # ── Text files → existing behaviour ───────────────────────────────────
     raw = resolved.read_bytes()

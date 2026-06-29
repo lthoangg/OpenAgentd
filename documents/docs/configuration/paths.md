@@ -2,7 +2,7 @@
 title: Paths & XDG Roots
 description: Six XDG-aligned roots, development vs production layout, on-disk file map.
 status: stable
-updated: 2026-06-29
+updated: 2026-06-28
 ---
 
 # Paths & XDG Roots
@@ -10,6 +10,8 @@ updated: 2026-06-29
 **Sources:** `app/core/config.py`, `app/core/paths.py`
 
 OpenAgentd splits runtime files across **six** XDG-aligned roots, one per category of data. Each is overridable via an environment variable; all six are derived automatically from `APP_ENV` when unset.
+
+In a source checkout, `APP_ENV` now defaults to `development`, so plain `uv run ...` commands land under `.openagentd/dev/` unless you override them. Installed / CLI-managed server entry points still force `production`.
 
 ## Roots
 
@@ -67,7 +69,8 @@ Dev-mode paths shown below — substitute the production columns from the table 
 │   │   └── plugins/                       # user plugin .py drop-ins (OPENAGENTD_PLUGINS_DIRS)
 │   ├── state/                             # OPENAGENTD_STATE_DIR
 │   │   ├── logs/
-│   │   │   ├── app/app.log                # JSON app log (10 MB / 7 days)
+│   │   │   ├── app/app.log                # JSON app log (DEBUG+, 10 MB / 7 days)
+│   │   │   ├── app/app-error.log          # JSON error log (ERROR+, 10 MB / 14 days)
 │   │   │   └── sessions/{session_id}/
 │   │   │       ├── session.log            # human-readable per-session sink
 │   │   │       └── {agent}.jsonl          # structured events (SessionLogHook)

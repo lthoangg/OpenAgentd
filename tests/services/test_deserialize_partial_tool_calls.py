@@ -751,6 +751,126 @@ def test_sanitize_tool_pairs_drops_empty_assistant_after_incomplete_tool_strip(
     assert "deserialize_drop_empty_assistant_after_tool_strip" in caplog_loguru.text
 
 
+def test_sanitize_tool_pairs_strips_tool_stub_before_follow_up_user_message(
+    session_id, caplog_loguru
+):
+    """Resumed sessions must not replay bare tool_use stubs before follow-up input."""
+    db_messages = [
+        make_session_message(role="user", content="first", session_id=session_id),
+        make_session_message(
+            role="assistant",
+            content="calling tools",
+            tool_calls=[
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {"name": "ls", "arguments": "{}"},
+                }
+            ],
+            session_id=session_id,
+        ),
+        make_session_message(
+            role="user", content="follow-up after interruption", session_id=session_id
+        ),
+    ]
+
+    result = _deserialize_messages(db_messages, sanitize_tool_pairs=True)
+
+    assert len(result) == 3
+    assert isinstance(result[1], AssistantMessage)
+    assert result[1].content == "calling tools"
+    assert result[1].tool_calls is None
+    assert isinstance(result[2], HumanMessage)
+    assert "deserialize_strip_incomplete_assistant_tool_calls" in caplog_loguru.text
+
+
+def test_sanitize_tool_pairs_preserves_parallel_tool_calls_when_all_results_exist(
+    session_id,
+):
+    """Parallel tool calls stay intact when every tool result is present."""
+    db_messages = [
+        make_session_message(
+            role="assistant",
+            content="parallel",
+            tool_calls=[
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {"name": "ls", "arguments": "{}"},
+                },
+                {
+                    "id": "call_2",
+                    "type": "function",
+                    "function": {"name": "read", "arguments": "{}"},
+                },
+            ],
+            session_id=session_id,
+        ),
+        make_session_message(
+            role="tool",
+            content="out1",
+            tool_call_id="call_1",
+            name="ls",
+            session_id=session_id,
+        ),
+        make_session_message(
+            role="tool",
+            content="out2",
+            tool_call_id="call_2",
+            name="read",
+            session_id=session_id,
+        ),
+    ]
+
+    result = _deserialize_messages(db_messages, sanitize_tool_pairs=True)
+
+    assert len(result) == 3
+    assert isinstance(result[0], AssistantMessage)
+    assert result[0].tool_calls is not None
+    assert [tc.id for tc in result[0].tool_calls] == ["call_1", "call_2"]
+
+
+def test_sanitize_tool_pairs_strips_parallel_tool_calls_when_one_result_missing(
+    session_id, caplog_loguru
+):
+    """Anthropic-safe sanitization removes the whole assistant tool batch if incomplete."""
+    db_messages = [
+        make_session_message(
+            role="assistant",
+            content="parallel",
+            tool_calls=[
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {"name": "ls", "arguments": "{}"},
+                },
+                {
+                    "id": "call_2",
+                    "type": "function",
+                    "function": {"name": "read", "arguments": "{}"},
+                },
+            ],
+            session_id=session_id,
+        ),
+        make_session_message(
+            role="tool",
+            content="out1",
+            tool_call_id="call_1",
+            name="ls",
+            session_id=session_id,
+        ),
+        make_session_message(role="user", content="follow-up", session_id=session_id),
+    ]
+
+    result = _deserialize_messages(db_messages, sanitize_tool_pairs=True)
+
+    assert len(result) == 2
+    assert isinstance(result[0], AssistantMessage)
+    assert result[0].tool_calls is None
+    assert isinstance(result[1], HumanMessage)
+    assert "deserialize_strip_incomplete_assistant_tool_calls" in caplog_loguru.text
+
+
 def test_sanitize_tool_pairs_drops_tool_output_for_bad_partial_call(
     session_id, caplog_loguru
 ):

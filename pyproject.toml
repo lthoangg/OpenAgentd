@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "openagentd"
-version = "1.80.0"  # keep in sync with app/version.txt
+version = "1.81.0"  # keep in sync with app/version.txt
 description = "Self-hosted AI agents — streaming chat, tool use, persistent memory, multi-agent teams"
 readme = "README.md"
 requires-python = ">=3.14"
@@ -68,6 +68,7 @@ dev = [
     "pytest-cov>=7.1.0",
     "pytest-env>=1.6.0",
     "pytest-randomly>=4.1.0",
+    "pytest-xdist>=3.6.1",
     "respx>=0.22.0",
     "ruff>=0.15.8",
     "tiktoken>=0.12.0",

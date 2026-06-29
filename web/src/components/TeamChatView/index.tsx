@@ -814,6 +814,15 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     })
   }, [closeOtherMobileOverlays])
 
+  const handleToggleFilesPanel = useCallback(() => {
+    if (!sessionIdState) return
+    setShowFilesPanel((prev) => {
+      const next = !prev
+      if (next) closeOtherMobileOverlays('files')
+      return next
+    })
+  }, [closeOtherMobileOverlays, sessionIdState])
+
   const commands = useTeamCommands({
     viewMode,
     cycleViewMode,
@@ -957,27 +966,29 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
       {/* 40 px header above the sidebar/content row. On macOS Tauri it
           doubles as the window drag region via useTauriDrag, with a
           70 px left inset reserved for the OS traffic-lights. */}
-      <TeamChatHeader
-        dragHandlers={dragHandlers}
-        isMacOverlay={isMacOverlay}
-        isMobile={isMobile}
-        mode={mode}
-        workspace={workspace}
-        sessionTitle={sessionTitle}
-        activeAgent={activeAgent}
-        effectiveViewMode={effectiveViewMode}
-        splitAgentCount={splitAgentNames.length}
-        navigate={navigate}
-        onCodingSidebarToggle={handleCodingSidebarToggle}
-        onMobileSidebarOpen={openLeftDrawer}
-        headerTokens={headerTokens}
-        sessionId={sessionIdState}
-        todos={todos}
-        showTodos={showTodos}
-        setShowTodos={handleSetShowTodos}
-        showFilesPanel={showFilesPanel}
-        setShowFilesPanel={setShowFilesPanel}
-        codingPanel={codingPanel}
+        <TeamChatHeader
+          dragHandlers={dragHandlers}
+          isMacOverlay={isMacOverlay}
+          isMobile={isMobile}
+          mode={mode}
+          workspace={workspace}
+          sessionTitle={sessionTitle}
+          activeAgent={activeAgent}
+          effectiveViewMode={effectiveViewMode}
+          splitAgentCount={splitAgentNames.length}
+          navigate={navigate}
+          onCodingSidebarToggle={handleCodingSidebarToggle}
+          onMobileSidebarOpen={openLeftDrawer}
+          headerTokens={headerTokens}
+          sessionId={sessionIdState}
+          todos={todos}
+          showTodos={showTodos}
+          setShowTodos={handleSetShowTodos}
+          showFilesPanel={showFilesPanel}
+          setShowFilesPanel={setShowFilesPanel}
+          onToggleFilesPanel={handleToggleFilesPanel}
+          codingPanel={codingPanel}
+
         onWorkspaceFiles={handleWorkspaceFiles}
         agentCapabilitiesOpen={agentCapabilitiesOpen}
         onToggleAgentCapabilities={handleToggleAgentCapabilities}
@@ -1142,7 +1153,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
           <FloatingInputBar
             ref={inputRef}
             boundsRef={mainColumnRef}
-            onSubmit={async (content, files) => {
+            onSubmit={async (content: string, files?: File[], mentions?: string[]) => {
               const shell = content.startsWith('!')
               const command = shell ? content.slice(1).trim() : content
               const expanded = shell ? `!${command}` : await expandUserCommand(content)
@@ -1154,6 +1165,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
                 thinkingLevel: current.sessionId ? selectedThinkingLevel || null : null,
                 fastMode: current.sessionFastMode,
                 shell,
+                mentions,
               })
             }}
             onStop={() => useTeamStore.getState().stopTeam()}
@@ -1179,7 +1191,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             voiceUnavailableReason={voiceUnavailableReason}
             revertedCount={leadName ? agentStreams[leadName]?.revertedCount ?? 0 : 0}
             revertedMessages={leadName ? agentStreams[leadName]?.revertedMessages ?? [] : []}
-            onRedo={() => { void useTeamStore.getState().redoTeam() }}
+            onRedo={() => { void handleSlashCommand('redo') }}
           />
         )}
         </main>

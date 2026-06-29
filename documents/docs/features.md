@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of every user-visible OpenAgentd feature. Source of truth for slides, README, comparison docs, and marketing copy.
 status: stable
-updated: 2026-06-28
+updated: 2026-06-29
 ---
 
 # Features
@@ -16,7 +16,7 @@ exists. When you ship something new, **add it here first** — slides, README,
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 15 providers. Your keys.
 
-**Latest release:** v1.80.0 · June 28, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.80.0)
+**Latest release:** v1.81.0 · June 29, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.81.0)
 
 ---
 
@@ -146,9 +146,9 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   the model that produced the reply, including fallback transitions, next to the
   copy and timing metadata.
 - **`@file` / `@folder` mentions in composer** `[v1.17.0]` — files render blue,
-  folders render orange. Inline auto-attach: mentioned file body is sent on
-  the first turn so the agent doesn't need a round-trip `read` call; folder
-  mentions load that folder's `AGENTS.md` when present. In coding sessions,
+  folders render orange. Mentioned files inject inline hidden context on the
+  turn without becoming uploads; mentioned folders inject a lightweight `ls`-
+  style listing without becoming uploads. In coding sessions,
   clicked file mentions in sent user messages open that file in the workspace
   files sidebar. Caps at 20 mentions / 20 MB / ~32k chars per turn. Persists
   on queued messages.

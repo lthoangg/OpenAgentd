@@ -4,6 +4,7 @@ Sinks
 -----
 - **stderr** — human-readable, colourised, respects ``log_level``
 - ``{STATE_DIR}/logs/app/app.log`` — JSON, DEBUG+, rotated at 10 MB, 7-day retention
+- ``{STATE_DIR}/logs/app/app-error.log`` — JSON, ERROR+, rotated at 10 MB, 14-day retention
 
 Per-session sinks are created on demand via :func:`add_session_sink` and write
 to ``{STATE_DIR}/logs/sessions/{session_id}/session.log`` (human-readable, DEBUG+).
@@ -75,6 +76,16 @@ def setup_logging(log_level: str = "INFO") -> None:
         serialize=True,
         rotation="10 MB",
         retention="7 days",
+        encoding="utf-8",
+    )
+
+    # app-error.log: JSON, errors only, retained longer for postmortems
+    logger.add(
+        APP_LOG_DIR / "app-error.log",
+        level="ERROR",
+        serialize=True,
+        rotation="10 MB",
+        retention="14 days",
         encoding="utf-8",
     )
 

@@ -20,13 +20,8 @@ What it answers:
     the skill text never accounts for that mode.
 
 Usage:
-  # Dev DB (default — APP_ENV unset):
-  uv run python -m manual.skill_tool_analytics
-
-  # Production DB:
-  APP_ENV=production uv run python -m manual.skill_tool_analytics
-
-  # Only the last 30 days, show skills only:
+  uv run python -m manual.skill_tool_analytics                        # dev DB (default)
+  uv run python -m manual.skill_tool_analytics --env production       # production DB
   uv run python -m manual.skill_tool_analytics --since-days 30 --only skills
 
 Notes:
@@ -45,8 +40,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlmodel import select
 
-from app.core.db import async_session_factory
-from app.models.chat import ChatSession, SessionMessage
+from manual._common import add_env_argument, apply_env_override
 
 # Builtin op-skills we care about specifically (everything else still counts).
 _OP_SKILLS = {
@@ -60,6 +54,7 @@ _OP_SKILLS = {
 
 def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
+    add_env_argument(p)
     p.add_argument(
         "--since-days",
         type=int,
@@ -121,6 +116,10 @@ def _print_table(title: str, counter: Counter, *, top: int) -> None:
 
 
 async def run(*, since_days: int | None, only: str, top: int) -> None:
+    # Lazy import so APP_ENV is already set in os.environ before settings loads.
+    from app.core.db import async_session_factory
+    from app.models.chat import ChatSession, SessionMessage
+
     cutoff = None
     if since_days is not None:
         cutoff = datetime.now(timezone.utc) - timedelta(days=since_days)
@@ -180,6 +179,7 @@ async def run(*, since_days: int | None, only: str, top: int) -> None:
 
 def main() -> None:
     args = _parse_args()
+    apply_env_override(args)  # must run before asyncio.run() triggers app imports
     asyncio.run(run(since_days=args.since_days, only=args.only, top=args.top))
 
 

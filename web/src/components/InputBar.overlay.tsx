@@ -36,6 +36,8 @@ interface MentionOverlayProps {
    * ``@nonexistent`` and ``@@`` get no color because they don't resolve.
    */
   fileRefs: readonly FileRef[]
+  /** Explicitly selected mentions. */
+  mentions?: string[]
 }
 
 function MentionOverlayComponent({
@@ -43,6 +45,7 @@ function MentionOverlayComponent({
   activeRange,
   textareaRef,
   fileRefs,
+  mentions,
 }: MentionOverlayProps) {
   const mirrorRef = useRef<HTMLDivElement>(null)
   // Build the token-resolution sets once per ``fileRefs`` change. Without this
@@ -50,7 +53,7 @@ function MentionOverlayComponent({
   // (potentially thousands-long) file list on every keystroke — the main
   // source of input lag on mobile.
   const mentionLookup = useMemo(() => buildMentionLookup(fileRefs), [fileRefs])
-  const ranges = findCommittedMentions(value, activeRange, mentionLookup)
+  const ranges = findCommittedMentions(value, activeRange, mentionLookup, mentions)
 
   // Build a token → kind lookup so each committed mention can pick its
   // color (file = blue, directory = orange). Same key shape used by
@@ -146,6 +149,13 @@ function MentionOverlayComponent({
   )
 }
 
+const sameArray = (a?: string[], b?: string[]) => {
+  if (a === b) return true
+  if (!a || !b) return false
+  if (a.length !== b.length) return false
+  return a.every((v, i) => v === b[i])
+}
+
 export const MentionOverlay = memo(MentionOverlayComponent, (prev, next) => {
   const prevRange = prev.activeRange
   const nextRange = next.activeRange
@@ -158,5 +168,6 @@ export const MentionOverlay = memo(MentionOverlayComponent, (prev, next) => {
   return prev.value === next.value &&
     prev.fileRefs === next.fileRefs &&
     prev.textareaRef === next.textareaRef &&
-    sameRange
+    sameRange &&
+    sameArray(prev.mentions, next.mentions)
 })

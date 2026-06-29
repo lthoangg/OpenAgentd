@@ -199,6 +199,14 @@ def test_state_logs_are_exempt_from_denied_roots(tmp_path: Path) -> None:
     assert sandbox.check_command(f"tail -n 220 {log_path}") is None
 
 
+def test_state_error_logs_are_exempt_from_denied_roots(tmp_path: Path) -> None:
+    logs_root = Path(settings.OPENAGENTD_STATE_DIR).resolve() / "logs"
+    log_path = logs_root / "app" / "app-error.log"
+    sandbox = _make(tmp_path, denied_roots=[Path(settings.OPENAGENTD_STATE_DIR)])
+
+    assert sandbox.check_command(f"tail -n 220 {log_path}") is None
+
+
 def test_other_state_paths_remain_denied(tmp_path: Path) -> None:
     state_root = Path(settings.OPENAGENTD_STATE_DIR).resolve()
     sandbox = _make(tmp_path, denied_roots=[state_root])

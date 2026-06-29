@@ -10,8 +10,8 @@ Checks:
   * LLM context loading includes the synthetic row
 
 Usage:
-  APP_ENV=development uv run python -m manual.attachment_synthetic_rows
-  APP_ENV=development uv run python -m manual.attachment_synthetic_rows --base http://localhost:4082/api
+  uv run python -m manual.attachment_synthetic_rows
+  uv run python -m manual.attachment_synthetic_rows --base http://localhost:4082/api
 """
 
 from __future__ import annotations

@@ -299,30 +299,23 @@ Accepts `multipart/form-data` validated via `ChatForm`.
   ```
   Clients should reload the session from `GET /api/team/sessions/{id}` on receiving this event.
 
-### Mention auto-attachment
+### Mentioned workspace paths
 
-The route scans `message` for `@<path>` tokens and resolves each against the session workspace via `app/api/routes/team/_helpers.py::collect_mention_attachments`. Resolved files are appended to the same `attachments: list[RawAttachment]` as the multipart `files`, then flow through the standard `validate_and_persist_attachments` + `build_parts_from_metas` pipeline.
+`@<path>` references in chat are workspace path mentions, not implicit uploads. They do **not** enter the attachment persistence pipeline and do **not** create files under `uploads/`.
 
-This runs on both the **immediate dispatch path** and the **queued path** — when a lead turn is active, mention attachments and explicit file uploads are persisted to disk at queue time and stored in `extra.attachments` on the queued row. Cancelling a queued message also deletes its persisted files.
+Instead, the route builds ephemeral hidden context rows:
 
-| Mention kind | Auto-attached? | Notes |
+| Mention kind | Behavior | Persistence |
 |---|---|---|
-| Text / document | Yes | Reused size limits (`SIZE_LIMITS["text"] = 500 KB`, `SIZE_LIMITS["document"] = 5 MB`). |
-| Image | No | Reference only — the agent uses its vision-aware `Read` tool to fetch on demand, so base64 pixels don't ride on every history rehydration. |
-| Folder | Yes, if `AGENTS.md` exists | `@folder/` resolves to `folder/AGENTS.md`; missing files are silently skipped. |
-| Bad path / traversal / missing | No | Silently dropped. |
+| File (`@foo.py`, `@README.md`, `@x.ts#L10-L20`) | Inline the referenced text into a hidden context block using the same fenced format as file attachments | DB-only hidden message row; not stored as upload metadata |
+| Folder (`@src/`) | Inline a lightweight directory listing similar to `ls` output | DB-only hidden message row; not stored as upload metadata |
+| Bad path / traversal / missing | Silently dropped | None |
 
-Soft constraints: per-message cap of 20 mention attachments, global byte cap of `GLOBAL_SIZE_LIMIT` (20 MB). Capability-incompatible documents are skipped. Mentions never surface a 4xx — explicit paperclip uploads remain the authoritative way to force a file in.
+- Use the paperclip / multipart `files` field to actually attach files.
+- Mention context is ephemeral model input, not an uploaded artifact.
+- Directory mentions are never auto-expanded to `AGENTS.md`.
 
-#### Head + tail truncation for inlined content
-
-Mention-sourced `RawAttachment` objects set `truncate_inline_to = 32_000` (chars). `_persist_attachment` in `agent_service` runs `converted_text` through `_maybe_truncate_inline(text, cap)`, which returns the text unchanged when it fits, otherwise keeps the first `cap // 2` chars + a marker line + the last `cap // 2` chars:
-
-```
-<first 16,000 chars>
-
-... [Middle truncated — N chars elided. Use the Read tool for full content.] ...
-
+Explicit paperclip uploads remain the authoritative attachment surface.
 <last 16,000 chars>
 ```
 
@@ -427,7 +420,7 @@ Accepts `multipart/form-data`:
 
 Global limit: 20 MB total across all files in one request.
 
-File upload requires matching model capabilities — images need `input.vision=true`, documents need `input.document_text=true`. Returns HTTP 422 if capability is missing.
+Any file of the above categories can be uploaded. If the selected model does not support a particular modality (e.g. sending an image to a non-vision model), the provider API call will raise an error (which is shown to the user).
 
 ---
 

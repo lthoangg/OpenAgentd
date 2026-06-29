@@ -80,7 +80,7 @@ function clampOffset(offset: StoredOffset, panel: Size, bounds: Size): StoredOff
 
 interface FloatingInputBarProps {
   boundsRef: React.RefObject<HTMLElement | null>
-  onSubmit: (message: string, files?: File[]) => void
+  onSubmit: (message: string, files?: File[], mentions?: string[]) => void
   onStop?: () => void
   onSlashCommand?: (id: string) => void
   onSnippetCommand?: (id: string) => Promise<string | null> | string | null
@@ -120,6 +120,7 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
     const panelRef = useRef<HTMLDivElement>(null)
     const [offset, setOffset] = useState<StoredOffset>(() => loadOffset())
     const [filesBelow, setFilesBelow] = useState(true)
+    const [suggestionsOpen, setSuggestionsOpen] = useState(false)
 
     // ── Minimize-on-blur (desktop only) ──────────────────────────────────
     // The bar collapses to the slim action strip after the
@@ -207,8 +208,8 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
       }, 180)
     }, [])
 
-    const handleSubmit = useCallback((message: string, files?: File[]) => {
-      inputProps.onSubmit(message, files)
+    const handleSubmit = useCallback((message: string, files?: File[], mentions?: string[]) => {
+      inputProps.onSubmit(message, files, mentions)
       minimize()
     }, [inputProps, minimize])
 
@@ -368,13 +369,15 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
     const touchStartX = useRef<number | null>(null)
 
     const handleTouchStart = useCallback((e: React.TouchEvent) => {
+      if (suggestionsOpen) return
       if (e.touches.length === 1) {
         touchStartY.current = e.touches[0].clientY
         touchStartX.current = e.touches[0].clientX
       }
-    }, [])
+    }, [suggestionsOpen])
 
     const handleTouchMove = useCallback((e: React.TouchEvent) => {
+      if (suggestionsOpen) return
       if (touchStartY.current === null || touchStartX.current === null) return
 
       const currentY = e.touches[0].clientY
@@ -392,7 +395,7 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
         touchStartY.current = null
         touchStartX.current = null
       }
-    }, [])
+    }, [suggestionsOpen])
 
     const handleTouchEnd = useCallback(() => {
       touchStartY.current = null
@@ -410,6 +413,7 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
         // moves the whole UI as one rigid, GPU-composited unit instead of
         // re-rendering the composer subtree every keyboard frame.
         <div
+          data-testid="mobile-inputbar-container"
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
@@ -421,7 +425,7 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
           className="pointer-events-auto border-t border-(--color-border) bg-(--bg-page) px-3 pb-safe pt-2"
         >
           <RevertNotice count={inputProps.revertedCount ?? 0} messages={inputProps.revertedMessages ?? []} onRedo={inputProps.onRedo} />
-          <InputBar ref={setInputRefs} floating filesBelow={false} {...inputProps} onValueChange={inputProps.onValueChange} onSubmit={handleSubmit} />
+          <InputBar ref={setInputRefs} floating filesBelow={false} {...inputProps} onValueChange={inputProps.onValueChange} onSuggestionsMenuChange={setSuggestionsOpen} onSubmit={handleSubmit} />
         </div>
       )
     }
@@ -455,6 +459,7 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
             onBlur={handleBlur}
             onHasContentChange={handleHasContentChange}
             onValueChange={inputProps.onValueChange}
+            onSuggestionsMenuChange={setSuggestionsOpen}
             renderDragHandle={() => (
             <button
               type="button"

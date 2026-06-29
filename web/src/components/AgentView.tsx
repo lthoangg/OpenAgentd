@@ -76,7 +76,7 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
       }
       const blockModel = typeof block.extra?.model === 'string' ? block.extra.model : null
       const shell = block.extra?.kind === 'user_shell'
-      return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onRevert={onRevert} modelId={blockModel} shell={shell} onMentionFileOpen={onMentionFileOpen} />
+      return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onRevert={onRevert} modelId={blockModel} shell={shell} onMentionFileOpen={onMentionFileOpen} mentions={block.extra?.mentions as string[] | undefined} />
     }
     case 'thinking':
       return <Thinking content={block.content} isStreaming={isStreaming} />

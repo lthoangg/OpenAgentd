@@ -32,6 +32,7 @@ interface TeamChatHeaderProps {
   setShowTodos: Dispatch<SetStateAction<boolean>>
   showFilesPanel: boolean
   setShowFilesPanel: Dispatch<SetStateAction<boolean>>
+  onToggleFilesPanel?: () => void
   codingPanel: null | 'changed' | 'files'
   onWorkspaceFiles: () => void
   agentCapabilitiesOpen: boolean
@@ -68,6 +69,7 @@ export function TeamChatHeader({
   setShowTodos,
   showFilesPanel,
   setShowFilesPanel,
+  onToggleFilesPanel,
   codingPanel,
   onWorkspaceFiles,
   agentCapabilitiesOpen,
@@ -209,7 +211,7 @@ export function TeamChatHeader({
               label={mode === 'coding' ? 'Workspace files' : 'Session files'}
               onClick={mode === 'coding'
                 ? workspace ? onWorkspaceFiles : undefined
-                : sessionId ? () => setShowFilesPanel((v) => !v) : undefined}
+                : sessionId ? onToggleFilesPanel : undefined}
               active={mode === 'coding' ? codingPanel !== null : showFilesPanel}
               disabled={mode === 'coding' ? !workspace : !sessionId}
             />

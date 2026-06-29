@@ -1,5 +1,18 @@
+import os
 import tempfile
 from pathlib import Path
+
+# Isolate XDG directories per pytest-xdist worker to prevent concurrent write/lock conflicts.
+# pytest-xdist sets the PYTEST_XDIST_WORKER env var in worker processes (e.g., 'gw0', 'gw1').
+if worker_id := os.environ.get("PYTEST_XDIST_WORKER"):
+    for var in [
+        "OPENAGENTD_DATA_DIR",
+        "OPENAGENTD_CONFIG_DIR",
+        "OPENAGENTD_STATE_DIR",
+        "OPENAGENTD_CACHE_DIR",
+    ]:
+        if val := os.environ.get(var):
+            os.environ[var] = f"{val}_{worker_id}"
 
 import pytest
 import pytest_asyncio

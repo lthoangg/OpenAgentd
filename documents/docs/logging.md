@@ -2,7 +2,7 @@
 title: Logging Architecture
 description: Two-tier loguru system: app-wide JSON logs, per-session transcripts, structured JSONL events with file rotation.
 status: stable
-updated: 2026-05-16
+updated: 2026-06-28
 ---
 
 # Logging
@@ -28,8 +28,9 @@ Log paths live under `{OPENAGENTD_STATE_DIR}/logs/`. Value depends on environmen
 {OPENAGENTD_STATE_DIR}/
 └── logs/
     ├── app/
-    │   ├── app.log                          # Current JSON log
-    │   └── app.<timestamp>.log              # Rotated (10 MB → retention 7 days)
+    │   ├── app.log                          # Current JSON log (DEBUG+)
+    │   ├── app-error.log                    # Current JSON error log (ERROR+)
+    │   └── app.<timestamp>.log              # Rotated app.log segments (10 MB → retention 7 days)
     └── sessions/
         └── {session_id}/
             ├── session.log                  # Human-readable, all DEBUG+ logs
@@ -47,11 +48,11 @@ under `OPENAGENTD_WORKSPACE_DIR`, not `OPENAGENTD_STATE_DIR`. See
 
 | Aspect | Application Log | Session Logs |
 |--------|-----------------|--------------|
-| **Location** | `{OPENAGENTD_STATE_DIR}/logs/app/app.log` | `{OPENAGENTD_STATE_DIR}/logs/sessions/{id}/` |
+| **Location** | `{OPENAGENTD_STATE_DIR}/logs/app/app.log` + `app-error.log` | `{OPENAGENTD_STATE_DIR}/logs/sessions/{id}/` |
 | **Format (app)** | JSON | Plain text (human-readable) |
 | **Format (events)** | — | JSONL (structured events) |
-| **Level** | DEBUG+ | DEBUG+ (both) |
-| **Rotation** | 10 MB / 7-day retention | 5 MB / 3-day retention (session.log) |
+| **Level** | `app.log`: DEBUG+, `app-error.log`: ERROR+ | DEBUG+ (both) |
+| **Rotation** | `app.log`: 10 MB / 7 days, `app-error.log`: 10 MB / 14 days | 5 MB / 3-day retention (session.log) |
 | **Scope** | All modules, all sessions | Single session only |
 | **Use Case** | Production debugging, audit trail | Session replay, agent transparency |
 
@@ -88,13 +89,14 @@ setup_logging(log_level="INFO")  # or os.getenv("LOG_LEVEL", "DEBUG")
 
 ## Application Logs
 
-### File Path
+### File Paths
 ```
 {OPENAGENTD_STATE_DIR}/logs/app/app.log
+{OPENAGENTD_STATE_DIR}/logs/app/app-error.log
 ```
 
 ### Format
-JSON (loguru's `serialize=True` setting). Each line is a complete JSON object with the log record metadata.
+JSON (loguru's `serialize=True` setting). Each line is a complete JSON object with the log record metadata. `app.log` captures all application logs at DEBUG+, while `app-error.log` is a smaller error-only stream for postmortems and support triage.
 
 ### Sample Entry
 ```json

@@ -82,6 +82,84 @@ def is_history_visible(row: SessionMessage) -> bool:
     return bool(row.extra and row.extra.get("queue_status") == "queued")
 
 
+async def get_dynamically_visible_messages(
+    db: AsyncSession,
+    session_id: UUID,
+    boundary: datetime | None,
+    rows: list[SessionMessage],
+) -> list[SessionMessage]:
+    """Filter rows dynamically taking the latest active summary into account.
+
+    If the latest summary is at or after the boundary it is excluded from rows
+    and therefore not active.  The latest active summary is the last summary
+    remaining in rows.  When an undo is in effect (boundary is not None) any
+    message that was excluded *only* because of a summary that has itself been
+    undone is dynamically restored.
+
+    Over-restore guard: we only un-exclude a message when the *nearest* undone
+    summary that would have excluded it is the summary being undone — not just
+    any summary beyond the boundary.  Concretely, a message is restorable when
+    the boundary falls inside a range (prev_summary.created_at, undone_summary
+    .created_at] — meaning no still-active summary sits between the message and
+    the boundary.
+    """
+    # Collect the created_at of the immediately-undone summary (the one at or
+    # just after the boundary).  We only want the *earliest* one >= boundary so
+    # we avoid restoring messages that belong to a later, still-active summary.
+    undone_summary_time: datetime | None = None
+    if boundary is not None:
+        result = (
+            await db.exec(
+                select(SessionMessage.created_at)
+                .where(col(SessionMessage.session_id) == session_id)
+                .where(col(SessionMessage.is_summary))
+                .where(col(SessionMessage.created_at) >= boundary)
+                .order_by(col(SessionMessage.created_at).asc())
+                .limit(1)
+            )
+        ).first()
+        undone_summary_time = result  # None when no summary was undone
+
+    # Find the latest active summary still visible in rows (i.e., not undone).
+    active_summary = None
+    for row in reversed(rows):
+        if row.is_summary and not is_hidden_from_user(row):
+            active_summary = row
+            break
+
+    # Compute the lower bound below which a restored message must not fall.
+    # If there is still an active summary, messages at or before it that are
+    # excluded remain excluded (they belong to that summary's compaction window).
+    restore_floor: datetime | None = (
+        active_summary.created_at if active_summary is not None else None
+    )
+
+    visible: list[SessionMessage] = []
+    for row in rows:
+        # Queued messages are never excluded from visibility.
+        if row.extra and row.extra.get("queue_status") == "queued":
+            is_excluded = False
+        else:
+            is_excluded = row.exclude_from_context
+            if is_excluded and undone_summary_time is not None:
+                # Restore only if this message was compacted by the undone
+                # summary (its created_at < undone_summary_time) and it is not
+                # covered by a still-active summary below the boundary.
+                before_undone = row.created_at < undone_summary_time
+                above_floor = restore_floor is None or row.created_at > restore_floor
+                if before_undone and above_floor:
+                    is_excluded = False
+
+        if row.is_summary:
+            if active_summary is not None and row.id == active_summary.id:
+                visible.append(row)
+            # All other summary rows (older or hidden) are excluded.
+        elif not is_excluded:
+            visible.append(row)
+
+    return visible
+
+
 def is_hidden_from_user(row: SessionMessage) -> bool:
     return bool(row.extra and row.extra.get("hidden_from_user"))
 

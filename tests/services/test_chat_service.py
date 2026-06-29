@@ -616,6 +616,187 @@ async def test_get_messages_includes_summary_message(session):
     assert fetched[0].content == "Summary."
 
 
+@pytest.mark.asyncio
+async def test_undo_summary_dynamically_restores_compacted_messages(session):
+    """Undoing a summary message dynamically restores the compacted messages before it."""
+    chat_session = await create_chat_session(session)
+
+    u1 = await save_message(session, chat_session.id, HumanMessage(content="u1"))
+    a1 = await save_message(session, chat_session.id, AssistantMessage(content="a1"))
+    summary = await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="summary"),
+        is_summary=True,
+    )
+    await save_message(
+        session, chat_session.id, AssistantMessage(content="after summary")
+    )
+
+    # Simulate compaction by excluding messages before the summary
+    for row in (u1, a1):
+        row.exclude_from_context = True
+        session.add(row)
+    await session.commit()
+
+    # Now verify that when no undo is applied, we only see the summary and messages after it
+    fetched = await get_messages(session, chat_session.id)
+    assert [m.content for m in fetched] == ["summary", "after summary"]
+
+    # Undo to the summary (meaning the summary itself is undone/hidden)
+    shift = await undo_session_messages(session, chat_session.id)
+    assert shift.applied is True
+    assert shift.target and shift.target.id == summary.id
+    await session.commit()
+
+    # Verify that the messages before the summary are dynamically restored (WITHOUT calling cleanup_reverted_tail!)
+    fetched_after_undo = await get_messages(session, chat_session.id)
+    assert [m.content for m in fetched_after_undo] == ["u1", "a1"]
+
+    # Also verify that the LLM sees the restored messages
+    llm_fetched = await get_messages_for_llm(session, chat_session.id)
+    assert [m.content for m in llm_fetched] == ["u1", "a1"]
+
+
+@pytest.mark.asyncio
+async def test_undo_summary_llm_view_before_undo_excludes_compacted(session):
+    """Before undo: LLM sees only summary + post-summary messages, not compacted ones."""
+    chat_session = await create_chat_session(session)
+
+    u1 = await save_message(session, chat_session.id, HumanMessage(content="u1"))
+    a1 = await save_message(session, chat_session.id, AssistantMessage(content="a1"))
+    await save_message(
+        session, chat_session.id, HumanMessage(content="summary"), is_summary=True
+    )
+    await save_message(session, chat_session.id, AssistantMessage(content="after"))
+
+    for row in (u1, a1):
+        row.exclude_from_context = True
+        session.add(row)
+    await session.commit()
+
+    # No undo applied — LLM must not see the compacted messages.
+    llm_messages = await get_messages_for_llm(session, chat_session.id)
+    contents = [m.content for m in llm_messages]
+    assert contents == ["summary", "after"]
+
+
+@pytest.mark.asyncio
+async def test_undo_summary_does_not_over_restore_with_two_summaries(session):
+    """Undoing the *second* summary must not restore messages compacted by the first."""
+    chat_session = await create_chat_session(session)
+
+    # Phase 1: first round of messages, compacted by summary_1.
+    u1 = await save_message(session, chat_session.id, HumanMessage(content="u1"))
+    a1 = await save_message(session, chat_session.id, AssistantMessage(content="a1"))
+    summary_1 = await save_message(
+        session, chat_session.id, HumanMessage(content="summary_1"), is_summary=True
+    )
+
+    # Phase 2: messages after summary_1, then compacted by summary_2.
+    u2 = await save_message(session, chat_session.id, HumanMessage(content="u2"))
+    a2 = await save_message(session, chat_session.id, AssistantMessage(content="a2"))
+    summary_2 = await save_message(
+        session, chat_session.id, HumanMessage(content="summary_2"), is_summary=True
+    )
+    await save_message(session, chat_session.id, AssistantMessage(content="after_s2"))
+
+    # Compact everything before summary_2 (includes u1/a1/summary_1/u2/a2).
+    for row in (u1, a1, summary_1, u2, a2):
+        row.exclude_from_context = True
+        session.add(row)
+    await session.commit()
+
+    # Undo summary_2 — boundary now points at summary_2.
+    shift = await undo_session_messages(session, chat_session.id)
+    assert shift.applied is True
+    assert shift.target and shift.target.id == summary_2.id
+    await session.commit()
+
+    # User view: u2/a2 should be restored (compacted only by summary_2).
+    # u1/a1 must NOT be restored (they were compacted by summary_1, which is still active).
+    fetched = await get_messages(session, chat_session.id)
+    contents = [m.content for m in fetched]
+    assert "u2" in contents
+    assert "a2" in contents
+    assert "u1" not in contents
+    assert "a1" not in contents
+
+    # LLM view must match.
+    llm_fetched = await get_messages_for_llm(session, chat_session.id)
+    llm_contents = [m.content for m in llm_fetched]
+    assert "u2" in llm_contents
+    assert "a2" in llm_contents
+    assert "u1" not in llm_contents
+    assert "a1" not in llm_contents
+
+
+@pytest.mark.asyncio
+async def test_undo_first_summary_restores_all_compacted_messages(session):
+    """Undoing the only (first) summary restores all compacted messages."""
+    chat_session = await create_chat_session(session)
+
+    u1 = await save_message(session, chat_session.id, HumanMessage(content="u1"))
+    a1 = await save_message(session, chat_session.id, AssistantMessage(content="a1"))
+    u2 = await save_message(session, chat_session.id, HumanMessage(content="u2"))
+    summary = await save_message(
+        session, chat_session.id, HumanMessage(content="summary"), is_summary=True
+    )
+    await save_message(session, chat_session.id, AssistantMessage(content="after"))
+
+    for row in (u1, a1, u2):
+        row.exclude_from_context = True
+        session.add(row)
+    await session.commit()
+
+    shift = await undo_session_messages(session, chat_session.id)
+    assert shift.applied is True
+    assert shift.target and shift.target.id == summary.id
+    await session.commit()
+
+    fetched = await get_messages(session, chat_session.id)
+    contents = [m.content for m in fetched]
+    assert contents == ["u1", "a1", "u2"]
+
+    llm_fetched = await get_messages_for_llm(session, chat_session.id)
+    assert [m.content for m in llm_fetched] == ["u1", "a1", "u2"]
+
+
+@pytest.mark.asyncio
+async def test_get_dynamically_visible_messages_no_undo_no_summary(session):
+    """Without undo or summary, only non-excluded messages are returned."""
+    chat_session = await create_chat_session(session)
+
+    await save_message(session, chat_session.id, HumanMessage(content="visible"))
+    hidden = await save_message(
+        session, chat_session.id, AssistantMessage(content="hidden")
+    )
+    hidden.exclude_from_context = True
+    session.add(hidden)
+    await session.commit()
+
+    fetched = await get_messages(session, chat_session.id)
+    assert [m.content for m in fetched] == ["visible"]
+
+    llm_fetched = await get_messages_for_llm(session, chat_session.id)
+    assert [m.content for m in llm_fetched] == ["visible"]
+
+
+@pytest.mark.asyncio
+async def test_queued_messages_always_visible_despite_exclude_flag(session):
+    """Queued messages bypass the exclude_from_context filter."""
+    chat_session = await create_chat_session(session)
+
+    await save_message(session, chat_session.id, HumanMessage(content="normal"))
+    await save_queued_user_message(session, chat_session.id, "queued msg")
+    await session.commit()
+
+    fetched = await get_messages(session, chat_session.id)
+    contents = [m.content for m in fetched]
+    assert "normal" in contents
+    assert "queued msg" in contents
+
+
 # ── get_messages_for_llm ──────────────────────────────────────────────────────
 
 
@@ -1150,6 +1331,7 @@ async def test_get_messages_for_llm_preserves_skill_tool_pair_after_summary(sess
         m for m in result if isinstance(m, ToolMessage) and m.name == "skill"
     )
 
+    # The summary is always moved to position 0 by get_messages_for_llm.
     assert result[0].is_summary
     assert skill_call.tool_calls[0].id == "call_skill_1"
     assert skill_result.tool_call_id == "call_skill_1"

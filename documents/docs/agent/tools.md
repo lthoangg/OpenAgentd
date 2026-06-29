@@ -245,11 +245,10 @@ async def _read_file(
     path: str,
     offset: int = 1,
     limit: int | None = None,
-    _state: Annotated[Any, InjectedArg()] = None,  # injected, not in schema
 ) -> str | ToolResult:
-    vision = _state.capabilities.input.vision if _state else False
-    if category == "image" and not vision:
-        return "File read but current model does not support vision."
+    # Read the file...
+    if category == "image":
+        return handle_image(resolved, rel)
     ...
 ```
 

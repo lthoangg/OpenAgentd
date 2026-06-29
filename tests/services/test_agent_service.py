@@ -170,10 +170,14 @@ def test_default_ext_known_categories():
     assert _default_ext("document") == ".pdf"
 
 
+def test_default_ext_known_categories_audio_video():
+    assert _default_ext("audio") == ".mp3"
+    assert _default_ext("video") == ".mp4"
+
+
 def test_default_ext_unknown_category_returns_bin():
-    assert _default_ext("video") == ".bin"
-    assert _default_ext("audio") == ".bin"
     assert _default_ext("") == ".bin"
+    assert _default_ext("binary") == ".bin"
 
 
 # ── validate_and_persist_attachments ─────────────────────────────────────────
@@ -190,25 +194,23 @@ async def test_validate_unsupported_extension(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_validate_image_rejected_when_no_vision(tmp_path):
+async def test_validate_image_not_rejected_when_no_vision(tmp_path):
     team = _make_team(vision=False)
     data = b"\x89PNG\r\n\x1a\n" + b"\x00" * 50
     att = RawAttachment(filename="img.png", content_type="image/png", data=data)
-    with pytest.raises(AttachmentError) as exc_info:
-        await validate_and_persist_attachments(team, [att])
-    assert exc_info.value.status == 422
-    assert "image" in str(exc_info.value).lower()
+    sid, metas, synthetics = await validate_and_persist_attachments(team, [att])
+    assert len(metas) == 1
+    assert metas[0]["category"] == "image"
 
 
 @pytest.mark.asyncio
-async def test_validate_document_rejected_when_no_document_text(tmp_path):
+async def test_validate_document_not_rejected_when_no_document_text(tmp_path):
     team = _make_team(document_text=False)
     data = b"%PDF-1.4" + b"\x00" * 50
     att = RawAttachment(filename="doc.pdf", content_type="application/pdf", data=data)
-    with pytest.raises(AttachmentError) as exc_info:
-        await validate_and_persist_attachments(team, [att])
-    assert exc_info.value.status == 422
-    assert "document" in str(exc_info.value).lower()
+    sid, metas, synthetics = await validate_and_persist_attachments(team, [att])
+    assert len(metas) == 1
+    assert metas[0]["category"] == "document"
 
 
 @pytest.mark.asyncio
@@ -727,6 +729,7 @@ async def test_dispatch_passes_session_model_settings():
         interrupt=False,
         attachment_metas=None,
         attachment_synthetics=None,
+        mention_context_blocks=None,
         mode="normal",
         workspace=None,
         model="openai:gpt-5.5",
@@ -734,6 +737,7 @@ async def test_dispatch_passes_session_model_settings():
         thinking_level="high",
         thinking_level_provided=True,
         service_tier=None,
+        mentions=None,
     )
 
 

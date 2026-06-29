@@ -21,7 +21,7 @@ from app.api.routes.team._helpers import (
     _message_response,
     _read_upload_as_attachment,
     _require_team,
-    collect_mention_attachments,
+    build_mention_context_blocks,
 )
 from app.api.routes.agents import is_registered_model_id
 from app.api.schemas.sessions import (
@@ -288,23 +288,14 @@ async def team_chat(
         raw = await _read_upload_as_attachment(file)
         if raw is not None:
             attachments.append(raw)
-    # Resolve any ``@path`` mentions in the message text against the
-    # session workspace and attach the matched files. Done before the
-    # queue branch so a queued message keeps its mention attachments
-    # rather than silently dropping them when the agent is busy. Missing
-    # / oversize / unsupported paths are silently dropped (the visual
-    # chip in the input already gates this on workspace-resolvable refs).
-    # Explicit uploads above remain authoritative — mentions only *add*
-    # context.
-    mention_attachments = await collect_mention_attachments(
+    mention_context_blocks = await build_mention_context_blocks(
         message=message,
         team=team_obj,
         session_id=session_id,
         workspace=workspace,
         existing_total_bytes=sum(len(a.data) for a in attachments),
+        mentions=body.mentions,
     )
-    attachments.extend(mention_attachments)
-
     async with team_obj.user_message_lock:
         if session_uuid is not None:
             async with db.begin():
@@ -317,13 +308,13 @@ async def team_chat(
             # the model may change before dequeue but that is an accepted
             # edge case (documented in the queue design notes).
             queued_attachment_metas: list[dict] = []
-            queued_attachment_synthetics: list[str] = []
+            queued_upload_synthetics: list[str] = []
             if attachments:
                 try:
                     (
                         _,
                         queued_attachment_metas,
-                        queued_attachment_synthetics,
+                        queued_upload_synthetics,
                     ) = await agent_service.validate_and_persist_attachments(
                         team_obj, attachments, session_id, workspace
                     )
@@ -342,6 +333,8 @@ async def team_chat(
                     queued_extra["service_tier"] = "fast"
                 if queued_attachment_metas:
                     queued_extra["attachments"] = queued_attachment_metas
+                if body.mentions:
+                    queued_extra["mentions"] = body.mentions
                 existing_row = await db.get(ChatSession, session_uuid)
                 if existing_row is not None:
                     if model_provided:
@@ -362,18 +355,30 @@ async def team_chat(
                     message,
                     extra=queued_extra,
                 )
-                # Write synthetic attachment rows at queue time so the agent
-                # sees the file content when the queued message is activated.
-                for synthetic_content in queued_attachment_synthetics:
-                    synthetic_msg = HumanMessage(content=synthetic_content)
+                # Write synthetic upload rows (regular attachments).
+                for synthetic_content in queued_upload_synthetics:
                     await save_message(
                         db,
                         session_uuid,
-                        synthetic_msg,
+                        HumanMessage(content=synthetic_content),
                         extra={
                             "hidden_from_user": True,
                             "hidden_from_summary": True,
                             "attachment_for_message_id": str(queued.id),
+                            "mention_context": False,
+                        },
+                    )
+                # Write synthetic mention context rows (ephemeral, no uploads/).
+                for synthetic_content in mention_context_blocks:
+                    await save_message(
+                        db,
+                        session_uuid,
+                        HumanMessage(content=synthetic_content),
+                        extra={
+                            "hidden_from_user": True,
+                            "hidden_from_summary": True,
+                            "attachment_for_message_id": str(queued.id),
+                            "mention_context": True,
                         },
                     )
             logger.info(
@@ -396,6 +401,7 @@ async def team_chat(
                 content=message,
                 session_id=session_id,
                 attachments=attachments,
+                mention_context_blocks=mention_context_blocks,
                 mode=mode,
                 workspace=workspace,
                 model=model,
@@ -403,6 +409,7 @@ async def team_chat(
                 thinking_level=thinking_level,
                 thinking_level_provided=thinking_level_provided,
                 service_tier=fast_mode_service_tier,
+                mentions=body.mentions,
             )
         except AttachmentError as exc:
             raise HTTPException(status_code=exc.status, detail=str(exc)) from exc

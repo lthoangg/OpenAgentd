@@ -170,7 +170,7 @@ function PopoverContent({
 }: PopoverContentProps) {
   const { open, setOpen, triggerRef, contentId } = usePopover()
   const contentRef = useRef<HTMLDivElement>(null)
-  const [pos, setPos] = useState<Pos>({ top: 0, left: 0 })
+  const [pos, setPos] = useState<Pos | null>(null)
 
   // Must be called before any conditional returns (Rules of Hooks)
   const { mounted, closing } = useDeferredUnmount(open, 100)
@@ -188,6 +188,7 @@ function PopoverContent({
     window.addEventListener('scroll', reposition, { passive: true, capture: true })
     window.addEventListener('resize', reposition)
     return () => {
+      setPos(null)
       window.removeEventListener('scroll', reposition, { capture: true })
       window.removeEventListener('resize', reposition)
     }
@@ -232,12 +233,13 @@ function PopoverContent({
         'duration-100',
         closing
           ? 'animate-out fade-out-0 zoom-out-95'
-          : 'animate-in fade-in-0 zoom-in-95',
+          : 'animate-in fade-in-0',
         className,
       )}
       style={{
-        top: pos.top,
-        left: pos.left,
+        top: pos?.top ?? 0,
+        left: pos?.left ?? 0,
+        visibility: pos ? 'visible' : 'hidden',
         '--anchor-width': `${anchorWidth}px`,
       } as React.CSSProperties}
       onClick={(e) => e.stopPropagation()}

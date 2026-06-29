@@ -40,6 +40,7 @@ export async function postTeamChat(
   thinkingLevel?: string | null,
   shell = false,
   fastMode = false,
+  mentions?: string[],
 ): Promise<{ status: string; session_id: string; message_id?: string }> {
   const formData = new FormData()
   if (message) {
@@ -68,6 +69,9 @@ export async function postTeamChat(
   }
   if (shell) {
     formData.append('shell', 'true')
+  }
+  if (mentions && mentions.length > 0) {
+    formData.append('mentions', JSON.stringify(mentions))
   }
   if (files && files.length > 0) {
     for (const file of files) {

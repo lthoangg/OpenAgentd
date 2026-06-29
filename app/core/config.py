@@ -120,7 +120,11 @@ class Settings(BaseSettings):
 
     # Environment — controls data directory, log level defaults, etc.
     # Values: "production" | "development"
-    APP_ENV: str = "production"
+    # Defaults to "development" so source-checkout runs are always safe
+    # (writes to .openagentd/dev/, not ~/.local/share/openagentd).
+    # The CLI (openagentd start / serve) injects APP_ENV=production explicitly,
+    # and openagentd init writes APP_ENV=production into the user's .env.
+    APP_ENV: str = "development"
 
     # API Server
     API_HOST: str = "0.0.0.0"

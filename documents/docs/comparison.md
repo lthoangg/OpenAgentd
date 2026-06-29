@@ -30,7 +30,7 @@ into**.
 | Watch live tool calls (inspector + arguments + results + diffs in GUI) | ✅ OpenAgentd | terminal text | terminal text | inline in editor | terminal text | TUI |
 | Multi-agent concurrent team view (split pane, lead + workers) | ✅ OpenAgentd | sub-agents (sequential) | — | — | — | build/plan agents |
 | Git-backed `/undo` and `/redo` across chat history | ✅ OpenAgentd | — | — | editor undo | git commits | — |
-| `@file` / `@folder` auto-attach to first turn | ✅ OpenAgentd | manual @ in v0.2+ | — | yes | manual /add | yes |
+| `@file` inline context + `@folder` directory listing on first turn | ✅ OpenAgentd | manual @ in v0.2+ | — | yes | manual /add | yes |
 | Persistent across reload (close tab → agent keeps running → stream resumes) | ✅ OpenAgentd | session-scoped | session-scoped | editor-scoped | session-scoped | session-scoped |
 | Local LLM support (Ollama, etc.) | ✅ first-class | — | — | partial | via LiteLLM | yes |
 | Native image + video generation | ✅ built-in | — | — | — | — | — |

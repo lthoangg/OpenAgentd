@@ -204,7 +204,7 @@ ollama pull llama3.2        # pull any model
 
 **Remote daemon.** Point at a daemon on another machine via `OLLAMA_BASE_URL`.
 
-**Capability defaults:** vision is `false` for the `ollama:` prefix. If you run a vision-capable model (e.g. `llava`), attach images via the chat UI and accept that the upload gate is conservative for the whole prefix.
+**Capability defaults:** By default, vision is `false` in the model registry for the `ollama:` prefix. However, you can freely attach images and documents to any model; if the model supports it, the call will succeed.
 
 ## Thinking (`thinking_level`)
 

@@ -23,7 +23,7 @@ def test_setup_logging_creates_logs_dir(tmp_path):
 
         assert tmp_path.exists()
         mock_logger.remove.assert_called_once()
-        assert mock_logger.add.call_count == 2  # stderr + app.log
+        assert mock_logger.add.call_count == 3  # stderr + app.log + app-error.log
 
 
 def test_setup_logging_uses_level(tmp_path):

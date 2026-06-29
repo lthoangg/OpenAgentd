@@ -19,18 +19,6 @@ vite.config.ts Vite config and API/SSE dev proxy
 eslint.config.js ESLint config
 ```
 
-## Essential commands
-
-```bash
-bun install --frozen-lockfile
-bun dev                         # Vite on :5173, proxies /api to :8000
-bun run lint
-bun run typecheck
-bunx tsc -p tsconfig.test.json --noEmit
-bun run test
-bun run build
-```
-
 ## Code style
 
 - ESM only; no `require()`.
@@ -39,21 +27,20 @@ bun run build
 - Use TanStack Query for server state and Zustand stores for client state.
 - Keep UI mobile-first and consistent with existing Tailwind v4 patterns.
 - **Multi-platform / multi-screen:** the same components run on Tauri
-  mobile (iOS/Android), Tauri desktop (macOS/Windows/Linux), and the
-  browser. Author base styles for the smallest viewport, then enhance with
+  mobile (iOS/Android), Tauri desktop (macOS/Linux), and the browser.
+  Author base styles for the smallest viewport, then enhance with
   `sm:`/`md:`/`lg:`. Desktop side-panels/splits must collapse to overlay
   drawers or a single column on mobile. Branch behaviour with
   `useIsMobile()` / `usePlatform()`, route touch gestures through
   `use-edge-swipe` (see *Mobile touch gestures* in `src/AGENTS.md`), and
   verify every change on both a narrow (≤768px) and a wide viewport.
 
-## Post-implementation checklist
+## Running tests
+
+Always run with `--parallel` — the suite is isolated per file and runs ~4× faster:
 
 ```bash
-bun run lint && bun run typecheck && bunx tsc -p tsconfig.test.json --noEmit && bun run test
+bun test --parallel
 ```
 
-## Documentation pointers
-
-- Frontend conventions and test layout: `../documents/docs/guidelines.md`.
-- Desktop packaging context: `../documents/docs/desktop.md`.
+All other dev commands (`bun dev`, `bun run lint`, `bun run typecheck`, `bun run build`, …) are in the root `Makefile`. Run `make help` for a full list.

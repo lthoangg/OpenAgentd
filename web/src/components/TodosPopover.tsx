@@ -14,10 +14,9 @@
  *   in_progress → pending → completed → cancelled
  */
 
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check, Circle, ListTodo, Loader2, Minus } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { TopbarAction } from '@/components/ui/topbar-action'
 import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
 import { cn } from '@/lib/utils'
@@ -49,6 +48,11 @@ const STATUS_ORDER: Record<TodoItem['status'], number> = {
 
 function getAgentLabel(todo: TodoItem): string | null {
   return todo.claimed_by ?? todo.assigned_to ?? null
+}
+
+interface DesktopPopoverPosition {
+  top: number
+  left: number
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -87,53 +91,108 @@ export function TodosPopover({
   )
 
   const { mounted, closing } = useDeferredUnmount(open, 100)
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const desktopPanelRef = useRef<HTMLDivElement | null>(null)
+  const [desktopPosition, setDesktopPosition] = useState<DesktopPopoverPosition | null>(null)
+
+  useEffect(() => {
+    if (!trigger || !open) {
+      setDesktopPosition(null)
+      return
+    }
+
+    const updateDesktopPosition = () => {
+      const triggerEl = triggerRef.current
+      const panelEl = desktopPanelRef.current
+      if (!triggerEl) return
+
+      const triggerRect = triggerEl.getBoundingClientRect()
+      const panelWidth = panelEl?.offsetWidth ?? Math.min(window.innerWidth - 16, 320)
+      const panelHeight = panelEl?.offsetHeight ?? 280
+      const gap = 8
+      const left = Math.max(8, Math.min(triggerRect.right - panelWidth, window.innerWidth - panelWidth - 8))
+      const preferredTop = triggerRect.bottom + gap
+      const top = preferredTop + panelHeight > window.innerHeight
+        ? Math.max(8, triggerRect.top - panelHeight - gap)
+        : preferredTop
+
+      setDesktopPosition({ top, left })
+    }
+
+    updateDesktopPosition()
+    window.addEventListener('resize', updateDesktopPosition)
+    window.addEventListener('scroll', updateDesktopPosition, { passive: true, capture: true })
+
+    return () => {
+      window.removeEventListener('resize', updateDesktopPosition)
+      window.removeEventListener('scroll', updateDesktopPosition, { capture: true })
+    }
+  }, [open, trigger])
+
+  useEffect(() => {
+    if (!trigger || !open) return
+
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node
+      if (triggerRef.current?.contains(target) || desktopPanelRef.current?.contains(target)) return
+      onOpenChange(false)
+    }
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onOpenChange(false)
+    }
+
+    document.addEventListener('mousedown', handlePointerDown)
+    document.addEventListener('keydown', handleEscape)
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown)
+      document.removeEventListener('keydown', handleEscape)
+    }
+  }, [onOpenChange, open, trigger])
 
   const content = (
     <>
-      {/* Header: title + completion counter + thin progress bar. */}
-      <div className="border-b border-(--color-border) bg-(--color-surface)/30">
-        <div className="flex items-center justify-between px-3 py-2">
-          <span className="flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-(--color-text-2)">
-            <ListTodo size={11} aria-hidden="true" className="text-(--color-text-muted)" />
-            Tasks
-          </span>
-          {todos.length > 0 && (
-            <span
-              className={`font-mono text-[10px] tabular-nums tracking-wide ${
-                allDone ? 'text-(--color-success)' : 'text-(--color-text-subtle)'
-              }`}
-            >
-              {finishedCount}/{todos.length} done
-            </span>
-          )}
-        </div>
-        {/* Slim progress track — only meaningful when there are tasks. */}
+      <div className="flex items-center justify-between border-b border-(--color-border-subtle) px-2.5 py-2">
+        <span className="text-[11px] font-medium text-(--color-text)">Tasks</span>
         {todos.length > 0 && (
-          <div
-            className="h-0.5 w-full bg-(--color-border)"
-            role="progressbar"
-            aria-valuenow={progressPct}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-label="Task completion"
+          <span
+            className={cn(
+              'font-mono text-[10px] tabular-nums text-(--color-text-subtle)',
+              allDone && 'text-(--color-success)',
+            )}
           >
-            <div
-              className={`h-full rounded-r-full transition-[width] duration-500 ease-out ${
-                allDone ? 'bg-(--color-success)' : 'bg-(--color-info)'
-              }`}
-              style={{ width: `${progressPct}%` }}
-            />
-          </div>
+            {finishedCount}/{todos.length} done
+          </span>
         )}
       </div>
+
+      {todos.length > 0 && (
+        <div
+          className="h-px w-full bg-(--color-border-subtle)"
+          role="progressbar"
+          aria-valuenow={progressPct}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label="Task completion"
+        >
+          <div
+            className={cn(
+              'h-full transition-[width] duration-300 ease-out',
+              allDone ? 'bg-(--color-success)' : 'bg-(--color-info)'
+            )}
+            style={{ width: `${progressPct}%` }}
+          />
+        </div>
+      )}
 
       {todos.length === 0 ? (
         <div
           role="status"
-          className="flex flex-col items-center gap-1 px-3 py-6 text-center"
+          className="flex flex-col items-center gap-1 px-3 py-5 text-center"
         >
           <ListTodo
-            size={16}
+            size={14}
             aria-hidden="true"
             className="text-(--color-text-subtle) opacity-40"
           />
@@ -144,7 +203,7 @@ export function TodosPopover({
       ) : (
         <ul
           aria-label="Task list"
-          className="scrollbar-none max-h-[min(50vh,20rem)] overflow-y-auto overscroll-contain p-1"
+          className="scrollbar-none max-h-[min(46vh,17rem)] overflow-y-auto overscroll-contain px-1.5 py-1"
         >
           {sortedTodos.map((todo) => {
             const Icon = STATUS_ICON[todo.status]
@@ -156,15 +215,15 @@ export function TodosPopover({
               <li
                 key={todo.task_id}
                 className={cn(
-                  'group relative flex items-start gap-2 rounded px-2 py-1 transition-colors',
+                  'group flex items-start gap-2 rounded-md px-2 py-1.5 transition-colors',
                   isInProgress
-                    ? 'bg-(--color-info-subtle)/20'
-                    : 'hover:bg-(--color-surface)/60'
+                    ? 'bg-(--color-info-subtle)/12'
+                    : 'hover:bg-(--bg-key)/50'
                 )}
               >
-                <span className="relative mt-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center">
+                <span className="mt-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center">
                   <Icon
-                    size={12}
+                    size={11}
                     aria-hidden="true"
                     className={cn(
                       STATUS_ICON_COLOR[todo.status],
@@ -172,26 +231,25 @@ export function TodosPopover({
                     )}
                   />
                 </span>
-                <span
-                  className={cn(
-                    'min-w-0 flex-1 text-xs leading-snug',
-                    isStruck
-                      ? 'text-(--color-text-subtle) line-through decoration-(--color-text-subtle)/40'
-                      : isInProgress
-                        ? 'font-medium text-(--color-text)'
-                        : 'text-(--color-text-2)'
-                  )}
-                >
-                  {todo.content}
-                </span>
-                {agent && (
-                  <span
-                    className="mt-0.5 shrink-0 rounded-xs border border-(--color-border) bg-(--bg-page) px-1 py-0.5 font-mono text-[8px] uppercase tracking-wider text-(--color-text-muted)"
-                    title={`Assigned to ${agent}`}
+                <div className="min-w-0 flex-1">
+                  <div
+                    className={cn(
+                      'truncate text-[12px] leading-4',
+                      isStruck
+                        ? 'text-(--color-text-subtle) line-through decoration-(--color-text-subtle)/40'
+                        : isInProgress
+                          ? 'font-medium text-(--color-text)'
+                          : 'text-(--color-text-2)'
+                    )}
                   >
-                    {agent}
-                  </span>
-                )}
+                    {todo.content}
+                  </div>
+                  {agent && (
+                    <div className="mt-0.5 text-[10px] text-(--color-text-subtle)">
+                      {agent}
+                    </div>
+                  )}
+                </div>
               </li>
             )
           })}
@@ -223,10 +281,10 @@ export function TodosPopover({
           role="dialog"
           aria-label="Tasks"
           className={cn(
-            'absolute right-2 top-[calc(var(--spacing-app-header)+env(safe-area-inset-top,0px)+0.5rem)] w-[min(calc(100vw-1rem),20rem)] overflow-hidden rounded-lg border border-(--color-border) bg-(--bg-card) p-0 shadow-lg ring-1 ring-black/5 duration-100 ease-out pointer-events-auto',
+            'absolute right-2 top-[calc(var(--spacing-app-header)+env(safe-area-inset-top,0px)+0.5rem)] w-[min(calc(100vw-1rem),20rem)] overflow-hidden rounded-lg border border-(--color-border) bg-(--bg-card) p-0 shadow-lg ring-1 ring-black/5 pointer-events-auto',
             closing
-              ? 'animate-out fade-out-0 zoom-out-95'
-              : 'animate-in fade-in-0 zoom-in-95'
+              ? 'animate-out fade-out-0 zoom-out-95 duration-100 ease-out'
+              : 'animate-in fade-in-0 duration-100 ease-out'
           )}
         >
           {content}
@@ -236,39 +294,49 @@ export function TodosPopover({
   }
 
   return (
-    <Popover open={open} onOpenChange={onOpenChange}>
+    <>
       {trigger && (
-        <PopoverTrigger
-          render={
-            <TopbarAction
-              Icon={ListTodo}
-              indicator={hasInProgress}
-              badge={progressLabel}
-              title={sessionId ? 'Task list (Ctrl+T)' : 'No active session'}
-              aria-label="Task list"
-              // Selected/active highlight while the popover is open — matches
-              // the Files / Agents active treatment in the topbar so the
-              // whole cluster reads consistently (team + coding modes).
-              data-state={open ? 'open' : 'closed'}
-              className={
-                open
-                  ? 'border border-(--color-border-strong) bg-(--bg-key) text-(--color-text)'
-                  : undefined
-              }
-            />
-          }
+        <TopbarAction
+          ref={triggerRef}
+          Icon={ListTodo}
+          indicator={hasInProgress}
+          badge={progressLabel}
+          title={sessionId ? 'Task list (Ctrl+T)' : 'No active session'}
+          aria-label="Task list"
+          aria-expanded={open}
           disabled={!sessionId}
+          onClick={() => {
+            if (!sessionId) return
+            onOpenChange(!open)
+          }}
+          data-state={open ? 'open' : 'closed'}
+          className={
+            open
+              ? 'border border-(--color-border-strong) bg-(--bg-key) text-(--color-text)'
+              : undefined
+          }
         />
       )}
-      <PopoverContent
-        side="bottom"
-        align="end"
-        // ``ring-0`` cancels the shadcn default; outline comes from the
-        // ``--color-border`` ring so the chrome matches Files / Agents.
-        className="w-[min(calc(100vw-1rem),20rem)] overflow-hidden rounded-lg border border-(--color-border) bg-(--bg-card) p-0 shadow-lg ring-1 ring-black/5"
-      >
-        {content}
-      </PopoverContent>
-    </Popover>
+
+      {trigger && mounted && (
+        <div
+          ref={desktopPanelRef}
+          data-slot="popover-content"
+          className={cn(
+            'fixed z-50 w-[min(calc(100vw-1rem),20rem)] overflow-hidden rounded-lg border border-(--color-border) bg-(--bg-card) p-0 shadow-lg ring-1 ring-black/5',
+            closing
+              ? 'animate-out fade-out-0 zoom-out-95 duration-100 ease-out'
+              : 'animate-in fade-in-0 duration-100 ease-out'
+          )}
+          style={{
+            top: desktopPosition?.top ?? 0,
+            left: desktopPosition?.left ?? 0,
+            visibility: desktopPosition ? 'visible' : 'hidden',
+          }}
+        >
+          {content}
+        </div>
+      )}
+    </>
   )
 }

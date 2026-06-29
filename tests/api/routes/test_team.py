@@ -392,73 +392,6 @@ class TestTeamChatRoute:
         assert response.json()["status"] == "queued"
         test_team._activate_queued_user_messages.assert_not_awaited()
 
-    def test_team_chat_queued_message_persists_mention_attachments(
-        self, app_with_team, test_team
-    ):
-        """Mentions on a busy lead must persist on the queued row.
-
-        Before the fix, ``collect_mention_attachments`` only ran on the
-        dispatch branch — queued messages silently lost their `@file`
-        context. Verify the metas now land in ``extra["attachments"]``.
-        """
-        from app.services.agent_service import RawAttachment
-
-        session_id = str(uuid.uuid7())
-        test_team.lead.state = "working"
-        test_team._activate_queued_user_messages = AsyncMock(return_value=False)
-
-        fake_att = RawAttachment(
-            filename="note.txt",
-            content_type="text/plain",
-            data=b"hi",
-            truncate_inline_to=32_000,
-        )
-        captured: dict = {}
-
-        async def save_queue(_db, _session_id, _message, *, extra=None):
-            captured["extra"] = extra
-            queued = AsyncMock()
-            queued.id = uuid.uuid7()
-            return queued
-
-        async def fake_collect(**_kwargs):
-            return [fake_att]
-
-        async def fake_persist(_team, atts, sid, workspace=None):
-            metas = [
-                {
-                    "filename": a.filename,
-                    "original_name": a.filename,
-                    "category": "text",
-                }
-                for a in atts
-            ]
-            synthetics = [
-                f"[File: {a.filename}]\nhi\n[End file: {a.filename}]" for a in atts
-            ]
-            return sid, metas, synthetics
-
-        client = TestClient(app_with_team)
-        with (
-            patch("app.api.routes.team.chat.save_queued_user_message", save_queue),
-            patch("app.api.routes.team.chat.collect_mention_attachments", fake_collect),
-            patch(
-                "app.api.routes.team.chat.agent_service.validate_and_persist_attachments",
-                fake_persist,
-            ),
-            patch("app.api.routes.team.chat.save_message", AsyncMock()),
-        ):
-            response = client.post(
-                "/api/team/chat",
-                data={"message": "look at @note.txt", "session_id": session_id},
-            )
-
-        assert response.status_code == 202
-        assert response.json()["status"] == "queued"
-        atts = captured["extra"]["attachments"]
-        assert len(atts) == 1
-        assert atts[0]["original_name"] == "note.txt"
-
     def test_team_chat_queued_message_persists_explicit_uploads(
         self, app_with_team, test_team
     ):
@@ -517,6 +450,75 @@ class TestTeamChatRoute:
         atts = captured["extra"]["attachments"]
         assert len(atts) == 1
         assert atts[0]["original_name"] == "report.txt"
+
+    def test_team_chat_queued_message_persists_mention_context_blocks_only(
+        self, app_with_team, test_team
+    ):
+        session_id = str(uuid.uuid7())
+        test_team.lead.state = "working"
+        test_team._activate_queued_user_messages = AsyncMock(return_value=False)
+
+        captured: dict = {}
+
+        async def save_queue(_db, _session_id, _message, *, extra=None):
+            captured["extra"] = extra
+            queued = AsyncMock()
+            queued.id = uuid.uuid7()
+            return queued
+
+        client = TestClient(app_with_team)
+        with (
+            patch("app.api.routes.team.chat.save_queued_user_message", save_queue),
+            patch(
+                "app.api.routes.team.chat.build_mention_context_blocks",
+                AsyncMock(return_value=["[File: note.txt]\nhi\n[End file: note.txt]"]),
+            ),
+            patch("app.api.routes.team.chat.save_message", AsyncMock()),
+        ):
+            response = client.post(
+                "/api/team/chat",
+                data={"message": "look at @note.txt", "session_id": session_id},
+            )
+
+        assert response.status_code == 202
+        assert response.json()["status"] == "queued"
+        assert "attachments" not in (captured["extra"] or {})
+
+    @pytest.mark.asyncio
+    async def test_mention_context_hidden_rows_reach_llm_history(self, test_team):
+        from sqlalchemy.ext.asyncio import AsyncSession
+        from uuid import UUID
+
+        from app.services.chat_service import get_messages_for_llm, save_message
+
+        await test_team.lead._ensure_db_session(title="x")
+        lead_uuid = UUID(test_team.lead.session_id)
+        from app.core.db import resolve_db_factory
+
+        async with resolve_db_factory(test_team.lead.db_factory)() as db:
+            assert isinstance(db, AsyncSession)
+            from app.agent.schemas.chat import HumanMessage
+
+            user = await save_message(
+                db, lead_uuid, HumanMessage(content="look at @note.txt")
+            )
+            await save_message(
+                db,
+                lead_uuid,
+                HumanMessage(content="[File: note.txt]\nhello\n[End file: note.txt]"),
+                extra={
+                    "hidden_from_user": True,
+                    "hidden_from_summary": True,
+                    "attachment_for_message_id": str(user.id),
+                    "mention_context": True,
+                },
+            )
+            await db.commit()
+            msgs = await get_messages_for_llm(db, lead_uuid)
+
+        contents = [m.content for m in msgs]
+        assert "look at @note.txt" in contents
+        assert "[File: note.txt]\nhello\n[End file: note.txt]" in contents
 
     def test_team_chat_message_validation_empty_raises(self, app_with_team):
         client = TestClient(app_with_team)

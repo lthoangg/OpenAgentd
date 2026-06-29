@@ -60,6 +60,11 @@ def _headers(
 def _split_messages(
     messages: list[ChatMessage],
 ) -> tuple[list[dict[str, Any]] | None, list[dict[str, Any]]]:
+    valid_tool_result_ids = {
+        str(message.tool_call_id)
+        for message in messages
+        if isinstance(message, ToolMessage) and message.tool_call_id
+    }
     system_parts: list[str] = []
     out: list[dict[str, Any]] = []
     for message in messages:
@@ -108,6 +113,8 @@ def _split_messages(
             if message.content:
                 blocks.append({"type": "text", "text": message.content})
             for tool_call in message.tool_calls:
+                if tool_call.id not in valid_tool_result_ids:
+                    continue
                 blocks.append(
                     {
                         "type": "tool_use",
@@ -116,7 +123,8 @@ def _split_messages(
                         "input": json.loads(tool_call.function.arguments or "{}"),
                     }
                 )
-            out.append({"role": "assistant", "content": blocks})
+            if blocks:
+                out.append({"role": "assistant", "content": blocks})
         elif isinstance(message, AssistantMessage):
             out.append(
                 {

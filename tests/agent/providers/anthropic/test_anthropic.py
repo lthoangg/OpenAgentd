@@ -437,12 +437,13 @@ def test_split_messages_keeps_complete_assistant_tool_pair() -> None:
 
 
 def test_split_messages_echoes_thinking_block_with_tool_calls() -> None:
-    """An AssistantMessage with reasoning_content + tool_calls must include the
-    thinking block first so Anthropic's extended-thinking history contract is met.
-    Without it the API returns HTTP 400 'text content blocks must be non-empty'."""
+    """An AssistantMessage with reasoning_content + signature + tool_calls must
+    include the thinking block first so Anthropic's extended-thinking history
+    contract is met.  The API requires both `thinking` and `signature`."""
     assistant = AssistantMessage(
         content=None,
         reasoning_content="I should call the shell tool.",
+        reasoning_signature="sig-abc",
         tool_calls=[
             ToolCall(
                 id="t1",
@@ -464,17 +465,19 @@ def test_split_messages_echoes_thinking_block_with_tool_calls() -> None:
     assert "tool_use" in block_types
     thinking_block = assistant_turn["content"][0]
     assert thinking_block["thinking"] == "I should call the shell tool."
+    assert thinking_block["signature"] == "sig-abc"
 
 
 def test_split_messages_echoes_thinking_block_plain_assistant() -> None:
-    """An AssistantMessage with reasoning_content but no tool_calls must also
-    include the thinking block so history stays valid under extended thinking."""
+    """An AssistantMessage with reasoning_content + signature but no tool_calls
+    must include the thinking block so history stays valid under extended thinking."""
     _, out = _split_messages(
         [
             HumanMessage(content="think out loud"),
             AssistantMessage(
                 content="Here is my answer.",
                 reasoning_content="Let me reason first.",
+                reasoning_signature="sig-xyz",
                 tool_calls=None,
             ),
         ]
@@ -484,6 +487,7 @@ def test_split_messages_echoes_thinking_block_plain_assistant() -> None:
     block_types = [b["type"] for b in assistant_turn["content"]]
     assert block_types == ["thinking", "text"]
     assert assistant_turn["content"][0]["thinking"] == "Let me reason first."
+    assert assistant_turn["content"][0]["signature"] == "sig-xyz"
     assert assistant_turn["content"][1]["text"] == "Here is my answer."
 
 
@@ -497,6 +501,7 @@ def test_split_messages_echoes_thinking_block_when_content_empty() -> None:
             AssistantMessage(
                 content=None,
                 reasoning_content="Ran out of tokens mid-thought.",
+                reasoning_signature="sig-trunc",
                 tool_calls=None,
             ),
             HumanMessage(content="continue"),
@@ -509,3 +514,62 @@ def test_split_messages_echoes_thinking_block_when_content_empty() -> None:
     assert len(blocks) == 1
     assert blocks[0]["type"] == "thinking"
     assert blocks[0]["thinking"] == "Ran out of tokens mid-thought."
+    assert blocks[0]["signature"] == "sig-trunc"
+
+
+# ---------------------------------------------------------------------------
+# signature guard — missing signature must silently drop the thinking block
+# ---------------------------------------------------------------------------
+
+
+def test_split_messages_drops_thinking_block_when_signature_missing_tool_calls() -> (
+    None
+):
+    """Pre-fix rows have reasoning_content but no reasoning_signature.
+    Sending an empty/missing signature triggers HTTP 400 'Invalid signature'.
+    The thinking block must be silently omitted; tool_use blocks are still sent."""
+    assistant = AssistantMessage(
+        content=None,
+        reasoning_content="some thoughts",
+        reasoning_signature=None,  # pre-fix row — no signature stored
+        tool_calls=[
+            ToolCall(
+                id="t1",
+                function=FunctionCall(name="shell", arguments='{"command":"ls"}'),
+            )
+        ],
+    )
+    _, out = _split_messages(
+        [
+            HumanMessage(content="run ls"),
+            assistant,
+            ToolMessage(content="file.txt", tool_call_id="t1", name="shell"),
+        ]
+    )
+
+    assistant_turn = next(m for m in out if m["role"] == "assistant")
+    block_types = [b["type"] for b in assistant_turn["content"]]
+    assert "thinking" not in block_types, (
+        "thinking block must be dropped without signature"
+    )
+    assert "tool_use" in block_types
+
+
+def test_split_messages_drops_thinking_block_when_signature_missing_plain() -> None:
+    """Same guard for plain (non-tool-call) assistant turns without a signature."""
+    _, out = _split_messages(
+        [
+            HumanMessage(content="hi"),
+            AssistantMessage(
+                content="My answer.",
+                reasoning_content="some thoughts",
+                reasoning_signature=None,
+            ),
+        ]
+    )
+
+    assistant_turn = next(m for m in out if m["role"] == "assistant")
+    block_types = [b["type"] for b in assistant_turn["content"]]
+    assert "thinking" not in block_types
+    assert block_types == ["text"]
+    assert assistant_turn["content"][0]["text"] == "My answer."

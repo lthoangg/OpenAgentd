@@ -60,6 +60,10 @@ def deserialize_messages(
                 d["tool_call_id"] = ""
             msg = _chat_message_adapter.validate_python(d)
             msg.db_id = m.id
+            if isinstance(msg, AssistantMessage) and m.extra:
+                sig = m.extra.get("reasoning_signature")
+                if isinstance(sig, str) and sig:
+                    msg.reasoning_signature = sig
             if (
                 isinstance(msg, ToolMessage)
                 and m.extra

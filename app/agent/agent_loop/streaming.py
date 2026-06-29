@@ -167,6 +167,7 @@ async def stream_and_assemble(
     """
     full_content = ""
     reasoning = ""
+    reasoning_signature = ""
     tool_calls_buffer: dict[int, dict] = {}
     last_usage: Usage | None = None
     last_finish_reason: str | None = None
@@ -214,6 +215,7 @@ async def stream_and_assemble(
             )
             full_content = ""
             reasoning = ""
+            reasoning_signature = ""
             tool_calls_buffer = {}
             last_finish_reason = None
             continue
@@ -234,6 +236,8 @@ async def stream_and_assemble(
 
         if delta.reasoning_content:
             reasoning += delta.reasoning_content
+        if delta.reasoning_signature:
+            reasoning_signature += delta.reasoning_signature
         if delta.content:
             full_content += delta.content
 
@@ -339,10 +343,14 @@ async def stream_and_assemble(
     if last_finish_reason:
         extra = extra or {}
         extra["finish_reason"] = last_finish_reason
+    if reasoning_signature:
+        extra = extra or {}
+        extra["reasoning_signature"] = reasoning_signature
 
     msg = AssistantMessage(
         content=full_content or None,
         reasoning_content=reasoning or None,
+        reasoning_signature=reasoning_signature or None,
         tool_calls=tc_list or None,
         agent_id=agent_id,
         agent_name=agent_name,

@@ -1,3 +1,37 @@
+"""Anthropic Messages API provider.
+
+Extended-thinking / signature round-trip contract
+--------------------------------------------------
+When a model is invoked with ``thinking_level`` set, Anthropic returns an opaque
+``signature`` alongside every ``thinking`` block.  This signature **must** be
+echoed verbatim whenever the block is re-sent in conversation history; omitting
+it or sending an empty string causes HTTP 400 ``invalid_request_error``.
+
+Storage layout
+~~~~~~~~~~~~~~
+``signature`` is captured from the ``signature_delta`` SSE event during
+streaming (or from the response body in non-streaming mode) and stored in two
+places so it survives a full round-trip through the database:
+
+1. ``AssistantMessage.reasoning_signature`` — in-memory only (``exclude=True``
+   on the Pydantic model, never serialised to the wire).
+2. ``SessionMessage.extra["reasoning_signature"]`` — persisted in the DB
+   ``extra`` JSON column alongside ``usage`` and ``finish_reason``.
+
+On load, ``deserialize_messages`` (``services/chat_service_messages.py``)
+copies the value from ``extra`` back onto ``AssistantMessage.reasoning_signature``
+after Pydantic validation, so ``_split_messages`` can include it when rebuilding
+the request payload.
+
+Guard: thinking block omitted when signature is absent
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+``_split_messages`` only emits a thinking block when **both**
+``reasoning_content`` and ``reasoning_signature`` are non-empty.  Rows written
+before this fix have no signature stored; silently omitting the thinking block
+(rather than sending ``signature=""``) is safe — the API accepts assistant turns
+with only ``tool_use`` or ``text`` blocks.
+"""
+
 from __future__ import annotations
 
 import json
@@ -111,14 +145,18 @@ def _split_messages(
                 )
         elif isinstance(message, AssistantMessage) and message.tool_calls:
             blocks: list[dict[str, Any]] = []
-            # Re-emit the thinking block first so Anthropic's extended-thinking
-            # history contract is satisfied.  When a turn was generated with
-            # thinking enabled the API requires the thinking block to be present
-            # in the re-sent history — omitting it while keeping the tool_use
-            # blocks triggers HTTP 400 "text content blocks must be non-empty".
-            if message.reasoning_content:
+            # Re-emit the thinking block when we have a valid signature.
+            # Anthropic requires both `thinking` and `signature` to be present
+            # when a thinking block appears in history.  Omit it entirely when
+            # the signature is missing (pre-fix rows) — tool_use-only content
+            # arrays are accepted by the API without a preceding text block.
+            if message.reasoning_content and message.reasoning_signature:
                 blocks.append(
-                    {"type": "thinking", "thinking": message.reasoning_content}
+                    {
+                        "type": "thinking",
+                        "thinking": message.reasoning_content,
+                        "signature": message.reasoning_signature,
+                    }
                 )
             if message.content:
                 blocks.append({"type": "text", "text": message.content})
@@ -142,10 +180,11 @@ def _split_messages(
             # that produced only a thinking block + text (or only a thinking
             # block at max-token truncation) loses its thinking context when
             # history is re-sent, causing the same HTTP 400.
-            if message.reasoning_content:
+            if message.reasoning_content and message.reasoning_signature:
                 thinking_block: dict[str, Any] = {
                     "type": "thinking",
                     "thinking": message.reasoning_content,
+                    "signature": message.reasoning_signature,
                 }
                 if content:
                     out.append(
@@ -422,6 +461,14 @@ class AnthropicProvider(LLMProviderBase):
             for block in content_blocks
             if isinstance(block, dict) and block.get("type") == "thinking"
         )
+        # Anthropic returns an opaque `signature` on every thinking block that
+        # must be round-tripped verbatim when the block appears in history.
+        # Concatenate signatures if there are multiple thinking blocks (rare).
+        reasoning_signature = "".join(
+            block.get("signature", "")
+            for block in content_blocks
+            if isinstance(block, dict) and block.get("type") == "thinking"
+        )
         tool_calls = []
         for block in content_blocks:
             if not isinstance(block, dict) or block.get("type") != "tool_use":
@@ -438,6 +485,7 @@ class AnthropicProvider(LLMProviderBase):
         return AssistantMessage(
             content=text or None,
             reasoning_content=reasoning or None,
+            reasoning_signature=reasoning_signature or None,
             tool_calls=tool_calls or None,
         )
 
@@ -551,6 +599,19 @@ class AnthropicProvider(LLMProviderBase):
                                 model=self.model,
                                 delta=ChatCompletionDelta(
                                     reasoning_content=delta["thinking"]
+                                ),
+                            )
+                        elif delta_type == "signature_delta" and isinstance(
+                            delta.get("signature"), str
+                        ):
+                            # Anthropic streams the thinking-block signature as a
+                            # separate delta type.  Surface it so the caller can
+                            # persist it and include it when re-sending history.
+                            yield _stream_chunk(
+                                chunk_id=chunk_id,
+                                model=self.model,
+                                delta=ChatCompletionDelta(
+                                    reasoning_signature=delta["signature"]
                                 ),
                             )
                         elif isinstance(delta.get("text"), str):

@@ -173,7 +173,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
       role="dialog"
       aria-modal="true"
       aria-labelledby="app-backend-title"
-      onClick={() => { if (!pending) onOpenChange(false) }}
+      data-swipe-ignore
     >
       <div
         className="flex max-h-full w-full max-w-md flex-col overflow-hidden rounded-md border border-(--color-border) bg-(--bg-page) text-(--color-text) shadow-2xl"

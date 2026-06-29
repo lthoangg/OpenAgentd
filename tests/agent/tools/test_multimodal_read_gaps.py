@@ -203,28 +203,27 @@ class TestConvertWithMarkitdownError:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-class TestHandleDocumentOversizedPdfWithVision:
-    """Test handle_document() with PDFs exceeding image size limit."""
+class TestHandleDocumentOversizedPdf:
+    """Test handle_document() PDF fallback at the image size boundary."""
 
-    def test_oversized_pdf_with_vision_skips_fallback(self, tmp_path):
-        """When PDF exceeds 10MB and vision=True, skip image fallback."""
+    def test_oversized_pdf_skips_fallback(self, tmp_path):
+        """When PDF exceeds 10MB, the raw-bytes fallback is skipped."""
         big_pdf = tmp_path / "big.pdf"
-        # Create a PDF larger than 10MB
         big_pdf.write_bytes(b"%PDF-1.4" + b"\x00" * (10_485_760 + 1))
 
         with patch(
             "app.agent.tools.builtin.filesystem.handlers._convert_with_markitdown"
         ) as m:
-            m.return_value = None  # Conversion fails
-            result = handle_document(big_pdf, Path("big.pdf"), vision=True)
+            m.return_value = None
+            result = handle_document(big_pdf, Path("big.pdf"))
 
-        # Should NOT have image fallback (too large)
+        # Too large — no image fallback
         assert len(result.parts) == 1
         assert isinstance(result.parts[0], TextBlock)
         assert "Unable to extract text" in result.parts[0].text
 
-    def test_pdf_at_size_limit_with_vision_allows_fallback(self, tmp_path):
-        """When PDF is exactly at 10MB limit and vision=True, allow fallback."""
+    def test_pdf_at_size_limit_allows_fallback(self, tmp_path):
+        """When PDF is at or below 10MB, the raw-bytes fallback fires."""
         pdf = tmp_path / "at_limit.pdf"
         pdf.write_bytes(b"%PDF-1.4" + b"\x00" * (10_485_760 - 8))
 
@@ -232,9 +231,8 @@ class TestHandleDocumentOversizedPdfWithVision:
             "app.agent.tools.builtin.filesystem.handlers._convert_with_markitdown"
         ) as m:
             m.return_value = None
-            result = handle_document(pdf, Path("at_limit.pdf"), vision=True)
+            result = handle_document(pdf, Path("at_limit.pdf"))
 
-        # Should have image fallback (at limit)
         assert len(result.parts) == 2
         assert isinstance(result.parts[1], ImageDataBlock)
 

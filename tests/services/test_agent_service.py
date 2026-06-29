@@ -170,10 +170,14 @@ def test_default_ext_known_categories():
     assert _default_ext("document") == ".pdf"
 
 
+def test_default_ext_known_categories_audio_video():
+    assert _default_ext("audio") == ".mp3"
+    assert _default_ext("video") == ".mp4"
+
+
 def test_default_ext_unknown_category_returns_bin():
-    assert _default_ext("video") == ".bin"
-    assert _default_ext("audio") == ".bin"
     assert _default_ext("") == ".bin"
+    assert _default_ext("binary") == ".bin"
 
 
 # ── validate_and_persist_attachments ─────────────────────────────────────────
@@ -733,6 +737,7 @@ async def test_dispatch_passes_session_model_settings():
         thinking_level="high",
         thinking_level_provided=True,
         service_tier=None,
+        mentions=None,
     )
 
 

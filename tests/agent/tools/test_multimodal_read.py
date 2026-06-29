@@ -180,7 +180,8 @@ class TestHandleDocument:
         assert "# Title" in text
         assert len(result.parts) == 1
 
-    def test_pdf_fallback_with_vision(self, tmp_path):
+    def test_pdf_fallback_on_conversion_failure(self, tmp_path):
+        """When markitdown fails on a PDF, raw bytes are sent as image fallback."""
         pdf = tmp_path / "test.pdf"
         pdf.write_bytes(b"%PDF-1.4" + b"\x00" * 100)
 
@@ -188,26 +189,11 @@ class TestHandleDocument:
             "app.agent.tools.builtin.filesystem.handlers._convert_with_markitdown"
         ) as m:
             m.return_value = None
-            result = handle_document(pdf, Path("test.pdf"), vision=True)
+            result = handle_document(pdf, Path("test.pdf"))
 
         assert len(result.parts) == 2
         assert isinstance(result.parts[1], ImageDataBlock)
         assert result.parts[1].media_type == "application/pdf"
-
-    def test_pdf_no_fallback_without_vision(self, tmp_path):
-        """Without vision the PDF raw-bytes fallback is skipped."""
-        pdf = tmp_path / "test.pdf"
-        pdf.write_bytes(b"%PDF-1.4" + b"\x00" * 100)
-
-        with patch(
-            "app.agent.tools.builtin.filesystem.handlers._convert_with_markitdown"
-        ) as m:
-            m.return_value = None
-            result = handle_document(pdf, Path("test.pdf"), vision=False)
-
-        assert len(result.parts) == 1
-        text = _text_from_parts(result.parts)
-        assert "Unable to extract text" in text
 
     def test_non_pdf_failure(self, tmp_path):
         docx = tmp_path / "test.docx"
@@ -231,9 +217,9 @@ class TestHandleDocument:
             "app.agent.tools.builtin.filesystem.handlers._convert_with_markitdown"
         ) as m:
             m.return_value = None
-            result = handle_document(big, Path("big.pdf"), vision=True)
+            result = handle_document(big, Path("big.pdf"))
 
-        # Too large for image fallback even with vision
+        # Too large for image fallback — falls through to text error
         assert len(result.parts) == 1
 
 

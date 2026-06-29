@@ -242,146 +242,42 @@ describe("rankFileRefs", () => {
 // ── Unit: findCommittedMentions ───────────────────────────────────────────
 
 describe("findCommittedMentions", () => {
-  // Shared fixture: workspace contains a few real refs so the resolution
-  // check has something to match against. ``a.ts``, ``b/c.ts`` exist as
-  // files; ``aaa`` exists as both a file (``aaa``) and is referenced from
-  // active-range tests below.
   const fxRefs: FileRef[] = [
     { path: "src/api.ts", name: "api.ts", type: "file" },
     { path: "a.ts", name: "a.ts", type: "file" },
     { path: "b/c.ts", name: "c.ts", type: "file" },
-    { path: "aaa", name: "aaa", type: "file" },
-    { path: "README.md", name: "README.md", type: "file" },
-    { path: "src", name: "src", type: "directory" },
+    { path: "my file.txt", name: "my file.txt", type: "file" },
   ]
 
-  it("finds a single trailing mention", () => {
-    // ``"hi @src/api.ts"`` — no trailing whitespace, but the token still
-    // counts as committed (end-of-string terminates it).
-    const out = findCommittedMentions("hi @src/api.ts", null, fxRefs)
-    expect(out).toEqual([{ start: 3, end: 14 }])
-  })
-
-  it("resolves committed line-reference mentions against the base file", () => {
-    const out = findCommittedMentions("hi @src/api.ts#L2-L4", null, fxRefs)
-    expect(out).toEqual([{ start: 3, end: 20 }])
-  })
-
-  it("finds multiple mentions", () => {
-    const out = findCommittedMentions("see @a.ts and @b/c.ts please", null, fxRefs)
+  it("finds explicit mentions when mentions array is provided", () => {
+    const out = findCommittedMentions("hi @src/api.ts and @a.ts", null, fxRefs, ["src/api.ts", "a.ts"])
     expect(out).toEqual([
-      { start: 4, end: 9 },
-      { start: 14, end: 21 },
+      { start: 3, end: 14 },
+      { start: 19, end: 24 },
     ])
   })
 
-  it("ignores email-like @ (no leading whitespace)", () => {
-    const out = findCommittedMentions("ping user@host.com please", null, fxRefs)
-    expect(out).toEqual([])
-  })
-
-  it("ignores a bare @ with nothing after it", () => {
-    const out = findCommittedMentions("type @ here", null, fxRefs)
-    expect(out).toEqual([])
+  it("finds explicit mentions with spaces", () => {
+    const out = findCommittedMentions("please check @my file.txt", null, fxRefs, ["my file.txt"])
+    expect(out).toEqual([
+      { start: 13, end: 25 },
+    ])
   })
 
   it("excludes the active range so the editing token doesn't flash", () => {
-    // ``"hello @sr"`` — user is mid-typing the second token.
-    const out = findCommittedMentions("hello @sr", { start: 6, end: 9 }, fxRefs)
+    const out = findCommittedMentions("hello @src/api.ts", { start: 6, end: 17 }, fxRefs, ["src/api.ts"])
     expect(out).toEqual([])
   })
 
-  it("keeps committed mentions even when an active range is provided", () => {
-    // First token is committed (followed by whitespace), second is active.
-    const out = findCommittedMentions(
-      "ref @a.ts and @bb",
-      { start: 14, end: 17 },
-      fxRefs,
-    )
-    expect(out).toEqual([{ start: 4, end: 9 }])
+  it("returns empty array when mentions array is an empty list (explicit-list mode)", () => {
+    // An explicit empty mentions array means nothing was selected from the picker.
+    expect(findCommittedMentions("hi @src/api.ts", null, fxRefs, [])).toEqual([])
   })
 
-  it("handles mentions across newlines (multi-line input)", () => {
-    // The textarea allows ``\n``. Each line's `@` should be detected
-    // independently — a newline both terminates the previous token and
-    // satisfies the "preceded by whitespace" rule for the next.
-    const out = findCommittedMentions("first @a.ts\nsecond @b/c.ts", null, fxRefs)
-    expect(out).toEqual([
-      { start: 6, end: 11 },
-      { start: 19, end: 26 },
-    ])
-  })
-
-  it("excludes only the range whose start matches — not a substring overlap", () => {
-    // The active-range predicate is ``activeRange.start === i``. If a
-    // caller passes a stale range that happens to overlap a committed
-    // mention without starting at its `@`, the committed mention must
-    // still be returned.
-    const out = findCommittedMentions(
-      "ref @aaa bbb",
-      { start: 5, end: 8 }, // inside ``@aaa``
-      fxRefs,
-    )
-    expect(out).toEqual([{ start: 4, end: 8 }])
-  })
-
-  it("returns an empty array for an empty value (no work)", () => {
-    expect(findCommittedMentions("", null, fxRefs)).toEqual([])
-  })
-
-  // ── Resolution-required behaviour (matches opencode's exact-match model) ──
-
-  it("does not chip a token that doesn't resolve to a real workspace ref", () => {
-    // ``@nonexistent`` — picker would never suggest this; user typed it
-    // freehand. Highlighting it would falsely imply we'll attach the file.
-    const out = findCommittedMentions("see @nonexistent please", null, fxRefs)
-    expect(out).toEqual([])
-  })
-
-  it("does not chip the pathological double-@ token", () => {
-    // ``@@`` is the originally reported bug: nothing resolves, so no chip.
-    // The leading `@` is preceded by start-of-string (matches), the inner
-    // `@` is preceded by another `@` (not whitespace — wouldn't trigger
-    // on its own). Either way, no ref → no chip.
-    const out = findCommittedMentions("@@", null, fxRefs)
-    expect(out).toEqual([])
-  })
-
-  it("does not chip an @foo@bar token (mid-token @ doesn't resolve)", () => {
-    // The whole thing scans to one token ``@foo@bar``; no ref matches it.
-    const out = findCommittedMentions("look @foo@bar end", null, fxRefs)
-    expect(out).toEqual([])
-  })
-
-  it("strips trailing sentence punctuation before resolving", () => {
-    // ``"@README.md,"`` — the comma is prose, not part of the path. We
-    // chip the path and leave the comma plain. Verifies the chip end
-    // sits before the punctuation, not at it.
-    const out = findCommittedMentions("look @README.md, please", null, fxRefs)
-    expect(out).toEqual([{ start: 5, end: 15 }])
-  })
-
-  it("handles a parenthetical mention closer", () => {
-    // ``"(@README.md)"`` — the open paren rejects the mention (preceded
-    // by non-whitespace from the @'s perspective), so no chip. This
-    // pins down that the leading-paren case stays out of scope; the
-    // punctuation strip is *trailing* only.
-    const out = findCommittedMentions("look(@README.md)", null, fxRefs)
-    expect(out).toEqual([])
-  })
-
-  it("strips a chain of trailing punctuation", () => {
-    // ``@README.md?!`` — strip both. Tests the loop, not just one char.
-    const out = findCommittedMentions("@README.md?! next", null, fxRefs)
-    expect(out).toEqual([{ start: 0, end: 10 }])
-  })
-
-  it("back-compat: omitting refs falls back to syntax-only matching", () => {
-    // Some callers (none today, but reserve it) may want pure geometry
-    // without resolution. Tested separately so the optional parameter's
-    // semantics are explicit.
-    const out = findCommittedMentions("see @anything")
-    expect(out).toEqual([{ start: 4, end: 13 }])
+  it("uses scanner mode and finds tokens when mentions is undefined (historical messages)", () => {
+    // No mentions list → scanner mode. Any @token in the text is highlighted.
+    const out = findCommittedMentions("hi @src/api.ts", null, fxRefs)
+    expect(out).toEqual([{ start: 3, end: 14 }])
   })
 })
 
@@ -410,20 +306,20 @@ describe("buildMentionLookup", () => {
     // and reuse them across keystrokes instead of rebuilding per call.
     const lookup = buildMentionLookup(fxRefs)
     const value = "see @src/api.ts and @a.ts here"
-    expect(findCommittedMentions(value, null, lookup)).toEqual(
-      findCommittedMentions(value, null, fxRefs),
+    expect(findCommittedMentions(value, null, lookup, ["src/api.ts", "a.ts"])).toEqual(
+      findCommittedMentions(value, null, fxRefs, ["src/api.ts", "a.ts"]),
     )
   })
 
   it("a prebuilt lookup still validates line-reference mentions", () => {
     const lookup = buildMentionLookup(fxRefs)
-    const out = findCommittedMentions("hi @src/api.ts#L2-L4", null, lookup)
+    const out = findCommittedMentions("hi @src/api.ts#L2-L4", null, lookup, ["src/api.ts#L2-L4"])
     expect(out).toEqual([{ start: 3, end: 20 }])
   })
 
   it("a prebuilt lookup rejects unresolved tokens just like refs", () => {
     const lookup = buildMentionLookup(fxRefs)
-    expect(findCommittedMentions("see @nonexistent x", null, lookup)).toEqual([])
+    expect(findCommittedMentions("see @nonexistent x", null, lookup, ["nonexistent"])).toEqual([])
   })
 })
 

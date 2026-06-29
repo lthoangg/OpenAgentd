@@ -20,26 +20,17 @@ tests/       pytest suite (mirrors app/)
 documents/   Developer docs (see documents/docs/index.md)
 ```
 
-## Essential commands
+## Running tests
 
 ```bash
-# Backend
-uv sync                           # install
-make dev                          # backend (:8000 reload) + Vite (:5173)
-uv run ruff check app/ tests/             # lint
-uv run ruff format --check app/ tests/    # format check
-uv run ty check app/                      # type check
-uv run pytest --no-cov -q                 # fast tests
+# Backend — run from repo root
+uv run pytest -n auto --no-cov -q
 
-# Frontend
-cd web && bun dev                         # :5173, proxies /api → :8000
-cd web && bun run lint
-cd web && bun run typecheck
-cd web && bunx tsc -p tsconfig.test.json --noEmit
-cd web && bun run test
+# Frontend — always use --parallel
+cd web && bun test --parallel
 ```
 
-Full command + style reference: [`documents/docs/guidelines.md`](documents/docs/guidelines.md).
+All other dev commands are in the `Makefile`. Run `make help` for a full list.
 
 ## Manual smoke/debug helpers
 
@@ -93,19 +84,6 @@ screens. Never ship a layout that only works on one form factor.
   existing `mobile-safe-*` utilities and `useTauriDrag`.
 - **One feature, all surfaces.** When adding UI, verify it on a narrow
   (≤768px) and a wide viewport before calling it done.
-
-## Code style (summary)
-
-- **Python 3.14+** — `|` unions, `from __future__ import annotations`, strict type hints, Pydantic v2, absolute imports from `app`, loguru `logger.info("event key={}", val)`.
-- **TypeScript** — `strict: true`, functional components with explicit props, TanStack for server state, Zustand + Immer for client state, ESM only. Mobile-first design before desktop layouts; ensure the same component renders correctly across desktop/mobile and large/small screens; account for mobile safe areas/notches without wasting header space.
-- **General** — thin routes, logic in services/hooks, no unnecessary abstractions, always invoke the `guidelines` skill.
-
-## Post-implementation checklist
-
-```bash
-uv run ruff check app/ tests/ && uv run ruff format --check app/ tests/ && uv run ty check app/ && uv run pytest --no-cov -q
-cd web && bun run lint && bun run typecheck && bunx tsc -p tsconfig.test.json --noEmit && bun run test  # if frontend changed
-```
 
 ## Documentation
 

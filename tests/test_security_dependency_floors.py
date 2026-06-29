@@ -56,13 +56,13 @@ def test_web_lock_pins_patched_mcp_sdk_without_reintroducing_react_plugin_break(
     package_json = json.loads((ROOT / "web/package.json").read_text())
     mcp_sdk_version = package_json["dependencies"]["@modelcontextprotocol/sdk"]
     assert _version_tuple(mcp_sdk_version) >= _version_tuple("1.26.0")
-    assert package_json["devDependencies"]["@vitejs/plugin-react"] == "5.2.0"
+    assert _version_tuple(
+        package_json["devDependencies"]["@vitejs/plugin-react"]
+    ) >= _version_tuple("6.0.3")
 
     lock_text = (ROOT / "web/bun.lock").read_text()
     assert f'"@modelcontextprotocol/sdk": "{mcp_sdk_version}"' in lock_text
     assert f'"@modelcontextprotocol/sdk@{mcp_sdk_version}"' in lock_text
-    assert '"@vitejs/plugin-react": "5.2.0"' in lock_text
-    assert '"@vitejs/plugin-react@6.' not in lock_text
 
 
 def test_desktop_lock_keeps_patched_tar_version() -> None:

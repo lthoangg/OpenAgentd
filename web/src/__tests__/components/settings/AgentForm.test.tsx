@@ -25,7 +25,12 @@ mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 // Single source of truth for the registry + MCP servers fixture across the
 // test file. Tests can mutate the inner arrays freely; the mocked hooks
 // always return live references.
-const registryFixture = {
+const registryFixture: {
+  tools: { name: string; description: string }[]
+  skills: { name: string; description: string }[]
+  providers: string[]
+  models: { id: string; provider: string; model: string; vision: boolean; thinking_levels?: string[] }[]
+} = {
   tools: [
     { name: 'shell', description: 'Run a shell command' },
     { name: 'read', description: 'Read a file' },
@@ -41,7 +46,7 @@ const registryFixture = {
   skills: [{ name: 'self-healing', description: 'Repair the agent config' }],
   providers: ['openai'],
   models: [
-    { id: 'openai:gpt-5.4', provider: 'openai', model: 'gpt-5.4', vision: false },
+    { id: 'openai:gpt-5.4', provider: 'openai', model: 'gpt-5.4', vision: false, thinking_levels: [] },
   ],
 }
 
@@ -218,7 +223,8 @@ function fieldFor(label: string): HTMLElement {
 
 /** The MultiSelect trigger inside a given field. */
 function comboboxIn(label: string): HTMLElement {
-  return within(fieldFor(label)).getByRole('combobox')
+  const field = within(fieldFor(label))
+  return field.queryByRole('combobox') ?? field.getByRole('button')
 }
 
 describe('AgentForm — Capabilities card', () => {
@@ -335,6 +341,45 @@ model: openai:gpt-5.4
       expect(screen.getByText(/No MCP servers configured/i)).toBeTruthy()
     } finally {
       mcpFixture.servers.push(...original)
+    }
+  })
+
+  it('shows only default and none when the selected model has no thinking metadata', async () => {
+    const user = userEvent.setup()
+    renderForm()
+
+    await user.click(comboboxIn('Thinking level'))
+
+    expect(screen.getAllByText('(default)').length).toBeGreaterThan(0)
+    expect(screen.getByText('none')).toBeTruthy()
+    expect(screen.queryByText('low')).toBeNull()
+    expect(screen.queryByText('medium')).toBeNull()
+    expect(screen.queryByText('high')).toBeNull()
+  })
+
+  it('uses per-model thinking levels when the selected model provides them', async () => {
+    const user = userEvent.setup()
+    const originalModels = [...registryFixture.models]
+    registryFixture.models.splice(0, registryFixture.models.length, {
+      id: 'openai:gpt-5.4',
+      provider: 'openai',
+      model: 'gpt-5.4',
+      vision: false,
+      thinking_levels: ['none', 'low', 'medium', 'high', 'xhigh'] as string[],
+    })
+
+    try {
+      renderForm()
+      await user.click(comboboxIn('Thinking level'))
+
+      expect(screen.getAllByText('(default)').length).toBeGreaterThan(0)
+      expect(screen.getByText('none')).toBeTruthy()
+      expect(screen.getByText('low')).toBeTruthy()
+      expect(screen.getByText('medium')).toBeTruthy()
+      expect(screen.getByText('high')).toBeTruthy()
+      expect(screen.getByText('xhigh')).toBeTruthy()
+    } finally {
+      registryFixture.models.splice(0, registryFixture.models.length, ...originalModels)
     }
   })
 })

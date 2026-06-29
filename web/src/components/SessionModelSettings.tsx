@@ -16,6 +16,8 @@ const THINKING_LEVELS = [
   { value: 'high', label: 'High' },
 ]
 
+const FALLBACK_THINKING_LEVEL_VALUES = ['none']
+
 export function SessionModelSettings({
   defaultModel,
   sessionModel,
@@ -61,29 +63,22 @@ export function SessionModelSettings({
     const toLabel = (value: string) =>
       value.split('-').map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(' ')
 
-    if (modelThinkingLevels.length > 0) {
-      // Build options from the model's own list, supplemented with labels from
-      // THINKING_LEVELS where available, and auto-generated labels for the rest.
-      const fallbackByValue = new Map(THINKING_LEVELS.map((l) => [l.value, l.label]))
-      const options = [
-        THINKING_LEVELS[0], // always keep Default ('')
-        ...modelThinkingLevels.map((v) => ({
-          value: v,
-          label: fallbackByValue.get(v) ?? toLabel(v),
-        })),
-      ]
-      // Also keep the current draft value visible if it's not in the list.
-      if (draftThinkingLevel && !options.some((l) => l.value === draftThinkingLevel)) {
-        options.push({ value: draftThinkingLevel, label: toLabel(draftThinkingLevel) })
-      }
-      return options
-    }
+    const allowedLevels = modelThinkingLevels.length > 0 ? modelThinkingLevels : FALLBACK_THINKING_LEVEL_VALUES
+    const normalizedLevels = allowedLevels.filter((value) => value !== '__none__')
 
-    // No model metadata — use the fallback list, but keep draft value visible.
-    if (draftThinkingLevel && !THINKING_LEVELS.some((l) => l.value === draftThinkingLevel)) {
-      return [...THINKING_LEVELS, { value: draftThinkingLevel, label: toLabel(draftThinkingLevel) }]
+    const fallbackByValue = new Map(THINKING_LEVELS.map((level) => [level.value, level.label]))
+    const options = [
+      THINKING_LEVELS[0],
+      ...normalizedLevels.map((value) => ({
+        value,
+        label: fallbackByValue.get(value) ?? toLabel(value),
+      })),
+    ]
+
+    if (draftThinkingLevel && !options.some((level) => level.value === draftThinkingLevel)) {
+      options.push({ value: draftThinkingLevel, label: toLabel(draftThinkingLevel) })
     }
-    return THINKING_LEVELS
+    return options
   }, [draftThinkingLevel, effectiveModelEntry])
   const fastModeAvailable = effectiveDraftModel.startsWith('codex:')
   const validModelIds = useMemo(

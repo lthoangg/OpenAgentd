@@ -226,10 +226,9 @@ def _thinking_budget(level: str, max_tokens: int) -> int:
     return max(1024, min(budget, max_tokens - 1))
 
 
-def _supports_adaptive_thinking(model: str) -> bool:
-    return any(
-        marker in model for marker in ("opus-4-6", "opus-4-7", "opus-4-8", "sonnet-4-6")
-    )
+def _uses_beta_messages_api(_model: str, kwargs: dict[str, Any]) -> bool:
+    explicit = kwargs.pop("anthropic_beta", None)
+    return bool(explicit)
 
 
 def _apply_thinking(
@@ -238,10 +237,6 @@ def _apply_thinking(
     level = str(kwargs.pop("thinking_level", "") or "").lower()
     if not level or level in {"none", "off"}:
         return False
-    if _supports_adaptive_thinking(model):
-        payload["thinking"] = {"type": "adaptive", "display": "summarized"}
-        payload["output_config"] = {"effort": level}
-        return True
     max_tokens = int(payload["max_tokens"])
     payload["thinking"] = {
         "type": "enabled",
@@ -324,7 +319,8 @@ class AnthropicProvider(LLMProviderBase):
         self.headers = _headers(
             resolved_key, headers, use_api_key_header=use_api_key_header
         )
-        self._messages_path = "/v1/messages?beta=true" if beta else "/v1/messages"
+        self._beta = beta
+        self._messages_path = "/v1/messages"
         self._timeout = timeout
 
     def _payload(
@@ -355,9 +351,14 @@ class AnthropicProvider(LLMProviderBase):
         **kwargs: Any,
     ) -> AssistantMessage:
         merged = self._merged_kwargs(**kwargs)
+        messages_path = (
+            f"{self._messages_path}?beta=true"
+            if _uses_beta_messages_api(self.model, merged) or self._beta
+            else self._messages_path
+        )
         async with httpx.AsyncClient(timeout=self._timeout) as client:
             response = await client.post(
-                f"{self.base_url}{self._messages_path}",
+                f"{self.base_url}{messages_path}",
                 headers=self.headers,
                 json=self._payload(messages, tools, merged),
             )
@@ -405,12 +406,17 @@ class AnthropicProvider(LLMProviderBase):
         payload = self._payload(messages, tools, merged)
         payload["stream"] = True
         chunk_id = f"anthropic-{int(time.time())}"
+        messages_path = (
+            f"{self._messages_path}?beta=true"
+            if _uses_beta_messages_api(self.model, merged) or self._beta
+            else self._messages_path
+        )
         usage = Usage()
         tool_call_indexes: dict[int, int] = {}
         async with httpx.AsyncClient(timeout=self._timeout) as client:
             async with client.stream(
                 "POST",
-                f"{self.base_url}{self._messages_path}",
+                f"{self.base_url}{messages_path}",
                 headers=self.headers,
                 json=payload,
             ) as response:

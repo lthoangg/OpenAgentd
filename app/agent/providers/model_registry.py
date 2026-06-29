@@ -289,8 +289,14 @@ def _thinking_from_model(model: dict[str, Any]) -> dict[str, list[str]]:
         return {}
 
     levels: list[str] = []
+    has_budget_tokens = False
     for option in options:
-        if not isinstance(option, dict) or option.get("type") != "effort":
+        if not isinstance(option, dict):
+            continue
+        if option.get("type") == "budget_tokens":
+            has_budget_tokens = True
+            continue
+        if option.get("type") != "effort":
             continue
         values = option.get("values")
         if not isinstance(values, list):
@@ -298,7 +304,11 @@ def _thinking_from_model(model: dict[str, Any]) -> dict[str, list[str]]:
         for value in values:
             if isinstance(value, str) and value and value not in levels:
                 levels.append(value)
-    return {"levels": levels} if levels else {}
+    if levels:
+        return {"levels": levels}
+    if has_budget_tokens:
+        return {"levels": ["none", "low", "medium", "high"]}
+    return {}
 
 
 def _normalize_models_dev(data: Any, *, include_plugins: bool = True) -> ModelRegistry:

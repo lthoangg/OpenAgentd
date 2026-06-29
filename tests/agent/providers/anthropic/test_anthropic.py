@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import pytest
 from pydantic import SecretStr
 
 from app.agent.providers.anthropic import AnthropicProvider
-from app.agent.providers.anthropic.anthropic import _split_messages
+from app.agent.providers.anthropic.anthropic import (
+    _split_messages,
+    _uses_beta_messages_api,
+)
 from app.agent.schemas.chat import (
     AssistantMessage,
     FunctionCall,
@@ -78,26 +82,35 @@ def test_anthropic_payload_converts_system_tools_and_thinking() -> None:
         }
     ]
     assert payload["tools"][0]["name"] == "lookup"
-    assert payload["thinking"] == {"type": "adaptive", "display": "summarized"}
-    assert payload["output_config"] == {"effort": "low"}
+    assert payload["thinking"] == {
+        "type": "enabled",
+        "budget_tokens": 1024,
+        "display": "summarized",
+    }
+    assert "output_config" not in payload
 
 
-def test_anthropic_payload_uses_adaptive_thinking_for_claude_opus_4_7() -> None:
-    provider = AnthropicProvider(
-        api_key="sk-ant-test",
-        model="claude-opus-4-7",
-        model_kwargs={"thinking_level": "medium", "max_tokens": 4096},
-    )
+@pytest.mark.parametrize(
+    ("model", "expected"),
+    [
+        ("claude-sonnet-4-6", False),
+        ("claude-opus-4-7", False),
+        ("claude-haiku-4-5", False),
+        ("claude-sonnet-4-5", False),
+    ],
+)
+def test_anthropic_messages_api_beta_disabled_by_default(
+    model: str, expected: bool
+) -> None:
+    assert _uses_beta_messages_api(model, {}) is expected
 
-    payload = provider._payload(
-        [HumanMessage(content="hi")],
-        None,
-        provider._merged_kwargs(),
-    )
 
-    assert payload["thinking"] == {"type": "adaptive", "display": "summarized"}
-    assert payload["output_config"] == {"effort": "medium"}
-    assert "budget_tokens" not in payload["thinking"]
+@pytest.mark.parametrize("explicit", [True, False])
+def test_anthropic_messages_api_beta_respects_override(explicit: bool) -> None:
+    kwargs = {"anthropic_beta": explicit}
+
+    assert _uses_beta_messages_api("claude-sonnet-4-5", kwargs) is explicit
+    assert kwargs == {}
 
 
 def test_anthropic_payload_uses_manual_thinking_for_older_models() -> None:
@@ -168,6 +181,36 @@ def test_anthropic_payload_allows_supported_top_p_when_thinking() -> None:
 
     assert "temperature" not in payload
     assert payload["top_p"] == 0.95
+
+
+@pytest.mark.parametrize(
+    ("thinking_level", "max_tokens", "expected_budget"),
+    [
+        ("low", 4096, 1024),
+        ("medium", 4096, 1638),
+        ("high", 4096, 2457),
+    ],
+)
+def test_anthropic_budget_based_thinking_levels_map_to_expected_budgets(
+    thinking_level: str, max_tokens: int, expected_budget: int
+) -> None:
+    provider = AnthropicProvider(
+        api_key="sk-ant-test",
+        model="claude-haiku-4-5-20251001",
+        model_kwargs={"thinking_level": thinking_level, "max_tokens": max_tokens},
+    )
+
+    payload = provider._payload(
+        [HumanMessage(content="hi")],
+        None,
+        provider._merged_kwargs(),
+    )
+
+    assert payload["thinking"] == {
+        "type": "enabled",
+        "budget_tokens": expected_budget,
+        "display": "summarized",
+    }
 
 
 def _make_assistant_with_tools(*tool_ids: str) -> AssistantMessage:

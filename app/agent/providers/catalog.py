@@ -56,6 +56,7 @@ _CATALOG: list[ProviderEntry] = [
         "description": "Claude API via Anthropic Messages.",
         "kind": "api_key",
         "env_var": "ANTHROPIC_API_KEY",
+        "models_dev_provider_id": "anthropic",
         "credentials": [
             {
                 "name": "ANTHROPIC_API_KEY",
@@ -97,6 +98,7 @@ _CATALOG: list[ProviderEntry] = [
         "description": "Many models, free tiers available.",
         "kind": "api_key",
         "env_var": "OPENROUTER_API_KEY",
+        "models_dev_provider_id": "openrouter",
         "docs_url": "https://openrouter.ai/keys",
     },
     {
@@ -105,6 +107,7 @@ _CATALOG: list[ProviderEntry] = [
         "description": "Z.AI's GLM-5 family.",
         "kind": "api_key",
         "env_var": "ZAI_API_KEY",
+        "models_dev_provider_id": "zai",
         "docs_url": "https://z.ai/manage-apikey/apikey-list",
     },
     {
@@ -113,6 +116,7 @@ _CATALOG: list[ProviderEntry] = [
         "description": "NVIDIA-hosted open models.",
         "kind": "api_key",
         "env_var": "NVIDIA_API_KEY",
+        "models_dev_provider_id": "nvidia",
         "docs_url": "https://build.nvidia.com",
     },
     {
@@ -121,6 +125,7 @@ _CATALOG: list[ProviderEntry] = [
         "description": "xAI's Grok family.",
         "kind": "api_key",
         "env_var": "XAI_API_KEY",
+        "models_dev_provider_id": "xai",
         "docs_url": "https://console.x.ai",
     },
     {
@@ -129,6 +134,7 @@ _CATALOG: list[ProviderEntry] = [
         "description": "DeepSeek's direct API.",
         "kind": "api_key",
         "env_var": "DEEPSEEK_API_KEY",
+        "models_dev_provider_id": "deepseek",
         "docs_url": "https://platform.deepseek.com/api_keys",
     },
     {

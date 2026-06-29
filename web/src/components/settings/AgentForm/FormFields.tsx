@@ -18,7 +18,7 @@ import {
 import { ModelCombobox } from './ModelCombobox'
 import { isBuiltInProfile } from './utils'
 
-const FALLBACK_THINKING_LEVELS = ['none', 'low', 'medium', 'high']
+const FALLBACK_THINKING_LEVELS = ['none']
 
 export function ParseErrorBanner({
   message,
@@ -106,7 +106,7 @@ export function FormFields({
     validValues: validModelIds,
   })
   // Derive thinking levels from the selected model's registry entry.
-  // Fall back to the full list when the model isn't in the registry yet
+  // Fall back to the conservative list when the model isn't in the registry yet
   // (e.g. placeholder entries from the providers list or an unknown model).
   const thinkingLevels = useMemo(() => {
     const entry = currentModelOptions.find((m) => m.id === fm.model)

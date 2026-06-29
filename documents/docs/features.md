@@ -388,6 +388,12 @@ agnostic by design. Deeper doc: [`configuration/providers.md`](./configuration/p
   total prompt input as cold + cache-read + cache-write tokens while preserving
   cached reads as a separate metric. Deeper doc:
   [`configuration/providers.md`](./configuration/providers.md#anthropic).
+- **Budget-based thinking metadata synthesis** `[v1.83.0]` — models whose
+  registry metadata exposes raw `budget_tokens` reasoning support but no named
+  effort levels now surface standard `none/low/medium/high` thinking choices in
+  Settings, with Anthropic runtime mapping those levels to proportional token
+  budgets. Deeper doc:
+  [`configuration/providers.md`](./configuration/providers.md#anthropic).
 - **OAuth subscription support** `[v1.8.0]` — Copilot, Codex, others via the
   built-in OAuth helper.
 - **Codex usage monitor** `[v1.32.0]` — Settings → Providers shows live Codex

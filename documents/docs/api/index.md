@@ -150,7 +150,7 @@ For HTTP OAuth servers, create/update accepts pasted `oauth.client_id` and
 current process environment for those keys, and persists `${...}` references
 in `mcp.json`. Existing unrelated `.env` entries are preserved.
 
-`POST /apply` is the hook the `mcp-installer` skill calls after editing
+`POST /apply` is the hook called after editing
 `mcp.json` directly: it validates the file (422 on parse error before
 any side effect), then reconciles runners. The running team and any
 in-flight turn are not disrupted.

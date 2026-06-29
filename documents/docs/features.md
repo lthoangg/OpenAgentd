@@ -16,7 +16,7 @@ exists. When you ship something new, **add it here first** — slides, README,
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 15 providers. Your keys.
 
-**Latest release:** v1.83.1 · June 29, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.83.1)
+**Latest release:** v1.84.0 · June 29, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.84.0)
 
 ---
 
@@ -464,9 +464,8 @@ Four orthogonal ways to add capability. Deeper docs:
 [`configuration.md`](./configuration.md).
 
 - **MCP servers** `[since v1.0]` — any Model Context Protocol server, hot-reloaded
-  via `POST /api/mcp/apply`. Per-agent scoping. OAuth-backed setup. Includes a
-  bundled MCP installer skill `[v1.8.0]`. Session Settings can enable/disable
-  scoped MCP servers and connect OAuth-backed servers in place `[v1.52.2]`.
+  via `POST /api/mcp/apply`. Per-agent scoping. OAuth-backed setup. Session Settings
+  can enable/disable scoped MCP servers and connect OAuth-backed servers in place `[v1.52.2]`.
 - **Sandboxed UI artifacts** `[v1.36.0]` *(beta)* — tool-produced HTML UI
   resources render as sandboxed sibling chat artifacts. The first producer is
   MCP Apps: MCP tools that declare `_meta.ui.resourceUri` can render `ui://`

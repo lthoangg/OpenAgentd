@@ -30,11 +30,6 @@ from app.agent.schemas.chat import (
 
 ANTHROPIC_API_BASE = "https://api.anthropic.com"
 ANTHROPIC_API_VERSION = "2023-06-01"
-ANTHROPIC_MODELS = [
-    "claude-opus-4-7",
-    "claude-sonnet-4-6",
-    "claude-haiku-4-5",
-]
 
 
 def _resolve_secret(value: str | SecretStr) -> str:
@@ -217,7 +212,7 @@ def _anthropic_tools(tools: list[dict] | None) -> list[dict[str, Any]] | None:
 
 
 def _supports_legacy_sampling(model: str) -> bool:
-    return not any(marker in model for marker in ("-4-5", "-4-6", "-4-7"))
+    return not any(marker in model for marker in ("-4-5", "-4-6", "-4-7", "-4-8"))
 
 
 def _thinking_budget(level: str, max_tokens: int) -> int:

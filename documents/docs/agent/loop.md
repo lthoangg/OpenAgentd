@@ -241,6 +241,26 @@ unrelated hiccups later in the same turn each get the full allowance.
 | `agent_provider_resume` | WARNING | Provider exhausted its retry budget on a transient failure; the loop will retry the same turn after a backoff. |
 | `agent_provider_resume_exhausted` | ERROR | Resume budget exhausted; the failure is wrapped in `ProviderConnectionError` and raised, ending the turn. |
 
+## Max-tokens truncation recovery
+
+When a model hits its output token limit (`finish_reason="max_tokens"` or `"length"`), it is cut off mid-sentence or mid-action. This is especially problematic during tool calls (like writing or patching files) because the JSON payload becomes truncated and malformed, resulting in the tool call being dropped.
+
+The loop handles this by:
+1. **Detecting Truncation:** Checking if `finish_reason` is `"max_tokens"` or `"length"`.
+2. **Identifying Dropped Tool Calls:** The streaming assembler tracks if a partial tool call was dropped due to bad JSON or missing names during truncation (`dropped_tool_calls`).
+3. **Injecting a Recovery Prompt:**
+   - If a tool call was dropped, it appends a `HumanMessage` to the message history informing the agent: *"Error: Your tool call was truncated and could not be executed because you exceeded the maximum output token limit (max_tokens). Please retry by breaking the task into smaller steps, or use a more precise tool (like edit/patch instead of writing/patching a huge block)."*
+   - If it was a text response that got cut off, it appends a `HumanMessage` asking the agent to continue its response from where it left off.
+4. **Continuing the Turn:** The loop continues to the next iteration to let the agent respond/recover immediately.
+
+This allows the agent to self-heal and adapt its behavior (e.g. switching to smaller, more precise edits or writing in chunks) rather than stopping mid-process.
+
+Log events:
+
+| Log event | Level | Meaning |
+|-----------|-------|---------|
+| `agent_response_truncated` | WARNING | The response was truncated by the provider due to output token limits; the loop injects a recovery prompt and continues the turn. |
+
 ### Key log events (retry)
 
 | Log event | Level | Meaning |

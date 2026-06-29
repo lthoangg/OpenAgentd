@@ -365,18 +365,21 @@ class SQLiteCheckpointer(Checkpointer):
                             msg.name,
                         )
                     elif isinstance(msg, HumanMessage):
-                        if msg.is_summary:
-                            # Me save summary HumanMessages — route handler only saves real user messages
+                        if msg.is_summary or (
+                            msg.extra and msg.extra.get("hidden_from_user")
+                        ):
+                            # Me save summary or hidden HumanMessages (e.g. truncation recovery)
                             row = await save_message(
                                 db,
                                 UUID(sid),
                                 msg,
-                                is_summary=True,
+                                is_summary=msg.is_summary,
                                 exclude_from_context=msg.exclude_from_context,
+                                extra=msg.extra,
                             )
                             msg.db_id = row.id
                             logger.debug(
-                                "checkpointer_saved_summary session_id={} db_id={}",
+                                "checkpointer_saved_hidden_human session_id={} db_id={}",
                                 sid,
                                 row.id,
                             )

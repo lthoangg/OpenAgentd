@@ -317,6 +317,39 @@ class TestSQLiteCheckpointerSync:
         assert not any(m.content == "hello" for m in messages)
 
     @pytest.mark.asyncio
+    async def test_sync_persists_hidden_human_messages_and_filters_them(self):
+        """HumanMessage with hidden_from_user extra is persisted, hidden from user view, but visible to LLM."""
+        import app.core.db as _db
+        from app.services.chat_service import get_messages, get_messages_for_llm
+
+        sid = uuid.uuid7()
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                await _make_session(db, sid)
+
+        cp = SQLiteCheckpointer(_db.async_session_factory)
+        ctx = _ctx(str(sid))
+        state = AgentState(
+            messages=[
+                HumanMessage(
+                    content="hidden error recovery msg",
+                    extra={"hidden_from_user": True},
+                ),
+            ]
+        )
+
+        await cp.sync(ctx, state)
+
+        async with _db.async_session_factory() as db:
+            user_messages = await get_messages(db, sid)
+            llm_messages = await get_messages_for_llm(db, sid)
+
+        # The hidden message must not be in the user view
+        assert not any(m.content == "hidden error recovery msg" for m in user_messages)
+        # The hidden message must be in the LLM view
+        assert any(m.content == "hidden error recovery msg" for m in llm_messages)
+
+    @pytest.mark.asyncio
     async def test_sync_idempotent_no_duplicates(self):
         """Calling sync twice with same state does not create duplicate rows."""
         import app.core.db as _db

@@ -519,6 +519,35 @@ class Agent(Generic[TContext]):
                     )
                     continue
 
+                dropped_tcs = (assistant_msg.extra or {}).get("dropped_tool_calls")
+                if _finish_reason in ("max_tokens", "length"):
+                    logger.warning(
+                        "agent_response_truncated agent={} iteration={} dropped_tcs={}",
+                        self.name,
+                        iteration,
+                        dropped_tcs,
+                    )
+                    from app.agent.schemas.chat import HumanMessage
+
+                    if dropped_tcs:
+                        content = (
+                            "Error: Your tool call was truncated and could not be executed "
+                            "because you exceeded the maximum output token limit (max_tokens). "
+                            "Please retry by breaking the task into smaller steps, or use a "
+                            "more precise tool (like edit/patch instead of writing/patching a huge block)."
+                        )
+                    else:
+                        content = (
+                            "Error: Your response was cut off because you exceeded the maximum "
+                            "output token limit (max_tokens). Please continue your response from where you left off."
+                        )
+                    recovery_msg = HumanMessage(
+                        content=content, extra={"hidden_from_user": True}
+                    )
+                    messages.append(recovery_msg)
+                    await self._sync(checkpointer, ctx, state)
+                    continue
+
                 logger.info(
                     "agent_iteration_done agent={} iteration={} action={}",
                     self.name,

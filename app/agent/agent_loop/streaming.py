@@ -303,6 +303,7 @@ async def stream_and_assemble(
     # name (OpenAI Responses only emits it on the final ``done`` event) or
     # invalid JSON args. Empty ``arguments`` is a valid no-arg call.
     tc_list: list[ToolCall] = []
+    dropped_tool_calls: list[dict] = []
     for i in sorted(tool_calls_buffer):
         buf = tool_calls_buffer[i]
         fn_name = buf["function"]["name"]
@@ -315,6 +316,7 @@ async def stream_and_assemble(
                 last_finish_reason,
                 fn_args[:80],
             )
+            dropped_tool_calls.append({"index": i, "reason": "missing_name"})
             continue
         if fn_args:
             try:
@@ -331,6 +333,14 @@ async def stream_and_assemble(
                     fn_args[-120:],
                     exc,
                 )
+                dropped_tool_calls.append(
+                    {
+                        "index": i,
+                        "reason": "bad_json",
+                        "name": fn_name,
+                        "arguments_prefix": fn_args[:200],
+                    }
+                )
                 continue
         tc_list.append(ToolCall(**buf))
     # Me attach usage to `extra` immediately so `wrap_model_call` hooks
@@ -345,6 +355,9 @@ async def stream_and_assemble(
     if last_finish_reason:
         extra = extra or {}
         extra["finish_reason"] = last_finish_reason
+    if dropped_tool_calls:
+        extra = extra or {}
+        extra["dropped_tool_calls"] = dropped_tool_calls
     if reasoning_signature:
         extra = extra or {}
         extra["reasoning_signature"] = reasoning_signature

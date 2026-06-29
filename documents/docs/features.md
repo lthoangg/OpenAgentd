@@ -214,6 +214,11 @@ spawns specialist members on demand. Deeper docs: [`agent/teams.md`](./agent/tea
   `ConnectError`), the loop resumes the same turn from where it left off
   instead of dropping the agent after a tool call. Bounded and interrupt-aware.
   See [`agent/loop.md`](./agent/loop.md#provider-timeout-resume).
+- **Automatic max-tokens truncation recovery** `[v1.87.0]` — when a provider
+  hits the output token limit (`finish_reason="max_tokens"` or `"length"`), the
+  loop automatically injects a recovery message (requesting a continuation for
+  text, or advising surgical/smaller steps for truncated/malformed tool calls)
+  and continues the turn instead of stopping mid-process.
 - **Queued follow-up messages** `[v1.12.0, v1.14.0]` — send another message
   while the agent is still replying; it's queued and dispatched in order. Long
   queued messages are collapsible while a response runs `[v1.22.0]`. Queued

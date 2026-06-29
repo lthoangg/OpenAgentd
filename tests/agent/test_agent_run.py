@@ -2026,3 +2026,87 @@ async def test_interrupt_cancels_some_tools_keeps_completed():
     by_name = {m.name: m.content for m in tool_msgs}
     assert by_name["fast_tool"] == "fast result"
     assert by_name["slow_tool"] == "Cancelled by user."
+
+
+async def test_tool_call_truncated_by_max_tokens():
+    """Verify that hitting max_tokens during a tool call triggers a recovery prompt."""
+    truncated_tool_chunk = ChatCompletionChunk(
+        id="c1",
+        created=0,
+        model="m",
+        choices=[
+            ChatCompletionChunkChoice(
+                index=0,
+                delta=ChatCompletionDelta(
+                    tool_calls=[
+                        ToolCallDelta(
+                            index=0,
+                            id="call_1",
+                            function=FunctionCallDelta(
+                                name="write_file",
+                                arguments='{"content": "extremely long content that gets cut off',
+                            ),
+                        )
+                    ]
+                ),
+                finish_reason="max_tokens",
+            )
+        ],
+    )
+    recovery_response = make_text_chunk("I will write it in chunks instead.")
+
+    def write_file(content: str) -> str:
+        return "written"
+
+    provider = MockProvider([[truncated_tool_chunk], [recovery_response]])
+    agent = Agent(name="bot", llm_provider=provider, tools=[Tool(write_file)])
+
+    msgs = await agent.run([HumanMessage(content="write file")])
+
+    # The conversation should contain:
+    # 1. The original HumanMessage
+    # 2. The AssistantMessage with the truncated content (and dropped tool calls)
+    # 3. The injected HumanMessage recovery prompt
+    # 4. The final AssistantMessage
+    assert len(msgs) == 4
+    assert isinstance(msgs[0], HumanMessage)
+    assert isinstance(msgs[1], AssistantMessage)
+    assert isinstance(msgs[2], HumanMessage)
+    assert msgs[2].extra == {"hidden_from_user": True}
+    assert "truncated and could not be executed" in msgs[2].content
+    assert isinstance(msgs[3], AssistantMessage)
+    assert msgs[3].content == "I will write it in chunks instead."
+
+
+async def test_text_response_truncated_by_max_tokens():
+    """Verify that hitting max_tokens during a text response triggers a continuation prompt."""
+    truncated_text_chunk = ChatCompletionChunk(
+        id="c1",
+        created=0,
+        model="m",
+        choices=[
+            ChatCompletionChunkChoice(
+                index=0,
+                delta=ChatCompletionDelta(
+                    content="This is a long response that got cut off ",
+                ),
+                finish_reason="max_tokens",
+            )
+        ],
+    )
+    recovery_response = make_text_chunk("and here is the rest of the text.")
+
+    provider = MockProvider([[truncated_text_chunk], [recovery_response]])
+    agent = Agent(name="bot", llm_provider=provider, tools=[])
+
+    msgs = await agent.run([HumanMessage(content="explain something long")])
+
+    assert len(msgs) == 4
+    assert isinstance(msgs[0], HumanMessage)
+    assert isinstance(msgs[1], AssistantMessage)
+    assert msgs[1].content == "This is a long response that got cut off "
+    assert isinstance(msgs[2], HumanMessage)
+    assert msgs[2].extra == {"hidden_from_user": True}
+    assert "response was cut off because you exceeded the maximum" in msgs[2].content
+    assert isinstance(msgs[3], AssistantMessage)
+    assert msgs[3].content == "and here is the rest of the text."

@@ -52,6 +52,18 @@ async function dispatchWheelEvent(scrollDiv: HTMLDivElement, deltaY: number) {
   await waitForScrollUpdate()
 }
 
+async function dispatchTouchEvent(scrollDiv: HTMLDivElement, type: "touchstart" | "touchmove" | "touchend", clientY: number) {
+  await act(async () => {
+    const touch = { clientY, target: scrollDiv }
+    const event = new TouchEvent(type, {
+      bubbles: true,
+      touches: [touch as unknown as Touch],
+    })
+    scrollDiv.dispatchEvent(event)
+  })
+  await waitForScrollUpdate()
+}
+
 // ── tests ────────────────────────────────────────────────────────────────────
 
 describe("AgentView — scroll-to-bottom button", () => {
@@ -261,6 +273,112 @@ describe("AgentView — scroll-to-bottom button", () => {
     })
 
     expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
+  })
+
+  it("maintains pinned state and scrolls to bottom when viewport dimensions change", async () => {
+    const { container } = renderStream({
+      blocks: [makeTextBlock("b1", "Hello")],
+      currentBlocks: [],
+      isWorking: false,
+    })
+
+    const scrollDiv = container.querySelector(".overflow-y-auto") as HTMLDivElement
+    expect(scrollDiv).toBeTruthy()
+
+    // 1. Initial dimensions
+    Object.defineProperty(scrollDiv, "scrollHeight", { value: 600, configurable: true, writable: true })
+    Object.defineProperty(scrollDiv, "clientHeight", { value: 600, configurable: true, writable: true })
+    Object.defineProperty(scrollDiv, "scrollTop", { value: 0, configurable: true, writable: true })
+
+    await dispatchScrollEvent(scrollDiv)
+
+    // 2. Shrink height (simulate keyboard opening)
+    Object.defineProperty(scrollDiv, "scrollHeight", { value: 600, configurable: true, writable: true })
+    Object.defineProperty(scrollDiv, "clientHeight", { value: 300, configurable: true, writable: true })
+
+    await dispatchScrollEvent(scrollDiv)
+
+    // Should have scrolled to the bottom automatically and not shown scroll button
+    expect(scrollDiv.scrollTop).toBe(600)
+    const btn = container.querySelector('button[aria-label="Scroll to bottom"]')
+    expect(btn).toBeNull()
+  })
+
+  it("detaches when dragging finger down (scrolling up) past TOUCH_DETACH_THRESHOLD", async () => {
+    const { container } = renderStream({
+      blocks: [makeTextBlock("b1", "Hello world hello world hello world hello world")],
+      currentBlocks: [],
+      isWorking: true,
+    })
+
+    const scrollDiv = container.querySelector(".overflow-y-auto") as HTMLDivElement
+    Object.defineProperty(scrollDiv, "scrollHeight", { value: 1000, configurable: true, writable: true })
+    Object.defineProperty(scrollDiv, "scrollTop", { value: 500, configurable: true, writable: true })
+    Object.defineProperty(scrollDiv, "clientHeight", { value: 500, configurable: true, writable: true })
+
+    // Touch start at 100px
+    await dispatchTouchEvent(scrollDiv, "touchstart", 100)
+
+    // Touch move to 130px (dragged down by 30px > 20px threshold, which scrolls content up)
+    await dispatchTouchEvent(scrollDiv, "touchmove", 130)
+
+    const btn = container.querySelector('button[aria-label="Scroll to bottom"]')
+    expect(btn).toBeTruthy()
+  })
+
+  it("does not detach when finger wobbles within TOUCH_DETACH_THRESHOLD", async () => {
+    const { container } = renderStream({
+      blocks: [makeTextBlock("b1", "Hello world hello world hello world hello world")],
+      currentBlocks: [],
+      isWorking: true,
+    })
+
+    const scrollDiv = container.querySelector(".overflow-y-auto") as HTMLDivElement
+    Object.defineProperty(scrollDiv, "scrollHeight", { value: 1000, configurable: true, writable: true })
+    Object.defineProperty(scrollDiv, "scrollTop", { value: 500, configurable: true, writable: true })
+    Object.defineProperty(scrollDiv, "clientHeight", { value: 500, configurable: true, writable: true })
+
+    // Touch start at 100px
+    await dispatchTouchEvent(scrollDiv, "touchstart", 100)
+
+    // Touch move to 110px (dragged down by 10px < 20px threshold)
+    await dispatchTouchEvent(scrollDiv, "touchmove", 110)
+
+    const btn = container.querySelector('button[aria-label="Scroll to bottom"]')
+    expect(btn).toBeNull()
+  })
+
+  it("automatically re-pins and scrolls to bottom when a new user message is added", async () => {
+    // Start unpinned
+    const { container, rerender } = renderStream({
+      blocks: [makeTextBlock("b1", "Hello world")],
+      currentBlocks: [],
+      isWorking: false,
+    })
+
+    const scrollDiv = container.querySelector(".overflow-y-auto") as HTMLDivElement
+    Object.defineProperty(scrollDiv, "scrollHeight", { value: 1000, configurable: true, writable: true })
+    Object.defineProperty(scrollDiv, "scrollTop", { value: 100, configurable: true, writable: true })
+    Object.defineProperty(scrollDiv, "clientHeight", { value: 500, configurable: true, writable: true })
+
+    // User scrolled up
+    await dispatchScrollEvent(scrollDiv)
+    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
+
+    // User sends a new message (adds a user block)
+    const updatedBlocks = [
+      makeTextBlock("b1", "Hello world"),
+      makeUserBlock("u1", "My new message"),
+    ]
+
+    await act(async () => {
+      rerender(<AgentView blocks={updatedBlocks} currentBlocks={[]} isWorking={true} />)
+    })
+    await waitForScrollUpdate()
+
+    // Should have re-pinned and scrolled to bottom
+    const btn = container.querySelector('button[aria-label="Scroll to bottom"]')
+    expect(btn).toBeNull()
   })
 })
 

@@ -346,14 +346,22 @@ export function CodingWorkspacePanel({
   }, [graph])
 
   const sentinelRef = useRef<HTMLDivElement | null>(null)
+  const hasNextPageRef = useRef(gitHistory.hasNextPage)
+  const isFetchingNextPageRef = useRef(gitHistory.isFetchingNextPage)
+  const fetchNextPageRef = useRef(gitHistory.fetchNextPage)
+  useEffect(() => {
+    hasNextPageRef.current = gitHistory.hasNextPage
+    isFetchingNextPageRef.current = gitHistory.isFetchingNextPage
+    fetchNextPageRef.current = gitHistory.fetchNextPage
+  })
 
   useEffect(() => {
-    if (!sentinelRef.current || !gitHistory.hasNextPage) return
+    if (!sentinelRef.current || !hasNextPageRef.current) return
 
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting && gitHistory.hasNextPage && !gitHistory.isFetchingNextPage) {
-          void gitHistory.fetchNextPage()
+        if (entries[0].isIntersecting && hasNextPageRef.current && !isFetchingNextPageRef.current) {
+          void fetchNextPageRef.current()
         }
       },
       { threshold: 0.1 }
@@ -364,7 +372,7 @@ export function CodingWorkspacePanel({
     return () => {
       observer.unobserve(el)
     }
-  }, [gitHistory, subTab])
+  }, [subTab])
 
   const commitDiff = useQuery({
     queryKey: queryKeys.coding.commitDiff(workspace, expandedCommitSha ?? ''),
@@ -438,7 +446,7 @@ export function CodingWorkspacePanel({
     if (!card) return
     pendingScrollShaRef.current = null
     card.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-  })
+  }, [subTab, commits])
 
 
   const resizable = useResizableWidth({

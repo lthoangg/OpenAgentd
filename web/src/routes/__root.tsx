@@ -1,5 +1,5 @@
 import { QueryClientProvider } from '@tanstack/react-query'
-import { Suspense, useEffect } from 'react'
+import { Suspense, useEffect, useRef } from 'react'
 // Temporarily disabled for clean recordings — re-enable when done.
 // import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { Link, Outlet, useLocation, useNavigate } from '@tanstack/react-router'
@@ -22,17 +22,19 @@ export function Root() {
   const openSettings = useSettingsStore((s) => s.openSettings)
   const closeSettings = useSettingsStore((s) => s.closeSettings)
   const settingsOpen = useSettingsStore((s) => s.open)
+  const settingsOpenRef = useRef(settingsOpen)
+  useEffect(() => { settingsOpenRef.current = settingsOpen }, [settingsOpen])
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.ctrlKey && !e.metaKey && e.key === '.') {
         e.preventDefault()
-        if (settingsOpen) closeSettings()
+        if (settingsOpenRef.current) closeSettings()
         else openSettings()
       }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [settingsOpen, openSettings, closeSettings])
+  }, [openSettings, closeSettings])
   // Theme application is handled by `initTheme()` in main.tsx and the
   // inline pre-paint script in index.html. Do not force `.dark` here —
   // it would override the user's preference.

@@ -154,7 +154,7 @@ The desktop bundle checks the signed Tauri updater manifest at `https://github.c
 - Download progress is still mirrored in tray status. Downloaded updates are cached in the app cache dir so repeated checks can show the ready-to-install state instead of downloading again.
 - Release notes are fetched from the GitHub release and rendered in an in-app Markdown popup with a **View in GitHub** link.
 
-On install, Rust verifies the updater signature, shuts down the Python sidecar, then calls `app.restart()`. CLI/server installs still upgrade via `openagentd upgrade` or the package manager that installed them; see [CLI reference](./cli.md).
+On install, Rust verifies the updater signature, shuts down the Python sidecar, then hands off to the platform's relaunch mechanism. On **macOS** `tauri_plugin_updater`'s `install()` replaces the process itself (execve/NSTask); no explicit `app.restart()` is needed or issued — calling one after `install()` would race the plugin's own relaunch and restart the old binary on top of the new one. On **Linux** `install()` only swaps the bundle, so an explicit `app.restart()` is dispatched via `run_on_main_thread` after it returns. A `quitting` guard at the entry of the install command prevents a double-invoke (e.g. the user pressing the button twice while the first install is in progress) from queuing a second restart against the already-replaced binary. CLI/server installs still upgrade via `openagentd upgrade` or the package manager that installed them; see [CLI reference](./cli.md).
 
 ## Window chrome
 

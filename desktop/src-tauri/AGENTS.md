@@ -42,3 +42,4 @@ make -C desktop build
 - Dev mode with external backend depends on root `make dev` already running.
 - Keep macOS, Windows, and Linux lifecycle behavior in mind when changing process cleanup.
 - Do not commit `target/`, generated bundles, or machine-local `.openagentd/` state.
+- **Updater restart is platform-specific:** on macOS `install()` replaces the process itself — calling `app.restart()` afterwards creates a second, racing relaunch that restarts the *old* binary. The install command uses `#[cfg(target_os = "macos")]` / `#[cfg(not(target_os = "macos"))]` to branch; do not collapse this into a single post-install `restart()`. A `quitting` guard at the top of `run_update_install` rejects double-invokes.

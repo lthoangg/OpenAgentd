@@ -85,6 +85,7 @@ mobile/src-tauri/
 | CSP blocking a resource | `tauri.conf.json` → `app.security.csp` (update all config variants) |
 | Permission denied in webview | `capabilities/` — add the required permission set |
 | Auto-update not triggering | Updater endpoint URL, `pubkey`, `createUpdaterArtifacts: true` in production config |
+| Update installs but app restarts at old version / user must quit-and-reopen | On macOS `install()` replaces the process itself — a subsequent `app.restart()` call races the plugin's own relaunch and wins, reopening the old binary. Check `run_update_install` for a post-install `restart()` on macOS. Also check for double-invoke: a second button press while the first install is in flight causes an extra restart. Guard with the `quitting` flag at entry. |
 | iOS signing error | `mobile/ios-team.txt` (git-ignored) must contain valid Apple team ID |
 | Process not cleaned up on quit | `src/main.rs` `RunEvent::ExitRequested` / `WindowEvent::CloseRequested` handlers |
 

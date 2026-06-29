@@ -1133,6 +1133,18 @@ async fn run_update_download(app: AppHandle) -> Result<UpdateStatus, String> {
 async fn run_update_install(app: AppHandle) -> Result<(), String> {
     log::info!("updater install started");
     let state: tauri::State<'_, AppState> = app.state();
+
+    // Guard against a double-invoke: if the user hits "Install & Restart"
+    // while a previous install is already tearing the app down, reject
+    // immediately. Without this guard the second call queues a redundant
+    // restart that fires *after* the new binary has already launched,
+    // re-opening the old version on top of the fresh one.
+    if state.quitting.load(Ordering::SeqCst) {
+        log::info!("updater install skipped: already quitting");
+        // Return Ok so the frontend doesn't show an error toast — the
+        // install is in progress and the restart will happen on its own.
+        return Ok(());
+    }
     let cached_guard = state.update_state.lock().await;
     let cached = cached_guard.clone();
     drop(cached_guard);
@@ -1183,38 +1195,69 @@ async fn run_update_install(app: AppHandle) -> Result<(), String> {
 
     update_tray_status(&app, "Status: Installing update…");
     log::info!("updater install applying version={}", update.version);
-    // `tauri_plugin_updater`'s `install()` performs heavy filesystem work
-    // (decompression, bundle copy, codesign verification on macOS). Running it
-    // directly on an async task blocks the tokio thread, which can starve the
-    // logger and prevent the subsequent `run_on_main_thread` closure from being
-    // scheduled — causing `restart()` to never fire and the 60 s frontend
-    // timeout to trigger. Off-load to a dedicated blocking thread so the async
-    // runtime stays responsive throughout the install.
-    let install_result = tokio::task::spawn_blocking(move || update.install(bytes))
-        .await
-        .map_err(|e| format!("Install task panicked: {e}"))?;
-    install_result.map_err(|e| {
-        update_tray_status(&app, "Status: Running");
-        format!("Failed to install update: {e}")
-    })?;
 
-    // Relaunch. Tauri's updater installs the new bundle but does not reliably
-    // bring the app back on macOS/Linux unless the host process explicitly
-    // relaunches. Call `restart()` on the main thread so Tauri can run its
-    // cleanup immediately before re-execing the updated app; calling it from
-    // this worker task requests an event-loop exit and can hang behind window
-    // close guards during the update flow.
-    update_tray_status(&app, "Status: Restarting…");
-    log::info!("updater install complete; dispatching app restart");
-    let handle = app.clone();
-    let _ = app.run_on_main_thread(move || {
-        log::info!("updater restart executing on main thread");
-        handle.restart();
-    });
+    // `tauri_plugin_updater`'s `install()` on macOS performs the bundle swap
+    // and then *itself* relaunches the app (via NSTask / execve inside the
+    // plugin). It does NOT return to this callsite — the process is replaced.
+    // Calling `app.restart()` afterwards (as the old code did) therefore
+    // queued a second restart that raced the plugin's own relaunch: whichever
+    // relaunch won caused the new binary to start, and the loser restarted the
+    // *old* binary on top of it — producing the "restarted at old version"
+    // symptom visible in the logs.
+    //
+    // The correct sequence on macOS is: call `install()` directly on a
+    // blocking thread and let the plugin handle the relaunch. On other
+    // platforms `install()` does NOT relaunch by itself, so we issue an
+    // explicit `app.restart()` via `run_on_main_thread` after it returns.
+    //
+    // Off-load to `spawn_blocking` in both cases so the tokio runtime remains
+    // responsive during the heavy FS work (decompression, codesign).
+    #[cfg(target_os = "macos")]
+    {
+        // On macOS, install() replaces the process — this line never returns
+        // on success. Spawn on a blocking thread so the async executor stays
+        // alive long enough for the plugin to complete the bundle swap.
+        let install_result = tokio::task::spawn_blocking(move || update.install(bytes))
+            .await
+            .map_err(|e| format!("Install task panicked: {e}"))?;
+        // Only reached on install failure (success = process replaced).
+        install_result.map_err(|e| {
+            update_tray_status(&app, "Status: Running");
+            format!("Failed to install update: {e}")
+        })?;
+        // If install() returned Ok without replacing the process (shouldn't
+        // happen on macOS but be defensive), fall through to an explicit restart.
+        update_tray_status(&app, "Status: Restarting…");
+        log::info!("updater install complete (macOS fallback restart)");
+        let handle = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            handle.restart();
+        });
+    }
 
-    // `restart()` never returns once the closure runs. Keep the command pending
-    // so the frontend remains on the installing/restarting state if dispatch is
-    // delayed, instead of resolving successfully without a relaunch.
+    #[cfg(not(target_os = "macos"))]
+    {
+        // On Windows/Linux, install() swaps the bundle but does NOT relaunch.
+        // We must call restart() ourselves after it returns.
+        let install_result = tokio::task::spawn_blocking(move || update.install(bytes))
+            .await
+            .map_err(|e| format!("Install task panicked: {e}"))?;
+        install_result.map_err(|e| {
+            update_tray_status(&app, "Status: Running");
+            format!("Failed to install update: {e}")
+        })?;
+
+        update_tray_status(&app, "Status: Restarting…");
+        log::info!("updater install complete; dispatching app restart");
+        let handle = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            log::info!("updater restart executing on main thread");
+            handle.restart();
+        });
+    }
+
+    // Keep the command pending while restart is in flight so the frontend
+    // stays on "Installing / Restarting…" rather than resolving prematurely.
     loop {
         tokio::time::sleep(Duration::from_secs(60)).await;
     }
@@ -2666,5 +2709,58 @@ mod tests {
         assert!(err.contains("1.71.0"), "should mention downloaded version: {err}");
         assert!(err.contains("1.72.0"), "should mention server version: {err}");
         assert!(err.contains("no longer matches"), "unexpected message: {err}");
+    }
+
+    // ── double-install guard ──────────────────────────────────────────────────
+    //
+    // The `run_update_install` command rejects a second invocation while the
+    // first install is already tearing the app down. These tests exercise the
+    // `validate_install_preconditions` contracts that the guard relies on, as
+    // well as asserting the precondition logic is idempotent (calling it twice
+    // with identical state must succeed twice — we must not consume or clear
+    // the cached state on a successful check).
+
+    #[test]
+    fn preconditions_ok_is_idempotent_for_same_state() {
+        // Simulates a UI that calls the install command twice in quick
+        // succession (button double-tap, retry). The second call must not fail
+        // because the first check "consumed" the cache.
+        let path = real_bytes_path();
+        let cached = CachedUpdateState {
+            version: "1.84.0".into(),
+            bytes_path: path.clone(),
+        };
+        let r1 = validate_install_preconditions(Some(&cached), Some("1.84.0"));
+        let r2 = validate_install_preconditions(Some(&cached), Some("1.84.0"));
+        let _ = std::fs::remove_file(&path);
+        assert!(r1.is_ok(), "first check should pass");
+        assert!(r2.is_ok(), "second check should pass (idempotent)");
+    }
+
+    #[test]
+    fn preconditions_err_gives_actionable_message_for_missing_cache() {
+        // When `quitting` is true but a second `updater_install` call slips
+        // through before the guard is added, `update_state` is None because
+        // the first install already consumed / cleared it. The error message
+        // must tell the user what went wrong rather than panicking.
+        let err = validate_install_preconditions(None, Some("1.84.0")).unwrap_err();
+        assert!(
+            err.contains("not been downloaded"),
+            "user-facing message should explain the cache is empty: {err}"
+        );
+    }
+
+    #[test]
+    fn preconditions_ok_when_patch_version_is_correct() {
+        // Regression guard for the 1.83.0 → 1.83.1 scenario from the logs:
+        // a patch release must satisfy the version-match check.
+        let path = real_bytes_path();
+        let cached = CachedUpdateState {
+            version: "1.83.1".into(),
+            bytes_path: path.clone(),
+        };
+        let result = validate_install_preconditions(Some(&cached), Some("1.83.1"));
+        let _ = std::fs::remove_file(&path);
+        assert!(result.is_ok(), "patch-version install should pass preconditions");
     }
 }

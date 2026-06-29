@@ -506,8 +506,21 @@ class Agent(Generic[TContext]):
 
             # Me check sleep sentinel before deciding whether to continue
             _is_sleep = (assistant_msg.content or "").strip() in ("<sleep>", "[sleep]")
+            _finish_reason = (assistant_msg.extra or {}).get("finish_reason")
 
             if not tc_list:
+                # pause_turn: Anthropic's server-side tool loop hit its
+                # iteration limit mid-turn. The correct response is to append
+                # the assistant message back to the conversation and call again
+                # so the model can continue from where it paused.
+                if _finish_reason == "pause_turn":
+                    logger.info(
+                        "agent_pause_turn_continue agent={} iteration={}",
+                        self.name,
+                        iteration,
+                    )
+                    continue
+
                 logger.info(
                     "agent_iteration_done agent={} iteration={} action={}",
                     self.name,

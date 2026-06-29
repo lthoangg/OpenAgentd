@@ -169,6 +169,7 @@ async def stream_and_assemble(
     reasoning = ""
     tool_calls_buffer: dict[int, dict] = {}
     last_usage: Usage | None = None
+    last_finish_reason: str | None = None
 
     # Prepend system prompt and merge any [user, user] adjacency for the
     # wire — DB keeps adjacent user rows verbatim.
@@ -214,6 +215,7 @@ async def stream_and_assemble(
             full_content = ""
             reasoning = ""
             tool_calls_buffer = {}
+            last_finish_reason = None
             continue
 
         for hook in hooks:
@@ -225,7 +227,10 @@ async def stream_and_assemble(
         if not chunk.choices:
             continue
 
-        delta = chunk.choices[0].delta
+        choice = chunk.choices[0]
+        if choice.finish_reason:
+            last_finish_reason = choice.finish_reason
+        delta = choice.delta
 
         if delta.reasoning_content:
             reasoning += delta.reasoning_content
@@ -331,6 +336,9 @@ async def stream_and_assemble(
     if last_usage is not None:
         model_id = state.metadata.get("effective_model") or primary_label
         extra = {"usage": usage_to_dict(last_usage, model_id)}
+    if last_finish_reason:
+        extra = extra or {}
+        extra["finish_reason"] = last_finish_reason
 
     msg = AssistantMessage(
         content=full_content or None,

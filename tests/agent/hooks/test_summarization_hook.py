@@ -1875,3 +1875,475 @@ async def test_duplicate_skill_tool_messages_compact_after_first_load(mock_provi
     assert first_result.exclude_from_context is False
     assert duplicate_asst.exclude_from_context is True
     assert duplicate_result.exclude_from_context is True
+
+
+# ---------------------------------------------------------------------------
+# support_interrupt=False — defer summarisation to user-turn boundary
+# ---------------------------------------------------------------------------
+
+
+def _make_hook_no_interrupt(mock_provider, threshold: int = 1) -> SummarizationHook:
+    return SummarizationHook(
+        llm_provider=mock_provider,
+        summary_prompt="test summary prompt",
+        prompt_token_threshold=threshold,
+        support_interrupt=False,
+    )
+
+
+@pytest.mark.asyncio
+async def test_no_interrupt_skips_summarisation_mid_loop(mock_provider):
+    """When support_interrupt=False, summarisation must NOT fire mid-loop
+    (last visible message is an AssistantMessage or ToolMessage)."""
+    hook = _make_hook_no_interrupt(mock_provider)
+    ctx = _make_ctx()
+
+    # Simulate mid-loop state: last visible message is a ToolMessage
+    state = AgentState(
+        messages=[
+            HumanMessage(content="do the thing"),
+            AssistantMessage(
+                content=None,
+                tool_calls=[
+                    ToolCall(
+                        id="call_1",
+                        function=FunctionCall(
+                            name="shell", arguments='{"command":"ls"}'
+                        ),
+                    )
+                ],
+            ),
+            ToolMessage(tool_call_id="call_1", name="shell", content="file.txt"),
+        ],
+        usage=UsageInfo(last_prompt_tokens=9999),
+    )
+
+    result = await hook.before_model(ctx, state)
+    assert result is None
+
+    # wrap_model_call should call handler directly (no pending summary)
+    called = []
+
+    async def _handler(req: ModelRequest) -> AssistantMessage:
+        called.append(True)
+        return AssistantMessage(content="done")
+
+    await hook.wrap_model_call(
+        ctx,
+        state,
+        ModelRequest(messages=tuple(state.messages_for_llm), system_prompt=""),
+        _handler,
+    )
+    assert called, "handler should have been called (no summary pending)"
+    mock_provider.stream.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_no_interrupt_skips_summarisation_after_assistant_reply(mock_provider):
+    """When support_interrupt=False and the last visible message is an
+    AssistantMessage (content-only, no tool calls), summarisation is deferred."""
+    hook = _make_hook_no_interrupt(mock_provider)
+    ctx = _make_ctx()
+
+    state = AgentState(
+        messages=[
+            HumanMessage(content="hello"),
+            AssistantMessage(content="I am working on it..."),
+        ],
+        usage=UsageInfo(last_prompt_tokens=9999),
+    )
+
+    result = await hook.before_model(ctx, state)
+    assert result is None
+    mock_provider.stream.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_no_interrupt_fires_at_user_turn_boundary(mock_provider):
+    """When support_interrupt=False, summarisation fires normally when the last
+    visible message is a HumanMessage (start of a new user turn)."""
+    stream_calls: list[int] = []
+
+    async def _stream(messages, **__):
+        stream_calls.append(1)
+        chunk = MagicMock()
+        chunk.choices = [MagicMock()]
+        chunk.choices[0].delta.content = "Compact summary."
+        chunk.usage = None
+        yield chunk
+
+    mock_provider.stream = _stream
+
+    hook = _make_hook_no_interrupt(mock_provider, threshold=1)
+    ctx = _make_ctx()
+
+    # Last visible message is a HumanMessage → user-turn boundary
+    state = AgentState(
+        messages=[
+            HumanMessage(content="earlier message"),
+            AssistantMessage(content="earlier reply"),
+            HumanMessage(content="new user message"),
+        ],
+        usage=UsageInfo(last_prompt_tokens=9999),
+    )
+
+    await hook.before_model(ctx, state)
+    await hook.wrap_model_call(
+        ctx,
+        state,
+        ModelRequest(messages=tuple(state.messages_for_llm), system_prompt=""),
+        _noop_model_handler,
+    )
+
+    assert len(stream_calls) == 1, "summarisation LLM should have been called once"
+
+
+@pytest.mark.asyncio
+async def test_no_interrupt_fires_at_turn_boundary_empty_messages(mock_provider):
+    """When support_interrupt=False and messages list is empty, summarisation
+    is not deferred (empty is treated as a turn boundary).  The hook proceeds
+    to _summarise but returns early because there is nothing to compact —
+    the pending_summary path fires (no mid-loop deferral log emitted)."""
+    hook = _make_hook_no_interrupt(mock_provider, threshold=1)
+    ctx = _make_ctx()
+
+    state = AgentState(
+        messages=[],
+        usage=UsageInfo(last_prompt_tokens=9999),
+    )
+
+    # before_model should set pending_summary (not defer), returning None
+    result = await hook.before_model(ctx, state)
+    assert result is None
+    # The summary was triggered (pending set), not deferred
+    assert hook._pending_summary is not None
+
+
+@pytest.mark.asyncio
+async def test_no_interrupt_force_flag_overrides_deferral(mock_provider):
+    """force_summarization=True bypasses the support_interrupt deferral guard."""
+    stream_calls: list[int] = []
+
+    async def _stream(messages, **__):
+        stream_calls.append(1)
+        chunk = MagicMock()
+        chunk.choices = [MagicMock()]
+        chunk.choices[0].delta.content = "Forced summary."
+        chunk.usage = None
+        yield chunk
+
+    mock_provider.stream = _stream
+
+    hook = _make_hook_no_interrupt(mock_provider, threshold=1)
+    ctx = _make_ctx()
+
+    # Mid-loop state (last message is ToolMessage), but force=True overrides
+    state = AgentState(
+        messages=[
+            HumanMessage(content="do the thing"),
+            AssistantMessage(
+                content=None,
+                tool_calls=[
+                    ToolCall(
+                        id="call_f",
+                        function=FunctionCall(
+                            name="shell", arguments='{"command":"ls"}'
+                        ),
+                    )
+                ],
+            ),
+            ToolMessage(tool_call_id="call_f", name="shell", content="result"),
+        ],
+        usage=UsageInfo(last_prompt_tokens=9999),
+    )
+    state.metadata["force_summarization"] = True
+
+    await hook.before_model(ctx, state)
+    await hook.wrap_model_call(
+        ctx,
+        state,
+        ModelRequest(messages=tuple(state.messages_for_llm), system_prompt=""),
+        _noop_model_handler,
+    )
+
+    assert len(stream_calls) == 1, "force_summarization should override deferral"
+
+
+@pytest.mark.asyncio
+async def test_support_interrupt_true_fires_mid_loop(mock_provider):
+    """When support_interrupt=True (default), summarisation fires mid-loop as
+    before — this confirms the flag does not accidentally block the normal path."""
+    stream_calls: list[int] = []
+
+    async def _stream(messages, **__):
+        stream_calls.append(1)
+        chunk = MagicMock()
+        chunk.choices = [MagicMock()]
+        chunk.choices[0].delta.content = "Mid-loop summary."
+        chunk.usage = None
+        yield chunk
+
+    mock_provider.stream = _stream
+
+    hook = SummarizationHook(
+        llm_provider=mock_provider,
+        summary_prompt="test summary prompt",
+        prompt_token_threshold=1,
+        support_interrupt=True,  # default
+    )
+    ctx = _make_ctx()
+
+    # Mid-loop state — support_interrupt=True so it should still fire
+    state = AgentState(
+        messages=[
+            HumanMessage(content="do the thing"),
+            AssistantMessage(
+                content=None,
+                tool_calls=[
+                    ToolCall(
+                        id="call_m",
+                        function=FunctionCall(
+                            name="shell", arguments='{"command":"ls"}'
+                        ),
+                    )
+                ],
+            ),
+            ToolMessage(tool_call_id="call_m", name="shell", content="result"),
+        ],
+        usage=UsageInfo(last_prompt_tokens=9999),
+    )
+
+    await hook.before_model(ctx, state)
+    await hook.wrap_model_call(
+        ctx,
+        state,
+        ModelRequest(messages=tuple(state.messages_for_llm), system_prompt=""),
+        _noop_model_handler,
+    )
+
+    assert len(stream_calls) == 1, "support_interrupt=True should still fire mid-loop"
+
+
+# ---------------------------------------------------------------------------
+# _at_user_turn_boundary — unit tests
+# ---------------------------------------------------------------------------
+
+
+def test_at_user_turn_boundary_real_user_message(mock_provider):
+    """Returns True for a plain HumanMessage with no special extra."""
+    hook = _make_hook_no_interrupt(mock_provider)
+    state = AgentState(
+        messages=[
+            HumanMessage(content="previous"),
+            AssistantMessage(content="reply"),
+            HumanMessage(content="new user turn"),
+        ],
+    )
+    assert hook._at_user_turn_boundary(state) is True
+
+
+def test_at_user_turn_boundary_from_agent_user(mock_provider):
+    """Returns True when from_agent is explicitly 'user' (broadcast path)."""
+    hook = _make_hook_no_interrupt(mock_provider)
+    msg = HumanMessage(content="broadcast", extra={"from_agent": "user"})
+    state = AgentState(messages=[msg])
+    assert hook._at_user_turn_boundary(state) is True
+
+
+def test_at_user_turn_boundary_last_assistant(mock_provider):
+    """Returns False when the last visible message is an AssistantMessage."""
+    hook = _make_hook_no_interrupt(mock_provider)
+    state = AgentState(
+        messages=[
+            HumanMessage(content="msg1"),
+            AssistantMessage(content="working..."),
+        ],
+    )
+    assert hook._at_user_turn_boundary(state) is False
+
+
+def test_at_user_turn_boundary_last_tool(mock_provider):
+    """Returns False when the last visible message is a ToolMessage."""
+    hook = _make_hook_no_interrupt(mock_provider)
+    state = AgentState(
+        messages=[
+            HumanMessage(content="do it"),
+            AssistantMessage(
+                content=None,
+                tool_calls=[
+                    ToolCall(
+                        id="c1",
+                        function=FunctionCall(name="shell", arguments="{}"),
+                    )
+                ],
+            ),
+            ToolMessage(tool_call_id="c1", name="shell", content="ok"),
+        ],
+    )
+    assert hook._at_user_turn_boundary(state) is False
+
+
+def test_at_user_turn_boundary_inbox_from_other_agent(mock_provider):
+    """Returns False when the last HumanMessage came from another agent (TeamInboxHook).
+
+    Inbox messages injected mid-loop have extra['from_agent'] = '<member_name>'.
+    They must NOT be treated as user-turn boundaries.
+    """
+    hook = _make_hook_no_interrupt(mock_provider)
+    # Simulate a message injected by TeamInboxHook mid-loop
+    inbox_msg = HumanMessage(
+        content="[executor#1]: done with subtask",
+        extra={"from_agent": "executor#1", "is_broadcast": False},
+    )
+    state = AgentState(
+        messages=[
+            HumanMessage(content="user request"),
+            AssistantMessage(content=None, tool_calls=[]),
+            inbox_msg,
+        ],
+    )
+    assert hook._at_user_turn_boundary(state) is False
+
+
+def test_at_user_turn_boundary_inbox_broadcast_from_agent(mock_provider):
+    """Returns False for a broadcast HumanMessage from a non-user agent."""
+    hook = _make_hook_no_interrupt(mock_provider)
+    broadcast = HumanMessage(
+        content="[planner]: update for all",
+        extra={"from_agent": "planner", "is_broadcast": True},
+    )
+    state = AgentState(messages=[broadcast])
+    assert hook._at_user_turn_boundary(state) is False
+
+
+def test_at_user_turn_boundary_summary_message(mock_provider):
+    """Returns False when the last message is a summary HumanMessage (is_summary=True)."""
+    hook = _make_hook_no_interrupt(mock_provider)
+    summary = HumanMessage(content="## Goal\n- ...", is_summary=True)
+    state = AgentState(messages=[summary])
+    assert hook._at_user_turn_boundary(state) is False
+
+
+def test_at_user_turn_boundary_continue_directive(mock_provider):
+    """Returns False for the /continue directive (hidden_from_summary=True)."""
+    hook = _make_hook_no_interrupt(mock_provider)
+    directive = HumanMessage(
+        content="Continue exactly where your previous response stopped.",
+        extra={
+            "command": "continue",
+            "hidden_from_user": True,
+            "hidden_from_summary": True,
+        },
+    )
+    state = AgentState(messages=[directive])
+    assert hook._at_user_turn_boundary(state) is False
+
+
+def test_at_user_turn_boundary_attachment_synthetic(mock_provider):
+    """Returns False for a hidden attachment synthetic row (hidden_from_summary=True)."""
+    hook = _make_hook_no_interrupt(mock_provider)
+    synthetic = HumanMessage(
+        content="[File: report.pdf]\n...",
+        extra={
+            "hidden_from_user": True,
+            "hidden_from_summary": True,
+            "attachment_for_message_id": "abc-123",
+        },
+    )
+    state = AgentState(messages=[synthetic])
+    assert hook._at_user_turn_boundary(state) is False
+
+
+def test_at_user_turn_boundary_empty(mock_provider):
+    """Returns True when there are no visible messages."""
+    hook = _make_hook_no_interrupt(mock_provider)
+    state = AgentState(messages=[])
+    assert hook._at_user_turn_boundary(state) is True
+
+
+def test_at_user_turn_boundary_only_excluded(mock_provider):
+    """Returns True when all messages are excluded from context."""
+    hook = _make_hook_no_interrupt(mock_provider)
+    msg = AssistantMessage(content="hidden")
+    msg.exclude_from_context = True
+    state = AgentState(messages=[msg])
+    assert hook._at_user_turn_boundary(state) is True
+
+
+def test_at_user_turn_boundary_skips_system(mock_provider):
+    """SystemMessage is excluded from the visible window; last real visible is checked."""
+    hook = _make_hook_no_interrupt(mock_provider)
+    state = AgentState(
+        messages=[
+            HumanMessage(content="question"),
+            AssistantMessage(content="answer"),
+            SystemMessage(content="injected system"),
+        ],
+    )
+    # SystemMessage excluded by filter; last real visible = AssistantMessage
+    assert hook._at_user_turn_boundary(state) is False
+
+
+def test_at_user_turn_boundary_mention_context_synthetic(mock_provider):
+    """Returns False for a mention-context synthetic row (hidden_from_summary=True)."""
+    hook = _make_hook_no_interrupt(mock_provider)
+    mention = HumanMessage(
+        content="[File: foo.py]\n...",
+        extra={
+            "hidden_from_user": True,
+            "hidden_from_summary": True,
+            "mention_context": True,
+        },
+    )
+    state = AgentState(messages=[mention])
+    assert hook._at_user_turn_boundary(state) is False
+
+
+@pytest.mark.asyncio
+async def test_no_interrupt_skips_summarisation_after_inbox_injection(mock_provider):
+    """When support_interrupt=False, a HumanMessage injected by TeamInboxHook
+    (from_agent != 'user') mid-loop must NOT trigger summarisation."""
+    hook = _make_hook_no_interrupt(mock_provider)
+    ctx = _make_ctx()
+
+    inbox_msg = HumanMessage(
+        content="[executor#1]: subtask complete",
+        extra={"from_agent": "executor#1", "is_broadcast": False},
+    )
+    state = AgentState(
+        messages=[
+            HumanMessage(content="user request"),
+            AssistantMessage(
+                content=None,
+                tool_calls=[
+                    ToolCall(
+                        id="call_x",
+                        function=FunctionCall(
+                            name="shell", arguments='{"command":"ls"}'
+                        ),
+                    )
+                ],
+            ),
+            ToolMessage(tool_call_id="call_x", name="shell", content="result"),
+            inbox_msg,
+        ],
+        usage=UsageInfo(last_prompt_tokens=9999),
+    )
+
+    result = await hook.before_model(ctx, state)
+    assert result is None
+
+    called = []
+
+    async def _handler(req: ModelRequest) -> AssistantMessage:
+        called.append(True)
+        return AssistantMessage(content="done")
+
+    await hook.wrap_model_call(
+        ctx,
+        state,
+        ModelRequest(messages=tuple(state.messages_for_llm), system_prompt=""),
+        _handler,
+    )
+    assert called, "handler should be called (no pending summary)"
+    mock_provider.stream.assert_not_called()

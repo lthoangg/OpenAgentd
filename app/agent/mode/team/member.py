@@ -873,6 +873,7 @@ class TeamMemberBase(abc.ABC):
                 summarization_provider,
                 mode=self._team.mode,
                 model_id=summarization_model,
+                support_interrupt=summarization_provider.support_interrupt,
             )
             if summ_hook:
                 hooks.append(summ_hook)

@@ -21,13 +21,9 @@ pub const MENU_HOME: &str = "home";
 pub const MENU_CHAT: &str = "chat";
 pub const MENU_CODING: &str = "coding";
 pub const MENU_COMMAND_PALETTE: &str = "command_palette";
-pub const MENU_WIKI: &str = "wiki";
 pub const MENU_SCHEDULER: &str = "scheduler";
 pub const MENU_AGENT_CAPABILITIES: &str = "agent_capabilities";
 pub const MENU_SETTINGS: &str = "settings";
-pub const MENU_PROVIDERS: &str = "providers";
-pub const MENU_NOTIFICATIONS: &str = "notifications";
-pub const MENU_TELEMETRY: &str = "telemetry";
 pub const MENU_STATUS: &str = "status";
 pub const MENU_SESSION: &str = "session";
 pub const MENU_RELOAD: &str = "reload";
@@ -80,11 +76,7 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         Some("CmdOrCtrl+N"),
     )?;
     let app_home = MenuItem::with_id(app, MENU_HOME, "Home", true, None::<&str>)?;
-    let app_settings = MenuItem::with_id(app, MENU_SETTINGS, "Settings", true, None::<&str>)?;
-    let app_providers = MenuItem::with_id(app, MENU_PROVIDERS, "Providers", true, None::<&str>)?;
-    let app_notifications =
-        MenuItem::with_id(app, MENU_NOTIFICATIONS, "Notifications", true, None::<&str>)?;
-    let app_telemetry = MenuItem::with_id(app, MENU_TELEMETRY, "Telemetry", true, None::<&str>)?;
+    let app_settings = MenuItem::with_id(app, MENU_SETTINGS, "Settings", true, Some("CmdOrCtrl+,"))?;
     let app_open_config_dir = MenuItem::with_id(
         app,
         MENU_OPEN_CONFIG_DIR,
@@ -127,7 +119,6 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         true,
         Some("Ctrl+P"),
     )?;
-    let view_wiki = MenuItem::with_id(app, MENU_WIKI, "Wiki", true, Some("Ctrl+M"))?;
     let view_scheduler =
         MenuItem::with_id(app, MENU_SCHEDULER, "Scheduled Tasks", true, Some("Ctrl+S"))?;
     let view_agent_capabilities = MenuItem::with_id(
@@ -137,8 +128,6 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         true,
         Some("Ctrl+A"),
     )?;
-    let view_settings = MenuItem::with_id(app, MENU_SETTINGS, "Settings", true, None::<&str>)?;
-    let view_telemetry = MenuItem::with_id(app, MENU_TELEMETRY, "Telemetry", true, None::<&str>)?;
     let view_reload = MenuItem::with_id(app, MENU_RELOAD, "Reload", true, Some("CmdOrCtrl+R"))?;
     let view_force_reload = MenuItem::with_id(
         app,
@@ -178,9 +167,6 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         .item(&app_home)
         .separator()
         .item(&app_settings)
-        .item(&app_providers)
-        .item(&app_notifications)
-        .item(&app_telemetry)
         .separator()
         .item(&app_open_config_dir)
         .item(&app_reveal_desktop_log)
@@ -215,12 +201,8 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         .item(&view_zoom_reset)
         .separator()
         .item(&view_command_palette)
-        .item(&view_wiki)
         .item(&view_scheduler)
         .item(&view_agent_capabilities)
-        .separator()
-        .item(&view_settings)
-        .item(&view_telemetry)
         .build()?;
     let window_menu = SubmenuBuilder::new(app, "Window")
         .minimize()
@@ -370,13 +352,9 @@ pub fn handle_desktop_menu(app: &AppHandle, id: &str) {
         MENU_CHAT => navigate_main_window(app, "/cockpit"),
         MENU_CODING => navigate_main_window(app, "/coding"),
         MENU_COMMAND_PALETTE => emit_frontend_command(app, "command_palette"),
-        MENU_WIKI => emit_frontend_command(app, "wiki"),
         MENU_SCHEDULER => emit_frontend_command(app, "scheduler"),
         MENU_AGENT_CAPABILITIES => emit_frontend_command(app, "agent_capabilities"),
-        MENU_SETTINGS => navigate_main_window(app, "/settings"),
-        MENU_PROVIDERS => navigate_main_window(app, "/settings/providers"),
-        MENU_NOTIFICATIONS => navigate_main_window(app, "/settings/notifications"),
-        MENU_TELEMETRY => navigate_main_window(app, "/telemetry"),
+        MENU_SETTINGS => emit_frontend_command(app, "settings"),
         MENU_RELOAD => reload_main_window(app),
         MENU_FORCE_RELOAD => crate::force_reload_app(app),
         MENU_ZOOM_IN => adjust_zoom(app, ZOOM_STEP),

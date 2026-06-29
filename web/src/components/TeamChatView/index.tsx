@@ -1153,7 +1153,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
           <FloatingInputBar
             ref={inputRef}
             boundsRef={mainColumnRef}
-            onSubmit={async (content, files) => {
+            onSubmit={async (content: string, files?: File[], mentions?: string[]) => {
               const shell = content.startsWith('!')
               const command = shell ? content.slice(1).trim() : content
               const expanded = shell ? `!${command}` : await expandUserCommand(content)
@@ -1165,6 +1165,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
                 thinkingLevel: current.sessionId ? selectedThinkingLevel || null : null,
                 fastMode: current.sessionFastMode,
                 shell,
+                mentions,
               })
             }}
             onStop={() => useTeamStore.getState().stopTeam()}

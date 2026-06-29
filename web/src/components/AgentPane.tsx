@@ -71,8 +71,8 @@ function shortModelName(modelId: string | null | undefined): string | null {
  * ``findCommittedMentions`` without refs falls back to syntax-only range
  * detection — same code path the overlay relies on.
  */
-function renderMentionSegments(content: string): React.ReactNode[] {
-  const ranges = findCommittedMentions(content, null)
+function renderMentionSegments(content: string, mentions?: string[]): React.ReactNode[] {
+  const ranges = findCommittedMentions(content, null, undefined, mentions)
   if (ranges.length === 0) return [content]
   const out: React.ReactNode[] = []
   let cursor = 0
@@ -97,7 +97,7 @@ function renderMentionSegments(content: string): React.ReactNode[] {
   return out
 }
 
-const UserBubble = memo(function UserBubble({ content, timestamp, attachments, onRevert, modelId, shell }: { content: string; timestamp?: Date; attachments?: MessageAttachment[]; onRevert?: () => void; modelId?: string | null; shell?: boolean }) {
+const UserBubble = memo(function UserBubble({ content, timestamp, attachments, onRevert, modelId, shell, mentions }: { content: string; timestamp?: Date; attachments?: MessageAttachment[]; onRevert?: () => void; modelId?: string | null; shell?: boolean; mentions?: string[] }) {
   const [showTime, setShowTime] = useState(false)
   const [copied, setCopied] = useState(false)
   const [expanded, setExpanded] = useState(false)
@@ -178,7 +178,7 @@ const UserBubble = memo(function UserBubble({ content, timestamp, attachments, o
                <span>Shell</span>
              </div>
            )}
-           <p className={`min-w-0 break-words whitespace-pre-wrap [overflow-wrap:anywhere] ${shell ? 'font-mono' : ''}`}>{renderMentionSegments(visibleContent)}</p>
+           <p className={`min-w-0 break-words whitespace-pre-wrap [overflow-wrap:anywhere] ${shell ? 'font-mono' : ''}`}>{renderMentionSegments(visibleContent, mentions)}</p>
            {/* Gradient fade at bottom when collapsed */}
            {needsCollapse && !expanded && (
              <div
@@ -247,7 +247,7 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
       }
       const blockModel = typeof block.extra?.model === 'string' ? block.extra.model : null
       const shell = block.extra?.kind === 'user_shell'
-      return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onRevert={onRevert} modelId={blockModel} shell={shell} />
+      return <UserBubble content={block.content} timestamp={block.timestamp} attachments={block.attachments} onRevert={onRevert} modelId={blockModel} shell={shell} mentions={block.extra?.mentions as string[] | undefined} />
     }
     case 'thinking':
       return <Thinking content={block.content} isStreaming={isStreaming} />

@@ -113,18 +113,15 @@ def handle_image(resolved: Path, rel: Path | str) -> ToolResult:
     )
 
 
-def handle_document(
-    resolved: Path, rel: Path | str, *, vision: bool = False
-) -> ToolResult:
+def handle_document(resolved: Path, rel: Path | str) -> ToolResult:
     """Convert a document (PDF, DOCX, etc.) to text via markitdown.
 
-    When *vision* is ``True`` and markitdown fails for a PDF, falls back to
-    sending the raw bytes as an ``ImageDataBlock``.
+    When markitdown fails for a PDF, falls back to sending the raw bytes as
+    an ``ImageDataBlock`` so vision-capable models can still parse it.
 
     Args:
         resolved: Absolute resolved path to the file.
         rel: Display-relative path (string or Path) used only in labels.
-        vision: Whether the current model supports vision input.
     """
     raw = resolved.read_bytes()
     ext = resolved.suffix.lower()
@@ -137,8 +134,9 @@ def handle_document(
             parts=[TextBlock(text=f"[Document: {rel}]\n{converted}")],
         )
 
-    # Conversion failed — for PDFs with a vision model, send raw bytes
-    if ext == ".pdf" and vision and len(raw) <= _MAX_IMAGE_BYTES:
+    # Conversion failed — for PDFs, send raw bytes as a fallback so
+    # vision-capable models can still parse the document.
+    if ext == ".pdf" and len(raw) <= _MAX_IMAGE_BYTES:
         logger.info(
             "document_markitdown_failed_pdf_fallback path={} size={}", rel, len(raw)
         )

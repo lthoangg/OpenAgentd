@@ -80,7 +80,7 @@ function clampOffset(offset: StoredOffset, panel: Size, bounds: Size): StoredOff
 
 interface FloatingInputBarProps {
   boundsRef: React.RefObject<HTMLElement | null>
-  onSubmit: (message: string, files?: File[]) => void
+  onSubmit: (message: string, files?: File[], mentions?: string[]) => void
   onStop?: () => void
   onSlashCommand?: (id: string) => void
   onSnippetCommand?: (id: string) => Promise<string | null> | string | null
@@ -208,8 +208,8 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
       }, 180)
     }, [])
 
-    const handleSubmit = useCallback((message: string, files?: File[]) => {
-      inputProps.onSubmit(message, files)
+    const handleSubmit = useCallback((message: string, files?: File[], mentions?: string[]) => {
+      inputProps.onSubmit(message, files, mentions)
       minimize()
     }, [inputProps, minimize])
 

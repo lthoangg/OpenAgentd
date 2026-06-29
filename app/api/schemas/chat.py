@@ -47,6 +47,9 @@ class ChatForm(BaseModel):
         False,
         description="Run message text as a shell command instead of an agent prompt.",
     )
+    mentions: list[str] | None = Field(
+        None, description="Paths of files/folders mentioned in this prompt."
+    )
 
     @classmethod
     def as_form(
@@ -60,7 +63,20 @@ class ChatForm(BaseModel):
         thinking_level: str | None = Form(None),
         fast_mode: bool = Form(False),
         shell: bool = Form(False),
+        mentions: str | None = Form(None),
     ) -> "ChatForm":
+        parsed_mentions = None
+        if mentions:
+            try:
+                import json
+
+                parsed_mentions = json.loads(mentions)
+                if not isinstance(parsed_mentions, list):
+                    raise ValueError("mentions must be a list of strings.")
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=422, detail="Invalid JSON for mentions."
+                ) from exc
         try:
             return cls(
                 message=message,
@@ -72,6 +88,7 @@ class ChatForm(BaseModel):
                 thinking_level=thinking_level,
                 fast_mode=fast_mode,
                 shell=shell,
+                mentions=parsed_mentions,
             )
         except ValidationError as exc:
             raise HTTPException(

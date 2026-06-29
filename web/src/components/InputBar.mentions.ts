@@ -96,32 +96,78 @@ export function findActiveMention(
   return null
 }
 
+export interface MentionRange {
+  path: string
+  start: number
+  end: number
+}
+
 /**
- * Find every `@mention` token in ``value`` that has been "committed" —
- * i.e. terminated by whitespace or end-of-string **and** (when ``refs``
- * is provided) resolves to a known workspace file or folder.
+ * Find all character ranges of explicitly selected mention paths in the text value.
+ * Sorts by path length descending to avoid matching substrings in overlapping paths.
+ */
+export function getExplicitMentionRanges(
+  value: string,
+  selectedMentionPaths?: string[],
+): MentionRange[] {
+  const ranges: MentionRange[] = []
+  if (!selectedMentionPaths || selectedMentionPaths.length === 0) return ranges
+
+  const sortedPaths = [...selectedMentionPaths].sort((a, b) => b.length - a.length)
+
+  for (const path of sortedPaths) {
+    // Try the directory token first (@path/) so that when both "src" and
+    // "src/api.ts" are in the list, the longer token wins and the shorter
+    // one is later skipped by the overlap check.
+    const tokens = [`@${path}/`, `@${path}`]
+    for (const token of tokens) {
+      const isDirToken = token.endsWith('/')
+      let idx = value.indexOf(token)
+      while (idx !== -1) {
+        const before = idx > 0 ? value.charAt(idx - 1) : ''
+        const isValidBefore = idx === 0 || /\s|["'([{,]/.test(before)
+        if (isValidBefore) {
+          const end = idx + token.length
+          // For file tokens (no trailing slash) also require that the next
+          // character is not a path-continuing character — otherwise "@src"
+          // would be matched as a sub-span of "@src/api.ts".
+          const charAfter = value.charAt(end)
+          const isValidAfter = isDirToken || charAfter === '' || /[\s#"')\]},]/.test(charAfter)
+          if (isValidAfter) {
+            const overlaps = ranges.some(
+              (r) => (idx >= r.start && idx < r.end) || (end > r.start && end <= r.end),
+            )
+            if (!overlaps) {
+              ranges.push({ path, start: idx, end })
+            }
+          }
+        }
+        idx = value.indexOf(token, idx + 1)
+      }
+    }
+  }
+
+  return ranges.sort((a, b) => a.start - b.start)
+}
+
+/**
+ * Find every `@mention` token in ``value`` that has been "committed".
  *
- * Used by the highlight overlay to paint colored backgrounds behind each
- * mention. Callers may pass an ``activeRange`` to exclude the token at the
- * caret, so a chip doesn't materialise on every keystroke while the user
- * is still picking from the menu.
+ * Two modes:
  *
- * Rules (mirror ``findActiveMention``):
- *   - `@` must be at the start of the string or after whitespace
- *     (so ``user@host.com`` is ignored).
- *   - The token runs from the `@` to the next whitespace.
- *   - A bare `@` with nothing after it is ignored.
- *   - Trailing sentence punctuation (``,`` ``.`` ``;`` ``:`` ``!`` ``?``
- *     ``)``) is stripped before resolution so "look at @README.md, please"
- *     renders one chip over ``@README.md`` and leaves the comma plain.
- *   - When ``refs`` is provided, the post-punctuation token must match a
- *     ref's ``@${path}`` (file) or ``@${path}/`` (directory) exactly.
- *     Unresolved tokens — ``@@``, ``@nonexistent``, ``@foo@bar`` —
- *     produce no chip. This is the same exact-match semantics opencode
- *     uses for its pill rendering.
+ * **Explicit-list mode** (when ``mentions`` is provided): only returns ranges
+ * for paths in the ``mentions`` array, optionally validated against ``refs``.
+ * Used by the compositor overlay (InputBar) and for submitted messages that
+ * carry ``extra.mentions``.
  *
- * When ``refs`` is undefined the resolution check is skipped (back-compat
- * with the small number of callers that just want range geometry).
+ * **Scanner mode** (when ``mentions`` is ``undefined``): scans the text for
+ * any ``@token`` pattern (@ preceded by whitespace/start, terminated by
+ * whitespace). Optionally validates each token against ``refs`` when provided.
+ * Used for rendering historical messages that pre-date the explicit mention
+ * list, and for the UserBubble where no mentions metadata is available.
+ *
+ * Callers may pass an ``activeRange`` to exclude the token currently being
+ * typed, so a chip doesn't materialise on every keystroke.
  *
  * Returned ranges are sorted left-to-right and never overlap.
  */
@@ -129,61 +175,73 @@ export function findCommittedMentions(
   value: string,
   activeRange?: { start: number; end: number } | null,
   refs?: readonly FileRef[] | MentionLookup,
+  mentions?: string[],
 ): { start: number; end: number }[] {
-  // Resolve the token sets. Callers that re-run on every keystroke (the
-  // overlay) pass a prebuilt {@link MentionLookup} so we don't rebuild both
-  // sets — O(refs) — on each change. A raw ``FileRef[]`` is still accepted for
-  // one-shot callers and tests; ``undefined`` means syntax-only (no resolution).
   const lookup = refs
     ? isMentionLookup(refs)
       ? refs
       : buildMentionLookup(refs)
     : null
-  const valid = lookup?.valid ?? null
-  const validLineBases = lookup?.validLineBases ?? null
 
+  // ── Explicit-list mode ────────────────────────────────────────────────
+  if (mentions !== undefined) {
+    const explicitRanges = getExplicitMentionRanges(value, mentions)
+
+    const validatedRanges = explicitRanges.filter((r) => {
+      if (!lookup) return true
+      const token = `@${r.path}`
+      const baseToken = token.replace(/#L\d+(?:-L?\d+)?$/, '')
+      const hasFull = lookup.valid.has(token) || lookup.valid.has(token + '/')
+      const hasBase = baseToken !== token && lookup.validLineBases.has(baseToken)
+      return hasFull || hasBase
+    })
+
+    if (activeRange) {
+      return validatedRanges
+        .filter((r) => !(activeRange.start >= r.start && activeRange.start < r.end))
+        .map((r) => ({ start: r.start, end: r.end }))
+    }
+    return validatedRanges.map((r) => ({ start: r.start, end: r.end }))
+  }
+
+  // ── Scanner mode (no explicit mentions list) ──────────────────────────
+  // Walk the text looking for @ tokens. Used by UserBubble for historical
+  // messages that may not have an explicit mentions list in their metadata.
   const out: { start: number; end: number }[] = []
   for (let i = 0; i < value.length; i++) {
     if (value.charAt(i) !== '@') continue
     const before = i > 0 ? value.charAt(i - 1) : ''
     if (i !== 0 && !/\s/.test(before)) continue
 
-    // Walk forward to the next whitespace (or end).
     let j = i + 1
     while (j < value.length && !/\s/.test(value.charAt(j))) j++
 
-    // Strip a single run of trailing sentence punctuation so the chip
-    // ends at the path, not at the surrounding prose. We don't recurse —
-    // ".," is uncommon and "@foo)." would mark only the ``)`` as prose;
-    // good enough for the realistic cases.
+    // Strip trailing sentence punctuation so the chip ends at the path.
     let end = j
     while (end > i + 1 && /[,.;:!?)]/.test(value.charAt(end - 1))) end--
 
-    // Need at least one character after the `@` to be a real mention.
     if (end === i + 1) continue
 
-    // Skip the actively-edited mention so the chip doesn't flash on every
-    // keystroke. The picker already provides feedback there.
     if (activeRange && activeRange.start === i) {
       i = j
       continue
     }
 
-    // Resolution check: only chip tokens that actually resolve to a known
-    // ref. This is what kills the ``@@`` / ``@nonexistent`` false positive.
-    const token = value.slice(i, end)
-    const baseToken = token.replace(/#L\d+(?:-L?\d+)?$/, '')
-    if (
-      valid
-      && !valid.has(token)
-      && !(baseToken !== token && validLineBases?.has(baseToken))
-    ) {
-      i = j
-      continue
+    // Validate against lookup when refs are available.
+    if (lookup) {
+      const token = value.slice(i, end)
+      const baseToken = token.replace(/#L\d+(?:-L?\d+)?$/, '')
+      if (
+        !lookup.valid.has(token)
+        && !(baseToken !== token && lookup.validLineBases.has(baseToken))
+      ) {
+        i = j
+        continue
+      }
     }
 
     out.push({ start: i, end })
-    i = j // jump past this token to avoid double-matching inside it
+    i = j
   }
   return out
 }

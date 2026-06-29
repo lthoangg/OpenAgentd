@@ -508,6 +508,7 @@ class AgentTeam:
         thinking_level: str | None = None,
         thinking_level_provided: bool = False,
         service_tier: str | None = None,
+        mentions: list[str] | None = None,
     ) -> str:
         """Deliver a user message to the team lead. Returns the session_id.
 
@@ -598,6 +599,10 @@ class AgentTeam:
                 msg_extra: dict | None = (
                     {"attachments": attachment_metas} if attachment_metas else None
                 )
+                if mentions:
+                    if msg_extra is None:
+                        msg_extra = {}
+                    msg_extra["mentions"] = mentions
 
                 workspace_path = session_workspace_dir(str(lead_uuid), self.workspace)
                 snapshot_hash = await snapshot_service.track(
@@ -624,25 +629,28 @@ class AgentTeam:
                 # immediately after the real user message.  Content is baked
                 # in once at write time so history loads never need to
                 # reconstruct it from metadata — same pattern as opencode.
-                for synthetic_content in [
-                    *(attachment_synthetics or []),
-                    *(mention_context_blocks or []),
-                ]:
-                    synthetic_msg = HumanMessage(content=synthetic_content)
-                    is_mention_context = (
-                        synthetic_content.startswith("[File: ")
-                        or synthetic_content.startswith("[Document: ")
-                        or synthetic_content.startswith("[Directory: ")
-                    )
+                for synthetic_content in attachment_synthetics or []:
                     await save_message(
                         db,
                         lead_uuid,
-                        synthetic_msg,
+                        HumanMessage(content=synthetic_content),
                         extra={
                             "hidden_from_user": True,
                             "hidden_from_summary": True,
                             "attachment_for_message_id": str(saved_user_msg.id),
-                            "mention_context": is_mention_context,
+                            "mention_context": False,
+                        },
+                    )
+                for synthetic_content in mention_context_blocks or []:
+                    await save_message(
+                        db,
+                        lead_uuid,
+                        HumanMessage(content=synthetic_content),
+                        extra={
+                            "hidden_from_user": True,
+                            "hidden_from_summary": True,
+                            "attachment_for_message_id": str(saved_user_msg.id),
+                            "mention_context": True,
                         },
                     )
 

@@ -3,7 +3,7 @@ import { ArrowUp, Loader2, MessageCircle, Paperclip, Square, Terminal } from 'lu
 import { motion } from 'framer-motion'
 import { FilePreviewStrip } from './FilePreviewStrip'
 import { VoiceMicButton } from './VoiceMicButton'
-import { findActiveMention, type FileRef } from './InputBar.mentions'
+import { findActiveMention, getExplicitMentionRanges, type FileRef } from './InputBar.mentions'
 import { MentionOverlay } from './InputBar.overlay'
 import { CHAR_WARN_THRESHOLD, findActiveSnippet } from './InputBar.helpers'
 import { InputBarSuggestions } from './InputBar.suggestions'
@@ -66,7 +66,7 @@ export interface SnippetCommand {
 }
 
 interface InputBarProps {
-  onSubmit: (message: string, files?: File[]) => void
+  onSubmit: (message: string, files?: File[], mentionedFiles?: string[]) => void
   onStop?: () => void
   onSlashCommand?: (id: string) => void
   onSnippetCommand?: (id: string) => Promise<string | null> | string | null
@@ -204,6 +204,45 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   const [mentionRange, setMentionRange] = useState<
     { start: number; end: number; query: string } | null
   >(null)
+  const [mentions, setMentions] = useState<string[]>([])
+
+  // Synchronise mentions with the actual textarea value.
+  // If the user manually edits or deletes a mention from the text,
+  // it will no longer match the "@path" or "@path/" pattern, so we remove it.
+  // Uses the same after-boundary check as getExplicitMentionRanges: "@src" must
+  // not be counted as present just because "@src/api.ts" appears in the value.
+  useEffect(() => {
+    setMentions((prev) => {
+      const next = prev.filter((path) => {
+        const dirToken = `@${path}/`
+        const fileToken = `@${path}`
+        // Check @path/ — any occurrence with a valid before-boundary is fine
+        let idx = value.indexOf(dirToken)
+        while (idx !== -1) {
+          const before = idx > 0 ? value.charAt(idx - 1) : ''
+          if (idx === 0 || /\s|["'([{,]/.test(before)) return true
+          idx = value.indexOf(dirToken, idx + 1)
+        }
+        // Check @path — additionally require that the char after the token is
+        // not a path-continuing character, so "@src" doesn't survive when only
+        // "@src/api.ts" is in the text.
+        idx = value.indexOf(fileToken)
+        while (idx !== -1) {
+          const before = idx > 0 ? value.charAt(idx - 1) : ''
+          const charAfter = value.charAt(idx + fileToken.length)
+          const validBefore = idx === 0 || /\s|["'([{,]/.test(before)
+          const validAfter = charAfter === '' || /[\s#"')\]},]/.test(charAfter)
+          if (validBefore && validAfter) return true
+          idx = value.indexOf(fileToken, idx + 1)
+        }
+        return false
+      })
+      if (next.length !== prev.length) {
+        return next
+      }
+      return prev
+    })
+  }, [value])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const dragCounterRef = useRef(0)
@@ -222,6 +261,21 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     const el = textareaRef.current
     if (!el) return
     const caret = el.selectionStart ?? el.value.length
+    const selectionEnd = el.selectionEnd ?? caret
+
+    // Atomic mention selection: if the cursor is placed inside an explicit mention,
+    // select the entire mention so that any edit/delete action applies to it as a whole.
+    if (caret === selectionEnd) {
+      const ranges = getExplicitMentionRanges(el.value, mentions)
+      const hit = ranges.find((r) => caret > r.start && caret < r.end)
+      if (hit) {
+        requestAnimationFrame(() => {
+          el.setSelectionRange(hit.start, hit.end)
+        })
+        return
+      }
+    }
+
     const next = shellMode ? null : findActiveMention(el.value, caret)
     setSnippetRange(next || shellMode ? null : findActiveSnippet(el.value, caret))
     setMentionRange((prev) => {
@@ -234,7 +288,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       ) return prev
       return next
     })
-  }, [shellMode])
+  }, [shellMode, mentions])
 
   // Create blob URLs for files — memoized to avoid recreating on every render
   const blobUrls = useMemo(() => {
@@ -447,46 +501,42 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   }, [onSlashCommand, resize])
 
   const submit = useCallback(() => {
+    if (disabled || isStreaming) return
     const trimmed = value.trim()
-    if (!trimmed || disabled) return
-    if (slashFilter !== null) {
-      const matching = slashCommands?.find(
-        (cmd) =>
-          !cmd.isSeparator &&
-          (cmd.id === slashFilter ||
-            (cmd.insertText && cmd.insertText.toLowerCase() === slashFilter)),
-      )
-      if (matching) {
-        executeSlashCommand(matching)
-      }
-      return
-    }
+    if (trimmed.length === 0 && files.length === 0) return
+
     const submitted = shellMode ? `!${trimmed}` : trimmed
-    onSubmit(submitted, files.length > 0 ? files : undefined)
+    onSubmit(
+      submitted,
+      files.length > 0 ? files : undefined,
+      mentions.length > 0 ? mentions : undefined
+    )
     setLocalHistory((prev) =>
       prev[0] === submitted ? prev : [submitted, ...prev].slice(0, 100),
     )
     setHistoryIndex(-1)
     setValue('')
-    setShellMode(false)
     setFiles([])
-    // Clear the mention picker too — it tracks positions inside the value
-    // we just wiped. Without this, a picker that was open at submit time
-    // would render above the now-empty textarea on the next paint.
+    setMentions([])
+    setShellMode(false)
     setMentionRange(null)
     setSnippetRange(null)
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto'
-    }
+    setMentionMenuIndex(0)
+    setSlashMenuIndex(0)
+    setSnippetMenuIndex(0)
+    // Clear the mention picker too — it tracks positions inside the value
+    // we just wiped. Without this, a picker that was open at submit time
+    // will stay open but repositioned at index 0 after the clear.
+    syncMention()
   }, [
-    value,
     disabled,
-    onSubmit,
+    isStreaming,
+    value,
     files,
+    mentions,
     shellMode,
-    slashFilter,
-    slashCommands,
-    executeSlashCommand,
+    onSubmit,
+    syncMention,
   ])
 
   const addFile = useCallback((file: File) => {
@@ -680,6 +730,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     const after = value.slice(mentionRange.end)
     const next = before + insertion + after
     setValue(next)
+    setMentions((prev) => prev.includes(ref.path) ? prev : [...prev, ref.path])
     setShellMode(false)
     setMentionRange(null)
     setSnippetRange(null)
@@ -709,6 +760,32 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     // legacy fallback for browsers that don't surface ``isComposing`` on the
     // React synthetic event.
     if (e.nativeEvent.isComposing || e.keyCode === 229) return
+
+    // Atomic mention deletion: if the user presses Backspace or Delete on an
+    // explicit mention, delete the entire mention instead of a single character.
+    if (e.key === 'Backspace' || e.key === 'Delete') {
+      const el = textareaRef.current
+      if (el && el.selectionStart === el.selectionEnd) {
+        const caret = el.selectionStart
+        const targetIdx = e.key === 'Backspace' ? caret - 1 : caret
+        const ranges = getExplicitMentionRanges(value, mentions)
+        const hit = ranges.find((r) => targetIdx >= r.start && targetIdx < r.end)
+        if (hit) {
+          e.preventDefault()
+          const before = value.slice(0, hit.start)
+          const after = value.slice(hit.end)
+          const next = before + after
+          setValue(next)
+
+          requestAnimationFrame(() => {
+            el.focus()
+            el.setSelectionRange(hit.start, hit.start)
+            resize()
+          })
+          return
+        }
+      }
+    }
 
     if (e.key === '!' && !shellMode && value.length === 0) {
       e.preventDefault()
@@ -1077,6 +1154,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         activeRange={mentionRange}
         textareaRef={textareaRef}
         fileRefs={fileRefs}
+        mentions={mentions}
       />
       <textarea
         ref={setTextareaRef}

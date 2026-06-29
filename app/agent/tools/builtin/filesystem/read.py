@@ -96,7 +96,7 @@ async def _read_file(
     # ── Document files → markitdown conversion ────────────────────────────
     if category == "document":
         logger.info("read_document path={} size={}", rel, resolved.stat().st_size)
-        return handle_document(resolved, rel, vision=True)
+        return handle_document(resolved, rel)
 
     # ── Text files → existing behaviour ───────────────────────────────────
     raw = resolved.read_bytes()

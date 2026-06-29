@@ -46,6 +46,8 @@ SIZE_LIMITS: dict[str, int] = {
     "text": 500 * 1024,  # 500 KB
     "image": 10 * 1024 * 1024,  # 10 MB
     "document": 5 * 1024 * 1024,  # 5 MB
+    "audio": 20 * 1024 * 1024,  # 20 MB
+    "video": 20 * 1024 * 1024,  # 20 MB
 }
 GLOBAL_SIZE_LIMIT = 20 * 1024 * 1024  # 20 MB total across all files per message
 
@@ -66,6 +68,16 @@ MIME_CATEGORY: dict[str, str] = {
     "image/tiff": "image",
     "application/pdf": "document",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "document",
+    "audio/mpeg": "audio",
+    "audio/mp4": "audio",
+    "audio/wav": "audio",
+    "audio/webm": "audio",
+    "audio/ogg": "audio",
+    "audio/flac": "audio",
+    "video/mp4": "video",
+    "video/webm": "video",
+    "video/ogg": "video",
+    "video/quicktime": "video",
 }
 EXT_CATEGORY: dict[str, str] = {
     ".txt": "text",
@@ -88,6 +100,14 @@ EXT_CATEGORY: dict[str, str] = {
     ".docx": "document",
     ".html": "document",
     ".htm": "document",
+    ".mp3": "audio",
+    ".m4a": "audio",
+    ".wav": "audio",
+    ".ogg": "audio",
+    ".flac": "audio",
+    ".mp4": "video",
+    ".webm": "video",
+    ".mov": "video",
 }
 # First N bytes must match at least one signature for the declared MIME.
 MAGIC_BYTES: dict[str, list[tuple[bytes, int]]] = {
@@ -223,7 +243,13 @@ def _validate_ext_mime_consistency(filename: str, mime: str) -> bool:
 
 
 def _default_ext(category: str) -> str:
-    return {"text": ".txt", "image": ".jpg", "document": ".pdf"}.get(category, ".bin")
+    return {
+        "text": ".txt",
+        "image": ".jpg",
+        "document": ".pdf",
+        "audio": ".mp3",
+        "video": ".mp4",
+    }.get(category, ".bin")
 
 
 def _convert_with_markitdown(data: bytes, mime: str, filename: str) -> str | None:
@@ -349,6 +375,12 @@ def _build_synthetic_content(
     """
     if category == "image":
         return f"[Attached image: {safe_original_name}]"
+
+    if category == "audio":
+        return f"[Attached audio: {safe_original_name}]"
+
+    if category == "video":
+        return f"[Attached video: {safe_original_name}]"
 
     if category == "text":
         try:
@@ -486,6 +518,7 @@ async def dispatch_user_message(
     thinking_level: str | None = None,
     thinking_level_provided: bool = False,
     service_tier: str | None = None,
+    mentions: list[str] | None = None,
 ) -> tuple[str, int]:
     """Send a user message through the team.
 
@@ -528,6 +561,7 @@ async def dispatch_user_message(
         thinking_level=thinking_level,
         thinking_level_provided=thinking_level_provided or thinking_level is not None,
         service_tier=service_tier,
+        mentions=mentions,
     )
     logger.info(
         "agent_service_dispatched session_id={} attachments={}",

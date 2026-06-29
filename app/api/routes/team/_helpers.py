@@ -75,28 +75,12 @@ async def _read_upload_as_attachment(file: UploadFile) -> RawAttachment | None:
 
 # ── @-mention context helpers ────────────────────────────────────────────────
 #
-# Mirrors the frontend's `findCommittedMentions` semantics:
-#
-#   - ``@`` must be at the start of the message or after whitespace
-#   - the token runs from the ``@`` to the next whitespace
-#   - trailing sentence punctuation ``,.;:!?)`` is stripped
-#
 # Tokens are resolved against the session workspace (normal session
 # sandbox, or the coding workspace root if `workspace` is provided).
 # File mentions can be turned into hidden inline context blocks; folder
 # mentions can be turned into hidden directory-listing context blocks.
 # Neither path is treated as an uploaded attachment or persisted into
 # ``uploads/``.
-
-# Anchored at start-of-string or after a whitespace / opening-bracket /
-# quote / comma character. Users routinely write quoted or parenthesised
-# mentions — `"@foo.txt"`, `(@foo.txt)`, `,@bar.md` — and we'd rather
-# pick those up than silently lose them.
-_MENTION_RE = re.compile(r"(?:^|(?<=[\s\"'(\[{,]))@(\S+)")
-# Trailing punctuation stripped before resolution. Includes closing
-# brackets / quotes that mirror the boundary chars above so paired
-# wrappers like `(@foo.txt)` resolve to `foo.txt`.
-_TRAILING_PUNCT = ",.;:!?)\"']}>"
 
 # Per-message ceiling on mention-derived context blocks. Defensive — a user
 # pasting a wall of `@paths` shouldn't trigger an unbounded read storm.
@@ -109,34 +93,6 @@ _MAX_MENTION_ATTACHMENTS = 20
 # via its ``Read`` tool. 32 K chars ≈ 8 K tokens ≈ 10 PDF pages.
 _MENTION_INLINE_MAX_CHARS = 32_000
 _LINE_REF_RE = re.compile(r"^(?P<path>.+)#L(?P<start>\d+)(?:-L?(?P<end>\d+))?$")
-
-
-def _extract_mention_paths(message: str) -> list[str]:
-    """Return the unique, ordered list of @file tokens from ``message``.
-
-    Directory mentions are not auto-expanded — only explicit file mentions are
-    converted into implicit attachments. The bare ``@`` is dropped. Trailing
-    sentence punctuation is stripped before deduplication so
-    "see @a.ts, please" yields ``["a.ts"]``.
-    """
-    seen: set[str] = set()
-    out: list[str] = []
-    for match in _MENTION_RE.finditer(message):
-        token = match.group(1)
-        # Strip trailing punctuation in a loop — handles `@x?!`.
-        while token and token[-1] in _TRAILING_PUNCT:
-            token = token[:-1]
-        if not token:
-            continue
-        if token.endswith("/"):
-            continue
-        if token in seen:
-            continue
-        seen.add(token)
-        out.append(token)
-        if len(out) >= _MAX_MENTION_ATTACHMENTS:
-            break
-    return out
 
 
 def _safe_join(root: Path, rel: str) -> Path | None:
@@ -189,46 +145,74 @@ def _slice_lines(data: bytes, start: int | None, end: int | None) -> bytes:
     return "".join(lines[start - 1 : end]).encode("utf-8")
 
 
+def _is_likely_binary(data: bytes) -> bool:
+    """Return True when ``data`` looks like a binary file, not readable text.
+
+    Null bytes are the primary signal — they never appear in UTF-8 text and
+    are common in images, executables, and compiled assets. A secondary check
+    on control-character density handles non-null binary formats.
+    """
+    if b"\x00" in data:
+        return True
+    sample = data[:8192]
+    if not sample:
+        return False
+    # ASCII control chars below 0x20, excluding TAB (9), LF (10), CR (13)
+    control = sum(1 for b in sample if b < 32 and b not in (9, 10, 13))
+    return control / len(sample) > 0.30
+
+
 async def _read_mention_as_attachment(
     rel_path: str,
     abs_path: Path,
-    capabilities,
     *,
     line_start: int | None = None,
     line_end: int | None = None,
 ) -> RawAttachment | None:
-    """Read one mentioned file as a ``RawAttachment`` when the lead can use it.
+    """Read one mentioned file as a ``RawAttachment``.
 
-    Only text categories auto-attach. Images and documents are skipped
-    intentionally — they are file references, and the agent's ``Read``
-    tool can fetch/convert them on demand. Auto-attaching non-text mentions
-    would force conversion or base64 payloads into context even when the
-    agent never needs to inspect them.
+    Only text categories are inlined. Images and documents are skipped —
+    they are file references, and the agent's ``Read`` tool can fetch/convert
+    them on demand. Auto-attaching non-text mentions would force conversion or
+    base64 payloads into context even when the agent never needs them.
 
-    Returns ``None`` (and logs at debug level) when the file fails any of
-    the soft constraints — non-text category, capability mismatch,
-    unsupported type, oversize. Hard read failures (``OSError``) also
-    return ``None``. Mentions are an implicit attachment surface; we
-    never surface a 4xx to the user just because they typed
-    ``@somefile.png`` against a non-vision model.
+    Returns ``None`` (and logs at debug level) when the file fails any of the
+    soft constraints — non-text category, unsupported type, oversize. Hard
+    read failures (``OSError``) also return ``None``. Mentions are an implicit
+    context surface; we never surface a 4xx to the user for a bad mention.
     """
     filename = rel_path
     mime, _ = mimetypes.guess_type(str(abs_path))
     category = categorize(filename, mime)
-    if category is None and line_start is not None:
-        mime = "text/plain"
-        category = "text"
+
+    # ``categorize`` only knows about a small set of registered upload types.
+    # For mentions, any file the agent can read as text is fair game — code
+    # files (.ts, .py, .go, .css, .yaml, …) are the primary use-case and
+    # none of them are in the upload category map. Treat an unknown category
+    # as "text" and let the decode step below filter out true binary files.
     if category is None:
-        return None
+        category = "text"
+        mime = mime or "text/plain"
+
     if category != "text":
-        # Non-text mentions are reference-only. The agent uses ``Read``
-        # to convert documents or inspect images on demand.
+        # Non-text mentions (images, documents) are reference-only — the
+        # agent uses the ``read`` tool to convert/view them on demand.
         return None
+
     try:
         data = await _read_bytes(abs_path)
     except OSError as exc:
         logger.debug("mention_read_failed path={} error={}", rel_path, exc)
         return None
+
+    # Reject binary files. Null bytes are a reliable signal — they never
+    # appear in UTF-8 text and indicate binary content (images, executables,
+    # compiled assets). Fall back to a control-character density check for
+    # non-null binary formats.
+    if _is_likely_binary(data):
+        logger.debug("mention_binary_skip path={}", rel_path)
+        return None
+
     if line_start is not None:
         try:
             data = _slice_lines(data, line_start, line_end)
@@ -236,11 +220,10 @@ async def _read_mention_as_attachment(
             return None
     if not data:
         return None
-    if len(data) > SIZE_LIMITS[category]:
+    if len(data) > SIZE_LIMITS["text"]:
         logger.debug(
-            "mention_oversize path={} category={} size={}",
+            "mention_oversize path={} size={}",
             rel_path,
-            category,
             len(data),
         )
         return None
@@ -260,70 +243,6 @@ async def _read_bytes(path: Path) -> bytes:
     return await asyncio.to_thread(path.read_bytes)
 
 
-async def collect_mention_attachments(
-    *,
-    message: str,
-    team: AgentTeam,
-    session_id: str,
-    workspace: str | None,
-    existing_total_bytes: int,
-) -> list[RawAttachment]:
-    """Resolve ``@path`` mentions in ``message`` to ``RawAttachment`` objects.
-
-    Implicit attachments — surface only files that pass every check. Any
-    failure (missing file, path escape, unsupported type, oversize,
-    capability mismatch, would-exceed-global-cap) is silently dropped.
-    Explicit paperclip uploads remain the authoritative way to force a
-    file in regardless of these soft rules.
-
-    ``existing_total_bytes`` is the cumulative size of the message's
-    explicit attachments so far. We deduct it from the global budget so
-    a mention can't push the message over the limit on its own.
-
-    This helper is used to build ephemeral inline context for explicit file
-    mentions without treating them as persisted uploads.
-    """
-    paths = _extract_mention_paths(message)
-    if not paths:
-        return []
-
-    root = session_workspace_dir(session_id, workspace)
-    out: list[RawAttachment] = []
-    running_total = existing_total_bytes
-    for rel in paths:
-        file_rel, label, line_start, line_end = _parse_line_ref(rel)
-        abs_path = _safe_join(root, file_rel)
-        if abs_path is None:
-            continue
-        att = await _read_mention_as_attachment(
-            label,
-            abs_path,
-            team.lead.agent.capabilities,
-            line_start=line_start,
-            line_end=line_end,
-        )
-        if att is None:
-            continue
-        running_total += len(att.data)
-        if running_total > GLOBAL_SIZE_LIMIT:
-            # Stop accumulating — the rest would push us over the cap.
-            logger.debug(
-                "mention_global_cap_reached session_id={} dropped_from={}",
-                session_id,
-                rel,
-            )
-            break
-        out.append(att)
-    if out:
-        logger.info(
-            "mention_attachments_collected session_id={} count={} bytes={}",
-            session_id,
-            len(out),
-            sum(len(a.data) for a in out),
-        )
-    return out
-
-
 async def build_mention_context_blocks(
     *,
     message: str,
@@ -331,6 +250,7 @@ async def build_mention_context_blocks(
     session_id: str,
     workspace: str | None,
     existing_total_bytes: int,
+    mentions: list[str] | None = None,
 ) -> list[str]:
     """Return hidden inline context blocks for ``@file`` / ``@folder/`` mentions.
 
@@ -339,25 +259,27 @@ async def build_mention_context_blocks(
     ``extra.attachments``. Folder mentions inject a lightweight directory listing
     so the model can see the subtree shape without pre-running tools.
     """
+    if not mentions:
+        return []
+
     root = session_workspace_dir(session_id, workspace)
     raw_paths = []
     seen: set[str] = set()
-    for match in _MENTION_RE.finditer(message):
-        token = match.group(1)
-        while token and token[-1] in _TRAILING_PUNCT:
-            token = token[:-1]
-        if not token or token in seen:
+    for path in mentions:
+        if not path or path in seen:
             continue
-        seen.add(token)
-        raw_paths.append(token)
+        seen.add(path)
+        raw_paths.append(path)
         if len(raw_paths) >= _MAX_MENTION_ATTACHMENTS:
             break
-    if not raw_paths:
-        return []
 
     out: list[str] = []
     running_total = existing_total_bytes
     for rel in raw_paths:
+        # Safety check: ensure the mention is still present in the text as @path or @path/
+        if f"@{rel}" not in message and f"@{rel}/" not in message:
+            continue
+
         if rel.endswith("/"):
             abs_dir = _safe_join_dir(root, rel[:-1])
             if abs_dir is None:
@@ -372,15 +294,41 @@ async def build_mention_context_blocks(
         file_rel, label, line_start, line_end = _parse_line_ref(rel)
         abs_path = _safe_join(root, file_rel)
         if abs_path is None:
+            # Path didn't resolve as a file. Check if it's a directory —
+            # insertMention stores the path without a trailing slash in
+            # ``mentions`` even for directories (only the textarea text
+            # gets ``@path/``). Fall back to a directory listing.
+            abs_dir = _safe_join_dir(root, file_rel)
+            if abs_dir is not None:
+                dir_label = file_rel + "/"
+                block = _build_directory_listing_block(dir_label, abs_dir)
+                running_total += len(block.encode("utf-8"))
+                if running_total > GLOBAL_SIZE_LIMIT:
+                    break
+                out.append(block)
             continue
         att = await _read_mention_as_attachment(
             label,
             abs_path,
-            team.lead.agent.capabilities,
             line_start=line_start,
             line_end=line_end,
         )
         if att is None:
+            # File exists but is non-text (image, document). Inject a short
+            # hint so the model knows the user referenced this file and can
+            # call the ``read`` tool to inspect it rather than silently
+            # ignoring the mention.
+            mime, _ = mimetypes.guess_type(str(abs_path))
+            category = categorize(file_rel, mime)
+            if category in ("image", "document"):
+                kind = "image" if category == "image" else "document"
+                block = (
+                    f"[Mentioned {kind}: {label} — use the read tool to view this file]"
+                )
+                running_total += len(block.encode("utf-8"))
+                if running_total > GLOBAL_SIZE_LIMIT:
+                    break
+                out.append(block)
             continue
         synthetic = agent_service._build_synthetic_content(
             att,

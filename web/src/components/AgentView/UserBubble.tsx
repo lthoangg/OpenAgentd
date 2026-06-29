@@ -60,8 +60,8 @@ function shortModelName(modelId: string | null | undefined): string | null {
  * ``findCommittedMentions`` without refs falls back to syntax-only range
  * detection — same code path the overlay relies on.
  */
-function renderMentionSegments(content: string, onMentionFileOpen?: (path: string) => void): React.ReactNode[] {
-  const ranges = findCommittedMentions(content, null)
+function renderMentionSegments(content: string, onMentionFileOpen?: (path: string) => void, mentions?: string[]): React.ReactNode[] {
+  const ranges = findCommittedMentions(content, null, undefined, mentions)
   if (ranges.length === 0) return renderUrlSegments(content, 'url')
   const out: React.ReactNode[] = []
   let cursor = 0
@@ -97,7 +97,7 @@ function renderMentionSegments(content: string, onMentionFileOpen?: (path: strin
   return out
 }
 
-export function UserBubble({ content, timestamp, attachments, onRevert, modelId, shell, onMentionFileOpen }: { content: string; timestamp?: Date; attachments?: MessageAttachment[]; onRevert?: () => void; modelId?: string | null; shell?: boolean; onMentionFileOpen?: (path: string) => void }) {
+export function UserBubble({ content, timestamp, attachments, onRevert, modelId, shell, onMentionFileOpen, mentions }: { content: string; timestamp?: Date; attachments?: MessageAttachment[]; onRevert?: () => void; modelId?: string | null; shell?: boolean; onMentionFileOpen?: (path: string) => void; mentions?: string[] }) {
   const [showTime, setShowTime] = useState(false)
   const [copied, setCopied] = useState(false)
   const [expanded, setExpanded] = useState(false)
@@ -193,7 +193,7 @@ export function UserBubble({ content, timestamp, attachments, onRevert, modelId,
                <span>Shell</span>
              </div>
            )}
-           <p className={`min-w-0 break-words whitespace-pre-wrap [overflow-wrap:anywhere] ${shell ? 'font-mono' : ''}`}>{renderMentionSegments(visibleContent, onMentionFileOpen)}</p>
+           <p className={`min-w-0 break-words whitespace-pre-wrap [overflow-wrap:anywhere] ${shell ? 'font-mono' : ''}`}>{renderMentionSegments(visibleContent, onMentionFileOpen, mentions)}</p>
            {/* Gradient fade at bottom when collapsed */}
            {needsCollapse && !expanded && (
              <div

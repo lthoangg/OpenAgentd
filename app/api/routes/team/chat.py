@@ -294,6 +294,7 @@ async def team_chat(
         session_id=session_id,
         workspace=workspace,
         existing_total_bytes=sum(len(a.data) for a in attachments),
+        mentions=body.mentions,
     )
     async with team_obj.user_message_lock:
         if session_uuid is not None:
@@ -307,13 +308,13 @@ async def team_chat(
             # the model may change before dequeue but that is an accepted
             # edge case (documented in the queue design notes).
             queued_attachment_metas: list[dict] = []
-            queued_attachment_synthetics: list[str] = list(mention_context_blocks)
+            queued_upload_synthetics: list[str] = []
             if attachments:
                 try:
                     (
                         _,
                         queued_attachment_metas,
-                        queued_attachment_synthetics,
+                        queued_upload_synthetics,
                     ) = await agent_service.validate_and_persist_attachments(
                         team_obj, attachments, session_id, workspace
                     )
@@ -332,6 +333,8 @@ async def team_chat(
                     queued_extra["service_tier"] = "fast"
                 if queued_attachment_metas:
                     queued_extra["attachments"] = queued_attachment_metas
+                if body.mentions:
+                    queued_extra["mentions"] = body.mentions
                 existing_row = await db.get(ChatSession, session_uuid)
                 if existing_row is not None:
                     if model_provided:
@@ -352,24 +355,30 @@ async def team_chat(
                     message,
                     extra=queued_extra,
                 )
-                # Write synthetic mention/upload rows at queue time so the agent
-                # sees the same context when the queued message is activated.
-                for synthetic_content in queued_attachment_synthetics:
-                    synthetic_msg = HumanMessage(content=synthetic_content)
-                    is_mention_context = (
-                        synthetic_content.startswith("[File: ")
-                        or synthetic_content.startswith("[Document: ")
-                        or synthetic_content.startswith("[Directory: ")
-                    )
+                # Write synthetic upload rows (regular attachments).
+                for synthetic_content in queued_upload_synthetics:
                     await save_message(
                         db,
                         session_uuid,
-                        synthetic_msg,
+                        HumanMessage(content=synthetic_content),
                         extra={
                             "hidden_from_user": True,
                             "hidden_from_summary": True,
                             "attachment_for_message_id": str(queued.id),
-                            "mention_context": is_mention_context,
+                            "mention_context": False,
+                        },
+                    )
+                # Write synthetic mention context rows (ephemeral, no uploads/).
+                for synthetic_content in mention_context_blocks:
+                    await save_message(
+                        db,
+                        session_uuid,
+                        HumanMessage(content=synthetic_content),
+                        extra={
+                            "hidden_from_user": True,
+                            "hidden_from_summary": True,
+                            "attachment_for_message_id": str(queued.id),
+                            "mention_context": True,
                         },
                     )
             logger.info(
@@ -400,6 +409,7 @@ async def team_chat(
                 thinking_level=thinking_level,
                 thinking_level_provided=thinking_level_provided,
                 service_tier=fast_mode_service_tier,
+                mentions=body.mentions,
             )
         except AttachmentError as exc:
             raise HTTPException(status_code=exc.status, detail=str(exc)) from exc

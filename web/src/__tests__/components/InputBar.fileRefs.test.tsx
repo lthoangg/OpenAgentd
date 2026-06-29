@@ -9,7 +9,7 @@
  *   - Esc dismisses without inserting
  */
 import { describe, it, expect, afterEach } from "bun:test"
-import { render, screen, cleanup, fireEvent } from "@testing-library/react"
+import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 
 import { InputBar, type FileRef } from "@/components/InputBar"
@@ -571,11 +571,12 @@ describe("InputBar — @-mention picker", () => {
     expect(chips.map((c) => c.textContent)).toEqual(["@src/", "@docs/intro.md"])
   })
 
-  it("re-opens the picker when the caret returns into an existing mention", async () => {
-    // Edit existing mention: user inserts ``@src/api.ts ``, then clicks
-    // back inside it. The picker should re-open because there's an active
-    // mention at the caret again — that's the whole point of ``onSelect``
-    // / ``syncMention``.
+  it("atomically selects the whole mention when the caret returns into it", async () => {
+    // Atomic-selection behaviour: when the user clicks or arrows back inside
+    // a committed ``@mention``, ``syncMention`` selects the entire token so
+    // that any subsequent edit or deletion applies to the whole path at once.
+    // The picker does NOT reopen in this case — that was superseded by the
+    // atomic-selection feature.
     const user = userEvent.setup()
     render(<InputBar onSubmit={() => {}} fileRefs={fixtures} />)
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
@@ -592,9 +593,14 @@ describe("InputBar — @-mention picker", () => {
     textarea.setSelectionRange(7, 7)
     fireEvent.select(textarea)
 
-    expect(
-      screen.getByRole("listbox", { name: "Reference workspace file" }),
-    ).toBeTruthy()
+    // Picker stays closed — atomic selection took over.
+    expect(screen.queryByRole("listbox", { name: "Reference workspace file" })).toBeNull()
+    // The whole token should be selected (0 → 11 = "@src/api.ts").
+    // Selection is deferred via requestAnimationFrame so we use waitFor.
+    await waitFor(() => {
+      expect(textarea.selectionStart).toBe(0)
+      expect(textarea.selectionEnd).toBe(11)
+    })
   })
 
   it("chips a mention that arrived via paste, not through the picker", async () => {

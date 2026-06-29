@@ -524,10 +524,10 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     setMentionMenuIndex(0)
     setSlashMenuIndex(0)
     setSnippetMenuIndex(0)
-    // Clear the mention picker too — it tracks positions inside the value
-    // we just wiped. Without this, a picker that was open at submit time
-    // will stay open but repositioned at index 0 after the clear.
-    syncMention()
+    // mentionRange, snippetRange are already reset above — do NOT call
+    // syncMention() here. It reads the textarea DOM which still holds the
+    // old value at this point (React hasn't flushed setValue('') yet), so
+    // it would immediately reopen the picker we just closed.
   }, [
     disabled,
     isStreaming,
@@ -536,7 +536,6 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     mentions,
     shellMode,
     onSubmit,
-    syncMention,
   ])
 
   const addFile = useCallback((file: File) => {
@@ -1154,7 +1153,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         activeRange={mentionRange}
         textareaRef={textareaRef}
         fileRefs={fileRefs}
-        mentions={mentions}
+        mentions={mentions.length > 0 ? mentions : undefined}
       />
       <textarea
         ref={setTextareaRef}

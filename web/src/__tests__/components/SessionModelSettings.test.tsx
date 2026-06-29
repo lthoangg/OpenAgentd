@@ -98,10 +98,41 @@ describe('SessionModelSettings', () => {
 
     renderPanel({ sessionModel: 'openai:gpt-5.5' })
 
+    // Wait for the registry fetch to resolve so thinking_levels are populated,
+    // then open the dropdown.
+    await waitFor(() =>
+      expect((globalThis.fetch as ReturnType<typeof mock>).mock.calls.length).toBeGreaterThan(0),
+    )
     fireEvent.click(await screen.findByRole('button', { name: 'Thinking level' }))
 
-    expect(await screen.findByText('Extra high')).toBeTruthy()
+    expect(await screen.findByText('Xhigh')).toBeTruthy()
     expect(screen.queryByText('Minimal')).toBeNull()
+    expect(screen.queryByText('Max')).toBeNull()
+  })
+
+  it('shows only fallback levels (none/low/medium/high) when model has no thinking_levels', async () => {
+    globalThis.fetch = mock(async () =>
+      new Response(JSON.stringify({
+        tools: [],
+        skills: [],
+        providers: ['openai'],
+        models: [{ id: 'openai:gpt-5', provider: 'openai', model: 'gpt-5', vision: false, output_image: false, output_video: false, thinking_levels: [], summary_trigger_tokens: 0 }],
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    ) as typeof fetch
+
+    renderPanel({ sessionModel: 'openai:gpt-5' })
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Thinking level' }))
+
+    expect(await screen.findByText('None')).toBeTruthy()
+    expect(await screen.findByText('Low')).toBeTruthy()
+    expect(await screen.findByText('Medium')).toBeTruthy()
+    expect(await screen.findByText('High')).toBeTruthy()
+    expect(screen.queryByText('Minimal')).toBeNull()
+    expect(screen.queryByText('Extra high')).toBeNull()
     expect(screen.queryByText('Max')).toBeNull()
   })
 })

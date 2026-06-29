@@ -53,7 +53,7 @@ export const temperatureSchema = z
 export const roleSchema = z.enum(['lead', 'member'])
 
 /** Thinking level — empty string means "unset". */
-export const thinkingLevelSchema = z.enum(['', 'none', 'low', 'medium', 'high'])
+export const thinkingLevelSchema = z.string()
 
 /** Short one-line description; empty string is allowed. */
 export const descriptionSchema = z

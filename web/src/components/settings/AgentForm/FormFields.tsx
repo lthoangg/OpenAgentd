@@ -18,16 +18,7 @@ import {
 import { ModelCombobox } from './ModelCombobox'
 import { isBuiltInProfile } from './utils'
 
-const THINKING_LEVELS: Array<{ value: string; label: string }> = [
-  { value: '__none__', label: '(default)' },
-  { value: 'none', label: 'none' },
-  { value: 'minimal', label: 'minimal' },
-  { value: 'low', label: 'low' },
-  { value: 'medium', label: 'medium' },
-  { value: 'high', label: 'high' },
-  { value: 'xhigh', label: 'xhigh' },
-  { value: 'max', label: 'max' },
-]
+const FALLBACK_THINKING_LEVELS = ['none', 'low', 'medium', 'high']
 
 export function ParseErrorBanner({
   message,
@@ -77,7 +68,7 @@ export function FormFields({
   toolOptions: MultiSelectOption[]
   skillOptions: MultiSelectOption[]
   mcpOptions: MultiSelectOption[]
-  modelOptions: { id: string; provider: string; model: string; vision: boolean }[]
+  modelOptions: { id: string; provider: string; model: string; vision: boolean; thinking_levels?: string[] }[]
   agentPath?: string
   effectiveTools?: string[]
   updateFromForm: (next: AgentFrontmatter, nextBody: string) => void
@@ -114,6 +105,15 @@ export function FormFields({
     required: true,
     validValues: validModelIds,
   })
+  // Derive thinking levels from the selected model's registry entry.
+  // Fall back to the full list when the model isn't in the registry yet
+  // (e.g. placeholder entries from the providers list or an unknown model).
+  const thinkingLevels = useMemo(() => {
+    const entry = currentModelOptions.find((m) => m.id === fm.model)
+    const levels = entry?.thinking_levels
+    return levels && levels.length > 0 ? levels : FALLBACK_THINKING_LEVELS
+  }, [currentModelOptions, fm.model])
+
   const hasBuiltInProfile = isBuiltInProfile(fm.name, fm.role, agentPath)
   const implicitToolNames = new Set(['skill', 'todo_manage', 'schedule_task', 'note'])
   const builtInTools = (effectiveTools ?? []).filter(
@@ -251,8 +251,9 @@ export function FormFields({
               className="min-h-11 w-full md:min-h-9"
               disabled={disabled}
             >
-              {THINKING_LEVELS.map((lvl) => (
-                <DropdownItem key={lvl.value} value={lvl.value}>{lvl.label}</DropdownItem>
+              <DropdownItem value="__none__">(default)</DropdownItem>
+              {thinkingLevels.map((lvl) => (
+                <DropdownItem key={lvl} value={lvl}>{lvl}</DropdownItem>
               ))}
             </Dropdown>
           </SettingsField>

@@ -4,6 +4,7 @@ import {
   modelSchema,
   temperatureSchema,
   roleSchema,
+  thinkingLevelSchema,
   validateAgentName,
   validateModel,
   validateDescription,
@@ -13,6 +14,26 @@ import {
   validateAgentDraft,
   validateSkillDraft,
 } from '@/components/settings/schema'
+
+// ── thinkingLevelSchema ─────────────────────────────────────────────────────
+
+describe('thinkingLevelSchema', () => {
+  it('accepts empty string (unset)', () => {
+    expect(thinkingLevelSchema.safeParse('').success).toBe(true)
+  })
+
+  it.each(['none', 'low', 'medium', 'high'])('accepts standard level %p', (level) => {
+    expect(thinkingLevelSchema.safeParse(level).success).toBe(true)
+  })
+
+  it('accepts model-specific levels not in the fallback list (e.g. xhigh, max, minimal)', () => {
+    // thinkingLevelSchema is z.string() — the valid set is model-specific and
+    // enforced by the UI dropdown, not at save-time schema validation.
+    expect(thinkingLevelSchema.safeParse('xhigh').success).toBe(true)
+    expect(thinkingLevelSchema.safeParse('max').success).toBe(true)
+    expect(thinkingLevelSchema.safeParse('minimal').success).toBe(true)
+  })
+})
 
 // ── agentNameSchema ─────────────────────────────────────────────────────────
 

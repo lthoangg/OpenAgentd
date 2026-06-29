@@ -111,6 +111,15 @@ def _split_messages(
                 )
         elif isinstance(message, AssistantMessage) and message.tool_calls:
             blocks: list[dict[str, Any]] = []
+            # Re-emit the thinking block first so Anthropic's extended-thinking
+            # history contract is satisfied.  When a turn was generated with
+            # thinking enabled the API requires the thinking block to be present
+            # in the re-sent history — omitting it while keeping the tool_use
+            # blocks triggers HTTP 400 "text content blocks must be non-empty".
+            if message.reasoning_content:
+                blocks.append(
+                    {"type": "thinking", "thinking": message.reasoning_content}
+                )
             if message.content:
                 blocks.append({"type": "text", "text": message.content})
             for tool_call in message.tool_calls:
@@ -128,6 +137,37 @@ def _split_messages(
                 out.append({"role": "assistant", "content": blocks})
         elif isinstance(message, AssistantMessage):
             content = message.content or ""
+            # Re-emit the thinking block for plain (non-tool-call) assistant
+            # turns generated under extended thinking.  Without this, a turn
+            # that produced only a thinking block + text (or only a thinking
+            # block at max-token truncation) loses its thinking context when
+            # history is re-sent, causing the same HTTP 400.
+            if message.reasoning_content:
+                thinking_block: dict[str, Any] = {
+                    "type": "thinking",
+                    "thinking": message.reasoning_content,
+                }
+                if content:
+                    out.append(
+                        {
+                            "role": "assistant",
+                            "content": [
+                                thinking_block,
+                                {"type": "text", "text": content},
+                            ],
+                        }
+                    )
+                else:
+                    # Max-token truncation: the model ran out of output budget
+                    # mid-thinking — only the thinking block survived.  Include
+                    # it so the API sees a valid non-empty content array.
+                    out.append(
+                        {
+                            "role": "assistant",
+                            "content": [thinking_block],
+                        }
+                    )
+                continue
             if not content:
                 continue
             out.append(

@@ -429,3 +429,83 @@ def test_split_messages_keeps_complete_assistant_tool_pair() -> None:
     assert out[1]["content"][1]["type"] == "tool_use"
     assert out[2]["role"] == "user"
     assert out[2]["content"][0]["type"] == "tool_result"
+
+
+# ---------------------------------------------------------------------------
+# thinking block round-trip (extended-thinking history contract)
+# ---------------------------------------------------------------------------
+
+
+def test_split_messages_echoes_thinking_block_with_tool_calls() -> None:
+    """An AssistantMessage with reasoning_content + tool_calls must include the
+    thinking block first so Anthropic's extended-thinking history contract is met.
+    Without it the API returns HTTP 400 'text content blocks must be non-empty'."""
+    assistant = AssistantMessage(
+        content=None,
+        reasoning_content="I should call the shell tool.",
+        tool_calls=[
+            ToolCall(
+                id="t1",
+                function=FunctionCall(name="shell", arguments='{"command":"ls"}'),
+            )
+        ],
+    )
+    _, out = _split_messages(
+        [
+            HumanMessage(content="run ls"),
+            assistant,
+            ToolMessage(content="file.txt", tool_call_id="t1", name="shell"),
+        ]
+    )
+
+    assistant_turn = next(m for m in out if m["role"] == "assistant")
+    block_types = [b["type"] for b in assistant_turn["content"]]
+    assert block_types[0] == "thinking", "thinking block must come first"
+    assert "tool_use" in block_types
+    thinking_block = assistant_turn["content"][0]
+    assert thinking_block["thinking"] == "I should call the shell tool."
+
+
+def test_split_messages_echoes_thinking_block_plain_assistant() -> None:
+    """An AssistantMessage with reasoning_content but no tool_calls must also
+    include the thinking block so history stays valid under extended thinking."""
+    _, out = _split_messages(
+        [
+            HumanMessage(content="think out loud"),
+            AssistantMessage(
+                content="Here is my answer.",
+                reasoning_content="Let me reason first.",
+                tool_calls=None,
+            ),
+        ]
+    )
+
+    assistant_turn = next(m for m in out if m["role"] == "assistant")
+    block_types = [b["type"] for b in assistant_turn["content"]]
+    assert block_types == ["thinking", "text"]
+    assert assistant_turn["content"][0]["thinking"] == "Let me reason first."
+    assert assistant_turn["content"][1]["text"] == "Here is my answer."
+
+
+def test_split_messages_echoes_thinking_block_when_content_empty() -> None:
+    """Max-token truncation can produce reasoning_content with empty content.
+    The thinking block alone must be emitted — not skipped — so the API
+    receives a valid non-empty content array instead of an empty one."""
+    _, out = _split_messages(
+        [
+            HumanMessage(content="hi"),
+            AssistantMessage(
+                content=None,
+                reasoning_content="Ran out of tokens mid-thought.",
+                tool_calls=None,
+            ),
+            HumanMessage(content="continue"),
+        ]
+    )
+
+    assistant_turns = [m for m in out if m["role"] == "assistant"]
+    assert len(assistant_turns) == 1, "truncated thinking-only turn must be kept"
+    blocks = assistant_turns[0]["content"]
+    assert len(blocks) == 1
+    assert blocks[0]["type"] == "thinking"
+    assert blocks[0]["thinking"] == "Ran out of tokens mid-thought."

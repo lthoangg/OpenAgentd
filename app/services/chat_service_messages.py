@@ -94,10 +94,15 @@ def deserialize_messages(
                 clean.append(tc)
             except (json.JSONDecodeError, ValueError):
                 bad_tool_call_ids.add(tc.id)
+                finish_reason = (
+                    (msg.extra or {}).get("finish_reason") if msg.extra else None
+                )
                 logger.warning(
-                    "deserialize_drop_partial_tool_call tool={} id={} args_prefix={!r}",
+                    "deserialize_drop_partial_tool_call tool={} id={} finish_reason={} args_len={} args_prefix={!r}",
                     tc.function.name,
                     tc.id,
+                    finish_reason,
+                    len(tc.function.arguments),
                     tc.function.arguments[:80],
                 )
         if len(clean) != len(msg.tool_calls):

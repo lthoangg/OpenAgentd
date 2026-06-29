@@ -309,9 +309,10 @@ async def stream_and_assemble(
         fn_args = buf["function"]["arguments"]
         if not fn_name:
             logger.warning(
-                "drop_partial_tool_call_no_name agent={} idx={} args_prefix={!r}",
+                "drop_partial_tool_call_no_name agent={} idx={} finish_reason={} args_prefix={!r}",
                 agent_name,
                 i,
+                last_finish_reason,
                 fn_args[:80],
             )
             continue
@@ -320,11 +321,12 @@ async def stream_and_assemble(
                 json.loads(fn_args)
             except (json.JSONDecodeError, ValueError) as exc:
                 logger.warning(
-                    "drop_partial_tool_call_bad_json agent={} idx={} name={} chars={} args_prefix={!r} args_suffix={!r} error={}",
+                    "drop_partial_tool_call_bad_json agent={} idx={} name={} chars={} finish_reason={} args_prefix={!r} args_suffix={!r} error={}",
                     agent_name,
                     i,
                     fn_name,
                     len(fn_args),
+                    last_finish_reason,
                     fn_args[:120],
                     fn_args[-120:],
                     exc,

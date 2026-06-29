@@ -204,7 +204,9 @@ class TestOnDemandActivation:
             captured["factory_model"] = model
             return override_provider
 
-        def fake_build_summarization_hook(provider, *, mode=None, model_id=None):
+        def fake_build_summarization_hook(
+            provider, *, mode=None, model_id=None, support_interrupt=True
+        ):
             captured["summary_provider"] = provider
             captured["summary_model"] = model_id
             return None

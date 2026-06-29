@@ -787,5 +787,22 @@ html[data-mobile-shell][data-vp-anim] .mobile-viewport {
   color: var(--color-text-2);
   background: var(--bg-key);
 }
+
+/* Drag-and-drop overlay animations */
+@keyframes drag-overlay-enter {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.drag-overlay-enter {
+  animation: drag-overlay-enter 150ms var(--ease-out) forwards;
+}
+
+@keyframes drag-card-enter {
+  from { transform: scale(0.95); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
+}
+.drag-card-enter {
+  animation: drag-card-enter 200ms var(--ease-spring-soft) forwards;
+}
 .oa-prose strong { color: var(--color-text); font-weight: 600; }
 .oa-prose em     { color: var(--color-text-2); font-style: italic; }

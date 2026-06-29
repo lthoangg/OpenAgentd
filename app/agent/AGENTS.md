@@ -40,3 +40,4 @@ uv run ty check app/
 - `team_message` and `todo_manage` are injected; do not ask users to list them manually.
 - Keep prompt bodies tool-agnostic because runtime capabilities can change.
 - Streaming loops must catch provider/tool chunk errors and emit recoverable events where possible.
+- `SummarizationHook` respects `provider.support_interrupt`: when `False`, summarisation only fires at the user-turn boundary (last visible message is a real `HumanMessage` from the user), never mid-loop. `build_summarization_hook` in `member.py` reads this flag automatically.

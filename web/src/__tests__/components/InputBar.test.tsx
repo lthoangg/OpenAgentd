@@ -389,6 +389,25 @@ describe("InputBar", () => {
     expect(textarea.placeholder).toMatch(/Queue a follow-up/)
   })
 
+  it("submits a queued follow-up while streaming", async () => {
+    const user = userEvent.setup()
+    let submittedText = ""
+    render(
+      <InputBar
+        onSubmit={(text) => {
+          submittedText = text
+        }}
+        isStreaming={true}
+      />,
+    )
+
+    const textarea = screen.getByLabelText("Message input")
+    await user.type(textarea, "queued follow-up")
+    await user.keyboard("{Enter}")
+
+    expect(submittedText).toBe("queued follow-up")
+  })
+
   it("exposes keyboard shortcuts via send button tooltip", () => {
     const onSubmit = () => {}
     render(<InputBar onSubmit={onSubmit} />)
@@ -1475,5 +1494,83 @@ describe("InputBar — handleFileSelect (file input change)", () => {
     render(<InputBar onSubmit={() => {}} />)
     const input = document.querySelector('input[type="file"]') as HTMLInputElement
     expect(input.getAttribute("aria-hidden")).toBe("true")
+  })
+})
+
+describe("InputBar — minimized height and expand reset", () => {
+  // Bug: the messageSlot div used opacity-0 to hide the textarea row but
+  // still reserved its full height in the flex layout, making the minimized
+  // pill taller than just its action buttons.
+  it("collapses the message slot to zero height while minimized", () => {
+    render(<InputBar onSubmit={() => {}} minimized />)
+
+    // The message slot is the div that wraps the textarea and carries
+    // aria-hidden="true" (as opposed to the SVG icons which also use
+    // aria-hidden). We find it via its unique combination of being a
+    // div with aria-hidden="true" that contains the textarea.
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+    // Walk up to the direct wrapper div that carries the aria-hidden + h-0
+    const slot = textarea.closest('div[aria-hidden="true"]') as HTMLElement
+    expect(slot).toBeTruthy()
+    expect(slot.className).toContain("h-0")
+    expect(slot.className).toContain("overflow-hidden")
+    expect(slot.className).toContain("opacity-0")
+  })
+
+  it("reveals the message slot when not minimized", () => {
+    render(<InputBar onSubmit={() => {}} minimized={false} />)
+
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+
+    // The slot should NOT carry h-0 when expanded — the textarea must be
+    // fully visible and the slot carries opacity-100.
+    const slot = textarea.closest('div[aria-hidden]') as HTMLElement
+    // aria-hidden is "false" (not "true") when expanded
+    expect(slot?.getAttribute("aria-hidden")).toBe("false")
+    expect(slot?.className).not.toContain("h-0")
+    expect(slot?.className).toContain("opacity-100")
+
+    // The textarea itself must be enabled and interactive
+    expect(textarea.getAttribute("disabled")).toBeNull()
+    expect(textarea.getAttribute("tabindex")).not.toBe("-1")
+  })
+
+  // Bug: isMultiLine state was not reset on minimize → expand, so an empty
+  // textarea would re-open in a multi-row layout if it had been multi-line
+  // before the bar was minimized.
+  it("re-enables the textarea on minimize → expand transition", async () => {
+    const { rerender } = render(<InputBar onSubmit={() => {}} minimized={false} />)
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+
+    // Confirm expanded: enabled + accessible tabindex
+    expect(textarea.getAttribute("disabled")).toBeNull()
+    expect(textarea.getAttribute("tabindex")).not.toBe("-1")
+
+    // Minimize
+    rerender(<InputBar onSubmit={() => {}} minimized />)
+    expect(textarea.getAttribute("disabled")).not.toBeNull()
+
+    // Expand again
+    rerender(<InputBar onSubmit={() => {}} minimized={false} />)
+
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+    })
+
+    // After expand the textarea must be re-enabled and the slot visible
+    expect(textarea.getAttribute("disabled")).toBeNull()
+    expect(textarea.getAttribute("tabindex")).not.toBe("-1")
+
+    const slot = textarea.closest('div[aria-hidden]') as HTMLElement
+    expect(slot?.getAttribute("aria-hidden")).toBe("false")
+    expect(slot?.className).not.toContain("h-0")
+  })
+
+  it("does not carry h-0 on the message slot when expanded from the start", () => {
+    render(<InputBar onSubmit={() => {}} minimized={false} />)
+
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+    const slot = textarea.closest('div[aria-hidden]') as HTMLElement
+    expect(slot?.className).not.toContain("h-0")
   })
 })

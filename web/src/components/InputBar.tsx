@@ -156,6 +156,7 @@ export interface InputBarHandle {
   appendValue: (text: string) => void
   insertText: (text: string) => void
   setFiles: (files: File[]) => void
+  addFiles: (files: File[]) => void
 }
 
 
@@ -446,6 +447,13 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     setFiles: (nextFiles: File[]) => {
       setFiles(nextFiles)
     },
+    addFiles: (nextFiles: File[]) => {
+      setFiles((prev) => {
+        const allowed = nextFiles.filter((file) => isFileTypeAllowed(file, capabilities))
+        if (allowed.length === 0) return prev
+        return [...prev, ...allowed]
+      })
+    },
   }))
 
   // Auto-focus the textarea whenever the bar transitions from
@@ -457,10 +465,15 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     const wasMinimized = prevMinimizedRef.current
     prevMinimizedRef.current = minimized
     if (!wasMinimized || minimized) return
+    // Reset multi-line state so an empty textarea doesn't re-expand
+    // to a stale multi-row height from a previous session.
+    setIsMultiLine(false)
+    promoteLengthRef.current = 0
     // ``rAF`` lets framer's parent ``layout`` tween start before
-    // focus, so the caret doesn't appear mid-morph at the wrong
-    // position.
+    // focus + resize, so the caret doesn't appear mid-morph at the
+    // wrong position and the height is measured on the now-visible element.
     const id = requestAnimationFrame(() => {
+      resize()
       textareaRef.current?.focus()
     })
     return () => cancelAnimationFrame(id)
@@ -501,9 +514,10 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   }, [onSlashCommand, resize])
 
   const submit = useCallback(() => {
-    if (disabled || isStreaming) return
+    if (disabled) return
     const trimmed = value.trim()
     if (trimmed.length === 0 && files.length === 0) return
+    if (isStreaming && !hasText) return
 
     const submitted = shellMode ? `!${trimmed}` : trimmed
     onSubmit(
@@ -1139,7 +1153,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     <div
       aria-hidden={minimized}
       className={`flex w-full items-center transition-opacity duration-150 ${
-        minimized ? 'pointer-events-none opacity-0' : 'opacity-100'
+        minimized ? 'pointer-events-none opacity-0 h-0 overflow-hidden' : 'opacity-100'
       }`}
     >
       {/* Position context for the chip overlay. ``relative`` + ``w-full``
@@ -1209,7 +1223,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         // positions, so it ends up under the wrong overlay word and drifts
         // further with every scroll. The wrapper around the overlay handles
         // overflow via the overlay's ``overflow-hidden`` + scroll sync.
-        className="block w-full resize-none scrollbar-none bg-transparent p-0 align-middle text-sm leading-relaxed break-words text-transparent caret-(--color-text) placeholder-(--color-text-subtle) selection:bg-(--color-accent)/30 selection:text-(--color-text) focus:outline-none disabled:opacity-50"
+        className="block w-full resize-none scrollbar-none overscroll-contain bg-transparent p-0 align-middle text-sm leading-relaxed break-words text-transparent caret-(--color-text) placeholder-(--color-text-subtle) selection:bg-(--color-accent)/30 selection:text-(--color-text) focus:outline-none disabled:opacity-50"
         // Cap matches the ``resize()`` ceiling above so the JS-driven height
         // and the CSS limit stay in lockstep.
         style={{ maxHeight: '120px' }}

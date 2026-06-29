@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Server, X } from 'lucide-react'
+import { Server } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -173,7 +173,8 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
       role="dialog"
       aria-modal="true"
       aria-labelledby="app-backend-title"
-      onClick={() => { if (!pending) onOpenChange(false) }}
+      data-swipe-ignore
+      onClick={() => onOpenChange(false)}
     >
       <div
         className="flex max-h-full w-full max-w-md flex-col overflow-hidden rounded-md border border-(--color-border) bg-(--bg-page) text-(--color-text) shadow-2xl"
@@ -185,16 +186,6 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
             <Server size={13} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
             <h2 id="app-backend-title" className="text-xs font-semibold text-(--color-text)">Backend connection</h2>
           </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-xs"
-            onClick={() => onOpenChange(false)}
-            aria-label="Close backend connection"
-            title="Close"
-          >
-            <X size={13} aria-hidden="true" />
-          </Button>
         </div>
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">

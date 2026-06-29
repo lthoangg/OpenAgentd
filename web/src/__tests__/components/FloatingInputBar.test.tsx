@@ -329,5 +329,55 @@ describe('FloatingInputBar', () => {
 
       expect(dismissedCalled).toBe(false)
     })
+
+    it('does NOT dismiss the keyboard when swiping down inside a scrollable textarea that is scrolled down', () => {
+      render(
+        <FloatingInputBar
+          boundsRef={{ current: null }}
+          onSubmit={() => {}}
+        />
+      )
+
+      const textarea = screen.getByRole('textbox', { name: 'Message input' })
+
+      // Mock scrollable textarea scrolled down
+      Object.defineProperty(textarea, 'scrollHeight', { value: 200, configurable: true })
+      Object.defineProperty(textarea, 'clientHeight', { value: 100, configurable: true })
+      Object.defineProperty(textarea, 'scrollTop', { value: 10, configurable: true, writable: true })
+
+      fireEvent.touchStart(textarea, {
+        touches: [{ clientX: 100, clientY: 100 } as unknown as Touch],
+      })
+      fireEvent.touchMove(textarea, {
+        touches: [{ clientX: 100, clientY: 150 } as unknown as Touch],
+      })
+
+      expect(dismissedCalled).toBe(false)
+    })
+
+    it('dismisses the keyboard when swiping down inside a scrollable textarea that is already at the top', () => {
+      render(
+        <FloatingInputBar
+          boundsRef={{ current: null }}
+          onSubmit={() => {}}
+        />
+      )
+
+      const textarea = screen.getByRole('textbox', { name: 'Message input' })
+
+      // Mock scrollable textarea at the top
+      Object.defineProperty(textarea, 'scrollHeight', { value: 200, configurable: true })
+      Object.defineProperty(textarea, 'clientHeight', { value: 100, configurable: true })
+      Object.defineProperty(textarea, 'scrollTop', { value: 0, configurable: true, writable: true })
+
+      fireEvent.touchStart(textarea, {
+        touches: [{ clientX: 100, clientY: 100 } as unknown as Touch],
+      })
+      fireEvent.touchMove(textarea, {
+        touches: [{ clientX: 100, clientY: 150 } as unknown as Touch],
+      })
+
+      expect(dismissedCalled).toBe(true)
+    })
   })
 })

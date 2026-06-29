@@ -340,4 +340,28 @@ describe('AppBackendDialog', () => {
 
     expect(await screen.findByText(/Make sure OpenAgentd is running locally and the port is correct/)).toBeTruthy()
   })
+
+  it('calls onOpenChange(false) when the backdrop is clicked', async () => {
+    const user = userEvent.setup()
+    const onOpenChangeMock = mock(() => {})
+    render(<AppBackendDialog open onOpenChange={onOpenChangeMock} />)
+
+    // Click the backdrop (the outer div)
+    const dialog = screen.getByRole('dialog')
+    await user.click(dialog)
+
+    expect(onOpenChangeMock).toHaveBeenCalledWith(false)
+  })
+
+  it('does NOT call onOpenChange when clicking inside the dialog', async () => {
+    const user = userEvent.setup()
+    const onOpenChangeMock = mock(() => {})
+    render(<AppBackendDialog open onOpenChange={onOpenChangeMock} />)
+
+    // Click inside the dialog (e.g. the title)
+    const title = screen.getByText('Backend connection')
+    await user.click(title)
+
+    expect(onOpenChangeMock).not.toHaveBeenCalled()
+  })
 })

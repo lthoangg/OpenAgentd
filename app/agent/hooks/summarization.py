@@ -22,6 +22,22 @@ This is a **pure state transform**: no DB reads or writes occur here.
 The checkpointer (called by the agent loop after ``before_model``) is
 responsible for persisting the mutated ``state.messages``.
 
+Timing — support_interrupt
+--------------------------
+``support_interrupt=True`` (default): summarisation may fire at any
+``before_model`` boundary within a turn, including mid-loop between tool
+calls.  Safe because the user can interrupt the loop at any time.
+
+``support_interrupt=False`` (proxy/quota-tracked providers): summarisation
+is deferred to the **user-turn boundary** — the first ``before_model`` call
+of a new turn, before the agent has produced any output.  Mid-loop compaction
+is skipped to avoid disrupting an in-progress agentic task on a provider
+whose stream cannot be safely aborted.  ``force_summarization=True`` in
+``state.metadata`` overrides this deferral unconditionally.
+
+``build_summarization_hook`` reads ``provider.support_interrupt`` automatically
+when called from ``member.py``, so no manual wiring is needed.
+
 Usage::
 
     from app.agent.hooks.summarization import SummarizationHook
@@ -313,6 +329,7 @@ def build_summarization_hook(
     *,
     mode: str | None = None,
     model_id: str | None = None,
+    support_interrupt: bool = True,
 ) -> "SummarizationHook | None":
     """Return a configured SummarizationHook, or ``None`` if disabled.
 
@@ -328,6 +345,13 @@ def build_summarization_hook(
       :data:`CODING_KEEP_LAST_ASSISTANTS` (0 — summarise everything).
     * Anything else → :data:`CHAT_SUMMARY_PROMPT` +
       :data:`DEFAULT_KEEP_LAST_ASSISTANTS`.
+
+    ``support_interrupt`` mirrors the provider flag of the same name.  When
+    ``False`` (e.g. quota-tracked proxy providers), summarisation is deferred
+    to the **user-turn boundary** — the very first ``before_model`` call of a
+    new turn, before the agent has produced any output.  This prevents
+    mid-loop compaction for providers where an interrupt cannot safely abort
+    an in-flight stream.
     """
     if DEFAULT_PROMPT_TOKEN_THRESHOLD <= 0:
         return None
@@ -338,6 +362,7 @@ def build_summarization_hook(
         prompt_token_threshold=prompt_token_threshold_for_model(model_id),
         keep_last_assistants=keep_last_for_mode(mode),
         max_token_length=DEFAULT_MAX_TOKEN_LENGTH,
+        support_interrupt=support_interrupt,
     )
 
 
@@ -370,6 +395,15 @@ class SummarizationHook(BaseAgentHook):
         Minimum number of new messages that must have been added since the last
         summarisation before another can fire.  Prevents thrashing when the
         kept window is already close to the threshold.  Set to ``0`` to disable.
+    support_interrupt:
+        Mirrors the provider flag of the same name.  When ``True`` (default),
+        summarisation may fire at any ``before_model`` boundary within a turn
+        — safe because the user can interrupt mid-loop.  When ``False``
+        (e.g. quota-tracked proxy providers), summarisation is deferred to the
+        **user-turn boundary**: it only fires when the last visible message is
+        a ``HumanMessage``, meaning the agent loop has not yet produced any
+        output for this turn.  This prevents mid-loop compaction for providers
+        that cannot safely abort an in-flight stream.
     """
 
     def __init__(
@@ -381,6 +415,7 @@ class SummarizationHook(BaseAgentHook):
         keep_last_assistants: int = DEFAULT_KEEP_LAST_ASSISTANTS,
         max_token_length: int = DEFAULT_MAX_TOKEN_LENGTH,
         min_messages_since_last_summary: int = DEFAULT_MIN_MESSAGES_SINCE_LAST_SUMMARY,
+        support_interrupt: bool = True,
     ) -> None:
         if not summary_prompt or not summary_prompt.strip():
             raise ValueError(
@@ -394,6 +429,7 @@ class SummarizationHook(BaseAgentHook):
         self._summary_prompt = summary_prompt
         self._max_token_length = max_token_length
         self._min_messages_since_last_summary = min_messages_since_last_summary
+        self._support_interrupt = support_interrupt
         # Snapshot of len(state.messages) at the last summarisation — used
         # by the minimum-delta guard in before_model to prevent thrashing.
         self._messages_at_last_summary: int = 0
@@ -403,6 +439,52 @@ class SummarizationHook(BaseAgentHook):
     def prompt_token_threshold(self) -> int:
         """Token count at which summarisation fires.  Public for peer hooks."""
         return self._prompt_token_threshold
+
+    @staticmethod
+    def _at_user_turn_boundary(state: "AgentState") -> bool:
+        """Return ``True`` when the agent loop is at the start of a new user turn.
+
+        A *genuine* user-turn boundary requires the last visible non-system
+        message to be a real ``HumanMessage`` from the user (or the queued
+        message drain), not one of the several synthetic ``HumanMessage``
+        variants that can appear mid-loop:
+
+        * **Inbox message from another agent** — ``extra["from_agent"]`` is set
+          to an agent name other than ``"user"``.  These are injected by
+          ``TeamInboxHook.before_model`` between LLM iterations and must not
+          be mistaken for a user-turn start.
+        * **Summary message** — ``is_summary=True``.  Summaries are
+          ``HumanMessage`` rows but they anchor past history, not new user input.
+        * **``/continue`` directive and attachment synthetics** — carry
+          ``extra["hidden_from_summary"] = True`` to signal they are internal
+          plumbing, not user-facing input.
+
+        All three cases return ``False`` even though the last message is a
+        ``HumanMessage``.  An empty visible window returns ``True`` (no output
+        has been produced yet for this turn).
+        """
+        visible = [
+            m
+            for m in state.messages
+            if not m.exclude_from_context and not isinstance(m, SystemMessage)
+        ]
+        if not visible:
+            return True
+        last = visible[-1]
+        if not isinstance(last, HumanMessage):
+            return False
+        # Summary messages are HumanMessage rows but not user input.
+        if last.is_summary:
+            return False
+        extra = last.extra or {}
+        # Internal synthetics (/continue directive, attachment rows, mention blocks).
+        if extra.get("hidden_from_summary"):
+            return False
+        # Inbox messages injected from other team members mid-loop.
+        from_agent = extra.get("from_agent")
+        if from_agent is not None and from_agent != "user":
+            return False
+        return True
 
     async def before_model(
         self,
@@ -415,6 +497,12 @@ class SummarizationHook(BaseAgentHook):
         Mutates ``state.messages`` then returns a new ``ModelRequest`` with the
         updated message window so the current LLM call sees the summary immediately.
         Returns ``None`` (pass-through) when summarisation does not fire.
+
+        When ``support_interrupt=False``, summarisation is additionally gated on
+        being at the **user-turn boundary** (the last visible message is a
+        ``HumanMessage``).  This defers compaction to the start of a new turn
+        rather than firing mid-loop, matching the constraint that these providers
+        cannot safely abort an in-flight stream.
         """
         force = state.metadata.get("force_summarization") is True
         if self._prompt_token_threshold <= 0 and not force:
@@ -434,6 +522,18 @@ class SummarizationHook(BaseAgentHook):
                     ctx.agent_name,
                     messages_since,
                     self._min_messages_since_last_summary,
+                )
+                return None
+
+        # For non-interruptible providers, defer summarisation to the start of
+        # the next user turn.  Mid-loop compaction is unsafe for these providers
+        # because the current agent loop cannot be aborted.
+        if not self._support_interrupt and not force:
+            if not self._at_user_turn_boundary(state):
+                logger.debug(
+                    "summarization_deferred_mid_loop agent={} last_prompt_tokens={}",
+                    ctx.agent_name,
+                    state.usage.last_prompt_tokens,
                 )
                 return None
 

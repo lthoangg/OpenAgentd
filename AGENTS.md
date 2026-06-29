@@ -56,6 +56,18 @@ uv run python -m manual.queued_injection
 
 See [`manual/AGENTS.md`](manual/AGENTS.md) for the full script catalogue.
 
+## Manual scenario tests
+
+`tests/manual/` contains standalone scenario scripts that exercise service-layer logic against an in-memory SQLite database or temporary filesystem — no running server needed. Run them directly to verify behaviour after changes to the covered subsystems:
+
+```bash
+uv run python tests/manual/manual_scenarios.py    # chat_service: compaction, undo/redo, queued messages (A–G, 21 checks)
+uv run python tests/manual/extended_scenarios.py  # chat_service edge cases: orphan healing, double-undo, Anthropic sanitization (H–P, 24 checks)
+uv run python tests/manual/mention_scenarios.py   # @mention context injection: code files, dirs, binary skip, image hints, line refs, path traversal (A–I, 30 checks)
+```
+
+Re-run `mention_scenarios.py` after any change to `build_mention_context_blocks`, `_read_mention_as_attachment`, or `_safe_join*` in `app/api/routes/team/_helpers.py`.
+
 ## Design principle: mobile-first, multi-platform
 
 OpenAgentd is **one codebase that must feel native on every surface** —

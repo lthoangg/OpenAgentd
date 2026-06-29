@@ -410,8 +410,16 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       // its ``start``/``end`` indices refer to the old text.
       setMentionRange(null)
       setSnippetRange(null)
-      // Trigger height recalculation after injecting text programmatically
-      requestAnimationFrame(resize)
+      // Trigger height recalculation after injecting text programmatically.
+      // Double-rAF: the outer frame fires after React's paint; the inner frame
+      // fires after the browser's subsequent layout pass, by which point any
+      // parent expand animation (e.g. FloatingInputBar minimized→expanded
+      // Framer spring) has had a frame to reach its final width. Measuring
+      // scrollHeight at the correct full width prevents a wrong height being
+      // locked in before the textarea is properly sized.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(resize)
+      })
     },
     appendValue: (text: string) => {
       setValue((prev) => {
@@ -467,18 +475,29 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     const wasMinimized = prevMinimizedRef.current
     prevMinimizedRef.current = minimized
     if (!wasMinimized || minimized) return
-    // Reset multi-line state so an empty textarea doesn't re-expand
-    // to a stale multi-row height from a previous session.
-    setIsMultiLine(false)
-    promoteLengthRef.current = 0
-    // ``rAF`` lets framer's parent ``layout`` tween start before
-    // focus + resize, so the caret doesn't appear mid-morph at the
-    // wrong position and the height is measured on the now-visible element.
-    const id = requestAnimationFrame(() => {
-      resize()
-      textareaRef.current?.focus()
+    // Reset multi-line state only when the textarea is empty — if
+    // content was just injected (e.g. via /undo) we must not clear
+    // isMultiLine/promoteLengthRef here because the setValue rAF
+    // will compute the correct height from the actual content.
+    if (!textareaRef.current?.value) {
+      setIsMultiLine(false)
+      promoteLengthRef.current = 0
+    }
+    // Double-rAF: outer frame lets Framer's spring start its expand
+    // animation; inner frame fires after the browser's subsequent
+    // layout pass when the bar has reached (or is very close to) its
+    // final width, so the scrollHeight measurement is accurate.
+    let innerId = 0
+    const outerId = requestAnimationFrame(() => {
+      innerId = requestAnimationFrame(() => {
+        resize()
+        textareaRef.current?.focus()
+      })
     })
-    return () => cancelAnimationFrame(id)
+    return () => {
+      cancelAnimationFrame(outerId)
+      cancelAnimationFrame(innerId)
+    }
   }, [minimized])
 
   // Plain ref now — no auto-focus-on-mount magic needed since the

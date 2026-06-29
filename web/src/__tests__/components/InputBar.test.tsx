@@ -389,6 +389,25 @@ describe("InputBar", () => {
     expect(textarea.placeholder).toMatch(/Queue a follow-up/)
   })
 
+  it("submits a queued follow-up while streaming", async () => {
+    const user = userEvent.setup()
+    let submittedText = ""
+    render(
+      <InputBar
+        onSubmit={(text) => {
+          submittedText = text
+        }}
+        isStreaming={true}
+      />,
+    )
+
+    const textarea = screen.getByLabelText("Message input")
+    await user.type(textarea, "queued follow-up")
+    await user.keyboard("{Enter}")
+
+    expect(submittedText).toBe("queued follow-up")
+  })
+
   it("exposes keyboard shortcuts via send button tooltip", () => {
     const onSubmit = () => {}
     render(<InputBar onSubmit={onSubmit} />)

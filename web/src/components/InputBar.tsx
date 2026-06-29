@@ -514,9 +514,10 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   }, [onSlashCommand, resize])
 
   const submit = useCallback(() => {
-    if (disabled || isStreaming) return
+    if (disabled) return
     const trimmed = value.trim()
     if (trimmed.length === 0 && files.length === 0) return
+    if (isStreaming && !hasText) return
 
     const submitted = shellMode ? `!${trimmed}` : trimmed
     onSubmit(

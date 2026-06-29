@@ -415,7 +415,9 @@ class AnthropicProvider(LLMProviderBase):
                 headers=self.headers,
                 json=payload,
             ) as response:
-                response.raise_for_status()
+                if response.status_code >= 400:
+                    await response.aread()
+                    response.raise_for_status()
                 async for line in response.aiter_lines():
                     if not line.startswith("data: "):
                         continue

@@ -7,6 +7,8 @@ from app.agent.schemas.chat import HumanMessage
 
 
 class _FakeResponse:
+    status_code: int = 200
+
     def raise_for_status(self) -> None:
         return None
 

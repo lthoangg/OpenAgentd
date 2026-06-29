@@ -179,7 +179,8 @@ def is_non_retryable_429(exc: httpx.HTTPStatusError) -> bool:
 def _extract_provider_error_message(body: str) -> str | None:
     """Pull the human-readable error string out of a provider error body.
 
-    Handles the two common JSON shapes:
+    Handles common JSON shapes:
+    - Anthropic: ``{"type": "error", "error": {"type": "invalid_request_error", "message": "..."}}``
     - OpenAI / DeepSeek / Copilot: ``{"error": {"message": "...", ...}}``
     - Google GenAI: ``{"error": {"message": "...", "status": "..."}}``
 
@@ -198,6 +199,11 @@ def _extract_provider_error_message(body: str) -> str | None:
     if isinstance(error, dict):
         msg = error.get("message")
         if isinstance(msg, str) and msg.strip():
+            # For Anthropic, include the error type for extra context
+            # e.g. "invalid_request_error: Prefilling assistant messages is not supported"
+            error_type = error.get("type")
+            if isinstance(error_type, str) and error_type.strip():
+                return f"{error_type}: {msg.strip()}"
             return msg.strip()
     if isinstance(error, str) and error.strip():
         return error.strip()

@@ -9,6 +9,8 @@ from app.agent.providers.anthropic import AnthropicProvider
 
 
 class _FakeStreamResponse:
+    status_code: int = 200
+
     def raise_for_status(self) -> None:
         return None
 

@@ -5,19 +5,16 @@ import type { ContentBlock } from "@/api/types"
 
 afterEach(cleanup)
 
-// Mock lucide-react icons to avoid SVG issues in Happy DOM
 mock.module("lucide-react", () => new Proxy({}, { get: () => () => null }))
 
-// ── helpers ──────────────────────────────────────────────────────────────────
+// ── helpers ───────────────────────────────────────────────────────────────
 
 function makeTextBlock(id: string, content: string): ContentBlock {
   return { id, type: "text", content }
 }
-
 function makeUserBlock(id: string, content: string): ContentBlock {
   return { id, type: "user", content }
 }
-
 function makeThinkingBlock(id: string, content: string): ContentBlock {
   return { id, type: "thinking", content }
 }
@@ -28,439 +25,213 @@ function renderStream(props: Partial<React.ComponentProps<typeof AgentView>> = {
       blocks={props.blocks ?? []}
       currentBlocks={props.currentBlocks ?? []}
       isWorking={props.isWorking ?? false}
-    />
+    />,
   )
 }
 
-async function waitForScrollUpdate() {
+async function waitFrame() {
   await act(async () => {
-    await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)))
+    await new Promise((r) => requestAnimationFrame(() => r(undefined)))
   })
 }
 
-async function dispatchScrollEvent(scrollDiv: HTMLDivElement) {
-  await act(async () => {
-    scrollDiv.dispatchEvent(new Event("scroll", { bubbles: true }))
-  })
-  await waitForScrollUpdate()
+/** Set scroll position and fire a scroll event. dist = how far from bottom. */
+async function fireScroll(el: HTMLDivElement, distFromBottom: number) {
+  const scrollHeight = 1000
+  const clientHeight = 500
+  Object.defineProperty(el, "scrollHeight", { value: scrollHeight, configurable: true, writable: true })
+  Object.defineProperty(el, "clientHeight", { value: clientHeight, configurable: true, writable: true })
+  Object.defineProperty(el, "scrollTop",    { value: scrollHeight - clientHeight - distFromBottom, configurable: true, writable: true })
+  await act(async () => { el.dispatchEvent(new Event("scroll", { bubbles: true })) })
+  await waitFrame()
 }
 
-async function dispatchWheelEvent(scrollDiv: HTMLDivElement, deltaY: number) {
-  await act(async () => {
-    scrollDiv.dispatchEvent(new WheelEvent("wheel", { deltaY, bubbles: true }))
-  })
-  await waitForScrollUpdate()
-}
-
-async function dispatchTouchEvent(scrollDiv: HTMLDivElement, type: "touchstart" | "touchmove" | "touchend", clientY: number) {
-  await act(async () => {
-    const touch = { clientY, target: scrollDiv }
-    const event = new TouchEvent(type, {
-      bubbles: true,
-      touches: [touch as unknown as Touch],
-    })
-    scrollDiv.dispatchEvent(event)
-  })
-  await waitForScrollUpdate()
-}
-
-// ── tests ────────────────────────────────────────────────────────────────────
+// ── scroll-button tests ───────────────────────────────────────────────────
 
 describe("AgentView — scroll-to-bottom button", () => {
-  it("does not render button when content fits (at bottom)", () => {
-    const { container } = renderStream({
-      blocks: [makeTextBlock("b1", "Hello")],
-      currentBlocks: [],
-      isWorking: false,
-    })
-    const btn = container.querySelector('button[aria-label="Scroll to bottom"]')
-    expect(btn).toBeNull()
+  it("hidden by default (attached)", () => {
+    const { container } = renderStream({ blocks: [makeTextBlock("b1", "Hi")] })
+    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
   })
 
-  it("renders button when scroll position is not at bottom", async () => {
-    const { container } = renderStream({
-      blocks: [makeTextBlock("b1", "Hello world hello world hello world hello world")],
-      currentBlocks: [],
-      isWorking: false,
-    })
-
-    const scrollDiv = container.querySelector(".overflow-y-auto") as HTMLDivElement
-    expect(scrollDiv).toBeTruthy()
-
-    // Simulate scroll position not at bottom
-    Object.defineProperty(scrollDiv, "scrollHeight", {
-      value: 1000,
-      configurable: true,
-    })
-    Object.defineProperty(scrollDiv, "scrollTop", {
-      value: 100,
-      configurable: true,
-    })
-    Object.defineProperty(scrollDiv, "clientHeight", {
-      value: 500,
-      configurable: true,
-    })
-
-    // Trigger scroll event (user scroll intent) + wait for rAF
-    await dispatchScrollEvent(scrollDiv)
-
-    const btn = container.querySelector('button[aria-label="Scroll to bottom"]')
-    expect(btn).toBeTruthy()
+  it("appears when user scrolls away from bottom", async () => {
+    const { container } = renderStream({ blocks: [makeTextBlock("b1", "Hi")] })
+    const el = container.querySelector(".overflow-y-auto") as HTMLDivElement
+    await fireScroll(el, 200) // 200px above bottom → detach
+    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
   })
 
-  it("button has correct aria-label", async () => {
-    const { container } = renderStream({
-      blocks: [makeTextBlock("b1", "Hello world hello world hello world hello world")],
-      currentBlocks: [],
-      isWorking: false,
-    })
-
-    const scrollDiv = container.querySelector(".overflow-y-auto") as HTMLDivElement
-    Object.defineProperty(scrollDiv, "scrollHeight", {
-      value: 1000,
-      configurable: true,
-    })
-    Object.defineProperty(scrollDiv, "scrollTop", {
-      value: 100,
-      configurable: true,
-    })
-    Object.defineProperty(scrollDiv, "clientHeight", {
-      value: 500,
-      configurable: true,
-    })
-
-    await dispatchScrollEvent(scrollDiv)
-
-    const btn = container.querySelector('button[aria-label="Scroll to bottom"]')
-    expect(btn?.getAttribute("aria-label")).toBe("Scroll to bottom")
+  it("has correct aria-label", async () => {
+    const { container } = renderStream({ blocks: [makeTextBlock("b1", "Hi")] })
+    const el = container.querySelector(".overflow-y-auto") as HTMLDivElement
+    await fireScroll(el, 200)
+    expect(
+      container.querySelector('button[aria-label="Scroll to bottom"]')?.getAttribute("aria-label"),
+    ).toBe("Scroll to bottom")
   })
 
-  it("clicking button calls scrollTo on container", async () => {
-    const { container } = renderStream({
-      blocks: [makeTextBlock("b1", "Hello world hello world hello world hello world")],
-      currentBlocks: [],
-      isWorking: false,
-    })
-
-    const scrollDiv = container.querySelector(".overflow-y-auto") as HTMLDivElement
-    Object.defineProperty(scrollDiv, "scrollHeight", {
-      value: 1000,
-      configurable: true,
-    })
-    Object.defineProperty(scrollDiv, "scrollTop", {
-      value: 100,
-      configurable: true,
-    })
-    Object.defineProperty(scrollDiv, "clientHeight", {
-      value: 500,
-      configurable: true,
-    })
-
-    await dispatchScrollEvent(scrollDiv)
+  it("clicking button sets attached=true and hides button", async () => {
+    const { container } = renderStream({ blocks: [makeTextBlock("b1", "Hi")] })
+    const el = container.querySelector(".overflow-y-auto") as HTMLDivElement
+    await fireScroll(el, 200)
 
     const btn = container.querySelector('button[aria-label="Scroll to bottom"]') as HTMLButtonElement
     expect(btn).toBeTruthy()
 
-    // Button uses smooth scroll → calls scrollTo()
-    let scrollToCalled = false
-    scrollDiv.scrollTo = (() => { scrollToCalled = true }) as typeof scrollDiv.scrollTo
-
-    await act(async () => {
-      btn.click()
-    })
-
-    expect(scrollToCalled).toBe(true)
+    await act(async () => { btn.click() })
+    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
   })
 
-  it("detaches immediately on upward wheel intent near the bottom", async () => {
-    const { container } = renderStream({
-      blocks: [makeTextBlock("b1", "Hello world hello world hello world hello world")],
-      currentBlocks: [],
-      isWorking: true,
-    })
+  it("hides button when user scrolls back to the bottom", async () => {
+    const { container } = renderStream({ blocks: [makeTextBlock("b1", "Hi")] })
+    const el = container.querySelector(".overflow-y-auto") as HTMLDivElement
 
-    const scrollDiv = container.querySelector(".overflow-y-auto") as HTMLDivElement
-    Object.defineProperty(scrollDiv, "scrollHeight", {
-      value: 1000,
-      configurable: true,
-    })
-    Object.defineProperty(scrollDiv, "scrollTop", {
-      value: 470,
-      configurable: true,
-      writable: true,
-    })
-    Object.defineProperty(scrollDiv, "clientHeight", {
-      value: 500,
-      configurable: true,
-    })
+    await fireScroll(el, 200) // detach
+    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
 
-    await dispatchWheelEvent(scrollDiv, -12)
-
-    const btn = container.querySelector('button[aria-label="Scroll to bottom"]')
-    expect(btn).toBeTruthy()
+    await fireScroll(el, 0) // back at bottom → re-attach
+    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
   })
 
-  it("button hides after clicking (scrolls back to bottom)", async () => {
-    const { container } = renderStream({
-      blocks: [makeTextBlock("b1", "Hello world hello world hello world hello world")],
-      currentBlocks: [],
-      isWorking: false,
-    })
+  it("does not detach when keyboard is open (data-keyboard-open attribute)", async () => {
+    const { container } = renderStream({ blocks: [makeTextBlock("b1", "Hi")], isWorking: true })
+    const el = container.querySelector(".overflow-y-auto") as HTMLDivElement
 
-    const scrollDiv = container.querySelector(".overflow-y-auto") as HTMLDivElement
-    Object.defineProperty(scrollDiv, "scrollHeight", {
-      value: 1000,
-      configurable: true,
-    })
-    Object.defineProperty(scrollDiv, "scrollTop", {
-      value: 100,
-      configurable: true,
-      writable: true,
-    })
-    Object.defineProperty(scrollDiv, "clientHeight", {
-      value: 500,
-      configurable: true,
-    })
+    // Simulate keyboard open
+    document.documentElement.setAttribute("data-keyboard-open", "")
+    await fireScroll(el, 200) // would normally detach, but keyboard is open
+    document.documentElement.removeAttribute("data-keyboard-open")
 
-    await dispatchScrollEvent(scrollDiv)
-
-    let btn = container.querySelector('button[aria-label="Scroll to bottom"]')
-    expect(btn).toBeTruthy()
-
-    // Simulate scrolling back to bottom after click
-    Object.defineProperty(scrollDiv, "scrollTop", {
-      value: 500,
-      configurable: true,
-      writable: true,
-    })
-
-    await act(async () => {
-      ;(btn as HTMLButtonElement).click()
-    })
-    await waitForScrollUpdate()
-
-    btn = container.querySelector('button[aria-label="Scroll to bottom"]')
-    expect(btn).toBeNull()
+    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
   })
 
-  it("hides stale scroll button when the view resets to an empty chat", async () => {
-    const { container, rerender } = renderStream({
-      blocks: [makeTextBlock("b1", "Hello world hello world hello world hello world")],
-      currentBlocks: [],
-      isWorking: false,
-    })
-
-    const scrollDiv = container.querySelector(".overflow-y-auto") as HTMLDivElement
-    Object.defineProperty(scrollDiv, "scrollHeight", {
-      value: 1000,
-      configurable: true,
-    })
-    Object.defineProperty(scrollDiv, "scrollTop", {
-      value: 100,
-      configurable: true,
-      writable: true,
-    })
-    Object.defineProperty(scrollDiv, "clientHeight", {
-      value: 500,
-      configurable: true,
-    })
-
-    await dispatchScrollEvent(scrollDiv)
+  it("hides stale button when chat resets to empty", async () => {
+    const { container, rerender } = renderStream({ blocks: [makeTextBlock("b1", "Hi")] })
+    const el = container.querySelector(".overflow-y-auto") as HTMLDivElement
+    await fireScroll(el, 200)
     expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
 
     await act(async () => {
       rerender(<AgentView blocks={[]} currentBlocks={[]} isWorking={false} />)
     })
+    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
+  })
+
+  it("re-attaches when new user message arrives (regardless of scroll position)", async () => {
+    const { container, rerender } = renderStream({
+      blocks: [makeTextBlock("b1", "Hello")],
+      isWorking: false,
+    })
+    const el = container.querySelector(".overflow-y-auto") as HTMLDivElement
+    await fireScroll(el, 200) // detach
+    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
+
+    await act(async () => {
+      rerender(
+        <AgentView
+          blocks={[makeTextBlock("b1", "Hello"), makeUserBlock("u1", "New message")]}
+          currentBlocks={[]}
+          isWorking={true}
+        />,
+      )
+    })
+    await waitFrame()
 
     expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
   })
 
-  it("maintains pinned state and scrolls to bottom when viewport dimensions change", async () => {
-    const { container } = renderStream({
-      blocks: [makeTextBlock("b1", "Hello")],
-      currentBlocks: [],
-      isWorking: false,
-    })
-
-    const scrollDiv = container.querySelector(".overflow-y-auto") as HTMLDivElement
-    expect(scrollDiv).toBeTruthy()
-
-    // 1. Initial dimensions
-    Object.defineProperty(scrollDiv, "scrollHeight", { value: 600, configurable: true, writable: true })
-    Object.defineProperty(scrollDiv, "clientHeight", { value: 600, configurable: true, writable: true })
-    Object.defineProperty(scrollDiv, "scrollTop", { value: 0, configurable: true, writable: true })
-
-    await dispatchScrollEvent(scrollDiv)
-
-    // 2. Shrink height (simulate keyboard opening)
-    Object.defineProperty(scrollDiv, "scrollHeight", { value: 600, configurable: true, writable: true })
-    Object.defineProperty(scrollDiv, "clientHeight", { value: 300, configurable: true, writable: true })
-
-    await dispatchScrollEvent(scrollDiv)
-
-    // Should have scrolled to the bottom automatically and not shown scroll button
-    expect(scrollDiv.scrollTop).toBe(600)
-    const btn = container.querySelector('button[aria-label="Scroll to bottom"]')
-    expect(btn).toBeNull()
-  })
-
-  it("detaches when dragging finger down (scrolling up) past TOUCH_DETACH_THRESHOLD", async () => {
-    const { container } = renderStream({
-      blocks: [makeTextBlock("b1", "Hello world hello world hello world hello world")],
-      currentBlocks: [],
-      isWorking: true,
-    })
-
-    const scrollDiv = container.querySelector(".overflow-y-auto") as HTMLDivElement
-    Object.defineProperty(scrollDiv, "scrollHeight", { value: 1000, configurable: true, writable: true })
-    Object.defineProperty(scrollDiv, "scrollTop", { value: 500, configurable: true, writable: true })
-    Object.defineProperty(scrollDiv, "clientHeight", { value: 500, configurable: true, writable: true })
-
-    // Touch start at 100px
-    await dispatchTouchEvent(scrollDiv, "touchstart", 100)
-
-    // Touch move to 130px (dragged down by 30px > 20px threshold, which scrolls content up)
-    await dispatchTouchEvent(scrollDiv, "touchmove", 130)
-
-    const btn = container.querySelector('button[aria-label="Scroll to bottom"]')
-    expect(btn).toBeTruthy()
-  })
-
-  it("does not detach when finger wobbles within TOUCH_DETACH_THRESHOLD", async () => {
-    const { container } = renderStream({
-      blocks: [makeTextBlock("b1", "Hello world hello world hello world hello world")],
-      currentBlocks: [],
-      isWorking: true,
-    })
-
-    const scrollDiv = container.querySelector(".overflow-y-auto") as HTMLDivElement
-    Object.defineProperty(scrollDiv, "scrollHeight", { value: 1000, configurable: true, writable: true })
-    Object.defineProperty(scrollDiv, "scrollTop", { value: 500, configurable: true, writable: true })
-    Object.defineProperty(scrollDiv, "clientHeight", { value: 500, configurable: true, writable: true })
-
-    // Touch start at 100px
-    await dispatchTouchEvent(scrollDiv, "touchstart", 100)
-
-    // Touch move to 110px (dragged down by 10px < 20px threshold)
-    await dispatchTouchEvent(scrollDiv, "touchmove", 110)
-
-    const btn = container.querySelector('button[aria-label="Scroll to bottom"]')
-    expect(btn).toBeNull()
-  })
-
-  it("automatically re-pins and scrolls to bottom when a new user message is added", async () => {
-    // Start unpinned
+  it("re-attaches to stream after clicking scroll-to-bottom: ResizeObserver fires scrollToBottom", async () => {
     const { container, rerender } = renderStream({
-      blocks: [makeTextBlock("b1", "Hello world")],
-      currentBlocks: [],
-      isWorking: false,
+      blocks: [makeTextBlock("b1", "First")],
+      isWorking: true,
     })
+    const el = container.querySelector(".overflow-y-auto") as HTMLDivElement
 
-    const scrollDiv = container.querySelector(".overflow-y-auto") as HTMLDivElement
-    Object.defineProperty(scrollDiv, "scrollHeight", { value: 1000, configurable: true, writable: true })
-    Object.defineProperty(scrollDiv, "scrollTop", { value: 100, configurable: true, writable: true })
-    Object.defineProperty(scrollDiv, "clientHeight", { value: 500, configurable: true, writable: true })
-
-    // User scrolled up
-    await dispatchScrollEvent(scrollDiv)
+    // Detach
+    await fireScroll(el, 200)
     expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
 
-    // User sends a new message (adds a user block)
-    const updatedBlocks = [
-      makeTextBlock("b1", "Hello world"),
-      makeUserBlock("u1", "My new message"),
-    ]
+    // Click button — sets attached=true
+    const btn = container.querySelector('button[aria-label="Scroll to bottom"]') as HTMLButtonElement
+    await act(async () => { btn.click() })
+    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
 
-    await act(async () => {
-      rerender(<AgentView blocks={updatedBlocks} currentBlocks={[]} isWorking={true} />)
+    // New stream content — ResizeObserver should scroll (attached=true)
+    let scrollTopSet = false
+    Object.defineProperty(el, "scrollTop", {
+      get() { return 0 },
+      set() { scrollTopSet = true },
+      configurable: true,
     })
-    await waitForScrollUpdate()
-
-    // Should have re-pinned and scrolled to bottom
-    const btn = container.querySelector('button[aria-label="Scroll to bottom"]')
-    expect(btn).toBeNull()
+    await act(async () => {
+      rerender(
+        <AgentView
+          blocks={[makeTextBlock("b1", "First"), makeTextBlock("b2", "Streamed")]}
+          currentBlocks={[]}
+          isWorking={true}
+        />,
+      )
+    })
+    await waitFrame()
+    expect(scrollTopSet).toBe(true)
   })
 })
 
+// ── bounce dots ───────────────────────────────────────────────────────────
+
 describe("AgentView — bounce dots indicator", () => {
-  it("does not show bounce dots when isWorking=false and no blocks", () => {
-    const { container } = renderStream({
-      blocks: [],
-      currentBlocks: [],
-      isWorking: false,
-    })
-    const dots = container.querySelectorAll(".animate-bounce")
-    expect(dots.length).toBe(0)
+  it("no dots when isWorking=false and no blocks", () => {
+    const { container } = renderStream({ blocks: [], currentBlocks: [], isWorking: false })
+    expect(container.querySelectorAll(".animate-bounce").length).toBe(0)
   })
 
-  it("does not show bounce dots when isWorking=true with no blocks", () => {
-    // Regression: `[].every()` returns true, so the working branch of the
-    // dots condition must require a non-empty currentBlocks list. Without
-    // that guard the dots stuck around after `done` flushed the buffer
-    // whenever a stale `working` status briefly survived (the symptom
-    // observed after a multi-agent team turn finished).
-    const { container } = renderStream({
-      blocks: [],
-      currentBlocks: [],
-      isWorking: true,
-    })
-    const dots = container.querySelectorAll(".animate-bounce")
-    expect(dots.length).toBe(0)
+  it("no dots when isWorking=true with no blocks", () => {
+    const { container } = renderStream({ blocks: [], currentBlocks: [], isWorking: true })
+    expect(container.querySelectorAll(".animate-bounce").length).toBe(0)
   })
 
-  it("shows bounce dots when isWorking=true with only user-type currentBlocks", () => {
+  it("shows 3 dots when isWorking=true with only user currentBlocks", () => {
     const { container } = renderStream({
       blocks: [],
       currentBlocks: [makeUserBlock("u1", "Hello")],
       isWorking: true,
     })
-    const dots = container.querySelectorAll(".animate-bounce")
-    expect(dots.length).toBe(3)
+    expect(container.querySelectorAll(".animate-bounce").length).toBe(3)
   })
 
-  it("does not show bounce dots when isWorking=true with a text block in currentBlocks", () => {
+  it("no dots when isWorking=true with a text block in currentBlocks", () => {
     const { container } = renderStream({
       blocks: [],
-      currentBlocks: [makeTextBlock("b1", "Response text")],
+      currentBlocks: [makeTextBlock("b1", "Response")],
       isWorking: true,
     })
-    const dots = container.querySelectorAll(".animate-bounce")
-    expect(dots.length).toBe(0)
+    expect(container.querySelectorAll(".animate-bounce").length).toBe(0)
   })
 
-  it("does not show bounce dots when isWorking=true with mixed blocks including text", () => {
+  it("no dots when isWorking=true with mixed blocks including text", () => {
     const { container } = renderStream({
       blocks: [],
-      currentBlocks: [
-        makeUserBlock("u1", "Hello"),
-        makeTextBlock("b1", "Response"),
-      ],
+      currentBlocks: [makeUserBlock("u1", "Hi"), makeTextBlock("b1", "Response")],
       isWorking: true,
     })
-    const dots = container.querySelectorAll(".animate-bounce")
-    expect(dots.length).toBe(0)
+    expect(container.querySelectorAll(".animate-bounce").length).toBe(0)
   })
 
-  it("does not show bounce dots when isWorking=true with thinking block only", () => {
+  it("no dots when isWorking=true with thinking block only", () => {
     const { container } = renderStream({
       blocks: [],
       currentBlocks: [makeThinkingBlock("t1", "Thinking...")],
       isWorking: true,
     })
-    const dots = container.querySelectorAll(".animate-bounce")
-    expect(dots.length).toBe(0)
+    expect(container.querySelectorAll(".animate-bounce").length).toBe(0)
   })
 
-  it("does not show bounce dots when isWorking=true with user and thinking blocks", () => {
+  it("no dots when isWorking=true with user and thinking blocks", () => {
     const { container } = renderStream({
       blocks: [],
-      currentBlocks: [
-        makeUserBlock("u1", "Hello"),
-        makeThinkingBlock("t1", "Thinking..."),
-      ],
+      currentBlocks: [makeUserBlock("u1", "Hi"), makeThinkingBlock("t1", "Thinking...")],
       isWorking: true,
     })
-    const dots = container.querySelectorAll(".animate-bounce")
-    expect(dots.length).toBe(0)
+    expect(container.querySelectorAll(".animate-bounce").length).toBe(0)
   })
 })

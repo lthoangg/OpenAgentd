@@ -36,8 +36,6 @@ import { openExternalUrl } from '@/lib/open-external'
 import type { ContentBlock, MessageAttachment } from '@/api/types'
 
 const SCROLL_THRESHOLD = 40
-const USER_SCROLL_DETACH_DELTA = 4
-const TOUCH_DETACH_THRESHOLD = 20
 
 interface AgentPaneProps {
   name: string
@@ -379,112 +377,35 @@ export function AgentPane({
   // Me show waiting indicator when a user message exists but the agent hasn't woken yet
   const isPending = !isWorking && !isError && !isOffline && stream.currentBlocks.some(isDirectUserBlock)
 
-  const pinnedRef = useRef(true)
-  const touchStartYRef = useRef<number | null>(null)
-  const lastScrollHeightRef = useRef(0)
-  const lastClientHeightRef = useRef(0)
+  const attachedRef = useRef(true)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
 
-  const isAtBottom = useCallback(() => {
-    const el = scrollRef.current
-    if (!el) return true
-    return el.scrollHeight - el.scrollTop - el.clientHeight <= SCROLL_THRESHOLD
-  }, [])
-
-  const scrollToBottom = useCallback((smooth = false) => {
+  const scrollToBottom = useCallback(() => {
     const el = scrollRef.current
     if (!el) return
-    pinnedRef.current = true
+    attachedRef.current = true
     setShowScrollBtn(false)
-    if (smooth) {
-      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
-    } else {
-      el.scrollTop = el.scrollHeight
-    }
+    el.scrollTop = el.scrollHeight
   }, [])
 
-  // Me detect user scroll intent before stream updates can snap the pane back
-  // to the bottom. onScroll only reads position (can't distinguish programmatic
-  // from user on mobile); intent detection lives in onWheel / onTouchMove.
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
-    const updatePinnedFromPosition = () => {
-      const scrollHeight = el.scrollHeight
-      const clientHeight = el.clientHeight
-      const scrollTop = el.scrollTop
-
-      // If dimensions changed and we were pinned, force scroll to bottom and stay pinned.
-      // This prevents unpinning when the viewport resizes (e.g. virtual keyboard opens/closes)
-      // or when new content is streamed in.
-      const dimensionsChanged =
-        lastScrollHeightRef.current !== 0 &&
-        (scrollHeight !== lastScrollHeightRef.current || clientHeight !== lastClientHeightRef.current)
-
-      lastScrollHeightRef.current = scrollHeight
-      lastClientHeightRef.current = clientHeight
-
-      if (dimensionsChanged && pinnedRef.current) {
-        el.scrollTop = scrollHeight
-        return
-      }
-
-      const atBottom = scrollHeight - scrollTop - clientHeight <= SCROLL_THRESHOLD
-      pinnedRef.current = atBottom
-      // Me: only flip state when the boolean actually changes. Calling
-      // setState with the current value on every scroll tick still
-      // schedules a re-render, which can cascade through MarkdownBlock /
-      // ReactMarkdown and re-mount inline media elements mid-playback.
-      setShowScrollBtn((prev) => (prev === !atBottom ? prev : !atBottom))
-    }
-    const detachFromBottom = () => {
-      pinnedRef.current = false
-      setShowScrollBtn(true)
-    }
     const onScroll = () => {
-      // Do NOT infer user intent from scroll direction here — scroll events
-      // fire for both programmatic and user gestures and are
-      // indistinguishable on mobile (momentum, kinetic, smooth animation).
-      requestAnimationFrame(updatePinnedFromPosition)
-    }
-    const onWheel = (e: WheelEvent) => {
-      if (e.deltaY < -USER_SCROLL_DETACH_DELTA) detachFromBottom()
-    }
-    const onTouchStart = (e: TouchEvent) => {
-      const y = e.touches[0]?.clientY
-      if (y != null) {
-        touchStartYRef.current = y
+      const dist = el.scrollHeight - el.scrollTop - el.clientHeight
+      const atBottom = dist <= SCROLL_THRESHOLD
+      if (atBottom) {
+        attachedRef.current = true
+        setShowScrollBtn(false)
+      } else if (attachedRef.current) {
+        if (document.documentElement.hasAttribute('data-keyboard-open')) return
+        attachedRef.current = false
+        setShowScrollBtn(true)
       }
     }
-    const onTouchMove = (e: TouchEvent) => {
-      const y = e.touches[0]?.clientY
-      if (y == null) return
-      if (touchStartYRef.current === null) {
-        touchStartYRef.current = y
-      }
-      const deltaY = y - touchStartYRef.current
-      // If the user has dragged their finger down by more than TOUCH_DETACH_THRESHOLD,
-      // they are scrolling up, so we detach.
-      if (deltaY > TOUCH_DETACH_THRESHOLD) {
-        detachFromBottom()
-      }
-    }
-    const onTouchEnd = () => { touchStartYRef.current = null }
     el.addEventListener('scroll', onScroll, { passive: true })
-    el.addEventListener('wheel', onWheel, { passive: true })
-    el.addEventListener('touchstart', onTouchStart, { passive: true })
-    el.addEventListener('touchmove', onTouchMove, { passive: true })
-    el.addEventListener('touchend', onTouchEnd, { passive: true })
-    el.addEventListener('touchcancel', onTouchEnd, { passive: true })
-    return () => {
-      el.removeEventListener('scroll', onScroll)
-      el.removeEventListener('wheel', onWheel)
-      el.removeEventListener('touchstart', onTouchStart)
-      el.removeEventListener('touchmove', onTouchMove)
-      el.removeEventListener('touchend', onTouchEnd)
-      el.removeEventListener('touchcancel', onTouchEnd)
-    }
-  }, [isAtBottom])
+    return () => { el.removeEventListener('scroll', onScroll) }
+  }, [])
 
   const allBlocks = useMemo(
     () => mergeBlocks(stream.blocks, stream.currentBlocks),
@@ -499,9 +420,9 @@ export function AgentPane({
   useEffect(() => {
     const lastBlock = allBlocks[allBlocks.length - 1]
     if (lastBlock && isDirectUserBlock(lastBlock)) {
-      pinnedRef.current = true
+      attachedRef.current = true
     }
-    if (pinnedRef.current) scrollToBottom()
+    if (attachedRef.current) scrollToBottom()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allBlocks.length, lastBlockContent])
 
@@ -509,25 +430,21 @@ export function AgentPane({
 
   useEffect(() => {
     if (!isEmpty) return
-    pinnedRef.current = true
+    attachedRef.current = true
     setShowScrollBtn(false)
     if (scrollRef.current) scrollRef.current.scrollTop = 0
   }, [isEmpty])
 
-  // ResizeObserver re-sticks on every content height change (markdown reflow,
-  // image load, syntax highlight) — catches the cases the block-change effect
-  // misses because layout settles a frame or two after the React commit.
+  // ResizeObserver: when attached and content grows, scroll to bottom.
   useEffect(() => {
     const el = scrollRef.current
     const content = contentRef.current
-    if (!el || typeof ResizeObserver === 'undefined') return
-    const stick = () => {
-      if (!pinnedRef.current) return
+    if (!el || !content || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(() => {
+      if (!attachedRef.current) return
       el.scrollTop = el.scrollHeight
-    }
-    const ro = new ResizeObserver(stick)
-    if (content) ro.observe(content)
-    ro.observe(el)
+    })
+    ro.observe(content)
     return () => ro.disconnect()
   }, [])
 
@@ -642,7 +559,7 @@ export function AgentPane({
       </div>
       {showScrollBtn && (
         <button
-          onClick={() => scrollToBottom(true)}
+          onClick={() => scrollToBottom()}
           className="absolute bottom-2 left-1/2 z-10 -translate-x-1/2 rounded-sm border border-(--color-border) bg-(--bg-card) p-1 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
           aria-label="Scroll to bottom"
         >

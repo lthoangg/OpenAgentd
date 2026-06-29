@@ -104,6 +104,30 @@ while the `<table>` itself uses `min-width: max-content` so columns never
 compress. Do not add `display: block` or `overflow` directly to `table` —
 browsers treat table layout specially and it breaks column alignment.
 
+## Chat stream scroll / attach-to-stream
+
+`AgentView` and `AgentPane` both implement an **attach-to-stream** pattern via
+`attachedRef` (a `useRef<boolean>`). Rules:
+
+| Event | Effect on `attachedRef` |
+|---|---|
+| User sends a message (new `user` block) | → `true` |
+| Click chevron-down button | → `true`, instantly `scrollTop = scrollHeight` |
+| Scroll event reaches `dist ≤ 40px` from bottom | → `true` |
+| Scroll event with `dist > 40px` AND no `data-keyboard-open` | → `false`, show button |
+| Virtual keyboard opens (`data-keyboard-open` on `<html>`) | scroll event ignored — viewport shrink is not user scroll |
+
+When `attachedRef.current === true`, a **`ResizeObserver`** on the content
+element runs `el.scrollTop = el.scrollHeight` on every layout change (streaming
+text, markdown reflow, image load). This is the sole auto-follow mechanism.
+
+**Do not use `scrollTo({ behavior: 'smooth' })`** — it is unreliable on iOS
+WKWebView (may be instant or silently no-op), which leaves scroll events
+mid-flight that falsely detach the view. Always use `el.scrollTop = el.scrollHeight`.
+
+The `data-keyboard-open` attribute is set/cleared by `useMobileViewportGuards`
+(`hooks/use-mobile-viewport.ts`) in sync with `window.visualViewport` resize events.
+
 ## Gotchas
 
 - Use static ESM imports and `@/` aliases.

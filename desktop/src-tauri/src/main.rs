@@ -643,6 +643,24 @@ fn show_target_window(app: &AppHandle) {
     }
 }
 
+async fn target_webview_window_async(app: &AppHandle) -> Option<tauri::WebviewWindow> {
+    let state: tauri::State<'_, AppState> = app.state();
+    let label = state.active_window_label.lock().await.clone();
+    app.get_webview_window(&label)
+        .or_else(|| app.get_webview_window(MAIN_WINDOW))
+}
+
+#[cfg(not(target_os = "macos"))]
+async fn show_target_window_async(app: &AppHandle) {
+    if let Some(window) = target_webview_window_async(app).await {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    } else {
+        show_main_window(app);
+    }
+}
+
 fn navigate_main_window(app: &AppHandle, path: &str) {
     show_target_window(app);
     if let Some(window) = target_webview_window(app) {
@@ -724,6 +742,14 @@ fn reveal_backend_log(app: &AppHandle) {
 
 fn persist_active_window_state(app: &AppHandle) {
     if let Some(window) = target_webview_window(app) {
+        if let Err(e) = save_window_state(app, &window) {
+            log::warn!("failed to save window state: {e:#}");
+        }
+    }
+}
+
+async fn persist_active_window_state_async(app: &AppHandle) {
+    if let Some(window) = target_webview_window_async(app).await {
         if let Err(e) = save_window_state(app, &window) {
             log::warn!("failed to save window state: {e:#}");
         }
@@ -859,7 +885,7 @@ async fn restart_sidecar_and_reload_window(app: &AppHandle) -> Result<()> {
                 .context("navigate app window")?;
         }
     }
-    show_target_window(app);
+    show_target_window_async(app).await;
 
     let _ = state.desktop_token.lock().await.replace(token.clone());
     let _ = state
@@ -1185,7 +1211,7 @@ async fn run_update_install(app: AppHandle) -> Result<(), String> {
     // `CloseRequested` handler stops calling `prevent_close()`. If it did not,
     // the bundle swap below could leave a hidden window alive and trap the exit
     // half-way, which is one way the relaunch silently fails.
-    persist_active_window_state(&app);
+    persist_active_window_state_async(&app).await;
     state.quitting.store(true, Ordering::SeqCst);
 
     // Shut the Python sidecar down *before* the bundle swap so the child

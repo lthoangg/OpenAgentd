@@ -105,7 +105,6 @@ class AgentConfig(BaseModel):
     system_prompt: str = ""  # populated from .md body by parse_agent_md
     tools: list[str] = []
     mcp: list[str] = []  # MCP server names; agent gets all tools from each
-    skills: list[str] = []
     model: str | None = None  # e.g. "googlegenai:gemini-3.1-flash"
     temperature: float | None = None
     thinking_level: str | None = None
@@ -343,14 +342,10 @@ def _build_agent(
             built_in_prompt = profile["prompt"]
             cfg.description = cfg.description or profile["description"]
             cfg.tools = [*profile["tools"], *cfg.tools]
-            cfg.skills = [*profile["skills"], *cfg.skills]
             cfg.mcp = [*profile["mcp"], *cfg.mcp]
             system_prompt = apply_member_extra_prompt(
                 cfg.name, built_in_prompt, cfg.system_prompt
             )
-
-    if cfg.skills:
-        cfg.skills = list(dict.fromkeys(cfg.skills))
 
     from app.agent.tools.builtin.schedule import schedule_task as _schedule_task_tool
     from app.agent.tools.builtin.skill import load_skill as _load_skill_tool
@@ -453,21 +448,16 @@ def _build_agent(
         model_id=cfg.model,
         system_prompt=system_prompt,
         tools=tools,
-        skills=cfg.skills,
         mcp_servers=cfg.mcp,
     )
 
     # Stamp config dependencies for end-of-turn drift detection.
     if source_path is not None:
         from app.agent.mcp.config import config_path as _mcp_config_path
-        from app.core.config import settings as _settings
 
-        skills_root = Path(_settings.SKILLS_DIR)
         agent.source_path = source_path
         agent.config_stamp = stamp_agent_files(
             agent_md_path=source_path,
-            skill_names=cfg.skills,
-            skills_dir=skills_root,
             mcp_config_path=_mcp_config_path(),
         )
 

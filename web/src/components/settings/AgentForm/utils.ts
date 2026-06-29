@@ -42,7 +42,6 @@ export function parseFormState(raw: string): {
     if (typeof parsed.temperature === 'number') fm.temperature = parsed.temperature
     if (typeof parsed.thinking_level === 'string') fm.thinking_level = parsed.thinking_level
     if (Array.isArray(parsed.tools)) fm.tools = parsed.tools.filter((x) => typeof x === 'string')
-    if (Array.isArray(parsed.skills)) fm.skills = parsed.skills.filter((x) => typeof x === 'string')
     if (Array.isArray(parsed.mcp)) fm.mcp = parsed.mcp.filter((x) => typeof x === 'string')
     return { fm, body, error: null }
   } catch (err) {

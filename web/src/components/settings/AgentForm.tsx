@@ -108,13 +108,6 @@ export function AgentForm({
         description: t.description,
       })) ?? []
 
-  const skillOptions: MultiSelectOption[] =
-    registry.data?.skills.map((s) => ({
-      value: s.name,
-      label: s.name,
-      description: s.description,
-    })) ?? []
-
   // Show every server, including disabled / errored ones, so an agent can
   // still reference a server that's temporarily down without the picker
   // silently dropping the chip on save.
@@ -169,7 +162,6 @@ export function AgentForm({
           disabled={disabled}
           isNew={isNew}
           toolOptions={toolOptions}
-          skillOptions={skillOptions}
           mcpOptions={mcpOptions}
           modelOptions={modelOptions}
           agentPath={agentPath}

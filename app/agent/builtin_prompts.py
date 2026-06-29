@@ -48,7 +48,6 @@ CODING_OPENAGENTD_TOOLS = [
 class BuiltinMemberProfile(TypedDict):
     description: str
     tools: list[str]
-    skills: list[str]
     mcp: list[str]
     prompt: str
 
@@ -79,7 +78,6 @@ BUILTIN_MEMBER_PROFILES: dict[str, dict[str, BuiltinMemberProfile]] = {
                 "shell",
                 "web_fetch",
             ],
-            "skills": [],
             "mcp": [],
             "prompt": """You are "executor".
 
@@ -109,7 +107,6 @@ Be specific: which files you touched, which commands you ran, what the outcome w
                 "grep",
                 "shell",
             ],
-            "skills": [],
             "mcp": [],
             "prompt": """You are "explorer".
 
@@ -143,7 +140,6 @@ Structure findings with headings, bullets, or tables. End with a short synthesis
                 "shell",
                 "write",
             ],
-            "skills": [],
             "mcp": [],
             "prompt": "You are **coder**.\n\nYour job is to make the requested code change with the smallest correct diff and verify it.",
         },
@@ -157,7 +153,6 @@ Structure findings with headings, bullets, or tables. End with a short synthesis
                 "read",
                 "shell",
             ],
-            "skills": [],
             "mcp": [],
             "prompt": """You are **explorer**.
 

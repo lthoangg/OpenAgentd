@@ -96,7 +96,6 @@ class Agent(Generic[TContext]):
         description: str | None = None,
         system_prompt: str = "You are a helpful assistant.",
         tools: list[Tool] | None = None,
-        skills: list[str] | None = None,
         mcp_servers: list[str] | None = None,
         hooks: Sequence[BaseAgentHook] | None = None,
         max_iterations: int = MAX_AGENT_ITERATIONS,
@@ -113,7 +112,6 @@ class Agent(Generic[TContext]):
         # Me cache multimodal capabilities — computed once from model_id
         self.capabilities: ModelCapabilities = get_capabilities(model_id)
         self.system_prompt = system_prompt
-        self.skills: list[str] = list(skills) if skills else []
         # MCP server names this agent was configured with (from `mcp:` frontmatter).
         # Surface to API consumers so the UI can group tools by origin server,
         # including servers that exist but aren't ready yet (zero tools).

@@ -4,11 +4,6 @@ export interface AgentToolInfo {
   description: string
 }
 
-export interface AgentSkillInfo {
-  name: string
-  description: string
-}
-
 export interface AgentInputCapabilities {
   vision: boolean
   document_text: boolean
@@ -36,7 +31,6 @@ export interface AgentInfo {
   /** MCP server names this agent was configured with. Includes servers that
    *  exist but contribute no tools (e.g. not yet ready). */
   mcp_servers?: string[]
-  skills: AgentSkillInfo[]
   capabilities?: AgentCapabilities
 }
 
@@ -322,7 +316,6 @@ export interface AgentSummary {
   model: string | null
   tools: string[]
   mcp: string[]
-  skills: string[]
   valid: boolean
   error: string | null
 }
@@ -334,7 +327,6 @@ export interface AgentConfig {
   description?: string | null
   system_prompt?: string
   tools?: string[]
-  skills?: string[]
   model?: string | null
   temperature?: number | null
   thinking_level?: string | null

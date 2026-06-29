@@ -12,7 +12,6 @@ class AgentSummary(BaseModel):
     model: str | None = None
     tools: list[str] = []
     mcp: list[str] = []
-    skills: list[str] = []
     valid: bool
     error: str | None = None
 

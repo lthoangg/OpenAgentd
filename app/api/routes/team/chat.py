@@ -15,7 +15,6 @@ from sse_starlette.sse import EventSourceResponse
 from app.agent.agent_loop import Agent
 from app.agent.mode.team.member import TeamMemberBase
 from app.agent.mode.team.team import ContinuePreconditionError
-from app.agent.tools.builtin.skill import discover_skills
 from app.api.deps import ChatFormDep, DbSession, TeamDep
 from app.api.routes.team._helpers import (
     _message_response,
@@ -79,18 +78,6 @@ def _serialize_agent(agent: Agent, *, is_lead: bool = False) -> dict:
     from app.agent.hooks.summarization import prompt_token_threshold_for_model
     from app.agent.mcp import mcp_manager
 
-    skill_names: list[str] = agent.skills or []
-    skills: list[dict] = []
-    if skill_names:
-        try:
-            available = discover_skills()
-        except Exception:
-            available = {}
-        skills = [
-            {"name": n, "description": available.get(n, {}).get("description", "")}
-            for n in skill_names
-        ]
-
     tools_by_name = {t.name: t for t in agent._tools.values()}
     for server_name in agent.mcp_servers:
         server_tools = mcp_manager.get_tools_for_server(server_name) or []
@@ -111,7 +98,6 @@ def _serialize_agent(agent: Agent, *, is_lead: bool = False) -> dict:
         # exist in config but aren't ready (zero tools), so the UI can show
         # them as "not ready" instead of silently hiding the section.
         "mcp_servers": list(agent.mcp_servers),
-        "skills": skills,
         "is_lead": is_lead,
         "capabilities": agent.capabilities.to_dict(),
     }

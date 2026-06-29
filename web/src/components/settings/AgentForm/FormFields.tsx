@@ -54,7 +54,6 @@ export function FormFields({
   disabled,
   isNew,
   toolOptions,
-  skillOptions,
   mcpOptions,
   modelOptions,
   agentPath,
@@ -66,7 +65,6 @@ export function FormFields({
   disabled?: boolean
   isNew?: boolean
   toolOptions: MultiSelectOption[]
-  skillOptions: MultiSelectOption[]
   mcpOptions: MultiSelectOption[]
   modelOptions: { id: string; provider: string; model: string; vision: boolean; thinking_levels?: string[] }[]
   agentPath?: string
@@ -306,21 +304,6 @@ export function FormFields({
             />
           </SettingsField>
 
-          <SettingsField
-            label="Skills"
-            hint={
-              hasBuiltInProfile
-                ? `${(fm.skills ?? []).length} extra selected. Built-in skills are always included when this profile has them.`
-                : `${(fm.skills ?? []).length} selected of ${skillOptions.length} available.`
-            }
-          >
-            <MultiSelect
-              options={skillOptions}
-              value={fm.skills ?? []}
-              onChange={(v) => updateFromForm({ ...fm, skills: v }, body)}
-              placeholder="Pick skills the agent can load on demand…"
-            />
-          </SettingsField>
         </div>
         </SectionCardRows>
       </SectionCard>

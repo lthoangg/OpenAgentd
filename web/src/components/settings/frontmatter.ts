@@ -16,7 +16,6 @@ export interface AgentFrontmatter {
   temperature?: number | null
   thinking_level?: string | null
   tools?: string[]
-  skills?: string[]
   /** MCP server names; agent receives every tool from each listed server. */
   mcp?: string[]
 }
@@ -50,10 +49,6 @@ export function buildFrontmatter(fm: AgentFrontmatter): string {
   if (fm.tools && fm.tools.length > 0) {
     lines.push('tools:')
     for (const t of [...fm.tools].sort()) lines.push(`  - ${t}`)
-  }
-  if (fm.skills && fm.skills.length > 0) {
-    lines.push('skills:')
-    for (const s of [...fm.skills].sort()) lines.push(`  - ${s}`)
   }
   if (fm.mcp && fm.mcp.length > 0) {
     lines.push('mcp:')

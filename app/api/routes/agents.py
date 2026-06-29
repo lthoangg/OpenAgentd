@@ -67,7 +67,6 @@ def _parse_summary(name: str, content: str) -> AgentSummary:
             model=None,
             tools=[],
             mcp=[],
-            skills=[],
             valid=False,
             error=str(exc),
         )
@@ -80,7 +79,6 @@ def _parse_summary(name: str, content: str) -> AgentSummary:
         model=effective.model,
         tools=effective.tools,
         mcp=effective.mcp,
-        skills=effective.skills,
         valid=True,
         error=None,
     )
@@ -120,7 +118,6 @@ def _effective_config(cfg: AgentConfig, *, mode: str) -> AgentConfig:
         if profile is not None:
             data.description = data.description or profile["description"]
             data.tools = list(dict.fromkeys([*profile["tools"], *data.tools]))
-            data.skills = list(dict.fromkeys([*profile["skills"], *data.skills]))
             data.mcp = list(dict.fromkeys([*profile["mcp"], *data.mcp]))
     data.tools = list(dict.fromkeys(data.tools))
     return data

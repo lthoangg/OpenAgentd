@@ -442,7 +442,6 @@ def _team_snapshot(team: "AgentTeam") -> dict[str, dict]:
             "description": agent.description or "",
             "model": agent.model_id,
             "tools": sorted(t.name for t in agent._tools.values()),
-            "skills": sorted(agent.skills or []),
             "system_prompt": agent.system_prompt,
         }
     return snapshot

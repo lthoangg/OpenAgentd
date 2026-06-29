@@ -33,19 +33,13 @@ def _stamp_path(path: Path) -> int | None:
 
 def stamp_agent_files(
     agent_md_path: Path,
-    skill_names: list[str],
-    skills_dir: Path,
     mcp_config_path: Path,
 ) -> ConfigStamp:
     """Snapshot mtimes for the files an agent depends on."""
-    stamp: ConfigStamp = {
+    return {
         str(agent_md_path): _stamp_path(agent_md_path),
         str(mcp_config_path): _stamp_path(mcp_config_path),
     }
-    for skill_name in skill_names:
-        skill_path = skills_dir / skill_name / "SKILL.md"
-        stamp[str(skill_path)] = _stamp_path(skill_path)
-    return stamp
 
 
 def detect_drift(stamp: ConfigStamp) -> list[str]:

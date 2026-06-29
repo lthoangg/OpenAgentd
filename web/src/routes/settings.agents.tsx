@@ -42,7 +42,6 @@ export function AgentsListPage({ selectedName, onSelect, onNew }: AgentsListPage
       if (shortModel) metaParts.push(shortModel)
       const toolCount = (a.tools?.length ?? 0) + (a.mcp?.length ?? 0)
       if (toolCount > 0) metaParts.push(`${toolCount} tool${toolCount !== 1 ? 's' : ''}`)
-      if (a.skills?.length) metaParts.push(`${a.skills.length} skill${a.skills.length !== 1 ? 's' : ''}`)
 
       return {
         key: a.name,

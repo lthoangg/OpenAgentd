@@ -464,12 +464,9 @@ class TeamMemberBase(abc.ABC):
                 exc,
             )
             from app.agent.mcp.config import config_path as _mcp_config_path
-            from app.core.config import settings as _settings
 
             self.agent.config_stamp = stamp_agent_files(
                 agent_md_path=source,
-                skill_names=self.agent.skills,
-                skills_dir=Path(_settings.SKILLS_DIR),
                 mcp_config_path=_mcp_config_path(),
             )
             self._config_dirty = False
@@ -483,11 +480,10 @@ class TeamMemberBase(abc.ABC):
         self.agent = new_agent
         self._config_dirty = False
         logger.info(
-            "agent_config_refreshed name={} model={} tools={} skills={}",
+            "agent_config_refreshed name={} model={} tools={}",
             self.name,
             new_agent.model_id,
             sorted(new_agent._tools.keys()),
-            new_agent.skills,
         )
         if old_model != new_agent.model_id:
             logger.info(

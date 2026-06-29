@@ -119,7 +119,6 @@ export const agentFrontmatterSchema = z.object({
   temperature: temperatureSchema.nullable().optional(),
   thinking_level: thinkingLevelSchema.nullable().optional(),
   tools: z.array(z.string()).optional(),
-  skills: z.array(z.string()).optional(),
   mcp: z.array(z.string()).optional(),
 })
 

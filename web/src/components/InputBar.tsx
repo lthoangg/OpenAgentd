@@ -1209,7 +1209,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         // positions, so it ends up under the wrong overlay word and drifts
         // further with every scroll. The wrapper around the overlay handles
         // overflow via the overlay's ``overflow-hidden`` + scroll sync.
-        className="block w-full resize-none scrollbar-none bg-transparent p-0 align-middle text-sm leading-relaxed break-words text-transparent caret-(--color-text) placeholder-(--color-text-subtle) selection:bg-(--color-accent)/30 selection:text-(--color-text) focus:outline-none disabled:opacity-50"
+        className="block w-full resize-none scrollbar-none overscroll-contain bg-transparent p-0 align-middle text-sm leading-relaxed break-words text-transparent caret-(--color-text) placeholder-(--color-text-subtle) selection:bg-(--color-accent)/30 selection:text-(--color-text) focus:outline-none disabled:opacity-50"
         // Cap matches the ``resize()`` ceiling above so the JS-driven height
         // and the CSS limit stay in lockstep.
         style={{ maxHeight: '120px' }}

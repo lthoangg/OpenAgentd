@@ -214,8 +214,12 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
 
     const handleSubmit = useCallback((message: string, files?: File[], mentions?: string[]) => {
       inputProps.onSubmit(message, files, mentions)
-      minimize()
-    }, [inputProps, minimize])
+      // Only collapse on desktop — on mobile the bar is always fully visible
+      // and calling minimize() here drifts the `minimized` state flag to
+      // `true`, which causes the bar to snap collapsed if the viewport later
+      // crosses the breakpoint (e.g. tablet orientation change).
+      if (!isMobile) minimize()
+    }, [inputProps, isMobile, minimize])
 
     useEffect(() => () => {
       if (blurTimerRef.current) clearTimeout(blurTimerRef.current)
@@ -371,9 +375,14 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
     // ── Mobile: Swipe-down to dismiss keyboard / de-focus ───────────────────
     const touchStartY = useRef<number | null>(null)
     const touchStartX = useRef<number | null>(null)
+    const mobileContainerRef = useRef<HTMLDivElement>(null)
+    // Keep a ref so the imperative listener always reads the current value
+    // without needing to be re-registered when it changes.
+    const suggestionsOpenRef = useRef(suggestionsOpen)
+    useEffect(() => { suggestionsOpenRef.current = suggestionsOpen }, [suggestionsOpen])
 
     const handleTouchStart = useCallback((e: React.TouchEvent) => {
-      if (suggestionsOpen) return
+      if (suggestionsOpenRef.current) return
 
       // If the touch started on a scrollable textarea and it is not at the top,
       // ignore it for swipe-to-dismiss so the user can scroll the textarea.
@@ -390,33 +399,45 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
         touchStartY.current = e.touches[0].clientY
         touchStartX.current = e.touches[0].clientX
       }
-    }, [suggestionsOpen])
-
-    const handleTouchMove = useCallback((e: React.TouchEvent) => {
-      if (suggestionsOpen) return
-      if (touchStartY.current === null || touchStartX.current === null) return
-
-      const currentY = e.touches[0].clientY
-      const currentX = e.touches[0].clientX
-      const diffY = currentY - touchStartY.current
-      const diffX = Math.abs(currentX - touchStartX.current)
-
-      // If the user swipes down by more than 24px, and the swipe is mostly
-      // vertical: dismiss the keyboard. `dismissKeyboard` blurs the input AND
-      // snaps the app shell back to full height with a short ease, so the UI
-      // glides up immediately instead of crawling with iOS's slow keyboard
-      // retract. Lower threshold (24px) makes the gesture feel more responsive.
-      if (diffY > 24 && diffY > diffX * 1.5) {
-        dismissKeyboard()
-        touchStartY.current = null
-        touchStartX.current = null
-      }
-    }, [suggestionsOpen])
+    }, [])
 
     const handleTouchEnd = useCallback(() => {
       touchStartY.current = null
       touchStartX.current = null
     }, [])
+
+    // `onTouchMove` in JSX is registered as a *passive* listener by React,
+    // which means calling `e.preventDefault()` inside it does nothing (and
+    // logs a browser warning). We need an *active* native listener so we can
+    // cancel the scroll-under-gesture that occurs when the keyboard dismisses.
+    useEffect(() => {
+      if (!isMobile) return
+      const container = mobileContainerRef.current
+      if (!container) return
+
+      const onTouchMove = (e: TouchEvent) => {
+        if (suggestionsOpenRef.current) return
+        if (touchStartY.current === null || touchStartX.current === null) return
+
+        const currentY = e.touches[0].clientY
+        const currentX = e.touches[0].clientX
+        const diffY = currentY - touchStartY.current
+        const diffX = Math.abs(currentX - touchStartX.current)
+
+        // If the user swipes down by more than 24px in a mostly-vertical
+        // direction: dismiss the keyboard and cancel the scroll so the page
+        // doesn't rubber-band simultaneously with the keyboard retract.
+        if (diffY > 24 && diffY > diffX * 1.5) {
+          e.preventDefault()
+          dismissKeyboard()
+          touchStartY.current = null
+          touchStartX.current = null
+        }
+      }
+
+      container.addEventListener('touchmove', onTouchMove, { passive: false })
+      return () => container.removeEventListener('touchmove', onTouchMove)
+    }, [isMobile])
 
     // ── Mobile: static docked bar ────────────────────────────────────────────
     if (isMobile) {
@@ -429,9 +450,9 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
         // moves the whole UI as one rigid, GPU-composited unit instead of
         // re-rendering the composer subtree every keyboard frame.
         <div
+          ref={mobileContainerRef}
           data-testid="mobile-inputbar-container"
           onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
           // Solid opaque background (no backdrop-blur): on iOS WebKit a
           // translucent + blurred bar re-rasterises its whole backdrop on any
@@ -441,7 +462,18 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
           className="pointer-events-auto border-t border-(--color-border) bg-(--bg-page) px-3 pb-safe pt-2"
         >
           <RevertNotice count={inputProps.revertedCount ?? 0} messages={inputProps.revertedMessages ?? []} onRedo={inputProps.onRedo} />
-          <InputBar ref={setInputRefs} floating filesBelow={false} {...inputProps} onValueChange={inputProps.onValueChange} onSuggestionsMenuChange={setSuggestionsOpen} onSubmit={handleSubmit} />
+          <InputBar
+            ref={setInputRefs}
+            floating
+            filesBelow={false}
+            {...inputProps}
+            onValueChange={inputProps.onValueChange}
+            onSuggestionsMenuChange={setSuggestionsOpen}
+            onSubmit={handleSubmit}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
+            onHasContentChange={handleHasContentChange}
+          />
         </div>
       )
     }

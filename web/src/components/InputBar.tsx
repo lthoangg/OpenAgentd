@@ -544,6 +544,21 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     // syncMention() here. It reads the textarea DOM which still holds the
     // old value at this point (React hasn't flushed setValue('') yet), so
     // it would immediately reopen the picker we just closed.
+
+    // Reset multi-line layout state eagerly so the textarea collapses back
+    // to a single row immediately after submit. Without this the hysteresis
+    // guard inside ``resize()`` never gets a chance to demote because
+    // ``resize()`` is never called after clearing the value — the DOM
+    // height stays at whatever the last multi-line measure was.
+    // ``rAF`` defers until after React flushes the ``setValue('')`` above,
+    // so the DOM reflects the empty textarea before we measure.
+    setIsMultiLine(false)
+    promoteLengthRef.current = 0
+    requestAnimationFrame(() => {
+      const el = textareaRef.current
+      if (!el) return
+      el.style.height = 'auto'
+    })
   }, [
     disabled,
     isStreaming,
@@ -1205,10 +1220,11 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         onBlur={() => {
           const canMinimize = value.trim().length === 0 && files.length === 0
           onBlur?.(canMinimize)
-          // Close the picker on blur — clicks on its items use ``onMouseDown``
-          // with ``preventDefault`` (see below) so they fire before the
+          // Close all pickers on blur — clicks on their items use
+          // ``onMouseDown`` with ``preventDefault`` so they fire before the
           // textarea blurs and the menu still gets to commit its choice.
           setMentionRange(null)
+          setSnippetRange(null)
         }}
         disabled={disabled || minimized}
         placeholder={minimized ? '' : effectivePlaceholder}

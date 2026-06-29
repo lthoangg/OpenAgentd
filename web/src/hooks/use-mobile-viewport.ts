@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 
 import { getPlatform } from '@/hooks/use-platform'
+import { MOBILE_QUERY } from '@/hooks/use-mobile'
 
 /**
  * Dismiss the soft keyboard and snap the app shell back to full height *now*.
@@ -64,12 +65,17 @@ export function useMobileViewportGuards() {
   useEffect(() => {
     const { isTauri, os } = getPlatform()
     const isTouch = (navigator.maxTouchPoints ?? 0) > 0
-    // Activate for the mobile Tauri shell. Also accept any touch device with a
-    // VisualViewport — platform sniffing is unreliable inside WKWebView, and a
-    // pure-desktop browser simply never raises a soft keyboard so the binding
-    // is a harmless no-op there.
+    // Activate for the mobile Tauri shell (always) or for any touch device
+    // that is *currently* in a mobile-sized viewport. The media query is the
+    // same one `useIsMobile` uses, so the layout mode (mobile vs desktop) and
+    // the viewport-binding always agree — prevents split-brain on iPads and
+    // large Android tablets where a landscape orientation push the width above
+    // the 768px threshold and the layout switches to the desktop draggable bar
+    // while this hook would otherwise still be manipulating --app-vh.
+    const isMobileViewport = window.matchMedia(MOBILE_QUERY).matches
     const isMobileShell =
-      (isTauri && (os === 'ios' || os === 'android')) || (isTouch && !!window.visualViewport)
+      (isTauri && (os === 'ios' || os === 'android')) ||
+      (isTouch && !!window.visualViewport && isMobileViewport)
     if (!isMobileShell) return
 
     const root = document.documentElement

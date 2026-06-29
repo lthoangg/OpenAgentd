@@ -156,6 +156,7 @@ export interface InputBarHandle {
   appendValue: (text: string) => void
   insertText: (text: string) => void
   setFiles: (files: File[]) => void
+  addFiles: (files: File[]) => void
 }
 
 
@@ -445,6 +446,13 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     },
     setFiles: (nextFiles: File[]) => {
       setFiles(nextFiles)
+    },
+    addFiles: (nextFiles: File[]) => {
+      setFiles((prev) => {
+        const allowed = nextFiles.filter((file) => isFileTypeAllowed(file, capabilities))
+        if (allowed.length === 0) return prev
+        return [...prev, ...allowed]
+      })
     },
   }))
 

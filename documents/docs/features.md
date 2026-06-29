@@ -114,9 +114,7 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
 - **Bang shell commands** `[v1.39.0]` — start a message with `!` to run the
   remainder directly through the shell tool without a model turn; history stores
   the run as structured shell tool output. See [`shell-commands.md`](./shell-commands.md).
-- **Drag-and-drop files into chat** `[since v1.0, v1.79.0]` — images, PDFs, text. Multimodal
-  parts attach to the user message, with full attachment and cancellation support
-  on queued messages.
+- **Drag-and-drop files into chat** `[since v1.0, v1.82.0]` — drag files (images, PDFs, text, etc.) anywhere onto the chat area (both cockpit and coding views) to show a drop overlay and attach them to the composer. Supports multi-file drops, file-type filtering, and cancellation.
 - **Composer history navigation** `[v1.32.0]` — when the input is empty, `↑` / `↓`
   walks previous user prompts from the current chat plus local submissions. See
   [`web/chat-input.md`](./web/chat-input.md#composer-history-navigation).

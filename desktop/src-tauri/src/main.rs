@@ -1902,15 +1902,22 @@ async fn build_app_window(
         width: 1280,
         height: 820,
     });
-    let builder = WebviewWindowBuilder::new(app, label, url)
-        .title("OpenAgentd")
-        .inner_size(
-            f64::from(initial_size.width),
-            f64::from(initial_size.height),
-        )
-        .min_inner_size(760.0, 560.0)
-        .initialization_script(&init_script)
-        .visible(false);
+    let mut config = app.config().app.windows.first()
+        .cloned()
+        .unwrap_or_default();
+    config.label = label;
+    config.url = url;
+    config.drag_drop_enabled = false;
+    config.visible = false;
+    if let Some(size) = saved_size {
+        config.width = f64::from(size.width);
+        config.height = f64::from(size.height);
+    } else {
+        config.width = f64::from(initial_size.width);
+        config.height = f64::from(initial_size.height);
+    }
+    let builder = WebviewWindowBuilder::from_config(app, &config)?
+        .initialization_script(&init_script);
     let builder = configure_window_chrome(builder);
     let win = builder.build().context("build webview window")?;
     if let Some(size) = saved_size {

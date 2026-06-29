@@ -43,7 +43,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { useTeamAgentsQuery } from '@/queries/useAgentsQuery'
 import { useFileRefsQuery } from '@/queries/useFileRefsQuery'
-import { AlertCircle, FolderCode, X } from 'lucide-react'
+import { AlertCircle, FolderCode, X, FileUp } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
 import { useEdgeSwipe } from '@/hooks/use-edge-swipe'
@@ -96,6 +96,18 @@ async function attachmentToFile(att: MessageAttachment): Promise<File | null> {
   )
 }
 
+function isDraggingFiles(dt: DataTransfer | null): boolean {
+  if (!dt) return false
+  if (!dt.types) return false
+  return Array.from(dt.types).some(
+    (type) =>
+      type === 'Files' ||
+      type === 'application/x-moz-file' ||
+      type.toLowerCase().includes('file') ||
+      type.toLowerCase().includes('uri')
+  )
+}
+
 export function TeamChatView({ sessionId, mode = 'normal', workspace = null, codingSessionLoading = false }: TeamChatViewProps) {
   const navigate = useNavigate()
   const openSettings = useSettingsStore((s) => s.openSettings)
@@ -123,6 +135,52 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const [fileRefsEnabled, setFileRefsEnabled] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>('agent')
   const draftBySessionRef = useRef<Record<string, SessionDraft>>({})
+
+  const [isDraggingFile, setIsDraggingFile] = useState(false)
+  const dragCounterRef = useRef(0)
+
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    if (!inputRef.current) return
+    if (isDraggingFiles(e.dataTransfer)) {
+      e.preventDefault()
+      dragCounterRef.current++
+      if (dragCounterRef.current === 1) {
+        setIsDraggingFile(true)
+      }
+    }
+  }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    if (!inputRef.current) return
+    if (isDraggingFiles(e.dataTransfer)) {
+      e.preventDefault()
+      dragCounterRef.current--
+      if (dragCounterRef.current === 0) {
+        setIsDraggingFile(false)
+      }
+    }
+  }, [])
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    if (!inputRef.current) return
+    if (isDraggingFiles(e.dataTransfer)) {
+      e.preventDefault()
+    }
+  }, [])
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    if (!inputRef.current) return
+    if (isDraggingFiles(e.dataTransfer)) {
+      e.preventDefault()
+      dragCounterRef.current = 0
+      setIsDraggingFile(false)
+
+      const droppedFiles = e.dataTransfer.files
+      if (droppedFiles && droppedFiles.length > 0) {
+        inputRef.current.addFiles(Array.from(droppedFiles))
+      }
+    }
+  }, [])
 
   // On mobile, always force agent view — split/unified require a wide screen.
   // Also close any desktop-only panels when shrinking to mobile.
@@ -1031,7 +1089,25 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
           />
         )}
 
-        <main id="main" ref={mainColumnRef} className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+        <main
+          id="main"
+          ref={mainColumnRef}
+          className="relative flex min-w-0 flex-1 flex-col overflow-hidden"
+          onDragEnter={handleDragEnter}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          {isDraggingFile && (
+            <div className="absolute inset-0 z-50 p-4 pointer-events-none drag-overlay-enter">
+              <div className="w-full h-full rounded-xl border-2 border-dashed border-(--color-accent)/30 bg-(--bg-card)/80 backdrop-blur-xs flex flex-col items-center justify-center gap-2 drag-card-enter">
+                <FileUp size={24} className="text-(--color-accent) animate-pulse" />
+                <span className="text-sm font-medium text-(--color-text)">
+                  Drop files to attach
+                </span>
+              </div>
+            </div>
+          )}
         {setupRequired && (
           <div className="mx-3 mt-3 flex flex-col gap-3 rounded-sm border border-(--accent-blue)/35 bg-(--accent-blue-soft) p-3 text-sm text-(--color-text) shadow-sm sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 gap-3">

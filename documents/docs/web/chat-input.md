@@ -85,8 +85,14 @@ The `InputBarHandle` ref exposes:
 - `focus()` — expand the floating composer when needed, then focus the textarea
 - `setValue(text)` — expand the floating composer when needed, inject text, and trigger height recalculation
 - `insertText(text)` — insert text at the current caret/selection, used by type-to-focus so the first keypress is not lost
+- `setFiles(files)` — replace the current attachments with the provided files
+- `addFiles(files)` — append the allowed files from the list to the current attachments and expand the composer if minimized
 
 `newSession()` aborts any active team SSE stream and resets the live roster/scroll state without automatically focusing the empty composer, so stale tokens, scroll affordances, or unwanted keyboard capture from the previous session do not leak into the fresh chat.
+
+### Drag-and-drop files
+
+Dragging files anywhere over the chat area (in both cockpit and coding views) shows a clean, blurred, dashed-border drop overlay (`Drop files to attach`). Dropping the files immediately expands the composer (if minimized) and adds them as attachments. Standard file-type filtering is applied, allowing images, PDFs, text, audio, and video files. On desktop, native Tauri drag-and-drop is disabled to allow standard HTML5 drag-and-drop events to reach the webview.
 
 ### Composer history navigation
 

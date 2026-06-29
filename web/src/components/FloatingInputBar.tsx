@@ -180,6 +180,10 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
         if (files.length > 0) expand()
         innerRef.current?.setFiles(files)
       },
+      addFiles: (files: File[]) => {
+        if (files.length > 0) expand()
+        innerRef.current?.addFiles(files)
+      },
     }), [expand])
 
     const handleFocus = useCallback(() => {

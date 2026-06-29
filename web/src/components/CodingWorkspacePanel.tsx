@@ -788,7 +788,7 @@ export function CodingWorkspacePanel({
                             {isExpanded && (
                               <>
                                 {commit.body && (
-                                  <p className="mt-2 whitespace-pre-wrap break-words rounded border border-(--color-border) bg-(--bg-page) px-2 py-1.5 text-[11px] leading-relaxed text-(--color-text-2)">
+                                  <p className="mt-2 max-h-32 overflow-y-auto touch-pan-y whitespace-pre-wrap break-words rounded border border-(--color-border) bg-(--bg-page) px-2 py-1.5 text-[11px] leading-relaxed text-(--color-text-2)">
                                     {commit.body}
                                   </p>
                                 )}

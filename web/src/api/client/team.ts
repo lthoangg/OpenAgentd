@@ -283,6 +283,19 @@ export async function getCodingWorkspaceCommitDiff(
   return res.json()
 }
 
+export async function discardCodingWorkspaceFile(
+  workspace: string,
+  path: string,
+  status: 'M' | 'D' | 'A',
+): Promise<void> {
+  const res = await fetch(`${apiBaseUrl()}/team/workspace/git/discard`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ workspace, path, status }),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, 'discardCodingWorkspaceFile')
+}
+
 export async function listTeamSessions(
   before?: string | null,
   limit = 20,

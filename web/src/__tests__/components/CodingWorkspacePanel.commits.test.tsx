@@ -17,12 +17,14 @@ mock.module('lucide-react', () => ({
   ExternalLink: Icon,
   FileText: Icon,
   Folder: Icon,
+  FolderOpen: Icon,
   GitBranch: Icon,
   GitCompare: Icon,
   Loader2: Icon,
   Plus: Icon,
   RefreshCw: Icon,
   Search: Icon,
+  Undo2: Icon,
   X: Icon,
 }))
 mock.module('@/hooks/useReducedMotion', () => ({ useReducedMotion: () => false }))
@@ -182,6 +184,33 @@ describe('CodingWorkspacePanel – commit body expand/collapse', () => {
     // Now expand the subject-only commit — the body commit should collapse
     await user.click(screen.getByText('feat: add login page'))
     await waitFor(() => expect(screen.queryByText(/Without this guard/)).toBeNull())
+  })
+
+  it('renders URL-encoded commit subjects decoded in the list', async () => {
+    // Regression: subjects arriving as percent-encoded strings (e.g. from
+    // git log --format=%s piped through URL encoding) must not display raw
+    // percent sequences to the user.
+    const encodedHistory = {
+      ...historyResponse,
+      commits: [{
+        ...commitNoBody,
+        subject: 'feat:%20add%20login%20page',
+      }],
+    }
+    globalThis.fetch = mock(async (input: unknown) => {
+      const url = String(input)
+      if (url.includes('/workspace/git/history')) return new Response(JSON.stringify(encodedHistory))
+      if (url.includes('/workspace/git-diff')) return new Response(JSON.stringify(emptyDiff))
+      if (url.includes('/workspace/files/list')) return new Response(JSON.stringify({ workspace: WORKSPACE, truncated: false, files: [] }))
+      return new Response(null, { status: 404 })
+    }) as typeof fetch
+
+    await renderCommitsTab()
+
+    // Raw percent-encoding must never appear
+    await waitFor(() => expect(screen.queryByText(/feat:%20/)).toBeNull())
+    // Decoded subject must be shown instead
+    expect(screen.getByText('feat: add login page')).toBeTruthy()
   })
 
   it('preserves multi-line body whitespace via whitespace-pre-wrap', async () => {

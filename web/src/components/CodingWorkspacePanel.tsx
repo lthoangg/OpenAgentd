@@ -2,12 +2,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { ChevronRight, ExternalLink, GitCompare, Plus, RefreshCw, X } from 'lucide-react'
+import { ChevronRight, Copy, ExternalLink, FolderOpen, GitCompare, Plus, RefreshCw, Undo2, X } from 'lucide-react'
+import { LongPressButton } from '@/components/ui/long-press-button'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
-import { getCodingWorkspaceGitDiff, listCodingWorkspaceFiles, getCodingWorkspaceGitHistory, getCodingWorkspaceCommitDiff } from '@/api/client'
+import { getCodingWorkspaceGitDiff, listCodingWorkspaceFiles, getCodingWorkspaceGitHistory, getCodingWorkspaceCommitDiff, discardCodingWorkspaceFile } from '@/api/client'
 import { CodingFilePreviewContent, DiffPreview } from './CodingFileViewerPanel'
 import { FileTypeIcon } from './FileTypeIcon'
+import { softHapticFeedback } from '@/lib/haptics'
 import { cn } from '@/lib/utils'
 import { queryKeys } from '@/queries'
 
@@ -237,6 +241,11 @@ export function CodingWorkspacePanel({
   const prefersReducedMotion = useReducedMotion()
   const [tabs, setTabs] = useState<WorkspacePanelTab[]>([{ id: 'review', type: 'review', title: 'Git' }])
   const [activeTabId, setActiveTabId] = useState('review')
+  const [mobileFileActions, setMobileFileActions] = useState<ChangedFileInfo | null>(null)
+  const [mobileCommitActions, setMobileCommitActions] = useState<{ sha: string; shortSha: string; subject: string } | null>(null)
+  const [copiedSha, setCopiedSha] = useState<string | null>(null)
+  const [discardTarget, setDiscardTarget] = useState<ChangedFileInfo | null>(null)
+  const [discarding, setDiscarding] = useState(false)
   const tabButtonRefs = useRef(new Map<string, HTMLButtonElement>())
   const commitsScrollRef = useRef<HTMLDivElement>(null)
   // Tracks a SHA that was navigated to from Tree and needs to be scrolled into view.
@@ -678,9 +687,12 @@ export function CodingWorkspacePanel({
                           const fileDiff = diffSections.get(changedFile.path)?.diff
                           return (
                             <div key={changedFile.path} className="group overflow-hidden rounded border border-(--color-border-subtle) bg-(--bg-card)">
-                              <button
+                              <LongPressButton
                                 type="button"
                                 onClick={() => toggleDiffExpanded(changedFile.path)}
+                                enabled={mobile}
+                                onLongPress={() => setMobileFileActions(changedFile)}
+                                onContextMenu={(e) => { if (!mobile) { e.preventDefault(); setMobileFileActions(changedFile) } }}
                                 className={cn(
                                   'flex w-full cursor-pointer items-center gap-2 px-2 py-1.5 text-left text-xs transition-colors hover:bg-(--bg-key) hover:text-(--color-text)',
                                   isSelected ? 'text-(--color-accent)' : 'text-(--color-text-2)',
@@ -714,7 +726,8 @@ export function CodingWorkspacePanel({
                                 <span className="shrink-0 font-mono text-[10px] text-(--color-diff-add-text)">{changedFile.additions > 0 ? `+${changedFile.additions}` : ''}</span>
                                 <span className="shrink-0 font-mono text-[10px] text-(--color-diff-del-text)">{changedFile.deletions > 0 ? `-${changedFile.deletions}` : ''}</span>
                                 <span className="shrink-0 font-mono text-[10px] font-semibold text-(--accent-orange-text)" aria-label={CHANGED_STATUS_LABELS[changedFile.status]}>{changedFile.status}</span>
-                              </button>
+                              </LongPressButton>
+
                               {expanded && (
                                 <div className="border-t border-(--color-border-subtle)">
                                   {fileDiff ? <div className="max-h-[70vh] min-h-0 overflow-y-auto touch-pan-y"><DiffPreview diff={fileDiff} /></div>
@@ -737,12 +750,20 @@ export function CodingWorkspacePanel({
                   ) : commits.length === 0 ? (
                     <p className="px-2 py-4 text-xs text-(--color-text-subtle)">No commits found</p>
                   ) : (
-                    <div className="space-y-2">
-                      {commits.map((commit) => {
-                        const isExpanded = expandedCommitSha === commit.sha
-                        return (
+                    <>
+                      {copiedSha && (
+                        <div className="mb-2 flex items-center gap-1.5 rounded border border-(--color-border) bg-(--bg-card) px-2 py-1.5 text-[11px] text-(--color-text-2)">
+                          <Copy size={10} className="shrink-0 text-(--color-accent)" aria-hidden="true" />
+                          <span className="font-mono">{copiedSha.length > 10 ? copiedSha.substring(0, 10) + '…' : copiedSha}</span>
+                          <span className="text-(--color-text-muted)">copied</span>
+                        </div>
+                      )}
+                      <div className="space-y-2">
+                        {commits.map((commit) => {
+                          const isExpanded = expandedCommitSha === commit.sha
+                          return (
                           <div key={commit.sha} data-commit-sha={commit.sha} className="overflow-hidden rounded border border-(--color-border-subtle) bg-(--bg-card) p-2 transition-colors hover:border-(--color-border) hover:bg-(--bg-key)">
-                            <button
+                            <LongPressButton
                               type="button"
                               onClick={(e) => {
                                 const card = (e.currentTarget as HTMLElement).closest('[data-commit-sha]') as HTMLElement | null
@@ -763,13 +784,16 @@ export function CodingWorkspacePanel({
                                   scroller.scrollTop += cardOffsetAfter - cardOffsetBefore
                                 }
                               }}
+                              enabled={mobile}
+                              onLongPress={() => setMobileCommitActions({ sha: commit.sha, shortSha: commit.short_sha, subject: decodeURIComponent(commit.subject) })}
+                              onContextMenu={(e) => { if (!mobile) { e.preventDefault(); setMobileCommitActions({ sha: commit.sha, shortSha: commit.short_sha, subject: decodeURIComponent(commit.subject) }) } }}
                               className="flex w-full cursor-pointer flex-col gap-1 text-left"
                             >
                               <div className="flex w-full items-start justify-between gap-1.5">
                                 <div className="flex items-start gap-1.5 min-w-0 flex-1">
                                   <span className="shrink-0 font-mono text-xs text-(--color-text-subtle) select-none mt-0.5">•</span>
                                   <span className="truncate font-mono text-[11px] font-semibold text-(--color-text)">
-                                    {commit.subject}
+                                    {decodeURIComponent(commit.subject)}
                                   </span>
                                 </div>
                                 <span className="shrink-0 rounded border border-(--color-border-subtle) bg-(--bg-card) px-1 py-0.5 font-mono text-[9px] text-(--color-text-subtle)">
@@ -791,7 +815,7 @@ export function CodingWorkspacePanel({
                                 <span>{commit.author_name}</span>
                                 <span>{new Date(commit.timestamp * 1000).toLocaleDateString('en-GB')}</span>
                               </div>
-                            </button>
+                            </LongPressButton>
 
                             {isExpanded && (
                               <>
@@ -818,6 +842,7 @@ export function CodingWorkspacePanel({
                       )}
                       <div ref={sentinelRef} className="h-1" />
                     </div>
+                    </>
                   )
                 ) : (
                   gitHistory.isLoading ? (
@@ -860,6 +885,7 @@ export function CodingWorkspacePanel({
                                     >
                                       {line.sha.substring(0, 7)}
                                     </button>
+
                                     {line.decorations && (
                                       <div className="flex items-center gap-1 shrink-0 max-w-[200px] overflow-hidden">
                                         {line.decorations.split(',').map((ref) => {
@@ -933,7 +959,135 @@ export function CodingWorkspacePanel({
         >
           <RefreshCw size={12} /> Refresh
         </button>
+        <Dialog open={mobileFileActions !== null} onOpenChange={(open) => { if (!open) setMobileFileActions(null) }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="truncate font-mono text-sm">{mobileFileActions?.path ?? ''}</DialogTitle>
+              <DialogDescription>Choose an action for this file.</DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="flex-col items-stretch gap-2 p-3 sm:flex-col">
+              {mobileFileActions?.status !== 'D' && (
+                <Button type="button" variant="ghost" className="justify-start" onClick={() => {
+                  const f = mobileFileActions; setMobileFileActions(null)
+                  if (!f) return
+                  softHapticFeedback()
+                  const name = f.path.split('/').pop() ?? f.path
+                  const file: WorkspaceFileInfo = files.data?.files.find((fi) => fi.path === f.path)
+                    ?? { path: f.path, name, size: 0, mtime: 0, mime: 'text/plain' }
+                  openFileTab(file)
+                }}>
+                  <FolderOpen size={14} aria-hidden="true" />
+                  Open file
+                </Button>
+              )}
+              <Button type="button" variant="ghost" className="justify-start" onClick={() => {
+                const f = mobileFileActions; setMobileFileActions(null)
+                if (!f) return
+                softHapticFeedback()
+                void navigator.clipboard.writeText(f.path)
+              }}>
+                <Copy size={14} aria-hidden="true" />
+                Copy file path
+              </Button>
+              <Button type="button" variant="danger-subtle" className="justify-start" onClick={() => {
+                const f = mobileFileActions
+                setMobileFileActions(null)
+                if (f) setDiscardTarget(f)
+              }}>
+                <Undo2 size={14} aria-hidden="true" />
+                Discard changes
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+        <Dialog open={mobileCommitActions !== null} onOpenChange={(open) => { if (!open) setMobileCommitActions(null) }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="truncate font-mono text-sm">{mobileCommitActions?.subject ?? ''}</DialogTitle>
+              <DialogDescription>SHA: {mobileCommitActions?.shortSha}</DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="flex-col items-stretch gap-2 p-3 sm:flex-col">
+              <Button type="button" variant="ghost" className="justify-start" onClick={() => {
+                const c = mobileCommitActions; setMobileCommitActions(null)
+                if (!c) return
+                softHapticFeedback()
+                void navigator.clipboard.writeText(c.shortSha).then(() => { setCopiedSha(c.shortSha); setTimeout(() => setCopiedSha(null), 2000) })
+              }}>
+                <Copy size={14} aria-hidden="true" />
+                Copy short SHA
+              </Button>
+              <Button type="button" variant="ghost" className="justify-start" onClick={() => {
+                const c = mobileCommitActions; setMobileCommitActions(null)
+                if (!c) return
+                softHapticFeedback()
+                void navigator.clipboard.writeText(c.sha).then(() => { setCopiedSha(c.sha); setTimeout(() => setCopiedSha(null), 2000) })
+              }}>
+                <Copy size={14} aria-hidden="true" />
+                Copy full SHA
+              </Button>
+              <Button type="button" variant="ghost" className="justify-start" onClick={() => {
+                const c = mobileCommitActions; setMobileCommitActions(null)
+                if (!c) return
+                softHapticFeedback()
+                void navigator.clipboard.writeText(c.subject)
+              }}>
+                <Copy size={14} aria-hidden="true" />
+                Copy commit message
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
+
+      {/* Discard confirmation dialog */}
+      <Dialog open={discardTarget !== null} onOpenChange={(open) => { if (!open && !discarding) setDiscardTarget(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Discard changes?</DialogTitle>
+            <DialogDescription>
+              {discardTarget?.status === 'A'
+                ? `"${discardTarget.path}" is a new file and will be permanently deleted.`
+                : `All unsaved changes to "${discardTarget?.path}" will be lost and cannot be recovered.`}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex-col items-stretch gap-2 p-3 sm:flex-col">
+            <Button
+              type="button"
+              variant="danger-subtle"
+              className="justify-start"
+              disabled={discarding}
+              onClick={async () => {
+                const f = discardTarget
+                if (!f) return
+                setDiscarding(true)
+                try {
+                  await discardCodingWorkspaceFile(workspace, f.path, f.status)
+                  softHapticFeedback()
+                  void diff.refetch()
+                  void files.refetch()
+                } catch {
+                  // leave dialog open so user sees the failure
+                } finally {
+                  setDiscarding(false)
+                  setDiscardTarget(null)
+                }
+              }}
+            >
+              <Undo2 size={14} aria-hidden="true" />
+              {discarding ? 'Discarding…' : discardTarget?.status === 'A' ? 'Delete file' : 'Discard changes'}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="justify-start"
+              disabled={discarding}
+              onClick={() => setDiscardTarget(null)}
+            >
+              Cancel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </motion.aside>
   )
 }

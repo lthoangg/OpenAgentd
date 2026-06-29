@@ -681,6 +681,73 @@ async def get_coding_workspace_git_history(
     )
 
 
+@router.post("/workspace/git/discard")
+async def discard_coding_workspace_file(
+    payload: dict,
+) -> dict:
+    """Discard changes for a single file in the workspace.
+
+    - Modified / deleted (tracked): ``git checkout -- <path>``
+    - Added / untracked: delete the file from disk
+
+    The caller supplies ``{"workspace": "...", "path": "...", "status": "M"|"D"|"A"}``.
+    """
+    workspace: str = payload.get("workspace", "")
+    rel_path: str = payload.get("path", "")
+    status: str = payload.get("status", "M")
+
+    if not workspace or not rel_path:
+        raise HTTPException(status_code=400, detail="workspace and path are required.")
+
+    try:
+        resolved_workspace = team_manager.validate_workspace(workspace)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    root = Path(resolved_workspace)
+    if not (root / ".git").exists():
+        raise HTTPException(status_code=400, detail="Not a git repository.")
+
+    # Traversal guard — reuse the existing helper (without the existence check
+    # so deleted-file restore works even when the file is already gone).
+    candidate = Path(rel_path)
+    if candidate.is_absolute() or ".." in candidate.parts:
+        raise HTTPException(status_code=400, detail="Invalid file path.")
+    try:
+        abs_path = (root / candidate).resolve(strict=False)
+        abs_root = root.resolve(strict=False)
+        abs_path.relative_to(abs_root)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Path escapes workspace root.")
+
+    if status == "A":
+        # Added / untracked — just delete the file; there is no previous
+        # version to restore.
+        try:
+            abs_path.unlink(missing_ok=True)
+        except OSError as exc:
+            raise HTTPException(
+                status_code=500, detail=f"Could not delete file: {exc}"
+            ) from exc
+    else:
+        # Modified or deleted — restore from the index.
+        result = await asyncio.to_thread(
+            subprocess.run,
+            ["git", "-C", resolved_workspace, "checkout", "--", rel_path],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        if result.returncode != 0:
+            raise HTTPException(
+                status_code=500,
+                detail=f"git checkout failed: {result.stderr.strip()}",
+            )
+
+    return {"workspace": workspace, "path": rel_path, "status": status}
+
+
 @router.get("/workspace/git/commit-diff", response_model=WorkspaceCommitDiffResponse)
 async def get_coding_workspace_commit_diff(
     workspace: str,

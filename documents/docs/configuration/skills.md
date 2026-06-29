@@ -91,8 +91,7 @@ OpenAgentd ships these read-only operational skills inside the app package. They
 |------|---------|
 | `self-healing` | Update agent/runtime config on request — swap model, tune temperature/thinking, add tools/MCP, change image-gen provider. |
 | `skill-installer` | Install new skills from a URL or write one from scratch. |
-| `mcp-installer` | Install / update / remove / restart MCP servers in `mcp.json`. |
-| `plugin-installer` | Install a user plugin from a URL into `{OPENAGENTD_CONFIG_DIR}/plugins/`. |
+| `browser-use` | Automate browser interactions for web testing, form filling, screenshots, and data extraction. |
 
 > Other curated skills (office documents, lightpanda, etc.) are not builtin and must be installed manually via `skill-installer` or by dropping a `SKILL.md` into the skills directory.
 

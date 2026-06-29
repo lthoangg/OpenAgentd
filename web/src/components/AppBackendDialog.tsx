@@ -174,6 +174,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
       aria-modal="true"
       aria-labelledby="app-backend-title"
       data-swipe-ignore
+      onClick={() => onOpenChange(false)}
     >
       <div
         className="flex max-h-full w-full max-w-md flex-col overflow-hidden rounded-md border border-(--color-border) bg-(--bg-page) text-(--color-text) shadow-2xl"

@@ -259,6 +259,7 @@ export function SchedulerPanel({
                     />
                   ) : (
                     <CreateTaskForm
+                      key={`create-${contextMode}-${contextWorkspace ?? ''}`}
                       contextMode={contextMode}
                       contextWorkspace={contextWorkspace}
                       onSuccess={handleCloseDetail}

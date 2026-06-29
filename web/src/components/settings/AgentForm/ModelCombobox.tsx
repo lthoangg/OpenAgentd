@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import fuzzysort from 'fuzzysort'
@@ -45,6 +45,8 @@ export function ModelCombobox({
   /** Accessible name for the input when no visible <label> is associated. */
   ariaLabel?: string
 }) {
+  const uid = useId()
+  const listId = `model-combobox-list-${uid}`
   const [query, setQuery] = useState(value)
   const [open, setOpen] = useState(false)
   const [highlight, setHighlight] = useState(0)
@@ -156,7 +158,7 @@ export function ModelCombobox({
           role="combobox"
           aria-expanded={open}
           aria-autocomplete="list"
-          aria-controls="model-combobox-list"
+          aria-controls={listId}
           aria-label={ariaLabel}
           value={query}
           onChange={(e) => {
@@ -200,7 +202,7 @@ export function ModelCombobox({
         createPortal(
           <ul
             ref={listRef}
-            id="model-combobox-list"
+            id={listId}
             role="listbox"
             // Portalled to document.body so the dropdown escapes any
             // ancestor with ``overflow-hidden`` (e.g. the Card primitive).

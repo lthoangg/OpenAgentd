@@ -222,20 +222,30 @@ export function Sidebar({
   }, [editTarget])
 
   // Intersection observer — load next page when sentinel scrolls into view.
+  // Keep refs so the callback always reads the latest values without
+  // disconnecting/reconnecting the observer on every page fetch.
+  const hasNextPageRef = useRef(hasNextPage)
+  const isFetchingNextPageRef = useRef(isFetchingNextPage)
+  const fetchNextPageRef = useRef(fetchNextPage)
+  useEffect(() => { hasNextPageRef.current = hasNextPage }, [hasNextPage])
+  useEffect(() => { isFetchingNextPageRef.current = isFetchingNextPage }, [isFetchingNextPage])
+  useEffect(() => { fetchNextPageRef.current = fetchNextPage }, [fetchNextPage])
+
   useEffect(() => {
     const sentinel = loadMoreRef.current
     if (!sentinel) return
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) {
-          fetchNextPage()
+        if (entries[0].isIntersecting && hasNextPageRef.current && !isFetchingNextPageRef.current) {
+          fetchNextPageRef.current()
         }
       },
       { root: sessionListRef.current, threshold: 0.1 }
     )
     observer.observe(sentinel)
     return () => observer.disconnect()
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const handleDelete = useCallback((e: React.MouseEvent, session: SessionResponse) => {
     e.stopPropagation()

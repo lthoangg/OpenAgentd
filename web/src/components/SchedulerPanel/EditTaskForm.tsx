@@ -63,11 +63,10 @@ export function EditTaskForm({
     return 'custom'
   }
 
-  const [sessionType, setSessionType] = useState<'new' | 'auto' | 'current' | 'custom'>(
-    getInitialSessionType(task.session_id, currentSessionId)
-  )
+  const initialSessionType = getInitialSessionType(task.session_id, currentSessionId)
+  const [sessionType, setSessionType] = useState<'new' | 'auto' | 'current' | 'custom'>(initialSessionType)
   const [customSessionId, setCustomSessionId] = useState(
-    getInitialSessionType(task.session_id, currentSessionId) === 'custom' ? (task.session_id ?? '') : ''
+    initialSessionType === 'custom' ? (task.session_id ?? '') : ''
   )
 
   useEffect(() => {

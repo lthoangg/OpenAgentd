@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ChevronDown, ChevronUp, RotateCcw } from 'lucide-react'
 
 interface RevertNoticeProps {
@@ -9,6 +9,11 @@ interface RevertNoticeProps {
 
 export function RevertNotice({ count, messages = [], onRedo }: RevertNoticeProps) {
   const [expanded, setExpanded] = useState(false)
+  // Collapse whenever the revert count resets to 0 (redo or new session),
+  // so the next undo doesn't open already-expanded.
+  useEffect(() => {
+    if (count === 0) setExpanded(false)
+  }, [count])
   if (count <= 0) return null
   const label = count === 1 ? '1 message reverted' : `${count} messages reverted`
 

@@ -212,14 +212,16 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
       }, 180)
     }, [])
 
+    const onSubmitRef = useRef(inputProps.onSubmit)
+    useEffect(() => { onSubmitRef.current = inputProps.onSubmit })
     const handleSubmit = useCallback((message: string, files?: File[], mentions?: string[]) => {
-      inputProps.onSubmit(message, files, mentions)
+      onSubmitRef.current(message, files, mentions)
       // Only collapse on desktop — on mobile the bar is always fully visible
       // and calling minimize() here drifts the `minimized` state flag to
       // `true`, which causes the bar to snap collapsed if the viewport later
       // crosses the breakpoint (e.g. tablet orientation change).
       if (!isMobile) minimize()
-    }, [inputProps, isMobile, minimize])
+    }, [isMobile, minimize])
 
     useEffect(() => () => {
       if (blurTimerRef.current) clearTimeout(blurTimerRef.current)

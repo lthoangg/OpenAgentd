@@ -70,13 +70,17 @@ export function AgentForm({
   // If the parent swaps `initial` (e.g. navigating between agents), adopt
   // the new seed. We track the last-seen initial in state so this is a
   // plain derived-state update rather than an effect.
+  // Use parseFormState(initial) directly here — not the `seed` memo — because
+  // useMemo runs after the render body and still holds the previous value at
+  // the point where this guard fires.
   const [lastInitial, setLastInitial] = useState(initial)
   if (initial !== lastInitial) {
+    const freshSeed = parseFormState(initial)
     setLastInitial(initial)
     setRaw(initial)
-    setFm(seed.fm)
-    setBody(seed.body)
-    setParseError(seed.error)
+    setFm(freshSeed.fm)
+    setBody(freshSeed.body)
+    setParseError(freshSeed.error)
   }
 
   // When the parent flips mode, re-parse if going back to form so we don't

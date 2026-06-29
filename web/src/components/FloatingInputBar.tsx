@@ -370,6 +370,16 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
 
     const handleTouchStart = useCallback((e: React.TouchEvent) => {
       if (suggestionsOpen) return
+
+      // If the touch started on a scrollable textarea, ignore it for swipe-to-dismiss
+      const target = e.target as HTMLElement
+      if (target && target.tagName === 'TEXTAREA') {
+        const textarea = target as HTMLTextAreaElement
+        if (textarea.scrollHeight > textarea.clientHeight) {
+          return
+        }
+      }
+
       if (e.touches.length === 1) {
         touchStartY.current = e.touches[0].clientY
         touchStartX.current = e.touches[0].clientX

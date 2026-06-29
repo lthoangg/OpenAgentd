@@ -329,5 +329,29 @@ describe('FloatingInputBar', () => {
 
       expect(dismissedCalled).toBe(false)
     })
+
+    it('does NOT dismiss the keyboard when swiping down inside a scrollable textarea', () => {
+      render(
+        <FloatingInputBar
+          boundsRef={{ current: null }}
+          onSubmit={() => {}}
+        />
+      )
+
+      const textarea = screen.getByRole('textbox', { name: 'Message input' })
+
+      // Mock scrollable textarea
+      Object.defineProperty(textarea, 'scrollHeight', { value: 200, configurable: true })
+      Object.defineProperty(textarea, 'clientHeight', { value: 100, configurable: true })
+
+      fireEvent.touchStart(textarea, {
+        touches: [{ clientX: 100, clientY: 100 } as unknown as Touch],
+      })
+      fireEvent.touchMove(textarea, {
+        touches: [{ clientX: 100, clientY: 150 } as unknown as Touch],
+      })
+
+      expect(dismissedCalled).toBe(false)
+    })
   })
 })

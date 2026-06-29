@@ -238,13 +238,35 @@ function TeamMessageResult({ result }: { result: string }) {
 }
 
 function TeamManageResult({ result }: { result: string }) {
+  const cleanValue = (value: string) => {
+    if (value.startsWith('[') && value.endsWith(']')) {
+      try {
+        const parsed = JSON.parse(value.replace(/'/g, '"'))
+        if (Array.isArray(parsed)) {
+          return parsed.join(', ')
+        }
+      } catch {
+        return value
+          .slice(1, -1)
+          .split(',')
+          .map((s) => s.trim().replace(/^['"]|['"]$/g, ''))
+          .filter(Boolean)
+          .join(', ')
+      }
+    }
+    return value
+  }
+
   const groups = result
     .split(/\.\s+/)
     .map((part) => part.trim().replace(/\.$/, ''))
     .filter(Boolean)
     .map((part) => {
       const [label, ...rest] = part.split(':')
-      return { label: label.trim(), value: rest.join(':').trim() }
+      return {
+        label: label.trim(),
+        value: cleanValue(rest.join(':').trim()),
+      }
     })
     .filter((group) => group.label && group.value)
 
@@ -253,15 +275,49 @@ function TeamManageResult({ result }: { result: string }) {
   }
 
   return (
-    <ul className="space-y-1">
+    <ul className="space-y-1.5">
       {groups.map((group) => {
         const isError = group.label.toLowerCase().includes('error')
+
+        if (group.label === 'Spawnable blueprints') {
+          const items = group.value
+            .split(',')
+            .map((item) => item.trim())
+            .filter(Boolean)
+
+          return (
+            <li
+              key={group.label}
+              className="block min-w-0 font-mono text-[11px] leading-relaxed"
+            >
+              <span className="text-(--color-text-muted)">{group.label}</span>
+              <span className="text-(--color-text-muted) select-none">:</span>
+              <ul className="mt-1 pl-3 space-y-0.5">
+                {items.map((item) => (
+                  <li key={item} className="flex gap-1.5 text-(--color-text-2)">
+                    <span className="text-(--color-text-muted) select-none">—</span>
+                    <span className="break-words">{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </li>
+          )
+        }
+
         return (
-          <li key={`${group.label}:${group.value}`} className="flex min-w-0 gap-2 font-mono text-[11px] leading-relaxed">
-            <span className={`shrink-0 ${isError ? 'text-(--color-error)' : 'text-(--color-text-muted)'}`}>
+          <li
+            key={`${group.label}:${group.value}`}
+            className="flex min-w-0 gap-2 font-mono text-[11px] leading-relaxed"
+          >
+            <span
+              className={`shrink-0 ${isError ? 'text-(--color-error)' : 'text-(--color-text-muted)'}`}
+            >
               {group.label}
             </span>
-            <span className={`min-w-0 break-words ${isError ? 'text-(--color-error)' : 'text-(--color-text-2)'}`}>
+            <span className="text-(--color-text-muted) select-none -ml-1">:</span>
+            <span
+              className={`min-w-0 break-words ${isError ? 'text-(--color-error)' : 'text-(--color-text-2)'}`}
+            >
               {group.value}
             </span>
           </li>

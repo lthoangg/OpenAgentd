@@ -639,6 +639,30 @@ describe("ToolCall — team_manage display", () => {
     expect(screen.getByText("Errors")).toBeTruthy()
   })
 
+  it("renders list layout for Spawnable blueprints and cleans up Available lists", async () => {
+    const user = userEvent.setup()
+    const args = JSON.stringify({ action: "list" })
+    render(
+      <ToolCall
+        name="team_manage"
+        args={args}
+        done={true}
+        result="Live: lead, coder#1. Spawnable blueprints: coder — Code specialist, writer. Available: ['coder', 'writer']."
+      />,
+    )
+
+    await user.click(screen.getByRole("button"))
+    expect(screen.getByText("Live")).toBeTruthy()
+    expect(screen.getByText("lead, coder#1")).toBeTruthy()
+
+    expect(screen.getByText("Spawnable blueprints")).toBeTruthy()
+    expect(screen.getByText("coder — Code specialist")).toBeTruthy()
+    expect(screen.getByText("writer")).toBeTruthy()
+
+    expect(screen.getByText("Available")).toBeTruthy()
+    expect(screen.getByText("coder, writer")).toBeTruthy()
+  })
+
   it("hides dismiss arguments when there is no result", async () => {
     const user = userEvent.setup()
     const args = JSON.stringify({ action: "dismiss", members: ["executor#1"] })

@@ -846,6 +846,28 @@ class TestRosterManageTool:
         finally:
             await team.stop()
 
+    async def test_team_manage_coercion(self, tmp_path):
+        from app.agent.mode.team.manage import make_team_manage_tool
+
+        team = _build_dynamic_team(tmp_path, {"executor": None, "explorer": None})
+        tool = make_team_manage_tool(team)
+        await team.start()
+        try:
+            # Coerce single string: "executor"
+            result1 = await tool.arun(action="spawn", members="executor")
+            assert "executor#1" in result1
+
+            # Coerce comma-separated string: "executor, explorer"
+            result2 = await tool.arun(action="spawn", members="executor, explorer")
+            assert "executor#2" in result2
+            assert "explorer#1" in result2
+
+            # Coerce JSON-stringified list: '["explorer"]'
+            result3 = await tool.arun(action="spawn", members='["explorer"]')
+            assert "explorer#2" in result3
+        finally:
+            await team.stop()
+
 
 # ---------------------------------------------------------------------------
 # Handle parsing + formatting helpers

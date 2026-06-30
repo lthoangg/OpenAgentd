@@ -17,7 +17,7 @@ Recipient resolution:
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Literal
+from typing import Any, TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -62,6 +62,31 @@ class TeamMessageArgs(BaseModel):
             "Do NOT prefix with your name — the system adds [your-name]: automatically."
         ),
     )
+
+    @field_validator("to", mode="before")
+    @classmethod
+    def coerce_to(cls, v: Any) -> Any:
+        if v is None:
+            return []
+        if isinstance(v, str):
+            text = v.strip()
+            if not text:
+                return []
+            if text.startswith("[") and text.endswith("]"):
+                try:
+                    import json
+
+                    parsed = json.loads(text)
+                    if isinstance(parsed, list):
+                        return [
+                            str(item).strip() for item in parsed if str(item).strip()
+                        ]
+                except Exception:
+                    pass
+            return [item.strip() for item in text.split(",") if item.strip()]
+        if isinstance(v, (list, tuple, set)):
+            return [str(item).strip() for item in v if str(item).strip()]
+        return [str(v).strip()]
 
     @field_validator("content")
     @classmethod

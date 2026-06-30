@@ -197,3 +197,25 @@ class TestTeamMessageTool:
         assert "ghost" in result
         # Should not have delivered to bob
         assert mb.inbox_empty("bob")
+
+    async def test_coerce_recipients_list(self):
+        """Verify list-coercion for recipients in team_message."""
+        mb = _make_mailbox("alice", "bob", "charlie")
+        tool = make_team_message_tool(mb, agent_name="alice")
+
+        # Coerce single string: "bob"
+        await tool.arun(to="bob", content="Hello bob")
+        msg1 = await mb.receive("bob")
+        assert msg1.content == "[alice]: Hello bob"
+
+        # Coerce comma-separated string: "bob, charlie"
+        await tool.arun(to="bob, charlie", content="Hello both")
+        msg2 = await mb.receive("bob")
+        msg3 = await mb.receive("charlie")
+        assert msg2.content == "[alice]: Hello both"
+        assert msg3.content == "[alice]: Hello both"
+
+        # Coerce JSON-stringified list: '["bob"]'
+        await tool.arun(to='["bob"]', content="Hello again")
+        msg4 = await mb.receive("bob")
+        assert msg4.content == "[alice]: Hello again"

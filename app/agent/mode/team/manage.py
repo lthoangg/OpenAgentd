@@ -6,10 +6,10 @@ members, spawn member instances, and dismiss them in batches.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal
+from typing import Any, TYPE_CHECKING, Literal
 
 from loguru import logger
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.agent.tools.registry import Tool
 
@@ -38,14 +38,40 @@ class TeamManageArgs(BaseModel):
         )
     )
     members: list[str] = Field(
+        default_factory=list,
         description=(
             "For list: pass an empty array and read back the live "
             "member handles plus spawnable blueprints. For spawn: pass "
             "listed/available blueprint names or restorable handles. "
             "For dismiss: pass explicit live handles. Multiple entries "
             "are processed left-to-right."
-        )
+        ),
     )
+
+    @field_validator("members", mode="before")
+    @classmethod
+    def coerce_members(cls, v: Any) -> Any:
+        if v is None:
+            return []
+        if isinstance(v, str):
+            text = v.strip()
+            if not text:
+                return []
+            if text.startswith("[") and text.endswith("]"):
+                try:
+                    import json
+
+                    parsed = json.loads(text)
+                    if isinstance(parsed, list):
+                        return [
+                            str(item).strip() for item in parsed if str(item).strip()
+                        ]
+                except Exception:
+                    pass
+            return [item.strip() for item in text.split(",") if item.strip()]
+        if isinstance(v, (list, tuple, set)):
+            return [str(item).strip() for item in v if str(item).strip()]
+        return [str(v).strip()]
 
     @model_validator(mode="after")
     def _validate_members(self) -> TeamManageArgs:

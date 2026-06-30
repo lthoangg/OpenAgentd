@@ -20,6 +20,7 @@ class FunctionCall(GeminiBaseModel):
 class FunctionResponse(GeminiBaseModel):
     name: str
     response: dict[str, Any]
+    id: str | None = None
 
 
 class InlineData(GeminiBaseModel):

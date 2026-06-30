@@ -76,7 +76,28 @@ def test_convert_messages_to_gemini(google_provider):
     assert merged_contents[2].role == "user"
     assert len(merged_contents[2].parts) == 2
     assert merged_contents[2].parts[0].function_response.name == "get_weather"
+    assert merged_contents[2].parts[0].function_response.id == "call_1"
     assert merged_contents[2].parts[1].function_response.name == "get_location"
+    assert merged_contents[2].parts[1].function_response.id == "call_2"
+
+
+def test_convert_tool_message_payload_includes_function_response_id(google_provider):
+    messages = [
+        ToolMessage(
+            content='{"result": "success"}',
+            tool_call_id="toolu_123",
+            name="read_file",
+        )
+    ]
+
+    contents, _ = google_provider._convert_messages_to_gemini(messages)
+    request = GeminiChatRequest(contents=contents)
+    dump = request.model_dump(exclude_none=True, by_alias=True)
+
+    function_response = dump["contents"][0]["parts"][0]["functionResponse"]
+    assert function_response["name"] == "read_file"
+    assert function_response["id"] == "toolu_123"
+    assert function_response["response"] == {"result": "success"}
 
 
 def test_convert_assistant_message_with_tools(google_provider):

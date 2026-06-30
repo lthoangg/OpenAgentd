@@ -175,6 +175,7 @@ class GeminiProviderBase(LLMProviderBase):
                         function_response=FunctionResponse(
                             name=msg.name or "unknown",
                             response=tool_result,
+                            id=msg.tool_call_id,
                         )
                     )
                 ]

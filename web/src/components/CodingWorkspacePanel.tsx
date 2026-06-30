@@ -252,6 +252,8 @@ export function CodingWorkspacePanel({
   const [activeTabId, setActiveTabId] = useState('review')
   const [mobileFileActions, setMobileFileActions] = useState<ChangedFileInfo | null>(null)
   const [mobileCommitActions, setMobileCommitActions] = useState<{ sha: string; shortSha: string; subject: string } | null>(null)
+  const [desktopCommitActions, setDesktopCommitActions] = useState<{ sha: string; shortSha: string; subject: string; x: number; y: number } | null>(null)
+  const [desktopFileActions, setDesktopFileActions] = useState<{ file: ChangedFileInfo; x: number; y: number } | null>(null)
   const [copiedSha, setCopiedSha] = useState<string | null>(null)
   const [discardTarget, setDiscardTarget] = useState<ChangedFileInfo | null>(null)
   const [discarding, setDiscarding] = useState(false)
@@ -324,9 +326,10 @@ export function CodingWorkspacePanel({
   }, [gitHistory.data?.pages])
 
   const isLatestCommit = useMemo(() => {
-    if (!mobileCommitActions || commits.length === 0) return false
-    return mobileCommitActions.sha === commits[0].sha
-  }, [mobileCommitActions, commits])
+    const activeSha = mobileCommitActions?.sha ?? desktopCommitActions?.sha
+    if (!activeSha || commits.length === 0) return false
+    return activeSha === commits[0].sha
+  }, [mobileCommitActions, desktopCommitActions, commits])
 
   const graph = useMemo(() => {
     return gitHistory.data?.pages[0]?.graph ?? ''
@@ -473,6 +476,59 @@ export function CodingWorkspacePanel({
     card.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   }, [subTab, commits])
 
+  const handleUndoCommit = async () => {
+    setGitActionPending(true)
+    try {
+      await undoCodingWorkspaceLastCommit(workspace)
+      softHapticFeedback()
+      pushToast({
+        tone: 'success',
+        title: 'Commit undone',
+        description: 'The last commit was undone. Changes have been kept in your working copy.',
+      })
+      setMobileCommitActions(null)
+      setDesktopCommitActions(null)
+      void gitHistory.refetch()
+      void diff.refetch()
+      void files.refetch()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      pushToast({
+        tone: 'error',
+        title: 'Failed to undo commit',
+        description: msg,
+      })
+    } finally {
+      setGitActionPending(false)
+    }
+  }
+
+  const handleRevertCommit = async (sha: string, shortSha: string) => {
+    setGitActionPending(true)
+    try {
+      await revertCodingWorkspaceCommit(workspace, sha)
+      softHapticFeedback()
+      pushToast({
+        tone: 'success',
+        title: 'Commit reverted',
+        description: `Successfully created revert commit for ${shortSha}.`,
+      })
+      setMobileCommitActions(null)
+      setDesktopCommitActions(null)
+      void gitHistory.refetch()
+      void diff.refetch()
+      void files.refetch()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      pushToast({
+        tone: 'error',
+        title: 'Failed to revert commit',
+        description: msg,
+      })
+    } finally {
+      setGitActionPending(false)
+    }
+  }
 
   const resizable = useResizableWidth({
     storageKey: 'oa.codingWorkspacePanel.width',
@@ -708,7 +764,16 @@ export function CodingWorkspacePanel({
                                 onClick={() => toggleDiffExpanded(changedFile.path)}
                                 enabled={mobile}
                                 onLongPress={() => setMobileFileActions(changedFile)}
-                                onContextMenu={(e) => { if (!mobile) { e.preventDefault(); setMobileFileActions(changedFile) } }}
+                                onContextMenu={(e) => {
+                                  if (!mobile) {
+                                    e.preventDefault()
+                                    setDesktopFileActions({
+                                      file: changedFile,
+                                      x: e.clientX,
+                                      y: e.clientY,
+                                    })
+                                  }
+                                }}
                                 className={cn(
                                   'flex w-full cursor-pointer items-center gap-2 px-2 py-1.5 text-left text-xs transition-colors hover:bg-(--bg-key) hover:text-(--color-text)',
                                   isSelected ? 'text-(--color-accent)' : 'text-(--color-text-2)',
@@ -801,9 +866,20 @@ export function CodingWorkspacePanel({
                                 }
                               }}
                               enabled={mobile}
-                              onLongPress={() => setMobileCommitActions({ sha: commit.sha, shortSha: commit.short_sha, subject: safeDecodeURIComponent(commit.subject) })}
-                              onContextMenu={(e) => { if (!mobile) { e.preventDefault(); setMobileCommitActions({ sha: commit.sha, shortSha: commit.short_sha, subject: safeDecodeURIComponent(commit.subject) }) } }}
-                              className="flex w-full cursor-pointer flex-col gap-1 text-left"
+                             onLongPress={() => setMobileCommitActions({ sha: commit.sha, shortSha: commit.short_sha, subject: safeDecodeURIComponent(commit.subject) })}
+                             onContextMenu={(e) => {
+                               if (!mobile) {
+                                 e.preventDefault()
+                                 setDesktopCommitActions({
+                                   sha: commit.sha,
+                                   shortSha: commit.short_sha,
+                                   subject: safeDecodeURIComponent(commit.subject),
+                                   x: e.clientX,
+                                   y: e.clientY,
+                                 })
+                               }
+                             }}
+                             className="flex w-full cursor-pointer flex-col gap-1 text-left"
                             >
                               <div className="flex w-full items-start justify-between gap-1.5">
                                 <div className="flex items-start gap-1.5 min-w-0 flex-1">
@@ -1029,32 +1105,9 @@ export function CodingWorkspacePanel({
                   variant="danger-subtle"
                   className="justify-start"
                   disabled={gitActionPending}
-                  onClick={async () => {
+                  onClick={() => {
                     const c = mobileCommitActions
-                    if (!c) return
-                    setGitActionPending(true)
-                    try {
-                      await undoCodingWorkspaceLastCommit(workspace)
-                      softHapticFeedback()
-                      pushToast({
-                        tone: 'success',
-                        title: 'Commit undone',
-                        description: 'The last commit was undone. Changes have been kept in your working copy.',
-                      })
-                      setMobileCommitActions(null)
-                      void gitHistory.refetch()
-                      void diff.refetch()
-                      void files.refetch()
-                    } catch (err) {
-                      const msg = err instanceof Error ? err.message : String(err)
-                      pushToast({
-                        tone: 'error',
-                        title: 'Failed to undo commit',
-                        description: msg,
-                      })
-                    } finally {
-                      setGitActionPending(false)
-                    }
+                    if (c) void handleUndoCommit()
                   }}
                 >
                   <Undo2 size={14} aria-hidden="true" />
@@ -1066,32 +1119,9 @@ export function CodingWorkspacePanel({
                 variant="ghost"
                 className="justify-start"
                 disabled={gitActionPending}
-                onClick={async () => {
+                onClick={() => {
                   const c = mobileCommitActions
-                  if (!c) return
-                  setGitActionPending(true)
-                  try {
-                    await revertCodingWorkspaceCommit(workspace, c.sha)
-                    softHapticFeedback()
-                    pushToast({
-                      tone: 'success',
-                      title: 'Commit reverted',
-                      description: `Successfully created revert commit for ${c.shortSha}.`,
-                    })
-                    setMobileCommitActions(null)
-                    void gitHistory.refetch()
-                    void diff.refetch()
-                    void files.refetch()
-                    } catch (err) {
-                      const msg = err instanceof Error ? err.message : String(err)
-                      pushToast({
-                        tone: 'error',
-                        title: 'Failed to revert commit',
-                        description: msg,
-                      })
-                  } finally {
-                    setGitActionPending(false)
-                  }
+                  if (c) void handleRevertCommit(c.sha, c.shortSha)
                 }}
               >
                 <RotateCcw size={14} aria-hidden="true" />
@@ -1140,11 +1170,18 @@ export function CodingWorkspacePanel({
                 : `All unsaved changes to "${discardTarget?.path}" will be lost and cannot be recovered.`}
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="flex-col items-stretch gap-2 p-3 sm:flex-col">
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={discarding}
+              onClick={() => setDiscardTarget(null)}
+            >
+              Cancel
+            </Button>
             <Button
               type="button"
               variant="danger-subtle"
-              className="justify-start"
               disabled={discarding}
               onClick={async () => {
                 const f = discardTarget
@@ -1163,21 +1200,176 @@ export function CodingWorkspacePanel({
                 }
               }}
             >
-              <Undo2 size={14} aria-hidden="true" />
+              <Undo2 size={14} aria-hidden="true" className="mr-1.5" />
               {discarding ? 'Discarding…' : discardTarget?.status === 'A' ? 'Delete file' : 'Discard changes'}
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              className="justify-start"
-              disabled={discarding}
-              onClick={() => setDiscardTarget(null)}
-            >
-              Cancel
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {desktopCommitActions && (
+        <div
+          className="fixed inset-0 z-50 pointer-events-auto"
+          onClick={() => setDesktopCommitActions(null)}
+          onContextMenu={(event) => {
+            event.preventDefault()
+            setDesktopCommitActions(null)
+          }}
+        >
+          <div
+            role="menu"
+            aria-label="Commit actions"
+            className="fixed min-w-48 rounded border border-(--color-border) bg-(--bg-card) p-1 text-xs text-(--color-text) shadow-md"
+            style={{
+              left: Math.min(desktopCommitActions.x, window.innerWidth - 200 - 8),
+              top: Math.min(desktopCommitActions.y, window.innerHeight - 180 - 8)
+            }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            {isLatestCommit && (
+              <button
+                type="button"
+                role="menuitem"
+                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-(--color-error) hover:bg-(--color-error)/10 focus-visible:bg-(--color-error)/10 focus-visible:outline-none cursor-pointer"
+                disabled={gitActionPending}
+                onClick={() => void handleUndoCommit()}
+              >
+                <Undo2 size={12} aria-hidden="true" />
+                {gitActionPending ? 'Undoing…' : 'Undo commit'}
+              </button>
+            )}
+            <button
+              type="button"
+              role="menuitem"
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none cursor-pointer"
+              disabled={gitActionPending}
+              onClick={() => void handleRevertCommit(desktopCommitActions.sha, desktopCommitActions.shortSha)}
+            >
+              <RotateCcw size={12} aria-hidden="true" />
+              {gitActionPending ? 'Reverting…' : 'Revert commit'}
+            </button>
+            <div className="my-1 border-t border-(--color-border-subtle)" />
+            <button
+              type="button"
+              role="menuitem"
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none cursor-pointer"
+              onClick={() => {
+                const c = desktopCommitActions
+                setDesktopCommitActions(null)
+                softHapticFeedback()
+                void navigator.clipboard.writeText(c.shortSha).then(() => {
+                  setCopiedSha(c.shortSha)
+                  setTimeout(() => setCopiedSha(null), 2000)
+                })
+              }}
+            >
+              <Copy size={12} aria-hidden="true" />
+              Copy short SHA
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none cursor-pointer"
+              onClick={() => {
+                const c = desktopCommitActions
+                setDesktopCommitActions(null)
+                softHapticFeedback()
+                void navigator.clipboard.writeText(c.sha).then(() => {
+                  setCopiedSha(c.sha)
+                  setTimeout(() => setCopiedSha(null), 2000)
+                })
+              }}
+            >
+              <Copy size={12} aria-hidden="true" />
+              Copy full SHA
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none cursor-pointer"
+              onClick={() => {
+                const c = desktopCommitActions
+                setDesktopCommitActions(null)
+                softHapticFeedback()
+                void navigator.clipboard.writeText(c.subject)
+              }}
+            >
+              <Copy size={12} aria-hidden="true" />
+              Copy commit message
+            </button>
+          </div>
+        </div>
+      )}
+
+      {desktopFileActions && (
+        <div
+          className="fixed inset-0 z-50 pointer-events-auto"
+          onClick={() => setDesktopFileActions(null)}
+          onContextMenu={(event) => {
+            event.preventDefault()
+            setDesktopFileActions(null)
+          }}
+        >
+          <div
+            role="menu"
+            aria-label="File actions"
+            className="fixed min-w-48 rounded border border-(--color-border) bg-(--bg-card) p-1 text-xs text-(--color-text) shadow-md"
+            style={{
+              left: Math.min(desktopFileActions.x, window.innerWidth - 200 - 8),
+              top: Math.min(desktopFileActions.y, window.innerHeight - 150 - 8)
+            }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            {desktopFileActions.file.status !== 'D' && (
+              <button
+                type="button"
+                role="menuitem"
+                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none cursor-pointer"
+                onClick={() => {
+                  const f = desktopFileActions.file
+                  setDesktopFileActions(null)
+                  softHapticFeedback()
+                  const name = f.path.split('/').pop() ?? f.path
+                  const file: WorkspaceFileInfo = files.data?.files.find((fi) => fi.path === f.path)
+                    ?? { path: f.path, name, size: 0, mtime: 0, mime: 'text/plain' }
+                  openFileTab(file)
+                }}
+              >
+                <FolderOpen size={12} aria-hidden="true" />
+                Open file
+              </button>
+            )}
+            <button
+              type="button"
+              role="menuitem"
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none cursor-pointer"
+              onClick={() => {
+                const f = desktopFileActions.file
+                setDesktopFileActions(null)
+                softHapticFeedback()
+                void navigator.clipboard.writeText(f.path)
+              }}
+            >
+              <Copy size={12} aria-hidden="true" />
+              Copy file path
+            </button>
+            <div className="my-1 border-t border-(--color-border-subtle)" />
+            <button
+              type="button"
+              role="menuitem"
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-(--color-error) hover:bg-(--color-error)/10 focus-visible:bg-(--color-error)/10 focus-visible:outline-none cursor-pointer"
+              onClick={() => {
+                const f = desktopFileActions.file
+                setDesktopFileActions(null)
+                setDiscardTarget(f)
+              }}
+            >
+              <Undo2 size={12} aria-hidden="true" />
+              Discard changes
+            </button>
+          </div>
+        </div>
+      )}
     </motion.aside>
   )
 }

@@ -88,7 +88,7 @@ beforeEach(() => {
 
 afterEach(cleanup)
 
-async function renderCommitsTab() {
+async function renderCommitsTab(mobile = false) {
   const { CodingWorkspacePanel } = await import('@/components/CodingWorkspacePanel')
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 
@@ -103,6 +103,7 @@ async function renderCommitsTab() {
           open
           onClose={() => {}}
           onOpenPalette={() => {}}
+          mobile={mobile}
         />
       </QueryClientProvider>,
     )
@@ -251,14 +252,34 @@ describe('CodingWorkspacePanel – commit body expand/collapse', () => {
 })
 
 describe('CodingWorkspacePanel – commit actions (undo/revert)', () => {
-  it('opens commit actions dialog on right click, showing undo and revert buttons', async () => {
-    await renderCommitsTab()
+  it('opens commit actions context menu on right click on desktop, showing undo and revert buttons', async () => {
+    await renderCommitsTab(false)
 
     await waitFor(() => expect(screen.getByText('fix: handle null session')).toBeTruthy())
 
     // Right-click the latest commit button
     const commitButton = screen.getByText('fix: handle null session').closest('button')!
     fireEvent.contextMenu(commitButton)
+
+    // Verify context menu is open and shows "Undo commit" and "Revert commit"
+    await waitFor(() => {
+      expect(screen.getByText('Undo commit')).toBeTruthy()
+      expect(screen.getByText('Revert commit')).toBeTruthy()
+    })
+  })
+
+  it('opens commit actions dialog on long press on mobile, showing undo and revert buttons', async () => {
+    await renderCommitsTab(true)
+
+    await waitFor(() => expect(screen.getByText('fix: handle null session')).toBeTruthy())
+
+    const commitButton = screen.getByText('fix: handle null session').closest('button')!
+
+    // Simulate touch pointer events for long press
+    fireEvent.pointerDown(commitButton, { pointerType: 'touch', clientX: 10, clientY: 10 })
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 600))
+    })
 
     // Verify dialog is open and shows "Undo commit" and "Revert commit"
     await waitFor(() => {
@@ -280,7 +301,7 @@ describe('CodingWorkspacePanel – commit actions (undo/revert)', () => {
       return originalFetch(input as RequestInfo | URL, init as RequestInit)
     }) as typeof fetch
 
-    await renderCommitsTab()
+    await renderCommitsTab(false)
 
     await waitFor(() => expect(screen.getByText('fix: handle null session')).toBeTruthy())
 
@@ -308,7 +329,7 @@ describe('CodingWorkspacePanel – commit actions (undo/revert)', () => {
       return originalFetch(input as RequestInfo | URL, init as RequestInit)
     }) as typeof fetch
 
-    await renderCommitsTab()
+    await renderCommitsTab(false)
 
     await waitFor(() => expect(screen.getByText('fix: handle null session')).toBeTruthy())
 

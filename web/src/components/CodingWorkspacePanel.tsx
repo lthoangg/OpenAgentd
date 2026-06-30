@@ -530,11 +530,21 @@ export function CodingWorkspacePanel({
     }
   }
 
+  const leftSidebarWidth = typeof document !== 'undefined'
+    ? (document.querySelector('aside.border-r')?.getBoundingClientRect().width ?? 0)
+    : 0
+
   const resizable = useResizableWidth({
     storageKey: 'oa.codingWorkspacePanel.width',
     defaultWidth: 380,
     minWidth: 300,
-    maxWidth: Math.min(1200, Math.max(320, Math.floor((typeof window === 'undefined' ? 1200 : window.innerWidth) - 320))),
+    maxWidth: Math.min(
+      1200,
+      Math.max(
+        300,
+        Math.floor((typeof window === 'undefined' ? 1200 : window.innerWidth) - leftSidebarWidth - 380)
+      )
+    ),
     edge: 'left',
     disabled: mobile,
   })

@@ -446,11 +446,21 @@ export function CodingFileViewerPanel({
   mobile?: boolean
 }) {
   const prefersReducedMotion = useReducedMotion()
+  const leftSidebarWidth = typeof document !== 'undefined'
+    ? (document.querySelector('aside.border-r')?.getBoundingClientRect().width ?? 0)
+    : 0
+
   const resizable = useResizableWidth({
     storageKey: 'oa.codingFileViewer.width',
     defaultWidth: 560,
     minWidth: 420,
-    maxWidth: Math.min(880, Math.max(420, Math.floor((typeof window === 'undefined' ? 880 : window.innerWidth) - 320))),
+    maxWidth: Math.min(
+      1000,
+      Math.max(
+        420,
+        Math.floor((typeof window === 'undefined' ? 880 : window.innerWidth) - leftSidebarWidth - 380)
+      )
+    ),
     edge: 'left',
     disabled: mobile,
   })

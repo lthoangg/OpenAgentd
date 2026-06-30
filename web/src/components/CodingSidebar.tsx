@@ -439,11 +439,21 @@ export function CodingSidebar({
   const sourceWorkspaces = sourceWorkspacePaths(workspaceTree, deletedWorktreeSet)
   const activeWorktreeSource = activeWorkspace ? worktreeSourceByDirectory.get(activeWorkspace) : null
 
+  const rightPanelWidth = typeof document !== 'undefined'
+    ? (document.querySelector('aside.border-l')?.getBoundingClientRect().width ?? 0)
+    : 0
+
   const resizable = useResizableWidth({
     storageKey: 'oa.codingSidebar.width',
     defaultWidth: 256,
     minWidth: 220,
-    maxWidth: 420,
+    maxWidth: Math.min(
+      420,
+      Math.max(
+        220,
+        Math.floor((typeof window === 'undefined' ? 420 : window.innerWidth) - rightPanelWidth - 380)
+      )
+    ),
     edge: 'right',
     disabled: isMobile || desktopCollapsed,
   })

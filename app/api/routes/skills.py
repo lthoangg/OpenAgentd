@@ -153,7 +153,7 @@ def _parse_skill(name: str, content: str) -> tuple[str, str | None]:
     from app.agent.tools.builtin.skill import _parse_frontmatter
 
     try:
-        meta, _ = _parse_frontmatter(content)
+        meta, _ = _parse_frontmatter(content, strict=True)
     except Exception as exc:
         return "", f"Invalid frontmatter: {exc}"
 

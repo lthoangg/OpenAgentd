@@ -135,11 +135,64 @@ def _render_tokens(text: str, *, skill_dir: Path | None = None) -> str:
     return text
 
 
-def _parse_frontmatter(text: str) -> tuple[dict, str]:
+def _lenient_frontmatter(block: str) -> dict:
+    """Best-effort parse of flat ``key: value`` frontmatter.
+
+    Used as a fallback when strict YAML rejects the block. Skill
+    frontmatter is, in practice, always a flat mapping of string values
+    (``name``, ``description``, ...). The most common authoring mistake is
+    an unquoted value that itself contains ``": "`` — e.g.::
+
+        description: Renders clips. Typical jobs: teaser, feature reel
+
+    which strict YAML reads as a nested mapping and rejects. The author's
+    intent is unambiguous, so we recover it: split each line on the FIRST
+    colon only and take the remainder verbatim as a plain string. Lines
+    that are indented continuations are appended to the previous value so
+    simple multi-line descriptions survive too.
+    """
+    meta: dict[str, str] = {}
+    last_key: str | None = None
+    for raw in block.splitlines():
+        line = raw.rstrip()
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        # Continuation line (indented, no top-level key): fold into prior value.
+        if raw[:1] in (" ", "\t") and last_key is not None:
+            meta[last_key] = f"{meta[last_key]} {line.strip()}".strip()
+            continue
+        key, sep, value = line.partition(":")
+        if not sep or not re.fullmatch(r"[A-Za-z0-9_-]+", key.strip()):
+            # Not a recognisable key line; fold into prior value if any.
+            if last_key is not None:
+                meta[last_key] = f"{meta[last_key]} {line.strip()}".strip()
+            continue
+        key = key.strip()
+        value = value.strip().strip("'\"")
+        meta[key] = value
+        last_key = key
+    return meta
+
+
+def _parse_frontmatter(text: str, *, strict: bool = False) -> tuple[dict, str]:
     """Split YAML frontmatter from markdown body.
 
-    Returns ``(metadata_dict, body_str)``.  If no frontmatter is
-    found, metadata is empty and body is the full text.
+    Returns ``(metadata_dict, body_str)``.  If no frontmatter is found,
+    metadata is empty and body is the full text.
+
+    Two modes, for two callers with opposite needs:
+
+    * ``strict=False`` (default, used by skill *discovery*): never raise.
+      When strict YAML rejects the block — most often an unquoted value
+      containing ``": "`` — recover flat ``key: value`` pairs leniently so
+      the skill stays usable. A single malformed file must never abort
+      discovery (and the agent activation that builds tools from it) for
+      the whole catalog.
+    * ``strict=True`` (used by the write/validation API): surface the
+      problem. Re-raise YAML errors and return non-mapping frontmatter
+      as-is so the caller can reject it at authoring time with a 422,
+      forcing the author to fix the file instead of shipping something we
+      silently reinterpret.
     """
     match = re.match(
         r"^---\s*\n(.*?)\n---\s*\n(.*)$",
@@ -148,8 +201,25 @@ def _parse_frontmatter(text: str) -> tuple[dict, str]:
     )
     if not match:
         return {}, text.strip()
-    meta = yaml.safe_load(match.group(1)) or {}
     body = match.group(2).strip()
+    try:
+        meta = yaml.safe_load(match.group(1)) or {}
+    except yaml.YAMLError as exc:
+        if strict:
+            raise
+        # Lenient recovery for discovery: don't drop the skill over a
+        # common authoring quirk like an unquoted description with ": ".
+        logger.warning("skill_frontmatter_yaml_invalid_recovered error={}", exc)
+        meta = _lenient_frontmatter(match.group(1))
+        return meta, body
+    if not isinstance(meta, dict):
+        if strict:
+            # Surface to the validation caller so it can 422.
+            return meta, body
+        # Discovery: a scalar/list is not valid skill metadata; treat it as
+        # absent rather than letting `.get` blow up downstream.
+        logger.warning("skill_frontmatter_not_mapping type={}", type(meta).__name__)
+        return {}, body
     return meta, body
 
 
@@ -246,12 +316,15 @@ def _discover_skills_cached(
                 description = _render_tokens(
                     meta.get("description", ""), skill_dir=path.parent
                 )
-            except OSError:
-                # Keep unreadable skills discoverable by their path stem so UI
-                # routes can surface the read error instead of the whole
-                # catalog failing to load. ``format_available_skills`` filters
-                # empty descriptions, so broken entries are not advertised to
-                # agents in prompts.
+            except Exception as exc:
+                # Keep a broken skill discoverable by its path stem so UI
+                # routes can surface the error, instead of the whole catalog
+                # (and the agent activation that builds tool definitions from
+                # it) failing to load. Covers unreadable files (OSError),
+                # malformed frontmatter, and token-render failures alike.
+                # ``format_available_skills`` filters empty descriptions, so
+                # broken entries are never advertised to agents in prompts.
+                logger.warning("skill_discovery_skipped path={} error={}", path, exc)
                 name = stem
                 description = ""
             if name in skills:

@@ -46,6 +46,48 @@ class TestParseFrontmatter:
         assert meta == {}
         assert body == "Body after empty frontmatter."
 
+    def test_unquoted_description_with_colon_recovers(self):
+        """Regression: an unquoted description containing ': ' must not
+        crash discovery. Strict YAML rejects it ('mapping values are not
+        allowed here'); lenient mode recovers the flat key/value pairs so
+        the skill stays usable instead of vanishing from the catalog."""
+        text = (
+            "---\n"
+            "name: oad/remotion\n"
+            "description: Renders media. Typical OpenAgentd jobs: "
+            "release teaser clips, feature reels\n"
+            "---\n"
+            "Body."
+        )
+        meta, body = _parse_frontmatter(text)
+        assert meta["name"] == "oad/remotion"
+        assert meta["description"].startswith("Renders media.")
+        assert "release teaser clips" in meta["description"]
+        assert body == "Body."
+
+    def test_strict_reraises_invalid_yaml(self):
+        """The write/validation path opts into strict mode and must still
+        see the YAML error so it can reject the skill with a 422."""
+        import yaml
+
+        text = "---\ndescription: bad: value: here\n---\nBody."
+        with pytest.raises(yaml.YAMLError):
+            _parse_frontmatter(text, strict=True)
+
+    def test_discovery_recovers_broken_skill_in_catalog(self, tmp_path):
+        """End-to-end: a skill whose frontmatter trips strict YAML still
+        appears in the discovered catalog with its description intact."""
+        skill_dir = tmp_path / "remotion"
+        skill_dir.mkdir()
+        (skill_dir / "SKILL.md").write_text(
+            "---\nname: remotion\n"
+            "description: Renders media. Typical jobs: teasers, reels\n"
+            "---\nBody."
+        )
+        result = discover_skills(skills_dir=tmp_path)
+        assert "remotion" in result
+        assert "Typical jobs: teasers" in result["remotion"]["description"]
+
 
 # ---------------------------------------------------------------------------
 # discover_skills

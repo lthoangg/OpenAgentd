@@ -65,6 +65,14 @@ The full instructions the agent reads when it calls `skill("my-skill")`.
 
 - The frontmatter is **not** returned to the agent — only the body below.
 - The skill is identified by the frontmatter `name`. If absent, the directory stem is used (`my-skill` or `parent/sub`).
+- **Frontmatter parsing is forgiving at load time.** A common quirk — an
+  unquoted `description:` whose text contains `": "` (e.g. `Typical jobs:
+  release clips`) — is invalid YAML, yet discovery recovers the flat
+  `key: value` pairs instead of dropping the skill or crashing startup.
+  The **`/settings/skills` write API stays strict** and rejects malformed
+  frontmatter with a `422`, so prefer quoting or a `>-` block scalar when
+  authoring. Recovery exists only so one bad file can never take the whole
+  catalog (and the agents that load tools from it) offline.
 
 ## Using a skill from an agent
 

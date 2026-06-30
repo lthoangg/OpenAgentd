@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Server } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -60,6 +61,31 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
       }
     })
     return () => { cancelled = true }
+  }, [open])
+
+  useEffect(() => {
+    if (!open || !window.visualViewport) return
+    const vv = window.visualViewport
+    const handleResize = () => {
+      const active = document.activeElement
+      if (active instanceof HTMLElement && active.matches('input, textarea, [contenteditable="true"]')) {
+        const container = document.querySelector('[data-slot="backend-dialog-scroll"]') as HTMLElement | null
+        if (container) {
+          let offsetTop = 0
+          let el: HTMLElement | null = active
+          while (el && el !== container) {
+            offsetTop += el.offsetTop
+            el = el.offsetParent as HTMLElement | null
+          }
+          container.scrollTo({
+            top: Math.max(0, offsetTop - 20),
+            behavior: 'smooth',
+          })
+        }
+      }
+    }
+    vv.addEventListener('resize', handleResize)
+    return () => vv.removeEventListener('resize', handleResize)
   }, [open])
 
   if (!open) return null
@@ -167,9 +193,9 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
     }
   }
 
-  return (
+  return createPortal(
     <div
-      className="mobile-safe-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      className="mobile-safe-overlay mobile-viewport fixed inset-x-0 top-0 z-50 flex h-dvh items-center justify-center bg-black/40 p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="app-backend-title"
@@ -188,7 +214,29 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
+        <div
+          data-slot="backend-dialog-scroll"
+          className="relative min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4"
+          onFocusCapture={(event) => {
+            if (window.innerWidth >= 768) return
+            const target = event.target as HTMLElement
+            if (target.matches('input, textarea, [contenteditable="true"]')) {
+              const container = event.currentTarget
+              setTimeout(() => {
+                let offsetTop = 0
+                let el: HTMLElement | null = target
+                while (el && el !== container) {
+                  offsetTop += el.offsetTop
+                  el = el.offsetParent as HTMLElement | null
+                }
+                container.scrollTo({
+                  top: Math.max(0, offsetTop - 20),
+                  behavior: 'smooth',
+                })
+              }, 80)
+            }
+          }}
+        >
           {/* Connected backend status line */}
           <div className="rounded border border-(--color-border) bg-(--bg-card) p-3 font-mono text-[11px] text-(--color-text-muted) flex items-center justify-between select-none">
             <span className="truncate">
@@ -398,7 +446,8 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 

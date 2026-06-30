@@ -160,6 +160,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
   //   → true:  user sends a message, clicks the button, or scrolls to the bottom
   //   → false: user scrolls up and is no longer at the bottom
   const attachedRef = useRef(true)
+  const isProgrammaticScrollRef = useRef(false)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
   const [renderedTurnCount, setRenderedTurnCount] = useState(INITIAL_RENDERED_TURNS)
   const sessionId = useTeamStore((s) => s.sessionId) ?? undefined
@@ -216,12 +217,26 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
   hiddenTurnCountRef.current = hiddenTurnCount
   showEarlierTurnsRef.current = showEarlierTurns
 
-  const scrollToBottom = useCallback(() => {
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
     const el = scrollRef.current
     if (!el) return
     attachedRef.current = true
     setShowScrollBtn(false)
-    el.scrollTop = el.scrollHeight
+    if (behavior === 'smooth' && typeof el.scrollTo === 'function') {
+      isProgrammaticScrollRef.current = true
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+      const handleScrollEnd = () => {
+        isProgrammaticScrollRef.current = false
+        el.removeEventListener('scrollend', handleScrollEnd)
+      }
+      el.addEventListener('scrollend', handleScrollEnd)
+      setTimeout(() => {
+        isProgrammaticScrollRef.current = false
+        el.removeEventListener('scrollend', handleScrollEnd)
+      }, 500)
+    } else {
+      el.scrollTop = el.scrollHeight
+    }
   }, [])
 
   useEffect(() => {
@@ -229,6 +244,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
     if (!el) return
 
     const onScroll = () => {
+      if (isProgrammaticScrollRef.current) return
       const dist = el.scrollHeight - el.scrollTop - el.clientHeight
       const atBottom = dist <= SCROLL_THRESHOLD
 
@@ -421,7 +437,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
     </div>
     {showScrollBtn && (
         <button
-          onClick={() => scrollToBottom()}
+          onClick={() => scrollToBottom('smooth')}
           className="absolute bottom-16 left-1/2 z-10 -translate-x-1/2 rounded-sm border border-(--color-border) bg-(--bg-card) p-1 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
           aria-label="Scroll to bottom"
         >

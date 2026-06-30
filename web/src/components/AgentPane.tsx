@@ -378,20 +378,36 @@ export function AgentPane({
   const isPending = !isWorking && !isError && !isOffline && stream.currentBlocks.some(isDirectUserBlock)
 
   const attachedRef = useRef(true)
+  const isProgrammaticScrollRef = useRef(false)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
 
-  const scrollToBottom = useCallback(() => {
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
     const el = scrollRef.current
     if (!el) return
     attachedRef.current = true
     setShowScrollBtn(false)
-    el.scrollTop = el.scrollHeight
+    if (behavior === 'smooth' && typeof el.scrollTo === 'function') {
+      isProgrammaticScrollRef.current = true
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+      const handleScrollEnd = () => {
+        isProgrammaticScrollRef.current = false
+        el.removeEventListener('scrollend', handleScrollEnd)
+      }
+      el.addEventListener('scrollend', handleScrollEnd)
+      setTimeout(() => {
+        isProgrammaticScrollRef.current = false
+        el.removeEventListener('scrollend', handleScrollEnd)
+      }, 500)
+    } else {
+      el.scrollTop = el.scrollHeight
+    }
   }, [])
 
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
     const onScroll = () => {
+      if (isProgrammaticScrollRef.current) return
       const dist = el.scrollHeight - el.scrollTop - el.clientHeight
       const atBottom = dist <= SCROLL_THRESHOLD
       if (atBottom) {
@@ -560,7 +576,7 @@ export function AgentPane({
       </div>
       {showScrollBtn && (
         <button
-          onClick={() => scrollToBottom()}
+          onClick={() => scrollToBottom('smooth')}
           className="absolute bottom-2 left-1/2 z-10 -translate-x-1/2 rounded-sm border border-(--color-border) bg-(--bg-card) p-1 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
           aria-label="Scroll to bottom"
         >

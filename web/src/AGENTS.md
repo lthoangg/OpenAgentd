@@ -121,9 +121,9 @@ When `attachedRef.current === true`, a **`ResizeObserver`** on the content
 element runs `el.scrollTop = el.scrollHeight` on every layout change (streaming
 text, markdown reflow, image load). This is the sole auto-follow mechanism.
 
-**Do not use `scrollTo({ behavior: 'smooth' })`** — it is unreliable on iOS
+**Do not use `scrollTo({ behavior: 'smooth' })` directly** — it is unreliable on iOS
 WKWebView (may be instant or silently no-op), which leaves scroll events
-mid-flight that falsely detach the view. Always use `el.scrollTop = el.scrollHeight`.
+mid-flight that falsely detach the view. Always use `el.scrollTop = el.scrollHeight` for auto-scroll. If smooth scrolling is required for user actions (e.g. clicking the scroll-to-bottom button), wrap it using a programmatic scroll ref to ignore intermediate scroll events.
 
 The `data-keyboard-open` attribute is set/cleared by `useMobileViewportGuards`
 (`hooks/use-mobile-viewport.ts`) in sync with `window.visualViewport` resize events.

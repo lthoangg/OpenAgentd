@@ -82,6 +82,26 @@ describe("AgentView — scroll-to-bottom button", () => {
     expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
   })
 
+  it("uses smooth scroll and ignores scroll events during programmatic scroll", async () => {
+    const { container } = renderStream({ blocks: [makeTextBlock("b1", "Hi")] })
+    const el = container.querySelector(".overflow-y-auto") as HTMLDivElement
+
+    const scrollToMock = mock(() => {})
+    el.scrollTo = scrollToMock
+
+    await fireScroll(el, 200)
+    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
+
+    const btn = container.querySelector('button[aria-label="Scroll to bottom"]') as HTMLButtonElement
+    await act(async () => { btn.click() })
+
+    expect(scrollToMock).toHaveBeenCalledWith({ top: el.scrollHeight, behavior: "smooth" })
+
+    // During the smooth scroll, intermediate scroll events should not detach the view
+    await fireScroll(el, 150)
+    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
+  })
+
   it("hides button when user scrolls back to the bottom", async () => {
     const { container } = renderStream({ blocks: [makeTextBlock("b1", "Hi")] })
     const el = container.querySelector(".overflow-y-auto") as HTMLDivElement

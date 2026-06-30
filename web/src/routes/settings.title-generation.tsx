@@ -55,7 +55,10 @@ export function TitleGenerationSettingsPage() {
     )
   }, [form, sourceRaw])
 
-  const modelOptions = useMemo(() => registry.data?.models ?? [], [registry.data?.models])
+  const modelOptions = useMemo(
+    () => (registry.data?.models ?? []).filter((m) => !m.output_image && !m.output_video),
+    [registry.data?.models],
+  )
   const validModelIds = useMemo(() => modelOptions.map((m) => m.id), [modelOptions])
   const modelError = validateModel(form.model, { validValues: validModelIds })
 

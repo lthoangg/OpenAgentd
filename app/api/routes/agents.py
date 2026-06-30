@@ -20,7 +20,10 @@ from app.agent.hooks.summarization import prompt_token_threshold_for_model
 from app.agent.providers.capabilities import get_capabilities
 from app.agent.providers.catalog import all_providers
 from app.agent.providers.model_metadata import get_model_thinking_levels
-from app.agent.providers.model_discovery import filter_agent_model_ids
+from app.agent.providers.model_discovery import (
+    filter_agent_model_ids,
+    is_agent_model_id,
+)
 from app.core.runtime_settings import (
     provider_cached_models,
     provider_visible_models,
@@ -322,14 +325,31 @@ async def get_registry() -> RegistryResponse:
             )
         )
 
+    from app.agent.providers.model_registry import load_model_registry
+
+    static_registry = load_model_registry()
+
     visible_by_provider: dict[str, set[str]] = {}
     for provider in providers:
         visible = visible_by_provider.setdefault(
             provider, set(provider_visible_models(provider))
         )
-        for model in filter_agent_model_ids(provider_cached_models(provider)):
-            if not visible or model in visible:
-                _append(provider, model)
+        # 1. Add cached/discovered agent models
+        for model in provider_cached_models(provider):
+            model_id = f"{provider}:{model}"
+            if is_agent_model_id(model_id):
+                if not visible or model in visible:
+                    _append(provider, model)
+
+        # 2. Add static multimodal models defined in the registry
+        for model_key in static_registry:
+            if ":" not in model_key:
+                continue
+            p, m = model_key.split(":", 1)
+            if p.lower() == provider.lower():
+                caps = get_capabilities(model_key)
+                if caps.output.image or caps.output.video:
+                    _append(p, m)
 
     models.sort(key=lambda item: (item.provider, item.model))
 

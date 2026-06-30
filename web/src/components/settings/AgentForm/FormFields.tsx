@@ -15,7 +15,7 @@ import {
   validateDescription,
   validateModel,
 } from '../schema'
-import { ModelCombobox } from './ModelCombobox'
+import { ModelCombobox, type ModelOption } from './ModelCombobox'
 import { isBuiltInProfile } from './utils'
 
 const FALLBACK_THINKING_LEVELS = ['none']
@@ -66,7 +66,7 @@ export function FormFields({
   isNew?: boolean
   toolOptions: MultiSelectOption[]
   mcpOptions: MultiSelectOption[]
-  modelOptions: { id: string; provider: string; model: string; vision: boolean; thinking_levels?: string[] }[]
+  modelOptions: (ModelOption & { thinking_levels?: string[] })[]
   agentPath?: string
   effectiveTools?: string[]
   updateFromForm: (next: AgentFrontmatter, nextBody: string) => void
@@ -86,8 +86,9 @@ export function FormFields({
   const nameError = isNew ? validateAgentName(fm.name) : null
   const descriptionError = validateDescription(fm.description ?? '')
   const currentModelOptions = useMemo(() => {
-    const byId = new Map(modelOptions.map((model) => [model.id, model]))
-    const withCurrent = [...modelOptions]
+    const filtered = modelOptions.filter((m) => !m.output_image && !m.output_video)
+    const byId = new Map(filtered.map((model) => [model.id, model]))
+    const withCurrent = [...filtered]
     const id = fm.model
     if (id && !byId.has(id) && id.includes(':')) {
       const [provider, model] = id.split(':', 2)

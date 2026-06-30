@@ -61,14 +61,15 @@ export function SessionModelSettings({
   // the registry — mirrors the Settings/Agents combobox so a previously saved
   // model id never silently disappears from the picker.
   const currentModelOptions = useMemo(() => {
+    const filtered = modelOptions.filter((m) => !m.output_image && !m.output_video)
     const id = draftModel.trim()
-    if (!id) return modelOptions
-    if (modelOptions.some((model) => model.id === id)) return modelOptions
+    if (!id) return filtered
+    if (filtered.some((model) => model.id === id)) return filtered
     // Keep a previously-saved model visible even if it isn't in the registry yet.
     const colonIdx = id.indexOf(':')
     const provider = colonIdx >= 0 ? id.slice(0, colonIdx) : id
     const model = colonIdx >= 0 ? id.slice(colonIdx + 1) : id
-    return [...modelOptions, { id, provider, model, vision: false }]
+    return [...filtered, { id, provider, model, vision: false }]
   }, [draftModel, modelOptions])
   const savedModel = sessionModel ?? defaultModel ?? ''
   const savedThinkingLevel = sessionThinkingLevel ?? ''

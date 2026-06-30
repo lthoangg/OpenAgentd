@@ -175,6 +175,28 @@ describe("AgentView — scroll-to-bottom button", () => {
     await waitFrame()
     expect(scrollTopSet).toBe(true)
   })
+
+  it("observes both the inner content and the outer scroll container with ResizeObserver", () => {
+    const observeMock = mock(() => {})
+    const originalResizeObserver = globalThis.ResizeObserver
+
+    globalThis.ResizeObserver = class {
+      observe = observeMock
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof globalThis.ResizeObserver
+
+    try {
+      const { container } = renderStream({ blocks: [] })
+      const el = container.querySelector(".overflow-y-auto") as HTMLDivElement
+      const content = container.querySelector(".mx-auto") as HTMLDivElement
+
+      expect(observeMock).toHaveBeenCalledWith(el)
+      expect(observeMock).toHaveBeenCalledWith(content)
+    } finally {
+      globalThis.ResizeObserver = originalResizeObserver
+    }
+  })
 })
 
 // ── bounce dots ───────────────────────────────────────────────────────────

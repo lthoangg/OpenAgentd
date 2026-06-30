@@ -295,7 +295,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
     if (scrollRef.current) scrollRef.current.scrollTop = 0
   }, [isEmpty])
 
-  // ResizeObserver: when attached and content grows, scroll to bottom.
+  // ResizeObserver: when attached and content grows or viewport resizes, scroll to bottom.
   useEffect(() => {
     const el = scrollRef.current
     const content = contentRef.current
@@ -305,6 +305,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
       el.scrollTop = el.scrollHeight
     })
     ro.observe(content)
+    ro.observe(el)
     return () => ro.disconnect()
   }, [])
 

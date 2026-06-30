@@ -435,7 +435,7 @@ export function AgentPane({
     if (scrollRef.current) scrollRef.current.scrollTop = 0
   }, [isEmpty])
 
-  // ResizeObserver: when attached and content grows, scroll to bottom.
+  // ResizeObserver: when attached and content grows or viewport resizes, scroll to bottom.
   useEffect(() => {
     const el = scrollRef.current
     const content = contentRef.current
@@ -445,6 +445,7 @@ export function AgentPane({
       el.scrollTop = el.scrollHeight
     })
     ro.observe(content)
+    ro.observe(el)
     return () => ro.disconnect()
   }, [])
 

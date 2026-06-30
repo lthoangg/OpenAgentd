@@ -9,14 +9,16 @@
  * reasoning is rarely complex prose; only the section headers get emphasis.
  */
 import { splitSections } from '@/utils/thinking'
+import { useSmoothStream } from '@/hooks/useSmoothStream'
 
 interface ThinkingProps {
   content: string
   isStreaming?: boolean
 }
 
-export function Thinking({ content }: ThinkingProps) {
-  const sections = splitSections(content)
+export function Thinking({ content, isStreaming = false }: ThinkingProps) {
+  const smoothedContent = useSmoothStream(content, isStreaming)
+  const sections = splitSections(smoothedContent)
 
   return (
     <div className="my-2 min-w-0 space-y-2 font-mono text-xs leading-relaxed text-(--color-text-2) [overflow-wrap:anywhere]">

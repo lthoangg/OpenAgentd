@@ -345,7 +345,7 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
       }
       return (
         <div>
-          <LazyMarkdownBlock content={block.content} sessionId={sessionId} />
+          <LazyMarkdownBlock content={block.content} sessionId={sessionId} isStreaming={isStreaming} />
         </div>
       )
     }

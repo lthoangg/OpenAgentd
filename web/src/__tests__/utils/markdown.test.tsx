@@ -445,6 +445,22 @@ describe("MarkdownBlock tables", () => {
     expect(wrapper?.tagName.toLowerCase()).toBe("div");
     expect(wrapper?.querySelector("table")).not.toBeNull();
   });
+
+  it("supports <br> tags inside table cells", () => {
+    render(
+      <MarkdownBlock
+        content={[
+          "| col1 |",
+          "|---|",
+          "| line1 <br> line2 <br/> line3 <br /> line4 |",
+        ].join("\n")}
+      />,
+    );
+
+    const td = document.querySelector("td");
+    expect(td).not.toBeNull();
+    expect(td!.querySelectorAll("br").length).toBe(3);
+  });
 });
 
 // ---------------------------------------------------------------------------

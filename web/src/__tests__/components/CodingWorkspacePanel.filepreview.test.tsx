@@ -243,6 +243,15 @@ describe('Coding workspace two-layer file preview', () => {
     expect(img.src).toContain('logo.png')
   })
 
+  it('renders videos inline in the separate file viewer panel', async () => {
+    const video: WorkspaceFileInfo = { path: 'assets/clip.mp4', name: 'clip.mp4', size: 1000, mtime: 1, mime: 'video/mp4' }
+    await renderViewer(video)
+    const videoEl = document.querySelector('video')
+    expect(videoEl).toBeTruthy()
+    expect(videoEl?.src).toContain('workspace/files/read')
+    expect(videoEl?.src).toContain('clip.mp4')
+  })
+
   it('shows binary fallback links in the separate file viewer panel', async () => {
     await renderViewer(binary)
     expect(screen.getByText('No inline preview for this file type')).toBeTruthy()

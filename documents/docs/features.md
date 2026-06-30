@@ -298,8 +298,8 @@ team against it. Deeper doc: [`web/coding-sessions.md`](./web/coding-sessions.md
   changed-state indicator, and the tab badge reports the changed-file count.
 - **Two-layer workspace file viewer** `[v1.29.0]` — clicking a file in the coding
   workspace side drawer opens a read-only viewer beside it with line numbers,
-  lightweight syntax highlighting, image previews, extensionless text files,
-  and binary download fallback.
+  lightweight syntax highlighting, image previews, inline HTML5 video previews `[v1.89.1]`,
+  extensionless text files, and binary download fallback.
   Select lines and click **Add comment** to insert an `@path#Lx-Ly` composer
   reference; the backend auto-attaches only the selected file lines.
 - **Persisted coding sessions per workspace** `[v1.18.0]` — `/coding/{session_id}`

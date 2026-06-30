@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils'
 import { formatBytes } from '@/utils/format'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { useResizableWidth } from '@/hooks/use-resizable-width'
+import { isVideoSrc } from '@/utils/workspace'
 import type { WorkspaceFileInfo } from '@/api/types'
 
 const TEXT_EXTENSIONS = new Set([
@@ -29,12 +30,13 @@ function extOf(name: string): string {
   return i >= 0 ? name.slice(i + 1).toLowerCase() : ''
 }
 
-type FileKind = 'image' | 'text' | 'binary'
+type FileKind = 'image' | 'video' | 'text' | 'binary'
 
 function kindOf(file: WorkspaceFileInfo): FileKind {
   const ext = extOf(file.name)
   if (IMAGE_EXTENSIONS.has(ext) || file.mime.startsWith('image/')) return 'image'
-  if (file.mime.startsWith('audio/') || file.mime.startsWith('video/')) return 'binary'
+  if (file.mime.startsWith('video/') || isVideoSrc(file.name)) return 'video'
+  if (file.mime.startsWith('audio/')) return 'binary'
   if (!ext || TEXT_EXTENSIONS.has(ext) || file.mime.startsWith('text/') || file.mime === 'application/json') return 'text'
   if (file.size <= MAX_TEXT_PREVIEW_BYTES) return 'text'
   return 'binary'
@@ -281,6 +283,22 @@ function ImagePreview({ workspace, file }: { workspace: string; file: WorkspaceF
   )
 }
 
+function VideoPreview({ workspace, file }: { workspace: string; file: WorkspaceFileInfo }) {
+  if (file.deleted) return <DeletedFilePreview />
+  const url = codingWorkspaceFileUrl(workspace, file.path)
+  return (
+    <div className="flex h-full min-h-0 items-center justify-center overflow-auto bg-(--bg-page) p-4">
+      <video
+        src={url}
+        controls
+        preload="metadata"
+        playsInline
+        className="block max-h-full max-w-full rounded border border-(--color-border) bg-black object-contain"
+      />
+    </div>
+  )
+}
+
 function BinaryPreview({ workspace, file }: { workspace: string; file: WorkspaceFileInfo }) {
   if (file.deleted) return <DeletedFilePreview />
   const url = codingWorkspaceFileUrl(workspace, file.path)
@@ -428,6 +446,7 @@ export function CodingFilePreviewContent({
   const kind = kindOf(file)
 
   return kind === 'image' ? <ImagePreview workspace={workspace} file={file} />
+    : kind === 'video' ? <VideoPreview workspace={workspace} file={file} />
     : kind === 'text' ? <TextPreview key={file.path} workspace={workspace} file={file} onAddComment={onAddComment} />
       : <BinaryPreview workspace={workspace} file={file} />
 }

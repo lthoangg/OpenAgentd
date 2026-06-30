@@ -126,3 +126,14 @@ export function workspaceFromSession(
   if (mode !== 'coding' || !sessionId) return null
   return sessionWorkspace ?? null
 }
+
+const _VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mov', '.m4v'] as const
+
+/** Return true if ``src`` references a file with a video extension. */
+export function isVideoSrc(src: string | undefined): boolean {
+  if (!src) return false
+  // Strip query string / fragment before extension check so
+  // ``/api/team/abc/media/clip.mp4?cache=123`` still matches.
+  const cleaned = src.split(/[?#]/, 1)[0].toLowerCase()
+  return _VIDEO_EXTENSIONS.some((ext) => cleaned.endsWith(ext))
+}

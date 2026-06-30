@@ -1,7 +1,8 @@
 import { describe, it, expect, afterEach } from "bun:test";
 import "@testing-library/jest-dom";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
-import { MarkdownBlock, isVideoSrc } from "@/utils/markdown";
+import { MarkdownBlock } from "@/utils/markdown";
+import { isVideoSrc } from "@/utils/workspace";
 
 afterEach(() => cleanup());
 

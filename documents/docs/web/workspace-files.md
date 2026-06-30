@@ -92,12 +92,13 @@ directly — useful when the agent performs filesystem writes through `shell`
 
 ## File classification
 
-`kindOf(file)` returns `'image' | 'text' | 'binary'` based on extension first,
+`kindOf(file)` returns `'image' | 'video' | 'text' | 'binary'` based on extension first,
 MIME type second:
 
 | Kind | Matches | Preview |
 |------|---------|---------|
 | `image` | ext ∈ {`png`, `jpg`, `jpeg`, `gif`, `webp`, `svg`, `bmp`} OR `mime` starts with `image/` | Inline `<img>`, click opens `ImageLightbox` |
+| `video` | ext ∈ {`mp4`, `webm`, `mov`, `m4v`} OR `mime` starts with `video/` | Inline HTML5 `<video>` with native controls |
 | `text` | ext ∈ `TEXT_EXTENSIONS` (md, py, ts, json, yaml, csv, …) OR `mime` starts with `text/` OR `mime === 'application/json'` | Raw content in a plain monospace `<pre>` |
 | `binary` | everything else | Download / Open-in-new-tab buttons |
 

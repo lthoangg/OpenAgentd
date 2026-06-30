@@ -23,6 +23,7 @@ import {
   FileText,
   FileImage,
   FileCode,
+  FileVideo,
   File as FileIcon,
   Folder,
   Download,
@@ -44,6 +45,7 @@ import { usePlatform } from '@/hooks/use-platform'
 import { mediumHapticFeedback } from '@/lib/haptics'
 import { formatBytes } from '@/utils/format'
 import { ImageLightbox } from './ImageLightbox'
+import { isVideoSrc } from '@/utils/workspace'
 import type { WorkspaceFileInfo } from '@/api/types'
 
 // ── File-type helpers ─────────────────────────────────────────────────────────
@@ -70,13 +72,14 @@ function extOf(name: string): string {
   return i >= 0 ? name.slice(i + 1).toLowerCase() : ''
 }
 
-type FileKind = 'image' | 'text' | 'binary'
+type FileKind = 'image' | 'video' | 'text' | 'binary'
 
 function kindOf(file: WorkspaceFileInfo): FileKind {
   const ext = extOf(file.name)
   // SVG is both an image (for preview) and text — prefer the visual preview.
   if (IMAGE_EXTENSIONS.has(ext)) return 'image'
   if (file.mime.startsWith('image/')) return 'image'
+  if (file.mime.startsWith('video/') || isVideoSrc(file.name)) return 'video'
   if (!ext) return 'text'
   if (TEXT_EXTENSIONS.has(ext)) return 'text'
   if (file.mime.startsWith('text/')) return 'text'
@@ -88,6 +91,7 @@ function FileTypeIcon({ file, size = 12 }: { file: WorkspaceFileInfo; size?: num
   const kind = kindOf(file)
   const cls = 'shrink-0 text-(--color-text-muted)'
   if (kind === 'image') return <FileImage size={size} className={cls} />
+  if (kind === 'video') return <FileVideo size={size} className={cls} />
   if (kind === 'text') {
     // Code files get the code icon; plain text/markdown use the document icon.
     const ext = extOf(file.name)
@@ -316,6 +320,21 @@ function ImagePreview({ sessionId, file }: { sessionId: string; file: WorkspaceF
   )
 }
 
+function VideoPreview({ sessionId, file }: { sessionId: string; file: WorkspaceFileInfo }) {
+  const url = workspaceMediaUrl(sessionId, file.path)
+  return (
+    <div className="flex h-full items-center justify-center bg-(--bg-page) p-4">
+      <video
+        src={url}
+        controls
+        preload="metadata"
+        playsInline
+        className="block max-h-full max-w-full rounded border border-(--color-border) bg-black object-contain"
+      />
+    </div>
+  )
+}
+
 // Cap on bytes fetched for text preview — avoids loading a 50 MB log into
 // the browser.  Beyond this we show a notice + download button.
 const MAX_TEXT_PREVIEW_BYTES = 512 * 1024  // 512 KB
@@ -534,6 +553,8 @@ function PreviewArea({
       <div className="min-h-0 flex-1 overflow-hidden">
         {kind === 'image' ? (
           <ImagePreview sessionId={sessionId} file={file} />
+        ) : kind === 'video' ? (
+          <VideoPreview sessionId={sessionId} file={file} />
         ) : kind === 'text' ? (
           <TextPreview sessionId={sessionId} file={file} />
         ) : (

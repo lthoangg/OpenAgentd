@@ -18,22 +18,7 @@ import { resolveApiUrl } from '@/api/client'
 import { apiUrl } from '@/api/base-url'
 import { withTokenParam } from '@/api/auth'
 import { ImageLightbox } from '@/components/ImageLightbox'
-
-// Me: extensions we render as ``<video>`` instead of ``<img>``. The backend
-// `generate_video` tool writes ``.mp4`` files today, but keep the list
-// open to future codecs so users who upload ``.webm`` / ``.mov`` also get
-// inline playback for free.
-const _VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mov', '.m4v'] as const
-
-/** Return true if ``src`` references a file with a video extension. */
-// eslint-disable-next-line react-refresh/only-export-components
-export function isVideoSrc(src: string | undefined): boolean {
-  if (!src) return false
-  // Strip query string / fragment before extension check so
-  // ``/api/team/abc/media/clip.mp4?cache=123`` still matches.
-  const cleaned = src.split(/[?#]/, 1)[0].toLowerCase()
-  return _VIDEO_EXTENSIONS.some((ext) => cleaned.endsWith(ext))
-}
+import { isVideoSrc } from '@/utils/workspace'
 
 // ── fixNestedFences ───────────────────────────────────────────────────────────
 
@@ -178,7 +163,7 @@ export function CodeBlock({
       ) : (
         <div className="absolute top-1.5 right-1.5 z-10">{copyButton}</div>
       )}
-      <pre className="max-h-96 overflow-auto px-3 py-2.5 font-mono text-[13px] leading-relaxed text-(--color-text)">
+      <pre className="overflow-auto px-3 py-2.5 font-mono text-[13px] leading-relaxed text-(--color-text)">
         <code>{children}</code>
       </pre>
     </div>
@@ -370,6 +355,39 @@ function MarkdownImage({
   )
 }
 
+function renderCellWithBr(children: React.ReactNode): React.ReactNode {
+  if (typeof children === 'string') {
+    const regex = /<br\s*\/?>/i
+    if (regex.test(children)) {
+      const parts = children.split(regex)
+      return parts.reduce<React.ReactNode[]>((acc, part, i) => {
+        if (i > 0) acc.push(<br key={`br-${i}`} />)
+        if (part) acc.push(part)
+        return acc
+      }, [])
+    }
+    return children
+  }
+  if (Array.isArray(children)) {
+    return children.map((child, i) => (
+      <span key={i}>{renderCellWithBr(child)}</span>
+    ))
+  }
+  if (children && typeof children === 'object' && 'props' in children) {
+    const el = children as React.ReactElement<{ children?: React.ReactNode }>
+    if (el.props && 'children' in el.props) {
+      return {
+        ...el,
+        props: {
+          ...el.props,
+          children: renderCellWithBr(el.props.children),
+        },
+      }
+    }
+  }
+  return children
+}
+
 // ── MarkdownBlock ─────────────────────────────────────────────────────────────
 
 /** Shared prose markdown renderer — handles nested fences with math and syntax highlighting.
@@ -413,6 +431,12 @@ export const MarkdownBlock = memo(function MarkdownBlock({
         <div className="oa-table-wrap">
           <table {...props} />
         </div>
+      ),
+      td: ({ children, ...props }: React.HTMLAttributes<HTMLTableCellElement>) => (
+        <td {...props}>{renderCellWithBr(children)}</td>
+      ),
+      th: ({ children, ...props }: React.HTMLAttributes<HTMLTableCellElement>) => (
+        <th {...props}>{renderCellWithBr(children)}</th>
       ),
       a: (props: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
         <a {...props} target="_blank" rel="noopener noreferrer" />

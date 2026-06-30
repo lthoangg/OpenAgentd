@@ -349,3 +349,25 @@ describe("DiffView — no redundant inner border-radius (bg-bleed regression)", 
     }
   })
 })
+
+describe("DiffView — LSP Diagnostics integration", () => {
+  it("renders LSP diagnostics below the diff view when diagnostics exist in the result", () => {
+    const args = JSON.stringify({
+      path: "src/main.py",
+      content: "def foo(",
+    })
+    const result =
+      "Written 8 bytes to src/main.py\n\n[LSP Diagnostics]\n- src/main.py:1:9: error: unexpected EOF while parsing (Ruff)"
+
+    render(<DiffView toolName="write" args={args} result={result} />)
+
+    // Verify diff content is rendered
+    expect(screen.getByText("src/main.py")).toBeTruthy()
+    expect(screen.getByText("def foo(")).toBeTruthy()
+
+    // Verify LSP diagnostics are rendered (compact label)
+    expect(screen.getByText("ERR")).toBeTruthy()
+    expect(screen.getByText("1:9")).toBeTruthy()
+    expect(screen.getByText("unexpected EOF while parsing")).toBeTruthy()
+  })
+})

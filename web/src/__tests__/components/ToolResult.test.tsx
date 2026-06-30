@@ -316,3 +316,52 @@ describe("ToolResult — team_message", () => {
     expect(span.className).toContain("text-[11px]")
   })
 })
+
+// ---------------------------------------------------------------------------
+// LSP Diagnostics renderer
+// ---------------------------------------------------------------------------
+
+describe("ToolResult — LSP Diagnostics", () => {
+  it("renders clean tool result followed by structured diagnostics", () => {
+    const result =
+      "Written 125 bytes to src/main.py\n\n[LSP Diagnostics]\n- src/main.py:10:5: error: Expected expression (pyright)\n- src/main.py:15:1: warning: Unused import 'os' (ruff)"
+
+    render(<ToolResult toolName="write" result={result} />)
+
+    // Verify clean tool result
+    expect(screen.getByText("Written 125 bytes to src/main.py")).toBeTruthy()
+
+    // Verify diagnostics labels (compact: ERR / WARN)
+    expect(screen.getByText("ERR")).toBeTruthy()
+    expect(screen.getByText("WARN")).toBeTruthy()
+
+    // Verify diagnostic locations & messages
+    expect(screen.getByText("10:5")).toBeTruthy()
+    expect(screen.getByText("Expected expression")).toBeTruthy()
+
+    expect(screen.getByText("15:1")).toBeTruthy()
+    expect(screen.getByText("Unused import 'os'")).toBeTruthy()
+  })
+
+  it("renders the backend cap summary as a '+N more' line", () => {
+    const result =
+      "Written 1 byte to a.py\n\n[LSP Diagnostics]\n- a.py:1:1: error: bad (ty)\n- …and 12 more in a.py"
+
+    render(<ToolResult toolName="write" result={result} />)
+
+    expect(screen.getByText("bad")).toBeTruthy()
+    expect(screen.getByText("+12 more")).toBeTruthy()
+  })
+
+  it("filters out diagnostics of other severities if any", () => {
+    const result =
+      "Written 125 bytes to src/main.py\n\n[LSP Diagnostics]\n- src/main.py:10:5: info: Info message (ruff)"
+
+    const { container } = render(<ToolResult toolName="write" result={result} />)
+    const pre = container.querySelector("pre")
+    expect(pre?.textContent).toBe(result)
+    // Should not show ERR or WARN if there are no errors or warnings
+    expect(screen.queryByText("ERR")).toBeNull()
+    expect(screen.queryByText("WARN")).toBeNull()
+  })
+})

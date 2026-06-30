@@ -356,7 +356,103 @@ const FILE_READ_TOOLS = new Set(['read'])
 const FILE_WRITE_TOOLS = new Set(['write', 'edit', 'rm'])
 const SHELL_TOOLS = new Set(['shell'])
 const WEB_SEARCH_TOOLS = new Set(['web_search'])
-export function ToolResult({ toolName, result }: { toolName: string; result: string }) {
+
+export interface LspDiagnosticItem {
+  filePath: string
+  line: number
+  character: number
+  severity: 'error' | 'warning'
+  message: string
+  source: string
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function parseLspDiagnostics(text: string): {
+  cleanText: string
+  diagnostics: LspDiagnosticItem[]
+  /** Number of additional diagnostics omitted by the backend cap, if any. */
+  overflowCount: number
+} | null {
+  const marker = '[LSP Diagnostics]\n'
+  const idx = text.indexOf(marker)
+  if (idx === -1) return null
+
+  const cleanText = text.slice(0, idx).trim()
+  const diagnosticsPart = text.slice(idx + marker.length)
+
+  const diagnostics: LspDiagnosticItem[] = []
+  let overflowCount = 0
+  const lines = diagnosticsPart.split('\n')
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (!trimmed.startsWith('- ')) continue
+
+    // Backend cap summary line: "- …and 12 more in path/to/file.py"
+    const moreMatch = trimmed.match(/^-\s+…and\s+(\d+)\s+more\b/)
+    if (moreMatch) {
+      overflowCount += parseInt(moreMatch[1], 10)
+      continue
+    }
+
+    // Parse: - path/to/file.py:line:col: severity: Message (source)
+    const match = trimmed.match(/^-\s+(.*?):(\d+):(\d+):\s+(error|warning):\s+(.*?)\s*\((.*?)\)$/)
+    if (match) {
+      diagnostics.push({
+        filePath: match[1],
+        line: parseInt(match[2], 10),
+        character: parseInt(match[3], 10),
+        severity: match[4] as 'error' | 'warning',
+        message: match[5],
+        source: match[6]
+      })
+    }
+  }
+
+  if (diagnostics.length === 0) return null
+  return { cleanText, diagnostics, overflowCount }
+}
+
+export function LspDiagnosticsView({
+  diagnostics,
+  overflowCount = 0,
+}: {
+  diagnostics: LspDiagnosticItem[]
+  overflowCount?: number
+}) {
+  if (diagnostics.length === 0) return null
+
+  return (
+    <div className="flex flex-col border-t border-(--color-error)/20 bg-(--color-error-subtle) px-2.5 py-1">
+      {diagnostics.map((d, i) => {
+        const isError = d.severity === 'error'
+        const label = isError ? 'ERR' : 'WARN'
+        const labelColor = isError ? 'text-(--color-error)' : 'text-(--color-warning)'
+        const locationColor = isError ? 'text-(--color-error)/70' : 'text-(--color-warning)/70'
+
+        return (
+          <div key={i} className="flex items-baseline gap-1.5 font-mono text-[10px] leading-tight">
+            <span className={`${labelColor} shrink-0 font-semibold tracking-wider uppercase`}>
+              {label}
+            </span>
+            <span className={`${locationColor} shrink-0`}>
+              {d.line}:{d.character}
+            </span>
+            <span className="break-words text-(--color-text)">
+              {d.message}
+            </span>
+          </div>
+        )
+      })}
+      {overflowCount > 0 && (
+        <div className="font-mono text-[10px] leading-tight text-(--color-text-muted) italic">
+          +{overflowCount} more
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ToolResultInner({ toolName, result }: { toolName: string; result: string }) {
   if (WEB_SEARCH_TOOLS.has(toolName)) {
     return <WebSearchResult result={result} />
   }
@@ -381,4 +477,19 @@ export function ToolResult({ toolName, result }: { toolName: string; result: str
   }
   // web_fetch, date, math, skill, etc.
   return <GenericResult result={result} />
+}
+
+export function ToolResult({ toolName, result }: { toolName: string; result: string }) {
+  const lspData = parseLspDiagnostics(result)
+
+  if (lspData) {
+    return (
+      <div className="flex flex-col gap-1">
+        <ToolResultInner toolName={toolName} result={lspData.cleanText} />
+        <LspDiagnosticsView diagnostics={lspData.diagnostics} overflowCount={lspData.overflowCount} />
+      </div>
+    )
+  }
+
+  return <ToolResultInner toolName={toolName} result={result} />
 }

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { FileCode, ArrowRight, Trash2, PlusCircle, ChevronRight } from 'lucide-react'
 import { diffLines, parseDiffMeta, parsePatchText, type DiffLine } from './diffUtils'
 import { parsePartialJSON } from './displayText'
+import { parseLspDiagnostics, LspDiagnosticsView } from '../ToolResult'
 
 interface SingleFileDiffProps {
   path: string
@@ -134,21 +135,22 @@ export function DiffView({ toolName, args, result, onCollapse }: DiffViewProps) 
     }
   }, [args])
   const diffMeta = useMemo(() => parseDiffMeta(result), [result])
+  const lspData = useMemo(() => result ? parseLspDiagnostics(result) : null, [result])
 
   const hasPath = typeof parsed?.path === 'string' && parsed.path.trim().length > 0
   const hasPatchText = typeof parsed?.patch_text === 'string' && parsed.patch_text.trim().length > 0
 
-  if (!parsed || (toolName === 'edit' && !hasPath) || (toolName === 'write' && !hasPath) || (toolName === 'patch' && !hasPatchText)) {
-    return <pre className="p-3 font-mono text-xs">{args}</pre>
-  }
+  let viewContent: React.ReactNode = null
 
-  if (toolName === 'edit') {
+  if (!parsed || (toolName === 'edit' && !hasPath) || (toolName === 'write' && !hasPath) || (toolName === 'patch' && !hasPatchText)) {
+    viewContent = <pre className="p-3 font-mono text-xs">{args}</pre>
+  } else if (toolName === 'edit') {
     const path = typeof parsed.path === 'string' ? parsed.path : 'unknown'
     const oldStr = typeof parsed.old_string === 'string' ? parsed.old_string : ''
     const newStr = typeof parsed.new_string === 'string' ? parsed.new_string : ''
     const lines = diffLines(oldStr, newStr)
 
-    return (
+    viewContent = (
       <div className="overflow-hidden">
         <SingleFileDiff
           path={path}
@@ -160,49 +162,52 @@ export function DiffView({ toolName, args, result, onCollapse }: DiffViewProps) 
         />
       </div>
     )
-  }
-
-  if (toolName === 'write') {
+  } else if (toolName === 'write') {
     const path = typeof parsed.path === 'string' ? parsed.path : 'unknown'
     const content = typeof parsed.content === 'string' ? parsed.content : ''
     const lines = content.replace(/\r\n/g, '\n').split('\n').map((line: string) => ({ type: 'added' as const, value: line }))
 
-    return (
+    viewContent = (
       <div className="overflow-hidden">
         <SingleFileDiff path={path} kind="add" lines={lines} onCollapse={onCollapse} />
       </div>
     )
-  }
-
-  if (toolName === 'patch') {
+  } else if (toolName === 'patch') {
     const patchText = typeof parsed.patch_text === 'string' ? parsed.patch_text : ''
     const diffs = parsePatchText(patchText, diffMeta)
 
     if (diffs.length === 0) {
-      return (
+      viewContent = (
         <pre className="overflow-auto p-3 font-mono text-xs leading-relaxed text-(--color-text-2)">
           {patchText}
         </pre>
       )
+    } else {
+      viewContent = (
+        <div className="flex flex-col overflow-hidden">
+          {diffs.map((diff, idx) => (
+            <SingleFileDiff
+              key={idx}
+              path={diff.path}
+              kind={diff.kind}
+              moveTo={diff.moveTo}
+              lines={diff.lines}
+              oldStart={diff.hunkStarts?.[0]?.oldStart ?? 1}
+              newStart={diff.hunkStarts?.[0]?.newStart ?? 1}
+              onCollapse={diffs.length === 1 ? onCollapse : undefined}
+            />
+          ))}
+        </div>
+      )
     }
-
-    return (
-      <div className="flex flex-col overflow-hidden">
-        {diffs.map((diff, idx) => (
-          <SingleFileDiff
-            key={idx}
-            path={diff.path}
-            kind={diff.kind}
-            moveTo={diff.moveTo}
-            lines={diff.lines}
-            oldStart={diff.hunkStarts?.[0]?.oldStart ?? 1}
-            newStart={diff.hunkStarts?.[0]?.newStart ?? 1}
-            onCollapse={diffs.length === 1 ? onCollapse : undefined}
-          />
-        ))}
-      </div>
-    )
   }
 
-  return null
+  if (!viewContent) return null
+
+  return (
+    <div className="flex flex-col overflow-hidden">
+      {viewContent}
+      {lspData && <LspDiagnosticsView diagnostics={lspData.diagnostics} overflowCount={lspData.overflowCount} />}
+    </div>
+  )
 }

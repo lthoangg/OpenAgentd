@@ -178,7 +178,7 @@ export function CodeBlock({
       ) : (
         <div className="absolute top-1.5 right-1.5 z-10">{copyButton}</div>
       )}
-      <pre className="overflow-x-auto px-3 py-2.5 font-mono text-[13px] leading-relaxed text-(--color-text)">
+      <pre className="max-h-96 overflow-auto px-3 py-2.5 font-mono text-[13px] leading-relaxed text-(--color-text)">
         <code>{children}</code>
       </pre>
     </div>

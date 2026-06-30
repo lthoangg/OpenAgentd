@@ -356,12 +356,17 @@ def build_summarization_hook(
     if DEFAULT_PROMPT_TOKEN_THRESHOLD <= 0:
         return None
 
+    limits = get_model_limits(model_id)
+    max_token_length = DEFAULT_MAX_TOKEN_LENGTH
+    if limits.max_completion_tokens is not None:
+        max_token_length = min(DEFAULT_MAX_TOKEN_LENGTH, limits.max_completion_tokens)
+
     return SummarizationHook(
         default_provider,
         summary_prompt=prompt_for_mode(mode),
         prompt_token_threshold=prompt_token_threshold_for_model(model_id),
         keep_last_assistants=keep_last_for_mode(mode),
-        max_token_length=DEFAULT_MAX_TOKEN_LENGTH,
+        max_token_length=max_token_length,
         support_interrupt=support_interrupt,
     )
 

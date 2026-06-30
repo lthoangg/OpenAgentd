@@ -102,3 +102,18 @@ def test_zero_threshold_returns_none(mock_provider, monkeypatch):
 
     monkeypatch.setattr(mod, "DEFAULT_PROMPT_TOKEN_THRESHOLD", 0)
     assert build_summarization_hook(mock_provider) is None
+
+
+def test_builds_hook_caps_max_token_length_for_known_model(mock_provider):
+    """Passing a model with a known max completion token limit caps max_token_length."""
+    result = build_summarization_hook(mock_provider, model_id="openai:gpt-realtime-2")
+    assert result is not None
+    # openai:gpt-realtime-2 has a limit of 4096 in the registry, which is less than 30000.
+    assert result._max_token_length == 4096
+
+
+def test_builds_hook_keeps_default_max_token_length_for_unknown_model(mock_provider):
+    """Passing an unknown model keeps the default max_token_length."""
+    result = build_summarization_hook(mock_provider, model_id="unknown:model")
+    assert result is not None
+    assert result._max_token_length == DEFAULT_MAX_TOKEN_LENGTH

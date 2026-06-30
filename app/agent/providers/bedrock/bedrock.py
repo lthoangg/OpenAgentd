@@ -367,7 +367,16 @@ class BedrockProvider(LLMProviderBase):
         # Inference config — only include fields that are set
         inference_config: dict[str, Any] = {}
         if merged.get("max_tokens") is not None:
-            inference_config["maxTokens"] = merged["max_tokens"]
+            from app.agent.providers.model_metadata import get_model_limits
+
+            limits = get_model_limits(f"bedrock:{self.model}")
+            requested_max = merged["max_tokens"]
+            if limits.max_completion_tokens is not None:
+                inference_config["maxTokens"] = min(
+                    int(requested_max), limits.max_completion_tokens
+                )
+            else:
+                inference_config["maxTokens"] = int(requested_max)
         if merged.get("temperature") is not None:
             inference_config["temperature"] = merged["temperature"]
         if merged.get("top_p") is not None:

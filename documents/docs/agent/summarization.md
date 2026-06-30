@@ -70,7 +70,7 @@ Unknown model context lengths fall back to `DEFAULT_PROMPT_TOKEN_THRESHOLD`. API
 | `PROMPT_TOKEN_THRESHOLD_CONTEXT_RATIO` | `0.75` | Fraction of known model context used before applying the max cap. |
 | `DEFAULT_KEEP_LAST_ASSISTANTS` | `3` | Chat-mode keep window. |
 | `CODING_KEEP_LAST_ASSISTANTS` | `0` | Coding-mode keep window. |
-| `DEFAULT_MAX_TOKEN_LENGTH` | `10000` | Cap on the summariser LLM response length. `0` = unlimited. |
+| `DEFAULT_MAX_TOKEN_LENGTH` | `30000` | Cap on the summariser LLM response length. `0` = unlimited. |
 | `DEFAULT_MIN_MESSAGES_SINCE_LAST_SUMMARY` | `4` | Skip if fewer than N new messages since the last summarisation — prevents thrashing when the kept window sits close to the threshold. |
 
 ### Factory call
@@ -105,7 +105,7 @@ hook = SummarizationHook(
     summary_prompt=CHAT_SUMMARY_PROMPT,        # or CODING_SUMMARY_PROMPT, or a custom string
     prompt_token_threshold=DEFAULT_PROMPT_TOKEN_THRESHOLD,
     keep_last_assistants=3,                   # 0 = summarise everything below threshold
-    max_token_length=10000,                   # 0 = unlimited
+    max_token_length=30000,                   # 0 = unlimited
     min_messages_since_last_summary=4,
 )
 ```
@@ -128,8 +128,9 @@ The `max_token_length` parameter limits the number of tokens in the summarizatio
 - **Latency reduction** — Prevents runaway summarization calls
 - **Provider-agnostic** — Works with all supported LLM providers
 - **Server-side enforcement** — No truncation in our code; the API handles the limit
+- **Model-aware capping** — Automatically capped to `min(DEFAULT_MAX_TOKEN_LENGTH, limits.max_completion_tokens)` (e.g. 8192 for Claude 3.5 Sonnet) when the model's limits are known. This prevents `400 Bad Request` or `ValidationException` errors on providers like Anthropic and Bedrock.
 
-Set to `0` to disable (no limit). Default is `10000` tokens.
+Set to `0` to disable (no limit). Default is `30000` tokens.
 
 ---
 

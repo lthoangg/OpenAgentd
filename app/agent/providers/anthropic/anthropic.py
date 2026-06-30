@@ -424,11 +424,25 @@ class AnthropicProvider(LLMProviderBase):
         kwargs: dict[str, Any],
     ) -> dict[str, Any]:
         system, anthropic_messages = _split_messages(messages)
-        default_max = _max_output_tokens_for_model(self.model)
+
+        from app.agent.providers.model_metadata import get_model_limits
+
+        limits = get_model_limits(f"anthropic:{self.model}")
+        default_max = limits.max_completion_tokens or 4096
+
+        requested_max = kwargs.pop("max_tokens", None)
+        if requested_max is not None:
+            if limits.max_completion_tokens is not None:
+                max_tokens = min(int(requested_max), limits.max_completion_tokens)
+            else:
+                max_tokens = int(requested_max)
+        else:
+            max_tokens = default_max
+
         payload: dict[str, Any] = {
             "model": self.model,
             "messages": anthropic_messages,
-            "max_tokens": int(kwargs.pop("max_tokens", default_max) or default_max),
+            "max_tokens": max_tokens,
         }
         if system:
             payload["system"] = system

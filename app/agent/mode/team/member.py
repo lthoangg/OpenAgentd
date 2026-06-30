@@ -358,6 +358,12 @@ class TeamMemberBase(abc.ABC):
         If the agent is already working, the message is in the queue and
         ``TeamInboxHook`` will inject it before the next LLM call.
         """
+        if self._mailbox is None:
+            logger.warning(
+                "team_member_maybe_activate_ignored_no_mailbox name={}", self.name
+            )
+            return
+
         if self.state == "working":
             return  # already active — inbox hook will drain the new message
 

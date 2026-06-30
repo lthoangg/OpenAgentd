@@ -748,3 +748,25 @@ async def test_check_lsp_diagnostics_caps_and_sorts(tmp_path):
     # Error sorts first despite being on line 1000.
     assert "error: real error" in body[0]
     assert body[-1].startswith("- …and")
+
+
+@pytest.mark.asyncio
+async def test_lsp_react_language_mapping(tmp_path):
+    """Verify that .tsx and .jsx map to the correct react language IDs and find project roots."""
+    from app.services.lsp.manager import EXTENSION_TO_LANG, find_project_root
+
+    assert EXTENSION_TO_LANG.get(".tsx") == "typescriptreact"
+    assert EXTENSION_TO_LANG.get(".jsx") == "javascriptreact"
+    assert EXTENSION_TO_LANG.get(".ts") == "typescript"
+    assert EXTENSION_TO_LANG.get(".js") == "javascript"
+
+    # Verify project root triggers for react variants
+    file_path = tmp_path / "src" / "App.tsx"
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    file_path.write_text("<div />", encoding="utf-8")
+
+    tsconfig = tmp_path / "tsconfig.json"
+    tsconfig.write_text("{}", encoding="utf-8")
+
+    proj_root = find_project_root(file_path, tmp_path, "typescriptreact")
+    assert proj_root == tmp_path

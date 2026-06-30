@@ -13,9 +13,9 @@ MAX_DIAGNOSTICS_PER_FILE = 20
 EXTENSION_TO_LANG = {
     ".py": "python",
     ".ts": "typescript",
-    ".tsx": "typescript",
+    ".tsx": "typescriptreact",
     ".js": "javascript",
-    ".jsx": "javascript",
+    ".jsx": "javascriptreact",
     ".rs": "rust",
     ".go": "go",
     ".c": "c",
@@ -46,7 +46,15 @@ LSP_COMMANDS = {
         ["typescript-language-server", "--stdio"],
         ["vtsls", "--stdio"],
     ],
+    "typescriptreact": [
+        ["typescript-language-server", "--stdio"],
+        ["vtsls", "--stdio"],
+    ],
     "javascript": [
+        ["typescript-language-server", "--stdio"],
+        ["vtsls", "--stdio"],
+    ],
+    "javascriptreact": [
         ["typescript-language-server", "--stdio"],
         ["vtsls", "--stdio"],
     ],
@@ -83,7 +91,23 @@ def find_project_root(file_path: Path, workspace_root: Path, lang_id: str) -> Pa
             "package-lock.json",
             "pnpm-lock.yaml",
         ],
+        "typescriptreact": [
+            "package.json",
+            "tsconfig.json",
+            "bun.lockb",
+            "yarn.lock",
+            "package-lock.json",
+            "pnpm-lock.yaml",
+        ],
         "javascript": [
+            "package.json",
+            "jsconfig.json",
+            "bun.lockb",
+            "yarn.lock",
+            "package-lock.json",
+            "pnpm-lock.yaml",
+        ],
+        "javascriptreact": [
             "package.json",
             "jsconfig.json",
             "bun.lockb",
@@ -200,7 +224,12 @@ def detect_project_lsp_commands(lang_id: str, project_root: Path) -> list[list[s
 
         # TypeScript/JavaScript: pin to typescript-language-server for any
         # Node project (package.json / tsconfig.json / jsconfig.json).
-        if lang_id in ("typescript", "javascript"):
+        if lang_id in (
+            "typescript",
+            "typescriptreact",
+            "javascript",
+            "javascriptreact",
+        ):
             markers = ("package.json", "tsconfig.json", "jsconfig.json")
             if any((project_root / m).exists() for m in markers):
                 return [["typescript-language-server", "--stdio"]]
@@ -305,6 +334,10 @@ class LspManager:
 
             cfg = load_runtime_settings()
             custom_cmd = cfg.lsp.get(lang_id)
+            if not custom_cmd and lang_id == "typescriptreact":
+                custom_cmd = cfg.lsp.get("typescript")
+            elif not custom_cmd and lang_id == "javascriptreact":
+                custom_cmd = cfg.lsp.get("javascript")
             if custom_cmd:
                 return [custom_cmd]
         except Exception as e:

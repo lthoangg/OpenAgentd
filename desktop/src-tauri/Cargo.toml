@@ -14,7 +14,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = ["protocol-asset", "tray-icon"] }
-time = "=0.3.36"
+time = "=0.3.47"
 tauri-plugin-log = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"

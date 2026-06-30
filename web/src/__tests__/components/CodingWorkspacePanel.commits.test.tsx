@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import type React from 'react'
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useGitPanelStore } from '@/stores/useGitPanelStore'
@@ -23,6 +23,7 @@ mock.module('lucide-react', () => ({
   Loader2: Icon,
   Plus: Icon,
   RefreshCw: Icon,
+  RotateCcw: Icon,
   Search: Icon,
   Undo2: Icon,
   X: Icon,
@@ -213,6 +214,28 @@ describe('CodingWorkspacePanel – commit body expand/collapse', () => {
     expect(screen.getByText('feat: add login page')).toBeTruthy()
   })
 
+  it('handles invalid percent-encoded commit subjects gracefully without throwing URI error', async () => {
+    const invalidEncodedHistory = {
+      ...historyResponse,
+      commits: [{
+        ...commitNoBody,
+        subject: 'feat: 100% test coverage',
+      }],
+    }
+    globalThis.fetch = mock(async (input: unknown) => {
+      const url = String(input)
+      if (url.includes('/workspace/git/history')) return new Response(JSON.stringify(invalidEncodedHistory))
+      if (url.includes('/workspace/git-diff')) return new Response(JSON.stringify(emptyDiff))
+      if (url.includes('/workspace/files/list')) return new Response(JSON.stringify({ workspace: WORKSPACE, truncated: false, files: [] }))
+      return new Response(null, { status: 404 })
+    }) as typeof fetch
+
+    await renderCommitsTab()
+
+    // It should render the raw subject gracefully instead of throwing a URIError and crashing
+    await waitFor(() => expect(screen.getByText('feat: 100% test coverage')).toBeTruthy())
+  })
+
   it('preserves multi-line body whitespace via whitespace-pre-wrap', async () => {
     const user = userEvent.setup()
     await renderCommitsTab()
@@ -223,6 +246,80 @@ describe('CodingWorkspacePanel – commit body expand/collapse', () => {
     await waitFor(() => {
       const bodyEl = screen.getByText((content) => content.includes('Without this guard'))
       expect(bodyEl.className).toContain('whitespace-pre-wrap')
+    })
+  })
+})
+
+describe('CodingWorkspacePanel – commit actions (undo/revert)', () => {
+  it('opens commit actions dialog on right click, showing undo and revert buttons', async () => {
+    await renderCommitsTab()
+
+    await waitFor(() => expect(screen.getByText('fix: handle null session')).toBeTruthy())
+
+    // Right-click the latest commit button
+    const commitButton = screen.getByText('fix: handle null session').closest('button')!
+    fireEvent.contextMenu(commitButton)
+
+    // Verify dialog is open and shows "Undo commit" and "Revert commit"
+    await waitFor(() => {
+      expect(screen.getByText('Undo commit')).toBeTruthy()
+      expect(screen.getByText('Revert commit')).toBeTruthy()
+    })
+  })
+
+  it('triggers undo last commit when Undo commit is clicked', async () => {
+    const user = userEvent.setup()
+    const undoMock = mock(() => Promise.resolve(new Response(JSON.stringify({ workspace: WORKSPACE, success: true }))))
+
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = mock(async (input: unknown, init?: unknown) => {
+      const url = String(input)
+      if (url.includes('/workspace/git/undo')) {
+        return undoMock()
+      }
+      return originalFetch(input as RequestInfo | URL, init as RequestInit)
+    }) as typeof fetch
+
+    await renderCommitsTab()
+
+    await waitFor(() => expect(screen.getByText('fix: handle null session')).toBeTruthy())
+
+    const commitButton = screen.getByText('fix: handle null session').closest('button')!
+    fireEvent.contextMenu(commitButton)
+
+    await waitFor(() => expect(screen.getByText('Undo commit')).toBeTruthy())
+    await user.click(screen.getByText('Undo commit'))
+
+    await waitFor(() => {
+      expect(undoMock).toHaveBeenCalled()
+    })
+  })
+
+  it('triggers revert commit when Revert commit is clicked', async () => {
+    const user = userEvent.setup()
+    const revertMock = mock(() => Promise.resolve(new Response(JSON.stringify({ workspace: WORKSPACE, sha: commitWithBody.sha, success: true }))))
+
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = mock(async (input: unknown, init?: unknown) => {
+      const url = String(input)
+      if (url.includes('/workspace/git/revert')) {
+        return revertMock()
+      }
+      return originalFetch(input as RequestInfo | URL, init as RequestInit)
+    }) as typeof fetch
+
+    await renderCommitsTab()
+
+    await waitFor(() => expect(screen.getByText('fix: handle null session')).toBeTruthy())
+
+    const commitButton = screen.getByText('fix: handle null session').closest('button')!
+    fireEvent.contextMenu(commitButton)
+
+    await waitFor(() => expect(screen.getByText('Revert commit')).toBeTruthy())
+    await user.click(screen.getByText('Revert commit'))
+
+    await waitFor(() => {
+      expect(revertMock).toHaveBeenCalled()
     })
   })
 })

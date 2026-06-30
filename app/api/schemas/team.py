@@ -178,6 +178,26 @@ class DiscardWorkspaceFileResponse(BaseModel):
     status: str
 
 
+class GitUndoRequest(BaseModel):
+    workspace: str
+
+
+class GitUndoResponse(BaseModel):
+    workspace: str
+    success: bool
+
+
+class GitRevertRequest(BaseModel):
+    workspace: str
+    sha: str
+
+
+class GitRevertResponse(BaseModel):
+    workspace: str
+    sha: str
+    success: bool
+
+
 class AgentToolInfo(BaseModel):
     name: str
     description: str

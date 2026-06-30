@@ -31,6 +31,8 @@ import type {
   DiscardWorkspaceFileResponse,
   CodingWorkspaceVisibilityResponse,
   WorktreeRemoveResponse,
+  GitUndoResponse,
+  GitRevertResponse,
 } from '../types'
 
 export async function postTeamChat(
@@ -298,6 +300,31 @@ export async function discardCodingWorkspaceFile(
     body: JSON.stringify({ workspace, path, status }),
   })
   if (!res.ok) await parseDetailOrThrow(res, 'discardCodingWorkspaceFile')
+  return res.json()
+}
+
+export async function undoCodingWorkspaceLastCommit(
+  workspace: string,
+): Promise<GitUndoResponse> {
+  const res = await fetch(`${apiBaseUrl()}/team/workspace/git/undo`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ workspace }),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, 'undoCodingWorkspaceLastCommit')
+  return res.json()
+}
+
+export async function revertCodingWorkspaceCommit(
+  workspace: string,
+  sha: string,
+): Promise<GitRevertResponse> {
+  const res = await fetch(`${apiBaseUrl()}/team/workspace/git/revert`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ workspace, sha }),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, 'revertCodingWorkspaceCommit')
   return res.json()
 }
 

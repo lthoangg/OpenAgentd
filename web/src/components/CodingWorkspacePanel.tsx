@@ -2,13 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { ChevronRight, Copy, ExternalLink, FolderOpen, GitCompare, Plus, RefreshCw, Undo2, X } from 'lucide-react'
+import { ChevronRight, Copy, ExternalLink, FolderOpen, GitCompare, Plus, RefreshCw, Undo2, X, RotateCcw } from 'lucide-react'
 import { LongPressButton } from '@/components/ui/long-press-button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
-import { getCodingWorkspaceGitDiff, listCodingWorkspaceFiles, getCodingWorkspaceGitHistory, getCodingWorkspaceCommitDiff, discardCodingWorkspaceFile } from '@/api/client'
+import { getCodingWorkspaceGitDiff, listCodingWorkspaceFiles, getCodingWorkspaceGitHistory, getCodingWorkspaceCommitDiff, discardCodingWorkspaceFile, undoCodingWorkspaceLastCommit, revertCodingWorkspaceCommit } from '@/api/client'
 import { CodingFilePreviewContent, DiffPreview } from './CodingFileViewerPanel'
 import { FileTypeIcon } from './FileTypeIcon'
 import { softHapticFeedback } from '@/lib/haptics'
@@ -18,6 +18,7 @@ import { queryKeys } from '@/queries'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { useResizableWidth } from '@/hooks/use-resizable-width'
 import { useGitPanelStore, DEFAULT_WORKSPACE_STATE } from '@/stores/useGitPanelStore'
+import { useToastStore } from '@/stores/useToastStore'
 import type { WorkspaceFileInfo, WorkspaceGitDiffResponse } from '@/api/types'
 
 type ChangedFileStatus = 'A' | 'M' | 'D'
@@ -30,6 +31,14 @@ interface ChangedFileInfo {
   status: ChangedFileStatus
   additions: number
   deletions: number
+}
+
+function safeDecodeURIComponent(val: string): string {
+  try {
+    return decodeURIComponent(val)
+  } catch {
+    return val
+  }
 }
 
 interface DiffFileSection {
@@ -246,6 +255,8 @@ export function CodingWorkspacePanel({
   const [copiedSha, setCopiedSha] = useState<string | null>(null)
   const [discardTarget, setDiscardTarget] = useState<ChangedFileInfo | null>(null)
   const [discarding, setDiscarding] = useState(false)
+  const [gitActionPending, setGitActionPending] = useState(false)
+  const pushToast = useToastStore((s) => s.push)
   const tabButtonRefs = useRef(new Map<string, HTMLButtonElement>())
   const commitsScrollRef = useRef<HTMLDivElement>(null)
   // Tracks a SHA that was navigated to from Tree and needs to be scrolled into view.
@@ -311,6 +322,11 @@ export function CodingWorkspacePanel({
   const commits = useMemo(() => {
     return gitHistory.data?.pages.flatMap((page) => page.commits) ?? []
   }, [gitHistory.data?.pages])
+
+  const isLatestCommit = useMemo(() => {
+    if (!mobileCommitActions || commits.length === 0) return false
+    return mobileCommitActions.sha === commits[0].sha
+  }, [mobileCommitActions, commits])
 
   const graph = useMemo(() => {
     return gitHistory.data?.pages[0]?.graph ?? ''
@@ -785,15 +801,15 @@ export function CodingWorkspacePanel({
                                 }
                               }}
                               enabled={mobile}
-                              onLongPress={() => setMobileCommitActions({ sha: commit.sha, shortSha: commit.short_sha, subject: decodeURIComponent(commit.subject) })}
-                              onContextMenu={(e) => { if (!mobile) { e.preventDefault(); setMobileCommitActions({ sha: commit.sha, shortSha: commit.short_sha, subject: decodeURIComponent(commit.subject) }) } }}
+                              onLongPress={() => setMobileCommitActions({ sha: commit.sha, shortSha: commit.short_sha, subject: safeDecodeURIComponent(commit.subject) })}
+                              onContextMenu={(e) => { if (!mobile) { e.preventDefault(); setMobileCommitActions({ sha: commit.sha, shortSha: commit.short_sha, subject: safeDecodeURIComponent(commit.subject) }) } }}
                               className="flex w-full cursor-pointer flex-col gap-1 text-left"
                             >
                               <div className="flex w-full items-start justify-between gap-1.5">
                                 <div className="flex items-start gap-1.5 min-w-0 flex-1">
                                   <span className="shrink-0 font-mono text-xs text-(--color-text-subtle) select-none mt-0.5">•</span>
                                   <span className="truncate font-mono text-[11px] font-semibold text-(--color-text)">
-                                    {decodeURIComponent(commit.subject)}
+                                    {safeDecodeURIComponent(commit.subject)}
                                   </span>
                                 </div>
                                 <span className="shrink-0 rounded border border-(--color-border-subtle) bg-(--bg-card) px-1 py-0.5 font-mono text-[9px] text-(--color-text-subtle)">
@@ -1000,14 +1016,88 @@ export function CodingWorkspacePanel({
             </DialogFooter>
           </DialogContent>
         </Dialog>
-        <Dialog open={mobileCommitActions !== null} onOpenChange={(open) => { if (!open) setMobileCommitActions(null) }}>
+        <Dialog open={mobileCommitActions !== null} onOpenChange={(open) => { if (!open && !gitActionPending) setMobileCommitActions(null) }}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle className="truncate font-mono text-sm">{mobileCommitActions?.subject ?? ''}</DialogTitle>
               <DialogDescription>SHA: {mobileCommitActions?.shortSha}</DialogDescription>
             </DialogHeader>
             <DialogFooter className="flex-col items-stretch gap-2 p-3 sm:flex-col">
-              <Button type="button" variant="ghost" className="justify-start" onClick={() => {
+              {isLatestCommit && (
+                <Button
+                  type="button"
+                  variant="danger-subtle"
+                  className="justify-start"
+                  disabled={gitActionPending}
+                  onClick={async () => {
+                    const c = mobileCommitActions
+                    if (!c) return
+                    setGitActionPending(true)
+                    try {
+                      await undoCodingWorkspaceLastCommit(workspace)
+                      softHapticFeedback()
+                      pushToast({
+                        tone: 'success',
+                        title: 'Commit undone',
+                        description: 'The last commit was undone. Changes have been kept in your working copy.',
+                      })
+                      setMobileCommitActions(null)
+                      void gitHistory.refetch()
+                      void diff.refetch()
+                      void files.refetch()
+                    } catch (err) {
+                      const msg = err instanceof Error ? err.message : String(err)
+                      pushToast({
+                        tone: 'error',
+                        title: 'Failed to undo commit',
+                        description: msg,
+                      })
+                    } finally {
+                      setGitActionPending(false)
+                    }
+                  }}
+                >
+                  <Undo2 size={14} aria-hidden="true" />
+                  {gitActionPending ? 'Undoing…' : 'Undo commit'}
+                </Button>
+              )}
+              <Button
+                type="button"
+                variant="ghost"
+                className="justify-start"
+                disabled={gitActionPending}
+                onClick={async () => {
+                  const c = mobileCommitActions
+                  if (!c) return
+                  setGitActionPending(true)
+                  try {
+                    await revertCodingWorkspaceCommit(workspace, c.sha)
+                    softHapticFeedback()
+                    pushToast({
+                      tone: 'success',
+                      title: 'Commit reverted',
+                      description: `Successfully created revert commit for ${c.shortSha}.`,
+                    })
+                    setMobileCommitActions(null)
+                    void gitHistory.refetch()
+                    void diff.refetch()
+                    void files.refetch()
+                    } catch (err) {
+                      const msg = err instanceof Error ? err.message : String(err)
+                      pushToast({
+                        tone: 'error',
+                        title: 'Failed to revert commit',
+                        description: msg,
+                      })
+                  } finally {
+                    setGitActionPending(false)
+                  }
+                }}
+              >
+                <RotateCcw size={14} aria-hidden="true" />
+                {gitActionPending ? 'Reverting…' : 'Revert commit'}
+              </Button>
+              <Button type="button" variant="ghost" className="justify-start" disabled={gitActionPending} onClick={() => {
                 const c = mobileCommitActions; setMobileCommitActions(null)
                 if (!c) return
                 softHapticFeedback()
@@ -1016,7 +1106,7 @@ export function CodingWorkspacePanel({
                 <Copy size={14} aria-hidden="true" />
                 Copy short SHA
               </Button>
-              <Button type="button" variant="ghost" className="justify-start" onClick={() => {
+              <Button type="button" variant="ghost" className="justify-start" disabled={gitActionPending} onClick={() => {
                 const c = mobileCommitActions; setMobileCommitActions(null)
                 if (!c) return
                 softHapticFeedback()
@@ -1025,7 +1115,7 @@ export function CodingWorkspacePanel({
                 <Copy size={14} aria-hidden="true" />
                 Copy full SHA
               </Button>
-              <Button type="button" variant="ghost" className="justify-start" onClick={() => {
+              <Button type="button" variant="ghost" className="justify-start" disabled={gitActionPending} onClick={() => {
                 const c = mobileCommitActions; setMobileCommitActions(null)
                 if (!c) return
                 softHapticFeedback()

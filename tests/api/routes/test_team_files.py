@@ -410,3 +410,273 @@ class TestCodingWorkspaceGit:
         body = resp.json()
         assert body["sha"] == sha
         assert "+hello world" in body["diff"]
+
+    def test_workspace_git_undo_success_multi_commit(
+        self, client, tmp_path, monkeypatch
+    ):
+        import subprocess
+
+        fake_root = tmp_path / "git-repo"
+        fake_root.mkdir()
+
+        subprocess.run(["git", "init"], cwd=fake_root, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.name", "Test User"], cwd=fake_root, check=True
+        )
+        subprocess.run(
+            ["git", "config", "user.email", "test@example.com"],
+            cwd=fake_root,
+            check=True,
+        )
+
+        # Commit 1
+        file_path = fake_root / "hello.txt"
+        file_path.write_text("hello world 1\n")
+        subprocess.run(["git", "add", "hello.txt"], cwd=fake_root, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "First commit"], cwd=fake_root, check=True
+        )
+
+        # Commit 2
+        file_path.write_text("hello world 2\n")
+        subprocess.run(["git", "add", "hello.txt"], cwd=fake_root, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Second commit"], cwd=fake_root, check=True
+        )
+
+        from app.services import team_manager
+
+        monkeypatch.setattr(
+            team_manager, "validate_workspace", lambda w: str(fake_root)
+        )
+
+        resp = client.post(
+            "/api/team/workspace/git/undo",
+            json={"workspace": str(fake_root)},
+        )
+        assert resp.status_code == 200
+        assert resp.json() == {"workspace": str(fake_root), "success": True}
+
+        # Verify HEAD is now First commit
+        res = subprocess.run(
+            ["git", "log", "-1", "--format=%s"],
+            cwd=fake_root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        assert res.stdout.strip() == "First commit"
+
+        # Verify changes from Second commit are still in index/working tree
+        assert file_path.read_text() == "hello world 2\n"
+
+    def test_workspace_git_undo_success_single_commit(
+        self, client, tmp_path, monkeypatch
+    ):
+        import subprocess
+
+        fake_root = tmp_path / "git-repo"
+        fake_root.mkdir()
+
+        subprocess.run(["git", "init"], cwd=fake_root, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.name", "Test User"], cwd=fake_root, check=True
+        )
+        subprocess.run(
+            ["git", "config", "user.email", "test@example.com"],
+            cwd=fake_root,
+            check=True,
+        )
+
+        # Only 1 commit
+        file_path = fake_root / "hello.txt"
+        file_path.write_text("hello world\n")
+        subprocess.run(["git", "add", "hello.txt"], cwd=fake_root, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Initial commit"], cwd=fake_root, check=True
+        )
+
+        from app.services import team_manager
+
+        monkeypatch.setattr(
+            team_manager, "validate_workspace", lambda w: str(fake_root)
+        )
+
+        resp = client.post(
+            "/api/team/workspace/git/undo",
+            json={"workspace": str(fake_root)},
+        )
+        assert resp.status_code == 200
+        assert resp.json() == {"workspace": str(fake_root), "success": True}
+
+        # Verify HEAD has been deleted (no commits exist)
+        res = subprocess.run(
+            ["git", "rev-parse", "--verify", "HEAD"],
+            cwd=fake_root,
+            capture_output=True,
+            text=True,
+        )
+        assert res.returncode != 0
+
+        # Verify hello.txt still exists with changes
+        assert file_path.read_text() == "hello world\n"
+
+    def test_workspace_git_undo_failure_no_commits(self, client, tmp_path, monkeypatch):
+        fake_root = tmp_path / "git-repo"
+        fake_root.mkdir()
+
+        import subprocess
+
+        subprocess.run(["git", "init"], cwd=fake_root, check=True, capture_output=True)
+
+        from app.services import team_manager
+
+        monkeypatch.setattr(
+            team_manager, "validate_workspace", lambda w: str(fake_root)
+        )
+
+        resp = client.post(
+            "/api/team/workspace/git/undo",
+            json={"workspace": str(fake_root)},
+        )
+        assert resp.status_code == 400
+        assert "No commits to undo" in resp.json()["detail"]
+
+    def test_workspace_git_revert_success(self, client, tmp_path, monkeypatch):
+        import subprocess
+
+        fake_root = tmp_path / "git-repo"
+        fake_root.mkdir()
+
+        subprocess.run(["git", "init"], cwd=fake_root, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.name", "Test User"], cwd=fake_root, check=True
+        )
+        subprocess.run(
+            ["git", "config", "user.email", "test@example.com"],
+            cwd=fake_root,
+            check=True,
+        )
+
+        # Commit 1
+        file_path = fake_root / "hello.txt"
+        file_path.write_text("line 1\n")
+        subprocess.run(["git", "add", "hello.txt"], cwd=fake_root, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "First commit"], cwd=fake_root, check=True
+        )
+
+        # Commit 2
+        file_path.write_text("line 1\nline 2\n")
+        subprocess.run(["git", "add", "hello.txt"], cwd=fake_root, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Second commit"], cwd=fake_root, check=True
+        )
+
+        # Get Commit 2 SHA
+        res = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=fake_root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        sha = res.stdout.strip()
+
+        from app.services import team_manager
+
+        monkeypatch.setattr(
+            team_manager, "validate_workspace", lambda w: str(fake_root)
+        )
+
+        resp = client.post(
+            "/api/team/workspace/git/revert",
+            json={"workspace": str(fake_root), "sha": sha},
+        )
+        assert resp.status_code == 200
+        assert resp.json() == {"workspace": str(fake_root), "sha": sha, "success": True}
+
+        # Verify HEAD is now a revert commit
+        res = subprocess.run(
+            ["git", "log", "-1", "--format=%s"],
+            cwd=fake_root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        assert res.stdout.strip().startswith("Revert")
+
+        # Verify file content is reverted
+        assert file_path.read_text() == "line 1\n"
+
+    def test_workspace_git_revert_conflict_aborted(self, client, tmp_path, monkeypatch):
+        import subprocess
+
+        fake_root = tmp_path / "git-repo"
+        fake_root.mkdir()
+
+        subprocess.run(["git", "init"], cwd=fake_root, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.name", "Test User"], cwd=fake_root, check=True
+        )
+        subprocess.run(
+            ["git", "config", "user.email", "test@example.com"],
+            cwd=fake_root,
+            check=True,
+        )
+
+        # Commit 1
+        file_path = fake_root / "hello.txt"
+        file_path.write_text("original\n")
+        subprocess.run(["git", "add", "hello.txt"], cwd=fake_root, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "First commit"], cwd=fake_root, check=True
+        )
+
+        # Commit 2
+        file_path.write_text("change A\n")
+        subprocess.run(["git", "add", "hello.txt"], cwd=fake_root, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Second commit"], cwd=fake_root, check=True
+        )
+
+        # Get Commit 2 SHA
+        res = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=fake_root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        sha = res.stdout.strip()
+
+        # Commit 3 (modifies same line, will conflict with revert of Commit 2)
+        file_path.write_text("change B\n")
+        subprocess.run(["git", "add", "hello.txt"], cwd=fake_root, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Third commit"], cwd=fake_root, check=True
+        )
+
+        from app.services import team_manager
+
+        monkeypatch.setattr(
+            team_manager, "validate_workspace", lambda w: str(fake_root)
+        )
+
+        resp = client.post(
+            "/api/team/workspace/git/revert",
+            json={"workspace": str(fake_root), "sha": sha},
+        )
+        assert resp.status_code == 400
+        assert "Revert failed" in resp.json()["detail"]
+
+        # Verify revert was aborted (no revert in progress, working tree clean or matches Commit 3)
+        res = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=fake_root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        assert res.stdout.strip() == ""
+        assert file_path.read_text() == "change B\n"

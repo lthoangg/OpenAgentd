@@ -570,6 +570,17 @@ export interface DiscardWorkspaceFileResponse {
   status: string
 }
 
+export interface GitUndoResponse {
+  workspace: string
+  success: boolean
+}
+
+export interface GitRevertResponse {
+  workspace: string
+  sha: string
+  success: boolean
+}
+
 export interface CodingWorkspaceVisibilityResponse {
   workspace: string
   hidden: boolean

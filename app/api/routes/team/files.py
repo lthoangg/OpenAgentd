@@ -49,6 +49,10 @@ from app.api.schemas.team import (
     CodingWorkspaceStatusHead,
     DiscardWorkspaceFileRequest,
     DiscardWorkspaceFileResponse,
+    GitUndoRequest,
+    GitUndoResponse,
+    GitRevertRequest,
+    GitRevertResponse,
 )
 from app.core.db import async_session_factory
 from app.core.paths import session_uploads_dir, session_workspace_dir, workspace_dir
@@ -794,3 +798,105 @@ async def get_coding_workspace_commit_diff(
         sha=sha,
         diff=diff_out,
     )
+
+
+@router.post("/workspace/git/undo")
+async def undo_coding_workspace_last_commit(
+    body: GitUndoRequest,
+) -> GitUndoResponse:
+    """Undo the last commit in the workspace (soft reset).
+
+    Preserves changes in the working tree and index.
+    """
+    workspace = body.workspace
+    if not workspace:
+        raise HTTPException(status_code=400, detail="workspace is required.")
+
+    try:
+        resolved = team_manager.validate_workspace(workspace)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    root = Path(resolved)
+    if not (root / ".git").exists():
+        raise HTTPException(status_code=400, detail="Not a git repository.")
+
+    # Check if HEAD exists
+    has_head = await _run_git(resolved, "rev-parse", "--verify", "HEAD") is not None
+    if not has_head:
+        raise HTTPException(status_code=400, detail="No commits to undo.")
+
+    # Check if HEAD~1 exists
+    has_parent = await _run_git(resolved, "rev-parse", "--verify", "HEAD~1") is not None
+    if has_parent:
+        args = ["reset", "--soft", "HEAD~1"]
+    else:
+        # Only one commit, undo initial commit by deleting the ref
+        args = ["update-ref", "-d", "HEAD"]
+
+    result = await asyncio.to_thread(
+        subprocess.run,
+        ["git", "-C", resolved, *args],
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise HTTPException(
+            status_code=500,
+            detail=f"git reset failed: {result.stderr.strip() or result.stdout.strip()}",
+        )
+
+    return GitUndoResponse(workspace=workspace, success=True)
+
+
+@router.post("/workspace/git/revert")
+async def revert_coding_workspace_commit(
+    body: GitRevertRequest,
+) -> GitRevertResponse:
+    """Revert a specific commit in the workspace.
+
+    Creates a new commit reverting the changes of the specified commit.
+    """
+    workspace = body.workspace
+    sha = body.sha
+
+    if not workspace or not sha:
+        raise HTTPException(status_code=400, detail="workspace and sha are required.")
+
+    if not re.match(r"^[a-fA-F0-9]{4,64}$", sha):
+        raise HTTPException(status_code=422, detail="Invalid commit SHA format.")
+
+    try:
+        resolved = team_manager.validate_workspace(workspace)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    root = Path(resolved)
+    if not (root / ".git").exists():
+        raise HTTPException(status_code=400, detail="Not a git repository.")
+
+    # Run git revert. We use --no-edit to avoid launching an editor.
+    result = await asyncio.to_thread(
+        subprocess.run,
+        ["git", "-C", resolved, "revert", "--no-edit", sha],
+        capture_output=True,
+        text=True,
+        timeout=15,
+        check=False,
+    )
+    if result.returncode != 0:
+        # Revert failed (possibly conflicts). Abort the revert to keep workspace clean.
+        await asyncio.to_thread(
+            subprocess.run,
+            ["git", "-C", resolved, "revert", "--abort"],
+            capture_output=False,
+            check=False,
+        )
+        raise HTTPException(
+            status_code=400,
+            detail=f"Revert failed (likely due to conflicts):\n{result.stderr.strip() or result.stdout.strip()}",
+        )
+
+    return GitRevertResponse(workspace=workspace, sha=sha, success=True)

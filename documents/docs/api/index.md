@@ -25,6 +25,11 @@ FastAPI backend running on `:4082`. All routes are served under the `/api` prefi
 | `GET` | `/api/team/workspace/files/list` | `CodingWorkspaceFilesResponse` for a selected coding workspace |
 | `GET` | `/api/team/workspace/git-diff/view` | `CodingWorkspaceGitDiffResponse` for the selected coding workspace |
 | `GET` | `/api/team/workspace/status` | `CodingWorkspaceStatusResponse` — lightweight overview for the coding-mode empty state |
+| `GET` | `/api/team/workspace/git/history` | `WorkspaceGitHistoryResponse` — recent git commits and branch graph |
+| `GET` | `/api/team/workspace/git/commit-diff` | `WorkspaceCommitDiffResponse` — raw diff of a specific git commit |
+| `POST` | `/api/team/workspace/git/discard` | `DiscardWorkspaceFileResponse` — discard changes for a single file |
+| `POST` | `/api/team/workspace/git/undo` | `GitUndoResponse` — undo the last commit (soft reset) |
+| `POST` | `/api/team/workspace/git/revert` | `GitRevertResponse` — revert a specific commit |
 | `GET` | `/api/team/sessions` | `SessionPageResponse` — cursor-paginated, newest-first |
 | `POST` | `/api/team/sessions/resolve` | `TeamSessionResolveResponse` — latest matching session or newly-created empty session |
 | `GET` | `/api/team/sessions/{id}` | `SessionDetailResponse` — includes `mode`, `workspace`, and `running` for direct `/coding/{id}` loads |

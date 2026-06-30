@@ -350,6 +350,20 @@ Coding-mode only. Reads a root `AGENTS.md` in the active workspace (when present
 
 ---
 
+### `LspHook`
+
+**File:** `lsp.py`
+
+Coding-mode only. A `wrap_tool_call` hook: after a `write`, `edit`, or `patch` tool runs, it resolves the touched file(s), runs the project's language server(s) over them, and appends any errors/warnings to the tool result as a compact `[LSP Diagnostics]` block — so the agent sees and fixes problems on its next turn.
+
+Mode is decided **once** at construction (`LspHook(enabled=team.mode == "coding")`); when disabled it is a transparent pass-through with no DB lookups on the hot path. Multi-file `patch` checks run concurrently (`asyncio.gather`) and the hook is fully fail-safe — any LSP error is logged and swallowed, never crashing the tool. Server selection, lifecycle, the multi-server Python case, and output format live in [`configuration/lsp.md`](../configuration/lsp.md).
+
+```python
+hook = LspHook(enabled=team_mode == "coding")
+```
+
+---
+
 ### `OpenTelemetryHook`
 
 **File:** `otel.py`
@@ -465,6 +479,7 @@ class AuditHook(BaseAgentHook):
     AgentTeamProtocolHook,           # team protocol injection
     TeamInboxHook,                   # mailbox drain → state.messages
     WorkspaceInstructionsHook,       # coding mode only
+    LspHook,                         # coding mode only — diagnostics on write/edit/patch
     SessionLogHook,                  # JSONL per-session log
     OpenTelemetryHook,               # spans + metrics
     StreamPublisherHook,             # SSE event publishing

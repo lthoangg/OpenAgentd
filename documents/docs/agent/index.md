@@ -29,7 +29,7 @@ app/agent/
 ├── loader.py           # Loads agents/*.md — agent factory + AgentConfig schema
 ├── drift.py            # ConfigStamp + stamp_agent_files / detect_drift
 ├── permission.py       # Rule/Ruleset matching + AutoAllow / blocking permission services
-├── hooks/              # Built-in lifecycle hooks (see hooks.md)
+├── hooks/              # Built-in lifecycle hooks incl. lsp.py (coding-mode diagnostics) — see hooks.md
 ├── plugins/            # User-authored plugin loader + role contextvar (see plugins.md)
 ├── providers/          # LLM provider adapters
 │   ├── factory.py          # build_provider("provider:model") — one match statement over the prefix

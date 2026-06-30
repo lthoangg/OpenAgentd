@@ -45,6 +45,10 @@ async def lifespan(app: FastAPI):
 
     ensure_workspace_initialized()
 
+    from app.services.lsp import lsp_manager
+
+    lsp_manager.start()
+
     # ── Auto-migrate DB in production ───────────────────────────────
     if settings.APP_ENV == "production":
         # Alembic's ``env.py`` calls ``asyncio.run(run_migrations_online())``
@@ -90,6 +94,9 @@ async def lifespan(app: FastAPI):
     await task_scheduler.stop()
     await team_manager.stop()
     await mcp_manager.stop()
+    from app.services.lsp import lsp_manager
+
+    await lsp_manager.stop()
 
     await stream_store.close()
     await stop_otel_retention()

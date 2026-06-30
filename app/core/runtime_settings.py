@@ -42,6 +42,7 @@ class RuntimeSettings(BaseModel):
     )
     server: ServerSettings = Field(default_factory=ServerSettings)
     providers: dict[str, ProviderUiSettings] = Field(default_factory=dict)
+    lsp: dict[str, list[str]] = Field(default_factory=dict)
 
 
 def provider_visible_models(provider_id: str) -> list[str]:

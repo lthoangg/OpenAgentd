@@ -813,12 +813,20 @@ class TeamMemberBase(abc.ABC):
             lead_session_id=lead_session_id,
         )
 
+        from app.agent.hooks.lsp import LspHook
+
+        # LSP diagnostics injection is only meaningful in coding mode, where the
+        # workspace is a real project tree. Decide once here so the hook needs
+        # no per-tool-call DB lookups.
+        team_mode = self._team.mode if self._team is not None else "normal"
+
         hooks: list[BaseAgentHook] = [
             inject_current_date,
             team_prompt_hook,
             team_inbox_hook,
             publisher_hook,
             otel_hook,
+            LspHook(enabled=team_mode == "coding"),
         ]
         # Splice user-queued messages into the running turn — lead only, since
         # the user-facing queue lives on the lead's session.  Must precede

@@ -355,7 +355,7 @@ export function SettingsModal() {
             exit={{ opacity: 0, scale: 0.98, y: 4 }}
             transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
             className={cn(
-              'settings-modal-shell z-50 flex flex-col overflow-hidden rounded-lg',
+              'settings-modal-shell mobile-viewport z-50 flex flex-col overflow-hidden rounded-lg',
               'border border-(--color-border) bg-(--bg-page) shadow-2xl',
             )}
           >

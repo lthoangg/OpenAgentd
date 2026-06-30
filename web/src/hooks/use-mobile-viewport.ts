@@ -123,6 +123,29 @@ export function useMobileViewportGuards() {
           root.removeAttribute('data-keyboard-open')
         }
       }
+
+      // Keep active input scrolled into view inside its scrollable container
+      if (nextOpen) {
+        const active = document.activeElement
+        if (active instanceof HTMLElement && active.matches('input, textarea, [contenteditable="true"]')) {
+          const container = active.closest('.overflow-y-auto') as HTMLElement | null
+          if (container) {
+            if (!container.classList.contains('relative')) {
+              container.classList.add('relative')
+            }
+            let offsetTop = 0
+            let el: HTMLElement | null = active
+            while (el && el !== container) {
+              offsetTop += el.offsetTop
+              el = el.offsetParent as HTMLElement | null
+            }
+            container.scrollTo({
+              top: Math.max(0, offsetTop - 20),
+              behavior: 'smooth',
+            })
+          }
+        }
+      }
     }
 
     applyViewport()
@@ -159,6 +182,31 @@ export function useMobileViewportGuards() {
       }
     }
 
+    const handleFocusIn = (e: FocusEvent) => {
+      const target = e.target as HTMLElement
+      if (target.matches('input, textarea, [contenteditable="true"]')) {
+        const container = target.closest('.overflow-y-auto') as HTMLElement | null
+        if (container) {
+          if (!container.classList.contains('relative')) {
+            container.classList.add('relative')
+          }
+          setTimeout(() => {
+            let offsetTop = 0
+            let el: HTMLElement | null = target
+            while (el && el !== container) {
+              offsetTop += el.offsetTop
+              el = el.offsetParent as HTMLElement | null
+            }
+            container.scrollTo({
+              top: Math.max(0, offsetTop - 20),
+              behavior: 'smooth',
+            })
+          }, 120)
+        }
+      }
+    }
+    document.addEventListener('focusin', handleFocusIn)
+
     document.addEventListener('gesturestart', preventGestureZoom)
     document.addEventListener('gesturechange', preventGestureZoom)
     document.addEventListener('gestureend', preventGestureZoom)
@@ -167,6 +215,7 @@ export function useMobileViewportGuards() {
     window.addEventListener('scroll', preventWindowScroll)
 
     return () => {
+      document.removeEventListener('focusin', handleFocusIn)
       root.removeAttribute('data-mobile-shell')
       root.removeAttribute('data-keyboard-open')
       root.removeAttribute('data-vp-anim')

@@ -91,13 +91,23 @@ describe('MultimodalSettingsPage', () => {
     expect(save.className).toContain('md:min-h-0')
 
     expect(await screen.findByText(/default model and options for image generation/i)).toBeTruthy()
-    const triggers = Array.from(document.querySelectorAll('button')).filter((button) =>
-      /googlegenai|Provider default|1:1|landscape|portrait|auto|png|standard/.test(button.textContent ?? ''),
+    const buttons = Array.from(document.querySelectorAll('button')).filter((button) =>
+      /Provider default|1:1|landscape|portrait|auto|png|standard/.test(button.textContent ?? ''),
     ) as HTMLElement[]
-    expect(triggers.length).toBeGreaterThanOrEqual(6)
-    for (const trigger of triggers) {
-      expect(trigger.className).toContain('px-2')
-      expect(trigger.className).toContain('py-1')
+    const inputs = Array.from(document.querySelectorAll('input')).filter((input) =>
+      /googlegenai/.test(input.value),
+    ) as HTMLInputElement[]
+
+    expect(buttons.length).toBeGreaterThanOrEqual(4)
+    expect(inputs.length).toBe(2)
+
+    for (const button of buttons) {
+      expect(button.className).toContain('px-2')
+      expect(button.className).toContain('py-1')
+    }
+    for (const input of inputs) {
+      expect(input.className).toContain('min-h-11')
+      expect(input.className).toContain('md:min-h-9')
     }
   })
 })

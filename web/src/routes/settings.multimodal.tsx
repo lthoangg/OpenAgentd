@@ -13,7 +13,7 @@ import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 import { SettingsSection } from '@/components/settings/SettingsSection'
 import { validateModel } from '@/components/settings/schema'
 import type { MultimodalSettings } from '@/api/client'
-import type { ModelOption } from '@/components/settings/AgentForm'
+import { ModelCombobox, type ModelOption } from '@/components/settings/AgentForm'
 
 const IMAGE_ASPECT_RATIOS = ['1:1', '16:9', '9:16', '4:3', '3:4']
 const IMAGE_SIZES = ['0.5K', '1K', '2K', '4K']
@@ -97,8 +97,8 @@ export function MultimodalSettingsPage() {
   )
   const imageModelIds = useMemo(() => imageModelOptions.map((m) => m.id), [imageModelOptions])
   const videoModelIds = useMemo(() => videoModelOptions.map((m) => m.id), [videoModelOptions])
-  const imageModelError = validateModel(String(form.image.model ?? ''), { required: true, validValues: imageModelIds })
-  const videoModelError = validateModel(String(form.video.model ?? ''), { required: true, validValues: videoModelIds })
+  const imageModelError = validateModel(String(form.image.model ?? ''), { validValues: imageModelIds })
+  const videoModelError = validateModel(String(form.video.model ?? ''), { validValues: videoModelIds })
   const imageAspectError = listError(String(form.image.aspect_ratio ?? ''), IMAGE_ASPECT_RATIOS)
   const imageSizeError = listError(String(form.image.image_size ?? ''), IMAGE_SIZES)
   const imageOpenAiSizeError = optionalListError(form.image.size, IMAGE_OPENAI_SIZES)
@@ -206,19 +206,14 @@ function ModelField({ value, onChange, options, error }: {
   return (
     <div className="grid gap-1">
       <label className="text-[11px] font-medium text-(--color-text-muted)">Model ID</label>
-      <Dropdown
+      <ModelCombobox
         value={value}
-        onValueChange={(next) => next && onChange(next)}
-        trigger="Choose a model"
-        className="min-h-11 w-full font-mono md:min-h-9"
-        aria-invalid={!!error || undefined}
-      >
-        {options.map((option) => (
-          <DropdownItem key={option.id} value={option.id} className="font-mono">
-            {option.id}
-          </DropdownItem>
-        ))}
-      </Dropdown>
+        onChange={onChange}
+        options={options}
+        invalid={!!error}
+        placeholder="Search model…"
+        ariaLabel="Model ID"
+      />
       {error ? <p className="text-[10px] text-(--color-error) font-mono">{error}</p> : null}
     </div>
   )

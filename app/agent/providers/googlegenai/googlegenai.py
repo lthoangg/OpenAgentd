@@ -53,6 +53,7 @@ class GeminiProviderBase(LLMProviderBase):
     Subclasses must set `self.base_url`, `self.model`, and implement `_auth_headers()`.
     """
 
+    support_interrupt: bool = False
     base_url: str
     model: str
 

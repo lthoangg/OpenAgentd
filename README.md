@@ -330,7 +330,7 @@ Full documentation index: [`documents/docs/index.md`](https://github.com/lthoang
 | [Paths & XDG roots](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration/paths.md) | DATA / CONFIG / STATE / CACHE / WORKSPACE |
 | [LLM providers](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration/providers.md) | Every registered prefix, OAuth flows, capability YAML |
 | [Agent files](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration/agents.md) | `.md` frontmatter schema, validation, editing workflow |
-| [Built-in tools](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration/tools.md) | Filesystem, shell, web, multimodal, memory |
+| [Built-in tools](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration/tools.md) | Filesystem, shell, web, multimodal, scheduling, tasks, notes, team |
 | [LSP diagnostics](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration/lsp.md) | Coding-mode language-server feedback on edits, server selection, `lsp:` config |
 | [Skills](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration/skills.md) | `SKILL.md` format, builtin skill catalog |
 | [Sandbox & permissions](https://github.com/lthoangg/openagentd/blob/main/documents/docs/configuration/sandbox.md) | Denylist paths, user `sandbox.yaml`, permission services |
@@ -342,7 +342,7 @@ Full documentation index: [`documents/docs/index.md`](https://github.com/lthoang
 | Section | Contents |
 |---------|----------|
 | [Architecture](https://github.com/lthoangg/openagentd/blob/main/documents/docs/architecture.md) | C4 diagrams, in-memory SSE streaming, SSE event protocol |
-| [Agent engine](https://github.com/lthoangg/openagentd/tree/main/documents/docs/agent) | Loop, hooks, tools, teams, plugins, context, memory, summarization |
+| [Agent engine](https://github.com/lthoangg/openagentd/tree/main/documents/docs/agent) | Loop, hooks, tools, teams, plugins, context, summarization |
 | [Lazy team members](https://github.com/lthoangg/openagentd/blob/main/documents/docs/agent/team-lazy-spawn.md) | Spawn/dismiss member instances, `blueprint#N` handles, history restore |
 | [API reference](https://github.com/lthoangg/openagentd/blob/main/documents/docs/api/index.md) | HTTP endpoints, SSE events, file handling |
 

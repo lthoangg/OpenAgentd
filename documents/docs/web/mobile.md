@@ -108,7 +108,7 @@ Desktop: fixed-width left column + flex-1 right column (unchanged).
 - Header/caption chrome is hidden in fullscreen so the iframe owns the available screen area.
 - The bridge receives live theme updates when the shell theme changes.
 
-### Full-screen sheet modals (`WikiPanel`, `SchedulerPanel`, `CommandPalette`)
+### Full-screen sheet modals (`SchedulerPanel`, `CommandPalette`, `SessionSettingsPanel`)
 Centered modal surfaces switch to a full-bleed sheet on mobile:
 - Base: `fixed inset-0` covers the entire viewport, no rounded corners, no border.
 - `sm:` and up: revert to centered modal — `sm:left-1/2 sm:top-1/2 sm:inset-auto sm:h-[min(90vh,860px)] sm:w-[min(90vw,1180px)] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:border`.

@@ -37,7 +37,7 @@ Connects to LLM providers (Anthropic, Gemini, Vertex AI, OpenAI, OpenRouter, Cop
 | Doc | What it covers |
 |-----|----------------|
 | [Architecture](./architecture.md) | C4 diagrams, in-memory SSE streaming, SSE protocol, request flow. |
-| [Agent engine](./agent/index.md) | Reasoning loop, hooks, tools, teams, plugins, context, memory, summarization. |
+| [Agent engine](./agent/index.md) | Reasoning loop, hooks, tools, teams, plugins, context, summarization. |
 | [API reference](./api/index.md) | HTTP routes, SSE event payloads, file/upload handling. |
 
 ### Operations
@@ -80,7 +80,7 @@ app/          FastAPI backend
   api/        HTTP routes (thin — logic in services/)
   core/       Config, DB, logging, paths, middleware
   models/     SQLModel ORM tables
-  services/   chat_service, wiki, dream, memory_stream_store, title_service
+  services/   chat_service, coding_workspace_service, lsp/, memory_stream_store, title_service, team_manager
   cli/        openagentd CLI entry points
 web/          React frontend (Vite + Bun)
 desktop/      Tauri v2 desktop shell
@@ -101,7 +101,8 @@ Invariants live next to the code they govern. Start at the linked file when you 
 | Agent loop & hooks | [`agent/loop.md`](./agent/loop.md), [`agent/hooks.md`](./agent/hooks.md) |
 | Tools & permissions | [`agent/tools.md`](./agent/tools.md), `app/agent/tools/__init__.py` |
 | Teams | [`agent/teams.md`](./agent/teams.md), `app/agent/mode/team/` |
-| Memory & summarization | [`agent/memory.md`](./agent/memory.md), [`agent/summarization.md`](./agent/summarization.md) |
+| Context & summarization | [`agent/context.md`](./agent/context.md), [`agent/summarization.md`](./agent/summarization.md) |
+| LSP diagnostics (coding mode) | [`configuration/lsp.md`](./configuration/lsp.md), `app/services/lsp/`, `app/agent/hooks/lsp.py` |
 | Plugins | [`agent/plugins.md`](./agent/plugins.md), `app/agent/plugins/` |
 | Filesystem & paths | `app/core/paths.py`, `app/agent/sandbox.py` |
 | Frontend conventions | [`web/`](./web/) |

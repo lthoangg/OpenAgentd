@@ -62,7 +62,7 @@ Dev-mode paths shown below — substitute the production columns from the table 
 │   │   ├── agents/*.md                    # per-agent config
 │   │   ├── agents/coding/*.md             # coding-mode team
 │   │   ├── skills/{name}/SKILL.md         # skills
-│   │   ├── settings.yaml                  # Dream + title generation runtime settings
+│   │   ├── settings.yaml                  # Title generation + LSP server runtime settings
 │   │   ├── multimodal.yaml                # image/video gen config
 │   │   ├── mcp.json                       # MCP server config
 │   │   ├── sandbox.yaml                   # user-defined deny patterns

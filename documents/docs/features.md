@@ -86,7 +86,7 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   character without pressing `Ctrl+I` first. See [`web/chat-input.md`](./web/chat-input.md).
 - **Developer-friendly word navigation in composer** `[v1.86.0]` — `Option + Arrow` (macOS) and `Ctrl + Arrow` (Windows/Linux) stop at programming separators like `.`, `-`, `_`, `/`, and `@` for precise navigation and text selection (`Shift` modified). See [`web/chat-input.md`](./web/chat-input.md).
 - **Native menu/tray shortcuts** `[v1.39.0]` — menubar shortcuts for Home,
-  Cockpit, Coding, Command Palette, Wiki, Scheduled Tasks, Session Settings,
+  Cockpit, Coding, Command Palette, Scheduled Tasks, Session Settings,
   key settings pages, updates, reload, config folder, and backend log; compact
   tray dropdown for status, quick navigation, reload, settings, and quit.
 - **Touch back/forward navigation** `[v1.53.1]` *(deprecated)* — desktop Tauri windows support

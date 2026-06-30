@@ -11,7 +11,7 @@ architecture.md   System architecture
 guidelines.md     Development commands, style, testing patterns
 desktop.md        Desktop build/release/signing pipeline
 configuration/    Agent, provider, MCP, tool, skill config docs
-agent/            Agent/team/memory behavior docs
+agent/            Agent loop, hooks, tools, team, context, summarization docs
 api/              API documentation
 web/              Frontend/UI documentation
 testing/          Testing guides

@@ -1,6 +1,6 @@
 ---
 title: Built-in Tools
-description: Tools shipped with OpenAgentd — filesystem, shell, web, multimodal, memory.
+description: Tools shipped with OpenAgentd — filesystem, shell, web, multimodal, scheduling, tasks, notes, team.
 status: stable
 updated: 2026-05-16
 ---

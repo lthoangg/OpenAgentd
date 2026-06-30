@@ -191,6 +191,32 @@ class TestBeforeAgentSpawnsTask:
 
             assert mock_gen.call_args.kwargs["user_message"] == "Good question here"
 
+    async def test_skips_hidden_from_user_messages(self):
+        """Skips HumanMessage with hidden_from_user=True, finds the real user message."""
+        hook = make_hook()
+        ctx = make_ctx()
+        state = make_state(
+            messages=[
+                HumanMessage(content="This is the real user prompt"),
+                HumanMessage(
+                    content="[File: somefile.py] ...",
+                    extra={"hidden_from_user": True},
+                ),
+            ]
+        )
+
+        with patch(
+            "app.services.title_service.generate_and_save_title",
+            new_callable=AsyncMock,
+        ) as mock_gen:
+            await hook.before_agent(ctx, state)
+            await hook._task
+
+            assert (
+                mock_gen.call_args.kwargs["user_message"]
+                == "This is the real user prompt"
+            )
+
 
 # ---------------------------------------------------------------------------
 # after_agent — task cleanup

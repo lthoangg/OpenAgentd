@@ -129,6 +129,8 @@ class TitleGenerationHook(BaseAgentHook):
         user_text: str | None = None
         for m in reversed(state.messages):
             if isinstance(m, HumanMessage) and m.content:
+                if m.extra and m.extra.get("hidden_from_user"):
+                    continue
                 user_text = m.content
                 break
 

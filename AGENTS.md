@@ -20,6 +20,12 @@ tests/       pytest suite (mirrors app/)
 documents/   Developer docs (see documents/docs/index.md)
 ```
 
+Several directories carry their own `AGENTS.md` with local conventions and
+"where to look first" maps — consult the nearest one before editing:
+`app/AGENTS.md`, `app/agent/AGENTS.md`, `app/api/AGENTS.md`,
+`app/services/AGENTS.md`, `web/src/AGENTS.md`, `manual/AGENTS.md`,
+`tests/manual/AGENTS.md`, `documents/AGENTS.md`.
+
 ## Running tests
 
 ```bash
@@ -43,6 +49,7 @@ uv run python -m manual.team_history <SESSION_ID>
 uv run python -m manual.team_timeline <SESSION_ID> --full
 uv run python -m manual.team_sse "message" --session <SESSION_ID>
 uv run python -m manual.queued_injection
+uv run python -m manual.lsp_smoketest          # LSP diagnostics injection in a live coding turn
 ```
 
 See [`manual/AGENTS.md`](manual/AGENTS.md) for the full script catalogue.
@@ -55,9 +62,10 @@ See [`manual/AGENTS.md`](manual/AGENTS.md) for the full script catalogue.
 uv run python tests/manual/manual_scenarios.py    # chat_service: compaction, undo/redo, queued messages (A–G, 21 checks)
 uv run python tests/manual/extended_scenarios.py  # chat_service edge cases: orphan healing, double-undo, Anthropic sanitization (H–P, 24 checks)
 uv run python tests/manual/mention_scenarios.py   # @mention context injection: code files, dirs, binary skip, image hints, line refs, path traversal (A–I, 30 checks)
+uv run python tests/manual/lsp_scenarios.py       # LSP diagnostics + LspHook: client init, message exchange, formatting, tool-result injection (mocked + real servers)
 ```
 
-Re-run `mention_scenarios.py` after any change to `build_mention_context_blocks`, `_read_mention_as_attachment`, or `_safe_join*` in `app/api/routes/team/_helpers.py`.
+Re-run `mention_scenarios.py` after any change to `build_mention_context_blocks`, `_read_mention_as_attachment`, or `_safe_join*` in `app/api/routes/team/_helpers.py`. Re-run `lsp_scenarios.py` after any change to `LspHook` (`app/agent/hooks/lsp.py`), `LspManager`/`check_lsp_diagnostics` (`app/services/lsp/manager.py`), or `LspClient` (`app/services/lsp/client.py`).
 
 ## Design principle: mobile-first, multi-platform
 
@@ -87,7 +95,7 @@ screens. Never ship a layout that only works on one form factor.
 
 ## Documentation
 
-Start at [`documents/docs/index.md`](documents/docs/index.md) — it groups every doc by audience (getting-started / architecture / operations / frontend / contributing). Tracked tech debt: [`documents/techdebts/`](documents/techdebts/).
+Start at [`documents/docs/index.md`](documents/docs/index.md) — it groups every doc by audience (getting-started / architecture / operations / frontend / contributing). Tracked tech debt: [`documents/techdebts/`](documents/techdebts/). Significant architectural decisions are recorded as ADRs in [`documents/adrs/`](documents/adrs/) (use the `adr-writing` skill; keep the index `README.md` in sync).
 
 ## When shipping a feature
 
@@ -96,6 +104,7 @@ Update in this order so docs stay coherent:
 1. [`documents/docs/features.md`](documents/docs/features.md) — add a one-line entry under the right pillar with the `[vX.Y.Z]` tag. This is the canonical record.
 2. [`README.md`](README.md) — refresh "What you get" / comparison table only if the change is user-visible and pitch-worthy.
 3. [`documents/docs/comparison.md`](documents/docs/comparison.md) — add a row if it's a capability that differentiates against Claude Code / Codex CLI / Cursor / Aider / opencode.
-4. Deeper doc under `documents/docs/` (e.g. `agent/teams.md`) — link it back from the `features.md` entry.
+4. Deeper doc under `documents/docs/` (e.g. `agent/teams.md`, `configuration/lsp.md`) — link it back from the `features.md` entry, and surface it from the relevant index/hub (`documents/docs/index.md` or `configuration.md`).
+5. If the change adds or reshapes a subsystem, update the nearest `AGENTS.md` "where to look first" map (e.g. `app/services/AGENTS.md`) so future agents can find it.
 
 When removing a feature, mark it *(deprecated)* in `features.md` for at least one release before deleting.

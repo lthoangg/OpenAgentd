@@ -12,6 +12,7 @@ compaction logic after changes to `chat_service.py` or
 uv run python tests/manual/manual_scenarios.py
 uv run python tests/manual/extended_scenarios.py
 uv run python tests/manual/mention_scenarios.py
+uv run python tests/manual/lsp_scenarios.py
 ```
 
 Each script prints a ✅/❌ line per check and exits non-zero on any failure.
@@ -23,6 +24,7 @@ Each script prints a ✅/❌ line per check and exits non-zero on any failure.
 | `manual_scenarios.py` | A – G (21 checks) | Core paths: normal compaction, undo summary (user + LLM view), two-summary over-restore guard, queued message visibility, redo, restore-all |
 | `extended_scenarios.py` | H – P (24 checks) | Edge cases: no-undo baseline, `hidden_from_user` summary, `heal_orphaned` respects boundary, double-undo layering, `keep_last_n` undo, empty session, plain-message undo, Anthropic replay sanitization for interrupted tool stubs |
 | `mention_scenarios.py` | A – I (30 checks) | `@mention` context injection: code file extensions (.ts/.py/.yaml/…), directory listing (with/without trailing slash), binary skip, image/document hint blocks, safety check, non-existent path, line references, multiple mentions, path traversal rejection |
+| `lsp_scenarios.py` | Mocked + Real | LSP diagnostics and LspHook: client initialization, message exchange, diagnostics parsing, formatting, and tool-result injection |
 
 ## When to re-run
 
@@ -30,6 +32,7 @@ Each script prints a ✅/❌ line per check and exits non-zero on any failure.
 - Any change to `get_messages`, `get_messages_for_llm`, or `heal_orphaned_tool_calls` in `chat_service.py`
 - Any change to `undo_session_messages`, `redo_session_messages`, or `exclude_messages_before_summary`
 - Any change to `build_mention_context_blocks`, `_read_mention_as_attachment`, or `_safe_join*` in `app/api/routes/team/_helpers.py`
+- Any change to `LspHook` (`app/agent/hooks/lsp.py`), `LspManager`/`check_lsp_diagnostics` (`app/services/lsp/manager.py`), or `LspClient` (`app/services/lsp/client.py`)
 
 ## Adding new scenarios
 

@@ -443,6 +443,27 @@ MCP. Deeper doc: [`agent/tools.md`](./agent/tools.md).
 | Team coordination | `team_message`, `team_manage` |
 | Utility | `date`, `skill` |
 
+- **Real-time LSP diagnostics injection** `[v1.89.0]` — in **coding mode**, after a
+  `write`, `edit`, or `patch` tool modifies one or more files, OpenAgentd runs the
+  matching language server(s) over the changed files and injects the resulting
+  errors/warnings straight into the tool result as a compact `[LSP Diagnostics]`
+  block, so the agent sees and fixes problems on the very next turn. Servers run
+  **on demand** (spawned lazily per project+language, reused warm, reaped after
+  ~5 min idle) and are **matched to the project's own toolchain**: detection reads
+  `pyproject.toml` / `Cargo.toml` / `package.json`, so a repo that pins `ty` + `ruff`
+  gets exactly those. Resolution precedence is **project config → `settings.yaml`
+  (`lsp:`) → built-in defaults**. Python is special-cased to run *multiple*
+  complementary servers and merge results — a type checker (`ty`/`pyright`) **and**
+  a linter (`ruff`) — because neither alone catches both type errors and lint;
+  every other language uses its single canonical server (`rust-analyzer`, `gopls`,
+  `typescript-language-server`, `clangd`). Multi-file `patch` checks run
+  concurrently, the report is capped per file (errors first, then a `…and N more`
+  summary) to protect the context window, and the whole hook is fail-safe — an LSP
+  error never crashes the tool. The cockpit renders the block as a compact,
+  color-coded `ERR`/`WARN` strip beneath the diff. Diagnostics depend on the server
+  being installed and on normal LSP scope rules (e.g. rust-analyzer only
+  type-checks files that belong to a crate target; TypeScript honours `tsconfig.json`).
+  Deeper doc: [`configuration/lsp.md`](./configuration/lsp.md).
 - **Clean tool argument validation errors** `[v1.77.0]` — when a tool call
   fails Pydantic validation, the LLM receives a compact `field: message`
   summary instead of the full Pydantic noise (type codes, raw input value,

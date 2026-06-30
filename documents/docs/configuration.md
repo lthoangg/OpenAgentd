@@ -18,6 +18,7 @@ Everything you need to customise OpenAgentd. The detailed reference is split acr
 | **LLM providers** — every prefix registered in `build_provider`, OAuth flows, capability YAML | [`configuration/providers.md`](./configuration/providers.md) |
 | **Agent files** — `.md` frontmatter schema, validation, editing workflow | [`configuration/agents.md`](./configuration/agents.md) |
 | **Built-in tools** — filesystem, shell, web, multimodal, memory | [`configuration/tools.md`](./configuration/tools.md) |
+| **LSP diagnostics** — coding-mode language-server feedback on edits, server selection, `lsp:` config | [`configuration/lsp.md`](./configuration/lsp.md) |
 | **Skills** — `SKILL.md` format, registration, builtin skill catalog | [`configuration/skills.md`](./configuration/skills.md) |
 | **Sandbox & permissions** — deny-list paths, user `sandbox.yaml`, permission services | [`configuration/sandbox.md`](./configuration/sandbox.md) |
 

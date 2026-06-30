@@ -27,6 +27,10 @@ Filesystem tools normally output workspace-relative paths. The `read` tool also 
 | `glob` | Glob pattern search. `match='path'` (default) for full-path patterns like `src/**/*.ts`; `match='name'` for filename-only like `*.py`. Skips dotpaths, common generated directories, and root `.gitignore` matches. |
 | `rm` | Permanently delete a file or directory (`recursive=true` for non-empty dirs). |
 
+> In **coding mode**, `write` / `edit` / `patch` results are augmented with
+> real-time language-server diagnostics for the changed files — see
+> [`lsp.md`](./lsp.md).
+
 ### Shell
 
 | Tool | What it does |

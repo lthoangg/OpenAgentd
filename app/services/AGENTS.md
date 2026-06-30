@@ -13,7 +13,12 @@ agent_fs.py              Agent/workspace filesystem helpers
 snapshot_service.py      Workspace/session snapshot support
 commands.py              Command handling helpers
 title_service.py         Title generation
+lsp/                     On-demand LSP servers + diagnostics injection (coding mode)
 ```
+
+The LSP subsystem (`lsp/client.py`, `lsp/manager.py`) is driven by
+`app/agent/hooks/lsp.py` and documented in
+[`documents/docs/configuration/lsp.md`](../../documents/docs/configuration/lsp.md).
 
 ## Common feature checks
 

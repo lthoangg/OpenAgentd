@@ -16,7 +16,7 @@ exists. When you ship something new, **add it here first** — slides, README,
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 15 providers. Your keys.
 
-**Latest release:** v1.89.0 · June 30, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.89.0)
+**Latest release:** v1.90.0 · June 30, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.90.0)
 
 ---
 
@@ -298,7 +298,7 @@ team against it. Deeper doc: [`web/coding-sessions.md`](./web/coding-sessions.md
   changed-state indicator, and the tab badge reports the changed-file count.
 - **Two-layer workspace file viewer** `[v1.29.0]` — clicking a file in the coding
   workspace side drawer opens a read-only viewer beside it with line numbers,
-  lightweight syntax highlighting, image previews, inline HTML5 video previews `[v1.89.1]`,
+  lightweight syntax highlighting, image previews, inline HTML5 video previews `[v1.90.0]`,
   extensionless text files, and binary download fallback.
   Select lines and click **Add comment** to insert an `@path#Lx-Ly` composer
   reference; the backend auto-attaches only the selected file lines.

@@ -215,8 +215,8 @@ export function appendToolOutput(
     ) {
       let newOutput = `${block.toolOutput ?? ''}${text}`
       const lines = newOutput.split('\n')
-      if (lines.length > 120) {
-        newOutput = '... [truncated live output] ...\n' + lines.slice(-120).join('\n')
+      if (lines.length > 40) {
+        newOutput = '... [truncated live output] ...\n' + lines.slice(-40).join('\n')
       }
       if (newOutput.length > 24_000) {
         newOutput = `... [truncated live output] ...\n${newOutput.slice(-24_000)}`

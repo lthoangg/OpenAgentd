@@ -316,10 +316,10 @@ describe("appendToolOutput", () => {
     const output = result[0].toolOutput || "";
     expect(output).toContain("... [truncated live output] ...");
     const outputLines = output.split("\n");
-    // Should be 1 header line + 120 lines of output
-    expect(outputLines.length).toBe(121);
-    expect(outputLines[1]).toBe("line 20");
-    expect(outputLines[120]).toBe("line 139");
+    // Should be 1 header line + 40 lines of output
+    expect(outputLines.length).toBe(41);
+    expect(outputLines[1]).toBe("line 100");
+    expect(outputLines[40]).toBe("line 139");
   });
 });
 

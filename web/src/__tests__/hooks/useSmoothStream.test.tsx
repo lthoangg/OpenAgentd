@@ -1,8 +1,53 @@
-import { describe, it, expect, afterEach } from 'bun:test'
+import { describe, it, expect, afterEach, beforeEach, mock } from 'bun:test'
 import { renderHook, cleanup, act } from '@testing-library/react'
 import { useSmoothStream } from '@/hooks/useSmoothStream'
 
-afterEach(cleanup)
+// ---------------------------------------------------------------------------
+// Deterministic rAF mock
+// Instead of relying on real timers/wall-clock waits, we capture every
+// callback registered via requestAnimationFrame and expose a `flushFrames`
+// helper that runs them synchronously until none remain.
+// ---------------------------------------------------------------------------
+
+let pendingFrames: FrameRequestCallback[] = []
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockRaf = mock((...args: any[]) => {
+  const cb = args[0] as FrameRequestCallback
+  pendingFrames.push(cb)
+  return pendingFrames.length // fake frame id
+})
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockCancelRaf = mock((...args: any[]) => {
+  const id = args[0] as number
+  // Mark the slot as a no-op so it doesn't run when flushed.
+  if (id > 0 && id <= pendingFrames.length) {
+    pendingFrames[id - 1] = () => {}
+  }
+})
+
+/** Run all queued rAF callbacks in order (simulates N animation frames). */
+function flushFrames(count = 1) {
+  for (let i = 0; i < count; i++) {
+    const frames = pendingFrames.slice()
+    pendingFrames = []
+    frames.forEach((cb) => cb(performance.now()))
+  }
+}
+
+beforeEach(() => {
+  pendingFrames = []
+  globalThis.requestAnimationFrame = mockRaf as unknown as typeof requestAnimationFrame
+  globalThis.cancelAnimationFrame = mockCancelRaf as unknown as typeof cancelAnimationFrame
+})
+
+afterEach(() => {
+  cleanup()
+  pendingFrames = []
+})
+
+// ---------------------------------------------------------------------------
 
 describe('useSmoothStream', () => {
   it('returns targetText immediately when isStreaming is false', () => {
@@ -20,32 +65,22 @@ describe('useSmoothStream', () => {
     expect(result.current).toBe('Hello, world!')
   })
 
-  it('animates text when isStreaming is true and targetText increases', async () => {
+  it('animates text when isStreaming is true and targetText increases', () => {
     let text = 'Hello'
     const { result, rerender } = renderHook(() => useSmoothStream(text, true))
     expect(result.current).toBe('Hello')
 
-    // Increase targetText
     text = 'Hello, world! This is a longer message.'
     rerender()
 
-    // It should not jump to the full text immediately
+    // After one frame the text should have advanced but not be complete yet.
+    act(() => { flushFrames(1) })
+    expect(result.current.length).toBeGreaterThan('Hello'.length)
     expect(result.current.length).toBeLessThan(text.length)
     expect(result.current.startsWith('Hello')).toBe(true)
 
-    // Wait a few animation frames
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 100))
-    })
-
-    // It should have progressed
-    expect(result.current.length).toBeGreaterThan(5)
-
-    // Wait enough time for it to complete
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 300))
-    })
-
+    // Flush enough frames to finish the animation (15% per frame converges fast).
+    act(() => { flushFrames(40) })
     expect(result.current).toBe(text)
   })
 
@@ -57,9 +92,12 @@ describe('useSmoothStream', () => {
 
     text = 'Hello, world! This is a longer message.'
     rerender()
+
+    // One frame in — still mid-animation.
+    act(() => { flushFrames(1) })
     expect(result.current.length).toBeLessThan(text.length)
 
-    // Turn off streaming
+    // Turn off streaming — must snap immediately.
     streaming = false
     rerender()
     expect(result.current).toBe(text)
@@ -70,9 +108,26 @@ describe('useSmoothStream', () => {
     const { result, rerender } = renderHook(() => useSmoothStream(text, true))
     expect(result.current).toBe('Hello')
 
-    // Completely different text
+    // Completely different text — must snap, no animation.
     text = 'Goodbye'
     rerender()
     expect(result.current).toBe('Goodbye')
+  })
+
+  it('cancels the previous rAF loop when targetText updates', () => {
+    let text = 'Hello'
+    const { rerender } = renderHook(() => useSmoothStream(text, true))
+
+    text = 'Hello, world!'
+    rerender()
+
+    const framesBefore = pendingFrames.length
+
+    // Updating again should cancel the old loop and schedule a fresh one.
+    text = 'Hello, world! Extended.'
+    rerender()
+
+    // The pending queue should not grow unboundedly.
+    expect(pendingFrames.length).toBeLessThanOrEqual(framesBefore + 1)
   })
 })

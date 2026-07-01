@@ -1081,6 +1081,86 @@ describe("connectStream", () => {
     expect(useTeamStore.getState().isTeamWorking).toBe(true)
   })
 
+  it("schedules a reconnect after a transient network error while working", () => {
+    // Capture the setTimeout callback so we can fire it synchronously.
+    let timerCb!: () => void
+    const origSetTimeout = globalThis.setTimeout
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    spyOn(globalThis, "setTimeout").mockImplementation((cb: any) => {
+      timerCb = cb
+      return 0 as unknown as ReturnType<typeof setTimeout>
+    })
+
+    useTeamStore.setState({ sessionId: "s1", isTeamWorking: true })
+    let callbacks!: { onError: (err: Error) => void }
+    // First call captures callbacks; second call (reconnect) just sets isConnected.
+    mockTeamStream.mockImplementation((_sid: string, cbs: typeof callbacks) => { callbacks = cbs })
+    useTeamStore.getState().connectStream()
+    callbacks.onError(new TypeError("Load failed"))
+
+    // Timer scheduled, stream not yet reconnected.
+    expect(timerCb).toBeDefined()
+    expect(mockTeamStream).toHaveBeenCalledTimes(1)
+
+    // Fire the timer — should reopen the stream.
+    timerCb()
+    expect(mockTeamStream).toHaveBeenCalledTimes(2)
+    expect(useTeamStore.getState().isConnected).toBe(true)
+
+    globalThis.setTimeout = origSetTimeout
+  })
+
+  it("does not reconnect from the timer if the session changed", () => {
+    let timerCb!: () => void
+    const origSetTimeout = globalThis.setTimeout
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    spyOn(globalThis, "setTimeout").mockImplementation((cb: any) => {
+      timerCb = cb
+      return 0 as unknown as ReturnType<typeof setTimeout>
+    })
+
+    useTeamStore.setState({ sessionId: "s1", isTeamWorking: true })
+    let callbacks!: { onError: (err: Error) => void }
+    mockTeamStream.mockImplementation((_sid: string, cbs: typeof callbacks) => { callbacks = cbs })
+    useTeamStore.getState().connectStream()
+    callbacks.onError(new TypeError("Load failed"))
+
+    // Navigate away — bumps generation.
+    useTeamStore.getState().newSession()
+
+    // Timer fires but the generation guard should prevent reconnect.
+    timerCb()
+    // teamStream called only once (the original connect), not again.
+    expect(mockTeamStream).toHaveBeenCalledTimes(1)
+
+    globalThis.setTimeout = origSetTimeout
+  })
+
+  it("does not reconnect from the timer if already reconnected", () => {
+    let timerCb!: () => void
+    const origSetTimeout = globalThis.setTimeout
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    spyOn(globalThis, "setTimeout").mockImplementation((cb: any) => {
+      timerCb = cb
+      return 0 as unknown as ReturnType<typeof setTimeout>
+    })
+
+    useTeamStore.setState({ sessionId: "s1", isTeamWorking: true })
+    let callbacks!: { onError: (err: Error) => void }
+    mockTeamStream.mockImplementation((_sid: string, cbs: typeof callbacks) => { callbacks = cbs })
+    useTeamStore.getState().connectStream()
+    callbacks.onError(new TypeError("Load failed"))
+
+    // Manually reconnect before the timer fires (e.g. visibilitychange).
+    useTeamStore.setState({ isConnected: true })
+
+    timerCb()
+    // Still only one teamStream call — isConnected guard prevents the extra one.
+    expect(mockTeamStream).toHaveBeenCalledTimes(1)
+
+    globalThis.setTimeout = origSetTimeout
+  })
+
   it("ignores stream errors while the page is unloading", () => {
     useTeamStore.setState({ sessionId: "s1", isTeamWorking: true, _unloading: true })
     let callbacks!: { onError: (err: Error) => void }
@@ -1112,6 +1192,40 @@ describe("connectStream", () => {
 
     expect(useTeamStore.getState().isConnected).toBe(false)
     expect(useTeamStore.getState().cacheInvalidations).toContainEqual({ kind: "team_sessions" })
+  })
+
+  it("onDone reopens the stream immediately when the session is still working", () => {
+    // Simulates a server restart or idle-keepalive close mid-run:
+    // backend closes the SSE channel cleanly while isTeamWorking is true.
+    let callCount = 0
+    mockTeamStream.mockImplementation(
+      (_sid: string, cbs: { onDone?: () => void }) => {
+        callCount++
+        // Only fire onDone on the first call to avoid an infinite loop in the test.
+        if (callCount === 1) cbs.onDone?.()
+      }
+    )
+    useTeamStore.setState({ sessionId: "stream-sid", isTeamWorking: true })
+    useTeamStore.getState().connectStream()
+
+    // Should have opened the stream twice: original + reconnect.
+    expect(mockTeamStream).toHaveBeenCalledTimes(2)
+    expect(useTeamStore.getState().isConnected).toBe(true)
+    // No cache invalidation pushed — session is still in-flight.
+    expect(useTeamStore.getState().cacheInvalidations).not.toContainEqual({ kind: "team_sessions" })
+  })
+
+  it("onDone does not reopen the stream when the page is unloading", () => {
+    mockTeamStream.mockImplementation(
+      (_sid: string, cbs: { onDone?: () => void }) => {
+        cbs.onDone?.()
+      }
+    )
+    useTeamStore.setState({ sessionId: "stream-sid", isTeamWorking: true, _unloading: true })
+    useTeamStore.getState().connectStream()
+
+    expect(mockTeamStream).toHaveBeenCalledTimes(1)
+    expect(useTeamStore.getState().isConnected).toBe(false)
   })
 
   it("does not reconnect after onDone when queued messages are pending", () => {

@@ -594,7 +594,20 @@ export const useTeamStore = create<TeamStore>()(
             const current = get()
             if (current.sessionId !== sessionId || current._sessionGeneration !== generation) return
             if (current._unloading || abort.signal.aborted) return
-            if (isTransientNetworkError(err) || !current.isTeamWorking) {
+            if (isTransientNetworkError(err)) {
+              set((draft) => { draft.isConnected = false })
+              // Reconnect after a short delay so transient network blips
+              // (WiFi switch, iOS background-kill, server restart) don't
+              // permanently break an in-progress session.
+              setTimeout(() => {
+                const s = get()
+                if (s.sessionId !== sessionId || s._sessionGeneration !== generation) return
+                if (s._unloading || s.isConnected) return
+                get().connectStream()
+              }, 1500)
+              return
+            }
+            if (!current.isTeamWorking) {
               set((draft) => { draft.isConnected = false })
               return
             }
@@ -603,6 +616,14 @@ export const useTeamStore = create<TeamStore>()(
           onDone: () => {
             const current = get()
             if (current.sessionId !== sessionId || current._sessionGeneration !== generation) return
+            // If the backend closed the SSE channel while the session is
+            // still running (e.g. server restart / idle keepalive timeout),
+            // reopen the stream immediately so we don't miss events.
+            if (current.isTeamWorking && !current._unloading) {
+              set((draft) => { draft.isConnected = false })
+              get().connectStream()
+              return
+            }
             set((draft) => {
               draft.isConnected = false
               draft.cacheInvalidations.push({ kind: 'team_sessions' })

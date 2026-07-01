@@ -1,6 +1,15 @@
 // Global test setup — registers Happy DOM so React components can render.
+import { mock, afterEach } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
-import { afterEach } from "bun:test";
+
+// Stub FileTypeIcon so its `?url` SVG imports don't crash Bun's module loader
+// (Bun doesn't run Vite, so raw SVG files have no `default` export). Tests
+// never assert on icon appearance, so a no-op component is correct.
+mock.module("@/components/FileTypeIcon", () => ({
+  FileTypeIcon: () => null,
+}));
+
+
 
 // Pass an explicit ``url`` so ``window.location.origin`` is a real origin
 // instead of ``"null"`` (the about:blank default). This matters for any

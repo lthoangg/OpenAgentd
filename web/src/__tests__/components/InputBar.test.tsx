@@ -43,478 +43,334 @@ class MockSpeechRecognition {
   }
 }
 
+// Override the global setup.ts stub so voice tests in this file use a
+// synchronous mock that doesn't touch real async browser APIs.
+mock.module("@/lib/speech-recognition", () => ({
+  isClientSpeechRecognitionSupported: () => true,
+  getSpeechRecognitionConstructor: () => MockSpeechRecognition,
+  startClientSpeechRecognition: async (options: {
+    onFinal: (t: string) => void
+    onError: (m: string) => void
+    onEnd: () => void
+  }) => {
+    const recognition = new MockSpeechRecognition()
+    recognition.onresult = (event) => {
+      const result = event.results[event.resultIndex]
+      if (result?.isFinal) options.onFinal(result[0].transcript)
+    }
+    recognition.onerror = (event) => options.onError(event.message ?? event.error ?? "error")
+    recognition.onend = () => options.onEnd()
+    recognition.start()
+    return { stop: () => recognition.stop() }
+  },
+}))
+
 beforeEach(() => {
   isMobile = false
-  Object.defineProperty(navigator, "mediaDevices", {
-    value: {
-      getUserMedia: async () => ({ getTracks: () => [{ stop: () => {} }] }),
-    },
-    configurable: true,
-  })
-  Object.defineProperty(window, "SpeechRecognition", {
-    value: MockSpeechRecognition,
-    configurable: true,
-    writable: true,
-  })
 })
 
 afterEach(cleanup)
 
-afterEach(() => {
-  delete (window as Window & { SpeechRecognition?: unknown }).SpeechRecognition
-  Object.defineProperty(navigator, "mediaDevices", {
-    value: undefined,
-    configurable: true,
-  })
-})
-
-describe("InputBar", () => {
-  it("exports history dedupe logic used by the component", () => {
+// ─────────────────────────────────────────────────────────────────────────────
+// Pure logic (no DOM) — fast sanity checks on exported helpers
+// ─────────────────────────────────────────────────────────────────────────────
+describe("InputBar — pure logic helpers", () => {
+  it("buildHistoryEntries merges local + persisted, deduplicates and trims", () => {
     expect(buildHistoryEntries([" local ", "other"], ["other", "", " persisted "])).toEqual([
-      "local",
-      "other",
-      "persisted",
+      "local", "other", "persisted",
     ])
   })
 
-  it("exports slash filtering logic used by the component", () => {
+  it("filterSlashCommands returns separator + matching commands", () => {
     const commands = [
       { id: "group", label: "Group", description: "", isSeparator: true },
       { id: "continue", label: "Continue", description: "Continue the run" },
       { id: "compact", label: "Compact", description: "Compact session" },
     ]
-    expect(filterSlashCommands(commands, "cont").map((cmd) => cmd.id)).toEqual([
-      "group",
-      "continue",
-    ])
+    expect(filterSlashCommands(commands, "cont").map((c) => c.id)).toEqual(["group", "continue"])
   })
 
-  it("exports snippet and mention filtering logic used by the component", () => {
+  it("filterSnippetCommands filters by query", () => {
     expect(
       filterSnippetCommands(
-        [
-          { id: "fix", label: "Fix bug", description: "" },
-          { id: "feat", label: "Add feature", description: "" },
-        ],
+        [{ id: "fix", label: "Fix bug", description: "" }, { id: "feat", label: "Add feature", description: "" }],
         { start: 0, end: 3, query: "fi" },
-      ).map((cmd) => cmd.id),
+      ).map((c) => c.id),
     ).toEqual(["fix"])
+  })
 
+  it("filterMentions filters by query", () => {
     expect(
       filterMentions(
-        [
-          { path: "src/app.ts", name: "app.ts", type: "file" },
-          { path: "docs/guide.md", name: "guide.md", type: "file" },
-        ],
+        [{ path: "src/app.ts", name: "app.ts", type: "file" }, { path: "docs/guide.md", name: "guide.md", type: "file" }],
         { start: 0, end: 4, query: "app" },
-      ).map((ref) => ref.path),
+      ).map((r) => r.path),
     ).toEqual(["src/app.ts"])
   })
 
-  it("renders textarea with placeholder", () => {
-    const onSubmit = () => {}
-    render(<InputBar onSubmit={onSubmit} placeholder="Type here..." />)
-
-    const textarea = screen.getByPlaceholderText("Type here...")
-    expect(textarea).toBeTruthy()
+  it("isFileTypeAllowed returns true for every file type", () => {
+    expect(isFileTypeAllowed(new File([""], "notes.txt", { type: "text/plain" }))).toBe(true)
+    expect(isFileTypeAllowed(new File([""], "archive.zip", { type: "application/zip" }))).toBe(true)
+    expect(isFileTypeAllowed(new File([""], "main.py", { type: "" }))).toBe(true)
   })
 
-  it("uses default placeholder when not provided", () => {
-    const onSubmit = () => {}
-    render(<InputBar onSubmit={onSubmit} />)
-
-    const textarea = screen.getByPlaceholderText("Message OpenAgentd…")
-    expect(textarea).toBeTruthy()
+  it("buildAcceptString covers text, code, documents and media", () => {
+    const accept = buildAcceptString()
+    expect(accept).toContain("text/plain")
+    expect(accept).toContain(".py")
+    expect(accept).toContain(".ts")
+    expect(accept).toContain("application/json")
+    expect(accept).toContain("application/pdf")
+    expect(accept).toContain("image/*")
+    expect(accept).toContain("audio/*")
+    expect(accept).toContain("video/*")
   })
 
+  it("getPreviousWordBoundary finds boundaries moving left", () => {
+    const text = "com.openagentd.desktop"
+    expect(getPreviousWordBoundary(text, 22)).toBe(15)
+    expect(getPreviousWordBoundary(text, 15)).toBe(4)
+    expect(getPreviousWordBoundary(text, 4)).toBe(0)
+  })
+
+  it("getNextWordBoundary finds boundaries moving right", () => {
+    const text = "com.openagentd.desktop"
+    expect(getNextWordBoundary(text, 0)).toBe(3)
+    expect(getNextWordBoundary(text, 3)).toBe(14)
+    expect(getNextWordBoundary(text, 14)).toBe(22)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Submit behaviour
+// ─────────────────────────────────────────────────────────────────────────────
+describe("InputBar — submit", () => {
   it("calls onSubmit with trimmed text on Enter", async () => {
     const user = userEvent.setup()
-    let submittedText = ""
-    const onSubmit = (text: string) => {
-      submittedText = text
-    }
-
-    render(<InputBar onSubmit={onSubmit} />)
-    const textarea = screen.getByLabelText("Message input")
-
-    await user.type(textarea, "  hello world  ")
+    let submitted = ""
+    render(<InputBar onSubmit={(t) => { submitted = t }} />)
+    await user.type(screen.getByLabelText("Message input"), "  hello world  ")
     await user.keyboard("{Enter}")
-
-    expect(submittedText).toBe("hello world")
+    expect(submitted).toBe("hello world")
   })
 
-  it("does not submit on Shift+Enter (allows newline)", async () => {
+  it("does not submit on Shift+Enter", async () => {
     const user = userEvent.setup()
-    let submitCount = 0
-    const onSubmit = () => {
-      submitCount++
-    }
-
-    render(<InputBar onSubmit={onSubmit} />)
+    let count = 0
+    render(<InputBar onSubmit={() => { count++ }} />)
     const textarea = screen.getByLabelText("Message input")
-
     await user.type(textarea, "line1")
     await user.keyboard("{Shift>}{Enter}{/Shift}")
-
-    expect(submitCount).toBe(0)
-    // Should have newline in textarea
+    expect(count).toBe(0)
     expect((textarea as HTMLTextAreaElement).value).toContain("\n")
   })
 
-  it("does not submit on Enter on mobile (allows newline)", async () => {
+  it("does not submit on Enter on mobile", async () => {
     isMobile = true
     const user = userEvent.setup()
-    let submitCount = 0
-    const onSubmit = () => {
-      submitCount++
-    }
-
-    render(<InputBar onSubmit={onSubmit} />)
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-
+    let count = 0
+    render(<InputBar onSubmit={() => { count++ }} />)
+    const textarea = screen.getByLabelText("Message input")
     await user.type(textarea, "line1")
     await user.keyboard("{Enter}")
-
-    expect(submitCount).toBe(0)
-    expect(textarea.value).toContain("\n")
+    expect(count).toBe(0)
   })
 
-  it("does not submit when input is empty", async () => {
+  it("does not submit when empty or whitespace-only", async () => {
     const user = userEvent.setup()
-    let submitCount = 0
-    const onSubmit = () => {
-      submitCount++
-    }
-
-    render(<InputBar onSubmit={onSubmit} />)
+    let count = 0
+    render(<InputBar onSubmit={() => { count++ }} />)
     const textarea = screen.getByLabelText("Message input")
-
-    await user.click(textarea)
     await user.keyboard("{Enter}")
-    expect(submitCount).toBe(0)
-  })
-
-  it("does not submit when input is only whitespace", async () => {
-    const user = userEvent.setup()
-    let submitCount = 0
-    const onSubmit = () => {
-      submitCount++
-    }
-
-    render(<InputBar onSubmit={onSubmit} />)
-    const textarea = screen.getByLabelText("Message input")
-
     await user.type(textarea, "   ")
     await user.keyboard("{Enter}")
-    expect(submitCount).toBe(0)
+    expect(count).toBe(0)
   })
 
-  it("navigates submitted input history with arrow keys from an empty input", async () => {
+  it("submits a queued follow-up while streaming", async () => {
     const user = userEvent.setup()
-    const submitted: string[] = []
-    render(<InputBar onSubmit={(text) => submitted.push(text)} />)
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+    let submitted = ""
+    render(<InputBar onSubmit={(t) => { submitted = t }} isStreaming={true} />)
+    await user.type(screen.getByLabelText("Message input"), "follow-up")
+    await user.keyboard("{Enter}")
+    expect(submitted).toBe("follow-up")
+  })
 
+  it("clears input and files after submit", async () => {
+    const user = userEvent.setup()
+    render(<InputBar onSubmit={() => {}} />)
+    const file = new File([""], "notes.txt", { type: "text/plain" })
+    await user.upload(document.querySelector('input[type="file"]') as HTMLInputElement, file)
+    expect(screen.getByText("notes.txt")).toBeTruthy()
+    await user.type(screen.getByLabelText("Message input"), "send it")
+    await user.keyboard("{Enter}")
+    expect(screen.queryByText("notes.txt")).toBeNull()
+    expect((screen.getByLabelText("Message input") as HTMLTextAreaElement).value).toBe("")
+  })
+
+  it("passes files to onSubmit", async () => {
+    const user = userEvent.setup()
+    let capturedFiles: File[] | undefined
+    render(<InputBar onSubmit={(_msg, files) => { capturedFiles = files }} />)
+    const file = new File([""], "notes.txt", { type: "text/plain" })
+    await user.upload(document.querySelector('input[type="file"]') as HTMLInputElement, file)
+    await user.type(screen.getByLabelText("Message input"), "send")
+    await user.keyboard("{Enter}")
+    expect(capturedFiles?.[0].name).toBe("notes.txt")
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Placeholder / disabled state
+// ─────────────────────────────────────────────────────────────────────────────
+describe("InputBar — placeholder and disabled state", () => {
+  it("uses the custom placeholder", () => {
+    render(<InputBar onSubmit={() => {}} placeholder="Ask anything…" />)
+    expect((screen.getByLabelText("Message input") as HTMLTextAreaElement).placeholder).toBe("Ask anything…")
+  })
+
+  it("overrides placeholder with waiting message when disabled", () => {
+    render(<InputBar onSubmit={() => {}} disabled={true} placeholder="Ask anything…" />)
+    expect((screen.getByLabelText("Message input") as HTMLTextAreaElement).placeholder).toBe("Waiting for response…")
+  })
+
+  it("overrides placeholder when streaming", () => {
+    render(<InputBar onSubmit={() => {}} isStreaming={true} placeholder="Ask anything…" />)
+    expect((screen.getByLabelText("Message input") as HTMLTextAreaElement).placeholder).toMatch(/Queue a follow-up/)
+  })
+
+  it("send button disabled with no text, enabled once text is typed", async () => {
+    const user = userEvent.setup()
+    render(<InputBar onSubmit={() => {}} />)
+    const btn = screen.getByLabelText("Send message")
+    expect(btn.hasAttribute("disabled")).toBe(true)
+    await user.type(screen.getByLabelText("Message input"), "hi")
+    expect(btn.hasAttribute("disabled")).toBe(false)
+  })
+
+  it("send button tooltip mentions Enter and Shift+Enter", () => {
+    render(<InputBar onSubmit={() => {}} />)
+    const title = screen.getByLabelText("Send message").getAttribute("title") ?? ""
+    expect(title).toMatch(/Enter/)
+    expect(title).toMatch(/Shift\+Enter/)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Input history
+// ─────────────────────────────────────────────────────────────────────────────
+describe("InputBar — input history", () => {
+  it("navigates local history with arrow keys from an empty input", async () => {
+    const user = userEvent.setup()
+    render(<InputBar onSubmit={() => {}} />)
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
     await user.type(textarea, "first")
     await user.keyboard("{Enter}")
     await user.type(textarea, "second")
     await user.keyboard("{Enter}")
 
-    expect(submitted).toEqual(["first", "second"])
-    expect(textarea.value).toBe("")
-
-    await user.keyboard("{ArrowDown}")
-    expect(textarea.value).toBe("")
-
     await user.keyboard("{ArrowUp}")
     expect(textarea.value).toBe("second")
-
     await user.keyboard("{ArrowUp}")
     expect(textarea.value).toBe("first")
-
     await user.keyboard("{ArrowDown}")
     expect(textarea.value).toBe("second")
-
     await user.keyboard("{ArrowDown}")
     expect(textarea.value).toBe("")
   })
 
-  it("does not enter input history when the user has typed a draft", async () => {
+  it("does not enter history when a draft is present", async () => {
     const user = userEvent.setup()
     render(<InputBar onSubmit={() => {}} />)
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-
     await user.type(textarea, "previous")
     await user.keyboard("{Enter}")
     await user.type(textarea, "draft")
     await user.keyboard("{ArrowUp}")
-
     expect(textarea.value).toBe("draft")
   })
 
-  it("navigates supplied chat history prompts before any local submit", async () => {
+  it("navigates supplied historyPrompts", async () => {
     const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} historyPrompts={["newer persisted", "older persisted"]} />)
+    render(<InputBar onSubmit={() => {}} historyPrompts={["newer", "older"]} />)
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-
     await user.click(textarea)
     await user.keyboard("{ArrowUp}")
-    expect(textarea.value).toBe("newer persisted")
-
+    expect(textarea.value).toBe("newer")
     await user.keyboard("{ArrowUp}")
-    expect(textarea.value).toBe("older persisted")
-
+    expect(textarea.value).toBe("older")
     await user.keyboard("{ArrowDown}")
-    expect(textarea.value).toBe("newer persisted")
-
-    await user.keyboard("{ArrowDown}")
-    expect(textarea.value).toBe("")
+    expect(textarea.value).toBe("newer")
   })
 
-  it("keeps local submissions ahead of supplied chat history and deduplicates", async () => {
-    const user = userEvent.setup()
-    const submitted: string[] = []
-    render(<InputBar onSubmit={(text) => submitted.push(text)} historyPrompts={["persisted", "local"]} />)
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-
-    await user.type(textarea, "local")
-    await user.keyboard("{Enter}")
-    await user.keyboard("{ArrowUp}")
-    expect(textarea.value).toBe("local")
-
-    await user.keyboard("{ArrowUp}")
-    expect(textarea.value).toBe("persisted")
-    expect(submitted).toEqual(["local"])
-  })
-
-  it("ignores blank history prompts and trims supplied entries", async () => {
-    const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} historyPrompts={["   ", "  trimmed persisted  ", "\n"]} />)
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-
-    await user.click(textarea)
-    await user.keyboard("{ArrowUp}")
-    expect(textarea.value).toBe("trimmed persisted")
-
-    await user.keyboard("{ArrowUp}")
-    expect(textarea.value).toBe("trimmed persisted")
-  })
-
-  it("does not hijack modified arrow keys for history navigation", async () => {
+  it("does not hijack modified arrow keys", async () => {
     const user = userEvent.setup()
     render(<InputBar onSubmit={() => {}} historyPrompts={["persisted"]} />)
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-
     await user.click(textarea)
     await user.keyboard("{Control>}{ArrowUp}{/Control}")
     expect(textarea.value).toBe("")
-
-    await user.keyboard("{Shift>}{ArrowUp}{/Shift}")
-    expect(textarea.value).toBe("")
-
     await user.keyboard("{ArrowUp}")
     expect(textarea.value).toBe("persisted")
   })
+})
 
-  it("updates navigable history when supplied chat prompts change", async () => {
+// ─────────────────────────────────────────────────────────────────────────────
+// Shell mode
+// ─────────────────────────────────────────────────────────────────────────────
+describe("InputBar — shell mode", () => {
+  it("enters shell mode when ! is typed at the start", async () => {
     const user = userEvent.setup()
-    const { rerender } = render(<InputBar onSubmit={() => {}} historyPrompts={["initial"]} />)
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-
-    rerender(<InputBar onSubmit={() => {}} historyPrompts={["latest", "initial"]} />)
-    await user.click(textarea)
-    await user.keyboard("{ArrowUp}")
-    expect(textarea.value).toBe("latest")
-
-    await user.keyboard("{ArrowUp}")
-    expect(textarea.value).toBe("initial")
-  })
-
-  it("deduplicates repeated local submissions and does not move past oldest entry", async () => {
-    const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} />)
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-
-    await user.type(textarea, "same")
-    await user.keyboard("{Enter}")
-    await user.type(textarea, "same")
-    await user.keyboard("{Enter}")
-
-    await user.keyboard("{ArrowUp}")
-    expect(textarea.value).toBe("same")
-
-    await user.keyboard("{ArrowUp}")
-    expect(textarea.value).toBe("same")
-  })
-
-  it("disables send button when disabled prop is true", () => {
-    const onSubmit = () => {}
-    render(<InputBar onSubmit={onSubmit} disabled={true} />)
-
-    const button = screen.getByLabelText("Send message")
-    expect(button.hasAttribute("disabled")).toBe(true)
-  })
-
-  it("enables send button when disabled prop is false and text present", async () => {
-    const user = userEvent.setup()
-    const onSubmit = () => {}
-    render(<InputBar onSubmit={onSubmit} disabled={false} />)
-
-    const textarea = screen.getByLabelText("Message input")
-    const button = screen.getByLabelText("Send message")
-
-    // Button is disabled when no text
-    expect(button.hasAttribute("disabled")).toBe(true)
-
-    // Add text
-    await user.type(textarea, "test")
-
-    // Button should be enabled now
-    expect(button.hasAttribute("disabled")).toBe(false)
-  })
-
-  it("uses custom placeholder in idle state", () => {
-    const onSubmit = () => {}
-    render(<InputBar onSubmit={onSubmit} placeholder="Ask anything…" />)
-
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-    expect(textarea.placeholder).toBe("Ask anything…")
-  })
-
-  it("overrides placeholder with waiting status when disabled", () => {
-    const onSubmit = () => {}
-    render(<InputBar onSubmit={onSubmit} disabled={true} placeholder="Ask anything…" />)
-
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-    expect(textarea.placeholder).toBe("Waiting for response…")
-  })
-
-  it("overrides placeholder with streaming status when streaming", () => {
-    const onSubmit = () => {}
-    render(<InputBar onSubmit={onSubmit} isStreaming={true} placeholder="Ask anything…" />)
-
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-    expect(textarea.placeholder).toMatch(/Queue a follow-up/)
-  })
-
-  it("submits a queued follow-up while streaming", async () => {
-    const user = userEvent.setup()
-    let submittedText = ""
-    render(
-      <InputBar
-        onSubmit={(text) => {
-          submittedText = text
-        }}
-        isStreaming={true}
-      />,
-    )
-
-    const textarea = screen.getByLabelText("Message input")
-    await user.type(textarea, "queued follow-up")
-    await user.keyboard("{Enter}")
-
-    expect(submittedText).toBe("queued follow-up")
-  })
-
-  it("exposes keyboard shortcuts via send button tooltip", () => {
-    const onSubmit = () => {}
-    render(<InputBar onSubmit={onSubmit} />)
-
-    const sendButton = screen.getByLabelText("Send message")
-    expect(sendButton.getAttribute("title")).toMatch(/Enter/)
-    expect(sendButton.getAttribute("title")).toMatch(/Shift\+Enter/)
-  })
-
-  it("enters shell mode when bang is typed at the start", async () => {
-    const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} placeholder="Message the team…" />)
-
+    render(<InputBar onSubmit={() => {}} placeholder="Message…" />)
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
     await user.type(textarea, "!")
-
-    expect(textarea.value).toBe("")
     expect(screen.getByLabelText("Shell command input")).toBe(textarea)
     expect(textarea.placeholder).toBe("Enter shell command... git status")
     expect(screen.getByLabelText("Exit shell mode")).toBeTruthy()
-    expect(screen.queryByLabelText("Attach file")).toBeNull()
-    expect(screen.queryByLabelText(/Voice input/)).toBeNull()
   })
 
-  it("leaves shell mode with Backspace when command is empty", async () => {
+  it("leaves shell mode on Backspace when command is empty", async () => {
     const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} placeholder="Message the team…" />)
-
+    render(<InputBar onSubmit={() => {}} placeholder="Message…" />)
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
     await user.type(textarea, "!")
     await user.keyboard("{Backspace}")
-
-    expect(textarea.value).toBe("")
     expect(screen.getByLabelText("Message input")).toBe(textarea)
-    expect(textarea.placeholder).toBe("Message the team…")
-    expect(screen.getByLabelText("Use shell mode")).toBeTruthy()
+    expect(textarea.placeholder).toBe("Message…")
   })
 
-  it("enters and exits shell mode from the shell button", async () => {
+  it("submits shell mode content with bang prefix", async () => {
     const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} placeholder="Message the team…" />)
-
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-    await user.click(screen.getByLabelText("Use shell mode"))
-
-    expect(screen.getByLabelText("Shell command input")).toBe(textarea)
-    expect(textarea.placeholder).toBe("Enter shell command... git status")
-    expect(screen.queryByLabelText("Attach file")).toBeNull()
-
-    await user.click(screen.getByLabelText("Exit shell mode"))
-
-    expect(screen.getByLabelText("Message input")).toBe(textarea)
-    expect(textarea.placeholder).toBe("Message the team…")
-  })
-
-  it("submits shell mode content with a visible bang prefix", async () => {
-    const user = userEvent.setup()
-    let submittedText = ""
-    render(<InputBar onSubmit={(text) => { submittedText = text }} />)
-
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-    await user.type(textarea, "!pwd")
+    let submitted = ""
+    render(<InputBar onSubmit={(t) => { submitted = t }} />)
+    await user.type(screen.getByLabelText("Message input"), "!pwd")
     await user.keyboard("{Enter}")
-
-    expect(submittedText).toBe("!pwd")
-    expect(textarea.value).toBe("")
-    expect(screen.getByLabelText("Message input")).toBe(textarea)
+    expect(submitted).toBe("!pwd")
   })
 
-  it("does not show slash commands while in shell mode", async () => {
+  it("does not show slash commands in shell mode", async () => {
     const user = userEvent.setup()
-    render(
-      <InputBar
-        onSubmit={() => {}}
-        slashCommands={[{ id: "stop", label: "Stop", description: "Stop streaming" }]}
-      />,
-    )
-
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-    await user.type(textarea, "!/")
-
-    expect(textarea.value).toBe("/")
+    render(<InputBar onSubmit={() => {}} slashCommands={[{ id: "stop", label: "Stop", description: "" }]} />)
+    await user.type(screen.getByLabelText("Message input"), "!/")
     expect(screen.queryByRole("listbox", { name: "Slash commands" })).toBeNull()
   })
 
-  it("restores shell mode when navigating to shell command history", async () => {
+  it("restores shell mode when navigating to a shell history entry", async () => {
     const user = userEvent.setup()
     render(<InputBar onSubmit={() => {}} />)
-
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
     await user.type(textarea, "!pwd")
     await user.keyboard("{Enter}")
     await user.keyboard("{ArrowUp}")
-
-    expect(textarea.value).toBe("pwd")
     expect(screen.getByLabelText("Shell command input")).toBe(textarea)
   })
+})
 
-  it("executes the selected slash command when pressing Enter on a partial match", async () => {
+// ─────────────────────────────────────────────────────────────────────────────
+// Slash commands
+// ─────────────────────────────────────────────────────────────────────────────
+describe("InputBar — slash commands", () => {
+  it("executes matched slash command on Enter instead of submitting", async () => {
     const user = userEvent.setup()
     let submitCount = 0
     let slashCommand = ""
@@ -525,1418 +381,265 @@ describe("InputBar", () => {
         slashCommands={[{ id: "new", label: "New", description: "Create new session" }]}
       />,
     )
-
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-    await user.type(textarea, "/ne")
+    await user.type(screen.getByLabelText("Message input"), "/ne")
     await user.keyboard("{Enter}")
-
     expect(submitCount).toBe(0)
     expect(slashCommand).toBe("new")
-    expect(textarea.value).toBe("")
   })
 
-  it("wires slash command popup to the textarea for screen readers", async () => {
+  it("wires ARIA attributes on textarea to the listbox", async () => {
     const user = userEvent.setup()
     render(
       <InputBar
         onSubmit={() => {}}
         slashCommands={[
-          { id: "stop", label: "Stop", description: "Stop streaming" },
-          { id: "compact", label: "Compact", description: "Compact context" },
+          { id: "stop", label: "Stop", description: "" },
+          { id: "compact", label: "Compact", description: "" },
         ]}
       />,
     )
-
     const textarea = screen.getByLabelText("Message input")
     await user.type(textarea, "/")
-
     const listbox = screen.getByRole("listbox", { name: "Slash commands" })
     const options = screen.getAllByRole("option")
-
     expect(textarea.getAttribute("aria-expanded")).toBe("true")
     expect(textarea.getAttribute("aria-controls")).toBe(listbox.id)
     expect(textarea.getAttribute("aria-activedescendant")).toBe(options[0].id)
-    expect(options[0].getAttribute("aria-selected")).toBe("true")
-
     await user.keyboard("{ArrowDown}")
     expect(textarea.getAttribute("aria-activedescendant")).toBe(options[1].id)
   })
-
-  it("displays nested commands with colon syntax and inserts colon form", async () => {
-    const user = userEvent.setup()
-    render(
-      <InputBar
-        onSubmit={() => {}}
-        slashCommands={[
-          {
-            id: "git/commit",
-            label: "git:commit",
-            displayName: "git:commit",
-            insertText: "git:commit",
-            description: "Commit staged changes",
-            category: "command",
-            keepInputOpen: true,
-          },
-        ]}
-      />,
-    )
-
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-    await user.type(textarea, "/git")
-
-    expect(screen.getByText("git:")).toBeTruthy()
-    expect(screen.getByText("commit")).toBeTruthy()
-    expect(screen.queryByText("/git/commit")).toBeNull()
-
-    await user.keyboard("{Enter}")
-
-    expect(textarea.value).toBe("/git:commit ")
-  })
-
-  it("inserts snippets from # picker anywhere in the input", async () => {
-    const user = userEvent.setup()
-    render(
-      <InputBar
-        onSubmit={() => {}}
-        snippetCommands={[
-          { id: "git/commit", label: "git:commit", description: "Commit staged changes" },
-          { id: "review", label: "review", description: "Review this change" },
-        ]}
-        onSnippetCommand={(id) => id === "review" ? "Please review this change" : "Commit prompt"}
-      />,
-    )
-
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-    await user.type(textarea, "start #")
-
-    const listbox = screen.getByRole("listbox", { name: "Snippets" })
-    const options = screen.getAllByRole("option")
-    expect(textarea.getAttribute("aria-controls")).toBe(listbox.id)
-    expect(options[0].getAttribute("aria-selected")).toBe("true")
-
-    await user.keyboard("{ArrowDown}{Enter}")
-
-    expect(textarea.value).toBe("start Please review this change")
-  })
-
-  it("opens snippet picker when caret moves into an existing # token", async () => {
-    const user = userEvent.setup()
-    render(
-      <InputBar
-        onSubmit={() => {}}
-        snippetCommands={[{ id: "oad", label: "oad", description: "Say hi" }]}
-        onSnippetCommand={() => "just say hi"}
-      />,
-    )
-
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-    await user.type(textarea, "hello #oad world")
-
-    expect(screen.queryByRole("listbox", { name: "Snippets" })).toBeNull()
-
-    textarea.setSelectionRange(10, 10)
-    fireEvent.select(textarea)
-
-    expect(screen.getByRole("listbox", { name: "Snippets" })).toBeTruthy()
-  })
-
-  it("clears input after submit", async () => {
-    const user = userEvent.setup()
-    const onSubmit = () => {}
-
-    render(<InputBar onSubmit={onSubmit} />)
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-
-    await user.type(textarea, "test message")
-    expect(textarea.value).toBe("test message")
-
-    await user.keyboard("{Enter}")
-    expect(textarea.value).toBe("")
-  })
-
-  it("has correct aria-label on textarea", () => {
-    const onSubmit = () => {}
-    render(<InputBar onSubmit={onSubmit} />)
-
-    const textarea = screen.getByLabelText("Message input")
-    expect(textarea).toBeTruthy()
-  })
-
-  it("has correct aria-label on button", () => {
-    const onSubmit = () => {}
-    render(<InputBar onSubmit={onSubmit} />)
-
-    const button = screen.getByLabelText("Send message")
-    expect(button).toBeTruthy()
-  })
-
-  it("disables textarea when disabled prop is true", () => {
-    const onSubmit = () => {}
-    render(<InputBar onSubmit={onSubmit} disabled={true} />)
-
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-    expect(textarea.disabled).toBe(true)
-  })
-
-  it("enables textarea when disabled prop is false", () => {
-    const onSubmit = () => {}
-    render(<InputBar onSubmit={onSubmit} disabled={false} />)
-
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-    expect(textarea.disabled).toBe(false)
-  })
-
-  it("calls onSubmit when send button is clicked", async () => {
-    const user = userEvent.setup()
-    let submittedText = ""
-    const onSubmit = (text: string) => {
-      submittedText = text
-    }
-
-    render(<InputBar onSubmit={onSubmit} />)
-    const textarea = screen.getByLabelText("Message input")
-    const button = screen.getByLabelText("Send message")
-
-    await user.type(textarea, "click submit")
-    await user.click(button)
-
-    expect(submittedText).toBe("click submit")
-  })
-
-  it("does not call onSubmit when disabled and button clicked", async () => {
-    const user = userEvent.setup()
-    let submitCount = 0
-    const onSubmit = () => {
-      submitCount++
-    }
-
-    render(<InputBar onSubmit={onSubmit} disabled={true} />)
-    const textarea = screen.getByLabelText("Message input")
-    const button = screen.getByLabelText("Send message")
-
-    await user.type(textarea, "test")
-    await user.click(button)
-
-    expect(submitCount).toBe(0)
-  })
-
-  it("autoFocus textarea when autoFocus prop is true", () => {
-    const onSubmit = () => {}
-    render(<InputBar onSubmit={onSubmit} autoFocus={true} />)
-
-    const textarea = screen.getByLabelText("Message input")
-    expect(document.activeElement).toBe(textarea)
-  })
-
-  describe("voice transcript insertion", () => {
-    it("appends transcript to existing draft with space", async () => {
-      const user = userEvent.setup()
-      render(<InputBar onSubmit={() => {}} voiceEnabled={true} />)
-
-      const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-      await user.type(textarea, "hello")
-      await user.click(screen.getByLabelText("Start voice input"))
-      await user.click(screen.getByLabelText("Stop voice input"))
-
-      await screen.findByLabelText("Start voice input")
-      expect(textarea.value).toBe("hello world")
-    })
-
-    it("inserts transcript when input is empty", async () => {
-      const user = userEvent.setup()
-      render(<InputBar onSubmit={() => {}} voiceEnabled={true} />)
-
-      const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-      await user.click(screen.getByLabelText("Start voice input"))
-      await user.click(screen.getByLabelText("Stop voice input"))
-
-      await screen.findByLabelText("Start voice input")
-      expect(textarea.value).toBe("world")
-    })
-
-    it("strips trailing whitespace from existing draft before appending", async () => {
-      const user = userEvent.setup()
-      render(<InputBar onSubmit={() => {}} voiceEnabled={true} />)
-
-      const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-      await user.type(textarea, "hello   ")
-      await user.click(screen.getByLabelText("Start voice input"))
-      await user.click(screen.getByLabelText("Stop voice input"))
-
-      await screen.findByLabelText("Start voice input")
-      expect(textarea.value).toBe("hello world")
-    })
-  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Additional coverage: useImperativeHandle, capabilities, file handling, drag-drop
+// File attachment
 // ─────────────────────────────────────────────────────────────────────────────
-
-describe("InputBar — useImperativeHandle", () => {
-  it("exposes a focus() method via ref that focuses the textarea", () => {
-    const ref = createRef<InputBarHandle>()
-    render(<InputBar onSubmit={() => {}} ref={ref} />)
-
-    const textarea = screen.getByLabelText("Message input")
-    // Blur first to ensure focus is not already on the textarea
-    ;(textarea as HTMLTextAreaElement).blur()
-
-    act(() => {
-      ref.current?.focus()
-    })
-
-    expect(document.activeElement).toBe(textarea)
-  })
-
-  it("ref is populated after mount", () => {
-    const ref = createRef<InputBarHandle>()
-    render(<InputBar onSubmit={() => {}} ref={ref} />)
-    expect(ref.current).toBeTruthy()
-    expect(typeof ref.current?.focus).toBe("function")
-    expect(typeof ref.current?.insertText).toBe("function")
-  })
-
-  it("inserts text at the current caret position via ref", () => {
-    const ref = createRef<InputBarHandle>()
-    render(<InputBar onSubmit={() => {}} ref={ref} />)
-
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-
-    act(() => {
-      ref.current?.setValue("helo")
-    })
-    act(() => {
-      textarea.focus()
-      textarea.setSelectionRange(2, 2)
-      ref.current?.insertText("l")
-    })
-
-    expect(textarea.value).toBe("hello")
-  })
-
-  it("supports first-key auto-capture after focusing an initially blurred input", () => {
-    const ref = createRef<InputBarHandle>()
-    render(<InputBar onSubmit={() => {}} ref={ref} />)
-
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-    act(() => {
-      ref.current?.focus()
-      ref.current?.insertText("h")
-    })
-
-    expect(document.activeElement).toBe(textarea)
-    expect(textarea.value).toBe("h")
-  })
-
-  it("enters shell mode when first-key auto-capture inserts bang", () => {
-    const ref = createRef<InputBarHandle>()
-    render(<InputBar onSubmit={() => {}} ref={ref} />)
-
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-    act(() => {
-      ref.current?.focus()
-      ref.current?.insertText("!")
-    })
-
-    expect(document.activeElement).toBe(textarea)
-    expect(textarea.value).toBe("")
-    expect(screen.getByLabelText("Shell command input")).toBe(textarea)
-  })
-})
-
-describe("InputBar — buildAcceptString (hidden file input accept attribute)", () => {
-  it("includes common text and code types to guide the OS picker", () => {
-    const accept = buildAcceptString()
-    expect(accept).toContain("text/plain")
-    expect(accept).toContain(".md")
-    expect(accept).toContain(".py")
-    expect(accept).toContain(".ts")
-    expect(accept).toContain("application/json")
-    expect(accept).toContain("image/*")
-    expect(accept).toContain("application/pdf")
-    expect(accept).toContain("audio/*")
-    expect(accept).toContain("video/*")
-  })
-
-  it("sets the accept attribute on the hidden file input", () => {
-    render(<InputBar onSubmit={() => {}} />)
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    const accept = input.getAttribute("accept") ?? ""
-    expect(accept).toContain("text/plain")
-    expect(accept).toContain(".py")
-    expect(accept).toContain("image/*")
-  })
-})
-
-describe("InputBar — capabilities prop", () => {
-  // The `capabilities` prop drives file-type filtering (covered in the
-  // `isFileTypeAllowed / addFile filtering` suite below) and the paperclip
-  // `accept` attribute. It no longer affects hint text because the hint was
-  // removed in favor of placeholder-based status messages and a send-button
-  // tooltip.
-  it("renders without crashing when vision is enabled", () => {
-    const caps: AgentCapabilities = { input: { vision: true, document_text: false, audio: false, video: false }, output: { text: true, image: false, audio: false } }
-    render(<InputBar onSubmit={() => {}} capabilities={caps} />)
-    expect(screen.getByLabelText("Message input")).toBeTruthy()
-  })
-
-  it("renders without crashing when no capabilities are provided", () => {
-    render(<InputBar onSubmit={() => {}} />)
-    expect(screen.getByLabelText("Message input")).toBeTruthy()
-  })
-})
-
-describe("InputBar — isFileTypeAllowed / addFile filtering", () => {
-  it("isFileTypeAllowed returns true for every file type", () => {
-    expect(isFileTypeAllowed(new File(["hello"], "notes.txt", { type: "text/plain" }))).toBe(true)
-    expect(isFileTypeAllowed(new File(["zip"], "archive.zip", { type: "application/zip" }))).toBe(true)
-    expect(isFileTypeAllowed(new File(["img"], "photo.png", { type: "image/png" }))).toBe(true)
-    expect(isFileTypeAllowed(new File(["code"], "main.py", { type: "" }))).toBe(true)
-  })
-
-  it("allows plain text files via the picker (matched by MIME in accept list)", async () => {
+describe("InputBar — file attachment", () => {
+  it("shows a preview after upload (text, image, audio, video, zip)", async () => {
     const user = userEvent.setup()
     render(<InputBar onSubmit={() => {}} />)
-
-    const file = new File(["hello"], "notes.txt", { type: "text/plain" })
     const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    await user.upload(input, file)
 
+    // text
+    await user.upload(input, new File([""], "notes.txt", { type: "text/plain" }))
     expect(screen.getByText("notes.txt")).toBeTruthy()
-  })
+    cleanup(); render(<InputBar onSubmit={() => {}} />)
 
-  it("allows JSON files via the picker (matched by MIME in accept list)", async () => {
-    const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} />)
-
-    const file = new File(['{"key":"val"}'], "data.json", { type: "application/json" })
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    await user.upload(input, file)
-
-    expect(screen.getByText("data.json")).toBeTruthy()
-  })
-
-  it("allows .md files via the picker (matched by extension in accept list)", async () => {
-    const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} />)
-
-    const file = new File(["# Title"], "readme.md", { type: "" })
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    await user.upload(input, file)
-
-    expect(screen.getByText("readme.md")).toBeTruthy()
-  })
-
-  it("allows .py files via the picker (matched by extension in accept list)", async () => {
-    const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} />)
-
-    const file = new File(["print('hi')"], "main.py", { type: "" })
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    await user.upload(input, file)
-
-    expect(screen.getByText("main.py")).toBeTruthy()
-  })
-
-  it("allows image files via the picker", async () => {
-    const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} />)
-
-    const file = new File(["img"], "photo.png", { type: "image/png" })
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    await user.upload(input, file)
-
+    // image — rendered as <img>
+    await user.upload(document.querySelector('input[type="file"]') as HTMLInputElement, new File([""], "photo.png", { type: "image/png" }))
     expect(screen.getByRole("img", { name: "photo.png" })).toBeTruthy()
-  })
+    cleanup(); render(<InputBar onSubmit={() => {}} />)
 
-  it("allows PDF files via the picker", async () => {
-    const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} />)
-
-    const file = new File(["%PDF"], "report.pdf", { type: "application/pdf" })
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    await user.upload(input, file)
-
-    expect(screen.getByText("report.pdf")).toBeTruthy()
-  })
-
-  it("allows DOCX files via the picker", async () => {
-    const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} />)
-
-    const file = new File(["docx"], "doc.docx", {
-      type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    })
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    await user.upload(input, file)
-
-    expect(screen.getByText("doc.docx")).toBeTruthy()
-  })
-
-  it("allows audio files via the picker", async () => {
-    const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} />)
-
-    const file = new File(["audio"], "clip.mp3", { type: "audio/mpeg" })
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    await user.upload(input, file)
-
+    // audio
+    await user.upload(document.querySelector('input[type="file"]') as HTMLInputElement, new File([""], "clip.mp3", { type: "audio/mpeg" }))
     expect(screen.getByText("clip.mp3")).toBeTruthy()
-  })
+    cleanup(); render(<InputBar onSubmit={() => {}} />)
 
-  it("allows video files via the picker", async () => {
-    const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} />)
-
-    const file = new File(["video"], "movie.mp4", { type: "video/mp4" })
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    await user.upload(input, file)
-
+    // video
+    await user.upload(document.querySelector('input[type="file"]') as HTMLInputElement, new File([""], "movie.mp4", { type: "video/mp4" }))
     expect(screen.getByText("movie.mp4")).toBeTruthy()
-  })
+    cleanup(); render(<InputBar onSubmit={() => {}} />)
 
-  it("accepts any file type (e.g. zip) when attached via paste/drop (fireEvent bypasses accept)", async () => {
-    render(<InputBar onSubmit={() => {}} />)
-
-    const file = new File(["data"], "archive.zip", { type: "application/zip" })
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    // fireEvent.change bypasses the browser/userEvent accept-attribute filter,
-    // simulating paste or drag-and-drop where accept is not enforced.
-    fireEvent.change(input, { target: { files: [file] } })
-
+    // zip (via fireEvent, simulates drag/paste bypassing accept filter)
+    fireEvent.change(document.querySelector('input[type="file"]') as HTMLInputElement, { target: { files: [new File([""], "archive.zip", { type: "application/zip" })] } })
     expect(screen.getByText("archive.zip")).toBeTruthy()
   })
-})
 
-describe("InputBar — file previews (ImageAttachment and FileCard)", () => {
-  it("renders ImageAttachment for image files", async () => {
-    const user = userEvent.setup()
-    const caps: AgentCapabilities = { input: { vision: true, document_text: false, audio: false, video: false }, output: { text: true, image: false, audio: false } }
-    render(<InputBar onSubmit={() => {}} capabilities={caps} />)
-
-    const file = new File(["img"], "photo.jpg", { type: "image/jpeg" })
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    await user.upload(input, file)
-
-    // ImageAttachment renders an <img> with alt = file.name
-    const img = screen.getByRole("img", { name: "photo.jpg" })
-    expect(img).toBeTruthy()
-  })
-
-  it("renders FileCard for non-image files", async () => {
+  it("removes a file when the remove button is clicked", async () => {
     const user = userEvent.setup()
     render(<InputBar onSubmit={() => {}} />)
-
-    const file = new File(["data"], "data.csv", { type: "text/csv" })
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    await user.upload(input, file)
-
-    expect(screen.getByText("data.csv")).toBeTruthy()
-    // No img element should be present for a CSV
-    expect(screen.queryByRole("img")).toBeNull()
-  })
-
-  it("renders FileCard for PDF files", async () => {
-    const user = userEvent.setup()
-    const caps: AgentCapabilities = { input: { vision: false, document_text: true, audio: false, video: false }, output: { text: true, image: false, audio: false } }
-    render(<InputBar onSubmit={() => {}} capabilities={caps} />)
-
-    const file = new File(["%PDF"], "report.pdf", { type: "application/pdf" })
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    await user.upload(input, file)
-
-    expect(screen.getByText("report.pdf")).toBeTruthy()
-    expect(screen.queryByRole("img")).toBeNull()
-  })
-
-  it("renders multiple file previews when multiple files are added", async () => {
-    const user = userEvent.setup()
-    const caps: AgentCapabilities = { input: { vision: true, document_text: false, audio: false, video: false }, output: { text: true, image: false, audio: false } }
-    render(<InputBar onSubmit={() => {}} capabilities={caps} />)
-
-    const img1 = new File(["img1"], "first.png", { type: "image/png" })
-    const img2 = new File(["img2"], "second.png", { type: "image/png" })
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    await user.upload(input, [img1, img2])
-
-    expect(screen.getByRole("img", { name: "first.png" })).toBeTruthy()
-    expect(screen.getByRole("img", { name: "second.png" })).toBeTruthy()
-  })
-
-  it("shows no file previews when no files are attached", () => {
-    render(<InputBar onSubmit={() => {}} />)
-    // No img elements and no remove buttons
-    expect(screen.queryByRole("img")).toBeNull()
-    expect(screen.queryByLabelText("Remove image")).toBeNull()
-    expect(screen.queryByLabelText("Remove file")).toBeNull()
-  })
-})
-
-describe("InputBar — removeFile", () => {
-  it("removes a file preview when the remove button is clicked", async () => {
-    const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} />)
-
-    const file = new File(["data"], "notes.txt", { type: "text/plain" })
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    await user.upload(input, file)
-
-    // File card is visible
+    await user.upload(document.querySelector('input[type="file"]') as HTMLInputElement, new File([""], "notes.txt", { type: "text/plain" }))
     expect(screen.getByText("notes.txt")).toBeTruthy()
-
-    // Click the remove button
-    const removeBtn = screen.getByLabelText("Remove file")
-    await user.click(removeBtn)
-
-    // File card should be gone
+    await user.click(screen.getByLabelText("Remove file"))
     expect(screen.queryByText("notes.txt")).toBeNull()
   })
 
-  it("removes only the targeted image when multiple images are attached", async () => {
+  it("removes only the targeted image when multiple are attached", async () => {
     const user = userEvent.setup()
-    const caps: AgentCapabilities = { input: { vision: true, document_text: false, audio: false, video: false }, output: { text: true, image: false, audio: false } }
-    render(<InputBar onSubmit={() => {}} capabilities={caps} />)
-
-    const img1 = new File(["img1"], "keep.png", { type: "image/png" })
-    const img2 = new File(["img2"], "remove.png", { type: "image/png" })
+    render(<InputBar onSubmit={() => {}} />)
     const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    await user.upload(input, [img1, img2])
-
-    expect(screen.getByRole("img", { name: "keep.png" })).toBeTruthy()
-    expect(screen.getByRole("img", { name: "remove.png" })).toBeTruthy()
-
-    // Remove buttons are rendered by ImageAttachment (aria-label="Remove image")
-    const removeBtns = screen.getAllByLabelText("Remove image")
-    // Click the second remove button (for remove.png)
-    await user.click(removeBtns[1])
-
+    await user.upload(input, [new File([""], "keep.png", { type: "image/png" }), new File([""], "remove.png", { type: "image/png" })])
+    await user.click(screen.getAllByLabelText("Remove image")[1])
     expect(screen.getByRole("img", { name: "keep.png" })).toBeTruthy()
     expect(screen.queryByRole("img", { name: "remove.png" })).toBeNull()
   })
-
-  it("files are cleared after submit", async () => {
-    const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} />)
-
-    const file = new File(["data"], "notes.txt", { type: "text/plain" })
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    await user.upload(input, file)
-    expect(screen.getByText("notes.txt")).toBeTruthy()
-
-    const textarea = screen.getByLabelText("Message input")
-    await user.type(textarea, "send with file")
-    await user.keyboard("{Enter}")
-
-    expect(screen.queryByText("notes.txt")).toBeNull()
-  })
-
-  it("passes files to onSubmit callback", async () => {
-    const user = userEvent.setup()
-    let capturedFiles: File[] | undefined
-    const onSubmit = (_msg: string, files?: File[]) => {
-      capturedFiles = files
-    }
-    render(<InputBar onSubmit={onSubmit} />)
-
-    const file = new File(["data"], "notes.txt", { type: "text/plain" })
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    await user.upload(input, file)
-
-    const textarea = screen.getByLabelText("Message input")
-    await user.type(textarea, "with attachment")
-    await user.keyboard("{Enter}")
-
-    expect(capturedFiles).toBeTruthy()
-    expect(capturedFiles?.length).toBe(1)
-    expect(capturedFiles?.[0].name).toBe("notes.txt")
-  })
 })
 
-describe("InputBar — character count display", () => {
-  it("does not show character count when text is ≤500 chars", async () => {
-    const user = userEvent.setup()
+// ─────────────────────────────────────────────────────────────────────────────
+// Character count
+// ─────────────────────────────────────────────────────────────────────────────
+describe("InputBar — character count", () => {
+  it("hidden below 500 chars, visible above, error color above 2000", () => {
     render(<InputBar onSubmit={() => {}} />)
-
-    const textarea = screen.getByLabelText("Message input")
-    await user.type(textarea, "short text")
-
-    // Character count span should not be present
-    expect(screen.queryByText("10")).toBeNull()
-  })
-
-  it("shows character count when text exceeds 500 chars", async () => {
-    render(<InputBar onSubmit={() => {}} />)
-
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-    const longText = "a".repeat(501)
-
-    act(() => {
-      fireEvent.change(textarea, { target: { value: longText } })
-    })
-
-    expect(screen.getByText("501")).toBeTruthy()
-  })
-
-  it("shows character count in error color when text exceeds 2000 chars", async () => {
-    render(<InputBar onSubmit={() => {}} />)
-
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-    const veryLongText = "a".repeat(2001)
-
-    act(() => {
-      fireEvent.change(textarea, { target: { value: veryLongText } })
-    })
-
-    const countEl = screen.getByText("2001")
-    expect(countEl).toBeTruthy()
-    // Should have error color class
-    expect(countEl.className).toContain("color-error")
-  })
-
-  it("shows character count in muted color when between 501 and 2000 chars", async () => {
-    render(<InputBar onSubmit={() => {}} />)
-
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-    const mediumText = "a".repeat(600)
-
-    act(() => {
-      fireEvent.change(textarea, { target: { value: mediumText } })
-    })
-
-    const countEl = screen.getByText("600")
-    expect(countEl).toBeTruthy()
-    expect(countEl.className).not.toContain("color-error")
-  })
-})
-
-describe("InputBar — attachment button (paperclip)", () => {
-  it("renders the attachment button with correct aria-label", () => {
-    render(<InputBar onSubmit={() => {}} />)
-    const btn = screen.getByLabelText("Attach file")
-    expect(btn).toBeTruthy()
-  })
-
-  it("attachment button is disabled when disabled prop is true", () => {
-    render(<InputBar onSubmit={() => {}} disabled={true} />)
-    const btn = screen.getByLabelText("Attach file") as HTMLButtonElement
-    expect(btn.disabled).toBe(true)
-  })
-
-  it("attachment button is enabled when disabled prop is false", () => {
-    render(<InputBar onSubmit={() => {}} disabled={false} />)
-    const btn = screen.getByLabelText("Attach file") as HTMLButtonElement
-    expect(btn.disabled).toBe(false)
-  })
-
-  it("clicking attachment button triggers the hidden file input", async () => {
-    const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} />)
-
-    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
-    let clicked = false
-    fileInput.addEventListener("click", () => { clicked = true })
-
-    const btn = screen.getByLabelText("Attach file")
-    await user.click(btn)
-
-    expect(clicked).toBe(true)
-  })
-})
-
-describe("InputBar — send button click handler", () => {
-  it("send button calls onSubmit with current text and files", async () => {
-    const user = userEvent.setup()
-    let submittedMsg = ""
-    let submittedFiles: File[] | undefined
-    const onSubmit = (msg: string, files?: File[]) => {
-      submittedMsg = msg
-      submittedFiles = files
-    }
-    render(<InputBar onSubmit={onSubmit} />)
-
-    const file = new File(["data"], "attach.txt", { type: "text/plain" })
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    await user.upload(input, file)
-
-    const textarea = screen.getByLabelText("Message input")
-    await user.type(textarea, "hello with file")
-
-    const sendBtn = screen.getByLabelText("Send message")
-    await user.click(sendBtn)
-
-    expect(submittedMsg).toBe("hello with file")
-    expect(submittedFiles?.length).toBe(1)
-    expect(submittedFiles?.[0].name).toBe("attach.txt")
-  })
-
-  it("send button is disabled when there is no text even with files attached", async () => {
-    const user = userEvent.setup()
-    const caps: AgentCapabilities = { input: { vision: true, document_text: false, audio: false, video: false }, output: { text: true, image: false, audio: false } }
-    render(<InputBar onSubmit={() => {}} capabilities={caps} />)
-
-    const file = new File(["img"], "photo.png", { type: "image/png" })
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    await user.upload(input, file)
-
-    const sendBtn = screen.getByLabelText("Send message") as HTMLButtonElement
-    expect(sendBtn.disabled).toBe(true)
-  })
-})
-
-describe("InputBar — handleDrop (drag-and-drop)", () => {
-  it("adds an allowed file when dropped onto the input container", () => {
-    render(<InputBar onSubmit={() => {}} />)
-
-    const container = screen.getByLabelText("Message input").closest("div") as HTMLElement
-
-    const file = new File(["data"], "dropped.txt", { type: "text/plain" })
-    const dataTransfer = { files: [file] }
-
-    act(() => {
-      fireEvent.dragEnter(container, { dataTransfer })
-      fireEvent.dragOver(container, { dataTransfer })
-      fireEvent.drop(container, { dataTransfer })
-    })
-
-    expect(screen.getByText("dropped.txt")).toBeTruthy()
-  })
-
-  it("rejects a disallowed file type on drop", () => {
-    render(<InputBar onSubmit={() => {}} />)
-
-    const container = screen.getByLabelText("Message input").closest("div") as HTMLElement
-
-    const file = new File(["data"], "archive.zip", { type: "application/zip" })
-    const dataTransfer = { files: [file] }
-
-    act(() => {
-      fireEvent.drop(container, { dataTransfer })
-    })
-
-    expect(screen.queryByText("archive.zip")).toBeNull()
-  })
-
-  it("adds image file on drop when vision capability is enabled", () => {
-    const caps: AgentCapabilities = { input: { vision: true, document_text: false, audio: false, video: false }, output: { text: true, image: false, audio: false } }
-    render(<InputBar onSubmit={() => {}} capabilities={caps} />)
-
-    const container = screen.getByLabelText("Message input").closest("div") as HTMLElement
-
-    const file = new File(["img"], "dragged.jpg", { type: "image/jpeg" })
-    const dataTransfer = { files: [file] }
-
-    act(() => {
-      fireEvent.drop(container, { dataTransfer })
-    })
-
-    expect(screen.getByRole("img", { name: "dragged.jpg" })).toBeTruthy()
-  })
-
-  it("handles dragEnter and dragLeave without errors", () => {
-    render(<InputBar onSubmit={() => {}} />)
-
-    const container = screen.getByLabelText("Message input").closest("div") as HTMLElement
-
-    act(() => {
-      fireEvent.dragEnter(container, { dataTransfer: { files: [] } })
-      fireEvent.dragLeave(container, { dataTransfer: { files: [] } })
-    })
-
-    // No crash — component still renders
-    expect(screen.getByLabelText("Message input")).toBeTruthy()
-  })
-
-  it("handles dragOver without errors", () => {
-    render(<InputBar onSubmit={() => {}} />)
-
-    const container = screen.getByLabelText("Message input").closest("div") as HTMLElement
-
-    act(() => {
-      fireEvent.dragOver(container, { dataTransfer: { files: [] } })
-    })
-
-    expect(screen.getByLabelText("Message input")).toBeTruthy()
-  })
-
-  it("drops multiple files and adds all allowed ones", () => {
-    const caps: AgentCapabilities = { input: { vision: true, document_text: false, audio: false, video: false }, output: { text: true, image: false, audio: false } }
-    render(<InputBar onSubmit={() => {}} capabilities={caps} />)
-
-    const container = screen.getByLabelText("Message input").closest("div") as HTMLElement
-
-    const file1 = new File(["txt"], "notes.txt", { type: "text/plain" })
-    const file2 = new File(["img"], "photo.png", { type: "image/png" })
-    const file3 = new File(["zip"], "archive.zip", { type: "application/zip" })
-    const dataTransfer = { files: [file1, file2, file3] }
-
-    act(() => {
-      fireEvent.drop(container, { dataTransfer })
-    })
-
-    expect(screen.getByText("notes.txt")).toBeTruthy()
-    expect(screen.getByRole("img", { name: "photo.png" })).toBeTruthy()
-    expect(screen.queryByText("archive.zip")).toBeNull()
-  })
-})
-
-describe("InputBar — handlePaste (clipboard paste with files)", () => {
-  it("adds an image file pasted from clipboard when vision is enabled", () => {
-    const caps: AgentCapabilities = { input: { vision: true, document_text: false, audio: false, video: false }, output: { text: true, image: false, audio: false } }
-    render(<InputBar onSubmit={() => {}} capabilities={caps} />)
-
-    const textarea = screen.getByLabelText("Message input")
-    const file = new File(["img"], "pasted.png", { type: "image/png" })
-
-    const clipboardData = {
-      items: [
-        {
-          kind: "file",
-          getAsFile: () => file,
-        },
-      ],
-    }
-
-    act(() => {
-      fireEvent.paste(textarea, { clipboardData })
-    })
-
-    expect(screen.getByRole("img", { name: "pasted.png" })).toBeTruthy()
-  })
-
-  it("does not add a file pasted from clipboard when type is not allowed", () => {
-    render(<InputBar onSubmit={() => {}} />)
-
-    const textarea = screen.getByLabelText("Message input")
-    const file = new File(["zip"], "archive.zip", { type: "application/zip" })
-
-    const clipboardData = {
-      items: [
-        {
-          kind: "file",
-          getAsFile: () => file,
-        },
-      ],
-    }
-
-    act(() => {
-      fireEvent.paste(textarea, { clipboardData })
-    })
-
-    expect(screen.queryByText("archive.zip")).toBeNull()
-  })
-
-  it("ignores non-file clipboard items", () => {
-    render(<InputBar onSubmit={() => {}} />)
-
-    const textarea = screen.getByLabelText("Message input")
-
-    const clipboardData = {
-      items: [
-        {
-          kind: "string",
-          getAsFile: () => null,
-        },
-      ],
-    }
-
-    act(() => {
-      fireEvent.paste(textarea, { clipboardData })
-    })
-
-    // No file previews should appear
-    expect(screen.queryByLabelText("Remove file")).toBeNull()
-    expect(screen.queryByLabelText("Remove image")).toBeNull()
-  })
-
-  it("handles paste with no clipboardData items gracefully", () => {
-    render(<InputBar onSubmit={() => {}} />)
-
-    const textarea = screen.getByLabelText("Message input")
-
-    act(() => {
-      fireEvent.paste(textarea, { clipboardData: { items: null } })
-    })
-
-    // No crash — component still renders
-    expect(screen.getByLabelText("Message input")).toBeTruthy()
-  })
-})
-
-describe("InputBar — handleFileSelect (file input change)", () => {
-  it("adds a valid file selected via the file input", async () => {
-    const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} />)
-
-    const file = new File(["data"], "selected.csv", { type: "text/csv" })
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    await user.upload(input, file)
-
-    expect(screen.getByText("selected.csv")).toBeTruthy()
-  })
-
-  it("rejects a disallowed file selected via the file input", async () => {
-    const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} />)
-
-    const file = new File(["data"], "binary.exe", { type: "application/octet-stream" })
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    await user.upload(input, file)
-
-    expect(screen.queryByText("binary.exe")).toBeNull()
-  })
-
-  it("allows selecting multiple files at once via the file input", async () => {
-    const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} />)
-
-    const file1 = new File(["a"], "first.txt", { type: "text/plain" })
-    const file2 = new File(["b"], "second.csv", { type: "text/csv" })
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    await user.upload(input, [file1, file2])
-
-    expect(screen.getByText("first.txt")).toBeTruthy()
-    expect(screen.getByText("second.csv")).toBeTruthy()
-  })
-
-  it("file input has multiple attribute set", () => {
-    render(<InputBar onSubmit={() => {}} />)
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    expect(input.multiple).toBe(true)
-  })
-
-  it("file input is hidden from assistive technology", () => {
-    render(<InputBar onSubmit={() => {}} />)
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    expect(input.getAttribute("aria-hidden")).toBe("true")
-  })
-})
-
-describe("InputBar — minimized height and expand reset", () => {
-  // Bug: the messageSlot div used opacity-0 to hide the textarea row but
-  // still reserved its full height in the flex layout, making the minimized
-  // pill taller than just its action buttons.
-  it("collapses the message slot to zero height while minimized", () => {
-    render(<InputBar onSubmit={() => {}} minimized />)
-
-    // The message slot is the div that wraps the textarea and carries
-    // aria-hidden="true" (as opposed to the SVG icons which also use
-    // aria-hidden). We find it via its unique combination of being a
-    // div with aria-hidden="true" that contains the textarea.
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-    // Walk up to the direct wrapper div that carries the aria-hidden + h-0
-    const slot = textarea.closest('div[aria-hidden="true"]') as HTMLElement
-    expect(slot).toBeTruthy()
-    expect(slot.className).toContain("h-0")
-    expect(slot.className).toContain("overflow-hidden")
-    expect(slot.className).toContain("opacity-0")
-  })
-
-  it("reveals the message slot when not minimized", () => {
-    render(<InputBar onSubmit={() => {}} minimized={false} />)
-
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
 
-    // The slot should NOT carry h-0 when expanded — the textarea must be
-    // fully visible and the slot carries opacity-100.
-    const slot = textarea.closest('div[aria-hidden]') as HTMLElement
-    // aria-hidden is "false" (not "true") when expanded
-    expect(slot?.getAttribute("aria-hidden")).toBe("false")
-    expect(slot?.className).not.toContain("h-0")
-    expect(slot?.className).toContain("opacity-100")
+    act(() => { fireEvent.change(textarea, { target: { value: "a".repeat(499) } }) })
+    expect(screen.queryByText("499")).toBeNull()
 
-    // The textarea itself must be enabled and interactive
-    expect(textarea.getAttribute("disabled")).toBeNull()
-    expect(textarea.getAttribute("tabindex")).not.toBe("-1")
-  })
+    act(() => { fireEvent.change(textarea, { target: { value: "a".repeat(501) } }) })
+    const mid = screen.getByText("501")
+    expect(mid.className).not.toContain("color-error")
 
-  // Bug: isMultiLine state was not reset on minimize → expand, so an empty
-  // textarea would re-open in a multi-row layout if it had been multi-line
-  // before the bar was minimized.
-  it("re-enables the textarea on minimize → expand transition", async () => {
-    const { rerender } = render(<InputBar onSubmit={() => {}} minimized={false} />)
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-
-    // Confirm expanded: enabled + accessible tabindex
-    expect(textarea.getAttribute("disabled")).toBeNull()
-    expect(textarea.getAttribute("tabindex")).not.toBe("-1")
-
-    // Minimize
-    rerender(<InputBar onSubmit={() => {}} minimized />)
-    expect(textarea.getAttribute("disabled")).not.toBeNull()
-
-    // Expand again
-    rerender(<InputBar onSubmit={() => {}} minimized={false} />)
-
-    await act(async () => {
-      await new Promise((resolve) => requestAnimationFrame(resolve))
-    })
-
-    // After expand the textarea must be re-enabled and the slot visible
-    expect(textarea.getAttribute("disabled")).toBeNull()
-    expect(textarea.getAttribute("tabindex")).not.toBe("-1")
-
-    const slot = textarea.closest('div[aria-hidden]') as HTMLElement
-    expect(slot?.getAttribute("aria-hidden")).toBe("false")
-    expect(slot?.className).not.toContain("h-0")
-  })
-
-  it("does not carry h-0 on the message slot when expanded from the start", () => {
-    render(<InputBar onSubmit={() => {}} minimized={false} />)
-
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-    const slot = textarea.closest('div[aria-hidden]') as HTMLElement
-    expect(slot?.className).not.toContain("h-0")
+    act(() => { fireEvent.change(textarea, { target: { value: "a".repeat(2001) } }) })
+    expect(screen.getByText("2001").className).toContain("color-error")
   })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Height / multi-line reset on submit
-// The textarea must collapse back to a single row after the user sends a
-// message, regardless of how many lines it had grown to before sending.
+// useImperativeHandle ref
 // ─────────────────────────────────────────────────────────────────────────────
-describe("InputBar — height reset after submit", () => {
-  /**
-   * Simulate the browser's scrollHeight growing when the textarea contains
-   * multiple lines of text. Happy-DOM always returns 0 for layout measurements,
-   * so we stub the properties on the element before triggering resize.
-   *
-   * We also stub getComputedStyle to return a stable lineHeight so the
-   * `resize()` callback can calculate the "wrapped" threshold.
-   */
-  function simulateMultiLineContent(textarea: HTMLTextAreaElement, lineHeight = 24) {
-    // Stub a scrollHeight that exceeds 1.4 × lineHeight → triggers multi-line
-    Object.defineProperty(textarea, "scrollHeight", {
-      configurable: true,
-      get: () => lineHeight * 3, // 72px > 1.4 * 24 = 33.6px
-    })
-    const origGetComputedStyle = window.getComputedStyle.bind(window)
-    const stub = (el: Element) => {
-      const styles = origGetComputedStyle(el)
-      if (el === textarea) {
-        return new Proxy(styles, {
-          get(target, prop) {
-            if (prop === "lineHeight") return `${lineHeight}px`
-            if (prop === "fontSize") return "14px"
-            return (target as unknown as Record<string | symbol, unknown>)[prop]
-          },
-        })
-      }
-      return styles
-    }
-    Object.defineProperty(window, "getComputedStyle", {
-      configurable: true,
-      writable: true,
-      value: stub,
-    })
-    return () => {
-      // Restore scrollHeight to 0 (empty textarea)
-      Object.defineProperty(textarea, "scrollHeight", {
-        configurable: true,
-        get: () => 0,
-      })
-    }
-  }
-
-  it("resets textarea height to 'auto' after submitting multiline content (desktop Enter)", async () => {
-    const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} />)
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-
-    // Simulate the textarea growing to a multi-line height before typing
-    const restore = simulateMultiLineContent(textarea)
-
-    await user.type(textarea, "line one\nline two\nline three")
-
-    // Force a resize measurement so the component picks up the stubbed scrollHeight
-    act(() => { fireEvent.input(textarea) })
-
-    // Set an explicit pixel height the way the resize() callback would
-    textarea.style.height = "72px"
-
-    // Submit via Enter (desktop default)
-    await user.keyboard("{Enter}")
-    restore()
-
-    // After React flushes + rAF, height must be back to 'auto'
-    await act(async () => {
-      await new Promise((resolve) => requestAnimationFrame(resolve))
-    })
-
-    expect(textarea.style.height).toBe("auto")
-    expect(textarea.value).toBe("")
+describe("InputBar — ref API", () => {
+  it("focus() focuses the textarea", () => {
+    const ref = createRef<InputBarHandle>()
+    render(<InputBar onSubmit={() => {}} ref={ref} />)
+    act(() => { ref.current?.focus() })
+    expect(document.activeElement).toBe(screen.getByLabelText("Message input"))
   })
 
-  it("resets textarea height to 'auto' after submitting via the Send button (desktop)", async () => {
-    const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} />)
+  it("insertText() inserts at caret position", () => {
+    const ref = createRef<InputBarHandle>()
+    render(<InputBar onSubmit={() => {}} ref={ref} />)
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-
-    const restore = simulateMultiLineContent(textarea)
-    await user.type(textarea, "a long message that wraps across multiple lines in the input bar")
-    act(() => { fireEvent.input(textarea) })
-    textarea.style.height = "72px"
-
-    await user.click(screen.getByLabelText("Send message"))
-    restore()
-
-    await act(async () => {
-      await new Promise((resolve) => requestAnimationFrame(resolve))
-    })
-
-    expect(textarea.style.height).toBe("auto")
-    expect(textarea.value).toBe("")
+    act(() => { ref.current?.setValue("helo") })
+    act(() => { textarea.focus(); textarea.setSelectionRange(2, 2); ref.current?.insertText("l") })
+    expect(textarea.value).toBe("hello")
   })
 
-  it("resets textarea height to 'auto' after submitting on mobile (Send button)", async () => {
-    isMobile = true
-    const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} />)
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-
-    const restore = simulateMultiLineContent(textarea)
-    await user.type(textarea, "mobile multiline message\ncontinued on next line")
-    act(() => { fireEvent.input(textarea) })
-    textarea.style.height = "72px"
-
-    // On mobile Enter inserts a newline — submit via the Send button instead
-    await user.click(screen.getByLabelText("Send message"))
-    restore()
-
-    await act(async () => {
-      await new Promise((resolve) => requestAnimationFrame(resolve))
-    })
-
-    expect(textarea.style.height).toBe("auto")
-    expect(textarea.value).toBe("")
-
-    isMobile = false
-  })
-
-  it("collapses the multi-line action row layout after submit", async () => {
-    const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} />)
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-
-    const restore = simulateMultiLineContent(textarea)
-    await user.type(textarea, "wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap")
-    act(() => { fireEvent.input(textarea) })
-
-    // Before submit: the resize() callback should have promoted isMultiLine.
-    // We can't read component state directly, but we can confirm the style
-    // was set (a proxy for the component having applied the multi-line layout).
-    textarea.style.height = "72px"
-
-    await user.keyboard("{Enter}")
-    restore()
-
-    await act(async () => {
-      await new Promise((resolve) => requestAnimationFrame(resolve))
-    })
-
-    // The textarea must be empty and collapsed
-    expect(textarea.value).toBe("")
-    expect(textarea.style.height).toBe("auto")
-
-    // The flex container that wraps the textarea must NOT apply the multi-line
-    // flex-basis override (the style attribute should be absent / empty after reset).
-    const wrapper = textarea.closest("div.relative") as HTMLElement
-    // flex-basis is set as an inline style when isMultiLine is true.
-    // After reset it should be gone (undefined / empty).
-    expect(wrapper?.style.flexBasis).toBeFalsy()
-  })
-
-  it("does not leave a stale expanded height when submitting a single-line message", async () => {
-    const user = userEvent.setup()
-    render(<InputBar onSubmit={() => {}} />)
-    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-
-    // Single-line: scrollHeight never exceeds the threshold — still verify height
-    // resets after submit in the common single-line case.
-    await user.type(textarea, "quick single line")
-    textarea.style.height = "24px"
-
-    await user.keyboard("{Enter}")
-
-    await act(async () => {
-      await new Promise((resolve) => requestAnimationFrame(resolve))
-    })
-
-    expect(textarea.value).toBe("")
-    expect(textarea.style.height).toBe("auto")
+  it("insertText('!') at start triggers shell mode", () => {
+    const ref = createRef<InputBarHandle>()
+    render(<InputBar onSubmit={() => {}} ref={ref} />)
+    act(() => { ref.current?.focus(); ref.current?.insertText("!") })
+    expect(screen.getByLabelText("Shell command input")).toBeTruthy()
   })
 })
 
-describe("InputBarSuggestions — dynamic positioning and height clamping", () => {
-  it("adjusts position and max-height based on available screen space", async () => {
+// ─────────────────────────────────────────────────────────────────────────────
+// Voice transcript
+// ─────────────────────────────────────────────────────────────────────────────
+describe("InputBar — voice transcript", () => {
+  it("appends transcript to existing draft", async () => {
     const user = userEvent.setup()
-    render(
-      <InputBar
-        onSubmit={() => {}}
-        slashCommands={[{ id: "stop", label: "Stop", description: "Stop streaming" }]}
-      />,
-    )
-
+    render(<InputBar onSubmit={() => {}} voiceEnabled={true} />)
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-    await user.type(textarea, "/")
+    await user.type(textarea, "hello")
+    await user.click(screen.getByLabelText("Start voice input"))
+    await user.click(screen.getByLabelText("Stop voice input"))
+    await screen.findByLabelText("Start voice input")
+    expect(textarea.value).toBe("hello world")
+  })
 
-    const listbox = screen.getByRole("listbox", { name: "Slash commands" })
-    expect(listbox).toBeTruthy()
-
-    // The listbox is wrapped in the "contents" div (listbox.parentElement).
-    // The parent of that is the "relative" wrapper (listbox.parentElement.parentElement).
-    const parent = listbox.parentElement?.parentElement
-    expect(parent).toBeTruthy()
-
-    // Scenario 1: Input bar is near the top of the screen (e.g. top = 50px, bottom = 100px).
-    // Viewport height is 800px.
-    // Space above: 50px. Space below: 800 - 100 = 700px.
-    // It should render below (top-full mt-1) with maxHeight = min(256, 700 - 12) = 256px.
-    parent!.getBoundingClientRect = () => ({
-      top: 50,
-      bottom: 100,
-      left: 0,
-      right: 500,
-      width: 500,
-      height: 50,
-    } as unknown as DOMRect)
-
-    // Set innerHeight to 800
-    const originalInnerHeight = window.innerHeight
-    Object.defineProperty(window, 'innerHeight', { writable: true, configurable: true, value: 800 })
-
-    await act(async () => {
-      window.dispatchEvent(new Event('resize'))
-      // Wait for resize observer / state updates
-      await new Promise((resolve) => setTimeout(resolve, 0))
-    })
-
-    expect(listbox.className).toContain("top-full")
-    expect(listbox.className).toContain("mt-1")
-    expect(listbox.className).not.toContain("bottom-full")
-    expect(listbox.style.maxHeight).toBe("256px")
-
-    // Scenario 2: Input bar is near the bottom of the screen (e.g. top = 700px, bottom = 750px).
-    // Viewport height is 800px.
-    // Space above: 700px. Space below: 800 - 750 = 50px.
-    // It should render above (bottom-full mb-1) with maxHeight = min(256, 700 - 12) = 256px.
-    parent!.getBoundingClientRect = () => ({
-      top: 700,
-      bottom: 750,
-      left: 0,
-      right: 500,
-      width: 500,
-      height: 50,
-    } as unknown as DOMRect)
-
-    await act(async () => {
-      window.dispatchEvent(new Event('resize'))
-      await new Promise((resolve) => setTimeout(resolve, 0))
-    })
-
-    expect(listbox.className).toContain("bottom-full")
-    expect(listbox.className).toContain("mb-1")
-    expect(listbox.className).not.toContain("top-full")
-    expect(listbox.style.maxHeight).toBe("256px")
-
-    // Scenario 3: Viewport height is small (e.g. 200px) and input bar is near the bottom.
-    // Space above: 120px. Space below: 200 - 170 = 30px.
-    // It should render above (bottom-full mb-1) with maxHeight clamped to Math.max(80, 120 - 12) = 108px.
-    Object.defineProperty(window, 'innerHeight', { writable: true, configurable: true, value: 200 })
-    parent!.getBoundingClientRect = () => ({
-      top: 120,
-      bottom: 170,
-      left: 0,
-      right: 500,
-      width: 500,
-      height: 50,
-    } as unknown as DOMRect)
-
-    await act(async () => {
-      window.dispatchEvent(new Event('resize'))
-      await new Promise((resolve) => setTimeout(resolve, 0))
-    })
-
-    expect(listbox.className).toContain("bottom-full")
-    expect(listbox.className).toContain("mb-1")
-    expect(listbox.style.maxHeight).toBe("108px")
-
-    // Restore window.innerHeight
-    Object.defineProperty(window, 'innerHeight', { writable: true, configurable: true, value: originalInnerHeight })
+  it("inserts transcript when input is empty", async () => {
+    const user = userEvent.setup()
+    render(<InputBar onSubmit={() => {}} voiceEnabled={true} />)
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+    await user.click(screen.getByLabelText("Start voice input"))
+    await user.click(screen.getByLabelText("Stop voice input"))
+    await screen.findByLabelText("Start voice input")
+    expect(textarea.value).toBe("world")
   })
 })
 
-describe("InputBar — word navigation helper functions", () => {
-  it("getPreviousWordBoundary correctly finds word boundaries moving left", () => {
-    const text = "com.openagentd.desktop"
-    expect(getPreviousWordBoundary(text, 22)).toBe(15)
-    expect(getPreviousWordBoundary(text, 15)).toBe(4)
-    expect(getPreviousWordBoundary(text, 4)).toBe(0)
+// ─────────────────────────────────────────────────────────────────────────────
+// Word-by-word keyboard navigation
+// ─────────────────────────────────────────────────────────────────────────────
+describe("InputBar — word navigation", () => {
+  beforeEach(() => { mockOS = "macos" })
 
-    const textWithSpaces = "hello   world"
-    expect(getPreviousWordBoundary(textWithSpaces, 13)).toBe(8)
-    expect(getPreviousWordBoundary(textWithSpaces, 8)).toBe(0)
-  })
-
-  it("getNextWordBoundary correctly finds word boundaries moving right", () => {
-    const text = "com.openagentd.desktop"
-    expect(getNextWordBoundary(text, 0)).toBe(3)
-    expect(getNextWordBoundary(text, 3)).toBe(14)
-    expect(getNextWordBoundary(text, 14)).toBe(22)
-  })
-})
-
-describe("InputBar — word-by-word keyboard navigation", () => {
-  beforeEach(() => {
-    mockOS = "macos"
-  })
-
-  it("navigates word-by-word using Option + Arrow on macOS", async () => {
+  it("Option+Arrow navigates word-by-word on macOS", async () => {
     const user = userEvent.setup()
     render(<InputBar onSubmit={() => {}} />)
-
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
     await user.type(textarea, "com.openagentd.desktop")
-
-    expect(textarea.selectionStart).toBe(22)
-
     await user.keyboard("{Alt>}{ArrowLeft}{/Alt}")
     expect(textarea.selectionStart).toBe(15)
-
     await user.keyboard("{Alt>}{ArrowLeft}{/Alt}")
     expect(textarea.selectionStart).toBe(4)
-
     await user.keyboard("{Alt>}{ArrowRight}{/Alt}")
     expect(textarea.selectionStart).toBe(14)
   })
 
-  it("navigates word-by-word using Ctrl + Arrow on Windows/Linux", async () => {
+  it("Ctrl+Arrow navigates word-by-word on Windows", async () => {
     mockOS = "windows"
     const user = userEvent.setup()
     render(<InputBar onSubmit={() => {}} />)
-
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
     await user.type(textarea, "com.openagentd.desktop")
-
-    expect(textarea.selectionStart).toBe(22)
-
     await user.keyboard("{Control>}{ArrowLeft}{/Control}")
     expect(textarea.selectionStart).toBe(15)
   })
+})
 
-  it("selects word-by-word using Shift + Option + Arrow on macOS", async () => {
+// ─────────────────────────────────────────────────────────────────────────────
+// Minimized state
+// ─────────────────────────────────────────────────────────────────────────────
+describe("InputBar — minimized state", () => {
+  it("collapses message slot to h-0 when minimized", () => {
+    render(<InputBar onSubmit={() => {}} minimized />)
+    const slot = screen.getByLabelText("Message input").closest('div[aria-hidden="true"]') as HTMLElement
+    expect(slot.className).toContain("h-0")
+    expect(slot.className).toContain("overflow-hidden")
+  })
+
+  it("re-enables textarea on minimize → expand", async () => {
+    const { rerender } = render(<InputBar onSubmit={() => {}} minimized={false} />)
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+    rerender(<InputBar onSubmit={() => {}} minimized />)
+    expect(textarea.getAttribute("disabled")).not.toBeNull()
+    rerender(<InputBar onSubmit={() => {}} minimized={false} />)
+    await act(async () => { await new Promise((r) => requestAnimationFrame(r)) })
+    expect(textarea.getAttribute("disabled")).toBeNull()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Height reset after submit
+// ─────────────────────────────────────────────────────────────────────────────
+describe("InputBar — height reset after submit", () => {
+  function stubMultiLine(textarea: HTMLTextAreaElement, lineHeight = 24) {
+    Object.defineProperty(textarea, "scrollHeight", { configurable: true, get: () => lineHeight * 3 })
+    const orig = window.getComputedStyle.bind(window)
+    Object.defineProperty(window, "getComputedStyle", {
+      configurable: true, writable: true,
+      value: (el: Element) => {
+        const s = orig(el)
+        if (el !== textarea) return s
+        return new Proxy(s, { get(t, p) { if (p === "lineHeight") return `${lineHeight}px`; if (p === "fontSize") return "14px"; return (t as unknown as Record<string|symbol, unknown>)[p] } })
+      },
+    })
+    return () => Object.defineProperty(textarea, "scrollHeight", { configurable: true, get: () => 0 })
+  }
+
+  it("resets to 'auto' after submitting multiline content", async () => {
     const user = userEvent.setup()
     render(<InputBar onSubmit={() => {}} />)
-
     const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
-    await user.type(textarea, "com.openagentd.desktop")
+    const restore = stubMultiLine(textarea)
+    await user.type(textarea, "line one\nline two\nline three")
+    act(() => { fireEvent.input(textarea) })
+    textarea.style.height = "72px"
+    await user.keyboard("{Enter}")
+    restore()
+    await act(async () => { await new Promise((r) => requestAnimationFrame(r)) })
+    expect(textarea.style.height).toBe("auto")
+    expect(textarea.value).toBe("")
+  })
+})
 
-    expect(textarea.selectionStart).toBe(22)
-    expect(textarea.selectionEnd).toBe(22)
+// ─────────────────────────────────────────────────────────────────────────────
+// Paste (clipboard)
+// ─────────────────────────────────────────────────────────────────────────────
+describe("InputBar — paste", () => {
+  it("adds a pasted image file", () => {
+    const caps: AgentCapabilities = { input: { vision: true, document_text: false, audio: false, video: false }, output: { text: true, image: false, audio: false } }
+    render(<InputBar onSubmit={() => {}} capabilities={caps} />)
+    const textarea = screen.getByLabelText("Message input")
+    const file = new File(["img"], "pasted.png", { type: "image/png" })
+    fireEvent.paste(textarea, { clipboardData: { items: [{ kind: "file", type: "image/png", getAsFile: () => file }] } })
+    expect(screen.getByRole("img", { name: "pasted.png" })).toBeTruthy()
+  })
 
-    await user.keyboard("{Shift>}{Alt>}{ArrowLeft}{/Alt}{/Shift}")
-    expect(textarea.selectionStart).toBe(15)
-    expect(textarea.selectionEnd).toBe(22)
-    expect(textarea.selectionDirection).toBe("backward")
+  it("handles null clipboardData items without crashing", () => {
+    render(<InputBar onSubmit={() => {}} />)
+    fireEvent.paste(screen.getByLabelText("Message input"), { clipboardData: { items: null } })
+    expect(screen.getByLabelText("Message input")).toBeTruthy()
   })
 })

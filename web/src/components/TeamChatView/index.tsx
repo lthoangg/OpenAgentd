@@ -27,6 +27,7 @@ import { WorkspaceInfoCard } from '../WorkspaceInfoCard'
 import { CodingSidebar } from '../CodingSidebar'
 import { CodingWorkspacePanel } from '../CodingWorkspacePanel'
 import { CodingFileViewerPanel } from '../CodingFileViewerPanel'
+import { WorkspaceFilesPanel } from '../WorkspaceFilesPanel'
 import { Sidebar } from '../Sidebar'
 import { useTodosQuery } from '@/queries/useTodosQuery'
 import { useProvidersQuery } from '@/queries'
@@ -1269,6 +1270,16 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
           />
         )}
         </main>
+        {/* Workspace files panel — normal (cockpit) mode only.
+            Desktop: in-flow flex sibling — pushes <main> left (no overlay).
+            Mobile: fixed overlay from the right. */}
+        {mode !== 'coding' && (
+          <WorkspaceFilesPanel
+            open={showFilesPanel}
+            sessionId={sessionIdState}
+            onClose={() => setShowFilesPanel(false)}
+          />
+        )}
         {mode === 'coding' && workspace && codingFileViewer !== null && codingFileViewerDetached && codingPanel === null && (
           <CodingFileViewerPanel
             workspace={workspace}
@@ -1311,9 +1322,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         onSessionModelSettingsChange={setSessionModelSettings}
         onCloseAgentCapabilities={closeAgentCapabilities}
         mode={mode}
-        showFilesPanel={showFilesPanel}
         sessionId={sessionIdState}
-        onCloseFilesPanel={() => setShowFilesPanel(false)}
         isMobile={isMobile}
         showTodos={showTodos}
         onShowTodosChange={handleSetShowTodos}

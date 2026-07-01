@@ -439,6 +439,133 @@ html[data-mobile-shell] .mobile-safe-header {
    cutouts/home indicators and the desktop shell header / macOS traffic-light
    region. Keep this geometry in CSS instead of Tailwind arbitrary classes so
    every platform gets the same safe-area contract. */
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * AppOverlay — shared geometry for ALL app overlays except the full-width
+ * Settings sheet (which uses .settings-modal-shell below).
+ *
+ * Two layout variants are set via data attributes written by <AppOverlay>:
+ *   [data-overlay-variant="modal"]  — centred card
+ *   [data-overlay-variant="sheet"]  — edge drawer (side in data-overlay-side)
+ *
+ * Mobile (both variants): edge-to-edge, safe-area insets, tracks soft keyboard.
+ * Desktop (md+): modal → centred card capped by --overlay-max-width CSS var;
+ *                sheet → anchored to the chosen edge.
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * AppOverlay CSS — three variants, all position: fixed.
+ *
+ * Platform matrix:
+ *   Mobile web (no data-mobile-shell): env(safe-area-inset-*) clears notch/home bar.
+ *   iOS/Android Tauri (data-mobile-shell): same + transform tracks visual
+ *     viewport offset so the overlay follows the keyboard without a height jump.
+ *   macOS Tauri (data-platform=mac-overlay): desktop path applies; the app
+ *     header (--spacing-app-header) already clears the traffic-light buttons.
+ *   Desktop web/Windows/Linux: standard desktop path, no safe-area needed.
+ *
+ * KEY RULE: framer-motion owns the CSS `transform` property for enter/exit
+ * animations. Never use CSS transform for *layout* (no translateX(-50%)).
+ * Use margin:auto for horizontal centring of fixed elements instead.
+ *
+ * KEY RULE: Do NOT add `mobile-viewport` class to overlays. That class is
+ * only for the main app shell — it sets height:var(--app-vh) which would
+ * fight the top+bottom constraint sizing of these fixed overlays.
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+/* ── MODAL — centred card ────────────────────────────────────────────────────
+ *
+ * Mobile (< 768px):
+ *   Clears the app header + notch at top, home indicator at bottom.
+ *   Edge-to-edge horizontally with safe-area side clearance.
+ *   height:auto — sized naturally by the top+bottom insets.
+ *   Rounded corners + border so it reads as a floating sheet.
+ *
+ * Desktop (≥ 768px):
+ *   Centred card. Top below app header + 4vh breathing room, bottom 4vh.
+ *   Width capped by --overlay-max-width (passed as inline CSS var by AppOverlay).
+ *   left:0 + right:0 + margin:auto centres a fixed element without transform.
+ *
+ * macOS overlay: no extra rule needed — desktop path already clears the header
+ *   (--spacing-app-header accounts for the traffic-light bar height).
+ *
+ * iOS/Android Tauri (data-mobile-shell):
+ *   transform:translateY(--app-vt) follows the visual viewport offset that
+ *   useMobileViewportGuards writes when the keyboard opens/closes. The overlay
+ *   stays above the keyboard purely through this offset — no height change.
+ * ──────────────────────────────────────────────────────────────────────────── */
+.app-overlay-modal {
+  position: fixed;
+  top: calc(var(--spacing-app-header) + env(safe-area-inset-top, 0px));
+  right: max(0.5rem, env(safe-area-inset-right, 0px));
+  bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
+  left: max(0.5rem, env(safe-area-inset-left, 0px));
+  height: auto;
+  border-radius: 0.5rem;
+  border: 1px solid var(--color-border);
+}
+
+@media (min-width: 768px) {
+  .app-overlay-modal {
+    top: calc(var(--spacing-app-header) + 4vh);
+    bottom: 4vh;
+    left: 0;
+    right: 0;
+    width: min(90vw, var(--overlay-max-width, 860px));
+    margin-left: auto;
+    margin-right: auto;
+    max-height: calc(100svh - var(--spacing-app-header) - 8vh);
+  }
+}
+
+html[data-mobile-shell] .app-overlay-modal {
+  transform: translateY(var(--app-vt, 0px));
+}
+
+/* ── PALETTE — compact search card ──────────────────────────────────────────
+ *
+ * Always auto-height (grows with content, never full-screen).
+ *
+ * Mobile: edge-to-edge horizontally just below the app header + safe-area top.
+ * Desktop: centred 480px card, 1.5rem below the app header.
+ * ──────────────────────────────────────────────────────────────────────────── */
+.app-overlay-palette {
+  position: fixed;
+  top: calc(var(--spacing-app-header) + env(safe-area-inset-top, 0px) + 0.5rem);
+  left: max(0.5rem, env(safe-area-inset-left, 0px));
+  right: max(0.5rem, env(safe-area-inset-right, 0px));
+  height: auto;
+  border-radius: 0.5rem;
+  border: 1px solid var(--color-border);
+}
+
+@media (min-width: 768px) {
+  .app-overlay-palette {
+    top: calc(var(--spacing-app-header) + 1.5rem);
+    left: 0;
+    right: 0;
+    margin-left: auto;
+    margin-right: auto;
+    width: min(90vw, 480px);
+  }
+}
+
+/* ── Keyboard tracking (iOS/Android Tauri only) ──────────────────────────────
+ * will-change is promoted only while the keyboard is actively moving to avoid
+ * keeping a composited layer alive permanently (wastes GPU memory on iOS).
+ * The transition fires only on keyboard dismiss (data-vp-anim) so the shell
+ * glides back smoothly instead of jumping. Keyboard open stays frame-locked
+ * (no transition) so the overlay rises in lockstep with the keyboard.
+ * ──────────────────────────────────────────────────────────────────────────── */
+html[data-mobile-shell][data-keyboard-open] .app-overlay-modal,
+html[data-mobile-shell][data-vp-anim] .app-overlay-modal {
+  will-change: transform;
+}
+
+html[data-mobile-shell][data-vp-anim] .app-overlay-modal {
+  transition: transform 0.2s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
 .settings-modal-shell {
   position: fixed;
   top: max(0.5rem, env(safe-area-inset-top, 0px));

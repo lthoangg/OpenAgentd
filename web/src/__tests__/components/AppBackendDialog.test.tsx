@@ -346,9 +346,10 @@ describe('AppBackendDialog', () => {
     const onOpenChangeMock = mock(() => {})
     render(<AppBackendDialog open onOpenChange={onOpenChangeMock} />)
 
-    // Click the backdrop (the outer div)
-    const dialog = screen.getByRole('dialog')
-    await user.click(dialog)
+    // The backdrop is the aria-hidden overlay behind the dialog panel
+    const backdrop = document.querySelector('[aria-hidden="true"].fixed.inset-0') as HTMLElement
+    expect(backdrop).toBeTruthy()
+    await user.click(backdrop)
 
     expect(onOpenChangeMock).toHaveBeenCalledWith(false)
   })

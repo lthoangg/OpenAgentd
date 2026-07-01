@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { Server } from 'lucide-react'
+import { AppOverlay } from '@/components/ui/app-overlay'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -170,26 +170,15 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
     }
   }
 
-  return createPortal(
-    <div
-      className="mobile-safe-overlay mobile-viewport fixed inset-x-0 top-0 z-50 flex h-dvh items-center justify-center bg-black/40 p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="app-backend-title"
-      data-swipe-ignore
-      onClick={() => onOpenChange(false)}
-    >
-      <div
-        className="flex max-h-full w-full max-w-md flex-col overflow-hidden rounded-md border border-(--color-border) bg-(--bg-page) text-(--color-text) shadow-2xl"
-        onClick={(event) => event.stopPropagation()}
-      >
-        {/* Header / Title Bar */}
-        <div className="flex h-11 shrink-0 items-center justify-between border-b border-(--color-border) bg-(--bg-sidebar) px-4 select-none">
-          <div className="flex items-center gap-2">
-            <Server size={13} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
-            <h2 id="app-backend-title" className="text-xs font-semibold text-(--color-text)">Backend connection</h2>
-          </div>
+  return (
+    <AppOverlay open={open} onClose={() => onOpenChange(false)} label="Backend connection" maxWidth="480px">
+      {/* Header / Title Bar */}
+      <div className="flex h-11 shrink-0 items-center justify-between border-b border-(--color-border) bg-(--bg-sidebar) px-4 select-none">
+        <div className="flex items-center gap-2">
+          <Server size={13} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
+          <h2 className="text-xs font-semibold text-(--color-text)">Backend connection</h2>
         </div>
+      </div>
 
         <div className="relative min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
           {/* Connected backend status line */}
@@ -399,10 +388,8 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
           >
             Cancel
           </button>
-        </div>
       </div>
-    </div>,
-    document.body,
+    </AppOverlay>
   )
 }
 

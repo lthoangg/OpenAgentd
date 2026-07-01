@@ -6,7 +6,6 @@
  */
 
 import { useEffect, useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
 import { X, Clock, Plus, Loader2, AlertCircle, CalendarClock, ArrowLeft } from 'lucide-react'
 import { SearchBar } from '@/components/ui/search-bar'
 import {
@@ -14,8 +13,7 @@ import {
 } from '@/queries'
 import type { ScheduledTaskMode } from '@/api/types'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { useModalFocus } from '@/hooks/useModalFocus'
-import { useReducedMotion } from '@/hooks/useReducedMotion'
+import { AppOverlay } from '@/components/ui/app-overlay'
 import { TaskListItem } from './SchedulerPanel/TaskListItem'
 import { CreateTaskForm } from './SchedulerPanel/CreateTaskForm'
 import { TaskDetailView } from './SchedulerPanel/TaskDetailView'
@@ -53,8 +51,6 @@ export function SchedulerPanel({
   const [mobilePane, setMobilePane] = useState<'list' | 'detail' | 'create'>('list')
 
   const tasksQuery = useScheduledTasksQuery()
-  const prefersReducedMotion = useReducedMotion()
-  useModalFocus(open, onClose)
 
   // Refresh on open — the drawer is mounted persistently so AnimatePresence
   // can play exit animations; without this the list goes stale on reopen.
@@ -111,31 +107,12 @@ export function SchedulerPanel({
   const showDetail = !isMobile || mobilePane === 'detail' || mobilePane === 'create'
 
   return (
-    <AnimatePresence>
-      {open && (
-        <>
-          <motion.div
-            key="backdrop"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-            onClick={onClose}
-            className="fixed inset-x-0 bottom-0 top-[calc(var(--spacing-app-header)+env(safe-area-inset-top,0px))] z-40 bg-black/40 sm:inset-0"
-          />
-
-          <motion.aside
-            key="dialog"
-            initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97, y: 8 }}
-            animate={prefersReducedMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 }}
-            exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97, y: 8 }}
-            transition={{ duration: prefersReducedMotion ? 0.01 : 0.18, ease: [0.4, 0, 0.2, 1] }}
-            className="mobile-viewport fixed inset-x-0 bottom-0 top-[calc(var(--spacing-app-header)+env(safe-area-inset-top,0px))] z-50 flex flex-col overflow-hidden border-(--color-border) bg-(--bg-page) shadow-2xl sm:inset-auto sm:left-1/2 sm:top-1/2 sm:h-[min(90vh,860px)] sm:w-[min(90vw,1180px)] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-md sm:border"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Scheduled tasks"
-            data-modal-focus="true"
-          >
+    <AppOverlay
+      open={open}
+      onClose={onClose}
+      label="Scheduled tasks"
+      maxWidth="1100px"
+    >
             {/* Header */}
             <header className="flex shrink-0 items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-sidebar) px-3 py-3 sm:px-5 sm:py-4">
               <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -268,10 +245,7 @@ export function SchedulerPanel({
                 </div>
               )}
             </div>
-          </motion.aside>
-        </>
-      )}
-    </AnimatePresence>
+    </AppOverlay>
   )
 }
 

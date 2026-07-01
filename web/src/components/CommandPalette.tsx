@@ -8,12 +8,8 @@
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
 import { Search, CornerDownLeft } from 'lucide-react'
-import { useModalFocus } from '@/hooks/useModalFocus'
-import { useReducedMotion } from '@/hooks/useReducedMotion'
-import { usePlatform } from '@/hooks/use-platform'
-import { useIsMobile } from '@/hooks/use-mobile'
+import { AppOverlay } from '@/components/ui/app-overlay'
 import type { WorkspaceFileInfo } from '@/api/types'
 
 export interface Command {
@@ -44,21 +40,6 @@ export function CommandPalette({ commands, onClose, workspaceFiles = [], onFileO
   const [activeIdx, setActiveIdx] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
-  const prefersReducedMotion = useReducedMotion()
-  const isMobile = useIsMobile()
-  // usePlatform calls compute() (several navigator.* reads) on every render.
-  // Destructure once; the values are session-stable so this is fine.
-  const { isTauri, os } = usePlatform()
-  const isTauriMobile = isMobile && isTauri && (os === 'ios' || os === 'android')
-  // Memoize the position class — avoids a string concat on every render.
-  const positionCls = useMemo(
-    () => isTauriMobile
-      ? 'pt-[max(5rem,calc(env(safe-area-inset-top)+3.5rem))]'
-      : 'pt-4',
-    [isTauriMobile],
-  )
-  useModalFocus(true, onClose)
-
   // Focus input on open
   useEffect(() => {
     inputRef.current?.focus()
@@ -172,30 +153,13 @@ export function CommandPalette({ commands, onClose, workspaceFiles = [], onFileO
   }
 
   return (
-    <AnimatePresence>
-      <motion.div
-        key="backdrop"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.15 }}
-        className={`fixed inset-0 z-50 flex items-start justify-center bg-(--color-overlay) px-3 backdrop-blur-sm sm:px-0 sm:pt-[15vh] ${positionCls}`}
-        onClick={onClose}
-      >
-        <motion.div
-          key="panel"
-          initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97, y: -8 }}
-          animate={prefersReducedMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 }}
-          exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97, y: -8 }}
-          transition={{ duration: prefersReducedMotion ? 0.01 : 0.12, ease: [0.2, 0, 0, 1] }}
-          onClick={(e) => e.stopPropagation()}
-          className="flex w-full max-w-md flex-col overflow-hidden rounded-md border border-(--color-border) bg-(--bg-page) shadow-2xl"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Command palette"
-          data-modal-focus="true"
-          onKeyDown={handleKeyDown}
-        >
+    <AppOverlay
+      open={true}
+      onClose={onClose}
+      label="Command palette"
+      variant="palette"
+    >
+      <div onKeyDown={handleKeyDown}>
           {/* Search input */}
           <div className="flex items-center gap-2 border-b border-(--color-border) bg-(--bg-sidebar) px-3 py-2.5">
             <Search size={13} className="shrink-0 text-(--color-text-muted)" />
@@ -269,9 +233,8 @@ export function CommandPalette({ commands, onClose, workspaceFiles = [], onFileO
             <kbd className="rounded-xs border border-(--color-border) bg-(--bg-card) px-1 py-0.5 font-mono text-[10px] text-(--color-text-muted)">Esc</kbd>
             <span className="text-xs text-(--color-text-muted)">close</span>
           </div>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>
+      </div>
+    </AppOverlay>
   )
 }
 

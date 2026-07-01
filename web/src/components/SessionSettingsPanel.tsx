@@ -12,7 +12,6 @@
  */
 
 import { useEffect, useMemo } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
 import {
   X,
   ImageIcon,
@@ -21,6 +20,7 @@ import {
   Video,
   ArrowRight,
 } from 'lucide-react'
+import { AppOverlay } from '@/components/ui/app-overlay'
 import { SessionModelSettings } from './SessionModelSettings'
 import { Tools } from './SessionSettingsPanelTools'
 import { useTeamAgentsQuery } from '@/queries/useAgentsQuery'
@@ -151,16 +151,6 @@ export function SessionSettingsPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
-  // Close on Escape (only while open)
-  useEffect(() => {
-    if (!open) return
-    const h = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', h)
-    return () => window.removeEventListener('keydown', h)
-  }, [open, onClose])
-
   const allAgents: TeamAgentInfo[] = data?.agents ?? []
   const byName = new Map(allAgents.map((a) => [a.name, a]))
 
@@ -200,30 +190,12 @@ export function SessionSettingsPanel({
   }
 
   return (
-    <AnimatePresence>
-      {open && (
-        <>
-          <motion.div
-            key="backdrop"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-            onClick={onClose}
-            className="fixed inset-0 z-40 bg-black/40"
-          />
-
-          <motion.aside
-            key="dialog"
-            initial={{ opacity: 0, scale: 0.97, y: 8 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.97, y: 8 }}
-            transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
-            className="fixed left-1/2 top-1/2 z-50 flex -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden border border-(--color-border) bg-(--bg-page) shadow-2xl rounded-md w-[92vw] min-w-[320px] max-w-[480px] h-[80dvh] min-h-[400px] max-h-[640px] sm:w-[65vw] sm:min-w-[600px] sm:max-w-[900px] sm:h-[75dvh] sm:min-h-[500px] sm:max-h-[800px]"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Session settings"
-          >
+    <AppOverlay
+      open={open}
+      onClose={onClose}
+      label="Session settings"
+      maxWidth="1000px"
+    >
         {/* Header */}
         <header className="flex shrink-0 items-start justify-between gap-3 border-b border-(--color-border) bg-(--bg-sidebar) px-3 py-3 sm:px-5 sm:py-4">
           {isLoading || !leadAgent ? (
@@ -302,9 +274,6 @@ export function SessionSettingsPanel({
             Esc or click outside to close · Ctrl+A to toggle
           </p>
         </div>
-      </motion.aside>
-        </>
-      )}
-    </AnimatePresence>
+    </AppOverlay>
   )
 }

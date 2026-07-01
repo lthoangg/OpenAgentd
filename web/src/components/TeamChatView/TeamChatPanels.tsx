@@ -2,7 +2,6 @@ import { CommandPalette } from '../CommandPalette'
 import { SchedulerPanel } from '../SchedulerPanel'
 import { SessionSettingsPanel } from '../SessionSettingsPanel'
 import { TodosPopover } from '../TodosPopover'
-import { WorkspaceFilesPanel } from '../WorkspaceFilesPanel'
 import type { TodoItem, WorkspaceFileInfo } from '@/api/types'
 import type { Command } from '../CommandPalette'
 
@@ -16,13 +15,11 @@ interface TeamChatPanelsProps {
   onSessionModelSettingsChange: (model: string | null, thinkingLevel: string | null, fastMode: boolean) => void
   onCloseAgentCapabilities: () => void
   mode: 'normal' | 'coding'
-  showFilesPanel: boolean
-  sessionId: string | null
-  onCloseFilesPanel: () => void
   isMobile: boolean
   showTodos: boolean
   onShowTodosChange: (open: boolean) => void
   todos: TodoItem[]
+  sessionId: string | null
   schedulerOpen: boolean
   onCloseScheduler: () => void
   workspace: string | null
@@ -43,13 +40,11 @@ export function TeamChatPanels({
   onSessionModelSettingsChange,
   onCloseAgentCapabilities,
   mode,
-  showFilesPanel,
-  sessionId,
-  onCloseFilesPanel,
   isMobile,
   showTodos,
   onShowTodosChange,
   todos,
+  sessionId,
   schedulerOpen,
   onCloseScheduler,
   workspace,
@@ -70,11 +65,6 @@ export function TeamChatPanels({
         sessionFastMode={sessionFastMode}
         onSessionModelSettingsChange={onSessionModelSettingsChange}
         onClose={onCloseAgentCapabilities}
-      />
-      <WorkspaceFilesPanel
-        open={mode !== 'coding' && showFilesPanel}
-        sessionId={sessionId}
-        onClose={onCloseFilesPanel}
       />
       <TodosPopover
         open={isMobile && showTodos}

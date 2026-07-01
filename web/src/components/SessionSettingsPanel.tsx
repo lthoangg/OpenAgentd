@@ -223,7 +223,7 @@ export function SessionSettingsPanel({
         </header>
 
         {/* Body */}
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y">
           {isLoading || !leadAgent ? (
             <div className="flex-1 space-y-3 p-3 sm:p-5">
               <div className="h-16 animate-pulse rounded-sm bg-(--bg-key)" />

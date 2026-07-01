@@ -365,7 +365,7 @@ function ImagePreview({ sessionId, file }: { sessionId: string; file: WorkspaceF
   const url = workspaceMediaUrl(sessionId, file.path)
   return (
     <>
-      <div className="flex h-full items-center justify-center bg-(--bg-page) p-4">
+      <div className="flex h-full items-center justify-center overflow-hidden overscroll-contain touch-pan-y bg-(--bg-page) p-4">
         <img
           src={url}
           alt={file.name}
@@ -381,7 +381,7 @@ function ImagePreview({ sessionId, file }: { sessionId: string; file: WorkspaceF
 function VideoPreview({ sessionId, file }: { sessionId: string; file: WorkspaceFileInfo }) {
   const url = workspaceMediaUrl(sessionId, file.path)
   return (
-    <div className="flex h-full items-center justify-center bg-(--bg-page) p-4">
+    <div className="flex h-full items-center justify-center overflow-hidden overscroll-contain touch-pan-y bg-(--bg-page) p-4">
       <video
         src={url}
         controls
@@ -459,7 +459,23 @@ function TextPreview({ sessionId, file }: { sessionId: string; file: WorkspaceFi
   if (content === null) return null
 
   return (
-    <pre className="h-full overflow-auto whitespace-pre-wrap break-words p-4 font-mono text-xs leading-relaxed text-(--color-text) [overflow-wrap:anywhere]">
+    <pre
+      // tabIndex makes the element focusable so keyboard scroll works inside
+      // the pane instead of leaking to the chat area behind it.
+      // onKeyDown stops propagation for every key that scrolls a container
+      // (arrows, Page/Home/End, Space) so the global "type to focus input"
+      // and "Tab cycles agents" handlers in TeamChatView don't fire.
+      tabIndex={0}
+      data-scroll-capture="true"
+      onKeyDown={(e) => {
+        const scrollKeys = new Set([
+          'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
+          'PageUp', 'PageDown', 'Home', 'End', ' ',
+        ])
+        if (scrollKeys.has(e.key)) e.stopPropagation()
+      }}
+      className="h-full overflow-auto overscroll-contain whitespace-pre-wrap break-words p-4 font-mono text-xs leading-relaxed text-(--color-text) outline-none [overflow-wrap:anywhere] touch-pan-y"
+    >
       {content}
     </pre>
   )
@@ -813,10 +829,30 @@ export function WorkspaceFilesPanel({ open, sessionId, onClose }: WorkspaceFiles
       {/* Body */}
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {showTree && (
-          <nav className={cn(
-            'overflow-y-auto border-r border-(--color-border) py-1',
-            isMobile ? 'w-full' : 'w-[260px] shrink-0',
-          )}>
+          <nav
+            aria-label="Workspace files"
+            className={cn(
+              'overflow-y-auto overscroll-contain touch-pan-y border-r border-(--color-border) py-1',
+              isMobile ? 'w-full' : 'w-[260px] shrink-0',
+            )}
+            onKeyDown={(e) => {
+              // Arrow-key navigation between visible tree rows.
+              // Collect all focusable buttons inside the nav at event time
+              // (the tree is dynamic — folders open/close).
+              if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+              const nav = e.currentTarget
+              const buttons = Array.from(nav.querySelectorAll<HTMLButtonElement>('button'))
+              if (buttons.length === 0) return
+              const idx = buttons.indexOf(document.activeElement as HTMLButtonElement)
+              if (e.key === 'ArrowDown') {
+                e.preventDefault()
+                buttons[Math.min(idx + 1, buttons.length - 1)]?.focus()
+              } else {
+                e.preventDefault()
+                buttons[Math.max(idx - 1, 0)]?.focus()
+              }
+            }}
+          >
             {!sessionId ? (
               <p className="px-3 py-4 text-xs italic text-(--color-text-subtle)">No active session.</p>
             ) : isLoading ? (

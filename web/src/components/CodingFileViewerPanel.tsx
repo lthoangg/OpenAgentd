@@ -225,7 +225,7 @@ function TextPreview({
   }
   return (
     <div className="flex h-full min-h-0 flex-col" onMouseLeave={() => setDragging(false)} onMouseUp={() => setDragging(false)}>
-      <div className="min-h-0 flex-1 overflow-auto font-mono text-xs leading-relaxed">
+      <div className="min-h-0 flex-1 overflow-auto overscroll-contain touch-pan-y font-mono text-xs leading-relaxed" data-scroll-capture="true" tabIndex={-1}>
         {highlightedLines.map((lineHtml, index) => {
           const lineNo = index + 1
           const selected = selectedStart !== null && selectedEnd !== null && lineNo >= selectedStart && lineNo <= selectedEnd
@@ -277,7 +277,7 @@ function ImagePreview({ workspace, file }: { workspace: string; file: WorkspaceF
   if (file.deleted) return <DeletedFilePreview />
   const url = codingWorkspaceFileUrl(workspace, file.path)
   return (
-    <div className="flex h-full min-h-0 items-center justify-center overflow-auto bg-(--bg-page) p-4">
+    <div className="flex h-full min-h-0 items-center justify-center overflow-auto overscroll-contain touch-pan-y bg-(--bg-page) p-4">
       <img src={url} alt={file.name} className="block max-h-full max-w-full rounded border border-(--color-border) object-contain" />
     </div>
   )
@@ -287,7 +287,7 @@ function VideoPreview({ workspace, file }: { workspace: string; file: WorkspaceF
   if (file.deleted) return <DeletedFilePreview />
   const url = codingWorkspaceFileUrl(workspace, file.path)
   return (
-    <div className="flex h-full min-h-0 items-center justify-center overflow-auto bg-(--bg-page) p-4">
+    <div className="flex h-full min-h-0 items-center justify-center overflow-auto overscroll-contain touch-pan-y bg-(--bg-page) p-4">
       <video
         src={url}
         controls

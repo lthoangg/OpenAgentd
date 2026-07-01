@@ -768,7 +768,7 @@ export function CodingWorkspacePanel({
                 </div>
               )}
 
-              <div ref={commitsScrollRef} className="min-h-0 flex-1 overflow-auto p-2">
+              <div ref={commitsScrollRef} className="min-h-0 flex-1 overflow-auto touch-pan-y p-2">
                 {subTab === 'changes' ? (
                   diff.isLoading || files.isLoading ? (
                     <p className="px-2 py-4 text-xs text-(--color-text-subtle)">Loading changed files…</p>

@@ -187,7 +187,7 @@ export function SchedulerPanel({
                   </div>
 
                   {/* Task list */}
-                  <div className="flex-1 overflow-y-auto">
+                  <div className="flex-1 overflow-y-auto overscroll-contain touch-pan-y">
                     {tasksQuery.isLoading ? (
                       <div className="flex items-center justify-center p-8">
                         <Loader2 size={20} className="animate-spin text-(--color-text-muted)" />

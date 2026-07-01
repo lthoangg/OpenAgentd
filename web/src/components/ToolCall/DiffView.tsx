@@ -77,7 +77,7 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1,
 
       {/* Diff Content */}
       {expanded && (
-        <div className="overflow-y-auto bg-(--bg-input) font-mono text-xs leading-relaxed">
+        <div className="overflow-y-auto overscroll-contain touch-pan-y bg-(--bg-input) font-mono text-xs leading-relaxed">
         {linesWithNumbers.length === 0 ? (
           <div className="px-3 py-4 text-center text-(--color-text-muted) italic">
             No content changes
@@ -178,7 +178,7 @@ export function DiffView({ toolName, args, result, onCollapse }: DiffViewProps) 
 
     if (diffs.length === 0) {
       viewContent = (
-        <pre className="overflow-auto p-3 font-mono text-xs leading-relaxed text-(--color-text-2)">
+        <pre className="overflow-auto overscroll-contain touch-pan-y p-3 font-mono text-xs leading-relaxed text-(--color-text-2)">
           {patchText}
         </pre>
       )

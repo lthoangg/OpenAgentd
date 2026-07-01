@@ -498,7 +498,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       cancelAnimationFrame(outerId)
       cancelAnimationFrame(innerId)
     }
-  }, [minimized])
+  }, [minimized, resize])
 
   // Plain ref now — no auto-focus-on-mount magic needed since the
   // textarea never unmounts.
@@ -538,7 +538,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     if (disabled) return
     const trimmed = value.trim()
     if (trimmed.length === 0 && files.length === 0) return
-    if (isStreaming && !hasText) return
+    if (isStreaming && value.trim().length === 0) return
 
     const submitted = shellMode ? `!${trimmed}` : trimmed
     onSubmit(
@@ -602,17 +602,21 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const items = e.clipboardData?.items
     if (!items) return
+    const pastedFiles: File[] = []
     for (let i = 0; i < items.length; i++) {
       const item = items[i]
       if (item.kind === 'file') {
         const file = item.getAsFile()
         if (file && isFileTypeAllowed(file, capabilities)) {
-          e.preventDefault()
-          addFile(file)
+          pastedFiles.push(file)
         }
       }
     }
-  }, [addFile, capabilities])
+    if (pastedFiles.length > 0) {
+      e.preventDefault()
+      setFiles((prev) => [...prev, ...pastedFiles])
+    }
+  }, [capabilities])
 
   const handleDragEnter = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()

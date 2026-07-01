@@ -1,37 +1,40 @@
 /**
- * FilePreviewStrip — horizontally scrolling row of file previews with an
- * optional scroll-position hint pill below.
+ * FilePreviewStrip — horizontally scrolling row of pending-upload previews.
  *
- * Used by InputBar when `files.length > 0`. The strip clips at the visible
- * width and scrolls horizontally; when content overflows, a 3px-tall pill
- * appears below the strip showing a thumb that mirrors the current scroll
- * position. The hint matches pencil's `attachmentScrollHint` /
- * `attachmentScrollThumb` pattern from the `MultiAttachOverflow` variant.
+ * Each card shows a rich preview appropriate for the file type and opens
+ * FileLightbox (the full-screen gallery) on click. All cards share the same
+ * gallery so users can swipe / arrow through every attached file.
  *
- * If the content fits within the visible width (no overflow), the hint
- * is not rendered — keeping the bar visually quiet for small attachment
- * counts.
+ * Preview cards by type:
+ *   image/*            → thumbnail (ImageAttachment style)
+ *   video/*            → <video> poster frame with filename
+ *   audio/*            → compact <audio controls>
+ *   application/pdf    → <embed> miniature with filename
+ *   text/* / code exts → first-N-lines snippet in a <pre>
+ *   everything else    → icon + filename chip (FileCard)
  *
- * Preview types by MIME / extension:
- *   image/*   → ImageAttachment (thumbnail + lightbox)
- *   video/*   → VideoCard (inline <video> thumbnail)
- *   audio/*   → AudioCard (compact <audio> player)
- *   text/* or known code extensions → TextFileCard (first-few-lines snippet)
- *   everything else → FileCard (icon + filename chip)
+ * Gallery:
+ *   Clicking any card opens FileLightbox at that card's index.
+ *   The gallery contains all attached files — mixed types supported.
  */
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { X } from 'lucide-react'
-import { ImageAttachment } from './ImageAttachment'
 import { FileCard } from './FileCard'
 import { FileTypeIcon } from './FileTypeIcon'
+import { FileLightbox, type FileLightboxItem, type FileLightboxItemType } from './FileLightbox'
+
+// ─── Props ─────────────────────────────────────────────────────────────────────
 
 interface FilePreviewStripProps {
   files: File[]
   blobUrls: Map<number, string>
   onRemove: (index: number) => void
-  /** Whether to apply top margin (true) or bottom margin (false). */
+  /** When true preview strip renders below the input; margin flips accordingly. */
   filesBelow: boolean
 }
+
+// ─── Scroll-hint metrics ───────────────────────────────────────────────────────
 
 interface ScrollMetrics {
   thumbWidthPct: number
@@ -42,9 +45,7 @@ interface ScrollMetrics {
 function computeMetrics(el: HTMLElement): ScrollMetrics {
   const { scrollLeft, scrollWidth, clientWidth } = el
   const hasOverflow = scrollWidth > clientWidth + 1
-  if (!hasOverflow) {
-    return { thumbWidthPct: 100, thumbLeftPct: 0, hasOverflow: false }
-  }
+  if (!hasOverflow) return { thumbWidthPct: 100, thumbLeftPct: 0, hasOverflow: false }
   const thumbWidthPct = Math.max(15, (clientWidth / scrollWidth) * 100)
   const maxScroll = scrollWidth - clientWidth
   const scrollPct = maxScroll > 0 ? scrollLeft / maxScroll : 0
@@ -52,9 +53,8 @@ function computeMetrics(el: HTMLElement): ScrollMetrics {
   return { thumbWidthPct, thumbLeftPct, hasOverflow }
 }
 
-// ── helpers ──────────────────────────────────────────────────────────────────
+// ─── File-type detection ───────────────────────────────────────────────────────
 
-/** Extensions that are plain text / source code but carry no MIME or a generic MIME. */
 const TEXT_EXTENSIONS = new Set([
   'py','go','rs','rb','java','kt','swift','c','cpp','h','hpp','cs','php',
   'sh','bash','zsh','fish','sql','graphql','proto','tf','tfvars',
@@ -68,37 +68,92 @@ function extOf(name: string): string {
   return i >= 0 ? lower.slice(i + 1) : ''
 }
 
-function isTextFile(file: File): boolean {
-  if (file.type.startsWith('text/')) return true
-  if (file.type === 'application/json' || file.type === 'application/x-yaml' || file.type === 'application/toml') return true
-  return TEXT_EXTENSIONS.has(extOf(file.name))
+function itemTypeOf(file: File): FileLightboxItemType {
+  if (file.type.startsWith('image/')) return 'image'
+  if (file.type.startsWith('video/')) return 'video'
+  if (file.type.startsWith('audio/')) return 'audio'
+  if (file.type === 'application/pdf') return 'pdf'
+  if (
+    file.type.startsWith('text/') ||
+    file.type === 'application/json' ||
+    file.type === 'application/x-yaml' ||
+    file.type === 'application/toml' ||
+    TEXT_EXTENSIONS.has(extOf(file.name))
+  ) return 'text'
+  return 'file'
 }
 
-function isVideoFile(file: File): boolean {
-  return file.type.startsWith('video/')
+// ─── Shared remove button ──────────────────────────────────────────────────────
+
+function RemoveButton({ onRemove, label = 'Remove file' }: { onRemove: () => void; label?: string }) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => { e.stopPropagation(); onRemove() }}
+      className="absolute -right-2 -top-2 flex h-7 w-7 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-(--color-text-muted) shadow-sm opacity-100 transition-colors hover:border-(--color-border-strong) hover:text-(--color-text) md:-right-1.5 md:-top-1.5 md:h-4 md:w-4 md:opacity-0 md:group-hover:opacity-100"
+      aria-label={label}
+      title="Remove"
+    >
+      <X size={12} className="md:h-2.5 md:w-2.5" />
+    </button>
+  )
 }
 
-function isAudioFile(file: File): boolean {
-  return file.type.startsWith('audio/')
-}
-
-// ── VideoCard ─────────────────────────────────────────────────────────────────
+// ─── Per-type preview cards ────────────────────────────────────────────────────
 
 interface CardProps {
   file: File
   blobUrl: string
   onRemove: () => void
+  onOpen: () => void
 }
 
-function VideoCard({ file, blobUrl, onRemove }: CardProps) {
-  const displayName = file.name.length > 22 ? `${file.name.substring(0, 19)}…` : file.name
+function ImageCard({ file, blobUrl, onRemove, onOpen }: CardProps) {
+  const [error, setError] = useState(false)
 
   return (
     <div className="group relative inline-block">
-      <div className="flex flex-col overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card)">
+      <button
+        type="button"
+        onClick={onOpen}
+        className="overflow-hidden rounded-sm focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:outline-none"
+        aria-label={`Preview ${file.name}`}
+      >
+        {error
+          ? (
+            <div className="flex h-[120px] w-[120px] items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-xs text-(--color-text-muted)">
+              Failed to load
+            </div>
+          )
+          : (
+            <img
+              src={blobUrl}
+              alt={file.name}
+              loading="lazy"
+              decoding="async"
+              onError={() => setError(true)}
+              className="max-h-[120px] max-w-[120px] rounded-sm object-cover"
+            />
+          )}
+      </button>
+      <RemoveButton onRemove={onRemove} label="Remove image" />
+    </div>
+  )
+}
+
+function VideoCard({ file, blobUrl, onRemove, onOpen }: CardProps) {
+  const displayName = file.name.length > 22 ? `${file.name.slice(0, 19)}…` : file.name
+  return (
+    <div className="group relative inline-block">
+      <button
+        type="button"
+        onClick={onOpen}
+        className="flex flex-col overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:outline-none"
+        aria-label={`Preview ${file.name}`}
+      >
         <video
           src={blobUrl}
-          className="h-[100px] w-[160px] object-cover"
+          className="h-[90px] w-[150px] object-cover"
           preload="metadata"
           muted
         />
@@ -106,113 +161,155 @@ function VideoCard({ file, blobUrl, onRemove }: CardProps) {
           <FileTypeIcon name={file.name} size={12} />
           <span className="truncate text-xs text-(--color-text-muted)" title={file.name}>{displayName}</span>
         </div>
-      </div>
-      <button
-        onClick={(e) => { e.stopPropagation(); onRemove() }}
-        className="absolute -right-2 -top-2 flex h-7 w-7 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-(--color-text-muted) shadow-sm opacity-100 transition-colors hover:border-(--color-border-strong) hover:text-(--color-text) md:-right-1.5 md:-top-1.5 md:h-4 md:w-4 md:opacity-0 md:group-hover:opacity-100"
-        aria-label="Remove file"
-        title="Remove"
-      >
-        <X size={12} className="md:h-2.5 md:w-2.5" />
       </button>
+      <RemoveButton onRemove={onRemove} />
     </div>
   )
 }
 
-// ── AudioCard ─────────────────────────────────────────────────────────────────
-
-function AudioCard({ file, blobUrl, onRemove }: CardProps) {
-  const displayName = file.name.length > 22 ? `${file.name.substring(0, 19)}…` : file.name
-
+function AudioCard({ file, blobUrl, onRemove, onOpen }: CardProps) {
+  const displayName = file.name.length > 22 ? `${file.name.slice(0, 19)}…` : file.name
   return (
     <div className="group relative inline-block">
       <div className="flex flex-col gap-1.5 rounded-sm border border-(--color-border) bg-(--bg-card) px-2.5 py-2">
-        <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={onOpen}
+          className="flex items-center gap-1.5 text-left focus-visible:outline-none"
+          aria-label={`Preview ${file.name}`}
+        >
           <FileTypeIcon name={file.name} size={12} />
-          <span className="truncate text-xs font-medium text-(--color-text)" title={file.name}>{displayName}</span>
-        </div>
+          <span className="truncate text-xs font-medium text-(--color-text) hover:underline" title={file.name}>{displayName}</span>
+        </button>
         <audio
           src={blobUrl}
           controls
-          className="h-7 w-[200px]"
+          className="h-7 w-[190px]"
           preload="metadata"
         />
       </div>
-      <button
-        onClick={(e) => { e.stopPropagation(); onRemove() }}
-        className="absolute -right-2 -top-2 flex h-7 w-7 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-(--color-text-muted) shadow-sm opacity-100 transition-colors hover:border-(--color-border-strong) hover:text-(--color-text) md:-right-1.5 md:-top-1.5 md:h-4 md:w-4 md:opacity-0 md:group-hover:opacity-100"
-        aria-label="Remove file"
-        title="Remove"
-      >
-        <X size={12} className="md:h-2.5 md:w-2.5" />
-      </button>
+      <RemoveButton onRemove={onRemove} />
     </div>
   )
 }
 
-// ── TextFileCard ──────────────────────────────────────────────────────────────
+function PdfCard({ file, blobUrl, onRemove, onOpen }: CardProps) {
+  const displayName = file.name.length > 22 ? `${file.name.slice(0, 19)}…` : file.name
+  return (
+    <div className="group relative inline-block">
+      <button
+        type="button"
+        onClick={onOpen}
+        className="flex flex-col overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:outline-none"
+        aria-label={`Preview ${file.name}`}
+      >
+        <embed
+          src={blobUrl}
+          type="application/pdf"
+          className="pointer-events-none h-[90px] w-[150px]"
+        />
+        <div className="flex items-center gap-1.5 border-t border-(--color-border-subtle) px-2 py-1">
+          <FileTypeIcon name={file.name} size={12} />
+          <span className="truncate text-xs text-(--color-text-muted)" title={file.name}>{displayName}</span>
+        </div>
+      </button>
+      <RemoveButton onRemove={onRemove} />
+    </div>
+  )
+}
 
-/** Max bytes read from a text file for the preview snippet. */
-const TEXT_PREVIEW_BYTES = 400
-
-function TextFileCard({ file, onRemove }: Omit<CardProps, 'blobUrl'>) {
+/** Reads the first ~400 bytes of a text File and returns up to 5 lines. */
+function useTextSnippet(file: File): string | null {
   const [snippet, setSnippet] = useState<string | null>(null)
-  const displayName = file.name.length > 22 ? `${file.name.substring(0, 19)}…` : file.name
-
   useEffect(() => {
-    const slice = file.slice(0, TEXT_PREVIEW_BYTES)
     const reader = new FileReader()
     reader.onload = () => {
       const text = reader.result as string
-      // Take up to 5 lines
-      const lines = text.split('\n').slice(0, 5).join('\n')
-      setSnippet(lines)
+      setSnippet(text.split('\n').slice(0, 5).join('\n'))
     }
-    reader.onerror = () => setSnippet(null)
-    reader.readAsText(slice)
+    reader.onerror = () => setSnippet('')
+    reader.readAsText(file.slice(0, 400))
   }, [file])
+  return snippet
+}
+
+function TextCard({ file, onRemove, onOpen }: Omit<CardProps, 'blobUrl'> & { blobUrl: string }) {
+  const snippet = useTextSnippet(file)
+  const displayName = file.name.length > 22 ? `${file.name.slice(0, 19)}…` : file.name
 
   return (
     <div className="group relative inline-block">
-      <div className="flex w-[200px] flex-col overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card)">
-        {/* Header */}
+      <button
+        type="button"
+        onClick={onOpen}
+        className="flex w-[190px] flex-col overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) text-left focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:outline-none"
+        aria-label={`Preview ${file.name}`}
+      >
         <div className="flex items-center gap-1.5 border-b border-(--color-border-subtle) px-2 py-1.5">
           <FileTypeIcon name={file.name} size={12} />
           <span className="truncate text-xs font-medium text-(--color-text)" title={file.name}>{displayName}</span>
         </div>
-        {/* Snippet */}
-        <pre className="h-[72px] overflow-hidden px-2 py-1.5 font-mono text-[10px] leading-relaxed text-(--color-text-muted) select-none">
+        <pre className="h-[68px] overflow-hidden px-2 py-1.5 font-mono text-[10px] leading-relaxed text-(--color-text-muted) select-none">
           {snippet ?? ''}
         </pre>
-      </div>
-      <button
-        onClick={(e) => { e.stopPropagation(); onRemove() }}
-        className="absolute -right-2 -top-2 flex h-7 w-7 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-(--color-text-muted) shadow-sm opacity-100 transition-colors hover:border-(--color-border-strong) hover:text-(--color-text) md:-right-1.5 md:-top-1.5 md:h-4 md:w-4 md:opacity-0 md:group-hover:opacity-100"
-        aria-label="Remove file"
-        title="Remove"
-      >
-        <X size={12} className="md:h-2.5 md:w-2.5" />
       </button>
+      <RemoveButton onRemove={onRemove} />
     </div>
   )
 }
 
-// ── FilePreviewStrip ──────────────────────────────────────────────────────────
+// ─── Build gallery items ───────────────────────────────────────────────────────
 
-export function FilePreviewStrip({
-  files,
-  blobUrls,
-  onRemove,
-  filesBelow,
-}: FilePreviewStripProps) {
+/**
+ * For text files we read the full content once so FileLightbox can show it
+ * without re-fetching. Only runs when the file list changes.
+ */
+function useTextContents(files: File[]): Map<number, string> {
+  const [contents, setContents] = useState<Map<number, string>>(new Map())
+  useEffect(() => {
+    const next = new Map<number, string>()
+    let pending = 0
+    files.forEach((file, idx) => {
+      if (itemTypeOf(file) !== 'text') return
+      pending++
+      const reader = new FileReader()
+      reader.onload = () => {
+        next.set(idx, reader.result as string)
+        pending--
+        if (pending === 0) setContents(new Map(next))
+      }
+      reader.onerror = () => {
+        next.set(idx, '')
+        pending--
+        if (pending === 0) setContents(new Map(next))
+      }
+      reader.readAsText(file)
+    })
+    if (pending === 0) setContents(new Map())
+  }, [files])
+  return contents
+}
+
+// ─── FilePreviewStrip ──────────────────────────────────────────────────────────
+
+export function FilePreviewStrip({ files, blobUrls, onRemove, filesBelow }: FilePreviewStripProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
-  const [metrics, setMetrics] = useState<ScrollMetrics>({
-    thumbWidthPct: 100,
-    thumbLeftPct: 0,
-    hasOverflow: false,
-  })
+  const [metrics, setMetrics] = useState<ScrollMetrics>({ thumbWidthPct: 100, thumbLeftPct: 0, hasOverflow: false })
+  const [galleryIndex, setGalleryIndex] = useState<number | null>(null)
 
-  // Recompute on file count change and window resize.
+  const textContents = useTextContents(files)
+
+  // Build the gallery items array once per file list change.
+  const galleryItems = useMemo<FileLightboxItem[]>(() =>
+    files.map((file, idx) => ({
+      type: itemTypeOf(file),
+      src: blobUrls.get(idx) ?? '',
+      name: file.name,
+      textContent: textContents.get(idx),
+    })),
+  [files, blobUrls, textContents])
+
+  // Scroll-hint metrics
   useLayoutEffect(() => {
     const el = scrollRef.current
     if (!el) return
@@ -237,78 +334,67 @@ export function FilePreviewStrip({
   if (files.length === 0) return null
 
   return (
-    <div className={`${filesBelow ? 'mt-3' : 'mb-3'} -mx-2 -my-2`}>
-      <div ref={scrollRef} className="overflow-x-auto px-2 py-2">
-        <div className="flex w-max flex-nowrap items-center gap-2">
-          {files.map((file, idx) => {
-            const blobUrl = blobUrls.get(idx) || ''
-            const remove = () => onRemove(idx)
+    <>
+      <div className={`${filesBelow ? 'mt-3' : 'mb-3'} -mx-2 -my-2`}>
+        <div ref={scrollRef} className="overflow-x-auto px-2 py-2">
+          <div className="flex w-max flex-nowrap items-center gap-2">
+            {files.map((file, idx) => {
+              const blobUrl = blobUrls.get(idx) ?? ''
+              const remove = () => onRemove(idx)
+              const open = () => setGalleryIndex(idx)
+              const type = itemTypeOf(file)
 
-            if (file.type.startsWith('image/')) {
               return (
                 <div key={idx} className="shrink-0">
-                  <ImageAttachment
-                    src={blobUrl}
-                    alt={file.name}
-                    removable
-                    compact
-                    onRemove={remove}
-                  />
+                  {type === 'image' && (
+                    <ImageCard file={file} blobUrl={blobUrl} onRemove={remove} onOpen={open} />
+                  )}
+                  {type === 'video' && (
+                    <VideoCard file={file} blobUrl={blobUrl} onRemove={remove} onOpen={open} />
+                  )}
+                  {type === 'audio' && (
+                    <AudioCard file={file} blobUrl={blobUrl} onRemove={remove} onOpen={open} />
+                  )}
+                  {type === 'pdf' && (
+                    <PdfCard file={file} blobUrl={blobUrl} onRemove={remove} onOpen={open} />
+                  )}
+                  {type === 'text' && (
+                    <TextCard file={file} blobUrl={blobUrl} onRemove={remove} onOpen={open} />
+                  )}
+                  {type === 'file' && (
+                    <FileCard
+                      name={file.name}
+                      mediaType={file.type}
+                      removable
+                      onRemove={remove}
+                    />
+                  )}
                 </div>
               )
-            }
-
-            if (isVideoFile(file)) {
-              return (
-                <div key={idx} className="shrink-0">
-                  <VideoCard file={file} blobUrl={blobUrl} onRemove={remove} />
-                </div>
-              )
-            }
-
-            if (isAudioFile(file)) {
-              return (
-                <div key={idx} className="shrink-0">
-                  <AudioCard file={file} blobUrl={blobUrl} onRemove={remove} />
-                </div>
-              )
-            }
-
-            if (isTextFile(file)) {
-              return (
-                <div key={idx} className="shrink-0">
-                  <TextFileCard file={file} onRemove={remove} />
-                </div>
-              )
-            }
-
-            return (
-              <div key={idx} className="shrink-0">
-                <FileCard
-                  name={file.name}
-                  mediaType={file.type}
-                  removable
-                  onRemove={remove}
-                />
-              </div>
-            )
-          })}
+            })}
+          </div>
         </div>
-      </div>
-      {metrics.hasOverflow && (
-        <div
-          className="mx-2 mt-1 h-[3px] overflow-hidden rounded-full bg-(--color-border-subtle)"
-          aria-hidden="true"
-        >
+
+        {metrics.hasOverflow && (
           <div
-            className="h-full rounded-full bg-(--color-text-subtle)/60 transition-[left,width] duration-100"
-            style={{
-              width: `${metrics.thumbWidthPct}%`,
-              marginLeft: `${metrics.thumbLeftPct}%`,
-            }}
-          />
-        </div>
-      )}
-    </div>
+            className="mx-2 mt-1 h-[3px] overflow-hidden rounded-full bg-(--color-border-subtle)"
+            aria-hidden="true"
+          >
+            <div
+              className="h-full rounded-full bg-(--color-text-subtle)/60 transition-[left,width] duration-100"
+              style={{ width: `${metrics.thumbWidthPct}%`, marginLeft: `${metrics.thumbLeftPct}%` }}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Gallery lightbox — shared across all file types */}
+      <FileLightbox
+        items={galleryItems}
+        index={galleryIndex ?? 0}
+        isOpen={galleryIndex !== null}
+        onClose={() => setGalleryIndex(null)}
+      />
+    </>
   )
 }

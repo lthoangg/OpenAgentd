@@ -113,6 +113,7 @@ export function AppOverlay({
               hard edge is the visual boundary. */}
           <motion.div
             key="backdrop"
+            data-swipe-ignore
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -125,6 +126,7 @@ export function AppOverlay({
           {/* Panel */}
           <motion.div
             key="panel"
+            data-swipe-ignore
             role="dialog"
             aria-modal="true"
             aria-label={label}

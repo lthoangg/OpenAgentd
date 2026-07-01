@@ -22,12 +22,20 @@
  */
 
 import {
-  useCallback, useEffect, useRef, useState,
+  useCallback, useEffect, useLayoutEffect, useRef, useState,
   type ReactNode, type TouchEvent, type Touch as ReactTouch,
 } from 'react'
 import { createPortal } from 'react-dom'
+import { motion } from 'framer-motion'
 import { ChevronLeft, ChevronRight, Download, ExternalLink, File, X } from 'lucide-react'
 import { haptic } from '@/lib/haptics'
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function extOf(name: string): string {
+  const i = name.lastIndexOf('.')
+  return i >= 0 ? name.slice(i + 1).toLowerCase() : ''
+}
 
 // ─── Public types ──────────────────────────────────────────────────────────────
 
@@ -207,16 +215,12 @@ export function FileLightboxImage({
             alt={item.name}
             draggable={false}
             onError={() => setError(true)}
-            className="max-h-[75vh] max-w-[80vw] rounded-sm object-contain shadow-2xl transition-transform duration-150 ease-out"
+            className="max-h-[75vh] max-w-[80vw] rounded-sm object-contain transition-transform duration-150 ease-out"
             style={{ transform: `translate3d(${translateX}px, ${translateY}px, 0) scale(${scale})` }}
             onClick={onClick}
           />
         )}
-      {item.name && (
-        <p className="mt-3 max-w-[80vw] truncate text-center text-sm text-(--color-text-muted)">
-          {item.name}
-        </p>
-      )}
+
     </div>
   )
 }
@@ -236,11 +240,7 @@ export function FileLightboxVideo({ item }: { item: FileLightboxItem }) {
         playsInline
         className="max-h-[70vh] max-w-[90vw] rounded-sm shadow-2xl sm:max-w-[80vw]"
       />
-      {item.name && (
-        <p className="max-w-[80vw] truncate text-center text-sm text-(--color-text-muted)">
-          {item.name}
-        </p>
-      )}
+
     </div>
   )
 }
@@ -253,9 +253,6 @@ export function FileLightboxAudio({ item }: { item: FileLightboxItem }) {
       className="mx-4 flex w-full max-w-sm flex-col items-center gap-4 rounded-sm border border-(--color-border) bg-(--bg-card) px-6 py-8 sm:mx-0"
       onClick={(e) => e.stopPropagation()}
     >
-      <p className="w-full truncate text-center text-sm font-medium text-(--color-text)">
-        {item.name}
-      </p>
       <audio
         key={item.src}
         src={item.src}
@@ -318,14 +315,12 @@ export function FileLightboxText({ item }: { item: FileLightboxItem }) {
       className="mx-4 flex max-h-[75vh] w-[min(720px,90vw)] flex-col overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) shadow-2xl sm:mx-0"
       onClick={(e) => e.stopPropagation()}
     >
-      {/* Header bar */}
+      {/* Header bar — language/type hint only, name shown in the shell caption */}
       <div className="flex shrink-0 items-center border-b border-(--color-border-subtle) px-4 py-2">
-        <span className="truncate font-mono text-sm font-medium text-(--color-text)">
-          {item.name}
-        </span>
+        <span className="text-xs text-(--color-text-muted)">{extOf(item.name).toUpperCase() || 'TEXT'}</span>
       </div>
       {/* Scrollable content */}
-      <pre className="min-h-0 flex-1 overflow-auto p-4 font-mono text-xs leading-relaxed text-(--color-text-muted)">
+      <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-all p-4 font-mono text-xs leading-relaxed text-(--color-text-muted)">
         {content === null ? 'Loading…' : content}
       </pre>
     </div>
@@ -334,16 +329,13 @@ export function FileLightboxText({ item }: { item: FileLightboxItem }) {
 
 // ── FileLightboxGeneric ────────────────────────────────────────────────────────
 
-export function FileLightboxGeneric({ item }: { item: FileLightboxItem }) {
+export function FileLightboxGeneric({ item: _item }: { item: FileLightboxItem }) {
   return (
     <div
       className="flex flex-col items-center gap-4 rounded-sm border border-(--color-border) bg-(--bg-card) px-10 py-10"
       onClick={(e) => e.stopPropagation()}
     >
       <File size={40} className="text-(--color-text-muted)" />
-      <p className="max-w-[60vw] truncate font-mono text-sm text-(--color-text)">
-        {item.name}
-      </p>
       <p className="text-xs text-(--color-text-muted)">No preview available</p>
     </div>
   )
@@ -370,6 +362,8 @@ export function FileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'f
   const axisRef = useRef<'horizontal' | 'vertical' | null>(null)
   const pinchStartRef = useRef<number | null>(null)
   const lastTapRef = useRef(0)
+  // 1 = forward (next), -1 = backward (prev) — drives slide direction
+  const directionRef = useRef(1)
 
   const hasMultiple = items.length > 1
   const active = items[current] ?? items[0]
@@ -389,7 +383,13 @@ export function FileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'f
   const goTo = useCallback((next: number) => {
     setCurrent((prev) => {
       const target = ((next % items.length) + items.length) % items.length
-      if (target !== prev) haptic('select')
+      if (target !== prev) {
+        // Determine slide direction: wrapping past the end goes forward,
+        // wrapping past the start goes backward.
+        const forward = next > prev || (prev === items.length - 1 && next === 0)
+        directionRef.current = forward ? 1 : -1
+        haptic('select')
+      }
       return target
     })
     setScale(1)
@@ -479,11 +479,26 @@ export function FileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'f
     lastTapRef.current = now
   }, [handleDoubleClick])
 
+  // Fade-in: start at opacity-0, flip to opacity-100 after mount so the
+  // browser has one frame to paint the initial state before transitioning.
+  // This coordinates overlay + content together — no separate fade per child.
+  const [visible, setVisible] = useState(false)
+  useLayoutEffect(() => {
+    if (isOpen) {
+      // Defer to next frame so the element is painted at opacity-0 first.
+      const id = requestAnimationFrame(() => setVisible(true))
+      return () => cancelAnimationFrame(id)
+    } else {
+      setVisible(false)
+    }
+  }, [isOpen])
+
   if (!isOpen || !active) return null
 
   return createPortal(
     <div
-      className="mobile-safe-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+      className="mobile-safe-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+      style={{ opacity: visible ? 1 : 0, transition: 'opacity 150ms ease-out' }}
       onClick={closeLightbox}
       role="dialog"
       aria-modal="true"
@@ -559,25 +574,50 @@ export function FileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'f
         </>
       )}
 
-      {/* ── Per-type viewer ────────────────────────────────────────────────── */}
-      {active.type === 'image' && (
-        <FileLightboxImage
-          item={active}
-          translateX={isImage ? translateX : 0}
-          translateY={isImage ? translateY : 0}
-          scale={isImage ? scale : 1}
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
-          onDoubleClick={handleDoubleClick}
-          onClick={handleImageClick}
-        />
-      )}
-      {active.type === 'video' && <FileLightboxVideo item={active} />}
-      {active.type === 'audio' && <FileLightboxAudio item={active} />}
-      {active.type === 'pdf'   && <FileLightboxPdf   item={active} />}
-      {active.type === 'text'  && <FileLightboxText  item={active} />}
-      {active.type === 'file'  && <FileLightboxGeneric item={active} />}
+      {/* ── Per-type viewer + caption ──────────────────────────────────────── */}
+      <div className="flex flex-col items-center">
+        {/*
+          Single motion.div — no AnimatePresence, no exit mounting.
+          When `current` changes, the x offset snaps to the entry position
+          immediately (via `initial` on re-key) then springs to 0.
+          overflow-hidden clips during the slide.
+        */}
+        <div className="relative overflow-hidden w-full">
+          <motion.div
+            key={current}
+            initial={{ x: `${directionRef.current * 100}%` }}
+            animate={{ x: '0%' }}
+            transition={{ duration: 0.22, ease: [0.25, 0.46, 0.45, 0.94] }}
+            className="flex items-center justify-center"
+          >
+            {active.type === 'image' && (
+              <FileLightboxImage
+                item={active}
+                translateX={isImage ? translateX : 0}
+                translateY={isImage ? translateY : 0}
+                scale={isImage ? scale : 1}
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+                onDoubleClick={handleDoubleClick}
+                onClick={handleImageClick}
+              />
+            )}
+            {active.type === 'video' && <FileLightboxVideo item={active} />}
+            {active.type === 'audio' && <FileLightboxAudio item={active} />}
+            {active.type === 'pdf'   && <FileLightboxPdf   item={active} />}
+            {active.type === 'text'  && <FileLightboxText  item={active} />}
+            {active.type === 'file'  && <FileLightboxGeneric item={active} />}
+          </motion.div>
+        </div>
+
+        {/* Filename — same dedicated spot for every type */}
+        {active.name && (
+          <p className="mt-4 max-w-[80vw] break-words text-center text-sm text-(--color-text-muted)">
+            {active.name}
+          </p>
+        )}
+      </div>
     </div>,
     document.body,
   )

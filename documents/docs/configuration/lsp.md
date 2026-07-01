@@ -2,7 +2,7 @@
 title: LSP Diagnostics Injection
 description: Real-time language-server diagnostics injected into write/edit/patch tool results in coding mode.
 status: stable
-updated: 2026-06-30
+updated: 2026-07-07
 ---
 
 # LSP Diagnostics Injection
@@ -84,6 +84,34 @@ any LSP error is logged and swallowed — it never crashes the tool. The cockpit
 renders this block as a compact, color-coded `ERR` / `WARN` strip beneath the
 diff (see [`web/tool-results.md`](../web/tool-results.md)).
 
+## Monorepo / subfolder support
+
+`find_project_root` walks upward from each edited file and stops at the nearest
+directory containing a project manifest (`package.json`, `Cargo.toml`,
+`pyproject.toml`, etc.), up to the workspace root. This means a monorepo with
+separate frontend/backend sub-projects each get their own server instance rooted
+at the right sub-project — edits to `frontend/src/App.tsx` talk to a
+`typescript-language-server` started at `frontend/`, not the workspace root.
+
+The LSP `initialize` request includes `workspaceFolders` (pointing at the
+sub-project root) and advertises the `workspace.workspaceFolders` capability, so
+servers like tsserver that gate monorepo / project-reference logic on this
+capability behave correctly.
+
+## TypeScript: path aliases and bun types
+
+When starting a TypeScript/JavaScript server the manager builds
+`initializationOptions` from the project:
+
+- **`tsconfig.json` types** — the `compilerOptions.types` array is forwarded so
+  explicitly declared type packages (e.g. `@types/node`) are honoured.
+- **Bun projects** — a `bun.lockb` or `bun.lock` in the project root causes
+  `bun-types` to be injected into the types list, silencing false-positive errors
+  on `bun:test`, `bun:sqlite`, and other built-in Bun modules.
+
+Path aliases (`@/` → `src/`) resolve automatically once tsserver reads the
+`tsconfig.json` it is rooted at — no extra configuration needed.
+
 ## Caveats (expected LSP behavior, not bugs)
 
 - **Install the server.** No diagnostics appear for a language whose server
@@ -95,6 +123,9 @@ diff (see [`web/tool-results.md`](../web/tool-results.md)).
   `tsconfig.json`; loose files use inferred defaults.
 - **Type vs. syntax.** Lint-only servers (e.g. `ruff` alone) never report type
   errors — which is exactly why Python runs a type checker alongside.
+- **Bun types require `bun-types` on disk.** The injection adds `bun-types` to
+  the options passed to tsserver, but the package must actually be installed in
+  the project (`bun add -d bun-types`) for the type definitions to resolve.
 
 ## Overrides
 

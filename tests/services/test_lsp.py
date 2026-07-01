@@ -502,12 +502,8 @@ async def test_lsp_hook_skipped_when_disabled(tmp_path):
 def test_find_project_root(tmp_path):
     from app.services.lsp.manager import find_project_root
 
-    # Set up a nested project structure
-    # tmp_path (workspace root)
-    # └── sub_project
-    #     ├── Cargo.toml
-    #     └── src
-    #         └── main.rs
+    # Rust: Cargo.toml is a strong anchor — found at any depth.
+    # tmp_path/sub_project/Cargo.toml  →  sub_project
     sub_project = tmp_path / "sub_project"
     sub_project.mkdir()
     (sub_project / "Cargo.toml").write_text("[package]", encoding="utf-8")
@@ -516,14 +512,96 @@ def test_find_project_root(tmp_path):
     main_rs = src / "main.rs"
     main_rs.write_text("fn main() {}", encoding="utf-8")
 
-    # Finding project root for main.rs in rust should return sub_project
-    root = find_project_root(main_rs, tmp_path, "rust")
-    assert root == sub_project
+    assert find_project_root(main_rs, tmp_path, "rust") == sub_project
 
-    # Finding project root for a python file in the same directory should fall back to workspace root
+    # Python without any manifest falls back to workspace root.
     some_py = src / "some.py"
-    root = find_project_root(some_py, tmp_path, "python")
-    assert root == tmp_path
+    assert find_project_root(some_py, tmp_path, "python") == tmp_path
+
+
+def test_find_project_root_ts_strong_anchor_beats_nested_package_json(tmp_path):
+    """tsconfig.json (strong) must win over a nested package.json (weak).
+
+    Layout:
+      workspace/
+        apps/
+          frontend/
+            tsconfig.json   ← strong anchor
+            package.json
+            src/
+              lib/
+                utils/
+                  package.json  ← weak: nested utility package
+                  Button.tsx    ← edited file
+
+    The nearest package.json is in utils/, but the real TS project root is
+    frontend/ because that's where tsconfig.json lives.
+    """
+    from app.services.lsp.manager import find_project_root
+
+    frontend = tmp_path / "apps" / "frontend"
+    utils = frontend / "src" / "lib" / "utils"
+    utils.mkdir(parents=True)
+
+    (frontend / "tsconfig.json").write_text("{}", encoding="utf-8")
+    (frontend / "package.json").write_text("{}", encoding="utf-8")
+    (utils / "package.json").write_text(
+        "{}", encoding="utf-8"
+    )  # nested — should be ignored
+    button = utils / "Button.tsx"
+    button.write_text("export {}", encoding="utf-8")
+
+    root = find_project_root(button, tmp_path, "typescriptreact")
+    assert root == frontend, f"Expected {frontend}, got {root}"
+
+
+def test_find_project_root_ts_weak_anchor_outermost(tmp_path):
+    """With only package.json files (no tsconfig), pick the outermost one.
+
+    Layout:
+      workspace/
+        package.json        ← outermost weak anchor (monorepo root)
+        apps/
+          frontend/
+            package.json    ← inner weak anchor
+            src/
+              Button.tsx
+
+    Neither has a tsconfig.json, so we fall back to weak anchors and prefer
+    the outermost — the monorepo root is the broadest valid scope.
+    """
+    from app.services.lsp.manager import find_project_root
+
+    frontend = tmp_path / "apps" / "frontend"
+    src = frontend / "src"
+    src.mkdir(parents=True)
+
+    (tmp_path / "package.json").write_text("{}", encoding="utf-8")
+    (frontend / "package.json").write_text("{}", encoding="utf-8")
+    button = src / "Button.tsx"
+    button.write_text("export {}", encoding="utf-8")
+
+    root = find_project_root(button, tmp_path, "typescriptreact")
+    assert root == tmp_path, f"Expected workspace root {tmp_path}, got {root}"
+
+
+def test_find_project_root_ts_lockfile_is_strong_anchor(tmp_path):
+    """A lockfile (bun.lockb, yarn.lock, etc.) is a strong anchor — it beats
+    a closer package.json that has no lockfile."""
+    from app.services.lsp.manager import find_project_root
+
+    frontend = tmp_path / "apps" / "frontend"
+    utils = frontend / "src" / "utils"
+    utils.mkdir(parents=True)
+
+    (frontend / "package.json").write_text("{}", encoding="utf-8")
+    (frontend / "bun.lockb").write_bytes(b"")  # strong anchor
+    (utils / "package.json").write_text("{}", encoding="utf-8")  # nested weak
+    helper = utils / "helper.ts"
+    helper.write_text("export {}", encoding="utf-8")
+
+    root = find_project_root(helper, tmp_path, "typescript")
+    assert root == frontend, f"Expected {frontend}, got {root}"
 
 
 def test_detect_project_lsp_commands_python(tmp_path):
@@ -748,6 +826,417 @@ async def test_check_lsp_diagnostics_caps_and_sorts(tmp_path):
     # Error sorts first despite being on line 1000.
     assert "error: real error" in body[0]
     assert body[-1].startswith("- …and")
+
+
+# ---------------------------------------------------------------------------
+# Regression tests for the four feedback issues
+# ---------------------------------------------------------------------------
+
+
+# Issue 1 — Monorepo/subfolder: workspaceFolders sent in initialize
+# -----------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_lsp_client_sends_workspace_folders_in_initialize(tmp_path):
+    """LspClient must include workspaceFolders in the LSP initialize request so
+    that servers (e.g. tsserver) can handle monorepo sub-projects correctly."""
+    stdout = MockStreamReader()
+    captured_params: list[dict] = []
+
+    def on_write(data):
+        parts = data.split(b"\r\n\r\n", 1)
+        if len(parts) < 2:
+            return
+        try:
+            msg = json.loads(parts[1].decode("utf-8"))
+        except Exception:
+            return
+        if msg.get("method") == "initialize":
+            captured_params.append(msg.get("params", {}))
+            stdout.feed_message(
+                {"jsonrpc": "2.0", "id": msg["id"], "result": {"capabilities": {}}}
+            )
+
+    stdin = MockStreamWriter(on_write=on_write)
+    proc = MockProcess(stdout, stdin)
+
+    with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
+        mock_exec.return_value = proc
+        client = LspClient(["mock-lsp"], tmp_path)
+        await client.start()
+        await client.stop()
+
+    assert len(captured_params) == 1
+    params = captured_params[0]
+
+    # workspaceFolders list must be present and point at the workspace root.
+    assert "workspaceFolders" in params, "initialize must include workspaceFolders"
+    folders = params["workspaceFolders"]
+    assert len(folders) == 1
+    assert folders[0]["uri"] == tmp_path.as_uri()
+    assert folders[0]["name"] == tmp_path.name
+
+    # Workspace capability must be advertised.
+    caps = params.get("capabilities", {})
+    assert caps.get("workspace", {}).get("workspaceFolders") is True
+
+
+@pytest.mark.asyncio
+async def test_lsp_monorepo_subfolder_uses_subfolder_root(tmp_path):
+    """In a monorepo the LSP client for a sub-project is started with the
+    sub-project root as its workspace_root, not the top-level workspace."""
+    from app.services.lsp.manager import find_project_root, LspManager
+
+    # Monorepo layout:
+    # tmp_path/
+    #   frontend/
+    #     package.json
+    #     src/
+    #       App.tsx
+    frontend = tmp_path / "frontend"
+    (frontend / "src").mkdir(parents=True)
+    (frontend / "package.json").write_text("{}", encoding="utf-8")
+    app_tsx = frontend / "src" / "App.tsx"
+    app_tsx.write_text("export default function App() { return null; }\n")
+
+    proj_root = find_project_root(app_tsx, tmp_path, "typescriptreact")
+    # Must resolve to the sub-project, not the workspace root.
+    assert proj_root == frontend
+
+    # The manager must start the client with frontend/ as its workspace root.
+    manager = LspManager()
+    stdout = MockStreamReader()
+    captured_roots: list[str] = []
+
+    def on_write(data):
+        parts = data.split(b"\r\n\r\n", 1)
+        if len(parts) < 2:
+            return
+        try:
+            msg = json.loads(parts[1].decode("utf-8"))
+        except Exception:
+            return
+        if msg.get("method") == "initialize":
+            captured_roots.append(msg["params"].get("rootUri", ""))
+            stdout.feed_message(
+                {"jsonrpc": "2.0", "id": msg["id"], "result": {"capabilities": {}}}
+            )
+
+    proc = MockProcess(stdout, MockStreamWriter(on_write=on_write))
+
+    with (
+        patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec,
+        patch(
+            "shutil.which",
+            side_effect=lambda exe: (
+                "/usr/bin/typescript-language-server"
+                if exe == "typescript-language-server"
+                else None
+            ),
+        ),
+    ):
+        mock_exec.return_value = proc
+        clients = await manager.get_clients(frontend, "typescriptreact")
+        assert len(clients) == 1
+        await manager.stop()
+
+    assert len(captured_roots) == 1
+    assert captured_roots[0] == frontend.as_uri(), (
+        f"Expected rootUri={frontend.as_uri()!r}, got {captured_roots[0]!r}"
+    )
+
+
+# Issue 2 & 3 — bun:test / path-alias noise
+# ------------------------------------------
+
+
+def test_build_ts_init_options_injects_bun_types_for_bun_project(tmp_path):
+    """A project with bun.lockb should get bun-types injected into types."""
+    from app.services.lsp.manager import _build_ts_init_options
+
+    (tmp_path / "bun.lockb").write_bytes(b"")
+    opts = _build_ts_init_options(tmp_path)
+
+    types = opts.get("compilerOptions", {}).get("types", [])
+    assert "bun-types" in types, f"Expected bun-types in {types}"
+
+
+def test_build_ts_init_options_bun_lock_also_triggers(tmp_path):
+    """bun.lock (text lockfile, newer Bun) also triggers bun-types injection."""
+    from app.services.lsp.manager import _build_ts_init_options
+
+    (tmp_path / "bun.lock").write_text("", encoding="utf-8")
+    opts = _build_ts_init_options(tmp_path)
+
+    types = opts.get("compilerOptions", {}).get("types", [])
+    assert "bun-types" in types
+
+
+def test_build_ts_init_options_no_bun_lockfile_no_injection(tmp_path):
+    """Without a bun lockfile bun-types must NOT be injected."""
+    from app.services.lsp.manager import _build_ts_init_options
+
+    opts = _build_ts_init_options(tmp_path)
+    types = opts.get("compilerOptions", {}).get("types", [])
+    assert "bun-types" not in types
+
+
+def test_build_ts_init_options_reads_tsconfig_types(tmp_path):
+    """If tsconfig.json already lists explicit types they are forwarded."""
+    import json as _json
+    from app.services.lsp.manager import _build_ts_init_options
+
+    (tmp_path / "tsconfig.json").write_text(
+        _json.dumps({"compilerOptions": {"types": ["node", "jest"], "baseUrl": "."}}),
+        encoding="utf-8",
+    )
+    opts = _build_ts_init_options(tmp_path)
+    types = opts.get("compilerOptions", {}).get("types", [])
+    assert "node" in types
+    assert "jest" in types
+
+
+def test_build_ts_init_options_bun_not_duplicated_when_already_in_tsconfig(tmp_path):
+    """bun-types is not added twice when tsconfig already lists it."""
+    import json as _json
+    from app.services.lsp.manager import _build_ts_init_options
+
+    (tmp_path / "bun.lockb").write_bytes(b"")
+    (tmp_path / "tsconfig.json").write_text(
+        _json.dumps({"compilerOptions": {"types": ["bun-types"]}}),
+        encoding="utf-8",
+    )
+    opts = _build_ts_init_options(tmp_path)
+    types = opts.get("compilerOptions", {}).get("types", [])
+    assert types.count("bun-types") == 1
+
+
+@pytest.mark.asyncio
+async def test_ts_client_receives_init_options_in_initialize(tmp_path):
+    """typescript-language-server must receive initializationOptions in the
+    initialize request so tsserver sees bun-types / path aliases."""
+    from app.services.lsp.manager import LspManager
+
+    # Create a bun project so bun-types is injected.
+    (tmp_path / "package.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "bun.lockb").write_bytes(b"")
+
+    stdout = MockStreamReader()
+    captured_init_opts: list = []
+
+    def on_write(data):
+        parts = data.split(b"\r\n\r\n", 1)
+        if len(parts) < 2:
+            return
+        try:
+            msg = json.loads(parts[1].decode("utf-8"))
+        except Exception:
+            return
+        if msg.get("method") == "initialize":
+            captured_init_opts.append(msg["params"].get("initializationOptions"))
+            stdout.feed_message(
+                {"jsonrpc": "2.0", "id": msg["id"], "result": {"capabilities": {}}}
+            )
+
+    proc = MockProcess(stdout, MockStreamWriter(on_write=on_write))
+    manager = LspManager()
+
+    with (
+        patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec,
+        patch(
+            "shutil.which",
+            side_effect=lambda exe: (
+                "/usr/bin/typescript-language-server"
+                if exe == "typescript-language-server"
+                else None
+            ),
+        ),
+    ):
+        mock_exec.return_value = proc
+        await manager.get_clients(tmp_path, "typescript")
+        await manager.stop()
+
+    assert len(captured_init_opts) == 1
+    init_opts = captured_init_opts[0]
+    assert init_opts is not None, "initializationOptions must be sent for TS"
+    types = init_opts.get("compilerOptions", {}).get("types", [])
+    assert "bun-types" in types, (
+        f"bun-types missing from initializationOptions: {init_opts}"
+    )
+
+
+# Issue 4 — Stale diagnostics after didClose
+# -------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_close_document_does_not_clear_diagnostics(tmp_path):
+    """close_document must NOT clear _latest_diagnostics.
+
+    Some servers send a final publishDiagnostics on didClose; if we clear
+    diagnostics before that publish, re-checking the same file sees stale
+    (empty) state instead of the real diagnostics from the next open cycle.
+    The invariant: _latest_diagnostics is only cleared by reset_diagnostics().
+    """
+    stdout = MockStreamReader()
+
+    def on_write(data):
+        parts = data.split(b"\r\n\r\n", 1)
+        if len(parts) < 2:
+            return
+        try:
+            msg = json.loads(parts[1].decode("utf-8"))
+        except Exception:
+            return
+        if msg.get("method") == "initialize":
+            stdout.feed_message(
+                {"jsonrpc": "2.0", "id": msg["id"], "result": {"capabilities": {}}}
+            )
+        elif msg.get("method") == "textDocument/didOpen":
+            uri = msg["params"]["textDocument"]["uri"]
+            stdout.feed_message(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "textDocument/publishDiagnostics",
+                    "params": {
+                        "uri": uri,
+                        "diagnostics": [
+                            {
+                                "range": {"start": {"line": 0, "character": 0}},
+                                "severity": 1,
+                                "message": "Real error",
+                                "source": "ty",
+                            }
+                        ],
+                    },
+                }
+            )
+
+    proc = MockProcess(stdout, MockStreamWriter(on_write=on_write))
+
+    with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
+        mock_exec.return_value = proc
+        client = LspClient(["mock-lsp"], tmp_path)
+        await client.start()
+
+        uri = (tmp_path / "test.py").resolve().as_uri()
+
+        # Simulate a full check cycle.
+        event = client.reset_diagnostics(uri)
+        await client.open_or_update_document(uri, "python", "x: int = 'oops'\n")
+        await asyncio.wait_for(event.wait(), timeout=1.0)
+        assert client.get_diagnostics(uri) == [
+            {
+                "range": {"start": {"line": 0, "character": 0}},
+                "severity": 1,
+                "message": "Real error",
+                "source": "ty",
+            }
+        ]
+
+        # close_document must NOT erase the diagnostics.
+        await client.close_document(uri)
+        assert client.get_diagnostics(uri) == [
+            {
+                "range": {"start": {"line": 0, "character": 0}},
+                "severity": 1,
+                "message": "Real error",
+                "source": "ty",
+            }
+        ], "close_document must not clear _latest_diagnostics"
+
+        await client.stop()
+
+
+@pytest.mark.asyncio
+async def test_server_didclose_publish_does_not_corrupt_next_cycle(tmp_path):
+    """A server that sends publishDiagnostics on didClose must not corrupt the
+    next check cycle.  reset_diagnostics() claims a new event BEFORE open; any
+    post-close publish from the server updates _latest_diagnostics but the new
+    event is already installed, so _await_settled sees the fresh state.
+    """
+    stdout = MockStreamReader()
+    open_count = 0
+
+    def on_write(data):
+        nonlocal open_count
+        parts = data.split(b"\r\n\r\n", 1)
+        if len(parts) < 2:
+            return
+        try:
+            msg = json.loads(parts[1].decode("utf-8"))
+        except Exception:
+            return
+        if msg.get("method") == "initialize":
+            stdout.feed_message(
+                {"jsonrpc": "2.0", "id": msg["id"], "result": {"capabilities": {}}}
+            )
+        elif msg.get("method") == "textDocument/didOpen":
+            open_count += 1
+            uri = msg["params"]["textDocument"]["uri"]
+            # First open → error.  Second open → clean.
+            diags = (
+                [
+                    {
+                        "range": {"start": {"line": 0, "character": 0}},
+                        "severity": 1,
+                        "message": f"Cycle {open_count} error",
+                        "source": "ty",
+                    }
+                ]
+                if open_count == 1
+                else []
+            )
+            stdout.feed_message(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "textDocument/publishDiagnostics",
+                    "params": {"uri": uri, "diagnostics": diags},
+                }
+            )
+        elif msg.get("method") == "textDocument/didClose":
+            # Spec-compliant: server clears diagnostics on close.
+            uri = msg["params"]["textDocument"]["uri"]
+            stdout.feed_message(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "textDocument/publishDiagnostics",
+                    "params": {"uri": uri, "diagnostics": []},
+                }
+            )
+
+    proc = MockProcess(stdout, MockStreamWriter(on_write=on_write))
+
+    with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
+        mock_exec.return_value = proc
+        client = LspClient(["mock-lsp"], tmp_path)
+        await client.start()
+
+        uri = (tmp_path / "test.py").resolve().as_uri()
+
+        # Cycle 1 — file has an error.
+        event1 = client.reset_diagnostics(uri)
+        await client.open_or_update_document(uri, "python", "bad code\n")
+        await asyncio.wait_for(event1.wait(), timeout=1.0)
+        diags1 = client.get_diagnostics(uri)
+        assert len(diags1) == 1 and diags1[0]["message"] == "Cycle 1 error"
+
+        # didClose: server fires an empty publishDiagnostics.
+        # This should NOT wipe state owned by the upcoming cycle 2.
+        await client.close_document(uri)
+        # Brief pause so the close-publish can arrive.
+        await asyncio.sleep(0.05)
+
+        # Cycle 2 — reset_diagnostics claims the new event BEFORE open.
+        event2 = client.reset_diagnostics(uri)
+        await client.open_or_update_document(uri, "python", "good = True\n")
+        await asyncio.wait_for(event2.wait(), timeout=1.0)
+        diags2 = client.get_diagnostics(uri)
+        # Second cycle returns clean (empty), not stale cycle-1 data.
+        assert diags2 == [], f"Expected empty diagnostics on cycle 2, got {diags2}"
+
+        await client.stop()
 
 
 @pytest.mark.asyncio

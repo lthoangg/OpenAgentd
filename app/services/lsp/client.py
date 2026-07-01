@@ -8,9 +8,15 @@ from loguru import logger
 
 
 class LspClient:
-    def __init__(self, command: list[str], workspace_root: Path):
+    def __init__(
+        self,
+        command: list[str],
+        workspace_root: Path,
+        init_options: dict | None = None,
+    ):
         self.command = command
         self.workspace_root = workspace_root
+        self._init_options = init_options
         self.process: asyncio.subprocess.Process | None = None
         self._id = 0
         self._pending_requests: dict[int, asyncio.Future] = {}
@@ -47,11 +53,25 @@ class LspClient:
             raise
 
     async def _initialize(self):
-        params = {
+        params: dict = {
             "processId": os.getpid(),
             "rootPath": str(self.workspace_root),
             "rootUri": self.workspace_root.as_uri(),
+            # workspaceFolders lets servers (e.g. tsserver) handle monorepo
+            # sub-projects: the server sees the correct project root rather than
+            # treating every file as belonging to one flat workspace.
+            "workspaceFolders": [
+                {
+                    "uri": self.workspace_root.as_uri(),
+                    "name": self.workspace_root.name,
+                }
+            ],
             "capabilities": {
+                "workspace": {
+                    # Advertise support so servers that gate on capability
+                    # actually send workspaceFolders-aware responses.
+                    "workspaceFolders": True,
+                },
                 "textDocument": {
                     "publishDiagnostics": {
                         "relatedInformation": True,
@@ -60,9 +80,11 @@ class LspClient:
                         "codeDescriptionSupport": True,
                         "dataSupport": True,
                     }
-                }
+                },
             },
         }
+        if self._init_options:
+            params["initializationOptions"] = self._init_options
         await self.send_request("initialize", params)
         await self.send_message(
             {"jsonrpc": "2.0", "method": "initialized", "params": {}}
@@ -124,10 +146,15 @@ class LspClient:
             )
 
     async def close_document(self, uri: str) -> None:
-        """Close a tracked document (best-effort)."""
-        # Drop per-URI diagnostics bookkeeping regardless of open state.
-        self._latest_diagnostics.pop(uri, None)
-        self._diagnostics_events.pop(uri, None)
+        """Send textDocument/didClose for a tracked document (best-effort).
+
+        We intentionally do NOT clear _latest_diagnostics or
+        _diagnostics_events here.  reset_diagnostics() owns that lifecycle and
+        is always called at the start of the next check cycle.  Clearing here
+        races with servers that send a final publishDiagnostics on didClose
+        (spec-compliant behaviour), which would silently overwrite state that
+        the next check cycle has already claimed via reset_diagnostics.
+        """
         if uri not in self._open_docs:
             return
         self._open_docs.pop(uri, None)

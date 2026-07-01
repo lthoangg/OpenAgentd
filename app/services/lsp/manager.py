@@ -1,4 +1,5 @@
 import asyncio
+import json
 import shutil
 from pathlib import Path
 
@@ -74,53 +75,68 @@ LSP_COMMANDS = {
 
 
 def find_project_root(file_path: Path, workspace_root: Path, lang_id: str) -> Path:
-    """Find the nearest directory containing project files for the given language.
+    """Find the nearest directory that is the true project root for *lang_id*.
 
-    Traverses upwards from the file's parent directory up to the workspace root.
+    Walks upward from the file toward *workspace_root* in two passes:
+
+    Pass 1 — strong anchors only (unambiguous project roots).
+      A match here is returned immediately.
+
+    Pass 2 — weak anchors (``package.json`` / ``jsconfig.json``).
+      These are common enough to appear in nested utility packages, so we
+      only use them if no strong anchor was found anywhere in the walk.
+      We return the *highest* (outermost) weak match found, because in a
+      monorepo the root ``package.json`` is closer to the true project
+      boundary than a nested one deep inside ``src/``.
+
+    Falls back to *workspace_root* when nothing is found.
     """
     file_path = file_path.resolve()
     workspace_root = workspace_root.resolve()
 
-    triggers = {
-        "rust": ["Cargo.toml", "Cargo.lock"],
+    # Strong anchors: unambiguous TS project boundaries.
+    # A tsconfig.json defines exactly one TS project; lockfiles mean the
+    # directory owns its own dependency tree.
+    strong: dict[str, list[str]] = {
         "typescript": [
-            "package.json",
             "tsconfig.json",
+            "tsconfig.app.json",
             "bun.lockb",
+            "bun.lock",
             "yarn.lock",
             "package-lock.json",
             "pnpm-lock.yaml",
         ],
         "typescriptreact": [
-            "package.json",
             "tsconfig.json",
+            "tsconfig.app.json",
             "bun.lockb",
+            "bun.lock",
             "yarn.lock",
             "package-lock.json",
             "pnpm-lock.yaml",
         ],
         "javascript": [
-            "package.json",
             "jsconfig.json",
             "bun.lockb",
+            "bun.lock",
             "yarn.lock",
             "package-lock.json",
             "pnpm-lock.yaml",
         ],
         "javascriptreact": [
-            "package.json",
             "jsconfig.json",
             "bun.lockb",
+            "bun.lock",
             "yarn.lock",
             "package-lock.json",
             "pnpm-lock.yaml",
         ],
+        "rust": ["Cargo.toml", "Cargo.lock"],
         "python": [
             "pyproject.toml",
             "setup.py",
             "setup.cfg",
-            "requirements.txt",
-            "Pipfile",
             "pyrightconfig.json",
             "venv",
             ".venv",
@@ -130,20 +146,43 @@ def find_project_root(file_path: Path, workspace_root: Path, lang_id: str) -> Pa
         "cpp": ["compile_commands.json", "compile_flags.txt", ".clangd"],
     }
 
-    lang_triggers = triggers.get(lang_id, [])
-    if not lang_triggers:
+    # Weak anchors: present in almost every JS directory, so only used as a
+    # last resort and we prefer the outermost (highest) match.
+    weak: dict[str, list[str]] = {
+        "typescript": ["package.json"],
+        "typescriptreact": ["package.json"],
+        "javascript": ["package.json"],
+        "javascriptreact": ["package.json"],
+        "python": ["requirements.txt", "Pipfile", "setup.cfg"],
+    }
+
+    strong_triggers = strong.get(lang_id, [])
+    weak_triggers = weak.get(lang_id, [])
+
+    if not strong_triggers and not weak_triggers:
         return workspace_root
 
+    weak_candidate: Path | None = None
     curr = file_path.parent
+
     while curr.exists() and curr != curr.parent:
-        for trigger in lang_triggers:
+        # Pass 1: strong anchor — return immediately.
+        for trigger in strong_triggers:
             if (curr / trigger).exists():
                 return curr
+
+        # Pass 2: note weak matches but keep walking — we want the outermost.
+        if weak_triggers:
+            for trigger in weak_triggers:
+                if (curr / trigger).exists():
+                    weak_candidate = curr
+                    break
+
         if curr == workspace_root:
             break
         curr = curr.parent
 
-    return workspace_root
+    return weak_candidate if weak_candidate is not None else workspace_root
 
 
 def _python_tools_from_pyproject(project_root: Path) -> list[list[str]]:
@@ -239,6 +278,55 @@ def detect_project_lsp_commands(lang_id: str, project_root: Path) -> list[list[s
     except Exception as e:
         logger.warning("Project LSP detection failed for {}: {}", lang_id, e)
         return []
+
+
+def _build_ts_init_options(project_root: Path) -> dict:
+    """Build initializationOptions for typescript-language-server.
+
+    Reads tsconfig.json to propagate compilerOptions.types so explicitly
+    declared type packages (e.g. ``bun-types``, ``@types/node``) are honoured,
+    silencing false-positive "Cannot find module" errors for bun builtins and
+    path aliases.
+    """
+    options: dict = {"preferences": {"includeInlayParameterNameHints": "none"}}
+
+    tsconfig_path = project_root / "tsconfig.json"
+    if not tsconfig_path.exists():
+        tsconfig_path = project_root / "tsconfig.app.json"
+
+    if tsconfig_path.exists():
+        try:
+            with tsconfig_path.open(encoding="utf-8") as f:
+                tsconfig = json.load(f)
+            compiler_opts = tsconfig.get("compilerOptions", {})
+            if "types" in compiler_opts:
+                options.setdefault("compilerOptions", {})["types"] = list(
+                    compiler_opts["types"]
+                )
+        except Exception as e:
+            logger.warning("Failed to read tsconfig for LSP init options: {}", e)
+
+    # Detect bun projects and inject bun-types so `bun:test` etc. resolve.
+    if (project_root / "bun.lockb").exists() or (project_root / "bun.lock").exists():
+        types: list[str] = options.setdefault("compilerOptions", {}).setdefault(
+            "types", []
+        )
+        if "bun-types" not in types:
+            types.append("bun-types")
+
+    return options
+
+
+def _build_init_options(lang_id: str, project_root: Path) -> dict | None:
+    """Return server-specific initializationOptions for *lang_id*, or None.
+
+    This is the single dispatch point for per-language init options. Adding
+    support for a new language (e.g. gopls, clangd) means adding a branch here
+    rather than scattering language checks across the manager.
+    """
+    if lang_id in {"typescript", "typescriptreact", "javascript", "javascriptreact"}:
+        return _build_ts_init_options(project_root)
+    return None
 
 
 class LspManager:
@@ -382,7 +470,11 @@ class LspManager:
                     await client.stop()
                     self._clients.pop(key, None)
 
-                client = LspClient(cmd, workspace_root)
+                client = LspClient(
+                    cmd,
+                    workspace_root,
+                    init_options=_build_init_options(lang_id, workspace_root),
+                )
                 try:
                     await client.start()
                     self._clients[key] = client

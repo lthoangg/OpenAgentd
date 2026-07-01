@@ -783,7 +783,7 @@ class TeamMemberBase(abc.ABC):
             model_kwargs: dict[str, object] = {}
             if session_thinking_level:
                 model_kwargs["thinking_level"] = session_thinking_level
-            if last_service_tier and effective_model.startswith("codex:"):
+            if last_service_tier:
                 model_kwargs["service_tier"] = last_service_tier
             runtime_provider = self._team._provider_factory(
                 effective_model,

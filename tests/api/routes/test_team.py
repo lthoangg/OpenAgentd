@@ -286,7 +286,7 @@ class TestTeamChatRoute:
         kwargs = test_team.handle_user_message.call_args.kwargs
         assert kwargs["service_tier"] == "fast"
 
-    def test_team_chat_ignores_fast_mode_for_non_codex_model(
+    def test_team_chat_passes_fast_mode_for_non_codex_model(
         self, app_with_team, test_team
     ):
         test_team.handle_user_message = AsyncMock(return_value=str(uuid.uuid7()))
@@ -305,7 +305,7 @@ class TestTeamChatRoute:
             )
         assert response.status_code == 202
         kwargs = test_team.handle_user_message.call_args.kwargs
-        assert kwargs["service_tier"] is None
+        assert kwargs["service_tier"] == "fast"
 
     def test_team_chat_empty_model_settings_reset(self, app_with_team, test_team):
         test_team.handle_user_message = AsyncMock(return_value=str(uuid.uuid7()))

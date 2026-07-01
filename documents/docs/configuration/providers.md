@@ -222,3 +222,15 @@ The common baseline values are:
 **Valid values are model-specific.** Each model advertises its supported levels via `thinking_levels` in the model registry (`GET /api/registry`). Some models expose additional levels beyond the baseline (e.g. `minimal`, `xhigh`, `max`). The settings UI populates the thinking level picker from the selected model's metadata and falls back to the baseline list when the model reports none.
 
 Mapping varies per provider. Some use reasoning effort fields, some use provider-specific thinking objects, and non-reasoning models ignore the field.
+
+## Fast Mode / Service Tiers
+
+Enables priority or fast latency tiers on supported models and providers. Users can opt new messages in a session into Fast Mode, which translates to the corresponding upstream service tier.
+
+| Provider | Upstream parameter | Mapping | Notes |
+|---|---|---|---|
+| `codex` | `service_tier` | `"fast"` ➔ `"priority"` | Uses ChatGPT-subscription Codex Fast mode. |
+| `googlegenai` | `service_tier` | `"fast"` ➔ `"priority"` | Uses Gemini Priority inference tier for business-critical workloads. |
+| `vertexai` | `service_tier` | `"fast"` ➔ `"priority"` | Sent in the request body (may be ignored depending on Vertex AI project settings). |
+| `openai` | `service_tier` | `"fast"` ➔ `"auto"` | Uses OpenAI's scale/priority automatic routing. Only sent for official `api.openai.com` requests. |
+| Others (e.g. DeepSeek, xAI, Ollama) | Not supported | Ignored / Omitted | To prevent `400 Bad Request` errors, the setting is omitted from the request body for all other OpenAI-compatible and third-party providers. |

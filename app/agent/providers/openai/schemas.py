@@ -81,6 +81,7 @@ class OpenAIChatRequest(BaseModel):
     prompt_cache_key: str | None = None
     stream: bool = False
     stream_options: OpenAIStreamOptions | None = None
+    service_tier: str | None = None
 
 
 # ---------------------------------------------------------------------------

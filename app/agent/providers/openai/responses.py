@@ -180,6 +180,10 @@ class ResponsesHandler:
         if merged.get("max_tokens") is not None:
             body["max_output_tokens"] = merged["max_tokens"]
 
+        service_tier = merged.get("service_tier")
+        if service_tier and "api.openai.com" in self.base_url:
+            body["service_tier"] = "auto" if service_tier == "fast" else service_tier
+
         self.customize_thinking(merged, body)
         return body
 

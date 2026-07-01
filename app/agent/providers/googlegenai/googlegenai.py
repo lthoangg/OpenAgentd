@@ -308,11 +308,16 @@ class GeminiProviderBase(LLMProviderBase):
         gemini_tools = self._convert_tools_to_gemini(tools)
         generation_config = self._build_generation_config(**merged)
 
+        service_tier = merged.get("service_tier")
+        if service_tier == "fast":
+            service_tier = "priority"
+
         request = GeminiChatRequest(
             contents=contents,
             system_instruction=system_instruction,
             generation_config=generation_config,
             tools=gemini_tools,
+            service_tier=service_tier,
         )
 
         url = self._build_url("generateContent")
@@ -393,11 +398,16 @@ class GeminiProviderBase(LLMProviderBase):
         gemini_tools = self._convert_tools_to_gemini(tools)
         generation_config = self._build_generation_config(**merged)
 
+        service_tier = merged.get("service_tier")
+        if service_tier == "fast":
+            service_tier = "priority"
+
         request = GeminiChatRequest(
             contents=contents,
             system_instruction=system_instruction,
             generation_config=generation_config,
             tools=gemini_tools,
+            service_tier=service_tier,
         )
 
         url = self._build_url("streamGenerateContent") + "?alt=sse"

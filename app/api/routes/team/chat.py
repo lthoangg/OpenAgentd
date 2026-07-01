@@ -236,16 +236,7 @@ async def team_chat(
         team_obj = await team_manager.get_or_start_team_for_session(session_id)
         team_obj = _require_team(team_obj)
 
-    effective_request_model = (
-        model
-        or (existing.model if existing is not None else None)
-        or team_obj.lead.agent.model_id
-    )
-    fast_mode_service_tier = (
-        "fast"
-        if body.fast_mode and (effective_request_model or "").startswith("codex:")
-        else None
-    )
+    fast_mode_service_tier = "fast" if body.fast_mode else None
 
     # ── Interrupt (mutually exclusive with message) ─────────────────────────
     if interrupt:

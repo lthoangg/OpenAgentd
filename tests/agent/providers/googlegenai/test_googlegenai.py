@@ -1117,3 +1117,26 @@ async def test_stream_captures_thought_signature(google_provider):
     delta = chunks[0].choices[0].delta
     assert delta.reasoning_content == "deep thought"
     assert delta.reasoning_signature == "stream-sig-abc"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_googlegenai_service_tier_mapping(google_provider):
+    import json
+
+    respx.post(
+        f"{google_provider.base_url}/models/gemini-1.5-flash:generateContent"
+    ).mock(
+        return_value=httpx.Response(
+            200, json={"candidates": [{"content": {"parts": [{"text": "hello"}]}}]}
+        )
+    )
+
+    await google_provider.chat(
+        messages=[HumanMessage(content="hi")],
+        service_tier="fast",
+    )
+
+    request = respx.calls.last.request
+    body = json.loads(request.read())
+    assert body["serviceTier"] == "priority"

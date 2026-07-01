@@ -207,10 +207,10 @@ def main() -> None:
     if non_codex_model is not None or not (lead_model or "").startswith("codex:"):
         _run_case(
             base,
-            label="unsupported/non-Codex fast_mode is accepted and ignored",
+            label="non-Codex fast_mode persists service_tier=fast",
             model=non_codex_model,
             fast_mode=True,
-            expect_service_tier=None,
+            expect_service_tier="fast",
             command=command,
             expect_output=args.expect,
             wait=args.wait,

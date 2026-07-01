@@ -82,6 +82,7 @@ class GeminiChatRequest(GeminiBaseModel):
     system_instruction: Content | None = None
     generation_config: GenerationConfig | None = None
     tools: list[Tool] | None = None
+    service_tier: str | None = None
 
 
 class Candidate(GeminiBaseModel):

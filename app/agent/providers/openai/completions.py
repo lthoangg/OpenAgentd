@@ -203,6 +203,11 @@ class CompletionsHandler:
         # should be ``max_tokens`` (legacy) or ``max_completion_tokens``
         # (reasoning-capable OpenAI models — see class docstring).
         max_tokens_value = merged.get("max_tokens")
+        service_tier = merged.get("service_tier")
+        request_service_tier = None
+        if service_tier and "api.openai.com" in self.base_url:
+            request_service_tier = "auto" if service_tier == "fast" else service_tier
+
         req = OpenAIChatRequest(
             model=self.model,
             messages=self.convert_messages(sanitize_openai_tool_pairs(messages)),
@@ -217,6 +222,7 @@ class CompletionsHandler:
             ),
             stream=stream,
             stream_options=OpenAIStreamOptions(include_usage=True) if stream else None,
+            service_tier=request_service_tier,
         )
         body = req.model_dump(exclude_none=True)
         if merged.get("prompt_cache_key") is not None:

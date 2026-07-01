@@ -483,6 +483,27 @@ class TestCompletionsHandler:
         assert body["tools"] is not None
         assert len(body["tools"]) == 1
 
+    def test_build_request_service_tier_official_url(self, handler):
+        """Official OpenAI URL maps service_tier: 'fast' -> 'auto'."""
+        messages = [HumanMessage(content="Hello")]
+        body = handler.build_request(
+            messages, tools=None, stream=False, merged={"service_tier": "fast"}
+        )
+        assert body["service_tier"] == "auto"
+
+    def test_build_request_service_tier_custom_url(self):
+        """Custom OpenAI compatible URL omits service_tier to avoid 400s."""
+        handler = CompletionsHandler(
+            model="gpt-4o",
+            base_url="https://api.deepseek.com/v1",
+            headers={"Authorization": "Bearer sk-test"},
+        )
+        messages = [HumanMessage(content="Hello")]
+        body = handler.build_request(
+            messages, tools=None, stream=False, merged={"service_tier": "fast"}
+        )
+        assert "service_tier" not in body
+
     # ─────────────────────────────────────────────────────────────────────────
     # Response parsing tests
     # ─────────────────────────────────────────────────────────────────────────

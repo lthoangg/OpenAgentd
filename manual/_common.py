@@ -61,10 +61,13 @@ def require_dev_server(base: str) -> None:
         if isinstance(data_info, dict):
             data_dir = str(data_info.get("path") or "")
 
-    env = data.get("env") if isinstance(data, dict) else None
-    app_env = ""
-    if isinstance(env, dict):
-        app_env = str(env.get("APP_ENV") or "")
+    # Prefer the dedicated top-level field (added in the app_env feature);
+    # fall back to the env dict for older server builds.
+    app_env = str(data.get("app_env") or "") if isinstance(data, dict) else ""
+    if not app_env:
+        env = data.get("env") if isinstance(data, dict) else None
+        if isinstance(env, dict):
+            app_env = str(env.get("APP_ENV") or "")
 
     if app_env == "development" or ".openagentd/dev" in data_dir:
         return

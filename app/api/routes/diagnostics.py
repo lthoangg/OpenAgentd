@@ -70,6 +70,7 @@ class DiagnosticsMcp(BaseModel):
 
 class DiagnosticsResponse(BaseModel):
     version: str
+    app_env: str
     runtime: DiagnosticsRuntimeInfo
     dirs: DiagnosticsDirs
     providers: dict[str, bool]
@@ -209,6 +210,7 @@ async def diagnostics(tail: int = 200) -> DiagnosticsResponse:
 
     return DiagnosticsResponse(
         version=VERSION,
+        app_env=settings.APP_ENV,
         runtime=DiagnosticsRuntimeInfo(
             python=sys.version.split()[0],
             implementation=platform.python_implementation(),

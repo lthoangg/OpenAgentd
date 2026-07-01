@@ -20,6 +20,7 @@ def test_returns_expected_shape():
     body = r.json()
     for key in (
         "version",
+        "app_env",
         "runtime",
         "dirs",
         "providers",
@@ -31,6 +32,12 @@ def test_returns_expected_shape():
         "error_log_path",
     ):
         assert key in body, f"missing {key}"
+
+
+def test_app_env_field_present_and_is_string():
+    body = _client().get("/api/diagnostics").json()
+    assert isinstance(body["app_env"], str), "app_env must be a string"
+    assert body["app_env"] in ("development", "production", "test") or body["app_env"]
 
 
 def test_provider_values_are_booleans():

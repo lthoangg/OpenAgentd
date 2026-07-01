@@ -150,7 +150,7 @@ describe('SessionModelSettings — Fast mode', () => {
     // The descriptive note now lives inside the (i) tooltip, so it must not
     // be rendered inline in the row by default — keeps the control compact.
     expect(
-      screen.queryByText('Use Codex Fast mode for messages in this session.'),
+      screen.queryByText('Use Fast/Priority mode for messages in this session.'),
     ).toBeNull()
   })
 
@@ -182,8 +182,8 @@ describe('SessionModelSettings — Fast mode', () => {
     expect(onChange).toHaveBeenCalledWith('codex:gpt-5', null, true)
   })
 
-  it('disables the checkbox when the session model is not codex:*', () => {
-    renderPanel({ sessionModel: 'openai:gpt-5' })
+  it('disables the checkbox when the session model is not supported', () => {
+    renderPanel({ sessionModel: 'anthropic:claude-3-5-sonnet' })
     const checkbox = screen.getByRole('checkbox', { name: 'Fast mode' }) as HTMLInputElement
     expect(checkbox.disabled).toBe(true)
   })

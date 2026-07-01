@@ -104,7 +104,11 @@ export function SessionModelSettings({
     }
     return options
   }, [draftThinkingLevel, effectiveModelEntry])
-  const fastModeAvailable = effectiveDraftModel.startsWith('codex:')
+  const fastModeAvailable =
+    effectiveDraftModel.startsWith('codex:') ||
+    effectiveDraftModel.startsWith('googlegenai:') ||
+    effectiveDraftModel.startsWith('vertexai:') ||
+    effectiveDraftModel.startsWith('openai:')
   const validModelIds = useMemo(
     () => new Set(modelOptions.map((model) => model.id)),
     [modelOptions],
@@ -212,8 +216,8 @@ export function SessionModelSettings({
               />
               <TooltipContent>
                 {fastModeAvailable
-                  ? 'Use Codex Fast mode for messages in this session.'
-                  : 'Available when the session model is codex:*.'}
+                  ? 'Use Fast/Priority mode for messages in this session.'
+                  : 'Available for models and providers that support service/latency tiers (Google Gemini, OpenAI, Codex).'}
               </TooltipContent>
             </Tooltip>
           </span>

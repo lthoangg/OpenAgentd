@@ -373,7 +373,7 @@ export function FileLightboxText({ item }: { item: FileLightboxItem }) {
       <div className="flex shrink-0 items-center border-b border-(--color-border-subtle) px-4 py-2">
         <span className="text-xs text-(--color-text-muted)">{extOf(item.name).toUpperCase() || 'TEXT'}</span>
       </div>
-      <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words p-4 font-mono text-xs leading-relaxed text-(--color-text-muted)">
+      <pre className="min-h-0 flex-1 overflow-auto overscroll-contain touch-pan-y whitespace-pre-wrap break-words p-4 font-mono text-xs leading-relaxed text-(--color-text-muted)">
         {content === null ? 'Loading…' : content}
       </pre>
     </div>

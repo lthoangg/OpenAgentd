@@ -180,7 +180,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
         </div>
       </div>
 
-        <div className="relative min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
+        <div className="relative min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain touch-pan-y px-5 py-4">
           {/* Connected backend status line */}
           <div className="rounded border border-(--color-border) bg-(--bg-card) p-3 font-mono text-[11px] text-(--color-text-muted) flex items-center justify-between select-none">
             <span className="truncate">

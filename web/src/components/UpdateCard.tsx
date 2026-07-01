@@ -170,7 +170,7 @@ function ReleaseNotesButton({ fallbackNotes, version }: { fallbackNotes?: string
                 <button className="rounded-md px-2 py-1 text-xs text-(--color-text-muted) hover:bg-(--bg-page)" onClick={() => setOpen(false)}>Close</button>
               </div>
             </div>
-            <div className="max-h-[24rem] overflow-y-auto px-4 py-3 text-(--color-text)">
+            <div className="max-h-[24rem] overflow-y-auto overscroll-contain touch-pan-y px-4 py-3 text-(--color-text)">
               <LazyMarkdownBlock content={`${notes?.body ?? fallbackNotes ?? 'Loading release notes...'}${error ? `\n\nCould not load GitHub release notes: ${error}` : ''}`} />
             </div>
           </div>

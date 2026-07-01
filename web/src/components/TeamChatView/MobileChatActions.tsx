@@ -88,7 +88,7 @@ export function MobileChatActions({
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-2">
+              <div className="flex-1 overflow-y-auto overscroll-contain touch-pan-y p-2">
                 {activeAgent && agents.length > 1 && (
                   <>
                     <div className="px-2 py-2 text-xs font-medium text-muted-foreground">Agents</div>

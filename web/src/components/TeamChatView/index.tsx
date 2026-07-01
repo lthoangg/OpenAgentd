@@ -210,7 +210,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         continueTeam: s.continueTeam,
         beginResolvedSession: s.beginResolvedSession,
         consumeResolvedSessionReady: s.consumeResolvedSessionReady,
-        cycleActiveAgent: s.cycleActiveAgent,
         setActiveAgent: s.setActiveAgent,
         setSessionModelSettings: s.setSessionModelSettings,
         setupRequired: s.setupRequired,
@@ -248,7 +247,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     continueTeam,
     beginResolvedSession,
     consumeResolvedSessionReady,
-    cycleActiveAgent,
     setActiveAgent,
     setSessionModelSettings,
     setupRequired,
@@ -936,29 +934,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     'i': () => window.dispatchEvent(new CustomEvent('focus-chat-input')),
   })
 
-  // Tab / Shift+Tab — cycle the active agent in the store (agent view tabs
-  // and split-mode pane focus both follow store activeAgent).
-  // Guard: skip when any modal/overlay is open (AppOverlay sets data-modal-focus)
-  // or when focus is inside a focusable scroll container, so Tab navigates
-  // normally inside those surfaces instead of cycling agents.
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key !== 'Tab' || e.ctrlKey || e.metaKey) return
-      // Any open AppOverlay panel has data-modal-focus — its own focus trap
-      // owns Tab, so we must not intercept.
-      if (document.querySelector('[data-modal-focus="true"]')) return
-      // Focus inside a scroll-capture container (e.g. text preview) — let Tab
-      // navigate within it naturally.
-      if (
-        document.activeElement instanceof HTMLElement &&
-        document.activeElement.closest('[data-scroll-capture]')
-      ) return
-      e.preventDefault()
-      cycleActiveAgent(e.shiftKey ? 'prev' : 'next')
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [cycleActiveAgent])
+
 
   // ── Mobile edge-swipe drawers ──────────────────────────────────────────────
   //

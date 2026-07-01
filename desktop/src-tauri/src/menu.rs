@@ -220,15 +220,6 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
     let tray_show = MenuItem::with_id(app, MENU_SHOW, "Show OpenAgentd", true, None::<&str>)?;
     let tray_new_window =
         MenuItem::with_id(app, MENU_NEW_WINDOW, "New Window", true, None::<&str>)?;
-    let tray_chat = MenuItem::with_id(app, MENU_CHAT, "Cockpit", true, None::<&str>)?;
-    let tray_coding = MenuItem::with_id(app, MENU_CODING, "Coding", true, None::<&str>)?;
-    let tray_command_palette = MenuItem::with_id(
-        app,
-        MENU_COMMAND_PALETTE,
-        "Command Palette…",
-        true,
-        None::<&str>,
-    )?;
     let tray_settings = MenuItem::with_id(app, MENU_SETTINGS, "Settings", true, None::<&str>)?;
     let tray_open_config_dir = MenuItem::with_id(
         app,
@@ -261,9 +252,6 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
             &PredefinedMenuItem::separator(app)?,
             &tray_show,
             &tray_new_window,
-            &tray_chat,
-            &tray_coding,
-            &tray_command_palette,
             &PredefinedMenuItem::separator(app)?,
             &tray_settings,
             &tray_open_config_dir,

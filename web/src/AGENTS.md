@@ -25,6 +25,16 @@ index.css     Tailwind v4 theme/global styles
 - Settings form change: check zod/client validation and matching backend schema.
 - Tool rendering change: inspect `components/ToolCall*` and copy/formatting tests.
 
+## Summarization / compaction
+
+Context-window compaction is streamed via three SSE events (`summarization_start` → `summarization_content` → `summarization_end`) handled in `stores/useTeamStore/sse-reducer.ts`. The block utilities live in `utils/blocks.ts` (`startCompaction`, `appendCompactionContent`, `endCompaction`).
+
+**`CompactionDivider`** (`components/CompactionDivider.tsx`) renders the inline marker and streams the summary body via `LazyMarkdownBlock`. Key rules:
+
+- `isStreaming` defaults to `state === 'compacting'` — do **not** hardcode `false` or omit it.
+- Both `AgentView` and `AgentPane` `BlockRenderer` functions forward the `isStreaming` prop they receive into `<CompactionDivider>`. Keep those in sync.
+- Tests: `__tests__/components/CompactionDivider.test.tsx` (unit) and `__tests__/components/AgentView.compaction.test.tsx` (integration — `AgentView` + `AgentPane` prop forwarding).
+
 ## Commands
 
 ```bash

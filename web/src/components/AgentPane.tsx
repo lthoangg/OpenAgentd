@@ -289,6 +289,7 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
           error={error}
           summary={block.content}
           sessionId={sessionId}
+          isStreaming={isStreaming}
         />
       )
     }

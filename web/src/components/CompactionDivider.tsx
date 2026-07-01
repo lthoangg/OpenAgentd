@@ -25,9 +25,18 @@ interface CompactionDividerProps {
   summary?: string
   /** Forwarded to ``MarkdownBlock`` for in-prose attachment / image resolution. */
   sessionId?: string
+  /** Whether the summary is still being streamed in via SSE deltas.
+   *  Defaults to ``true`` when ``state === 'compacting'`` so that
+   *  ``LazyMarkdownBlock`` activates the smooth-stream hook and renders
+   *  each incoming chunk as it arrives. Pass ``false`` explicitly to
+   *  suppress animation (e.g. during cold-replay where the content is
+   *  already complete). */
+  isStreaming?: boolean
 }
 
-export function CompactionDivider({ state, error, summary, sessionId }: CompactionDividerProps) {
+export function CompactionDivider({ state, error, summary, sessionId, isStreaming }: CompactionDividerProps) {
+  // Default: streaming is active whenever the block is still in the compacting state.
+  const effectiveIsStreaming = isStreaming ?? state === 'compacting'
   const label = error
     ? 'Compaction failed'
     : state === 'compacting'
@@ -61,7 +70,7 @@ export function CompactionDivider({ state, error, summary, sessionId }: Compacti
         // as a regular assistant text block, just dimmed via --color-text-2
         // to signal it is a derived/system artefact rather than a fresh reply.
         <div className="text-sm text-(--color-text-2)">
-          <LazyMarkdownBlock content={trimmed} sessionId={sessionId} />
+          <LazyMarkdownBlock content={trimmed} sessionId={sessionId} isStreaming={effectiveIsStreaming} />
         </div>
       )}
     </div>

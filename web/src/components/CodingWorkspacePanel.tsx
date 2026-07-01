@@ -115,6 +115,9 @@ interface CommitDetailProps {
   commitDiffSections: Map<string, DiffFileSection>
   expandedCommitFiles: Set<string>
   setExpandedCommitFiles: React.Dispatch<React.SetStateAction<Set<string>>>
+  mobile: boolean
+  setMobileFileActions: (f: ChangedFileInfo) => void
+  setDesktopFileActions: (actions: { file: ChangedFileInfo; x: number; y: number } | null) => void
 }
 
 function CommitDetail({
@@ -123,6 +126,9 @@ function CommitDetail({
   commitDiffSections,
   expandedCommitFiles,
   setExpandedCommitFiles,
+  mobile,
+  setMobileFileActions,
+  setDesktopFileActions,
 }: CommitDetailProps) {
   const toggleFileExpanded = (path: string) => {
     setExpandedCommitFiles((current) => {
@@ -151,9 +157,21 @@ function CommitDetail({
         const fileDiff = commitDiffSections.get(changedFile.path)?.diff
         return (
           <div key={changedFile.path} className="overflow-hidden rounded border border-(--color-border-subtle) bg-(--bg-card)">
-            <button
+            <LongPressButton
               type="button"
               onClick={(e) => { e.stopPropagation(); toggleFileExpanded(changedFile.path) }}
+              enabled={mobile}
+              onLongPress={() => setMobileFileActions(changedFile)}
+              onContextMenu={(e) => {
+                if (!mobile) {
+                  e.preventDefault()
+                  setDesktopFileActions({
+                    file: changedFile,
+                    x: e.clientX,
+                    y: e.clientY,
+                  })
+                }
+              }}
               className="flex w-full cursor-pointer items-center gap-1.5 px-1.5 py-1 text-left text-[10px] text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text)"
               aria-expanded={expanded}
             >
@@ -163,7 +181,7 @@ function CommitDetail({
               <span className="shrink-0 font-mono text-[8px] text-(--color-diff-add-text)">{changedFile.additions > 0 ? `+${changedFile.additions}` : ''}</span>
               <span className="shrink-0 font-mono text-[8px] text-(--color-diff-del-text)">{changedFile.deletions > 0 ? `-${changedFile.deletions}` : ''}</span>
               <span className="shrink-0 font-mono text-[8px] font-semibold text-(--accent-orange-text)">{changedFile.status}</span>
-            </button>
+            </LongPressButton>
             {expanded && (
               <div className="border-t border-(--color-border-subtle)">
                 {fileDiff ? (
@@ -933,6 +951,9 @@ export function CodingWorkspacePanel({
                                   commitDiffSections={commitDiffSections}
                                   expandedCommitFiles={expandedCommitFiles}
                                   setExpandedCommitFiles={setExpandedCommitFiles}
+                                  mobile={mobile}
+                                  setMobileFileActions={setMobileFileActions}
+                                  setDesktopFileActions={setDesktopFileActions}
                                 />
                               </>
                             )}

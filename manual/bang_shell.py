@@ -19,7 +19,8 @@ import uuid
 import httpx
 
 
-DEFAULT_BASE = "http://localhost:8000/api"
+from manual._common import DEFAULT_BASE
+BASE = DEFAULT_BASE
 DEFAULT_COMMAND = "sleep 0.2; printf 'oad-bang-shell-ok\\n'"
 DEFAULT_EXPECT = "oad-bang-shell-ok"
 

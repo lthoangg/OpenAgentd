@@ -54,7 +54,8 @@ from dataclasses import dataclass, field
 
 import httpx
 
-BASE = "http://localhost:8000/api"
+from manual._common import DEFAULT_BASE
+BASE = DEFAULT_BASE
 FOLLOWUP = "Reply with the single word OK."
 FOLLOWUP_TIMEOUT = 120
 POST_STOP_SETTLE = 3.0          # how long Stop has to actually halt + flush

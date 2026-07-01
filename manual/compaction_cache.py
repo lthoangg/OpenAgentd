@@ -39,7 +39,8 @@ from app.agent.state import (
     build_model_chain,
 )
 
-BASE = "http://localhost:8000/api"
+from manual._common import DEFAULT_BASE
+BASE = DEFAULT_BASE
 SPANS = Path(".openagentd/dev/state/otel/spans")
 DEFAULT_MIN_CACHE_RATIO = 0.10
 

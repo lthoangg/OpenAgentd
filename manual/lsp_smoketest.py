@@ -23,7 +23,8 @@ import time
 
 import httpx
 
-BASE = "http://localhost:8000/api"
+from manual._common import DEFAULT_BASE
+BASE = DEFAULT_BASE
 PROMPT = (
     "Please use the write tool to write a python file named `test_syntax_error.py` "
     "containing exactly: `def foo(` and nothing else. Do not fix the syntax error; "

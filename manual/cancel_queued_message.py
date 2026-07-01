@@ -26,7 +26,8 @@ import time
 
 import httpx
 
-BASE = "http://localhost:8000/api"
+from manual._common import DEFAULT_BASE
+BASE = DEFAULT_BASE
 INITIAL_PROMPT = (
     "You must call the shell tool before answering. "
     "Run exactly: sleep 8 && echo CANCEL_QUEUE_SMOKE_DONE. "

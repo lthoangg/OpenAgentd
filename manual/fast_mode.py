@@ -26,7 +26,8 @@ from collections.abc import Iterable
 import httpx
 
 
-BASE = "http://localhost:8000/api"
+from manual._common import DEFAULT_BASE
+BASE = DEFAULT_BASE
 DEFAULT_COMMAND = "printf 'openagentd-fast-mode-smoke-ok\\n'"
 DEFAULT_EXPECT = "openagentd-fast-mode-smoke-ok"
 DEFAULT_CODEX_MODEL = "codex:gpt-5.4"

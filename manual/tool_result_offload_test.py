@@ -22,7 +22,8 @@ import httpx
 
 from app.core.paths import workspace_dir
 
-BASE = "http://localhost:8000/api"
+from manual._common import DEFAULT_BASE
+BASE = DEFAULT_BASE
 DEFAULT_WAIT = 120
 # Me large file — CPython ast.py is ~25KB, well above 8000-char threshold
 LARGE_FILE_URL = "https://raw.githubusercontent.com/python/cpython/main/Lib/ast.py"

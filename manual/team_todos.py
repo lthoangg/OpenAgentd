@@ -11,7 +11,8 @@ from typing import Any
 
 import httpx
 
-BASE = "http://localhost:8000/api"
+from manual._common import DEFAULT_BASE
+BASE = DEFAULT_BASE
 
 
 def fetch_todos(base: str, session_id: str) -> list[dict[str, Any]]:

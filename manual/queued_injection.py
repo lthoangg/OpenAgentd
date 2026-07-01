@@ -32,7 +32,8 @@ import time
 import httpx
 
 
-BASE = "http://localhost:8000/api"
+from manual._common import DEFAULT_BASE
+BASE = DEFAULT_BASE
 DEFAULT_INITIAL = (
     "You must call the shell tool before answering. Run exactly: "
     "sleep 8 && echo QUEUED_INJECTION_TOOL_DONE. Do not answer until the shell "

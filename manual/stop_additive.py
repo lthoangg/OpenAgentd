@@ -31,7 +31,8 @@ import time
 
 import httpx
 
-BASE = "http://localhost:8000/api"
+from manual._common import DEFAULT_BASE
+BASE = DEFAULT_BASE
 MSG_A = "Include the word HELLO in your reply."
 MSG_B = "Also include the word WORLD."
 FOLLOWUP_TIMEOUT = 120

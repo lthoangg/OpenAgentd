@@ -10,7 +10,8 @@ import argparse
 
 import httpx
 
-BASE = "http://localhost:8000/api"
+from manual._common import DEFAULT_BASE
+BASE = DEFAULT_BASE
 
 
 def load_history(base: str, sid: str) -> tuple[dict, list[dict]]:

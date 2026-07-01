@@ -2,7 +2,8 @@ import asyncio
 import json
 import httpx
 
-BASE = "http://localhost:8000/api"
+from manual._common import DEFAULT_BASE
+BASE = DEFAULT_BASE
 SESSION_ID = "019f17b4-fb60-7452-afdd-53795bcee678"
 PROMPT = (
     "Please touch the files `demo_files/typescript/syntax_error.ts` and `demo_files/rust/syntax_error.rs` "

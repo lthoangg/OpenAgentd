@@ -16,7 +16,8 @@ import time
 import httpx
 
 
-DEFAULT_BASE = "http://localhost:8000/api"
+from manual._common import DEFAULT_BASE
+BASE = DEFAULT_BASE
 DEFAULT_MESSAGE = (
     "Use the shell tool to run exactly: "
     "for i in 1 2 3; do echo delta-$i; sleep 1; done"

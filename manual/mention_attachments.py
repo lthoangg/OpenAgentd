@@ -43,7 +43,8 @@ from sqlmodel import col, select
 from app.core.db import async_session_factory
 from app.models.chat import SessionMessage
 
-BASE = "http://localhost:8000/api"
+from manual._common import DEFAULT_BASE
+BASE = DEFAULT_BASE
 BIG_HEAD = "HEAD_MARKER_ALPHA"
 BIG_TAIL = "TAIL_MARKER_OMEGA"
 MIDDLE_MARKER = "Middle truncated"

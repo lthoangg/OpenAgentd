@@ -12,7 +12,8 @@ import argparse
 
 import httpx
 
-BASE = "http://localhost:8000/api"
+from manual._common import DEFAULT_BASE
+BASE = DEFAULT_BASE
 
 
 def list_team_sessions(base: str, limit: int, before: str | None = None) -> dict:

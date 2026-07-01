@@ -48,7 +48,8 @@ from app.agent.schemas.chat import (
 from app.core import db as app_db
 from app.models.chat import ChatSession
 
-BASE = "http://localhost:8000/api"
+from manual._common import DEFAULT_BASE
+BASE = DEFAULT_BASE
 DEFAULT_WAIT = 180
 DEFAULT_MESSAGE = """\
 Reliability smoke test for team communication.

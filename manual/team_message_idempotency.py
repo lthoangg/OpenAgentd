@@ -54,7 +54,8 @@ from app.core.db import async_session_factory
 from app.models.chat import ChatSession, SessionMessage
 from app.services.chat_service import get_messages_for_llm
 
-BASE = "http://localhost:8000/api"
+from manual._common import DEFAULT_BASE
+BASE = DEFAULT_BASE
 
 DEFAULT_MESSAGES = [
     "Spawn one explorer member and ask it to reply with exactly the word ALPHA. "

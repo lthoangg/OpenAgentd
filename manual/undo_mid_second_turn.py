@@ -22,7 +22,8 @@ import time
 
 import httpx
 
-BASE = "http://localhost:8000/api"
+from manual._common import DEFAULT_BASE
+BASE = DEFAULT_BASE
 FIRST  = "Reply with the single word READY."
 SECOND = ("Please write a detailed ~200 word response describing the "
           "history and evolution of the Python programming language.")

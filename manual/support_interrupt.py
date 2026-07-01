@@ -54,7 +54,8 @@ from app.agent.schemas.chat import (
 )
 from app.agent.state import ModelRequest, RunContext
 
-BASE = "http://localhost:8000/api"
+from manual._common import DEFAULT_BASE
+BASE = DEFAULT_BASE
 
 # ── In-process provider helpers ─────────────────────────────────────────────
 

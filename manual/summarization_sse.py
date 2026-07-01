@@ -36,7 +36,8 @@ from pathlib import Path
 
 import httpx
 
-BASE = "http://localhost:8000/api"
+from manual._common import DEFAULT_BASE
+BASE = DEFAULT_BASE
 DEFAULT_WAIT = 180
 
 # ── Colors ──────────────────────────────────────────────────────────────────

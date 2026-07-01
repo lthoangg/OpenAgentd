@@ -17,7 +17,8 @@ from uuid import UUID
 
 import httpx
 
-BASE = "http://localhost:8000/api"
+from manual._common import DEFAULT_BASE
+BASE = DEFAULT_BASE
 
 
 def resolve_session(base: str, payload: dict) -> dict:

@@ -63,12 +63,15 @@ export function SessionModelSettings({
   const currentModelOptions = useMemo(() => {
     const filtered = modelOptions.filter((m) => !m.output_image && !m.output_video)
     const id = draftModel.trim()
-    if (!id) return filtered
+    // Only inject a synthetic entry for a fully-qualified "provider:model" id
+    // that isn't in the registry yet (previously-saved model). Partial input
+    // that lacks the colon separator is mid-typing and must never appear as a
+    // list item — the first dropdown item must always be a real registry entry.
+    if (!id || !id.includes(':')) return filtered
     if (filtered.some((model) => model.id === id)) return filtered
-    // Keep a previously-saved model visible even if it isn't in the registry yet.
     const colonIdx = id.indexOf(':')
-    const provider = colonIdx >= 0 ? id.slice(0, colonIdx) : id
-    const model = colonIdx >= 0 ? id.slice(colonIdx + 1) : id
+    const provider = id.slice(0, colonIdx)
+    const model = id.slice(colonIdx + 1)
     return [...filtered, { id, provider, model, vision: false }]
   }, [draftModel, modelOptions])
   const savedModel = sessionModel ?? defaultModel ?? ''

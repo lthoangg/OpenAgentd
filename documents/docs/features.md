@@ -405,7 +405,7 @@ agnostic by design. Deeper doc: [`configuration/providers.md`](./configuration/p
   built-in OAuth helper.
 - **Codex usage monitor** `[v1.32.0]` — Settings → Providers shows live Codex
   OAuth usage windows, resets, credits, unlimited plans, and spend-cap/limit states.
-- **Priority / Fast mode** `[v1.90.0]` — session settings can opt new messages into Fast/Priority mode. Supported on models and providers that implement service/latency tiers (Google Gemini maps to `priority`, OpenAI maps to `auto`, and ChatGPT Codex maps to `priority`).
+- **Priority / Fast mode** `[v1.90.0]` — session settings can opt new messages into Fast/Priority mode. Supported on models and providers that implement service/latency tiers (Anthropic maps to `auto`, Google Gemini maps to `priority`, OpenAI maps to `auto`, and ChatGPT Codex maps to `priority`).
 - **Copilot usage monitor** `[v1.33.0]` — Settings → Providers shows live Copilot
   premium request quota from the saved OAuth token.
 - **Provider plugin usage hooks** `[v1.33.0]` — OAuth provider plugins can

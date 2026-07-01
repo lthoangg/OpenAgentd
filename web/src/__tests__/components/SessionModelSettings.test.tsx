@@ -183,7 +183,7 @@ describe('SessionModelSettings — Fast mode', () => {
   })
 
   it('disables the checkbox when the session model is not supported', () => {
-    renderPanel({ sessionModel: 'anthropic:claude-3-5-sonnet' })
+    renderPanel({ sessionModel: 'deepseek:deepseek-v4-pro' })
     const checkbox = screen.getByRole('checkbox', { name: 'Fast mode' }) as HTMLInputElement
     expect(checkbox.disabled).toBe(true)
   })

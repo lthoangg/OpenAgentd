@@ -449,6 +449,11 @@ class AnthropicProvider(LLMProviderBase):
         anthropic_tools = _anthropic_tools(tools)
         if anthropic_tools:
             payload["tools"] = anthropic_tools
+
+        service_tier = kwargs.get("service_tier")
+        if service_tier and "api.anthropic.com" in self.base_url:
+            payload["service_tier"] = "auto" if service_tier == "fast" else service_tier
+
         thinking = _apply_thinking(self.model, kwargs, payload)
         _add_sampling(self.model, kwargs, payload, thinking=thinking)
         return payload

@@ -620,3 +620,32 @@ def test_anthropic_provider_8k_output_sonnet_v2() -> None:
     assert "anthropic-beta" not in provider_48.headers
     payload_48 = provider_48._payload([HumanMessage(content="hi")], None, {})
     assert payload_48["max_tokens"] in (128000, 4096)
+
+
+def test_anthropic_payload_service_tier_official_url() -> None:
+    provider = AnthropicProvider(
+        api_key="sk-ant-test",
+        model="claude-sonnet-4-6",
+        model_kwargs={"service_tier": "fast"},
+    )
+    payload = provider._payload(
+        [HumanMessage(content="hi")],
+        None,
+        provider._merged_kwargs(),
+    )
+    assert payload["service_tier"] == "auto"
+
+
+def test_anthropic_payload_service_tier_custom_url() -> None:
+    provider = AnthropicProvider(
+        api_key="sk-ant-test",
+        model="claude-sonnet-4-6",
+        base_url="https://some-proxy.com",
+        model_kwargs={"service_tier": "fast"},
+    )
+    payload = provider._payload(
+        [HumanMessage(content="hi")],
+        None,
+        provider._merged_kwargs(),
+    )
+    assert "service_tier" not in payload

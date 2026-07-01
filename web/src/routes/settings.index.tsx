@@ -9,6 +9,11 @@ import {
   Server,
   Download,
   Info,
+  Shield,
+  Image,
+  Type,
+  Bell,
+  ChevronRight,
 } from 'lucide-react'
 
 import { AppBackendDialog } from '@/components/AppBackendDialog'
@@ -18,6 +23,7 @@ import { checkForUpdates, downloadUpdate, fetchReleaseNotes, installUpdate, type
 import { openExternalUrl } from '@/lib/open-external'
 import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
 import { useHealthQuery } from '@/queries'
+import { useSettingsStore } from '@/stores/useSettingsStore'
 
 // ── Updates card ──────────────────────────────────────────────────────────
 
@@ -167,6 +173,7 @@ export function SettingsHubPage() {
   const healthQ = useHealthQuery()
   const [backendDialogOpen, setBackendDialogOpen] = useState(false)
   const version = healthQ.data?.version
+  const setSection = useSettingsStore((s) => s.setSection)
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto bg-(--bg-page)">
@@ -187,6 +194,58 @@ export function SettingsHubPage() {
             </p>
           </div>
         </header>
+
+        {/* Preferences section for options missing in the bottom tab bar on mobile */}
+        <div className="md:hidden">
+          <SettingsSection title="Preferences">
+            <div className="divide-y divide-(--color-border)">
+              <button
+                type="button"
+                onClick={() => setSection('sandbox')}
+                className="flex w-full items-center justify-between py-2.5 text-left text-xs text-(--color-text) hover:bg-(--bg-key)/20 focus:outline-none"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Shield size={14} className="text-(--color-text-muted)" />
+                  <span>Sandbox Settings</span>
+                </div>
+                <ChevronRight size={14} className="text-(--color-text-subtle)" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setSection('multimodal')}
+                className="flex w-full items-center justify-between py-2.5 text-left text-xs text-(--color-text) hover:bg-(--bg-key)/20 focus:outline-none"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Image size={14} className="text-(--color-text-muted)" />
+                  <span>Multimodal Settings</span>
+                </div>
+                <ChevronRight size={14} className="text-(--color-text-subtle)" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setSection('title-generation')}
+                className="flex w-full items-center justify-between py-2.5 text-left text-xs text-(--color-text) hover:bg-(--bg-key)/20 focus:outline-none"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Type size={14} className="text-(--color-text-muted)" />
+                  <span>Title Generation Settings</span>
+                </div>
+                <ChevronRight size={14} className="text-(--color-text-subtle)" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setSection('notifications')}
+                className="flex w-full items-center justify-between py-2.5 text-left text-xs text-(--color-text) hover:bg-(--bg-key)/20 focus:outline-none"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Bell size={14} className="text-(--color-text-muted)" />
+                  <span>Notification Settings</span>
+                </div>
+                <ChevronRight size={14} className="text-(--color-text-subtle)" />
+              </button>
+            </div>
+          </SettingsSection>
+        </div>
 
         <SettingsSection title="Backend connection">
           <div className="flex flex-wrap items-start gap-3">

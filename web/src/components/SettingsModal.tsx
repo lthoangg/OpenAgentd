@@ -167,7 +167,13 @@ function ModalSidebar({ section, onSelect }: { section: SettingsSection; onSelec
 
 
 function MobileTabBar({ section, onSelect }: { section: SettingsSection; onSelect: (s: TopLevelSection) => void }) {
-  const active = parentSection(section)
+  const baseActive = parentSection(section)
+  const active = (
+    baseActive === 'sandbox' ||
+    baseActive === 'multimodal' ||
+    baseActive === 'title-generation' ||
+    baseActive === 'notifications'
+  ) ? 'about' : baseActive
   const items: SidebarItem[] = [
     { section: 'agents', label: 'Agents', icon: Wrench },
     { section: 'skills', label: 'Skills', icon: Sparkles },
@@ -327,8 +333,20 @@ export function SettingsModal() {
   }, [open, closeSettings])
 
   const breadcrumbs = getBreadcrumbs(section, selectedName)
-  const isDrillDown = section !== parentSection(section)
-  const mobileBackSection = parentSection(section)
+  const isDrillDown =
+    section !== parentSection(section) ||
+    section === 'sandbox' ||
+    section === 'multimodal' ||
+    section === 'title-generation' ||
+    section === 'notifications'
+
+  const mobileBackSection =
+    section === 'sandbox' ||
+    section === 'multimodal' ||
+    section === 'title-generation' ||
+    section === 'notifications'
+      ? 'about'
+      : parentSection(section)
 
   return (
     <AnimatePresence>
@@ -355,7 +373,7 @@ export function SettingsModal() {
             exit={{ opacity: 0, scale: 0.98, y: 4 }}
             transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
             className={cn(
-              'settings-modal-shell mobile-viewport z-50 flex flex-col overflow-hidden rounded-lg',
+              'settings-modal-shell z-50 flex flex-col overflow-hidden rounded-lg',
               'border border-(--color-border) bg-(--bg-page) shadow-2xl',
             )}
           >

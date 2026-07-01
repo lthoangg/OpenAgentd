@@ -89,3 +89,16 @@ describe('SettingsHubPage — header', () => {
     expect(screen.queryByText(/On-machine AI assistant ·/)).toBeNull()
   })
 })
+
+// ── Mobile Preferences ─────────────────────────────────────────────────────
+
+describe('SettingsHubPage — mobile preferences', () => {
+  it('renders preferences links for sandbox, multimodal, title-generation, and notifications', () => {
+    renderHub({ status: 'ok', version: '1.2.3' })
+
+    expect(screen.getByText(/sandbox settings/i)).toBeInTheDocument()
+    expect(screen.getByText(/multimodal settings/i)).toBeInTheDocument()
+    expect(screen.getByText(/title generation settings/i)).toBeInTheDocument()
+    expect(screen.getByText(/notification settings/i)).toBeInTheDocument()
+  })
+})

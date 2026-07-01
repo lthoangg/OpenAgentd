@@ -445,6 +445,18 @@ html[data-mobile-shell] .mobile-safe-header {
   right: max(0.5rem, env(safe-area-inset-right, 0px));
   bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
   left: max(0.5rem, env(safe-area-inset-left, 0px));
+  height: calc(100vh - max(0.5rem, env(safe-area-inset-top, 0px)) - max(0.5rem, env(safe-area-inset-bottom, 0px)));
+}
+
+@supports (height: 100svh) {
+  .settings-modal-shell {
+    height: calc(100svh - max(0.5rem, env(safe-area-inset-top, 0px)) - max(0.5rem, env(safe-area-inset-bottom, 0px)));
+  }
+}
+
+html[data-mobile-shell] .settings-modal-shell {
+  height: calc(var(--app-vh, 100svh) - max(0.5rem, env(safe-area-inset-top, 0px)) - max(0.5rem, env(safe-area-inset-bottom, 0px)));
+  transform: translateY(var(--app-vt, 0px));
 }
 
 @media (min-width: 768px) {
@@ -453,7 +465,9 @@ html[data-mobile-shell] .mobile-safe-header {
     right: max(2.5vw, calc((100vw - 76rem) / 2));
     bottom: 4vh;
     left: max(2.5vw, calc((100vw - 76rem) / 2));
+    height: auto;
     max-height: calc(100vh - var(--spacing-app-header) - 8vh);
+    transform: none;
   }
 }
 
@@ -484,7 +498,9 @@ html[data-mobile-shell] .mobile-viewport {
  * wastes memory; any repaint inside it can also flicker on iOS. Scope it to
  * the keyboard-open / dismiss-glide windows only. */
 html[data-mobile-shell][data-keyboard-open] .mobile-viewport,
-html[data-mobile-shell][data-vp-anim] .mobile-viewport {
+html[data-mobile-shell][data-keyboard-open] .settings-modal-shell,
+html[data-mobile-shell][data-vp-anim] .mobile-viewport,
+html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
   will-change: height, transform;
 }
 
@@ -492,7 +508,8 @@ html[data-mobile-shell][data-vp-anim] .mobile-viewport {
  * lockstep with the keyboard. On *dismiss* we set `data-vp-anim` and write the
  * full height optimistically, so the shell glides back with a short ease
  * instead of crawling down with iOS's slow keyboard-retract animation. */
-html[data-mobile-shell][data-vp-anim] .mobile-viewport {
+html[data-mobile-shell][data-vp-anim] .mobile-viewport,
+html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
   transition:
     height 0.2s cubic-bezier(0.32, 0.72, 0, 1),
     transform 0.2s cubic-bezier(0.32, 0.72, 0, 1);

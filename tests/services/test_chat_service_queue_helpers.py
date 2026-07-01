@@ -262,7 +262,7 @@ async def test_get_messages_for_llm_hydrates_image_attachment_hint_and_skips_syn
     assert [part.type for part in msg.parts] == ["text", "text"]
     assert (
         msg.parts[0].text
-        == "[Attached image path: ./uploads/Screenshot.png. Use the read tool to inspect it.]"
+        == "[Attached image: Screenshot.png — available at ./uploads/Screenshot.png]"
     )
     assert msg.parts[1].text == "whats in this image"
 

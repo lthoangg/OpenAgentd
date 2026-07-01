@@ -338,7 +338,7 @@ class TestHandleUserMessageInitTurn:
 class TestHandleUserMessageAttachments:
     @pytest.mark.asyncio
     async def test_handle_user_message_with_attachment_metas(self):
-        """attachment_metas are stored in extra; synthetics become hidden rows."""
+        """attachment_metas are stored in extra."""
         import uuid
         from unittest.mock import patch
 
@@ -349,7 +349,6 @@ class TestHandleUserMessageAttachments:
         session_id = str(uuid.uuid7())
 
         attachment_metas = [{"filename": "notes.txt", "category": "text"}]
-        attachment_synthetics = ["[File: notes.txt]\nhello\n[End file: notes.txt]"]
 
         with (
             patch("app.services.memory_stream_store.push_event", new=AsyncMock()),
@@ -359,7 +358,6 @@ class TestHandleUserMessageAttachments:
                 "check this file",
                 session_id=session_id,
                 attachment_metas=attachment_metas,
-                attachment_synthetics=attachment_synthetics,
             )
 
         assert returned == session_id

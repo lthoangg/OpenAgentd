@@ -91,5 +91,5 @@ Rules:
 6. Confirm the exact resolved path and skill name (run `pwd` first if you wrote a
    relative project-local path, so you report the absolute location).
 
-A new skill can be loaded by exact name immediately. If a UI catalog looks stale,
-refresh the Skills page or restart as a fallback.
+A new skill can be loaded by exact name immediately — the file tools clear the
+discovery cache on write for both global and project-local roots.

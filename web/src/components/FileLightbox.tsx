@@ -331,7 +331,13 @@ export function FileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'f
 
   // Direction ref (1 = forward/next, -1 = backward/prev) — read in the slide
   // useLayoutEffect, updated synchronously in goTo before setCurrent.
-  const directionRef = useRef(1)
+  const directionRef  = useRef(1)
+  // Tracks whether this is the first render of the current open session.
+  // The slide animation is skipped on initial mount so opening doesn't
+  // trigger an unwanted slide-in.
+  const didSlideRef   = useRef(false)
+  // Stores the pending rAF id for the slide animation so rapid navigation doesn't queue stale frames.
+  const slideRafRef   = useRef<number>(0)
 
   // ── Image gesture state (all refs — zero renders during drag) ─────────────
   const touchStartXRef  = useRef(0)
@@ -345,45 +351,49 @@ export function FileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'f
   const dragXRef        = useRef(0)
   const dragYRef        = useRef(0)
 
-  // ── Overlay fade-in ────────────────────────────────────────────────────────
-  // On open: the overlay starts at opacity 0 (set inline), then a rAF writes
-  // opacity 1 so the CSS transition fires. On close: parent unmounts the
-  // portal (isOpen gates the return), so no exit animation needed — the
-  // close action itself (button/Escape/backdrop) gives instant feedback.
+  // ── Overlay fade-in + slide reset ─────────────────────────────────────────
+  // Reset didSlideRef here (in a useLayoutEffect) so it runs BEFORE the
+  // slide useLayoutEffect([current]) below — layout effects run in declaration
+  // order, so this fires first and marks the next current change as "first".
   useLayoutEffect(() => {
     if (!isOpen) return
+    didSlideRef.current = false
     const el = overlayRef.current
     if (!el) return
-    // Ensure starting state is visible to the browser before transitioning.
     el.style.opacity = '0'
     const id = requestAnimationFrame(() => { el.style.opacity = '1' })
     return () => cancelAnimationFrame(id)
   }, [isOpen])
 
   // ── Gallery slide animation ────────────────────────────────────────────────
-  // Runs after `current` changes. Snaps the slide div to ±100% with no
-  // transition, then in the next frame re-enables the transition and snaps
-  // to 0%. The entire animation is CSS on the compositor thread.
+  // Skip the very first render (opening the lightbox) — no slide needed.
+  // On subsequent current changes: snap to ±100% instantly, then rAF to 0%.
+  // Cancel the previous rAF so rapid navigation doesn't queue stale frames.
   useLayoutEffect(() => {
     const el = slideRef.current
     if (!el) return
+    if (!didSlideRef.current) {
+      // First render of this open session — position at center with no animation.
+      didSlideRef.current = true
+      el.style.transition = 'none'
+      el.style.transform  = 'translateX(0%)'
+      return
+    }
+    cancelAnimationFrame(slideRafRef.current)
     const dir = directionRef.current
-    // Step 1: snap to entry position instantly.
     el.style.transition = 'none'
     el.style.transform  = `translateX(${dir * 100}%)`
-    // Step 2: next frame — enable transition and slide to center.
-    const id = requestAnimationFrame(() => {
+    slideRafRef.current = requestAnimationFrame(() => {
       el.style.transition = `transform 220ms ${SLIDE_EASE}`
       el.style.transform  = 'translateX(0%)'
     })
-    return () => cancelAnimationFrame(id)
+    return () => cancelAnimationFrame(slideRafRef.current)
   }, [current])
 
   // ── Index sync on (re)open ─────────────────────────────────────────────────
   useEffect(() => {
     if (isOpen) {
       setCurrent(Math.max(0, Math.min(index, items.length - 1)))
-      // Reset image transform on the DOM element directly.
       if (imgRef.current) imgRef.current.style.transform = ''
       scaleRef.current = 1
     }
@@ -602,7 +612,6 @@ export function FileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'f
       */}
       <div
         className="flex w-full flex-1 items-center justify-center overflow-hidden px-2 sm:px-14"
-        onClick={(e) => e.stopPropagation()}
       >
         <div
           ref={slideRef}

@@ -2,16 +2,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { ChevronRight, Copy, ExternalLink, FolderOpen, GitCompare, Plus, RefreshCw, Undo2, X, RotateCcw } from 'lucide-react'
+import { ChevronRight, Copy, Download, ExternalLink, FolderOpen, GitCompare, Plus, RefreshCw, Undo2, X, RotateCcw } from 'lucide-react'
 import { LongPressButton } from '@/components/ui/long-press-button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 import { getCodingWorkspaceGitDiff, listCodingWorkspaceFiles, getCodingWorkspaceGitHistory, getCodingWorkspaceCommitDiff, discardCodingWorkspaceFile, undoCodingWorkspaceLastCommit, revertCodingWorkspaceCommit } from '@/api/client'
-import { CodingFilePreviewContent, DiffPreview } from './CodingFileViewerPanel'
+import { CodingFilePreviewContent, DiffPreview, CopyButton } from './CodingFileViewerPanel'
 import { FileTypeIcon } from './FileTypeIcon'
 import { softHapticFeedback } from '@/lib/haptics'
+import { downloadCodingWorkspaceFile } from '@/lib/coding-workspace-download'
 import { cn } from '@/lib/utils'
 import { queryKeys } from '@/queries'
 
@@ -1040,6 +1041,18 @@ export function CodingWorkspacePanel({
                 <div className="flex min-w-0 items-center gap-2">
                   <FileTypeIcon name={activeTab.file.name || activeTab.file.path} size={16} />
                   <p className="truncate font-mono text-xs font-medium text-(--color-text)" title={activeTab.file.path}>{activeTab.file.path}</p>
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => void downloadCodingWorkspaceFile(workspace, activeTab.file)}
+                    title="Download file"
+                    aria-label="Download file"
+                    className="flex h-9 w-9 items-center justify-center rounded text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:cursor-not-allowed disabled:opacity-40 md:h-auto md:w-auto md:p-1"
+                  >
+                    <Download size={13} />
+                  </button>
+                  <CopyButton workspace={workspace} file={activeTab.file} />
                 </div>
               </div>
               <div className="min-h-0 flex-1 overflow-hidden">

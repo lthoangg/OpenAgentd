@@ -42,7 +42,7 @@ function kindOf(file: WorkspaceFileInfo): FileKind {
   return 'binary'
 }
 
-function CopyButton({ workspace, file }: { workspace: string; file: WorkspaceFileInfo }) {
+export function CopyButton({ workspace, file }: { workspace: string; file: WorkspaceFileInfo }) {
   const [copied, setCopied] = useState(false)
   const [busy, setBusy] = useState(false)
   const tooLarge = file.size > MAX_TEXT_PREVIEW_BYTES

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, cleanup } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 
 import { SessionModelSettings } from '@/components/SessionModelSettings'
 
@@ -262,5 +263,140 @@ describe('SessionModelSettings — Fast mode', () => {
     renderPanel({ sessionModel: 'deepseek:deepseek-v4-pro' })
     const checkbox = screen.getByRole('checkbox', { name: 'Fast mode' }) as HTMLInputElement
     expect(checkbox.disabled).toBe(true)
+  })
+})
+
+// Registry stub with two known models used across the combobox injection tests.
+function stubRegistry(models = [
+  { id: 'openai:gpt-4o', provider: 'openai', model: 'gpt-4o', vision: false, output_image: false, output_video: false, thinking_levels: [], summary_trigger_tokens: 0 },
+  { id: 'anthropic:claude-3-5-sonnet', provider: 'anthropic', model: 'claude-3-5-sonnet', vision: true, output_image: false, output_video: false, thinking_levels: [], summary_trigger_tokens: 0 },
+]) {
+  globalThis.fetch = mock(async () =>
+    new Response(JSON.stringify({ tools: [], skills: [], providers: ['openai', 'anthropic'], models }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }),
+  ) as typeof fetch
+}
+
+describe('SessionModelSettings — model combobox injection guard', () => {
+  afterEach(cleanup)
+
+  // ── Core regression: partial input must never become a list item ───────────
+
+  it('partial text without a colon does not appear as a dropdown option', async () => {
+    const user = userEvent.setup()
+    stubRegistry()
+    renderPanel()
+
+    const input = await screen.findByRole('combobox', { name: 'Search session model' })
+    // Wait for registry to load then type a partial string
+    await waitFor(() => expect((globalThis.fetch as ReturnType<typeof mock>).mock.calls.length).toBeGreaterThan(0))
+    await user.click(input)
+    await user.clear(input)
+    await user.type(input, 'gpt')
+
+    // The typed string "gpt" must not appear as a selectable option
+    // (it appears in the input itself but not in the listbox)
+    const listbox = document.querySelector('[role="listbox"]')
+    expect(listbox).toBeTruthy()
+    const options = Array.from(listbox!.querySelectorAll('[role="option"]'))
+    const optionTexts = options.map((o) => o.textContent?.trim() ?? '')
+    expect(optionTexts).not.toContain('gpt')
+  })
+
+  it('provider-only input (no colon) does not appear as a dropdown option', async () => {
+    const user = userEvent.setup()
+    stubRegistry()
+    renderPanel()
+
+    const input = await screen.findByRole('combobox', { name: 'Search session model' })
+    await waitFor(() => expect((globalThis.fetch as ReturnType<typeof mock>).mock.calls.length).toBeGreaterThan(0))
+    await user.click(input)
+    await user.clear(input)
+    await user.type(input, 'openai')
+
+    const listbox = document.querySelector('[role="listbox"]')
+    const options = Array.from(listbox?.querySelectorAll('[role="option"]') ?? [])
+    expect(options.map((o) => o.textContent?.trim())).not.toContain('openai')
+  })
+
+  it('first dropdown item is always a real registry entry, not the typed query', async () => {
+    const user = userEvent.setup()
+    stubRegistry()
+    renderPanel()
+
+    const input = await screen.findByRole('combobox', { name: 'Search session model' })
+    await waitFor(() => expect((globalThis.fetch as ReturnType<typeof mock>).mock.calls.length).toBeGreaterThan(0))
+    await user.click(input)
+    await user.clear(input)
+    await user.type(input, 'openai')
+
+    const listbox = document.querySelector('[role="listbox"]')
+    const firstOption = listbox?.querySelector('[role="option"]')
+    if (firstOption) {
+      // Whatever is shown first must be one of the real registry ids
+      const text = firstOption.textContent?.trim() ?? ''
+      expect(['openai:gpt-4o', 'anthropic:claude-3-5-sonnet']).toContain(text)
+    }
+    // If no options shown, that is also acceptable — empty list, not fake item
+  })
+
+  it('no-match query shows empty list, not a synthetic item', async () => {
+    const user = userEvent.setup()
+    stubRegistry()
+    renderPanel()
+
+    const input = await screen.findByRole('combobox', { name: 'Search session model' })
+    await waitFor(() => expect((globalThis.fetch as ReturnType<typeof mock>).mock.calls.length).toBeGreaterThan(0))
+    await user.click(input)
+    await user.clear(input)
+    await user.type(input, 'zzznomatch')
+
+    const listbox = document.querySelector('[role="listbox"]')
+    expect(listbox).toBeTruthy()
+    const options = Array.from(listbox!.querySelectorAll('[role="option"]'))
+    // No real options match, so the typed value must not be injected either
+    expect(options.map((o) => o.textContent?.trim())).not.toContain('zzznomatch')
+  })
+
+  // ── Preserved behaviour: previously-saved model kept in the list ──────────
+
+  it('a previously-saved fully-qualified model not in the registry is kept in options', async () => {
+    const user = userEvent.setup()
+    stubRegistry() // registry does NOT contain the saved model
+    renderPanel({ sessionModel: 'openai:o3-mini' })
+
+    const input = await screen.findByRole('combobox', { name: 'Search session model' })
+    await waitFor(() => expect((globalThis.fetch as ReturnType<typeof mock>).mock.calls.length).toBeGreaterThan(0))
+    // Just focus — don't clear. The input already shows the saved model value,
+    // and focusing opens the dropdown with the full options list (empty query).
+    await user.click(input)
+
+    // The saved model entry should appear as a real option in the dropdown
+    await waitFor(() => {
+      const listbox = document.querySelector('[role="listbox"]')
+      const options = Array.from(listbox?.querySelectorAll('[role="option"]') ?? [])
+      expect(options.map((o) => o.textContent?.trim())).toContain('openai:o3-mini')
+    })
+  })
+
+  it('a saved model that IS in the registry is not duplicated in the list', async () => {
+    const user = userEvent.setup()
+    stubRegistry() // openai:gpt-4o is in the registry
+    renderPanel({ sessionModel: 'openai:gpt-4o' })
+
+    const input = await screen.findByRole('combobox', { name: 'Search session model' })
+    await waitFor(() => expect((globalThis.fetch as ReturnType<typeof mock>).mock.calls.length).toBeGreaterThan(0))
+    await user.click(input)
+    await user.clear(input)
+    await user.type(input, 'gpt-4o')
+
+    await waitFor(() => {
+      const listbox = document.querySelector('[role="listbox"]')
+      const options = Array.from(listbox?.querySelectorAll('[role="option"]') ?? [])
+      const matching = options.filter((o) => o.textContent?.trim() === 'openai:gpt-4o')
+      expect(matching).toHaveLength(1) // exactly once, not duplicated
+    })
   })
 })

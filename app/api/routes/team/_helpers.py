@@ -28,9 +28,7 @@ from app.services.agent_service import (
 
 
 # Server-internal attachment fields that must never leak to clients:
-# - ``converted_text``: extracted document body, sent to the LLM only.
-# - ``path`` / ``workspace_path``: absolute on-disk paths, used for rehydration;
-#   clients fetch
+# - ``path`` / ``workspace_path``: absolute on-disk paths; clients fetch
 #   bytes via ``GET /api/team/{sid}/uploads/{filename}`` instead.
 _INTERNAL_ATTACHMENT_FIELDS = frozenset({"converted_text", "path", "workspace_path"})
 
@@ -243,6 +241,42 @@ async def _read_bytes(path: Path) -> bytes:
     return await asyncio.to_thread(path.read_bytes)
 
 
+def _maybe_truncate_inline(text: str, cap: int | None) -> str:
+    """Head + tail truncation for large mention-inlined files."""
+    if cap is None or len(text) <= cap:
+        return text
+    half = cap // 2
+    head = text[:half]
+    tail = text[-half:]
+    omitted = len(text) - len(head) - len(tail)
+    return (
+        f"{head}\n\n"
+        f"... [Middle truncated — {omitted:,} chars elided. "
+        f"Use the Read tool for full content.] ...\n\n"
+        f"{tail}"
+    )
+
+
+def _build_mention_text_block(att: RawAttachment, label: str) -> str:
+    """Inline a text mention as a fenced block for the LLM context."""
+    try:
+        text = att.data.decode("utf-8")
+    except UnicodeDecodeError:
+        try:
+            text = att.data.decode("latin-1")
+        except Exception:
+            return f"[Unable to read file {label}.]"
+    body = _maybe_truncate_inline(text, att.truncate_inline_to)
+    if "#L" in label:
+        return (
+            f"[File: {label} — selected lines already loaded; "
+            f"use this block directly instead of reading the same range]\n"
+            f"{body}\n"
+            f"[End file: {label}]"
+        )
+    return f"[File: {label}]\n{body}\n[End file: {label}]"
+
+
 async def build_mention_context_blocks(
     *,
     message: str,
@@ -254,10 +288,10 @@ async def build_mention_context_blocks(
 ) -> list[str]:
     """Return hidden inline context blocks for ``@file`` / ``@folder/`` mentions.
 
-    File mentions inline their text content using the same fenced format as
-    synthetic attachment rows, but without writing anything into ``uploads/`` or
-    ``extra.attachments``. Folder mentions inject a lightweight directory listing
-    so the model can see the subtree shape without pre-running tools.
+    File mentions inline their text content as fenced ``[File: …]`` blocks
+    without writing anything into ``uploads/`` or ``extra.attachments``.
+    Folder mentions inject a lightweight directory listing so the model can
+    see the subtree shape without pre-running tools.
     """
     if not mentions:
         return []
@@ -330,12 +364,7 @@ async def build_mention_context_blocks(
                     break
                 out.append(block)
             continue
-        synthetic = agent_service._build_synthetic_content(
-            att,
-            "text",
-            label,
-            att.content_type or "text/plain",
-        )
+        synthetic = _build_mention_text_block(att, label)
         running_total += len(att.data)
         if running_total > GLOBAL_SIZE_LIMIT:
             break

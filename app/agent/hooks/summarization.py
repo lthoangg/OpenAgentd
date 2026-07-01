@@ -460,7 +460,7 @@ class SummarizationHook(BaseAgentHook):
           be mistaken for a user-turn start.
         * **Summary message** — ``is_summary=True``.  Summaries are
           ``HumanMessage`` rows but they anchor past history, not new user input.
-        * **``/continue`` directive and attachment synthetics** — carry
+        * **``/continue`` directive and mention context blocks** — carry
           ``extra["hidden_from_summary"] = True`` to signal they are internal
           plumbing, not user-facing input.
 
@@ -482,7 +482,7 @@ class SummarizationHook(BaseAgentHook):
         if last.is_summary:
             return False
         extra = last.extra or {}
-        # Internal synthetics (/continue directive, attachment rows, mention blocks).
+        # Internal synthetics (/continue directive, mention context blocks).
         if extra.get("hidden_from_summary"):
             return False
         # Inbox messages injected from other team members mid-loop.

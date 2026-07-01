@@ -424,11 +424,7 @@ class TestTeamChatRoute:
                 }
                 for a in atts
             ]
-            synthetics = [
-                f"[File: {a.filename}]\n{a.data.decode()}\n[End file: {a.filename}]"
-                for a in atts
-            ]
-            return sid, metas, synthetics
+            return sid, metas
 
         client = TestClient(app_with_team)
         with (

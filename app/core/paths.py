@@ -9,16 +9,10 @@ Single root per session — uploads live *inside* the workspace:
 
 - ``uploads_dir(session_id)`` → ``{workspace_dir(session_id)}/uploads``
   User-uploaded attachment files (UUID-named, validated at upload).
-  Fed to the LLM via curated multimodal rehydration
-  (``build_parts_from_metas``) and *also* reachable by the agent's
-  filesystem tools as the relative path ``uploads/<filename>``.  This
-  is intentional: it lets the agent pass user-uploaded images into
-  workspace-bound tools (image/video generation, etc.) without a
-  staging step.
-
-  The absolute file path is persisted in the attachment meta dict
-  (``att["path"]``) so rehydration is a pure path lookup — no derivation
-  from the message's session id.
+  Reachable by the agent's filesystem tools as the relative path
+  ``uploads/<filename>`` from the workspace root.  The agent receives a
+  path hint at dispatch time and uses its Read / shell tools to inspect
+  the file.  Absolute path persisted in ``att["path"]`` for reference.
 """
 
 from __future__ import annotations

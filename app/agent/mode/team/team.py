@@ -499,7 +499,6 @@ class AgentTeam:
         session_id: str,
         interrupt: bool = False,
         attachment_metas: list[dict] | None = None,
-        attachment_synthetics: list[str] | None = None,
         mention_context_blocks: list[str] | None = None,
         mode: str | None = None,
         workspace: str | None = None,
@@ -625,22 +624,6 @@ class AgentTeam:
                     db, lead_uuid, user_msg, extra=msg_extra
                 )
 
-                # Persist each attachment as a hidden synthetic user row
-                # immediately after the real user message.  Content is baked
-                # in once at write time so history loads never need to
-                # reconstruct it from metadata — same pattern as opencode.
-                for synthetic_content in attachment_synthetics or []:
-                    await save_message(
-                        db,
-                        lead_uuid,
-                        HumanMessage(content=synthetic_content),
-                        extra={
-                            "hidden_from_user": True,
-                            "hidden_from_summary": True,
-                            "attachment_for_message_id": str(saved_user_msg.id),
-                            "mention_context": False,
-                        },
-                    )
                 for synthetic_content in mention_context_blocks or []:
                     await save_message(
                         db,

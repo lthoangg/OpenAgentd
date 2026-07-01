@@ -846,27 +846,26 @@ describe("InputBar — useImperativeHandle", () => {
 })
 
 describe("InputBar — buildAcceptString (hidden file input accept attribute)", () => {
-  it("exports the same accept string logic used by the component", () => {
+  it("includes common text and code types to guide the OS picker", () => {
     const accept = buildAcceptString()
     expect(accept).toContain("text/plain")
     expect(accept).toContain(".md")
+    expect(accept).toContain(".py")
+    expect(accept).toContain(".ts")
+    expect(accept).toContain("application/json")
     expect(accept).toContain("image/*")
     expect(accept).toContain("application/pdf")
     expect(accept).toContain("audio/*")
     expect(accept).toContain("video/*")
   })
 
-  it("includes all types by default", () => {
+  it("sets the accept attribute on the hidden file input", () => {
     render(<InputBar onSubmit={() => {}} />)
     const input = document.querySelector('input[type="file"]') as HTMLInputElement
     const accept = input.getAttribute("accept") ?? ""
     expect(accept).toContain("text/plain")
-    expect(accept).toContain(".txt")
-    expect(accept).toContain("application/json")
+    expect(accept).toContain(".py")
     expect(accept).toContain("image/*")
-    expect(accept).toContain("application/pdf")
-    expect(accept).toContain("audio/*")
-    expect(accept).toContain("video/*")
   })
 })
 
@@ -889,17 +888,14 @@ describe("InputBar — capabilities prop", () => {
 })
 
 describe("InputBar — isFileTypeAllowed / addFile filtering", () => {
-  it("exports the same file filtering logic used by the component", () => {
-    const textFile = new File(["hello"], "notes.txt", { type: "text/plain" })
-    const zipFile = new File(["zip"], "archive.zip", { type: "application/zip" })
-    const imageFile = new File(["img"], "photo.png", { type: "image/png" })
-
-    expect(isFileTypeAllowed(textFile)).toBe(true)
-    expect(isFileTypeAllowed(zipFile)).toBe(false)
-    expect(isFileTypeAllowed(imageFile)).toBe(true)
+  it("isFileTypeAllowed returns true for every file type", () => {
+    expect(isFileTypeAllowed(new File(["hello"], "notes.txt", { type: "text/plain" }))).toBe(true)
+    expect(isFileTypeAllowed(new File(["zip"], "archive.zip", { type: "application/zip" }))).toBe(true)
+    expect(isFileTypeAllowed(new File(["img"], "photo.png", { type: "image/png" }))).toBe(true)
+    expect(isFileTypeAllowed(new File(["code"], "main.py", { type: "" }))).toBe(true)
   })
 
-  it("always allows plain text files by MIME type", async () => {
+  it("allows plain text files via the picker (matched by MIME in accept list)", async () => {
     const user = userEvent.setup()
     render(<InputBar onSubmit={() => {}} />)
 
@@ -910,7 +906,7 @@ describe("InputBar — isFileTypeAllowed / addFile filtering", () => {
     expect(screen.getByText("notes.txt")).toBeTruthy()
   })
 
-  it("always allows JSON files by MIME type", async () => {
+  it("allows JSON files via the picker (matched by MIME in accept list)", async () => {
     const user = userEvent.setup()
     render(<InputBar onSubmit={() => {}} />)
 
@@ -921,7 +917,7 @@ describe("InputBar — isFileTypeAllowed / addFile filtering", () => {
     expect(screen.getByText("data.json")).toBeTruthy()
   })
 
-  it("always allows .md files by extension even with no MIME type", async () => {
+  it("allows .md files via the picker (matched by extension in accept list)", async () => {
     const user = userEvent.setup()
     render(<InputBar onSubmit={() => {}} />)
 
@@ -932,7 +928,18 @@ describe("InputBar — isFileTypeAllowed / addFile filtering", () => {
     expect(screen.getByText("readme.md")).toBeTruthy()
   })
 
-  it("allows image files", async () => {
+  it("allows .py files via the picker (matched by extension in accept list)", async () => {
+    const user = userEvent.setup()
+    render(<InputBar onSubmit={() => {}} />)
+
+    const file = new File(["print('hi')"], "main.py", { type: "" })
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    await user.upload(input, file)
+
+    expect(screen.getByText("main.py")).toBeTruthy()
+  })
+
+  it("allows image files via the picker", async () => {
     const user = userEvent.setup()
     render(<InputBar onSubmit={() => {}} />)
 
@@ -940,11 +947,10 @@ describe("InputBar — isFileTypeAllowed / addFile filtering", () => {
     const input = document.querySelector('input[type="file"]') as HTMLInputElement
     await user.upload(input, file)
 
-    // ImageAttachment renders an img element
     expect(screen.getByRole("img", { name: "photo.png" })).toBeTruthy()
   })
 
-  it("allows PDF files", async () => {
+  it("allows PDF files via the picker", async () => {
     const user = userEvent.setup()
     render(<InputBar onSubmit={() => {}} />)
 
@@ -955,7 +961,7 @@ describe("InputBar — isFileTypeAllowed / addFile filtering", () => {
     expect(screen.getByText("report.pdf")).toBeTruthy()
   })
 
-  it("allows DOCX files", async () => {
+  it("allows DOCX files via the picker", async () => {
     const user = userEvent.setup()
     render(<InputBar onSubmit={() => {}} />)
 
@@ -968,7 +974,7 @@ describe("InputBar — isFileTypeAllowed / addFile filtering", () => {
     expect(screen.getByText("doc.docx")).toBeTruthy()
   })
 
-  it("allows audio files", async () => {
+  it("allows audio files via the picker", async () => {
     const user = userEvent.setup()
     render(<InputBar onSubmit={() => {}} />)
 
@@ -979,7 +985,7 @@ describe("InputBar — isFileTypeAllowed / addFile filtering", () => {
     expect(screen.getByText("clip.mp3")).toBeTruthy()
   })
 
-  it("allows video files", async () => {
+  it("allows video files via the picker", async () => {
     const user = userEvent.setup()
     render(<InputBar onSubmit={() => {}} />)
 
@@ -990,15 +996,16 @@ describe("InputBar — isFileTypeAllowed / addFile filtering", () => {
     expect(screen.getByText("movie.mp4")).toBeTruthy()
   })
 
-  it("rejects unknown file types", async () => {
-    const user = userEvent.setup()
+  it("accepts any file type (e.g. zip) when attached via paste/drop (fireEvent bypasses accept)", async () => {
     render(<InputBar onSubmit={() => {}} />)
 
     const file = new File(["data"], "archive.zip", { type: "application/zip" })
     const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    await user.upload(input, file)
+    // fireEvent.change bypasses the browser/userEvent accept-attribute filter,
+    // simulating paste or drag-and-drop where accept is not enforced.
+    fireEvent.change(input, { target: { files: [file] } })
 
-    expect(screen.queryByText("archive.zip")).toBeNull()
+    expect(screen.getByText("archive.zip")).toBeTruthy()
   })
 })
 

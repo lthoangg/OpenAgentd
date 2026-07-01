@@ -7,7 +7,6 @@ from uuid import UUID
 from loguru import logger
 from pydantic import TypeAdapter
 
-from app.agent.multimodal import build_parts_from_metas
 from app.agent.schemas.chat import (
     AssistantMessage,
     ChatMessage,
@@ -25,26 +24,22 @@ _content_block_adapter: TypeAdapter[ContentBlock] = TypeAdapter(ContentBlock)
 
 
 def _attachment_hint_parts(message: str, attachments: list[dict]) -> list[TextBlock]:
+    """Build path-hint TextBlocks for every attachment.
+
+    Every file is saved to disk at upload time.  The agent uses its Read
+    or shell tools to inspect the content — no inlining happens here.
+    """
     parts: list[TextBlock] = []
     for att in attachments:
-        category = att.get("category", "image")
+        category = att.get("category", "file")
         original_name = att.get("original_name", att.get("filename", "file"))
-        if category == "image":
-            filename = att.get("filename")
-            hint = (
-                f"[Attached image path: ./uploads/{filename}. Use the read tool to inspect it.]"
-                if filename
-                else f"[Attached image: {original_name}. Use the read tool to inspect it.]"
+        filename = att.get("filename", "")
+        path_hint = f"./uploads/{filename}" if filename else original_name
+        parts.append(
+            TextBlock(
+                text=f"[Attached {category}: {original_name} — available at {path_hint}]"
             )
-            parts.append(TextBlock(text=hint))
-        else:
-            parts.extend(
-                [
-                    part
-                    for part in build_parts_from_metas("", [att])
-                    if isinstance(part, TextBlock) and part.text
-                ]
-            )
+        )
     parts.append(TextBlock(text=message))
     return parts
 

@@ -115,7 +115,7 @@ async def cancel_queued_user_message(
                 "queued_attachment_delete_failed path={} error={}", raw_path, exc
             )
 
-    # Delete synthetic attachment rows that were written at queue time.
+    # Delete mention context rows that were written at queue time.
     synthetic_rows = await db.exec(
         select(SessionMessage)
         .where(col(SessionMessage.session_id) == session_id)

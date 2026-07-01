@@ -108,7 +108,7 @@ class MessageResponse(_ExcludeNoneModel):
     exclude_from_context: bool = False
     extra: dict | None = None
     created_at: datetime | None = None
-    # Multimodal: attachment metadata (converted_text stripped — see _message_response)
+    # Attachment metadata (path/workspace_path stripped — see _message_response)
     attachments: list[dict] | None = None
     # True when this message has file attachments — frontend shows file cards
     file_message: bool = False

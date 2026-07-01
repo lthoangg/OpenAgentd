@@ -298,13 +298,11 @@ async def team_chat(
             # the model may change before dequeue but that is an accepted
             # edge case (documented in the queue design notes).
             queued_attachment_metas: list[dict] = []
-            queued_upload_synthetics: list[str] = []
             if attachments:
                 try:
                     (
                         _,
                         queued_attachment_metas,
-                        queued_upload_synthetics,
                     ) = await agent_service.validate_and_persist_attachments(
                         team_obj, attachments, session_id, workspace
                     )
@@ -345,19 +343,6 @@ async def team_chat(
                     message,
                     extra=queued_extra,
                 )
-                # Write synthetic upload rows (regular attachments).
-                for synthetic_content in queued_upload_synthetics:
-                    await save_message(
-                        db,
-                        session_uuid,
-                        HumanMessage(content=synthetic_content),
-                        extra={
-                            "hidden_from_user": True,
-                            "hidden_from_summary": True,
-                            "attachment_for_message_id": str(queued.id),
-                            "mention_context": False,
-                        },
-                    )
                 # Write synthetic mention context rows (ephemeral, no uploads/).
                 for synthetic_content in mention_context_blocks:
                     await save_message(

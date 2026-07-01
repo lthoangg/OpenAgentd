@@ -110,6 +110,108 @@ def test_deserialize_messages_strips_partial_tool_calls_and_orphans(
     assert result[0].tool_calls is None
 
 
+def test_apply_llm_content_overrides_builds_path_hint_for_text_attachment():
+    """Text (and all non-image) attachments emit a path hint — no inlining."""
+    msg = HumanMessage(
+        content="check this",
+        extra={
+            "attachments": [
+                {
+                    "filename": "notes.txt",
+                    "original_name": "notes.txt",
+                    "category": "text",
+                    "url": "/api/team/sid/uploads/notes.txt",
+                }
+            ]
+        },
+    )
+
+    result = apply_llm_content_overrides([msg])
+
+    assert len(result) == 1
+    parts = result[0].parts
+    assert parts is not None
+    # First part is the path hint; last part is the user message text
+    hint_text = parts[0].text
+    assert "notes.txt" in hint_text
+    assert "./uploads/notes.txt" in hint_text
+    assert "read tool" not in hint_text.lower()
+    assert parts[-1].text == "check this"
+
+
+def test_apply_llm_content_overrides_builds_path_hint_for_image_attachment():
+    """Image attachments get the same uniform path hint."""
+    msg = HumanMessage(
+        content="what's in this?",
+        extra={
+            "attachments": [
+                {
+                    "filename": "photo.png",
+                    "original_name": "photo.png",
+                    "category": "image",
+                    "url": "/api/team/sid/uploads/photo.png",
+                }
+            ]
+        },
+    )
+
+    result = apply_llm_content_overrides([msg])
+
+    parts = result[0].parts
+    assert parts is not None
+    hint_text = parts[0].text
+    assert "photo.png" in hint_text
+    assert "./uploads/photo.png" in hint_text
+    assert "read tool" not in hint_text.lower()
+
+
+def test_apply_llm_content_overrides_path_hint_covers_unknown_category():
+    """Files with 'file' category (zip, exe, etc.) also get a path hint."""
+    msg = HumanMessage(
+        content="process this",
+        extra={
+            "attachments": [
+                {
+                    "filename": "data.zip",
+                    "original_name": "data.zip",
+                    "category": "file",
+                    "url": "/api/team/sid/uploads/data.zip",
+                }
+            ]
+        },
+    )
+
+    result = apply_llm_content_overrides([msg])
+
+    parts = result[0].parts
+    assert parts is not None
+    hint_text = parts[0].text
+    assert "data.zip" in hint_text
+    assert "read tool" not in hint_text.lower()
+
+
+def test_apply_llm_content_overrides_multiple_attachments():
+    """One hint per attachment, user message always last."""
+    msg = HumanMessage(
+        content="go",
+        extra={
+            "attachments": [
+                {"filename": "a.py", "original_name": "a.py", "category": "text"},
+                {"filename": "b.png", "original_name": "b.png", "category": "image"},
+            ]
+        },
+    )
+
+    result = apply_llm_content_overrides([msg])
+
+    parts = result[0].parts
+    assert parts is not None
+    assert len(parts) == 3  # hint-a, hint-b, user text
+    assert "a.py" in parts[0].text
+    assert "b.png" in parts[1].text
+    assert parts[2].text == "go"
+
+
 def test_apply_llm_content_overrides_marks_shell_messages():
     messages = [
         HumanMessage(content="rm -rf", extra={"kind": "user_shell"}),

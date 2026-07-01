@@ -14,9 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import html
-import io
 import re
-import threading
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -48,16 +46,57 @@ SIZE_LIMITS: dict[str, int] = {
     "document": 5 * 1024 * 1024,  # 5 MB
     "audio": 20 * 1024 * 1024,  # 20 MB
     "video": 20 * 1024 * 1024,  # 20 MB
+    # Catch-all for any file type not covered above (zip, exe, bin, …).
+    # Saved to disk as-is; the agent can use shell tools to inspect it.
+    "file": 20 * 1024 * 1024,  # 20 MB
 }
 GLOBAL_SIZE_LIMIT = 20 * 1024 * 1024  # 20 MB total across all files per message
 
 MIME_CATEGORY: dict[str, str] = {
+    # ── Plain text / data ──────────────────────────────────────────────────
     "text/plain": "text",
     "text/csv": "text",
     "text/tab-separated-values": "text",
     "text/markdown": "text",
     "application/json": "text",
     "application/x-ndjson": "text",
+    # ── Source code MIME types sent by browsers / editors ──────────────────
+    "text/javascript": "text",
+    "application/javascript": "text",
+    "text/typescript": "text",
+    "application/typescript": "text",
+    "text/x-python": "text",
+    "text/x-python-script": "text",
+    "text/x-go": "text",
+    "text/x-rustsrc": "text",
+    "text/x-ruby": "text",
+    "text/x-java-source": "text",
+    "text/x-csrc": "text",
+    "text/x-c++src": "text",
+    "text/x-chdr": "text",
+    "text/x-csharp": "text",
+    "text/x-sh": "text",
+    "application/x-sh": "text",
+    "text/x-shellscript": "text",
+    "application/x-shellscript": "text",
+    "application/x-yaml": "text",
+    "text/yaml": "text",
+    "text/x-yaml": "text",
+    "application/toml": "text",
+    "text/x-toml": "text",
+    "application/xml": "text",
+    "text/xml": "text",
+    "text/css": "text",
+    "text/x-sql": "text",
+    "application/x-sql": "text",
+    "text/x-rsrc": "text",
+    "text/x-scala": "text",
+    "text/x-swift": "text",
+    "text/x-kotlin": "text",
+    "text/x-php": "text",
+    "application/x-httpd-php": "text",
+    "image/svg+xml": "text",
+    # ── Document MIME types ────────────────────────────────────────────────
     "text/html": "document",
     "application/xhtml+xml": "document",
     "image/jpeg": "image",
@@ -80,6 +119,7 @@ MIME_CATEGORY: dict[str, str] = {
     "video/quicktime": "video",
 }
 EXT_CATEGORY: dict[str, str] = {
+    # ── Plain text / data ──────────────────────────────────────────────────
     ".txt": "text",
     ".csv": "text",
     ".tsv": "text",
@@ -88,6 +128,72 @@ EXT_CATEGORY: dict[str, str] = {
     ".json": "text",
     ".ndjson": "text",
     ".jsonl": "text",
+    # ── Source code ────────────────────────────────────────────────────────
+    ".py": "text",
+    ".pyi": "text",
+    ".js": "text",
+    ".mjs": "text",
+    ".cjs": "text",
+    ".jsx": "text",
+    ".ts": "text",
+    ".tsx": "text",
+    ".go": "text",
+    ".rs": "text",
+    ".rb": "text",
+    ".java": "text",
+    ".kt": "text",
+    ".kts": "text",
+    ".swift": "text",
+    ".c": "text",
+    ".cpp": "text",
+    ".cc": "text",
+    ".cxx": "text",
+    ".h": "text",
+    ".hpp": "text",
+    ".cs": "text",
+    ".php": "text",
+    ".sh": "text",
+    ".bash": "text",
+    ".zsh": "text",
+    ".fish": "text",
+    ".ps1": "text",
+    ".sql": "text",
+    ".graphql": "text",
+    ".gql": "text",
+    ".proto": "text",
+    ".tf": "text",
+    ".tfvars": "text",
+    ".scala": "text",
+    ".clj": "text",
+    ".ex": "text",
+    ".exs": "text",
+    ".lua": "text",
+    ".r": "text",
+    ".R": "text",
+    ".jl": "text",
+    ".dart": "text",
+    ".vim": "text",
+    # ── Config / markup ────────────────────────────────────────────────────
+    ".yaml": "text",
+    ".yml": "text",
+    ".toml": "text",
+    ".ini": "text",
+    ".cfg": "text",
+    ".conf": "text",
+    ".env": "text",
+    ".xml": "text",
+    ".svg": "text",
+    ".css": "text",
+    ".scss": "text",
+    ".sass": "text",
+    ".less": "text",
+    ".mdx": "text",
+    ".rst": "text",
+    ".tex": "text",
+    ".log": "text",
+    ".diff": "text",
+    ".patch": "text",
+    # ── Images ────────────────────────────────────────────────────────────
     ".jpg": "image",
     ".jpeg": "image",
     ".png": "image",
@@ -96,15 +202,18 @@ EXT_CATEGORY: dict[str, str] = {
     ".bmp": "image",
     ".tif": "image",
     ".tiff": "image",
+    # ── Documents ─────────────────────────────────────────────────────────
     ".pdf": "document",
     ".docx": "document",
     ".html": "document",
     ".htm": "document",
+    # ── Audio ─────────────────────────────────────────────────────────────
     ".mp3": "audio",
     ".m4a": "audio",
     ".wav": "audio",
     ".ogg": "audio",
     ".flac": "audio",
+    # ── Video ─────────────────────────────────────────────────────────────
     ".mp4": "video",
     ".webm": "video",
     ".mov": "video",
@@ -124,7 +233,6 @@ MAGIC_BYTES: dict[str, list[tuple[bytes, int]]] = {
 MAX_FILENAME_LEN = 200
 _FILENAME_STEM_MAX_LEN = 160
 _FILENAME_RE = re.compile(r"[\x00-\x1f\x7f/\\]+")
-MARKITDOWN_TIMEOUT_SECS = 30
 
 
 def _sanitize_upload_filename(raw_name: str, category: str) -> str:
@@ -182,10 +290,9 @@ class RawAttachment:
     native representation (``UploadFile``, Telegram ``Document``, etc.) and
     hand it to :func:`dispatch_user_message`.
 
-    ``truncate_inline_to`` caps the ``converted_text`` length when set —
-    used by implicit attachment surfaces (e.g. ``@mention`` auto-attach)
-    to bound prompt growth for large files. Explicit uploads leave this
-    ``None`` so the full content reaches the model.
+    ``truncate_inline_to`` caps inline text length for ``@mention`` auto-attach
+    — bounds prompt growth for large workspace files. Explicit uploads leave
+    this ``None`` (unused by the upload path; mention helpers read it).
     """
 
     filename: str
@@ -249,42 +356,8 @@ def _default_ext(category: str) -> str:
         "document": ".pdf",
         "audio": ".mp3",
         "video": ".mp4",
+        "file": ".bin",
     }.get(category, ".bin")
-
-
-def _convert_with_markitdown(data: bytes, mime: str, filename: str) -> str | None:
-    """Convert a document to markdown in a bounded-time thread."""
-    result_holder: list[str | None] = [None]
-    error_holder: list[Exception | None] = [None]
-
-    def _run() -> None:
-        try:
-            from markitdown import MarkItDown, StreamInfo
-
-            md = MarkItDown()
-            result = md.convert_stream(
-                io.BytesIO(data),
-                stream_info=StreamInfo(mimetype=mime, filename=filename),
-            )
-            text = (result.text_content or "").strip()
-            result_holder[0] = text if text else None
-        except Exception as exc:
-            error_holder[0] = exc
-
-    t = threading.Thread(target=_run, daemon=True)
-    t.start()
-    t.join(timeout=MARKITDOWN_TIMEOUT_SECS)
-    if t.is_alive():
-        logger.warning("markitdown_timeout filename={} mime={}", filename, mime)
-        return None
-    if error_holder[0] is not None:
-        logger.debug(
-            "markitdown_conversion_failed filename={} error={}",
-            filename,
-            error_holder[0],
-        )
-        return None
-    return result_holder[0]
 
 
 async def _persist_attachment(
@@ -292,13 +365,12 @@ async def _persist_attachment(
     category: str,
     uploads_dir: Path,
     session_id: str,
-) -> tuple[dict, str]:
-    """Validate + save one attachment.
+) -> dict:
+    """Validate and save one attachment to disk.
 
-    Returns ``(meta, synthetic_content)`` where:
-    - ``meta`` is the UI-facing metadata dict stored in ``extra.attachments``
-    - ``synthetic_content`` is the fenced text written once to a hidden DB row
-      so the LLM sees it without any per-turn reprocessing
+    Returns the UI-facing metadata dict stored in ``extra.attachments``.
+    The agent receives a path hint at dispatch time and uses its Read /
+    shell tools to inspect the file — no inlining, no conversion here.
     """
     data = att.data
     if len(data) == 0:
@@ -337,11 +409,6 @@ async def _persist_attachment(
     )
     meta: dict = {
         "filename": filename,
-        # Absolute on-disk path to the saved bytes.  Stored verbatim so
-        # rehydration never has to derive it from the message's
-        # ``session_id`` — those diverge whenever a user attaches a file
-        # to an existing chat (the upload mints its own sid; the message
-        # inherits the chat's).  Single source of truth.
         "path": str(dest),
         "workspace_path": str(dest),
         "original_name": safe_original_name,
@@ -351,94 +418,7 @@ async def _persist_attachment(
     }
     if att.source:
         meta["source"] = att.source
-    synthetic = await asyncio.to_thread(
-        _build_synthetic_content, att, category, safe_original_name, mime
-    )
-    return meta, synthetic
-
-
-def _build_synthetic_content(
-    att: RawAttachment,
-    category: str,
-    safe_original_name: str,
-    mime: str,
-) -> str:
-    """Build the fenced text content for a synthetic attachment row.
-
-    Text/document: inline the file body (with head+tail truncation for
-    mentions).  Images: a path-hint only — the model uses its Read tool
-    for pixel data on demand.
-
-    This is the content written once to the DB as a hidden user row so
-    subsequent history loads never need to re-read from disk or
-    reconstruct from metadata.
-    """
-    if category == "image":
-        return f"[Attached image: {safe_original_name}]"
-
-    if category == "audio":
-        return f"[Attached audio: {safe_original_name}]"
-
-    if category == "video":
-        return f"[Attached video: {safe_original_name}]"
-
-    if category == "text":
-        try:
-            text = att.data.decode("utf-8")
-        except UnicodeDecodeError:
-            try:
-                text = att.data.decode("latin-1")
-            except Exception:
-                return f"[Unable to read file {safe_original_name}.]"
-        body = _maybe_truncate_inline(text, att.truncate_inline_to)
-
-    elif category == "document":
-        converted = _convert_with_markitdown(att.data, mime, att.filename or "")
-        body = (
-            converted
-            if converted is not None
-            else f"[Unable to read file {safe_original_name}.]"
-        )
-        body = _maybe_truncate_inline(body, att.truncate_inline_to)
-    else:
-        return f"[Attached file: {safe_original_name}]"
-
-    kind = "File" if category == "text" else "Document"
-    label = safe_original_name
-    if "#L" in label:
-        return (
-            f"[{kind}: {label} — selected lines already loaded; "
-            f"use this block directly instead of reading the same range]\n"
-            f"{body}\n"
-            f"[End {kind.lower()}: {label}]"
-        )
-    return f"[{kind}: {label}]\n{body}\n[End {kind.lower()}: {label}]"
-
-
-def _maybe_truncate_inline(text: str, cap: int | None) -> str:
-    """Cap inlined attachment text with a head + tail window.
-
-    Returns ``text`` unchanged when ``cap`` is ``None`` (explicit upload)
-    or the body already fits. Otherwise keeps the first ``cap // 2``
-    chars and the last ``cap // 2`` chars, separated by a marker line
-    that tells the agent how many chars were elided and that the full
-    content is still reachable via its ``Read`` tool. Head + tail
-    preserves the highest-signal regions of most files — imports /
-    declarations at the top, exports / conclusions at the bottom —
-    where a head-only cut would discard the ending entirely.
-    """
-    if cap is None or len(text) <= cap:
-        return text
-    half = cap // 2
-    head = text[:half]
-    tail = text[-half:]
-    omitted = len(text) - len(head) - len(tail)
-    return (
-        f"{head}\n\n"
-        f"... [Middle truncated — {omitted:,} chars elided. "
-        f"Use the Read tool for full content.] ...\n\n"
-        f"{tail}"
-    )
+    return meta
 
 
 # ── Public entry points ──────────────────────────────────────────────────────
@@ -456,34 +436,26 @@ async def validate_and_persist_attachments(
     attachments: list[RawAttachment],
     session_id: str | None = None,
     workspace: str | None = None,
-) -> tuple[str, list[dict], list[str]]:
-    """Validate attachments against lead capabilities and save them to disk.
+) -> tuple[str, list[dict]]:
+    """Validate attachments and save them to disk.
 
     If ``session_id`` is ``None`` a fresh UUIDv7 is minted; otherwise the
     provided id is used so uploads land under the same workspace as the
     chat session that owns them.
 
-    Returns ``(session_id, attachment_metas, synthetic_contents)`` where:
-    - ``attachment_metas`` — UI-facing dicts stored in ``extra.attachments``
-    - ``synthetic_contents`` — one fenced string per attachment to be written
-      as a hidden user row immediately after the real user message, so the
-      LLM context is built from durable DB rows rather than reconstructed
-      from metadata on every turn.
+    Returns ``(session_id, attachment_metas)`` where ``attachment_metas``
+    are the UI-facing dicts stored in ``extra.attachments``.  The agent
+    receives a path hint at dispatch time and uses its Read / shell tools
+    to inspect each file — no inlining or pre-conversion happens here.
 
-    Raises :class:`AttachmentError` on the first invalid attachment. On that
-    error, previously-persisted files in the batch stay on disk; the caller
-    is expected to abort the turn, and a future cleanup task can sweep any
-    orphaned uploads that never got referenced.
+    Raises :class:`AttachmentError` on the first invalid attachment.
     """
     valid: list[tuple[RawAttachment, str]] = []
     total_size = 0
     for att in attachments:
         if not att.filename:
             continue
-        category = categorize(att.filename, att.content_type)
-        if category is None:
-            ext = Path(att.filename).suffix.lower()
-            raise AttachmentError(f"Unsupported file type '{ext}'.", status=415)
+        category = categorize(att.filename, att.content_type) or "file"
         total_size += len(att.data)
         if total_size > GLOBAL_SIZE_LIMIT:
             raise AttachmentError(
@@ -495,13 +467,11 @@ async def validate_and_persist_attachments(
     session_uploads = _uploads_dir(sid, workspace)
 
     metas: list[dict] = []
-    synthetics: list[str] = []
     for att, category in valid:
-        meta, synthetic = await _persist_attachment(att, category, session_uploads, sid)
+        meta = await _persist_attachment(att, category, session_uploads, sid)
         metas.append(meta)
-        synthetics.append(synthetic)
 
-    return sid, metas, synthetics
+    return sid, metas
 
 
 async def dispatch_user_message(
@@ -538,19 +508,15 @@ async def dispatch_user_message(
     sid = session_id or str(uuid7())
 
     if atts:
-        _, metas, synthetics = await validate_and_persist_attachments(
-            team, atts, sid, workspace
-        )
+        _, metas = await validate_and_persist_attachments(team, atts, sid, workspace)
     else:
         metas = []
-        synthetics = []
 
     await team.handle_user_message(
         content=content,
         session_id=sid,
         interrupt=False,
-        attachment_metas=metas if metas else None,
-        attachment_synthetics=synthetics if synthetics else None,
+        attachment_metas=metas or None,
         mention_context_blocks=mention_context_blocks
         if mention_context_blocks
         else None,

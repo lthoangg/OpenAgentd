@@ -100,7 +100,7 @@ The `InputBarHandle` ref exposes:
 
 ### Drag-and-drop files
 
-Dragging files anywhere over the chat area (in both cockpit and coding views) shows a clean, blurred, dashed-border drop overlay (`Drop files to attach`). Dropping the files immediately expands the composer (if minimized) and adds them as attachments. Standard file-type filtering is applied, allowing images, PDFs, text, audio, and video files. On desktop, native Tauri drag-and-drop is disabled to allow standard HTML5 drag-and-drop events to reach the webview.
+Dragging files anywhere over the chat area (in both cockpit and coding views) shows a clean, blurred, dashed-border drop overlay (`Drop files to attach`). Dropping the files immediately expands the composer (if minimized) and adds them as attachments. All file types are accepted. On desktop, native Tauri drag-and-drop is disabled to allow standard HTML5 drag-and-drop events to reach the webview.
 
 ### Composer history navigation
 

@@ -312,7 +312,7 @@ Instead, the route builds ephemeral hidden context rows:
 
 | Mention kind | Behavior | Persistence |
 |---|---|---|
-| File (`@foo.py`, `@README.md`, `@x.ts#L10-L20`) | Inline the referenced text into a hidden context block using the same fenced format as file attachments | DB-only hidden message row; not stored as upload metadata |
+| File (`@foo.py`, `@README.md`, `@x.ts#L10-L20`) | Inline the referenced text as a fenced `[File: …]` block | DB-only hidden message row; not stored as upload metadata |
 | Folder (`@src/`) | Inline a lightweight directory listing similar to `ls` output | DB-only hidden message row; not stored as upload metadata |
 | Bad path / traversal / missing | Silently dropped | None |
 
@@ -321,22 +321,18 @@ Instead, the route builds ephemeral hidden context rows:
 - Directory mentions are never auto-expanded to `AGENTS.md`.
 
 Explicit paperclip uploads remain the authoritative attachment surface.
-<last 16,000 chars>
-```
 
-Paperclip uploads leave `truncate_inline_to = None`, so the full body always reaches the prompt — same behaviour as before. Truncation is mention-only.
+#### How uploaded files reach the model
 
-#### Attachment fence format
-
-`build_parts_from_metas` wraps text/document attachment bodies in matched open + close tags so the model can tell where the file ends:
+Every uploaded file is saved to disk under `uploads/` and the agent receives a path hint:
 
 ```
-[File: notes.txt]
-<body>
-[End file: notes.txt]
+[Attached text: notes.py — available at ./uploads/notes.py]
 ```
 
-(Documents use `[Document: …]` / `[End document: …]`.) Without the close tag, agents tended to re-call `Read` on already-inlined files. Image uploads are different: unread uploads contribute only a stable text hint (for example `[Attached image path: ./uploads/photo.png. Use the read tool to inspect it.]`). Actual image bytes enter LLM context only after an explicit `read("uploads/<filename>")` tool call, whose multimodal `ToolMessage.parts` are then replayed durably from the DB.
+The agent then calls `read("uploads/notes.py")` or uses shell tools as needed. No file content is pre-inlined into the prompt at upload time. The `read` tool handles text decoding, markitdown conversion for documents, and base64 encoding for images — in the same way as any other workspace file.
+
+`@mention` context blocks are different: workspace files referenced with `@` **are** inlined at send time as fenced `[File: …]` blocks, because the user is explicitly pointing the agent at a specific file as context. Truncation (`truncate_inline_to`) applies only to mention blocks — not to explicit uploads.
 
 ---
 
@@ -417,15 +413,20 @@ Accepts `multipart/form-data`:
 
 **Supported file types:**
 
-| Category | Extensions | Max size |
-|----------|-----------|---------|
-| Text | `.txt .csv .tsv .json .jsonl .md` | 500 KB |
+Any file type is accepted. The backend categorises files for size-limit purposes:
+
+| Category | Examples | Max size |
+|----------|---------|---------|
+| Text / code | `.txt .md .py .ts .go .rs .sql .yaml .toml .css` … | 500 KB |
 | Image | `.png .jpg .gif .webp .bmp` | 10 MB |
-| Document | `.pdf .docx .doc` | 5 MB |
+| Document | `.pdf .docx .html` | 5 MB |
+| Audio | `.mp3 .wav .flac .m4a` | 20 MB |
+| Video | `.mp4 .webm .mov` | 20 MB |
+| Other (zip, exe, …) | anything not matched above | 20 MB |
 
 Global limit: 20 MB total across all files in one request.
 
-Any file of the above categories can be uploaded. If the selected model does not support a particular modality (e.g. sending an image to a non-vision model), the provider API call will raise an error (which is shown to the user).
+The `read` tool handles format-specific processing (markitdown for documents, base64 for images) when the agent inspects the file. No pre-processing happens at upload time.
 
 ---
 
@@ -508,10 +509,9 @@ The following event types are stored in the in-memory state blob and replayed on
 }
 ```
 
-Server-internal fields (`converted_text` — the LLM-only document body — and
-`path` — the absolute on-disk location) are always stripped from attachment
-metadata before returning to clients. Clients fetch bytes via the
-`/api/team/{sid}/uploads/{filename}` endpoint instead.
+Server-internal fields (`path`, `workspace_path` — absolute on-disk locations)
+are always stripped from attachment metadata before returning to clients.
+Clients fetch bytes via the `/api/team/{sid}/uploads/{filename}` endpoint instead.
 
 The `url` field is the canonical client fetch URL for attachments. It may be a
 root-relative API path (for example `/api/team/{sid}/uploads/abc123.jpg`); web
@@ -532,11 +532,10 @@ media/listing, while uploads still live under `OPENAGENTD_WORKSPACE_DIR`.
 | `GET /api/team/{session_id}/media/{path}` | session or coding workspace | Agent workspace output (nested paths allowed) |
 
 User-uploaded files are also reachable by the agent's filesystem tools as
-the relative path `uploads/<filename>` — so user-uploaded images can feed
-workspace-bound tools (image/video generation, etc.) without a staging
-step. Unread image uploads contribute only a stable text hint to LLM
-history; actual image bytes enter context after an explicit
-`read("uploads/<filename>")` tool call, and that multimodal tool result is
+the relative path `uploads/<filename>`. The agent receives a path hint at
+dispatch time and calls `read("uploads/<filename>")` or shell tools to
+inspect the content. The `read` tool handles text, images (base64), and
+documents (markitdown) uniformly. Its multimodal tool result is
 then replayed durably from the DB.
 
 Both endpoints:

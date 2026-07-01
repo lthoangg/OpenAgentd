@@ -154,7 +154,8 @@ class TestLoadSkill:
         (d / "SKILL.md").write_text("---\nname: analysis\n---\nAnalyse data carefully.")
         monkeypatch.setattr("app.agent.tools.builtin.skill._SKILLS_DIR", tmp_path)
         result = await load_skill("analysis")
-        assert result == "Analyse data carefully."
+        assert "Analyse data carefully." in result
+        assert result.startswith("Skill directory:")
 
     @pytest.mark.asyncio
     async def test_load_skill_reuses_visible_session_skill(self, tmp_path, monkeypatch):
@@ -167,8 +168,8 @@ class TestLoadSkill:
         first = await load_skill("analysis", _state=state)
         second = await load_skill("analysis", _state=state)
 
-        assert first == "Analyse data carefully."
-        assert second == "Analyse data carefully."
+        assert "Analyse data carefully." in first
+        assert first == second
 
     def test_loaded_skills_from_messages_tracks_aliases_and_ignores_duplicates(self):
         state = SimpleNamespace(
@@ -305,7 +306,7 @@ class TestLoadSkill:
 
         result = await load_skill("analysis", _state=state)
 
-        assert result == "Fresh body."
+        assert "Fresh body." in result
 
     @pytest.mark.asyncio
     async def test_load_skill_reload_when_visible_pair_has_no_body(
@@ -335,7 +336,7 @@ class TestLoadSkill:
 
         result = await load_skill("analysis", _state=state)
 
-        assert result == "Fresh body."
+        assert "Fresh body." in result
 
     @pytest.mark.asyncio
     async def test_load_skill_by_subdir_name(self, tmp_path, monkeypatch):
@@ -345,7 +346,7 @@ class TestLoadSkill:
         (d / "SKILL.md").write_text("---\nname: different-name\n---\nBody content.")
         monkeypatch.setattr("app.agent.tools.builtin.skill._SKILLS_DIR", tmp_path)
         result = await load_skill("my-skill")
-        assert result == "Body content."
+        assert "Body content." in result
 
     @pytest.mark.asyncio
     async def test_load_skill_not_found(self, tmp_path, monkeypatch):
@@ -377,6 +378,59 @@ class TestLoadSkill:
             "reuse those instructions instead of calling this tool again" in description
         )
         assert "repeated loads return the same content" in description
+
+    @pytest.mark.asyncio
+    async def test_result_starts_with_skill_directory_header(
+        self, tmp_path, monkeypatch
+    ):
+        """load_skill() must prepend 'Skill directory: <path>' so the agent
+        knows where to find reference files without needing {SKILL_DIR} tokens
+        in the body."""
+        d = tmp_path / "my-skill"
+        d.mkdir()
+        (d / "SKILL.md").write_text("---\nname: my-skill\n---\nBody text.")
+        monkeypatch.setattr("app.agent.tools.builtin.skill._SKILLS_DIR", tmp_path)
+
+        result = await load_skill("my-skill")
+
+        lines = result.splitlines()
+        assert lines[0].startswith("Skill directory:")
+        assert str(d.resolve()) in lines[0]
+        assert "Body text." in result
+
+    @pytest.mark.asyncio
+    async def test_skill_directory_header_uses_relative_path_for_project_skill(
+        self, tmp_path
+    ):
+        """For project-local skills the header path is relative (workspace-relative),
+        matching the {SKILL_DIR} token behaviour in _render_tokens."""
+        from app.agent.sandbox import SandboxConfig, set_sandbox, _sandbox_ctx
+
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        token = set_sandbox(SandboxConfig(workspace=str(workspace), session_id="s1"))
+        try:
+            project_skills = workspace / ".openagentd" / "skills"
+            d = project_skills / "proj-skill"
+            d.mkdir(parents=True)
+            (d / "SKILL.md").write_text("---\nname: proj-skill\n---\nBody.")
+            import app.agent.tools.builtin.skill as _skill_mod
+
+            orig = _skill_mod._iter_skill_roots
+            _skill_mod._iter_skill_roots = lambda: [project_skills]
+            try:
+                result = await load_skill("proj-skill")
+            finally:
+                _skill_mod._iter_skill_roots = orig
+
+            first_line = result.splitlines()[0]
+            assert first_line.startswith("Skill directory:")
+            # Must be relative (no leading /)
+            path_part = first_line.split("Skill directory:", 1)[1].strip()
+            assert not path_part.startswith("/")
+            assert ".openagentd/skills/proj-skill" in path_part
+        finally:
+            _sandbox_ctx.reset(token)
 
 
 # ---------------------------------------------------------------------------
@@ -494,7 +548,8 @@ class TestTokenSubstitution:
         monkeypatch.setattr("app.agent.tools.builtin.skill._SKILLS_DIR", tmp_path)
 
         body = await load_skill("demo")
-        assert body == body_text
+        assert body_text in body
+        assert body.startswith("Skill directory:")
 
 
 # ---------------------------------------------------------------------------
@@ -655,7 +710,7 @@ class TestMultiRootDiscovery:
 
         body = await load_skill("oad/commit")
 
-        assert body == "Workspace commit body."
+        assert "Workspace commit body." in body
 
     @pytest.mark.asyncio
     async def test_load_skill_finds_opencode_skill(self, roots):
@@ -664,7 +719,7 @@ class TestMultiRootDiscovery:
 
         body = await load_skill("research")
 
-        assert body == "Opencode body."
+        assert "Opencode body." in body
 
     @pytest.mark.asyncio
     async def test_load_skill_precedence_openagentd_wins(self, roots):
@@ -674,7 +729,7 @@ class TestMultiRootDiscovery:
 
         body = await load_skill("research")
 
-        assert body == "Openagentd body."
+        assert "Openagentd body." in body
 
     def test_cache_invalidates_when_opencode_root_changes(self, roots):
         _project_oad, _project_oc, _global_oad, global_oc = roots
@@ -895,7 +950,7 @@ class TestSubSkills:
 
         result = await load_skill("git/commit")
 
-        assert result == "Commit body."
+        assert "Commit body." in result
 
     @pytest.mark.asyncio
     async def test_load_nested_skill_by_stem(self, tmp_path, monkeypatch):
@@ -909,7 +964,7 @@ class TestSubSkills:
 
         result = await load_skill("git/commit")
 
-        assert result == "Commit body by stem."
+        assert "Commit body by stem." in result
 
     @pytest.mark.asyncio
     async def test_flat_and_nested_skill_both_loadable(self, tmp_path, monkeypatch):
@@ -922,8 +977,10 @@ class TestSubSkills:
         (sub / "SKILL.md").write_text("---\nname: git/push\n---\nPush body.")
         monkeypatch.setattr("app.agent.tools.builtin.skill._SKILLS_DIR", tmp_path)
 
-        assert await load_skill("search") == "Search body."
-        assert await load_skill("git/push") == "Push body."
+        search_result = await load_skill("search")
+        push_result = await load_skill("git/push")
+        assert "Search body." in search_result
+        assert "Push body." in push_result
 
 
 # ---------------------------------------------------------------------------

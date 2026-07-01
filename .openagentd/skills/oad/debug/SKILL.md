@@ -15,13 +15,14 @@ If the report is ambiguous, inspect available evidence first; ask only when a mi
 
 ## 2. Route to the right reference
 
-Load the surface-specific reference for deeper commands, file maps, and gotchas:
+Read the surface-specific reference for deeper commands, file maps, and gotchas.
+The skill directory is in the first line of this response — use it to build the path:
 
-- **Backend / API / agent / provider** → `oad/debug/reference/backend`
-- **Frontend (web UI)** → `oad/debug/reference/frontend`
-- **Desktop or mobile (Tauri / Rust)** → `oad/debug/reference/tauri`
+- **Backend / API / agent / provider** → `read("<skill_dir>/reference/backend.md")`
+- **Frontend (web UI)** → `read("<skill_dir>/reference/frontend.md")`
+- **Desktop or mobile (Tauri / Rust)** → `read("<skill_dir>/reference/tauri.md")`
 
-When the issue spans multiple surfaces, load all relevant references.
+When the issue spans multiple surfaces, read all relevant references.
 
 ---
 

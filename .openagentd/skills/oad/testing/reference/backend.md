@@ -1,9 +1,3 @@
-# Backend Testing Skill
-
-Patterns, fixtures, and conventions for the OpenAgentd Python/FastAPI test suite.
-Load this skill whenever writing, reviewing, or fixing backend tests.
-
----
 
 ## Stack
 

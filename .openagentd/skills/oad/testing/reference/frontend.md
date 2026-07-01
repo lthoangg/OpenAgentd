@@ -1,7 +1,3 @@
----
-name: oad/frontend-testing
-description: Write, run, and maintain frontend tests for the OpenAgentd web UI. Covers Bun test runner, Happy DOM, React Testing Library, module mocking, store testing, hook testing, and utility testing — with real patterns drawn from the codebase.
----
 
 Write focused, fast tests for the OpenAgentd web UI (`web/src/__tests__/`).
 

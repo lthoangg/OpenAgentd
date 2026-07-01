@@ -477,6 +477,13 @@ async def load_skill(
                 # so the agent receives concrete paths it can hand to its
                 # file/shell tools without further interpretation.
                 rendered = _render_tokens(body, skill_dir=path.parent)
+                # Prepend the resolved skill directory so the agent always
+                # knows where to find supporting files (reference docs,
+                # scripts, assets) without requiring {SKILL_DIR} tokens in
+                # the body.  Uses the same path resolution as _render_tokens:
+                # relative for project skills, absolute otherwise.
+                skill_dir_value = _render_tokens("{SKILL_DIR}", skill_dir=path.parent)
+                rendered = f"Skill directory: {skill_dir_value}\n\n{rendered}"
                 loaded_skills[skill_name] = rendered
                 if name != skill_name:
                     loaded_skills[name] = rendered

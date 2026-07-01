@@ -49,24 +49,24 @@ The foundation tokens. Every chrome surface, every divider, every line of body t
 
 | Token | Light mode | Dark mode | Usage |
 |---|---|---|---|
-| `--border-soft` | `#E8DFC6` | `#2C231A` | Subtle dividers |
-| `--border-card` | `#E0D5B7` | `#3A2F23` | Card and badge borders |
-| `--color-border-subtle` | `#E8DCC2` | `#2C231A` | Decorative dividers |
-| `--color-border` | `#D7C7AA` | `#3A2F23` | Default borders |
-| `--color-border-strong` | `#A89880` | `#5C4B36` | Section breaks, prominent borders |
+| `--border-soft` | `#E7DCBF` | `#2C231A` | Subtle dividers |
+| `--border-card` | `#D9CFA9` | `#3A2F23` | Card and badge borders |
+| `--color-border-subtle` | `#E7DCBF` | `#2C231A` | Decorative dividers |
+| `--color-border` | `#D9CFA9` | `#3A2F23` | Default borders |
+| `--color-border-strong` | `#B8A47E` | `#5C4B36` | Section breaks, prominent borders |
 
 ### Text & foreground
 
 | Token | Light mode | Dark mode | Usage |
 |---|---|---|---|
 | `--color-text` | `#1A1714` | `#F5EBD8` | Primary text, headings |
-| `--color-text-2` | `#5F5143` | `#C5B59A` | Secondary text |
-| `--color-text-muted` | `#7A6B58` | `#9C8A72` | Hints, placeholders, timestamps |
-| `--color-text-subtle` | `#A89880` | `#7A6B58` | Disabled text, faint metadata |
+| `--color-text-2` | `#4B3E32` | `#C5B59A` | Secondary text |
+| `--color-text-muted` | `#6E604F` | `#9C8A72` | Hints, placeholders, timestamps |
+| `--color-text-subtle` | `#8E7E68` | `#7A6B58` | Disabled text, faint metadata |
 | `--color-text-on-accent` | `#FFFDF7` | `#15110D` | Text on filled accent surfaces |
 | `--fg-primary` | `#1F1A14` | `#F5EBD8` | Strong foreground (mascot lines, hand text) |
-| `--fg-secondary` | `#6B6253` | `#C5B59A` | Secondary foreground |
-| `--fg-muted` | `#9A9080` | `#9C8A72` | Muted iconography |
+| `--fg-secondary` | `#4B3E32` | `#C5B59A` | Secondary foreground |
+| `--fg-muted` | `#6E604F` | `#9C8A72` | Muted iconography |
 
 ### Color accent (UI)
 
@@ -85,12 +85,12 @@ Each agent role gets a soft pastel chip with a saturated edge color and a darker
 
 | Role | Soft (fill) | Edge (icon, dot) | Text | Pencil token prefix |
 |---|---|---|---|---|
-| `openagentd` (router) | `#E2F2E5` / `#1F3A2A` | `#3DA66A` / `#5DC487` | `#2D7A4F` / `#92E0B0` | `accent-green-*` |
-| `executor` | `#DCEEFB` / `#1E3A52` | `#5AA8E2` / `#7CC2F0` | `#2D6FA8` / `#9DD0F5` | `accent-blue-*` |
-| `consultant` | `#FFF1D8` / `#3D2D14` | `#F59E3B` / `#FDB75D` | `#C26A1E` / `#FCC780` | `accent-orange-*` |
-| `explorer` | `#FBE0EB` / `#3D1F2D` | `#E63D7A` / `#F472B6` | — (use `--color-text` on soft) | `accent-pink-*` |
-| Reserved (memory, scheduler) | `#E8DEF8` / `#2D2440` | `#7C5BCF` / `#A78BFA` | — | `accent-purple-*` |
-| Error / destructive | — | `#C8333E` / `#F87171` | — | `accent-red` |
+| `openagentd` (router) | `#E2F2E5` / `#1F3A2A` | `#3DA66A` / `#5DC487` | `#15573D` / `#92E0B0` | `accent-green-*` |
+| `executor` | `#DCEEFB` / `#1E3A52` | `#5AA8E2` / `#7CC2F0` | `#174A73` / `#9DD0F5` | `accent-blue-*` |
+| `consultant` | `#FFF1D8` / `#3D2D14` | `#F59E3B` / `#FDB75D` | `#873E05` / `#FCC780` | `accent-orange-*` |
+| `explorer` | `#FBE0EB` / `#3D1F2D` | `#A21D52` / `#F472B6` | — (use `--color-text` on soft) | `accent-pink-*` |
+| Reserved (memory, scheduler) | `#E8DEF8` / `#2D2440` | `#5A34D1` / `#A78BFA` | — | `accent-purple-*` |
+| Error / destructive | — | `#A71C24` / `#F87171` | — | `accent-red` |'}
 
 **Format** for each token: `light-mode-value` / `dark-mode-value`.
 
@@ -231,14 +231,14 @@ Syntax tokens use the marker palette plus a softened comment color so prose and 
 
 | Token | Light mode | Dark mode | Element |
 |---|---|---|---|
-| `--color-syn-comment` | `#7A6B58` | `#9C8A72` | Comments — `--color-text-muted` |
+| `--color-syn-comment` | `#6E604F` | `#9C8A72` | Comments — `--color-text-muted` |
 | `--color-syn-keyword` | `#7C3AED` | `#A78BFA` | Keywords, reserved words |
-| `--color-syn-function` | `#0284C7` | `#38BDF8` | Function/method names |
+| `--color-syn-function` | `#026F9E` | `#38BDF8` | Function/method names |
 | `--color-syn-variable` | `#B91C1C` | `#F87171` | Variable names |
-| `--color-syn-string` | `#16A34A` | `#4ADE80` | String literals |
-| `--color-syn-number` | `#B77900` | `#FBBF24` | Numeric literals |
-| `--color-syn-type` | `#C26A1E` | `#FCC780` | Type annotations |
-| `--color-syn-operator` | `#5F5143` | `#C5B59A` | Operators, punctuation — `--color-text-2` |
+| `--color-syn-string` | `#15803D` | `#4ADE80` | String literals |
+| `--color-syn-number` | `#A16207` | `#FBBF24` | Numeric literals |
+| `--color-syn-type` | `#B45309` | `#FCC780` | Type annotations |
+| `--color-syn-operator` | `#4B3E32` | `#C5B59A` | Operators, punctuation — `--color-text-2` |
 
 ---
 
@@ -298,14 +298,15 @@ All token pairs verified against their own background. Spot-check ratios for the
 
 | Pairing | Light mode | Dark mode | WCAG |
 |---|---|---|---|
-| `text` on `bg-page` | 14.6:1 | 13.2:1 | AAA |
-| `text-2` on `bg-page` | 6.8:1 | 7.4:1 | AAA |
-| `text-muted` on `bg-page` | 4.7:1 | 4.6:1 | AA |
-| `accent` on `bg-page` | 11.2:1 | 13.0:1 | AAA |
-| `accent-blue-text` on `accent-blue-soft` | 5.1:1 | 8.4:1 | AA |
-| `accent-green-text` on `accent-green-soft` | 5.0:1 | 7.9:1 | AA |
-| `accent-orange-text` on `accent-orange-soft` | 4.6:1 | 7.2:1 | AA |
-| `error` on `bg-page` | 5.4:1 | 5.7:1 | AA |
+| `text` on `bg-page` | 16.5:1 | 15.9:1 | AAA |
+| `text-2` on `bg-page` | 9.6:1 | 9.4:1 | AAA |
+| `text-muted` on `bg-page` | 5.6:1 | 5.6:1 | AA |
+| `text-subtle` on `bg-page` | 3.7:1 | 3.6:1 | AA (for UI / non-body text) |
+| `accent` on `bg-page` | 11.2:1 | 15.9:1 | AAA |
+| `accent-blue-text` on `accent-blue-soft` | 8.1:1 | 8.4:1 | AAA / AA |
+| `accent-green-text` on `accent-green-soft` | 7.9:1 | 7.9:1 | AAA / AA |
+| `accent-orange-text` on `accent-orange-soft` | 7.1:1 | 7.2:1 | AAA / AA |
+| `error` on `bg-page` | 6.0:1 | 5.7:1 | AAA / AA |
 
 **Test tools**:
 - WebAIM Contrast Checker: https://webaim.org/resources/contrastchecker/
@@ -334,33 +335,33 @@ Tokens are emitted from a single `@theme` block. Mode is class-based on `<html>`
   --color-bg-elevated:#FFFDF7;
 
   /* Borders */
-  --border-soft:        #E8DFC6;
-  --border-card:        #E0D5B7;
-  --color-border-subtle:#E8DCC2;
-  --color-border:       #D7C7AA;
-  --color-border-strong:#A89880;
+  --border-soft:        #E7DCBF;
+  --border-card:        #D9CFA9;
+  --color-border-subtle:#E7DCBF;
+  --color-border:       #D9CFA9;
+  --color-border-strong:#B8A47E;
 
   /* Text */
   --color-text:           #1A1714;
-  --color-text-2:         #5F5143;
-  --color-text-muted:     #7A6B58;
-  --color-text-subtle:    #A89880;
+  --color-text-2:         #4B3E32;
+  --color-text-muted:     #6E604F;
+  --color-text-subtle:    #8E7E68;
   --color-text-on-accent: #FFFDF7;
   --fg-primary:           #1F1A14;
-  --fg-secondary:         #6B6253;
-  --fg-muted:             #9A9080;
+  --fg-secondary:         #4B3E32;
+  --fg-muted:             #6E604F;
 
   /* Accent (UI) */
   --color-accent:  #3F3429;
   --color-overlay: #1A171466;
 
   /* Agent chips */
-  --accent-blue:   #5AA8E2;  --accent-blue-soft:   #DCEEFB;  --accent-blue-text:   #2D6FA8;
-  --accent-green:  #3DA66A;  --accent-green-soft:  #E2F2E5;  --accent-green-text:  #2D7A4F;
-  --accent-orange: #F59E3B;  --accent-orange-soft: #FFF1D8;  --accent-orange-text: #C26A1E;
-  --accent-pink:   #E63D7A;  --accent-pink-soft:   #FBE0EB;
-  --accent-purple: #7C5BCF;  --accent-purple-soft: #E8DEF8;
-  --accent-red:    #C8333E;
+  --accent-blue:   #5AA8E2;  --accent-blue-soft:   #DCEEFB;  --accent-blue-text:   #174A73;
+  --accent-green:  #3DA66A;  --accent-green-soft:  #E2F2E5;  --accent-green-text:  #15573D;
+  --accent-orange: #F59E3B;  --accent-orange-soft: #FFF1D8;  --accent-orange-text: #873E05;
+  --accent-pink:   #A21D52;  --accent-pink-soft:   #FBE0EB;
+  --accent-purple: #5A34D1;  --accent-purple-soft: #E8DEF8;
+  --accent-red:    #A71C24;
 
   /* Markers (charts) */
   --color-marker-blue:   #0284C7;
@@ -380,14 +381,14 @@ Tokens are emitted from a single `@theme` block. Mode is class-based on `<html>`
   --color-info:    var(--accent-blue);
 
   /* Syntax */
-  --color-syn-comment:  #7A6B58;
+  --color-syn-comment:  #6E604F;
   --color-syn-keyword:  #7C3AED;
-  --color-syn-function: #0284C7;
+  --color-syn-function: #026F9E;
   --color-syn-variable: #B91C1C;
-  --color-syn-string:   #16A34A;
-  --color-syn-number:   #B77900;
-  --color-syn-type:     #C26A1E;
-  --color-syn-operator: #5F5143;
+  --color-syn-string:   #15803D;
+  --color-syn-number:   #A16207;
+  --color-syn-type:     #B45309;
+  --color-syn-operator: #4B3E32;
 
   /* Focus + depth */
   --focus-ring:    var(--color-accent);

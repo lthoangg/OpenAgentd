@@ -218,21 +218,21 @@ pre code.hljs {
     --color-bg-elevated: #FFFDF7;
 
     /* Borders */
-    --border-soft:         #E8DFC6;
-    --border-card:         #E0D5B7;
-    --color-border-subtle: #E8DCC2;
-    --color-border:        #D7C7AA;
-    --color-border-strong: #A89880;
+    --border-soft:         #E7DCBF;
+    --border-card:         #D9CFA9;
+    --color-border-subtle: #E7DCBF;
+    --color-border:        #D9CFA9;
+    --color-border-strong: #B8A47E;
 
     /* Text */
     --color-text:           #1A1714;
-    --color-text-2:         #5F5143;
-    --color-text-muted:     #7A6B58;
-    --color-text-subtle:    #A89880;
+    --color-text-2:         #4B3E32;
+    --color-text-muted:     #6E604F;
+    --color-text-subtle:    #8E7E68;
     --color-text-on-accent: #FFFDF7;
     --fg-primary:           #1F1A14;
-    --fg-secondary:         #6B6253;
-    --fg-muted:             #9A9080;
+    --fg-secondary:         #4B3E32;
+    --fg-muted:             #6E604F;
 
     /* Accent (UI) */
     --color-accent:  #3F3429;
@@ -241,23 +241,23 @@ pre code.hljs {
     /* Agent chips */
     --accent-blue:        #5AA8E2;
     --accent-blue-soft:   #DCEEFB;
-    --accent-blue-text:   #2D6FA8;
+    --accent-blue-text:   #174A73;
 
     --accent-green:       #3DA66A;
     --accent-green-soft:  #E2F2E5;
-    --accent-green-text:  #2D7A4F;
+    --accent-green-text:  #15573D;
 
     --accent-orange:      #F59E3B;
     --accent-orange-soft: #FFF1D8;
-    --accent-orange-text: #C26A1E;
+    --accent-orange-text: #873E05;
 
-    --accent-pink:        #E63D7A;
+    --accent-pink:        #A21D52;
     --accent-pink-soft:   #FBE0EB;
 
-    --accent-purple:      #7C5BCF;
+    --accent-purple:      #5A34D1;
     --accent-purple-soft: #E8DEF8;
 
-    --accent-red:         #C8333E;
+    --accent-red:         #A71C24;
 
     /* Markers (charts) */
     --color-marker-blue:   #0284C7;
@@ -285,14 +285,14 @@ pre code.hljs {
     --color-diff-del-text:  #991B1B;
 
     /* Syntax */
-    --color-syn-comment:  #7A6B58;
+    --color-syn-comment:  #6E604F;
     --color-syn-keyword:  #7C3AED;
-    --color-syn-function: #0284C7;
+    --color-syn-function: #026F9E;
     --color-syn-variable: #B91C1C;
-    --color-syn-string:   #16A34A;
-    --color-syn-number:   #B77900;
-    --color-syn-type:     #C26A1E;
-    --color-syn-operator: #5F5143;
+    --color-syn-string:   #15803D;
+    --color-syn-number:   #A16207;
+    --color-syn-type:     #B45309;
+    --color-syn-operator: #4B3E32;
 
     /* Focus + depth (see dark-mode comment) */
     --focus-ring:   var(--accent-blue);

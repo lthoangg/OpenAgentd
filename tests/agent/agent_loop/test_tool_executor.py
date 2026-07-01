@@ -210,3 +210,60 @@ async def test_executor_runtime_error_also_returns_error_string():
         _make_ctx(), _make_state(), _tool_call("explode", '{"x": 1}')
     )
     assert result.startswith("Error:")
+
+
+async def test_executor_tool_timeout_returns_error_string(monkeypatch):
+    """A tool call exceeding the global timeout is intercepted and returns an error string."""
+    import asyncio
+    import app.agent.agent_loop.tool_executor as te
+
+    # Patch the timeout constant to be very short for this test
+    monkeypatch.setattr(te, "TOOL_TIMEOUT_SECONDS", 0.05)
+
+    @tool
+    async def slow_tool() -> str:
+        """A tool that runs slowly."""
+        await asyncio.sleep(0.5)
+        return "finished"
+
+    execute = te.make_tool_executor({"slow_tool": slow_tool}, agent_name="tester")
+    result = await execute(_make_ctx(), _make_state(), _tool_call("slow_tool", "{}"))
+    assert result.startswith("Error:")
+    assert "timed out after 0.05s" in result
+
+
+async def test_executor_shell_tool_bypasses_global_timeout(monkeypatch):
+    """The 'shell' tool bypasses the global executor timeout because it has its own internal timeout handling."""
+    import asyncio
+    import app.agent.agent_loop.tool_executor as te
+
+    # Patch the timeout constant to be very short for this test
+    monkeypatch.setattr(te, "TOOL_TIMEOUT_SECONDS", 0.05)
+
+    @tool(name="shell")
+    async def slow_shell() -> str:
+        """A mocked shell tool that runs slowly."""
+        await asyncio.sleep(0.1)
+        return "shell finished"
+
+    execute = te.make_tool_executor({"shell": slow_shell}, agent_name="tester")
+    result = await execute(_make_ctx(), _make_state(), _tool_call("shell", "{}"))
+    # Should not time out because it bypassed the 0.05s limit
+    assert result == "shell finished"
+
+
+async def test_executor_tool_custom_timeout_error_retains_message():
+    """A tool that raises a TimeoutError with a custom message retains that message instead of using the generic global timeout error text."""
+
+    @tool
+    async def custom_timeout_tool() -> str:
+        """A tool that raises an internal TimeoutError."""
+        raise TimeoutError("Internal connection failed to database")
+
+    execute = make_tool_executor(
+        {"custom_timeout_tool": custom_timeout_tool}, agent_name="tester"
+    )
+    result = await execute(
+        _make_ctx(), _make_state(), _tool_call("custom_timeout_tool", "{}")
+    )
+    assert result == "Error: Internal connection failed to database"

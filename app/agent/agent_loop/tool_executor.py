@@ -15,6 +15,7 @@ which:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 from typing import TYPE_CHECKING, Any
@@ -23,6 +24,9 @@ from loguru import logger
 
 from app.agent.errors import ToolArgumentError, ToolNotFoundError
 from app.agent.schemas.chat import ContentBlock, TextBlock, ToolResult
+
+TOOL_TIMEOUT_SECONDS = 300.0
+
 
 if TYPE_CHECKING:
     from app.agent.schemas.chat import ToolCall
@@ -89,7 +93,7 @@ def make_tool_executor(
                 else None
             )
 
-            result_raw = await run_tools[tc.function.name].arun(
+            arun_coro = run_tools[tc.function.name].arun(
                 _injected={
                     "_state": s,
                     "_mode": injected_mode,
@@ -100,6 +104,12 @@ def make_tool_executor(
                 },
                 **args,
             )
+
+            if tc.function.name == "shell":
+                result_raw = await arun_coro
+            else:
+                async with asyncio.timeout(TOOL_TIMEOUT_SECONDS):
+                    result_raw = await arun_coro
 
             if isinstance(result_raw, ToolResult):
                 # Multimodal tool result — stash parts in state metadata
@@ -138,6 +148,19 @@ def make_tool_executor(
                 result[:1000] if len(result) > 1000 else result,
             )
 
+        except TimeoutError as e:
+            msg = str(e)
+            if not msg:
+                msg = f"Tool '{tc.function.name}' timed out after {TOOL_TIMEOUT_SECONDS}s."
+            result = f"Error: {msg}"
+            tool_elapsed = time.monotonic() - tool_start
+            logger.error(
+                "tool_timeout agent={} tool={} elapsed={:.2f}s error={}",
+                agent_name,
+                tc.function.name,
+                tool_elapsed,
+                e,
+            )
         except Exception as e:
             result = f"Error: {sanitize_error(str(e))}"
             tool_elapsed = time.monotonic() - tool_start

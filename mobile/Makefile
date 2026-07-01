@@ -18,6 +18,7 @@ ios-init: ## Initialize Tauri iOS project files
 	@if [ -n "$(IOS_TEAM)" ]; then \
 		ruby -0pi -e 'gsub(/DEVELOPMENT_TEAM = "?[A-Z0-9]+"?;/, "DEVELOPMENT_TEAM = \"$(IOS_TEAM)\";")' src-tauri/gen/apple/openagentd-mobile.xcodeproj/project.pbxproj; \
 	fi
+	mkdir -p src-tauri/gen/apple && cp src-tauri/PrivacyInfo.xcprivacy src-tauri/gen/apple/PrivacyInfo.xcprivacy
 	$(MAKE) ios-icons
 
 $(IOS_ICON_STAMP): src-tauri/icons/icon.png

@@ -148,6 +148,169 @@ fn remove_backend_server(app: &AppHandle, base_url: &str) -> Result<()> {
     std::fs::write(&path, bytes).with_context(|| format!("write {}", path.display()))
 }
 
+#[derive(Deserialize)]
+struct SaveWorkspaceFileRequest {
+    /// Pre-encoded base64 payload (used by FileLightbox which already has the blob).
+    base64: Option<String>,
+    /// Remote URL to fetch (used by workspace-download helpers).
+    url: Option<String>,
+    filename: String,
+}
+
+#[tauri::command]
+async fn save_workspace_file(
+    app: AppHandle,
+    request: SaveWorkspaceFileRequest,
+) -> Result<bool, String> {
+    let filename = std::path::Path::new(&request.filename)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.is_empty())
+        .unwrap_or("download")
+        .to_string();
+
+    // Resolve the file bytes: base64 payload, data: URI, or remote URL fetch.
+    let bytes: Vec<u8> = match (request.base64, request.url) {
+        (Some(b64), _) => {
+            use base64::Engine;
+            base64::prelude::BASE64_STANDARD
+                .decode(&b64)
+                .map_err(|e| format!("Decode base64: {e}"))?
+        }
+        (None, Some(url)) if url.starts_with("data:") => {
+            // data:<mime>;base64,<payload>
+            use base64::Engine;
+            let payload = url.splitn(2, ',').nth(1)
+                .ok_or("Invalid data URI: missing comma")?;
+            base64::prelude::BASE64_STANDARD
+                .decode(payload)
+                .map_err(|e| format!("Decode data URI: {e}"))?
+        }
+        (None, Some(url)) => {
+            reqwest::get(&url)
+                .await
+                .map_err(|e| format!("Fetch file: {e}"))?
+                .error_for_status()
+                .map_err(|e| format!("Fetch file: {e}"))?
+                .bytes()
+                .await
+                .map_err(|e| format!("Read fetched file: {e}"))?
+                .to_vec()
+        }
+        (None, None) => return Err("save_workspace_file: must supply either base64 or url".to_string()),
+    };
+
+    let cache_dir = app
+        .path()
+        .app_cache_dir()
+        .map_err(|e| format!("Get cache dir: {e}"))?;
+    std::fs::create_dir_all(&cache_dir)
+        .with_context(|| format!("Create cache dir {}", cache_dir.display()))
+        .map_err(|e| format!("{e:#}"))?;
+    let path = cache_dir.join(&filename);
+
+    std::fs::write(&path, &bytes)
+        .with_context(|| format!("Write {}", path.display()))
+        .map_err(|e| format!("{e:#}"))?;
+
+    #[cfg(target_os = "ios")]
+    {
+        // `share_file_ios` must run on the main thread (UIKit requirement).
+        // Tauri async commands run on a background thread, so we dispatch
+        // synchronously to the main queue and wait for the result.
+        let path_str = path.to_string_lossy().into_owned();
+        let (tx, rx) = std::sync::mpsc::channel::<Result<(), String>>();
+        dispatch_main(move || {
+            let _ = tx.send(share_file_ios(&path_str));
+        });
+        rx.recv().map_err(|_| "Main thread dispatch failed".to_string())??;
+    }
+
+    #[cfg(not(target_os = "ios"))]
+    {
+        use tauri_plugin_opener::OpenerExt;
+        app.opener()
+            .open_path(path.to_string_lossy().to_string(), None::<String>)
+            .map_err(|e| format!("Open file: {e}"))?;
+    }
+
+    Ok(true)
+}
+
+/// Dispatch a closure synchronously on the main GCD queue and wait for it.
+/// Required for all UIKit calls made from a background thread.
+#[cfg(target_os = "ios")]
+fn dispatch_main<F: FnOnce() + Send + 'static>(f: F) {
+    dispatch2::DispatchQueue::main().exec_sync(f);
+}
+
+#[cfg(target_os = "ios")]
+fn share_file_ios(path: &str) -> Result<(), String> {
+    use objc2::rc::Retained;
+    use objc2::MainThreadOnly;
+    use objc2_core_foundation::{CGPoint, CGRect, CGSize};
+    use objc2_foundation::{NSArray, NSString, NSURL};
+    use objc2_ui_kit::{
+        UIActivityViewController, UIApplication, UIPopoverArrowDirection,
+        UIViewController, UIWindowScene,
+    };
+
+    unsafe {
+        // Build file URL and wrap as AnyObject for the untyped NSArray
+        let ns_path = NSString::from_str(path);
+        let url: Retained<NSURL> = NSURL::fileURLWithPath(&ns_path);
+        let url_as_any: Retained<objc2::runtime::AnyObject> = Retained::cast_unchecked(url);
+        let items: Retained<NSArray> = NSArray::from_retained_slice(&[url_as_any]);
+
+        // Need a MainThreadMarker — this command is called from a background
+        // thread so we use the unsafe constructor. The iOS share sheet must
+        // be shown on the main thread; Tauri's invoke handler guarantees that
+        // for async commands only when they use `dispatch_main`, so we wrap
+        // the presentation in dispatch_async(main_queue) via GCD instead.
+        let mtm = objc2::MainThreadMarker::new()
+            .ok_or("share_file_ios must run on the main thread")?;
+
+        // Create UIActivityViewController
+        let vc = UIActivityViewController::initWithActivityItems_applicationActivities(
+            UIActivityViewController::alloc(mtm),
+            &items,
+            None,
+        );
+
+        // Find root view controller: UIApplication → connectedScenes → UIWindowScene → keyWindow
+        let app = UIApplication::sharedApplication(mtm);
+        let root_vc: Retained<UIViewController> = app
+            .connectedScenes()
+            .iter()
+            .find_map(|scene| {
+                scene
+                    .downcast::<UIWindowScene>()
+                    .ok()
+                    .and_then(|ws| ws.keyWindow())
+                    .and_then(|w| w.rootViewController())
+            })
+            .ok_or("Root view controller not found")?;
+
+        // On iPad, anchor the popover to the centre of the root view
+        if let Some(popover) = vc.popoverPresentationController() {
+            if let Some(view) = root_vc.view() {
+                popover.setSourceView(Some(&view));
+                let bounds: CGRect = view.bounds();
+                let centre = CGRect::new(
+                    CGPoint::new(bounds.size.width / 2.0, bounds.size.height / 2.0),
+                    CGSize::new(0.0, 0.0),
+                );
+                popover.setSourceRect(centre);
+                popover.setPermittedArrowDirections(UIPopoverArrowDirection::empty());
+            }
+        }
+
+        root_vc.presentViewController_animated_completion(&vc, true, None);
+    }
+
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -159,6 +322,7 @@ pub fn run() {
             app_save_backend_server,
             app_use_external_backend,
             app_remove_backend_server,
+            save_workspace_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running OpenAgentd mobile");

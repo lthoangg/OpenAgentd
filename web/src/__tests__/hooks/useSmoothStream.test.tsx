@@ -130,4 +130,37 @@ describe('useSmoothStream', () => {
     // The pending queue should not grow unboundedly.
     expect(pendingFrames.length).toBeLessThanOrEqual(framesBefore + 1)
   })
+
+  it('applies adaptive throttling when text is very long', () => {
+    let text = 'A'.repeat(5500)
+    const { result, rerender } = renderHook(() => useSmoothStream(text, true))
+
+    // Set a much longer target text
+    text = 'A'.repeat(5500) + ' B'.repeat(100)
+    rerender()
+
+    // The length is > 5000, so throttleMs should be 75ms.
+    // First frame at time 100
+    act(() => {
+      const cb = pendingFrames[pendingFrames.length - 1]
+      if (cb) cb(100)
+    })
+    const lenAfterFirst = result.current.length
+
+    // Second frame at time 150 (elapsed 50ms < 75ms)
+    act(() => {
+      const nextCb = pendingFrames[pendingFrames.length - 1]
+      if (nextCb) nextCb(150)
+    })
+    // It should have throttled and NOT updated displayedText in this frame
+    expect(result.current.length).toBe(lenAfterFirst)
+
+    // Third frame at time 180 (elapsed 80ms >= 75ms since 100)
+    act(() => {
+      const nextCb = pendingFrames[pendingFrames.length - 1]
+      if (nextCb) nextCb(180)
+    })
+    // It should now update
+    expect(result.current.length).toBeGreaterThan(lenAfterFirst)
+  })
 })

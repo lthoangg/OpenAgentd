@@ -147,6 +147,17 @@ const HighlightedCode = memo(function HighlightedCode({ html }: { html: string }
   return <span className="min-w-0 flex-1" dangerouslySetInnerHTML={{ __html: html || ' ' }} />
 })
 
+function findLineElement(node: Node | null): HTMLElement | null {
+  let curr: Node | null = node
+  while (curr && curr !== document.body) {
+    if (curr instanceof HTMLElement && curr.hasAttribute('data-line')) {
+      return curr
+    }
+    curr = curr.parentNode
+  }
+  return null
+}
+
 function TextPreview({
   workspace,
   file,
@@ -163,6 +174,56 @@ function TextPreview({
   const [selection, setSelection] = useState<{ anchor: number; focus: number } | null>(null)
   const [dragging, setDragging] = useState(false)
   const deleted = file.deleted === true
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleMouseUp = (e: MouseEvent | TouchEvent) => {
+      if (dragging) return
+
+      const target = e.target as HTMLElement
+      const isInside = containerRef.current?.contains(target)
+
+      // If clicking a button inside our container, keep the selection
+      if (isInside && target.closest('button')) {
+        return
+      }
+
+      const sel = window.getSelection()
+      if (!sel || sel.isCollapsed) {
+        setSelection(null)
+        return
+      }
+
+      try {
+        const range = sel.getRangeAt(0)
+        // If selection is not collapsed, check if it's within our container
+        if (!containerRef.current?.contains(range.commonAncestorContainer)) {
+          setSelection(null)
+          return
+        }
+
+        const startLineEl = findLineElement(range.startContainer)
+        const endLineEl = findLineElement(range.endContainer)
+
+        if (startLineEl && endLineEl) {
+          const lineA = parseInt(startLineEl.getAttribute('data-line') || '', 10)
+          const lineB = parseInt(endLineEl.getAttribute('data-line') || '', 10)
+          if (!isNaN(lineA) && !isNaN(lineB)) {
+            setSelection({ anchor: lineA, focus: lineB })
+          }
+        }
+      } catch {
+        setSelection(null)
+      }
+    }
+
+    document.addEventListener('mouseup', handleMouseUp)
+    document.addEventListener('touchend', handleMouseUp)
+    return () => {
+      document.removeEventListener('mouseup', handleMouseUp)
+      document.removeEventListener('touchend', handleMouseUp)
+    }
+  }, [dragging])
 
   useEffect(() => {
     if (tooLarge || deleted) return
@@ -224,7 +285,7 @@ function TextPreview({
     setSelection((prev) => prev ? { ...prev, focus: line } : prev)
   }
   return (
-    <div className="flex h-full min-h-0 flex-col" onMouseLeave={() => setDragging(false)} onMouseUp={() => setDragging(false)}>
+    <div ref={containerRef} className="flex h-full min-h-0 flex-col" onMouseLeave={() => setDragging(false)} onMouseUp={() => setDragging(false)}>
       <div className="min-h-0 flex-1 overflow-auto overscroll-contain touch-pan-y font-mono text-xs leading-relaxed" data-scroll-capture="true" tabIndex={-1}>
         {highlightedLines.map((lineHtml, index) => {
           const lineNo = index + 1
@@ -232,6 +293,7 @@ function TextPreview({
           return (
             <div
               key={index}
+              data-line={lineNo}
               className={cn(
                 'relative flex w-full items-start gap-3 whitespace-pre-wrap break-words px-3 text-left text-(--color-text-2)',
                 selected && 'bg-(--bg-key)',

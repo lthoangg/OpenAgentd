@@ -308,4 +308,57 @@ describe('Coding workspace two-layer file preview', () => {
 
     expect(onAddComment).toHaveBeenCalledWith(readmePath, 1, 1)
   })
+
+  it('shows comment button on native text selection and clears it on click elsewhere', async () => {
+    const onAddComment = mock(() => {})
+    await renderViewer(readme, onAddComment)
+    await waitFor(() => expect(screen.getByText('const')).toBeTruthy())
+
+    const startNode = screen.getByText('const')
+    const endNode = screen.getByText('// comment')
+    const commonAncestor = startNode.closest('[data-line]')?.parentNode || startNode
+
+    // 1. Simulate selection of text in lines
+    const originalGetSelection = window.getSelection
+
+    const mockRange = {
+      startContainer: startNode,
+      endContainer: endNode,
+      commonAncestorContainer: commonAncestor,
+    } as unknown as Range
+
+    const mockSelection = {
+      isCollapsed: false,
+      rangeCount: 1,
+      getRangeAt: () => mockRange,
+    } as unknown as Selection
+
+    window.getSelection = () => mockSelection
+
+    // Trigger mouseup event to simulate user finishing selection
+    await act(async () => {
+      document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+    })
+
+    // Now, the + button (comment button) should be visible on the last selected line (line 2)
+    await waitFor(() => expect(screen.getByRole('button', { name: /add comment for lines 1-2/i })).toBeTruthy())
+
+    // 2. Click elsewhere (collapsed selection) to dismiss
+    const collapsedSelection = {
+      isCollapsed: true,
+      rangeCount: 0,
+    } as unknown as Selection
+
+    window.getSelection = () => collapsedSelection
+
+    await act(async () => {
+      document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+    })
+
+    // The + button should be gone
+    expect(screen.queryByRole('button', { name: /add comment for lines 1-2/i })).toBeNull()
+
+    // Restore original getSelection
+    window.getSelection = originalGetSelection
+  })
 })

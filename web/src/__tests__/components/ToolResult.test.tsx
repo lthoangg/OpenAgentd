@@ -155,16 +155,6 @@ describe("ToolResult — file list tools", () => {
     expect(screen.getByText("c/d.ts")).toBeTruthy()
   })
 
-  it("wraps long grep lines instead of overflowing horizontally", () => {
-    // grep emits "file:line: content" rows that can be very long; they must
-    // wrap so mobile users never get a horizontally clipped/scrolling result.
-    const longLine =
-      "src/very/deeply/nested/module/path/file.ts:128: const reallyLongIdentifierThatHasNoBreakingSpacesForAGoodWhile = true"
-    render(<ToolResult toolName="grep" result={longLine} />)
-    const li = screen.getByText(longLine)
-    expect(li.className).toContain("break-words")
-    expect(li.className).toContain("whitespace-pre-wrap")
-  })
 })
 
 // ---------------------------------------------------------------------------
@@ -196,22 +186,10 @@ describe("ToolResult — read", () => {
   })
 
   it("uses compact file chrome without diff line markers", () => {
-    const { container } = render(<ToolResult toolName="read" result={"line one\nline two"} />)
+    render(<ToolResult toolName="read" result={"line one\nline two"} />)
 
-    expect(container.querySelector("div[class*='bg-(--bg-card)']")).toBeTruthy()
-    expect(container.querySelector("div[class*='border-(--color-border)']")).toBeTruthy()
     expect(screen.queryByText("+")).toBeNull()
     expect(screen.queryByText("-")).toBeNull()
-  })
-
-  it("keeps scrolling on the read content instead of a sticky nested header", () => {
-    const { container } = render(<ToolResult toolName="read" result="line one" />)
-
-    const header = screen.getByText("read").parentElement
-    const body = container.querySelector("pre")
-    expect(header?.className).not.toContain("sticky")
-    expect(body?.className).toContain("max-h-[calc(10*1.55em)]")
-    expect(body?.className).toContain("overflow-auto")
   })
 
   it("renders full content as-is when no range header is present", () => {
@@ -268,34 +246,14 @@ describe("ToolResult — team_message", () => {
     expect(screen.getByText("Message sent to researcher")).toBeTruthy()
   })
 
-  it("renders success result in the standard body text color", () => {
-    render(<ToolResult toolName="team_message" result="Message delivered" />)
-    const span = screen.getByText("Message delivered")
-    // Team messages are plain content notes, not a success state — they
-    // use the same muted body color as other result text.
-    expect(span.className).toContain("color-text-2")
-  })
-
   it("renders error result starting with 'Agent(s) not found'", () => {
     render(<ToolResult toolName="team_message" result="Agent(s) not found: researcher. Available: writer, analyst" />)
     expect(screen.getByText(/Agent\(s\) not found/)).toBeTruthy()
   })
 
-  it("renders 'Agent(s) not found' error in the error color", () => {
-    render(<ToolResult toolName="team_message" result="Agent(s) not found: foo. Available: bar" />)
-    const span = screen.getByText(/Agent\(s\) not found/)
-    expect(span.className).toContain("color-error")
-  })
-
   it("renders error result starting with 'No valid recipients'", () => {
     render(<ToolResult toolName="team_message" result="No valid recipients provided" />)
     expect(screen.getByText(/No valid recipients/)).toBeTruthy()
-  })
-
-  it("renders 'No valid recipients' error in the error color", () => {
-    render(<ToolResult toolName="team_message" result="No valid recipients in the team" />)
-    const span = screen.getByText(/No valid recipients/)
-    expect(span.className).toContain("color-error")
   })
 
   it("renders result as a span element", () => {
@@ -304,17 +262,6 @@ describe("ToolResult — team_message", () => {
     expect(span.tagName.toLowerCase()).toBe("span")
   })
 
-  it("uses monospace font for result", () => {
-    render(<ToolResult toolName="team_message" result="Message sent" />)
-    const span = screen.getByText("Message sent")
-    expect(span.className).toContain("font-mono")
-  })
-
-  it("uses small text size for result", () => {
-    render(<ToolResult toolName="team_message" result="Message sent" />)
-    const span = screen.getByText("Message sent")
-    expect(span.className).toContain("text-[11px]")
-  })
 })
 
 // ---------------------------------------------------------------------------

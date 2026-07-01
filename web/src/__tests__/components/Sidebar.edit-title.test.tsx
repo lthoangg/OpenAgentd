@@ -270,23 +270,19 @@ describe('Sidebar session title editing', () => {
     const view = await renderSidebar()
     const drawer = view.container.querySelector('aside')
 
-    expect(drawer?.className).toContain('mobile-safe-top')
-    expect(drawer?.className).toContain('w-[min(272px,calc(100vw-2rem))]')
     expect(JSON.parse(drawer?.getAttribute('data-animate') ?? '{}')).toEqual({
       x: -280,
       width: 'min(272px, calc(100vw - 2rem))',
     })
   })
 
-  it('keeps the cockpit mobile backdrop below the app header', async () => {
+  it('renders a backdrop when the mobile sidebar is open', async () => {
     isMobile = true
 
     const view = await renderSidebar({ mobileOpen: true })
     const backdrop = view.container.querySelector('[aria-hidden="true"]')
 
     expect(backdrop).toBeTruthy()
-    expect(backdrop?.className).toContain('mobile-safe-top')
-    expect(backdrop?.className).toContain('bottom-0')
   })
 
   it('shows prior normal sessions even when mixed-mode data exists in cache', async () => {

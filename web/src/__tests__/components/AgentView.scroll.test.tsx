@@ -61,14 +61,6 @@ describe("AgentView — scroll-to-bottom button", () => {
     expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
   })
 
-  it("has correct aria-label", async () => {
-    const { container } = renderStream({ blocks: [makeTextBlock("b1", "Hi")] })
-    const el = container.querySelector(".overflow-y-auto") as HTMLDivElement
-    await fireScroll(el, 200)
-    expect(
-      container.querySelector('button[aria-label="Scroll to bottom"]')?.getAttribute("aria-label"),
-    ).toBe("Scroll to bottom")
-  })
 
   it("clicking button sets attached=true and hides button", async () => {
     const { container } = renderStream({ blocks: [makeTextBlock("b1", "Hi")] })

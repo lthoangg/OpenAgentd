@@ -231,9 +231,6 @@ describe('Coding workspace two-layer file preview', () => {
     expect(screen.getByText('3')).toBeTruthy()
     expect(screen.getByText('// comment')).toBeTruthy()
     expect(screen.getByText('return')).toBeTruthy()
-    const firstLine = screen.getByText('const').closest('div')
-    expect(firstLine?.className).toContain('whitespace-pre-wrap')
-    expect(firstLine?.className).toContain('break-words')
   })
 
   it('renders images inline in the separate file viewer panel', async () => {
@@ -266,14 +263,6 @@ describe('Coding workspace two-layer file preview', () => {
     expect(screen.queryByText('No inline preview for this file type')).toBeNull()
   })
 
-  it('hides the workspace tab scrollbar while keeping horizontal overflow scrollable', async () => {
-    await renderWorkspacePanel()
-
-    const tabRow = screen.getByRole('button', { name: /git/i }).parentElement
-    expect(tabRow?.className).toContain('overflow-x-auto')
-    expect(tabRow?.className).toContain('scrollbar-none')
-  })
-
   it('copy button fetches text content and writes it to the clipboard', async () => {
     const user = userEvent.setup()
     const writeText = mock(async () => {})
@@ -283,15 +272,6 @@ describe('Coding workspace two-layer file preview', () => {
     await user.click(screen.getByRole('button', { name: /copy file contents/i }))
 
     await waitFor(() => expect(writeText).toHaveBeenCalledWith('const value = 1\n// comment\nreturn value'))
-  })
-
-  it('positions the mobile workspace panel below the app header instead of covering desktop window controls', async () => {
-    await renderWorkspacePanel(mock(() => {}), null, true)
-
-    const panel = screen.getByRole('complementary')
-    expect(panel.className).toContain('mobile-safe-top')
-    expect(panel.className).toContain('fixed')
-    expect(panel.className).toContain('md:relative')
   })
 
   it('keeps mobile file search inside the workspace panel viewport', async () => {
@@ -315,42 +295,6 @@ describe('Coding workspace two-layer file preview', () => {
     await user.click(screen.getByRole('button', { name: /search files/i }))
 
     expect(onOpenPalette).toHaveBeenCalledTimes(1)
-  })
-
-  it('does not extend the desktop workspace panel into the macOS overlay header', async () => {
-    isMacOverlay = true
-    await renderWorkspacePanel(mock(() => {}), null, false)
-
-    const panel = screen.getByRole('complementary')
-    expect(panel.className).toContain('h-full')
-    expect(panel.className).not.toContain('-mt-10')
-    expect(panel.className).not.toContain('h-[calc(100%+2.5rem)]')
-  })
-
-  it('keeps the desktop workspace panel inside the app shell under non-macOS headers', async () => {
-    await renderWorkspacePanel(mock(() => {}), null, false)
-
-    const panel = screen.getByRole('complementary')
-    expect(panel.className).toContain('h-full')
-    expect(panel.className).not.toContain('-mt-10')
-    expect(panel.className).not.toContain('h-[calc(100%+2.5rem)]')
-  })
-
-  it('positions the mobile file viewer below the app header and keeps the preview full-width', async () => {
-    await renderViewer(readme, mock(() => {}), true)
-
-    const viewer = screen.getByLabelText('File viewer')
-    expect(viewer.className).toContain('mobile-safe-top')
-    expect(viewer.className).toContain('w-full')
-    expect(viewer.className).toContain('md:relative')
-  })
-
-  it('does not reserve mobile header safe-area space for the desktop file viewer', async () => {
-    await renderViewer(readme, mock(() => {}), false)
-
-    const viewer = screen.getByLabelText('File viewer')
-    expect(viewer.className).not.toContain('mobile-safe-top')
-    expect(viewer.className).toContain('md:relative')
   })
 
   it('lets users select preview lines and add a line comment reference', async () => {

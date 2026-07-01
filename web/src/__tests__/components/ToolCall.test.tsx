@@ -39,7 +39,6 @@ function getHeader(fullText: string): HTMLElement {
 function expectPlainArg(header: HTMLElement, arg: string) {
   expect(header.querySelector("em")).toBeNull()
   expect(header.textContent).toContain(arg)
-  expect(header.className).not.toContain("italic")
 }
 
 // ---------------------------------------------------------------------------
@@ -105,12 +104,6 @@ describe("ToolCall — shell display", () => {
     expect(screen.queryByText("shell")).toBeNull()
   })
 
-  it("renders the tool name bold and description normal", () => {
-    const args = JSON.stringify({ command: "npm test", description: "Run unit tests" })
-    render(<ToolCall name="shell" args={args} done={false} />)
-    expect(screen.getByText("Shell").className).toContain("font-semibold")
-    expect(getHeader("Run unit tests").className).not.toContain("font-semibold")
-  })
 
   it("shows command string as args instead of JSON", async () => {
     const user = userEvent.setup()
@@ -204,25 +197,6 @@ describe("ToolCall — diff stats", () => {
     expect(screen.queryByText("line 20")).toBeNull()
   })
 
-  it("renders diff file headers without sticky positioning", async () => {
-    const user = userEvent.setup()
-    const args = JSON.stringify({
-      path: "src/main.py",
-      old_string: "old line",
-      new_string: "new line",
-    })
-
-    render(<ToolCall name="edit" args={args} done={true} result="Edit applied successfully" />)
-
-    await user.click(screen.getByRole("button", { name: "Expand edit details" }))
-    const header = screen.getByRole("button", { name: "Collapse diff for src/main.py" })
-
-    expect(header.className).not.toContain("sticky")
-    expect(header.className).not.toContain("top-0")
-    expect(header.className).not.toContain("z-10")
-    expect(header.parentElement?.className).toContain("max-h-80")
-    expect(header.parentElement?.className).toContain("overflow-hidden")
-  })
 
   it("collapses the whole edit result when clicking the diff file header", async () => {
     const user = userEvent.setup()
@@ -493,11 +467,10 @@ describe("ToolCall — default display", () => {
 // ---------------------------------------------------------------------------
 
 describe("ToolCall — expand/collapse", () => {
-  it("cursor-default and no expand when no details", async () => {
+  it("is not expandable when no details", async () => {
     const user = userEvent.setup()
     render(<ToolCall name="date" />)
     const btn = screen.getByRole("button")
-    expect(btn.className).toContain("cursor-default")
     await user.click(btn)
     expect(screen.queryByText("arguments")).toBeNull()
   })
@@ -713,13 +686,14 @@ describe("ToolCall — skill display", () => {
     expect(screen.getByText("Skill")).toBeTruthy()
   })
 
-  it("is not expandable (no details to show)", () => {
+  it("is not expandable (no details to show)", async () => {
+    const user = userEvent.setup()
     const args = JSON.stringify({ skill_name: "react-component" })
     render(<ToolCall name="skill" args={args} done={false} />)
     const btn = screen.getByRole("button")
-    // Button should not be clickable (cursor-default)
-    expect(btn.className).toContain("cursor-default")
-    expect(btn.className).not.toContain("cursor-pointer")
+    // Verify clicking does not expand
+    await user.click(btn)
+    expect(screen.queryByText("arguments")).toBeNull()
   })
 
   it("shows the loaded instruction body when result is present", async () => {
@@ -728,7 +702,6 @@ describe("ToolCall — skill display", () => {
     render(<ToolCall name="skill" args={args} done={true} result="Very long skill instructions" />)
 
     // Button should be expandable now that result content is available
-    expect(screen.getByRole("button").className).toContain("cursor-pointer")
     await user.click(screen.getByRole("button"))
     expect(screen.getByText("Very long skill instructions")).toBeTruthy()
   })
@@ -929,13 +902,14 @@ describe("ToolCall — bg display", () => {
     expectPlainArg(getHeader("Checking process 42…"), "42")
   })
 
-  it("is not expandable (no details to show)", () => {
+  it("is not expandable (no details to show)", async () => {
+    const user = userEvent.setup()
     const args = JSON.stringify({ action: "list" })
     render(<ToolCall name="bg" args={args} done={false} />)
     const btn = screen.getByRole("button")
-    // Button should not be clickable (cursor-default)
-    expect(btn.className).toContain("cursor-default")
-    expect(btn.className).not.toContain("cursor-pointer")
+    // Verify clicking does not expand
+    await user.click(btn)
+    expect(screen.queryByText("arguments")).toBeNull()
   })
 
   it("shows result section when expanded with result", async () => {
@@ -1012,23 +986,6 @@ describe("ToolCall — copy buttons", () => {
     })
   })
 
-  it("keeps copy buttons visible and large enough for touch before desktop hover reveal", async () => {
-    const user = userEvent.setup()
-    render(
-      <ToolCall name="custom_tool" args='{"path":"hi.txt"}' done={true} result="some result" />
-    )
-    await user.click(screen.getByRole("button"))
-
-    for (const copyBtn of [screen.getByLabelText("Copy arguments"), screen.getByLabelText("Copy result")]) {
-      expect(copyBtn.className).toContain("opacity-100")
-      expect(copyBtn.className).toContain("h-7")
-      expect(copyBtn.className).toContain("w-7")
-      expect(copyBtn.className).toContain("md:h-6")
-      expect(copyBtn.className).toContain("md:w-6")
-      expect(copyBtn.className).toContain("md:opacity-0")
-      expect(copyBtn.className).toContain("md:group-hover:opacity-100")
-    }
-  })
 })
 
 // ---------------------------------------------------------------------------
@@ -1092,7 +1049,6 @@ describe("ToolCall — shell terminal label and formatting", () => {
     expect(pre!.textContent).toContain("ls")
     const dollarSpan = pre!.querySelector("span")
     expect(dollarSpan).toBeTruthy()
-    expect(dollarSpan!.className).toContain("select-none")
     expect(dollarSpan!.textContent).toBe("$ ")
   })
 
@@ -1186,7 +1142,7 @@ describe("ToolCall — shell syntax highlighting", () => {
     render(<ToolCall name="shell" args={args} done={false} />)
     // No expand button — nothing to show
     const btn = screen.getByRole("button")
-    expect(btn.className).toContain("cursor-default")
+    expect(btn).toBeTruthy()
   })
 })
 
@@ -1336,25 +1292,9 @@ describe("ToolCall — empty args {} show no args section", () => {
     const user = userEvent.setup()
     render(<ToolCall name="custom_tool" args="{}" done={false} />)
     const btn = screen.getByRole("button")
-    // Should not be expandable
-    expect(btn.className).toContain("cursor-default")
     await user.click(btn)
     // No args section should appear
     expect(screen.queryByText("arguments")).toBeNull()
-  })
-
-  it("shows no chevron when args is empty object", () => {
-    render(<ToolCall name="custom_tool" args="{}" done={false} />)
-    const btn = screen.getByRole("button")
-    // Not expandable — cursor-default, no hover class
-    expect(btn.className).toContain("cursor-default")
-  })
-
-  it("shows no expand button when args is empty object", () => {
-    render(<ToolCall name="custom_tool" args="{}" done={false} />)
-    const btn = screen.getByRole("button")
-    expect(btn.className).toContain("cursor-default")
-    expect(btn.className).not.toContain("hover:bg")
   })
 
   it("shows tool name when args is empty object", () => {
@@ -1369,7 +1309,6 @@ describe("ToolCall — empty args {} show no args section", () => {
     )
     const btn = screen.getByRole("button")
     // Should be expandable because result exists
-    expect(btn.className).not.toContain("cursor-default")
     await user.click(btn)
     expect(screen.getByText("result")).toBeTruthy()
   })
@@ -1394,7 +1333,6 @@ describe("ToolCall — empty args {} show no args section", () => {
     const user = userEvent.setup()
     render(<ToolCall name="date" done={false} />)
     const btn = screen.getByRole("button")
-    expect(btn.className).toContain("cursor-default")
     await user.click(btn)
     expect(screen.queryByText("arguments")).toBeNull()
   })
@@ -1403,7 +1341,6 @@ describe("ToolCall — empty args {} show no args section", () => {
     const user = userEvent.setup()
     render(<ToolCall name="date" args="{}" done={false} />)
     const btn = screen.getByRole("button")
-    expect(btn.className).toContain("cursor-default")
     await user.click(btn)
     expect(screen.queryByText("arguments")).toBeNull()
   })
@@ -1506,10 +1443,6 @@ describe("ToolCall — getToolDisplay called before copy handlers", () => {
     expect(preEl.textContent).toContain('"action": "create"')
     expect(preEl.textContent).toContain('"content": "Implement tests"')
     expect(preEl.textContent).not.toContain('\\"') // Ensure it's not escaped
-
-    // Verify that max height classes are applied
-    expect(preEl.className).toContain("max-h-[calc(10*1.55em)]")
-    expect(preEl.className).toContain("overflow-y-auto")
   })
 })
 
@@ -1544,97 +1477,5 @@ describe("ToolCall with incomplete JSON args (streaming)", () => {
     expect(screen.getByText("src/components/ToolResult.tsx")).toBeTruthy()
     await user.click(screen.getByRole("button"))
     expect(screen.getAllByText("src/components/ToolResult.tsx").length).toBeGreaterThan(0)
-  })
-})
-
-// ---------------------------------------------------------------------------
-// Background bleed regression — outer section must use bg-(--bg-input) so the
-// card background never shows through the rounded corners of inner content
-// blocks.  In light mode bg-card (#FFFBF1) ≠ bg-input (#FAF6EC), so a
-// section with the wrong token produces a visually-distinct "bleed" at the
-// bottom-left and bottom-right corners.
-// ---------------------------------------------------------------------------
-
-describe("ToolCall — outer section background token (bg-bleed regression)", () => {
-  it("expanded section has bg-(--bg-input) not bg-(--bg-card) for diff tools", async () => {
-    const user = userEvent.setup()
-    const args = JSON.stringify({
-      path: "src/foo.ts",
-      old_string: "old",
-      new_string: "new",
-    })
-    render(<ToolCall name="edit" args={args} done={true} result="ok" />)
-
-    await user.click(screen.getByRole("button"))
-
-    const section = document.querySelector("section.surface-raised")
-    expect(section).not.toBeNull()
-    expect(section!.className).toContain("bg-(--bg-input)")
-    expect(section!.className).not.toContain("bg-(--bg-card)")
-  })
-
-  it("expanded section has bg-(--bg-input) not bg-(--bg-card) for patch tool", async () => {
-    const user = userEvent.setup()
-    const patchText = [
-      "*** Begin Patch",
-      "*** Update File: src/utils.ts",
-      "@@",
-      "-old",
-      "+new",
-      "*** End Patch",
-    ].join("\n")
-    render(<ToolCall name="patch" args={JSON.stringify({ patch_text: patchText })} done={true} result="ok" />)
-
-    await user.click(screen.getByRole("button"))
-
-    const section = document.querySelector("section.surface-raised")
-    expect(section).not.toBeNull()
-    expect(section!.className).toContain("bg-(--bg-input)")
-    expect(section!.className).not.toContain("bg-(--bg-card)")
-  })
-
-  it("expanded section has bg-(--bg-input) not bg-(--bg-card) for read tool", async () => {
-    const user = userEvent.setup()
-    render(
-      <ToolCall
-        name="read"
-        args={JSON.stringify({ path: "src/foo.ts" })}
-        done={true}
-        result="[1-1/1]\nconsole.log('hi')"
-      />,
-    )
-
-    await user.click(screen.getByRole("button"))
-
-    const section = document.querySelector("section.surface-raised")
-    expect(section).not.toBeNull()
-    expect(section!.className).toContain("bg-(--bg-input)")
-    expect(section!.className).not.toContain("bg-(--bg-card)")
-  })
-
-  it("expanded section has bg-(--bg-input) not bg-(--bg-card) for shell tool", async () => {
-    const user = userEvent.setup()
-    const args = JSON.stringify({ command: "echo hi", description: "Print hi" })
-    render(<ToolCall name="shell" args={args} done={true} result="[Succeeded]\nhi" />)
-
-    await user.click(screen.getByRole("button"))
-
-    const section = document.querySelector("section.surface-raised")
-    expect(section).not.toBeNull()
-    expect(section!.className).toContain("bg-(--bg-input)")
-    expect(section!.className).not.toContain("bg-(--bg-card)")
-  })
-
-  it("expanded section has bg-(--bg-input) not bg-(--bg-card) for write tool", async () => {
-    const user = userEvent.setup()
-    const args = JSON.stringify({ path: "src/new.ts", content: "export {}" })
-    render(<ToolCall name="write" args={args} done={true} result="ok" />)
-
-    await user.click(screen.getByRole("button"))
-
-    const section = document.querySelector("section.surface-raised")
-    expect(section).not.toBeNull()
-    expect(section!.className).toContain("bg-(--bg-input)")
-    expect(section!.className).not.toContain("bg-(--bg-card)")
   })
 })

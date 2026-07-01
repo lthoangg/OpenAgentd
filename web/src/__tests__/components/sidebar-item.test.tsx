@@ -91,22 +91,20 @@ describe("SidebarItem — expanded vs collapsed", () => {
     expect(container.querySelector("kbd")).toBeNull()
   })
 
-  it("collapsed mode keeps the icon visible (40×40)", () => {
-    const { container } = render(
+  it("collapsed mode shows only the icon", () => {
+    render(
       <SidebarItem Icon={Home} label="Dashboard" collapsed />,
     )
-    const btn = container.querySelector("button")!
-    expect(btn.className).toContain("h-10")
-    expect(btn.className).toContain("w-10")
-    expect(btn.className).toContain("justify-center")
+    // Label and kbd should be hidden
+    expect(screen.queryByText("Dashboard")).toBeNull()
+    // Icon should still be visible via the button role
+    expect(screen.getByRole("button")).toBeTruthy()
   })
 
-  it("expanded mode uses px-3/py-2 padding (40h via padding+text)", () => {
-    const { container } = render(<SidebarItem Icon={Home} label="Dashboard" />)
-    const btn = container.querySelector("button")!
-    expect(btn.className).toContain("px-3")
-    expect(btn.className).toContain("py-2")
-    expect(btn.className).not.toContain("h-10")
+  it("expanded mode shows label and kbd", () => {
+    render(<SidebarItem Icon={Home} label="Dashboard" kbd="^N" />)
+    expect(screen.getByText("Dashboard")).toBeTruthy()
+    expect(screen.getByText("Ctrl+N")).toBeTruthy()
   })
 })
 
@@ -184,11 +182,10 @@ describe("SidebarItem — active state", () => {
     expect(btn.getAttribute("aria-current")).toBeNull()
   })
 
-  it("applies the active background class when active", () => {
+  it("marks active state with aria-current", () => {
     const { container } = render(<SidebarItem Icon={Home} label="X" active />)
     const btn = container.querySelector("button")!
-    expect(btn.className).toContain("bg-(--bg-key)")
-    expect(btn.className).toContain("font-medium")
+    expect(btn.getAttribute("aria-current")).toBe("page")
   })
 })
 

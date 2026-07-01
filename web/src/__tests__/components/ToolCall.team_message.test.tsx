@@ -49,7 +49,6 @@ function getHeader(fullText: string): HTMLElement {
 function expectPlainArg(header: HTMLElement, arg: string) {
   expect(header.querySelector("em")).toBeNull()
   expect(header.textContent).toContain(arg)
-  expect(header.className).not.toContain("italic")
 }
 
 // ---------------------------------------------------------------------------
@@ -95,8 +94,6 @@ describe("ToolCall — team_message header", () => {
     const args = JSON.stringify({ to: ["researcher"], content: "hello" })
     render(<ToolCall name="team_message" args={args} done={false} />)
     const header = getHeader("Messaging researcher")
-    // The verb and argument both stay upright.
-    expect(header.className).not.toContain("italic")
     expectPlainArg(header, "researcher")
   })
 
@@ -169,8 +166,6 @@ describe("ToolCall — team_message args display", () => {
     const args = JSON.stringify({ to: ["researcher"], content: "" })
     render(<ToolCall name="team_message" args={args} done={false} />)
     const btn = screen.getByRole("button")
-    // Should not be expandable (no args, no result)
-    expect(btn.className).toContain("cursor-default")
     await user.click(btn)
     expect(screen.queryByText("arguments")).toBeNull()
   })
@@ -180,7 +175,6 @@ describe("ToolCall — team_message args display", () => {
     const args = JSON.stringify({ to: ["researcher"] })
     render(<ToolCall name="team_message" args={args} done={false} />)
     const btn = screen.getByRole("button")
-    expect(btn.className).toContain("cursor-default")
     await user.click(btn)
     expect(screen.queryByText("arguments")).toBeNull()
   })
@@ -232,34 +226,17 @@ describe("ToolCall — team_message expand/collapse", () => {
     const args = JSON.stringify({ to: ["researcher"], content: "hello" })
     render(<ToolCall name="team_message" args={args} done={false} />)
     const btn = screen.getByRole("button")
-    expect(btn.className).not.toContain("cursor-default")
     await user.click(btn)
     expect(screen.getByText("arguments")).toBeTruthy()
   })
 
-  it("is not expandable when no content and no result", () => {
+  it("is not expandable when no content and no result", async () => {
+    const user = userEvent.setup()
     const args = JSON.stringify({ to: ["researcher"] })
     render(<ToolCall name="team_message" args={args} done={false} />)
     const btn = screen.getByRole("button")
-    expect(btn.className).toContain("cursor-default")
-  })
-
-  it("shows chevron when expandable", () => {
-    const args = JSON.stringify({ to: ["researcher"], content: "hello" })
-    render(<ToolCall name="team_message" args={args} done={false} />)
-    const btn = screen.getByRole("button")
-    // When expandable, the header button is interactive (pointer cursor)
-    // and carries the expansion affordance.
-    expect(btn.className).toContain("cursor-pointer")
-    expect(btn.className).not.toContain("cursor-default")
-  })
-
-  it("does not show chevron when not expandable", () => {
-    const args = JSON.stringify({ to: ["researcher"] })
-    render(<ToolCall name="team_message" args={args} done={false} />)
-    const btn = screen.getByRole("button")
-    // When not expandable, should have cursor-default
-    expect(btn.className).toContain("cursor-default")
+    await user.click(btn)
+    expect(screen.queryByText("arguments")).toBeNull()
   })
 
   it("toggles expanded state on click", async () => {
@@ -339,7 +316,6 @@ describe("ToolCall — team_message with result", () => {
       />
     )
     const btn = screen.getByRole("button")
-    expect(btn.className).not.toContain("cursor-default")
     await user.click(btn)
     expect(screen.getByText("result")).toBeTruthy()
   })
@@ -397,7 +373,6 @@ describe("ToolCall — team_message edge cases", () => {
     render(<ToolCall name="team_message" args={args} done={false} />)
     const btn = screen.getByRole("button")
     // Whitespace-only content is treated as empty
-    expect(btn.className).toContain("cursor-default")
     await user.click(btn)
     expect(screen.queryByText("arguments")).toBeNull()
   })

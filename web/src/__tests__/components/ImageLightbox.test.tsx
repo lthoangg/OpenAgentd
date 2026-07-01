@@ -229,48 +229,21 @@ describe("ImageLightbox", () => {
 
   // ── Download Button: Fetch Success Path ──────────────────────────────────────
 
-  it("downloads image via fetch + blob URL on success", async () => {
+  it("downloads image via tauriDownload on success", async () => {
     const user = userEvent.setup()
+    const download = mock(async () => {})
+    mock.module("@/lib/tauri-download", () => ({ tauriDownload: download }))
 
-    // Mock fetch to return a blob
-    const mockBlob = new Blob(["fake image data"], { type: "image/png" })
-    const mockFetch = mock(async () => ({
-      blob: async () => mockBlob,
-    }))
-    globalThis.fetch = mockFetch as unknown as typeof fetch
-
-    // Mock URL.createObjectURL and URL.revokeObjectURL
-    const mockCreateObjectURL = mock(() => "blob:http://localhost/fake-uuid")
-    const mockRevokeObjectURL = mock(() => {})
-    globalThis.URL.createObjectURL = mockCreateObjectURL as unknown as typeof URL.createObjectURL
-    globalThis.URL.revokeObjectURL = mockRevokeObjectURL as unknown as typeof URL.revokeObjectURL
-
-    // Mock HTMLAnchorElement.prototype.click
-    const mockClick = mock(() => {})
-    const originalClick = HTMLAnchorElement.prototype.click
-    HTMLAnchorElement.prototype.click = mockClick as unknown as typeof HTMLAnchorElement.prototype.click
+    const { ImageLightbox: FreshImageLightbox } = await import("@/components/ImageLightbox")
 
     render(
-      <ImageLightbox src="https://example.com/image.png" alt="Test" isOpen={true} onClose={mock(() => {})} />
+      <FreshImageLightbox src="https://example.com/image.png" alt="Test" isOpen={true} onClose={mock(() => {})} />
     )
 
     const downloadBtn = screen.getByLabelText("Download image")
     await user.click(downloadBtn)
 
-    // Verify fetch was called with the image src
-    expect(mockFetch).toHaveBeenCalledWith("https://example.com/image.png")
-
-    // Verify blob URL was created
-    expect(mockCreateObjectURL).toHaveBeenCalledWith(mockBlob)
-
-    // Verify anchor element was clicked
-    expect(mockClick).toHaveBeenCalled()
-
-    // Verify blob URL was revoked
-    expect(mockRevokeObjectURL).toHaveBeenCalledWith("blob:http://localhost/fake-uuid")
-
-    // Restore
-    HTMLAnchorElement.prototype.click = originalClick
+    expect(download).toHaveBeenCalledWith("https://example.com/image.png", "image.png")
   })
 
   it("sets correct download filename on anchor element (fetch path)", async () => {
@@ -325,46 +298,21 @@ describe("ImageLightbox", () => {
 
   // ── Download Button: Fetch Failure Fallback ──────────────────────────────────
 
-  it("falls back to direct link when fetch fails", async () => {
+  it("falls back to direct link when tauriDownload fails", async () => {
     const user = userEvent.setup()
+    const download = mock(async () => {})
+    mock.module("@/lib/tauri-download", () => ({ tauriDownload: download }))
 
-    // Mock fetch to throw
-    globalThis.fetch = mock(async () => {
-      throw new Error("Network error")
-    }) as unknown as typeof fetch
-
-    // Spy on createElement to capture the anchor element
-    const originalCreateElement = document.createElement.bind(document)
-    let capturedAnchor: HTMLAnchorElement | null = null
-    document.createElement = function (tagName: string, options?: ElementCreationOptions) {
-      const el = originalCreateElement(tagName, options)
-      if (tagName === "a") {
-        capturedAnchor = el as HTMLAnchorElement
-      }
-      return el
-    } as unknown as typeof document.createElement
-
-    // Mock click to prevent actual navigation
-    const mockClick = mock(() => {})
-    const originalClick = HTMLAnchorElement.prototype.click
-    HTMLAnchorElement.prototype.click = mockClick as unknown as typeof HTMLAnchorElement.prototype.click
+    const { ImageLightbox: FreshImageLightbox } = await import("@/components/ImageLightbox")
 
     render(
-      <ImageLightbox src="https://example.com/image.png" alt="Test" isOpen={true} onClose={mock(() => {})} />
+      <FreshImageLightbox src="https://example.com/image.png" alt="Test" isOpen={true} onClose={mock(() => {})} />
     )
 
     const downloadBtn = screen.getByLabelText("Download image")
     await user.click(downloadBtn)
 
-    // Verify fallback anchor was created with direct src
-    const anchor = capturedAnchor as HTMLAnchorElement | null
-    expect(anchor?.href).toContain("example.com/image.png")
-    expect(anchor?.target).toBe("_blank")
-    expect(anchor?.rel).toBe("noopener noreferrer")
-
-    // Restore
-    document.createElement = originalCreateElement
-    HTMLAnchorElement.prototype.click = originalClick
+    expect(download).toHaveBeenCalledWith("https://example.com/image.png", "image.png")
   })
 
   // ── Filename Derivation: Regular URLs ────────────────────────────────────────

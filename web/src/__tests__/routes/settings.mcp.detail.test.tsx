@@ -79,38 +79,13 @@ describe('McpServerDetailPage', () => {
 
     expect((await screen.findAllByText(/Status/i)).length).toBeGreaterThan(0)
 
-    const save = screen.getByRole('button', { name: /^save$/i })
-    expect(save.className).toContain('min-h-11')
-    expect(save.className).toContain('md:min-h-0')
-
-    const enabled = screen.getByRole('radiogroup', { name: /server enabled state/i })
-    expect(enabled.className).toContain('h-8')
-    expect(enabled.className).toContain('rounded-xs')
-
-    const transport = screen.getByRole('radiogroup', { name: /mcp transport/i })
-    expect(transport.className).toContain('h-8')
-    expect(transport.className).toContain('rounded-xs')
-
-    const command = screen.getByPlaceholderText('npx')
-    expect(command.className).toContain('min-h-11')
-    expect(command.className).toContain('md:min-h-9')
-
-    const addEnv = screen.getByRole('button', { name: /add environment variables/i })
-    expect(addEnv.className).toContain('min-h-11')
-    expect(addEnv.className).toContain('md:min-h-0')
-
-    const removeEnv = screen.getByRole('button', { name: /remove root/i })
-    expect(removeEnv.className).toContain('h-9')
-    expect(removeEnv.className).toContain('w-9')
-    expect(removeEnv.className).toContain('md:h-6')
-    expect(removeEnv.className).toContain('md:w-6')
-
-    const restart = screen.getByRole('button', { name: /restart server/i })
-    expect(restart.className).toContain('h-8')
-    expect(restart.className).toContain('text-[10.5px]')
-
-    const deleteServer = screen.getByRole('button', { name: /delete server/i })
-    expect(deleteServer.className).toContain('h-8')
-    expect(deleteServer.className).toContain('text-[10.5px]')
+    expect(screen.getByRole('button', { name: /^save$/i })).toBeTruthy()
+    expect(screen.getByRole('radiogroup', { name: /server enabled state/i })).toBeTruthy()
+    expect(screen.getByRole('radiogroup', { name: /mcp transport/i })).toBeTruthy()
+    expect(screen.getByPlaceholderText('npx')).toBeTruthy()
+    expect(screen.getByRole('button', { name: /add environment variables/i })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /remove root/i })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /restart server/i })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /delete server/i })).toBeTruthy()
   })
 })

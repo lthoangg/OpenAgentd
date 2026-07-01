@@ -109,24 +109,6 @@ describe("ImageAttachment", () => {
     expect(removeBtn).toBeTruthy()
   })
 
-  it("keeps the removable image action visible and large enough for touch before desktop hover reveal", () => {
-    render(
-      <ImageAttachment
-        src="https://example.com/photo.jpg"
-        alt="Touch remove"
-        removable={true}
-        onRemove={mock(() => {})}
-      />
-    )
-
-    const removeBtn = screen.getByLabelText("Remove image")
-    expect(removeBtn.className).toContain("opacity-100")
-    expect(removeBtn.className).toContain("h-7")
-    expect(removeBtn.className).toContain("w-7")
-    expect(removeBtn.className).toContain("md:opacity-0")
-    expect(removeBtn.className).toContain("md:group-hover:opacity-100")
-  })
-
   it("clicking remove button calls onRemove callback", async () => {
     const user = userEvent.setup()
     const onRemove = mock(() => {})

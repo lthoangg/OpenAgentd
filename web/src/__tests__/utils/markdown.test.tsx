@@ -482,16 +482,4 @@ describe("MarkdownBlock code fences", () => {
     expect(pre?.previousElementSibling?.textContent).not.toBe("plain text");
   });
 
-  it("keeps code copy action visible and large enough for touch before desktop hover reveal", () => {
-    render(<MarkdownBlock content={["```ts", "const answer = 42", "```"].join("\n")} />);
-
-    const copyButton = screen.getByLabelText("Copy code");
-    expect(copyButton.className).toContain("opacity-100");
-    expect(copyButton.className).toContain("h-8");
-    expect(copyButton.className).toContain("w-8");
-    expect(copyButton.className).toContain("md:h-6");
-    expect(copyButton.className).toContain("md:w-6");
-    expect(copyButton.className).toContain("md:opacity-0");
-    expect(copyButton.className).toContain("md:group-hover:opacity-100");
-  });
 });

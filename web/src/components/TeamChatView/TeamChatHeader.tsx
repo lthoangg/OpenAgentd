@@ -94,19 +94,16 @@ export function TeamChatHeader({
         isMacOverlay ? 'select-none pl-[70px]' : ''
       }`}
     >
-        {/* Desktop keeps a Home affordance in the menubar. Mobile uses
-            one global nav entry and places Home inside the drawer. */}
-        {!isMobile && (
-          <div
-            className={`flex h-full shrink-0 items-center justify-center ${
-              isMacOverlay ? 'pl-2' : 'md:w-14'
-            }`}
-          >
+        {/* Desktop keeps a Home affordance in the menubar, right next to
+            the hamburger (same tight gap-1 rhythm as AppHeader). Mobile
+            uses one global nav entry and places Home inside the drawer. */}
+        <div className={`mr-1 flex h-full min-w-0 shrink items-center gap-1 pl-2 md:mr-2 ${isMacOverlay ? '' : 'md:pl-3'}`}>
+          {!isMobile && (
             <a
               href="/"
               aria-label="Home"
               title="Home"
-              className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
               onClick={(event) => {
                 event.preventDefault()
                 navigate({ to: '/' })
@@ -114,13 +111,11 @@ export function TeamChatHeader({
             >
               <Home size={16} aria-hidden="true" />
             </a>
-          </div>
-        )}
+          )}
 
-        {/* Hamburger target depends on mode: coding sidebar toggle,
-            mobile drawer, or synthetic Ctrl+B for the normal sidebar
-            (whose collapse state is owned by Sidebar). */}
-        <div className={isMacOverlay ? 'mr-1 flex min-w-0 shrink items-center gap-1 pl-2 md:mr-2' : 'mr-1 flex min-w-0 shrink items-center gap-1 pl-2 md:mr-2 md:pl-0'}>
+          {/* Hamburger target depends on mode: coding sidebar toggle,
+              mobile drawer, or synthetic Ctrl+B for the normal sidebar
+              (whose collapse state is owned by Sidebar). */}
           <button
             type="button"
             onClick={() => {

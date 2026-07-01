@@ -1,5 +1,10 @@
-import { describe, expect, it, mock } from 'bun:test'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, mock } from 'bun:test'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+
+afterEach(cleanup)
+
+mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
+
 import { SummaryView } from '@/routes/telemetry/summary/SummaryView'
 import { TracesSection } from '@/routes/telemetry/traces/TracesSection'
 import type { ObservabilitySummary, TraceListItem } from '@/api/client'
@@ -93,6 +98,38 @@ describe('SummaryView', () => {
     expect(screen.getByText('925')).toBeTruthy()
     expect(screen.queryByText('Latency')).toBeNull()
     expect(screen.queryByText('By tool')).toBeNull()
+  })
+
+  it('renders each section as a SectionCard with an uppercase header strip', () => {
+    render(<SummaryView data={summary} />)
+
+    for (const label of ['Usage', 'Provider:model', 'Cache hit/miss']) {
+      const header = screen.getAllByText(label)[0]
+      expect(header.className).toContain('uppercase')
+      expect(header.className).toContain('tracking-wider')
+      const card = header.parentElement
+      expect(card?.className).toContain('rounded')
+      expect(card?.className).toContain('border')
+      expect(card?.className).toContain('bg-(--bg-card)')
+    }
+  })
+
+  it('shows empty-state copy instead of a table when a breakdown has no rows', () => {
+    const empty: ObservabilitySummary = { ...summary, by_model: [], cache_by_step: [] }
+    render(<SummaryView data={empty} />)
+
+    expect(screen.getByText('No LLM calls recorded in this window.')).toBeTruthy()
+    expect(screen.getByText('No cache usage recorded in this window.')).toBeTruthy()
+    expect(screen.queryByRole('table')).toBeNull()
+  })
+
+  it('surfaces the sampling notice only when spans are sampled below 100%', () => {
+    const { rerender } = render(<SummaryView data={summary} />)
+    expect(screen.queryByText(/Spans are sampled at/)).toBeNull()
+
+    rerender(<SummaryView data={{ ...summary, sample_ratio: 0.5 }} />)
+    expect(screen.getByText('50%', { exact: false })).toBeTruthy()
+    expect(screen.getByText(/Spans are sampled at/)).toBeTruthy()
   })
 })
 
@@ -192,5 +229,114 @@ describe('TracesSection', () => {
     expect(affordance?.className).toContain('w-7')
     expect(affordance?.className).toContain('md:h-6')
     expect(affordance?.className).toContain('md:w-6')
+  })
+
+  it('wraps the list in a SectionCard header that shows the recent-traces count', () => {
+    render(
+      <TracesSection
+        query={query()}
+        traces={[trace]}
+        limit={25}
+        total={60}
+        hasNext
+        onLoadMore={() => {}}
+        onSelectTrace={() => {}}
+      />,
+    )
+
+    const label = screen.getByText('Recent traces')
+    const headerStrip = label.parentElement
+    expect(headerStrip?.className).toContain('uppercase')
+    expect(headerStrip?.className).toContain('tracking-wider')
+    const card = headerStrip?.parentElement
+    expect(card?.className).toContain('rounded')
+    expect(card?.className).toContain('border')
+    expect(screen.getByText('Showing 1 of 60')).toBeTruthy()
+  })
+
+  it('shows a loading placeholder on first load and hides the trace count', () => {
+    render(
+      <TracesSection
+        query={{ isLoading: true, isError: false, isFetching: true, error: null }}
+        traces={[]}
+        limit={25}
+        total={0}
+        hasNext={false}
+        onLoadMore={() => {}}
+        onSelectTrace={() => {}}
+      />,
+    )
+
+    expect(screen.getByText('Loading traces…')).toBeTruthy()
+    expect(screen.queryByText(/Showing/)).toBeNull()
+    expect(screen.queryByRole('table')).toBeNull()
+  })
+
+  it('surfaces the query error message instead of the table', () => {
+    render(
+      <TracesSection
+        query={{ isLoading: false, isError: true, isFetching: false, error: new Error('boom') }}
+        traces={[]}
+        limit={25}
+        total={0}
+        hasNext={false}
+        onLoadMore={() => {}}
+        onSelectTrace={() => {}}
+      />,
+    )
+
+    expect(screen.getByText('Could not load traces: Error: boom')).toBeTruthy()
+    expect(screen.queryByRole('table')).toBeNull()
+  })
+
+  it('shows an empty-window message when there are no traces at all', () => {
+    render(
+      <TracesSection
+        query={query()}
+        traces={[]}
+        limit={25}
+        total={0}
+        hasNext={false}
+        onLoadMore={() => {}}
+        onSelectTrace={() => {}}
+      />,
+    )
+
+    expect(screen.getByText('No traces in this window.')).toBeTruthy()
+    expect(screen.queryByRole('table')).toBeNull()
+  })
+
+  it('shows the fetching-more label while a follow-up page is in flight', () => {
+    render(
+      <TracesSection
+        query={{ isLoading: false, isError: false, isFetching: true, error: null }}
+        traces={[trace]}
+        limit={25}
+        total={60}
+        hasNext
+        onLoadMore={() => {}}
+        onSelectTrace={() => {}}
+      />,
+    )
+
+    expect(screen.getByText('Loading more traces…')).toBeTruthy()
+    expect(screen.queryByText('Scroll to load 25 more')).toBeNull()
+  })
+
+  it('does not render a load-more footer once every trace has been fetched', () => {
+    render(
+      <TracesSection
+        query={query()}
+        traces={[trace]}
+        limit={25}
+        total={1}
+        hasNext={false}
+        onLoadMore={() => {}}
+        onSelectTrace={() => {}}
+      />,
+    )
+
+    expect(screen.queryByText(/Scroll to load/)).toBeNull()
+    expect(screen.queryByText(/Loading more traces/)).toBeNull()
   })
 })

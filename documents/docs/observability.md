@@ -2,7 +2,7 @@
 title: OpenTelemetry Observability
 description: OTel traces, metrics, export-time sampling tiers, span hierarchy for single and multi-agent runs, /telemetry UI.
 status: stable
-updated: 2026-04-21
+updated: 2026-07-02
 ---
 
 # OpenTelemetry Observability
@@ -22,7 +22,7 @@ openagentd emits OpenTelemetry traces and metrics from every agent run — singl
 | `app/services/title_service.py` | `generate_and_save_title` — emits `title_generation` span directly |
 | `app/services/observability_service.py` | DuckDB query layer over the JSONL partitions — powers the HTTP API |
 | `app/api/routes/observability.py` | `GET /api/observability/summary`, `/traces`, `/traces/{trace_id}` |
-| `web/src/routes/telemetry.tsx` | `/telemetry` page — aggregates, trace list, waterfall, span-detail panel |
+| `web/src/routes/telemetry/` | `/telemetry` page — `index.tsx` (route + day-range/summary/trace-detail state), `chrome.tsx` (header), `primitives.tsx` (shared `SectionCard`/table primitives, re-exported from `@/components/ui/section-card`), `summary/`, `traces/`, `waterfall/`. Tests: `web/src/__tests__/routes/telemetry.*.test.tsx`. |
 | `manual/otel_inspect.py` | CLI tool to query spans and metrics from JSONL files |
 
 ---

@@ -1,6 +1,6 @@
 # OpenAgentd styling applications
 
-_Last updated: 2026-06-26_
+_Last updated: 2026-07-02_
 
 OpenAgentd uses a custom warm-paper design language built with plain Tailwind CSS tokens. Do not introduce shadcn styling defaults for app primitives.
 
@@ -24,7 +24,7 @@ Use these shared settings primitives instead of hand-rolled repeated markup:
 
 - `SettingsSection`: section wrapper with heading, description, and `SectionCard` surface.
 - `SettingsField`: label, control, hint, and error layout.
-- `SectionCard`, `SectionCardHeader`, `SectionCardRows`, `SectionCardRow`, `SectionCardBadge`: dense card/list family.
+- `SectionCard`, `SectionCardHeader`, `SectionCardRows`, `SectionCardRow`, `SectionCardBadge`: dense card/list family. Also used by the `/telemetry` page (`web/src/routes/telemetry/primitives.tsx` re-exports them) for its usage, provider:model, cache, and traces sections — see [`observability.md`](../docs/observability.md).
 - `SearchBar`: icon-prefixed search/filter input with clear button, optional count, and `onSearch` callback.
 - `SegmentedControl`: compact warm-paper segmented toggles.
 

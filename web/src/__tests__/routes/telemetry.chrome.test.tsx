@@ -1,6 +1,10 @@
-import { describe, expect, it, mock } from 'bun:test'
-import { render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, mock } from 'bun:test'
+import { cleanup, render, screen } from '@testing-library/react'
 import type { ReactNode } from 'react'
+
+afterEach(cleanup)
+
+mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 
 mock.module('@tanstack/react-router', () => ({
   Link: ({ children, to, ...props }: { children: ReactNode; to: string }) => (

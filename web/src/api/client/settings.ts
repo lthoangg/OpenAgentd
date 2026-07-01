@@ -104,6 +104,7 @@ export type ProviderInfo = {
   cached_models: string[]
   visible_models: string[]
   is_disconnected: boolean
+  supports_fast_mode: boolean
 }
 
 export type ProvidersListBody = {

@@ -35,6 +35,7 @@ function placeholderRegistryFromProviders(data: ProvidersListBody | undefined): 
         output_video: false,
         thinking_levels: [],
         summary_trigger_tokens: 0,
+        fast_mode: provider.supports_fast_mode ?? false,
       })
     }
   }

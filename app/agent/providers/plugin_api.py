@@ -54,6 +54,7 @@ class ProviderPlugin:
     model_registry_aliases: dict[str, str] = field(default_factory=dict)
     docs_url: str = ""
     oauth_command: str = ""
+    supports_fast_mode: bool = False
 
 
 def credential_map(fields: list[ProviderCredentialField]) -> list[dict[str, object]]:

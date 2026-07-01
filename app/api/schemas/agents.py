@@ -59,6 +59,7 @@ class ModelCatalogEntry(BaseModel):
     output_video: bool = False
     thinking_levels: list[str] = []
     summary_trigger_tokens: int
+    fast_mode: bool = False
 
 
 class RegistryResponse(BaseModel):

@@ -250,6 +250,85 @@ async def test_registry_returns_catalog(
     assert isinstance(body["providers"], list) and body["providers"]
 
 
+@pytest.mark.asyncio
+async def test_registry_model_fast_mode_matches_provider_support(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+):
+    """Each model entry's fast_mode reflects its provider's supports_fast_mode flag."""
+    from app.agent.providers.catalog import _CATALOG
+
+    # Seed one model for a fast-mode provider and one for a non-fast-mode provider.
+    fast_provider = next(e for e in _CATALOG if e.get("supports_fast_mode"))
+    slow_provider = next(e for e in _CATALOG if not e.get("supports_fast_mode"))
+
+    monkeypatch.setattr(
+        "app.api.routes.agents.provider_is_disconnected", lambda pid: False
+    )
+    monkeypatch.setattr("app.api.routes.agents.provider_visible_models", lambda pid: [])
+    monkeypatch.setattr(
+        "app.api.routes.agents.provider_cached_models",
+        lambda pid: (
+            ["test-fast-model"]
+            if pid == fast_provider["id"]
+            else ["test-slow-model"]
+            if pid == slow_provider["id"]
+            else []
+        ),
+    )
+    monkeypatch.setattr("app.api.routes.agents.is_agent_model_id", lambda mid: True)
+
+    res = await client.get("/api/agents/registry")
+    assert res.status_code == 200
+
+    models_by_id = {m["id"]: m for m in res.json()["models"]}
+
+    fast_id = f"{fast_provider['id']}:test-fast-model"
+    slow_id = f"{slow_provider['id']}:test-slow-model"
+
+    assert fast_id in models_by_id, f"Expected {fast_id} in registry"
+    assert models_by_id[fast_id]["fast_mode"] is True
+
+    assert slow_id in models_by_id, f"Expected {slow_id} in registry"
+    assert models_by_id[slow_id]["fast_mode"] is False
+
+
+@pytest.mark.asyncio
+async def test_registry_plugin_provider_fast_mode_stamped(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+):
+    """A plugin provider with supports_fast_mode=True has fast_mode=True on its models."""
+    from app.agent.providers.plugin_api import ProviderPlugin
+
+    fast_plugin = ProviderPlugin(
+        id="myfastplugin",
+        label="My Fast Plugin",
+        description="Fast.",
+        kind="api_key",
+        factory=lambda ctx: None,  # type: ignore[arg-type]
+        supports_fast_mode=True,
+    )
+
+    monkeypatch.setattr(
+        "app.agent.providers.plugin_registry.provider_plugins",
+        lambda: {"myfastplugin": fast_plugin},
+    )
+    monkeypatch.setattr(
+        "app.api.routes.agents.provider_is_disconnected", lambda pid: False
+    )
+    monkeypatch.setattr("app.api.routes.agents.provider_visible_models", lambda pid: [])
+    monkeypatch.setattr(
+        "app.api.routes.agents.provider_cached_models",
+        lambda pid: ["plugin-model"] if pid == "myfastplugin" else [],
+    )
+    monkeypatch.setattr("app.api.routes.agents.is_agent_model_id", lambda mid: True)
+
+    res = await client.get("/api/agents/registry")
+    assert res.status_code == 200
+
+    models_by_id = {m["id"]: m for m in res.json()["models"]}
+    assert models_by_id.get("myfastplugin:plugin-model", {}).get("fast_mode") is True
+
+
 # ── GET /agents/{name} ───────────────────────────────────────────────────────
 
 

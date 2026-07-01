@@ -68,6 +68,8 @@ class ProviderInfo(BaseModel):
     # When True the provider is configured but intentionally hidden from all
     # model pickers (user has disconnected it).
     is_disconnected: bool = False
+    # Whether this provider honours service_tier="fast" (fast/priority mode).
+    supports_fast_mode: bool = False
 
 
 class ProvidersListBody(BaseModel):

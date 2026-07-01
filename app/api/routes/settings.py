@@ -381,6 +381,7 @@ async def list_providers() -> ProvidersListBody:
                 cached_models=provider_cached_models(entry["id"]),
                 visible_models=provider_visible_models(entry["id"]),
                 is_disconnected=provider_is_disconnected(entry["id"]),
+                supports_fast_mode=entry.get("supports_fast_mode", False),
             )
         )
     has_any = any(p.is_configured for p in out)

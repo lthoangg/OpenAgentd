@@ -304,7 +304,16 @@ async def get_registry() -> RegistryResponse:
     # Provider IDs straight from the catalog — single source of truth.
     # Previously this was derived from the capability resolver's prefix
     # table; the resolver no longer has one (see capabilities.py).
-    providers = sorted(entry["id"] for entry in all_providers())
+    all_provider_entries = list(all_providers())
+    providers = sorted(entry["id"] for entry in all_provider_entries)
+
+    # Build a per-provider fast-mode support map so models can advertise it
+    # without hard-coding a prefix list on the frontend.
+    fast_mode_providers: set[str] = {
+        entry["id"]
+        for entry in all_provider_entries
+        if entry.get("supports_fast_mode", False)
+    }
 
     seen: set[str] = set()
     models: list[ModelCatalogEntry] = []
@@ -325,6 +334,7 @@ async def get_registry() -> RegistryResponse:
                 output_video=caps.output.video,
                 thinking_levels=list(get_model_thinking_levels(model_id)),
                 summary_trigger_tokens=prompt_token_threshold_for_model(model_id),
+                fast_mode=provider in fast_mode_providers,
             )
         )
 

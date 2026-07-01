@@ -232,3 +232,115 @@ class _DummyProvider(LLMProviderBase):
     ):
         if False:
             yield None
+
+
+# ── supports_fast_mode ────────────────────────────────────────────────────────
+
+
+def test_plugin_supports_fast_mode_defaults_false() -> None:
+    """ProviderPlugin.supports_fast_mode is False when not specified."""
+    from app.agent.providers.plugin_api import ProviderPlugin
+
+    plugin = ProviderPlugin(
+        id="myplugin",
+        label="My Plugin",
+        description="A plugin.",
+        kind="api_key",
+        factory=lambda ctx: None,  # type: ignore[arg-type]
+    )
+    assert plugin.supports_fast_mode is False
+
+
+def test_plugin_supports_fast_mode_can_be_set_true() -> None:
+    """ProviderPlugin.supports_fast_mode is forwarded when explicitly set."""
+    from app.agent.providers.plugin_api import ProviderPlugin
+
+    plugin = ProviderPlugin(
+        id="fastplugin",
+        label="Fast Plugin",
+        description="A plugin that supports fast mode.",
+        kind="api_key",
+        factory=lambda ctx: None,  # type: ignore[arg-type]
+        supports_fast_mode=True,
+    )
+    assert plugin.supports_fast_mode is True
+
+
+def test_builtin_providers_fast_mode_flags() -> None:
+    """Known builtin providers have the correct supports_fast_mode flag."""
+    from app.agent.providers.catalog import all_providers
+
+    entries = {e["id"]: e for e in all_providers()}
+
+    for provider_id in ("anthropic", "googlegenai", "openai", "codex", "vertexai"):
+        assert entries[provider_id].get("supports_fast_mode") is True, (
+            f"{provider_id} should support fast mode"
+        )
+
+    for provider_id in ("ollama", "openrouter", "deepseek", "xai", "nvidia"):
+        assert not entries[provider_id].get("supports_fast_mode"), (
+            f"{provider_id} should not support fast mode"
+        )
+
+
+def test_plugin_supports_fast_mode_forwarded_to_all_providers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A plugin with supports_fast_mode=True appears with that flag in all_providers()."""
+    plugin_dir = _point_plugin_dirs(monkeypatch, tmp_path)
+    _write_plugin(
+        plugin_dir,
+        """
+        from app.agent.providers.base import LLMProviderBase
+        from app.agent.providers.plugin_api import ProviderPlugin
+
+        class DummyProvider(LLMProviderBase):
+            async def chat(self, messages, tools=None, **kwargs): ...
+            async def stream(self, messages, tools=None, **kwargs):
+                if False: yield None
+
+        provider = ProviderPlugin(
+            id="fastplugin",
+            label="Fast Plugin",
+            description="Supports fast mode.",
+            kind="api_key",
+            factory=lambda ctx: DummyProvider(),
+            supports_fast_mode=True,
+        )
+        """,
+    )
+
+    entry = find("fastplugin")
+    assert entry is not None
+    assert entry.get("supports_fast_mode") is True
+
+
+def test_plugin_without_fast_mode_forwarded_as_false(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A plugin without supports_fast_mode appears with False in all_providers()."""
+    plugin_dir = _point_plugin_dirs(monkeypatch, tmp_path)
+    _write_plugin(
+        plugin_dir,
+        """
+        from app.agent.providers.base import LLMProviderBase
+        from app.agent.providers.plugin_api import ProviderPlugin
+
+        class DummyProvider(LLMProviderBase):
+            async def chat(self, messages, tools=None, **kwargs): ...
+            async def stream(self, messages, tools=None, **kwargs):
+                if False: yield None
+
+        provider = ProviderPlugin(
+            id="slowplugin",
+            label="Slow Plugin",
+            description="No fast mode.",
+            kind="api_key",
+            factory=lambda ctx: DummyProvider(),
+        )
+        """,
+    )
+
+    entry = find("slowplugin")
+    assert entry is not None
+    assert not entry.get("supports_fast_mode")

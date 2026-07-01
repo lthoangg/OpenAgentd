@@ -47,7 +47,7 @@ describe('SessionModelSettings', () => {
         tools: [],
         skills: [],
         providers: ['openai'],
-        models: [{ id: 'openai:gpt-5.5-mini', provider: 'openai', model: 'gpt-5.5-mini', vision: false, output_image: false, output_video: false, thinking_levels: [], summary_trigger_tokens: 0 }],
+        models: [{ id: 'openai:gpt-5.5-mini', provider: 'openai', model: 'gpt-5.5-mini', vision: false, output_image: false, output_video: false, thinking_levels: [], summary_trigger_tokens: 0, fast_mode: false }],
       }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -69,7 +69,7 @@ describe('SessionModelSettings', () => {
         tools: [],
         skills: [],
         providers: ['openai'],
-        models: [{ id: 'openai:gpt-5', provider: 'openai', model: 'gpt-5', vision: false, output_image: false, output_video: false, thinking_levels: [], summary_trigger_tokens: 0 }],
+        models: [{ id: 'openai:gpt-5', provider: 'openai', model: 'gpt-5', vision: false, output_image: false, output_video: false, thinking_levels: [], summary_trigger_tokens: 0, fast_mode: false }],
       }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -90,7 +90,7 @@ describe('SessionModelSettings', () => {
         tools: [],
         skills: [],
         providers: ['openai'],
-        models: [{ id: 'openai:gpt-5.5', provider: 'openai', model: 'gpt-5.5', vision: false, output_image: false, output_video: false, thinking_levels: ['none', 'low', 'medium', 'high'], summary_trigger_tokens: 0 }],
+        models: [{ id: 'openai:gpt-5.5', provider: 'openai', model: 'gpt-5.5', vision: false, output_image: false, output_video: false, thinking_levels: ['none', 'low', 'medium', 'high'], summary_trigger_tokens: 0, fast_mode: false }],
       }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -119,7 +119,7 @@ describe('SessionModelSettings', () => {
         tools: [],
         skills: [],
         providers: ['openai'],
-        models: [{ id: 'openai:gpt-5', provider: 'openai', model: 'gpt-5', vision: false, output_image: false, output_video: false, thinking_levels: [], summary_trigger_tokens: 0 }],
+        models: [{ id: 'openai:gpt-5', provider: 'openai', model: 'gpt-5', vision: false, output_image: false, output_video: false, thinking_levels: [], summary_trigger_tokens: 0, fast_mode: false }],
       }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -154,7 +154,7 @@ describe('SessionModelSettings', () => {
             output_image: false,
             output_video: false,
             thinking_levels: ['none', 'low', 'medium', 'high', 'xhigh'],
-            summary_trigger_tokens: 0,
+            summary_trigger_tokens: 0, fast_mode: false,
           },
           {
             id: 'openai:gpt-4o',
@@ -164,7 +164,7 @@ describe('SessionModelSettings', () => {
             output_image: false,
             output_video: false,
             thinking_levels: [],
-            summary_trigger_tokens: 0,
+            summary_trigger_tokens: 0, fast_mode: false,
           },
         ],
       }), {
@@ -244,7 +244,7 @@ describe('SessionModelSettings — Fast mode', () => {
         tools: [],
         skills: [],
         providers: ['codex'],
-        models: [{ id: 'codex:gpt-5', provider: 'codex', model: 'gpt-5', vision: false, output_image: false, output_video: false, thinking_levels: [], summary_trigger_tokens: 0 }],
+        models: [{ id: 'codex:gpt-5', provider: 'codex', model: 'gpt-5', vision: false, output_image: false, output_video: false, thinking_levels: [], summary_trigger_tokens: 0, fast_mode: true }],
       }), { status: 200, headers: { 'Content-Type': 'application/json' } })
     ) as typeof fetch
 
@@ -264,12 +264,48 @@ describe('SessionModelSettings — Fast mode', () => {
     const checkbox = screen.getByRole('checkbox', { name: 'Fast mode' }) as HTMLInputElement
     expect(checkbox.disabled).toBe(true)
   })
+
+  it('enables the checkbox for a plugin provider whose registry entry has fast_mode=true', async () => {
+    globalThis.fetch = mock(async () =>
+      new Response(JSON.stringify({
+        tools: [],
+        skills: [],
+        providers: ['myfastplugin'],
+        models: [{ id: 'myfastplugin:turbo', provider: 'myfastplugin', model: 'turbo', vision: false, output_image: false, output_video: false, thinking_levels: [], summary_trigger_tokens: 0, fast_mode: true }],
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    ) as typeof fetch
+
+    renderPanel({ sessionModel: 'myfastplugin:turbo' })
+
+    await waitFor(() => expect((globalThis.fetch as ReturnType<typeof mock>).mock.calls.length).toBeGreaterThan(0))
+
+    const checkbox = screen.getByRole('checkbox', { name: 'Fast mode' }) as HTMLInputElement
+    expect(checkbox.disabled).toBe(false)
+  })
+
+  it('disables the checkbox for a plugin provider whose registry entry has fast_mode=false', async () => {
+    globalThis.fetch = mock(async () =>
+      new Response(JSON.stringify({
+        tools: [],
+        skills: [],
+        providers: ['myslowplugin'],
+        models: [{ id: 'myslowplugin:base', provider: 'myslowplugin', model: 'base', vision: false, output_image: false, output_video: false, thinking_levels: [], summary_trigger_tokens: 0, fast_mode: false }],
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    ) as typeof fetch
+
+    renderPanel({ sessionModel: 'myslowplugin:base' })
+
+    await waitFor(() => expect((globalThis.fetch as ReturnType<typeof mock>).mock.calls.length).toBeGreaterThan(0))
+
+    const checkbox = screen.getByRole('checkbox', { name: 'Fast mode' }) as HTMLInputElement
+    expect(checkbox.disabled).toBe(true)
+  })
 })
 
 // Registry stub with two known models used across the combobox injection tests.
 function stubRegistry(models = [
-  { id: 'openai:gpt-4o', provider: 'openai', model: 'gpt-4o', vision: false, output_image: false, output_video: false, thinking_levels: [], summary_trigger_tokens: 0 },
-  { id: 'anthropic:claude-3-5-sonnet', provider: 'anthropic', model: 'claude-3-5-sonnet', vision: true, output_image: false, output_video: false, thinking_levels: [], summary_trigger_tokens: 0 },
+  { id: 'openai:gpt-4o', provider: 'openai', model: 'gpt-4o', vision: false, output_image: false, output_video: false, thinking_levels: [], summary_trigger_tokens: 0, fast_mode: false },
+  { id: 'anthropic:claude-3-5-sonnet', provider: 'anthropic', model: 'claude-3-5-sonnet', vision: true, output_image: false, output_video: false, thinking_levels: [], summary_trigger_tokens: 0, fast_mode: false },
 ]) {
   globalThis.fetch = mock(async () =>
     new Response(JSON.stringify({ tools: [], skills: [], providers: ['openai', 'anthropic'], models }), {

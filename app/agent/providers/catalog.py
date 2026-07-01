@@ -47,6 +47,7 @@ class ProviderEntry(TypedDict, total=False):
     models_dev_provider_id: str  # provider id used by models.dev when different
     metadata_source_provider: str  # source provider for same-model-id metadata aliases
     model_registry_aliases: dict[str, str]  # target model -> source provider:model
+    supports_fast_mode: bool  # whether the provider honours service_tier="fast"
 
 
 _CATALOG: list[ProviderEntry] = [
@@ -56,6 +57,7 @@ _CATALOG: list[ProviderEntry] = [
         "description": "Claude API via Anthropic Messages.",
         "kind": "api_key",
         "env_var": "ANTHROPIC_API_KEY",
+        "supports_fast_mode": True,
         "models_dev_provider_id": "anthropic",
         "credentials": [
             {
@@ -81,6 +83,7 @@ _CATALOG: list[ProviderEntry] = [
         "description": "Google AI Studio — free tier available.",
         "kind": "api_key",
         "env_var": "GOOGLE_API_KEY",
+        "supports_fast_mode": True,
         "models_dev_provider_id": "google",
         "docs_url": "https://aistudio.google.com/apikey",
     },
@@ -90,6 +93,7 @@ _CATALOG: list[ProviderEntry] = [
         "description": "GPT-5.x, GPT-4.1, etc.",
         "kind": "api_key",
         "env_var": "OPENAI_API_KEY",
+        "supports_fast_mode": True,
         "docs_url": "https://platform.openai.com/api-keys",
     },
     {
@@ -177,6 +181,7 @@ _CATALOG: list[ProviderEntry] = [
         "description": "Use your ChatGPT subscription via Codex OAuth.",
         "kind": "oauth",
         "env_var": "",
+        "supports_fast_mode": True,
         "metadata_source_provider": "openai",
         "oauth_command": "openagentd auth codex",
         "docs_url": "https://platform.openai.com/docs/codex",
@@ -232,6 +237,7 @@ _CATALOG: list[ProviderEntry] = [
         "description": "Google Cloud's enterprise-grade Gemini.",
         "kind": "cloud_creds",
         "env_var": "",
+        "supports_fast_mode": True,
         "models_dev_provider_id": "google-vertex",
         "env_vars": ["GOOGLE_CLOUD_PROJECT", "GOOGLE_CLOUD_LOCATION"],
         "docs_url": "https://cloud.google.com/vertex-ai/docs/start/cloud-environment",
@@ -265,6 +271,7 @@ def all_providers() -> list[ProviderEntry]:
             "models_dev_provider_id": plugin.models_dev_provider_id,
             "metadata_source_provider": plugin.metadata_source_provider,
             "model_registry_aliases": dict(plugin.model_registry_aliases),
+            "supports_fast_mode": plugin.supports_fast_mode,
         }
         entry["credentials"] = credential_map(plugin.credentials)
         entries.append(entry)

@@ -463,6 +463,7 @@ export interface ModelCatalogEntry {
   output_video: boolean
   thinking_levels: string[]
   summary_trigger_tokens: number
+  fast_mode: boolean
 }
 
 export interface RegistryResponse {

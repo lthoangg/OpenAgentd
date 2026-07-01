@@ -9,8 +9,6 @@ mock.module("@/components/FileTypeIcon", () => ({
   FileTypeIcon: () => null,
 }));
 
-
-
 // Pass an explicit ``url`` so ``window.location.origin`` is a real origin
 // instead of ``"null"`` (the about:blank default). This matters for any
 // test that calls ``new URL("/api/x", window.location.origin)``,

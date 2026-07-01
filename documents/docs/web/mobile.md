@@ -133,9 +133,31 @@ Centered modal surfaces switch to a full-bleed sheet on mobile:
 
 ---
 
-## Image lightbox
+## File preview lightbox
 
-Generated and attached images open in a shared full-screen lightbox. Touch shells support swipe-down-to-dismiss, double-tap zoom, and two-finger pinch zoom (1×–4×); desktop keeps backdrop click and Escape.
+Generated and attached files (images, audio, video, PDF, text, and other generic attachments) open in a shared full-screen lightbox (`FileLightbox`). User-message attachments (`UserBubble`) also open through the same lightbox via `AttachmentStrip`.
+
+- **Gestures**: Touch shells support swipe-down-to-dismiss, double-tap zoom, and two-finger pinch zoom (1×–4×) for images. Desktop supports double-click to zoom and mouse-drag to pan when zoomed.
+- **Scroll & swipe isolation**: For scrollable previews (PDF, text), a directional gesture lock on the first touch resolves conflicts. Vertical-first → locks to scroll, stops gallery-swipe propagation. Horizontal-first → locks to gallery swipe, prevents content scroll.
+- **Dismissal**: Click outside the active content card, or press Escape.
+- **Download**: The download button calls `tauriDownload(url, filename)` (`lib/tauri-download.ts`):
+  - **Tauri shell** — `blob:` URLs are read to base64 in JS (Rust cannot reach browser-only blob URLs) and sent via IPC. All other URLs (`http/https/data:`) are passed directly to Rust which fetches them via `reqwest` — no base64 overhead.
+  - **Browser** — plain `<a download>` anchor.
+  - Errors surface as an error toast; they never throw so the UI stays stable.
+
+## IPC capability: private-network HTTP
+
+`mobile/src-tauri/capabilities/default.json` (and desktop's equivalent) whitelist Tauri `invoke()` calls from all RFC-1918 private IP ranges over plain HTTP, and require HTTPS for public hosts:
+
+| Range | Pattern |
+|-------|---------|
+| Loopback | `http://localhost:*`, `http://127.*:*` |
+| Class A private | `http://10.*:*` |
+| Class B private | `http://172.16.*:*` … `http://172.31.*:*` |
+| Class C private | `http://192.168.*:*` |
+| Public | `https://*:*` only |
+
+This ensures users can connect the mobile shell to a server on any common LAN topology (`10.x`, `192.168.x`, etc.) without hitting a silent Tauri IPC block.
 
 ## File attachment remove button (`ImageAttachment`, `FileCard`)
 

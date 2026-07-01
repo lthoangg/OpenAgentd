@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Check, ChevronDown, ChevronUp, Copy, Terminal, Undo2 } from 'lucide-react'
 
-import { ImageAttachment } from '../ImageAttachment'
-import { FileCard } from '../FileCard'
+import { FileLightbox, type FileLightboxItem, type FileLightboxItemType } from '../FileLightbox'
+import { FileTypeIcon } from '../FileTypeIcon'
 import { findCommittedMentions } from '../InputBar.mentions'
 import { resolveApiUrl } from '@/api/client'
 import { openExternalUrl } from '@/lib/open-external'
@@ -97,6 +97,94 @@ function renderMentionSegments(content: string, onMentionFileOpen?: (path: strin
   return out
 }
 
+// ── AttachmentStrip ───────────────────────────────────────────────────────────
+
+function attItemType(att: MessageAttachment): FileLightboxItemType {
+  const mime = att.media_type ?? ''
+  if (att.category === 'image' || mime.startsWith('image/')) return 'image'
+  if (mime.startsWith('video/')) return 'video'
+  if (mime.startsWith('audio/')) return 'audio'
+  if (mime === 'application/pdf') return 'pdf'
+  if (att.category === 'text' || mime.startsWith('text/')) return 'text'
+  return 'file'
+}
+
+function AttachmentStrip({ attachments }: { attachments: MessageAttachment[] }) {
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
+
+  const items: FileLightboxItem[] = useMemo(
+    () => attachments.map((att, i) => ({
+      type: attItemType(att),
+      src: resolveApiUrl(att.url) || att.url || '',
+      name: att.filename || att.original_name || `Attachment ${i + 1}`,
+    })),
+    [attachments],
+  )
+
+  // Reset lightbox if attachments shrink (e.g. optimistic update rollback)
+  useEffect(() => {
+    if (lightboxIndex !== null && lightboxIndex >= items.length) {
+      setLightboxIndex(null)
+    }
+  }, [items.length, lightboxIndex])
+
+  return (
+    <>
+      <div className="flex flex-wrap justify-end gap-2">
+        {items.map((item, idx) => (
+          <AttachmentThumb
+            key={item.src || idx}
+            item={item}
+            onOpen={() => setLightboxIndex(idx)}
+          />
+        ))}
+      </div>
+
+      <FileLightbox
+        items={items}
+        index={lightboxIndex ?? 0}
+        isOpen={lightboxIndex !== null}
+        onClose={() => setLightboxIndex(null)}
+      />
+    </>
+  )
+}
+
+function AttachmentThumb({ item, onOpen }: { item: FileLightboxItem; onOpen: () => void }) {
+  const [imgError, setImgError] = useState(false)
+
+  if (item.type === 'image') {
+    return (
+      <button
+        type="button"
+        onClick={onOpen}
+        className="overflow-hidden rounded-sm focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:outline-none"
+        aria-label={`Preview ${item.name}`}
+      >
+        {imgError
+          ? <div className="flex h-[120px] w-[120px] items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-xs text-(--color-text-muted)">Failed to load</div>
+          : <img src={item.src} alt={item.name} loading="lazy" onError={() => setImgError(true)} className="max-h-[200px] max-w-[200px] rounded-sm object-cover" />
+        }
+      </button>
+    )
+  }
+
+  // All non-image types: icon chip that opens the lightbox
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="flex items-center gap-2 rounded-sm border border-(--color-border) bg-(--bg-card) px-2.5 py-1.5 text-xs text-(--color-text) transition-colors hover:border-(--color-border-strong) hover:bg-(--bg-key)/40 focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:outline-none"
+      title={item.name}
+    >
+      <span className="shrink-0 text-(--color-text-muted)">
+        <FileTypeIcon name={item.name} size={14} />
+      </span>
+      <span className="max-w-[160px] truncate font-medium">{item.name}</span>
+    </button>
+  )
+}
+
 export function UserBubble({ content, timestamp, attachments, onRevert, modelId, shell, onMentionFileOpen, mentions }: { content: string; timestamp?: Date; attachments?: MessageAttachment[]; onRevert?: () => void; modelId?: string | null; shell?: boolean; onMentionFileOpen?: (path: string) => void; mentions?: string[] }) {
   const [showTime, setShowTime] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -131,48 +219,7 @@ export function UserBubble({ content, timestamp, attachments, onRevert, modelId,
       <div className="flex max-w-full flex-col items-end gap-1.5 md:max-w-[78%]">
          {/* Attachments */}
          {visibleAttachments.length > 0 && (
-           <div className="flex flex-wrap justify-end gap-2">
-             {(() => {
-               // Build a gallery of all image attachments so the lightbox can
-               // swipe between siblings, and map each thumbnail to its index.
-               const imageGallery = visibleAttachments
-                 .filter((a: MessageAttachment) => a.category === 'image')
-                  .map((a: MessageAttachment, i: number) => ({
-                    src: resolveApiUrl(a.url) || '',
-                    alt: a.filename || a.original_name || `Attachment ${i + 1}`,
-                  }))
-
-               let imageCursor = -1
-               return visibleAttachments.map((att: MessageAttachment, idx: number) => {
-               const isImage = att.category === 'image'
-
-               if (isImage) {
-                 imageCursor += 1
-                 return (
-                    <ImageAttachment
-                      key={idx}
-                      src={resolveApiUrl(att.url) || ''}
-                      alt={att.filename || att.original_name || `Attachment ${idx + 1}`}
-                      gallery={imageGallery}
-                      galleryIndex={imageCursor}
-                    />
-
-                 )
-               }
-
-               return (
-                  <FileCard
-                    key={idx}
-                    name={att.filename || att.original_name || `File ${idx + 1}`}
-                    mediaType={att.media_type}
-                    url={resolveApiUrl(att.url)}
-                    clickable={!!att.url}
-                  />
-
-               )
-             })
-             })()}
-           </div>
+           <AttachmentStrip attachments={visibleAttachments} />
          )}
 
           <div className={`relative min-w-0 max-w-full overflow-hidden rounded-sm border px-3 py-2.5 text-sm leading-relaxed text-(--color-text) shadow-sm selectable-text ${shell ? 'border-(--accent-blue)/30 bg-(--bg-key)' : 'border-(--color-border) bg-(--bg-card)'}`}>

@@ -25,6 +25,8 @@ import {
 import { createPortal } from 'react-dom'
 import { ChevronLeft, ChevronRight, Download, ExternalLink, File, X } from 'lucide-react'
 import { haptic } from '@/lib/haptics'
+import { resolveApiUrl } from '@/api/client'
+import { tauriDownload } from '@/lib/tauri-download'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -101,28 +103,8 @@ function downloadName(item: FileLightboxItem): string {
 }
 
 async function triggerDownload(item: FileLightboxItem): Promise<void> {
-  const filename = downloadName(item)
-  try {
-    const res = await fetch(item.src)
-    const blob = await res.blob()
-    const objectUrl = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = objectUrl
-    a.download = filename
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    URL.revokeObjectURL(objectUrl)
-  } catch {
-    const a = document.createElement('a')
-    a.href = item.src
-    a.download = filename
-    a.target = '_blank'
-    a.rel = 'noopener noreferrer'
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-  }
+  const url = resolveApiUrl(item.src) || item.src
+  await tauriDownload(url, downloadName(item))
 }
 
 // ─── Shared UI primitives ─────────────────────────────────────────────────────
@@ -162,31 +144,39 @@ function IconButton({
 interface ImageProps {
   item: FileLightboxItem
   imgRef: React.RefObject<HTMLImageElement | null>
-  onTouchStart: (e: TouchEvent<HTMLDivElement>) => void
-  onTouchMove: (e: TouchEvent<HTMLDivElement>) => void
-  onTouchEnd: () => void
   onDoubleClick: () => void
   onClick: () => void
+  onMouseDown: (e: React.MouseEvent<HTMLDivElement>) => void
+  onMouseMove: (e: React.MouseEvent<HTMLDivElement>) => void
+  onMouseUp: () => void
+  onMouseLeave: () => void
 }
 
 export function FileLightboxImage({
   item, imgRef,
-  onTouchStart, onTouchMove, onTouchEnd, onDoubleClick, onClick,
+  onDoubleClick, onClick,
+  onMouseDown, onMouseMove, onMouseUp, onMouseLeave,
 }: ImageProps) {
   const [error, setError] = useState(false)
 
   return (
     <div
-      className="flex max-h-[85dvh] max-w-[92vw] touch-none select-none items-center justify-center sm:max-h-[80vh] sm:max-w-[80vw]"
-      onClick={(e) => e.stopPropagation()}
-      onTouchStart={onTouchStart}
-      onTouchMove={onTouchMove}
-      onTouchEnd={onTouchEnd}
+      className="flex max-h-full max-w-full select-none items-center justify-center"
       onDoubleClick={onDoubleClick}
+      onMouseDown={onMouseDown}
+      onMouseMove={onMouseMove}
+      onMouseUp={onMouseUp}
+      onMouseLeave={onMouseLeave}
     >
       {error
         ? (
-          <div className="flex h-40 w-64 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-sm text-(--color-text-muted)">
+          <div
+            className="flex h-40 w-64 items-center justify-center rounded-sm border border-(--color-border) bg-(--bg-card) text-sm text-(--color-text-muted)"
+            onClick={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+            onTouchMove={(e) => e.stopPropagation()}
+            onTouchEnd={(e) => e.stopPropagation()}
+          >
             Failed to load image
           </div>
         )
@@ -198,10 +188,12 @@ export function FileLightboxImage({
             alt={item.name}
             draggable={false}
             onError={() => setError(true)}
-            // transform is written directly by touch handlers — no inline style prop
-            className="max-h-[85dvh] max-w-[92vw] rounded-sm object-contain sm:max-h-[80vh] sm:max-w-[80vw]"
+            className="max-h-full max-w-full rounded-sm object-contain cursor-zoom-in transition-[cursor] duration-100"
             style={{ willChange: 'transform' }}
-            onClick={onClick}
+            onClick={(e) => {
+              e.stopPropagation()
+              onClick()
+            }}
           />
         )}
     </div>
@@ -212,13 +204,16 @@ export function FileLightboxImage({
 
 export function FileLightboxVideo({ item }: { item: FileLightboxItem }) {
   return (
-    <div className="flex flex-col items-center gap-3" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="flex flex-col items-center justify-center max-h-full max-w-full"
+      onClick={(e) => e.stopPropagation()}
+    >
       <video
         key={item.src}
         src={item.src}
         controls
         playsInline
-        className="max-h-[70dvh] max-w-[92vw] rounded-sm sm:max-w-[80vw]"
+        className="max-h-full max-w-full rounded-sm"
       />
     </div>
   )
@@ -240,13 +235,61 @@ export function FileLightboxAudio({ item }: { item: FileLightboxItem }) {
 // ── FileLightboxPdf ────────────────────────────────────────────────────────────
 
 export function FileLightboxPdf({ item }: { item: FileLightboxItem }) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const touchStartRef = useRef({ x: 0, y: 0 })
+  const gestureLockRef = useRef<'horizontal' | 'vertical' | null>(null)
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+
+    const handleStart = (e: globalThis.TouchEvent) => {
+      touchStartRef.current = {
+        x: e.touches[0]?.clientX ?? 0,
+        y: e.touches[0]?.clientY ?? 0,
+      }
+      gestureLockRef.current = null
+    }
+
+    const handleMove = (e: globalThis.TouchEvent) => {
+      const dx = (e.touches[0]?.clientX ?? 0) - touchStartRef.current.x
+      const dy = (e.touches[0]?.clientY ?? 0) - touchStartRef.current.y
+
+      if (gestureLockRef.current === null) {
+        if (Math.abs(dx) > 6 || Math.abs(dy) > 6) {
+          gestureLockRef.current = Math.abs(dy) > Math.abs(dx) ? 'vertical' : 'horizontal'
+        }
+      }
+
+      if (gestureLockRef.current === 'vertical') {
+        e.stopPropagation()
+      } else if (gestureLockRef.current === 'horizontal') {
+        if (e.cancelable) {
+          e.preventDefault()
+        }
+      }
+    }
+
+    el.addEventListener('touchstart', handleStart, { passive: true })
+    el.addEventListener('touchmove', handleMove, { passive: false })
+
+    return () => {
+      el.removeEventListener('touchstart', handleStart)
+      el.removeEventListener('touchmove', handleMove)
+    }
+  }, [])
+
   return (
-    <div className="flex flex-col items-center gap-3" onClick={(e) => e.stopPropagation()}>
+    <div
+      ref={containerRef}
+      className="flex flex-col items-center justify-center max-h-full max-w-full gap-3"
+      onClick={(e) => e.stopPropagation()}
+    >
       <embed
         key={item.src}
         src={item.src}
         type="application/pdf"
-        className="h-[72dvh] w-[min(760px,88vw)] rounded-sm"
+        className="h-[60vh] max-h-full w-[min(760px,88vw)] max-w-full rounded-sm"
       />
       <a
         href={item.src}
@@ -266,6 +309,9 @@ export function FileLightboxPdf({ item }: { item: FileLightboxItem }) {
 
 export function FileLightboxText({ item }: { item: FileLightboxItem }) {
   const [content, setContent] = useState<string | null>(item.textContent ?? null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const touchStartRef = useRef({ x: 0, y: 0 })
+  const gestureLockRef = useRef<'horizontal' | 'vertical' | null>(null)
 
   useEffect(() => {
     if (content !== null) return
@@ -278,15 +324,56 @@ export function FileLightboxText({ item }: { item: FileLightboxItem }) {
     return () => { cancelled = true }
   }, [item.src, content])
 
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+
+    const handleStart = (e: globalThis.TouchEvent) => {
+      touchStartRef.current = {
+        x: e.touches[0]?.clientX ?? 0,
+        y: e.touches[0]?.clientY ?? 0,
+      }
+      gestureLockRef.current = null
+    }
+
+    const handleMove = (e: globalThis.TouchEvent) => {
+      const dx = (e.touches[0]?.clientX ?? 0) - touchStartRef.current.x
+      const dy = (e.touches[0]?.clientY ?? 0) - touchStartRef.current.y
+
+      if (gestureLockRef.current === null) {
+        if (Math.abs(dx) > 6 || Math.abs(dy) > 6) {
+          gestureLockRef.current = Math.abs(dy) > Math.abs(dx) ? 'vertical' : 'horizontal'
+        }
+      }
+
+      if (gestureLockRef.current === 'vertical') {
+        e.stopPropagation()
+      } else if (gestureLockRef.current === 'horizontal') {
+        if (e.cancelable) {
+          e.preventDefault()
+        }
+      }
+    }
+
+    el.addEventListener('touchstart', handleStart, { passive: true })
+    el.addEventListener('touchmove', handleMove, { passive: false })
+
+    return () => {
+      el.removeEventListener('touchstart', handleStart)
+      el.removeEventListener('touchmove', handleMove)
+    }
+  }, [])
+
   return (
     <div
-      className="mx-4 flex max-h-[75dvh] w-[min(720px,90vw)] flex-col overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) sm:mx-0"
+      ref={containerRef}
+      className="mx-4 flex h-[60dvh] max-h-full w-[min(720px,90vw)] flex-col overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) sm:mx-0"
       onClick={(e) => e.stopPropagation()}
     >
       <div className="flex shrink-0 items-center border-b border-(--color-border-subtle) px-4 py-2">
         <span className="text-xs text-(--color-text-muted)">{extOf(item.name).toUpperCase() || 'TEXT'}</span>
       </div>
-      <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-all p-4 font-mono text-xs leading-relaxed text-(--color-text-muted)">
+      <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words p-4 font-mono text-xs leading-relaxed text-(--color-text-muted)">
         {content === null ? 'Loading…' : content}
       </pre>
     </div>
@@ -295,14 +382,24 @@ export function FileLightboxText({ item }: { item: FileLightboxItem }) {
 
 // ── FileLightboxGeneric ────────────────────────────────────────────────────────
 
-export function FileLightboxGeneric({ item: _item }: { item: FileLightboxItem }) {
+export function FileLightboxGeneric({ item }: { item: FileLightboxItem }) {
   return (
     <div
       className="flex flex-col items-center gap-4 rounded-sm border border-(--color-border) bg-(--bg-card) px-10 py-10"
       onClick={(e) => e.stopPropagation()}
     >
       <File size={40} className="text-(--color-text-muted)" />
+      <p className="max-w-[240px] truncate text-sm font-medium text-(--color-text)">{item.name}</p>
       <p className="text-xs text-(--color-text-muted)">No preview available</p>
+      <a
+        href={item.src}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex items-center gap-1.5 text-xs text-(--color-text-muted) hover:text-(--color-text)"
+      >
+        <ExternalLink size={12} />
+        Open in new tab
+      </a>
     </div>
   )
 }
@@ -332,10 +429,6 @@ export function FileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'f
   // Direction ref (1 = forward/next, -1 = backward/prev) — read in the slide
   // useLayoutEffect, updated synchronously in goTo before setCurrent.
   const directionRef  = useRef(1)
-  // Tracks whether this is the first render of the current open session.
-  // The slide animation is skipped on initial mount so opening doesn't
-  // trigger an unwanted slide-in.
-  const didSlideRef   = useRef(false)
   // Stores the pending rAF id for the slide animation so rapid navigation doesn't queue stale frames.
   const slideRafRef   = useRef<number>(0)
 
@@ -351,13 +444,21 @@ export function FileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'f
   const dragXRef        = useRef(0)
   const dragYRef        = useRef(0)
 
-  // ── Overlay fade-in + slide reset ─────────────────────────────────────────
-  // Reset didSlideRef here (in a useLayoutEffect) so it runs BEFORE the
-  // slide useLayoutEffect([current]) below — layout effects run in declaration
-  // order, so this fires first and marks the next current change as "first".
+  const isMouseDownRef  = useRef(false)
+  const panXRef         = useRef(0)
+  const panYRef         = useRef(0)
+  const panXStartRef    = useRef(0)
+  const panYStartRef    = useRef(0)
+
+  // Tracks the last rendered current value to check if we actually changed current index.
+  const lastCurrentRef  = useRef<number | null>(null)
+
+  // ── Overlay fade-in ─────────────────────────────────────────────────────────
   useLayoutEffect(() => {
-    if (!isOpen) return
-    didSlideRef.current = false
+    if (!isOpen) {
+      lastCurrentRef.current = null
+      return
+    }
     const el = overlayRef.current
     if (!el) return
     el.style.opacity = '0'
@@ -366,36 +467,48 @@ export function FileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'f
   }, [isOpen])
 
   // ── Gallery slide animation ────────────────────────────────────────────────
-  // Skip the very first render (opening the lightbox) — no slide needed.
-  // On subsequent current changes: snap to ±100% instantly, then rAF to 0%.
-  // Cancel the previous rAF so rapid navigation doesn't queue stale frames.
   useLayoutEffect(() => {
+    if (!isOpen) return
     const el = slideRef.current
     if (!el) return
-    if (!didSlideRef.current) {
-      // First render of this open session — position at center with no animation.
-      didSlideRef.current = true
+
+    if (lastCurrentRef.current === null || lastCurrentRef.current === current) {
+      lastCurrentRef.current = current
       el.style.transition = 'none'
-      el.style.transform  = 'translateX(0%)'
+      el.style.transform  = 'translate3d(0, 0, 0)'
+      el.style.opacity    = '1'
       return
     }
+
     cancelAnimationFrame(slideRafRef.current)
     const dir = directionRef.current
     el.style.transition = 'none'
-    el.style.transform  = `translateX(${dir * 100}%)`
+    el.style.transform  = `translate3d(${dir * 32}px, 0, 0)`
+    el.style.opacity    = '0'
+
+    // Force reflow so browser registers starting state before transition starts
+    void el.offsetWidth
+
     slideRafRef.current = requestAnimationFrame(() => {
-      el.style.transition = `transform 220ms ${SLIDE_EASE}`
-      el.style.transform  = 'translateX(0%)'
+      el.style.transition = `transform 240ms cubic-bezier(0.25, 0.46, 0.45, 0.94), opacity 240ms cubic-bezier(0.25, 0.46, 0.45, 0.94)`
+      el.style.transform  = 'translate3d(0, 0, 0)'
+      el.style.opacity    = '1'
     })
+    lastCurrentRef.current = current
     return () => cancelAnimationFrame(slideRafRef.current)
-  }, [current])
+  }, [current, isOpen])
 
   // ── Index sync on (re)open ─────────────────────────────────────────────────
   useEffect(() => {
     if (isOpen) {
       setCurrent(Math.max(0, Math.min(index, items.length - 1)))
-      if (imgRef.current) imgRef.current.style.transform = ''
+      if (imgRef.current) {
+        imgRef.current.style.transform = ''
+        imgRef.current.style.cursor = 'zoom-in'
+      }
       scaleRef.current = 1
+      panXRef.current = 0
+      panYRef.current = 0
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, index])
@@ -412,8 +525,16 @@ export function FileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'f
       return target
     })
     // Reset image transform immediately on nav.
-    if (imgRef.current) imgRef.current.style.transform = ''
+    if (imgRef.current) {
+      imgRef.current.style.transform = ''
+      imgRef.current.style.cursor = 'zoom-in'
+    }
     scaleRef.current = 1
+    dragXRef.current = 0
+    dragYRef.current = 0
+    panXRef.current = 0
+    panYRef.current = 0
+    axisRef.current = null
   }, [items.length])
 
   const goPrev = useCallback(() => goTo(current - 1), [current, goTo])
@@ -438,29 +559,48 @@ export function FileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'f
 
   // ── Close ──────────────────────────────────────────────────────────────────
   const closeLightbox = useCallback(() => {
-    if (imgRef.current) imgRef.current.style.transform = ''
+    if (imgRef.current) {
+      imgRef.current.style.transform = ''
+      imgRef.current.style.cursor = 'zoom-in'
+    }
     scaleRef.current = 1
     pinchStartRef.current = null
+    dragXRef.current = 0
+    dragYRef.current = 0
+    panXRef.current = 0
+    panYRef.current = 0
+    axisRef.current = null
+    isMouseDownRef.current = false
     onClose()
   }, [onClose])
 
-  // ── Image touch handlers (zero React renders during gesture) ───────────────
+  // ── Image touch/mouse handlers (zero React renders during gesture) ───────────
   // All mutations go straight to imgRef.current.style — no setState.
-  // Only goTo / onClose / scale reset touch state at gesture commit.
 
   const applyImgTransform = useCallback((dx: number, dy: number, sc: number) => {
     if (!imgRef.current) return
     imgRef.current.style.transform = `translate3d(${dx}px, ${dy}px, 0) scale(${sc})`
   }, [])
 
+  const applySlideTransform = useCallback((dx: number, dy: number) => {
+    if (!slideRef.current) return
+    slideRef.current.style.transform = `translate3d(${dx}px, ${dy}px, 0)`
+  }, [])
+
   const handleTouchStart = useCallback((e: TouchEvent<HTMLDivElement>) => {
     if (e.touches.length === 1) {
       touchStartXRef.current = e.touches[0]?.clientX ?? 0
       touchStartYRef.current = e.touches[0]?.clientY ?? 0
+      panXStartRef.current = panXRef.current
+      panYStartRef.current = panYRef.current
       dragXRef.current = 0
       dragYRef.current = 0
       axisRef.current = null
       pinchStartRef.current = null
+
+      if (scaleRef.current > 1.05 && imgRef.current) {
+        imgRef.current.style.cursor = 'grabbing'
+      }
     } else if (e.touches.length === 2) {
       pinchStartRef.current = touchDistance(e.touches[0], e.touches[1])
       pinchScaleRef.current = scaleRef.current
@@ -471,11 +611,38 @@ export function FileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'f
     if (e.touches.length === 2 && pinchStartRef.current !== null) {
       const next = touchDistance(e.touches[0], e.touches[1])
       const newScale = Math.min(4, Math.max(1, pinchScaleRef.current * (next / pinchStartRef.current)))
-      applyImgTransform(dragXRef.current, dragYRef.current, newScale)
+      applyImgTransform(panXRef.current, panYRef.current, newScale)
       scaleRef.current = newScale
       return
     }
-    if (e.touches.length !== 1 || scaleRef.current > 1.05) return
+
+    if (e.touches.length !== 1) return
+
+    if (scaleRef.current > 1.05) {
+      const dx = (e.touches[0]?.clientX ?? 0) - touchStartXRef.current
+      const dy = (e.touches[0]?.clientY ?? 0) - touchStartYRef.current
+      let nextPanX = panXStartRef.current + dx
+      let nextPanY = panYStartRef.current + dy
+
+      if (imgRef.current) {
+        const w = imgRef.current.clientWidth
+        const h = imgRef.current.clientHeight
+        const maxPanX = Math.max(0, (w * (scaleRef.current - 1)) / 2)
+        const maxPanY = Math.max(0, (h * (scaleRef.current - 1)) / 2)
+
+        if (nextPanX > maxPanX) nextPanX = maxPanX + (nextPanX - maxPanX) * 0.3
+        else if (nextPanX < -maxPanX) nextPanX = -maxPanX + (nextPanX + maxPanX) * 0.3
+
+        if (nextPanY > maxPanY) nextPanY = maxPanY + (nextPanY - maxPanY) * 0.3
+        else if (nextPanY < -maxPanY) nextPanY = -maxPanY + (nextPanY + maxPanY) * 0.3
+      }
+
+      dragXRef.current = nextPanX
+      dragYRef.current = nextPanY
+      applyImgTransform(nextPanX, nextPanY, scaleRef.current)
+      return
+    }
+
     const dx = (e.touches[0]?.clientX ?? 0) - touchStartXRef.current
     const dy = (e.touches[0]?.clientY ?? 0) - touchStartYRef.current
     if (axisRef.current === null && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
@@ -483,17 +650,73 @@ export function FileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'f
     }
     if (axisRef.current === 'horizontal' && hasMultiple) {
       dragXRef.current = dx
-      applyImgTransform(dx, 0, 1)
+      applySlideTransform(dx, 0)
     } else if (axisRef.current === 'vertical' && dy > 0) {
       const clampedY = Math.min(160, dy)
       dragYRef.current = clampedY
-      applyImgTransform(0, clampedY, 1)
+      applySlideTransform(0, clampedY)
     }
-  }, [hasMultiple, applyImgTransform])
+  }, [hasMultiple, applyImgTransform, applySlideTransform])
 
   const handleTouchEnd = useCallback(() => {
+    if (pinchStartRef.current !== null) {
+      // After a pinch gesture, clamp the current pan position (held in panXRef)
+      let clampedX = dragXRef.current || panXRef.current
+      let clampedY = dragYRef.current || panYRef.current
+      if (imgRef.current) {
+        const w = imgRef.current.clientWidth
+        const h = imgRef.current.clientHeight
+        const maxPanX = Math.max(0, (w * (scaleRef.current - 1)) / 2)
+        const maxPanY = Math.max(0, (h * (scaleRef.current - 1)) / 2)
+        clampedX = Math.min(maxPanX, Math.max(-maxPanX, clampedX))
+        clampedY = Math.min(maxPanY, Math.max(-maxPanY, clampedY))
+      }
+      panXRef.current = clampedX
+      panYRef.current = clampedY
+      if (imgRef.current) {
+        imgRef.current.style.transition = `transform 150ms ${SLIDE_EASE}`
+        imgRef.current.style.transform = `translate3d(${clampedX}px, ${clampedY}px, 0) scale(${scaleRef.current})`
+        imgRef.current.style.cursor = scaleRef.current > 1.05 ? 'grab' : 'zoom-in'
+        imgRef.current.addEventListener('transitionend', () => {
+          if (imgRef.current) imgRef.current.style.transition = ''
+        }, { once: true })
+      }
+      pinchStartRef.current = null
+      axisRef.current = null
+      dragXRef.current = 0
+      dragYRef.current = 0
+      return
+    }
+
     const dx = dragXRef.current
     const dy = dragYRef.current
+
+    if (scaleRef.current > 1.05) {
+      let clampedX = dx
+      let clampedY = dy
+      if (imgRef.current) {
+        const w = imgRef.current.clientWidth
+        const h = imgRef.current.clientHeight
+        const maxPanX = Math.max(0, (w * (scaleRef.current - 1)) / 2)
+        const maxPanY = Math.max(0, (h * (scaleRef.current - 1)) / 2)
+        clampedX = Math.min(maxPanX, Math.max(-maxPanX, dx))
+        clampedY = Math.min(maxPanY, Math.max(-maxPanY, dy))
+      }
+      panXRef.current = clampedX
+      panYRef.current = clampedY
+      if (imgRef.current) {
+        imgRef.current.style.transition = `transform 150ms ${SLIDE_EASE}`
+        imgRef.current.style.transform = `translate3d(${clampedX}px, ${clampedY}px, 0) scale(${scaleRef.current})`
+        imgRef.current.style.cursor = scaleRef.current > 1.05 ? 'grab' : 'zoom-in'
+        imgRef.current.addEventListener('transitionend', () => {
+          if (imgRef.current) imgRef.current.style.transition = ''
+        }, { once: true })
+      }
+      dragXRef.current = 0
+      dragYRef.current = 0
+      axisRef.current = null
+      return
+    }
 
     if (axisRef.current === 'horizontal' && hasMultiple) {
       if (dx < -SWIPE_NAV_THRESHOLD) {
@@ -501,25 +724,23 @@ export function FileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'f
       } else if (dx > SWIPE_NAV_THRESHOLD) {
         goPrev()
       } else {
-        // Spring back — CSS transition snap to origin.
-        if (imgRef.current) {
-          imgRef.current.style.transition = `transform 200ms ${SLIDE_EASE}`
-          imgRef.current.style.transform  = `translate3d(0,0,0) scale(${scaleRef.current})`
-          imgRef.current.addEventListener('transitionend', () => {
-            if (imgRef.current) imgRef.current.style.transition = ''
+        if (slideRef.current) {
+          slideRef.current.style.transition = `transform 200ms ${SLIDE_EASE}`
+          slideRef.current.style.transform  = 'translate3d(0,0,0)'
+          slideRef.current.addEventListener('transitionend', () => {
+            if (slideRef.current) slideRef.current.style.transition = ''
           }, { once: true })
         }
       }
-    } else if (axisRef.current === 'vertical' && dy > SWIPE_CLOSE_THRESHOLD && scaleRef.current <= 1.05) {
+    } else if (axisRef.current === 'vertical' && dy > SWIPE_CLOSE_THRESHOLD) {
       closeLightbox()
       return
     } else {
-      // Snap back.
-      if (imgRef.current) {
-        imgRef.current.style.transition = `transform 200ms ${SLIDE_EASE}`
-        imgRef.current.style.transform  = `translate3d(0,0,0) scale(${scaleRef.current})`
-        imgRef.current.addEventListener('transitionend', () => {
-          if (imgRef.current) imgRef.current.style.transition = ''
+      if (slideRef.current) {
+        slideRef.current.style.transition = `transform 200ms ${SLIDE_EASE}`
+        slideRef.current.style.transform  = 'translate3d(0,0,0)'
+        slideRef.current.addEventListener('transitionend', () => {
+          if (slideRef.current) slideRef.current.style.transition = ''
         }, { once: true })
       }
     }
@@ -530,12 +751,88 @@ export function FileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'f
     pinchStartRef.current = null
   }, [hasMultiple, goNext, goPrev, closeLightbox])
 
+  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button !== 0 || scaleRef.current <= 1.05) return
+    isMouseDownRef.current = true
+    touchStartXRef.current = e.clientX
+    touchStartYRef.current = e.clientY
+    panXStartRef.current = panXRef.current
+    panYStartRef.current = panYRef.current
+    dragXRef.current = 0
+    dragYRef.current = 0
+    if (imgRef.current) {
+      imgRef.current.style.cursor = 'grabbing'
+    }
+    e.preventDefault()
+  }, [])
+
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isMouseDownRef.current || scaleRef.current <= 1.05) return
+    const dx = e.clientX - touchStartXRef.current
+    const dy = e.clientY - touchStartYRef.current
+    let nextPanX = panXStartRef.current + dx
+    let nextPanY = panYStartRef.current + dy
+
+    if (imgRef.current) {
+      const w = imgRef.current.clientWidth
+      const h = imgRef.current.clientHeight
+      const maxPanX = Math.max(0, (w * (scaleRef.current - 1)) / 2)
+      const maxPanY = Math.max(0, (h * (scaleRef.current - 1)) / 2)
+
+      if (nextPanX > maxPanX) nextPanX = maxPanX + (nextPanX - maxPanX) * 0.3
+      else if (nextPanX < -maxPanX) nextPanX = -maxPanX + (nextPanX + maxPanX) * 0.3
+
+      if (nextPanY > maxPanY) nextPanY = maxPanY + (nextPanY - maxPanY) * 0.3
+      else if (nextPanY < -maxPanY) nextPanY = -maxPanY + (nextPanY + maxPanY) * 0.3
+    }
+
+    dragXRef.current = nextPanX
+    dragYRef.current = nextPanY
+    applyImgTransform(nextPanX, nextPanY, scaleRef.current)
+  }, [applyImgTransform])
+
+  const handleMouseUpOrLeave = useCallback(() => {
+    if (!isMouseDownRef.current) return
+    isMouseDownRef.current = false
+    const dx = dragXRef.current
+    const dy = dragYRef.current
+
+    let clampedX = dx
+    let clampedY = dy
+    if (imgRef.current) {
+      const w = imgRef.current.clientWidth
+      const h = imgRef.current.clientHeight
+      const maxPanX = Math.max(0, (w * (scaleRef.current - 1)) / 2)
+      const maxPanY = Math.max(0, (h * (scaleRef.current - 1)) / 2)
+      clampedX = Math.min(maxPanX, Math.max(-maxPanX, dx))
+      clampedY = Math.min(maxPanY, Math.max(-maxPanY, dy))
+    }
+
+    panXRef.current = clampedX
+    panYRef.current = clampedY
+
+    if (imgRef.current) {
+      imgRef.current.style.transition = `transform 150ms ${SLIDE_EASE}`
+      imgRef.current.style.transform = `translate3d(${clampedX}px, ${clampedY}px, 0) scale(${scaleRef.current})`
+      imgRef.current.style.cursor = scaleRef.current > 1.05 ? 'grab' : 'zoom-in'
+      imgRef.current.addEventListener('transitionend', () => {
+        if (imgRef.current) imgRef.current.style.transition = ''
+      }, { once: true })
+    }
+
+    dragXRef.current = 0
+    dragYRef.current = 0
+  }, [])
+
   const handleDoubleClick = useCallback(() => {
     const next = scaleRef.current > 1 ? 1 : 2
     scaleRef.current = next
+    panXRef.current = 0
+    panYRef.current = 0
     if (imgRef.current) {
       imgRef.current.style.transition = `transform 200ms ${SLIDE_EASE}`
       imgRef.current.style.transform  = `translate3d(0,0,0) scale(${next})`
+      imgRef.current.style.cursor = next > 1.05 ? 'grab' : 'zoom-in'
       imgRef.current.addEventListener('transitionend', () => {
         if (imgRef.current) imgRef.current.style.transition = ''
       }, { once: true })
@@ -555,7 +852,7 @@ export function FileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'f
   return createPortal(
     <div
       ref={overlayRef}
-      className="mobile-safe-overlay fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/80"
+      className="mobile-safe-overlay fixed inset-0 z-50 flex flex-col bg-black/80"
       // opacity starts at 0, useLayoutEffect rAF sets it to 1 — CSS transition fires
       style={{ opacity: 0, transition: 'opacity 150ms ease-out' }}
       onClick={closeLightbox}
@@ -565,7 +862,7 @@ export function FileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'f
     >
       {/* ── Top action bar ──────────────────────────────────────────────────── */}
       <div
-        className="absolute right-[max(1rem,env(safe-area-inset-right,0px))] top-[max(1rem,env(safe-area-inset-top,0px))] z-10 flex items-center gap-2 [[data-mobile-shell='ios']_&]:top-[max(4rem,calc(env(safe-area-inset-top)+1rem))]"
+        className="z-10 flex w-full shrink-0 justify-end gap-2 px-[max(1rem,env(safe-area-inset-right,0px))] pt-[max(1rem,env(safe-area-inset-top,0px))] pb-2 [[data-mobile-shell='ios']_&]:pt-[max(4rem,calc(env(safe-area-inset-top)+1rem))]"
         onClick={(e) => e.stopPropagation()}
       >
         <IconButton
@@ -611,44 +908,55 @@ export function FileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'f
         that re-keys its content when `current` changes.
       */}
       <div
-        className="flex w-full flex-1 items-center justify-center overflow-hidden px-2 sm:px-14"
+        className="flex w-full flex-1 touch-none items-center justify-center overflow-hidden px-2 sm:px-14 min-h-0"
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
       >
         <div
           ref={slideRef}
-          className="flex w-full items-center justify-center"
+          className="flex h-full w-full flex-col items-center justify-center gap-4 min-h-0"
           style={{ willChange: 'transform' }}
         >
-          {active.type === 'image' && (
-            <FileLightboxImage
-              item={active}
-              imgRef={imgRef}
-              onTouchStart={handleTouchStart}
-              onTouchMove={handleTouchMove}
-              onTouchEnd={handleTouchEnd}
-              onDoubleClick={handleDoubleClick}
-              onClick={handleImageClick}
-            />
+          {/* Active Preview Area */}
+          <div className="flex-1 min-h-0 w-full flex items-center justify-center">
+            {active.type === 'image' && (
+              <FileLightboxImage
+                key={active.src}
+                item={active}
+                imgRef={imgRef}
+                onDoubleClick={handleDoubleClick}
+                onClick={handleImageClick}
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUpOrLeave}
+                onMouseLeave={handleMouseUpOrLeave}
+              />
+            )}
+            {active.type === 'video'  && <FileLightboxVideo   key={active.src} item={active} />}
+            {active.type === 'audio'  && <FileLightboxAudio   key={active.src} item={active} />}
+            {active.type === 'pdf'    && <FileLightboxPdf     key={active.src} item={active} />}
+            {active.type === 'text'   && <FileLightboxText    key={active.src} item={active} />}
+            {active.type === 'file'   && <FileLightboxGeneric key={active.src} item={active} />}
+          </div>
+
+          {/* Filename right below the active preview card */}
+          {active.name && (
+            <p
+              className="max-w-[80vw] shrink-0 break-words text-center text-sm text-(--color-text-muted) select-text"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {active.name}
+            </p>
           )}
-          {active.type === 'video'  && <FileLightboxVideo   item={active} />}
-          {active.type === 'audio'  && <FileLightboxAudio   item={active} />}
-          {active.type === 'pdf'    && <FileLightboxPdf     item={active} />}
-          {active.type === 'text'   && <FileLightboxText    item={active} />}
-          {active.type === 'file'   && <FileLightboxGeneric item={active} />}
         </div>
       </div>
 
-      {/* ── Bottom bar: filename + counter + dots ────────────────────────────── */}
+      {/* ── Bottom bar: counter + dots + mobile swipe hint ──────────────────── */}
       <div
         className="z-10 flex w-full shrink-0 flex-col items-center gap-2 pb-[max(1.25rem,env(safe-area-inset-bottom,1.25rem))] pt-3"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Filename */}
-        {active.name && (
-          <p className="max-w-[80vw] break-words text-center text-sm text-(--color-text-muted)">
-            {active.name}
-          </p>
-        )}
-
         {hasMultiple && (
           <div className="flex flex-col items-center gap-2">
             {/* Counter pill */}
@@ -679,13 +987,6 @@ export function FileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'f
           </div>
         )}
       </div>
-
-      {/* ── Mobile swipe hint (single-item, first open only) ─────────────────── */}
-      {hasMultiple && (
-        <p className="pointer-events-none absolute bottom-[calc(env(safe-area-inset-bottom,0px)+5rem)] left-1/2 -translate-x-1/2 text-xs text-(--color-text-muted)/60 sm:hidden">
-          Swipe to navigate
-        </p>
-      )}
     </div>,
     document.body,
   )

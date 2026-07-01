@@ -185,7 +185,7 @@ export function SessionModelSettings({
           </Button>
         </div>
       </div>
-      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_11rem_minmax(14rem,0.8fr)]">
+      <div className="grid gap-3 sm:grid-cols-[minmax(0,2fr)_10rem_minmax(0,0.8fr)]">
         <label className="min-w-0 text-xs text-(--color-text-muted)">
           <span className="mb-1 block font-medium text-(--color-text-2)">Model</span>
           <ModelCombobox

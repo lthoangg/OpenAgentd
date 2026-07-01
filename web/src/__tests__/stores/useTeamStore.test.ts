@@ -810,4 +810,46 @@ describe("_handleSSEEvent: summarization", () => {
     // endCompaction: summary="" falsy → falls back to block.content ("streamed")
     expect(blocks[0].content).toBe("streamed");
   });
+
+  it("second full compaction cycle appends a second block after the first compacted one", () => {
+    // First cycle
+    useTeamStore.getState()._handleSSEEvent("summarization_start", { agent: "lead" });
+    useTeamStore.getState()._handleSSEEvent("summarization_content", { agent: "lead", text: "first" });
+    useTeamStore.getState()._handleSSEEvent("summarization_end", { agent: "lead", summary: "first summary" });
+
+    // In between: some new streaming content is committed via done
+    useTeamStore.setState((s) => ({
+      agentStreams: {
+        ...s.agentStreams,
+        lead: {
+          ...s.agentStreams.lead,
+          currentBlocks: [{ id: "t1", type: "text" as const, content: "new turn" }],
+        },
+      },
+    }));
+    useTeamStore.getState()._handleSSEEvent("done", {});
+
+    // Second cycle
+    useTeamStore.getState()._handleSSEEvent("summarization_start", { agent: "lead" });
+    useTeamStore.getState()._handleSSEEvent("summarization_content", { agent: "lead", text: "second" });
+    useTeamStore.getState()._handleSSEEvent("summarization_end", { agent: "lead", summary: "second summary" });
+
+    const blocks = useTeamStore.getState().agentStreams.lead.blocks;
+    const compactionBlocks = blocks.filter((b) => b.type === "compaction");
+    expect(compactionBlocks).toHaveLength(2);
+    expect(compactionBlocks[0].content).toBe("first summary");
+    expect(compactionBlocks[1].content).toBe("second summary");
+    expect(compactionBlocks[0].extra?.state).toBe("compacted");
+    expect(compactionBlocks[1].extra?.state).toBe("compacted");
+    // startCompaction inserts the new marker right after the last compaction
+    // block it finds (index 0 = first compacted), NOT at the tail — so the
+    // second compaction lands before the "new turn" text block.
+    // Expected order: [compacted(first), compacted(second), text(new turn)]
+    const types = blocks.map((b) => b.type);
+    const firstCompIdx = types.indexOf("compaction");
+    const secondCompIdx = types.lastIndexOf("compaction");
+    const textIdx = types.indexOf("text");
+    expect(firstCompIdx).toBeLessThan(secondCompIdx);
+    expect(secondCompIdx).toBeLessThan(textIdx);
+  });
 });

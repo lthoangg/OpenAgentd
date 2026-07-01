@@ -335,6 +335,20 @@ describe("startCompaction", () => {
     expect(result[0].extra?.state).toBe("compacting");
   });
 
+  it("appends when there are prior non-compaction blocks but no previous compaction", () => {
+    // lastCompactionIndex === -1 with non-empty blocks → same append-to-tail path
+    const blocks: ContentBlock[] = [
+      { id: "t1", type: "text", content: "before" },
+      { id: "t2", type: "text", content: "more" },
+    ];
+    const result = startCompaction(blocks);
+    expect(result).toHaveLength(3);
+    expect(result[2].type).toBe("compaction");
+    expect(result[2].extra?.state).toBe("compacting");
+    expect(result[0].id).toBe("t1");
+    expect(result[1].id).toBe("t2");
+  });
+
   it("is idempotent when the trailing block is already compacting (replay)", () => {
     const blocks: ContentBlock[] = [
       { id: "c1", type: "compaction", content: "half", extra: { state: "compacting" } },
@@ -408,6 +422,17 @@ describe("appendCompactionContent", () => {
     ];
     const result = appendCompactionContent(blocks, " more");
     expect(result[0].content).toBe("done");
+  });
+
+  it("targets the last compacting block when multiple compaction blocks exist", () => {
+    // First is compacted (old summary), second is the in-flight one
+    const blocks: ContentBlock[] = [
+      { id: "c1", type: "compaction", content: "old", extra: { state: "compacted" } },
+      { id: "c2", type: "compaction", content: "new ", extra: { state: "compacting" } },
+    ];
+    const result = appendCompactionContent(blocks, "delta");
+    expect(result[0].content).toBe("old");   // untouched
+    expect(result[1].content).toBe("new delta"); // updated
   });
 
   // ── ordering: compacting block is NOT the last block ─────────────────────
@@ -503,5 +528,28 @@ describe("endCompaction", () => {
     expect(result.map((b) => b.id)).toEqual(["u1", "c1", "t1", "t2"]);
     expect(result[1].extra?.state).toBe("compacted");
     expect(result[1].content).toBe("done");
+  });
+
+  it("targets the last compacting block when a previous compacted block also exists", () => {
+    const blocks: ContentBlock[] = [
+      { id: "c1", type: "compaction", content: "old summary", extra: { state: "compacted" } },
+      { id: "c2", type: "compaction", content: "partial", extra: { state: "compacting" } },
+    ];
+    const result = endCompaction(blocks, "final", false);
+    expect(result[0].content).toBe("old summary");   // untouched
+    expect(result[0].extra?.state).toBe("compacted");
+    expect(result[1].content).toBe("final");          // updated
+    expect(result[1].extra?.state).toBe("compacted");
+  });
+
+  it("error flag set even when live blocks follow the compacting block", () => {
+    const blocks: ContentBlock[] = [
+      { id: "c1", type: "compaction", content: "partial", extra: { state: "compacting" } },
+      { id: "t1", type: "text", content: "live" },
+    ];
+    const result = endCompaction(blocks, "", true);
+    expect(result[0].extra?.state).toBe("compacted");
+    expect(result[0].extra?.error).toBe(true);
+    expect(result[1].id).toBe("t1"); // live block untouched
   });
 });

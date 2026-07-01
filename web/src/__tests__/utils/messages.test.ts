@@ -227,6 +227,44 @@ describe("parseTeamBlocks", () => {
     expect(blocks[0].content).toBe("## Goal\nDo the thing.\n\n## Progress\nDone.");
   });
 
+  it("summary with null content produces empty compaction block", () => {
+    const msgs = [makeMsg({ is_summary: true, role: "user", content: null as unknown as string })];
+    const blocks = parseTeamBlocks(msgs);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].type).toBe("compaction");
+    expect(blocks[0].content).toBe(""); // msg.content || '' → ""
+  });
+
+  it("two summary messages produce two compaction blocks in chronological order", () => {
+    const t1 = new Date(Date.now() - 10000).toISOString();
+    const t2 = new Date().toISOString();
+    const msgs = [
+      makeMsg({ is_summary: true, role: "user", content: "first summary", created_at: t1 }),
+      makeMsg({ is_summary: true, role: "user", content: "second summary", created_at: t2 }),
+    ];
+    const blocks = parseTeamBlocks(msgs);
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0].type).toBe("compaction");
+    expect(blocks[0].content).toBe("first summary");
+    expect(blocks[1].type).toBe("compaction");
+    expect(blocks[1].content).toBe("second summary");
+  });
+
+  it("summary message interleaved between user and assistant keeps position", () => {
+    const base = Date.now();
+    const msgs = [
+      makeMsg({ role: "user", content: "question", created_at: new Date(base).toISOString() }),
+      makeMsg({ is_summary: true, role: "user", content: "compacted here", created_at: new Date(base + 1).toISOString() }),
+      makeMsg({ role: "assistant", content: "answer", created_at: new Date(base + 2).toISOString() }),
+    ];
+    const blocks = parseTeamBlocks(msgs);
+    expect(blocks).toHaveLength(3);
+    expect(blocks[0].type).toBe("user");
+    expect(blocks[1].type).toBe("compaction");
+    expect(blocks[1].content).toBe("compacted here");
+    expect(blocks[2].type).toBe("text");
+  });
+
   it("shows hidden messages (user sees full history)", () => {
     const msgs = [makeMsg({ is_hidden: true, role: "assistant", content: "old message" })];
     expect(parseTeamBlocks(msgs)).toHaveLength(1);
@@ -459,6 +497,14 @@ describe("parseApiMessages", () => {
     expect(result[0].blocks[0].type).toBe("compaction");
     expect(result[0].blocks[0].extra?.state).toBe("compacted");
     expect(result[0].blocks[0].content).toBe("short summary");
+  });
+
+  it("summary with null content produces empty compaction block (parseApiMessages)", () => {
+    const msgs = [makeMsg({ is_summary: true, role: "user", content: null as unknown as string })];
+    const result = parseApiMessages(msgs);
+    expect(result).toHaveLength(1);
+    expect(result[0].blocks[0].type).toBe("compaction");
+    expect(result[0].blocks[0].content).toBe("");
   });
 
   it("extracts usage from extra field", () => {

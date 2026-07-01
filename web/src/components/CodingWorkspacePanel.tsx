@@ -65,7 +65,7 @@ function collectChangedFiles(diff?: WorkspaceGitDiffResponse): ChangedFileInfo[]
         current = null
         continue
       }
-      const path = match[2] === '/dev/null' ? match[1] : match[2]
+      const path = match[2] === 'dev/null' ? match[1] : match[2]
       current = files.get(path) ?? { path, status: 'M', additions: 0, deletions: 0 }
       files.set(current.path, current)
       continue
@@ -1102,22 +1102,20 @@ export function CodingWorkspacePanel({
               <DialogDescription>Choose an action for this file.</DialogDescription>
             </DialogHeader>
             <DialogFooter className="flex-col items-stretch gap-2 p-3 sm:flex-col">
-              <Button type="button" variant="ghost" className="justify-start" onClick={() => {
-                const f = mobileFileActions; setMobileFileActions(null)
-                if (!f) return
-                softHapticFeedback()
-                const name = f.path.split('/').pop() ?? f.path
-                const isDeleted = f.status === 'D'
-                const file: WorkspaceFileInfo = {
-                  ...(files.data?.files.find((fi) => fi.path === f.path)
-                    ?? { path: f.path, name, size: 0, mtime: 0, mime: 'text/plain' }),
-                  deleted: isDeleted
-                }
-                openFileTab(file)
-              }}>
-                <FolderOpen size={14} aria-hidden="true" />
-                Open file
-              </Button>
+              {mobileFileActions?.status !== 'D' && (
+                <Button type="button" variant="ghost" className="justify-start" onClick={() => {
+                  const f = mobileFileActions; setMobileFileActions(null)
+                  if (!f) return
+                  softHapticFeedback()
+                  const name = f.path.split('/').pop() ?? f.path
+                  const file: WorkspaceFileInfo = files.data?.files.find((fi) => fi.path === f.path)
+                    ?? { path: f.path, name, size: 0, mtime: 0, mime: 'text/plain' }
+                  openFileTab(file)
+                }}>
+                  <FolderOpen size={14} aria-hidden="true" />
+                  Open file
+                </Button>
+              )}
               <Button type="button" variant="ghost" className="justify-start" onClick={() => {
                 const f = mobileFileActions; setMobileFileActions(null)
                 if (!f) return
@@ -1366,27 +1364,25 @@ export function CodingWorkspacePanel({
             }}
             onClick={(event) => event.stopPropagation()}
           >
-            <button
-              type="button"
-              role="menuitem"
-              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none cursor-pointer"
-              onClick={() => {
-                const f = desktopFileActions.file
-                setDesktopFileActions(null)
-                softHapticFeedback()
-                const name = f.path.split('/').pop() ?? f.path
-                const isDeleted = f.status === 'D'
-                const file: WorkspaceFileInfo = {
-                  ...(files.data?.files.find((fi) => fi.path === f.path)
-                    ?? { path: f.path, name, size: 0, mtime: 0, mime: 'text/plain' }),
-                  deleted: isDeleted
-                }
-                openFileTab(file)
-              }}
-            >
-              <FolderOpen size={12} aria-hidden="true" />
-              Open file
-            </button>
+            {desktopFileActions.file.status !== 'D' && (
+              <button
+                type="button"
+                role="menuitem"
+                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none cursor-pointer"
+                onClick={() => {
+                  const f = desktopFileActions.file
+                  setDesktopFileActions(null)
+                  softHapticFeedback()
+                  const name = f.path.split('/').pop() ?? f.path
+                  const file: WorkspaceFileInfo = files.data?.files.find((fi) => fi.path === f.path)
+                    ?? { path: f.path, name, size: 0, mtime: 0, mime: 'text/plain' }
+                  openFileTab(file)
+                }}
+              >
+                <FolderOpen size={12} aria-hidden="true" />
+                Open file
+              </button>
+            )}
             <button
               type="button"
               role="menuitem"

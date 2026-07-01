@@ -119,6 +119,25 @@ export function SessionModelSettings({
     trimmedDraftModel === defaultModel ||
     validModelIds.has(trimmedDraftModel)
 
+  // Validate and reset draft thinking level if it's not supported by the current effective model.
+  // We only run this validation when the model registry has loaded and the typed/selected model is valid,
+  // to avoid prematurely clearing levels during mid-typing of invalid/partial model names.
+  useEffect(() => {
+    if (!registry.data?.models || !modelValid) return
+
+    const effectiveDraftModel = draftModel.trim() || defaultModel || ''
+    const entry = modelOptions.find((m) => m.id === effectiveDraftModel)
+
+    const allowedLevels = entry?.thinking_levels && entry.thinking_levels.length > 0
+      ? entry.thinking_levels
+      : FALLBACK_THINKING_LEVEL_VALUES
+    const normalizedLevels = allowedLevels.filter((value) => value !== '__none__')
+
+    if (draftThinkingLevel && !normalizedLevels.includes(draftThinkingLevel)) {
+      setDraftThinkingLevel('')
+    }
+  }, [draftModel, defaultModel, modelOptions, registry.data, draftThinkingLevel, modelValid])
+
   const selectThinkingLevel = (level: string) => {
     setDraftThinkingLevel(level)
   }

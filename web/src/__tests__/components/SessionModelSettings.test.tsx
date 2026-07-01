@@ -137,6 +137,82 @@ describe('SessionModelSettings', () => {
     expect(screen.queryByText('Extra high')).toBeNull()
     expect(screen.queryByText('Max')).toBeNull()
   })
+
+  it('resets thinking level to default when switching from a model supporting xhigh to one that does not', async () => {
+    globalThis.fetch = mock(async () =>
+      new Response(JSON.stringify({
+        tools: [],
+        skills: [],
+        providers: ['openai', 'anthropic'],
+        models: [
+          {
+            id: 'anthropic:claude-3-7-sonnet',
+            provider: 'anthropic',
+            model: 'claude-3-7-sonnet',
+            vision: false,
+            output_image: false,
+            output_video: false,
+            thinking_levels: ['none', 'low', 'medium', 'high', 'xhigh'],
+            summary_trigger_tokens: 0,
+          },
+          {
+            id: 'openai:gpt-4o',
+            provider: 'openai',
+            model: 'gpt-4o',
+            vision: false,
+            output_image: false,
+            output_video: false,
+            thinking_levels: [],
+            summary_trigger_tokens: 0,
+          },
+        ],
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    ) as typeof fetch
+
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    })
+
+    const onChange = mock(() => undefined)
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <SessionModelSettings
+          defaultModel={null}
+          sessionModel="anthropic:claude-3-7-sonnet"
+          sessionThinkingLevel="xhigh"
+          sessionFastMode={false}
+          onChange={onChange}
+        />
+      </QueryClientProvider>,
+    )
+
+    const input = await screen.findByRole('combobox', { name: 'Search session model' })
+    await waitFor(() => expect((globalThis.fetch as ReturnType<typeof mock>).mock.calls.length).toBeGreaterThan(0))
+
+    const thinkingButton = await screen.findByRole('button', { name: 'Thinking level' })
+    expect(thinkingButton.textContent).toBe('Xhigh')
+
+    fireEvent.focus(input)
+    fireEvent.change(input, { target: { value: 'openai:gpt-4o' } })
+
+    const option = await screen.findByText('openai:gpt-4o')
+    fireEvent.click(option)
+
+    await waitFor(() => expect(thinkingButton.textContent).toBe('Default'))
+
+    const saveButton = await screen.findByRole('button', { name: 'Save' })
+    expect((saveButton as HTMLButtonElement).disabled).toBe(false)
+    fireEvent.click(saveButton)
+
+    expect(onChange).toHaveBeenCalledWith('openai:gpt-4o', null, false)
+  })
 })
 
 describe('SessionModelSettings — Fast mode', () => {

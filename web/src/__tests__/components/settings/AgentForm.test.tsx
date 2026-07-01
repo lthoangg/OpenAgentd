@@ -382,6 +382,56 @@ model: openai:gpt-5.4
       registryFixture.models.splice(0, registryFixture.models.length, ...originalModels)
     }
   })
+
+  it('resets thinking level to default when switching from a model supporting xhigh to one that does not', async () => {
+    const user = userEvent.setup()
+    const originalModels = [...registryFixture.models]
+    registryFixture.models.splice(0, registryFixture.models.length,
+      {
+        id: 'anthropic:claude-3-7-sonnet',
+        provider: 'anthropic',
+        model: 'claude-3-7-sonnet',
+        vision: false,
+        thinking_levels: ['none', 'low', 'medium', 'high', 'xhigh'],
+      },
+      {
+        id: 'openai:gpt-4o',
+        provider: 'openai',
+        model: 'gpt-4o',
+        vision: false,
+        thinking_levels: [],
+      }
+    )
+
+    try {
+      const initialYaml = `---
+name: coder
+role: lead
+model: anthropic:claude-3-7-sonnet
+thinking_level: xhigh
+---
+System prompt here
+`
+      const { onChange } = renderForm(initialYaml)
+      onChange.mockClear()
+
+      const modelInput = comboboxIn('Model')
+      await user.click(modelInput)
+      await user.clear(modelInput)
+      await user.type(modelInput, 'openai:gpt-4o')
+
+      const option = await screen.findByText('openai:gpt-4o')
+      await user.click(option)
+
+      const lastCall = onChange.mock.calls.at(-1)
+      expect(lastCall).toBeDefined()
+      const nextRaw = lastCall![0] as string
+      expect(nextRaw).toContain('model: openai:gpt-4o')
+      expect(nextRaw).not.toContain('thinking_level: xhigh')
+    } finally {
+      registryFixture.models.splice(0, registryFixture.models.length, ...originalModels)
+    }
+  })
 })
 
 // ── AgentForm — write-back into raw on selection ────────────────────────────

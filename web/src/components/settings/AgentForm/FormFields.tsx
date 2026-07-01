@@ -219,7 +219,20 @@ export function FormFields({
             <ModelCombobox
               value={fm.model ?? ''}
               options={currentModelOptions}
-              onChange={(v) => updateFromForm({ ...fm, model: v }, body)}
+              onChange={(v) => {
+                const nextFm = { ...fm, model: v }
+                const isModelValid = v === '' || validModelIds.includes(v)
+                if (isModelValid) {
+                  const entry = currentModelOptions.find((m) => m.id === v)
+                  const allowedLevels = entry?.thinking_levels && entry.thinking_levels.length > 0
+                    ? entry.thinking_levels
+                    : FALLBACK_THINKING_LEVELS
+                  if (nextFm.thinking_level && !allowedLevels.includes(nextFm.thinking_level)) {
+                    nextFm.thinking_level = null
+                  }
+                }
+                updateFromForm(nextFm, body)
+              }}
               disabled={disabled}
               invalid={!!modelError}
               placeholder="Type to search models…"

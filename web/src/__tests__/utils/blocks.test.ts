@@ -351,6 +351,40 @@ describe("startCompaction", () => {
     expect(result).toHaveLength(2);
     expect(result[1].extra?.state).toBe("compacting");
   });
+
+  // ── ordering: compaction inserted BEFORE live content blocks ─────────────
+  // When summarization fires mid-turn the store holds finalized blocks that
+  // already include some streaming content after the previous compaction
+  // boundary.  startCompaction must insert the new marker right after the
+  // last compaction block, NOT after those live blocks.
+
+  it("inserts new compacting block right after last compacted block, not at the tail", () => {
+    // [prev-compacted, live-text-A, live-text-B]
+    // New marker must land at index 1, keeping the live text blocks AFTER it.
+    const blocks: ContentBlock[] = [
+      { id: "c1", type: "compaction", content: "old summary", extra: { state: "compacted" } },
+      { id: "t1", type: "text", content: "live A" },
+      { id: "t2", type: "text", content: "live B" },
+    ];
+    const result = startCompaction(blocks);
+    expect(result).toHaveLength(4);
+    expect(result[0].id).toBe("c1");          // prev compacted — stays first
+    expect(result[1].type).toBe("compaction"); // new compacting marker inserted here
+    expect(result[1].extra?.state).toBe("compacting");
+    expect(result[2].id).toBe("t1");          // live blocks shift right
+    expect(result[3].id).toBe("t2");
+  });
+
+  it("is idempotent on replay even when live blocks follow the compacting marker", () => {
+    // [compacting, live-text]  — reconnect re-emits start; must not duplicate
+    const blocks: ContentBlock[] = [
+      { id: "c1", type: "compaction", content: "half", extra: { state: "compacting" } },
+      { id: "t1", type: "text", content: "live" },
+    ];
+    const result = startCompaction(blocks);
+    expect(result).toBe(blocks);
+    expect(result).toHaveLength(2);
+  });
 });
 
 describe("appendCompactionContent", () => {
@@ -374,6 +408,35 @@ describe("appendCompactionContent", () => {
     ];
     const result = appendCompactionContent(blocks, " more");
     expect(result[0].content).toBe("done");
+  });
+
+  // ── ordering: compacting block is NOT the last block ─────────────────────
+  // After startCompaction inserts the marker before live content, subsequent
+  // summarization_content deltas must still find and update it even though
+  // live text blocks sit after it in the array.
+
+  it("updates the compacting block even when live text blocks follow it", () => {
+    const blocks: ContentBlock[] = [
+      { id: "c1", type: "compaction", content: "so far ", extra: { state: "compacting" } },
+      { id: "t1", type: "text", content: "live response" },
+    ];
+    const result = appendCompactionContent(blocks, "more");
+    expect(result[0].content).toBe("so far more"); // compaction block updated
+    expect(result[1].content).toBe("live response"); // live block untouched
+    expect(result[1].id).toBe("t1");
+  });
+
+  it("preserves block order — only the compacting block changes", () => {
+    const blocks: ContentBlock[] = [
+      { id: "u1", type: "user", content: "question" },
+      { id: "c1", type: "compaction", content: "A", extra: { state: "compacting" } },
+      { id: "t1", type: "text", content: "streaming" },
+    ];
+    const result = appendCompactionContent(blocks, "B");
+    expect(result.map((b) => b.id)).toEqual(["u1", "c1", "t1"]);
+    expect(result[1].content).toBe("AB");
+    expect(result[0].content).toBe("question");
+    expect(result[2].content).toBe("streaming");
   });
 });
 
@@ -411,5 +474,34 @@ describe("endCompaction", () => {
     ];
     const result = endCompaction(blocks, "", false);
     expect(result[0].content).toBe("streamed");
+  });
+
+  // ── ordering: compacting block is NOT the last block ─────────────────────
+  // endCompaction must flip the right block and leave live blocks in place.
+
+  it("flips the compacting block even when live text blocks follow it", () => {
+    const blocks: ContentBlock[] = [
+      { id: "c1", type: "compaction", content: "streamed summary", extra: { state: "compacting" } },
+      { id: "t1", type: "text", content: "live response" },
+    ];
+    const result = endCompaction(blocks, "final summary", false);
+    expect(result).toHaveLength(2);
+    expect(result[0].extra?.state).toBe("compacted");
+    expect(result[0].content).toBe("final summary");
+    expect(result[1].id).toBe("t1"); // live block position unchanged
+    expect(result[1].content).toBe("live response");
+  });
+
+  it("preserves full block order after end", () => {
+    const blocks: ContentBlock[] = [
+      { id: "u1", type: "user", content: "question" },
+      { id: "c1", type: "compaction", content: "partial", extra: { state: "compacting" } },
+      { id: "t1", type: "text", content: "streaming" },
+      { id: "t2", type: "text", content: "more" },
+    ];
+    const result = endCompaction(blocks, "done", false);
+    expect(result.map((b) => b.id)).toEqual(["u1", "c1", "t1", "t2"]);
+    expect(result[1].extra?.state).toBe("compacted");
+    expect(result[1].content).toBe("done");
   });
 });

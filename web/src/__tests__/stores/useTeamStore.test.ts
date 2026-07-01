@@ -712,4 +712,102 @@ describe("_handleSSEEvent: summarization", () => {
     useTeamStore.getState()._handleSSEEvent("summarization_start", { agent: "" });
     expect(useTeamStore.getState().agentStreams).toEqual({});
   });
+
+  // ── full sequence with live currentBlocks ────────────────────────────────
+  // The critical real-world scenario: agent is mid-response (currentBlocks
+  // has live text) when summarization fires.  The compaction marker must
+  // land in blocks BEFORE the live content — so when the user sees the
+  // merged allBlocks = [...blocks, ...currentBlocks] the order is:
+  //   [prev-text, COMPACTING-MARKER, ...live-response]
+  // not:
+  //   [prev-text, ...live-response, COMPACTING-MARKER]
+
+  it("full sequence: start→content→end order with concurrent live currentBlocks", () => {
+    useTeamStore.setState({
+      agentStreams: {
+        lead: makeStream({
+          blocks: [{ id: "t0", type: "text" as const, content: "earlier" }],
+          currentBlocks: [
+            { id: "u1", type: "user" as const, content: "hello" },
+            { id: "t1", type: "text" as const, content: "live response" },
+          ],
+        }),
+      },
+      agentNames: ["lead"],
+      leadName: "lead",
+    });
+
+    // start — marker inserted after last compacted block (t0), before live content
+    useTeamStore.getState()._handleSSEEvent("summarization_start", { agent: "lead" });
+    let stream = useTeamStore.getState().agentStreams.lead;
+    expect(stream.blocks.map((b) => b.type)).toEqual(["text", "compaction"]);
+    expect(stream.blocks[1].extra?.state).toBe("compacting");
+    expect(stream.currentBlocks.map((b) => b.id)).toEqual(["u1", "t1"]); // untouched
+
+    // content — accumulates on the compacting block, not the live text
+    useTeamStore.getState()._handleSSEEvent("summarization_content", { agent: "lead", text: "Sum " });
+    useTeamStore.getState()._handleSSEEvent("summarization_content", { agent: "lead", text: "mary." });
+    stream = useTeamStore.getState().agentStreams.lead;
+    expect(stream.blocks[1].content).toBe("Sum mary.");
+    expect(stream.blocks[1].extra?.state).toBe("compacting");
+    expect(stream.currentBlocks[1].content).toBe("live response"); // live unaffected
+
+    // end — compacting block flips; live blocks still in currentBlocks
+    useTeamStore.getState()._handleSSEEvent("summarization_end", {
+      agent: "lead",
+      summary: "Final summary.",
+    });
+    stream = useTeamStore.getState().agentStreams.lead;
+    expect(stream.blocks[1].extra?.state).toBe("compacted");
+    expect(stream.blocks[1].content).toBe("Final summary.");
+    expect(stream.currentBlocks.map((b) => b.id)).toEqual(["u1", "t1"]); // still there
+  });
+
+  it("done flushes currentBlocks AFTER compaction block — order preserved", () => {
+    useTeamStore.setState({
+      isTeamWorking: true,
+      agentStreams: {
+        lead: makeStream({
+          blocks: [
+            { id: "t0", type: "text" as const, content: "earlier" },
+            { id: "c1", type: "compaction" as const, content: "summary", extra: { state: "compacted" } },
+          ],
+          currentBlocks: [
+            { id: "t1", type: "text" as const, content: "post-compaction response" },
+          ],
+          status: "working" as const,
+        }),
+      },
+      agentNames: ["lead"],
+      leadName: "lead",
+    });
+
+    useTeamStore.getState()._handleSSEEvent("done", {});
+    const stream = useTeamStore.getState().agentStreams.lead;
+
+    // Order must be: earlier-text → compaction → post-compaction-text
+    expect(stream.blocks.map((b) => b.id)).toEqual(["t0", "c1", "t1"]);
+    expect(stream.blocks[1].type).toBe("compaction");
+    expect(stream.blocks[2].content).toBe("post-compaction response");
+    expect(stream.currentBlocks).toHaveLength(0);
+  });
+
+  it("summarization_content dropped when text field missing", () => {
+    useTeamStore.getState()._handleSSEEvent("summarization_start", { agent: "lead" });
+    // No text field — guard must drop the event cleanly
+    useTeamStore.getState()._handleSSEEvent("summarization_content", { agent: "lead" });
+    const blocks = useTeamStore.getState().agentStreams.lead.blocks;
+    expect(blocks[0].content).toBe(""); // unchanged
+  });
+
+  it("summarization_end missing summary field defaults to streamed content", () => {
+    useTeamStore.getState()._handleSSEEvent("summarization_start", { agent: "lead" });
+    useTeamStore.getState()._handleSSEEvent("summarization_content", { agent: "lead", text: "streamed" });
+    // summary field absent from event
+    useTeamStore.getState()._handleSSEEvent("summarization_end", { agent: "lead" });
+    const blocks = useTeamStore.getState().agentStreams.lead.blocks;
+    expect(blocks[0].extra?.state).toBe("compacted");
+    // endCompaction: summary="" falsy → falls back to block.content ("streamed")
+    expect(blocks[0].content).toBe("streamed");
+  });
 });

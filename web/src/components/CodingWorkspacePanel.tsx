@@ -934,7 +934,7 @@ export function CodingWorkspacePanel({
 
                               <div className="flex w-full items-center justify-between text-[10px] text-(--color-text-muted) mt-1">
                                 <span>{commit.author_name}</span>
-                                <span>{new Date(commit.timestamp * 1000).toLocaleDateString('en-GB')}</span>
+                                <span>{new Date(commit.timestamp * 1000).toLocaleDateString('en-GB')} {new Date(commit.timestamp * 1000).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false })}</span>
                               </div>
                             </LongPressButton>
 

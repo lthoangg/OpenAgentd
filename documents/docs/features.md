@@ -16,7 +16,7 @@ exists. When you ship something new, **add it here first** — slides, README,
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 15 providers. Your keys.
 
-**Latest release:** v1.91.0 · July 1, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.91.0)
+**Latest release:** v1.92.0 · July 1, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.92.0)
 
 ---
 
@@ -151,13 +151,24 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   clicked file mentions in sent user messages open that file in the workspace
   files sidebar. Caps at 20 mentions / 20 MB / ~32k chars per turn. Persists
   on queued messages.
-- **Image viewer (full-screen)** `[since v1.0]` — click any generated or attached
-  image to open in a lightbox; touch shells support swipe-down dismissal,
-  double-tap zoom, and pinch zoom `[v1.45.2]`.
-- **Workspace files panel** `[since v1.0]` — every file the agent reads, writes, or
-  generates appears in the left drawer. Click to preview or download; desktop
-  downloads use a native save dialog instead of navigating away from the app
-  `[v1.52.0]`. See [`web/workspace-files.md`](./web/workspace-files.md).
+- **Multi-type file lightbox** `[since v1.0, v1.92.0]` — click any generated or
+  attached file to open `FileLightbox`, a full-screen gallery covering images,
+  video, audio, PDFs, text, and generic file types in one modal, with pinch-zoom
+  and swipe-to-close for images and video, keyboard/swipe navigation between
+  attachments, and `AttachmentStrip` unifying the previous separate image/file
+  card render paths. Multi-file paste into the composer now attaches every
+  pasted file instead of only the last one `[v1.92.0]`.
+- **Unified download architecture** `[v1.92.0]` — FileLightbox, workspace
+  downloads, and coding-workspace downloads share one download path instead of
+  three duplicated blob-to-base64 implementations; iOS downloads now present a
+  native `UIActivityViewController` share sheet instead of silently failing.
+- **Workspace files panel** `[since v1.0, v1.92.0]` — every file the agent reads,
+  writes, or generates appears in the left drawer as a recursive, VSCode-style
+  collapsible file tree with folder chevrons, depth indentation, and
+  material-icon-theme file/folder icons `[v1.92.0]`. Click to preview or
+  download; desktop downloads use a native save dialog instead of navigating
+  away from the app `[v1.52.0]`. See
+  [`web/workspace-files.md`](./web/workspace-files.md).
 - **Header context meter** `[v1.53.0]` — desktop and mobile chat headers show an
   icon-sized input-token progress ring against the backend's model-aware
   summarization trigger; hover, focus, or tap/click reveals input/output/cache
@@ -289,6 +300,9 @@ team against it. Deeper doc: [`web/coding-sessions.md`](./web/coding-sessions.md
   independently resizable via drag handles on desktop.
   - **Git Commits & Commit Tree in workspace dock** `[v1.70.2]` — additional sub-tabs inside the "Changes" panel to see recent git commits and a visual branch graph. The commits list supports high-performance cursor-based infinite scrolling (fetching more commits on scroll using a native `IntersectionObserver`) and inline expansion to view the files modified in any commit and their interactive diff previews. The visual tree graph renders the textual `git log --graph` output with branch splits, merges, and an "All Branches" toggle. **Workspace Git UI state (including the selected sub-tab, All Branches toggle, expanded commits, and expanded file diffs) is persisted in the local browser state, maintaining your context across dock toggles and workspace switches** `[v1.73.0]`.
     - **Git Commit Actions (Undo & Revert)** `[v1.88.0]` — right-clicking a commit/file on desktop opens a native-feeling context menu at the cursor, while long-pressing on mobile opens a touch-friendly action sheet. Allows you to **Undo commit** (soft-resets the last commit, keeping all changes staged in your working copy) or **Revert commit** (creates a new commit that reverts the changes of the selected commit, with auto-abort protection if conflicts occur), and confirmation dialogs use responsive side-by-side buttons on desktop.
+    - **Time shown alongside date in commit history** `[v1.92.0]` — the commits
+      sub-tab shows a 24-hour `HH:MM` alongside the date so same-day commits
+      are distinguishable without expanding each one.
 - **Compact coding sidebar** `[v1.61.0]` — single-line session entries with
   status dots and tooltip dates; flattened repository/worktree/session hierarchy
   without nested group labels; scroll-triggered pagination replaces the Load
@@ -299,9 +313,15 @@ team against it. Deeper doc: [`web/coding-sessions.md`](./web/coding-sessions.md
 - **Two-layer workspace file viewer** `[v1.29.0]` — clicking a file in the coding
   workspace side drawer opens a read-only viewer beside it with line numbers,
   lightweight syntax highlighting, image previews, inline HTML5 video previews `[v1.90.0]`,
-  extensionless text files, and binary download fallback.
+  extensionless text files, and binary download fallback. Copy and download
+  buttons sit in the file tab header for one-click copy of the full content or
+  download of the file `[v1.92.0]`.
   Select lines and click **Add comment** to insert an `@path#Lx-Ly` composer
   reference; the backend auto-attaches only the selected file lines.
+- **Open file from git changes on mobile and desktop** `[v1.92.0]` — right-click
+  (desktop) or long-press (mobile) a changed file inside the Changes tab or a
+  commit's detail view to open, copy, or otherwise act on that file, including
+  deleted files, which render a dedicated deleted-file view in the editor panel.
 - **Persisted coding sessions per workspace** `[v1.18.0]` — `/coding/{session_id}`
   restores workspace context from the saved session. Bare `/coding` is the
   launcher or last-workspace restore. New empty sessions exist before the
@@ -405,7 +425,11 @@ agnostic by design. Deeper doc: [`configuration/providers.md`](./configuration/p
   built-in OAuth helper.
 - **Codex usage monitor** `[v1.32.0]` — Settings → Providers shows live Codex
   OAuth usage windows, resets, credits, unlimited plans, and spend-cap/limit states.
-- **Priority / Fast mode** `[v1.90.0]` — session settings can opt new messages into Fast/Priority mode. Supported on models and providers that implement service/latency tiers (Anthropic maps to `auto`, Google Gemini maps to `priority`, OpenAI maps to `auto`, and ChatGPT Codex maps to `priority`).
+- **Priority / Fast mode** `[v1.90.0, v1.92.0]` — session settings can opt new messages into Fast/Priority mode. Supported on models and providers that implement service/latency tiers (Anthropic maps to `auto`, Google Gemini maps to `priority`, OpenAI maps to `auto`, and ChatGPT Codex maps to `priority`). Availability is driven by a `supports_fast_mode` registry flag instead of a hard-coded provider-prefix list, so plugin providers can opt in without frontend changes `[v1.92.0]`.
+- **Disconnect a provider** `[v1.92.0]` — Settings → Providers lets you
+  temporarily disconnect a configured provider; its models disappear from
+  every picker and the warm-cache loop skips it, while saved credentials stay
+  on disk and a single click reconnects it.
 - **Copilot usage monitor** `[v1.33.0]` — Settings → Providers shows live Copilot
   premium request quota from the saved OAuth token.
 - **Provider plugin usage hooks** `[v1.33.0]` — OAuth provider plugins can
@@ -513,11 +537,16 @@ Four orthogonal ways to add capability. Deeper docs:
   lists the full runtime-visible catalog and can edit/delete non-bundled skills
   in place `[v1.27.x]`. Bundled first-party skills include `browser-use` for
   CLI-driven browser automation `[v1.43.4]`.
-  - **Reference files and scripts support** `[v1.87.0]` — fully compatible with the
+  - **Reference files and scripts support** `[v1.87.0, v1.92.0]` — fully compatible with the
     `agentskills.io` specification. Resolves `{SKILL_DIR}` and `${SKILL_DIR}` placeholders
     inside loaded skill instructions. Project-level skill directories resolve to clean relative
     paths (e.g. `.openagentd/skills/my-skill`), while global/bundled skill directories resolve
     to absolute paths, allowing the agent to use standard `read` and `shell` tools to access them.
+    `load_skill` now always prepends a `Skill directory: <path>` line to its response so the
+    agent finds bundled reference files without relying on the author adding `{SKILL_DIR}`
+    tokens `[v1.92.0]`. Skill cache invalidation now also watches project-local skill roots
+    (`.openagentd/skills/`, `.opencode/skills/`), not just the global config directory, so
+    edits are picked up on the next `discover_skills()` call `[v1.92.0]`.
 - **Plugins** `[v1.6.0]` — Python files dropped into `OPENAGENTD_PLUGINS_DIRS`.
   Register `@plugin` functions or `Plugin(BaseAgentHook)` classes with
   `tool.before` / `tool.after` / agent lifecycle hooks. Per `(agent, role)` filter.

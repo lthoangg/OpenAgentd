@@ -219,7 +219,7 @@ export function SessionSettingsPanel({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.97, y: 8 }}
             transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
-            className="fixed inset-x-0 bottom-0 top-[calc(var(--spacing-app-header)+env(safe-area-inset-top,0px))] z-50 flex flex-col overflow-hidden border border-(--color-border) bg-(--bg-page) shadow-2xl sm:inset-auto sm:left-1/2 sm:top-1/2 sm:h-[min(90vh,860px)] sm:w-[min(90vw,960px)] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-md"
+            className="mobile-viewport fixed inset-x-0 bottom-0 top-[calc(var(--spacing-app-header)+env(safe-area-inset-top,0px))] z-50 flex flex-col overflow-hidden border border-(--color-border) bg-(--bg-page) shadow-2xl sm:inset-auto sm:left-1/2 sm:top-1/2 sm:h-[min(90vh,860px)] sm:w-[min(90vw,960px)] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-md"
             role="dialog"
             aria-modal="true"
             aria-label="Session settings"

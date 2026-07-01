@@ -17,15 +17,10 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { AnimatePresence, motion } from 'framer-motion'
 import {
   X,
   FileText,
-  FileImage,
-  FileCode,
-  FileVideo,
-  File as FileIcon,
-  Folder,
   Download,
   RefreshCw,
   Loader2,
@@ -33,14 +28,18 @@ import {
   Copy,
   Check,
   ArrowLeft,
+  ChevronRight,
 } from 'lucide-react'
+import folderIcon from 'material-icon-theme/icons/folder.svg?url'
+import folderOpenIcon from 'material-icon-theme/icons/folder-open.svg?url'
+import { FileTypeIcon } from './FileTypeIcon'
 import { cn } from '@/lib/utils'
 import { workspaceMediaUrl } from '@/api/client'
 import { downloadWorkspaceFile } from '@/lib/workspace-download'
 import { useWorkspaceFilesQuery } from '@/queries'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { useModalFocus } from '@/hooks/useModalFocus'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
+import { useResizableWidth } from '@/hooks/use-resizable-width'
 import { usePlatform } from '@/hooks/use-platform'
 import { mediumHapticFeedback } from '@/lib/haptics'
 import { formatBytes } from '@/utils/format'
@@ -50,7 +49,6 @@ import type { WorkspaceFileInfo } from '@/api/types'
 
 // ── File-type helpers ─────────────────────────────────────────────────────────
 
-// Extensions we preview as plain text.  Anything else falls back to "Download".
 const FILE_LONG_PRESS_MS = 520
 const FILE_LONG_PRESS_MOVE_TOLERANCE = 10
 
@@ -76,7 +74,6 @@ type FileKind = 'image' | 'video' | 'text' | 'binary'
 
 function kindOf(file: WorkspaceFileInfo): FileKind {
   const ext = extOf(file.name)
-  // SVG is both an image (for preview) and text — prefer the visual preview.
   if (IMAGE_EXTENSIONS.has(ext)) return 'image'
   if (file.mime.startsWith('image/')) return 'image'
   if (file.mime.startsWith('video/') || isVideoSrc(file.name)) return 'video'
@@ -87,60 +84,91 @@ function kindOf(file: WorkspaceFileInfo): FileKind {
   return 'binary'
 }
 
-function FileTypeIcon({ file, size = 12 }: { file: WorkspaceFileInfo; size?: number }) {
-  const kind = kindOf(file)
-  const cls = 'shrink-0 text-(--color-text-muted)'
-  if (kind === 'image') return <FileImage size={size} className={cls} />
-  if (kind === 'video') return <FileVideo size={size} className={cls} />
-  if (kind === 'text') {
-    // Code files get the code icon; plain text/markdown use the document icon.
-    const ext = extOf(file.name)
-    const isCode = ext && !['txt', 'md', 'markdown', 'rst', 'log', 'csv', 'tsv'].includes(ext)
-    return isCode ? <FileCode size={size} className={cls} /> : <FileText size={size} className={cls} />
-  }
-  return <FileIcon size={size} className={cls} />
-}
-
-// ── Tree grouping ─────────────────────────────────────────────────────────────
+// ── Tree data model ───────────────────────────────────────────────────────────
 //
-// Flat listing from the API is sorted lexicographically, which already groups
-// by directory.  We split each path into (dir, file) and collect files under
-// their dir bucket — one level of grouping is enough for the UX, even when
-// paths are deeply nested (the dir label shows the full posix prefix).
+// Build a proper nested tree from the flat path list so every directory level
+// is independently collapsible.  Folders sort before files; siblings are
+// sorted alphabetically within each group.
 
-interface Group {
-  dir: string  // '' = root, otherwise POSIX path
-  files: WorkspaceFileInfo[]
-}
+type TreeNode =
+  | { kind: 'folder'; name: string; path: string; children: TreeNode[] }
+  | { kind: 'file';   name: string; path: string; file: WorkspaceFileInfo }
 
-function groupByDir(files: WorkspaceFileInfo[]): Group[] {
-  const buckets = new Map<string, WorkspaceFileInfo[]>()
+function buildTree(files: WorkspaceFileInfo[]): TreeNode[] {
+  // Map from folder path → ordered children list (insertion order preserved).
+  const folders = new Map<string, TreeNode[]>()
+  folders.set('', [])
+
   for (const f of files) {
-    const slash = f.path.lastIndexOf('/')
-    const dir = slash < 0 ? '' : f.path.slice(0, slash)
-    const bucket = buckets.get(dir) ?? []
-    bucket.push(f)
-    buckets.set(dir, bucket)
+    const segments = f.path.split('/')
+    // Ensure every ancestor folder node exists.
+    for (let i = 1; i < segments.length; i++) {
+      const parentPath = segments.slice(0, i - 1).join('/')
+      const folderPath = segments.slice(0, i).join('/')
+      if (!folders.has(folderPath)) {
+        folders.set(folderPath, [])
+        const parent = folders.get(parentPath)!
+        parent.push({ kind: 'folder', name: segments[i - 1], path: folderPath, children: folders.get(folderPath)! })
+      }
+    }
+    // Insert the file under its direct parent.
+    const parentPath = segments.slice(0, segments.length - 1).join('/')
+    folders.get(parentPath)!.push({ kind: 'file', name: f.name, path: f.path, file: f })
   }
-  return Array.from(buckets.entries())
-    .sort(([a], [b]) => {
-      // Root directory first, then alphabetical.
-      if (a === '') return -1
-      if (b === '') return 1
-      return a.localeCompare(b)
-    })
-    .map(([dir, files]) => ({ dir, files }))
+
+  function sortNodes(nodes: TreeNode[]): TreeNode[] {
+    return nodes
+      .sort((a, b) => {
+        if (a.kind !== b.kind) return a.kind === 'folder' ? -1 : 1
+        return a.name.localeCompare(b.name)
+      })
+      .map((n) => n.kind === 'folder' ? { ...n, children: sortNodes(n.children) } : n)
+  }
+
+  return sortNodes(folders.get('')!)
 }
 
-// ── Tree node ─────────────────────────────────────────────────────────────────
+/** Returns the set of folder paths that are ancestors of `selectedPath`. */
+function ancestorPaths(selectedPath: string): Set<string> {
+  const parts = selectedPath.split('/')
+  const result = new Set<string>()
+  for (let i = 1; i < parts.length; i++) result.add(parts.slice(0, i).join('/'))
+  return result
+}
+
+/** Collects every folder path in the tree (for default-open state). */
+function allFolderPaths(nodes: TreeNode[]): Set<string> {
+  const result = new Set<string>()
+  function walk(ns: TreeNode[]) {
+    for (const n of ns) {
+      if (n.kind === 'folder') {
+        result.add(n.path)
+        walk(n.children)
+      }
+    }
+  }
+  walk(nodes)
+  return result
+}
+
+// ── Tree rows ─────────────────────────────────────────────────────────────────
+//
+// Each row receives its `depth` (0 = root level) and adds
+// `depth * 12px` of left padding so the hierarchy is visually obvious.
+// No hover background — only the selected file gets a highlight (accent text).
+// Folders toggle open/closed; the chevron rotates to indicate state.
+
+const INDENT_PX = 12
 
 const FileRow = memo(function FileRow({
   file,
+  depth,
   selected,
   sessionId,
   onSelect,
 }: {
   file: WorkspaceFileInfo
+  depth: number
   selected: boolean
   sessionId: string
   onSelect: (file: WorkspaceFileInfo) => void
@@ -158,145 +186,175 @@ const FileRow = memo(function FileRow({
     longPressStartRef.current = null
   }
 
-  const copyPath = async () => {
-    await navigator.clipboard.writeText(file.path)
-  }
-
   return (
     <>
-    <button
-      onClick={() => onSelect(file)}
-      onContextMenu={(event) => {
-        if (isTauriMobile) return
-        event.preventDefault()
-        setActionsPoint({ x: event.clientX, y: event.clientY })
-      }}
-      onPointerDown={(event) => {
-        if (!isMobile || !isTauriMobile || event.pointerType === 'mouse') return
-        longPressStartRef.current = { x: event.clientX, y: event.clientY }
-        longPressTimerRef.current = window.setTimeout(() => {
-          longPressTimerRef.current = null
-          longPressStartRef.current = null
-          mediumHapticFeedback()
-          setActionsPoint({ x: event.clientX, y: event.clientY })
-        }, FILE_LONG_PRESS_MS)
-      }}
-      onPointerMove={(event) => {
-        const start = longPressStartRef.current
-        if (!start) return
-        if (
-          Math.abs(event.clientX - start.x) > FILE_LONG_PRESS_MOVE_TOLERANCE ||
-          Math.abs(event.clientY - start.y) > FILE_LONG_PRESS_MOVE_TOLERANCE
-        ) {
-          clearLongPress()
-        }
-      }}
-      onPointerUp={clearLongPress}
-      onPointerCancel={clearLongPress}
-      onPointerLeave={clearLongPress}
-      className={cn(
-        'group flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-xs transition-colors',
-        selected
-          ? 'bg-(--bg-key) text-(--color-accent)'
-          : 'text-(--color-text-2) hover:bg-(--bg-key) hover:text-(--color-text)',
-      )}
-      title={file.path}
-    >
-      <FileTypeIcon file={file} />
-      <span className="min-w-0 flex-1 truncate font-mono">{file.name}</span>
-      <span className="shrink-0 text-[10px] text-(--color-text-subtle)">
-        {formatBytes(file.size)}
-      </span>
-    </button>
-    {actionsPoint && (
-      <div
-        className="fixed inset-0 z-[70]"
-        onClick={() => setActionsPoint(null)}
+      <button
+        onClick={() => onSelect(file)}
         onContextMenu={(event) => {
+          if (isTauriMobile) return
           event.preventDefault()
-          setActionsPoint(null)
+          setActionsPoint({ x: event.clientX, y: event.clientY })
         }}
+        onPointerDown={(event) => {
+          if (!isMobile || !isTauriMobile || event.pointerType === 'mouse') return
+          longPressStartRef.current = { x: event.clientX, y: event.clientY }
+          longPressTimerRef.current = window.setTimeout(() => {
+            longPressTimerRef.current = null
+            longPressStartRef.current = null
+            mediumHapticFeedback()
+            setActionsPoint({ x: event.clientX, y: event.clientY })
+          }, FILE_LONG_PRESS_MS)
+        }}
+        onPointerMove={(event) => {
+          const start = longPressStartRef.current
+          if (!start) return
+          if (
+            Math.abs(event.clientX - start.x) > FILE_LONG_PRESS_MOVE_TOLERANCE ||
+            Math.abs(event.clientY - start.y) > FILE_LONG_PRESS_MOVE_TOLERANCE
+          ) clearLongPress()
+        }}
+        onPointerUp={clearLongPress}
+        onPointerCancel={clearLongPress}
+        onPointerLeave={clearLongPress}
+        style={{ paddingLeft: depth * INDENT_PX + 6 }}
+        className={cn(
+          'flex w-full items-center gap-1.5 py-[3px] pr-2 text-left',
+          selected ? 'text-(--color-accent)' : 'text-(--color-text-2)',
+        )}
+        title={file.path}
       >
+        <FileTypeIcon name={file.name} size={14} />
+        <span className="min-w-0 flex-1 truncate font-mono text-[12px] leading-5">{file.name}</span>
+      </button>
+
+      {actionsPoint && (
         <div
-          role="menu"
-          aria-label={`Actions for ${file.name}`}
-          className="fixed min-w-44 rounded-sm border border-(--color-border) bg-(--bg-card) p-1 text-xs text-(--color-text) shadow-md"
-          style={{ left: actionsPoint.x, top: actionsPoint.y }}
-          onClick={(event) => event.stopPropagation()}
+          className="fixed inset-0 z-[70]"
+          onClick={() => setActionsPoint(null)}
+          onContextMenu={(event) => { event.preventDefault(); setActionsPoint(null) }}
         >
-          <button
-            type="button"
-            role="menuitem"
-            className="flex w-full items-center gap-2 rounded-xs px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
-            onClick={() => {
-              setActionsPoint(null)
-              onSelect(file)
-            }}
+          <div
+            role="menu"
+            aria-label={`Actions for ${file.name}`}
+            className="fixed min-w-44 rounded-sm border border-(--color-border) bg-(--bg-card) p-1 text-xs text-(--color-text) shadow-md"
+            style={{ left: actionsPoint.x, top: actionsPoint.y }}
+            onClick={(event) => event.stopPropagation()}
           >
-            <FileText size={14} aria-hidden="true" />
-            Preview
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className="flex w-full items-center gap-2 rounded-xs px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
-            onClick={() => {
-              setActionsPoint(null)
-              void copyPath()
-            }}
-          >
-            <Copy size={14} aria-hidden="true" />
-            Copy path
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className="flex w-full items-center gap-2 rounded-xs px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
-            onClick={() => {
-              setActionsPoint(null)
-              void downloadWorkspaceFile(sessionId, file)
-            }}
-          >
-            <Download size={14} aria-hidden="true" />
-            Download
-          </button>
+            <button
+              type="button" role="menuitem"
+              className="flex w-full items-center gap-2 rounded-xs px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+              onClick={() => { setActionsPoint(null); onSelect(file) }}
+            >
+              <FileText size={14} aria-hidden="true" /> Preview
+            </button>
+            <button
+              type="button" role="menuitem"
+              className="flex w-full items-center gap-2 rounded-xs px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+              onClick={() => { setActionsPoint(null); void navigator.clipboard.writeText(file.path) }}
+            >
+              <Copy size={14} aria-hidden="true" /> Copy path
+            </button>
+            <button
+              type="button" role="menuitem"
+              className="flex w-full items-center gap-2 rounded-xs px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+              onClick={() => { setActionsPoint(null); void downloadWorkspaceFile(sessionId, file) }}
+            >
+              <Download size={14} aria-hidden="true" /> Download
+            </button>
+          </div>
         </div>
-      </div>
-    )}
+      )}
     </>
   )
 })
 
-function TreeGroup({
-  group,
-  selectedPath,
-  sessionId,
-  onSelect,
+function FolderRow({
+  name,
+  depth,
+  open,
+  onToggle,
 }: {
-  group: Group
-  selectedPath: string | null
-  sessionId: string
-  onSelect: (file: WorkspaceFileInfo) => void
+  name: string
+  depth: number
+  open: boolean
+  onToggle: () => void
 }) {
   return (
-    <div className="mb-3">
-      <div className="mb-1 flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-(--color-text-subtle)">
-        <Folder size={11} />
-        <span className="truncate">{group.dir || '/'}</span>
-      </div>
-      <ul className="space-y-0.5">
-        {group.files.map((f) => (
-          <li key={f.path}>
-            <FileRow
-              file={f}
-              selected={f.path === selectedPath}
-              sessionId={sessionId}
-              onSelect={onSelect}
+    <button
+      type="button"
+      onClick={onToggle}
+      style={{ paddingLeft: depth * INDENT_PX + 2 }}
+      className="flex w-full items-center gap-1 py-[3px] pr-2 text-left text-(--color-text-2)"
+      aria-expanded={open}
+    >
+      <ChevronRight
+        size={12}
+        className={cn('shrink-0 text-(--color-text-subtle) transition-transform duration-100', open && 'rotate-90')}
+        aria-hidden="true"
+      />
+      <img
+        src={open ? folderOpenIcon : folderIcon}
+        alt="" aria-hidden="true"
+        className="shrink-0 object-contain"
+        style={{ width: 14, height: 14 }}
+      />
+      <span className="min-w-0 flex-1 truncate font-mono text-[12px] leading-5">{name}</span>
+    </button>
+  )
+}
+
+function FileTree({
+  nodes,
+  depth,
+  selectedPath,
+  sessionId,
+  openFolders,
+  onSelect,
+  onToggleFolder,
+}: {
+  nodes: TreeNode[]
+  depth: number
+  selectedPath: string | null
+  sessionId: string
+  openFolders: Set<string>
+  onSelect: (file: WorkspaceFileInfo) => void
+  onToggleFolder: (path: string) => void
+}) {
+  return (
+    <>
+      {nodes.map((node) =>
+        node.kind === 'folder' ? (
+          <div key={node.path}>
+            <FolderRow
+              name={node.name}
+              depth={depth}
+              open={openFolders.has(node.path)}
+              onToggle={() => onToggleFolder(node.path)}
             />
-          </li>
-        ))}
-      </ul>
-    </div>
+            {openFolders.has(node.path) && (
+              <FileTree
+                nodes={node.children}
+                depth={depth + 1}
+                selectedPath={selectedPath}
+                sessionId={sessionId}
+                openFolders={openFolders}
+                onSelect={onSelect}
+                onToggleFolder={onToggleFolder}
+              />
+            )}
+          </div>
+        ) : (
+          <FileRow
+            key={node.path}
+            file={node.file}
+            depth={depth}
+            selected={node.path === selectedPath}
+            sessionId={sessionId}
+            onSelect={onSelect}
+          />
+        )
+      )}
+    </>
   )
 }
 
@@ -411,7 +469,7 @@ function BinaryPreview({ sessionId, file }: { sessionId: string; file: Workspace
   const url = workspaceMediaUrl(sessionId, file.path)
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
-      <FileIcon size={28} className="text-(--color-text-subtle)" />
+      <FileText size={28} className="text-(--color-text-subtle)" />
       <div>
         <p className="text-sm text-(--color-text-2)">No inline preview for this file type</p>
         <p className="mt-0.5 text-xs text-(--color-text-subtle)">
@@ -532,7 +590,7 @@ function PreviewArea({
       <div className="flex shrink-0 items-center justify-between gap-3 border-b border-(--color-border) px-4 py-2">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            <FileTypeIcon file={file} size={13} />
+            <FileTypeIcon name={file.name} size={14} />
             <div className="truncate font-mono text-xs text-(--color-text)">{file.path}</div>
           </div>
           <div className="mt-0.5 text-[10px] text-(--color-text-subtle)">
@@ -580,45 +638,101 @@ function EmptyState({ message, hint }: { message: string; hint?: string }) {
 // ── Main drawer ──────────────────────────────────────────────────────────────
 
 interface WorkspaceFilesPanelProps {
-  /** Controls drawer visibility.  Parent keeps the component mounted so
-   *  framer-motion can play both the enter and exit animations. */
   open: boolean
   sessionId: string | null
   onClose: () => void
 }
 
+const DEFAULT_WIDTH = 420
+const MIN_WIDTH = 300
+const MAX_WIDTH = 900
+
 export function WorkspaceFilesPanel({ open, sessionId, onClose }: WorkspaceFilesPanelProps) {
   const isMobile = useIsMobile()
-  const { isMacOverlay } = usePlatform()
-  const { data, isLoading, isError, refetch, isFetching } = useWorkspaceFilesQuery(sessionId)
   const prefersReducedMotion = useReducedMotion()
+  const { data, isLoading, isError, refetch, isFetching } = useWorkspaceFilesQuery(sessionId)
 
   const [selectedPath, setSelectedPath] = useState<string | null>(null)
   // Mobile: which pane is active — 'tree' (file list) or 'preview'
   const [mobilePane, setMobilePane] = useState<'tree' | 'preview'>('tree')
-  const handleModalClose = useCallback(() => {
+
+  const handleClose = useCallback(() => {
+    // On mobile, back-navigate from preview before closing
     if (isMobile && mobilePane === 'preview') {
       setMobilePane('tree')
       return
     }
     onClose()
   }, [isMobile, mobilePane, onClose])
-  useModalFocus(open, handleModalClose)
 
-  // Refresh on open so the list is fresh even if query was stale.
+  // Escape key — only on mobile (desktop has no backdrop/overlay)
+  useEffect(() => {
+    if (!open || !isMobile) return
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') handleClose() }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [open, isMobile, handleClose])
+
+  // Resizable width — desktop only
+  const resizable = useResizableWidth({
+    storageKey: 'oa.workspaceFilesPanel.width',
+    defaultWidth: DEFAULT_WIDTH,
+    minWidth: MIN_WIDTH,
+    maxWidth: MAX_WIDTH,
+    edge: 'left',
+    disabled: isMobile,
+  })
+
+  // Refresh on open
   useEffect(() => {
     if (open && sessionId) refetch()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, sessionId])
 
-  // Wrap ``data?.files ?? []`` in a memo so the ``files`` reference is stable
-  // when the query returns the same cache entry — otherwise downstream
-  // memoised derivations (``groups``) would recompute every render.
   const files = useMemo<WorkspaceFileInfo[]>(() => data?.files ?? [], [data])
-  const groups = useMemo(() => groupByDir(files), [files])
+  const nodes = useMemo(() => buildTree(files), [files])
 
-  // Keep selection valid as the list churns — e.g. the selected file was deleted
-  // by a new turn's rm tool call.  When the selection disappears, clear it.
+  // All folders open by default; user can collapse individually.
+  // When the agent creates new directories mid-session, those are also opened.
+  const [openFolders, setOpenFolders] = useState<Set<string>>(() => new Set())
+
+  const toggleFolder = useCallback((path: string) => {
+    setOpenFolders((prev) => {
+      const next = new Set(prev)
+      if (next.has(path)) next.delete(path)
+      else next.add(path)
+      return next
+    })
+  }, [])
+
+  // Whenever the tree changes (initial load or agent adds new dirs), open any
+  // folder paths that aren't already tracked — preserves manual collapses.
+  useEffect(() => {
+    const all = allFolderPaths(nodes)
+    if (all.size === 0) return
+    setOpenFolders((prev) => {
+      let changed = false
+      const next = new Set(prev)
+      for (const p of all) { if (!next.has(p)) { next.add(p); changed = true } }
+      return changed ? next : prev
+    })
+  }, [nodes])
+
+  // Also ensure ancestors of the selected file are open (handles the edge case
+  // where a selection arrives before the tree has loaded).
+  useEffect(() => {
+    if (!selectedPath) return
+    const ancestors = ancestorPaths(selectedPath)
+    if (ancestors.size === 0) return
+    setOpenFolders((prev) => {
+      let changed = false
+      const next = new Set(prev)
+      for (const p of ancestors) { if (!next.has(p)) { next.add(p); changed = true } }
+      return changed ? next : prev
+    })
+  }, [selectedPath, nodes])
+
+  // Drop selection when the file disappears (agent deleted it)
   useEffect(() => {
     if (!selectedPath) return
     if (!files.some((f) => f.path === selectedPath)) {
@@ -634,146 +748,176 @@ export function WorkspaceFilesPanel({ open, sessionId, onClose }: WorkspaceFiles
     if (isMobile) setMobilePane('preview')
   }
 
-  const handleBackToTree = () => {
-    setMobilePane('tree')
-  }
-
-  // On mobile, tree pane and preview pane are mutually exclusive full-width views.
-  const showTree = !isMobile || mobilePane === 'tree'
+  const showTree    = !isMobile || mobilePane === 'tree'
   const showPreview = !isMobile || mobilePane === 'preview'
 
+  // ── Panel content (shared between mobile and desktop) ─────────────────────
+  const panelContent = (
+    <div className="relative flex h-full min-h-0 w-full flex-col">
+      {/* Resize handle — desktop only */}
+      {!isMobile && (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize workspace files panel"
+          title="Drag to resize · double-click to reset"
+          className="absolute left-0 top-0 z-10 h-full w-1 cursor-col-resize transition-colors hover:bg-(--color-accent)/40"
+          onPointerDown={resizable.startResize}
+          onDoubleClick={resizable.resetWidth}
+        />
+      )}
+
+      {/* Header */}
+      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-(--color-border) px-4 py-3">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          {isMobile && mobilePane === 'preview' && (
+            <button
+              onClick={() => setMobilePane('tree')}
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+              aria-label="Back to file list"
+            >
+              <ArrowLeft size={14} />
+            </button>
+          )}
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-(--color-text)">Workspace</h2>
+            <p className="truncate text-[11px] text-(--color-text-subtle)">
+              {isMobile && mobilePane === 'preview' && selected
+                ? selected.name
+                : <>Files the agent has written into this session{data?.truncated ? ' · list truncated' : ''}</>
+              }
+            </p>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            onClick={() => refetch()}
+            disabled={!sessionId || isFetching}
+            className="rounded p-1.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:opacity-50"
+            title="Refresh"
+            aria-label="Refresh"
+          >
+            <RefreshCw size={14} className={isFetching ? 'animate-spin' : ''} />
+          </button>
+          <button
+            onClick={onClose}
+            className="rounded p-1.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+            title="Close (Esc)"
+            aria-label="Close workspace files panel"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      </header>
+
+      {/* Body */}
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        {showTree && (
+          <nav className={cn(
+            'overflow-y-auto border-r border-(--color-border) py-1',
+            isMobile ? 'w-full' : 'w-[260px] shrink-0',
+          )}>
+            {!sessionId ? (
+              <p className="px-3 py-4 text-xs italic text-(--color-text-subtle)">No active session.</p>
+            ) : isLoading ? (
+              <div className="py-6 text-center text-xs text-(--color-text-subtle)">
+                <Loader2 size={14} className="mx-auto animate-spin" />
+              </div>
+            ) : isError ? (
+              <p className="px-3 py-4 text-xs text-(--color-error)">Failed to load workspace files</p>
+            ) : nodes.length === 0 ? (
+              <p className="px-3 py-4 text-xs italic text-(--color-text-subtle)">
+                No files yet. Anything the agent writes will appear here.
+              </p>
+            ) : (
+              <FileTree
+                nodes={nodes}
+                depth={0}
+                selectedPath={selectedPath}
+                sessionId={sessionId}
+                openFolders={openFolders}
+                onSelect={handleSelectFile}
+                onToggleFolder={toggleFolder}
+              />
+            )}
+          </nav>
+        )}
+        {showPreview && (
+          <div className="min-w-0 flex-1">
+            {selected && sessionId ? (
+              <PreviewArea key={selected.path} sessionId={sessionId} file={selected} />
+            ) : (
+              <EmptyState
+                message="Select a file"
+                hint="Images, markdown, and code files render inline. Other formats offer download."
+              />
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div className="shrink-0 border-t border-(--color-border) px-4 py-2 text-[11px] text-(--color-text-muted) pb-safe">
+        {files.length > 0 && <span>{files.length} file{files.length === 1 ? '' : 's'} · </span>}
+        {isMobile ? 'Tap a file to preview' : 'Esc or click outside to close'}
+      </div>
+    </div>
+  )
+
+  // ── Desktop: in-flow push panel ───────────────────────────────────────────
+  // Rendered as a flex sibling of <main> — animates width 0→N so the chat
+  // area is pushed left rather than covered. No backdrop needed.
+  if (!isMobile) {
+    return (
+      <AnimatePresence>
+        {open && (
+          <motion.aside
+            key="files-panel"
+            role="complementary"
+            aria-label="Workspace files"
+            initial={prefersReducedMotion ? { opacity: 0 } : { width: 0, opacity: 0 }}
+            animate={prefersReducedMotion ? { opacity: 1 } : { width: resizable.width, opacity: 1 }}
+            exit={prefersReducedMotion ? { opacity: 0 } : { width: 0, opacity: 0 }}
+            transition={{ duration: resizable.isResizing || prefersReducedMotion ? 0.01 : 0.22, ease: [0.4, 0, 0.2, 1] }}
+            className="h-full shrink-0 overflow-hidden border-l border-(--color-border) bg-(--bg-page)"
+          >
+            {panelContent}
+          </motion.aside>
+        )}
+      </AnimatePresence>
+    )
+  }
+
+  // ── Mobile: fixed overlay from the right, below the app header ───────────
+  // Backdrop dims the content area (below header). Panel slides in from right.
   return (
     <AnimatePresence>
       {open && (
         <>
+          {/* Backdrop — below the header, no blur */}
           <motion.div
-            key="backdrop"
+            key="files-backdrop"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
+            className="mobile-safe-top fixed inset-x-0 bottom-0 z-40 bg-black/30"
             onClick={onClose}
-            className="fixed inset-0 z-40 bg-black/40 [[data-mobile-shell]_&]:top-[calc(var(--spacing-app-header)+env(safe-area-inset-top,0px))]"
+            aria-hidden="true"
           />
-
+          {/* Panel */}
           <motion.aside
-            key="drawer"
-            initial={prefersReducedMotion ? { opacity: 0 } : { x: '100%', opacity: 0 }}
-            animate={prefersReducedMotion ? { opacity: 1 } : { x: 0, opacity: 1 }}
-            exit={prefersReducedMotion ? { opacity: 0 } : { x: '100%', opacity: 0 }}
-            transition={{ duration: prefersReducedMotion ? 0.01 : 0.22, ease: [0.4, 0, 0.2, 1] }}
-            className={cn(
-              'fixed bottom-0 right-0 top-[env(safe-area-inset-top,0px)] z-50 flex w-[min(960px,95vw)] flex-col overflow-hidden border-l border-(--color-border) bg-(--bg-card) shadow-2xl',
-              '[[data-mobile-shell]_&]:top-[calc(var(--spacing-app-header)+env(safe-area-inset-top,0px))] [[data-mobile-shell]_&]:right-[env(safe-area-inset-right,0px)] [[data-mobile-shell]_&]:w-[min(960px,calc(100vw-env(safe-area-inset-left,0px)-env(safe-area-inset-right,0px)))]',
-              isMacOverlay && 'top-(--spacing-app-header)',
-            )}
+            key="files-panel"
             role="dialog"
             aria-modal="true"
             aria-label="Workspace files"
-            data-modal-focus="true"
+            initial={prefersReducedMotion ? { opacity: 0 } : { x: '100%' }}
+            animate={prefersReducedMotion ? { opacity: 1 } : { x: 0 }}
+            exit={prefersReducedMotion ? { opacity: 0 } : { x: '100%' }}
+            transition={{ duration: prefersReducedMotion ? 0.01 : 0.22, ease: [0.4, 0, 0.2, 1] }}
+            className="mobile-safe-top fixed inset-x-0 bottom-0 z-50 overflow-hidden border-t border-(--color-border) bg-(--bg-page) shadow-xl"
           >
-            {/* Header */}
-            <header className="flex shrink-0 items-center justify-between gap-3 border-b border-(--color-border) px-4 py-3">
-              <div className="flex min-w-0 flex-1 items-center gap-2">
-                {/* Mobile back button — only shown in preview pane */}
-                {isMobile && mobilePane === 'preview' && (
-                  <button
-                    onClick={handleBackToTree}
-                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
-                    aria-label="Back to file list"
-                  >
-                    <ArrowLeft size={14} />
-                  </button>
-                )}
-                <div className="min-w-0">
-                  <h2 className="text-sm font-semibold text-(--color-text)">Workspace</h2>
-                  <p className="truncate text-[11px] text-(--color-text-subtle)">
-                    {isMobile && mobilePane === 'preview' && selected
-                      ? selected.name
-                      : <>Files the agent has written into this session{data?.truncated ? ' · list truncated' : ''}</>
-                    }
-                  </p>
-                </div>
-              </div>
-              <div className="flex shrink-0 items-center gap-1">
-                <button
-                  onClick={() => refetch()}
-                  disabled={!sessionId || isFetching}
-                  className="rounded p-1.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:opacity-50"
-                  title="Refresh"
-                  aria-label="Refresh"
-                >
-                  <RefreshCw size={14} className={isFetching ? 'animate-spin' : ''} />
-                </button>
-                <button
-                  onClick={onClose}
-                  className="rounded p-1.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
-                  title="Close (Esc)"
-                  aria-label="Close"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-            </header>
-
-            {/* Body: tree + preview split (desktop) / master-detail (mobile) */}
-            <div className="flex min-h-0 flex-1 overflow-hidden">
-              {/* Tree — full width on mobile tree pane, fixed 260px on desktop */}
-              {showTree && (
-                <nav className={cn(
-                  'overflow-y-auto border-r border-(--color-border) px-2 py-3',
-                  isMobile ? 'w-full' : 'w-[260px] shrink-0',
-                )}>
-                  {!sessionId ? (
-                    <p className="px-2 py-4 text-xs italic text-(--color-text-subtle)">
-                      No active session.
-                    </p>
-                  ) : isLoading ? (
-                    <div className="px-2 py-6 text-center text-xs text-(--color-text-subtle)">
-                      <Loader2 size={14} className="mx-auto animate-spin" />
-                    </div>
-                  ) : isError ? (
-                    <p className="px-2 py-4 text-xs text-(--color-error)">
-                      Failed to load workspace files
-                    </p>
-                  ) : groups.length === 0 ? (
-                    <p className="px-2 py-4 text-xs italic text-(--color-text-subtle)">
-                      No files yet.  Anything the agent writes will appear here.
-                    </p>
-                  ) : (
-                    groups.map((group) => (
-                      <TreeGroup
-                        key={group.dir}
-                        group={group}
-                        selectedPath={selectedPath}
-                        sessionId={sessionId}
-                        onSelect={handleSelectFile}
-                      />
-                    ))
-                  )}
-                </nav>
-              )}
-
-              {/* Preview — full width on mobile preview pane, flex-1 on desktop */}
-              {showPreview && (
-                <div className="min-w-0 flex-1">
-                  {selected && sessionId ? (
-                    <PreviewArea key={selected.path} sessionId={sessionId} file={selected} />
-                  ) : (
-                    <EmptyState
-                      message="Select a file"
-                      hint="Images, markdown, and code files render inline. Other formats offer download."
-                    />
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Footer */}
-            <div className="shrink-0 border-t border-(--color-border) px-4 py-2 text-[11px] text-(--color-text-muted) pb-safe">
-              {files.length > 0 && <span>{files.length} file{files.length === 1 ? '' : 's'} · </span>}
-              {isMobile ? 'Tap a file to preview' : 'Esc or click outside to close'}
-            </div>
+            {panelContent}
           </motion.aside>
         </>
       )}

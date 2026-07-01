@@ -68,6 +68,7 @@ All UI primitives are **zero external-dependency** implementations — no shadcn
 
 | File | What it provides |
 |---|---|
+| `app-overlay.tsx` | **Unified overlay primitive** — `modal` (centred card) and `palette` (top-aligned) variants. Handles backdrop, Escape/click-outside, focus trap, safe-area insets, iOS keyboard tracking. No `sheet` variant — edge panels are component-level concerns (see `WorkspaceFilesPanel`, `CodingWorkspacePanel`). |
 | `button.tsx` | Variants via plain record maps; `buttonVariants()` helper |
 | `dialog.tsx` | React portal + backdrop; Escape/click-outside; focus trap; `animate-in`/`animate-out` |
 | `sheet.tsx` | Same as dialog but slides in from an edge |
@@ -78,6 +79,13 @@ All UI primitives are **zero external-dependency** implementations — no shadcn
 | `tabs.tsx` | Plain record maps for variant classes |
 | `_use-deferred-unmount.ts` | `useDeferredUnmount(open, ms)` — plays exit animation before unmount |
 | `lib/utils.ts` | `cn()` — 20-line inline class concatenator; no external deps |
+
+### AppOverlay rules
+- **Never** use `transform` for centering — framer-motion owns `transform`. Use `left:0; right:0; margin:auto`.
+- **No `mobile-viewport` class** — overlays are `position:fixed` and track the visual viewport naturally.
+- **No blur** on backdrops — hard edge is the visual boundary.
+- `maxWidth` prop sets `--overlay-max-width` CSS variable (modal only); palette ignores it.
+- Settings modal is the visual reference for geometry and behaviour.
 
 **Animations** come from `tw-animate-css` (`animate-in`, `animate-out`, `fade-in-0`,
 `zoom-in-95`, `slide-in-from-*`, `slide-out-to-*`). Do **not** remove it.
@@ -128,9 +136,36 @@ mid-flight that falsely detach the view. Always use `el.scrollTop = el.scrollHei
 The `data-keyboard-open` attribute is set/cleared by `useMobileViewportGuards`
 (`hooks/use-mobile-viewport.ts`) in sync with `window.visualViewport` resize events.
 
+## WorkspaceFilesPanel — file tree
+
+Desktop push-layout (flex sibling of `<main>`, animates `width 0→N`); mobile fixed overlay from right below header. The tree is a **recursive `TreeNode` structure** built by `buildTree()`:
+
+- `TreeNode` = `{ kind: 'folder', children }` | `{ kind: 'file', file }`.
+- Folders sort before files; siblings sort alphabetically within each level.
+- All folders default open; individual folders are collapsible via `ChevronRight` header button.
+- New folders that appear mid-session (agent writes into a new directory) are auto-opened.
+- `ancestorPaths(selectedPath)` ensures selecting a deeply nested file reveals it even if an ancestor was manually collapsed.
+- Indentation: `depth × 12px` left padding per level.
+- **No hover background** on file/folder rows — selected file = accent text only.
+- Material Icon Theme SVGs (`FileTypeIcon`) for files; `folder.svg`/`folder-open.svg` for folder headers.
+
+## FileTypeIcon
+
+`components/FileTypeIcon.tsx` maps filenames/extensions to Material Icon Theme SVGs.
+
+- `resolveFileIcon(name)` is exported for unit tests (the component itself is mocked in `setup.ts` since `?url` SVG imports don't run under Bun).
+- Filename overrides take precedence over extensions: `Makefile`, `Dockerfile`, `.gitignore`, `.env`, `.env.example`.
+- Unknown extensions fall back to `file.svg`.
+
+## Test setup (`__tests__/setup.ts`)
+
+- All `material-icon-theme/icons/*.svg?url` imports are stubbed to `stub:<name>.svg` strings — predictable values that `FileTypeIcon.test.tsx` asserts on.
+- `@/components/FileTypeIcon` is **not** separately mocked (the SVG stubs above make the real module loadable). Tests that need the component to render (WorkspaceFilesPanel) simply get the real `FileTypeIcon` which renders `<img src="stub:*.svg">`.
+
 ## Gotchas
 
 - Use static ESM imports and `@/` aliases.
 - Tests rely on isolated module state; keep using the package test script.
 - Store tests usually seed with `useStore.setState(...)` and assert via `useStore.getState()`.
 - Preserve desktop token injection rules: only same-origin `/api` requests receive auth.
+- `WorkspaceFilesPanel` uses `useWorkspaceFilesQuery` (TanStack Query) — wrap in `QueryClientProvider` in tests.

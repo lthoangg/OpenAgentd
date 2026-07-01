@@ -2,12 +2,21 @@
 import { mock, afterEach } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
-// Stub FileTypeIcon so its `?url` SVG imports don't crash Bun's module loader
-// (Bun doesn't run Vite, so raw SVG files have no `default` export). Tests
-// never assert on icon appearance, so a no-op component is correct.
-mock.module("@/components/FileTypeIcon", () => ({
-  FileTypeIcon: () => null,
-}));
+// Stub every material-icon-theme SVG `?url` import so Bun's module loader
+// doesn't crash on them (Bun doesn't run Vite transforms). Each stub returns a
+// predictable string that encodes the icon name — FileTypeIcon.test.tsx asserts
+// on these strings, and all other tests just need a non-null value.
+const SVG_ICONS = [
+  'file', 'console', 'css', 'database', 'docker', 'git', 'go', 'html',
+  'image', 'javascript', 'json', 'makefile', 'markdown', 'pdf', 'python',
+  'react', 'react_ts', 'rust', 'sass', 'settings', 'toml', 'typescript',
+  'xml', 'yaml', 'folder', 'folder-open',
+]
+for (const name of SVG_ICONS) {
+  mock.module(`material-icon-theme/icons/${name}.svg?url`, () => ({
+    default: `stub:${name}.svg`,
+  }))
+}
 
 // Pass an explicit ``url`` so ``window.location.origin`` is a real origin
 // instead of ``"null"`` (the about:blank default). This matters for any

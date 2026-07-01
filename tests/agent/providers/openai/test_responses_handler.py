@@ -377,6 +377,29 @@ class TestResponsesHandler:
         assert body["max_output_tokens"] == 1000
         assert "max_tokens" not in body
 
+    def test_build_request_service_tier_official_url(self, handler):
+        """Official OpenAI URL maps service_tier: 'fast' -> 'priority'."""
+        messages = [HumanMessage(content="Hello")]
+        body = handler.build_request(
+            messages, tools=None, stream=False, merged={"service_tier": "fast"}
+        )
+        assert body["service_tier"] == "priority"
+
+    def test_build_request_service_tier_custom_url(self):
+        """Custom OpenAI compatible URL omits service_tier to avoid 400s."""
+        from app.agent.providers.openai.responses import ResponsesHandler
+
+        handler = ResponsesHandler(
+            model="gpt-4o",
+            base_url="https://api.deepseek.com/v1",
+            headers={"Authorization": "Bearer sk-test"},
+        )
+        messages = [HumanMessage(content="Hello")]
+        body = handler.build_request(
+            messages, tools=None, stream=False, merged={"service_tier": "fast"}
+        )
+        assert "service_tier" not in body
+
     def test_build_request_thinking_level_low_maps_to_reasoning(self, handler):
         """thinking_level: 'low' → reasoning: {effort: 'low', summary: 'auto'}."""
         messages = [HumanMessage(content="Hello")]

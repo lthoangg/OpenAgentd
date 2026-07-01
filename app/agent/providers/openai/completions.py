@@ -206,7 +206,9 @@ class CompletionsHandler:
         service_tier = merged.get("service_tier")
         request_service_tier = None
         if service_tier and "api.openai.com" in self.base_url:
-            request_service_tier = "auto" if service_tier == "fast" else service_tier
+            request_service_tier = (
+                "priority" if service_tier == "fast" else service_tier
+            )
 
         req = OpenAIChatRequest(
             model=self.model,

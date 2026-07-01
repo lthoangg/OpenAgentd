@@ -182,7 +182,9 @@ class ResponsesHandler:
 
         service_tier = merged.get("service_tier")
         if service_tier and "api.openai.com" in self.base_url:
-            body["service_tier"] = "auto" if service_tier == "fast" else service_tier
+            body["service_tier"] = (
+                "priority" if service_tier == "fast" else service_tier
+            )
 
         self.customize_thinking(merged, body)
         return body

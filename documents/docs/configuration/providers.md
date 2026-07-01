@@ -232,6 +232,6 @@ Enables priority or fast latency tiers on supported models and providers. Users 
 | `codex` | `service_tier` | `"fast"` ➔ `"priority"` | Uses ChatGPT-subscription Codex Fast mode. |
 | `googlegenai` | `service_tier` | `"fast"` ➔ `"priority"` | Uses Gemini Priority inference tier for business-critical workloads. |
 | `vertexai` | `service_tier` | `"fast"` ➔ `"priority"` | Sent in the request body (may be ignored depending on Vertex AI project settings). |
-| `openai` | `service_tier` | `"fast"` ➔ `"auto"` | Uses OpenAI's scale/priority automatic routing. Only sent for official `api.openai.com` requests. |
+| `openai` | `service_tier` | `"fast"` ➔ `"priority"` | Opts into OpenAI's Priority latency processing tier. Only sent for official `api.openai.com` requests. |
 | `anthropic` | `service_tier` | `"fast"` ➔ `"auto"` | Automatically uses Priority Tier when available. Only sent for official `api.anthropic.com` requests. |
 | Others (e.g. DeepSeek, xAI, Ollama) | Not supported | Ignored / Omitted | To prevent `400 Bad Request` errors, the setting is omitted from the request body for all other OpenAI-compatible and third-party providers. |

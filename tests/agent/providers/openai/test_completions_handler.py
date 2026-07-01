@@ -484,12 +484,12 @@ class TestCompletionsHandler:
         assert len(body["tools"]) == 1
 
     def test_build_request_service_tier_official_url(self, handler):
-        """Official OpenAI URL maps service_tier: 'fast' -> 'auto'."""
+        """Official OpenAI URL maps service_tier: 'fast' -> 'priority'."""
         messages = [HumanMessage(content="Hello")]
         body = handler.build_request(
             messages, tools=None, stream=False, merged={"service_tier": "fast"}
         )
-        assert body["service_tier"] == "auto"
+        assert body["service_tier"] == "priority"
 
     def test_build_request_service_tier_custom_url(self):
         """Custom OpenAI compatible URL omits service_tier to avoid 400s."""

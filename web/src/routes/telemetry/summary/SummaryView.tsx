@@ -11,7 +11,7 @@ import {
   formatPercent,
   formatUsd,
 } from '@/utils/telemetryFormat'
-import { EmptyTable, SectionHeader, Stat, Table } from '../primitives'
+import { EmptyTable, SectionCard, SectionCardHeader, Stat, Table } from '../primitives'
 
 export function SummaryView({ data }: { data: ObservabilitySummary }) {
   const sampled = data.sample_ratio < 1.0
@@ -21,7 +21,7 @@ export function SummaryView({ data }: { data: ObservabilitySummary }) {
   return (
     <div className="flex flex-col gap-5">
       {sampled && (
-        <div className="flex items-start gap-2 rounded-sm border border-(--color-border) bg-(--bg-card) p-3">
+        <div className="flex items-start gap-2 rounded border border-(--color-border) bg-(--bg-card) p-3">
           <Info size={14} className="mt-0.5 shrink-0 text-(--color-accent)" />
           <p className="text-xs text-(--color-text-2)">
             Spans are sampled at <strong>{Math.round(data.sample_ratio * 100)}%</strong>.
@@ -34,9 +34,9 @@ export function SummaryView({ data }: { data: ObservabilitySummary }) {
         </div>
       )}
 
-      <section>
-        <SectionHeader>Usage</SectionHeader>
-        <div className="grid grid-cols-1 gap-3 min-[380px]:grid-cols-2 lg:grid-cols-5">
+      <SectionCard>
+        <SectionCardHeader>Usage</SectionCardHeader>
+        <div className="grid grid-cols-1 gap-3 p-3 min-[380px]:grid-cols-2 lg:grid-cols-5">
           <Stat label="Input" value={formatCompact(totals.input_tokens)} />
           <Stat label="Output" value={formatCompact(totals.output_tokens)} />
           <Stat label="Cache hit" value={formatPercent(totals.cache_percent)} />
@@ -47,10 +47,10 @@ export function SummaryView({ data }: { data: ObservabilitySummary }) {
             tone={totals.errors > 0 ? 'danger' : undefined}
           />
         </div>
-      </section>
+      </SectionCard>
 
-      <section>
-        <SectionHeader>Provider:model</SectionHeader>
+      <SectionCard>
+        <SectionCardHeader>Provider:model</SectionCardHeader>
         {data.by_model.length === 0 ? (
           <EmptyTable label="No LLM calls recorded in this window." />
         ) : (
@@ -67,35 +67,39 @@ export function SummaryView({ data }: { data: ObservabilitySummary }) {
             align={['left', 'right', 'right', 'right', 'right', 'right']}
           />
         )}
-      </section>
+      </SectionCard>
 
-      <section>
-        <SectionHeader>Cache hit/miss</SectionHeader>
-        <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <Stat label="Hit tokens" value={formatCompact(totals.cached_tokens)} />
-          <Stat label="Miss tokens" value={formatCompact(cacheMissTokens)} />
-          <Stat label="Hit rate" value={formatPercent(totals.cache_percent)} />
+      <SectionCard>
+        <SectionCardHeader>Cache hit/miss</SectionCardHeader>
+        <div className="p-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <Stat label="Hit tokens" value={formatCompact(totals.cached_tokens)} />
+            <Stat label="Miss tokens" value={formatCompact(cacheMissTokens)} />
+            <Stat label="Hit rate" value={formatPercent(totals.cache_percent)} />
+          </div>
         </div>
-        {data.cache_by_step.length === 0 ? (
-          <EmptyTable label="No cache usage recorded in this window." />
-        ) : (
-          <Table
-            headers={['Step', 'Provider:model', 'Calls', 'Hit', 'Miss', 'Hit rate', 'Cost']}
-            rows={data.cache_by_step.map((step) => {
-              return [
-                step.step,
-                step.provider_model,
-                formatInt(step.calls),
-                formatCompact(step.cached_tokens),
-                formatCompact(step.miss_tokens),
-                formatPercent(step.cache_percent),
-                formatUsd(step.estimated_cost_usd),
-              ]
-            })}
-            align={['left', 'left', 'right', 'right', 'right', 'right', 'right']}
-          />
-        )}
-      </section>
+        <div className="border-t border-(--color-border)/60">
+          {data.cache_by_step.length === 0 ? (
+            <EmptyTable label="No cache usage recorded in this window." />
+          ) : (
+            <Table
+              headers={['Step', 'Provider:model', 'Calls', 'Hit', 'Miss', 'Hit rate', 'Cost']}
+              rows={data.cache_by_step.map((step) => {
+                return [
+                  step.step,
+                  step.provider_model,
+                  formatInt(step.calls),
+                  formatCompact(step.cached_tokens),
+                  formatCompact(step.miss_tokens),
+                  formatPercent(step.cache_percent),
+                  formatUsd(step.estimated_cost_usd),
+                ]
+              })}
+              align={['left', 'left', 'right', 'right', 'right', 'right', 'right']}
+            />
+          )}
+        </div>
+      </SectionCard>
     </div>
   )
 }

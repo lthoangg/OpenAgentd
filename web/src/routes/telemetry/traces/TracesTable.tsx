@@ -38,7 +38,7 @@ export function TracesTable({
   const table = (
     <table className="min-w-[720px] w-full text-xs">
       <thead className="sticky top-0 z-10">
-        <tr className="border-b border-(--color-border) bg-(--bg-sidebar)">
+        <tr className="border-b border-(--color-border)/60 bg-(--bg-key)/25">
           <Th>When</Th>
           <Th>Session</Th>
           <Th>Agent</Th>
@@ -62,7 +62,7 @@ export function TracesTable({
   if (embedded) return table
 
   return (
-    <div className="overflow-x-auto rounded-sm border border-(--color-border) bg-(--bg-card)">
+    <div className="overflow-x-auto rounded border border-(--color-border) bg-(--bg-card)">
       {table}
     </div>
   )
@@ -136,7 +136,7 @@ function TraceRow({
         tabIndex={0}
         role="button"
         aria-label={`Open trace ${formatShortId(trace.trace_id)}`}
-        className="cursor-pointer border-b border-(--color-border) transition-colors last:border-b-0 hover:bg-(--bg-key)/35 focus:bg-(--bg-key)/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--focus-ring)/40"
+        className="cursor-pointer border-b border-(--color-border)/40 transition-colors last:border-b-0 hover:bg-(--bg-key)/35 focus:bg-(--bg-key)/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--focus-ring)/40"
       >
         <Td>
           <span title={new Date(trace.start_ms).toLocaleString()}>

@@ -5,13 +5,7 @@
 
 import type React from 'react'
 
-export function SectionHeader({ children }: { children: React.ReactNode }) {
-  return (
-    <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-(--color-text-muted)">
-      {children}
-    </h2>
-  )
-}
+export { SectionCard, SectionCardHeader } from '@/components/ui/section-card'
 
 export function Stat({
   label,
@@ -23,7 +17,7 @@ export function Stat({
   tone?: 'danger'
 }) {
   return (
-    <div className="rounded-sm border border-(--color-border) bg-(--bg-card) p-3">
+    <div className="rounded border border-(--color-border) bg-(--bg-card) p-3">
       <p className="text-[10px] uppercase tracking-wide text-(--color-text-muted)">
         {label}
       </p>
@@ -50,14 +44,14 @@ export function Table({
   align: ('left' | 'right')[]
 }) {
   return (
-    <div className="overflow-x-auto rounded-sm border border-(--color-border) bg-(--bg-card)">
+    <div className="overflow-x-auto">
       <table className="w-full min-w-[320px] text-xs sm:min-w-[360px]">
         <thead>
-          <tr className="border-b border-(--color-border) bg-(--bg-sidebar)">
+          <tr className="border-b border-(--color-border)/60 bg-(--bg-key)/25">
             {headers.map((h, i) => (
               <th
                 key={h}
-                className={`px-3 py-2 font-medium text-(--color-text-muted) ${
+                className={`px-3 py-1.5 font-semibold text-[10px] uppercase tracking-wider text-(--color-text-muted) ${
                   align[i] === 'right' ? 'text-right' : 'text-left'
                 }`}
               >
@@ -70,14 +64,16 @@ export function Table({
           {rows.map((row, ri) => (
             <tr
               key={ri}
-              className="border-b border-(--color-border) last:border-b-0"
+              className="border-b border-(--color-border)/40 last:border-b-0 hover:bg-(--bg-key)/20 transition-colors"
             >
               {row.map((cell, ci) => (
                 <td
                   key={ci}
                   className={`px-3 py-2 tabular-nums ${
                     align[ci] === 'right' ? 'text-right' : 'text-left'
-                  } ${ci === 0 ? 'font-medium text-(--color-text)' : 'text-(--color-text-2)'}`}
+                  } ${ci === 0 ? 'font-medium text-(--color-text)' : 'text-(--color-text-muted)'} ${
+                    ci === 0 ? '' : 'text-[11px]'
+                  }`}
                 >
                   {cell}
                 </td>
@@ -92,7 +88,7 @@ export function Table({
 
 export function EmptyTable({ label }: { label: string }) {
   return (
-    <div className="rounded-sm border border-dashed border-(--color-border) bg-(--bg-card) p-6 text-center">
+    <div className="p-6 text-center">
       <p className="text-xs text-(--color-text-muted)">{label}</p>
     </div>
   )
@@ -107,7 +103,7 @@ export function Th({
 }) {
   return (
     <th
-      className={`px-3 py-2 font-medium text-(--color-text-muted) ${
+      className={`px-3 py-1.5 font-semibold text-[10px] uppercase tracking-wider text-(--color-text-muted) ${
         align === 'right' ? 'text-right' : 'text-left'
       }`}
     >

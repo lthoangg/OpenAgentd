@@ -4,7 +4,7 @@
  */
 
 import type { TraceListItem } from '@/api/client'
-import { EmptyTable, SectionHeader } from '../primitives'
+import { EmptyTable, SectionCard, SectionCardHeader } from '../primitives'
 import { TracesTable } from './TracesTable'
 
 interface TracesQueryState {
@@ -34,15 +34,16 @@ export function TracesSection({
   const isInitialLoading = query.isLoading && traces.length === 0
 
   return (
-    <section>
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <SectionHeader>Recent traces</SectionHeader>
+    <SectionCard>
+      <SectionCardHeader className="flex flex-wrap items-center justify-between gap-2 py-1.5">
+        <span>Recent traces</span>
         {total > 0 && (
-          <span className="text-[11px] text-(--color-text-muted)">
+          <span className="text-[10px] font-normal tracking-normal text-(--color-text-muted)">
             Showing {Math.min(traces.length, total)} of {total}
           </span>
         )}
-      </div>
+      </SectionCardHeader>
+
       {isInitialLoading ? (
         <EmptyTable label="Loading traces…" />
       ) : query.isError ? (
@@ -51,7 +52,7 @@ export function TracesSection({
         <EmptyTable label="No traces in this window." />
       ) : (
         <div
-          className="max-h-[34rem] overflow-y-auto rounded-sm border border-(--color-border) bg-(--bg-card)"
+          className="max-h-[34rem] overflow-y-auto"
           onScroll={(event) => {
             const el = event.currentTarget
             if (el.scrollTop + el.clientHeight >= el.scrollHeight - 80) {
@@ -67,6 +68,6 @@ export function TracesSection({
           )}
         </div>
       )}
-    </section>
+    </SectionCard>
   )
 }

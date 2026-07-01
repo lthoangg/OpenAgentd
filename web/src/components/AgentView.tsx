@@ -162,6 +162,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
   //   → false: user scrolls up and is no longer at the bottom
   const attachedRef = useRef(true)
   const isProgrammaticScrollRef = useRef(false)
+  const lastScrollTopRef = useRef(0)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
   const [renderedTurnCount, setRenderedTurnCount] = useState(INITIAL_RENDERED_TURNS)
   const sessionId = useTeamStore((s) => s.sessionId) ?? undefined
@@ -237,16 +238,22 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
       }, 500)
     } else {
       el.scrollTop = el.scrollHeight
+      lastScrollTopRef.current = el.scrollHeight
     }
   }, [])
 
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
+    lastScrollTopRef.current = el.scrollTop
 
     const onScroll = () => {
+      const currentScrollTop = el.scrollTop
+      const prevScrollTop = lastScrollTopRef.current
+      lastScrollTopRef.current = currentScrollTop
+
       if (isProgrammaticScrollRef.current) return
-      const dist = el.scrollHeight - el.scrollTop - el.clientHeight
+      const dist = el.scrollHeight - currentScrollTop - el.clientHeight
       const atBottom = dist <= SCROLL_THRESHOLD
 
       if (atBottom) {
@@ -255,12 +262,19 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
       } else if (attachedRef.current) {
         // Don't detach when the virtual keyboard opened (viewport shrink, not user scroll).
         if (document.documentElement.hasAttribute('data-keyboard-open')) return
-        attachedRef.current = false
-        setShowScrollBtn(true)
+
+        // We only detach if the user scrolled UP (meaning scrollTop decreased).
+        // If scrollTop increased or stayed the same, it could be due to layout/ResizeObserver/smooth scroll
+        // and we want to remain attached.
+        const isScrollUp = currentScrollTop < prevScrollTop
+        if (isScrollUp) {
+          attachedRef.current = false
+          setShowScrollBtn(true)
+        }
       }
 
       // Load older messages when scrolled to the top.
-      if (el.scrollTop <= LOAD_OLDER_THRESHOLD) {
+      if (currentScrollTop <= LOAD_OLDER_THRESHOLD) {
         if (hiddenTurnCountRef.current > 0) {
           showEarlierTurnsRef.current()
         } else if (useTeamStore.getState().hasMore && !loadingOlderRef.current) {

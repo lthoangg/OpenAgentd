@@ -380,6 +380,7 @@ export function AgentPane({
 
   const attachedRef = useRef(true)
   const isProgrammaticScrollRef = useRef(false)
+  const lastScrollTopRef = useRef(0)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
@@ -401,23 +402,38 @@ export function AgentPane({
       }, 500)
     } else {
       el.scrollTop = el.scrollHeight
+      lastScrollTopRef.current = el.scrollHeight
     }
   }, [])
 
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
+    lastScrollTopRef.current = el.scrollTop
+
     const onScroll = () => {
+      const currentScrollTop = el.scrollTop
+      const prevScrollTop = lastScrollTopRef.current
+      lastScrollTopRef.current = currentScrollTop
+
       if (isProgrammaticScrollRef.current) return
-      const dist = el.scrollHeight - el.scrollTop - el.clientHeight
+      const dist = el.scrollHeight - currentScrollTop - el.clientHeight
       const atBottom = dist <= SCROLL_THRESHOLD
+
       if (atBottom) {
         attachedRef.current = true
         setShowScrollBtn(false)
       } else if (attachedRef.current) {
         if (document.documentElement.hasAttribute('data-keyboard-open')) return
-        attachedRef.current = false
-        setShowScrollBtn(true)
+
+        // We only detach if the user scrolled UP (meaning scrollTop decreased).
+        // If scrollTop increased or stayed the same, it could be due to layout/ResizeObserver/smooth scroll
+        // and we want to remain attached.
+        const isScrollUp = currentScrollTop < prevScrollTop
+        if (isScrollUp) {
+          attachedRef.current = false
+          setShowScrollBtn(true)
+        }
       }
     }
     el.addEventListener('scroll', onScroll, { passive: true })

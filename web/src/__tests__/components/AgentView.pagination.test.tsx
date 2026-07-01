@@ -200,6 +200,10 @@ describe("AgentView — scroll-to-top pagination", () => {
     await act(async () => {
       el.dispatchEvent(new WheelEvent("wheel", { deltaY: -10, bubbles: true }))
     })
+    // Simulate starting at the bottom first so that scrolling to 0 is detected as scroll-up
+    setScrollProps(el, { scrollTop: 1500, scrollHeight: 2000, clientHeight: 500 })
+    await scrollTo(el, 1500)
+
     setScrollProps(el, { scrollTop: 0, scrollHeight: 2000, clientHeight: 500 })
     await scrollTo(el, 0)
     expect(mockLoadOlderMessages).toHaveBeenCalledTimes(1)

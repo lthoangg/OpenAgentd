@@ -41,6 +41,14 @@ async function fireScroll(el: HTMLDivElement, distFromBottom: number) {
   const clientHeight = 500
   Object.defineProperty(el, "scrollHeight", { value: scrollHeight, configurable: true, writable: true })
   Object.defineProperty(el, "clientHeight", { value: clientHeight, configurable: true, writable: true })
+
+  if (distFromBottom !== 0 && (!el.scrollTop || el.scrollTop === 0)) {
+    // Simulate starting at the bottom first
+    Object.defineProperty(el, "scrollTop", { value: scrollHeight - clientHeight, configurable: true, writable: true })
+    await act(async () => { el.dispatchEvent(new Event("scroll", { bubbles: true })) })
+    await waitFrame()
+  }
+
   Object.defineProperty(el, "scrollTop",    { value: scrollHeight - clientHeight - distFromBottom, configurable: true, writable: true })
   await act(async () => { el.dispatchEvent(new Event("scroll", { bubbles: true })) })
   await waitFrame()
@@ -208,6 +216,44 @@ describe("AgentView — scroll-to-bottom button", () => {
     } finally {
       globalThis.ResizeObserver = originalResizeObserver
     }
+  })
+
+  it("does not detach on trailing scroll events after programmatic smooth scroll ends (due to scroll-up prevention)", async () => {
+    const { container } = renderStream({ blocks: [makeTextBlock("b1", "Hi")] })
+    const el = container.querySelector(".overflow-y-auto") as HTMLDivElement
+
+    // 1. Detach by scrolling away from bottom
+    await fireScroll(el, 200)
+    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
+
+    // 2. Click scroll to bottom button to trigger smooth scroll
+    const btn = container.querySelector('button[aria-label="Scroll to bottom"]') as HTMLButtonElement
+    await act(async () => { btn.click() })
+
+    // Button should be hidden immediately
+    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
+
+    // Wait for the programmatic scroll timeout to finish (500ms)
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 600))
+    })
+
+    // 3. Fire scroll event moving down (from 300 to 400). Even if it is not at the bottom yet,
+    // since it is moving down (not scrolling up), it should NOT detach.
+    Object.defineProperty(el, "scrollTop", { value: 400, configurable: true, writable: true })
+    await act(async () => { el.dispatchEvent(new Event("scroll", { bubbles: true })) })
+    await waitFrame()
+
+    // Still attached and no button
+    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
+
+    // 4. Now fire a scroll event that actually scrolls UP (from 400 to 390)
+    // This should detach!
+    Object.defineProperty(el, "scrollTop", { value: 390, configurable: true, writable: true })
+    await act(async () => { el.dispatchEvent(new Event("scroll", { bubbles: true })) })
+    await waitFrame()
+
+    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
   })
 })
 

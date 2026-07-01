@@ -132,7 +132,7 @@ browsers treat table layout specially and it breaks column alignment.
 | User sends a message (new `user` block) | → `true` |
 | Click chevron-down button | → `true`, instantly `scrollTop = scrollHeight` |
 | Scroll event reaches `dist ≤ 40px` from bottom | → `true` |
-| Scroll event with `dist > 40px` AND no `data-keyboard-open` | → `false`, show button |
+| Scroll event with `dist > 40px` AND no `data-keyboard-open` | → `false` (only if scroll direction is UP), show button |
 | Virtual keyboard opens (`data-keyboard-open` on `<html>`) | scroll event ignored — viewport shrink is not user scroll |
 
 When `attachedRef.current === true`, a **`ResizeObserver`** on the content

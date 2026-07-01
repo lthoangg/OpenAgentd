@@ -152,7 +152,7 @@ function ShellResult({ result }: { result: string }) {
 
       {/* stdout / stderr output */}
       {body && (
-        <pre className="max-h-[calc(10*1.55em)] overflow-y-auto overscroll-contain touch-pan-y whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-(--color-text-2)">
+        <pre className="max-h-[calc(10*1.55em)] overflow-y-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-(--color-text-2)">
           {body}
         </pre>
       )}
@@ -179,7 +179,7 @@ function FileListResult({ result }: { result: string }) {
       <span className="font-mono text-[10px] text-(--color-text-muted)">
         {entries.length} {entries.length === 1 ? 'entry' : 'entries'}
       </span>
-      <ul className="max-h-[calc(10*1.55em)] min-w-0 space-y-0.5 overflow-y-auto overscroll-contain touch-pan-y">
+      <ul className="max-h-[calc(10*1.55em)] min-w-0 space-y-0.5 overflow-y-auto">
         {entries.map((e, i) => (
           <li
             key={i}
@@ -210,7 +210,7 @@ function FileReadResult({ result }: { result: string }) {
           {rangeLabel}
         </span>
       </div>
-      <pre className="max-h-[calc(10*1.55em)] min-w-0 overflow-auto overscroll-contain touch-pan-y whitespace-pre-wrap break-words px-3 py-2.5 font-mono text-[11px] leading-relaxed text-(--color-text)">
+      <pre className="max-h-[calc(10*1.55em)] min-w-0 overflow-auto whitespace-pre-wrap break-words px-3 py-2.5 font-mono text-[11px] leading-relaxed text-(--color-text)">
         {body}
       </pre>
     </div>
@@ -341,7 +341,7 @@ function GenericResult({ result }: { result: string }) {
   const clipped = truncateForDisplay(display)
 
   return (
-    <pre className="max-h-[calc(10*1.55em)] overflow-y-auto overscroll-contain touch-pan-y whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-(--color-text-2)">
+    <pre className="max-h-[calc(10*1.55em)] overflow-y-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-(--color-text-2)">
       {clipped}
     </pre>
   )

@@ -136,7 +136,7 @@ export function TeamChatHeader({
           </button>
           {mode === 'coding' && workspace && !isMobile ? (
             <span
-              className="ml-1 flex min-w-0 max-w-72 items-baseline gap-1 text-sm"
+              className="ml-1 flex min-w-0 max-w-xs items-baseline gap-1 text-sm lg:max-w-md xl:max-w-xl"
               title={sessionTitle ? `${workspaceLabel(workspace)}: ${sessionTitle}` : workspace}
             >
               <span className="shrink-0 font-semibold text-(--color-text)">{workspaceLabel(workspace)}</span>
@@ -149,7 +149,7 @@ export function TeamChatHeader({
             </span>
           ) : mode !== 'coding' && sessionTitle && !isMobile ? (
             <span
-              className="ml-1 max-w-60 truncate text-sm font-semibold text-(--color-text)"
+              className="ml-1 min-w-0 max-w-xs truncate text-sm font-semibold text-(--color-text) lg:max-w-md xl:max-w-xl"
               title={sessionTitle}
             >
               {sessionTitle}

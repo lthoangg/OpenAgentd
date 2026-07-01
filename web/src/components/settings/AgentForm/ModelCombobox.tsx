@@ -185,10 +185,14 @@ export function ModelCombobox({
             tabIndex={-1}
             aria-label="Clear model"
             onMouseDown={(e) => {
-              // Clear without stealing focus from the input.
+              // preventDefault keeps focus on the input (no blur/refocus cycle).
+              // Since the input stays focused, onFocus never re-fires, so we
+              // must explicitly reopen the dropdown after clearing.
               e.preventDefault()
-              commit('')
-              inputRef.current?.focus()
+              setQuery('')
+              onChange('')
+              setHighlight(0)
+              setOpen(true)
             }}
             disabled={disabled}
             className="absolute top-1/2 right-1 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:text-(--color-text) disabled:opacity-50 md:h-7 md:w-7"

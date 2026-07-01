@@ -95,7 +95,7 @@ export function ReadView({ args, result, onCollapse }: ReadViewProps) {
       </div>
 
       {expanded && (
-        <div className="overflow-y-auto overscroll-contain touch-pan-y bg-(--bg-input) font-mono text-xs leading-relaxed">
+        <div className="overflow-y-auto  bg-(--bg-input) font-mono text-xs leading-relaxed">
           <div className="min-w-0">
             {lines.map((line, idx) => (
               <div key={idx} className="flex items-stretch text-(--color-text)">

@@ -77,7 +77,7 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1,
 
       {/* Diff Content */}
       {expanded && (
-        <div className="overflow-y-auto overscroll-contain touch-pan-y bg-(--bg-input) font-mono text-xs leading-relaxed">
+        <div className="overflow-y-auto  bg-(--bg-input) font-mono text-xs leading-relaxed">
         {linesWithNumbers.length === 0 ? (
           <div className="px-3 py-4 text-center text-(--color-text-muted) italic">
             No content changes

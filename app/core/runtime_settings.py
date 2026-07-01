@@ -32,6 +32,7 @@ class ProviderUiSettings(BaseModel):
     visible_models: list[str] = Field(default_factory=list)
     cached_models: list[str] = Field(default_factory=list)
     last_listed_at: int | None = None
+    is_disconnected: bool = False
 
 
 class RuntimeSettings(BaseModel):
@@ -104,6 +105,31 @@ def clear_provider_cached_models(provider_id: str) -> None:
     )
     if next_settings.visible_models:
         cfg.providers[provider_id] = next_settings
+    else:
+        cfg.providers.pop(provider_id, None)
+    save_runtime_settings(cfg)
+
+
+def provider_is_disconnected(provider_id: str) -> bool:
+    return (
+        load_runtime_settings()
+        .providers.get(provider_id, ProviderUiSettings())
+        .is_disconnected
+    )
+
+
+def set_provider_disconnected(provider_id: str, *, disconnected: bool) -> None:
+    cfg = load_runtime_settings()
+    current = cfg.providers.get(provider_id, ProviderUiSettings())
+    updated = current.model_copy(update={"is_disconnected": disconnected})
+    # Keep the entry only if it has something worth persisting.
+    if (
+        updated.is_disconnected
+        or updated.visible_models
+        or updated.cached_models
+        or updated.last_listed_at is not None
+    ):
+        cfg.providers[provider_id] = updated
     else:
         cfg.providers.pop(provider_id, None)
     save_runtime_settings(cfg)

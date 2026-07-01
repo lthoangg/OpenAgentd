@@ -75,6 +75,7 @@ export function ProvidersSettingsPage() {
     if (!providersQ.data) return
     for (const provider of providersQ.data.providers) {
       if (!provider.is_configured) continue
+      if (provider.is_disconnected) continue
       if (queryClient.getQueryData(queryKeys.settings.providerModels(provider.id))) continue
       void listProviderModels(provider.id, {}).then((listed) => {
         queryClient.setQueryData(queryKeys.settings.providerModels(provider.id), listed)

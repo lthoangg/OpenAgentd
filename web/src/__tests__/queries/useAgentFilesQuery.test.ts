@@ -76,6 +76,7 @@ describe('useRegistryQuery', () => {
           is_reachable: true,
           cached_models: ['claude-sonnet-4-6', 'claude-haiku-4-5'],
           visible_models: ['claude-sonnet-4-6'],
+          is_disconnected: false,
         },
       ],
     }

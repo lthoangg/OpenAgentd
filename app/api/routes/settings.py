@@ -24,14 +24,18 @@ from app.core.config import settings
 from app.core.runtime_settings import (
     clear_provider_cached_models,
     provider_cached_models,
+    provider_is_disconnected,
     provider_visible_models,
     set_provider_cached_models,
+    set_provider_disconnected,
     set_provider_visible_models,
 )
 
 if TYPE_CHECKING:
     from app.agent.providers.catalog import ProviderEntry
 from app.api.schemas.settings import (
+    ProviderDisconnectRequest,
+    ProviderDisconnectResponse,
     ProviderInfo,
     ProviderModelsRequest,
     ProviderModelsResponse,
@@ -376,6 +380,7 @@ async def list_providers() -> ProvidersListBody:
                 is_reachable=is_configured if is_saved else None,
                 cached_models=provider_cached_models(entry["id"]),
                 visible_models=provider_visible_models(entry["id"]),
+                is_disconnected=provider_is_disconnected(entry["id"]),
             )
         )
     has_any = any(p.is_configured for p in out)
@@ -417,6 +422,12 @@ async def list_provider_models(
     entry = find(provider_id)
     if entry is None:
         raise HTTPException(status_code=404, detail=f"Unknown provider '{provider_id}'")
+
+    if provider_is_disconnected(provider_id):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Provider '{provider_id}' is disconnected. Reconnect it first.",
+        )
 
     overrides = _provider_saved_overrides(entry) | _build_overrides(
         entry, body.api_key, body.extra
@@ -467,6 +478,29 @@ async def save_provider_visible_models(
     return ProviderVisibleModelsResponse(
         provider=provider_id,
         visible_models=provider_visible_models(provider_id),
+    )
+
+
+@router.put("/providers/{provider_id}/disconnect")
+async def set_provider_disconnect(
+    provider_id: str, body: ProviderDisconnectRequest
+) -> ProviderDisconnectResponse:
+    """Set or clear the disconnected flag for a provider.
+
+    When ``disconnected=true`` the provider's models are hidden from all model
+    pickers even though credentials are still saved on disk. Setting
+    ``disconnected=false`` restores normal visibility.
+    """
+    from app.agent.providers.catalog import find
+
+    entry = find(provider_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"Unknown provider '{provider_id}'")
+
+    set_provider_disconnected(provider_id, disconnected=body.disconnected)
+    return ProviderDisconnectResponse(
+        provider=provider_id,
+        is_disconnected=provider_is_disconnected(provider_id),
     )
 
 

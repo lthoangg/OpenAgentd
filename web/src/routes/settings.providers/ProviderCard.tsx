@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertCircle, CheckCircle2, ExternalLink, Loader2, ShieldCheck } from 'lucide-react'
+import { AlertCircle, CheckCircle2, ExternalLink, Loader2, ShieldCheck, WifiOff } from 'lucide-react'
 
 import { ApiValidationError, type ProviderInfo } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { SectionCard, SectionCardHeader } from '@/components/ui/section-card'
-import { queryKeys, useProviderModelsMutation, useProviderUsageQuery, useSaveProviderMutation, useSaveProviderVisibleModelsMutation } from '@/queries'
+import { queryKeys, useDisconnectProviderMutation, useProviderModelsMutation, useProviderUsageQuery, useSaveProviderMutation, useSaveProviderVisibleModelsMutation } from '@/queries'
 import { openExternalUrl } from '@/lib/open-external'
 import { useToastStore } from '@/stores/useToastStore'
 import { DAEMON_BASE_URL, providerKindLabel } from './providerUtils'
@@ -27,6 +27,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
   const modelsMutation = useProviderModelsMutation()
   const saveMutation = useSaveProviderMutation()
   const saveVisibleModelsMutation = useSaveProviderVisibleModelsMutation()
+  const disconnectMutation = useDisconnectProviderMutation()
   const push = useToastStore((s) => s.push)
   const queryClient = useQueryClient()
 
@@ -148,6 +149,23 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
     }
   }
 
+  const handleDisconnect = async (disconnected: boolean) => {
+    try {
+      await disconnectMutation.mutateAsync({ providerId: provider.id, disconnected })
+      push({
+        tone: 'success',
+        title: disconnected ? 'Provider disconnected' : 'Provider reconnected',
+        description: provider.label,
+      })
+    } catch (err) {
+      push({
+        tone: 'error',
+        title: disconnected ? 'Could not disconnect provider' : 'Could not reconnect provider',
+        description: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
+
   const listing = modelsMutation.isPending || autoModelsQ.isFetching
   const isConnected = provider.is_configured || (provider.kind === 'oauth' && provider.is_saved)
   const isConfiguredButUnreachable =
@@ -170,12 +188,33 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
             <AlertCircle size={10} aria-hidden="true" />
             Failed
           </span>
+        ) : provider.is_disconnected ? (
+          <span className="inline-flex items-center gap-1 rounded bg-(--bg-key) px-1.5 py-0.5 text-[9px] font-semibold text-(--color-text-muted) border border-(--color-border)">
+            <WifiOff size={10} aria-hidden="true" />
+            Disconnected
+          </span>
         ) : isConnected ? (
           <span className="inline-flex items-center gap-1 rounded bg-(--color-success-subtle) px-1.5 py-0.5 text-[9px] font-semibold text-(--color-success) border border-(--color-success)/15">
             <CheckCircle2 size={10} aria-hidden="true" />
             Connected
           </span>
         ) : null}
+
+        {(isConnected || isConfiguredButUnreachable) && (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="h-8 px-2 text-[10.5px] sm:h-6.5"
+            onClick={() => void handleDisconnect(!provider.is_disconnected)}
+            disabled={disconnectMutation.isPending}
+          >
+            {disconnectMutation.isPending
+              ? <Loader2 size={10.5} className="animate-spin" aria-hidden="true" />
+              : provider.is_disconnected ? 'Reconnect' : 'Disconnect'
+            }
+          </Button>
+        )}
 
         {provider.docs_url && (
           <Button
@@ -416,7 +455,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
       )}
 
       {/* ── Models panel ────────────────────────────────────────────── */}
-      {models.length > 0 && (
+      {models.length > 0 && !provider.is_disconnected && (
         <ModelsPanel
           providerId={provider.id}
           models={models}

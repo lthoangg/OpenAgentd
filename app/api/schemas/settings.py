@@ -65,6 +65,9 @@ class ProviderInfo(BaseModel):
     # Provider-local model IDs shown in normal model pickers. Empty means all
     # cached models for this provider are visible.
     visible_models: list[str] = Field(default_factory=list)
+    # When True the provider is configured but intentionally hidden from all
+    # model pickers (user has disconnected it).
+    is_disconnected: bool = False
 
 
 class ProvidersListBody(BaseModel):
@@ -185,6 +188,19 @@ class ProviderVisibleModelsResponse(BaseModel):
 
     provider: str
     visible_models: list[str] = Field(default_factory=list)
+
+
+class ProviderDisconnectRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    disconnected: bool
+
+
+class ProviderDisconnectResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider: str
+    is_disconnected: bool
 
 
 class SeedInstallRequest(BaseModel):

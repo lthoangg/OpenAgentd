@@ -26,6 +26,7 @@ from app.agent.providers.model_discovery import (
 )
 from app.core.runtime_settings import (
     provider_cached_models,
+    provider_is_disconnected,
     provider_visible_models,
     set_provider_cached_models,
 )
@@ -223,7 +224,9 @@ async def _warm_provider_model_cache() -> None:
     configured = [
         entry
         for entry in provider_entries
-        if _provider_is_configured(entry) and not provider_cached_models(entry["id"])
+        if _provider_is_configured(entry)
+        and not provider_is_disconnected(entry["id"])
+        and not provider_cached_models(entry["id"])
     ]
     if not configured:
         return
@@ -331,6 +334,8 @@ async def get_registry() -> RegistryResponse:
 
     visible_by_provider: dict[str, set[str]] = {}
     for provider in providers:
+        if provider_is_disconnected(provider):
+            continue
         visible = visible_by_provider.setdefault(
             provider, set(provider_visible_models(provider))
         )
@@ -367,6 +372,9 @@ async def is_registered_model_id(model_id: str) -> bool:
         return False
     provider, model = model_id.split(":", 1)
     if not provider or not model:
+        return False
+
+    if provider_is_disconnected(provider):
         return False
 
     visible = set(provider_visible_models(provider))

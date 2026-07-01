@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import {
+  disconnectProvider,
   installSeed,
   getProviderUsage,
   listProviderModels,
@@ -84,6 +85,35 @@ export function useTestProviderMutation() {
   return useMutation<ProviderTestResponse, Error, { providerId: string; apiKey?: string; model: string; extra?: Record<string, string> }>({
     mutationFn: ({ providerId, apiKey, model, extra }) =>
       testProvider(providerId, { api_key: apiKey, model, extra }),
+  })
+}
+
+export function useDisconnectProviderMutation() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: ({ providerId, disconnected }: { providerId: string; disconnected: boolean }) =>
+      disconnectProvider(providerId, disconnected),
+    onMutate: async ({ providerId, disconnected }) => {
+      await client.cancelQueries({ queryKey: queryKeys.settings.providers() })
+      const previous = client.getQueryData<ProvidersListBody>(queryKeys.settings.providers())
+      client.setQueryData<ProvidersListBody>(queryKeys.settings.providers(), (current) => {
+        if (!current) return current
+        return {
+          ...current,
+          providers: current.providers.map((p) =>
+            p.id === providerId ? { ...p, is_disconnected: disconnected } : p,
+          ),
+        }
+      })
+      return { previous }
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previous) client.setQueryData(queryKeys.settings.providers(), context.previous)
+    },
+    onSettled: () => {
+      void client.invalidateQueries({ queryKey: queryKeys.settings.providers() })
+      void client.invalidateQueries({ queryKey: queryKeys.agentFiles.registry() })
+    },
   })
 }
 

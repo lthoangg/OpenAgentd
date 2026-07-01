@@ -103,6 +103,7 @@ export type ProviderInfo = {
   is_reachable?: boolean | null
   cached_models: string[]
   visible_models: string[]
+  is_disconnected: boolean
 }
 
 export type ProvidersListBody = {
@@ -241,6 +242,27 @@ export async function saveProviderVisibleModels(
 export async function getProviderUsage(providerId: string): Promise<ProviderUsageResponse> {
   const res = await fetch(`${apiBaseUrl()}/settings/providers/${encodeURIComponent(providerId)}/usage`)
   if (!res.ok) await parseDetailOrThrow(res, `GET /settings/providers/${providerId}/usage`)
+  return res.json()
+}
+
+export type ProviderDisconnectResponse = {
+  provider: string
+  is_disconnected: boolean
+}
+
+export async function disconnectProvider(
+  providerId: string,
+  disconnected: boolean,
+): Promise<ProviderDisconnectResponse> {
+  const res = await fetch(
+    `${apiBaseUrl()}/settings/providers/${encodeURIComponent(providerId)}/disconnect`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ disconnected }),
+    },
+  )
+  if (!res.ok) await parseDetailOrThrow(res, `PUT /settings/providers/${providerId}/disconnect`)
   return res.json()
 }
 

@@ -161,7 +161,7 @@ export function FileLightboxImage({
 
   return (
     <div
-      className="flex max-h-full max-w-full select-none items-center justify-center"
+      className="flex h-full w-full max-h-full max-w-full select-none items-center justify-center"
       onDoubleClick={onDoubleClick}
       onMouseDown={onMouseDown}
       onMouseMove={onMouseMove}
@@ -188,7 +188,7 @@ export function FileLightboxImage({
             alt={item.name}
             draggable={false}
             onError={() => setError(true)}
-            className="max-h-full max-w-full rounded-sm object-contain cursor-zoom-in transition-[cursor] duration-100"
+            className="block h-auto w-auto max-h-full max-w-full rounded-sm object-contain cursor-zoom-in transition-[cursor] duration-100"
             style={{ willChange: 'transform' }}
             onClick={(e) => {
               e.stopPropagation()

@@ -28,9 +28,12 @@ describe("ImageLightbox", () => {
     render(
       <ImageLightbox src="https://example.com/photo.jpg" alt="Test photo" isOpen={true} onClose={mock(() => {})} />
     )
-    const img = screen.getByRole("img", { name: "Test photo" })
+    const img = screen.getByRole("img", { name: "Test photo" }) as HTMLImageElement
     expect(img).toBeTruthy()
-    expect((img as HTMLImageElement).src).toContain("example.com/photo.jpg")
+    expect(img.src).toContain("example.com/photo.jpg")
+    expect(img.className).toContain("object-contain")
+    expect(img.className).toContain("h-auto")
+    expect(img.className).toContain("w-auto")
   })
 
   it("renders alt text below image when alt is provided", () => {

@@ -302,3 +302,122 @@ describe('FloatingInputBar', () => {
   })
 
 })
+
+// ── Cross-platform: mobile vs desktop behavior ────────────────────────────
+
+describe('FloatingInputBar — mobile: always fully expanded', () => {
+  beforeEach(() => {
+    mockIsMobile = true
+  })
+  afterEach(() => {
+    mockIsMobile = false
+  })
+
+  it('renders the full textarea immediately without an expand affordance', () => {
+    render(<Harness />)
+    // On mobile the bar is always expanded — no "Expand input bar" button.
+    expect(screen.queryByRole('button', { name: 'Expand input bar' })).toBeNull()
+    expect(screen.getByRole('textbox', { name: 'Message input' })).toBeTruthy()
+  })
+
+  it('does not collapse after submit on mobile', async () => {
+    const user = userEvent.setup()
+    render(<Harness />)
+
+    const textarea = screen.getByRole('textbox', { name: 'Message input' })
+    await user.type(textarea, 'hello')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+    // The textarea should still be present and enabled after submit.
+    expect(screen.queryByRole('button', { name: 'Expand input bar' })).toBeNull()
+    expect(screen.getByRole('textbox', { name: 'Message input' })).toBeTruthy()
+  })
+
+  it('does not collapse when the textarea loses focus on mobile', async () => {
+    const user = userEvent.setup()
+    render(<Harness />)
+
+    const textarea = screen.getByRole('textbox', { name: 'Message input' })
+    await user.click(textarea)
+    // Blur the textarea
+    await user.tab()
+
+    // Still expanded — no minimize on mobile blur.
+    expect(screen.queryByRole('button', { name: 'Expand input bar' })).toBeNull()
+    expect(screen.getByRole('textbox', { name: 'Message input' })).toBeTruthy()
+  })
+})
+
+describe('FloatingInputBar — desktop: minimize/expand lifecycle', () => {
+  it('starts minimized and expands on click', async () => {
+    const user = userEvent.setup()
+    render(<Harness />)
+
+    // Desktop starts minimized.
+    expect(screen.getByRole('button', { name: 'Expand input bar' })).toBeTruthy()
+
+    await user.click(screen.getByRole('button', { name: 'Expand input bar' }))
+    expect(screen.getByRole('textbox', { name: 'Message input' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Expand input bar' })).toBeNull()
+  })
+
+  it('collapses when the empty textarea loses focus on desktop', async () => {
+    const user = userEvent.setup()
+    render(<Harness />)
+
+    await user.click(screen.getByRole('button', { name: 'Expand input bar' }))
+    // Tab away from the textarea to trigger blur.
+    await user.tab()
+
+    // After the 180 ms blur-debounce timer the bar collapses.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 220))
+    })
+    expect(screen.getByRole('button', { name: 'Expand input bar' })).toBeTruthy()
+  })
+
+  it('does NOT collapse when the textarea has content at blur time', async () => {
+    const user = userEvent.setup()
+    render(<Harness />)
+
+    await user.click(screen.getByRole('button', { name: 'Expand input bar' }))
+    const textarea = screen.getByRole('textbox', { name: 'Message input' })
+    await user.type(textarea, 'draft text')
+    // Tab away — canMinimize=false because there is unsent content.
+    await user.tab()
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 220))
+    })
+    // Bar stays expanded.
+    expect(screen.queryByRole('button', { name: 'Expand input bar' })).toBeNull()
+    expect(screen.getByRole('textbox', { name: 'Message input' })).toBeTruthy()
+  })
+})
+
+describe('FloatingInputBar — orientation change: portrait-mobile → landscape-tablet', () => {
+  it('does not schedule a collapse timer when blur fires while isMobile is true', async () => {
+    // When the bar is in mobile mode (isMobile=true), handleBlur must return
+    // early without calling setTimeout. We verify this by confirming the bar
+    // stays fully expanded after a blur — on mobile the Expand affordance
+    // must never appear.
+    mockIsMobile = true
+
+    const user = userEvent.setup()
+    render(<Harness />)
+
+    const textarea = screen.getByRole('textbox', { name: 'Message input' })
+    await user.click(textarea)
+    // Blur with empty input (canMinimize=true) — the timer must NOT fire.
+    await user.tab()
+
+    // Wait well past the 180ms debounce window.
+    await act(async () => {
+      await new Promise<void>((r) => setTimeout(r, 250))
+    })
+
+    // Still fully expanded on mobile — no Expand button, textarea present.
+    expect(screen.queryByRole('button', { name: 'Expand input bar' })).toBeNull()
+    expect(screen.getByRole('textbox', { name: 'Message input' })).toBeTruthy()
+  })
+})

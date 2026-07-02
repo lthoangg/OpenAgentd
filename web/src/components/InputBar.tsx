@@ -282,7 +282,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     }
 
     const next = shellMode ? null : findActiveMention(el.value, caret)
-    setSnippetRange(next || shellMode ? null : findActiveSnippet(el.value, caret))
+    setSnippetRange((next !== null || shellMode) ? null : findActiveSnippet(el.value, caret))
     setMentionRange((prev) => {
       if (!prev && !next) return prev
       if (
@@ -460,7 +460,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         })
         return next
       })
-      setShellMode(shouldEnterShellMode ? true : false)
+      setShellMode(shouldEnterShellMode)
       setHistoryIndex(-1)
       setMentionRange(null)
       setSnippetRange(null)
@@ -605,10 +605,10 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   }, [capabilities])
 
   const removeFile = useCallback((index: number) => {
-    const oldUrl = blobUrls.get(index)
-    if (oldUrl) URL.revokeObjectURL(oldUrl)
+    // The blobUrls cleanup effect revokes URLs for any file that leaves the
+    // map, so we only need to update state here — no manual revocation needed.
     setFiles((prev) => prev.filter((_, i) => i !== index))
-  }, [blobUrls])
+  }, [])
 
   const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const items = e.clipboardData?.items
@@ -1021,7 +1021,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     const next = shellMode ? null : findActiveMention(nextValue, caret)
     if (next) onFileRefsNeeded?.()
     setMentionRange(next)
-    setSnippetRange(next || shellMode ? null : findActiveSnippet(nextValue, caret))
+    setSnippetRange((next !== null || shellMode) ? null : findActiveSnippet(nextValue, caret))
     scheduleResize()
   }
 

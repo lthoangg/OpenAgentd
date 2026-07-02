@@ -667,3 +667,184 @@ describe("InputBar — @-mention picker", () => {
     expect(fileChip.className).toContain("--accent-blue-text")
   })
 })
+
+// ── Atomic mention selection ───────────────────────────────────────────────
+
+describe("InputBar — atomic mention selection", () => {
+  it("selects the whole token when the caret moves into a committed mention", async () => {
+    const user = userEvent.setup()
+    render(<InputBar onSubmit={() => {}} fileRefs={fixtures} />)
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+
+    // Insert a mention and move past it.
+    await user.type(textarea, "@sr")
+    await user.keyboard("{ArrowDown}{Enter}") // inserts "@src/api.ts "
+    expect(textarea.value).toBe("@src/api.ts ")
+
+    // Place the caret in the middle of "@src/api.ts" (after the "/").
+    textarea.setSelectionRange(5, 5)
+    fireEvent.select(textarea)
+
+    // syncMention defers via rAF; wait for the whole token to be selected.
+    await waitFor(() => {
+      expect(textarea.selectionStart).toBe(0)
+      expect(textarea.selectionEnd).toBe(11) // "@src/api.ts" = 11 chars
+    })
+  })
+
+  it("does not select-all when the caret is outside any committed mention", async () => {
+    const user = userEvent.setup()
+    render(<InputBar onSubmit={() => {}} fileRefs={fixtures} />)
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+
+    await user.type(textarea, "@sr")
+    await user.keyboard("{ArrowDown}{Enter}") // "@src/api.ts "
+    await user.type(textarea, "then more text")
+
+    // Place caret in "more text" (well outside the mention).
+    const pos = textarea.value.indexOf("more")
+    textarea.setSelectionRange(pos, pos)
+    fireEvent.select(textarea)
+
+    // After a short tick the caret should still be at ``pos`` — no selection
+    // expansion should have occurred.
+    await new Promise((r) => setTimeout(r, 32))
+    expect(textarea.selectionStart).toBe(pos)
+    expect(textarea.selectionEnd).toBe(pos)
+  })
+})
+
+// ── Atomic mention deletion ────────────────────────────────────────────────
+
+describe("InputBar — atomic mention deletion", () => {
+  it("Backspace inside a committed mention deletes the whole token", async () => {
+    const user = userEvent.setup()
+    render(<InputBar onSubmit={() => {}} fileRefs={fixtures} />)
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+
+    await user.type(textarea, "read @sr")
+    await user.keyboard("{ArrowDown}{Enter}") // → "read @src/api.ts "
+
+    // Move caret back inside the mention (after the "/").
+    textarea.setSelectionRange(10, 10) // inside "@src/api.ts"
+    fireEvent.select(textarea)
+    // Wait for atomic selection to settle.
+    await waitFor(() => expect(textarea.selectionStart).toBe(5))
+
+    // Press Backspace — should remove "@src/api.ts", not a single char.
+    await user.keyboard("{Backspace}")
+
+    expect(textarea.value).toBe("read  ")
+    expect(screen.queryByTestId("mention-chip")).toBeNull()
+  })
+
+  it("Delete inside a committed mention deletes the whole token", async () => {
+    const user = userEvent.setup()
+    render(<InputBar onSubmit={() => {}} fileRefs={fixtures} />)
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+
+    await user.type(textarea, "@sr")
+    await user.keyboard("{ArrowDown}{Enter}") // → "@src/api.ts "
+
+    // Place caret at the start of the mention (index 0).
+    textarea.setSelectionRange(0, 0)
+    fireEvent.select(textarea)
+
+    await user.keyboard("{Delete}")
+
+    expect(textarea.value).toBe(" ")
+    expect(screen.queryByTestId("mention-chip")).toBeNull()
+  })
+
+  it("Backspace on the trailing space does not delete the mention token", async () => {
+    // The trailing space is outside the range tracked by mentions, so an
+    // ordinary backspace should remove only that space.
+    const user = userEvent.setup()
+    render(<InputBar onSubmit={() => {}} fileRefs={fixtures} />)
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+
+    await user.type(textarea, "@sr")
+    await user.keyboard("{Enter}") // → "@src/ "
+
+    expect(textarea.value).toBe("@src/ ")
+    // Caret is after the trailing space; one Backspace removes the space.
+    await user.keyboard("{Backspace}")
+    expect(textarea.value).toBe("@src/")
+  })
+})
+
+// ── Mention sync pruning ───────────────────────────────────────────────────
+
+describe("InputBar — mention sync pruning", () => {
+  it("removes a mention from the tracked list when its token is manually deleted", async () => {
+    // The ``mentions`` array is passed to ``onSubmit`` as ``mentionedFiles``.
+    // If the user types over or deletes a mention token, that path must not
+    // appear in the submitted list — otherwise the backend would treat a
+    // removed reference as still intentional.
+    const user = userEvent.setup()
+    const captured: string[] = []
+    render(
+      <InputBar
+        onSubmit={(_msg: string, _files?: File[], mentionedFiles?: string[]) => {
+          if (mentionedFiles) captured.push(...mentionedFiles)
+        }}
+        fileRefs={fixtures}
+      />
+    )
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+
+    // Insert a mention then delete it by selecting-all and retyping.
+    await user.type(textarea, "@sr")
+    await user.keyboard("{ArrowDown}{Enter}") // "@src/api.ts "
+    await user.keyboard("{Control>}a{/Control}") // select all
+    await user.keyboard("{Backspace}") // delete everything
+    await user.type(textarea, "no mentions here")
+    await user.keyboard("{Enter}") // submit via Enter
+
+    expect(captured).toHaveLength(0)
+  })
+
+  it("keeps only the mentions that survive in the final text at submit time", async () => {
+    // Two mentions inserted; one is then manually cleared by selecting and
+    // deleting its token. Only the surviving one should arrive in
+    // ``mentionedFiles``.
+    const user = userEvent.setup()
+    let capturedMentions: string[] | undefined
+    render(
+      <InputBar
+        onSubmit={(_msg: string, _files?: File[], mentionedFiles?: string[]) => {
+          capturedMentions = mentionedFiles
+        }}
+        fileRefs={fixtures}
+      />
+    )
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+
+    await user.type(textarea, "@src")
+    await user.keyboard("{Enter}")           // → "@src/ "
+    await user.type(textarea, "and @doc")
+    await user.keyboard("{Enter}")           // → "@src/ and @docs/intro.md "
+
+    // Manually select the "@src/" token and delete it. Place caret inside
+    // it (after the "@") and use Backspace in atomic-deletion mode.
+    textarea.setSelectionRange(2, 2) // caret inside "@src/"
+    fireEvent.select(textarea)
+    // Atomic-selection rAF: the whole token becomes selected then we delete.
+    await waitFor(() => {
+      // Either atomic selection has fired, or the caret is still at 2 —
+      // either way we can proceed by explicitly selecting "@src/ " and
+      // deleting it.
+    })
+    // Explicitly select "@src/ " (indices 0–6) and delete.
+    textarea.setSelectionRange(0, 6)
+    fireEvent.select(textarea)
+    await user.keyboard("{Backspace}")
+
+    // Submit.
+    await user.click(screen.getByLabelText("Send message"))
+    await waitFor(() => expect(capturedMentions).toBeDefined())
+
+    expect(capturedMentions).not.toContain("src")
+    expect(capturedMentions).toContain("docs/intro.md")
+  })
+})

@@ -292,11 +292,12 @@ export function rankFileRefs(
     return [...topDirs, ...rest].slice(0, limit)
   }
 
-  // Fuzzysort scores in [0, 1] with higher = better. We adjust the score so
-  // a directory whose own name is a strong match comes above its children
-  // when the two are otherwise similar — fuzzysort doesn't know that
-  // ``src`` (the dir) is a different concept from ``src/foo.ts``, but the
-  // user typing ``src`` usually does mean the dir.
+  // Fuzzysort scores are ≤ 0, with 0 being a perfect match and increasingly
+  // negative values being weaker matches. We adjust each score so that a
+  // directory whose own name is a strong match comes above its children when
+  // the two are otherwise similar — fuzzysort doesn't know that ``src`` (the
+  // dir) is a different concept from ``src/foo.ts``, but the user typing
+  // ``src`` usually does mean the dir.
   //
   // Bonuses are small enough that they don't override a genuinely better
   // fuzzy match elsewhere (e.g. typing ``api`` still surfaces ``api.ts``
@@ -306,7 +307,7 @@ export function rankFileRefs(
     key: 'path',
     // Over-fetch a little so the dir bonus can reshuffle the head.
     limit: limit * 2,
-    threshold: 0.2, // drop very weak matches; tuned to feel snappy
+    threshold: -1000, // drop very weak matches; tuned to feel snappy
   })
 
   const adjusted = results.map((r) => {

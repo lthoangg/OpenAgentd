@@ -51,7 +51,18 @@ export function InputBarSuggestions({
 }) {
   const isMobile = useIsMobile()
   const containerRef = useRef<HTMLDivElement>(null)
-  const menuRef = useRef<HTMLDivElement>(null)
+  const slashMenuRef = useRef<HTMLDivElement>(null)
+  const mentionMenuRef = useRef<HTMLDivElement>(null)
+  const snippetMenuRef = useRef<HTMLDivElement>(null)
+  // Points to whichever menu is currently open. Stored in a ref so
+  // ``updatePosition`` (a stable useCallback) always reads the current
+  // active menu without needing the open-state booleans as deps.
+  const activeMenuRef = useRef<HTMLDivElement | null>(null)
+  activeMenuRef.current = slashMenuOpen
+    ? slashMenuRef.current
+    : mentionMenuOpen
+      ? mentionMenuRef.current
+      : snippetMenuRef.current
   const lastDesktopDirectionRef = useRef<boolean | null>(null)
   const [position, setPosition] = useState<{
     top: number | undefined
@@ -94,7 +105,7 @@ export function InputBarSuggestions({
       // 12px padding from the screen edge
       const maxHeight = Math.max(80, Math.min(256, availableSpace - 12))
 
-      const menuHeight = Math.min(menuRef.current?.scrollHeight ?? maxHeight, maxHeight)
+      const menuHeight = Math.min(activeMenuRef.current?.scrollHeight ?? maxHeight, maxHeight)
       const canFlip = !showBelow && spaceBelow > spaceAbove && spaceBelow >= menuHeight + 12
       const resolvedShowBelow = showBelow || canFlip
       const resolvedAvailableSpace = resolvedShowBelow ? spaceBelow : spaceAbove
@@ -119,7 +130,7 @@ export function InputBarSuggestions({
 
     const spaceAbove = rect.top
     const spaceBelow = window.innerHeight - rect.bottom
-    const desiredHeight = Math.min(menuRef.current?.scrollHeight ?? 256, 256)
+    const desiredHeight = Math.min(activeMenuRef.current?.scrollHeight ?? 256, 256)
     const fitsBelow = spaceBelow >= desiredHeight + 12
     const fitsAbove = spaceAbove >= desiredHeight + 12
     const previous = lastDesktopDirectionRef.current
@@ -173,7 +184,7 @@ export function InputBarSuggestions({
         updatePosition()
       })
       resizeObserver.observe(parentEl)
-      if (menuRef.current) resizeObserver.observe(menuRef.current)
+      if (activeMenuRef.current) resizeObserver.observe(activeMenuRef.current)
     }
 
     return () => {
@@ -224,7 +235,7 @@ export function InputBarSuggestions({
     <div ref={containerRef} className="contents">
       {slashMenuOpen && filteredSlashCommands.length > 0 && (
         <div
-          ref={menuRef}
+          ref={slashMenuRef}
           id={slashMenuId}
           role="listbox"
           aria-label="Slash commands"
@@ -271,7 +282,7 @@ export function InputBarSuggestions({
       )}
       {mentionMenuOpen && filteredMentions.length > 0 && (
         <div
-          ref={menuRef}
+          ref={mentionMenuRef}
           id={mentionMenuId}
           role="listbox"
           aria-label="Reference workspace file"
@@ -303,7 +314,7 @@ export function InputBarSuggestions({
       )}
       {snippetMenuOpen && filteredSnippetCommands.length > 0 && (
         <div
-          ref={menuRef}
+          ref={snippetMenuRef}
           id={snippetMenuId}
           role="listbox"
           aria-label="Snippets"

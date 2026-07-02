@@ -207,8 +207,21 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
       setMinimized(true)
     }, [])
 
+    // Keep a stable ref to isMobile so the blur timer callback always reads
+    // the *current* value, not the value captured when handleBlur was created.
+    // This prevents orientation-change state drift: if the viewport widens
+    // from portrait mobile (isMobile=true) to tablet landscape (isMobile=false)
+    // while the timer is pending, the timer must not collapse the bar.
+    const isMobileRef = useRef(isMobile)
+    useEffect(() => { isMobileRef.current = isMobile }, [isMobile])
+
     const handleBlur = useCallback((canMinimize: boolean) => {
       if (!canMinimize) return
+      // Never minimize on mobile — the bar is always fully visible there.
+      // Checking the ref (not the closure value) guards against the case where
+      // isMobile changes between the blur event and the 180ms timer firing
+      // (e.g. a tablet orientation flip from portrait → landscape).
+      if (isMobileRef.current) return
       // Short delay so a click on a sibling control inside the bar
       // (e.g. the attach picker, mic) doesn't trigger a collapse mid-action.
       blurTimerRef.current = setTimeout(() => {

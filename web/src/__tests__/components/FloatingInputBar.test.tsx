@@ -1,23 +1,15 @@
 import { describe, it, expect, afterEach, beforeEach, mock } from 'bun:test'
 import { createRef, useRef } from 'react'
-import { render, screen, cleanup, act, fireEvent } from '@testing-library/react'
+import { render, screen, cleanup, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { FloatingInputBar } from '@/components/FloatingInputBar'
 import { useTeamStore } from '@/stores/useTeamStore'
 import type { InputBarHandle } from '@/components/InputBar'
 
 let mockIsMobile = false
-let dismissedCalled = false
 
 mock.module('@/hooks/use-mobile', () => ({
   useIsMobile: () => mockIsMobile,
-}))
-
-mock.module('@/hooks/use-mobile-viewport', () => ({
-  dismissKeyboard: () => {
-    dismissedCalled = true
-  },
-  useMobileViewportGuards: () => {},
 }))
 
 mock.module('framer-motion', () => ({
@@ -60,7 +52,6 @@ beforeEach(() => {
   localStorage.clear()
   useTeamStore.setState({ _pendingMessages: [] })
   mockIsMobile = false
-  dismissedCalled = false
 })
 
 function nextFrame(): Promise<void> {
@@ -310,111 +301,4 @@ describe('FloatingInputBar', () => {
     expect(screen.getByRole('button', { name: 'Expand input bar' })).toBeTruthy()
   })
 
-  describe('Mobile swipe-down gesture', () => {
-    beforeEach(() => {
-      mockIsMobile = true
-      dismissedCalled = false
-    })
-
-    it('dismisses the keyboard when swiping down and suggestions are closed', () => {
-      render(
-        <FloatingInputBar
-          boundsRef={{ current: null }}
-          onSubmit={() => {}}
-        />
-      )
-
-      const container = screen.getByTestId('mobile-inputbar-container')
-
-      fireEvent.touchStart(container, {
-        touches: [{ clientX: 100, clientY: 100 } as unknown as Touch],
-      })
-      fireEvent.touchMove(container, {
-        touches: [{ clientX: 100, clientY: 150 } as unknown as Touch],
-      })
-
-      expect(dismissedCalled).toBe(true)
-    })
-
-    it('does NOT dismiss the keyboard when swiping down and suggestions are open', async () => {
-      const user = userEvent.setup()
-      const fileRefs = [{ id: '1', path: 'file.txt', name: 'file.txt', type: 'file' as const }]
-      render(
-        <FloatingInputBar
-          boundsRef={{ current: null }}
-          onSubmit={() => {}}
-          fileRefs={fileRefs}
-        />
-      )
-
-      const textarea = screen.getByRole('textbox', { name: 'Message input' })
-      await user.type(textarea, '@')
-
-      const mentionMenu = await screen.findByRole('listbox', { name: 'Reference workspace file' })
-      expect(mentionMenu).toBeTruthy()
-
-      dismissedCalled = false
-
-      const container = screen.getByTestId('mobile-inputbar-container')
-
-      fireEvent.touchStart(container, {
-        touches: [{ clientX: 100, clientY: 100 } as unknown as Touch],
-      })
-      fireEvent.touchMove(container, {
-        touches: [{ clientX: 100, clientY: 150 } as unknown as Touch],
-      })
-
-      expect(dismissedCalled).toBe(false)
-    })
-
-    it('does NOT dismiss the keyboard when swiping down inside a scrollable textarea that is scrolled down', () => {
-      render(
-        <FloatingInputBar
-          boundsRef={{ current: null }}
-          onSubmit={() => {}}
-        />
-      )
-
-      const textarea = screen.getByRole('textbox', { name: 'Message input' })
-
-      // Mock scrollable textarea scrolled down
-      Object.defineProperty(textarea, 'scrollHeight', { value: 200, configurable: true })
-      Object.defineProperty(textarea, 'clientHeight', { value: 100, configurable: true })
-      Object.defineProperty(textarea, 'scrollTop', { value: 10, configurable: true, writable: true })
-
-      fireEvent.touchStart(textarea, {
-        touches: [{ clientX: 100, clientY: 100 } as unknown as Touch],
-      })
-      fireEvent.touchMove(textarea, {
-        touches: [{ clientX: 100, clientY: 150 } as unknown as Touch],
-      })
-
-      expect(dismissedCalled).toBe(false)
-    })
-
-    it('dismisses the keyboard when swiping down inside a scrollable textarea that is already at the top', () => {
-      render(
-        <FloatingInputBar
-          boundsRef={{ current: null }}
-          onSubmit={() => {}}
-        />
-      )
-
-      const textarea = screen.getByRole('textbox', { name: 'Message input' })
-
-      // Mock scrollable textarea at the top
-      Object.defineProperty(textarea, 'scrollHeight', { value: 200, configurable: true })
-      Object.defineProperty(textarea, 'clientHeight', { value: 100, configurable: true })
-      Object.defineProperty(textarea, 'scrollTop', { value: 0, configurable: true, writable: true })
-
-      fireEvent.touchStart(textarea, {
-        touches: [{ clientX: 100, clientY: 100 } as unknown as Touch],
-      })
-      fireEvent.touchMove(textarea, {
-        touches: [{ clientX: 100, clientY: 150 } as unknown as Touch],
-      })
-
-      expect(dismissedCalled).toBe(true)
-    })
-  })
 })

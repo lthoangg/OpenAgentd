@@ -1,0 +1,795 @@
+//! Connected OAuth provider usage — fetch + tray formatting.
+//!
+//! Mirrors ``app/api/schemas/settings.py``'s ``ProviderUsageSummaryBody`` /
+//! ``ProviderUsageSummaryItem`` / ``ProviderUsageResponse`` shapes served by
+//! ``GET /api/settings/providers/usage-summary``. That single endpoint
+//! fans in usage for every *connected* provider that exposes one — both
+//! builtin OAuth providers (Codex, Copilot) and provider plugins that
+//! define ``get_usage`` (e.g. the ``agy`` Antigravity Gemini plugin,
+//! ``claude`` Claude OAuth) — so this module never needs to know the
+//! provider catalog itself.
+//!
+//! Kept free of Tauri types so the formatting logic (the part worth unit
+//! testing) can run without a live app handle — see the `tests` module.
+
+use anyhow::{Context, Result};
+use serde::Deserialize;
+use std::collections::HashSet;
+use std::sync::OnceLock;
+use std::time::Duration;
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct UsageWindow {
+    pub used_percent: f64,
+    #[serde(default)]
+    pub window_minutes: Option<i64>,
+    #[serde(default)]
+    pub resets_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct UsageCredits {
+    pub has_credits: bool,
+    pub unlimited: bool,
+    #[serde(default)]
+    pub balance: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct UsageLimit {
+    #[serde(default)]
+    pub limit_id: Option<String>,
+    #[serde(default)]
+    pub limit_name: Option<String>,
+    #[serde(default)]
+    pub primary: Option<UsageWindow>,
+    #[serde(default)]
+    pub secondary: Option<UsageWindow>,
+    #[serde(default)]
+    pub credits: Option<UsageCredits>,
+    #[serde(default)]
+    pub plan_type: Option<String>,
+    #[serde(default)]
+    pub rate_limit_reached_type: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct UsageResponse {
+    #[allow(dead_code)]
+    pub provider: String,
+    #[serde(default)]
+    pub limits: Vec<UsageLimit>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct UsageSummaryItem {
+    pub provider: String,
+    pub label: String,
+    pub status: String,
+    #[serde(default)]
+    pub error: Option<String>,
+    #[serde(default)]
+    pub usage: Option<UsageResponse>,
+    /// True when the backend substituted this provider's last-known-good
+    /// payload because the live fetch failed transiently.
+    #[serde(default)]
+    pub stale: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Default)]
+pub struct UsageSummaryBody {
+    #[serde(default)]
+    pub items: Vec<UsageSummaryItem>,
+    #[serde(default)]
+    pub checked_at: i64,
+    #[serde(default)]
+    pub cached: bool,
+}
+
+const FETCH_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Process-wide HTTP client shared by every usage poll. Building a
+/// ``reqwest::Client`` per request throws away its connection pool (and
+/// pays a TLS handshake for external backends) every 5 minutes for the
+/// lifetime of the app — a single lazily-built client keeps connections
+/// warm. Also reused by ``commands.rs::wait_for_health`` via
+/// [`shared_client`].
+static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+
+/// Lazily-built shared client. Falls back to ``reqwest::Client::new()``
+/// semantics on builder failure (which cannot realistically fail with
+/// this configuration, but avoid panicking in release builds regardless).
+pub fn shared_client() -> &'static reqwest::Client {
+    HTTP_CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .timeout(FETCH_TIMEOUT)
+            .build()
+            .unwrap_or_default()
+    })
+}
+
+/// Fetch the aggregate usage summary from the local (or configured
+/// external) OpenAgentd backend. ``token`` is the desktop session token
+/// used for the bundled sidecar; external servers behind an access key
+/// would also pass it as a bearer token.
+pub async fn fetch_usage_summary(
+    base_url: &str,
+    token: Option<&str>,
+    force_refresh: bool,
+) -> Result<UsageSummaryBody> {
+    let url = format!(
+        "{}/api/settings/providers/usage-summary?force_refresh={}",
+        base_url.trim_end_matches('/'),
+        force_refresh
+    );
+    let mut request = shared_client().get(&url);
+    if let Some(token) = token {
+        request = request.bearer_auth(token);
+    }
+    let response = request
+        .send()
+        .await
+        .context("request provider usage summary")?
+        .error_for_status()
+        .context("provider usage summary returned an error status")?;
+    response
+        .json::<UsageSummaryBody>()
+        .await
+        .context("parse provider usage summary response")
+}
+
+/// One formatted tray row. ``id_suffix`` becomes part of the row's menu
+/// item id (``usage_row:<id_suffix>``) — informational rows are disabled
+/// so the id is never actually dispatched, but it must stay stable and
+/// unique so repeated rebuilds don't confuse the underlying platform menu.
+#[derive(Debug, Clone, PartialEq)]
+pub struct UsageRow {
+    pub id_suffix: String,
+    pub text: String,
+}
+
+fn status_glyph(percent: f64) -> &'static str {
+    if percent >= 90.0 {
+        "\u{1F534}" // 🔴
+    } else if percent >= 70.0 {
+        "\u{1F7E0}" // 🟠
+    } else {
+        "\u{1F7E2}" // 🟢
+    }
+}
+
+/// Render a countdown like "2h 14m" / "38m" / "resetting now" from a unix
+/// timestamp. We deliberately avoid wall-clock/timezone formatting here —
+/// the tray has no reliable way to know the user's preferred locale, and
+/// a relative countdown reads fine in any timezone.
+fn format_reset_in(resets_at: i64, now_unix: i64) -> String {
+    let remaining = resets_at - now_unix;
+    if remaining <= 0 {
+        return "resetting now".to_string();
+    }
+    let minutes = remaining / 60;
+    if minutes < 1 {
+        return "resets in <1m".to_string();
+    }
+    if minutes < 60 {
+        return format!("resets in {minutes}m");
+    }
+    let hours = minutes / 60;
+    let rem_minutes = minutes % 60;
+    if hours < 24 {
+        return if rem_minutes == 0 {
+            format!("resets in {hours}h")
+        } else {
+            format!("resets in {hours}h {rem_minutes}m")
+        };
+    }
+    let days = hours / 24;
+    let rem_hours = hours % 24;
+    if rem_hours == 0 {
+        format!("resets in {days}d")
+    } else {
+        format!("resets in {days}d {rem_hours}h")
+    }
+}
+
+/// Hard cap on a single tray row's rendered width. Long plugin-supplied
+/// limit names (or, in principle, a translated/localised label) could
+/// otherwise stretch the native menu uncomfortably wide — mirrors the
+/// same guardrail `menu.rs::TRAY_SESSION_MAX_LEN` applies to the session
+/// line.
+const MAX_ROW_LEN: usize = 96;
+
+fn truncate_row(text: String) -> String {
+    if text.chars().count() <= MAX_ROW_LEN {
+        return text;
+    }
+    let mut truncated: String = text.chars().take(MAX_ROW_LEN.saturating_sub(1)).collect();
+    truncated.push('\u{2026}');
+    truncated
+}
+
+/// Human-readable rendering of a provider's ``rate_limit_reached_type``
+/// (e.g. ``workspace_member_usage_limit_reached``), matching the web
+/// Settings → Providers usage panel's `replaceAll('_', ' ')` treatment.
+fn format_reached_type(reached_type: &str) -> String {
+    reached_type.replace('_', " ")
+}
+
+fn format_limit_line(label: &str, limit: &UsageLimit, now_unix: i64) -> Option<String> {
+    let window = limit.primary.as_ref().or(limit.secondary.as_ref())?;
+    let percent = window.used_percent.round() as i64;
+    let glyph = status_glyph(window.used_percent);
+    let reset_suffix = window
+        .resets_at
+        .map(|resets_at| format!(" \u{00B7} {}", format_reset_in(resets_at, now_unix)))
+        .unwrap_or_default();
+    let name = limit.limit_name.as_deref().unwrap_or(label);
+    let reached_suffix = limit
+        .rate_limit_reached_type
+        .as_deref()
+        .filter(|t| !t.is_empty())
+        .map(|t| format!(" \u{00B7} LIMIT REACHED: {}", format_reached_type(t)))
+        .unwrap_or_default();
+    Some(truncate_row(format!(
+        "{glyph} {name} \u{00B7} {percent}%{reset_suffix}{reached_suffix}"
+    )))
+}
+
+fn format_credits_line(label: &str, credits: &UsageCredits) -> String {
+    let text = if credits.unlimited {
+        format!("\u{1F7E2} {label} \u{00B7} unlimited usage")
+    } else if credits.has_credits {
+        let balance = credits
+            .balance
+            .as_deref()
+            .map(|b| format!(" ({b})"))
+            .unwrap_or_default();
+        format!("\u{1F7E2} {label} \u{00B7} credits available{balance}")
+    } else {
+        format!("\u{1F534} {label} \u{00B7} no usage credits left")
+    };
+    truncate_row(text)
+}
+
+/// Build the tray's dynamic usage rows for one provider's summary item.
+/// A single connected provider can report multiple limit windows (e.g.
+/// Codex's primary quota plus per-feature add-ons); each becomes its own
+/// row so nothing is silently hidden, capped at `max_limits_per_provider`
+/// to keep the menu scannable.
+fn format_item_rows(item: &UsageSummaryItem, now_unix: i64, max_limits: usize) -> Vec<UsageRow> {
+    match item.status.as_str() {
+        "credentials_missing" => vec![UsageRow {
+            id_suffix: format!("{}:missing", item.provider),
+            text: truncate_row(format!("\u{26AA} {} \u{00B7} reconnect required", item.label)),
+        }],
+        "unavailable" => vec![UsageRow {
+            id_suffix: format!("{}:unavailable", item.provider),
+            text: truncate_row(format!(
+                "\u{26A0}\u{FE0F} {} \u{00B7} usage unavailable",
+                item.label
+            )),
+        }],
+        _ => {
+            let Some(usage) = item.usage.as_ref() else {
+                return vec![UsageRow {
+                    id_suffix: format!("{}:empty", item.provider),
+                    text: truncate_row(format!("\u{26AA} {} \u{00B7} no usage data", item.label)),
+                }];
+            };
+            let mut lines: Vec<String> = usage
+                .limits
+                .iter()
+                .filter_map(|limit| format_limit_line(&item.label, limit, now_unix))
+                .map(|line| {
+                    if item.stale {
+                        // The backend substituted last-known-good data for a
+                        // transient failure — keep the numbers visible but say so.
+                        format!("{line} \u{00B7} last known")
+                    } else {
+                        line
+                    }
+                })
+                .collect();
+            if lines.is_empty() {
+                if let Some(credits) = usage.limits.first().and_then(|l| l.credits.as_ref()) {
+                    lines.push(format_credits_line(&item.label, credits));
+                } else {
+                    lines.push(truncate_row(format!(
+                        "\u{26AA} {} \u{00B7} no usage data",
+                        item.label
+                    )));
+                }
+            }
+            let truncated = lines.len() > max_limits;
+            lines.truncate(max_limits);
+            let mut rows: Vec<UsageRow> = lines
+                .into_iter()
+                .enumerate()
+                .map(|(idx, text)| UsageRow {
+                    id_suffix: format!("{}:{idx}", item.provider),
+                    text,
+                })
+                .collect();
+            if truncated {
+                rows.push(UsageRow {
+                    id_suffix: format!("{}:more", item.provider),
+                    text: "   \u{2026} more limits — see Settings \u{2192} Providers".to_string(),
+                });
+            }
+            rows
+        }
+    }
+}
+
+/// Build every dynamic tray row for the whole summary, in stable
+/// provider order. Empty input means "no connected usage-capable
+/// providers" — callers render a single explanatory placeholder row in
+/// that case (kept out of this pure function so it stays trivially
+/// testable without special-casing).
+pub fn format_summary_rows(body: &UsageSummaryBody, now_unix: i64) -> Vec<UsageRow> {
+    const MAX_LIMITS_PER_PROVIDER: usize = 3;
+    body.items
+        .iter()
+        .flat_map(|item| format_item_rows(item, now_unix, MAX_LIMITS_PER_PROVIDER))
+        .collect()
+}
+
+/// Footer row text summarising when the snapshot was taken.
+pub fn format_footer(body: &UsageSummaryBody, now_unix: i64) -> String {
+    if body.checked_at <= 0 {
+        return "Not checked yet".to_string();
+    }
+    let age_s = (now_unix - body.checked_at).max(0);
+    let age = if age_s < 60 {
+        "just now".to_string()
+    } else if age_s < 3600 {
+        format!("{}m ago", age_s / 60)
+    } else {
+        format!("{}h ago", age_s / 3600)
+    };
+    if body.cached {
+        format!("Checked {age} (cached)")
+    } else {
+        format!("Checked {age}")
+    }
+}
+
+/// Footer text when a refresh failed. With a previous snapshot the rows
+/// stay rendered and the footer carries both the snapshot age and the
+/// failure marker; with nothing cached the raw error is all we have.
+pub fn format_failed_footer(previous: Option<&UsageSummaryBody>, now_unix: i64, error: &str) -> String {
+    match previous {
+        Some(body) if body.checked_at > 0 => {
+            format!("\u{26A0} {} \u{00B7} refresh failed", format_footer(body, now_unix))
+        }
+        _ => format!("\u{26A0} Refresh failed: {error}"),
+    }
+}
+
+/// Exponential backoff for the background poll loop after consecutive
+/// failures (upstream outage, expired OAuth token, backend briefly
+/// unreachable during a reload, …). Doubles per consecutive failure,
+/// capped at `max_backoff` so a long-running app still recovers promptly
+/// once the underlying issue clears rather than backing off forever.
+/// `consecutive_failures == 0` (the healthy path) always returns `base`.
+pub fn backoff_delay(base: Duration, consecutive_failures: u32, max_backoff: Duration) -> Duration {
+    if consecutive_failures == 0 {
+        return base;
+    }
+    let factor = 1u32 << consecutive_failures.min(16);
+    base.saturating_mul(factor).min(max_backoff)
+}
+
+/// Usage percentage at/above which a provider is considered "critical" —
+/// drives the tray badge and the one-shot native notification. Matches
+/// the 🔴 glyph threshold in [`status_glyph`].
+pub const CRITICAL_USAGE_PERCENT: f64 = 90.0;
+
+fn item_is_critical(item: &UsageSummaryItem) -> bool {
+    item.usage.as_ref().is_some_and(|usage| {
+        usage.limits.iter().any(|limit| {
+            [limit.primary.as_ref(), limit.secondary.as_ref()]
+                .into_iter()
+                .flatten()
+                .any(|window| window.used_percent >= CRITICAL_USAGE_PERCENT)
+        })
+    })
+}
+
+/// Provider ids currently at/above the critical threshold. Stale
+/// (last-known-good) items still count — the user is just as rate-limited
+/// whether or not the latest poll succeeded.
+pub fn critical_providers(body: &UsageSummaryBody) -> HashSet<String> {
+    body.items
+        .iter()
+        .filter(|item| item_is_critical(item))
+        .map(|item| item.provider.clone())
+        .collect()
+}
+
+/// Whether any connected provider is at or above the "hot" usage
+/// threshold — used to decide whether the tray should surface a subtle
+/// warning affordance (see `menu.rs::update_tray_usage`).
+pub fn has_critical_usage(body: &UsageSummaryBody) -> bool {
+    body.items.iter().any(item_is_critical)
+}
+
+/// Compute which providers *newly crossed* the critical threshold since
+/// the previous poll — these get a one-shot native notification. Returns
+/// ``(providers_to_notify, next_notified_set)``.
+///
+/// Dedup rules:
+/// - A provider already in ``previously_notified`` is never re-notified
+///   while it stays critical (no notification spam every poll).
+/// - A provider that drops below the threshold (quota window reset) is
+///   removed from the notified set, re-arming its notification for the
+///   next time it crosses.
+pub fn notification_transitions(
+    current_critical: &HashSet<String>,
+    previously_notified: &HashSet<String>,
+) -> (Vec<String>, HashSet<String>) {
+    let mut to_notify: Vec<String> = current_critical
+        .difference(previously_notified)
+        .cloned()
+        .collect();
+    to_notify.sort(); // deterministic order for stable notification text
+    // Providers no longer critical fall out; still-critical ones stay armed.
+    let next: HashSet<String> = previously_notified
+        .intersection(current_critical)
+        .cloned()
+        .chain(to_notify.iter().cloned())
+        .collect();
+    (to_notify, next)
+}
+
+/// Body text for the "usage limit almost reached" native notification.
+pub fn format_notification_body(labels: &[String]) -> String {
+    format!(
+        "{} {} its usage limit. New requests may be rejected until the quota resets.",
+        labels.join(", "),
+        if labels.len() == 1 { "is near" } else { "are near" },
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn item_ok(provider: &str, label: &str, used_percent: f64, resets_at: Option<i64>) -> UsageSummaryItem {
+        UsageSummaryItem {
+            provider: provider.to_string(),
+            label: label.to_string(),
+            status: "ok".to_string(),
+            error: None,
+            stale: false,
+            usage: Some(UsageResponse {
+                provider: provider.to_string(),
+                limits: vec![UsageLimit {
+                    limit_id: Some(provider.to_string()),
+                    limit_name: None,
+                    primary: Some(UsageWindow {
+                        used_percent,
+                        window_minutes: Some(60),
+                        resets_at,
+                    }),
+                    secondary: None,
+                    credits: None,
+                    plan_type: None,
+                    rate_limit_reached_type: None,
+                }],
+            }),
+        }
+    }
+
+    #[test]
+    fn format_reset_in_covers_minutes_hours_days() {
+        assert_eq!(format_reset_in(1_000, 1_030), "resetting now");
+        assert_eq!(format_reset_in(1_090, 1_000), "resets in 1m");
+        assert_eq!(format_reset_in(1_000 + 3600, 1_000), "resets in 1h");
+        assert_eq!(format_reset_in(1_000 + 3600 + 600, 1_000), "resets in 1h 10m");
+        assert_eq!(format_reset_in(1_000 + 86400 * 2, 1_000), "resets in 2d");
+    }
+
+    #[test]
+    fn glyph_thresholds_match_the_web_usage_panel() {
+        assert_eq!(status_glyph(95.0), "\u{1F534}");
+        assert_eq!(status_glyph(70.0), "\u{1F7E0}");
+        assert_eq!(status_glyph(69.9), "\u{1F7E2}");
+    }
+
+    #[test]
+    fn rows_render_one_line_per_connected_provider() {
+        let body = UsageSummaryBody {
+            items: vec![
+                item_ok("codex", "OpenAI Codex", 42.0, Some(2_000)),
+                item_ok("agy", "Antigravity Gemini Auth", 91.0, None),
+            ],
+            checked_at: 1_000,
+            cached: false,
+        };
+        let rows = format_summary_rows(&body, 1_000);
+        assert_eq!(rows.len(), 2);
+        assert!(rows[0].text.contains("OpenAI Codex"));
+        assert!(rows[0].text.contains("42%"));
+        assert!(rows[1].text.starts_with("\u{1F534}"));
+    }
+
+    #[test]
+    fn credentials_missing_and_unavailable_render_distinct_rows() {
+        let body = UsageSummaryBody {
+            items: vec![
+                UsageSummaryItem {
+                    provider: "claude".to_string(),
+                    label: "Claude OAuth".to_string(),
+                    status: "credentials_missing".to_string(),
+                    error: Some("token missing".to_string()),
+                    stale: false,
+                    usage: None,
+                },
+                UsageSummaryItem {
+                    provider: "copilot".to_string(),
+                    label: "GitHub Copilot".to_string(),
+                    status: "unavailable".to_string(),
+                    error: Some("timeout".to_string()),
+                    stale: false,
+                    usage: None,
+                },
+            ],
+            checked_at: 1_000,
+            cached: false,
+        };
+        let rows = format_summary_rows(&body, 1_000);
+        assert!(rows[0].text.contains("reconnect required"));
+        assert!(rows[1].text.contains("usage unavailable"));
+    }
+
+    #[test]
+    fn empty_summary_produces_no_rows() {
+        let body = UsageSummaryBody::default();
+        assert!(format_summary_rows(&body, 1_000).is_empty());
+    }
+
+    #[test]
+    fn footer_reports_relative_age_and_cache_state() {
+        let body = UsageSummaryBody {
+            items: vec![],
+            checked_at: 1_000,
+            cached: true,
+        };
+        assert_eq!(format_footer(&body, 1_000), "Checked just now (cached)");
+        assert_eq!(format_footer(&body, 1_130), "Checked 2m ago (cached)");
+        assert_eq!(
+            format_footer(&UsageSummaryBody::default(), 1_000),
+            "Not checked yet"
+        );
+    }
+
+    #[test]
+    fn backoff_delay_is_flat_when_healthy_and_doubles_per_failure() {
+        let base = Duration::from_secs(300);
+        let max = Duration::from_secs(1_800);
+        assert_eq!(backoff_delay(base, 0, max), base);
+        assert_eq!(backoff_delay(base, 1, max), Duration::from_secs(600));
+        assert_eq!(backoff_delay(base, 2, max), Duration::from_secs(1_200));
+        // Would be 2400s uncapped; clamps to the 1800s ceiling.
+        assert_eq!(backoff_delay(base, 3, max), max);
+        // Large failure counts must not overflow/panic — still capped.
+        assert_eq!(backoff_delay(base, 1_000, max), max);
+    }
+
+    #[test]
+    fn has_critical_usage_detects_hot_providers() {
+        let hot = UsageSummaryBody {
+            items: vec![item_ok("codex", "OpenAI Codex", 92.0, None)],
+            checked_at: 1_000,
+            cached: false,
+        };
+        let cool = UsageSummaryBody {
+            items: vec![item_ok("codex", "OpenAI Codex", 10.0, None)],
+            checked_at: 1_000,
+            cached: false,
+        };
+        assert!(has_critical_usage(&hot));
+        assert!(!has_critical_usage(&cool));
+    }
+
+    #[test]
+    fn stale_items_render_a_last_known_marker() {
+        let mut item = item_ok("codex", "OpenAI Codex", 42.0, Some(2_000));
+        item.stale = true;
+        let rows = format_item_rows(&item, 1_000, 3);
+        assert_eq!(rows.len(), 1);
+        assert!(
+            rows[0].text.ends_with("\u{00B7} last known"),
+            "stale row should carry the marker: {}",
+            rows[0].text
+        );
+        // Fresh items must not carry the marker.
+        let fresh = item_ok("codex", "OpenAI Codex", 42.0, Some(2_000));
+        let rows = format_item_rows(&fresh, 1_000, 3);
+        assert!(!rows[0].text.contains("last known"));
+    }
+
+    #[test]
+    fn failed_footer_keeps_snapshot_age_when_a_previous_snapshot_exists() {
+        let body = UsageSummaryBody {
+            items: vec![],
+            checked_at: 1_000,
+            cached: false,
+        };
+        let footer = format_failed_footer(Some(&body), 1_130, "connection refused");
+        assert_eq!(footer, "\u{26A0} Checked 2m ago \u{00B7} refresh failed");
+        // The raw error is deliberately NOT in the footer when we still
+        // have numbers on screen — it's noise next to real data.
+        assert!(!footer.contains("connection refused"));
+    }
+
+    #[test]
+    fn failed_footer_surfaces_the_error_when_nothing_was_ever_fetched() {
+        let footer = format_failed_footer(None, 1_000, "connection refused");
+        assert!(footer.contains("connection refused"));
+        // A zero checked_at (default body) is treated like no snapshot.
+        let empty = UsageSummaryBody::default();
+        let footer = format_failed_footer(Some(&empty), 1_000, "boom");
+        assert!(footer.contains("boom"));
+    }
+
+    #[test]
+    fn critical_providers_lists_only_hot_items_including_stale_ones() {
+        let mut stale_hot = item_ok("agy", "Antigravity", 95.0, None);
+        stale_hot.stale = true;
+        let body = UsageSummaryBody {
+            items: vec![
+                item_ok("codex", "OpenAI Codex", 10.0, None),
+                stale_hot,
+                item_ok("claude", "Claude OAuth", 90.0, None), // exactly at threshold
+            ],
+            checked_at: 1_000,
+            cached: false,
+        };
+        let critical = critical_providers(&body);
+        assert!(!critical.contains("codex"));
+        assert!(critical.contains("agy"), "stale-but-hot still counts");
+        assert!(critical.contains("claude"), "exactly-at-threshold counts");
+    }
+
+    #[test]
+    fn notification_fires_once_per_crossing_and_rearms_after_reset() {
+        let notified = HashSet::new();
+
+        // Poll 1: codex crosses → notify, remember.
+        let critical: HashSet<String> = ["codex".to_string()].into();
+        let (fire, notified) = notification_transitions(&critical, &notified);
+        assert_eq!(fire, vec!["codex".to_string()]);
+
+        // Poll 2: still critical → no re-notification.
+        let (fire, notified) = notification_transitions(&critical, &notified);
+        assert!(fire.is_empty(), "must not spam while still critical");
+
+        // Poll 3: quota reset (below threshold) → re-armed, nothing fires.
+        let cooled: HashSet<String> = HashSet::new();
+        let (fire, notified) = notification_transitions(&cooled, &notified);
+        assert!(fire.is_empty());
+        assert!(notified.is_empty(), "reset must re-arm the provider");
+
+        // Poll 4: crosses again → fires again.
+        let (fire, _) = notification_transitions(&critical, &notified);
+        assert_eq!(fire, vec!["codex".to_string()]);
+    }
+
+    #[test]
+    fn notification_transitions_handle_multiple_providers_deterministically() {
+        let notified: HashSet<String> = ["codex".to_string()].into();
+        let critical: HashSet<String> =
+            ["codex".to_string(), "claude".to_string(), "agy".to_string()].into();
+        let (fire, next) = notification_transitions(&critical, &notified);
+        // Only the newcomers fire, sorted for stable notification text.
+        assert_eq!(fire, vec!["agy".to_string(), "claude".to_string()]);
+        assert_eq!(next.len(), 3, "all critical providers stay tracked");
+    }
+
+    #[test]
+    fn notification_body_reads_grammatically_for_one_and_many() {
+        let one = format_notification_body(&["OpenAI Codex".to_string()]);
+        assert!(one.starts_with("OpenAI Codex is near"));
+        let two = format_notification_body(&[
+            "OpenAI Codex".to_string(),
+            "Claude OAuth".to_string(),
+        ]);
+        assert!(two.starts_with("OpenAI Codex, Claude OAuth are near"));
+    }
+
+    #[test]
+    fn rate_limit_reached_type_is_surfaced_and_humanized() {
+        let item = UsageSummaryItem {
+            provider: "codex".to_string(),
+            label: "OpenAI Codex".to_string(),
+            status: "ok".to_string(),
+            error: None,
+            stale: false,
+            usage: Some(UsageResponse {
+                provider: "codex".to_string(),
+                limits: vec![UsageLimit {
+                    limit_id: Some("codex".to_string()),
+                    limit_name: None,
+                    primary: Some(UsageWindow {
+                        used_percent: 100.0,
+                        window_minutes: Some(60),
+                        resets_at: None,
+                    }),
+                    secondary: None,
+                    credits: None,
+                    plan_type: None,
+                    rate_limit_reached_type: Some(
+                        "workspace_member_usage_limit_reached".to_string(),
+                    ),
+                }],
+            }),
+        };
+        let rows = format_item_rows(&item, 1_000, 3);
+        assert_eq!(rows.len(), 1);
+        assert!(rows[0].text.contains("LIMIT REACHED: workspace member usage limit reached"));
+    }
+
+    #[test]
+    fn long_rows_are_truncated_with_an_ellipsis() {
+        let very_long_name = "X".repeat(200);
+        let item = UsageSummaryItem {
+            provider: "codex".to_string(),
+            label: very_long_name.clone(),
+            status: "ok".to_string(),
+            error: None,
+            stale: false,
+            usage: Some(UsageResponse {
+                provider: "codex".to_string(),
+                limits: vec![UsageLimit {
+                    limit_id: Some("codex".to_string()),
+                    limit_name: Some(very_long_name),
+                    primary: Some(UsageWindow {
+                        used_percent: 10.0,
+                        window_minutes: Some(60),
+                        resets_at: None,
+                    }),
+                    secondary: None,
+                    credits: None,
+                    plan_type: None,
+                    rate_limit_reached_type: None,
+                }],
+            }),
+        };
+        let rows = format_item_rows(&item, 1_000, 3);
+        assert_eq!(rows[0].text.chars().count(), MAX_ROW_LEN);
+        assert!(rows[0].text.ends_with('\u{2026}'));
+    }
+
+    #[test]
+    fn extra_limits_beyond_the_cap_collapse_into_a_see_more_row() {
+        let mut limits = Vec::new();
+        for i in 0..5 {
+            limits.push(UsageLimit {
+                limit_id: Some(format!("limit-{i}")),
+                limit_name: Some(format!("Limit {i}")),
+                primary: Some(UsageWindow {
+                    used_percent: 10.0,
+                    window_minutes: Some(60),
+                    resets_at: None,
+                }),
+                secondary: None,
+                credits: None,
+                plan_type: None,
+                rate_limit_reached_type: None,
+            });
+        }
+        let item = UsageSummaryItem {
+            provider: "codex".to_string(),
+            label: "OpenAI Codex".to_string(),
+            status: "ok".to_string(),
+            error: None,
+            stale: false,
+            usage: Some(UsageResponse { provider: "codex".to_string(), limits }),
+        };
+        let rows = format_item_rows(&item, 1_000, 3);
+        assert_eq!(rows.len(), 4); // 3 limits + "more" row
+        assert!(rows.last().unwrap().text.contains("more limits"));
+    }
+}

@@ -34,6 +34,9 @@ function runDesktopCommand(command: unknown): void {
     case 'settings':
       useSettingsStore.getState().openSettings()
       break
+    case 'settings_providers':
+      useSettingsStore.getState().openSettings('providers')
+      break
   }
 }
 

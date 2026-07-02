@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::time::Duration;
@@ -396,13 +396,18 @@ pub async fn app_new_window(app: AppHandle, initial_path: Option<String>) -> Res
 }
 
 pub async fn wait_for_health(base: &str, attempts: u32, delay: Duration) -> Result<()> {
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(2))
-        .build()
-        .context("build reqwest client")?;
+    // Shared process-wide client (see `usage::shared_client`); the short
+    // per-attempt deadline is applied per-request rather than baking a
+    // dedicated 2s client just for health checks.
+    let client = crate::usage::shared_client();
     let url = format!("{base}/api/health/live");
     for i in 0..attempts {
-        match client.get(&url).send().await {
+        match client
+            .get(&url)
+            .timeout(Duration::from_secs(2))
+            .send()
+            .await
+        {
             Ok(r) if r.status().is_success() => return Ok(()),
             Ok(r) => log::debug!("health attempt {i} got status {}", r.status()),
             Err(e) => log::debug!("health attempt {i} failed: {e}"),

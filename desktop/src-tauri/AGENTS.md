@@ -13,6 +13,7 @@ src/                         Rust application code:
                              - menu.rs: Menu bar, system tray setup, and event routing
                              - commands.rs: Tauri command handlers exposed to the frontend
                              - sidecar.rs: Sidecar process supervisor
+                            - usage.rs: Connected-provider usage fetch + tray "Usage Limits" row formatting (pure/unit-tested)
 Cargo.toml                   Rust package, Tauri/plugin deps, minimum Rust version
 tauri.conf.json              Production Tauri config
 tauri.dev.conf.json          Dev shell config against external Vite/backend
@@ -26,6 +27,7 @@ build.rs                     Tauri build integration
 
 - Sidecar startup/auth change: inspect supervisor code in `src/sidecar.rs`, startup orchestration in `src/main.rs`, and commands in `src/commands.rs`.
 - Window/Tray behavior: inspect `src/window.rs` for window behavior/zoom, and `src/menu.rs` for tray/menu setups.
+- Tray "Usage Limits" change: formatting/thresholds/notification-dedup live in `src/usage.rs` (pure, unit-tested — also home of the process-wide shared `reqwest` client, `shared_client()`); polling loop, tray-open refresh, in-flight guard, row diffing, and menu-click routing live in `src/menu.rs` (`run_usage_poll_loop`, `refresh_usage_now`, `refresh_usage_on_tray_open`, `update_tray_usage`). Backend aggregation is `app/services/provider_usage.py::get_connected_provider_usage_summary` (stale-while-revalidate + per-provider last-known-good fallback).
 - Updater/Installer behavior: inspect `src/updater.rs` and `src/main.rs`'s unit tests.
 - Config/Persisted State: inspect `src/config.rs`.
 - Bundle/config change: update all relevant Tauri config variants, not just production.

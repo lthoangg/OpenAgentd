@@ -100,7 +100,7 @@ The shell installs native app menus and a compact tray dropdown in `desktop/src-
 | Surface | Purpose |
 |---------|---------|
 | App menu / menu bar | Full desktop command surface: navigation, panels, settings, updates, reload/zoom, config, logs, and quit. |
-| System tray dropdown | Background quick actions only: status/session, show, Cockpit, Coding, Command Palette, Settings, config/logs, reload, quit. |
+| System tray dropdown | Background quick actions only: status/session, Usage Limits (connected OAuth provider quotas), show, Cockpit, Coding, Command Palette, Settings, config/logs, reload, quit. |
 
 The **Edit** submenu is required on macOS for native `⌘A` / `⌘C` / `⌘V` / `⌘X` / `⌘Z` to reach the webview's input fields — without it those shortcuts have no handler at the application level and the corresponding actions silently no-op inside the textarea. `Undo`/`Redo` are macOS-only and not registered on Windows/Linux; the other edit items work on all platforms.
 
@@ -136,6 +136,28 @@ The tray **Session** line below status mirrors the user's active context with li
 - `No active session` — fallback when nothing is open.
 
 The frontend pushes the label via the `set_tray_session` Tauri command (see `web/src/lib/tray.ts`) whenever the active mode/workspace/session-title or the team's working flag changes; the command silently truncates labels longer than 60 characters so the tray menu width stays sane.
+
+### Tray usage limits
+
+The tray's **Usage Limits** submenu (`desktop/src-tauri/src/usage.rs`, `menu.rs`) shows live OAuth quota usage for every provider the user has actually connected — covering both builtin providers with a hand-written usage client and any provider plugin under `{OPENAGENTD_CONFIG_DIR}/plugins/` that defines a `get_usage` hook on its `ProviderPlugin`. "Connected" reuses the same static credential/token check as Settings → Providers (`app/services/provider_connection.py`) so the tray never lists a provider the user hasn't authenticated.
+
+Backend side, one endpoint fans this in for the whole tray in a single round trip:
+
+```
+GET /api/settings/providers/usage-summary[?force_refresh=true]
+```
+
+`app/services/provider_usage.py::get_connected_provider_usage_summary` discovers the connected, usage-capable providers, fetches each with a 6s per-provider timeout (one slow plugin can't stall the others — `asyncio.gather` collects whatever finished), and serves results **stale-while-revalidate**: fresh cache (<45s) is returned as-is; a stale-but-recent snapshot (<15min) is returned *immediately* while a single background task revalidates, so a periodic tray poll never blocks on N upstream OAuth calls; anything older (or `force_refresh=true`) pays for a blocking fresh fetch. Per provider, a transient failure (timeout, 5xx, parse error) substitutes that provider's **last-known-good** payload — marked `stale: true`, honored for up to 30 minutes — so one flaky poll doesn't blank a row; `credentials_missing` deliberately never falls back, since the user needs to see "reconnect required". A provider that fails with no recent last-good still gets its own row (`status: "credentials_missing" | "unavailable"`) instead of silently vanishing from the menu.
+
+Desktop side, `menu::run_usage_poll_loop` polls this endpoint every 10 minutes against whichever backend the main window is currently using (bundled sidecar + desktop token, or that window's external server); on startup it probes for a resolvable backend endpoint (1s cadence, 60s ceiling) instead of sleeping a fixed grace period, so the first refresh lands as soon as the sidecar is actually reachable. **Opening the tray menu also triggers an opportunistic non-forced refresh** (rate-limited to one per 30s), so the data is freshest exactly when someone looks at it — the relaxed background cadence only keeps the badge and notifications current. Overlapping triggers (background poll + manual refresh + tray-open racing after wake-from-sleep) collapse into a single in-flight fetch via a `compare_exchange` guard. Consecutive failures back off exponentially — doubling the interval each miss, capped at 30 minutes — and reset to the normal cadence the moment a poll succeeds again. All HTTP goes through one process-wide shared `reqwest` client (`usage::shared_client`, also reused by the sidecar health check) so polls reuse warm connections instead of rebuilding a client per request.
+
+Rows are inserted/removed in place on the pre-built `Submenu` handle (`AppState::usage_submenu` / `usage_rows`) rather than rebuilding the whole tray menu — and only when the rendered rows actually *changed* since the last poll (`AppState::usage_rendered_rows` diff); an unchanged snapshot updates just the footer timestamp, skipping the native-menu churn entirely. Each row shows a 🟢 (`<70%`) / 🟠 (`70–89%`) / 🔴 (`≥90%`) threshold glyph, the limit name, percent used, and a relative reset countdown (`resets in 2h 14m`) — deliberately relative rather than a wall-clock time, since the tray has no reliable timezone source. Rows backed by a backend-substituted last-known-good payload carry a `· last known` suffix. Providers report every limit window they expose (Codex's primary quota plus any metered add-ons), capped at 3 rows per provider with a "… more limits" row beyond that. **Refresh Usage Now** forces a live re-check bypassing the backend cache; **Manage Providers…** opens Settings straight to the Providers tab (`settings_providers` desktop command → `openSettings('providers')`).
+
+When a whole poll fails (backend unreachable), the previously rendered rows **stay on screen** — users care about the numbers, not the fetch status — and only the footer flips to `⚠ Checked Xm ago · refresh failed` (or surfaces the raw error if nothing was ever fetched).
+
+A limit whose `rate_limit_reached_type` is set (the provider itself reports the quota as exhausted, not just "high usage") gets an explicit `LIMIT REACHED: <reason>` suffix on its row, humanized the same way as the web Settings → Providers usage panel (`workspace_member_usage_limit_reached` → "workspace member usage limit reached"). Rows are hard-capped at 96 characters with an ellipsis so a pathologically long plugin-supplied label can't stretch the native menu. When any connected provider is at or above the 90% critical threshold, the tray icon also grows a small `!` title badge (macOS shows tray titles as text next to the icon) and its tooltip calls out the reason — cleared again on the next poll once nothing is critical. Additionally, a provider *newly crossing* 90% fires a one-shot native notification (`tauri-plugin-notification`); it never re-fires while the provider stays hot, and re-arms once the quota window resets below the threshold (`usage::notification_transitions`, `AppState::usage_notified`).
+
+The formatting and decision logic (`format_summary_rows`, `format_footer`, `format_failed_footer`, threshold glyphs, reset-countdown math, row truncation, `critical_providers`, `notification_transitions`) is pure and unit-tested in `desktop/src-tauri/src/usage.rs` without needing a live app handle or network access.
 
 ## Notifications
 

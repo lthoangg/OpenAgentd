@@ -7,6 +7,7 @@ mod updater;
 mod menu;
 mod commands;
 mod sidecar;
+mod usage;
 
 use anyhow::{Context, Result};
 use serde::Serialize;
@@ -53,6 +54,34 @@ pub struct AppState {
     /// Current webview zoom factor per desktop window, mutated by the
     /// View > Zoom menu items. Session-only — not persisted across restarts.
     pub window_zoom_factors: Arc<Mutex<HashMap<String, f64>>>,
+    /// "Usage Limits" tray submenu handle. Its dynamic rows are mutated
+    /// in place (insert/remove) on every poll — see `menu::update_tray_usage`.
+    pub usage_submenu: Arc<Mutex<Option<tauri::menu::Submenu<Wry>>>>,
+    /// Currently-inserted dynamic usage rows, tracked so the next refresh
+    /// can cleanly remove exactly what it added last time.
+    pub usage_rows: Arc<Mutex<Vec<MenuItem<Wry>>>>,
+    /// Trailing "Checked Xm ago" row in the usage submenu.
+    pub usage_footer: Arc<Mutex<Option<MenuItem<Wry>>>>,
+    /// Last successfully fetched usage snapshot — kept so a failed poll
+    /// can redraw the previous data instead of blanking the menu.
+    pub usage_summary: Arc<Mutex<Option<crate::usage::UsageSummaryBody>>>,
+    /// Rows as last rendered into the submenu. Compared against freshly
+    /// formatted rows so an unchanged snapshot skips the remove/insert
+    /// churn on the native menu entirely (only the footer timestamp is
+    /// refreshed) — see `menu::update_tray_usage`.
+    pub usage_rendered_rows: Arc<Mutex<Vec<crate::usage::UsageRow>>>,
+    /// Guard so overlapping refresh triggers (background poll + manual
+    /// refresh + tray-open refresh racing after wake-from-sleep) collapse
+    /// into a single in-flight fetch instead of doubling up requests.
+    pub usage_fetch_inflight: Arc<AtomicBool>,
+    /// Providers already notified for being at/above the critical usage
+    /// threshold. A provider is removed when it drops below the threshold
+    /// (quota reset), re-arming its one-shot notification.
+    pub usage_notified: Arc<Mutex<std::collections::HashSet<String>>>,
+    /// Tray icon handle, used to toggle a subtle "!" title badge (macOS
+    /// menu bar text next to the icon) when any connected provider is at
+    /// or above the critical usage threshold — see `menu::update_tray_usage`.
+    pub tray_icon: Arc<Mutex<Option<tauri::tray::TrayIcon<Wry>>>>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -438,6 +467,14 @@ fn main() {
             MAIN_WINDOW.to_string(),
             ZOOM_DEFAULT,
         )]))),
+        usage_submenu: Arc::new(Mutex::new(None)),
+        usage_rows: Arc::new(Mutex::new(Vec::new())),
+        usage_footer: Arc::new(Mutex::new(None)),
+        usage_summary: Arc::new(Mutex::new(None)),
+        usage_rendered_rows: Arc::new(Mutex::new(Vec::new())),
+        usage_fetch_inflight: Arc::new(AtomicBool::new(false)),
+        usage_notified: Arc::new(Mutex::new(std::collections::HashSet::new())),
+        tray_icon: Arc::new(Mutex::new(None)),
     };
 
     let log_plugin = tauri_plugin_log::Builder::new()
@@ -516,6 +553,10 @@ fn main() {
                         )
                         .ok();
                 }
+            });
+            let usage_poll_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                menu::run_usage_poll_loop(usage_poll_handle).await;
             });
             Ok(())
         })
@@ -886,9 +927,15 @@ mod tests {
     /// Helper: write a real temp file so `is_file()` returns true.
     /// Returns the path; the file lives in `std::env::temp_dir()` and is
     /// cleaned up by the OS (good enough for short-lived unit tests).
-    fn real_bytes_path() -> PathBuf {
+    ///
+    /// ``discriminator`` (pass the test name) keeps paths unique across
+    /// tests: `cargo test` runs multi-threaded, and two tests hitting this
+    /// helper in the same nanosecond-bucket used to race on a shared path —
+    /// one test's cleanup deleted the file out from under the other
+    /// (the old `preconditions_ok_when_patch_version_is_correct` flake).
+    fn real_bytes_path(discriminator: &str) -> PathBuf {
         let path = std::env::temp_dir().join(format!(
-            "oad-test-update-{}.update",
+            "oad-test-update-{discriminator}-{}.update",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -900,7 +947,7 @@ mod tests {
 
     #[test]
     fn preconditions_ok_when_cache_and_version_match() {
-        let path = real_bytes_path();
+        let path = real_bytes_path("preconditions_ok_when_cache_and_version_match");
         let cached = CachedUpdateState {
             version: "1.71.0".into(),
             bytes_path: path.clone(),
@@ -937,7 +984,7 @@ mod tests {
         // so `updater.check()` returned `None` ("already up to date").
         // This used to be silently converted to a confusing "already up to
         // date" error that left the UI stuck on "Installing…".
-        let path = real_bytes_path();
+        let path = real_bytes_path("preconditions_err_when_server_has_no_update");
         let cached = CachedUpdateState {
             version: "1.71.0".into(),
             bytes_path: path.clone(),
@@ -954,7 +1001,7 @@ mod tests {
     fn preconditions_err_when_version_mismatch() {
         // User downloaded 1.71.0 but the server already serves 1.72.0.
         // Installing mismatched bytes would silently apply the wrong update.
-        let path = real_bytes_path();
+        let path = real_bytes_path("preconditions_err_when_version_mismatch");
         let cached = CachedUpdateState {
             version: "1.71.0".into(),
             bytes_path: path.clone(),
@@ -981,7 +1028,7 @@ mod tests {
         // Simulates a UI that calls the install command twice in quick
         // succession (button double-tap, retry). The second call must not fail
         // because the first check "consumed" the cache.
-        let path = real_bytes_path();
+        let path = real_bytes_path("preconditions_ok_is_idempotent_for_same_state");
         let cached = CachedUpdateState {
             version: "1.84.0".into(),
             bytes_path: path.clone(),
@@ -1010,7 +1057,7 @@ mod tests {
     fn preconditions_ok_when_patch_version_is_correct() {
         // Regression guard for the 1.83.0 → 1.83.1 scenario from the logs:
         // a patch release must satisfy the version-match check.
-        let path = real_bytes_path();
+        let path = real_bytes_path("preconditions_ok_when_patch_version_is_correct");
         let cached = CachedUpdateState {
             version: "1.83.1".into(),
             bytes_path: path.clone(),

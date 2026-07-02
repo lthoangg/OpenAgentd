@@ -20,6 +20,7 @@ src-tauri/       Rust app, Tauri config, icons, Cargo project
                  - menu.rs: Menu bar setup, system tray icon, status updates, and menu event routing.
                  - commands.rs: Tauri command handlers invoked by the React frontend.
                  - sidecar.rs: Python sidecar process supervisor.
+                 - usage.rs: Connected-provider usage fetch + tray "Usage Limits" formatting.
 scripts/         Desktop packaging/release helper scripts
 sidecar-bundle/  Generated Python sidecar output (build artifact)
 Makefile         Desktop dev, sidecar, icon, and build targets

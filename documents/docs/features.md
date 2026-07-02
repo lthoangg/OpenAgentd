@@ -89,6 +89,23 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   Cockpit, Coding, Command Palette, Scheduled Tasks, Session Settings,
   key settings pages, updates, reload, config folder, and backend log; compact
   tray dropdown for status, quick navigation, reload, settings, and quit.
+  - **Tray "Usage Limits" submenu** `[v1.92.0]` — the macOS tray polls
+    `GET /api/settings/providers/usage-summary` (stale-while-revalidate
+    backend cache; per-provider last-known-good fallback on transient
+    failures) and lists live quota usage for every *connected* OAuth
+    provider — both builtin and provider plugins that expose a `get_usage`
+    hook under `{OPENAGENTD_CONFIG_DIR}/plugins/`.
+    Opening the tray menu triggers an opportunistic refresh (rate-limited),
+    with a relaxed 10-minute background poll behind it. Each row shows a
+    🟢/🟠/🔴 threshold glyph, percent used, and a relative reset countdown;
+    providers needing reconnection or temporarily unreachable get their own
+    row instead of silently disappearing, and a failed poll keeps the last
+    numbers on screen with a "refresh failed" footer. Crossing the 90%
+    critical threshold fires a one-shot native notification (re-armed when
+    the quota resets) and badges the tray icon. "Refresh Usage Now" forces
+    a live re-check past the cache; "Manage Providers…" deep-links into
+    Settings → Providers. See
+    [`documents/docs/desktop.md`](./desktop.md#tray-usage-limits).
 - **Touch back/forward navigation** `[v1.53.1]` *(deprecated)* — desktop Tauri windows support
   edge swipes on touch/pen devices: right from the left edge goes back, left
   from the right edge goes forward, while editable fields and scroll-like

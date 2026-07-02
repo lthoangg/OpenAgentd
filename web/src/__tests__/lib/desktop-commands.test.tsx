@@ -3,6 +3,7 @@ import { render, waitFor } from '@testing-library/react'
 
 import { useDesktopCommands } from '@/lib/desktop-commands'
 import { useUIStore } from '@/stores/useUIStore'
+import { useSettingsStore } from '@/stores/useSettingsStore'
 
 let listener: ((event: { payload: unknown }) => void) | null = null
 let unlistenCalls = 0
@@ -131,6 +132,21 @@ describe('useDesktopCommands', () => {
       expect(keydownCount).toBe(0)
     } finally {
       window.removeEventListener('keydown', onKeyDown)
+    }
+  })
+
+  it('opens the Settings modal on the Providers tab for settings_providers', async () => {
+    const originalOpenSettings = useSettingsStore.getState().openSettings
+    const openSettings = mock(() => {})
+    useSettingsStore.setState({ openSettings })
+    try {
+      await renderBridge()
+
+      listener?.({ payload: 'settings_providers' })
+
+      expect(openSettings).toHaveBeenCalledWith('providers')
+    } finally {
+      useSettingsStore.setState({ openSettings: originalOpenSettings })
     }
   })
 

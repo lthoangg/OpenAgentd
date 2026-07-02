@@ -9,24 +9,13 @@ const WORKSPACE = '/repo/project'
 
 const Icon = () => null
 mock.module('lucide-react', () => ({
-  Check: Icon,
-  ChevronDown: Icon,
-  ChevronRight: Icon,
-  Copy: Icon,
-  Download: Icon,
-  ExternalLink: Icon,
-  FileText: Icon,
-  Folder: Icon,
-  FolderOpen: Icon,
-  GitBranch: Icon,
-  GitCompare: Icon,
-  Loader2: Icon,
-  Plus: Icon,
-  RefreshCw: Icon,
-  RotateCcw: Icon,
-  Search: Icon,
-  Undo2: Icon,
-  X: Icon,
+  Check: Icon, ChevronDown: Icon, ChevronLeft: Icon, ChevronRight: Icon,
+  Copy: Icon, Download: Icon, ExternalLink: Icon,
+  File: Icon, FileText: Icon, FileType: Icon,
+  Folder: Icon, FolderOpen: Icon,
+  GitBranch: Icon, GitCompare: Icon,
+  Loader2: Icon, Plus: Icon, RefreshCw: Icon, RotateCcw: Icon,
+  Undo2: Icon, X: Icon,
 }))
 mock.module('@/hooks/useReducedMotion', () => ({ useReducedMotion: () => false }))
 mock.module('@/hooks/use-platform', () => ({
@@ -341,6 +330,152 @@ describe('CodingWorkspacePanel – commit actions (undo/revert)', () => {
 
     await waitFor(() => {
       expect(revertMock).toHaveBeenCalled()
+    })
+  })
+})
+
+// ── commits_ahead badge ───────────────────────────────────────────────────────
+
+const statusWithAhead = (ahead: number) => ({
+  workspace: WORKSPACE,
+  name: 'project',
+  is_git_repo: true,
+  branch: 'main',
+  commits_ahead: ahead,
+})
+
+function makeFetch(ahead: number | null) {
+  return mock(async (input: unknown) => {
+    const url = String(input)
+    if (url.includes('/workspace/git/history')) return new Response(JSON.stringify(historyResponse))
+    if (url.includes('/workspace/git-diff'))    return new Response(JSON.stringify(emptyDiff))
+    if (url.includes('/workspace/files/list'))  return new Response(JSON.stringify({ workspace: WORKSPACE, truncated: false, files: [] }))
+    if (url.includes('/workspace/git/commit-diff')) return new Response(JSON.stringify({ sha: commitWithBody.sha, diff: '' }))
+    if (url.includes('/workspace/status'))      return new Response(JSON.stringify(ahead !== null ? statusWithAhead(ahead) : { workspace: WORKSPACE, name: 'project', is_git_repo: true, branch: 'main', commits_ahead: null }))
+    return new Response(null, { status: 404 })
+  }) as typeof fetch
+}
+
+async function renderWithCommitsSubtab(ahead: number | null) {
+  globalThis.fetch = makeFetch(ahead)
+  const { CodingWorkspacePanel } = await import('@/components/CodingWorkspacePanel')
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
+  // Start on commits subtab so the trigger label shows the badge
+  useGitPanelStore.getState().setSubTab(WORKSPACE, 'commits')
+
+  await act(async () => {
+    render(
+      <QueryClientProvider client={queryClient}>
+        <CodingWorkspacePanel
+          workspace={WORKSPACE}
+          open
+          onClose={() => {}}
+          onOpenPalette={() => {}}
+          mobile={false}
+        />
+      </QueryClientProvider>,
+    )
+  })
+
+  return { queryClient }
+}
+
+
+describe('CodingWorkspacePanel – commits_ahead badge', () => {
+  beforeEach(() => {
+    useGitPanelStore.setState({ workspaces: {} })
+  })
+
+  it('shows the badge in the dropdown trigger when commits subtab is active', async () => {
+    await renderWithCommitsSubtab(3)
+
+    await waitFor(() => {
+      expect(screen.getByText((_, el) =>
+        el?.tagName === 'SPAN' && el.textContent === '3↑'
+      )).toBeTruthy()
+    })
+  })
+
+  it('hides the badge when commits_ahead is 0', async () => {
+    await renderWithCommitsSubtab(0)
+
+    // Give queries time to settle then assert no badge present
+    await waitFor(() => expect(screen.getByText('Commits')).toBeTruthy())
+    expect(document.querySelector('[title*="ahead of origin"]')).toBeNull()
+  })
+
+  it('hides the badge when commits_ahead is null (no upstream configured)', async () => {
+    await renderWithCommitsSubtab(null)
+
+    await waitFor(() => expect(screen.getByText('Commits')).toBeTruthy())
+    expect(document.querySelector('[title*="ahead of origin"]')).toBeNull()
+  })
+
+  it('badge is sourced from /workspace/status — visible without the history query firing', async () => {
+    // Core regression: badge data comes from /workspace/status (always-enabled),
+    // not /workspace/git/history (only fetched on commits/tree subtab).
+    // Even on the changes subtab the status query fires, so the data is ready
+    // the moment the user switches to commits. We verify by staying on changes
+    // and confirming history was never called, then switch to commits and check.
+    const user = userEvent.setup()
+    globalThis.fetch = makeFetch(2)
+    const { CodingWorkspacePanel } = await import('@/components/CodingWorkspacePanel')
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
+    useGitPanelStore.getState().setSubTab(WORKSPACE, 'changes')
+
+    await act(async () => {
+      render(
+        <QueryClientProvider client={queryClient}>
+          <CodingWorkspacePanel
+            workspace={WORKSPACE}
+            open
+            onClose={() => {}}
+            onOpenPalette={() => {}}
+            mobile={false}
+          />
+        </QueryClientProvider>,
+      )
+    })
+
+    // Wait for status query to settle (diff confirms render is stable)
+    await waitFor(() => expect(screen.getByText('Changes (0)')).toBeTruthy())
+
+    // History endpoint must NOT have been called yet (still on changes subtab)
+    const callsBefore = (globalThis.fetch as ReturnType<typeof mock>).mock.calls
+    const historyCalledBefore = callsBefore.some((args) => String(args[0]).includes('/workspace/git/history'))
+    expect(historyCalledBefore).toBe(false)
+
+    // Open the dropdown and switch to commits
+    await user.click(screen.getByRole('button', { name: /changes/i }))
+    await waitFor(() => expect(screen.getByText('Commits')).toBeTruthy())
+    await user.click(screen.getByText('Commits'))
+
+    // Badge should appear in the trigger immediately
+    await waitFor(() => {
+      expect(screen.getByText((_, el) =>
+        el?.tagName === 'SPAN' && el.textContent === '2↑'
+      )).toBeTruthy()
+    })
+  })
+
+  it('badge title uses singular "commit" for count of 1', async () => {
+    await renderWithCommitsSubtab(1)
+
+    await waitFor(() => {
+      const badge = document.querySelector('[title*="ahead of origin"]')
+      expect(badge).toBeTruthy()
+      expect(badge?.getAttribute('title')).toBe('1 local commit ahead of origin')
+    })
+  })
+
+  it('badge title uses plural "commits" for count > 1', async () => {
+    await renderWithCommitsSubtab(5)
+
+    await waitFor(() => {
+      const badge = document.querySelector('[title*="ahead of origin"]')
+      expect(badge?.getAttribute('title')).toBe('5 local commits ahead of origin')
     })
   })
 })

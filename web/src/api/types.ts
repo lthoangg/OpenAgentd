@@ -101,6 +101,8 @@ export interface WorkspaceStatusResponse {
   branch?: string | null
   dirty?: { staged: number; unstaged: number; untracked: number }
   head?: { sha: string; subject: string; timestamp: number } | null
+  /** Local commits not yet pushed to the tracking remote. null when no upstream. */
+  commits_ahead?: number | null
 }
 
 export interface GitCommit {

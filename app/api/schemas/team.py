@@ -164,6 +164,8 @@ class CodingWorkspaceStatusResponse(BaseModel):
     branch: str | None = None
     dirty: CodingWorkspaceStatusDirty | None = None
     head: CodingWorkspaceStatusHead | None = None
+    commits_ahead: int | None = None
+    """Local commits not yet pushed to the tracking remote. None when no upstream."""
 
 
 class DiscardWorkspaceFileRequest(BaseModel):

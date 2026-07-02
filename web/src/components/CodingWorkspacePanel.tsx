@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
-import { getCodingWorkspaceGitDiff, listCodingWorkspaceFiles, getCodingWorkspaceGitHistory, getCodingWorkspaceCommitDiff, discardCodingWorkspaceFile, undoCodingWorkspaceLastCommit, revertCodingWorkspaceCommit } from '@/api/client'
+import { getCodingWorkspaceGitDiff, getCodingWorkspaceStatus, listCodingWorkspaceFiles, getCodingWorkspaceGitHistory, getCodingWorkspaceCommitDiff, discardCodingWorkspaceFile, undoCodingWorkspaceLastCommit, revertCodingWorkspaceCommit } from '@/api/client'
 import { CodingFilePreviewContent, DiffPreview, CopyButton } from './CodingFileViewerPanel'
 import { FileTypeIcon } from './FileTypeIcon'
 import { softHapticFeedback } from '@/lib/haptics'
@@ -303,6 +303,12 @@ export function CodingWorkspacePanel({
     enabled: open,
     staleTime: 5_000,
   })
+  const workspaceStatus = useQuery({
+    queryKey: queryKeys.coding.status(workspace),
+    queryFn: () => getCodingWorkspaceStatus(workspace),
+    enabled: open,
+    staleTime: 10_000,
+  })
   const changedFiles = useMemo(() => collectChangedFiles(diff.data), [diff.data])
   const diffSections = useMemo(() => collectDiffSections(diff.data), [diff.data])
 
@@ -356,6 +362,8 @@ export function CodingWorkspacePanel({
   const graph = useMemo(() => {
     return gitHistory.data?.pages[0]?.graph ?? ''
   }, [gitHistory.data?.pages])
+
+  const commitsAhead = workspaceStatus.data?.commits_ahead ?? null
 
   const parsedGraphLines = useMemo<ParsedGraphLine[]>(() => {
     if (!graph) return []
@@ -670,7 +678,17 @@ export function CodingWorkspacePanel({
                           {subTab === 'changes'
                             ? `Changes (${changedFiles.length})`
                             : subTab === 'commits'
-                            ? 'Commits'
+                            ? <span className="inline-flex items-center gap-1">
+                                Commits
+                                {commitsAhead != null && commitsAhead > 0 && (
+                                  <span
+                                    title={`${commitsAhead} local commit${commitsAhead === 1 ? '' : 's'} ahead of origin`}
+                                    className="rounded border border-(--color-border-subtle) bg-(--bg-card) px-1 py-0.5 font-mono text-[9px] font-semibold leading-none text-(--color-diff-add-text)"
+                                  >
+                                    {commitsAhead}↑
+                                  </span>
+                                )}
+                              </span>
                             : 'Tree'}
                         </>
                       }
@@ -679,7 +697,14 @@ export function CodingWorkspacePanel({
                         Changes ({changedFiles.length})
                       </DropdownItem>
                       <DropdownItem active={subTab === 'commits'} onSelect={() => setSubTab('commits')}>
-                        Commits
+                        <span className="inline-flex items-center gap-1.5">
+                          Commits
+                          {commitsAhead != null && commitsAhead > 0 && (
+                            <span className="rounded border border-(--color-border-subtle) bg-(--bg-card) px-1 py-0.5 font-mono text-[9px] font-semibold leading-none text-(--color-diff-add-text)">
+                              {commitsAhead}↑
+                            </span>
+                          )}
+                        </span>
                       </DropdownItem>
                       <DropdownItem active={subTab === 'tree'} onSelect={() => setSubTab('tree')}>
                         Tree
@@ -709,7 +734,17 @@ export function CodingWorkspacePanel({
                             : 'text-(--color-text-muted) hover:text-(--color-text)'
                         )}
                       >
-                        Commits
+                        <span className="inline-flex items-center justify-center gap-1">
+                          Commits
+                          {commitsAhead != null && commitsAhead > 0 && (
+                            <span
+                              title={`${commitsAhead} local commit${commitsAhead === 1 ? '' : 's'} ahead of origin`}
+                              className="rounded border border-(--color-border-subtle) bg-(--bg-card) px-1 py-0.5 font-mono text-[9px] font-semibold leading-none text-(--color-diff-add-text)"
+                            >
+                              {commitsAhead}↑
+                            </span>
+                          )}
+                        </span>
                       </button>
                       <button
                         type="button"

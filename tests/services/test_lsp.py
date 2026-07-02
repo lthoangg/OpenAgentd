@@ -502,17 +502,13 @@ async def test_lsp_hook_skipped_when_disabled(tmp_path):
 def test_find_project_root(tmp_path):
     from app.services.lsp.manager import find_project_root
 
-    # Rust: Cargo.toml is a strong anchor — found at any depth.
-    # tmp_path/sub_project/Cargo.toml  →  sub_project
-    sub_project = tmp_path / "sub_project"
-    sub_project.mkdir()
-    (sub_project / "Cargo.toml").write_text("[package]", encoding="utf-8")
-    src = sub_project / "src"
+    # Go: no manifest, falls back to workspace root.
+    src = tmp_path / "src"
     src.mkdir()
-    main_rs = src / "main.rs"
-    main_rs.write_text("fn main() {}", encoding="utf-8")
+    main_go = src / "main.go"
+    main_go.write_text("package main", encoding="utf-8")
 
-    assert find_project_root(main_rs, tmp_path, "rust") == sub_project
+    assert find_project_root(main_go, tmp_path, "go") == tmp_path
 
     # Python without any manifest falls back to workspace root.
     some_py = src / "some.py"
@@ -636,15 +632,7 @@ def test_detect_project_lsp_commands_no_pyproject(tmp_path):
 
     assert detect_project_lsp_commands("python", tmp_path) == []
     # No manifest → defer to generic defaults (empty here).
-    assert detect_project_lsp_commands("rust", tmp_path) == []
     assert detect_project_lsp_commands("typescript", tmp_path) == []
-
-
-def test_detect_project_lsp_commands_rust(tmp_path):
-    from app.services.lsp.manager import detect_project_lsp_commands
-
-    (tmp_path / "Cargo.toml").write_text('[package]\nname = "x"\n', encoding="utf-8")
-    assert detect_project_lsp_commands("rust", tmp_path) == [["rust-analyzer"]]
 
 
 def test_detect_project_lsp_commands_typescript(tmp_path):
@@ -700,10 +688,8 @@ async def test_detect_commands_non_python_single_server(tmp_path):
     returns a list."""
     manager = LspManager()
     with patch("shutil.which", side_effect=lambda exe: f"/usr/bin/{exe}"):
-        assert manager._detect_commands("rust", project_root=tmp_path) == [
-            ["rust-analyzer"]
-        ]
         assert manager._detect_commands("go", project_root=tmp_path) == [["gopls"]]
+        assert manager._detect_commands("c", project_root=tmp_path) == [["clangd"]]
 
 
 @pytest.mark.asyncio

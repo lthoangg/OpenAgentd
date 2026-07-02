@@ -500,14 +500,13 @@ MCP. Deeper doc: [`agent/tools.md`](./agent/tools.md).
   (`lsp:`) → built-in defaults**. Python is special-cased to run *multiple*
   complementary servers and merge results — a type checker (`ty`/`pyright`) **and**
   a linter (`ruff`) — because neither alone catches both type errors and lint;
-  every other language uses its single canonical server (`rust-analyzer`, `gopls`,
+  every other language uses its single canonical server (`gopls`,
   `typescript-language-server`, `clangd`). Multi-file `patch` checks run
   concurrently, the report is capped per file (errors first, then a `…and N more`
   summary) to protect the context window, and the whole hook is fail-safe — an LSP
   error never crashes the tool. The cockpit renders the block as a compact,
   color-coded `ERR`/`WARN` strip beneath the diff. Diagnostics depend on the server
-  being installed and on normal LSP scope rules (e.g. rust-analyzer only
-  type-checks files that belong to a crate target; TypeScript honours `tsconfig.json`).
+  being installed and on normal LSP scope rules (e.g. TypeScript honours `tsconfig.json`).
   Deeper doc: [`configuration/lsp.md`](./configuration/lsp.md).
 - **Clean tool argument validation errors** `[v1.77.0]` — when a tool call
   fails Pydantic validation, the LLM receives a compact `field: message`

@@ -17,7 +17,6 @@ EXTENSION_TO_LANG = {
     ".tsx": "typescriptreact",
     ".js": "javascript",
     ".jsx": "javascriptreact",
-    ".rs": "rust",
     ".go": "go",
     ".c": "c",
     ".cpp": "cpp",
@@ -58,9 +57,6 @@ LSP_COMMANDS = {
     "javascriptreact": [
         ["typescript-language-server", "--stdio"],
         ["vtsls", "--stdio"],
-    ],
-    "rust": [
-        ["rust-analyzer"],
     ],
     "go": [
         ["gopls"],
@@ -256,10 +252,6 @@ def detect_project_lsp_commands(lang_id: str, project_root: Path) -> list[list[s
     try:
         if lang_id == "python":
             return _python_tools_from_pyproject(project_root)
-
-        # Rust: always rust-analyzer when this is a Cargo project.
-        if lang_id == "rust" and (project_root / "Cargo.toml").exists():
-            return [["rust-analyzer"]]
 
         # TypeScript/JavaScript: pin to typescript-language-server for any
         # Node project (package.json / tsconfig.json / jsconfig.json).

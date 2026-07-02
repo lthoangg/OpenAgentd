@@ -152,9 +152,6 @@ async def run_real_scenarios(tmp_path, lang_id, cmd):
     elif lang_id == "typescript":
         file_path = tmp_path / "real_test.ts"
         file_path.write_text("const x: number = 'hello';\n", encoding="utf-8")
-    elif lang_id == "rust":
-        file_path = tmp_path / "real_test.rs"
-        file_path.write_text("fn foo() {\n", encoding="utf-8")
     else:
         file_path = tmp_path / f"real_test.{lang_id}"
         file_path.write_text("invalid code", encoding="utf-8")
@@ -175,8 +172,6 @@ async def run_real_scenarios(tmp_path, lang_id, cmd):
         file_path.write_text("def foo():\n    pass\n", encoding="utf-8")
     elif lang_id == "typescript":
         file_path.write_text("const x: number = 42;\n", encoding="utf-8")
-    elif lang_id == "rust":
-        file_path.write_text("fn main() {}\n", encoding="utf-8")
 
     print(f"  Writing valid file: {file_path.name}")
 
@@ -205,7 +200,6 @@ async def main():
                 [["pyright-langserver", "--stdio"], ["pylsp"], ["ruff", "server"]],
             ),
             ("typescript", [["typescript-language-server", "--stdio"]]),
-            ("rust", [["rust-analyzer"]]),
             ("go", [["gopls"]]),
             ("c", [["clangd"]]),
         ]:

@@ -38,8 +38,8 @@ command)`:
 Servers are matched to the **project's own toolchain**, not guessed. Resolution
 precedence (first tier that yields a command wins):
 
-1. **Project config** — parsed from `pyproject.toml` / `Cargo.toml` /
-   `package.json` (+ `tsconfig.json`/`jsconfig.json`). A repo that pins `ty` and
+1. **Project config** — parsed from `pyproject.toml` / `package.json`
+   (+ `tsconfig.json`/`jsconfig.json`). A repo that pins `ty` and
    `ruff` gets exactly those.
 2. **`settings.yaml`** — a global `lsp:` map, e.g. `lsp: {python: [ty, server]}`.
 3. **Built-in defaults** — first installed server from the per-language list.
@@ -62,7 +62,6 @@ syntax + types + lint in one process:
 |----------|-------------------|
 | Python | `ty` + `ruff` (+ `pyright`/`pylsp` if installed) — merged |
 | TypeScript / JavaScript | `typescript-language-server --stdio` |
-| Rust | `rust-analyzer` |
 | Go | `gopls` |
 | C / C++ | `clangd` |
 
@@ -116,9 +115,6 @@ Path aliases (`@/` → `src/`) resolve automatically once tsserver reads the
 
 - **Install the server.** No diagnostics appear for a language whose server
   isn't on `PATH`.
-- **Rust crate context.** `rust-analyzer` only type-checks files that belong to
-  a crate target. A loose `.rs` file not referenced from `Cargo.toml` gets no
-  type diagnostics (syntax errors still surface).
 - **TypeScript scope.** Strictness/lib behavior follows the nearest
   `tsconfig.json`; loose files use inferred defaults.
 - **Type vs. syntax.** Lint-only servers (e.g. `ruff` alone) never report type
@@ -129,8 +125,7 @@ Path aliases (`@/` → `src/`) resolve automatically once tsserver reads the
 
 ## Overrides
 
-- Per-project: declare your tooling in `pyproject.toml` / `Cargo.toml` /
-  `package.json`.
+- Per-project: declare your tooling in `pyproject.toml` / `package.json`.
 - Global default: set `lsp:` in `settings.yaml`, e.g.
 
   ```yaml

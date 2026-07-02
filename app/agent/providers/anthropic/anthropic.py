@@ -1,35 +1,40 @@
 """Anthropic Messages API provider.
 
-Extended-thinking / signature round-trip contract
---------------------------------------------------
-When a model is invoked with ``thinking_level`` set, Anthropic returns an opaque
-``signature`` alongside every ``thinking`` block.  This signature **must** be
-echoed verbatim whenever the block is re-sent in conversation history; omitting
-it or sending an empty string causes HTTP 400 ``invalid_request_error``.
+Extended-thinking round-trip contract
+--------------------------------------
+When ``thinking_level`` is set the API may return two block types that **must**
+be echoed verbatim in subsequent turns (HTTP 400 otherwise):
+
+``thinking`` blocks
+    Carry ``thinking`` (summarised text) and an opaque ``signature``.  Both
+    fields must be round-tripped unchanged.  ``_split_messages`` only emits a
+    thinking block when **both** ``reasoning_content`` and
+    ``reasoning_signature`` are non-empty; pre-fix rows that have no stored
+    signature are silently omitted — the API accepts tool-use-only turns.
+
+``redacted_thinking`` blocks
+    Returned when Anthropic safety-redacts part of the model's reasoning.
+    Contain only an opaque ``data`` field.  Must be passed back exactly as
+    received; dropping or modifying them causes the same HTTP 400.
 
 Storage layout
 ~~~~~~~~~~~~~~
-``signature`` is captured from the ``signature_delta`` SSE event during
-streaming (or from the response body in non-streaming mode) and stored in two
-places so it survives a full round-trip through the database:
+Both block types are captured during streaming/parsing and stored in two places
+so they survive a DB round-trip:
 
-1. ``AssistantMessage.reasoning_signature`` — in-memory only (``exclude=True``
-   on the Pydantic model, never serialised to the wire).
-2. ``SessionMessage.extra["reasoning_signature"]`` — persisted in the DB
-   ``extra`` JSON column alongside ``usage`` and ``finish_reason``.
+thinking blocks
+  1. ``AssistantMessage.reasoning_content`` / ``.reasoning_signature`` —
+     in-memory (``exclude=True``; not serialised to the wire).
+  2. ``SessionMessage.extra["reasoning_signature"]`` — persisted in the DB.
 
-On load, ``deserialize_messages`` (``services/chat_service_messages.py``)
-copies the value from ``extra`` back onto ``AssistantMessage.reasoning_signature``
-after Pydantic validation, so ``_split_messages`` can include it when rebuilding
-the request payload.
+redacted_thinking blocks
+  1. ``AssistantMessage.redacted_thinking_blocks`` — in-memory list of raw
+     block dicts (``exclude=True``).
+  2. ``SessionMessage.extra["redacted_thinking_blocks"]`` — persisted in the DB.
 
-Guard: thinking block omitted when signature is absent
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-``_split_messages`` only emits a thinking block when **both**
-``reasoning_content`` and ``reasoning_signature`` are non-empty.  Rows written
-before this fix have no signature stored; silently omitting the thinking block
-(rather than sending ``signature=""``) is safe — the API accepts assistant turns
-with only ``tool_use`` or ``text`` blocks.
+On load, ``chat_service_messages.deserialize_messages`` copies both values from
+``extra`` back onto the ``AssistantMessage`` so ``_split_messages`` can replay
+them when rebuilding the API payload.
 """
 
 from __future__ import annotations
@@ -158,6 +163,10 @@ def _split_messages(
                         "signature": message.reasoning_signature,
                     }
                 )
+            # Re-emit redacted_thinking blocks verbatim — Anthropic requires
+            # these to be round-tripped exactly as received (HTTP 400 otherwise).
+            if message.redacted_thinking_blocks:
+                blocks.extend(message.redacted_thinking_blocks)
             if message.content:
                 blocks.append({"type": "text", "text": message.content})
             for tool_call in message.tool_calls:
@@ -186,14 +195,20 @@ def _split_messages(
                     "thinking": message.reasoning_content,
                     "signature": message.reasoning_signature,
                 }
+                # Also collect any redacted_thinking blocks alongside the
+                # regular thinking block (both can appear in the same turn).
+                extra_blocks: list[dict[str, Any]] = (
+                    list(message.redacted_thinking_blocks)
+                    if message.redacted_thinking_blocks
+                    else []
+                )
                 if content:
                     out.append(
                         {
                             "role": "assistant",
-                            "content": [
-                                thinking_block,
-                                {"type": "text", "text": content},
-                            ],
+                            "content": [thinking_block]
+                            + extra_blocks
+                            + [{"type": "text", "text": content}],
                         }
                     )
                 else:
@@ -203,9 +218,26 @@ def _split_messages(
                     out.append(
                         {
                             "role": "assistant",
-                            "content": [thinking_block],
+                            "content": [thinking_block] + extra_blocks,
                         }
                     )
+                continue
+            # No regular thinking block — still need to replay redacted_thinking
+            # blocks if present (they can appear without a thinking block).
+            if message.redacted_thinking_blocks:
+                redacted_blocks: list[dict[str, Any]] = list(
+                    message.redacted_thinking_blocks
+                )
+                if content:
+                    out.append(
+                        {
+                            "role": "assistant",
+                            "content": redacted_blocks
+                            + [{"type": "text", "text": content}],
+                        }
+                    )
+                else:
+                    out.append({"role": "assistant", "content": redacted_blocks})
                 continue
             if not content:
                 continue
@@ -499,6 +531,13 @@ class AnthropicProvider(LLMProviderBase):
             for block in content_blocks
             if isinstance(block, dict) and block.get("type") == "thinking"
         )
+        # Capture redacted_thinking blocks verbatim so they can be replayed
+        # in future turns.  Sending them modified (or omitted) causes HTTP 400.
+        redacted_thinking_blocks = [
+            {"type": "redacted_thinking", "data": block.get("data", "")}
+            for block in content_blocks
+            if isinstance(block, dict) and block.get("type") == "redacted_thinking"
+        ] or None
         tool_calls = []
         for block in content_blocks:
             if not isinstance(block, dict) or block.get("type") != "tool_use":
@@ -512,12 +551,15 @@ class AnthropicProvider(LLMProviderBase):
                     ),
                 )
             )
-        return AssistantMessage(
+        msg = AssistantMessage(
             content=text or None,
             reasoning_content=reasoning or None,
             reasoning_signature=reasoning_signature or None,
             tool_calls=tool_calls or None,
         )
+        if redacted_thinking_blocks:
+            msg.redacted_thinking_blocks = redacted_thinking_blocks
+        return msg
 
     async def stream(
         self,
@@ -568,10 +610,26 @@ class AnthropicProvider(LLMProviderBase):
                             usage.cached_tokens = cache_read or None
                     elif event_type == "content_block_start":
                         content_block = event.get("content_block", {})
-                        if (
-                            not isinstance(content_block, dict)
-                            or content_block.get("type") != "tool_use"
-                        ):
+                        if not isinstance(content_block, dict):
+                            continue
+                        block_type = content_block.get("type")
+                        if block_type == "redacted_thinking":
+                            # Anthropic delivers the entire redacted_thinking
+                            # block in content_block_start (no deltas follow).
+                            # Surface it so the streaming consumer can persist
+                            # it and replay it verbatim in history.
+                            yield _stream_chunk(
+                                chunk_id=chunk_id,
+                                model=self.model,
+                                delta=ChatCompletionDelta(
+                                    redacted_thinking_block={
+                                        "type": "redacted_thinking",
+                                        "data": content_block.get("data", ""),
+                                    }
+                                ),
+                            )
+                            continue
+                        if block_type != "tool_use":
                             continue
                         raw_index = event.get("index")
                         block_index = (

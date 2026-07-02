@@ -179,6 +179,9 @@ class AssistantMessage(BaseMessage):
     # Me: Anthropic requires the opaque signature to be round-tripped with
     # thinking blocks in history; store it alongside reasoning_content.
     reasoning_signature: str | None = Field(default=None, exclude=True)
+    # Me: Anthropic redacted_thinking blocks must be echoed verbatim in history.
+    # Each entry is the raw block dict: {"type": "redacted_thinking", "data": "..."}.
+    redacted_thinking_blocks: list[dict] | None = Field(default=None, exclude=True)
     tool_calls: list[ToolCall] | None = None
 
     # Me: agent tracking — internal only, never sent to provider
@@ -216,6 +219,9 @@ class ChatCompletionDelta(BaseModel):
     # Me: Anthropic opaque signature for thinking blocks — must be stored and
     # round-tripped in history; surfaced here so callers can persist it.
     reasoning_signature: str | None = None
+    # Me: Anthropic redacted_thinking block received during streaming — the full
+    # block dict must be stored verbatim and replayed in history (HTTP 400 if modified).
+    redacted_thinking_block: dict | None = None
 
     @field_validator("reasoning_content", mode="before")
     @classmethod

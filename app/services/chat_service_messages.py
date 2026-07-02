@@ -59,6 +59,9 @@ def deserialize_messages(
                 sig = m.extra.get("reasoning_signature")
                 if isinstance(sig, str) and sig:
                     msg.reasoning_signature = sig
+                redacted = m.extra.get("redacted_thinking_blocks")
+                if isinstance(redacted, list) and redacted:
+                    msg.redacted_thinking_blocks = redacted
             if (
                 isinstance(msg, ToolMessage)
                 and m.extra

@@ -94,9 +94,14 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
     backend cache; per-provider last-known-good fallback on transient
     failures) and lists live quota usage for every *connected* OAuth
     provider — both builtin and provider plugins that expose a `get_usage`
-    hook under `{OPENAGENTD_CONFIG_DIR}/plugins/`.
-    Opening the tray menu triggers an opportunistic refresh (rate-limited),
-    with a relaxed 10-minute background poll behind it. Each row shows a
+    hook under `{OPENAGENTD_CONFIG_DIR}/plugins/`. User-disconnected
+    providers are excluded, and per-model limits are filtered to the
+    user's visible-model selection (fuzzy id matching; conservative
+    fallback keeps non-model-keyed quota windows). Opening the tray menu
+    triggers an opportunistic refresh (rate-limited), with a relaxed
+    10-minute background poll behind it. Providers with one limit render
+    a single flat row; multi-limit providers group indented limit rows
+    under a header carrying the worst limit's
     🟢/🟠/🔴 threshold glyph, percent used, and a relative reset countdown;
     providers needing reconnection or temporarily unreachable get their own
     row instead of silently disappearing, and a failed poll keeps the last

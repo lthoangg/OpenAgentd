@@ -28,6 +28,10 @@ from app.api.schemas.settings import (
     ProviderUsageSummaryBody,
     ProviderUsageSummaryItem,
 )
+from app.core.runtime_settings import (
+    provider_is_disconnected,
+    provider_visible_models,
+)
 from app.services.provider_connection import provider_is_configured
 
 if TYPE_CHECKING:
@@ -119,6 +123,8 @@ def _usage_capable_connected_providers() -> list[tuple[str, str]]:
 
     candidates: list[tuple[str, str]] = []
     for provider_id, fallback_label in _BUILTIN_USAGE_PROVIDERS.items():
+        if provider_is_disconnected(provider_id):
+            continue
         entry = find_catalog_entry(provider_id) or cast(
             "ProviderEntry",
             {"id": provider_id, "label": fallback_label, "kind": "oauth"},
@@ -130,6 +136,8 @@ def _usage_capable_connected_providers() -> list[tuple[str, str]]:
     for provider_id, plugin in provider_plugins().items():
         if plugin.get_usage is None:
             continue
+        if provider_is_disconnected(provider_id):
+            continue
         entry = find_catalog_entry(provider_id) or cast(
             "ProviderEntry",
             {"id": provider_id, "label": plugin.label, "kind": plugin.kind},
@@ -139,6 +147,66 @@ def _usage_capable_connected_providers() -> list[tuple[str, str]]:
         candidates.append((provider_id, plugin.label))
 
     return candidates
+
+
+def _normalize_model_token(value: str) -> str:
+    """Normalize a model/limit id for fuzzy matching: lowercase, and strip
+    separators so ``gemini-3.5-flash`` == ``gemini_3_5_flash`` == ``Gemini 3.5 Flash``."""
+    return "".join(ch for ch in value.lower() if ch.isalnum())
+
+
+def _limit_matches_visible_models(
+    limit_id: str | None, visible_normalized: list[str]
+) -> bool:
+    """Whether a per-model limit corresponds to one of the user's chosen models.
+
+    Fuzzy containment either way: providers often prefix/suffix ids
+    differently between the model list and the usage API (e.g. the model
+    picker's ``antigravity-gemini-3.5-flash-low`` vs the usage endpoint's
+    ``gemini-3.5-flash-low``).
+    """
+    if not limit_id:
+        return False
+    limit_norm = _normalize_model_token(limit_id)
+    if not limit_norm:
+        return False
+    return any(
+        limit_norm in visible or visible in limit_norm for visible in visible_normalized
+    )
+
+
+def _filter_usage_to_visible_models(
+    provider_id: str, usage: ProviderUsageResponse
+) -> ProviderUsageResponse:
+    """Drop per-model limit rows for models the user hasn't made visible.
+
+    Some providers report one limit per *model* (a dozen rows, most for
+    models the user never runs). When the user has curated Settings →
+    Providers → visible models, only limits matching those models are kept.
+
+    Deliberately conservative:
+    - No visible-model selection configured → keep everything.
+    - Nothing matches at all → keep everything. This is the signal that
+      the provider's limits aren't model-keyed (e.g. a quota window like
+      ``five_hour``/``seven_day``) — filtering those against model names
+      would blank the provider.
+    """
+    visible = provider_visible_models(provider_id)
+    if not visible or not usage.limits:
+        return usage
+    visible_normalized = [
+        norm for norm in (_normalize_model_token(m) for m in visible) if norm
+    ]
+    if not visible_normalized:
+        return usage
+    kept = [
+        limit
+        for limit in usage.limits
+        if _limit_matches_visible_models(limit.limit_id, visible_normalized)
+    ]
+    if not kept:
+        return usage
+    return usage.model_copy(update={"limits": kept})
 
 
 def _last_good_fallback(
@@ -191,7 +259,10 @@ async def _fetch_summary_item(provider_id: str, label: str) -> ProviderUsageSumm
             provider=provider_id, label=label, status="unavailable", error=str(exc)
         )
     item = ProviderUsageSummaryItem(
-        provider=provider_id, label=label, status="ok", usage=usage
+        provider=provider_id,
+        label=label,
+        status="ok",
+        usage=_filter_usage_to_visible_models(provider_id, usage),
     )
     _last_good_items[provider_id] = (time.monotonic(), item)
     return item

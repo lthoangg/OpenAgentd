@@ -5,8 +5,7 @@
 //! ``GET /api/settings/providers/usage-summary``. That single endpoint
 //! fans in usage for every *connected* provider that exposes one — both
 //! builtin OAuth providers (Codex, Copilot) and provider plugins that
-//! define ``get_usage`` (e.g. the ``agy`` Antigravity Gemini plugin,
-//! ``claude`` Claude OAuth) — so this module never needs to know the
+//! define ``get_usage`` — so this module never needs to know the
 //! provider catalog itself.
 //!
 //! Kept free of Tauri types so the formatting logic (the part worth unit
@@ -165,30 +164,30 @@ fn status_glyph(percent: f64) -> &'static str {
 fn format_reset_in(resets_at: i64, now_unix: i64) -> String {
     let remaining = resets_at - now_unix;
     if remaining <= 0 {
-        return "resetting now".to_string();
+        return "resetting".to_string();
     }
     let minutes = remaining / 60;
     if minutes < 1 {
-        return "resets in <1m".to_string();
+        return "resets <1m".to_string();
     }
     if minutes < 60 {
-        return format!("resets in {minutes}m");
+        return format!("resets {minutes}m");
     }
     let hours = minutes / 60;
     let rem_minutes = minutes % 60;
     if hours < 24 {
         return if rem_minutes == 0 {
-            format!("resets in {hours}h")
+            format!("resets {hours}h")
         } else {
-            format!("resets in {hours}h {rem_minutes}m")
+            format!("resets {hours}h {rem_minutes}m")
         };
     }
     let days = hours / 24;
     let rem_hours = hours % 24;
     if rem_hours == 0 {
-        format!("resets in {days}d")
+        format!("resets {days}d")
     } else {
-        format!("resets in {days}d {rem_hours}h")
+        format!("resets {days}d {rem_hours}h")
     }
 }
 
@@ -208,14 +207,12 @@ fn truncate_row(text: String) -> String {
     truncated
 }
 
-/// Human-readable rendering of a provider's ``rate_limit_reached_type``
-/// (e.g. ``workspace_member_usage_limit_reached``), matching the web
-/// Settings → Providers usage panel's `replaceAll('_', ' ')` treatment.
-fn format_reached_type(reached_type: &str) -> String {
-    reached_type.replace('_', " ")
-}
 
-fn format_limit_line(label: &str, limit: &UsageLimit, now_unix: i64) -> Option<String> {
+
+/// The measurable tail of a limit row: ``42% · resets in 2h 14m · LIMIT
+/// REACHED: …``. Shared by the single-row and grouped renderings.
+/// ``None`` when the limit has no percent window at all (credits-only).
+fn format_limit_suffix(limit: &UsageLimit, now_unix: i64) -> Option<(&'static str, String)> {
     let window = limit.primary.as_ref().or(limit.secondary.as_ref())?;
     let percent = window.used_percent.round() as i64;
     let glyph = status_glyph(window.used_percent);
@@ -223,17 +220,34 @@ fn format_limit_line(label: &str, limit: &UsageLimit, now_unix: i64) -> Option<S
         .resets_at
         .map(|resets_at| format!(" \u{00B7} {}", format_reset_in(resets_at, now_unix)))
         .unwrap_or_default();
-    let name = limit.limit_name.as_deref().unwrap_or(label);
+    // Compact: the fact that the limit is reached is the signal; the
+    // provider-specific reason string is Settings → Providers material.
     let reached_suffix = limit
         .rate_limit_reached_type
         .as_deref()
         .filter(|t| !t.is_empty())
-        .map(|t| format!(" \u{00B7} LIMIT REACHED: {}", format_reached_type(t)))
+        .map(|_| " \u{00B7} LIMIT REACHED")
         .unwrap_or_default();
-    Some(truncate_row(format!(
-        "{glyph} {name} \u{00B7} {percent}%{reset_suffix}{reached_suffix}"
-    )))
+    Some((glyph, format!("{percent}%{reset_suffix}{reached_suffix}")))
 }
+
+/// Render a provider with exactly one limit window as a single row that
+/// always leads with the provider label — ``🟢 GitHub Copilot · Premium
+/// requests · 0%`` — so the provider is identifiable even when the limit
+/// has its own name.
+fn format_single_limit_line(label: &str, limit: &UsageLimit, now_unix: i64) -> Option<String> {
+    let (glyph, suffix) = format_limit_suffix(limit, now_unix)?;
+    let name_part = limit
+        .limit_name
+        .as_deref()
+        .filter(|name| !name.is_empty() && *name != label)
+        .map(|name| format!(" \u{00B7} {name}"))
+        .unwrap_or_default();
+    Some(format!("{glyph} {label}{name_part} \u{00B7} {suffix}"))
+}
+
+/// Indentation for grouped limit rows under a provider header.
+const GROUP_INDENT: &str = "      ";
 
 fn format_credits_line(label: &str, credits: &UsageCredits) -> String {
     let text = if credits.unlimited {
@@ -260,12 +274,12 @@ fn format_item_rows(item: &UsageSummaryItem, now_unix: i64, max_limits: usize) -
     match item.status.as_str() {
         "credentials_missing" => vec![UsageRow {
             id_suffix: format!("{}:missing", item.provider),
-            text: truncate_row(format!("\u{26AA} {} \u{00B7} reconnect required", item.label)),
+            text: truncate_row(format!("\u{26AA} {} \u{00B7} reconnect", item.label)),
         }],
         "unavailable" => vec![UsageRow {
             id_suffix: format!("{}:unavailable", item.provider),
             text: truncate_row(format!(
-                "\u{26A0}\u{FE0F} {} \u{00B7} usage unavailable",
+                "\u{26A0}\u{FE0F} {} \u{00B7} unavailable",
                 item.label
             )),
         }],
@@ -276,44 +290,76 @@ fn format_item_rows(item: &UsageSummaryItem, now_unix: i64, max_limits: usize) -
                     text: truncate_row(format!("\u{26AA} {} \u{00B7} no usage data", item.label)),
                 }];
             };
-            let mut lines: Vec<String> = usage
+            // Backend substituted last-known-good data for a transient
+            // failure — keep the numbers visible but mark them, compactly.
+            let stale_suffix = if item.stale { " (old)" } else { "" };
+            let measurable: Vec<&UsageLimit> = usage
                 .limits
                 .iter()
-                .filter_map(|limit| format_limit_line(&item.label, limit, now_unix))
-                .map(|line| {
-                    if item.stale {
-                        // The backend substituted last-known-good data for a
-                        // transient failure — keep the numbers visible but say so.
-                        format!("{line} \u{00B7} last known")
-                    } else {
-                        line
-                    }
-                })
+                .filter(|limit| format_limit_suffix(limit, now_unix).is_some())
                 .collect();
-            if lines.is_empty() {
-                if let Some(credits) = usage.limits.first().and_then(|l| l.credits.as_ref()) {
-                    lines.push(format_credits_line(&item.label, credits));
+
+            if measurable.is_empty() {
+                let text = if let Some(credits) =
+                    usage.limits.first().and_then(|l| l.credits.as_ref())
+                {
+                    format_credits_line(&item.label, credits)
                 } else {
-                    lines.push(truncate_row(format!(
-                        "\u{26AA} {} \u{00B7} no usage data",
-                        item.label
-                    )));
-                }
+                    truncate_row(format!("\u{26AA} {} \u{00B7} no usage data", item.label))
+                };
+                return vec![UsageRow {
+                    id_suffix: format!("{}:0", item.provider),
+                    text: truncate_row(format!("{text}{stale_suffix}")),
+                }];
             }
-            let truncated = lines.len() > max_limits;
-            lines.truncate(max_limits);
-            let mut rows: Vec<UsageRow> = lines
-                .into_iter()
-                .enumerate()
-                .map(|(idx, text)| UsageRow {
+
+            // Single limit: one flat row leading with the provider label.
+            if measurable.len() == 1 {
+                let line = format_single_limit_line(&item.label, measurable[0], now_unix)
+                    .unwrap_or_default();
+                return vec![UsageRow {
+                    id_suffix: format!("{}:0", item.provider),
+                    text: truncate_row(format!("{line}{stale_suffix}")),
+                }];
+            }
+
+            // Multiple limits (per-model providers, or multi-window
+            // providers): one provider header carrying the *worst* glyph,
+            // then indented per-limit rows so limit names aren't each
+            // prefixed with the (repetitive) provider label.
+            let worst = measurable
+                .iter()
+                .filter_map(|l| l.primary.as_ref().or(l.secondary.as_ref()))
+                .map(|w| w.used_percent)
+                .fold(0.0_f64, f64::max);
+            let mut rows = vec![UsageRow {
+                id_suffix: format!("{}:header", item.provider),
+                text: truncate_row(format!(
+                    "{} {}{stale_suffix}",
+                    status_glyph(worst),
+                    item.label
+                )),
+            }];
+            let truncated = measurable.len() > max_limits;
+            for (idx, limit) in measurable.iter().take(max_limits).enumerate() {
+                let Some((glyph, suffix)) = format_limit_suffix(limit, now_unix) else {
+                    continue;
+                };
+                let name = limit.limit_name.as_deref().unwrap_or(&item.label);
+                rows.push(UsageRow {
                     id_suffix: format!("{}:{idx}", item.provider),
-                    text,
-                })
-                .collect();
+                    text: truncate_row(format!(
+                        "{GROUP_INDENT}{glyph} {name} \u{00B7} {suffix}"
+                    )),
+                });
+            }
             if truncated {
                 rows.push(UsageRow {
                     id_suffix: format!("{}:more", item.provider),
-                    text: "   \u{2026} more limits — see Settings \u{2192} Providers".to_string(),
+                    text: format!(
+                        "{GROUP_INDENT}\u{2026} {} more",
+                        measurable.len() - max_limits
+                    ),
                 });
             }
             rows
@@ -347,11 +393,8 @@ pub fn format_footer(body: &UsageSummaryBody, now_unix: i64) -> String {
     } else {
         format!("{}h ago", age_s / 3600)
     };
-    if body.cached {
-        format!("Checked {age} (cached)")
-    } else {
-        format!("Checked {age}")
-    }
+    // "(cached)" dropped — an implementation detail users don't act on.
+    format!("Checked {age}")
 }
 
 /// Footer text when a refresh failed. With a previous snapshot the rows
@@ -483,11 +526,11 @@ mod tests {
 
     #[test]
     fn format_reset_in_covers_minutes_hours_days() {
-        assert_eq!(format_reset_in(1_000, 1_030), "resetting now");
-        assert_eq!(format_reset_in(1_090, 1_000), "resets in 1m");
-        assert_eq!(format_reset_in(1_000 + 3600, 1_000), "resets in 1h");
-        assert_eq!(format_reset_in(1_000 + 3600 + 600, 1_000), "resets in 1h 10m");
-        assert_eq!(format_reset_in(1_000 + 86400 * 2, 1_000), "resets in 2d");
+        assert_eq!(format_reset_in(1_000, 1_030), "resetting");
+        assert_eq!(format_reset_in(1_090, 1_000), "resets 1m");
+        assert_eq!(format_reset_in(1_000 + 3600, 1_000), "resets 1h");
+        assert_eq!(format_reset_in(1_000 + 3600 + 600, 1_000), "resets 1h 10m");
+        assert_eq!(format_reset_in(1_000 + 86400 * 2, 1_000), "resets 2d");
     }
 
     #[test]
@@ -539,8 +582,8 @@ mod tests {
             cached: false,
         };
         let rows = format_summary_rows(&body, 1_000);
-        assert!(rows[0].text.contains("reconnect required"));
-        assert!(rows[1].text.contains("usage unavailable"));
+        assert!(rows[0].text.contains("reconnect"));
+        assert!(rows[1].text.contains("unavailable"));
     }
 
     #[test]
@@ -556,8 +599,9 @@ mod tests {
             checked_at: 1_000,
             cached: true,
         };
-        assert_eq!(format_footer(&body, 1_000), "Checked just now (cached)");
-        assert_eq!(format_footer(&body, 1_130), "Checked 2m ago (cached)");
+        // "(cached)" is deliberately not surfaced — implementation detail.
+        assert_eq!(format_footer(&body, 1_000), "Checked just now");
+        assert_eq!(format_footer(&body, 1_130), "Checked 2m ago");
         assert_eq!(
             format_footer(&UsageSummaryBody::default(), 1_000),
             "Not checked yet"
@@ -600,14 +644,14 @@ mod tests {
         let rows = format_item_rows(&item, 1_000, 3);
         assert_eq!(rows.len(), 1);
         assert!(
-            rows[0].text.ends_with("\u{00B7} last known"),
+            rows[0].text.ends_with("(old)"),
             "stale row should carry the marker: {}",
             rows[0].text
         );
         // Fresh items must not carry the marker.
         let fresh = item_ok("codex", "OpenAI Codex", 42.0, Some(2_000));
         let rows = format_item_rows(&fresh, 1_000, 3);
-        assert!(!rows[0].text.contains("last known"));
+        assert!(!rows[0].text.contains("(old)"));
     }
 
     #[test]
@@ -700,7 +744,7 @@ mod tests {
     }
 
     #[test]
-    fn rate_limit_reached_type_is_surfaced_and_humanized() {
+    fn rate_limit_reached_is_surfaced_compactly() {
         let item = UsageSummaryItem {
             provider: "codex".to_string(),
             label: "OpenAI Codex".to_string(),
@@ -728,7 +772,10 @@ mod tests {
         };
         let rows = format_item_rows(&item, 1_000, 3);
         assert_eq!(rows.len(), 1);
-        assert!(rows[0].text.contains("LIMIT REACHED: workspace member usage limit reached"));
+        // Compact: the marker alone; the provider-specific reason string
+        // stays in Settings → Providers, not the tray.
+        assert!(rows[0].text.ends_with("LIMIT REACHED"), "{}", rows[0].text);
+        assert!(!rows[0].text.contains("workspace_member"));
     }
 
     #[test]
@@ -789,7 +836,100 @@ mod tests {
             usage: Some(UsageResponse { provider: "codex".to_string(), limits }),
         };
         let rows = format_item_rows(&item, 1_000, 3);
-        assert_eq!(rows.len(), 4); // 3 limits + "more" row
-        assert!(rows.last().unwrap().text.contains("more limits"));
+        assert_eq!(rows.len(), 5); // header + 3 limits + "more" row
+        assert!(rows[0].text.contains("OpenAI Codex"), "header row leads");
+        assert!(
+            rows.last().unwrap().text.contains("2 more"),
+            "overflow row counts the hidden limits: {}",
+            rows.last().unwrap().text
+        );
+    }
+
+    #[test]
+    fn single_limit_renders_one_flat_row_with_provider_label_first() {
+        let mut item = item_ok("copilot", "GitHub Copilot", 12.0, None);
+        item.usage.as_mut().unwrap().limits[0].limit_name =
+            Some("Premium requests".to_string());
+        let rows = format_item_rows(&item, 1_000, 3);
+        assert_eq!(rows.len(), 1);
+        assert!(
+            rows[0].text.contains("GitHub Copilot \u{00B7} Premium requests \u{00B7} 12%"),
+            "provider label must lead, then the limit name: {}",
+            rows[0].text
+        );
+    }
+
+    #[test]
+    fn single_limit_omits_duplicate_or_missing_limit_name() {
+        // limit_name == provider label → no "Codex · Codex" duplication.
+        let mut item = item_ok("codex", "OpenAI Codex", 50.0, None);
+        item.usage.as_mut().unwrap().limits[0].limit_name = Some("OpenAI Codex".to_string());
+        let rows = format_item_rows(&item, 1_000, 3);
+        assert!(rows[0].text.contains("OpenAI Codex \u{00B7} 50%"));
+        assert_eq!(rows[0].text.matches("OpenAI Codex").count(), 1);
+        // Missing limit_name → same flat shape.
+        let item = item_ok("codex", "OpenAI Codex", 50.0, None);
+        let rows = format_item_rows(&item, 1_000, 3);
+        assert!(rows[0].text.contains("OpenAI Codex \u{00B7} 50%"));
+    }
+
+    #[test]
+    fn multi_limit_provider_groups_under_a_header_with_worst_glyph() {
+        let make_limit = |name: &str, used: f64| UsageLimit {
+            limit_id: Some(name.to_string()),
+            limit_name: Some(name.to_string()),
+            primary: Some(UsageWindow {
+                used_percent: used,
+                window_minutes: Some(60),
+                resets_at: None,
+            }),
+            secondary: None,
+            credits: None,
+            plan_type: None,
+            rate_limit_reached_type: None,
+        };
+        let item = UsageSummaryItem {
+            provider: "agy".to_string(),
+            label: "Antigravity Gemini".to_string(),
+            status: "ok".to_string(),
+            error: None,
+            stale: false,
+            usage: Some(UsageResponse {
+                provider: "agy".to_string(),
+                limits: vec![
+                    make_limit("Gemini 3.1 Pro (High)", 10.0),
+                    make_limit("Claude Sonnet 4.6", 95.0),
+                ],
+            }),
+        };
+        let rows = format_item_rows(&item, 1_000, 3);
+        assert_eq!(rows.len(), 3); // header + 2 limits
+        // Header carries the provider label and the WORST limit's glyph.
+        assert!(rows[0].text.starts_with("\u{1F534} Antigravity Gemini"));
+        // Limit rows are indented and do NOT repeat the provider label.
+        assert!(rows[1].text.starts_with(GROUP_INDENT));
+        assert!(rows[1].text.contains("Gemini 3.1 Pro (High) \u{00B7} 10%"));
+        assert!(!rows[1].text.contains("Antigravity Gemini"));
+        assert!(rows[2].text.contains("Claude Sonnet 4.6 \u{00B7} 95%"));
+    }
+
+    #[test]
+    fn stale_marker_lands_on_the_header_for_grouped_providers() {
+        let mut item = item_ok("codex", "OpenAI Codex", 10.0, None);
+        // Grow to two limits so the grouped path is taken.
+        let extra = item.usage.as_ref().unwrap().limits[0].clone();
+        item.usage.as_mut().unwrap().limits.push(extra);
+        item.stale = true;
+        let rows = format_item_rows(&item, 1_000, 3);
+        assert!(
+            rows[0].text.contains("(old)"),
+            "header should carry the stale marker: {}",
+            rows[0].text
+        );
+        assert!(
+            !rows[1].text.contains("(old)"),
+            "indented rows should not repeat it: {}",
+            rows[1].text
+        );
     }
 }

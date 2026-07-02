@@ -15,7 +15,7 @@ commands.py              Command handling helpers
 title_service.py         Title generation
 lsp/                     On-demand LSP servers + diagnostics injection (coding mode)
 provider_connection.py   Shared "is this provider connected?" check (Settings UI + tray usage)
-provider_usage.py        Per-provider usage dispatch + connected-provider usage-summary aggregator (stale-while-revalidate cache, per-provider last-known-good fallback)
+provider_usage.py        Per-provider usage dispatch + connected-provider usage-summary aggregator (stale-while-revalidate cache, per-provider last-known-good fallback, user-disconnect exclusion, visible-model limit filtering)
 ```
 
 The LSP subsystem (`lsp/client.py`, `lsp/manager.py`) is driven by

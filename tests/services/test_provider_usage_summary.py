@@ -17,6 +17,13 @@ from app.services import provider_usage
 
 
 @pytest.fixture(autouse=True)
+def _no_disconnect_no_visible_filter(monkeypatch):
+    """Default: no provider is user-disconnected, no visible-model curation."""
+    monkeypatch.setattr(provider_usage, "provider_is_disconnected", lambda _pid: False)
+    monkeypatch.setattr(provider_usage, "provider_visible_models", lambda _pid: [])
+
+
+@pytest.fixture(autouse=True)
 def _reset_summary_cache():
     """The aggregator caches its last result process-wide; isolate tests."""
     provider_usage._summary_cache = None
@@ -328,3 +335,125 @@ async def test_credentials_error_never_falls_back_to_last_known_good(monkeypatch
     # Reconnect-required must surface even though a last-good snapshot exists.
     assert body.items[0].status == "credentials_missing"
     assert body.items[0].stale is False
+
+
+@pytest.mark.asyncio
+async def test_user_disconnected_provider_is_excluded(monkeypatch):
+    """The Settings → Providers 'Disconnect' toggle hides a provider from
+    the tray even though its credentials still exist on disk."""
+    monkeypatch.setattr("app.agent.providers.catalog.find", _catalog_entries({}))
+    monkeypatch.setattr(provider_usage, "provider_plugins", lambda: {})
+    monkeypatch.setattr(provider_usage, "provider_is_configured", lambda entry: True)
+    monkeypatch.setattr(
+        provider_usage, "provider_is_disconnected", lambda pid: pid == "codex"
+    )
+
+    async def _fake_get_usage(provider_id: str) -> ProviderUsageResponse:
+        return ProviderUsageResponse(provider=provider_id, limits=[])
+
+    monkeypatch.setattr(provider_usage, "get_provider_usage", _fake_get_usage)
+
+    body = await provider_usage.get_connected_provider_usage_summary()
+
+    assert [item.provider for item in body.items] == ["copilot"]
+
+
+def _model_limit(limit_id: str) -> ProviderUsageLimit:
+    from app.api.schemas.settings import ProviderUsageWindow
+
+    return ProviderUsageLimit(
+        limit_id=limit_id,
+        limit_name=limit_id,
+        primary=ProviderUsageWindow(used_percent=10.0),
+    )
+
+
+@pytest.mark.asyncio
+async def test_per_model_limits_are_filtered_to_visible_models(monkeypatch):
+    """A provider reporting one limit per model keeps only the user's
+    chosen (visible) models — fuzzy id matching across naming prefixes."""
+    monkeypatch.setattr("app.agent.providers.catalog.find", lambda _pid: None)
+    plugin = ProviderPlugin(
+        id="agy",
+        label="Antigravity",
+        description="",
+        kind="oauth",
+        factory=lambda _ctx: None,  # type: ignore[arg-type,return-value]
+        get_usage=lambda _creds: None,  # type: ignore[arg-type]
+    )
+    monkeypatch.setattr(provider_usage, "provider_plugins", lambda: {"agy": plugin})
+    monkeypatch.setattr(
+        provider_usage, "provider_is_configured", lambda entry: entry["id"] == "agy"
+    )
+    # Model picker id has a provider prefix the usage endpoint id lacks.
+    monkeypatch.setattr(
+        provider_usage,
+        "provider_visible_models",
+        lambda pid: ["antigravity-gemini-3.5-flash-low"] if pid == "agy" else [],
+    )
+
+    async def _fake_get_usage(provider_id: str) -> ProviderUsageResponse:
+        return ProviderUsageResponse(
+            provider="agy",
+            limits=[
+                _model_limit("gemini-3.5-flash-low"),
+                _model_limit("gemini-3.1-pro-high"),
+                _model_limit("claude-opus-4-6-thinking"),
+            ],
+        )
+
+    monkeypatch.setattr(provider_usage, "get_provider_usage", _fake_get_usage)
+
+    body = await provider_usage.get_connected_provider_usage_summary()
+
+    limits = body.items[0].usage.limits
+    assert [limit.limit_id for limit in limits] == ["gemini-3.5-flash-low"]
+
+
+@pytest.mark.asyncio
+async def test_non_model_limits_survive_visible_model_filtering(monkeypatch):
+    """Quota-window limits that are not model-keyed (e.g. five_hour/seven_day
+    windows) never match model names — filtering must fall back to keeping
+    everything rather than blanking the provider."""
+    monkeypatch.setattr("app.agent.providers.catalog.find", _catalog_entries({}))
+    monkeypatch.setattr(provider_usage, "provider_plugins", lambda: {})
+    monkeypatch.setattr(
+        provider_usage, "provider_is_configured", lambda entry: entry["id"] == "codex"
+    )
+    monkeypatch.setattr(
+        provider_usage, "provider_visible_models", lambda _pid: ["gpt-5.5-codex"]
+    )
+
+    async def _fake_get_usage(provider_id: str) -> ProviderUsageResponse:
+        return ProviderUsageResponse(
+            provider="codex",
+            limits=[_model_limit("five_hour"), _model_limit("seven_day")],
+        )
+
+    monkeypatch.setattr(provider_usage, "get_provider_usage", _fake_get_usage)
+
+    body = await provider_usage.get_connected_provider_usage_summary()
+
+    assert len(body.items[0].usage.limits) == 2
+
+
+@pytest.mark.asyncio
+async def test_no_visible_model_curation_keeps_all_limits(monkeypatch):
+    """Empty visible_models (user never curated) means no filtering."""
+    monkeypatch.setattr("app.agent.providers.catalog.find", _catalog_entries({}))
+    monkeypatch.setattr(provider_usage, "provider_plugins", lambda: {})
+    monkeypatch.setattr(
+        provider_usage, "provider_is_configured", lambda entry: entry["id"] == "codex"
+    )
+
+    async def _fake_get_usage(provider_id: str) -> ProviderUsageResponse:
+        return ProviderUsageResponse(
+            provider="codex",
+            limits=[_model_limit("model-a"), _model_limit("model-b")],
+        )
+
+    monkeypatch.setattr(provider_usage, "get_provider_usage", _fake_get_usage)
+
+    body = await provider_usage.get_connected_provider_usage_summary()
+
+    assert len(body.items[0].usage.limits) == 2

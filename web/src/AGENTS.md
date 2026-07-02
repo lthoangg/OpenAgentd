@@ -146,6 +146,16 @@ mid-flight that falsely detach the view. Always use `el.scrollTop = el.scrollHei
 The `data-keyboard-open` attribute is set/cleared by `useMobileViewportGuards`
 (`hooks/use-mobile-viewport.ts`) in sync with `window.visualViewport` resize events.
 
+## InputBar suggestion menus (`/`, `@`, `#`)
+
+`InputBar.suggestions.tsx` renders three picker menus (slash commands, `@`-mentions, snippets).
+
+**Positioning** — menus use `position: fixed` (not `absolute`) so they escape the `overflow: hidden` on `<main>`. Coordinates are computed from `getBoundingClientRect()` of the input bar's wrapper and stored as `{ top | bottom, left, right }` in state. `bottom` is set when the menu opens above the input; `top` when it opens below.
+
+**Viewport height** — always use `window.visualViewport?.height ?? window.innerHeight`. On mobile `window.innerHeight` stays at the full device height when the soft keyboard is open; only `visualViewport.height` reflects the actual visible area.
+
+**Resize events** — the effect subscribes to both `window.resize` and `window.visualViewport?.resize`. The keyboard opening fires `visualViewport` resize without triggering `window` resize, so both are needed.
+
 ## WorkspaceFilesPanel — file tree
 
 Desktop push-layout (flex sibling of `<main>`, animates `width 0→N`); mobile fixed overlay from right below header. The tree is a **recursive `TreeNode` structure** built by `buildTree()`:

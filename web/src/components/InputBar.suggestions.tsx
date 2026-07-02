@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useCallback, type MutableRefObject } from 'react'
+import { useRef, useState, useEffect, useCallback, type CSSProperties, type MutableRefObject } from 'react'
 import { File, Folder } from 'lucide-react'
 import type { SlashCommand, SnippetCommand } from './InputBar'
 import type { FileRef } from './InputBar.mentions'
@@ -47,8 +47,17 @@ export function InputBarSuggestions({
   onMentionSelect: (ref: FileRef) => void
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const [position, setPosition] = useState<{ showBelow: boolean; maxHeight: number }>({
-    showBelow: false,
+  const [position, setPosition] = useState<{
+    top: number | undefined
+    bottom: number | undefined
+    left: number
+    right: number
+    maxHeight: number
+  }>({
+    top: undefined,
+    bottom: undefined,
+    left: 0,
+    right: 0,
     maxHeight: 256,
   })
 
@@ -58,7 +67,12 @@ export function InputBarSuggestions({
 
     const rect = parentEl.getBoundingClientRect()
     const spaceAbove = rect.top
-    const spaceBelow = window.innerHeight - rect.bottom
+    // Use visualViewport height when available so the computation reflects the
+    // actual visible region on mobile (where the soft keyboard shrinks the
+    // visible area without changing window.innerHeight).
+    const viewportHeight = window.visualViewport?.height ?? window.innerHeight
+    const viewportWidth = window.visualViewport?.width ?? window.innerWidth
+    const spaceBelow = viewportHeight - rect.bottom
 
     // Threshold (in pixels) below which we prefer to render the menu downwards
     // if there is more space below than above.
@@ -68,7 +82,17 @@ export function InputBarSuggestions({
     // 12px padding from the screen edge
     const maxHeight = Math.max(80, Math.min(256, availableSpace - 12))
 
-    setPosition({ showBelow, maxHeight })
+    // Use fixed positioning so the menu escapes any overflow:hidden ancestor
+    // (e.g. the <main> column which clips overflow on mobile). Coordinates are
+    // in the visual-viewport frame (i.e. what fixed-position elements use).
+    const GAP = 4 // px gap between menu edge and input bar
+    setPosition({
+      top: showBelow ? rect.bottom + GAP : undefined,
+      bottom: showBelow ? undefined : viewportHeight - rect.top + GAP,
+      left: rect.left,
+      right: viewportWidth - rect.right,
+      maxHeight,
+    })
   }, [])
 
   useEffect(() => {
@@ -79,6 +103,9 @@ export function InputBarSuggestions({
 
     window.addEventListener('resize', updatePosition)
     window.addEventListener('scroll', updatePosition, { capture: true })
+    // On mobile the soft keyboard fires visualViewport 'resize' without
+    // triggering window 'resize', so subscribe separately when available.
+    window.visualViewport?.addEventListener('resize', updatePosition)
 
     let resizeObserver: ResizeObserver | null = null
     const parentEl = containerRef.current?.parentElement
@@ -92,6 +119,7 @@ export function InputBarSuggestions({
     return () => {
       window.removeEventListener('resize', updatePosition)
       window.removeEventListener('scroll', updatePosition, { capture: true })
+      window.visualViewport?.removeEventListener('resize', updatePosition)
       resizeObserver?.disconnect()
     }
   }, [slashMenuOpen, mentionMenuOpen, snippetMenuOpen, updatePosition])
@@ -107,9 +135,17 @@ export function InputBarSuggestions({
     }
   }
 
-  const menuClassName = `absolute left-0 right-0 z-10 overflow-y-auto overscroll-contain rounded-sm border border-(--color-border) bg-(--bg-card) p-1 shadow-md ${
-    position.showBelow ? 'top-full mt-1' : 'bottom-full mb-1'
-  }`
+  const menuStyle: CSSProperties = {
+    position: 'fixed',
+    top: position.top,
+    bottom: position.bottom,
+    left: position.left,
+    right: position.right,
+    maxHeight: position.maxHeight,
+    zIndex: 50,
+  }
+
+  const menuClassName = 'overflow-y-auto overscroll-contain rounded-sm border border-(--color-border) bg-(--bg-card) p-1 shadow-md'
 
   return (
     <div ref={containerRef} className="contents">
@@ -119,7 +155,7 @@ export function InputBarSuggestions({
           role="listbox"
           aria-label="Slash commands"
           className={menuClassName}
-          style={{ maxHeight: position.maxHeight }}
+          style={menuStyle}
         >
           {filteredSlashCommands.map((cmd) => {
             if ('isSeparator' in cmd && cmd.isSeparator) {
@@ -165,7 +201,7 @@ export function InputBarSuggestions({
           role="listbox"
           aria-label="Reference workspace file"
           className={menuClassName}
-          style={{ maxHeight: position.maxHeight }}
+          style={menuStyle}
         >
           {filteredMentions.map((ref, index) => {
             const active = index === clampedMentionIndex
@@ -196,7 +232,7 @@ export function InputBarSuggestions({
           role="listbox"
           aria-label="Snippets"
           className={menuClassName}
-          style={{ maxHeight: position.maxHeight }}
+          style={menuStyle}
         >
           {filteredSnippetCommands.map((cmd, index) => {
             const active = index === clampedSnippetIndex

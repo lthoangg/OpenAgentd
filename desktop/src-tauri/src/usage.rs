@@ -209,13 +209,32 @@ fn truncate_row(text: String) -> String {
 
 
 
-/// The measurable tail of a limit row: ``42% · resets in 2h 14m · LIMIT
+/// Number of segments in the inline text progress bar rendered next to
+/// every percent figure — the closest a native (plain-text) tray menu
+/// can get to CodexBar's popover meter bars.
+const BAR_WIDTH: usize = 10;
+
+/// Render a fixed-width block-character meter like ``\u{2588}\u{2588}\u{2588}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}``
+/// for `percent`. Filled segments use a solid block, empty ones a light
+/// shade block, so the row reads as a tiny bar even in a plain-text
+/// native menu — mirroring CodexBar's popover meters (see its
+/// screenshot in the project README) without needing custom menu
+/// rendering, which Tauri's native `MenuItem` doesn't support.
+fn render_bar(percent: f64) -> String {
+    let filled = ((percent.clamp(0.0, 100.0) / 100.0) * BAR_WIDTH as f64).round() as usize;
+    let filled = filled.min(BAR_WIDTH);
+    let empty = BAR_WIDTH - filled;
+    format!("{}{}", "\u{2588}".repeat(filled), "\u{2591}".repeat(empty))
+}
+
+/// The measurable tail of a limit row: ``42% \u{2588}\u{2588}\u{2588}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591}\u{2591} · resets in 2h 14m · LIMIT
 /// REACHED: …``. Shared by the single-row and grouped renderings.
 /// ``None`` when the limit has no percent window at all (credits-only).
 fn format_limit_suffix(limit: &UsageLimit, now_unix: i64) -> Option<(&'static str, String)> {
     let window = limit.primary.as_ref().or(limit.secondary.as_ref())?;
     let percent = window.used_percent.round() as i64;
     let glyph = status_glyph(window.used_percent);
+    let bar = render_bar(window.used_percent);
     let reset_suffix = window
         .resets_at
         .map(|resets_at| format!(" \u{00B7} {}", format_reset_in(resets_at, now_unix)))
@@ -228,7 +247,7 @@ fn format_limit_suffix(limit: &UsageLimit, now_unix: i64) -> Option<(&'static st
         .filter(|t| !t.is_empty())
         .map(|_| " \u{00B7} LIMIT REACHED")
         .unwrap_or_default();
-    Some((glyph, format!("{percent}%{reset_suffix}{reached_suffix}")))
+    Some((glyph, format!("{percent}% {bar}{reset_suffix}{reached_suffix}")))
 }
 
 /// Render a provider with exactly one limit window as a single row that
@@ -538,6 +557,37 @@ mod tests {
         assert_eq!(status_glyph(95.0), "\u{1F534}");
         assert_eq!(status_glyph(70.0), "\u{1F7E0}");
         assert_eq!(status_glyph(69.9), "\u{1F7E2}");
+    }
+
+    #[test]
+    fn render_bar_fills_proportionally_and_clamps() {
+        assert_eq!(render_bar(0.0), "\u{2591}".repeat(BAR_WIDTH));
+        assert_eq!(render_bar(100.0), "\u{2588}".repeat(BAR_WIDTH));
+        // 42% of 10 segments rounds to 4 filled, 6 empty.
+        assert_eq!(render_bar(42.0), format!("{}{}", "\u{2588}".repeat(4), "\u{2591}".repeat(6)));
+        // Out-of-range inputs (defensive: upstream already clamps
+        // used_percent, but the renderer must never panic/overflow).
+        assert_eq!(render_bar(-10.0), "\u{2591}".repeat(BAR_WIDTH));
+        assert_eq!(render_bar(150.0), "\u{2588}".repeat(BAR_WIDTH));
+    }
+
+    #[test]
+    fn format_limit_suffix_includes_the_bar_between_percent_and_reset() {
+        let limit = UsageLimit {
+            limit_id: Some("codex".to_string()),
+            limit_name: None,
+            primary: Some(UsageWindow {
+                used_percent: 50.0,
+                window_minutes: Some(60),
+                resets_at: Some(2_000),
+            }),
+            secondary: None,
+            credits: None,
+            plan_type: None,
+            rate_limit_reached_type: None,
+        };
+        let (_, suffix) = format_limit_suffix(&limit, 1_000).expect("measurable limit");
+        assert_eq!(suffix, format!("50% {} \u{00B7} resets 16m", render_bar(50.0)));
     }
 
     #[test]

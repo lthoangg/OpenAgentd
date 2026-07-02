@@ -324,8 +324,9 @@ describe('ProvidersSettingsPage', () => {
     renderPage()
 
     expect(await screen.findByText('Plugin OAuth')).toBeTruthy()
-    await waitFor(() => expect(screen.getByText('Active usage')).toBeTruthy())
-    expect(screen.getByText('Model A · window')).toBeTruthy()
-    expect(screen.getByText(/42%/)).toBeTruthy()
+    await waitFor(() => expect(screen.getByText('Usage')).toBeTruthy())
+    expect(screen.getByText('Model A')).toBeTruthy()
+    expect(screen.getByText('42% used')).toBeTruthy()
+    expect(screen.getByText('Live')).toBeTruthy()
   })
 })

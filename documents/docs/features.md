@@ -118,8 +118,19 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
     critical threshold fires a one-shot native notification (re-armed when
     the quota resets) and badges the tray icon. "Refresh Usage Now" forces
     a live re-check past the cache; "Manage Providers…" deep-links into
-    Settings → Providers. See
+    Settings → Providers. Each measurable row also carries a compact
+    block-character meter (`████░░░░░░`) between the percent and reset
+    countdown — a CodexBar-style bar rendered in plain text, since native
+    tray `MenuItem`s can't host custom widgets `[v1.94.0]`. See
     [`documents/docs/desktop.md`](./desktop.md#tray-usage-limits).
+  - **Settings → Providers usage panel redesign** `[v1.94.0]` — the
+    per-provider "Usage" card in Settings → Providers (`UsagePanel.tsx`)
+    was restyled after CodexBar's menu-bar popover: a bold label per limit
+    window, a flat progress bar with a leading dot marker, `N% used ·
+    Resets in Xh Ym` under each bar, a header strip showing "Updated Xm
+    ago" plus the plan badge, and a dedicated rate-limit-reached banner.
+    No new data — same `ProviderUsageLimit` payload from
+    `GET /api/settings/providers/{provider}/usage`.
 - **Touch back/forward navigation** `[v1.53.1]` *(deprecated)* — desktop Tauri windows support
   edge swipes on touch/pen devices: right from the left edge goes back, left
   from the right edge goes forward, while editable fields and scroll-like

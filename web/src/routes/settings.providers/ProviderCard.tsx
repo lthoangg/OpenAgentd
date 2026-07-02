@@ -334,7 +334,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
               Loading active usage…
             </p>
           ) : usageQ.data ? (
-            <UsagePanel limits={usageQ.data.limits} />
+            <UsagePanel limits={usageQ.data.limits} updatedAt={usageQ.dataUpdatedAt} />
           ) : usageQ.isError ? (
             <p className="text-[11px] text-(--color-text-subtle) font-mono">
               {usageQ.error instanceof ApiValidationError && usageQ.error.status === 404

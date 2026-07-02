@@ -18,6 +18,8 @@ import { queryKeys } from '@/queries'
 
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { useResizableWidth } from '@/hooks/use-resizable-width'
+import { usePlatform } from '@/hooks/use-platform'
+import { formatShortcut } from '@/lib/keyboard-shortcut'
 import { useGitPanelStore, DEFAULT_WORKSPACE_STATE } from '@/stores/useGitPanelStore'
 import { useToastStore } from '@/stores/useToastStore'
 import type { WorkspaceFileInfo, WorkspaceGitDiffResponse } from '@/api/types'
@@ -266,7 +268,8 @@ export function CodingWorkspacePanel({
   onAddComment?: (path: string, startLine: number, endLine: number) => void
   onOpenPalette?: () => void
 }) {
-  const prefersReducedMotion = useReducedMotion()
+   const prefersReducedMotion = useReducedMotion()
+   const { os } = usePlatform()
   const [tabs, setTabs] = useState<WorkspacePanelTab[]>([{ id: 'review', type: 'review', title: 'Git' }])
   const [activeTabId, setActiveTabId] = useState('review')
   const [mobileFileActions, setMobileFileActions] = useState<ChangedFileInfo | null>(null)
@@ -647,8 +650,8 @@ export function CodingWorkspacePanel({
             type="button"
             onClick={onOpenPalette}
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
-            aria-label="Search files (Ctrl+P)"
-            title="Search files (Ctrl+P)"
+            aria-label={`Search files (${formatShortcut('P', os)})`}
+            title={`Search files (${formatShortcut('P', os)})`}
           >
             <Plus size={14} aria-hidden="true" />
           </button>

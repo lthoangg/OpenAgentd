@@ -62,7 +62,7 @@ export interface AgentTopbarProps {
    */
   todosSlot?: React.ReactNode
   todosAction?: AgentTopbarActionDescriptor
-  /** Scheduler action — opens the scheduled-tasks drawer (Ctrl+S). */
+  /** Scheduler action — opens the scheduled-tasks drawer (⌘S / Ctrl+S). */
   schedulerAction?: AgentTopbarActionDescriptor
   /** Files action — typically toggles the workspace files panel. */
   filesAction?: AgentTopbarActionDescriptor

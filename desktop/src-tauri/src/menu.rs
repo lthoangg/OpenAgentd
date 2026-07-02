@@ -154,16 +154,24 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         MENU_COMMAND_PALETTE,
         "Command Palette…",
         true,
-        Some("Ctrl+P"),
+        Some("CmdOrCtrl+P"),
     )?;
-    let view_scheduler =
-        MenuItem::with_id(app, MENU_SCHEDULER, "Scheduled Tasks", true, Some("Ctrl+S"))?;
+    let view_scheduler = MenuItem::with_id(
+        app,
+        MENU_SCHEDULER,
+        "Scheduled Tasks",
+        true,
+        Some("CmdOrCtrl+S"),
+    )?;
+    // Bare CmdOrCtrl+A is "Select All" on macOS, so Session Settings
+    // requires Shift to avoid clobbering it — matches the in-app
+    // ⌘⇧A / Ctrl+Shift+A binding (see web/src/lib/keyboard-shortcut.ts).
     let view_agent_capabilities = MenuItem::with_id(
         app,
         MENU_AGENT_CAPABILITIES,
         "Session Settings",
         true,
-        Some("Ctrl+A"),
+        Some("CmdOrCtrl+Shift+A"),
     )?;
     let view_reload = MenuItem::with_id(app, MENU_RELOAD, "Reload", true, Some("CmdOrCtrl+R"))?;
     let view_force_reload = MenuItem::with_id(

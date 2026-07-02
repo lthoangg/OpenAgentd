@@ -1,5 +1,7 @@
 import { TokenMeter } from '@/components/ui/token-meter'
 import { shortId } from '@/utils/format'
+import { usePlatform } from '@/hooks/use-platform'
+import { formatShortcut } from '@/lib/keyboard-shortcut'
 import type { AgentUsage } from '@/api/types'
 
 interface StatusBarProps {
@@ -17,6 +19,7 @@ export function StatusBar({
   error,
   usage,
 }: StatusBarProps) {
+  const { os } = usePlatform()
   return (
     <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-(--color-border) bg-(--bg-page) px-3 py-1 text-xs text-(--color-text-subtle) sm:px-4">
       {/* Left: session ID */}
@@ -51,7 +54,7 @@ export function StatusBar({
              className="mr-0.5"
            />
          )}
-         <span className="hidden text-(--color-text-subtle) sm:inline">Ctrl+N new</span>
+         <span className="hidden text-(--color-text-subtle) sm:inline">{formatShortcut('N', os)} new</span>
        </div>
      </div>
    )

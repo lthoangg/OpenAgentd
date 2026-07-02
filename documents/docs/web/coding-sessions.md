@@ -2,7 +2,7 @@
 title: Coding Sessions UI
 description: Coding-mode session restore, workspace sidebar pagination, and reload/error handling.
 status: stable
-updated: 2026-06-24
+updated: 2026-07-02
 ---
 
 # Coding sessions UI
@@ -12,7 +12,7 @@ updated: 2026-06-24
 ## Session restore and New
 
 - `/cockpit` and workspace-backed `/coding` auto-resolve to the latest matching top-level team session, creating an empty persisted session only when none exists. Opening or trusting a workspace resumes its latest session; it is not treated as New.
-- Explicit New actions (`Ctrl+N`, topbar `+`, workspace `+`) force creation instead of resolving latest, except when the current session is already empty and idle. Pending model/thinking selections are preserved when an auto-resolve reuses an older session without those fields.
+- Explicit New actions (`⌘N`/`Ctrl+N`, topbar `+`, workspace `+`) force creation instead of resolving latest, except when the current session is already empty and idle. Pending model/thinking selections are preserved when an auto-resolve reuses an older session without those fields.
 - Queryless `/coding/{session_id}` remains valid. The frontend first uses cached session-list workspace data when available, otherwise loads session detail to recover the persisted workspace, and falls back to the current lead name when the backend omits `agent_name` for empty sessions.
 - Empty coding sessions show the workspace status card instead of the old no-agent placeholder; compaction-only history still counts as empty for this view.
 - Opening bare `/coding` without a workspace shows the launcher and hides the composer.
@@ -34,7 +34,7 @@ updated: 2026-06-24
 
 ## Workspace dock file search and review
 
-- The `+` button beside the dock tabs opens the **Command Palette** (`Ctrl+P`), which is the single unified entry point for both file search and commands in coding mode. The old inline file-search dialog has been removed.
+- The `+` button beside the dock tabs opens the **Command Palette** (`⌘P`/`Ctrl+P`), which is the single unified entry point for both file search and commands in coding mode. The old inline file-search dialog has been removed.
 - File preview tabs only show current file content. The old File/Diff toggle is removed.
 - The Changes tab keeps git review in place: each changed file expands/collapses inline. Diff hunk separators show `N lines unchanged` (italic, de-emphasised) instead of the raw `@@ … @@` header, reducing visual noise. File and diff content wrap long lines so users only scroll vertically.
 - On desktop, each changed-file row shows an **open file** icon (ExternalLink) on hover, next to the filename. Clicking it opens the file as a dock tab (hidden for deleted files). If the file no longer exists on disk, the preview shows "File no longer exists" instead of an HTTP 404 error.
@@ -48,4 +48,4 @@ updated: 2026-06-24
 
 ## Command palette scope
 
-The command palette omits custom slash commands, Focus Chat Input, and the lead self-switch command. Slash commands remain available from the composer `/` picker, `Ctrl+I` still focuses the composer, and worker-agent view commands remain in the palette.
+The command palette omits custom slash commands, Focus Chat Input, and the lead self-switch command. Slash commands remain available from the composer `/` picker, `⌘I`/`Ctrl+I` still focuses the composer, and worker-agent view commands remain in the palette. Full shortcut reference: [keyboard model](../../styling-specs/interaction.md#keyboard-model).

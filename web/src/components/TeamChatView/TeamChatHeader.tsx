@@ -11,6 +11,8 @@ import type { AgentStream } from '@/stores/useTeamStore'
 import type { TodoItem } from '@/api/types'
 import type { ViewMode } from './types'
 import { workspaceLabel } from '@/utils/workspace'
+import { usePlatform } from '@/hooks/use-platform'
+import { dispatchShortcutKey, formatShortcut } from '@/lib/keyboard-shortcut'
 
 interface TeamChatHeaderProps {
   dragHandlers: HTMLAttributes<HTMLElement>
@@ -86,6 +88,7 @@ export function TeamChatHeader({
   onViewModeChange,
 }: TeamChatHeaderProps) {
   const activeTodoCount = todos.filter((todo) => todo.status === 'pending' || todo.status === 'in_progress').length
+  const { os } = usePlatform()
 
   return (
     <header
@@ -114,7 +117,7 @@ export function TeamChatHeader({
           )}
 
           {/* Hamburger target depends on mode: coding sidebar toggle,
-              mobile drawer, or synthetic Ctrl+B for the normal sidebar
+              mobile drawer, or a synthetic ⌘B/Ctrl+B for the normal sidebar
               (whose collapse state is owned by Sidebar). */}
           <button
             type="button"
@@ -124,12 +127,12 @@ export function TeamChatHeader({
               } else if (isMobile) {
                 onMobileSidebarOpen()
               } else {
-                // Ctrl+B is owned by Sidebar's window listener.
-                window.dispatchEvent(new KeyboardEvent('keydown', { key: 'b', ctrlKey: true, metaKey: false, bubbles: true }))
+                // Sidebar's own window listener owns the ⌘B/Ctrl+B toggle.
+                dispatchShortcutKey('b', os)
               }
             }}
             aria-label="Toggle sidebar"
-            title="Toggle sidebar (Ctrl+B)"
+            title={`Toggle sidebar (${formatShortcut('B', os)})`}
             className="flex h-9 w-9 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-8 md:w-8"
           >
             <Menu size={16} aria-hidden="true" />
@@ -255,14 +258,14 @@ export function TeamChatHeader({
                   Icon: FolderOpen,
                   onClick: () => setShowFilesPanel((v) => !v),
                   disabled: !sessionId,
-                  title: sessionId ? 'Workspace files (Ctrl+F)' : 'No active session',
+                  title: sessionId ? `Workspace files (${formatShortcut('F', os)})` : 'No active session',
                   ariaLabel: 'Workspace files',
                   className: showFilesPanel ? 'border border-(--color-border-strong) bg-(--bg-key) text-(--color-text)' : undefined,
                 }}
             agentsAction={{
               Icon: SlidersHorizontal,
               onClick: onToggleAgentCapabilities,
-              title: 'Session model settings (Ctrl+A)',
+              title: `Session model settings (${formatShortcut('A', os, { shift: true })})`,
               ariaLabel: 'Session model settings',
               className: agentCapabilitiesOpen ? 'mr-2 bg-(--bg-key) text-(--color-text)' : 'mr-2',
             }}

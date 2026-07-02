@@ -20,6 +20,8 @@ import type { LucideIcon } from 'lucide-react'
 import { TopbarAction } from '@/components/ui/topbar-action'
 import { useDeferredUnmount } from '@/components/ui/_use-deferred-unmount'
 import { cn } from '@/lib/utils'
+import { usePlatform } from '@/hooks/use-platform'
+import { formatShortcut } from '@/lib/keyboard-shortcut'
 import type { TodoItem } from '@/api/types'
 
 // ── Status → row style ──────────────────────────────────────────────────────
@@ -90,6 +92,7 @@ export function TodosPopover({
     [todos],
   )
 
+  const { os } = usePlatform()
   const { mounted, closing } = useDeferredUnmount(open, 100)
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const desktopPanelRef = useRef<HTMLDivElement | null>(null)
@@ -301,7 +304,7 @@ export function TodosPopover({
           Icon={ListTodo}
           indicator={hasInProgress}
           badge={progressLabel}
-          title={sessionId ? 'Task list (Ctrl+T)' : 'No active session'}
+          title={sessionId ? `Task list (${formatShortcut('T', os)})` : 'No active session'}
           aria-label="Task list"
           aria-expanded={open}
           disabled={!sessionId}

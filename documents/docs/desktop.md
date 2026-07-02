@@ -2,7 +2,7 @@
 title: Desktop distribution
 description: How OpenAgentd packages, ships, signs, and updates the native desktop app.
 status: stable
-updated: 2026-06-25
+updated: 2026-07-02
 ---
 
 # Desktop distribution
@@ -108,7 +108,7 @@ The **About OpenAgentd** item opens the native About panel populated with the ap
 
 **Home**, **Cockpit**, **Coding**, **Settings**, **Providers**, **Notifications**, and **Telemetry** are route shortcuts. **Show OpenAgentd** focuses the primary window state; **New Window** (`⌘/Ctrl+N`) opens another cockpit window backed by the same current backend as the active window (bundled sidecar + desktop token, or that window's selected external server). **Home** intentionally resets the active webview to the mode picker.
 
-**Command Palette**, **Scheduled Tasks**, and **Session Settings** are bridged from native menu/tray events into the same React/Zustand actions used by the in-app shortcuts. They summon the active desktop window first, then open the requested overlay or panel. Scheduled tasks are a panel inside the cockpit today; the `/scheduler` route remains a compatibility redirect rather than a standalone page.
+**Command Palette** (`CmdOrCtrl+P`), **Scheduled Tasks** (`CmdOrCtrl+S`), and **Session Settings** (`CmdOrCtrl+Shift+A`) are bridged from native menu/tray events into the same React/Zustand actions used by the in-app shortcuts, so their accelerators match the platform-aware `⌘`/`Ctrl` shortcuts used in-app — see [`interaction.md#keyboard-model`](../styling-specs/interaction.md#keyboard-model). They summon the active desktop window first, then open the requested overlay or panel. Scheduled tasks are a panel inside the cockpit today; the `/scheduler` route remains a compatibility redirect rather than a standalone page.
 
 The **View → Reload** action (`⌘/Ctrl+R`) calls `window.location.reload()` on the active webview, respecting the HTTP cache. The tray **Reload Window** action uses the same webview-only reload path for cases where the main window is hidden or wedged. **Force Reload** (`⌘/Ctrl+Shift+R`) is backend-mode-aware: windows using an external backend do a frontend-only reload and keep their current external server selection, while windows using the bundled backend take the bundled reload path. On macOS that bundled path restarts the app process for faster recovery; on other platforms it restarts the managed sidecar, waits for health, then reinjects the new backend port/token into open bundled windows. To keep hard reload responsive, the old sidecar gets a short graceful-shutdown window before Tauri force-kills it and starts the replacement; normal quit/update shutdown still uses the longer graceful shutdown path. Reload always brings a window to front before refreshing so the user sees the result.
 

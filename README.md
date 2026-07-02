@@ -37,7 +37,7 @@
 
 A short list of the most important shipped capabilities. The canonical, version-cited catalogue is [`documents/docs/features.md`](https://github.com/lthoangg/openagentd/blob/main/documents/docs/features.md); other feature requests and future work live in [GitHub issues](https://github.com/lthoangg/OpenAgentd/issues).
 
-**A cockpit, not a chat box.** Command palette (Ctrl+P), slash commands (`/init`, `/continue`, `/compact`, `/undo`, `/redo`), opencode-style shell sends (`!git status`), drag-and-drop files, full-screen image viewer, and an inspector that shows every tool call and what came back, including inline Git-like diffs for file edits.
+**A cockpit, not a chat box.** Command palette (⌘P/Ctrl+P), slash commands (`/init`, `/continue`, `/compact`, `/undo`, `/redo`), opencode-style shell sends (`!git status`), drag-and-drop files, full-screen image viewer, and an inspector that shows every tool call and what came back, including inline Git-like diffs for file edits.
 
 ![Tool call inspector — arguments, execution status, and results](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/tool-call-inspector.png)
 

@@ -13,20 +13,23 @@ import { MacTitleBar } from '@/components/MacTitleBar'
 import { useMobileViewportGuards } from '@/hooks/use-mobile-viewport'
 import { useDesktopCommands } from '@/lib/desktop-commands'
 import { closestRestorableRoute } from '@/lib/route-restore'
+import { getPlatform } from '@/hooks/use-platform'
+import { isPrimaryShortcut } from '@/lib/keyboard-shortcut'
 
 export function Root() {
   useMobileViewportGuards()
   useDesktopCommands()
 
-  // Global Ctrl+. shortcut — opens/toggles the Settings modal from any page.
+  // Global ⌘, / Ctrl+, shortcut — opens/toggles the Settings modal from any page.
   const openSettings = useSettingsStore((s) => s.openSettings)
   const closeSettings = useSettingsStore((s) => s.closeSettings)
   const settingsOpen = useSettingsStore((s) => s.open)
   const settingsOpenRef = useRef(settingsOpen)
   useEffect(() => { settingsOpenRef.current = settingsOpen }, [settingsOpen])
   useEffect(() => {
+    const { os } = getPlatform()
     const handler = (e: KeyboardEvent) => {
-      if (e.ctrlKey && !e.metaKey && e.key === '.') {
+      if (e.key === ',' && isPrimaryShortcut(e, os)) {
         e.preventDefault()
         if (settingsOpenRef.current) closeSettings()
         else openSettings()

@@ -1,5 +1,5 @@
 /**
- * CommandPalette — Ctrl+P unified search overlay.
+ * CommandPalette — ⌘P / Ctrl+P unified search overlay.
  *
  * Shows a searchable list of commands and (in coding mode) workspace files.
  * Each command has a label, description, keyboard shortcut hint, and an action

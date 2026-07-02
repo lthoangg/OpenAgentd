@@ -182,7 +182,7 @@ return HTTP 422 on mismatch.
 
 `PUT` accepts a partial body (`ScheduledTaskUpdate`) — all fields optional. On update the backend cancels the existing timer, recalculates `next_fire_at`, persists to DB, and restarts the timer if `enabled=true`. `max_runs` is an optional positive cap on successful firings; when reached, the task is disabled, marked `completed`, and no further fire time is scheduled. See [`agent/tools.md`](../agent/tools.md#scheduler-builtinschedulepy) for field semantics and schedule types.
 
-`GET /api/scheduler/tasks` returns **all** tasks unfiltered. The web UI (`SchedulerPanel`, toggled with `Ctrl+S`) also shows all scheduled tasks and labels each row with its routing target (`normal` or `coding · <workspace>`). The [`schedule_task` tool](../agent/tools.md#routing-target--auto-injected--enforced) remains scoped to the calling agent's context. Task detail view includes an **Edit** button that opens an inline edit form pre-populated with current values.
+`GET /api/scheduler/tasks` returns **all** tasks unfiltered. The web UI (`SchedulerPanel`, toggled with `⌘S`/`Ctrl+S`) also shows all scheduled tasks and labels each row with its routing target (`normal` or `coding · <workspace>`). The [`schedule_task` tool](../agent/tools.md#routing-target--auto-injected--enforced) remains scoped to the calling agent's context. Task detail view includes an **Edit** button that opens an inline edit form pre-populated with current values.
 
 ## Speech endpoints
 

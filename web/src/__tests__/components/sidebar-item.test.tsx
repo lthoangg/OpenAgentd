@@ -2,9 +2,12 @@
  * Tests for ``components/ui/sidebar-item.tsx``.
  *
  * The big behavioural change here was the ``^N`` shorthand expansion
- * inside ``renderKbd()``: a caret prefix means "the canonical
- * cross-platform modifier" and must render as the literal ``Ctrl+N``
- * label (Ctrl-everywhere policy — no per-OS glyph variation).
+ * inside ``renderKbd()``: a caret prefix means "the platform's primary
+ * modifier" and renders as ``Ctrl+N`` on Windows/Linux or ``⌘N`` on
+ * macOS (see ``lib/keyboard-shortcut.ts``). These tests run under
+ * happy-dom, which reports an unrecognised platform, so ``formatShortcut``
+ * falls back to the ``Ctrl+`` label — the assertions below hold for that
+ * default environment.
  *
  * Other surface we lock in:
  *

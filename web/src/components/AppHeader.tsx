@@ -26,7 +26,7 @@ export interface AppHeaderProps {
   right?: ReactNode
   /** When omitted, the hamburger button is hidden. */
   onToggleSidebar?: () => void
-  /** Tooltip hint, e.g. `'Ctrl+B'`. */
+   /** Tooltip hint, e.g. `'Ctrl+B'` / `'⌘B'`. */
   toggleShortcut?: string
   homeTo?: string
   className?: string

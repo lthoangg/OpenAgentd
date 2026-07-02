@@ -190,7 +190,7 @@ openagentd health
 - **Send a message** — the default lead agent (`openagentd`) is ready to chat. Start with something like "what can you do?" to explore its tools.
 - **Switch agents** — click the agent name in the header to pick a different agent or spin up a team.
 - **Workspace panel** — every file the agent reads, writes, or generates appears in the left panel. Click any file to preview or download it.
-- **Command palette** — press `Ctrl+P` (or `Cmd+P` on macOS) to search sessions, agents, files, and actions.
+- **Command palette** — press `⌘P` (macOS) or `Ctrl+P` (Windows/Linux) to search sessions, agents, files, and actions.
 
 ### 4. Customize your agent
 

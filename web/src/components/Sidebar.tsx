@@ -33,7 +33,8 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { LongPressButton } from '@/components/ui/long-press-button'
-import { usePlatform } from '@/hooks/use-platform'
+import { usePlatform, getPlatform } from '@/hooks/use-platform'
+import { isPrimaryShortcut, formatShortcut } from '@/lib/keyboard-shortcut'
 import { useResizableWidth } from '@/hooks/use-resizable-width'
 import type { SessionResponse } from '@/api/types'
 import { useToastStore } from '@/stores/useToastStore'
@@ -201,19 +202,21 @@ export function Sidebar({
     setPullDistance(0)
   }, [canPullRefresh, pullDistance, refetchSessions])
 
-  // Ctrl+B: collapse sidebar; Ctrl+R: refresh sessions.
+  // ⌘B / Ctrl+B: collapse sidebar. Refresh-sessions no longer has a
+  // shortcut (low-frequency; the header button + auto-refetch cover it).
   // Ctrl+S (scheduler) lives in TeamChatView — that panel
   // moved out of the sidebar per the topbar-redesign wireframe and their
   // open-state is owned by useUIStore.
   useEffect(() => {
+    const { os } = getPlatform()
     const handler = (e: KeyboardEvent) => {
-      if (!e.ctrlKey || e.metaKey) return
-      if (e.key === 'b') { e.preventDefault(); toggleCollapse() }
-      if (e.key === 'r') { e.preventDefault(); refetchSessions() }
+      if (e.key !== 'b' || !isPrimaryShortcut(e, os)) return
+      e.preventDefault()
+      toggleCollapse()
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [toggleCollapse, refetchSessions])
+  }, [toggleCollapse])
 
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = sessions
 
@@ -403,7 +406,7 @@ export function Sidebar({
           On mobile the drawer is always fully expanded.
 
           No brand block — Home lives in the topbar, sidebar toggle is
-          owned by the topbar hamburger + Ctrl+B (see wireframe ``mmhQL``
+          owned by the topbar hamburger + ⌘B/Ctrl+B (see wireframe ``mmhQL``
           which starts directly with the search input). */}
       {(() => {
         const showIconOnly = !isMobile && collapsed
@@ -419,7 +422,7 @@ export function Sidebar({
                   onClick={onCommandPalette}
                   className="flex h-8 w-full items-center gap-2 rounded-md border border-(--color-border) bg-(--bg-page) px-2.5 text-left text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
                   aria-label="Open command palette"
-                  title="Open command palette (Ctrl+P)"
+                  title={`Open command palette (${formatShortcut('P', os)})`}
                 >
                   <Search size={13} aria-hidden="true" />
                   <span className="flex-1">Search…</span>
@@ -473,7 +476,7 @@ export function Sidebar({
                       onClick={() => refetchSessions()}
                       className="rounded p-1 text-(--color-text-subtle) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-muted)"
                       aria-label="Refresh sessions"
-                      title="Refresh sessions (Ctrl+R)"
+                      title="Refresh sessions"
                     >
                       <RefreshCw size={12} className={sessions.isFetching ? 'animate-spin' : ''} />
                     </button>
@@ -582,7 +585,7 @@ export function Sidebar({
                       onClick={() => { openSettings(); onMobileClose?.() }}
                       className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
                       aria-label="Settings"
-                      title="Settings (Ctrl+.)"
+                      title={`Settings (${formatShortcut(',', os)})`}
                     >
                       <Settings size={14} aria-hidden="true" />
                     </button>
@@ -592,7 +595,7 @@ export function Sidebar({
                         onClick={onCommandPalette}
                         className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
                         aria-label="Help and shortcuts"
-                        title="Help and shortcuts (Ctrl+P)"
+                        title={`Help and shortcuts (${formatShortcut('P', os)})`}
                       >
                         <HelpCircle size={14} aria-hidden="true" />
                       </button>

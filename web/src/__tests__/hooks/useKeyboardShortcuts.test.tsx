@@ -4,21 +4,30 @@ import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts"
 
 afterEach(cleanup)
 
+/**
+ * These tests run under happy-dom, whose ``navigator`` fields resolve to an
+ * unrecognised platform (see ``use-platform.ts``'s ``detectOS`` fallback).
+ * ``getPlatform().os`` is therefore ``'unknown'``, which takes the
+ * non-macOS branch in ``isPrimaryShortcut`` — i.e. the primary modifier is
+ * ``Ctrl`` in this suite, matching every assertion below.
+ */
+
 /** Build a keyboard event with the requested modifier flags. */
 function buildEvent(
   key: string,
-  opts: { ctrlKey?: boolean; metaKey?: boolean } = {},
+  opts: { ctrlKey?: boolean; metaKey?: boolean; shiftKey?: boolean } = {},
 ): KeyboardEvent {
   return new KeyboardEvent("keydown", {
     key,
     ctrlKey: opts.ctrlKey ?? false,
     metaKey: opts.metaKey ?? false,
+    shiftKey: opts.shiftKey ?? false,
     bubbles: true,
     cancelable: true,
   })
 }
 
-function Harness({ shortcuts }: { shortcuts: Partial<Record<string, () => void>> }) {
+function Harness({ shortcuts }: { shortcuts: Parameters<typeof useKeyboardShortcuts>[0] }) {
   useKeyboardShortcuts(shortcuts)
   return null
 }
@@ -35,7 +44,7 @@ describe("useKeyboardShortcuts", () => {
     expect(event.defaultPrevented).toBe(true)
   })
 
-  it("ignores Cmd-only press (we never bind to ⌘)", () => {
+  it("ignores Cmd-only press on a non-mac platform", () => {
     const onDot = mock(() => {})
     render(<Harness shortcuts={{ ".": onDot }} />)
 
@@ -114,5 +123,30 @@ describe("useKeyboardShortcuts", () => {
 
     expect(listener).toHaveBeenCalledTimes(1)
     window.removeEventListener("focus-chat-input", listener)
+  })
+
+  describe("shift-qualified entries", () => {
+    it("only fires when Shift matches the requested state", () => {
+      const onA = mock(() => {})
+      render(<Harness shortcuts={{ a: { handler: onA, shift: true } }} />)
+
+      // Bare Ctrl+A must NOT fire — this entry requires Shift.
+      window.dispatchEvent(buildEvent("a", { ctrlKey: true }))
+      expect(onA).not.toHaveBeenCalled()
+
+      window.dispatchEvent(buildEvent("a", { ctrlKey: true, shiftKey: true }))
+      expect(onA).toHaveBeenCalledTimes(1)
+    })
+
+    it("a plain function entry requires Shift to be absent", () => {
+      const onB = mock(() => {})
+      render(<Harness shortcuts={{ b: onB }} />)
+
+      window.dispatchEvent(buildEvent("b", { ctrlKey: true, shiftKey: true }))
+      expect(onB).not.toHaveBeenCalled()
+
+      window.dispatchEvent(buildEvent("b", { ctrlKey: true }))
+      expect(onB).toHaveBeenCalledTimes(1)
+    })
   })
 })

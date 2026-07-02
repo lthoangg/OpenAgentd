@@ -70,7 +70,7 @@ Right-side workspace explorer for `/coding` mode.
 ### TeamChatView (`TeamChatView/index.tsx`)
 - `effectiveViewMode = isMobile ? 'agent' : viewMode` — split/unified modes disabled on mobile.
 - View-mode toggle, token count, split/unified controls are hidden on mobile.
-- `Ctrl+P` (command palette) and `v` (cycle view mode) shortcuts no-op on mobile.
+- Command Palette (`⌘P`/`Ctrl+P`) shortcut no-ops on mobile. View-mode cycling has no dedicated shortcut on any platform (palette-only) — see [`interaction.md#keyboard-model`](../../styling-specs/interaction.md#keyboard-model).
 - `CommandPalette` is never rendered on mobile (`!isMobile && showPalette`).
 - User and queued-message bubbles can use the full chat width on mobile; `md:` and wider viewports keep the narrower desktop caps.
 - Long single-agent transcripts render the newest 80 turns first and expose **Show earlier messages** to reveal older turns in chunks, reducing initial mobile layout cost.
@@ -195,8 +195,4 @@ A few `components/ui/*` primitives have responsive guards so individual call sit
 
 ## Keyboard shortcuts on mobile
 
-| Shortcut | Mobile |
-|----------|--------|
-| `Ctrl+P` (command palette) | disabled |
-| `v` (cycle view mode) | disabled |
-| All others | unchanged |
+Command Palette (`⌘P`/`Ctrl+P`) no-ops on mobile; all other shortcuts are unchanged. Full shortcut reference (including the platform-aware `⌘`/`Ctrl` modifier and Session Settings' Shift qualifier): [`interaction.md#keyboard-model`](../../styling-specs/interaction.md#keyboard-model).

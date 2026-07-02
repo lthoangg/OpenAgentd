@@ -921,16 +921,17 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
 
   useKeyboardShortcuts({
     n: handleNewSession,
-    v: isMobile ? undefined : cycleViewMode,
-    a: handleToggleAgentCapabilities,
+    // ⌘⇧A / Ctrl+Shift+A — bare ⌘A is "Select All" on macOS, so Session
+    // Settings requires Shift to avoid clobbering it.
+    a: { handler: handleToggleAgentCapabilities, shift: true },
     f: handleWorkspaceFiles,
     t: () => { if (sessionIdState) handleSetShowTodos((v) => !v) },
     p: isMobile ? undefined : handleTogglePalette,
     b: mode === 'coding' ? handleCodingSidebarToggle : undefined,
-    // Ctrl+S — open the scheduler drawer (state in useUIStore).
+    // ⌘S / Ctrl+S — open the scheduler drawer (state in useUIStore).
     s: handleToggleScheduler,
-    // Ctrl+I — focus the chat input (dispatched via CustomEvent so future
-    // callers don't need a ref to the input).
+    // ⌘I / Ctrl+I — focus the chat input (dispatched via CustomEvent so
+    // future callers don't need a ref to the input).
     'i': () => window.dispatchEvent(new CustomEvent('focus-chat-input')),
   })
 

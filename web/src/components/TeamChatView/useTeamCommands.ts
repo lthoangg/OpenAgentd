@@ -18,23 +18,8 @@ import type { useNavigate } from '@tanstack/react-router'
 import type { Command } from '../CommandPalette'
 import type { ViewMode } from './types'
 import { useSettingsStore } from '@/stores/useSettingsStore'
-
-/**
- * Dispatch a synthetic Ctrl+key event so the window-level shortcut
- * handlers fire when a palette item is activated. We use Ctrl (not
- * Cmd) on every platform — see hooks/useKeyboardShortcuts.ts for the
- * rationale.
- */
-function dispatchCtrlKey(key: string): void {
-  window.dispatchEvent(
-    new KeyboardEvent('keydown', {
-      key,
-      ctrlKey: true,
-      metaKey: false,
-      bubbles: true,
-    }),
-  )
-}
+import { usePlatform } from '@/hooks/use-platform'
+import { dispatchShortcutKey, formatShortcut } from '@/lib/keyboard-shortcut'
 
 interface UseTeamCommandsArgs {
   // View / layout
@@ -65,22 +50,24 @@ export function useTeamCommands({
   navigate,
 }: UseTeamCommandsArgs): Command[] {
   const openSettings = useSettingsStore((s) => s.openSettings)
+  const { os } = usePlatform()
   return useMemo<Command[]>(() => [
-    { id: 'new-chat', group: 'Team', label: 'New Team Chat', description: 'Start a fresh team conversation', shortcut: 'Ctrl+N', action: handleNewSession },
+    { id: 'new-chat', group: 'Team', label: 'New Team Chat', description: 'Start a fresh team conversation', shortcut: formatShortcut('N', os), action: handleNewSession },
     {
       id: 'toggle-view', group: 'View',
       label: viewMode === 'agent' ? 'Switch to Split View' : 'Switch to Agent View',
-      description: 'Cycle: Agent → Split', shortcut: 'Ctrl+V', action: cycleViewMode,
+      description: 'Cycle: Agent → Split', action: cycleViewMode,
     },
-    { id: 'agent-info',       group: 'View',       label: 'Session Settings', description: 'Show session model settings and lead context', shortcut: 'Ctrl+A', action: toggleAgentCapabilities },
-    { id: 'todos',            group: 'View',       label: 'Task List',          description: 'View agent todos and progress', shortcut: 'Ctrl+T', action: () => setShowTodos((v) => !v) },
-    { id: 'workspace-files',  group: 'View',       label: mode === 'coding' ? 'Open Changed & Files' : 'Toggle Workspace Files', description: mode === 'coding' ? 'Browse changed files and workspace files' : 'Browse files the agent has produced', shortcut: 'Ctrl+F', action: handleWorkspaceFiles },
+    // Bare ⌘A is "Select All" on macOS, so Session Settings requires Shift.
+    { id: 'agent-info',       group: 'View',       label: 'Session Settings', description: 'Show session model settings and lead context', shortcut: formatShortcut('A', os, { shift: true }), action: toggleAgentCapabilities },
+    { id: 'todos',            group: 'View',       label: 'Task List',          description: 'View agent todos and progress', shortcut: formatShortcut('T', os), action: () => setShowTodos((v) => !v) },
+    { id: 'workspace-files',  group: 'View',       label: mode === 'coding' ? 'Open Changed & Files' : 'Toggle Workspace Files', description: mode === 'coding' ? 'Browse changed files and workspace files' : 'Browse files the agent has produced', shortcut: formatShortcut('F', os), action: handleWorkspaceFiles },
     mode === 'coding'
-      ? { id: 'collapse-sidebar', group: 'View', label: 'Toggle Coding Sidebar', description: 'Collapse or expand workspaces and sessions', shortcut: 'Ctrl+B', action: handleCodingSidebarToggle }
-      : { id: 'collapse-sidebar', group: 'View', label: 'Toggle Sidebar', description: '', shortcut: 'Ctrl+B', action: () => dispatchCtrlKey('b') },
-    { id: 'scheduled-tasks',  group: 'View',       label: 'Scheduled Tasks',   description: 'Manage cron and scheduled agent tasks', shortcut: 'Ctrl+S', action: () => dispatchCtrlKey('s') },
+      ? { id: 'collapse-sidebar', group: 'View', label: 'Toggle Coding Sidebar', description: 'Collapse or expand workspaces and sessions', shortcut: formatShortcut('B', os), action: handleCodingSidebarToggle }
+      : { id: 'collapse-sidebar', group: 'View', label: 'Toggle Sidebar', description: '', shortcut: formatShortcut('B', os), action: () => dispatchShortcutKey('b', os) },
+    { id: 'scheduled-tasks',  group: 'View',       label: 'Scheduled Tasks',   description: 'Manage cron and scheduled agent tasks', shortcut: formatShortcut('S', os), action: () => dispatchShortcutKey('s', os) },
     { id: 'go-home',     group: 'Navigation', label: 'Go to Home',     description: '', action: () => navigate({ to: '/' }) },
     ...(mode === 'normal' ? [{ id: 'go-coding', group: 'Navigation', label: 'Go to Coding Mode', description: 'Open the coding workbench', action: () => navigate({ to: '/coding' }) }] : []),
-    { id: 'go-settings', group: 'Navigation', label: 'Open Settings',  description: 'Manage agents, skills, providers & more', shortcut: 'Ctrl+.', action: () => openSettings('agents') },
-  ], [viewMode, cycleViewMode, toggleAgentCapabilities, setShowTodos, handleWorkspaceFiles, handleCodingSidebarToggle, mode, handleNewSession, navigate, openSettings])
+    { id: 'go-settings', group: 'Navigation', label: 'Open Settings',  description: 'Manage agents, skills, providers & more', shortcut: formatShortcut(',', os), action: () => openSettings('agents') },
+  ], [os, viewMode, cycleViewMode, toggleAgentCapabilities, setShowTodos, handleWorkspaceFiles, handleCodingSidebarToggle, mode, handleNewSession, navigate, openSettings])
 }

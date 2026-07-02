@@ -8,22 +8,13 @@
 import { useEffect } from 'react'
 import { useUIStore } from '@/stores/useUIStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
-
-function dispatchCtrlKey(key: string): void {
-  window.dispatchEvent(
-    new KeyboardEvent('keydown', {
-      key,
-      ctrlKey: true,
-      metaKey: false,
-      bubbles: true,
-    }),
-  )
-}
+import { getPlatform } from '@/hooks/use-platform'
+import { dispatchShortcutKey } from '@/lib/keyboard-shortcut'
 
 function runDesktopCommand(command: unknown): void {
   switch (command) {
     case 'command_palette':
-      dispatchCtrlKey('p')
+      dispatchShortcutKey('p', getPlatform().os)
       break
     case 'scheduler':
       useUIStore.getState().toggleScheduler()

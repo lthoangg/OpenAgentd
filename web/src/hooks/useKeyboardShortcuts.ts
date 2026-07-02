@@ -1,25 +1,32 @@
 /**
- * useKeyboardShortcuts — registers window-level Ctrl+<key> shortcuts.
+ * useKeyboardShortcuts — registers window-level primary-modifier shortcuts.
  *
- * Cross-platform note: we use ``Ctrl`` everywhere (Mac included). The
- * Mac convention is ``⌘`` but the desktop shell positions itself as a
- * tool with a power-user feel where Ctrl is the consistent modifier
- * regardless of OS. ``e.metaKey`` (⌘ on Mac, Win-key on Windows) is
- * explicitly excluded so the OS-level shortcuts (⌘W, ⌘Q, etc.) keep
- * working.
+ * Cross-platform note: the primary modifier is ``⌘`` (Meta) on macOS and
+ * ``Ctrl`` everywhere else — see ``lib/keyboard-shortcut.ts`` for the
+ * rationale and ``isPrimaryShortcut`` helper this hook is built on. The
+ * *other* platform's modifier is explicitly excluded so OS-level shortcuts
+ * (⌘W, ⌘Q, etc. on mac; Ctrl+W on Windows/Linux) keep working, and so a
+ * stray Ctrl+Meta combo never double-fires.
  *
- * Shortcuts map: key (lowercase) → handler function.
+ * Shortcuts map: key (lowercase) → handler function, or ``{ handler, shift }``
+ * for entries that additionally require Shift (used to dodge a real OS/
+ * webview conflict, e.g. Session Settings uses ⌘⇧A because bare ⌘A is
+ * "Select All").
  *
  * Usage:
  *   useKeyboardShortcuts({
- *     a: () => setShowAgentInfo(v => !v),
  *     b: () => sidebar.toggle(),
+ *     a: { handler: () => setShowAgentInfo(v => !v), shift: true },
  *   })
  */
 
 import { useEffect, useLayoutEffect, useRef } from 'react'
+import { getPlatform } from '@/hooks/use-platform'
+import { isPrimaryShortcut } from '@/lib/keyboard-shortcut'
 
-type ShortcutMap = Partial<Record<string, () => void>>
+type ShortcutHandler = () => void
+type ShortcutEntry = ShortcutHandler | { handler: ShortcutHandler; shift?: boolean }
+type ShortcutMap = Partial<Record<string, ShortcutEntry>>
 
 export function useKeyboardShortcuts(shortcuts: ShortcutMap): void {
   // Keep ref in sync with the latest shortcuts map without re-registering
@@ -31,13 +38,15 @@ export function useKeyboardShortcuts(shortcuts: ShortcutMap): void {
   })
 
   useEffect(() => {
+    const { os } = getPlatform()
+
     const handler = (e: KeyboardEvent) => {
-      if (!e.ctrlKey || e.metaKey) return
-      const fn = ref.current[e.key.toLowerCase()]
-      if (fn) {
-        e.preventDefault()
-        fn()
-      }
+      const entry = ref.current[e.key.toLowerCase()]
+      if (!entry) return
+      const { handler: fn, shift } = typeof entry === 'function' ? { handler: entry, shift: false } : entry
+      if (!isPrimaryShortcut(e, os, { shift })) return
+      e.preventDefault()
+      fn()
     }
 
     window.addEventListener('keydown', handler)

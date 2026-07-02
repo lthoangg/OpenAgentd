@@ -3,7 +3,7 @@
  * route. Mirrors the wireframe sidebar ``Q4zeZN`` in
  * ``.diagrams/OpenAgentd-ui.pen``:
  *
- *   • Search input at the top — opens the command palette (Ctrl+P).
+ *   • Search input at the top — opens the command palette (⌘P / Ctrl+P).
  *   • Flat list of repositories, worktrees, and their coding sessions.
  *     Worktree/session grouping is shown with icons, counts, and spacing
  *     rather than file-tree indentation.
@@ -24,6 +24,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
+import { formatShortcut } from '@/lib/keyboard-shortcut'
 import { useResizableWidth } from '@/hooks/use-resizable-width'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import {
@@ -140,7 +141,7 @@ export function CodingSidebar({
   const prefersReducedMotion = useReducedMotion()
   // ``onCollapse`` is wired by TeamChatView's left-chrome hamburger.
   // We don't render an inline collapse toggle anymore — the topbar
-  // hamburger and Ctrl+B own that surface.
+   // hamburger and ⌘B/Ctrl+B own that surface.
   void onCollapse
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -624,7 +625,7 @@ export function CodingSidebar({
         </nav>
       )}
 
-      {/* Search trigger — opens the command palette (Ctrl+P). */}
+      {/* Search trigger — opens the command palette (⌘P / Ctrl+P). */}
       {onCommandPalette && (
         <div className={isMobile ? 'px-3 pt-3' : 'px-3 py-3'}>
           <button
@@ -632,7 +633,7 @@ export function CodingSidebar({
             onClick={onCommandPalette}
             className="flex h-8 w-full items-center gap-2 rounded-md border border-(--color-border) bg-(--bg-page) px-2.5 text-left text-xs text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
             aria-label="Open command palette"
-            title="Open command palette (Ctrl+P)"
+            title={`Open command palette (${formatShortcut('P', os)})`}
           >
             <Search size={13} aria-hidden="true" />
             <span className="flex-1">Search…</span>
@@ -839,7 +840,7 @@ export function CodingSidebar({
             onClick={() => { openSettings(); onMobileClose?.() }}
             className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
             aria-label="Settings"
-            title="Settings (Ctrl+.)"
+            title={`Settings (${formatShortcut(',', os)})`}
           >
             <Settings size={14} aria-hidden="true" />
           </button>
@@ -849,7 +850,7 @@ export function CodingSidebar({
               onClick={onCommandPalette}
               className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
               aria-label="Help and shortcuts"
-              title="Help and shortcuts (Ctrl+P)"
+              title={`Help and shortcuts (${formatShortcut('P', os)})`}
             >
               <HelpCircle size={14} aria-hidden="true" />
             </button>

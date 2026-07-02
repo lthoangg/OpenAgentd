@@ -6,18 +6,23 @@
  * inputs, so we exercise it through a tiny test harness that calls
  * the hook and exposes the result to assertions.
  *
+ * Platform note: these tests run under happy-dom, whose ``navigator``
+ * resolves to an unrecognised platform (see ``use-platform.ts``), so
+ * ``formatShortcut`` takes the non-macOS branch and every shortcut
+ * label below is a literal ``Ctrl+X`` (or ``Ctrl+Shift+X``) string.
+ *
  * Invariants we verify:
  *
- *   - Every shortcut is rendered as a literal ``Ctrl+X`` string
- *     (no platform-specific glyphs, no ⌘/Cmd anywhere). This is the
- *     contract documented in ``hooks/useKeyboardShortcuts.ts``.
- *   - ``dispatchCtrlKey(key)``-style commands actually dispatch a
- *     keydown event with ``ctrlKey: true`` and ``metaKey: false``,
- *     so the global shortcut handler (which checks
- *     ``e.ctrlKey && !e.metaKey``) fires.
+ *   - Shortcut strings match the platform's primary-modifier label.
+ *   - ``dispatchShortcutKey(key, os)``-style commands actually dispatch
+ *     a keydown event with ``ctrlKey: true`` and ``metaKey: false`` on
+ *     this non-mac test platform, so the global shortcut handler (which
+ *     uses ``isPrimaryShortcut``) fires.
  *   - ``mode === 'coding'`` swaps the sidebar / workspace commands.
  *   - The list is *built each render* — re-running the hook with new
  *     inputs returns the new commands (no stale closures).
+ *   - The view-cycle command no longer carries a dedicated shortcut
+ *     (palette-only, per the low-frequency-action redesign).
  */
 import { describe, it, expect, afterEach, mock } from "bun:test"
 import { renderHook, cleanup } from "@testing-library/react"
@@ -57,45 +62,31 @@ function byId(cmds: Command[], id: string): Command {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  Shortcut strings — Ctrl+X literals only
+//  Shortcut strings — platform-formatted labels
 // ════════════════════════════════════════════════════════════════════════════
 describe("useTeamCommands — shortcut labels", () => {
-  it("all shortcut strings start with literal 'Ctrl+'", () => {
-    const { result } = renderHook(() => useTeamCommands(makeArgs()))
-    for (const cmd of result.current) {
-      if (!cmd.shortcut) continue
-      expect(cmd.shortcut).toMatch(/^Ctrl\+/)
-    }
-  })
-
-  it("no shortcut uses ⌘ or 'Cmd' (Ctrl-everywhere policy)", () => {
-    const { result } = renderHook(() => useTeamCommands(makeArgs()))
-    for (const cmd of result.current) {
-      if (!cmd.shortcut) continue
-      expect(cmd.shortcut).not.toContain("⌘")
-      expect(cmd.shortcut.toLowerCase()).not.toContain("cmd")
-      expect(cmd.shortcut.toLowerCase()).not.toContain("meta")
-      expect(cmd.shortcut).not.toContain("Mod+")
-    }
-  })
-
-  it("documented shortcuts are present with their literal labels", () => {
+  it("documented shortcuts are present with their platform-formatted labels", () => {
     const { result } = renderHook(() => useTeamCommands(makeArgs()))
     expect(byId(result.current, "new-chat").shortcut).toBe("Ctrl+N")
-    expect(byId(result.current, "toggle-view").shortcut).toBe("Ctrl+V")
-    expect(byId(result.current, "agent-info").shortcut).toBe("Ctrl+A")
+    expect(byId(result.current, "agent-info").shortcut).toBe("Ctrl+Shift+A")
     expect(byId(result.current, "todos").shortcut).toBe("Ctrl+T")
     expect(byId(result.current, "workspace-files").shortcut).toBe("Ctrl+F")
     expect(byId(result.current, "scheduled-tasks").shortcut).toBe("Ctrl+S")
     expect(byId(result.current, "collapse-sidebar").shortcut).toBe("Ctrl+B")
+    expect(byId(result.current, "go-settings").shortcut).toBe("Ctrl+,")
+  })
+
+  it("toggle-view has no dedicated shortcut (palette-only, low-frequency action)", () => {
+    const { result } = renderHook(() => useTeamCommands(makeArgs()))
+    expect(byId(result.current, "toggle-view").shortcut).toBeUndefined()
   })
 })
 
 // ════════════════════════════════════════════════════════════════════════════
-//  dispatchCtrlKey — synthetic event shape
+//  dispatchShortcutKey — synthetic event shape
 // ════════════════════════════════════════════════════════════════════════════
-describe("useTeamCommands — dispatchCtrlKey synthetic events", () => {
-  it("collapse-sidebar (normal mode) dispatches Ctrl+b keydown", () => {
+describe("useTeamCommands — dispatchShortcutKey synthetic events", () => {
+  it("collapse-sidebar (normal mode) dispatches a primary-modifier 'b' keydown", () => {
     const { result } = renderHook(() => useTeamCommands(makeArgs()))
     const captured: KeyboardEvent[] = []
     const listener = (e: Event) => captured.push(e as KeyboardEvent)
@@ -112,7 +103,7 @@ describe("useTeamCommands — dispatchCtrlKey synthetic events", () => {
     expect(captured[0].bubbles).toBe(true)
   })
 
-  it("scheduled-tasks dispatches Ctrl+s keydown", () => {
+  it("scheduled-tasks dispatches a primary-modifier 's' keydown", () => {
     const { result } = renderHook(() => useTeamCommands(makeArgs()))
     const captured: KeyboardEvent[] = []
     const listener = (e: Event) => captured.push(e as KeyboardEvent)
@@ -129,9 +120,9 @@ describe("useTeamCommands — dispatchCtrlKey synthetic events", () => {
   })
 
   it("dispatched events would trigger a Ctrl-only useKeyboardShortcuts handler", () => {
-    // Integration smoke check: the global handler uses
-    // ``e.ctrlKey && !e.metaKey`` so our synthetic events must satisfy
-    // exactly that predicate.
+    // Integration smoke check: on this non-mac test platform the global
+    // handler expects ``e.ctrlKey && !e.metaKey`` so our synthetic events
+    // must satisfy exactly that predicate.
     const { result } = renderHook(() => useTeamCommands(makeArgs()))
     const captured: KeyboardEvent[] = []
     const handler = (e: KeyboardEvent) => {
@@ -176,7 +167,7 @@ describe("useTeamCommands — coding mode swap", () => {
     expect(byId(result.current, "collapse-sidebar").label).toBe("Toggle Coding Sidebar")
   })
 
-  it("coding mode collapse-sidebar uses the dedicated handler (not dispatchCtrlKey)", () => {
+  it("coding mode collapse-sidebar uses the dedicated handler (not dispatchShortcutKey)", () => {
     let invoked = 0
     const handleCodingSidebarToggle = () => {
       invoked++

@@ -2,7 +2,7 @@
 title: Workspace Files Panel
 description: Right-side drawer for browsing, previewing, and downloading agent-generated files with live invalidation.
 status: stable
-updated: 2026-06-17
+updated: 2026-07-02
 ---
 
 # Workspace Files panel
@@ -10,7 +10,7 @@ updated: 2026-06-17
 A right-side drawer that lets users browse, preview, and download every file
 the agent has written into the session workspace (`workspace_dir(session_id)`
 — see [`configuration.md`](../configuration.md#sandbox)). Opened from the "Files" button in the team
-chat header, via `Ctrl+F`, or from the Command Palette
+chat header, via `⌘F`/`Ctrl+F`, or from the Command Palette
 (*Toggle Workspace Files*).
 
 ---
@@ -49,7 +49,7 @@ WorkspaceFilesPanel.tsx                (right drawer, w-[min(960px,95vw)])
 | Trigger | Notes |
 |---------|-------|
 | **"Files" button** in the chat header | Next to the **Agents** button; disabled when no session is active. |
-| **`Ctrl+F`** | Toggles the panel. In `/coding`, opens **Changed & Files** for the selected workspace. |
+| **`⌘F` / `Ctrl+F`** | Toggles the panel. In `/coding`, opens **Changed & Files** for the selected workspace. See [keyboard model](../../styling-specs/interaction.md#keyboard-model). |
 | **Command Palette** | Normal: *Toggle Workspace Files*. Coding: *Open Changed & Files*. |
 
 The right-side panels animate on enter/exit. Clicking outside **Changed & Files** closes it.
@@ -234,7 +234,7 @@ with an opencode-style tab strip:
 - **File tabs** open inside the dock. They render the same read-only preview
   content as the standalone file viewer, including the touch-friendly
   **File / Diff** toggle and scoped file diffs.
-- **+** opens the **Command Palette** (`Ctrl+P`) — the unified entry point for file search and commands. See [coding-sessions.md](./coding-sessions.md#workspace-dock-file-search-and-review).
+- **+** opens the **Command Palette** (`⌘P`/`Ctrl+P`) — the unified entry point for file search and commands. See [coding-sessions.md](./coding-sessions.md#workspace-dock-file-search-and-review).
 
 When the workspace dock is open, file content stays inside the dock instead of
 opening an additional right-side file viewer. The standalone

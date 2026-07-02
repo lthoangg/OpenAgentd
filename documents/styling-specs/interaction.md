@@ -1,6 +1,6 @@
 # OpenAgentd interaction model
 
-_Last updated: 2026-06-26_
+_Last updated: 2026-07-02_
 
 ## Rest, hover, focus
 
@@ -49,3 +49,23 @@ Use `SearchBar` for list filtering. It supports a leading icon, clear button, op
 ## Motion
 
 Prefer short color/opacity transitions. Avoid transform-heavy effects in dense settings surfaces. Loading indicators should be small and local; for restart actions, rotate the restart icon while pending.
+
+## Keyboard model
+
+**Source:** `web/src/lib/keyboard-shortcut.ts`, `web/src/hooks/useKeyboardShortcuts.ts`
+
+The primary modifier is platform-aware — `⌘` on macOS, `Ctrl` on Windows/Linux — computed by `isPrimaryShortcut()` / `formatShortcut()` and applied consistently across window-level shortcuts, the Command Palette, sidebar hints, and native Tauri menu accelerators (`desktop/src-tauri/src/menu.rs`, using `CmdOrCtrl`).
+
+| Action | Mac | Win/Linux |
+|---|---|---|
+| New Team Chat | `⌘N` | `Ctrl+N` |
+| Toggle Sidebar | `⌘B` | `Ctrl+B` |
+| Task List | `⌘T` | `Ctrl+T` |
+| Workspace Files | `⌘F` | `Ctrl+F` |
+| Scheduled Tasks | `⌘S` | `Ctrl+S` |
+| Command Palette | `⌘P` | `Ctrl+P` |
+| Focus chat input | `⌘I` | `Ctrl+I` |
+| Session Settings | `⌘⇧A` | `Ctrl+Shift+A` |
+| Settings | `⌘,` | `Ctrl+,` |
+
+Session Settings requires Shift on both platforms because bare `⌘A`/`Ctrl+A` is Select All. View-mode cycling and session-list refresh are intentionally **palette-only** (no dedicated shortcut) — both are low-frequency actions, and freeing their letters avoids clobbering native/webview bindings (e.g. `⌘V` paste). `Command Palette` no-ops on mobile — see [`web/mobile.md`](../docs/web/mobile.md#keyboard-shortcuts-on-mobile).

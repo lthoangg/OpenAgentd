@@ -13,14 +13,17 @@
  */
 import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
+import { getPlatform } from '@/hooks/use-platform'
+import { formatShortcut } from '@/lib/keyboard-shortcut'
 import type { ComponentType, MouseEventHandler, ReactNode } from 'react'
 
 /**
- * Convert the shorthand ``"^N"`` (caret = primary modifier) into a
- * ``"Ctrl+N"`` label. Anything else is rendered as-is.
+ * Convert the shorthand ``"^N"`` (caret = primary modifier) into the
+ * platform-appropriate label — ``"⌘N"`` on macOS, ``"Ctrl+N"`` elsewhere.
+ * Anything else is rendered as-is.
  */
 function renderKbd(kbd: string): string {
-  if (kbd.startsWith('^')) return `Ctrl+${kbd.slice(1)}`
+  if (kbd.startsWith('^')) return formatShortcut(kbd.slice(1), getPlatform().os)
   return kbd
 }
 

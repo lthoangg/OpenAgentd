@@ -71,11 +71,17 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   context (coding workspace name when available). Settings → Notifications to
   toggle or send a test. Notification sounds are handled by the operating
   system; OpenAgentd does not play an extra in-app sound.
-- **Command palette** `[since v1.0, v1.61.0]` — `Ctrl+P` (or `Cmd+P`). Search
+- **Command palette** `[since v1.0, v1.61.0]` — `⌘P`/`Ctrl+P`. Search
   sessions, agents, files, slash commands, settings. Cleaner, faster with a
   tighter animation and a curated command set that drops low-value entries.
   Command and file search overlays use the compact warm-paper surface treatment
   across desktop and mobile `[v1.74.0]`.
+- **Platform-aware keyboard shortcuts** `[v1.93.1]` — `⌘` on macOS, `Ctrl`
+  elsewhere, applied consistently across in-app shortcuts, the Command
+  Palette, and native Tauri menu accelerators. Session Settings moved to
+  `⌘⇧A`/`Ctrl+Shift+A` to avoid clobbering Select All; view-mode cycling and
+  session-list refresh lost their dedicated shortcuts (palette-only, low
+  frequency). Full table: [`interaction.md#keyboard-model`](../styling-specs/interaction.md#keyboard-model).
 - **Smooth close animations on UI components** `[v1.77.0]` — dropdown, tooltip,
   and popover now play a 100–150 ms exit animation (fade-out + zoom-out) before
   unmounting, matching the open transitions. Dialog and sheet retain their
@@ -83,12 +89,15 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   over disabled buttons via a transparent span wrapper.
 - **Type-to-focus composer** `[v1.40.0]` — in cockpit and coding chat, start
   typing on the chat surface to expand/focus the composer and capture the first
-  character without pressing `Ctrl+I` first. See [`web/chat-input.md`](./web/chat-input.md).
+  character without pressing `⌘I`/`Ctrl+I` first. See [`web/chat-input.md`](./web/chat-input.md).
 - **Developer-friendly word navigation in composer** `[v1.86.0]` — `Option + Arrow` (macOS) and `Ctrl + Arrow` (Windows/Linux) stop at programming separators like `.`, `-`, `_`, `/`, and `@` for precise navigation and text selection (`Shift` modified). See [`web/chat-input.md`](./web/chat-input.md).
-- **Native menu/tray shortcuts** `[v1.39.0]` — menubar shortcuts for Home,
+- **Native menu/tray shortcuts** `[v1.39.0, v1.93.1]` — menubar shortcuts for Home,
   Cockpit, Coding, Command Palette, Scheduled Tasks, Session Settings,
   key settings pages, updates, reload, config folder, and backend log; compact
   tray dropdown for status, quick navigation, reload, settings, and quit.
+  Command Palette, Scheduled Tasks, and Session Settings accelerators now use
+  `CmdOrCtrl` (Session Settings requires Shift) to match the in-app
+  platform-aware shortcuts `[v1.93.1]`.
   - **Tray "Usage Limits" submenu** `[v1.92.0]` — the macOS tray polls
     `GET /api/settings/providers/usage-summary` (stale-while-revalidate
     backend cache; per-provider last-known-good fallback on transient
@@ -116,7 +125,7 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   from the right edge goes forward, while editable fields and scroll-like
   vertical gestures are ignored.
 - **Multiple desktop windows** `[v1.41.0]` — open additional cockpit windows from
-  File → New Window, the tray menu, or `Cmd/Ctrl+N`; windows share the bundled
+  File → New Window, the tray menu, or `⌘/Ctrl+N`; windows share the bundled
   sidecar and desktop auth token, while each window can independently switch to
   a saved external server `[v1.47.0]`. New windows now inherit the active
   window's current backend selection instead of failing when the bundled sidecar

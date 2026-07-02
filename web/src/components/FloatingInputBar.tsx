@@ -64,12 +64,16 @@ interface Size {
  */
 function clampOffset(offset: StoredOffset, panel: Size, bounds: Size): StoredOffset {
   const GAP = 16
+  const DRAG_HANDLE_CLEARANCE = 10
   // Horizontal: centered → allowed range is ±(bounds.width - panel.width) / 2
   const maxX = Math.max(0, (bounds.width - panel.width) / 2 - GAP)
   // Vertical: docked at bottom. y is typically negative (dragged up).
-  //   minY = -(bounds.height - panel.height - GAP) → pinned to top
+  // The drag handle sits ~10px above the panel, so keep that much visible
+  // when the bar is pinned to the top instead of letting the whole control
+  // disappear behind the app header/chrome.
+  //   minY = -(bounds.height - panel.height - GAP - handleClearance)
   //   maxY = 0 → at default docked position
-  const minY = -Math.max(0, bounds.height - panel.height - GAP)
+  const minY = -Math.max(0, bounds.height - panel.height - GAP - DRAG_HANDLE_CLEARANCE)
   return {
     x: Math.min(maxX, Math.max(-maxX, offset.x)),
     y: Math.min(0, Math.max(minY, offset.y)),

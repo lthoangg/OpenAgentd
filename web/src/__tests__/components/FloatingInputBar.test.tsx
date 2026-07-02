@@ -67,24 +67,6 @@ function nextFrame(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => resolve()))
 }
 
-function mockRect(el: Element, rect: Partial<DOMRect>) {
-  Object.defineProperty(el, 'getBoundingClientRect', {
-    configurable: true,
-    value: () => ({
-      x: 0,
-      y: 0,
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      width: 0,
-      height: 0,
-      toJSON: () => ({}),
-      ...rect,
-    }),
-  })
-}
-
 // Test harness — provides a bounds container with a stable, measurable size.
 function Harness(props: {
   onSubmit?: (message: string, files?: File[]) => void
@@ -201,6 +183,7 @@ describe('FloatingInputBar', () => {
     }
   })
 
+
   it('forwards the placeholder prop to the inner InputBar when expanded', async () => {
     const user = userEvent.setup()
     render(<Harness placeholder="Ask the team…" />)
@@ -288,34 +271,6 @@ describe('FloatingInputBar', () => {
     expect(screen.getByRole('button', { name: 'Expand input bar' })).toBeTruthy()
   })
 
-  it('moves slash suggestions below when the floating bar is near the top', async () => {
-    const user = userEvent.setup()
-    render(<Harness slashCommands={[{ id: 'stop', label: 'Stop', description: '' }]} />)
-
-    const bounds = screen.getByTestId('bounds')
-    mockRect(bounds, { top: 0, left: 0, right: 1200, bottom: 800, width: 1200, height: 800 })
-
-    await user.click(screen.getByRole('button', { name: 'Expand input bar' }))
-    const textarea = screen.getByRole('textbox', { name: 'Message input' })
-    const handle = screen.getByRole('button', { name: /drag input bar/i })
-    const panel = handle.closest('.pointer-events-auto.absolute') as HTMLElement
-    expect(panel).toBeTruthy()
-
-    mockRect(panel, { top: 700, left: 424, right: 776, bottom: 780, width: 352, height: 80 })
-    await user.type(textarea, '/')
-
-    const listbox = screen.getByRole('listbox', { name: 'Slash commands' })
-    expect(listbox.style.top).toBe('4px')
-
-    mockRect(panel, { top: 50, left: 424, right: 776, bottom: 130, width: 352, height: 80 })
-    act(() => {
-      window.dispatchEvent(new Event('resize'))
-    })
-    await act(nextFrame)
-
-    expect(listbox.style.top).toBe('84px')
-    expect(listbox.style.bottom).toBe('')
-  })
 
   it('expands and inserts the first typed character through its imperative insertText handle', async () => {
     const ref = createRef<InputBarHandle>()

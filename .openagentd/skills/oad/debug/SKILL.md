@@ -44,14 +44,19 @@ When the issue spans multiple surfaces, read all relevant references.
 
 ## 5. Fix surgically
 
-- Make the smallest change that addresses the proven root cause.
-- Add or update focused regression coverage at the closest layer.
-- Update related docs only when behavior, API contract, or operator workflow changed.
+Load `oad/test-driven-development` and follow the Prove-It pattern:
+
+1. Write a failing test that reproduces the bug — confirm it fails for the right reason.
+2. Make the smallest change that addresses the proven root cause.
+3. Confirm the test passes; run the full suite for no regressions.
+
+Do not edit the implementation before the reproduction test exists.
 
 ---
 
 ## 6. Verify and report
 
-- Re-run the reproduction and focused tests / checks for the touched areas.
-- If feasible, run the repository's standard lint / type / test commands for the changed surface.
+- Re-run the reproduction test and focused checks for the touched areas.
+- If feasible, run the repository's standard lint / type / test commands for the changed surface (see `oad/testing` for commands).
 - Report: root cause, changed files, checks run with results, and any remaining risk or unverified area.
+- Load `oad/commit` to ship the fix.

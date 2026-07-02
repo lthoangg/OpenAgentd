@@ -1,8 +1,11 @@
 ---
+name: oad/plan
 description: Research first, propose a step-by-step implementation plan, and wait for explicit approval before writing any code.
 ---
 
-Plan (do not write or edit any code yet): $ARGUMENTS
+# oad/plan — Research-Then-Approve Workflow
+
+Plan (do not write or edit any code yet).
 
 ## 1. Restate the request
 
@@ -79,14 +82,21 @@ to respond with approval, a requested change, or a rejection.
 
 ## 5. Track and implement (only after approval)
 
-- Break the approved steps into `todo_manage` tasks (one per step) so
-  progress is visible, then work through them one at a time.
+Break the approved steps into `todo_manage` tasks (one per step), then hand
+off to the right skill for each step — don't re-implement their workflows
+here:
+
+- **Writing new behavior or fixing a bug** → load `oad/test-driven-development`
+  (write a failing test first, then implement, then refactor).
+- **Running or fixing existing tests** → load `oad/testing`.
+- **Committing completed work** → load `oad/commit` (also syncs docs via `oad/docs`).
+
+Cross-cutting rules that apply regardless of which skill runs:
 - Implement only what the current step specifies.
 - Run that step's verification before starting the next step. If it fails,
-  stop and report the failure plus your diagnosis — do not silently patch
-  around it or skip ahead.
+  stop and report — do not silently patch around it or skip ahead.
 - Keep unrelated code untouched; don't opportunistically refactor outside
   the plan's stated scope.
 - If something during implementation invalidates the plan (an assumption
-  turns out false, a dependency doesn't do what research suggested), stop
+  turns out false, a dependency doesn't work as research suggested), stop
   and report it rather than improvising a divergent approach.

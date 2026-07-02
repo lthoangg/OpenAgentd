@@ -7,7 +7,7 @@ Git Commit Execution Workflow
 
 1. **Stage**: Run `git status --porcelain`. If no files are staged, execute `git add .`.
 2. **Analyze**: Run `git diff --cached` to evaluate the technical scope and architectural impact (e.g., DDD shifts or C4 updates).
-3. **Sync Docs**: Update related documentation files automatically to align with the changes made in the codebase.
+3. **Sync Docs**: Load `oad/docs` to sync any documentation affected by the staged changes.
 4. **Generate Message**:
    - **Format**: `<type>: <subject>`
    - **Subject**: Auto-generate a concise imperative subject from the staged changes.

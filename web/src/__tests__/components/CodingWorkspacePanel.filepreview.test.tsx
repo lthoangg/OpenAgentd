@@ -46,6 +46,21 @@ mock.module('@/hooks/use-platform', () => ({
   usePlatform: () => ({ isTauri: isMacOverlay, os: isMacOverlay ? 'macos' : 'linux', isMacOverlay }),
   getPlatform: () => ({ isTauri: isMacOverlay, os: isMacOverlay ? 'macos' : 'linux', isMacOverlay }),
 }))
+// PdfThumbnail renders via pdf.js — stub the shared loader so PDF preview
+// tests don't need real PDF bytes/worker.
+mock.module('@/lib/pdfjs-loader', () => ({
+  loadPdfjs: async () => ({
+    getDocument: () => ({
+      promise: Promise.resolve({
+        numPages: 1,
+        getPage: async () => ({
+          getViewport: ({ scale }: { scale: number }) => ({ width: 100 * scale, height: 140 * scale }),
+          render: () => ({ promise: Promise.resolve(), cancel: () => {} }),
+        }),
+      }),
+    }),
+  }),
+}))
 mock.module('framer-motion', () => ({
   motion: {
     aside: ({ children, className, 'aria-label': ariaLabel }: { children: React.ReactNode; className?: string; 'aria-label'?: string }) => (
@@ -270,6 +285,27 @@ describe('Coding workspace two-layer file preview', () => {
 
     expect(document.body.querySelector("[role='dialog']")).toBeTruthy()
     expect(screen.getByLabelText('Close preview')).toBeTruthy()
+  })
+
+  it('previews a small PDF via pdf.js instead of raw binary text', async () => {
+    // Regression test: PDFs under MAX_TEXT_PREVIEW_BYTES used to fall through
+    // kindOf()'s generic "small file -> text" branch and render their raw
+    // bytes via TextPreview, showing garbled binary instead of a PDF preview.
+    // The preview renders page 1 client-side via pdf.js (canvas) rather than
+    // a native <embed> — that has no PDF plugin to delegate to on iOS/Android
+    // and is blank on desktop unless the framed resource opts into
+    // frame-ancestors 'self', so canvas rendering is what actually works
+    // uniformly across platforms.
+    const user = userEvent.setup()
+    const pdf: WorkspaceFileInfo = { path: 'docs/report.pdf', name: 'report.pdf', size: 2048, mtime: 1, mime: 'application/pdf' }
+    await renderViewer(pdf)
+
+    expect(document.querySelector('embed[type="application/pdf"]')).toBeNull()
+    await waitFor(() => expect(document.querySelector('canvas')).toBeTruthy())
+    expect(screen.queryByText('No inline preview for this file type')).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: 'Open report.pdf preview in lightbox' }))
+    expect(document.body.querySelector("[role='dialog']")).toBeTruthy()
   })
 
   it('shows binary fallback links in the separate file viewer panel', async () => {

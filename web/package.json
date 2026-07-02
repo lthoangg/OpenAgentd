@@ -37,6 +37,7 @@
     "lucide-react": "^1.22.0",
     "material-icon-theme": "^5.36.1",
     "nuqs": "^2.8.9",
+    "pdfjs-dist": "6.1.200",
     "react": "^19.2.7",
     "react-day-picker": "^10.0.1",
     "react-dom": "^19.2.7",

@@ -10,6 +10,7 @@ import { formatBytes } from '@/utils/format'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { useResizableWidth } from '@/hooks/use-resizable-width'
 import { isVideoSrc } from '@/utils/workspace'
+import { PdfThumbnail } from './PdfThumbnail'
 import type { WorkspaceFileInfo } from '@/api/types'
 
 const TEXT_EXTENSIONS = new Set([
@@ -31,13 +32,17 @@ function extOf(name: string): string {
   return i >= 0 ? name.slice(i + 1).toLowerCase() : ''
 }
 
-type FileKind = 'image' | 'video' | 'text' | 'binary'
+type FileKind = 'image' | 'video' | 'pdf' | 'text' | 'binary'
 
 function kindOf(file: WorkspaceFileInfo): FileKind {
   const ext = extOf(file.name)
   if (IMAGE_EXTENSIONS.has(ext) || file.mime.startsWith('image/')) return 'image'
   if (file.mime.startsWith('video/') || isVideoSrc(file.name)) return 'video'
   if (file.mime.startsWith('audio/')) return 'binary'
+  // Must be checked before the generic small-file text fallback below —
+  // otherwise any PDF under MAX_TEXT_PREVIEW_BYTES falls through to the
+  // text branch and TextPreview renders its raw (binary) bytes as text.
+  if (file.mime === 'application/pdf' || ext === 'pdf') return 'pdf'
   if (!ext || TEXT_EXTENSIONS.has(ext) || file.mime.startsWith('text/') || file.mime === 'application/json') return 'text'
   if (file.size <= MAX_TEXT_PREVIEW_BYTES) return 'text'
   return 'binary'
@@ -389,6 +394,37 @@ function VideoPreview({ workspace, file }: { workspace: string; file: WorkspaceF
   )
 }
 
+function PdfPreview({ workspace, file }: { workspace: string; file: WorkspaceFileInfo }) {
+  const [open, setOpen] = useState(false)
+  if (file.deleted) return <DeletedFilePreview />
+  const url = codingWorkspaceFileUrl(workspace, file.path)
+
+  // The panel shows the PDF like an image — a static render of page 1.
+  // The full interactive multi-page viewer lives in the lightbox (opened on
+  // click), which is also where mobile gets its "open in new tab" fallback.
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="flex h-full min-h-0 w-full items-center justify-center overflow-auto overscroll-contain touch-pan-y bg-(--bg-page) p-4"
+        aria-label={`Open ${file.name} preview in lightbox`}
+      >
+        <PdfThumbnail
+          src={url}
+          className="flex h-full w-full items-center justify-center"
+          canvasClassName="max-h-full max-w-full rounded border border-(--color-border) object-contain"
+        />
+      </button>
+      <FileLightbox
+        items={[{ type: 'pdf', src: url, name: file.name }]}
+        isOpen={open}
+        onClose={() => setOpen(false)}
+      />
+    </>
+  )
+}
+
 function BinaryPreview({ workspace, file }: { workspace: string; file: WorkspaceFileInfo }) {
   if (file.deleted) return <DeletedFilePreview />
   const url = codingWorkspaceFileUrl(workspace, file.path)
@@ -537,6 +573,7 @@ export function CodingFilePreviewContent({
 
   return kind === 'image' ? <ImagePreview workspace={workspace} file={file} />
     : kind === 'video' ? <VideoPreview workspace={workspace} file={file} />
+    : kind === 'pdf' ? <PdfPreview workspace={workspace} file={file} />
     : kind === 'text' ? <TextPreview key={file.path} workspace={workspace} file={file} onAddComment={onAddComment} />
       : <BinaryPreview workspace={workspace} file={file} />
 }

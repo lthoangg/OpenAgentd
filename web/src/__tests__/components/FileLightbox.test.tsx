@@ -7,8 +7,24 @@ mock.module("@/hooks/use-platform", () => ({
 mock.module("@/stores/useToastStore", () => ({
   useToastStore: { getState: () => ({ push: () => {} }) },
 }))
+// PdfDocumentViewer renders via pdf.js — stub the shared loader so tests
+// don't need real PDF bytes/worker; a single 1-page fake document is enough
+// to exercise the canvas render path.
+mock.module("@/lib/pdfjs-loader", () => ({
+  loadPdfjs: async () => ({
+    getDocument: () => ({
+      promise: Promise.resolve({
+        numPages: 1,
+        getPage: async () => ({
+          getViewport: ({ scale }: { scale: number }) => ({ width: 100 * scale, height: 140 * scale }),
+          render: () => ({ promise: Promise.resolve(), cancel: () => {} }),
+        }),
+      }),
+    }),
+  }),
+}))
 
-import { render, screen, cleanup, fireEvent } from "@testing-library/react"
+import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react"
 import { FileLightbox, type FileLightboxItem } from "@/components/FileLightbox"
 
 type InvokeRequest = { request: Record<string, unknown> }
@@ -80,6 +96,62 @@ describe("FileLightbox", () => {
   it("renders pdf open-in-new-tab link", () => {
     render(<FileLightbox items={[{ type: "pdf", src: "doc.pdf", name: "doc.pdf" }]} index={0} isOpen={true} onClose={() => {}} />)
     expect(screen.getByText("Open in new tab")).toBeTruthy()
+  })
+
+  // Regression test: an <embed type="application/pdf"> has no PDF plugin to
+  // delegate to on iOS/Android (renders blank) and is subject to the framed
+  // resource's own frame-ancestors CSP on desktop. Pages are instead rendered
+  // client-side via pdf.js (PdfDocumentViewer), which works identically
+  // everywhere.
+  it("renders the pdf via a canvas (pdf.js), not a native embed", async () => {
+    render(<FileLightbox items={[{ type: "pdf", src: "doc.pdf", name: "doc.pdf" }]} index={0} isOpen={true} onClose={() => {}} />)
+    expect(document.querySelector('embed[type="application/pdf"]')).toBeNull()
+    await waitFor(() => expect(document.querySelector("canvas")).toBeTruthy())
+    expect(screen.getByText("Open in new tab")).toBeTruthy()
+  })
+
+  // Regression test: the page-stack container must only ever scroll
+  // vertically — pages are laid out in a single column, so any horizontal
+  // scroll/overflow would just be dead space or a stray sliver of a page,
+  // never useful content. `overflow-x` defaults to `visible`, so this must
+  // be set explicitly (it previously wasn't).
+  it("does not allow horizontal scrolling in the pdf page stack", async () => {
+    render(<FileLightbox items={[{ type: "pdf", src: "doc.pdf", name: "doc.pdf" }]} index={0} isOpen={true} onClose={() => {}} />)
+    const canvas = await waitFor(() => {
+      const el = document.querySelector("canvas")
+      expect(el).toBeTruthy()
+      return el as HTMLCanvasElement
+    })
+    const scrollContainer = canvas.parentElement as HTMLElement
+    expect(scrollContainer.className).toContain("overflow-x-hidden")
+    expect(scrollContainer.className).toContain("overflow-y-auto")
+  })
+
+  // Regression test: PdfDocumentViewer scrolls natively (no internal touch
+  // handlers), so the gallery's own swipe-to-close/swipe-to-navigate must be
+  // disabled entirely for PDF items — otherwise a small vertical/horizontal
+  // drag while scrolling a page fights the gallery gesture and can close the
+  // lightbox unintentionally (the bug this guards against).
+  it("does not close or navigate on swipe gestures while a pdf is active", async () => {
+    let closed = false
+    render(
+      <FileLightbox
+        items={[
+          { type: "pdf", src: "doc.pdf", name: "doc.pdf" },
+          { type: "image", src: "image1.png", name: "Image 1" },
+        ]}
+        index={0}
+        isOpen={true}
+        onClose={() => { closed = true }}
+      />
+    )
+    await waitFor(() => expect(document.querySelector("canvas")).toBeTruthy())
+    const dialog = screen.getByRole("dialog")
+    dialog.dispatchEvent(new TouchEvent("touchstart", { bubbles: true, touches: [{ clientX: 100, clientY: 100 } as Touch] }))
+    dialog.dispatchEvent(new TouchEvent("touchmove", { bubbles: true, cancelable: true, touches: [{ clientX: 130, clientY: 200 } as Touch] }))
+    dialog.dispatchEvent(new TouchEvent("touchend", { bubbles: true, changedTouches: [{ clientX: 130, clientY: 200 } as Touch] }))
+    expect(closed).toBe(false)
+    expect(document.querySelector("canvas")).toBeTruthy()
   })
 
   it("renders generic file card with filename and open link", () => {

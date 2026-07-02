@@ -31,6 +31,13 @@ _DEFAULT_MAX_BYTES = 4 * 1024 * 1024
 #   policy would require rewriting index.html at request time.
 # - `img-src` allows `data:` and `blob:` for user-uploaded previews and
 #   assistant-rendered canvases.
+# - `object-src 'none'` and `frame-ancestors 'none'`: nothing in the app uses
+#   `<object>`/`<embed>` or needs to be framed. PDF previews render via
+#   pdf.js to `<canvas>` (see `web/src/lib/pdfjs-loader.ts`) specifically so
+#   we never need to relax either of these — native `<embed
+#   type="application/pdf">` was tried first and required loosening this
+#   policy (plus didn't work on iOS/Android, which have no PDF plugin to
+#   embed at all), so canvas rendering is strictly better here.
 _DEFAULT_CSP = (
     "default-src 'self'; "
     "script-src 'self'; "

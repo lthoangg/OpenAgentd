@@ -27,6 +27,7 @@ import { ChevronLeft, ChevronRight, Download, ExternalLink, File, X } from 'luci
 import { haptic } from '@/lib/haptics'
 import { resolveApiUrl } from '@/api/client'
 import { tauriDownload } from '@/lib/tauri-download'
+import { PdfDocumentViewer } from './PdfDocumentViewer'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -234,68 +235,41 @@ export function FileLightboxAudio({ item }: { item: FileLightboxItem }) {
 
 // ── FileLightboxPdf ────────────────────────────────────────────────────────────
 
+/**
+ * Renders the full, multi-page document (via `PdfDocumentViewer`) rather
+ * than a single static first-page image — the lightbox is the "main
+ * viewing" surface, so it should feel like a real PDF reader.
+ *
+ * This is deliberately simple:
+ *   - No `<embed>` — iOS/Android have no PDF plugin for it to delegate to,
+ *     so it renders blank there regardless of CSP.
+ *   - Scrolling between pages is 100% native (`overflow-y-auto`) inside
+ *     `PdfDocumentViewer` — no custom touch/gesture code here or there.
+ *     The outer gallery's swipe-to-navigate/swipe-to-close handling is
+ *     skipped entirely while a PDF is active (see `activeTypeRef` below),
+ *     so native scrolling never fights the gallery gestures. (An earlier
+ *     version gave this component its own touch listeners on top of the
+ *     gallery's, which fought each other and made small swipes close the
+ *     lightbox unintentionally.)
+ *   - "Open in new tab" still hands off to the OS/browser's own PDF viewer
+ *     for search/print/share.
+ */
 export function FileLightboxPdf({ item }: { item: FileLightboxItem }) {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const touchStartRef = useRef({ x: 0, y: 0 })
-  const gestureLockRef = useRef<'horizontal' | 'vertical' | null>(null)
-
-  useEffect(() => {
-    const el = containerRef.current
-    if (!el) return
-
-    const handleStart = (e: globalThis.TouchEvent) => {
-      touchStartRef.current = {
-        x: e.touches[0]?.clientX ?? 0,
-        y: e.touches[0]?.clientY ?? 0,
-      }
-      gestureLockRef.current = null
-    }
-
-    const handleMove = (e: globalThis.TouchEvent) => {
-      const dx = (e.touches[0]?.clientX ?? 0) - touchStartRef.current.x
-      const dy = (e.touches[0]?.clientY ?? 0) - touchStartRef.current.y
-
-      if (gestureLockRef.current === null) {
-        if (Math.abs(dx) > 6 || Math.abs(dy) > 6) {
-          gestureLockRef.current = Math.abs(dy) > Math.abs(dx) ? 'vertical' : 'horizontal'
-        }
-      }
-
-      if (gestureLockRef.current === 'vertical') {
-        e.stopPropagation()
-      } else if (gestureLockRef.current === 'horizontal') {
-        if (e.cancelable) {
-          e.preventDefault()
-        }
-      }
-    }
-
-    el.addEventListener('touchstart', handleStart, { passive: true })
-    el.addEventListener('touchmove', handleMove, { passive: false })
-
-    return () => {
-      el.removeEventListener('touchstart', handleStart)
-      el.removeEventListener('touchmove', handleMove)
-    }
-  }, [])
-
   return (
     <div
-      ref={containerRef}
-      className="flex flex-col items-center justify-center max-h-full max-w-full gap-3"
+      className="flex h-[80dvh] max-h-full w-[min(760px,90vw)] max-w-full flex-col items-center gap-3"
       onClick={(e) => e.stopPropagation()}
     >
-      <embed
+      <PdfDocumentViewer
         key={item.src}
         src={item.src}
-        type="application/pdf"
-        className="h-[60vh] max-h-full w-[min(760px,88vw)] max-w-full rounded-sm"
+        className="min-h-0 w-full flex-1"
       />
       <a
         href={item.src}
         target="_blank"
         rel="noopener noreferrer"
-        className="flex items-center gap-1.5 text-xs text-(--color-text-muted) hover:text-(--color-text)"
+        className="flex shrink-0 items-center gap-1.5 text-xs text-(--color-text-muted) hover:text-(--color-text)"
         onClick={(e) => e.stopPropagation()}
       >
         <ExternalLink size={12} />
@@ -418,6 +392,12 @@ export function FileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'f
 
   const hasMultiple = items.length > 1
   const active      = items[current] ?? items[0]
+  // "Latest" ref so the touch handlers below (stable via useCallback) always
+  // see the current item's type without needing it in their dependency
+  // arrays. Written during render — a standard escape hatch for exactly this
+  // "read the latest value from a later event callback" case.
+  const activeTypeRef = useRef(active.type)
+  activeTypeRef.current = active.type
   // ── DOM refs for zero-JS-per-frame animations ──────────────────────────────
   /** The fixed overlay div — used for the fade-in CSS transition on open. */
   const overlayRef  = useRef<HTMLDivElement>(null)
@@ -588,6 +568,12 @@ export function FileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'f
   }, [])
 
   const handleTouchStart = useCallback((e: TouchEvent<HTMLDivElement>) => {
+    // PDF pages scroll natively inside their own container — the gallery's
+    // swipe-to-navigate/swipe-to-close gestures would otherwise fight with
+    // that scroll (this is what previously made small swipes over a PDF
+    // close the lightbox). Closing a PDF preview goes through the X button,
+    // arrow buttons, or Escape instead.
+    if (activeTypeRef.current === 'pdf') return
     if (e.touches.length === 1) {
       touchStartXRef.current = e.touches[0]?.clientX ?? 0
       touchStartYRef.current = e.touches[0]?.clientY ?? 0
@@ -608,6 +594,7 @@ export function FileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'f
   }, [])
 
   const handleTouchMove = useCallback((e: TouchEvent<HTMLDivElement>) => {
+    if (activeTypeRef.current === 'pdf') return
     if (e.touches.length === 2 && pinchStartRef.current !== null) {
       const next = touchDistance(e.touches[0], e.touches[1])
       const newScale = Math.min(4, Math.max(1, pinchScaleRef.current * (next / pinchStartRef.current)))
@@ -659,6 +646,7 @@ export function FileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'f
   }, [hasMultiple, applyImgTransform, applySlideTransform])
 
   const handleTouchEnd = useCallback(() => {
+    if (activeTypeRef.current === 'pdf') return
     if (pinchStartRef.current !== null) {
       // After a pinch gesture, clamp the current pan position (held in panXRef)
       let clampedX = dragXRef.current || panXRef.current

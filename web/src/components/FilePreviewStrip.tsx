@@ -9,7 +9,7 @@
  *   image/*            → thumbnail (ImageAttachment style)
  *   video/*            → <video> poster frame with filename
  *   audio/*            → compact <audio controls>
- *   application/pdf    → <embed> miniature with filename
+ *   application/pdf    → pdf.js-rendered page-1 thumbnail with filename
  *   text/* / code exts → first-N-lines snippet in a <pre>
  *   everything else    → icon + filename chip (FileCard)
  *
@@ -23,6 +23,7 @@ import { X } from 'lucide-react'
 import { FileCard } from './FileCard'
 import { FileTypeIcon } from './FileTypeIcon'
 import { FileLightbox, type FileLightboxItem, type FileLightboxItemType } from './FileLightbox'
+import { PdfThumbnail } from './PdfThumbnail'
 
 // ─── Props ─────────────────────────────────────────────────────────────────────
 
@@ -203,10 +204,9 @@ function PdfCard({ file, blobUrl, onRemove, onOpen }: CardProps) {
         className="flex flex-col overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40 focus-visible:outline-none"
         aria-label={`Preview ${file.name}`}
       >
-        <embed
+        <PdfThumbnail
           src={blobUrl}
-          type="application/pdf"
-          className="pointer-events-none h-[90px] w-[150px]"
+          className="pointer-events-none flex h-[90px] w-[150px] items-center justify-center bg-(--bg-page)"
         />
         <div className="flex items-center gap-1.5 border-t border-(--color-border-subtle) px-2 py-1">
           <FileTypeIcon name={file.name} size={12} />

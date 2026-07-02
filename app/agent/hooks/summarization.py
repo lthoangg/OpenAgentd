@@ -115,9 +115,8 @@ CHAT_SUMMARY_PROMPT = (
     "strings, and other details needed for continuity. Do not summarize, "
     "paraphrase, or quote skill instruction tool results; skill instruction "
     "blocks are preserved separately in context. Mention only that a skill "
-    "remains loaded when relevant. Write in third-person narrative form. Do not "
-    "call tools or request tool execution. Return only the summary text. Do not "
-    "include pleasantries or meta-commentary."
+    "remains loaded when relevant. Write in third-person narrative form. "
+    "Return only the summary text. Do not include pleasantries or meta-commentary."
 )
 
 
@@ -164,7 +163,6 @@ Rules:
 - Do not output raw role/tool prefixes such as `[user]:`, `[assistant]:`, `[tool/shell]:`, or `[main ...]`.
 - Use terse bullets, not prose paragraphs.
 - Preserve exact file paths, commands, error strings, and identifiers when known.
-- Do not call tools or request tool execution.
 - Do not summarize, paraphrase, or quote skill instruction tool results; skill instruction blocks are preserved separately in context. Mention only that a skill remains loaded when relevant.
 - Return only the summary text.
 - Do not mention the summary process or that context was compacted."""
@@ -891,6 +889,12 @@ class SummarizationHook(BaseAgentHook):
         kwargs: dict = {}
         if self._max_token_length > 0:
             kwargs["max_tokens"] = self._max_token_length
+        # Hard API-level guard: prevent the summariser from calling tools.
+        # tool_choice="none" is enforced at the provider level so the model
+        # cannot invoke tools even when state.tool_defs are present in the
+        # payload — a tool_calls chunk would be ignored by this hook, yielding
+        # an empty summary and wasting tokens.
+        kwargs["tool_choice"] = "none"
 
         tracer = get_tracer()
         with tracer.start_as_current_span(

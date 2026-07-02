@@ -33,6 +33,7 @@ from .schemas import (
     Content,
     FileData,
     FunctionCall,
+    FunctionCallingConfig,
     FunctionDeclaration,
     FunctionResponse,
     GeminiChatRequest,
@@ -42,6 +43,7 @@ from .schemas import (
     Part,
     ThinkingConfig,
     Tool,
+    ToolConfig,
 )
 
 API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
@@ -312,11 +314,21 @@ class GeminiProviderBase(LLMProviderBase):
         if service_tier == "fast":
             service_tier = "priority"
 
+        # Translate tool_choice="none" to Gemini's tool_config NONE mode.
+        # Only set when tools are present — the API ignores tool_config
+        # without a tools list, but keeping the guard makes intent clear.
+        tool_config: ToolConfig | None = None
+        if gemini_tools and merged.get("tool_choice") == "none":
+            tool_config = ToolConfig(
+                function_calling_config=FunctionCallingConfig(mode="NONE")
+            )
+
         request = GeminiChatRequest(
             contents=contents,
             system_instruction=system_instruction,
             generation_config=generation_config,
             tools=gemini_tools,
+            tool_config=tool_config,
             service_tier=service_tier,
         )
 
@@ -402,11 +414,18 @@ class GeminiProviderBase(LLMProviderBase):
         if service_tier == "fast":
             service_tier = "priority"
 
+        tool_config: ToolConfig | None = None
+        if gemini_tools and merged.get("tool_choice") == "none":
+            tool_config = ToolConfig(
+                function_calling_config=FunctionCallingConfig(mode="NONE")
+            )
+
         request = GeminiChatRequest(
             contents=contents,
             system_instruction=system_instruction,
             generation_config=generation_config,
             tools=gemini_tools,
+            tool_config=tool_config,
             service_tier=service_tier,
         )
 

@@ -481,6 +481,16 @@ class AnthropicProvider(LLMProviderBase):
         anthropic_tools = _anthropic_tools(tools)
         if anthropic_tools:
             payload["tools"] = anthropic_tools
+            # Honour an explicit tool_choice override (e.g. "none" from the
+            # summarisation hook).  Anthropic represents this as an object
+            # {"type": "none"} rather than a plain string.
+            # Only injected when tools are present — the API rejects
+            # tool_choice without a tools list.
+            tool_choice = kwargs.pop("tool_choice", None)
+            if tool_choice == "none":
+                payload["tool_choice"] = {"type": "none"}
+            elif tool_choice is not None:
+                payload["tool_choice"] = tool_choice
 
         service_tier = kwargs.get("service_tier")
         if service_tier and "api.anthropic.com" in self.base_url:

@@ -394,6 +394,9 @@ class BedrockProvider(LLMProviderBase):
             # OpenAI-specific
             "responses_api",
             "reasoning_effort",
+            # Generic tool-choice override — Bedrock's ToolChoice API has no
+            # "none" option so this key is intentionally not forwarded.
+            "tool_choice",
         }
         additional = {k: v for k, v in merged.items() if k not in known}
 

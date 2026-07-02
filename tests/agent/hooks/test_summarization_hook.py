@@ -897,7 +897,8 @@ async def test_summariser_passes_tool_defs_without_prompt_cache_key():
     # provider's automatic prefix caching, consistent with normal chat turns,
     # so it can reuse the already-warmed conversation prefix on OpenAI/codex.
     assert "prompt_cache_key" not in call_kwargs
-    assert "tool_choice" not in call_kwargs
+    # tool_choice="none" is the API-level hard guard against tool invocation
+    assert call_kwargs["tool_choice"] == "none"
 
 
 # ---------------------------------------------------------------------------
@@ -1624,7 +1625,6 @@ async def test_before_model_returns_none_when_no_summarisation(mock_provider):
 
 def test_coding_prompt_rejects_raw_transcript_output():
     assert "Start your response with exactly `## Goal`" in CODING_SUMMARY_PROMPT
-    assert "Do not call tools" in CODING_SUMMARY_PROMPT
     assert "Do not output raw role/tool prefixes" in CODING_SUMMARY_PROMPT
 
     assert "[assistant]:" in CODING_SUMMARY_PROMPT

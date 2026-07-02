@@ -77,11 +77,20 @@ class Tool(GeminiBaseModel):
     function_declarations: list[FunctionDeclaration] | None = None
 
 
+class FunctionCallingConfig(GeminiBaseModel):
+    mode: Literal["AUTO", "ANY", "NONE"] = "AUTO"
+
+
+class ToolConfig(GeminiBaseModel):
+    function_calling_config: FunctionCallingConfig
+
+
 class GeminiChatRequest(GeminiBaseModel):
     contents: list[Content]
     system_instruction: Content | None = None
     generation_config: GenerationConfig | None = None
     tools: list[Tool] | None = None
+    tool_config: ToolConfig | None = None
     service_tier: str | None = None
 
 

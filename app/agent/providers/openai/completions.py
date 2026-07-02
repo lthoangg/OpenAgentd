@@ -229,6 +229,12 @@ class CompletionsHandler:
         body = req.model_dump(exclude_none=True)
         if merged.get("prompt_cache_key") is not None:
             body["prompt_cache_key"] = merged["prompt_cache_key"]
+        # Honour an explicit tool_choice override (e.g. "none" from the
+        # summarisation hook).  Only injected when tools are present — sending
+        # tool_choice without a tools list is an API error on most endpoints.
+        tool_choice = merged.get("tool_choice")
+        if tool_choice is not None and body.get("tools"):
+            body["tool_choice"] = tool_choice
         self.customize_thinking(merged, body)
         return body
 

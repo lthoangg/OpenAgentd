@@ -44,6 +44,22 @@ export function formatShortcut(key: string, os: OS, opts: { shift?: boolean } = 
 }
 
 /**
+ * Find the nearest ancestor (including self) that carries ``data-select-container``.
+ *
+ * Used by the container-aware Cmd+A handler to determine whether a key event
+ * originated inside a scoped selection zone (e.g. file-preview, code block)
+ * so we can restrict "Select All" to that container only.
+ */
+export function findSelectContainer(el: Element | null): Element | null {
+  let node: Element | null = el
+  while (node) {
+    if (node.hasAttribute('data-select-container')) return node
+    node = node.parentElement
+  }
+  return null
+}
+
+/**
  * Dispatch a synthetic keydown carrying the platform's primary modifier so
  * window-level shortcut handlers (which use ``isPrimaryShortcut``) fire when
  * a palette item or native-menu command is activated in place of a real

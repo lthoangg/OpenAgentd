@@ -432,7 +432,16 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       setHistoryIndex(-1)
       setMentionRange(null)
       setSnippetRange(null)
-      requestAnimationFrame(resize)
+      // Double-rAF mirrors the pattern used in ``setValue``: the outer frame
+      // fires after React's paint; the inner fires after the browser's next
+      // layout pass, by which time any parent expand animation (e.g. the
+      // FloatingInputBar Framer spring from minimized→expanded) has had a
+      // frame to reach its final width. Without this, pasting multi-line
+      // text while the bar is collapsed measures scrollHeight at the wrong
+      // narrow width and locks the textarea at 1-line height.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(resize)
+      })
     },
     insertText: (text: string) => {
       const el = textareaRef.current

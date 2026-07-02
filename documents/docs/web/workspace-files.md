@@ -119,6 +119,8 @@ cannot carry the fetch `Authorization` header. The thumbnail has
 
 ### Text preview
 
+The `<pre>` element (cockpit panel) and the scrollable `<div>` (coding workspace dock) both carry `data-select-container`. This makes `⌘A`/`Ctrl+A` scope its selection to the file content only rather than selecting the entire page — see [Scoped Select All](../../styling-specs/interaction.md#keyboard-model).
+
 Displays file content in a monospace, line-numbered view with **syntax
 highlighting via `highlight.js`** (the same library already bundled for
 markdown code blocks — no extra bundle cost).

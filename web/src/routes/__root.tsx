@@ -15,10 +15,12 @@ import { useDesktopCommands } from '@/lib/desktop-commands'
 import { closestRestorableRoute } from '@/lib/route-restore'
 import { getPlatform } from '@/hooks/use-platform'
 import { isPrimaryShortcut } from '@/lib/keyboard-shortcut'
+import { useContainerSelectAll } from '@/hooks/useContainerSelectAll'
 
 export function Root() {
   useMobileViewportGuards()
   useDesktopCommands()
+  useContainerSelectAll()
 
   // Global ⌘, / Ctrl+, shortcut — opens/toggles the Settings modal from any page.
   const openSettings = useSettingsStore((s) => s.openSettings)

@@ -467,6 +467,7 @@ function TextPreview({ sessionId, file }: { sessionId: string; file: WorkspaceFi
       // and "Tab cycles agents" handlers in TeamChatView don't fire.
       tabIndex={0}
       data-scroll-capture="true"
+      data-select-container
       onKeyDown={(e) => {
         const scrollKeys = new Set([
           'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',

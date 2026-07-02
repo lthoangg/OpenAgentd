@@ -63,6 +63,8 @@ Stored in `useTeamStore._pendingMessages: PendingMessage[]`.
 
 The desktop floating composer starts as a compact action strip and expands on explicit focus, `⌘I`/`Ctrl+I`, attachment/content insertion, the Chat affordance, or type-to-focus: when no editable element is focused, pressing a printable key on the cockpit/coding chat surface focuses the composer and inserts that first character. Pressing `Escape` while focus is inside the expanded composer minimizes it back to the compact strip; sending a message also returns the composer to the compact strip. If the desktop composer is empty and focus moves outside it, it auto-minimizes back to the compact strip. While the lead is streaming, the composer may still minimize when empty and blurred; the compact strip remains recoverable with File, Voice, Chat/Expand, and Send/Stop controls. The streaming placeholder tells the user they can queue a follow-up, type `/stop`, or click stop.
 
+**Paste while minimized (desktop only):** `⌘V`/`Ctrl+V` (or any system paste) fired while focus is outside a native editable element automatically expands the composer and forwards the clipboard contents — plain text via `appendValue`, files via `addFiles`. Mobile is excluded (the bar is always expanded). Implemented via a `paste` event listener in `FloatingInputBar`; native inputs and `contenteditable` elements handle their own paste and are not intercepted.
+
 Keyboard submit differs by viewport: desktop `Enter` submits and `Shift+Enter` inserts a newline; mobile `Enter` inserts a newline and the Send button submits.
 
 After a message is submitted the textarea resets to a single row on both desktop and mobile: `isMultiLine` state is cleared synchronously and `el.style.height` is set to `'auto'` in a `requestAnimationFrame` that runs after React flushes the value clear. This prevents the input bar from remaining expanded at its pre-send height.
@@ -92,9 +94,12 @@ the same metadata persisted by the backend.
 The `InputBarHandle` ref exposes:
 - `focus()` — expand the floating composer when needed, then focus the textarea
 - `setValue(text)` — expand the floating composer when needed, inject text, and trigger height recalculation
+- `appendValue(text)` — append text to the current draft (with a space separator if needed) and recalculate height
 - `insertText(text)` — insert text at the current caret/selection, used by type-to-focus so the first keypress is not lost
 - `setFiles(files)` — replace the current attachments with the provided files
 - `addFiles(files)` — append the allowed files from the list to the current attachments and expand the composer if minimized
+
+`setValue` and `appendValue` both use a double-`requestAnimationFrame` before calling `resize()`. The outer frame fires after React's paint; the inner fires after the browser's next layout pass, by which time any expand animation (Framer spring from minimized→expanded) has reached its final width. Without this, multi-line content pasted while the bar is collapsed would measure `scrollHeight` at the mid-animation width and lock the textarea at 1-line height.
 
 `newSession()` aborts any active team SSE stream and resets the live roster/scroll state without automatically focusing the empty composer, so stale tokens, scroll affordances, or unwanted keyboard capture from the previous session do not leak into the fresh chat.
 

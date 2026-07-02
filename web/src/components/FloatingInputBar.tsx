@@ -266,6 +266,78 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
        return () => window.removeEventListener('keydown', onKeyDown)
      }, [isMobile, expand, minimize])
 
+    // ── Global paste: expand + forward when bar is minimized ─────────────
+    // When the floating bar is collapsed (minimized) and the user hits
+    // Cmd+V / Ctrl+V (or triggers a paste from anywhere on the page that
+    // isn't already an editable target), we intercept the paste, expand
+    // the composer, and forward the clipboard contents — text or files —
+    // so the user never has to click the bar first just to paste.
+    //
+    // We only intercept when:
+    //   1. The bar is currently in the minimized state (effectiveMinimized).
+    //   2. The paste target is NOT already an editable element (input,
+    //      textarea, contenteditable) — those should keep their own paste
+    //      behaviour unaffected.
+    //   3. Desktop only (mobile is always expanded and handles paste natively).
+    const effectiveMinimizedRef = useRef(false)
+    // Keep a ref to effectiveMinimized computed below so the paste handler
+    // always reads the current value without being re-registered each render.
+    // We'll update it via useEffect after the value is calculated.
+    useEffect(() => {
+      if (isMobile) return
+      const onPaste = (e: ClipboardEvent) => {
+        if (!effectiveMinimizedRef.current) return
+
+        const target = e.target as HTMLElement | null
+        // Don't intercept paste inside native editable elements.
+        if (
+          target instanceof HTMLInputElement ||
+          target instanceof HTMLTextAreaElement ||
+          target?.isContentEditable
+        ) {
+          return
+        }
+
+        // We're about to handle this paste — prevent browser default so
+        // we don't simultaneously insert into whatever currently has focus.
+        e.preventDefault()
+
+        const cd = e.clipboardData
+        if (!cd) return
+
+        // Collect file items first (images, etc.).
+        const pastedFiles: File[] = []
+        for (const item of Array.from(cd.items)) {
+          if (item.kind === 'file') {
+            const file = item.getAsFile()
+            if (file) pastedFiles.push(file)
+          }
+        }
+
+        if (pastedFiles.length > 0) {
+          expand()
+          requestAnimationFrame(() => {
+            innerRef.current?.addFiles(pastedFiles)
+            innerRef.current?.focus()
+          })
+          return
+        }
+
+        // Fall back to plain text.
+        const text = cd.getData('text/plain')
+        if (text) {
+          expand()
+          requestAnimationFrame(() => {
+            innerRef.current?.appendValue(text)
+            innerRef.current?.focus()
+          })
+        }
+      }
+
+      window.addEventListener('paste', onPaste)
+      return () => window.removeEventListener('paste', onPaste)
+    }, [isMobile, expand])
+
     // External signals that should keep the bar expanded regardless of
     // focus state. ``disabled`` covers the "waiting for response" pause; ``hasContent`` covers
     // text/attachments held inside InputBar so
@@ -302,6 +374,9 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
     }, [forceExpanded, isMobile])
 
     const effectiveMinimized = !isMobile && minimized && !forceExpanded
+
+    // Keep the ref used by the paste handler in sync with the current value.
+    effectiveMinimizedRef.current = effectiveMinimized
 
     const recomputeSuggestionPlacement = useCallback(() => {
       const bounds = boundsRef.current

@@ -195,4 +195,4 @@ A few `components/ui/*` primitives have responsive guards so individual call sit
 
 ## Keyboard shortcuts on mobile
 
-Command Palette (`⌘P`/`Ctrl+P`) no-ops on mobile; all other shortcuts are unchanged. Full shortcut reference (including the platform-aware `⌘`/`Ctrl` modifier and Session Settings' Shift qualifier): [`interaction.md#keyboard-model`](../../styling-specs/interaction.md#keyboard-model).
+Command Palette (`⌘P`/`Ctrl+P`) no-ops on mobile; all other shortcuts are unchanged. The Scoped Select All hook (`useContainerSelectAll`) skips registration entirely on `ios`/`android` so it never interferes with native long-press/touch-selection. The paste-while-minimized handler in `FloatingInputBar` is also gated behind `if (isMobile) return` — the bar is always expanded on mobile and handles paste natively. Full shortcut reference: [`interaction.md#keyboard-model`](../../styling-specs/interaction.md#keyboard-model).

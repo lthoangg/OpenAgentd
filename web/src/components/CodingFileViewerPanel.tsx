@@ -287,7 +287,7 @@ function TextPreview({
   }
   return (
     <div ref={containerRef} className="flex h-full min-h-0 flex-col" onMouseLeave={() => setDragging(false)} onMouseUp={() => setDragging(false)}>
-      <div className="min-h-0 flex-1 overflow-auto overscroll-contain touch-pan-y font-mono text-xs leading-relaxed" data-scroll-capture="true" tabIndex={-1}>
+      <div className="min-h-0 flex-1 overflow-auto overscroll-contain touch-pan-y font-mono text-xs leading-relaxed" data-scroll-capture="true" data-select-container tabIndex={-1}>
         {highlightedLines.map((lineHtml, index) => {
           const lineNo = index + 1
           const selected = selectedStart !== null && selectedEnd !== null && lineNo >= selectedStart && lineNo <= selectedEnd

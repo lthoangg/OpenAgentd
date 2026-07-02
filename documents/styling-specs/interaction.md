@@ -67,5 +67,6 @@ The primary modifier is platform-aware — `⌘` on macOS, `Ctrl` on Windows/Lin
 | Focus chat input | `⌘I` | `Ctrl+I` |
 | Session Settings | `⌘⇧A` | `Ctrl+Shift+A` |
 | Settings | `⌘,` | `Ctrl+,` |
+| Select all (scoped) | `⌘A` | `Ctrl+A` |
 
-Session Settings requires Shift on both platforms because bare `⌘A`/`Ctrl+A` is Select All. View-mode cycling and session-list refresh are intentionally **palette-only** (no dedicated shortcut) — both are low-frequency actions, and freeing their letters avoids clobbering native/webview bindings (e.g. `⌘V` paste). `Command Palette` no-ops on mobile — see [`web/mobile.md`](../docs/web/mobile.md#keyboard-shortcuts-on-mobile).
+Session Settings requires Shift on both platforms because bare `⌘A`/`Ctrl+A` is normally Select All. **Scoped Select All:** when focus is inside an element marked `data-select-container` (currently: the coding workspace file preview and the cockpit workspace file viewer), `⌘A`/`Ctrl+A` selects only the content of that container instead of the entire page. Implemented in `web/src/hooks/useContainerSelectAll.ts` (registered globally in `__root.tsx`); no-ops on `ios`/`android`. View-mode cycling and session-list refresh are intentionally **palette-only** (no dedicated shortcut) — both are low-frequency actions, and freeing their letters avoids clobbering native/webview bindings (e.g. `⌘V` paste). `Command Palette` no-ops on mobile — see [`web/mobile.md`](../docs/web/mobile.md#keyboard-shortcuts-on-mobile).

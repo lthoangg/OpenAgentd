@@ -2,6 +2,7 @@ import { useRef, useState, useEffect, useCallback, type CSSProperties, type Muta
 import { File, Folder } from 'lucide-react'
 import type { SlashCommand, SnippetCommand } from './InputBar'
 import type { FileRef } from './InputBar.mentions'
+import { useIsMobile } from '@/hooks/use-mobile'
 
 export function InputBarSuggestions({
   minimized,
@@ -24,6 +25,7 @@ export function InputBarSuggestions({
   mentionOptionRefs,
   clampedMentionIndex,
   onMentionSelect,
+  suggestionsBelow,
 }: {
   minimized: boolean
   slashMenuOpen: boolean
@@ -45,20 +47,28 @@ export function InputBarSuggestions({
   mentionOptionRefs: MutableRefObject<(HTMLButtonElement | null)[]>
   clampedMentionIndex: number
   onMentionSelect: (ref: FileRef) => void
+  suggestionsBelow: boolean
 }) {
+  const isMobile = useIsMobile()
   const containerRef = useRef<HTMLDivElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const lastDesktopDirectionRef = useRef<boolean | null>(null)
   const [position, setPosition] = useState<{
     top: number | undefined
     bottom: number | undefined
     left: number
     right: number
     maxHeight: number
+    width: number | undefined
+    showBelow: boolean
   }>({
     top: undefined,
     bottom: undefined,
     left: 0,
     right: 0,
     maxHeight: 256,
+    width: undefined,
+    showBelow: false,
   })
 
   const updatePosition = useCallback(() => {
@@ -66,34 +76,81 @@ export function InputBarSuggestions({
     if (!parentEl) return
 
     const rect = parentEl.getBoundingClientRect()
+
+    if (isMobile) {
+      const spaceAbove = rect.top
+      // Use visualViewport height when available so the computation reflects the
+      // actual visible region on mobile (where the soft keyboard shrinks the
+      // visible area without changing window.innerHeight).
+      const viewportHeight = window.visualViewport?.height ?? window.innerHeight
+      const viewportWidth = window.visualViewport?.width ?? window.innerWidth
+      const spaceBelow = viewportHeight - rect.bottom
+
+      // Threshold (in pixels) below which we prefer to render the menu downwards
+      // if there is more space below than above.
+      const threshold = 280
+      const showBelow = spaceAbove < threshold && spaceBelow > spaceAbove
+      const availableSpace = showBelow ? spaceBelow : spaceAbove
+      // 12px padding from the screen edge
+      const maxHeight = Math.max(80, Math.min(256, availableSpace - 12))
+
+      const menuHeight = Math.min(menuRef.current?.scrollHeight ?? maxHeight, maxHeight)
+      const canFlip = !showBelow && spaceBelow > spaceAbove && spaceBelow >= menuHeight + 12
+      const resolvedShowBelow = showBelow || canFlip
+      const resolvedAvailableSpace = resolvedShowBelow ? spaceBelow : spaceAbove
+      const resolvedMaxHeight = Math.max(80, Math.min(256, resolvedAvailableSpace - 12))
+
+      // Use fixed positioning so the menu escapes any overflow:hidden ancestor
+      // (e.g. the <main> column which clips overflow on mobile). Coordinates are
+      // in the visual-viewport frame (i.e. what fixed-position elements use).
+      const GAP = 4 // px gap between menu edge and input bar
+      setPosition({
+        top: resolvedShowBelow ? rect.bottom + GAP : undefined,
+        bottom: resolvedShowBelow ? undefined : viewportHeight - rect.top + GAP,
+        left: rect.left,
+        right: viewportWidth - rect.right,
+        maxHeight: resolvedMaxHeight,
+        width: undefined,
+        showBelow: resolvedShowBelow,
+      })
+      lastDesktopDirectionRef.current = null
+      return
+    }
+
     const spaceAbove = rect.top
-    // Use visualViewport height when available so the computation reflects the
-    // actual visible region on mobile (where the soft keyboard shrinks the
-    // visible area without changing window.innerHeight).
-    const viewportHeight = window.visualViewport?.height ?? window.innerHeight
-    const viewportWidth = window.visualViewport?.width ?? window.innerWidth
-    const spaceBelow = viewportHeight - rect.bottom
+    const spaceBelow = window.innerHeight - rect.bottom
+    const desiredHeight = Math.min(menuRef.current?.scrollHeight ?? 256, 256)
+    const fitsBelow = spaceBelow >= desiredHeight + 12
+    const fitsAbove = spaceAbove >= desiredHeight + 12
+    const previous = lastDesktopDirectionRef.current
+    let showBelow = fitsBelow
+      ? (!fitsAbove || suggestionsBelow || spaceBelow >= spaceAbove)
+      : !fitsAbove
 
-    // Threshold (in pixels) below which we prefer to render the menu downwards
-    // if there is more space below than above.
-    const threshold = 280
-    const showBelow = spaceAbove < threshold && spaceBelow > spaceAbove
+    if (previous !== null && fitsAbove && fitsBelow) {
+      const HYSTERESIS = 24
+      if (previous) {
+        showBelow = !(spaceAbove > spaceBelow + HYSTERESIS)
+      } else {
+        showBelow = spaceBelow >= spaceAbove - HYSTERESIS
+      }
+    }
+
     const availableSpace = showBelow ? spaceBelow : spaceAbove
-    // 12px padding from the screen edge
     const maxHeight = Math.max(80, Math.min(256, availableSpace - 12))
+    const GAP = 4
 
-    // Use fixed positioning so the menu escapes any overflow:hidden ancestor
-    // (e.g. the <main> column which clips overflow on mobile). Coordinates are
-    // in the visual-viewport frame (i.e. what fixed-position elements use).
-    const GAP = 4 // px gap between menu edge and input bar
     setPosition({
-      top: showBelow ? rect.bottom + GAP : undefined,
-      bottom: showBelow ? undefined : viewportHeight - rect.top + GAP,
-      left: rect.left,
-      right: viewportWidth - rect.right,
+      top: showBelow ? rect.height + GAP : undefined,
+      bottom: showBelow ? undefined : rect.height + GAP,
+      left: 0,
+      right: 0,
       maxHeight,
+      width: rect.width,
+      showBelow,
     })
-  }, [])
+    lastDesktopDirectionRef.current = showBelow
+  }, [isMobile, suggestionsBelow])
 
   useEffect(() => {
     const isOpen = slashMenuOpen || mentionMenuOpen || snippetMenuOpen
@@ -105,7 +162,9 @@ export function InputBarSuggestions({
     window.addEventListener('scroll', updatePosition, { capture: true })
     // On mobile the soft keyboard fires visualViewport 'resize' without
     // triggering window 'resize', so subscribe separately when available.
-    window.visualViewport?.addEventListener('resize', updatePosition)
+    if (isMobile && typeof window.visualViewport?.addEventListener === 'function') {
+      window.visualViewport.addEventListener('resize', updatePosition)
+    }
 
     let resizeObserver: ResizeObserver | null = null
     const parentEl = containerRef.current?.parentElement
@@ -114,15 +173,18 @@ export function InputBarSuggestions({
         updatePosition()
       })
       resizeObserver.observe(parentEl)
+      if (menuRef.current) resizeObserver.observe(menuRef.current)
     }
 
     return () => {
       window.removeEventListener('resize', updatePosition)
       window.removeEventListener('scroll', updatePosition, { capture: true })
-      window.visualViewport?.removeEventListener('resize', updatePosition)
+      if (isMobile && typeof window.visualViewport?.removeEventListener === 'function') {
+        window.visualViewport.removeEventListener('resize', updatePosition)
+      }
       resizeObserver?.disconnect()
     }
-  }, [slashMenuOpen, mentionMenuOpen, snippetMenuOpen, updatePosition])
+  }, [slashMenuOpen, mentionMenuOpen, snippetMenuOpen, updatePosition, isMobile])
 
   if (minimized) return null
 
@@ -135,15 +197,26 @@ export function InputBarSuggestions({
     }
   }
 
-  const menuStyle: CSSProperties = {
-    position: 'fixed',
-    top: position.top,
-    bottom: position.bottom,
-    left: position.left,
-    right: position.right,
-    maxHeight: position.maxHeight,
-    zIndex: 50,
-  }
+  const menuStyle: CSSProperties = isMobile
+    ? {
+        position: 'fixed',
+        top: position.top,
+        bottom: position.bottom,
+        left: position.left,
+        right: position.right,
+        maxHeight: position.maxHeight,
+        zIndex: 50,
+      }
+    : {
+        position: 'absolute',
+        top: position.top,
+        bottom: position.bottom,
+        left: position.left,
+        right: position.right,
+        maxHeight: position.maxHeight,
+        width: position.width,
+        zIndex: 50,
+      }
 
   const menuClassName = 'overflow-y-auto overscroll-contain rounded-sm border border-(--color-border) bg-(--bg-card) p-1 shadow-md'
 
@@ -151,6 +224,7 @@ export function InputBarSuggestions({
     <div ref={containerRef} className="contents">
       {slashMenuOpen && filteredSlashCommands.length > 0 && (
         <div
+          ref={menuRef}
           id={slashMenuId}
           role="listbox"
           aria-label="Slash commands"
@@ -197,6 +271,7 @@ export function InputBarSuggestions({
       )}
       {mentionMenuOpen && filteredMentions.length > 0 && (
         <div
+          ref={menuRef}
           id={mentionMenuId}
           role="listbox"
           aria-label="Reference workspace file"
@@ -228,6 +303,7 @@ export function InputBarSuggestions({
       )}
       {snippetMenuOpen && filteredSnippetCommands.length > 0 && (
         <div
+          ref={menuRef}
           id={snippetMenuId}
           role="listbox"
           aria-label="Snippets"

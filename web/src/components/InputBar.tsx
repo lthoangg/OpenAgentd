@@ -98,6 +98,7 @@ interface InputBarProps {
    * edge of its bounds so previews stay visible.
    */
   filesBelow?: boolean
+  suggestionsBelow?: boolean
   /**
    * Optional render-prop for a drag handle rendered anchored to the top
    * edge of the input pill (not the outer wrapper). This keeps the handle
@@ -177,6 +178,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   capabilities,
   floating = false,
   filesBelow = false,
+  suggestionsBelow,
   renderDragHandle,
   voiceEnabled = false,
   voiceUnavailableReason = null,
@@ -1406,6 +1408,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
           mentionOptionRefs={mentionOptionRefs}
           clampedMentionIndex={clampedMentionIndex}
           onMentionSelect={insertMention}
+          suggestionsBelow={suggestionsBelow ?? filesBelow}
         />
 
         {/* ``flex justify-center`` centers the self-sized minimized pill. */}

@@ -119,7 +119,7 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
     const dragControls = useDragControls()
     const panelRef = useRef<HTMLDivElement>(null)
     const [offset, setOffset] = useState<StoredOffset>(() => loadOffset())
-    const [filesBelow, setFilesBelow] = useState(true)
+    const [renderSuggestionsBelow, setRenderSuggestionsBelow] = useState(false)
     const [suggestionsOpen, setSuggestionsOpen] = useState(false)
 
     // ── Minimize-on-blur (desktop only) ──────────────────────────────────
@@ -296,16 +296,22 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
 
     const effectiveMinimized = !isMobile && minimized && !forceExpanded
 
-    const NEAR_BOTTOM_THRESHOLD = 140
-
-    const recomputeFilesBelow = useCallback(() => {
+    const recomputeSuggestionPlacement = useCallback(() => {
       const bounds = boundsRef.current
       const panel = panelRef.current
       if (!bounds || !panel) return
       const b = bounds.getBoundingClientRect()
       const p = panel.getBoundingClientRect()
-      setFilesBelow(b.bottom - p.bottom >= NEAR_BOTTOM_THRESHOLD)
+      const spaceAbove = p.top - b.top
+      const spaceBelow = b.bottom - p.bottom
+      setRenderSuggestionsBelow(spaceBelow >= spaceAbove)
     }, [boundsRef])
+
+    useEffect(() => {
+      if (isMobile || !suggestionsOpen) return
+      const frame = requestAnimationFrame(recomputeSuggestionPlacement)
+      return () => cancelAnimationFrame(frame)
+    }, [isMobile, suggestionsOpen, offset, recomputeSuggestionPlacement])
 
     const clampToVisibleBounds = useCallback(() => {
       const bounds = boundsRef.current
@@ -323,8 +329,8 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
         saveOffset(next)
         return next
       })
-      recomputeFilesBelow()
-    }, [boundsRef, recomputeFilesBelow])
+      recomputeSuggestionPlacement()
+    }, [boundsRef, recomputeSuggestionPlacement])
 
     useLayoutEffect(() => {
       if (!isMobile) clampToVisibleBounds()
@@ -362,17 +368,17 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
         )
         setOffset(next)
         saveOffset(next)
-        requestAnimationFrame(recomputeFilesBelow)
+        requestAnimationFrame(recomputeSuggestionPlacement)
       },
-      [boundsRef, offset, recomputeFilesBelow],
+      [boundsRef, offset, recomputeSuggestionPlacement],
     )
 
     const handleReset = useCallback(() => {
       const next = { x: 0, y: 0 }
       setOffset(next)
       saveOffset(next)
-      requestAnimationFrame(recomputeFilesBelow)
-    }, [recomputeFilesBelow])
+      requestAnimationFrame(recomputeSuggestionPlacement)
+    }, [recomputeSuggestionPlacement])
 
     // ── Mobile: Swipe-down to dismiss keyboard / de-focus ───────────────────
     const touchStartY = useRef<number | null>(null)
@@ -468,6 +474,7 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
             ref={setInputRefs}
             floating
             filesBelow={false}
+            suggestionsBelow={false}
             {...inputProps}
             onValueChange={inputProps.onValueChange}
             onSuggestionsMenuChange={setSuggestionsOpen}
@@ -502,7 +509,8 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
           <InputBar
             ref={setInputRefs}
             floating
-            filesBelow={filesBelow}
+            filesBelow={renderSuggestionsBelow}
+            suggestionsBelow={renderSuggestionsBelow}
             minimized={effectiveMinimized}
             onUnminimize={expand}
             onFocus={handleFocus}

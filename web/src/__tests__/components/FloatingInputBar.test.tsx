@@ -20,6 +20,39 @@ mock.module('@/hooks/use-mobile-viewport', () => ({
   useMobileViewportGuards: () => {},
 }))
 
+mock.module('framer-motion', () => ({
+  motion: {
+    div: ({
+      children,
+      style,
+      animate,
+      layout: _layout,
+      initial: _initial,
+      transition: _transition,
+      drag: _drag,
+      dragListener: _dragListener,
+      dragControls: _dragControls,
+      dragMomentum: _dragMomentum,
+      dragElastic: _dragElastic,
+      onDragEnd: _onDragEnd,
+      ...props
+    }: Record<string, unknown>) => {
+      const mergedStyle = { ...(style as Record<string, unknown> | undefined) }
+      if (animate && typeof animate === 'object') {
+        const maybeAnimate = animate as Record<string, unknown>
+        if (typeof maybeAnimate.x === 'number' || typeof maybeAnimate.y === 'number') {
+          const x = typeof maybeAnimate.x === 'number' ? maybeAnimate.x : 0
+          const y = typeof maybeAnimate.y === 'number' ? maybeAnimate.y : 0
+          mergedStyle.transform = `translateX(${x}px) translateY(${y}px)`
+        }
+      }
+      return <div {...props} style={mergedStyle}>{children as React.ReactNode}</div>
+    },
+  },
+  AnimatePresence: ({ children }: { children: unknown }) => children as React.ReactNode,
+  useDragControls: () => ({ start: () => {} }),
+}))
+
 const STORAGE_KEY = 'oa-input-position'
 
 afterEach(cleanup)
@@ -34,6 +67,24 @@ function nextFrame(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => resolve()))
 }
 
+function mockRect(el: Element, rect: Partial<DOMRect>) {
+  Object.defineProperty(el, 'getBoundingClientRect', {
+    configurable: true,
+    value: () => ({
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      width: 0,
+      height: 0,
+      toJSON: () => ({}),
+      ...rect,
+    }),
+  })
+}
+
 // Test harness — provides a bounds container with a stable, measurable size.
 function Harness(props: {
   onSubmit?: (message: string, files?: File[]) => void
@@ -41,6 +92,7 @@ function Harness(props: {
   placeholder?: string
   exposeFocus?: boolean
   isStreaming?: boolean
+  slashCommands?: Array<{ id: string; label: string; description: string }>
 }) {
   const boundsRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<InputBarHandle>(null)
@@ -63,6 +115,7 @@ function Harness(props: {
         onStop={props.onStop}
         isStreaming={props.isStreaming}
         placeholder={props.placeholder ?? 'Message…'}
+        slashCommands={props.slashCommands}
       />
     </div>
   )
@@ -233,6 +286,35 @@ describe('FloatingInputBar', () => {
 
     expect(textarea.getAttribute('disabled')).not.toBeNull()
     expect(screen.getByRole('button', { name: 'Expand input bar' })).toBeTruthy()
+  })
+
+  it('moves slash suggestions below when the floating bar is near the top', async () => {
+    const user = userEvent.setup()
+    render(<Harness slashCommands={[{ id: 'stop', label: 'Stop', description: '' }]} />)
+
+    const bounds = screen.getByTestId('bounds')
+    mockRect(bounds, { top: 0, left: 0, right: 1200, bottom: 800, width: 1200, height: 800 })
+
+    await user.click(screen.getByRole('button', { name: 'Expand input bar' }))
+    const textarea = screen.getByRole('textbox', { name: 'Message input' })
+    const handle = screen.getByRole('button', { name: /drag input bar/i })
+    const panel = handle.closest('.pointer-events-auto.absolute') as HTMLElement
+    expect(panel).toBeTruthy()
+
+    mockRect(panel, { top: 700, left: 424, right: 776, bottom: 780, width: 352, height: 80 })
+    await user.type(textarea, '/')
+
+    const listbox = screen.getByRole('listbox', { name: 'Slash commands' })
+    expect(listbox.style.top).toBe('4px')
+
+    mockRect(panel, { top: 50, left: 424, right: 776, bottom: 130, width: 352, height: 80 })
+    act(() => {
+      window.dispatchEvent(new Event('resize'))
+    })
+    await act(nextFrame)
+
+    expect(listbox.style.top).toBe('84px')
+    expect(listbox.style.bottom).toBe('')
   })
 
   it('expands and inserts the first typed character through its imperative insertText handle', async () => {

@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach, beforeEach, mock, spyOn } from "bun:test"
 import { act, render, screen, cleanup, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import "@testing-library/jest-dom"
 import { MCPAppResult } from "@/components/MCPAppResult"
 
 const callMcpAppTool = mock(async () => ({ result: { content: [{ type: "text", text: "saved" }] } }))
@@ -407,5 +408,46 @@ describe("MCPAppResult", () => {
       content: [{ type: "text", text: "MCP app tool arguments must be a JSON object." }],
     })
     expect(callMcpAppTool).not.toHaveBeenCalled()
+  })
+})
+
+describe("MCPAppResult — mobile edge-swipe exclusion", () => {
+  it("does not mark the inline container swipe-ignored", () => {
+    render(
+      <MCPAppResult
+        mcpApp={{
+          tool: "create_view",
+          resourceUri: "ui://excalidraw/mcp-app.html",
+          html: "<html><body>mcp app</body></html>",
+          mimeType: "text/html;profile=mcp-app",
+        }}
+      />,
+    )
+
+    const iframe = document.body.querySelector("iframe")
+    expect(iframe?.closest("[data-swipe-ignore]")).toBeNull()
+  })
+
+  it("marks the container data-swipe-ignore once expanded to fullscreen", async () => {
+    // Regression: the fullscreen MCP app view is a `fixed inset-0` overlay
+    // that can reach the screen edges. Without data-swipe-ignore, the
+    // outer useEdgeSwipe drawer controller would read an edge-zone touch
+    // on it as an open/close gesture for the sidebar/actions drawer.
+    const user = userEvent.setup()
+    render(
+      <MCPAppResult
+        mcpApp={{
+          tool: "create_view",
+          resourceUri: "ui://excalidraw/mcp-app.html",
+          html: "<html><body>mcp app</body></html>",
+          mimeType: "text/html;profile=mcp-app",
+        }}
+      />,
+    )
+
+    await user.click(screen.getByRole("button", { name: /open create_view fullscreen/i }))
+
+    const iframe = document.body.querySelector("iframe")
+    expect(iframe?.closest("[data-swipe-ignore]")).not.toBeNull()
   })
 })

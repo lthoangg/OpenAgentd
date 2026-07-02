@@ -169,6 +169,33 @@ describe('useEdgeSwipe', () => {
     expect(onLeft).not.toHaveBeenCalled()
   })
 
+  it('ignores a close-gesture that starts on a data-swipe-ignore overlay stacked on the open drawer', () => {
+    // Regression: a confirmation dialog/action-sheet (e.g. "Delete session")
+    // rendered on top of an already-open drawer must not let a drag on it
+    // be read as a swipe-to-close for the drawer underneath.
+    const onClose = mock(() => undefined)
+    function OverlayHarness() {
+      const { handlers } = useEdgeSwipe({
+        activeDrawer: 'sidebar',
+        left: { id: 'sidebar', open: () => undefined },
+        close: onClose,
+      })
+      return (
+        <div {...handlers}>
+          <div data-testid="dialog" data-swipe-ignore>dialog</div>
+        </div>
+      )
+    }
+    const { getByTestId } = render(<OverlayHarness />)
+    const dialog = getByTestId('dialog')
+    // Drag from the middle of the dialog toward the left edge — this is
+    // exactly the "close" gesture shape, just starting on excluded content.
+    fireEvent.touchStart(dialog, touchEvt(200, 200))
+    fireEvent.touchMove(dialog, touchEvt(80, 205))
+
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
   it('does nothing on non-mobile shells', () => {
     mobile = false
     const onLeft = mock(() => undefined)

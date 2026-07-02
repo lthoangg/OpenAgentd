@@ -161,7 +161,7 @@ function ReleaseNotesButton({ fallbackNotes, version }: { fallbackNotes?: string
         See release notes
       </button>
       {open ? (
-        <div className="mobile-safe-overlay fixed inset-0 z-60 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-label="Release notes" onClick={() => setOpen(false)}>
+        <div className="mobile-safe-overlay fixed inset-0 z-60 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-label="Release notes" onClick={() => setOpen(false)} data-swipe-ignore>
           <div className="max-h-[min(32rem,80vh)] w-full max-w-lg overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) text-(--color-text) shadow-xl" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-center justify-between gap-3 border-b border-(--color-border) px-4 py-3">
               <h2 className="text-sm font-semibold">Release notes</h2>

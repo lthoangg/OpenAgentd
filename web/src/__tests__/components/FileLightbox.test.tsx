@@ -49,6 +49,17 @@ describe("FileLightbox", () => {
     expect(screen.getByText("Image 1")).toBeTruthy()
   })
 
+  it("marks the overlay data-swipe-ignore so the outer mobile edge-swipe drawer controller ignores it", () => {
+    // Regression: FileLightbox is portalled to <body> and owns its own
+    // pan/swipe-to-navigate + swipe-down-to-close gestures without
+    // stopping propagation, so without this attribute the outer
+    // useEdgeSwipe controller (attached on the app shell) would also see
+    // those touches — opening a drawer from an edge-zone touch mid-view,
+    // or closing a drawer that's still open behind the lightbox.
+    render(<FileLightbox items={items} index={0} isOpen={true} onClose={() => {}} />)
+    expect(screen.getByRole("dialog").getAttribute("data-swipe-ignore")).not.toBeNull()
+  })
+
   it("triggers onClose when clicking close button", () => {
     let closed = false
     render(<FileLightbox items={items} index={0} isOpen={true} onClose={() => { closed = true }} />)

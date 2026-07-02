@@ -5,6 +5,29 @@ import type { TodoItem } from '@/api/types'
 
 afterEach(cleanup)
 
+describe('TodosPopover — mobile edge-swipe exclusion', () => {
+  it('marks the mobile overlay data-swipe-ignore so useEdgeSwipe never reads a touch on it', () => {
+    // Regression: with trigger={false} (how TeamChatHeader renders it on
+    // mobile) this is the full-screen overlay variant (backdrop + panel),
+    // not tracked as a drawer by useEdgeSwipe. Without this attribute an
+    // edge-zone touch on top of it is read as a fresh "open" gesture for
+    // the sidebar/actions drawer underneath.
+    render(
+      <TodosPopover
+        open
+        trigger={false}
+        onOpenChange={() => {}}
+        todos={[]}
+        sessionId="session-123"
+      />,
+    )
+
+    const overlay = document.querySelector('[role="presentation"]')
+    expect(overlay).not.toBeNull()
+    expect(overlay?.getAttribute('data-swipe-ignore')).not.toBeNull()
+  })
+})
+
 describe('TodosPopover', () => {
   it('shows an empty-state message when there are no todos', () => {
     render(

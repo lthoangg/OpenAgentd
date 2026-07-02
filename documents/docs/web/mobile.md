@@ -38,6 +38,17 @@ Use `h-dvh` everywhere instead of `h-screen` (iOS Safari dynamic toolbar).
 
 ## Component behaviour
 
+### Edge-swipe drawers (Sidebar, CodingSidebar, chat actions/coding-panel)
+
+One controller (`useEdgeSwipe`, `web/src/hooks/use-edge-swipe.ts`) owns every
+mobile drawer so only one is open at a time and swipe-to-close works from
+anywhere on screen, not just the edge. Any overlay that can render on top of
+an open drawer (confirmation dialogs, action-sheets, lightbox, Settings, full
+screen MCP apps) **must** opt out with `data-swipe-ignore` or a drag on it is
+misread as a swipe-to-close for the drawer underneath. See *Mobile touch
+gestures* in [`web/src/AGENTS.md`](../../../web/src/AGENTS.md) for the full
+exclusion list and rule.
+
 ### Sidebar (`Sidebar.tsx`)
 - Desktop: inline flex column, animates width between 56 px (icon-only) and 256 px.
 - Mobile: `position: fixed`, slides in/out via `x` transform (`w-[272px]`, `z-40`). Backdrop overlay closes it on tap.

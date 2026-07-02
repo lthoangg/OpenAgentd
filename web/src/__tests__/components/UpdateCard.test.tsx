@@ -250,6 +250,25 @@ describe('UpdateCard — install flow', () => {
   })
 })
 
+describe('UpdateCard — release notes modal', () => {
+  it('marks the release-notes overlay data-swipe-ignore', async () => {
+    // Regression: the release-notes modal is a hand-rolled `fixed inset-0`
+    // overlay that reaches the screen edges. Without this attribute the
+    // outer mobile useEdgeSwipe drawer controller would read an
+    // edge-zone touch on it as an open/close gesture for the
+    // sidebar/actions drawer underneath.
+    render(<UpdateCard />)
+
+    await waitFor(() => expect(capturedStatusListener).not.toBeNull())
+    act(() => emitStatus({ status: 'downloaded', version: '1.71.0', current_version: '1.70.0' }))
+
+    await userEvent.click(screen.getByRole('button', { name: /see release notes/i }))
+
+    const dialog = await waitFor(() => screen.getByRole('dialog', { name: /release notes/i }))
+    expect(dialog).toHaveAttribute('data-swipe-ignore')
+  })
+})
+
 describe('UpdateCard — download flow', () => {
   it('shows progress bar while downloading', async () => {
     render(<UpdateCard />)

@@ -93,6 +93,11 @@ function DialogOverlay({ className, closing, ...props }: ComponentPropsWithRef<'
   return (
     <div
       data-slot="dialog-overlay"
+      // Dialogs are frequently stacked on top of an already-open mobile
+      // drawer (session actions, delete/edit confirmations, etc). Without
+      // this, useEdgeSwipe reads any touch-drag on the backdrop as a
+      // close-gesture for the drawer underneath and yanks it shut.
+      data-swipe-ignore
       className={cn(
         'fixed inset-0 z-50 bg-black/10 supports-backdrop-filter:backdrop-blur-xs',
         closing
@@ -143,6 +148,9 @@ function DialogContent({ className, children, showCloseButton = true, ...props }
       <div
         ref={contentRef}
         data-slot="dialog-content"
+        // See DialogOverlay — same edge-swipe exclusion applies to the
+        // content itself (e.g. tapping/dragging a footer button).
+        data-swipe-ignore
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}

@@ -55,7 +55,16 @@ Touch/swipe behaviour is centralised so drawers can never conflict:
   fast fling (velocity) or fixed distance. Active only on Tauri
   iOS/Android shells.
 - Opt an element out of edge swipe with `data-swipe-ignore` (e.g.
-  toasts, carousels) so its own drag wins.
+  toasts, carousels) so its own drag wins. **Every overlay primitive that
+  can render on top of an open drawer must carry this** — `useEdgeSwipe`
+  only knows about the sidebar/actions/coding-panel drawer trio via
+  `activeDrawer`; it has no idea a dialog, action-sheet, or lightbox is
+  stacked visually on top, and its close-gesture arms on *any* touch
+  (not just edge-start) while a drawer is open. Already covered:
+  `AppOverlay`, `components/ui/dialog.tsx`, `components/ui/sheet.tsx`,
+  `SettingsModal`, `FileLightbox`, `WorkspaceFilesPanel` (mobile sheet),
+  `TodosPopover` (mobile). When adding a new full-screen/overlay
+  component, add `data-swipe-ignore` to its backdrop **and** panel.
 - `lib/haptics.ts` — `softHapticFeedback` / `mediumHapticFeedback`, plus
   the semantic `haptic('tick'|'select'|'commit')` wrapper. No-ops off a
   touch shell; never make UX depend on haptics succeeding.

@@ -264,7 +264,14 @@ export function TodosPopover({
   if (!trigger) {
     if (!mounted) return null
     return (
-      <div className="fixed inset-0 z-50 pointer-events-none" role="presentation">
+      <div
+        className="fixed inset-0 z-50 pointer-events-none"
+        role="presentation"
+        // Not tracked by useEdgeSwipe's drawer set — without this an
+        // edge-zone touch on the backdrop/panel is read as a fresh "open"
+        // gesture for the sidebar/actions drawer underneath.
+        data-swipe-ignore
+      >
         {/*
           The dismiss backdrop must NOT cover the app header — otherwise a
           tap on the Tasks / Files / panel buttons lands on the backdrop

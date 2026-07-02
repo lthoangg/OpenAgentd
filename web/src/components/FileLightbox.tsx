@@ -847,6 +847,13 @@ export function FileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'f
       role="dialog"
       aria-modal="true"
       aria-label={dialogLabel}
+      // The lightbox is portalled to <body> and owns its own touch
+      // handling (pan/swipe-to-navigate, swipe-down-to-close). It doesn't
+      // stop propagation on those touches, so without this the outer
+      // useEdgeSwipe controller in TeamChatView also sees them — either
+      // opening a drawer from an edge-zone touch mid-viewing, or closing
+      // a drawer that's still open behind the lightbox.
+      data-swipe-ignore
     >
       {/* ── Top action bar ──────────────────────────────────────────────────── */}
       <div

@@ -941,6 +941,11 @@ export function WorkspaceFilesPanel({ open, sessionId, onClose }: WorkspaceFiles
             className="mobile-safe-top fixed inset-x-0 bottom-0 z-40 bg-black/30"
             onClick={onClose}
             aria-hidden="true"
+            // This overlay isn't tracked by useEdgeSwipe's drawer set, so
+            // without this an edge-zone touch on top of it is read as a
+            // fresh "open" gesture and silently swaps it for the
+            // sidebar/actions drawer underneath.
+            data-swipe-ignore
           />
           {/* Panel */}
           <motion.aside
@@ -953,6 +958,7 @@ export function WorkspaceFilesPanel({ open, sessionId, onClose }: WorkspaceFiles
             exit={prefersReducedMotion ? { opacity: 0 } : { x: '100%' }}
             transition={{ duration: prefersReducedMotion ? 0.01 : 0.22, ease: [0.4, 0, 0.2, 1] }}
             className="mobile-safe-top fixed inset-x-0 bottom-0 z-50 overflow-hidden border-t border-(--color-border) bg-(--bg-page) shadow-xl"
+            data-swipe-ignore
           >
             {panelContent}
           </motion.aside>

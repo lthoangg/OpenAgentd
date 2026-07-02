@@ -131,6 +131,9 @@ function SheetContent({ className, children, side = 'right', showCloseButton = t
     <>
       {/* Backdrop */}
       <div
+        // Same edge-swipe exclusion rationale as Dialog — a sheet can be
+        // open on top of a mobile edge-swipe drawer.
+        data-swipe-ignore
         className={cn(
           'fixed inset-0 z-50 bg-black/10 supports-backdrop-filter:backdrop-blur-xs duration-200',
           closing ? 'animate-out fade-out-0' : 'animate-in fade-in-0',
@@ -142,6 +145,7 @@ function SheetContent({ className, children, side = 'right', showCloseButton = t
       <div
         ref={contentRef}
         data-slot="sheet-content"
+        data-swipe-ignore
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}

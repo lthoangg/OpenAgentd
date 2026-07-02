@@ -361,6 +361,9 @@ export function SettingsModal() {
             className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[1px]"
             onClick={closeSettings}
             aria-hidden="true"
+            // Full-screen on mobile — must not be readable by the outer
+            // edge-swipe drawer controller (same rationale as AppOverlay).
+            data-swipe-ignore
           />
 
           <motion.div
@@ -372,6 +375,7 @@ export function SettingsModal() {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.98, y: 4 }}
             transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
+            data-swipe-ignore
             className={cn(
               'settings-modal-shell z-50 flex flex-col overflow-hidden rounded-lg',
               'border border-(--color-border) bg-(--bg-page) shadow-2xl',

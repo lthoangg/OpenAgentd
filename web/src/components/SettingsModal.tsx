@@ -8,6 +8,7 @@
 import { useEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
+  AlignLeft,
   ArrowLeft,
   Bell,
   Image,
@@ -45,6 +46,7 @@ import { McpServerDetailPage } from '@/routes/settings.mcp.$name'
 import { ProvidersSettingsPage } from '@/routes/settings.providers'
 import { SandboxSettingsPage } from '@/routes/settings.sandbox'
 import { MultimodalSettingsPage } from '@/routes/settings.multimodal'
+import { SummarizationSettingsPage } from '@/routes/settings.summarization'
 import { TitleGenerationSettingsPage } from '@/routes/settings.title-generation'
 import { NotificationSettingsPage } from '@/routes/settings.notifications'
 
@@ -53,7 +55,7 @@ import { NotificationSettingsPage } from '@/routes/settings.notifications'
 /** Sections that map directly to a top-level sidebar entry. */
 type TopLevelSection = Extract<
   SettingsSection,
-  'agents' | 'skills' | 'mcp' | 'providers' | 'sandbox' | 'multimodal' | 'title-generation' | 'notifications' | 'about'
+  'agents' | 'skills' | 'mcp' | 'providers' | 'sandbox' | 'multimodal' | 'summarization' | 'title-generation' | 'notifications' | 'about'
 >
 
 interface SidebarItem {
@@ -138,6 +140,7 @@ function ModalSidebar({ section, onSelect }: { section: SettingsSection; onSelec
     { section: 'providers',        label: 'Providers',        icon: KeyRound },
     { section: 'sandbox',          label: 'Sandbox',          icon: Shield,   count: sandboxQ.data?.denied_patterns.length ?? null },
     { section: 'multimodal',       label: 'Multimodal',       icon: Image },
+    { section: 'summarization',    label: 'Summarization',    icon: AlignLeft },
     { section: 'title-generation', label: 'Title generation', icon: Type },
     { section: 'notifications',    label: 'Notifications',    icon: Bell },
   ]
@@ -171,6 +174,7 @@ function MobileTabBar({ section, onSelect }: { section: SettingsSection; onSelec
   const active = (
     baseActive === 'sandbox' ||
     baseActive === 'multimodal' ||
+    baseActive === 'summarization' ||
     baseActive === 'title-generation' ||
     baseActive === 'notifications'
   ) ? 'about' : baseActive
@@ -278,6 +282,7 @@ function SectionContent({ section, selectedName, setSection }: {
     case 'providers':        return <ProvidersSettingsPage />
     case 'sandbox':          return <SandboxSettingsPage />
     case 'multimodal':       return <MultimodalSettingsPage />
+    case 'summarization':    return <SummarizationSettingsPage />
     case 'title-generation': return <TitleGenerationSettingsPage />
     case 'notifications':    return <NotificationSettingsPage />
     case 'about':
@@ -306,6 +311,7 @@ function getBreadcrumbs(section: SettingsSection, selectedName: string | null): 
       providers: 'Providers',
       sandbox: 'Sandbox',
       multimodal: 'Multimodal',
+      summarization: 'Summarization',
       'title-generation': 'Title Generation',
       notifications: 'Notifications',
       about: 'About',
@@ -337,12 +343,14 @@ export function SettingsModal() {
     section !== parentSection(section) ||
     section === 'sandbox' ||
     section === 'multimodal' ||
+    section === 'summarization' ||
     section === 'title-generation' ||
     section === 'notifications'
 
   const mobileBackSection =
     section === 'sandbox' ||
     section === 'multimodal' ||
+    section === 'summarization' ||
     section === 'title-generation' ||
     section === 'notifications'
       ? 'about'

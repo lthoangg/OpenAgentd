@@ -26,7 +26,7 @@ In a source checkout, `APP_ENV` now defaults to `development`, so plain `uv run 
 **What lives where:**
 
 - **Data** — irreplaceable user data. SQLite DB (`openagentd.db`) and session artifacts (`sessions/{id}/`). **Back this up.**
-- **Config** — hand-edited configuration. Agents (`agents/`), skills (`skills/`), runtime settings (`settings.yaml`), generation config (`multimodal.yaml`), MCP (`mcp.json`), sandbox (`sandbox.yaml`), `.env`. (Summarisation has no file-based config — all tuning lives in `app/agent/hooks/summarization.py`.)
+- **Config** — hand-edited configuration. Agents (`agents/`), skills (`skills/`), runtime settings (`settings.yaml`), generation config (`multimodal.yaml`), MCP (`mcp.json`), sandbox (`sandbox.yaml`), `.env`. (The summarization trigger threshold is configurable via `settings.yaml` under `summarization.prompt_token_threshold`; other tuning lives in `app/agent/hooks/summarization.py`.)
 - **State** — historical bookkeeping. Logs (`logs/`), telemetry (`telemetry/`), OTEL rollups (`otel/`), `openagentd.pid`. Safe to archive.
 - **Cache** — regeneratable throwaway. `quoteoftheday.json`, `copilot_oauth.json`, `codex_oauth.json`. Safe to delete any time.
 - **Workspace** — per-session agent workspaces (`{root}/<sid>/`). Normal-mode uploads live at `{root}/<sid>/uploads/`; coding-mode uploads live at `<coding-workspace>/uploads/`. Allowed by the sandbox so filesystem tools (`read`/`write`/`shell`) can operate there.

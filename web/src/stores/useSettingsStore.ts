@@ -22,6 +22,7 @@ export type SettingsSection =
   | 'providers'
   | 'sandbox'
   | 'multimodal'
+  | 'summarization'
   | 'title-generation'
   | 'notifications'
 

@@ -27,6 +27,29 @@ export async function updateSandboxSettings(
   return res.json()
 }
 
+export type SummarizationSettings = {
+  /** null = use the auto-computed model-aware threshold */
+  prompt_token_threshold: number | null
+}
+
+export async function getSummarizationSettings(): Promise<SummarizationSettings> {
+  const res = await fetch(`${apiBaseUrl()}/settings/summarization`)
+  if (!res.ok) await parseDetailOrThrow(res, 'GET /settings/summarization')
+  return res.json()
+}
+
+export async function updateSummarizationSettings(
+  body: SummarizationSettings,
+): Promise<SummarizationSettings> {
+  const res = await fetch(`${apiBaseUrl()}/settings/summarization`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) await parseDetailOrThrow(res, 'PUT /settings/summarization')
+  return res.json()
+}
+
 export type TitleGenerationSettings = {
   enabled: boolean
   model: string

@@ -597,6 +597,62 @@ def test_install_seed_defaults_rejects_invalid_model() -> None:
     assert response.status_code == 422
 
 
+def test_summarization_settings_roundtrip(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        settings_routes.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path)
+    )
+
+    app = _make_app()
+    client = TestClient(app)
+
+    # GET with no prior file → null threshold (auto)
+    get_response = client.get("/api/settings/summarization")
+    assert get_response.status_code == 200
+    assert get_response.json() == {"prompt_token_threshold": None}
+
+    # PUT a custom threshold
+    put_response = client.put(
+        "/api/settings/summarization",
+        json={"prompt_token_threshold": 50_000},
+    )
+    assert put_response.status_code == 200
+    assert put_response.json() == {"prompt_token_threshold": 50_000}
+    assert (tmp_path / "settings.yaml").is_file()
+
+    # GET reflects the persisted value
+    read_response = client.get("/api/settings/summarization")
+    assert read_response.status_code == 200
+    assert read_response.json() == {"prompt_token_threshold": 50_000}
+
+    # PUT null clears the setting
+    clear_response = client.put(
+        "/api/settings/summarization",
+        json={"prompt_token_threshold": None},
+    )
+    assert clear_response.status_code == 200
+    assert clear_response.json() == {"prompt_token_threshold": None}
+
+
+def test_summarization_settings_rejects_non_positive_threshold(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        settings_routes.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path)
+    )
+
+    app = _make_app()
+    client = TestClient(app)
+
+    for bad in [0, -1, -100]:
+        response = client.put(
+            "/api/settings/summarization",
+            json={"prompt_token_threshold": bad},
+        )
+        assert response.status_code == 422, f"expected 422 for threshold={bad}"
+
+
 def test_title_generation_settings_roundtrip(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

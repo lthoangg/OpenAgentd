@@ -88,8 +88,14 @@ router = APIRouter()
 
 def _serialize_agent(agent: Agent, *, is_lead: bool = False) -> dict:
     """Serialize an Agent into the /team/agents response shape."""
-    from app.agent.hooks.summarization import prompt_token_threshold_for_model
+    from app.agent.hooks.summarization import resolve_prompt_token_threshold
     from app.agent.mcp import mcp_manager
+    from app.core.runtime_settings import load_runtime_settings
+
+    try:
+        _custom = load_runtime_settings().summarization.prompt_token_threshold
+    except Exception:
+        _custom = None
 
     tools_by_name = {t.name: t for t in agent._tools.values()}
     for server_name in agent.mcp_servers:
@@ -101,7 +107,9 @@ def _serialize_agent(agent: Agent, *, is_lead: bool = False) -> dict:
         "name": agent.name,
         "description": agent.description or "",
         "model": agent.model_id,
-        "summary_trigger_tokens": prompt_token_threshold_for_model(agent.model_id),
+        "summary_trigger_tokens": resolve_prompt_token_threshold(
+            agent.model_id, _custom
+        ),
         "tools": [
             {"name": t.name, "description": t.description or ""}
             for t in tools_by_name.values()

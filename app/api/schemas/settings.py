@@ -13,6 +13,15 @@ class SandboxSettingsBody(BaseModel):
     denied_patterns: list[str] = Field(default_factory=list)
 
 
+class SummarizationSettingsBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # ``None`` means "use the auto-computed model-aware threshold".
+    # A positive integer triggers summarisation earlier when it is below the
+    # auto value; values >= auto are silently treated as "use auto".
+    prompt_token_threshold: int | None = None
+
+
 class TitleGenerationSettingsBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

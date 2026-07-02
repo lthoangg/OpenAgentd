@@ -195,6 +195,8 @@ User-editable runtime settings persisted under `{OPENAGENTD_CONFIG_DIR}`. Sandbo
 
 | Method | Path | Returns |
 |--------|------|---------|
+| `GET` | `/api/settings/summarization` | `{prompt_token_threshold}` — `null` = use auto (80% of model context) |
+| `PUT` | `/api/settings/summarization` | Persist trigger threshold; `null` restores auto; must be positive integer or null |
 | `GET` | `/api/settings/title-generation` | `{enabled, model, wait_timeout_seconds}` from `settings.yaml` |
 | `PUT` | `/api/settings/title-generation` | Persist title generation runtime settings |
 | `GET` | `/api/settings/multimodal` | `{image, video}` from `multimodal.yaml` |

@@ -16,7 +16,7 @@ from loguru import logger
 from pydantic import ValidationError
 
 from app.agent.loader import AgentConfig
-from app.agent.hooks.summarization import prompt_token_threshold_for_model
+from app.agent.hooks.summarization import resolve_prompt_token_threshold
 from app.agent.providers.capabilities import get_capabilities
 from app.agent.providers.catalog import all_providers
 from app.agent.providers.model_metadata import get_model_thinking_levels
@@ -278,8 +278,19 @@ async def list_agents() -> AgentListResponse:
 async def get_registry() -> RegistryResponse:
     """Dropdown catalog: tools, skills, providers, known models."""
     from app.agent.loader import _default_tool_registry
+    from app.core.runtime_settings import load_runtime_settings
 
     await _warm_provider_model_cache()
+
+    try:
+        _custom_threshold: int | None = (
+            load_runtime_settings().summarization.prompt_token_threshold
+        )
+    except Exception:
+        _custom_threshold = None
+
+    def _effective_summary_trigger(mid: str) -> int:
+        return resolve_prompt_token_threshold(mid, _custom_threshold)
 
     tool_registry = _default_tool_registry()
     hidden_tools = {"skill", "todo_manage", "schedule_task", "note"}
@@ -333,7 +344,7 @@ async def get_registry() -> RegistryResponse:
                 output_image=caps.output.image,
                 output_video=caps.output.video,
                 thinking_levels=list(get_model_thinking_levels(model_id)),
-                summary_trigger_tokens=prompt_token_threshold_for_model(model_id),
+                summary_trigger_tokens=_effective_summary_trigger(model_id),
                 fast_mode=provider in fast_mode_providers,
             )
         )

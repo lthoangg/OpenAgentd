@@ -4,7 +4,7 @@ from .otel import OpenTelemetryHook
 from .stream_publisher import StreamPublisherHook
 from .session_log import SessionLogHook
 from .streaming import StreamingHook
-from .summarization import SummarizationHook
+from .summarization import SummarizationHook, resolve_prompt_token_threshold
 from .telemetry import TelemetryHook
 from .title_generation import TitleGenerationHook, build_title_generation_hook
 from .lsp import LspHook
@@ -17,6 +17,7 @@ __all__ = [
     "SessionLogHook",
     "StreamingHook",
     "SummarizationHook",
+    "resolve_prompt_token_threshold",
     "TelemetryHook",
     "TitleGenerationHook",
     "build_title_generation_hook",

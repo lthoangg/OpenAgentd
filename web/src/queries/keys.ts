@@ -78,6 +78,7 @@ export const queryKeys = {
   },
   settings: {
     sandbox: () => ['settings', 'sandbox'] as const,
+    summarization: () => ['settings', 'summarization'] as const,
     titleGeneration: () => ['settings', 'titleGeneration'] as const,
     multimodal: () => ['settings', 'multimodal'] as const,
     providers: () => ['settings', 'providers'] as const,

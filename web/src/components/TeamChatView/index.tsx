@@ -43,6 +43,7 @@ import { useUIStore } from '@/stores/useUIStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { useTeamAgentsQuery } from '@/queries/useAgentsQuery'
+import { useRegistryQuery } from '@/queries/useAgentFilesQuery'
 import { useFileRefsQuery } from '@/queries/useFileRefsQuery'
 import { AlertCircle, FolderCode, X, FileUp } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -312,7 +313,19 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const { data: teamAgentsData, isLoading: teamAgentsLoading } = useTeamAgentsQuery(agentWorkspace, hasCodingWorkspace)
   const leadAgent = teamAgentsData?.agents?.find((a) => a.is_lead)
   const leadCapabilities: AgentCapabilitiesType | undefined = leadAgent?.capabilities
-  const summaryTriggerTokens = leadAgent?.summary_trigger_tokens
+
+  // When the session overrides the agent's model (e.g. user switches from
+  // model A to model B mid-session), the trigger threshold must reflect the
+  // *active* model, not the agent config model.  Look up the session model in
+  // the registry; fall back to the lead agent's pre-computed value.
+  const { data: registryData } = useRegistryQuery()
+  const summaryTriggerTokens = useMemo(() => {
+    if (sessionModel) {
+      const entry = registryData?.models?.find((m) => m.id === sessionModel)
+      if (entry?.summary_trigger_tokens) return entry.summary_trigger_tokens
+    }
+    return leadAgent?.summary_trigger_tokens
+  }, [sessionModel, registryData, leadAgent])
   const voiceEnabled = true
   const voiceUnavailableReason = null
 

@@ -33,7 +33,7 @@ updated: 2026-06-23
 
 ## Configuration
 
-Summarization has **no operator-facing configuration surface**. All tuning lives as constants in `app/agent/hooks/summarization.py`. There is no per-agent `summarization:` block, no `.openagentd/config/summarization.md` file, and no environment variables. To change anything, edit the source and ship a new build — this guarantees a single source of truth and removes the risk of drift from a stale config file.
+The summarization trigger threshold is user-configurable via **Settings → Summarization** (persisted to `settings.yaml`). Prompts, keep window, and other numeric tuning remain constants in `app/agent/hooks/summarization.py` with no per-agent overrides.
 
 ### Bundled prompts (selected by session mode)
 
@@ -58,7 +58,7 @@ Summarization has **no operator-facing configuration surface**. All tuning lives
 The trigger threshold is model-aware when the model registry has a `limits.context_length` entry for the agent model. Registry data comes from the bundled `app/agent/providers/model_registry.json`, refreshed `models.dev` cache, and optional user overlay:
 
 ```text
-threshold = min(MAX_PROMPT_TOKEN_THRESHOLD, 75% of model context length)
+threshold = 80% of model context length
 ```
 
 Unknown model context lengths fall back to `DEFAULT_PROMPT_TOKEN_THRESHOLD`. API surfaces that need to display the trigger should use the backend-calculated value (`summary_trigger_tokens` on `/api/team/agents` and `/api/agents/registry`) instead of hardcoding the fallback.
@@ -66,8 +66,7 @@ Unknown model context lengths fall back to `DEFAULT_PROMPT_TOKEN_THRESHOLD`. API
 | Constant | Default | Meaning |
 |----------|---------|---------|
 | `DEFAULT_PROMPT_TOKEN_THRESHOLD` | see code | Fallback trigger threshold for `state.usage.last_prompt_tokens` when model context is unknown. Set to `0` to disable summarization entirely. |
-| `MAX_PROMPT_TOKEN_THRESHOLD` | see code | Upper bound for model-aware summarization thresholds. |
-| `PROMPT_TOKEN_THRESHOLD_CONTEXT_RATIO` | `0.75` | Fraction of known model context used before applying the max cap. |
+| `PROMPT_TOKEN_THRESHOLD_CONTEXT_RATIO` | `0.8` | Fraction of known model context length used as the trigger threshold. No upper cap — a 10M-context model correctly gets an 8M threshold. |
 | `DEFAULT_KEEP_LAST_ASSISTANTS` | `3` | Chat-mode keep window. |
 | `CODING_KEEP_LAST_ASSISTANTS` | `0` | Coding-mode keep window. |
 | `DEFAULT_MAX_TOKEN_LENGTH` | `30000` | Cap on the summariser LLM response length. `0` = unlimited. |
@@ -83,7 +82,7 @@ from app.agent.hooks.summarization import build_summarization_hook
 hook = build_summarization_hook(
     default_provider=provider,
     mode=team.mode,             # "coding" → CODING_SUMMARY_PROMPT + keep=0; else CHAT_SUMMARY_PROMPT + keep=3
-    model_id=agent.model_id,    # e.g. "openai:gpt-5"; threshold = min(max threshold, 75% context)
+    model_id=agent.model_id,    # e.g. "openai:gpt-5"; threshold = 80% of context length
 )
 if hook:
     hooks.append(hook)

@@ -52,6 +52,7 @@ from app.api.schemas.settings import (
     SandboxSettingsBody,
     SeedInstallRequest,
     SeedInstallResponse,
+    SummarizationSettingsBody,
     TitleGenerationSettingsBody,
 )
 from app.services.provider_connection import provider_is_configured
@@ -105,6 +106,38 @@ async def update_sandbox_settings(body: SandboxSettingsBody) -> SandboxSettingsB
     cleaned = [p.strip() for p in body.denied_patterns if p.strip()]
     save_config(SandboxFileConfig(denied_patterns=cleaned))
     return SandboxSettingsBody(denied_patterns=cleaned)
+
+
+@router.get("/summarization")
+async def get_summarization_settings() -> SummarizationSettingsBody:
+    """Return the current summarization settings from ``settings.yaml``."""
+    from app.core.runtime_settings import load_runtime_settings
+
+    cfg = load_runtime_settings().summarization
+    return SummarizationSettingsBody(
+        prompt_token_threshold=cfg.prompt_token_threshold,
+    )
+
+
+@router.put("/summarization")
+async def update_summarization_settings(
+    body: SummarizationSettingsBody,
+) -> SummarizationSettingsBody:
+    """Persist summarization settings to ``settings.yaml``."""
+    from app.core.runtime_settings import load_runtime_settings, save_runtime_settings
+
+    if body.prompt_token_threshold is not None and body.prompt_token_threshold < 1:
+        raise HTTPException(
+            status_code=422,
+            detail="prompt_token_threshold must be a positive integer or null",
+        )
+
+    cfg = load_runtime_settings()
+    cfg.summarization.prompt_token_threshold = body.prompt_token_threshold
+    save_runtime_settings(cfg)
+    return SummarizationSettingsBody(
+        prompt_token_threshold=cfg.summarization.prompt_token_threshold,
+    )
 
 
 @router.get("/title-generation")

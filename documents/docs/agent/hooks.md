@@ -134,7 +134,7 @@ hook = StreamPublisherHook(session_id=session_id_str, agent_name=agent.name)
 
 Rolling-window context compression. **Pure state transform** — reads `state.usage.last_prompt_tokens` in `before_model` to decide whether to compress, then runs the summarizer from `wrap_model_call` after prompt-building hooks have produced the final normal system prompt. It mutates `state.messages` directly and performs no DB access. See [`summarization.md`](summarization.md) for full details.
 
-`build_summarization_hook` is the preferred factory for call sites. It has no per-agent or file-based configuration — numeric tuning lives as ``DEFAULT_*`` constants in ``summarization.py``. The only runtime input is ``mode``, which selects both the bundled prompt and the ``keep_last_assistants`` window:
+`build_summarization_hook` is the preferred factory for call sites. The trigger threshold is read from `settings.yaml` (`summarization.prompt_token_threshold`) — when absent the model-aware auto value (80% of context) is used. Prompts and keep-window are selected by ``mode``:
 
 ```python
 from app.agent.hooks.summarization import build_summarization_hook

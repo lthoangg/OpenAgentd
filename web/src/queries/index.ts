@@ -62,6 +62,10 @@ export {
   useInstallSeedMutation,
 } from './useProvidersQuery'
 export {
+  useSummarizationSettingsQuery,
+  useUpdateSummarizationSettingsMutation,
+} from './useSummarizationSettingsQuery'
+export {
   useTitleGenerationSettingsQuery,
   useUpdateTitleGenerationSettingsMutation,
 } from './useTitleGenerationSettingsQuery'

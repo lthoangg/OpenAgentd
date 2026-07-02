@@ -95,8 +95,7 @@ if TYPE_CHECKING:
 #   benefit from a single authoritative "state of the world" record over
 #   partially-summarised history.
 DEFAULT_PROMPT_TOKEN_THRESHOLD = 250000
-MAX_PROMPT_TOKEN_THRESHOLD = 250000
-PROMPT_TOKEN_THRESHOLD_CONTEXT_RATIO = 0.75
+PROMPT_TOKEN_THRESHOLD_CONTEXT_RATIO = 0.8
 DEFAULT_KEEP_LAST_ASSISTANTS = 3
 CODING_KEEP_LAST_ASSISTANTS = 0
 DEFAULT_MAX_TOKEN_LENGTH = 30000
@@ -314,14 +313,40 @@ def _skill_tool_pair_ids(messages: list) -> set[int]:
 
 
 def prompt_token_threshold_for_model(model_id: str | None) -> int:
-    """Return summarisation threshold capped by the module default."""
+    """Return the auto-computed summarisation threshold for *model_id*.
+
+    Formula: ``context_length * PROMPT_TOKEN_THRESHOLD_CONTEXT_RATIO``.
+    Falls back to :data:`DEFAULT_PROMPT_TOKEN_THRESHOLD` for unknown models.
+    There is no upper cap — a 10M-context model correctly gets a 8M threshold.
+    This value is the **ceiling** used by :func:`resolve_prompt_token_threshold`.
+    """
     context_length = get_model_limits(model_id).context_length
     if context_length is None:
         return DEFAULT_PROMPT_TOKEN_THRESHOLD
-    return min(
-        MAX_PROMPT_TOKEN_THRESHOLD,
-        int(context_length * PROMPT_TOKEN_THRESHOLD_CONTEXT_RATIO),
-    )
+    return int(context_length * PROMPT_TOKEN_THRESHOLD_CONTEXT_RATIO)
+
+
+def resolve_prompt_token_threshold(
+    model_id: str | None,
+    custom_threshold: int | None,
+) -> int:
+    """Return the effective summarisation threshold, applying any user override.
+
+    Logic:
+
+    * ``custom_threshold`` is ``None`` → use the auto-computed value.
+    * ``custom_threshold >= auto`` → use the auto-computed value (custom is
+      too high to change anything — it would never fire before the ceiling).
+    * ``custom_threshold < auto`` → use ``custom_threshold`` (triggers earlier
+      than the default, as requested by the user).
+
+    The setting can only *lower* the trigger; it can never raise it above the
+    model-aware ceiling.
+    """
+    auto = prompt_token_threshold_for_model(model_id)
+    if custom_threshold is None or custom_threshold >= auto:
+        return auto
+    return custom_threshold
 
 
 def build_summarization_hook(
@@ -333,8 +358,10 @@ def build_summarization_hook(
 ) -> "SummarizationHook | None":
     """Return a configured SummarizationHook, or ``None`` if disabled.
 
-    Uses the module-level ``DEFAULT_*`` constants for all numeric settings —
-    no per-agent or file overrides. Returns ``None`` when
+    Reads the user-configured ``summarization.prompt_token_threshold`` from
+    ``settings.yaml`` via :func:`resolve_prompt_token_threshold` — when absent
+    the auto-computed model-aware threshold is used; when present and lower than
+    the auto value the custom value is used.  Returns ``None`` when
     ``DEFAULT_PROMPT_TOKEN_THRESHOLD <= 0`` (operator-level kill switch).
 
     The summariser provider is the caller's ``default_provider`` (typically
@@ -356,6 +383,13 @@ def build_summarization_hook(
     if DEFAULT_PROMPT_TOKEN_THRESHOLD <= 0:
         return None
 
+    from app.core.runtime_settings import load_runtime_settings
+
+    try:
+        custom_threshold = load_runtime_settings().summarization.prompt_token_threshold
+    except Exception:
+        custom_threshold = None
+
     limits = get_model_limits(model_id)
     max_token_length = DEFAULT_MAX_TOKEN_LENGTH
     if limits.max_completion_tokens is not None:
@@ -364,7 +398,9 @@ def build_summarization_hook(
     return SummarizationHook(
         default_provider,
         summary_prompt=prompt_for_mode(mode),
-        prompt_token_threshold=prompt_token_threshold_for_model(model_id),
+        prompt_token_threshold=resolve_prompt_token_threshold(
+            model_id, custom_threshold
+        ),
         keep_last_assistants=keep_last_for_mode(mode),
         max_token_length=max_token_length,
         support_interrupt=support_interrupt,

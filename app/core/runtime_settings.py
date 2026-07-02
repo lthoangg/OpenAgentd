@@ -10,6 +10,16 @@ from app.core.config import settings
 PROVIDER_MODEL_PLACEHOLDER = "__PROVIDER_MODEL__"
 
 
+class SummarizationSettings(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    # User-supplied token threshold.  ``None`` means "use the auto-computed
+    # value (ratio * context_length)".
+    # When set and below the auto value, it triggers summarisation earlier.
+    # Values >= auto are silently treated as auto.
+    prompt_token_threshold: int | None = None
+
+
 class TitleGenerationSettings(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -41,6 +51,7 @@ class RuntimeSettings(BaseModel):
     title_generation: TitleGenerationSettings = Field(
         default_factory=TitleGenerationSettings
     )
+    summarization: SummarizationSettings = Field(default_factory=SummarizationSettings)
     server: ServerSettings = Field(default_factory=ServerSettings)
     providers: dict[str, ProviderUiSettings] = Field(default_factory=dict)
     lsp: dict[str, list[str]] = Field(default_factory=dict)

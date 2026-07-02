@@ -30,6 +30,7 @@ mock.module('@/routes/settings.mcp.$name', () => ({ McpServerDetailPage: () => <
 mock.module('@/routes/settings.providers', () => ({ ProvidersSettingsPage: () => <div>providers</div> }))
 mock.module('@/routes/settings.sandbox', () => ({ SandboxSettingsPage: () => <div>sandbox</div> }))
 mock.module('@/routes/settings.multimodal', () => ({ MultimodalSettingsPage: () => <div>multimodal</div> }))
+mock.module('@/routes/settings.summarization', () => ({ SummarizationSettingsPage: () => <div>summarization</div> }))
 mock.module('@/routes/settings.title-generation', () => ({ TitleGenerationSettingsPage: () => <div>title-gen</div> }))
 mock.module('@/routes/settings.notifications', () => ({ NotificationSettingsPage: () => <div>notifications</div> }))
 

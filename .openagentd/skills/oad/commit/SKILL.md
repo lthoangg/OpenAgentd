@@ -16,6 +16,8 @@ Git Commit Execution Workflow
 
 Note: Multiple commits are preferred for large changes. If the scope is too broad, break it down into smaller, focused commits following the same workflow (do not force to have multiple commits if the change is small and cohesive).
 
+**Sizing:** target ~100 changed lines per commit (a single logical, self-contained change); ~300 is acceptable for one cohesive change; ~1000+ should be split. Keep refactors and behavior changes in separate commits — mixing "renamed X" with "fixed Y" makes both harder to review and revert.
+
 ---
 
 **Commit Conventions**

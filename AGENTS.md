@@ -93,6 +93,14 @@ screens. Never ship a layout that only works on one form factor.
 - **One feature, all surfaces.** When adding UI, verify it on a narrow
   (≤768px) and a wide viewport before calling it done.
 
+## Security-sensitive changes
+
+Touching auth/token checks (`app/core/desktop_auth.py`), builtin tools that execute shell commands or write files (`app/agent/tools/builtin/`), MCP server config (`app/agent/mcp/`), or any path built from user/model input — load the `security-review` skill first. Use the `oad/review` skill (five-axis review) before opening a PR.
+
+## Delegating to spawned team members
+
+When using team-spawning tools (e.g. `coder`, `explorer` blueprints) to parallelize work on this repo: the spawning agent is the orchestrator and stays that way. Spawned members report results back — they do not spawn further members themselves. Keep delegation depth at one level; if a sub-task looks like it needs its own delegation, do that from the orchestrator, not from inside a member.
+
 ## Documentation
 
 Start at [`documents/docs/index.md`](documents/docs/index.md) — it groups every doc by audience (getting-started / architecture / operations / frontend / contributing). Tracked tech debt: [`documents/techdebts/`](documents/techdebts/). Significant architectural decisions are recorded as ADRs in [`documents/adrs/`](documents/adrs/) (use the `adr-writing` skill; keep the index `README.md` in sync).

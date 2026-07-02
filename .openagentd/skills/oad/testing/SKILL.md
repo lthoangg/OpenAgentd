@@ -9,5 +9,6 @@ Route to the right reference and follow it.
 
 - **Backend (pytest / FastAPI)** → `read("<skill_dir>/reference/backend.md")`
 - **Frontend (Bun / React Testing Library)** → `read("<skill_dir>/reference/frontend.md")`
+- **Desktop shell (Rust / Tauri / cargo test)** → `read("<skill_dir>/reference/rust-tauri.md")`
 
-When the change spans both surfaces, read both.
+When the change spans multiple surfaces, read each relevant reference.

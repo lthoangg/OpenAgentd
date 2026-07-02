@@ -133,6 +133,16 @@ def create_app() -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        # Range-request headers aren't on the CORS response-header safelist,
+        # so without this, cross-origin clients (e.g. the Tauri mobile app
+        # hitting a remote LAN server, a different origin than the app was
+        # loaded from) can't read them — pdf.js's range-support probe (and
+        # native <video> byte-range seeking) then can't detect that this
+        # server supports partial content, and falls back to downloading the
+        # whole file instead of streaming it. Same-origin requests already
+        # see these headers regardless; this just gives cross-origin clients
+        # parity.
+        expose_headers=["Accept-Ranges", "Content-Range", "Content-Length"],
     )
 
     # ── /metrics (Prometheus scrape target) ───────────────────────────────────

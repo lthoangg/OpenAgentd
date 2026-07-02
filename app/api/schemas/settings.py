@@ -131,6 +131,47 @@ class ProviderUsageResponse(BaseModel):
     limits: list[ProviderUsageLimit] = Field(default_factory=list)
 
 
+class ProviderUsageSummaryItem(BaseModel):
+    """One connected, usage-capable provider's snapshot for the tray/menu."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    provider: str
+    label: str
+    # "ok"                  — ``usage`` is populated.
+    # "credentials_missing" — provider claims to be configured but the
+    #                         token/key could not be loaded (e.g. deleted
+    #                         out-of-band since the last catalog scan).
+    # "unavailable"         — upstream request failed (network, 5xx, auth
+    #                         expired and refresh failed, parse error).
+    status: Literal["ok", "credentials_missing", "unavailable"] = "ok"
+    error: str | None = None
+    usage: ProviderUsageResponse | None = None
+    # True when this item was served from the last-known-good snapshot
+    # because the live fetch failed transiently. The tray renders these
+    # with a "last known" marker instead of an error row.
+    stale: bool = False
+
+
+class ProviderUsageSummaryBody(BaseModel):
+    """``GET /api/settings/providers/usage-summary`` response.
+
+    Aggregates live usage for every *connected* provider that exposes a
+    usage endpoint (builtin OAuth providers and provider plugins that
+    define ``get_usage``). Powers the macOS tray "Usage Limits" submenu,
+    which polls this single endpoint instead of fanning out one request
+    per provider.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[ProviderUsageSummaryItem] = Field(default_factory=list)
+    checked_at: int
+    # True when this payload was served from the short-lived server-side
+    # cache rather than a fresh upstream fetch. Informational only.
+    cached: bool = False
+
+
 class ProviderTestRequest(BaseModel):
     """``POST /api/settings/providers/{id}/test`` request body."""
 

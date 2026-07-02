@@ -44,6 +44,7 @@ from app.api.schemas.settings import (
     ProviderTestRequest,
     ProviderTestResponse,
     ProviderUsageResponse,
+    ProviderUsageSummaryBody,
     ProviderVisibleModelsRequest,
     ProviderVisibleModelsResponse,
     ProvidersListBody,
@@ -53,10 +54,12 @@ from app.api.schemas.settings import (
     SeedInstallResponse,
     TitleGenerationSettingsBody,
 )
+from app.services.provider_connection import provider_is_configured
 from app.services.provider_usage import (
     ProviderUsageCredentialsError,
     ProviderUsageUnavailableError,
     ProviderUsageUnsupportedError,
+    get_connected_provider_usage_summary as load_provider_usage_summary,
     get_provider_usage as load_provider_usage,
 )
 
@@ -181,66 +184,13 @@ def _env_has_provider_key(env_file: "Path") -> bool:
     return False
 
 
-def _provider_is_configured(entry: "ProviderEntry") -> bool:
-    """Return True if the user's .env has credentials for this provider.
-
-    Synchronous static check — does **not** probe daemons or networks.
-    For ``kind="local"`` (Ollama) this returns optimistically; callers
-    that care about actual reachability should use
-    :func:`_provider_is_reachable` instead, which adds an async daemon
-    ping on top of this.
-    """
-    kind = entry.get("kind")
-    from app.agent.providers.plugin_registry import (
-        ProviderCredentialStore,
-        find_provider_plugin,
-    )
-
-    plugin = find_provider_plugin(entry["id"])
-    if plugin is not None:
-        store = ProviderCredentialStore(plugin.id)
-        if plugin.is_configured is not None:
-            return plugin.is_configured(store)
-        return all(
-            store.get(field.name) for field in plugin.credentials if field.required
-        )
-    if kind == "local":
-        return True
-    if kind == "oauth":
-        cache_dir = Path(settings.OPENAGENTD_CACHE_DIR or "")
-        token_files = {
-            "codex": cache_dir / "codex_oauth.json",
-            "copilot": cache_dir / "copilot_oauth.json",
-        }
-        token_file = token_files.get(entry["id"])
-        return bool(token_file and token_file.is_file())
-    if kind == "cloud_creds":
-        if entry["id"] == "bedrock":
-            store = ProviderCredentialStore(entry["id"])
-            profile = os.environ.get("AWS_BEDROCK_PROFILE") or store.get(
-                "AWS_BEDROCK_PROFILE"
-            )
-            access_key = os.environ.get("AWS_ACCESS_KEY_ID") or store.get(
-                "AWS_ACCESS_KEY_ID"
-            )
-            secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY") or store.get(
-                "AWS_SECRET_ACCESS_KEY"
-            )
-            return bool(profile or (access_key and secret_key))
-        # Vertex AI: need project + location *and* gcloud ADC. We can't
-        # check gcloud from here without shelling out, so the UI's
-        # "Test connection" button is the source of truth.
-        names = entry.get("env_vars") or []
-        return all(os.environ.get(name) for name in names)
-    # api_key
-    env_var = entry.get("env_var") or ""
-    if not env_var:
-        return False
-    # Check both os.environ (mutated by recent saves) and settings
-    # (loaded once at startup) and the user's config .env (loaded by the
-    # credential store) so saved keys survive daemon restarts.
-    store = ProviderCredentialStore(entry["id"])
-    return bool(store.get(env_var))
+# Synchronous static check — does **not** probe daemons or networks. For
+# ``kind="local"`` (Ollama) this returns optimistically; callers that care
+# about actual reachability should use :func:`_provider_is_reachable`
+# instead, which adds an async daemon ping on top of this. Shared with
+# ``app/services/provider_usage.py`` (desktop tray usage-summary
+# aggregator) via ``app/services/provider_connection.py``.
+_provider_is_configured = provider_is_configured
 
 
 def _provider_saved_overrides(entry: "ProviderEntry") -> dict[str, str]:
@@ -445,6 +395,22 @@ async def list_provider_models(
             source="provider",
         )
     return ProviderModelsResponse(provider=provider_id, models=[], source="provider")
+
+
+@router.get("/providers/usage-summary")
+async def get_providers_usage_summary(
+    force_refresh: bool = False,
+) -> ProviderUsageSummaryBody:
+    """Aggregate usage for every connected, usage-capable provider.
+
+    One-call fan-in over ``get_provider_usage`` for every OAuth provider
+    (builtin or plugin) that is currently connected — powers the desktop
+    tray's "Usage Limits" submenu (macOS) without it having to know the
+    provider catalog or poll each provider individually. Results are
+    cached briefly server-side; pass ``force_refresh=true`` to bypass
+    that cache (used by the tray's manual "Refresh Usage" action).
+    """
+    return await load_provider_usage_summary(force_refresh=force_refresh)
 
 
 @router.get("/providers/{provider_id}/usage")

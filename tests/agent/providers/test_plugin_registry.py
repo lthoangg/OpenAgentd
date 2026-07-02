@@ -202,6 +202,23 @@ async def test_plugin_model_discovery_uses_overrides_before_saved_env(
     ) == ["candidate"]
 
 
+def test_provider_plugins_returns_empty_when_plugin_dir_is_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A never-created (or since-deleted) plugins dir must not raise.
+
+    ``openagentd init`` creates ``{config}/plugins/`` lazily; users who
+    never installed a plugin (or deleted the directory) should see an
+    empty plugin set everywhere that consumes it — including the tray's
+    usage-summary aggregator — rather than an exception on the next
+    provider listing or poll.
+    """
+    _point_plugin_dirs(monkeypatch, tmp_path)  # never created on disk
+
+    assert provider_plugins() == {}
+    assert all_providers()  # builtin catalog still loads
+
+
 def test_credential_store_token_path_is_provider_scoped(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

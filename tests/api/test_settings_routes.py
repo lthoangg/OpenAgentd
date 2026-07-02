@@ -1110,6 +1110,54 @@ def test_get_copilot_provider_usage_returns_premium_quota_snapshot(
     }
 
 
+def test_get_providers_usage_summary_aggregates_connected_providers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.api.schemas.settings import (
+        ProviderUsageResponse,
+        ProviderUsageSummaryBody,
+        ProviderUsageSummaryItem,
+    )
+    from app.services import provider_usage
+
+    captured: dict[str, object] = {}
+
+    async def _fake_summary(*, force_refresh: bool = False):
+        captured["force_refresh"] = force_refresh
+        return ProviderUsageSummaryBody(
+            items=[
+                ProviderUsageSummaryItem(
+                    provider="codex",
+                    label="OpenAI Codex",
+                    status="ok",
+                    usage=ProviderUsageResponse(provider="codex", limits=[]),
+                ),
+                ProviderUsageSummaryItem(
+                    provider="agy",
+                    label="Antigravity Gemini Auth",
+                    status="credentials_missing",
+                    error="token missing",
+                ),
+            ],
+            checked_at=1_735_689_720,
+        )
+
+    monkeypatch.setattr(
+        provider_usage, "get_connected_provider_usage_summary", _fake_summary
+    )
+    monkeypatch.setattr(settings_routes, "load_provider_usage_summary", _fake_summary)
+
+    client = TestClient(_make_app())
+    response = client.get("/api/settings/providers/usage-summary?force_refresh=true")
+
+    assert response.status_code == 200
+    assert captured["force_refresh"] is True
+    body = response.json()
+    assert body["checked_at"] == 1_735_689_720
+    assert [item["provider"] for item in body["items"]] == ["codex", "agy"]
+    assert body["items"][1]["status"] == "credentials_missing"
+
+
 def test_get_provider_usage_rejects_unsupported_provider() -> None:
     client = TestClient(_make_app())
     response = client.get("/api/settings/providers/openai/usage")

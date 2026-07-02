@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, memo } from 'react'
+import { FileLightbox } from './FileLightbox'
 import hljs from 'highlight.js/lib/common'
 import { motion } from 'framer-motion'
 import { Check, Copy, Download, ExternalLink, FileText, Loader2, Plus, X } from 'lucide-react'
@@ -336,28 +337,55 @@ function TextPreview({
 }
 
 function ImagePreview({ workspace, file }: { workspace: string; file: WorkspaceFileInfo }) {
+  const [open, setOpen] = useState(false)
   if (file.deleted) return <DeletedFilePreview />
   const url = codingWorkspaceFileUrl(workspace, file.path)
   return (
-    <div className="flex h-full min-h-0 items-center justify-center overflow-auto overscroll-contain touch-pan-y bg-(--bg-page) p-4">
-      <img src={url} alt={file.name} className="block max-h-full max-w-full rounded border border-(--color-border) object-contain" />
-    </div>
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="flex h-full min-h-0 w-full items-center justify-center overflow-auto overscroll-contain touch-pan-y bg-(--bg-page) p-4"
+        aria-label={`Open ${file.name} preview in lightbox`}
+      >
+        <img src={url} alt={file.name} className="block max-h-full max-w-full rounded border border-(--color-border) object-contain" />
+      </button>
+      <FileLightbox
+        items={[{ type: 'image', src: url, name: file.name }]}
+        isOpen={open}
+        onClose={() => setOpen(false)}
+        labelMode="image"
+      />
+    </>
   )
 }
 
 function VideoPreview({ workspace, file }: { workspace: string; file: WorkspaceFileInfo }) {
+  const [open, setOpen] = useState(false)
   if (file.deleted) return <DeletedFilePreview />
   const url = codingWorkspaceFileUrl(workspace, file.path)
   return (
-    <div className="flex h-full min-h-0 items-center justify-center overflow-auto overscroll-contain touch-pan-y bg-(--bg-page) p-4">
-      <video
-        src={url}
-        controls
-        preload="metadata"
-        playsInline
-        className="block max-h-full max-w-full rounded border border-(--color-border) bg-black object-contain"
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="flex h-full min-h-0 w-full items-center justify-center overflow-auto overscroll-contain touch-pan-y bg-(--bg-page) p-4"
+        aria-label={`Open ${file.name} preview in lightbox`}
+      >
+        <video
+          src={url}
+          controls
+          preload="metadata"
+          playsInline
+          className="block max-h-full max-w-full rounded border border-(--color-border) bg-black object-contain"
+        />
+      </button>
+      <FileLightbox
+        items={[{ type: 'video', src: url, name: file.name }]}
+        isOpen={open}
+        onClose={() => setOpen(false)}
       />
-    </div>
+    </>
   )
 }
 

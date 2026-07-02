@@ -184,13 +184,14 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   downloads, and coding-workspace downloads share one download path instead of
   three duplicated blob-to-base64 implementations; iOS downloads now present a
   native `UIActivityViewController` share sheet instead of silently failing.
-- **Workspace files panel** `[since v1.0, v1.92.0]` — every file the agent reads,
+- **Workspace files panel** `[since v1.0, v1.92.0, v1.93.1]` — every file the agent reads,
   writes, or generates appears in the left drawer as a recursive, VSCode-style
   collapsible file tree with folder chevrons, depth indentation, and
   material-icon-theme file/folder icons `[v1.92.0]`. Click to preview or
   download; desktop downloads use a native save dialog instead of navigating
-  away from the app `[v1.52.0]`. See
-  [`web/workspace-files.md`](./web/workspace-files.md).
+  away from the app `[v1.52.0]`. Image and video previews in the coding
+  workspace panel now open in the shared full-screen lightbox on click
+  `[v1.93.1]`. See [`web/workspace-files.md`](./web/workspace-files.md).
 - **Header context meter** `[v1.53.0]` — desktop and mobile chat headers show an
   icon-sized input-token progress ring against the backend's model-aware
   summarization trigger; hover, focus, or tap/click reveals input/output/cache

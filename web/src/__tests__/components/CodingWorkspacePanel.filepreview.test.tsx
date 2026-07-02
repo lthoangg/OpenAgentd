@@ -23,10 +23,12 @@ const Icon = () => null
 mock.module('lucide-react', () => ({
   Check: Icon,
   ChevronDown: Icon,
+  ChevronLeft: Icon,
   ChevronRight: Icon,
   Copy: Icon,
   Download: Icon,
   ExternalLink: Icon,
+  File: Icon,
   FileText: Icon,
   Folder: Icon,
   FolderOpen: Icon,
@@ -240,6 +242,16 @@ describe('Coding workspace two-layer file preview', () => {
     expect(img.src).toContain('logo.png')
   })
 
+  it('opens image previews in a lightbox from the separate file viewer panel', async () => {
+    const user = userEvent.setup()
+    await renderViewer(image)
+
+    await user.click(screen.getByRole('button', { name: 'Open logo.png preview in lightbox' }))
+
+    expect(document.body.querySelector("[role='dialog']")).toBeTruthy()
+    expect(screen.getByLabelText('Close lightbox')).toBeTruthy()
+  })
+
   it('renders videos inline in the separate file viewer panel', async () => {
     const video: WorkspaceFileInfo = { path: 'assets/clip.mp4', name: 'clip.mp4', size: 1000, mtime: 1, mime: 'video/mp4' }
     await renderViewer(video)
@@ -247,6 +259,17 @@ describe('Coding workspace two-layer file preview', () => {
     expect(videoEl).toBeTruthy()
     expect(videoEl?.src).toContain('workspace/files/read')
     expect(videoEl?.src).toContain('clip.mp4')
+  })
+
+  it('opens video previews in a lightbox from the separate file viewer panel', async () => {
+    const user = userEvent.setup()
+    const video: WorkspaceFileInfo = { path: 'assets/clip.mp4', name: 'clip.mp4', size: 1000, mtime: 1, mime: 'video/mp4' }
+    await renderViewer(video)
+
+    await user.click(screen.getByRole('button', { name: 'Open clip.mp4 preview in lightbox' }))
+
+    expect(document.body.querySelector("[role='dialog']")).toBeTruthy()
+    expect(screen.getByLabelText('Close preview')).toBeTruthy()
   })
 
   it('shows binary fallback links in the separate file viewer panel', async () => {

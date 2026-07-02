@@ -62,6 +62,7 @@ import { VIEW_MODES, type ViewMode } from './types'
 import { overlaysToClose, type MobileOverlay } from './mobileOverlays'
 import { saveLastCodingWorkspace, workspaceLabel } from '@/utils/workspace'
 import { setTraySession } from '@/lib/tray'
+import { isEditableTarget } from '@/lib/is-editable-target'
 
 interface TeamChatViewProps {
   sessionId?: string
@@ -568,19 +569,10 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   useEffect(() => {
     if (isMobile || paletteOpen || (mode === 'coding' && (!workspace || isCodingSessionLoading))) return
 
-    const isEditableElement = (target: EventTarget | null) => {
-      if (!(target instanceof HTMLElement)) return false
-      if (target.isContentEditable) return true
-      // Focusable scroll containers (e.g. text preview pane, code viewer) carry
-      // data-scroll-capture so typing inside them doesn't hijack the chat input.
-      if (target.closest('[data-scroll-capture]')) return true
-      return target.closest('input, textarea, select, [contenteditable="true"]') !== null
-    }
-
     const handler = (e: KeyboardEvent) => {
       if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return
       if (e.key.length !== 1 || e.key.trim().length === 0) return
-      if (isEditableElement(e.target)) return
+      if (isEditableTarget(e.target)) return
       e.preventDefault()
       inputRef.current?.focus()
       inputRef.current?.insertText(e.key)

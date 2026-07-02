@@ -16,11 +16,15 @@ import { closestRestorableRoute } from '@/lib/route-restore'
 import { getPlatform } from '@/hooks/use-platform'
 import { isPrimaryShortcut } from '@/lib/keyboard-shortcut'
 import { useContainerSelectAll } from '@/hooks/useContainerSelectAll'
+import { usePreventBackspaceNavigation } from '@/hooks/usePreventBackspaceNavigation'
+import { useHistoryBackForwardShortcuts } from '@/hooks/useHistoryBackForwardShortcuts'
 
 export function Root() {
   useMobileViewportGuards()
   useDesktopCommands()
   useContainerSelectAll()
+  usePreventBackspaceNavigation()
+  useHistoryBackForwardShortcuts()
 
   // Global ⌘, / Ctrl+, shortcut — opens/toggles the Settings modal from any page.
   const openSettings = useSettingsStore((s) => s.openSettings)

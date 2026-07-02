@@ -65,8 +65,13 @@ The primary modifier is platform-aware — `⌘` on macOS, `Ctrl` on Windows/Lin
 | Scheduled Tasks | `⌘S` | `Ctrl+S` |
 | Command Palette | `⌘P` | `Ctrl+P` |
 | Focus chat input | `⌘I` | `Ctrl+I` |
+| Back / Forward (history) | `⌘[` / `⌘]` | `Ctrl+[` / `Ctrl+]` |
 | Session Settings | `⌘⇧A` | `Ctrl+Shift+A` |
 | Settings | `⌘,` | `Ctrl+,` |
 | Select all (scoped) | `⌘A` | `Ctrl+A` |
 
 Session Settings requires Shift on both platforms because bare `⌘A`/`Ctrl+A` is normally Select All. **Scoped Select All:** when focus is inside an element marked `data-select-container` (currently: the coding workspace file preview and the cockpit workspace file viewer), `⌘A`/`Ctrl+A` selects only the content of that container instead of the entire page. Implemented in `web/src/hooks/useContainerSelectAll.ts` (registered globally in `__root.tsx`); no-ops on `ios`/`android`. View-mode cycling and session-list refresh are intentionally **palette-only** (no dedicated shortcut) — both are low-frequency actions, and freeing their letters avoids clobbering native/webview bindings (e.g. `⌘V` paste). `Command Palette` no-ops on mobile — see [`web/mobile.md`](../docs/web/mobile.md#keyboard-shortcuts-on-mobile).
+
+**Back / Forward** (`⌘[` / `⌘]`) step backward/forward through the app's own navigation history, mirroring the identical shortcut in Safari/Chrome/Edge. Drives `router.history.back()` / `.forward()` (TanStack Router's wrapper over the real `window.history`) directly, so it works anywhere in the app — settings, telemetry, cockpit and coding sessions — not just chat, and correctly walks back over previously-visited sessions in the order they were opened. Registered globally in `__root.tsx` via `useHistoryBackForwardShortcuts()`; programmatic navigations that use `replace` (e.g. session-resolve redirects) don't add history entries, so back/forward skip over those transparently.
+
+**Backspace guard:** Chromium/WebView2/WKWebView treat a bare `Backspace` outside of an editable element as "navigate back" by default — which would otherwise fight with the dedicated `⌘[`/`⌘]` shortcut above. This app owns its own routing, so that default is swallowed globally by `usePreventBackspaceNavigation()` (registered in `__root.tsx`) — editable elements (inputs, textareas, the chat composer, contenteditable areas) are exempted so normal text editing is unaffected.

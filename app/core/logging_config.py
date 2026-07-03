@@ -90,7 +90,7 @@ def setup_logging(log_level: str = "INFO") -> None:
     )
 
     # Silence noisy third-party stdlib loggers
-    for noisy in ("httpx", "httpcore", "google.genai", "uvicorn.access"):
+    for noisy in ("httpx", "httpcore", "uvicorn.access"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
     # The MCP OAuth client logs full exception tracebacks for expected

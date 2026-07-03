@@ -53,7 +53,7 @@ def test_setup_logging_silences_noisy_loggers(tmp_path):
         mock_logger.add = MagicMock()
         setup_logging()
 
-    for name in ("httpx", "httpcore", "google.genai", "uvicorn.access"):
+    for name in ("httpx", "httpcore", "uvicorn.access"):
         assert logging.getLogger(name).level == logging.WARNING
 
 

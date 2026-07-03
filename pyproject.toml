@@ -24,15 +24,15 @@ dependencies = [
     "pydantic-settings>=2.13.1",
     "httpx>=0.28.1",
     "sqlmodel>=0.0.22",
-    "google-genai>=0.4.0",
-    "jinja2>=3.1.3",
     "loguru>=0.7.0",
     "alembic>=1.13.1",
     "aiosqlite>=0.20.0",
-    "aiofiles>=24.1.0",
+    # Required at runtime by SQLAlchemy's async engine (sqlite+aiosqlite).
+    # Do NOT remove: sqlalchemy declares greenlet behind a platform_machine
+    # marker that misses macOS arm64 — the exact platform the desktop
+    # sidecar ships for. Without this explicit pin the async DB layer
+    # breaks on Apple Silicon.
     "greenlet>=3.3.2",
-    "rich>=14.3.3",
-    "prompt-toolkit>=3.0.52",
     "ddgs>=9.12.0",
     # Document conversion ships with only the formats used by the slim sidecar:
     # PDF and DOCX via extras, plus HTML through markitdown core. Heavier
@@ -46,7 +46,6 @@ dependencies = [
     "opentelemetry-sdk>=1.28.0",
     "python-multipart>=0.0.24",
     "prometheus-client>=0.21.0",
-    "python-magic>=0.4.27",
     "croniter>=6.2.2",
     "mcp>=1.0.0",
     "boto3>=1.35.0",

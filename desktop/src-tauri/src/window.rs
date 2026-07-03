@@ -122,6 +122,11 @@ pub fn frontend_webview_url() -> Result<WebviewUrl> {
     }
 }
 
+// ── Script-injection guard ──────────────────────────────────────────────
+// Every dynamic value interpolated into a webview script (here and in any
+// `eval()` call) MUST pass through `serde_json::to_string` first. A raw
+// `format!` of a user/config-derived string into JS source is an injection
+// vector — the JSON encoding is what makes these interpolations literals.
 pub fn frontend_init_script(token: Option<&str>, base_url: &str) -> String {
     frontend_init_script_with_path(token, base_url, None)
 }

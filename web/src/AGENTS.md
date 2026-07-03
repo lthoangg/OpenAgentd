@@ -102,7 +102,12 @@ All UI primitives are **zero external-dependency** implementations — no shadcn
 ### AppOverlay rules
 - **Never** use `transform` for centering — framer-motion owns `transform`. Use `left:0; right:0; margin:auto`.
 - **No `mobile-viewport` class** — overlays are `position:fixed` and track the visual viewport naturally.
-- **No blur** on backdrops — hard edge is the visual boundary.
+- **No blur** on the AppOverlay backdrop — hard edge is the visual boundary.
+  Elsewhere, subtle blur (`backdrop-blur-[1px]` / `supports-backdrop-filter:backdrop-blur-xs`)
+  is allowed on static backdrops (dialog, sheet, SettingsModal), but never on
+  surfaces that repaint while content changes beneath them — on iOS WebKit a
+  translucent+blurred layer re-rasterises its whole backdrop on any content
+  change and flickers (see the comment in `FloatingInputBar.tsx`).
 - `maxWidth` prop sets `--overlay-max-width` CSS variable (modal only); palette ignores it.
 - Settings modal is the visual reference for geometry and behaviour.
 

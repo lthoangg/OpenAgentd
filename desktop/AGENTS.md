@@ -52,3 +52,6 @@ For normal desktop development, run `make dev` at the repo root first, then `mak
 
 - Local architecture: `README.md`.
 - Release/signing/update pipeline: `../documents/docs/desktop.md`.
+- Why the webview CSP is permissive and the macOS entitlements are broad:
+  `../documents/adrs/0001-permissive-webview-csp-and-macos-entitlements.md` —
+  read before "tightening" either.

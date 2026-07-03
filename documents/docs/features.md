@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of every user-visible OpenAgentd feature. Source of truth for slides, README, comparison docs, and marketing copy.
 status: stable
-updated: 2026-07-02
+updated: 2026-07-03
 ---
 
 # Features
@@ -16,7 +16,7 @@ exists. When you ship something new, **add it here first** — slides, README,
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 15 providers. Your keys.
 
-**Latest release:** v1.95.0 · July 2, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.95.0)
+**Latest release:** v1.96.0 · July 3, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.96.0)
 
 ---
 
@@ -154,6 +154,10 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   when prior conversations exist. See [`web/coding-sessions.md`](./web/coding-sessions.md).
 - **Slash commands** `[since v1.0]` — `/init`, `/continue`, `/compact`, `/undo`,
   `/redo`, plus user-defined commands. See [`commands.md`](./commands.md).
+  - **`/plan` slash command** `[v1.96.0]` — triggers a research-then-approve
+    workflow: the agent investigates the problem space and proposes a step-by-step
+    implementation plan, then waits for explicit approval before writing any code.
+    Loaded via the `oad/plan` skill.
 - **Bang shell commands** `[v1.39.0]` — start a message with `!` to run the
   remainder directly through the shell tool without a model turn; history stores
   the run as structured shell tool output. See [`shell-commands.md`](./shell-commands.md).
@@ -559,6 +563,11 @@ Four orthogonal ways to add capability. Deeper docs:
 - **MCP servers** `[since v1.0]` — any Model Context Protocol server, hot-reloaded
   via `POST /api/mcp/apply`. Per-agent scoping. OAuth-backed setup. Session Settings
   can enable/disable scoped MCP servers and connect OAuth-backed servers in place `[v1.52.2]`.
+  - **Markdown-rendered tool descriptions in Session Settings** `[v1.96.0]` —
+    tool descriptions in the Session Settings tools panel now render as structured
+    markdown (bullet lists, inline code, bold/italic, paragraph breaks) instead of
+    a plain-text wall. MCP servers that include formatted descriptions in their tool
+    schemas benefit automatically; plain-text descriptions render identically to before.
 - **Sandboxed UI artifacts** `[v1.36.0]` *(beta)* — tool-produced HTML UI
   resources render as sandboxed sibling chat artifacts. The first producer is
   MCP Apps: MCP tools that declare `_meta.ui.resourceUri` can render `ui://`

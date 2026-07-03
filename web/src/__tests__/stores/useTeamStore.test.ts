@@ -19,6 +19,7 @@ const INITIAL = {
   _sessionGeneration: 0,
   cacheInvalidations: [],
   _abortController: null,
+  _reconnectTimer: null as ReturnType<typeof setTimeout> | null,
 };
 
 beforeEach(() => {

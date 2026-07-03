@@ -17,6 +17,7 @@ const INITIAL_TEAM_STATE = {
   error: null,
   _pendingMessages: [],
   _abortController: null,
+  _reconnectTimer: null as ReturnType<typeof setTimeout> | null,
   _sessionGeneration: 0,
   cacheInvalidations: [],
 };

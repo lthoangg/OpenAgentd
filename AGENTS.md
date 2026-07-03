@@ -97,6 +97,14 @@ screens. Never ship a layout that only works on one form factor.
 
 Touching auth/token checks (`app/core/desktop_auth.py`), builtin tools that execute shell commands or write files (`app/agent/tools/builtin/`), MCP server config (`app/agent/mcp/`), or any path built from user/model input — load the `security-review` skill first. Use the `oad/review` skill (five-axis review) before opening a PR.
 
+Key security invariants to preserve:
+
+- **`validate_workspace()`** (`app/services/team_manager.py`) — the single authority for workspace path validation. All endpoints that accept a `workspace` query param must route through it. Do not add a new `Path(workspace).resolve()` call in a route handler without going through this function.
+- **`_safe_resolve()` / `_safe_join*()`** — use these for any per-file path within a workspace. Never build a path by concatenating user input directly.
+- **`hmac.compare_digest`** — always use for token/secret comparison, never `==`.
+- **Subprocess** — always use argument-list form; never `shell=True` with f-strings outside the sandboxed shell tool.
+- **DuckDB / SQL** — always use `?` parameterised placeholders; validate string path params (e.g. `trace_id`) before querying.
+
 ## Delegating to spawned team members
 
 When using team-spawning tools (e.g. `coder`, `explorer` blueprints) to parallelize work on this repo: the spawning agent is the orchestrator and stays that way. Spawned members report results back — they do not spawn further members themselves. Keep delegation depth at one level; if a sub-task looks like it needs its own delegation, do that from the orchestrator, not from inside a member.

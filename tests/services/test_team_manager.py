@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -565,3 +566,66 @@ def test_refresh_blueprints_noop_when_agents_dir_missing(tmp_path, monkeypatch):
     team_manager.refresh_blueprints(team)  # must not raise
 
     assert team.blueprints == {}
+
+
+# ── validate_workspace security denylist ─────────────────────────────────────
+
+
+def test_validate_workspace_accepts_regular_directory(tmp_path):
+    """A normal directory that exists is accepted and returned as a string."""
+    result = team_manager.validate_workspace(str(tmp_path))
+    assert result == str(tmp_path.resolve())
+
+
+def test_validate_workspace_rejects_missing_directory(tmp_path):
+    """A path that does not exist raises ValueError."""
+    with pytest.raises(ValueError, match="does not exist"):
+        team_manager.validate_workspace(str(tmp_path / "missing"))
+
+
+def test_validate_workspace_rejects_file_path(tmp_path):
+    """A path that points to a file (not a directory) raises ValueError."""
+    f = tmp_path / "file.txt"
+    f.write_text("x")
+    with pytest.raises(ValueError, match="does not exist or is not a directory"):
+        team_manager.validate_workspace(str(f))
+
+
+@pytest.mark.parametrize(
+    "blocked",
+    [
+        "/etc",
+        "/proc",
+        "/sys",
+        "/dev",
+        "/run",
+        "/boot",
+        "/sbin",
+        "/bin",
+        "/usr/bin",
+        "/usr/sbin",
+        "/private/etc",  # macOS symlink for /etc
+    ],
+)
+def test_validate_workspace_rejects_blocked_system_paths(blocked):
+    """Paths inside well-known system directories are rejected even if they exist."""
+    blocked_path = Path(blocked)
+    # Only test paths that actually exist on this OS — skip others silently.
+    if not blocked_path.is_dir():
+        pytest.skip(f"{blocked} is not a directory on this system")
+
+    with pytest.raises(ValueError, match="restricted system directory"):
+        team_manager.validate_workspace(blocked)
+
+
+def test_validate_workspace_expands_home_tilde(tmp_path):
+    """~-prefixed paths are expanded to absolute before validation."""
+    # We can't easily override Path.home() for expanduser, so test that a
+    # tilde path resolves without error when the target exists — the resolved
+    # path must be absolute and a directory.
+    home = Path.home()
+    if not home.is_dir():
+        pytest.skip("home directory not available")
+    result = team_manager.validate_workspace("~")
+    assert Path(result).is_absolute()
+    assert Path(result).is_dir()

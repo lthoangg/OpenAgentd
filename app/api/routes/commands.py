@@ -12,6 +12,7 @@ from app.api.schemas.commands import (
     CommandRenderResponse,
     CommandSummary,
 )
+from app.services import team_manager
 from app.services.commands import (
     discover_commands,
     get_builtin_command,
@@ -24,13 +25,11 @@ router = APIRouter()
 def _workspace_path(workspace: str | None) -> Path | None:
     if workspace is None:
         return None
-    path = Path(workspace).expanduser().resolve()
-    if not path.is_dir():
-        raise HTTPException(
-            status_code=422,
-            detail=f"Workspace does not exist or is not a directory: {path}",
-        )
-    return path
+    try:
+        resolved = team_manager.validate_workspace(workspace)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return Path(resolved)
 
 
 @router.get("")

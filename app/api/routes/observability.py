@@ -5,6 +5,8 @@ All three endpoints read OTEL span JSONL files via DuckDB (a core dependency).
 
 from __future__ import annotations
 
+import re
+
 from fastapi import APIRouter, HTTPException, Query, status
 
 from app.api.schemas.observability import (
@@ -53,6 +55,14 @@ async def traces(
     )
 
 
+# OTel trace IDs are 128-bit hex strings, optionally prefixed with "0x".
+# Reject anything that doesn't look like a hex ID before hitting DuckDB —
+# the service layer uses parameterised queries so injection is already
+# prevented, but a format check provides an early, explicit 422 for clearly
+# malformed input.
+_TRACE_ID_RE = re.compile(r"^(0x)?[0-9a-fA-F]{1,64}$")
+
+
 @router.get("/traces/{trace_id}")
 async def trace_detail(
     trace_id: str,
@@ -64,6 +74,11 @@ async def trace_detail(
     a trace is expected to be old.  Returns 404 if the trace is not found
     in the window (expired by retention or typo).
     """
+    if not _TRACE_ID_RE.match(trace_id):
+        raise HTTPException(
+            status_code=422,
+            detail="Invalid trace_id: expected a hex string.",
+        )
     detail = get_trace(trace_id=trace_id, days=days)
     if detail is None:
         raise HTTPException(

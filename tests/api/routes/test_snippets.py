@@ -48,6 +48,34 @@ async def test_list_requires_workspace(client):
 
 
 @pytest.mark.asyncio
+async def test_list_rejects_missing_workspace(client, tmp_path):
+    res = await client.get(
+        "/api/snippets", params={"workspace": str(tmp_path / "missing")}
+    )
+    assert res.status_code == 422
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("blocked", ["/etc", "/private/etc"])
+async def test_list_rejects_blocked_system_workspace(client, blocked):
+    if not Path(blocked).is_dir():
+        pytest.skip(f"{blocked} is not a directory on this system")
+    res = await client.get("/api/snippets", params={"workspace": blocked})
+    assert res.status_code == 422
+    assert "restricted system directory" in res.json()["detail"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("blocked", ["/etc", "/private/etc"])
+async def test_render_rejects_blocked_system_workspace(client, blocked):
+    if not Path(blocked).is_dir():
+        pytest.skip(f"{blocked} is not a directory on this system")
+    res = await client.post("/api/snippets/any/render", params={"workspace": blocked})
+    assert res.status_code == 422
+    assert "restricted system directory" in res.json()["detail"]
+
+
+@pytest.mark.asyncio
 async def test_list_and_render_snippets(client, roots):
     workspace, project_root, global_root = roots
     _write(

@@ -408,6 +408,11 @@ class MCPManager:
             tool_name,
             list(arguments.keys()),
         )
+        # ``arguments`` are passed through to the MCP server which validates
+        # them against the tool's declared JSON Schema before execution.
+        # Client-side re-validation is intentionally omitted — the schema is
+        # authoritative on the server side and duplicating it here would
+        # diverge over time.
         return await runner.session.call_tool(tool_name, arguments)
 
     # ── Public mutation API (used by /api/mcp routes) ────────────────────

@@ -110,10 +110,41 @@ def _resolve_workspace(workspace: str) -> Path:
     return Path(workspace).expanduser().resolve()
 
 
+# Directories that should never be used as a coding workspace — they are
+# OS-level system trees whose contents are never legitimate project roots.
+# Blocking them prevents accidental (or crafted) requests from listing or
+# reading sensitive system paths through the workspace file/snippet/command
+# endpoints.
+_BLOCKED_WORKSPACE_ROOTS: tuple[Path, ...] = (
+    Path("/etc"),
+    Path("/proc"),
+    Path("/sys"),
+    Path("/dev"),
+    Path("/run"),
+    Path("/boot"),
+    Path("/sbin"),
+    Path("/bin"),
+    Path("/usr/bin"),
+    Path("/usr/sbin"),
+    Path("/private/etc"),  # macOS
+)
+
+
 def validate_workspace(workspace: str) -> str:
     resolved = _resolve_workspace(workspace)
     if not resolved.is_dir():
         raise ValueError(f"Workspace does not exist or is not a directory: {resolved}")
+    for blocked in _BLOCKED_WORKSPACE_ROOTS:
+        try:
+            resolved.relative_to(blocked)
+            raise ValueError(
+                f"Workspace '{resolved}' is inside a restricted system directory."
+            )
+        except ValueError as exc:
+            # relative_to raises ValueError when the path is NOT under blocked —
+            # that's the normal (safe) case.  Re-raise only our own message.
+            if "restricted system directory" in str(exc):
+                raise
     return str(resolved)
 
 

@@ -7,6 +7,23 @@ status, last N lines of the app log, app error log path, OS/arch.
 
 Used by the desktop "Copy diagnostics" button. CLI users can hit it
 directly with ``curl /api/diagnostics``.
+
+Security note
+-------------
+This endpoint intentionally includes absolute filesystem paths (log paths,
+config/data/workspace directory paths, Python executable) to aid in
+debugging.  It does **not** expose file *contents* or secret values.
+
+When ``OPENAGENTD_DESKTOP_TOKEN`` or ``OPENAGENTD_ACCESS_KEY`` is set
+(desktop / authenticated-server mode) the endpoint is protected by
+:class:`app.core.desktop_auth.DesktopTokenMiddleware` and inaccessible
+without a valid Bearer token.
+
+In pure CLI / local-server mode no token is set and the server binds only
+to the loopback interface, so exposure is limited to other processes on the
+same machine — the same threat model as the rest of the unauthenticated API.
+If you expose the server on a LAN or public interface, set
+``OPENAGENTD_ACCESS_KEY`` to gate this endpoint behind token auth.
 """
 
 from __future__ import annotations

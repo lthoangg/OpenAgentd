@@ -274,6 +274,11 @@ openagentd is a **single-user, local-first** application. The security model ass
 | API keys | Stored in `.env` (not committed). Never logged or sent to the model. |
 | Session data | Local SQLite only. No remote telemetry or data collection. |
 | SSE streams | No auth on SSE endpoints — localhost access only by design. |
+| Desktop / LAN auth | `OPENAGENTD_DESKTOP_TOKEN` or `OPENAGENTD_ACCESS_KEY` gates every API endpoint. Token comparison uses constant-time `hmac.compare_digest`; `?_token=` query params are scrubbed from scope before logging. |
+| Workspace paths | `validate_workspace()` rejects paths inside OS system directories (`/etc`, `/proc`, `/sys`, `/dev`, `/bin`, `/sbin`, etc.) to prevent information disclosure via the file listing, snippet, and command endpoints. |
+| Path traversal | File serving endpoints (`/media/`, `/uploads/`) canonicalise and bounds-check every path against the session workspace root before any I/O. `@mention` context injection uses the same guard via `_safe_join*`. |
+| Observability input | `GET /api/observability/traces/{trace_id}` validates the trace ID as a hex string before querying DuckDB. All DuckDB queries use `?` parameterised placeholders — no string interpolation. |
+| Secrets in responses | Provider API keys are `SecretStr`; the diagnostics endpoint reports boolean presence only. MCP OAuth secrets are stored in a `chmod 600` `.env` and masked as `"********"` in GET responses. |
 
 The following are **not** considered vulnerabilities given this trust model:
 

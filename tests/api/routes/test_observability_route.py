@@ -215,3 +215,56 @@ def test_trace_detail_404_when_missing(tmp_path, monkeypatch: pytest.MonkeyPatch
     resp = client.get("/api/observability/traces/" + "0x" + "9" * 32)
     assert resp.status_code == 404
     assert resp.json()["detail"]["reason"] == "trace_not_found"
+
+
+# ── trace_id format validation ────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "trace_id",
+    [
+        "0x" + "a" * 32,  # standard OTel 128-bit hex with prefix
+        "a" * 32,  # without 0x prefix
+        "0x" + "A1b2" * 4,  # mixed case
+        "0x1",  # short but valid hex
+        "deadbeef",  # short lowercase hex
+    ],
+)
+def test_trace_detail_accepts_valid_hex_trace_ids(
+    trace_id, tmp_path, monkeypatch: pytest.MonkeyPatch
+):
+    """Valid hex trace IDs do not get a 422 — they get 404 (not found in empty store)."""
+    monkeypatch.setattr(
+        observability_service,
+        "_spans_dir",
+        lambda: tmp_path / "otel" / "spans",
+    )
+    client = TestClient(_make_app())
+    resp = client.get(f"/api/observability/traces/{trace_id}")
+    # Not found in empty store — important: NOT a 422 format error
+    assert resp.status_code == 404
+
+
+@pytest.mark.parametrize(
+    "bad_id",
+    [
+        "not-hex",  # contains hyphens
+        "0x" + "g" * 32,  # 'g' is not a hex digit
+        "0x" + "a" * 65,  # too long (> 64 hex chars after 0x)
+        "'; DROP TABLE spans; --",  # SQL injection attempt
+    ],
+)
+def test_trace_detail_rejects_invalid_trace_ids(
+    bad_id, tmp_path, monkeypatch: pytest.MonkeyPatch
+):
+    """Non-hex or malformed trace IDs return 422 before hitting the database."""
+    monkeypatch.setattr(
+        observability_service,
+        "_spans_dir",
+        lambda: tmp_path / "otel" / "spans",
+    )
+    client = TestClient(_make_app())
+    resp = client.get(f"/api/observability/traces/{bad_id}")
+    assert resp.status_code == 422, (
+        f"Expected 422 for bad trace_id {bad_id!r}, got {resp.status_code}"
+    )

@@ -340,3 +340,31 @@ async def test_list_rejects_missing_workspace(client, tmp_path):
     )
 
     assert res.status_code == 422
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("blocked", ["/etc", "/private/etc"])
+async def test_list_rejects_blocked_system_workspace(client, blocked):
+    from pathlib import Path
+
+    if not Path(blocked).is_dir():
+        pytest.skip(f"{blocked} is not a directory on this system")
+    res = await client.get("/api/commands", params={"workspace": blocked})
+    assert res.status_code == 422
+    assert "restricted system directory" in res.json()["detail"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("blocked", ["/etc", "/private/etc"])
+async def test_render_rejects_blocked_system_workspace(client, blocked):
+    from pathlib import Path
+
+    if not Path(blocked).is_dir():
+        pytest.skip(f"{blocked} is not a directory on this system")
+    res = await client.post(
+        "/api/commands/any/render",
+        params={"workspace": blocked},
+        json={"arguments": ""},
+    )
+    assert res.status_code == 422
+    assert "restricted system directory" in res.json()["detail"]

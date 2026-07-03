@@ -86,7 +86,6 @@ mock.module('@/stores/useTeamStore', () => {
     continueTeam: async () => {},
     beginResolvedSession: () => {},
     consumeResolvedSessionReady: () => false,
-    cycleActiveAgent: () => {},
     setActiveAgent: () => {},
     setSessionModelSettings: () => {},
     setupRequired: null,

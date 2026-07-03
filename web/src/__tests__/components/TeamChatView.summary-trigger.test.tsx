@@ -141,7 +141,6 @@ function makeStore(sessionModel: string | null) {
     continueTeam: async () => {},
     beginResolvedSession: () => {},
     consumeResolvedSessionReady: () => false,
-    cycleActiveAgent: () => {},
     setActiveAgent: () => {},
     setSessionModelSettings: () => {},
     setupRequired: null,

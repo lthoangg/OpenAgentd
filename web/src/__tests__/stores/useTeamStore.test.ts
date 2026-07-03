@@ -197,40 +197,6 @@ describe("setActiveAgent", () => {
   });
 });
 
-// ── cycleActiveAgent ──────────────────────────────────────────────────────────
-
-describe("cycleActiveAgent", () => {
-  it("cycles forward through agents", () => {
-    useTeamStore.setState({ agentNames: ["lead", "worker", "researcher"], activeAgent: "lead" });
-    useTeamStore.getState().cycleActiveAgent("next");
-    expect(useTeamStore.getState().activeAgent).toBe("worker");
-  });
-
-  it("wraps around at end", () => {
-    useTeamStore.setState({ agentNames: ["lead", "worker"], activeAgent: "worker" });
-    useTeamStore.getState().cycleActiveAgent("next");
-    expect(useTeamStore.getState().activeAgent).toBe("lead");
-  });
-
-  it("cycles backward", () => {
-    useTeamStore.setState({ agentNames: ["lead", "worker"], activeAgent: "worker" });
-    useTeamStore.getState().cycleActiveAgent("prev");
-    expect(useTeamStore.getState().activeAgent).toBe("lead");
-  });
-
-  it("wraps around at start going backward", () => {
-    useTeamStore.setState({ agentNames: ["lead", "worker"], activeAgent: "lead" });
-    useTeamStore.getState().cycleActiveAgent("prev");
-    expect(useTeamStore.getState().activeAgent).toBe("worker");
-  });
-
-  it("does nothing when agentNames is empty", () => {
-    useTeamStore.setState({ agentNames: [], activeAgent: null });
-    useTeamStore.getState().cycleActiveAgent("next");
-    expect(useTeamStore.getState().activeAgent).toBeNull();
-  });
-});
-
 // ── _handleSSEEvent: message ──────────────────────────────────────────────────
 
 describe("_handleSSEEvent: message", () => {

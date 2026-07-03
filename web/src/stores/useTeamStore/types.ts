@@ -83,7 +83,6 @@ export interface TeamStoreActions {
   beginResolvedSession: (sessionId: string | null, options?: { mode?: string; workspace?: string | null; model?: string | null; thinkingLevel?: string | null; fastMode?: boolean; skipInitialRestore?: boolean }) => void
   loadOlderMessages: () => Promise<void>
   setActiveAgent: (name: string) => void
-  cycleActiveAgent: (dir: 'next' | 'prev') => void
   toggleSidebar: () => void
   dismissSetupRequired: () => void
   isEmptyIdleSession: () => boolean

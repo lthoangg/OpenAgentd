@@ -840,17 +840,6 @@ export const useTeamStore = create<TeamStore>()(
       set((draft) => { draft.activeAgent = name })
     },
 
-    cycleActiveAgent: (dir: 'next' | 'prev') => {
-      set((draft) => {
-        const names = draft.agentNames
-        if (names.length === 0) return
-        const idx = names.indexOf(draft.activeAgent || '')
-        draft.activeAgent = dir === 'next'
-          ? names[(idx + 1) % names.length]
-          : names[(idx - 1 + names.length) % names.length]
-      })
-    },
-
     toggleSidebar: () => {
       set((draft) => { draft.sidebarOpen = !draft.sidebarOpen })
     },

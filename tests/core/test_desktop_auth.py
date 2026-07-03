@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from fastapi import FastAPI, Request
+import pytest
+from fastapi import FastAPI, Request, WebSocket
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
 from app.core.desktop_auth import DesktopTokenMiddleware
 
@@ -11,6 +13,16 @@ from app.core.desktop_auth import DesktopTokenMiddleware
 def _make_app(token: str | None) -> FastAPI:
     app = FastAPI()
     app.add_middleware(DesktopTokenMiddleware, expected_token=token)
+
+    @app.websocket("/api/ws-echo")
+    async def ws_echo(websocket: WebSocket) -> None:
+        await websocket.accept()
+        # Echo the (post-middleware) query string so tests can verify
+        # the token was scrubbed before reaching the handler.
+        await websocket.send_json(
+            {"qs": websocket.scope.get("query_string", b"").decode("latin-1")}
+        )
+        await websocket.close()
 
     @app.get("/api/health/live")
     def live() -> dict:
@@ -205,3 +217,64 @@ class TestMiddlewareEnabled:
         body = r.json()
         assert body["has_token"] is False, "_token leaked downstream"
         assert body["has_other"] is True, "non-token params must be preserved"
+
+
+class TestWebSocketAuth:
+    """WebSocket upgrades on /api/* must obey the same token rules as HTTP.
+
+    Browsers cannot attach an ``Authorization`` header to the WS
+    handshake, so the query-param fallback (``?_token=…``) is the
+    supported client mechanism.
+    """
+
+    def test_ws_without_token_rejected(self):
+        app = _make_app(token="secret")
+        client = TestClient(app)
+        with pytest.raises(WebSocketDisconnect):
+            with client.websocket_connect("/api/ws-echo"):
+                pass
+
+    def test_ws_with_wrong_query_token_rejected(self):
+        app = _make_app(token="secret")
+        client = TestClient(app)
+        with pytest.raises(WebSocketDisconnect):
+            with client.websocket_connect("/api/ws-echo?_token=wrong"):
+                pass
+
+    def test_ws_with_correct_query_token_accepted(self):
+        app = _make_app(token="secret")
+        client = TestClient(app)
+        with client.websocket_connect("/api/ws-echo?_token=secret") as ws:
+            assert "qs" in ws.receive_json()
+
+    def test_ws_with_correct_bearer_header_accepted(self):
+        """Non-browser clients (tests, native shells) can still use headers."""
+        app = _make_app(token="secret")
+        client = TestClient(app)
+        with client.websocket_connect(
+            "/api/ws-echo", headers={"Authorization": "Bearer secret"}
+        ) as ws:
+            assert "qs" in ws.receive_json()
+
+    def test_ws_token_stripped_from_scope(self):
+        """The WS handler must not see ``_token`` in its query string."""
+        app = _make_app(token="secret")
+        client = TestClient(app)
+        with client.websocket_connect("/api/ws-echo?_token=secret&foo=bar") as ws:
+            qs = ws.receive_json()["qs"]
+            assert "_token" not in qs, "_token leaked into WS scope"
+            assert "foo=bar" in qs, "non-token params must be preserved"
+
+    def test_ws_disabled_middleware_passes_through(self):
+        app = _make_app(token=None)
+        client = TestClient(app)
+        with client.websocket_connect("/api/ws-echo") as ws:
+            assert "qs" in ws.receive_json()
+
+    def test_ws_constant_time_compare_variants(self):
+        app = _make_app(token="secret")
+        client = TestClient(app)
+        for bad in ("", "s", "secret_extra", "SECRET"):
+            with pytest.raises(WebSocketDisconnect):
+                with client.websocket_connect(f"/api/ws-echo?_token={bad}"):
+                    pass

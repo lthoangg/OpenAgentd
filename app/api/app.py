@@ -24,6 +24,7 @@ from app.api.routes.settings import router as settings_router
 from app.api.routes.skills import router as skills_router
 from app.api.routes.snippets import router as snippets_router
 from app.api.routes.team import router as team_router
+from app.api.routes.terminal import router as terminal_router
 from app.core.config import settings
 from app.core.desktop_auth import DesktopTokenMiddleware
 from app.core.exception_handlers import EXCEPTION_HANDLERS
@@ -91,6 +92,9 @@ async def lifespan(app: FastAPI):
 
     yield
 
+    from app.services import terminal_service
+
+    await terminal_service.close_all()
     await task_scheduler.stop()
     await team_manager.stop()
     await mcp_manager.stop()
@@ -167,6 +171,7 @@ def create_app() -> FastAPI:
     app.include_router(
         diagnostics_router, prefix="/api/diagnostics", tags=["diagnostics"]
     )
+    app.include_router(terminal_router, prefix="/api/terminal", tags=["terminal"])
 
     logger.debug("api_only_app_ready")
 

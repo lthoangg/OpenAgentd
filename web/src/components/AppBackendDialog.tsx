@@ -209,27 +209,40 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
                   {!status?.external ? (
                     <SectionCardBadge>active</SectionCardBadge>
                   ) : null}
-                  {status?.sidecar_running ? (
-                    <Button
-                      type="button"
-                      variant="danger-subtle"
-                      size="xs"
-                      onClick={() => { void stopBundled() }}
-                      disabled={pending}
-                    >
-                      stop
-                    </Button>
-                  ) : (
-                    <Button
-                      type="button"
-                      variant="subtle"
-                      size="xs"
-                      onClick={() => { void connectBundled() }}
-                      disabled={pending}
-                    >
-                      use builtin
-                    </Button>
-                  )}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {status?.external ? (
+                      <Button
+                        type="button"
+                        variant="subtle"
+                        size="xs"
+                        onClick={() => { void connectBundled() }}
+                        disabled={pending}
+                      >
+                        connect
+                      </Button>
+                    ) : null}
+                    {status?.sidecar_running ? (
+                      <Button
+                        type="button"
+                        variant="danger-subtle"
+                        size="xs"
+                        onClick={() => { void stopBundled() }}
+                        disabled={pending}
+                      >
+                        stop
+                      </Button>
+                    ) : !status?.external ? (
+                      <Button
+                        type="button"
+                        variant="subtle"
+                        size="xs"
+                        onClick={() => { void connectBundled() }}
+                        disabled={pending}
+                      >
+                        use builtin
+                      </Button>
+                    ) : null}
+                  </div>
                 </SectionCardRow>
               ) : null}
               {(status?.servers ?? DEFAULT_SERVERS).map((server) => {

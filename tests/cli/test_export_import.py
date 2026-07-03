@@ -4,6 +4,10 @@ Covers:
 - export_config: manifest, archive structure, secret redaction, --include-secrets
 - import_config: fill-in-gaps merge, --force overwrite, path-traversal guard,
   invalid archive rejection, round-trip fidelity
+- _redact_env: all real settings.py secret keys, non-secret vars, comments,
+  blank-value lines, blank lines
+- import safety: symlinks silently ignored, dirs-only archive rejected,
+  file-missing error, str-prefix path attack blocked
 """
 
 from __future__ import annotations
@@ -377,3 +381,153 @@ class TestImportConfig:
         env = (dest / ".env").read_text(encoding="utf-8")
         assert "sk-super-secret" not in env
         assert "APP_ENV=production" in env
+
+    def test_import_rejects_missing_file(self, tmp_path: Path):
+        """Passing a non-existent path raises ValueError, not FileNotFoundError."""
+        dest = tmp_path / "dest"
+        dest.mkdir()
+        with pytest.raises(ValueError, match="not a valid"):
+            import_config(tmp_path / "ghost.tar.gz", config_dir=dest)
+
+    def test_import_dirs_only_archive_rejected(self, tmp_path: Path):
+        """An archive with only directory entries and no files is rejected."""
+        arch = tmp_path / "dirs-only.tar.gz"
+        with tarfile.open(arch, "w:gz") as tf:
+            info = tarfile.TarInfo(name="openagentd-export/agents")
+            info.type = tarfile.DIRTYPE
+            tf.addfile(info)
+        dest = tmp_path / "dest"
+        dest.mkdir()
+        with pytest.raises(ValueError, match="not a valid openagentd export"):
+            import_config(arch, config_dir=dest)
+
+    def test_import_symlinks_not_extracted(self, tmp_path: Path):
+        """Symlink entries alongside real files are silently ignored — never written."""
+        arch = tmp_path / "symlink.tar.gz"
+        with tarfile.open(arch, "w:gz") as tf:
+            content = b"safe"
+            fi = tarfile.TarInfo(name="openagentd-export/agents/safe.md")
+            fi.size = len(content)
+            tf.addfile(fi, io.BytesIO(content))
+            si = tarfile.TarInfo(name="openagentd-export/evil.md")
+            si.type = tarfile.SYMTYPE
+            si.linkname = "/etc/passwd"
+            tf.addfile(si)
+        dest = tmp_path / "dest"
+        dest.mkdir()
+        result = import_config(arch, config_dir=dest)
+        assert result.files_written == ["agents/safe.md"]
+        assert not (dest / "evil.md").exists()
+        assert not (dest / "evil.md").is_symlink()
+
+    def test_import_blocks_str_prefix_path_traversal(self, tmp_path: Path):
+        """An entry with .. after the archive root prefix is rejected."""
+        arch = tmp_path / "prefix-attack.tar.gz"
+        with tarfile.open(arch, "w:gz") as tf:
+            content = b"evil"
+            fi = tarfile.TarInfo(name="openagentd-export/../evil.md")
+            fi.size = len(content)
+            tf.addfile(fi, io.BytesIO(content))
+        dest = tmp_path / "dest"
+        dest.mkdir()
+        with pytest.raises(ValueError, match="path traversal"):
+            import_config(arch, config_dir=dest)
+
+
+# ---------------------------------------------------------------------------
+# _redact_env unit tests
+# ---------------------------------------------------------------------------
+
+
+class TestRedactEnv:
+    """Unit tests for the secret-redaction function, independent of archive I/O."""
+
+    @pytest.fixture(autouse=True)
+    def _import(self):
+        from app.cli.commands.export import _redact_env
+
+        self._redact = _redact_env
+
+    def _r(self, line: str) -> str:
+        return self._redact(line).rstrip("\n")
+
+    # ── Should redact (all real settings.py secret vars) ──────────────────
+
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "OPENAI_API_KEY=sk-secret",
+            "ANTHROPIC_API_KEY=ant-secret",
+            "GOOGLE_API_KEY=gk-secret",
+            "ZAI_API_KEY=zai-secret",
+            "OPENROUTER_API_KEY=or-secret",
+            "NVIDIA_API_KEY=nv-secret",
+            "XAI_API_KEY=xai-secret",
+            "DEEPSEEK_API_KEY=ds-secret",
+            "NINJA_API_KEY=ninja-secret",
+            "ROUTER9_API_KEY=r9-secret",
+            "CLIPROXY_API_KEY=cp-secret",
+            "OLLAMA_API_KEY=ol-secret",
+            "VERTEXAI_API_KEY=vx-secret",
+            "AWS_ACCESS_KEY_ID=AKID123",
+            "AWS_SECRET_ACCESS_KEY=aws-secret",
+            "ACCESS_KEY=direct-secret",
+            "MY_TOKEN=tok-abc",
+            "MY_PASSWORD=hunter2",
+            "MY_SECRET=s3cr3t",
+            "MY_SECRET_KEY=s3cr3t",
+        ],
+    )
+    def test_secret_vars_are_redacted(self, line: str):
+        result = self._r(line)
+        key = line.split("=", 1)[0]
+        assert result == f"{key}=", f"Expected '{key}=' but got {result!r}"
+
+    # ── Should NOT redact ─────────────────────────────────────────────────
+
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "APP_ENV=production",
+            "API_HOST=0.0.0.0",
+            "API_PORT=4082",
+            "ANTHROPIC_BASE_URL=https://api.anthropic.com",
+            "OLLAMA_BASE_URL=http://localhost:11434/v1",
+            "ROUTER9_BASE_URL=http://localhost:20128/v1",
+            "CLIPROXY_BASE_URL=http://localhost:8317/v1",
+            "GOOGLE_CLOUD_PROJECT=my-project",
+            "GOOGLE_CLOUD_LOCATION=global",
+            "AWS_BEDROCK_REGION=us-east-1",
+            "AWS_BEDROCK_PROFILE=default",
+            "# OPENAI_API_KEY=commented-out",
+            "",  # blank line
+            "OPENAI_API_KEY=",  # already blank — preserved as-is
+        ],
+    )
+    def test_non_secret_vars_are_preserved(self, line: str):
+        result = self._r(line)
+        assert result == line.rstrip("\n"), (
+            f"Expected {line!r} to be unchanged, got {result!r}"
+        )
+
+    def test_multiline_env_file(self):
+        """Full .env content: secrets blanked, rest preserved, order kept."""
+        content = (
+            "APP_ENV=production\n"
+            "OPENAI_API_KEY=sk-abc\n"
+            "ANTHROPIC_API_KEY=ant-xyz\n"
+            "# A comment\n"
+            "OPENAI_BASE_URL=https://api.openai.com\n"
+            "\n"
+            "GOOGLE_API_KEY=gk-foo\n"
+        )
+        result = self._redact(content)
+        assert "APP_ENV=production" in result
+        assert "OPENAI_API_KEY=\n" in result
+        assert "sk-abc" not in result
+        assert "ANTHROPIC_API_KEY=\n" in result
+        assert "ant-xyz" not in result
+        assert "# A comment" in result
+        assert "OPENAI_BASE_URL=https://api.openai.com" in result
+        assert "GOOGLE_API_KEY=\n" in result
+        assert "gk-foo" not in result

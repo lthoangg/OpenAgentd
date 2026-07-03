@@ -6,6 +6,7 @@ import type { AgentInfo } from '@/api/types'
 import type { ServerStatus } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { SearchBar } from '@/components/ui/search-bar'
+import { MarkdownBlock } from '@/utils/markdown'
 
 const TOOL_SEARCH_THRESHOLD = 8
 
@@ -73,9 +74,9 @@ function ToolRow({ name, description }: { name: string; description: string }) {
             transition={{ duration: 0.14 }}
             className="overflow-hidden"
           >
-            <p className="border-t border-(--color-border) px-3 py-2 text-xs leading-relaxed text-(--color-text-muted)">
-              {description}
-            </p>
+            <div className="tool-desc border-t border-(--color-border) px-3 py-2">
+              <MarkdownBlock content={description.trim()} />
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { checkForUpdates as invokeCheckForUpdates, downloadUpdate as invokeDownloadUpdate, fetchReleaseNotes, installUpdate as invokeInstallUpdate, type ReleaseNotes, type UpdateStatus } from '@/lib/updater'
 import { openExternalUrl } from '@/lib/open-external'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
 
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000
@@ -157,25 +158,50 @@ function ReleaseNotesButton({ fallbackNotes, version }: { fallbackNotes?: string
 
   return (
     <>
-      <button className="mt-3 text-xs font-medium text-(--color-accent) underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)" onClick={() => void openNotes()}>
+      <button
+        className="mt-3 text-xs font-medium text-(--color-accent) underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
+        onClick={() => void openNotes()}
+      >
         See release notes
       </button>
-      {open ? (
-        <div className="mobile-safe-overlay fixed inset-0 z-60 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-label="Release notes" onClick={() => setOpen(false)} data-swipe-ignore>
-          <div className="max-h-[min(32rem,80vh)] w-full max-w-lg overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) text-(--color-text) shadow-xl" onClick={(event) => event.stopPropagation()}>
-            <div className="flex items-center justify-between gap-3 border-b border-(--color-border) px-4 py-3">
-              <h2 className="text-sm font-semibold">Release notes</h2>
-              <div className="flex items-center gap-2">
-                {notes?.url ? <a className="rounded-md px-2 py-1 text-xs text-(--color-accent) hover:bg-(--bg-page)" href={notes.url} target="_blank" rel="noopener noreferrer" onClick={(event) => { event.preventDefault(); void openExternalUrl(notes.url!) }}>View in GitHub</a> : null}
-                <button className="rounded-md px-2 py-1 text-xs text-(--color-text-muted) hover:bg-(--bg-page)" onClick={() => setOpen(false)}>Close</button>
-              </div>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent
+          showCloseButton={false}
+          aria-label="Release notes"
+          className="z-60 w-full max-w-lg overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) p-0 text-(--color-text) shadow-xl"
+        >
+          <DialogHeader className="flex-row items-center justify-between gap-3 border-b border-(--color-border) px-4 py-3">
+            <DialogTitle className="text-sm font-semibold">Release notes</DialogTitle>
+            <div className="flex items-center gap-2">
+              {notes?.url ? (
+                <a
+                  className="rounded-md px-2 py-1 text-xs text-(--color-accent) hover:bg-(--bg-page)"
+                  href={notes.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(event) => {
+                    event.preventDefault()
+                    void openExternalUrl(notes.url)
+                  }}
+                >
+                  View in GitHub
+                </a>
+              ) : null}
+              <button
+                className="rounded-md px-2 py-1 text-xs text-(--color-text-muted) hover:bg-(--bg-page)"
+                onClick={() => setOpen(false)}
+              >
+                Close
+              </button>
             </div>
-            <div className="max-h-[24rem] overflow-y-auto overscroll-contain touch-pan-y px-4 py-3 text-(--color-text)">
-              <LazyMarkdownBlock content={`${notes?.body ?? fallbackNotes ?? 'Loading release notes...'}${error ? `\n\nCould not load GitHub release notes: ${error}` : ''}`} />
-            </div>
+          </DialogHeader>
+          <div className="max-h-[24rem] overflow-y-auto overscroll-contain touch-pan-y px-4 py-3 text-(--color-text)">
+            <LazyMarkdownBlock
+              content={`${notes?.body ?? fallbackNotes ?? 'Loading release notes...'}${error ? `\n\nCould not load GitHub release notes: ${error}` : ''}`}
+            />
           </div>
-        </div>
-      ) : null}
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

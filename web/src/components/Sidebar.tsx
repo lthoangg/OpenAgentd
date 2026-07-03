@@ -247,7 +247,6 @@ export function Sidebar({
     )
     observer.observe(sentinel)
     return () => observer.disconnect()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const handleDelete = useCallback((e: React.MouseEvent, session: SessionResponse) => {

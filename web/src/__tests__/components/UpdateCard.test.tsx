@@ -21,6 +21,8 @@ import { cleanup, render, screen, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import '@testing-library/jest-dom'
 
+mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
+
 // ---------------------------------------------------------------------------
 // Tauri API mocks — must be declared before importing UpdateCard so that
 // mock.module hoisting takes effect.
@@ -71,10 +73,31 @@ const invokeMock = mock(async (...args: unknown[]) => {
     return undefined
   }
 
+  if (command === 'updater_release_notes') {
+    const version = (args[1] as { version?: string } | undefined)?.version ?? 'unknown'
+    return {
+      version,
+      url: `https://github.com/openagentd/openagentd/releases/tag/v${version}`,
+      body: `# Release ${version}`,
+    }
+  }
+
   throw new Error(`unexpected command: ${command}`)
 })
 
-mock.module('@tauri-apps/api/core', () => ({ invoke: invokeMock }))
+mock.module('@tauri-apps/api/core', () => ({
+  invoke: invokeMock,
+}))
+
+const openExternalUrlMock = mock(async (_url: unknown) => {})
+
+mock.module('@/lib/open-external', () => ({
+  openExternalUrl: openExternalUrlMock,
+}))
+
+mock.module('@/utils/LazyMarkdownBlock', () => ({
+  LazyMarkdownBlock: ({ content }: { content: string }) => <div>{content}</div>,
+}))
 
 // ---------------------------------------------------------------------------
 // Import component after mocks are set up
@@ -101,6 +124,7 @@ beforeEach(() => {
   unlistenStatusMock.mockClear()
   unlistenCheckMock.mockClear()
   invokeMock.mockClear()
+  openExternalUrlMock.mockClear()
   window.localStorage.clear()
 })
 
@@ -252,11 +276,6 @@ describe('UpdateCard — install flow', () => {
 
 describe('UpdateCard — release notes modal', () => {
   it('marks the release-notes overlay data-swipe-ignore', async () => {
-    // Regression: the release-notes modal is a hand-rolled `fixed inset-0`
-    // overlay that reaches the screen edges. Without this attribute the
-    // outer mobile useEdgeSwipe drawer controller would read an
-    // edge-zone touch on it as an open/close gesture for the
-    // sidebar/actions drawer underneath.
     render(<UpdateCard />)
 
     await waitFor(() => expect(capturedStatusListener).not.toBeNull())
@@ -266,6 +285,57 @@ describe('UpdateCard — release notes modal', () => {
 
     const dialog = await waitFor(() => screen.getByRole('dialog', { name: /release notes/i }))
     expect(dialog).toHaveAttribute('data-swipe-ignore')
+  })
+
+  it('closes the release-notes dialog on Escape', async () => {
+    render(<UpdateCard />)
+
+    await waitFor(() => expect(capturedStatusListener).not.toBeNull())
+    act(() => emitStatus({ status: 'downloaded', version: '1.71.0', current_version: '1.70.0' }))
+
+    await userEvent.click(screen.getByRole('button', { name: /see release notes/i }))
+    await waitFor(() => screen.getByRole('dialog', { name: /release notes/i }))
+
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    })
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /see release notes/i })).toHaveFocus())
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 150))
+    })
+    expect(screen.queryByRole('dialog', { name: /release notes/i })).not.toBeInTheDocument()
+  })
+
+  it('returns focus to the release-notes trigger when the dialog closes', async () => {
+    render(<UpdateCard />)
+
+    await waitFor(() => expect(capturedStatusListener).not.toBeNull())
+    act(() => emitStatus({ status: 'downloaded', version: '1.71.0', current_version: '1.70.0' }))
+
+    const trigger = screen.getByRole('button', { name: /see release notes/i })
+    await userEvent.click(trigger)
+    await waitFor(() => screen.getByRole('dialog', { name: /release notes/i }))
+
+    await userEvent.keyboard('{Escape}')
+
+    await waitFor(() => expect(trigger).toHaveFocus())
+  })
+
+  it('opens the GitHub release page via openExternalUrl', async () => {
+    render(<UpdateCard />)
+
+    await waitFor(() => expect(capturedStatusListener).not.toBeNull())
+    act(() => emitStatus({ status: 'downloaded', version: '1.71.0', current_version: '1.70.0' }))
+
+    await userEvent.click(screen.getByRole('button', { name: /see release notes/i }))
+    const githubLink = await waitFor(() => screen.getByRole('link', { name: /view in github/i }))
+
+    await userEvent.click(githubLink)
+
+    expect(openExternalUrlMock).toHaveBeenCalledWith(
+      'https://github.com/openagentd/openagentd/releases/tag/v1.71.0',
+    )
   })
 })
 

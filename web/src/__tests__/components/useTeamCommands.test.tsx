@@ -218,6 +218,27 @@ describe("useTeamCommands — coding mode swap", () => {
 })
 
 // ════════════════════════════════════════════════════════════════════════════
+//  Open Terminal command
+// ════════════════════════════════════════════════════════════════════════════
+describe("useTeamCommands — open-terminal", () => {
+  it("appears with Ctrl+Shift+` shortcut when a handler is provided", () => {
+    const handleOpenTerminal = mock(() => {})
+    const { result } = renderHook(() =>
+      useTeamCommands(makeArgs({ mode: "coding", handleOpenTerminal })),
+    )
+    const cmd = byId(result.current, "open-terminal")
+    expect(cmd.shortcut).toBe("Ctrl+Shift+`")
+    cmd.action()
+    expect(handleOpenTerminal).toHaveBeenCalledTimes(1)
+  })
+
+  it("is absent when no handler is provided (normal mode / no workspace)", () => {
+    const { result } = renderHook(() => useTeamCommands(makeArgs({ mode: "normal" })))
+    expect(result.current.find((c) => c.id === "open-terminal")).toBeUndefined()
+  })
+})
+
+// ════════════════════════════════════════════════════════════════════════════
 //  Navigation commands
 // ════════════════════════════════════════════════════════════════════════════
 describe("useTeamCommands — navigation", () => {

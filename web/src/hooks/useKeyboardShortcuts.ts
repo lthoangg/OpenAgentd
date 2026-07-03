@@ -13,6 +13,12 @@
  * webview conflict, e.g. Session Settings uses ⌘⇧A because bare ⌘A is
  * "Select All").
  *
+ * Physical-key entries: a map key that matches a ``KeyboardEvent.code``
+ * value (e.g. ``Backquote``) is matched against ``e.code`` instead of
+ * ``e.key``. Use this for punctuation keys whose ``e.key`` varies by
+ * layout or Shift state (Shift+` reports "~" on US layouts, "`" on
+ * others, and "Dead" on layouts where backquote is a dead key).
+ *
  * Usage:
  *   useKeyboardShortcuts({
  *     b: () => sidebar.toggle(),
@@ -41,7 +47,8 @@ export function useKeyboardShortcuts(shortcuts: ShortcutMap): void {
     const { os } = getPlatform()
 
     const handler = (e: KeyboardEvent) => {
-      const entry = ref.current[e.key.toLowerCase()]
+      // Character match first, then physical-key (``e.code``) fallback.
+      const entry = ref.current[e.key.toLowerCase()] ?? ref.current[e.code]
       if (!entry) return
       const { handler: fn, shift } = typeof entry === 'function' ? { handler: entry, shift: false } : entry
       if (!isPrimaryShortcut(e, os, { shift })) return

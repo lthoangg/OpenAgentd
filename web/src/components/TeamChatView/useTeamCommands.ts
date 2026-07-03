@@ -34,6 +34,9 @@ interface UseTeamCommandsArgs {
   // Session
   handleNewSession: () => void
 
+  /** Coding mode with an attached workspace only — opens the terminal tab. */
+  handleOpenTerminal?: () => void
+
   // Navigation
   navigate: ReturnType<typeof useNavigate>
 }
@@ -47,6 +50,7 @@ export function useTeamCommands({
   handleCodingSidebarToggle,
   mode = 'normal',
   handleNewSession,
+  handleOpenTerminal,
   navigate,
 }: UseTeamCommandsArgs): Command[] {
   const openSettings = useSettingsStore((s) => s.openSettings)
@@ -66,8 +70,11 @@ export function useTeamCommands({
       ? { id: 'collapse-sidebar', group: 'View', label: 'Toggle Coding Sidebar', description: 'Collapse or expand workspaces and sessions', shortcut: formatShortcut('B', os), action: handleCodingSidebarToggle }
       : { id: 'collapse-sidebar', group: 'View', label: 'Toggle Sidebar', description: '', shortcut: formatShortcut('B', os), action: () => dispatchShortcutKey('b', os) },
     { id: 'scheduled-tasks',  group: 'View',       label: 'Scheduled Tasks',   description: 'Manage cron and scheduled agent tasks', shortcut: formatShortcut('S', os), action: () => dispatchShortcutKey('s', os) },
+    ...(handleOpenTerminal
+      ? [{ id: 'open-terminal', group: 'View' as const, label: 'Open Terminal', description: mode === 'coding' ? 'Interactive shell in the workspace (runs on the connected server)' : 'Interactive shell in the session workspace (runs on the connected server)', shortcut: formatShortcut('`', os, { shift: true }), action: handleOpenTerminal }]
+      : []),
     { id: 'go-home',     group: 'Navigation', label: 'Go to Home',     description: '', action: () => navigate({ to: '/' }) },
     ...(mode === 'normal' ? [{ id: 'go-coding', group: 'Navigation', label: 'Go to Coding Mode', description: 'Open the coding workbench', action: () => navigate({ to: '/coding' }) }] : []),
     { id: 'go-settings', group: 'Navigation', label: 'Open Settings',  description: 'Manage agents, skills, providers & more', shortcut: formatShortcut(',', os), action: () => openSettings('agents') },
-  ], [os, viewMode, cycleViewMode, toggleAgentCapabilities, setShowTodos, handleWorkspaceFiles, handleCodingSidebarToggle, mode, handleNewSession, navigate, openSettings])
+  ], [os, viewMode, cycleViewMode, toggleAgentCapabilities, setShowTodos, handleWorkspaceFiles, handleCodingSidebarToggle, mode, handleNewSession, handleOpenTerminal, navigate, openSettings])
 }

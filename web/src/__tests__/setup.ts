@@ -18,6 +18,33 @@ for (const name of SVG_ICONS) {
   }))
 }
 
+// Stub TerminalView globally: it renders xterm DOM owned by the terminal
+// store. Tests that need terminal behaviour use TerminalKeyBar directly,
+// drive useTerminalStore, or mock the WS layer (@/api/terminal).
+mock.module("@/components/Terminal/TerminalView", () => ({
+  TerminalView: () => null,
+}))
+
+// Stub the xterm construction module globally: @xterm/xterm ships a CSS
+// import Bun's test loader can't process. useTerminalStore (imported by
+// panels app-wide) pulls this in transitively. Store tests override this
+// with their own instrumented mock.
+mock.module("@/components/Terminal/xterm-instance", () => ({
+  createXterm: () => ({
+    term: {
+      write: () => {},
+      dispose: () => {},
+      focus: () => {},
+      onData: () => {},
+      open: () => {},
+      options: {},
+      rows: 24,
+      cols: 80,
+    },
+    fit: { fit: () => {} },
+  }),
+}))
+
 // Pass an explicit ``url`` so ``window.location.origin`` is a real origin
 // instead of ``"null"`` (the about:blank default). This matters for any
 // test that calls ``new URL("/api/x", window.location.origin)``,

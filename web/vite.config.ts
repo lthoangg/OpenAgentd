@@ -17,6 +17,8 @@ export default defineConfig({
       "/api": {
         target: process.env.VITE_API_PROXY_TARGET ?? "http://localhost:8000",
         changeOrigin: true,
+        // Forward WebSocket upgrades too (terminal PTY at /api/terminal/ws).
+        ws: true,
       },
     },
   },

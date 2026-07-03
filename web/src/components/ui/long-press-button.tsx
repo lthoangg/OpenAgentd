@@ -1,11 +1,9 @@
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import type { ComponentPropsWithRef } from 'react'
 import { mediumHapticFeedback } from '@/lib/haptics'
 import { cn } from '@/lib/utils'
 import { buttonVariants, type ButtonProps } from '@/components/ui/button'
-
-const LONG_PRESS_MS = 520
-const LONG_PRESS_MOVE_TOLERANCE = 10
+import { useLongPress } from '@/hooks/use-long-press'
 
 interface LongPressButtonProps
   extends ComponentPropsWithRef<'button'>,
@@ -41,16 +39,15 @@ function LongPressButton({
   onContextMenu,
   ...props
 }: LongPressButtonProps) {
-  const timerRef = useRef<number | null>(null)
-  const startRef = useRef<{ x: number; y: number } | null>(null)
   const [pressing, setPressing] = useState(false)
-
-  const clear = () => {
-    if (timerRef.current !== null) window.clearTimeout(timerRef.current)
-    timerRef.current = null
-    startRef.current = null
-    setPressing(false)
-  }
+  const longPress = useLongPress(
+    enabled,
+    () => {
+      mediumHapticFeedback()
+      onLongPress()
+    },
+    setPressing,
+  )
 
   return (
     <button
@@ -62,37 +59,12 @@ function LongPressButton({
         'data-pressing:scale-[0.97]',
         className,
       )}
-      onPointerDown={(event) => {
-        onPointerDown?.(event)
-        if (!enabled || event.pointerType === 'mouse') return
-        startRef.current = { x: event.clientX, y: event.clientY }
-        setPressing(true)
-        timerRef.current = window.setTimeout(() => {
-          timerRef.current = null
-          startRef.current = null
-          setPressing(false)
-          mediumHapticFeedback()
-          onLongPress()
-        }, LONG_PRESS_MS)
-      }}
-      onPointerMove={(event) => {
-        onPointerMove?.(event)
-        const start = startRef.current
-        if (!start) return
-        if (
-          Math.abs(event.clientX - start.x) > LONG_PRESS_MOVE_TOLERANCE ||
-          Math.abs(event.clientY - start.y) > LONG_PRESS_MOVE_TOLERANCE
-        ) {
-          clear()
-        }
-      }}
-      onPointerUp={(event) => { onPointerUp?.(event); clear() }}
-      onPointerCancel={(event) => { onPointerCancel?.(event); clear() }}
-      onPointerLeave={(event) => { onPointerLeave?.(event); clear() }}
-      onContextMenu={(event) => {
-        onContextMenu?.(event)
-        if (enabled) event.preventDefault()
-      }}
+      onPointerDown={(event) => { onPointerDown?.(event); longPress.onPointerDown(event) }}
+      onPointerMove={(event) => { onPointerMove?.(event); longPress.onPointerMove(event) }}
+      onPointerUp={(event) => { onPointerUp?.(event); longPress.onPointerUp(event) }}
+      onPointerCancel={(event) => { onPointerCancel?.(event); longPress.onPointerCancel(event) }}
+      onPointerLeave={(event) => { onPointerLeave?.(event); longPress.onPointerLeave(event) }}
+      onContextMenu={(event) => { onContextMenu?.(event); longPress.onContextMenu(event) }}
     />
   )
 }

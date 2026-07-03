@@ -15,10 +15,11 @@ afterEach(cleanup)
 /** Build a keyboard event with the requested modifier flags. */
 function buildEvent(
   key: string,
-  opts: { ctrlKey?: boolean; metaKey?: boolean; shiftKey?: boolean } = {},
+  opts: { ctrlKey?: boolean; metaKey?: boolean; shiftKey?: boolean; code?: string } = {},
 ): KeyboardEvent {
   return new KeyboardEvent("keydown", {
     key,
+    code: opts.code ?? "",
     ctrlKey: opts.ctrlKey ?? false,
     metaKey: opts.metaKey ?? false,
     shiftKey: opts.shiftKey ?? false,
@@ -147,6 +148,43 @@ describe("useKeyboardShortcuts", () => {
 
       window.dispatchEvent(buildEvent("b", { ctrlKey: true }))
       expect(onB).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe("physical-key (e.code) entries", () => {
+    it("matches on e.code regardless of the layout-dependent e.key", () => {
+      const onTerminal = mock(() => {})
+      render(
+        <Harness shortcuts={{ Backquote: { handler: onTerminal, shift: true } }} />,
+      )
+
+      // US layout: Shift+` produces key '~' — must still match via code.
+      window.dispatchEvent(
+        buildEvent("~", { ctrlKey: true, shiftKey: true, code: "Backquote" }),
+      )
+      expect(onTerminal).toHaveBeenCalledTimes(1)
+
+      // Other layouts: key '`'.
+      window.dispatchEvent(
+        buildEvent("`", { ctrlKey: true, shiftKey: true, code: "Backquote" }),
+      )
+      expect(onTerminal).toHaveBeenCalledTimes(2)
+
+      // Dead-key layouts: key 'Dead'.
+      window.dispatchEvent(
+        buildEvent("Dead", { ctrlKey: true, shiftKey: true, code: "Backquote" }),
+      )
+      expect(onTerminal).toHaveBeenCalledTimes(3)
+    })
+
+    it("character entries win over code entries when both could match", () => {
+      const onChar = mock(() => {})
+      const onCode = mock(() => {})
+      render(<Harness shortcuts={{ "`": onChar, Backquote: onCode }} />)
+
+      window.dispatchEvent(buildEvent("`", { ctrlKey: true, code: "Backquote" }))
+      expect(onChar).toHaveBeenCalledTimes(1)
+      expect(onCode).not.toHaveBeenCalled()
     })
   })
 })

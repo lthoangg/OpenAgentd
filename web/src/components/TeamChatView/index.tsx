@@ -28,6 +28,7 @@ import { CodingSidebar } from '../CodingSidebar'
 import { CodingWorkspacePanel } from '../CodingWorkspacePanel'
 import { CodingFileViewerPanel } from '../CodingFileViewerPanel'
 import { WorkspaceFilesPanel } from '../WorkspaceFilesPanel'
+import { TerminalPanel } from '../Terminal/TerminalPanel'
 import { Sidebar } from '../Sidebar'
 import { useTodosQuery } from '@/queries/useTodosQuery'
 import { useProvidersQuery } from '@/queries'
@@ -130,6 +131,8 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const [codingFileViewer, setCodingFileViewer] = useState<WorkspaceFileInfo | null>(null)
   const [codingFileViewerDetached, setCodingFileViewerDetached] = useState(false)
   const [codingFileOpenKey, setCodingFileOpenKey] = useState(0)
+  const [terminalOpenKey, setTerminalOpenKey] = useState(0)
+  const [showTerminalPanel, setShowTerminalPanel] = useState(false)
   const [codingSidebarCollapsed, setCodingSidebarCollapsed] = useState(true)
   const [openWorkspaceDialogKey, setOpenWorkspaceDialogKey] = useState(0)
   const [showTodos, setShowTodos] = useState(false)
@@ -517,6 +520,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     }
     if (toClose.has('todos')) setShowTodos(false)
     if (toClose.has('files')) setShowFilesPanel(false)
+    if (toClose.has('terminal')) setShowTerminalPanel(false)
     const ui = useUIStore.getState()
     if (toClose.has('scheduler')) ui.closeScheduler()
     if (toClose.has('capabilities')) ui.closeAgentCapabilities()
@@ -897,6 +901,24 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     })
   }, [closeOtherMobileOverlays, sessionIdState])
 
+  // Open (or focus) a terminal — app-wide.
+  // Coding: ensures the workspace panel is visible, then bumps the key so
+  // CodingWorkspacePanel focuses/opens its terminal tab (cwd = project).
+  // Cockpit: opens the TerminalPanel (cwd = per-session workspace on the
+  // server, derived from the session id).
+  const handleOpenTerminal = useCallback(() => {
+    if (mode === 'coding') {
+      if (!workspace) return
+      setCodingPanel((prev) => prev ?? 'files')
+      setTerminalOpenKey((k) => k + 1)
+      return
+    }
+    if (!sessionIdState) return
+    setShowTerminalPanel(true)
+    closeOtherMobileOverlays('terminal')
+    setTerminalOpenKey((k) => k + 1)
+  }, [mode, workspace, sessionIdState, closeOtherMobileOverlays])
+
   const commands = useTeamCommands({
     viewMode,
     cycleViewMode,
@@ -906,6 +928,10 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     handleCodingSidebarToggle,
     mode,
     handleNewSession,
+    handleOpenTerminal:
+      (mode === 'coding' && workspace) || (mode !== 'coding' && sessionIdState)
+        ? handleOpenTerminal
+        : undefined,
     navigate,
   })
   const paletteCommands = commands
@@ -951,6 +977,12 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     // ⌘I / Ctrl+I — focus the chat input (dispatched via CustomEvent so
     // future callers don't need a ref to the input).
     'i': () => window.dispatchEvent(new CustomEvent('focus-chat-input')),
+    // ⌘⇧` / Ctrl+Shift+` — open a terminal (any mode: coding workspace or
+    // the cockpit session workspace). Matched on the physical key
+    // (KeyboardEvent.code === 'Backquote') because e.key for
+    // Shift+backquote is layout-dependent ('~', '`', or even 'Dead' on
+    // layouts where backquote is a dead key).
+    Backquote: { handler: handleOpenTerminal, shift: true },
   })
 
 
@@ -1290,6 +1322,16 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             onClose={() => setShowFilesPanel(false)}
           />
         )}
+        {/* Cockpit terminal panel — sessions survive closing it (they live
+            in useTerminalStore and are idle-reaped after 15 min). */}
+        {mode !== 'coding' && sessionIdState && (
+          <TerminalPanel
+            open={showTerminalPanel}
+            sessionId={sessionIdState}
+            openKey={terminalOpenKey}
+            onClose={() => setShowTerminalPanel(false)}
+          />
+        )}
         {mode === 'coding' && workspace && codingFileViewer !== null && codingFileViewerDetached && codingPanel === null && (
           <CodingFileViewerPanel
             workspace={workspace}
@@ -1311,6 +1353,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             mobileDragOffset={codingPanelDragOffset}
             selectedFilePath={codingFileViewer?.path ?? null}
             selectedFileOpenKey={codingFileOpenKey}
+            terminalOpenKey={terminalOpenKey}
             onFileSelect={handleCodingFileSelect}
             onAddComment={handleAddFileComment}
             onOpenPalette={handleTogglePalette}

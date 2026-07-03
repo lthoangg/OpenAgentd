@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { ChevronRight, Copy, Download, ExternalLink, FolderOpen, GitCompare, Plus, RefreshCw, Undo2, X, RotateCcw } from 'lucide-react'
+import { ChevronRight, Copy, Download, ExternalLink, FolderOpen, GitCompare, Plus, RefreshCw, TerminalSquare, Undo2, X, RotateCcw } from 'lucide-react'
 import { LongPressButton } from '@/components/ui/long-press-button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -10,6 +10,8 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
 import { getCodingWorkspaceGitDiff, getCodingWorkspaceStatus, listCodingWorkspaceFiles, getCodingWorkspaceGitHistory, getCodingWorkspaceCommitDiff, discardCodingWorkspaceFile, undoCodingWorkspaceLastCommit, revertCodingWorkspaceCommit } from '@/api/client'
 import { CodingFilePreviewContent, DiffPreview, CopyButton } from './CodingFileViewerPanel'
+import { TerminalView } from './Terminal/TerminalView'
+import { TerminalTabButton } from './Terminal/TerminalTabButton'
 import { FileTypeIcon } from './FileTypeIcon'
 import { softHapticFeedback } from '@/lib/haptics'
 import { downloadCodingWorkspaceFile } from '@/lib/coding-workspace-download'
@@ -22,12 +24,14 @@ import { usePlatform } from '@/hooks/use-platform'
 import { formatShortcut } from '@/lib/keyboard-shortcut'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { useGitPanelStore, DEFAULT_WORKSPACE_STATE } from '@/stores/useGitPanelStore'
+import { useTerminalStore } from '@/stores/useTerminalStore'
 import { useToastStore } from '@/stores/useToastStore'
 import type { WorkspaceFileInfo, WorkspaceGitDiffResponse } from '@/api/types'
 
 type ChangedFileStatus = 'A' | 'M' | 'D'
 type WorkspacePanelTab =
   | { id: 'review'; type: 'review'; title: 'Git' }
+  | { id: string; type: 'terminal'; title: string; termId: string }
   | { id: string; type: 'file'; title: string; file: WorkspaceFileInfo }
 
 interface ChangedFileInfo {
@@ -266,6 +270,7 @@ export function CodingWorkspacePanel({
   mobileDragOffset = null,
   selectedFilePath = null,
   selectedFileOpenKey = 0,
+  terminalOpenKey = 0,
   onFileSelect,
   onAddComment,
   onOpenPalette,
@@ -285,6 +290,9 @@ export function CodingWorkspacePanel({
   mobileDragOffset?: number | null
   selectedFilePath?: string | null
   selectedFileOpenKey?: number
+  /** Bump to open (or focus) the Terminal tab — ⌘⇧` / palette. Key 0 is
+   *  the mount default and is ignored; only increments act. */
+  terminalOpenKey?: number
   onFileSelect?: (file: WorkspaceFileInfo | null) => void
   onAddComment?: (path: string, startLine: number, endLine: number) => void
   onOpenPalette?: () => void
@@ -483,8 +491,68 @@ export function CodingWorkspacePanel({
     setActiveTabId(id)
     onFileSelect?.(file)
   }, [onFileSelect])
+  // ── Terminal tabs — sessions owned by useTerminalStore ─────────────
+  // The store outlives this component: closing/reopening the panel (or the
+  // whole coding view) re-adopts live sessions as tabs, and running shells
+  // keep running while detached (idle-reaped after 15 min without input).
+  const terminalSessions = useTerminalStore((s) => s.sessions)
+  const terminalMetas = useMemo(
+    () =>
+      Object.values(terminalSessions)
+        .filter((meta) => meta.contextKey === workspace)
+        .sort((a, b) => a.order - b.order),
+    [terminalSessions, workspace],
+  )
+  // Sync tabs to store sessions: adopt new/live ones, drop closed ones.
+  useEffect(() => {
+    setTabs((current) => {
+      const nonTerminal = current.filter((item) => item.type !== 'terminal')
+      const terminalTabs = terminalMetas.map((meta) => {
+        const existing = current.find(
+          (item) => item.type === 'terminal' && item.termId === meta.id,
+        )
+        return existing && existing.title === meta.title
+          ? existing
+          : { id: `terminal:${meta.id}`, type: 'terminal' as const, title: meta.title, termId: meta.id }
+      })
+      const changed =
+        current.length !== nonTerminal.length + terminalTabs.length ||
+        terminalTabs.some((tab) => !current.includes(tab))
+      return changed ? [...nonTerminal, ...terminalTabs] : current
+    })
+  }, [terminalMetas])
+  const openTerminal = useCallback(() => {
+    const id = useTerminalStore.getState().open({ workspace }, workspace)
+    setActiveTabId(`terminal:${id}`)
+  }, [workspace])
+  const focusOrOpenTerminal = useCallback(() => {
+    // ⌘⇧` / palette: focus the most recent terminal, or open the first one
+    // (VS Code behaviour). Explicit "New terminal" always opens another.
+    const metas = useTerminalStore.getState().sessionsForContext(workspace)
+    const last = metas[metas.length - 1]
+    if (last) setActiveTabId(`terminal:${last.id}`)
+    else openTerminal()
+  }, [workspace, openTerminal])
+  // Parent-driven open requests (⌘⇧` shortcut, command palette). Same
+  // bump-key pattern as selectedFileOpenKey: only a fresh increment acts,
+  // so background re-renders never re-open a tab the user closed.
+  const handledTerminalOpenKeyRef = useRef(0)
+  useEffect(() => {
+    if (terminalOpenKey > handledTerminalOpenKeyRef.current) {
+      handledTerminalOpenKeyRef.current = terminalOpenKey
+      focusOrOpenTerminal()
+    }
+  }, [terminalOpenKey, focusOrOpenTerminal])
   const closeTab = (id: string) => {
     if (id === 'review') return
+    const terminalTab = tabs.find(
+      (item): item is Extract<WorkspacePanelTab, { type: 'terminal' }> =>
+        item.id === id && item.type === 'terminal',
+    )
+    if (terminalTab) {
+      // Kills the PTY server-side; the tab-sync effect removes the tab.
+      useTerminalStore.getState().close(terminalTab.termId)
+    }
     setTabs((current) => current.filter((item) => item.id !== id))
     if (activeTabId === id) {
       setActiveTabId('review')
@@ -648,7 +716,21 @@ export function CodingWorkspacePanel({
         )}
         <div className="flex min-w-0 items-center gap-1 border-b border-(--color-border) bg-(--bg-card) px-2 py-1">
           <div className={cn('scrollbar-none flex min-w-0 items-center gap-1 overflow-x-auto', mobile ? 'max-w-[calc(100%-4rem)]' : 'max-w-[calc(100%-2rem)]')}>
-            {tabs.map((tabItem) => (
+            {tabs.map((tabItem) => tabItem.type === 'terminal' ? (
+              <TerminalTabButton
+                key={tabItem.id}
+                buttonRef={(node) => {
+                  if (node) tabButtonRefs.current.set(tabItem.id, node)
+                  else tabButtonRefs.current.delete(tabItem.id)
+                }}
+                meta={terminalMetas.find((m) => m.id === tabItem.termId) ?? {
+                  id: tabItem.termId, contextKey: workspace, title: tabItem.title, status: 'connecting', order: 0,
+                }}
+                active={activeTabId === tabItem.id}
+                mobile={mobile}
+                onActivate={() => setActiveTabId(tabItem.id)}
+              />
+            ) : (
               <button
                 key={tabItem.id}
                 ref={(node) => {
@@ -667,7 +749,11 @@ export function CodingWorkspacePanel({
                 )}
                 title={tabItem.type === 'file' ? tabItem.file.path : tabItem.title}
               >
-                {tabItem.type === 'review' ? <GitCompare size={12} aria-hidden="true" /> : <FileTypeIcon name={tabItem.file.name || tabItem.file.path} size={13} />}
+                {tabItem.type === 'review' ? (
+                  <GitCompare size={12} aria-hidden="true" />
+                ) : (
+                  <FileTypeIcon name={tabItem.file.name || tabItem.file.path} size={13} />
+                )}
                 <span className="truncate font-mono">{tabItem.title}</span>
                 {tabItem.type === 'file' && (
                   <span
@@ -699,6 +785,16 @@ export function CodingWorkspacePanel({
           >
             <Plus size={14} aria-hidden="true" />
           </button>
+          <button
+            type="button"
+            onClick={openTerminal}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
+            aria-label="New terminal"
+            title="New terminal"
+          >
+            <TerminalSquare size={14} aria-hidden="true" />
+          </button>
+
         </div>
         <div className="min-h-0 flex-1 overflow-hidden">
           {activeTab?.type === 'review' ? (
@@ -1152,6 +1248,14 @@ export function CodingWorkspacePanel({
               </div>
             </div>
           ) : null}
+          {/* Only the active terminal is mounted — sessions live in
+              useTerminalStore, so hidden terminals keep their PTY and
+              scrollback without holding a renderer in the DOM. */}
+          {activeTab?.type === 'terminal' && (
+            <div className="h-full p-1.5">
+              <TerminalView key={activeTab.termId} sessionId={activeTab.termId} />
+            </div>
+          )}
         </div>
         <button
           type="button"

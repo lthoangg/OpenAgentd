@@ -331,7 +331,6 @@ export interface AgentConfig {
   system_prompt?: string
   tools?: string[]
   model?: string | null
-  temperature?: number | null
   thinking_level?: string | null
   responses_api?: boolean | null
 }

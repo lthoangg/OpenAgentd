@@ -2,13 +2,11 @@ import { describe, it, expect } from 'bun:test'
 import {
   agentNameSchema,
   modelSchema,
-  temperatureSchema,
   roleSchema,
   thinkingLevelSchema,
   validateAgentName,
   validateModel,
   validateDescription,
-  parseTemperatureInput,
   validateAgentForm,
   validateSkillForm,
   validateAgentDraft,
@@ -80,18 +78,6 @@ describe('modelSchema', () => {
   )
 })
 
-// ── temperatureSchema ──────────────────────────────────────────────────────
-
-describe('temperatureSchema', () => {
-  it.each([0, 0.2, 1, 2])('accepts %p', (n) => {
-    expect(temperatureSchema.safeParse(n).success).toBe(true)
-  })
-
-  it.each([-0.1, 2.1, Number.NaN])('rejects %p', (n) => {
-    expect(temperatureSchema.safeParse(n).success).toBe(false)
-  })
-})
-
 // ── roleSchema ──────────────────────────────────────────────────────────────
 
 describe('roleSchema', () => {
@@ -143,41 +129,6 @@ describe('validateDescription', () => {
   })
 })
 
-describe('parseTemperatureInput', () => {
-  it('empty → null value', () => {
-    expect(parseTemperatureInput('')).toEqual({ ok: true, value: null })
-  })
-  it('decimal → number', () => {
-    expect(parseTemperatureInput('0.7')).toEqual({ ok: true, value: 0.7 })
-  })
-  it('int → number', () => {
-    expect(parseTemperatureInput('1')).toEqual({ ok: true, value: 1 })
-  })
-  it('"0." parses as 0 (trailing dot is allowed mid-typing)', () => {
-    // Number('0.') === 0, so we commit 0 — the user can still type more
-    // digits since the input value remains "0." in the controlled state.
-    expect(parseTemperatureInput('0.')).toEqual({ ok: true, value: 0 })
-  })
-  it('lone "." is pending', () => {
-    expect(parseTemperatureInput('.')).toEqual({ ok: 'pending' })
-  })
-  it('lone "-" is pending', () => {
-    expect(parseTemperatureInput('-')).toEqual({ ok: 'pending' })
-  })
-  it('non-numeric fails', () => {
-    const r = parseTemperatureInput('abc')
-    expect(r.ok).toBe(false)
-  })
-  it('out-of-range fails', () => {
-    const r = parseTemperatureInput('3')
-    expect(r.ok).toBe(false)
-  })
-  it('negative fails', () => {
-    const r = parseTemperatureInput('-0.5')
-    expect(r.ok).toBe(false)
-  })
-})
-
 // ── Full-form validators ────────────────────────────────────────────────────
 
 describe('validateAgentForm', () => {
@@ -196,15 +147,25 @@ describe('validateAgentForm', () => {
     expect(res?.model).toBeDefined()
   })
 
-  it('flags bad name + bad temperature in one pass', () => {
+  it('flags bad name', () => {
     const res = validateAgentForm({
       name: '.bad',
       role: 'lead',
       model: 'openai:gpt-5.4',
-      temperature: 99,
     })
     expect(res?.name).toBeTruthy()
-    expect(res?.temperature).toBeTruthy()
+  })
+
+  it('ignores a legacy temperature field instead of flagging it', () => {
+    // temperature was retired as a config field; old drafts that still
+    // carry it must not fail to validate.
+    const res = validateAgentForm({
+      name: 'alpha',
+      role: 'lead',
+      model: 'openai:gpt-5.4',
+      temperature: 99,
+    })
+    expect(res).toBeNull()
   })
 })
 
@@ -254,7 +215,9 @@ body
     expect(res?.model).toBeTruthy()
   })
 
-  it('accepts temperature as a YAML number', () => {
+  it('ignores a legacy temperature field in an otherwise-valid draft', () => {
+    // temperature was retired as a config field; old on-disk agent files
+    // that still carry it must still validate cleanly.
     const raw = `---
 name: alpha
 role: lead
@@ -265,20 +228,6 @@ temperature: 0.2
 body
 `
     expect(validateAgentDraft(raw)).toBeNull()
-  })
-
-  it('flags out-of-range temperature', () => {
-    const raw = `---
-name: alpha
-role: lead
-model: openai:gpt-5.4
-temperature: 5
----
-
-body
-`
-    const res = validateAgentDraft(raw)
-    expect(res?.temperature).toBeTruthy()
   })
 })
 

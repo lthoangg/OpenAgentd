@@ -13,7 +13,6 @@ export interface AgentFrontmatter {
   role: 'lead' | 'member'
   description?: string | null
   model?: string | null
-  temperature?: number | null
   thinking_level?: string | null
   tools?: string[]
   /** MCP server names; agent receives every tool from each listed server. */
@@ -39,9 +38,6 @@ export function buildFrontmatter(fm: AgentFrontmatter): string {
   lines.push(`role: ${fm.role}`)
   if (fm.description) lines.push(`description: ${escapeScalar(fm.description)}`)
   if (fm.model) lines.push(`model: ${fm.model}`)
-  if (fm.temperature != null && !Number.isNaN(fm.temperature)) {
-    lines.push(`temperature: ${fm.temperature}`)
-  }
   if (fm.thinking_level) lines.push(`thinking_level: ${fm.thinking_level}`)
   // tools/skills are sets conceptually — order has no semantic meaning.
   // Emit them in sorted order so that reorders in the editor don't flip the

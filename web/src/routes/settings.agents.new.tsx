@@ -15,7 +15,6 @@ name: new_agent
 role: member
 description: A helpful team member.
 model: googlegenai:gemini-3.1-flash-lite-preview
-temperature: 0.2
 tools:
   - date
   - read

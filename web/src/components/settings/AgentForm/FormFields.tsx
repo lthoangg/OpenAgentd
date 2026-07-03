@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { AlertCircle } from 'lucide-react'
 
 import { SectionCard, SectionCardHeader, SectionCardRows } from '@/components/ui/section-card'
@@ -9,12 +9,7 @@ import { Button } from '@/components/ui/button'
 import { MultiSelect, type MultiSelectOption } from '../MultiSelect'
 import { SettingsField } from '../SettingsField'
 import { type AgentFrontmatter } from '../frontmatter'
-import {
-  parseTemperatureInput,
-  validateAgentName,
-  validateDescription,
-  validateModel,
-} from '../schema'
+import { validateAgentName, validateDescription, validateModel } from '../schema'
 import { ModelCombobox, type ModelOption } from './ModelCombobox'
 import { isBuiltInProfile } from './utils'
 
@@ -71,15 +66,6 @@ export function FormFields({
   effectiveTools?: string[]
   updateFromForm: (next: AgentFrontmatter, nextBody: string) => void
 }) {
-  // Temperature has a pending state (e.g. "0." while typing) that we need
-  // to preserve as a string in local state, independent of the committed
-  // `fm.temperature` number. Same approach as React's controlled-input
-  // guidance for numeric fields.
-  const [tempRaw, setTempRaw] = useState<string>(
-    fm.temperature == null ? '' : String(fm.temperature),
-  )
-  const [tempError, setTempError] = useState<string | null>(null)
-
   // Per-field errors computed fresh from zod on render. For the scalar
   // string fields we validate whenever the value is non-empty; empty is
   // handled by the caller's full-form check before save.
@@ -122,21 +108,6 @@ export function FormFields({
     ? toolOptions.filter((option) => !builtInTools.includes(option.value))
     : toolOptions
   ).filter((option) => !implicitToolNames.has(option.value))
-
-  const onTempChange = (next: string) => {
-    setTempRaw(next)
-    const parsed = parseTemperatureInput(next)
-    if (parsed.ok === true) {
-      setTempError(null)
-      updateFromForm({ ...fm, temperature: parsed.value }, body)
-    } else if (parsed.ok === 'pending') {
-      setTempError(null)
-      // Do NOT push to fm yet — keep the last committed value so we don't
-      // flip dirty flags spuriously while the user is mid-typing.
-    } else {
-      setTempError(parsed.error)
-    }
-  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -212,7 +183,7 @@ export function FormFields({
 
       {/* Model & behaviour ─────────────────────────────────────── */}
       <SectionCard>
-        <SectionCardHeader>Model &amp; behaviour — provider, temperature, reasoning depth</SectionCardHeader>
+        <SectionCardHeader>Model &amp; behaviour — provider, reasoning depth</SectionCardHeader>
         <SectionCardRows>
         <div className="px-3 py-3 grid gap-3 md:grid-cols-2">
           <SettingsField label="Model" required error={modelError} className="md:col-span-2">
@@ -236,19 +207,6 @@ export function FormFields({
               disabled={disabled}
               invalid={!!modelError}
               placeholder="Type to search models…"
-            />
-          </SettingsField>
-
-          <SettingsField label="Temperature" error={tempError} hint="0 - 2; higher = more random.">
-            <Input
-              type="text"
-              inputMode="decimal"
-              value={tempRaw}
-              onChange={(e) => onTempChange(e.target.value)}
-              disabled={disabled}
-              placeholder="0.2"
-              aria-invalid={!!tempError || undefined}
-              className="min-h-11 font-mono md:min-h-9"
             />
           </SettingsField>
 

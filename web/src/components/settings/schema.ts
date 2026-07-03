@@ -43,12 +43,6 @@ export const modelSchema = z
     "Expected 'provider:model' (e.g. 'openai:gpt-5.4')"
   )
 
-/** Sampling temperature. */
-export const temperatureSchema = z
-  .number()
-  .min(0, 'Must be ≥ 0')
-  .max(2, 'Must be ≤ 2')
-
 /** Agent role — exactly one file in the team must be ``lead``. */
 export const roleSchema = z.enum(['lead', 'member'])
 
@@ -116,7 +110,6 @@ export const agentFrontmatterSchema = z.object({
   role: roleSchema,
   description: descriptionSchema.nullable().optional(),
   model: modelSchema,
-  temperature: temperatureSchema.nullable().optional(),
   thinking_level: thinkingLevelSchema.nullable().optional(),
   tools: z.array(z.string()).optional(),
   mcp: z.array(z.string()).optional(),
@@ -179,22 +172,6 @@ export function validateDescription(raw: string): string | null {
   if (!raw) return null // empty is fine
   return firstError(descriptionSchema, raw)
 }
-
-/**
- * Parse a user-typed temperature string into ``number | null``.
- *
- * Returns a discriminated union:
- *   - empty string → ``{ ok: true, value: null }``
- *   - valid in-range decimal → ``{ ok: true, value: <number> }``
- *   - intermediate state (``'0.'``, ``'.'``, ``'-'``) → ``{ ok: 'pending' }``
- *     so the caller keeps the raw string in state without flagging an
- *     error yet.
- *   - invalid → ``{ ok: false, error: '<msg>' }``
- */
-export type TempParse =
-  | { ok: true; value: number | null }
-  | { ok: 'pending' }
-  | { ok: false; error: string }
 
 // ── Whole-draft validators ──────────────────────────────────────────────────
 
@@ -284,29 +261,4 @@ function coerceScalar(v: string): unknown {
   const n = Number(v)
   if (!Number.isNaN(n) && v.trim() !== '') return n
   return v
-}
-
-// ── Temperature input parser ───────────────────────────────────────────────
-
-export function parseTemperatureInput(raw: string): TempParse {
-  const trimmed = raw.trim()
-  if (trimmed === '') return { ok: true, value: null }
-
-  // Intermediate typing states — not yet a number, but don't reject.
-  if (trimmed === '-' || trimmed === '.' || trimmed === '-.') {
-    return { ok: 'pending' }
-  }
-
-  if (!/^-?\d*\.?\d*$/.test(trimmed)) {
-    return { ok: false, error: 'Not a number' }
-  }
-
-  const n = Number(trimmed)
-  if (Number.isNaN(n)) return { ok: false, error: 'Not a number' }
-
-  const result = temperatureSchema.safeParse(n)
-  if (!result.success) {
-    return { ok: false, error: result.error.issues[0]?.message ?? 'Invalid' }
-  }
-  return { ok: true, value: result.data }
 }

@@ -364,6 +364,22 @@ describe("InputBar — shell mode", () => {
     await user.keyboard("{ArrowUp}")
     expect(screen.getByLabelText("Shell command input")).toBe(textarea)
   })
+
+  it("enters shell mode when an inserted snippet's rendered body starts with !", async () => {
+    const user = userEvent.setup()
+    render(
+      <InputBar
+        onSubmit={() => {}}
+        snippetCommands={[{ id: "revision", label: "revision", description: "" }]}
+        onSnippetCommand={async () => '!make revision MSG="desc"'}
+      />,
+    )
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+    await user.type(textarea, "#revision")
+    await user.keyboard("{Enter}")
+    expect(await screen.findByLabelText("Shell command input")).toBe(textarea)
+    expect(textarea.value).toBe('make revision MSG="desc"')
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -625,6 +641,30 @@ describe("InputBar — height reset after submit", () => {
     restore()
     // Verify the text was cleared after submit (the important behavior)
     expect(textarea.value).toBe("")
+  })
+
+  it("expands the composer to fit a multiline snippet insertion", async () => {
+    const user = userEvent.setup()
+    render(
+      <InputBar
+        onSubmit={() => {}}
+        snippetCommands={[{ id: "long", label: "long", description: "" }]}
+        onSnippetCommand={async () => "line one\nline two\nline three"}
+      />,
+    )
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+    // scrollHeight (60px) exceeds the wrap threshold (lineHeight * 1.4 = ~34px),
+    // simulating what the browser reports once the multiline body is inserted.
+    Object.defineProperty(textarea, "scrollHeight", { configurable: true, get: () => 60 })
+    await user.type(textarea, "#long")
+    await user.keyboard("{Enter}")
+    await act(async () => { await new Promise((r) => requestAnimationFrame(r)) })
+    expect(textarea.value).toBe("line one\nline two\nline three")
+    expect(textarea.style.height).toBe("60px")
+    // isMultiLine promotion pushes the message slot onto its own row
+    // (flexBasis: 100%) instead of staying inline next to the send button.
+    const slot = textarea.closest("div.min-w-0") as HTMLElement
+    expect(slot.style.flexBasis).toBe("100%")
   })
 })
 

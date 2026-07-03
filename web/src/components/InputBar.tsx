@@ -739,16 +739,23 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     if (rendered == null) return
     const before = value.slice(0, snippetRange.start)
     const after = value.slice(snippetRange.end)
-    const spacerBefore = before && !/\s$/.test(before) && rendered ? ' ' : ''
-    const spacerAfter = after && !/^\s/.test(after) && rendered ? ' ' : ''
-    const next = before + spacerBefore + rendered + spacerAfter + after
+    // A snippet body starting with "!" (e.g. `.openagentd/snippets/*.md`
+    // authored as a shell command) should drop the user straight into
+    // shell mode, matching what typing "!" as the first character does —
+    // otherwise the bang is inserted as literal text and the composer
+    // stays in normal chat mode, submitting the wrong content.
+    const isShellSnippet = before.length === 0 && after.length === 0 && rendered.startsWith('!')
+    const body = isShellSnippet ? rendered.slice(1) : rendered
+    const spacerBefore = before && !/\s$/.test(before) && body ? ' ' : ''
+    const spacerAfter = after && !/^\s/.test(after) && body ? ' ' : ''
+    const next = before + spacerBefore + body + spacerAfter + after
     setValue(next)
-    setShellMode(false)
+    setShellMode(isShellSnippet)
     setSnippetRange(null)
     setSnippetMenuIndex(0)
     const el = textareaRef.current
     if (el) {
-      const caret = before.length + spacerBefore.length + rendered.length
+      const caret = before.length + spacerBefore.length + body.length
       requestAnimationFrame(() => {
         el.focus()
         el.setSelectionRange(caret, caret)

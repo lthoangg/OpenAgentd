@@ -28,6 +28,14 @@ mode without typing `!`. While shell mode is active, attach/voice controls are
 replaced by the active Shell button. Press Backspace on an empty shell command,
 or Escape, to return to normal chat mode.
 
+Inserting a `#`-snippet (coding workspaces only, see
+[Chat Input & Message Queue](./web/chat-input.md#shell-mode)) into an empty
+composer also enters shell mode when the snippet's rendered body itself starts
+with `!` — the leading `!` is stripped the same way it is when typed directly,
+so a snippet authored as a shell command (e.g. `.openagentd/snippets/migration.md`
+containing `!make revision MSG="…"`) runs as a shell command instead of being
+sent as a literal chat message starting with `!`.
+
 ## What is saved in history
 
 Shell sends are stored as normal shell-tool history so the UI, replay, and future

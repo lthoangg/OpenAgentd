@@ -91,6 +91,16 @@ Submitting shell mode prefixes the visible history/API message with `!`, sets th
 "user_shell"` so it renders with shell styling immediately. Reloaded history uses
 the same metadata persisted by the backend.
 
+Selecting a `#`-snippet (see the Snippet picker entry in
+[`features.md`](../features.md)) whose rendered body starts with `!` — e.g. a
+`.openagentd/snippets/*.md` authored as a shell command — also switches the
+composer into shell mode: the leading `!` is
+stripped from the inserted text the same way it is when typed directly, instead
+of being inserted as literal text and submitted as a normal chat message. This
+only applies when the snippet is inserted into an otherwise-empty composer
+(nothing before or after the `#token`); inserting a shell-flavoured snippet
+mid-sentence keeps the `!` as plain text.
+
 The `InputBarHandle` ref exposes:
 - `focus()` — expand the floating composer when needed, then focus the textarea
 - `setValue(text)` — expand the floating composer when needed, inject text, and trigger height recalculation

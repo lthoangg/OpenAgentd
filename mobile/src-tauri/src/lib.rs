@@ -102,21 +102,29 @@ fn config_path(app: &AppHandle) -> Result<PathBuf> {
 
 fn load_backend_config(app: &AppHandle) -> Result<AppBackendConfig> {
     let path = config_path(app)?;
+    load_backend_config_from(&path)
+}
+
+fn save_backend_config(app: &AppHandle, base_url: Option<&str>, name: Option<&str>) -> Result<()> {
+    let path = config_path(app)?;
+    save_backend_config_to(&path, base_url, name)
+}
+
+fn load_backend_config_from(path: &std::path::Path) -> Result<AppBackendConfig> {
     if !path.exists() {
         return Ok(AppBackendConfig::default());
     }
-    let bytes = std::fs::read(&path).with_context(|| format!("read {}", path.display()))?;
-    let mut config: AppBackendConfig = serde_json::from_slice(&bytes)
-        .with_context(|| format!("parse {}", path.display()))?;
+    let bytes = std::fs::read(path).with_context(|| format!("read {}", path.display()))?;
+    let mut config: AppBackendConfig =
+        serde_json::from_slice(&bytes).with_context(|| format!("parse {}", path.display()))?;
     if config.servers.is_empty() {
         config.servers = AppBackendConfig::default().servers;
     }
     Ok(config)
 }
 
-fn save_backend_config(app: &AppHandle, base_url: Option<&str>, name: Option<&str>) -> Result<()> {
-    let path = config_path(app)?;
-    let mut config = load_backend_config(app).unwrap_or_default();
+fn save_backend_config_to(path: &std::path::Path, base_url: Option<&str>, name: Option<&str>) -> Result<()> {
+    let mut config = load_backend_config_from(path).unwrap_or_default();
     config.active_base_url = base_url.map(str::to_string);
     if let Some(url) = base_url {
         if let Some(saved) = config.servers.iter_mut().find(|saved| saved.base_url == url) {
@@ -131,12 +139,16 @@ fn save_backend_config(app: &AppHandle, base_url: Option<&str>, name: Option<&st
         }
     }
     let bytes = serde_json::to_vec_pretty(&config).context("serialize backend config")?;
-    std::fs::write(&path, bytes).with_context(|| format!("write {}", path.display()))
+    std::fs::write(path, bytes).with_context(|| format!("write {}", path.display()))
 }
 
 fn remove_backend_server(app: &AppHandle, base_url: &str) -> Result<()> {
     let path = config_path(app)?;
-    let mut config = load_backend_config(app).unwrap_or_default();
+    remove_backend_server_at(&path, base_url)
+}
+
+fn remove_backend_server_at(path: &std::path::Path, base_url: &str) -> Result<()> {
+    let mut config = load_backend_config_from(path).unwrap_or_default();
     config.servers.retain(|server| server.base_url != base_url);
     if config.active_base_url.as_deref() == Some(base_url) {
         config.active_base_url = None;
@@ -145,7 +157,7 @@ fn remove_backend_server(app: &AppHandle, base_url: &str) -> Result<()> {
         config.servers = AppBackendConfig::default().servers;
     }
     let bytes = serde_json::to_vec_pretty(&config).context("serialize backend config")?;
-    std::fs::write(&path, bytes).with_context(|| format!("write {}", path.display()))
+    std::fs::write(path, bytes).with_context(|| format!("write {}", path.display()))
 }
 
 #[derive(Deserialize)]
@@ -326,4 +338,135 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running OpenAgentd mobile");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        load_backend_config_from, normalize_base_url, normalize_server_name,
+        remove_backend_server_at, save_backend_config_to, AppBackendConfig,
+    };
+    use std::path::PathBuf;
+    use tempfile::tempdir;
+
+    fn config_file() -> (tempfile::TempDir, PathBuf) {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("app-backend.json");
+        (dir, path)
+    }
+
+    #[test]
+    fn normalize_base_url_accepts_http_and_https() {
+        assert_eq!(normalize_base_url("http://example.com").unwrap(), "http://example.com");
+        assert_eq!(normalize_base_url("https://example.com/path").unwrap(), "https://example.com/path");
+    }
+
+    #[test]
+    fn normalize_base_url_trims_whitespace_and_trailing_slashes() {
+        assert_eq!(normalize_base_url("  https://example.com/path///  ").unwrap(), "https://example.com/path");
+    }
+
+    #[test]
+    fn normalize_base_url_rejects_empty_scheme_and_invalid_urls() {
+        assert!(normalize_base_url("   ").is_err());
+        assert!(normalize_base_url("file:///tmp/test").is_err());
+        assert!(normalize_base_url("ftp://example.com").is_err());
+        assert!(normalize_base_url("not a url").is_err());
+    }
+
+    #[test]
+    fn normalize_server_name_trims_and_drops_empty_values() {
+        assert_eq!(normalize_server_name(Some("  My Server  ".to_string())), Some("My Server".to_string()));
+        assert_eq!(normalize_server_name(Some("   ".to_string())), None);
+        assert_eq!(normalize_server_name(None), None);
+    }
+
+    #[test]
+    fn load_backend_config_returns_default_when_missing() {
+        let (_dir, path) = config_file();
+
+        let config = load_backend_config_from(&path).unwrap();
+
+        assert_eq!(config.active_base_url, None);
+        assert_eq!(config.servers.len(), 1);
+        assert_eq!(config.servers[0].base_url, "http://127.0.0.1:4082");
+        assert_eq!(config.servers[0].name.as_deref(), Some("Local CLI server"));
+    }
+
+    #[test]
+    fn save_backend_config_adds_new_server() {
+        let (_dir, path) = config_file();
+
+        save_backend_config_to(&path, Some("https://example.com"), Some("Example")).unwrap();
+        let config = load_backend_config_from(&path).unwrap();
+
+        assert_eq!(config.active_base_url.as_deref(), Some("https://example.com"));
+        assert!(config.servers.iter().any(|server| {
+            server.base_url == "https://example.com" && server.name.as_deref() == Some("Example")
+        }));
+    }
+
+    #[test]
+    fn save_backend_config_updates_existing_server_name() {
+        let (_dir, path) = config_file();
+
+        save_backend_config_to(&path, Some("https://example.com"), Some("Before")).unwrap();
+        save_backend_config_to(&path, Some("https://example.com"), Some("After")).unwrap();
+        let config = load_backend_config_from(&path).unwrap();
+        let matching: Vec<_> = config
+            .servers
+            .iter()
+            .filter(|server| server.base_url == "https://example.com")
+            .collect();
+
+        assert_eq!(matching.len(), 1);
+        assert_eq!(matching[0].name.as_deref(), Some("After"));
+    }
+
+    #[test]
+    fn remove_backend_server_clears_active_base_url_when_matching() {
+        let (_dir, path) = config_file();
+
+        save_backend_config_to(&path, Some("https://example.com"), Some("Example")).unwrap();
+        remove_backend_server_at(&path, "https://example.com").unwrap();
+        let config = load_backend_config_from(&path).unwrap();
+
+        assert_eq!(config.active_base_url, None);
+        assert!(!config.servers.iter().any(|server| server.base_url == "https://example.com"));
+    }
+
+    #[test]
+    fn empty_servers_list_falls_back_to_default_on_load_and_after_remove() {
+        let (_dir, path) = config_file();
+
+        std::fs::write(
+            &path,
+            serde_json::to_vec_pretty(&AppBackendConfig {
+                active_base_url: Some("https://example.com".to_string()),
+                servers: vec![],
+            })
+            .unwrap(),
+        )
+        .unwrap();
+
+        let loaded = load_backend_config_from(&path).unwrap();
+        assert_eq!(loaded.servers.len(), 1);
+        assert_eq!(loaded.servers[0].base_url, "http://127.0.0.1:4082");
+
+        save_backend_config_to(&path, Some("https://example.com"), Some("Example")).unwrap();
+        remove_backend_server_at(&path, "https://example.com").unwrap();
+        let after_remove = load_backend_config_from(&path).unwrap();
+
+        assert_eq!(after_remove.active_base_url, None);
+        assert_eq!(after_remove.servers.len(), 1);
+        assert_eq!(after_remove.servers[0].base_url, "http://127.0.0.1:4082");
+    }
+
+    #[test]
+    fn load_backend_config_rejects_corrupt_json() {
+        let (_dir, path) = config_file();
+        std::fs::write(&path, b"{not json").unwrap();
+
+        assert!(load_backend_config_from(&path).is_err());
+    }
 }

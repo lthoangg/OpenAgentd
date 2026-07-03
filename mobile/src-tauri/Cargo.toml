@@ -35,5 +35,8 @@ objc2-ui-kit = { version = "0.3", features = ["UIActivityViewController", "UIApp
 objc2-core-foundation = { version = "0.3", features = ["CFCGTypes"] }
 dispatch2 = "0.3"
 
+[dev-dependencies]
+tempfile = "3"
+
 [features]
 custom-protocol = ["tauri/custom-protocol"]

@@ -249,12 +249,8 @@ def test_named_params_stored():
     provider = GoogleGenAIProvider(
         api_key="key",
         model="gemini-1.5-flash",
-        temperature=0.7,
-        top_p=0.9,
         max_tokens=512,
     )
-    assert provider.temperature == 0.7
-    assert provider.top_p == 0.9
     assert provider.max_tokens == 512
 
 
@@ -262,11 +258,9 @@ def test_named_params_merged_into_kwargs():
     provider = GoogleGenAIProvider(
         api_key="key",
         model="gemini-1.5-flash",
-        temperature=0.5,
         max_tokens=256,
     )
     merged = provider._merged_kwargs()
-    assert merged["temperature"] == 0.5
     assert merged["max_tokens"] == 256
 
 
@@ -275,10 +269,10 @@ def test_call_kwargs_override_named_params():
     provider = GoogleGenAIProvider(
         api_key="key",
         model="gemini-1.5-flash",
-        temperature=0.5,
+        max_tokens=256,
     )
-    merged = provider._merged_kwargs(temperature=1.0)
-    assert merged["temperature"] == 1.0
+    merged = provider._merged_kwargs(max_tokens=1024)
+    assert merged["max_tokens"] == 1024
 
 
 def test_model_kwargs_override_named_params():
@@ -286,11 +280,11 @@ def test_model_kwargs_override_named_params():
     provider = GoogleGenAIProvider(
         api_key="key",
         model="gemini-1.5-flash",
-        temperature=0.3,
-        model_kwargs={"temperature": 0.8, "thinking_level": "high"},
+        max_tokens=100,
+        model_kwargs={"max_tokens": 200, "thinking_level": "high"},
     )
     merged = provider._merged_kwargs()
-    assert merged["temperature"] == 0.8
+    assert merged["max_tokens"] == 200
     assert merged["thinking_level"] == "high"
 
 
@@ -301,6 +295,8 @@ def test_none_named_params_not_in_merged():
     assert "temperature" not in merged
     assert "top_p" not in merged
     assert "max_tokens" not in merged
+    assert not hasattr(provider, "temperature")
+    assert not hasattr(provider, "top_p")
 
 
 # ---------------------------------------------------------------------------
@@ -500,18 +496,6 @@ def test_build_generation_config_thinking_level_none():
     prov = GoogleGenAIProvider(api_key="key", model="gemini-2.0-flash")
     config = prov._build_generation_config(thinking_level="none")
     assert config.thinking_config is None
-
-
-# ---------------------------------------------------------------------------
-# LLMProviderBase._merged_kwargs — top_p branch (base.py:49)
-# ---------------------------------------------------------------------------
-
-
-def test_base_merged_kwargs_with_top_p():
-    """Verify top_p is included in merged kwargs when set."""
-    prov = GoogleGenAIProvider(api_key="key", model="gemini-1.5-flash", top_p=0.9)
-    merged = prov._merged_kwargs()
-    assert merged["top_p"] == 0.9
 
 
 # ---------------------------------------------------------------------------

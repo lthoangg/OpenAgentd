@@ -316,8 +316,6 @@ class BedrockProvider(LLMProviderBase):
         aws_access_key_id: Explicit access key ID. Takes precedence over
             the profile when both are provided.
         aws_secret_access_key: Explicit secret access key.
-        temperature: Sampling temperature (0–1 for most Bedrock models).
-        top_p: Nucleus sampling probability mass cutoff.
         max_tokens: Hard cap on completion tokens.
         model_kwargs: Extra fields forwarded to ``additionalModelRequestFields``
             in the Converse API call.
@@ -330,14 +328,10 @@ class BedrockProvider(LLMProviderBase):
         profile_name: str | None = None,
         aws_access_key_id: str | None = None,
         aws_secret_access_key: str | None = None,
-        temperature: float | None = None,
-        top_p: float | None = None,
         max_tokens: int | None = None,
         model_kwargs: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(
-            temperature=temperature,
-            top_p=top_p,
             max_tokens=max_tokens,
             model_kwargs=model_kwargs,
         )
@@ -377,16 +371,16 @@ class BedrockProvider(LLMProviderBase):
                 )
             else:
                 inference_config["maxTokens"] = int(requested_max)
-        if merged.get("temperature") is not None:
-            inference_config["temperature"] = merged["temperature"]
-        if merged.get("top_p") is not None:
-            inference_config["topP"] = merged["top_p"]
 
         # Remaining merged keys → additionalModelRequestFields.
         # Strip keys that are provider-specific to other providers and have no
         # Bedrock equivalent — forwarding them causes ValidationException.
         known = {
             "max_tokens",
+            # temperature/top_p are retired entirely (no longer set by any
+            # caller), but stay in this filter so a stray value surviving in
+            # legacy session/agent config data is dropped rather than leaking
+            # into additionalModelRequestFields.
             "temperature",
             "top_p",
             # OpenAI / Gemini / ZAI reasoning control — not a Bedrock field

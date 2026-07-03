@@ -71,10 +71,6 @@ class OpenAIProvider(LLMProviderBase):
         model: Model name, e.g. ``"gpt-4o"``, ``"gpt-5.4"``.
         base_url: Override the API base URL. Defaults to the official
             OpenAI endpoint.
-        temperature: Sampling temperature (0-2). Lower = more deterministic.
-            Ignored when routing to Responses API.
-        top_p: Nucleus sampling probability mass cutoff.
-            Ignored when routing to Responses API.
         max_tokens: Hard cap on completion tokens.
         model_kwargs: Extra fields. Notable keys:
             ``responses_api`` (bool)   — force /responses or /chat/completions
@@ -86,14 +82,10 @@ class OpenAIProvider(LLMProviderBase):
         api_key: str | SecretStr,
         model: str,
         base_url: str = API_BASE_URL,
-        temperature: float | None = None,
-        top_p: float | None = None,
         max_tokens: int | None = None,
         model_kwargs: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(
-            temperature=temperature,
-            top_p=top_p,
             max_tokens=max_tokens,
             model_kwargs=model_kwargs,
         )

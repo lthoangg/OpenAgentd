@@ -80,7 +80,7 @@ class Agent(Generic[TContext]):
             user_group: str = "default"
 
         agent = Agent(
-            llm_provider=GoogleGenAIProvider(api_key="...", model="gemini-3.1-flash", temperature=0.7),
+            llm_provider=GoogleGenAIProvider(api_key="...", model="gemini-3.1-flash"),
             name="assistant",
             system_prompt="You are a helpful assistant.",
             tools=[web_search, get_date],

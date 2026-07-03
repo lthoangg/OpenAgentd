@@ -359,21 +359,17 @@ class TestCompletionsHandler:
         )
         assert body["prompt_cache_key"] == "session-123"
 
-    def test_build_request_with_temperature(self, handler):
-        """Include temperature in request."""
+    def test_build_request_omits_temperature_and_top_p(self, handler):
+        """temperature/top_p are retired — never forwarded even if passed."""
         messages = [HumanMessage(content="Hello")]
         body = handler.build_request(
-            messages, tools=None, stream=False, merged={"temperature": 0.7}
+            messages,
+            tools=None,
+            stream=False,
+            merged={"temperature": 0.7, "top_p": 0.9},
         )
-        assert body["temperature"] == 0.7
-
-    def test_build_request_with_top_p(self, handler):
-        """Include top_p in request."""
-        messages = [HumanMessage(content="Hello")]
-        body = handler.build_request(
-            messages, tools=None, stream=False, merged={"top_p": 0.9}
-        )
-        assert body["top_p"] == 0.9
+        assert "temperature" not in body
+        assert "top_p" not in body
 
     def test_build_request_with_max_tokens(self, handler):
         """``max_tokens`` from the caller routes to ``max_completion_tokens``.

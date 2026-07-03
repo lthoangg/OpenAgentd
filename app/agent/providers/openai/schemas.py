@@ -61,8 +61,6 @@ class OpenAIChatRequest(BaseModel):
     model: str
     messages: list[OpenAIMessage]
     tools: list[OpenAITool] | None = None
-    temperature: float | None = None
-    top_p: float | None = None
     # OpenAI's reasoning-capable models (o-series, gpt-5*, gpt-5.4*) reject
     # the legacy ``max_tokens`` field with a 400 ``unsupported_parameter`` —
     # they require ``max_completion_tokens`` instead.  Both fields are

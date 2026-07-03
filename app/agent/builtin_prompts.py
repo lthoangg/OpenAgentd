@@ -57,7 +57,6 @@ class BuiltinAgentBlueprint(TypedDict):
     role: str
     mode: str
     description: str
-    temperature: float
     thinking_level: str
 
 
@@ -179,7 +178,6 @@ BUILTIN_AGENT_BLUEPRINTS: dict[str, dict[str, BuiltinAgentBlueprint]] = {
             "role": "member",
             "mode": "normal",
             "description": BUILTIN_MEMBER_PROFILES["normal"]["executor"]["description"],
-            "temperature": 0.5,
             "thinking_level": "low",
         },
         "explorer": {
@@ -187,7 +185,6 @@ BUILTIN_AGENT_BLUEPRINTS: dict[str, dict[str, BuiltinAgentBlueprint]] = {
             "role": "member",
             "mode": "normal",
             "description": BUILTIN_MEMBER_PROFILES["normal"]["explorer"]["description"],
-            "temperature": 0.5,
             "thinking_level": "low",
         },
     },
@@ -197,7 +194,6 @@ BUILTIN_AGENT_BLUEPRINTS: dict[str, dict[str, BuiltinAgentBlueprint]] = {
             "role": "member",
             "mode": "coding",
             "description": BUILTIN_MEMBER_PROFILES["coding"]["coder"]["description"],
-            "temperature": 0.2,
             "thinking_level": "low",
         },
         "explorer": {
@@ -205,7 +201,6 @@ BUILTIN_AGENT_BLUEPRINTS: dict[str, dict[str, BuiltinAgentBlueprint]] = {
             "role": "member",
             "mode": "coding",
             "description": BUILTIN_MEMBER_PROFILES["coding"]["explorer"]["description"],
-            "temperature": 0.2,
             "thinking_level": "low",
         },
     },

@@ -40,7 +40,6 @@ them when rebuilding the API payload.
 from __future__ import annotations
 
 import json
-import re
 import time
 from collections.abc import AsyncIterator
 from typing import Any
@@ -333,34 +332,6 @@ def _anthropic_tools(tools: list[dict] | None) -> list[dict[str, Any]] | None:
     return converted or None
 
 
-_VERSION_RE = re.compile(r"(?<!\d)(\d{1,2})(?:-(\d{1,2}))?(?!\d)")
-
-# Anthropic dropped the legacy temperature/top_p sampling knobs starting with
-# the Claude 4.5 generation. Models are matched by the *value* of their
-# major.minor version rather than an explicit allow-list of version strings
-# (e.g. "-4-5", "-4-6", ...), so unseen future versions (4.9, 5.0, 5.x, a
-# codename like "claude-fable-5", ...) are handled correctly instead of
-# silently falling back to "supports legacy sampling" and getting a 400 from
-# the API ("temperature is deprecated for this model").
-_MIN_UNSUPPORTED_VERSION = (4, 5)
-
-
-def _model_version(model: str) -> tuple[int, int] | None:
-    match = _VERSION_RE.search(model)
-    if not match:
-        return None
-    major = int(match.group(1))
-    minor = int(match.group(2)) if match.group(2) else 0
-    return (major, minor)
-
-
-def _supports_legacy_sampling(model: str) -> bool:
-    version = _model_version(model)
-    if version is None:
-        return True
-    return version < _MIN_UNSUPPORTED_VERSION
-
-
 def _thinking_budget(level: str, max_tokens: int) -> int:
     ratios = {"low": 0.25, "medium": 0.4, "high": 0.6, "xhigh": 0.75, "max": 0.8}
     budget = int(max_tokens * ratios.get(level, 0.4))
@@ -385,25 +356,6 @@ def _apply_thinking(
         "display": "summarized",
     }
     return True
-
-
-def _add_sampling(
-    model: str, kwargs: dict[str, Any], payload: dict[str, Any], *, thinking: bool
-) -> None:
-    if not _supports_legacy_sampling(model):
-        return
-    if not thinking:
-        for name in ("temperature", "top_p"):
-            if name in kwargs and kwargs[name] is not None:
-                payload[name] = kwargs[name]
-        return
-    top_p = kwargs.get("top_p")
-    if (
-        isinstance(top_p, (int, float))
-        and not isinstance(top_p, bool)
-        and 0.95 <= top_p <= 1
-    ):
-        payload["top_p"] = top_p
 
 
 def _finish_reason(stop_reason: str | None) -> str | None:
@@ -449,15 +401,11 @@ class AnthropicProvider(LLMProviderBase):
         headers: dict[str, str] | None = None,
         use_api_key_header: bool = True,
         beta: bool = False,
-        temperature: float | None = None,
-        top_p: float | None = None,
         max_tokens: int | None = None,
         timeout: float | httpx.Timeout | None = 120,
         model_kwargs: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(
-            temperature=temperature,
-            top_p=top_p,
             max_tokens=max_tokens,
             model_kwargs=model_kwargs,
         )
@@ -521,8 +469,7 @@ class AnthropicProvider(LLMProviderBase):
         if service_tier and "api.anthropic.com" in self.base_url:
             payload["service_tier"] = "auto" if service_tier == "fast" else service_tier
 
-        thinking = _apply_thinking(self.model, kwargs, payload)
-        _add_sampling(self.model, kwargs, payload, thinking=thinking)
+        _apply_thinking(self.model, kwargs, payload)
         return payload
 
     async def chat(

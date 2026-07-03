@@ -74,10 +74,6 @@ class TestBedrockProviderInit:
         p = _make_provider(region_name="eu-west-1")
         assert p._region == "eu-west-1"
 
-    def test_temperature_stored(self):
-        p = _make_provider(temperature=0.3)
-        assert p.temperature == 0.3
-
     def test_max_tokens_stored(self):
         p = _make_provider(max_tokens=512)
         assert p.max_tokens == 512
@@ -298,11 +294,10 @@ class TestBedrockChat:
 
     @pytest.mark.asyncio
     async def test_chat_passes_inference_config(self):
-        p = _make_provider(temperature=0.5, max_tokens=100)
+        p = _make_provider(max_tokens=100)
         p._client.converse = MagicMock(return_value=self._make_converse_response())
         await p.chat([HumanMessage(content="Hi")])
         ic = p._client.converse.call_args.kwargs.get("inferenceConfig", {})
-        assert ic.get("temperature") == 0.5
         assert ic.get("maxTokens") == 100
 
 

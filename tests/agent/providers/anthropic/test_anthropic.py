@@ -6,7 +6,6 @@ from pydantic import SecretStr
 from app.agent.providers.anthropic import AnthropicProvider
 from app.agent.providers.anthropic.anthropic import (
     _split_messages,
-    _supports_legacy_sampling,
     _uses_beta_messages_api,
 )
 from app.agent.schemas.chat import (
@@ -114,34 +113,6 @@ def test_anthropic_messages_api_beta_respects_override(explicit: bool) -> None:
     assert kwargs == {}
 
 
-@pytest.mark.parametrize(
-    ("model", "expected"),
-    [
-        # Pre-4.5 models still accept temperature/top_p.
-        ("claude-sonnet-4", True),
-        ("claude-3-7-sonnet", True),
-        ("claude-3-5-sonnet-20240620", True),
-        ("claude-3-opus-20240229", True),
-        # 4.5+ models dropped the legacy sampling knobs.
-        ("claude-sonnet-4-5", False),
-        ("claude-sonnet-4-6", False),
-        ("claude-opus-4-7", False),
-        ("claude-haiku-4-5", False),
-        ("claude-haiku-4-5-20251001", False),
-        ("claude-opus-4-8", False),
-        # Unlisted/future version strings must be inferred from the parsed
-        # version rather than falling back to "supports legacy sampling"
-        # (regression: previously matched only an explicit "-4-5".."-4-8"
-        # allow-list and silently sent temperature to newer models).
-        ("claude-fable-5", False),
-        ("claude-opus-5-1", False),
-        ("claude-opus-4-9", False),
-    ],
-)
-def test_supports_legacy_sampling(model: str, expected: bool) -> None:
-    assert _supports_legacy_sampling(model) is expected
-
-
 def test_anthropic_payload_uses_manual_thinking_for_older_models() -> None:
     provider = AnthropicProvider(
         api_key="sk-ant-test",
@@ -163,7 +134,9 @@ def test_anthropic_payload_uses_manual_thinking_for_older_models() -> None:
     assert "output_config" not in payload
 
 
-def test_anthropic_payload_omits_incompatible_sampling_when_thinking() -> None:
+def test_anthropic_payload_never_includes_temperature_or_top_p() -> None:
+    """temperature/top_p are retired entirely — never sent to Anthropic,
+    regardless of model, thinking mode, or caller-supplied kwargs."""
     provider = AnthropicProvider(
         api_key="sk-ant-test",
         model="claude-sonnet-4",
@@ -188,28 +161,6 @@ def test_anthropic_payload_omits_incompatible_sampling_when_thinking() -> None:
     }
     assert "temperature" not in payload
     assert "top_p" not in payload
-
-
-def test_anthropic_payload_allows_supported_top_p_when_thinking() -> None:
-    provider = AnthropicProvider(
-        api_key="sk-ant-test",
-        model="claude-sonnet-4",
-        model_kwargs={
-            "thinking_level": "low",
-            "temperature": 0.2,
-            "top_p": 0.95,
-            "max_tokens": 4096,
-        },
-    )
-
-    payload = provider._payload(
-        [HumanMessage(content="hi")],
-        None,
-        provider._merged_kwargs(),
-    )
-
-    assert "temperature" not in payload
-    assert payload["top_p"] == 0.95
 
 
 @pytest.mark.parametrize(

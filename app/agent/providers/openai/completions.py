@@ -214,8 +214,6 @@ class CompletionsHandler:
             model=self.model,
             messages=self.convert_messages(sanitize_openai_tool_pairs(messages)),
             tools=self.convert_tools(tools),
-            temperature=merged.get("temperature"),
-            top_p=merged.get("top_p"),
             max_tokens=(
                 max_tokens_value if not self.uses_max_completion_tokens else None
             ),

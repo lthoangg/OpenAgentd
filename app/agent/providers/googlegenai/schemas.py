@@ -59,8 +59,6 @@ class ThinkingConfig(GeminiBaseModel):
 
 
 class GenerationConfig(GeminiBaseModel):
-    temperature: float | None = None
-    top_p: float | None = None
     top_k: int | None = None
     max_output_tokens: int | None = None
     stop_sequences: list[str] | None = None

@@ -5,7 +5,6 @@ Used automatically when thinking_level is set, or explicitly via
 (e.g. gpt-5.4) with tool use.
 
 Key differences from Chat Completions:
-- Does not support temperature / top_p
 - Uses a different input/output format
 - Tool call IDs use item_id (prefix: fc_)
 - Function names arrive via response.output_item.added events
@@ -182,7 +181,6 @@ class ResponsesHandler:
         if merged.get("prompt_cache_key") is not None:
             body["prompt_cache_key"] = merged["prompt_cache_key"]
 
-        # Responses API does not support temperature / top_p
         if merged.get("max_tokens") is not None:
             body["max_output_tokens"] = merged["max_tokens"]
 

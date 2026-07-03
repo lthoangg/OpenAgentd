@@ -470,8 +470,8 @@ class TestGenerateAndSaveTitle:
             assert messages[1].content == "test message"
 
             assert kwargs["max_tokens"] == 20
-            assert kwargs["temperature"] == 0.2
             assert kwargs["thinking_level"] == "none"
+            assert "temperature" not in kwargs
 
     @pytest.mark.asyncio
     async def test_retries_without_thinking_override_on_failure(

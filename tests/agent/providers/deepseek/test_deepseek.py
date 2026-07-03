@@ -73,14 +73,6 @@ class TestDeepSeekProviderInit:
         with pytest.raises(ValueError, match="API key"):
             DeepSeekProvider(api_key="", model="deepseek-v4-flash")
 
-    def test_temperature_forwarded(self):
-        p = self._make_provider(temperature=0.5)
-        assert p.temperature == 0.5
-
-    def test_top_p_forwarded(self):
-        p = self._make_provider(top_p=0.9)
-        assert p.top_p == 0.9
-
     def test_max_tokens_forwarded(self):
         p = self._make_provider(max_tokens=1024)
         assert p.max_tokens == 1024
@@ -96,10 +88,6 @@ class TestDeepSeekProviderInit:
     def test_responses_api_true_stays_on_chat_completions(self):
         p = self._make_provider(model_kwargs={"responses_api": True})
         assert p._use_responses is False
-
-    def test_default_temperature_is_none(self):
-        p = self._make_provider()
-        assert p.temperature is None
 
     def test_default_max_tokens_is_none(self):
         p = self._make_provider()

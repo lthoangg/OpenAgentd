@@ -92,17 +92,6 @@ class TestOpenAIProvider:
         )
         assert provider.base_url == "https://api.openai.com/v1"
 
-    def test_init_with_temperature_and_top_p(self):
-        """Initialize with temperature and top_p."""
-        provider = OpenAIProvider(
-            api_key="sk-test",
-            model="gpt-4o",
-            temperature=0.7,
-            top_p=0.9,
-        )
-        assert provider.temperature == 0.7
-        assert provider.top_p == 0.9
-
     def test_init_with_max_tokens(self):
         """Initialize with max_tokens."""
         provider = OpenAIProvider(

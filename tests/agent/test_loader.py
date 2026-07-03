@@ -147,7 +147,6 @@ def test_parse_agent_md_full_frontmatter(tmp_path):
             "name": "agent",
             "role": "member",
             "model": "openai:gpt-4o",
-            "temperature": 0.3,
             "thinking_level": "low",
             "tools": ["read", "shell"],
             "mcp": ["example-skill"],
@@ -156,7 +155,6 @@ def test_parse_agent_md_full_frontmatter(tmp_path):
         "Custom prompt.",
     )
     cfg = parse_agent_md(f)
-    assert cfg.temperature == 0.3
     assert cfg.thinking_level == "low"
     assert cfg.tools == ["read", "shell"]
     assert cfg.mcp == ["example-skill"]
@@ -332,19 +330,39 @@ def test_build_agent_description():
     assert agent.description == "I am a bot"
 
 
-def test_build_agent_passes_temperature_and_thinking_level():
+def test_build_agent_passes_thinking_level():
     received: dict = {}
 
     def capturing_factory(model_str, model_kwargs=None):
         received.update(model_kwargs or {})
         return MagicMock()
 
-    cfg = AgentConfig(
-        name="bot", system_prompt="hello", temperature=0.5, thinking_level="high"
-    )
+    cfg = AgentConfig(name="bot", system_prompt="hello", thinking_level="high")
     _build_agent(cfg, _default_tool_registry(), capturing_factory)
-    assert received.get("temperature") == 0.5
     assert received.get("thinking_level") == "high"
+    assert "temperature" not in received
+
+
+def test_parse_agent_md_ignores_legacy_temperature_field(tmp_path):
+    """Old agent files with a ``temperature:`` line must still load cleanly.
+
+    ``temperature`` was retired as a config field; existing on-disk agents
+    that still carry it from before the removal must not fail to parse.
+    """
+    f = tmp_path / "agent.md"
+    _write_agent_md(
+        f,
+        {
+            "name": "legacy",
+            "role": "member",
+            "model": "openai:gpt-4o",
+            "temperature": 0.3,
+        },
+        "Legacy prompt.",
+    )
+    cfg = parse_agent_md(f)
+    assert cfg.name == "legacy"
+    assert not hasattr(cfg, "temperature")
 
 
 def test_build_agent_no_model_kwargs_when_unset():

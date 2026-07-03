@@ -151,8 +151,6 @@ class CodexProvider(LLMProviderBase):
 
     Args:
         model: Model name, e.g. ``"gpt-5.4"``, ``"gpt-5.1-codex"``.
-        temperature: Ignored by Responses API (accepted for API compatibility).
-        top_p: Ignored by Responses API (accepted for API compatibility).
         max_tokens: Hard cap on completion tokens.
         model_kwargs: Extra request body fields passed as-is. Notable keys:
             ``service_tier="fast"`` — enable ChatGPT-subscription Codex Fast
@@ -162,14 +160,10 @@ class CodexProvider(LLMProviderBase):
     def __init__(
         self,
         model: str,
-        temperature: float | None = None,
-        top_p: float | None = None,
         max_tokens: int | None = None,
         model_kwargs: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(
-            temperature=temperature,
-            top_p=top_p,
             max_tokens=max_tokens,
             model_kwargs=model_kwargs,
         )

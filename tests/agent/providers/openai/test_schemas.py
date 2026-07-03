@@ -62,7 +62,6 @@ class TestOpenAIChatRequest:
         assert req.model == "gpt-4o"
         assert req.stream is False
         assert req.tools is None
-        assert req.temperature is None
 
     def test_stream_options(self):
         opts = OpenAIStreamOptions(include_usage=True)

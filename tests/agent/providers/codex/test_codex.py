@@ -902,22 +902,6 @@ class TestCodexProviderInit:
                 provider._responses.request_timeout == CODEX_STREAM_IDLE_TIMEOUT_SECONDS
             )
 
-    def test_init_accepts_temperature_parameter(self):
-        """__init__() accepts temperature parameter (for API compatibility)."""
-        with patch("app.agent.providers.codex.codex._load_token") as mock_load:
-            mock_load.return_value = ("access_token_123", "account_789")
-            provider = CodexProvider(model="gpt-5.4", temperature=0.7)
-
-            assert provider.temperature == 0.7
-
-    def test_init_accepts_top_p_parameter(self):
-        """__init__() accepts top_p parameter (for API compatibility)."""
-        with patch("app.agent.providers.codex.codex._load_token") as mock_load:
-            mock_load.return_value = ("access_token_123", "account_789")
-            provider = CodexProvider(model="gpt-5.4", top_p=0.9)
-
-            assert provider.top_p == 0.9
-
     def test_init_accepts_max_tokens_parameter(self):
         """__init__() accepts max_tokens parameter."""
         with patch("app.agent.providers.codex.codex._load_token") as mock_load:

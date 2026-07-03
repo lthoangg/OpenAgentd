@@ -112,16 +112,15 @@ class TestCompletionsHandlerToolChoice:
         assert "tool_choice" not in body
 
     def test_tool_choice_does_not_affect_other_body_fields(self):
-        """Injecting tool_choice must not discard temperature or max_tokens."""
+        """Injecting tool_choice must not discard max_tokens."""
         h = _completions()
         body = h.build_request(
             _MESSAGES,
             [_TOOL],
             stream=False,
-            merged={"tool_choice": "none", "temperature": 0.5, "max_tokens": 256},
+            merged={"tool_choice": "none", "max_tokens": 256},
         )
         assert body["tool_choice"] == "none"
-        assert body.get("temperature") == 0.5
         # max_completion_tokens because CompletionsHandler.uses_max_completion_tokens=True
         assert body.get("max_completion_tokens") == 256
 

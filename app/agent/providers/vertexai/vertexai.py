@@ -33,14 +33,10 @@ class VertexAIProvider(GeminiProviderBase):
         model: str,
         project: str | None = None,
         location: str = "global",
-        temperature: float | None = None,
-        top_p: float | None = None,
         max_tokens: int | None = None,
         model_kwargs: dict[str, Any] | None = None,
     ):
         super().__init__(
-            temperature=temperature,
-            top_p=top_p,
             max_tokens=max_tokens,
             model_kwargs=model_kwargs,
         )

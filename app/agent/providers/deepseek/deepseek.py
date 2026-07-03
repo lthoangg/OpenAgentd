@@ -208,8 +208,6 @@ class _DeepSeekCompletionsHandler(CompletionsHandler):
                 sanitize_openai_tool_pairs(messages)
             ),
             tools=self.convert_tools(tools),
-            temperature=merged.get("temperature"),
-            top_p=merged.get("top_p"),
             max_tokens=merged.get("max_tokens"),
             stream=stream,
             stream_options=OpenAIStreamOptions(include_usage=True) if stream else None,
@@ -247,8 +245,6 @@ class DeepSeekProvider(OpenAIProvider):
     Args:
         api_key: DeepSeek API key from https://platform.deepseek.com.
         model: Model name, e.g. ``"deepseek-v4-flash"``, ``"deepseek-v4-pro"``.
-        temperature: Sampling temperature (0-2).
-        top_p: Nucleus sampling probability mass cutoff.
         max_tokens: Hard cap on completion tokens.
         model_kwargs: Extra request body fields passed as-is.
     """
@@ -257,8 +253,6 @@ class DeepSeekProvider(OpenAIProvider):
         self,
         api_key: str,
         model: str,
-        temperature: float | None = None,
-        top_p: float | None = None,
         max_tokens: int | None = None,
         model_kwargs: dict[str, Any] | None = None,
     ) -> None:
@@ -266,8 +260,6 @@ class DeepSeekProvider(OpenAIProvider):
             api_key=api_key,
             model=model,
             base_url=DEEPSEEK_API_BASE,
-            temperature=temperature,
-            top_p=top_p,
             max_tokens=max_tokens,
             model_kwargs=model_kwargs,
         )

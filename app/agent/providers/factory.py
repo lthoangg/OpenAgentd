@@ -10,7 +10,7 @@ Usage::
 
     provider = build_provider(
         "openai:gpt-5",
-        model_kwargs={"temperature": 0.2},
+        model_kwargs={"thinking_level": "low"},
     )
 """
 

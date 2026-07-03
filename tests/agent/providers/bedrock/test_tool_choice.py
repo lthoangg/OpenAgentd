@@ -76,9 +76,8 @@ class TestBedrockToolChoiceStripped:
 
     def test_tool_choice_none_does_not_affect_inference_config(self):
         """inferenceConfig is independent of tool_choice."""
-        p = _make_provider(temperature=0.5, max_tokens=128)
+        p = _make_provider(max_tokens=128)
         req = _build_request(p, tool_choice="none")
-        assert req["inferenceConfig"]["temperature"] == 0.5
         assert req["inferenceConfig"]["maxTokens"] == 128
         assert "tool_choice" not in req
 
@@ -130,3 +129,18 @@ class TestBedrockToolChoiceStripped:
         # These should all be stripped
         for stripped_key in ("tool_choice", "thinking_level", "responses_api"):
             assert stripped_key not in additional
+
+    def test_legacy_temperature_and_top_p_stripped_not_leaked(self):
+        """Regression: temperature/top_p are retired and never read into
+        inferenceConfig, but a stray value surviving in old persisted
+        session/agent config data must still be dropped rather than
+        leaking into additionalModelRequestFields (which would cause a
+        Bedrock ValidationException)."""
+        p = _make_provider()
+        req = _build_request(p, temperature=0.5, top_p=0.9)
+        inference_config = req.get("inferenceConfig", {})
+        additional = req.get("additionalModelRequestFields", {})
+        assert "temperature" not in inference_config
+        assert "top_p" not in inference_config
+        assert "temperature" not in additional
+        assert "top_p" not in additional

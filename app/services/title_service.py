@@ -96,7 +96,6 @@ async def generate_and_save_title(
                     result = await provider.chat(
                         messages,
                         max_tokens=20,
-                        temperature=0.2,
                         thinking_level="none",
                     )
             except TimeoutError:
@@ -117,7 +116,6 @@ async def generate_and_save_title(
                         result = await provider.chat(
                             messages,
                             max_tokens=20,
-                            temperature=0.2,
                         )
                 except TimeoutError:
                     logger.warning(

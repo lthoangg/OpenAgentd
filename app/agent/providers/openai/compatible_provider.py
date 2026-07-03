@@ -23,8 +23,6 @@ class ChatCompletionsOnlyProvider(OpenAIProvider):
         api_key: str | SecretStr,
         model: str,
         base_url: str,
-        temperature: float | None = None,
-        top_p: float | None = None,
         max_tokens: int | None = None,
         model_kwargs: dict[str, Any] | None = None,
     ) -> None:
@@ -32,8 +30,6 @@ class ChatCompletionsOnlyProvider(OpenAIProvider):
             api_key=api_key,
             model=model,
             base_url=base_url,
-            temperature=temperature,
-            top_p=top_p,
             max_tokens=max_tokens,
             model_kwargs=model_kwargs,
         )

@@ -35,8 +35,6 @@ class XAIProvider(OpenAIProvider):
     Args:
         api_key: xAI API key from https://console.x.ai.
         model: Model name, e.g. ``"grok-4"``, ``"grok-3-mini"``.
-        temperature: Sampling temperature (0-2).
-        top_p: Nucleus sampling probability mass cutoff.
         max_tokens: Hard cap on completion tokens.
         model_kwargs: Extra request body fields passed as-is.
     """
@@ -45,8 +43,6 @@ class XAIProvider(OpenAIProvider):
         self,
         api_key: str,
         model: str,
-        temperature: float | None = None,
-        top_p: float | None = None,
         max_tokens: int | None = None,
         model_kwargs: dict[str, Any] | None = None,
     ) -> None:
@@ -54,8 +50,6 @@ class XAIProvider(OpenAIProvider):
             api_key=api_key,
             model=model,
             base_url=XAI_API_BASE,
-            temperature=temperature,
-            top_p=top_p,
             max_tokens=max_tokens,
             model_kwargs=model_kwargs,
         )

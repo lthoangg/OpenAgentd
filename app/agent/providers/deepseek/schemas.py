@@ -63,8 +63,6 @@ class DeepSeekChatRequest(BaseModel):
     model: str
     messages: list[DeepSeekMessage]
     tools: list[OpenAITool] | None = None
-    temperature: float | None = None
-    top_p: float | None = None
     max_tokens: int | None = None
     stream: bool = False
     stream_options: OpenAIStreamOptions | None = None

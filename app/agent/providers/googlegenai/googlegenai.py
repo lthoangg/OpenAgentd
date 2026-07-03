@@ -293,8 +293,6 @@ class GeminiProviderBase(LLMProviderBase):
             else ThinkingConfig(include_thoughts=True, thinking_level=thinking_level)
         )
         return GenerationConfig(
-            temperature=kwargs.get("temperature"),
-            top_p=kwargs.get("top_p"),
             max_output_tokens=kwargs.get("max_tokens"),
             thinking_config=thinking_config,
         )
@@ -574,14 +572,10 @@ class GoogleGenAIProvider(GeminiProviderBase):
         api_key: str | SecretStr,
         model: str,
         base_url: str = API_BASE_URL,
-        temperature: float | None = None,
-        top_p: float | None = None,
         max_tokens: int | None = None,
         model_kwargs: dict[str, Any] | None = None,
     ):
         super().__init__(
-            temperature=temperature,
-            top_p=top_p,
             max_tokens=max_tokens,
             model_kwargs=model_kwargs,
         )

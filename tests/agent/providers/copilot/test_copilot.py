@@ -350,13 +350,6 @@ class TestBuildCompletionsRequest:
         )
         assert "stream_options" not in body
 
-    def test_temperature_passed(self):
-        p = _make_provider(temperature=0.5)
-        body = p._completions.build_request(
-            [HumanMessage(content="hi")], None, stream=False, merged=p._merged_kwargs()
-        )
-        assert body["temperature"] == 0.5
-
     def test_max_tokens_passed(self):
         """Copilot's gateway accepts the same field name as OpenAI's
         Chat Completions API — ``max_completion_tokens``.  The caller
@@ -980,17 +973,18 @@ class TestBuildResponsesRequestExtra:
         fc_items = [i for i in body["input"] if i.get("type") == "function_call"]
         assert len(fc_items) == 0
 
-    def test_top_p_in_responses_body(self):
-        """Line 332: top_p kwarg appears in responses request body."""
+    def test_temperature_and_top_p_omitted_from_responses_body(self):
+        """temperature/top_p are retired — never forwarded even if passed."""
         p = CopilotProvider(
             model="gpt-5.4",
             github_token="tok",
-            model_kwargs={"top_p": 0.9},
+            model_kwargs={"top_p": 0.9, "temperature": 0.5},
         )
         body = p._responses.build_request(
             [HumanMessage(content="hi")], None, stream=False, merged=p._merged_kwargs()
         )
-        assert body["top_p"] == 0.9
+        assert "top_p" not in body
+        assert "temperature" not in body
 
     def test_prepare_headers_sets_agent_initiator_and_vision(self):
         p = _make_provider(model="gpt-5.4")

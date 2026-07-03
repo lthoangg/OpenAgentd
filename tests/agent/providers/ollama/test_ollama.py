@@ -89,14 +89,6 @@ class TestOllamaProviderInit:
                 p = OllamaProvider(model="kimi-k2.6-cloud")
         assert p.model == "kimi-k2.6-cloud"
 
-    def test_temperature_forwarded(self):
-        p = self._make_provider(temperature=0.5)
-        assert p.temperature == 0.5
-
-    def test_top_p_forwarded(self):
-        p = self._make_provider(top_p=0.9)
-        assert p.top_p == 0.9
-
     def test_max_tokens_forwarded(self):
         p = self._make_provider(max_tokens=1024)
         assert p.max_tokens == 1024

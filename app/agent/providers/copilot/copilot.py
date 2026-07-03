@@ -16,9 +16,6 @@ few facets differ:
   accepted only by a whitelisted subset of OpenAI models served via
   Copilot; Claude / Gemini / Grok reject it. Other reasoning fields
   flow through unchanged.
-* **Responses request body.** Copilot's gateway accepts ``temperature``
-  and ``top_p`` on ``/responses`` (it ignores them); OpenAI's strict
-  endpoint rejects them. The Copilot subclass adds them.
 
 Token resolution order (preserved from the previous implementation):
 
@@ -237,10 +234,6 @@ class _CopilotResponsesHandler(ResponsesHandler):
         is_agent, is_vision = _is_agent_initiated(converted, responses_api=True)
         body["x-openagentd-copilot-initiator"] = "agent" if is_agent else "user"
         body["x-openagentd-copilot-vision"] = bool(is_vision)
-        if merged.get("temperature") is not None:
-            body["temperature"] = merged["temperature"]
-        if merged.get("top_p") is not None:
-            body["top_p"] = merged["top_p"]
         return body
 
     def _extract_call_id_and_name(self, event: dict[str, Any]) -> tuple[str, str]:
@@ -255,8 +248,6 @@ class CopilotProvider(OpenAIProvider):
         self,
         model: str,
         github_token: str | SecretStr | None = None,
-        temperature: float | None = None,
-        top_p: float | None = None,
         max_tokens: int | None = None,
         model_kwargs: dict[str, Any] | None = None,
     ) -> None:
@@ -271,8 +262,6 @@ class CopilotProvider(OpenAIProvider):
             api_key=token,
             model=model,
             base_url=str(metadata.get("api_base") or COPILOT_API_BASE),
-            temperature=temperature,
-            top_p=top_p,
             max_tokens=max_tokens,
             model_kwargs=model_kwargs,
         )

@@ -110,7 +110,7 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         MENU_NEW_WINDOW,
         "New Window",
         true,
-        Some("CmdOrCtrl+N"),
+        Some("CmdOrCtrl+Shift+N"),
     )?;
     let app_home = MenuItem::with_id(app, MENU_HOME, "Home", true, None::<&str>)?;
     let app_settings = MenuItem::with_id(app, MENU_SETTINGS, "Settings", true, Some("CmdOrCtrl+,"))?;
@@ -141,7 +141,7 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         MENU_NEW_WINDOW,
         "New Window",
         true,
-        Some("CmdOrCtrl+N"),
+        Some("CmdOrCtrl+Shift+N"),
     )?;
     let file_home = MenuItem::with_id(app, MENU_HOME, "Home", true, Some("CmdOrCtrl+Shift+H"))?;
     let file_chat = MenuItem::with_id(app, MENU_CHAT, "Cockpit", true, Some("CmdOrCtrl+Shift+C"))?;

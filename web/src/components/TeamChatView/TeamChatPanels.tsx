@@ -7,7 +7,6 @@ import type { Command } from '../CommandPalette'
 
 interface TeamChatPanelsProps {
   agentCapabilitiesOpen: boolean
-  agentNames: string[]
   agentWorkspace: string | null
   sessionModel: string | null
   sessionThinkingLevel: string | null
@@ -32,7 +31,6 @@ interface TeamChatPanelsProps {
 
 export function TeamChatPanels({
   agentCapabilitiesOpen,
-  agentNames,
   agentWorkspace,
   sessionModel,
   sessionThinkingLevel,
@@ -58,7 +56,6 @@ export function TeamChatPanels({
     <>
       <SessionSettingsPanel
         open={agentCapabilitiesOpen}
-        agentNames={agentNames}
         workspace={agentWorkspace}
         sessionModel={sessionModel}
         sessionThinkingLevel={sessionThinkingLevel}

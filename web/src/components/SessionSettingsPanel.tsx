@@ -2,11 +2,12 @@
  * Session settings — modal for current-session model controls and lead-agent context.
  *
  * Shape: centered modal with current-session controls first, followed by
- * read-only lead-agent skills, capabilities, and tools.
+ * read-only lead-agent description, capabilities, and tools. Team members
+ * beyond the lead are not shown here — this panel only surfaces the lead
+ * agent's config (model, capabilities, tools) since that's what governs the
+ * session's default behavior.
  *
  * Visual language:
- *   - No avatars/robot icons. Each agent identified by status dot + name.
- *   - Role shown as a pill next to the name.
  *   - Only enabled multimodal capabilities render (no dimmed noise).
  *   - Tools collapsible; search input appears above the list when >8 tools.
  */
@@ -119,8 +120,6 @@ interface SessionSettingsPanelProps {
   /** Controls drawer visibility. Parent keeps the component mounted so
    *  framer-motion can play both the enter and exit animations. */
   open: boolean
-  /** For team mode: ordered agent names (lead first). Empty = single-agent. */
-  agentNames?: string[]
   workspace?: string | null
   sessionModel?: string | null
   sessionThinkingLevel?: string | null
@@ -131,7 +130,6 @@ interface SessionSettingsPanelProps {
 
 export function SessionSettingsPanel({
   open,
-  agentNames = [],
   workspace = null,
   sessionModel = null,
   sessionThinkingLevel = null,
@@ -155,20 +153,9 @@ export function SessionSettingsPanel({
   }, [open])
 
   const allAgents: TeamAgentInfo[] = data?.agents ?? []
-  const byName = new Map(allAgents.map((a) => [a.name, a]))
-
-  // Resolve which agents to show. Prefer the caller's ordering; fall back to
-  // the API list so the panel is never blank.
-  const display: TeamAgentInfo[] = (() => {
-    if (agentNames.length === 0) return allAgents
-    const ordered = agentNames.map((n) => byName.get(n)).filter(Boolean) as TeamAgentInfo[]
-    return ordered.length > 0 ? ordered : allAgents
-  })()
 
   // Lead comes from the API `is_lead` flag if present, else first in list.
-  const leadFromApi = allAgents.find((a) => a.is_lead)
-  const leadName = display.length > 1 ? (leadFromApi?.name ?? display[0]?.name ?? null) : null
-  const leadAgent = (leadName ? byName.get(leadName) : null) ?? display[0]
+  const leadAgent = allAgents.find((a) => a.is_lead) ?? allAgents[0]
   const mcpServerStatuses = useMemo(
     () => new Map((mcpServersQuery.data?.servers ?? []).map((server) => [server.name, server])),
     [mcpServersQuery.data?.servers],

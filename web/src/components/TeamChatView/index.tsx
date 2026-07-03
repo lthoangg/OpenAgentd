@@ -1315,7 +1315,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
 
       <TeamChatPanels
         agentCapabilitiesOpen={agentCapabilitiesOpen}
-        agentNames={agentNames}
         agentWorkspace={agentWorkspace}
         sessionModel={sessionModel}
         sessionThinkingLevel={sessionThinkingLevel}

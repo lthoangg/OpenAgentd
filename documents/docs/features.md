@@ -695,6 +695,12 @@ Desktop is primary. CLI / server is the developer path. Deeper doc:
   is concrete self-hoster demand.
 - **Migration imports** `[since v1.0]` — `openagentd migrate openclaw`,
   `migrate hermes`. Imports identity + context Markdown into one lead agent.
+- **Server migration export/import** `[v1.97.0]` — `openagentd export` packs
+  agents, skills, commands, plugins, and config files into a timestamped
+  `.tar.gz` archive. `openagentd import <archive>` unpacks it on the target
+  machine with fill-in-gaps merge (or `--force` to overwrite). API keys in
+  `.env` are redacted by default; `--include-secrets` opts in for trusted
+  channels. DB and session workspaces are intentionally excluded.
 - **Cross-platform single-instance** `[v1.13.0]` — opening the app twice
   focuses the existing window instead of launching a duplicate.
 - **Desktop force reload respects backend mode** `[v1.68.0]` — external-server

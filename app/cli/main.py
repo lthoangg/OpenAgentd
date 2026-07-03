@@ -12,7 +12,9 @@ from app.cli.commands.auth import cmd_auth
 from app.cli.commands.address import cmd_address
 from app.cli.commands.cleanup import cmd_cleanup
 from app.cli.commands.doctor import cmd_doctor
+from app.cli.commands.export import cmd_export
 from app.cli.commands.health import cmd_health
+from app.cli.commands.importcmd import cmd_import
 from app.cli.commands.init import cmd_init
 from app.cli.commands.logs import cmd_logs
 from app.cli.commands.migrate import cmd_migrate
@@ -48,6 +50,8 @@ def build_parser() -> argparse.ArgumentParser:
             "  openagentd doctor         # check system health\n"
             "  openagentd cleanup        # dry-run generated artifact cleanup\n"
             "  openagentd upgrade        # upgrade to the latest version\n"
+            "  openagentd export         # pack config for migration (agents, skills, commands, …)\n"
+            "  openagentd import archive.tar.gz  # unpack a migration archive on the target server\n"
         ),
     )
     parser.add_argument("--version", action="version", version=f"openagentd v{VERSION}")
@@ -257,6 +261,67 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser(
         "upgrade", help="Upgrade openagentd to the latest version"
     ).set_defaults(func=cmd_upgrade)
+
+    # ── export ────────────────────────────────────────────────────────────────
+    p_export = sub.add_parser(
+        "export",
+        help="Pack config for migration to another server (agents, skills, commands, …)",
+        description=(
+            "Creates a .tar.gz archive of your portable config layer — agents, skills,\n"
+            "commands, plugins, mcp.json, settings.yaml, multimodal.yaml, and .env.\n"
+            "\n"
+            "API-key values in .env are redacted by default so the archive is safe to\n"
+            "copy over untrusted channels. Use --include-secrets to embed them verbatim."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_export.add_argument(
+        "--output",
+        metavar="PATH",
+        help="Archive path (default: openagentd-export-<TIMESTAMP>.tar.gz in CWD)",
+    )
+    p_export.add_argument(
+        "--include-secrets",
+        action="store_true",
+        dest="include_secrets",
+        help="Embed API keys verbatim instead of redacting them (use over trusted channels only)",
+    )
+    p_export.add_argument(
+        "--config-dir",
+        metavar="DIR",
+        dest="config_dir",
+        help="Config directory to export (default: XDG config)",
+    )
+    p_export.set_defaults(func=cmd_export)
+
+    # ── import ────────────────────────────────────────────────────────────────
+    p_import = sub.add_parser(
+        "import",
+        help="Unpack a migration archive on the target server",
+        description=(
+            "Extracts an archive produced by `openagentd export` into your config\n"
+            "directory. Existing files are kept by default (fill-in-gaps); pass\n"
+            "--force to overwrite them."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_import.add_argument(
+        "archive",
+        metavar="ARCHIVE",
+        help="Path to the .tar.gz archive produced by `openagentd export`",
+    )
+    p_import.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite files that already exist in the config directory",
+    )
+    p_import.add_argument(
+        "--config-dir",
+        metavar="DIR",
+        dest="config_dir",
+        help="Config directory to import into (default: XDG config)",
+    )
+    p_import.set_defaults(func=cmd_import)
 
     return parser
 

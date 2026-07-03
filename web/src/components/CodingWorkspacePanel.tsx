@@ -465,7 +465,14 @@ export function CodingWorkspacePanel({
   const closeTab = (id: string) => {
     if (id === 'review') return
     setTabs((current) => current.filter((item) => item.id !== id))
-    if (activeTabId === id) setActiveTabId('review')
+    if (activeTabId === id) {
+      setActiveTabId('review')
+      // Notify the parent so it can clear its codingFileViewer state.
+      // Without this, reopening the panel re-mounts CodingWorkspacePanel
+      // with the same selectedFilePath/selectedFileOpenKey, causing the
+      // closed tab to reappear immediately.
+      onFileSelect?.(null)
+    }
   }
   // Cmd+W / Ctrl+W closes the active file tab instead of propagating to the
   // desktop (where the OS would close the app window). Only intercepts when a

@@ -100,6 +100,40 @@ async function renderWithOpenFileTab() {
 }
 
 describe('CodingWorkspacePanel Cmd+W / Ctrl+W closes the active file tab', () => {
+  it('calls onFileSelect(null) on Ctrl+W so the parent clears its file state (prevents re-open bug)', async () => {
+    // Regression: Cmd+W only cleared local tab state but never notified the
+    // parent. When the panel was closed then reopened the parent still held
+    // codingFileViewer, so the tab was immediately re-opened on mount.
+    const { CodingWorkspacePanel } = await import('@/components/CodingWorkspacePanel')
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const onFileSelect = mock(() => {})
+    await act(async () => {
+      render(
+        <QueryClientProvider client={queryClient}>
+          <CodingWorkspacePanel
+            workspace={WORKSPACE}
+            open
+            selectedFilePath={readme.path}
+            selectedFileOpenKey={1}
+            onFileSelect={onFileSelect}
+            onClose={() => {}}
+          />
+        </QueryClientProvider>,
+      )
+    })
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: `Close ${readme.name}` })).toBeTruthy()
+    )
+    // onFileSelect(file) was called when the tab was opened — reset the mock
+    onFileSelect.mockClear()
+
+    await act(async () => { window.dispatchEvent(buildKeyEvent('w', { ctrlKey: true })) })
+
+    // Must notify parent with null so it can clear codingFileViewer
+    expect(onFileSelect).toHaveBeenCalledTimes(1)
+    expect(onFileSelect).toHaveBeenCalledWith(null)
+  })
+
   it('closes the active file tab on Ctrl+W (non-macOS primary shortcut)', async () => {
     await renderWithOpenFileTab()
 

@@ -289,6 +289,10 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const closeAgentCapabilities = useUIStore((s) => s.closeAgentCapabilities)
   const closePalette = useUIStore((s) => s.closePalette)
 
+  // Agents whose stream isn't `offline` (i.e. not dismissed from the live
+  // team). Used everywhere agents are listed for switching — split grid,
+  // the agent tabs bar, and the mobile agent switcher — so dismissed
+  // members disappear from pickers instead of lingering as dead tabs.
   const splitAgentNames = agentNames.filter((name) => agentStreams[name]?.status !== 'offline')
   const historyPrompts = useMemo(() => {
     const blocks = leadName ? agentStreams[leadName]?.blocks : undefined
@@ -1049,7 +1053,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         showMobileActions={showMobileActions}
         setShowMobileActions={handleSetShowMobileActions}
         mobileActionsDragOffset={actionsDragOffset}
-        agentNames={agentNames}
+        agentNames={splitAgentNames}
         agentStreams={agentStreams}
         onSelectAgent={setActiveAgent}
         onToggleScheduler={handleToggleScheduler}
@@ -1189,10 +1193,10 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
           </div>
         ) : activeAgent && agentStreams[activeAgent] ? (
           <div className="flex flex-1 flex-col min-h-0">
-            {effectiveViewMode === 'agent' && agentNames.length > 1 && (
+            {effectiveViewMode === 'agent' && splitAgentNames.length > 1 && (
               <AgentTabs
                 activeAgent={activeAgent}
-                agents={agentNames}
+                agents={splitAgentNames}
                 streams={agentStreams}
                 onSelect={setActiveAgent}
               />

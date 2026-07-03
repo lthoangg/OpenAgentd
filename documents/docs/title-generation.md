@@ -156,7 +156,6 @@ try:
             HumanMessage(content=user_text),        # capped at 500 chars
         ],
         max_tokens=20,
-        temperature=0.2,
         thinking_level="none",
     )
 # Codex (and any future provider that rejects missing ``reasoning``) →
@@ -167,7 +166,6 @@ except Exception:
     provider.chat(
         messages=...,
         max_tokens=20,
-        temperature=0.2,
         # no thinking_level — inherited from provider's model_kwargs
     )
 ```
@@ -286,7 +284,7 @@ All title generation logic is covered by unit and integration tests in
 - Provider errors and timeouts → silent return
 - Empty/None/whitespace responses → DB unchanged
 - Session not found → no event pushed
-- Correct cheap-path LLM parameters (`max_tokens=20`, `temperature=0.2`, `thinking_level="none"`)
+- Correct cheap-path LLM parameters (`max_tokens=20`, `thinking_level="none"`)
 - Retry-without-override when the first attempt raises (Codex compat)
 - Event payload structure validation
 

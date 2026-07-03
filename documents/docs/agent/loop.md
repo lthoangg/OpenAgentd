@@ -19,7 +19,7 @@ The `Agent` class drives all LLM reasoning in openagentd. One `Agent.run()` call
 from app.agent.agent_loop import Agent
 from app.agent.providers.googlegenai import GoogleGenAIProvider
 
-provider = GoogleGenAIProvider(api_key="...", model="gemini-2.0-flash", temperature=0.7)
+provider = GoogleGenAIProvider(api_key="...", model="gemini-2.0-flash")
 
 agent = Agent(
     llm_provider=provider,

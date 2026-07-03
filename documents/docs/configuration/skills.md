@@ -97,7 +97,7 @@ OpenAgentd ships these read-only operational skills inside the app package. They
 
 | Name | Purpose |
 |------|---------|
-| `self-healing` | Update agent/runtime config on request — swap model, tune temperature/thinking, add tools/MCP, change image-gen provider. |
+| `self-healing` | Update agent/runtime config on request — swap model, tune thinking level, add tools/MCP, change image-gen provider. |
 | `skill-installer` | Install new skills from a URL or write one from scratch. |
 | `browser-use` | Automate browser interactions for web testing, form filling, screenshots, and data extraction. |
 

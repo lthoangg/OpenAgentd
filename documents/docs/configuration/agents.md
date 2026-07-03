@@ -31,7 +31,6 @@ name: openagentd
 role: lead                              # exactly one agent in the directory must be lead
 description: Your on-machine AI assistant.
 model: googlegenai:gemini-3.1-flash
-temperature: 0.2
 thinking_level: low
 tools:
   - date
@@ -61,9 +60,10 @@ All from `AgentConfig` in `app/agent/loader.py`. Field types match the Pydantic 
 | `tools` | No | `list[str]` | Extra built-in tool names (see [`tools.md`](./tools.md)). For first-party profiles, this list is additive on top of code-owned defaults. |
 | `mcp` | No | `list[str]` | Extra MCP server names from `mcp.json`; the agent gets every tool that server exposes. For first-party profiles, this list is additive. |
 | `skills` | No | `list[str]` | Optional explicit skill metadata/drift hooks (see [`skills.md`](./skills.md)). Normal skill discovery does not require this field. For first-party profiles, this list is additive. |
-| `temperature` | No | `float` | Sampling temperature. |
 | `thinking_level` | No | `str` | Extended-reasoning effort (e.g. `"none"`, `"low"`, `"medium"`, `"high"`). Valid values are model-specific — see [`providers.md`](./providers.md#thinking-thinking_level). For Anthropic budget-based models, OpenAgentd may synthesize `none/low/medium/high` UI levels from raw `budget_tokens` support and map them to runtime budgets automatically. |
 | `responses_api` | No | `bool` | Force OpenAI Responses API on/off (overrides the auto-route from `thinking_level`). |
+
+`temperature` and `top_p` are **not configurable fields** — sampling controls were retired across every provider (several providers now reject them outright on newer models). A `temperature:` line left over in an old agent file is silently ignored, not an error.
 
 Summarisation has no per-agent overrides — see [`agent/summarization.md`](../agent/summarization.md). All tuning lives as constants in `app/agent/hooks/summarization.py`; the only per-session variation is the team mode (chat vs. coding), which selects the bundled prompt and keep window.
 

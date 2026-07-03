@@ -69,6 +69,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
 
   async function checkExternal(nextBaseUrl = baseUrl, nextName = serverName, persist = rememberServer) {
     const target = normalizeServerBaseUrl(nextBaseUrl)
+    const currentBaseUrl = normalizeServerBaseUrl(status?.base_url || apiBaseUrl().replace(/\/api$/, ''))
     const validationError = validateServerUrl(target)
     if (validationError) {
       setError(validationError)
@@ -92,8 +93,13 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
       if (accessKey.trim()) setAccessKey(accessKey)
       const next = await switchToExternalAppBackend(target, nextName, persist)
       setApiBaseUrl(next.base_url)
+      const nextBaseUrl = normalizeServerBaseUrl(next.base_url)
+      const shouldReload = nextBaseUrl !== currentBaseUrl
       await refreshBackendQueries()
       setStatus(next)
+      if (shouldReload) {
+        window.location.reload()
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {

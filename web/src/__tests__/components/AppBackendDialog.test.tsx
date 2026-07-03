@@ -4,7 +4,9 @@ import userEvent from '@testing-library/user-event'
 import { AppBackendDialog } from '@/components/AppBackendDialog'
 
 const originalFetch = globalThis.fetch
+const originalReload = window.location.reload
 const invokeCalls: Array<{ command: string; args: unknown }> = []
+const reloadMock = mock(() => {})
 let statusPayload = {
   base_url: 'http://127.0.0.1:5999',
   mode: 'external',
@@ -54,6 +56,8 @@ mock.module('@tauri-apps/api/core', () => ({
 
 beforeEach(() => {
   invokeCalls.length = 0
+  reloadMock.mockClear()
+  window.location.reload = reloadMock as typeof window.location.reload
   statusPayload = {
     base_url: 'http://127.0.0.1:5999',
     mode: 'external',
@@ -79,6 +83,7 @@ afterEach(() => {
   cleanup()
   window.localStorage.clear()
   globalThis.fetch = originalFetch
+  window.location.reload = originalReload
   delete window.__OAD_API_BASE_URL__
 })
 
@@ -268,6 +273,32 @@ describe('AppBackendDialog', () => {
       args: { baseUrl: 'http://127.0.0.1:4082', name: '', persist: true },
     })
     expect(onOpenChange).not.toHaveBeenCalled()
+  })
+
+  it('reloads the page after connecting to a different external server', async () => {
+    const user = userEvent.setup()
+    render(<AppBackendDialog open onOpenChange={() => {}} />)
+
+    await user.type(screen.getByLabelText(/server url/i), 'http://127.0.0.1:4082')
+    await user.click(screen.getByRole('button', { name: 'Connect' }))
+
+    await waitFor(() => expect(reloadMock).toHaveBeenCalled())
+  })
+
+  it('does not reload the page when connecting to the already active external server', async () => {
+    const user = userEvent.setup()
+    globalThis.fetch = mock((...args: unknown[]) => {
+      const url = String(args[0])
+      const ok = url.startsWith('http://127.0.0.1:5999/')
+      return Promise.resolve(new Response(null, { status: ok ? 204 : 503 }))
+    }) as typeof fetch
+    render(<AppBackendDialog open onOpenChange={() => {}} />)
+
+    await user.type(screen.getByLabelText(/server url/i), 'http://127.0.0.1:5999')
+    await user.click(screen.getByRole('button', { name: 'Connect' }))
+
+    await waitFor(() => expect(invokeCalls.some((call) => call.command === 'app_use_external_backend')).toBe(true))
+    expect(reloadMock).not.toHaveBeenCalled()
   })
 
   it('can switch to an external server without making it the remembered startup backend', async () => {

@@ -40,6 +40,7 @@ them when rebuilding the API payload.
 from __future__ import annotations
 
 import json
+import re
 import time
 from collections.abc import AsyncIterator
 from typing import Any
@@ -332,8 +333,32 @@ def _anthropic_tools(tools: list[dict] | None) -> list[dict[str, Any]] | None:
     return converted or None
 
 
+_VERSION_RE = re.compile(r"(?<!\d)(\d{1,2})(?:-(\d{1,2}))?(?!\d)")
+
+# Anthropic dropped the legacy temperature/top_p sampling knobs starting with
+# the Claude 4.5 generation. Models are matched by the *value* of their
+# major.minor version rather than an explicit allow-list of version strings
+# (e.g. "-4-5", "-4-6", ...), so unseen future versions (4.9, 5.0, 5.x, a
+# codename like "claude-fable-5", ...) are handled correctly instead of
+# silently falling back to "supports legacy sampling" and getting a 400 from
+# the API ("temperature is deprecated for this model").
+_MIN_UNSUPPORTED_VERSION = (4, 5)
+
+
+def _model_version(model: str) -> tuple[int, int] | None:
+    match = _VERSION_RE.search(model)
+    if not match:
+        return None
+    major = int(match.group(1))
+    minor = int(match.group(2)) if match.group(2) else 0
+    return (major, minor)
+
+
 def _supports_legacy_sampling(model: str) -> bool:
-    return not any(marker in model for marker in ("-4-5", "-4-6", "-4-7", "-4-8"))
+    version = _model_version(model)
+    if version is None:
+        return True
+    return version < _MIN_UNSUPPORTED_VERSION
 
 
 def _thinking_budget(level: str, max_tokens: int) -> int:

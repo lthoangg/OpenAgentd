@@ -6,6 +6,7 @@ from pydantic import SecretStr
 from app.agent.providers.anthropic import AnthropicProvider
 from app.agent.providers.anthropic.anthropic import (
     _split_messages,
+    _supports_legacy_sampling,
     _uses_beta_messages_api,
 )
 from app.agent.schemas.chat import (
@@ -111,6 +112,34 @@ def test_anthropic_messages_api_beta_respects_override(explicit: bool) -> None:
 
     assert _uses_beta_messages_api("claude-sonnet-4-5", kwargs) is explicit
     assert kwargs == {}
+
+
+@pytest.mark.parametrize(
+    ("model", "expected"),
+    [
+        # Pre-4.5 models still accept temperature/top_p.
+        ("claude-sonnet-4", True),
+        ("claude-3-7-sonnet", True),
+        ("claude-3-5-sonnet-20240620", True),
+        ("claude-3-opus-20240229", True),
+        # 4.5+ models dropped the legacy sampling knobs.
+        ("claude-sonnet-4-5", False),
+        ("claude-sonnet-4-6", False),
+        ("claude-opus-4-7", False),
+        ("claude-haiku-4-5", False),
+        ("claude-haiku-4-5-20251001", False),
+        ("claude-opus-4-8", False),
+        # Unlisted/future version strings must be inferred from the parsed
+        # version rather than falling back to "supports legacy sampling"
+        # (regression: previously matched only an explicit "-4-5".."-4-8"
+        # allow-list and silently sent temperature to newer models).
+        ("claude-fable-5", False),
+        ("claude-opus-5-1", False),
+        ("claude-opus-4-9", False),
+    ],
+)
+def test_supports_legacy_sampling(model: str, expected: bool) -> None:
+    assert _supports_legacy_sampling(model) is expected
 
 
 def test_anthropic_payload_uses_manual_thinking_for_older_models() -> None:

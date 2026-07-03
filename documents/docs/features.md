@@ -16,7 +16,7 @@ exists. When you ship something new, **add it here first** — slides, README,
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 15 providers. Your keys.
 
-**Latest release:** v1.97.0 · July 3, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.97.0)
+**Latest release:** v1.98.0 · July 3, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.98.0)
 
 ---
 
@@ -598,6 +598,10 @@ Four orthogonal ways to add capability. Deeper docs:
     tokens `[v1.92.0]`. Skill cache invalidation now also watches project-local skill roots
     (`.openagentd/skills/`, `.opencode/skills/`), not just the global config directory, so
     edits are picked up on the next `discover_skills()` call `[v1.92.0]`.
+  - **Semantic docs search skill experiment** `[v1.98.0]` *(beta)* — project workspaces can ship
+    an `oad/search-doc` skill plus a turbovec-based document-search experiment for semantic lookup
+    over `documents/`, giving agents a higher-level alternative to exact-string grep when docs
+    queries are conceptual or paraphrased. See [`configuration/skills.md`](./configuration/skills.md).
 - **Plugins** `[v1.6.0]` — Python files dropped into `OPENAGENTD_PLUGINS_DIRS`.
   Register `@plugin` functions or `Plugin(BaseAgentHook)` classes with
   `tool.before` / `tool.after` / agent lifecycle hooks. Per `(agent, role)` filter.

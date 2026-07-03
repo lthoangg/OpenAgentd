@@ -118,6 +118,23 @@ describe("ToolCall — shell display", () => {
     expect(screen.queryByText(/"command"/)).toBeNull()
   })
 
+  it("escapes highlighted shell command HTML", async () => {
+    const user = userEvent.setup()
+    const args = JSON.stringify({
+      command: 'printf "<script>window.__pwned = true</script>\\n<img src=x onerror=window.__pwned=true>"',
+      description: 'Print payload',
+    })
+    render(<ToolCall name="shell" args={args} done={false} />)
+
+    await user.click(screen.getByRole("button"))
+
+    await waitFor(() => expect(document.body.textContent).toContain('<script>window.__pwned = true</script>'))
+    expect(document.querySelector('script')).toBeNull()
+    expect(document.querySelector('img[src="x"]')).toBeNull()
+    expect((window as Window & { __pwned?: boolean }).__pwned).toBeUndefined()
+    expect(document.body.textContent).toContain('<img src=x onerror=window.__pwned=true>')
+  })
+
   it("falls back to tool name when shell has no description", () => {
     const args = JSON.stringify({ command: "ls" })
     render(<ToolCall name="shell" args={args} done={false} />)

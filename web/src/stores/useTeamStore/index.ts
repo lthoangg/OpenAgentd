@@ -57,6 +57,13 @@ function hasVisibleBlocks(stream: AgentStream | undefined): boolean {
   return [...stream.blocks, ...stream.currentBlocks].some((block) => block.type !== 'compaction')
 }
 
+function clearReconnectTimer(state: Pick<TeamStore, '_reconnectTimer'>) {
+  if (state._reconnectTimer !== null) {
+    clearTimeout(state._reconnectTimer)
+    state._reconnectTimer = null
+  }
+}
+
 function resetSessionState(
   state: TeamStore,
   options: {
@@ -81,6 +88,7 @@ function resetSessionState(
   state.setupRequired = null
   state._abortController = null
   state._pendingMessages = []
+  clearReconnectTimer(state)
   state._sessionGeneration = (state._sessionGeneration ?? 0) + 1
   state.cacheInvalidations = []
   state.hasMore = false
@@ -190,6 +198,7 @@ export const useTeamStore = create<TeamStore>()(
     _loadingOlder: false,
     _resolvedSessionReadyId: null,
     _unloading: false,
+    _reconnectTimer: null,
 
     newSession: () => {
       get()._abortController?.abort()
@@ -285,6 +294,9 @@ export const useTeamStore = create<TeamStore>()(
       }
 
       get()._abortController?.abort()
+      set((draft) => {
+        clearReconnectTimer(draft)
+      })
 
       const optimisticAttachments = files?.map((f) => ({
         original_name: f.name,
@@ -572,6 +584,9 @@ export const useTeamStore = create<TeamStore>()(
       const generation = get()._sessionGeneration
 
       get()._abortController?.abort()
+      set((draft) => {
+        clearReconnectTimer(draft)
+      })
       const abort = new AbortController()
       set((draft) => { draft.isConnected = true; draft._abortController = abort })
 
@@ -595,16 +610,22 @@ export const useTeamStore = create<TeamStore>()(
             if (current.sessionId !== sessionId || current._sessionGeneration !== generation) return
             if (current._unloading || abort.signal.aborted) return
             if (isTransientNetworkError(err)) {
-              set((draft) => { draft.isConnected = false })
-              // Reconnect after a short delay so transient network blips
-              // (WiFi switch, iOS background-kill, server restart) don't
-              // permanently break an in-progress session.
-              setTimeout(() => {
-                const s = get()
-                if (s.sessionId !== sessionId || s._sessionGeneration !== generation) return
-                if (s._unloading || s.isConnected) return
-                get().connectStream()
-              }, 1500)
+              set((draft) => {
+                draft.isConnected = false
+                clearReconnectTimer(draft)
+                // Reconnect after a short delay so transient network blips
+                // (WiFi switch, iOS background-kill, server restart) don't
+                // permanently break an in-progress session.
+                draft._reconnectTimer = setTimeout(() => {
+                  set((timerDraft) => {
+                    if (timerDraft._reconnectTimer !== null) timerDraft._reconnectTimer = null
+                  })
+                  const s = get()
+                  if (s.sessionId !== sessionId || s._sessionGeneration !== generation) return
+                  if (s._unloading || s.isConnected) return
+                  get().connectStream()
+                }, 1500)
+              })
               return
             }
             if (!current.isTeamWorking) {
@@ -860,6 +881,7 @@ if (typeof window !== 'undefined') {
     useTeamStore.setState((state) => {
       state._unloading = true
       state._abortController?.abort()
+      clearReconnectTimer(state)
     })
   }
   window.addEventListener('beforeunload', markUnloading)

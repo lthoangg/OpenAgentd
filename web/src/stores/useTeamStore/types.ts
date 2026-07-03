@@ -65,6 +65,7 @@ export interface TeamStoreState {
   _loadingOlder: boolean
   _resolvedSessionReadyId: string | null
   _unloading: boolean
+  _reconnectTimer: ReturnType<typeof setTimeout> | null
   cacheInvalidations: CacheInvalidation[]
 }
 
@@ -93,6 +94,7 @@ export interface TeamStoreActions {
   _handleSSEEvent: (type: string, data: unknown) => void
   _drainCacheInvalidations: () => CacheInvalidation[]
   _abortController: AbortController | null
+  _reconnectTimer: ReturnType<typeof setTimeout> | null
 }
 
 export type TeamStore = TeamStoreState & TeamStoreActions

@@ -115,6 +115,7 @@ const INITIAL_STATE = {
   _loadingOlder: false,
   _resolvedSessionReadyId: null,
   _unloading: false,
+  _reconnectTimer: null as ReturnType<typeof setTimeout> | null,
   cacheInvalidations: [],
 }
 
@@ -1106,6 +1107,36 @@ describe("connectStream", () => {
     timerCb()
     expect(mockTeamStream).toHaveBeenCalledTimes(2)
     expect(useTeamStore.getState().isConnected).toBe(true)
+
+    globalThis.setTimeout = origSetTimeout
+  })
+
+  it("clears a pending reconnect timer when starting a new session", () => {
+    let timerCb!: () => void
+    const origSetTimeout = globalThis.setTimeout
+    const clearTimeoutSpy = spyOn(globalThis, "clearTimeout")
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    spyOn(globalThis, "setTimeout").mockImplementation((cb: any) => {
+      timerCb = cb
+      return 123 as unknown as ReturnType<typeof setTimeout>
+    })
+
+    useTeamStore.setState({ sessionId: "s1", isTeamWorking: true })
+    let callbacks!: { onError: (err: Error) => void }
+    mockTeamStream.mockImplementation((_sid: string, cbs: typeof callbacks) => { callbacks = cbs })
+    useTeamStore.getState().connectStream()
+    callbacks.onError(new TypeError("Load failed"))
+
+    expect(useTeamStore.getState()._reconnectTimer).toBe(123)
+
+    useTeamStore.getState().newSession()
+
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(123)
+    expect(useTeamStore.getState()._reconnectTimer).toBeNull()
+
+    // Even if the old callback somehow runs, teardown should still prevent reconnect.
+    timerCb()
+    expect(mockTeamStream).toHaveBeenCalledTimes(1)
 
     globalThis.setTimeout = origSetTimeout
   })

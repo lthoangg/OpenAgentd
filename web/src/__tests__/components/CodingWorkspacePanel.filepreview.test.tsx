@@ -250,6 +250,26 @@ describe('Coding workspace two-layer file preview', () => {
     expect(screen.getByText('return')).toBeTruthy()
   })
 
+  it('escapes highlighted file preview HTML from file contents', async () => {
+    globalThis.fetch = mock(async (input: unknown) => {
+      const url = String(input)
+      if (url.includes('/workspace/files/read')) {
+        return new Response('const payload = `<script>window.__pwned = true</script>`\n<img src=x onerror="window.__pwned = true">')
+      }
+      if (url.includes('/workspace/files/list')) return new Response(JSON.stringify(filesResponse))
+      if (url.includes('/workspace/git-diff')) return new Response(JSON.stringify(diffResponse))
+      return new Response(null, { status: 404 })
+    }) as typeof fetch
+
+    await renderViewer(readme)
+
+    await waitFor(() => expect(document.body.textContent).toContain('<script>window.__pwned = true</script>'))
+    expect(document.querySelector('script')).toBeNull()
+    expect(document.querySelector('img[src="x"]')).toBeNull()
+    expect((window as Window & { __pwned?: boolean }).__pwned).toBeUndefined()
+    expect(document.body.textContent).toContain('<img src=x onerror="window.__pwned = true">')
+  })
+
   it('renders images inline in the separate file viewer panel', async () => {
     await renderViewer(image)
     const img = screen.getByRole('img', { name: 'logo.png' }) as HTMLImageElement

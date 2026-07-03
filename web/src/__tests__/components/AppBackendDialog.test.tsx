@@ -161,6 +161,32 @@ describe('AppBackendDialog', () => {
     })
   })
 
+  it('offers a connect option to switch back to a running builtin sidecar that is not the active backend', async () => {
+    const user = userEvent.setup()
+    statusPayload = {
+      ...statusPayload,
+      base_url: 'http://192.168.1.20:4082',
+      mode: 'external',
+      sidecar_running: true,
+      external: true,
+    }
+    render(<AppBackendDialog open onOpenChange={() => {}} />)
+
+    await screen.findByText('Builtin sidecar')
+    // The builtin sidecar row renders first in the connection options list,
+    // so its "connect" button is the first match.
+    const [connectButton] = await screen.findAllByRole('button', { name: 'connect' })
+    await user.click(connectButton)
+
+    await waitFor(() => {
+      expect(invokeCalls).toContainEqual({
+        command: 'app_use_bundled_backend',
+        args: undefined,
+      })
+    })
+    await waitFor(() => expect(window.__OAD_API_BASE_URL__).toBe('http://127.0.0.1:49545'))
+  })
+
   it('lets users recover from an unreachable external backend by choosing builtin when the sidecar is stopped', async () => {
     const user = userEvent.setup()
     statusPayload = {

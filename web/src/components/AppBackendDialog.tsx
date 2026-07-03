@@ -210,28 +210,30 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
                     <SectionCardBadge>active</SectionCardBadge>
                   ) : null}
                   <div className="flex items-center gap-1.5 shrink-0">
-                    {status?.external ? (
-                      <Button
-                        type="button"
-                        variant="subtle"
-                        size="xs"
-                        onClick={() => { void connectBundled() }}
-                        disabled={pending}
-                      >
-                        connect
-                      </Button>
-                    ) : null}
                     {status?.sidecar_running ? (
-                      <Button
-                        type="button"
-                        variant="danger-subtle"
-                        size="xs"
-                        onClick={() => { void stopBundled() }}
-                        disabled={pending}
-                      >
-                        stop
-                      </Button>
-                    ) : !status?.external ? (
+                      <>
+                        {status?.external ? (
+                          <Button
+                            type="button"
+                            variant="subtle"
+                            size="xs"
+                            onClick={() => { void connectBundled() }}
+                            disabled={pending}
+                          >
+                            connect
+                          </Button>
+                        ) : null}
+                        <Button
+                          type="button"
+                          variant="danger-subtle"
+                          size="xs"
+                          onClick={() => { void stopBundled() }}
+                          disabled={pending}
+                        >
+                          stop
+                        </Button>
+                      </>
+                    ) : (
                       <Button
                         type="button"
                         variant="subtle"
@@ -241,7 +243,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
                       >
                         use builtin
                       </Button>
-                    ) : null}
+                    )}
                   </div>
                 </SectionCardRow>
               ) : null}

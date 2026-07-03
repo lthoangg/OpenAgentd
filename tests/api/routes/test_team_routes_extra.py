@@ -800,6 +800,30 @@ class TestSerializeAgent:
         assert "mcp_servers" in result
         assert result["mcp_servers"] == ["my-server"]
 
+    def test_serialize_skill_description_includes_project_skills(self, tmp_path):
+        """The ``skill`` tool description is computed via ``get_sandbox()``.
+
+        Without binding the sandbox to the coding ``workspace`` for the
+        duration of serialization, project-local skills under
+        ``{workspace}/.openagentd/skills`` never show up — the endpoint
+        would silently fall back to the process-default temp sandbox.
+        """
+        from app.agent.agent_loop import Agent
+        from app.agent.tools.builtin.skill import load_skill
+        from app.api.routes.team import _serialize_agent
+
+        project_skills = tmp_path / ".openagentd" / "skills" / "proj-skill"
+        project_skills.mkdir(parents=True)
+        (project_skills / "SKILL.md").write_text(
+            "---\nname: proj-skill\ndescription: A project-local skill.\n---\nBody.\n"
+        )
+
+        agent = Agent(llm_provider=MagicMock(), name="bot", tools=[load_skill])
+        result = _serialize_agent(agent, workspace=str(tmp_path))
+
+        skill_tool = next(t for t in result["tools"] if t["name"] == "skill")
+        assert "proj-skill" in skill_tool["description"]
+
     def test_serialize_includes_mcp_servers(self):
         """Configured MCP servers surface even when they contribute zero tools.
 

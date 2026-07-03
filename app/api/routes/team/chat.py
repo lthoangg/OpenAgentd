@@ -86,10 +86,23 @@ router = APIRouter()
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
-def _serialize_agent(agent: Agent, *, is_lead: bool = False) -> dict:
-    """Serialize an Agent into the /team/agents response shape."""
+def _serialize_agent(
+    agent: Agent, *, is_lead: bool = False, workspace: str | None = None
+) -> dict:
+    """Serialize an Agent into the /team/agents response shape.
+
+    ``workspace``, when given, binds the sandbox for the duration of tool
+    description computation only. Some tool descriptions are dynamic — the
+    ``skill`` tool in particular lists available skills by walking
+    ``get_sandbox().workspace_root``. Outside of an actual agent run there is
+    no sandbox bound to this coding workspace (it falls back to a process-
+    global temp-dir sandbox), so project-local skills under
+    ``{workspace}/.openagentd/skills`` would silently never appear in this
+    listing without this override.
+    """
     from app.agent.hooks.summarization import resolve_prompt_token_threshold
     from app.agent.mcp import mcp_manager
+    from app.agent.sandbox import SandboxConfig, _sandbox_ctx, set_sandbox
     from app.core.runtime_settings import load_runtime_settings
 
     try:
@@ -103,6 +116,18 @@ def _serialize_agent(agent: Agent, *, is_lead: bool = False) -> dict:
         for tool in server_tools:
             tools_by_name.setdefault(tool.name, tool)
 
+    sandbox_token = (
+        set_sandbox(SandboxConfig(workspace=workspace)) if workspace else None
+    )
+    try:
+        tools_payload = [
+            {"name": t.name, "description": t.description or ""}
+            for t in tools_by_name.values()
+        ]
+    finally:
+        if sandbox_token is not None:
+            _sandbox_ctx.reset(sandbox_token)
+
     return {
         "name": agent.name,
         "description": agent.description or "",
@@ -110,10 +135,7 @@ def _serialize_agent(agent: Agent, *, is_lead: bool = False) -> dict:
         "summary_trigger_tokens": resolve_prompt_token_threshold(
             agent.model_id, _custom
         ),
-        "tools": [
-            {"name": t.name, "description": t.description or ""}
-            for t in tools_by_name.values()
-        ],
+        "tools": tools_payload,
         # MCP servers configured on the agent. The UI groups tools by name
         # prefix (`<server>_<tool>`) using this list. Includes servers that
         # exist in config but aren't ready (zero tools), so the UI can show
@@ -133,7 +155,7 @@ def _serialize_blueprint(team_obj, bp) -> dict:
         extra_tools=team_obj._extra_tools,
         mode=team_obj.mode,
     )
-    payload = _serialize_agent(agent)
+    payload = _serialize_agent(agent, workspace=team_obj.workspace)
     payload["live_instances"] = team_obj.live_instances_for_blueprint(bp.name)
     return payload
 
@@ -596,7 +618,11 @@ async def list_team_agents(
     ]
     return TeamAgentsResponse(
         agents=[
-            AgentInfoResponse(**_serialize_agent(m.agent, is_lead=(m is team_obj.lead)))
+            AgentInfoResponse(
+                **_serialize_agent(
+                    m.agent, is_lead=(m is team_obj.lead), workspace=team_obj.workspace
+                )
+            )
             for m in all_members
         ],
         blueprints=[BlueprintInfoResponse(**bp) for bp in blueprints],

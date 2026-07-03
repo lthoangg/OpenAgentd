@@ -74,6 +74,10 @@ dev = [
     "tiktoken>=0.12.0",
     "ty>=0.0.33,<0.1",
 ]
+experiment = [
+    "sentence-transformers>=5.6.0",
+    "turbovec>=0.8.0",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["app"]

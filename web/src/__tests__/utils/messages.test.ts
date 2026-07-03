@@ -292,7 +292,9 @@ describe("parseTeamBlocks", () => {
     expect(toolBlock).toBeDefined();
     expect(toolBlock?.toolDone).toBe(true);
     expect(toolBlock?.toolResult).toBe("result data");
+    // Persisted messages use server duration for both display and metric fields
     expect(toolBlock?.durationMs).toBe(321);
+    expect(toolBlock?.serverDurationMs).toBe(321);
   });
 
   it("does not restore invalid tool durations", () => {
@@ -456,7 +458,9 @@ describe("parseApiMessages", () => {
     const toolBlock = result[0].blocks.find((b) => b.type === "tool");
     expect(toolBlock?.toolDone).toBe(true);
     expect(toolBlock?.toolResult).toBe("result!");
+    // Persisted messages use server duration for both display and metric fields
     expect(toolBlock?.durationMs).toBe(654);
+    expect(toolBlock?.serverDurationMs).toBe(654);
   });
 
   it("does not restore invalid tool durations", () => {

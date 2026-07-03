@@ -142,7 +142,12 @@ export function parseApiMessages(msgs: MessageResponse[]): ChatMessage[] {
       if (block) {
         block.toolResult = msg.content || ''
         block.toolDone = true
-        if (typeof extra?.duration_ms === 'number') block.durationMs = extra.duration_ms
+        if (typeof extra?.duration_ms === 'number') {
+          // Persisted messages have no client startedAt, so server duration doubles
+          // as the display value. Live sessions freeze durationMs from client elapsed.
+          block.serverDurationMs = extra.duration_ms
+          block.durationMs = extra.duration_ms
+        }
         if (extra?.mcp_app) {
           block.extra = {
             ...(block.extra ?? {}),
@@ -254,7 +259,12 @@ export function parseTeamBlocks(msgs: MessageResponse[]): ContentBlock[] {
       if (block) {
         block.toolResult = msg.content || ''
         block.toolDone = true
-        if (typeof extra?.duration_ms === 'number') block.durationMs = extra.duration_ms
+        if (typeof extra?.duration_ms === 'number') {
+          // Persisted messages have no client startedAt, so server duration doubles
+          // as the display value. Live sessions freeze durationMs from client elapsed.
+          block.serverDurationMs = extra.duration_ms
+          block.durationMs = extra.duration_ms
+        }
         if (extra?.mcp_app) {
           block.extra = {
             ...(block.extra ?? {}),

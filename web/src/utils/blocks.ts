@@ -156,8 +156,9 @@ export function completeTool(
   name: string,
   toolCallId?: string,
   toolResult?: string,
-  durationMs?: number,
+  serverDurationMs?: number,
   extra?: Record<string, unknown>,
+  completedAt = Date.now(),
 ): ContentBlock[] {
   const result = [...blocks]
 
@@ -168,11 +169,18 @@ export function completeTool(
       if (block.type === 'tool' && block.toolCallId === toolCallId) {
         // Me skip if already done — reconnect replay dedup
         if (block.toolDone) return result
+        // Use client elapsed since first chunk so the frozen display matches
+        // what the live timer was counting up. Server execution time is kept
+        // separately as serverDurationMs for metrics.
+        const clientElapsedMs = block.startedAt !== undefined
+          ? Math.max(0, completedAt - block.startedAt)
+          : undefined
         result[i] = {
           ...block,
           toolDone: true,
           toolResult,
-          durationMs: durationMs ?? block.durationMs,
+          durationMs: clientElapsedMs ?? block.durationMs,
+          serverDurationMs: serverDurationMs ?? block.serverDurationMs,
           extra: extra ? { ...(block.extra ?? {}), ...extra } : block.extra,
         }
         return result
@@ -184,11 +192,15 @@ export function completeTool(
   for (let i = result.length - 1; i >= 0; i--) {
     const block = result[i]
     if (block.type === 'tool' && block.toolName === name && !block.toolDone) {
+      const clientElapsedMs = block.startedAt !== undefined
+        ? Math.max(0, completedAt - block.startedAt)
+        : undefined
       result[i] = {
         ...block,
         toolDone: true,
         toolResult,
-        durationMs: durationMs ?? block.durationMs,
+        durationMs: clientElapsedMs ?? block.durationMs,
+        serverDurationMs: serverDurationMs ?? block.serverDurationMs,
         extra: extra ? { ...(block.extra ?? {}), ...extra } : block.extra,
       }
       return result

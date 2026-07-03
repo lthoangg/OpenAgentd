@@ -268,8 +268,9 @@ export interface ContentBlock {
   toolCallId?: string   // for matching tool results
   toolOutput?: string   // live output streamed before tool_end
   toolResult?: string   // the role:"tool" response content
-  durationMs?: number   // completed tool duration from SSE/session logs
-  startedAt?: number    // client timestamp for realtime elapsed display
+  durationMs?: number         // client-side elapsed since first chunk (what the live timer shows, frozen on completion)
+  serverDurationMs?: number   // server-measured execution time from tool_end duration_ms
+  startedAt?: number          // client timestamp when block was first created (for live elapsed display)
   responseDurationMs?: number // assistant response duration shown in turn footer
   /** Variant-specific metadata. ``user`` inbox blocks carry ``from_agent``;
    *  ``compaction`` blocks carry ``state: 'compacting' | 'compacted'`` and

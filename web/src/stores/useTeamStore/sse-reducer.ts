@@ -193,7 +193,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         const toolCallId = d.tool_call_id as string | undefined
         const result = d.result as string | undefined
         const metadata = d.metadata as Record<string, unknown> | undefined
-        const durationMs = typeof d.duration_ms === 'number'
+        const serverDurationMs = typeof d.duration_ms === 'number'
           ? d.duration_ms
           : typeof metadata?.duration_ms === 'number'
             ? metadata.duration_ms
@@ -207,7 +207,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
               toolName,
               toolCallId,
               result,
-              durationMs,
+              serverDurationMs,
               mcpApp ? { mcp_app: mcpApp } : undefined,
             )
           })

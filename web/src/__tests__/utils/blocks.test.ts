@@ -248,13 +248,29 @@ describe("addTool", () => {
 
 describe("completeTool", () => {
   it("marks tool done by toolCallId and stores duration", () => {
+    const startedAt = 1000;
+    const completedAt = 1456;
+    const blocks: ContentBlock[] = [
+      { id: "t1", type: "tool", content: "", toolName: "web_search", toolDone: false, toolCallId: "tc1", startedAt },
+    ];
+    const result = completeTool(blocks, "web_search", "tc1", "results", 500, undefined, completedAt);
+    expect(result[0].toolDone).toBe(true);
+    expect(result[0].toolResult).toBe("results");
+    // durationMs is client elapsed (completedAt - startedAt), not the server value
+    expect(result[0].durationMs).toBe(456);
+    // server execution time stored separately
+    expect(result[0].serverDurationMs).toBe(500);
+  });
+
+  it("falls back to serverDurationMs for durationMs when startedAt is absent", () => {
     const blocks: ContentBlock[] = [
       { id: "t1", type: "tool", content: "", toolName: "web_search", toolDone: false, toolCallId: "tc1" },
     ];
     const result = completeTool(blocks, "web_search", "tc1", "results", 456);
     expect(result[0].toolDone).toBe(true);
-    expect(result[0].toolResult).toBe("results");
-    expect(result[0].durationMs).toBe(456);
+    expect(result[0].serverDurationMs).toBe(456);
+    // No startedAt → durationMs falls back to existing block.durationMs (undefined here)
+    expect(result[0].durationMs).toBeUndefined();
   });
 
   it("falls back to name when toolCallId not matched", () => {

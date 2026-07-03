@@ -56,7 +56,7 @@ export function useTeamCommands({
     {
       id: 'toggle-view', group: 'View',
       label: viewMode === 'agent' ? 'Switch to Split View' : 'Switch to Agent View',
-      description: 'Cycle: Agent → Split', action: cycleViewMode,
+      description: 'Cycle: Agent → Split', shortcut: formatShortcut('V', os, { shift: true }), action: () => dispatchShortcutKey('v', os, { shift: true }),
     },
     // Bare ⌘A is "Select All" on macOS, so Session Settings requires Shift.
     { id: 'agent-info',       group: 'View',       label: 'Session Settings', description: 'Show session model settings and lead context', shortcut: formatShortcut('A', os, { shift: true }), action: toggleAgentCapabilities },

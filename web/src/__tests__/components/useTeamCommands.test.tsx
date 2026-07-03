@@ -21,8 +21,7 @@
  *   - ``mode === 'coding'`` swaps the sidebar / workspace commands.
  *   - The list is *built each render* — re-running the hook with new
  *     inputs returns the new commands (no stale closures).
- *   - The view-cycle command no longer carries a dedicated shortcut
- *     (palette-only, per the low-frequency-action redesign).
+   *   - The view-cycle command carries the ⌘⇧V / Ctrl+Shift+V shortcut.
  */
 import { describe, it, expect, afterEach, mock } from "bun:test"
 import { renderHook, cleanup } from "@testing-library/react"
@@ -76,9 +75,9 @@ describe("useTeamCommands — shortcut labels", () => {
     expect(byId(result.current, "go-settings").shortcut).toBe("Ctrl+,")
   })
 
-  it("toggle-view has no dedicated shortcut (palette-only, low-frequency action)", () => {
+  it("toggle-view carries the Cmd+Shift+V / Ctrl+Shift+V shortcut label", () => {
     const { result } = renderHook(() => useTeamCommands(makeArgs()))
-    expect(byId(result.current, "toggle-view").shortcut).toBeUndefined()
+    expect(byId(result.current, "toggle-view").shortcut).toBe("Ctrl+Shift+V")
   })
 })
 
@@ -101,6 +100,23 @@ describe("useTeamCommands — dispatchShortcutKey synthetic events", () => {
     expect(captured[0].ctrlKey).toBe(true)
     expect(captured[0].metaKey).toBe(false)
     expect(captured[0].bubbles).toBe(true)
+  })
+
+  it("toggle-view dispatches a primary-modifier Shift+'v' keydown", () => {
+    const { result } = renderHook(() => useTeamCommands(makeArgs()))
+    const captured: KeyboardEvent[] = []
+    const listener = (e: Event) => captured.push(e as KeyboardEvent)
+    window.addEventListener("keydown", listener)
+    try {
+      byId(result.current, "toggle-view").action()
+    } finally {
+      window.removeEventListener("keydown", listener)
+    }
+    expect(captured.length).toBe(1)
+    expect(captured[0].key).toBe("v")
+    expect(captured[0].ctrlKey).toBe(true)
+    expect(captured[0].metaKey).toBe(false)
+    expect(captured[0].shiftKey).toBe(true)
   })
 
   it("scheduled-tasks dispatches a primary-modifier 's' keydown", () => {

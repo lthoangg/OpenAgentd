@@ -944,6 +944,8 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     t: () => { if (sessionIdState) handleSetShowTodos((v) => !v) },
     p: isMobile ? undefined : handleTogglePalette,
     b: mode === 'coding' ? handleCodingSidebarToggle : undefined,
+    // ⌘⇧V / Ctrl+Shift+V — toggle between agent view and split view.
+    v: { handler: cycleViewMode, shift: true },
     // ⌘S / Ctrl+S — open the scheduler drawer (state in useUIStore).
     s: handleToggleScheduler,
     // ⌘I / Ctrl+I — focus the chat input (dispatched via CustomEvent so

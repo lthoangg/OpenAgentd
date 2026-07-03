@@ -1,8 +1,12 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
+
+const MAX_DOWNLOAD_BYTES: usize = 100 * 1024 * 1024;
+const MAX_FILENAME_COLLISION_ATTEMPTS: usize = 1000;
 
 #[derive(Clone, Serialize, Deserialize)]
 struct SavedAppServer {
@@ -160,6 +164,46 @@ fn remove_backend_server_at(path: &std::path::Path, base_url: &str) -> Result<()
     std::fs::write(path, bytes).with_context(|| format!("write {}", path.display()))
 }
 
+fn ensure_max_download_size(size: usize) -> Result<()> {
+    if size > MAX_DOWNLOAD_BYTES {
+        Err(anyhow!("File exceeds 100 MB limit"))
+    } else {
+        Ok(())
+    }
+}
+
+fn ensure_content_length_limit(content_length: Option<u64>) -> Result<()> {
+    if let Some(length) = content_length {
+        let length = usize::try_from(length).map_err(|_| anyhow!("File exceeds 100 MB limit"))?;
+        ensure_max_download_size(length)?;
+    }
+    Ok(())
+}
+
+fn unique_cache_path(dir: &Path, filename: &str) -> Result<PathBuf> {
+    let candidate = dir.join(filename);
+    if !candidate.exists() {
+        return Ok(candidate);
+    }
+
+    let path = Path::new(filename);
+    let stem = path.file_stem().and_then(|value| value.to_str()).unwrap_or(filename);
+    let ext = path.extension().and_then(|value| value.to_str());
+
+    for index in 1..=MAX_FILENAME_COLLISION_ATTEMPTS {
+        let candidate_name = match ext {
+            Some(ext) if !ext.is_empty() => format!("{stem} ({index}).{ext}"),
+            _ => format!("{stem} ({index})"),
+        };
+        let candidate = dir.join(candidate_name);
+        if !candidate.exists() {
+            return Ok(candidate);
+        }
+    }
+
+    Err(anyhow!("Could not find a unique filename after 1000 attempts"))
+}
+
 #[derive(Deserialize)]
 struct SaveWorkspaceFileRequest {
     /// Pre-encoded base64 payload (used by FileLightbox which already has the blob).
@@ -174,7 +218,7 @@ async fn save_workspace_file(
     app: AppHandle,
     request: SaveWorkspaceFileRequest,
 ) -> Result<bool, String> {
-    let filename = std::path::Path::new(&request.filename)
+    let filename = Path::new(&request.filename)
         .file_name()
         .and_then(|name| name.to_str())
         .filter(|name| !name.is_empty())
@@ -185,29 +229,56 @@ async fn save_workspace_file(
     let bytes: Vec<u8> = match (request.base64, request.url) {
         (Some(b64), _) => {
             use base64::Engine;
-            base64::prelude::BASE64_STANDARD
+            let bytes = base64::prelude::BASE64_STANDARD
                 .decode(&b64)
-                .map_err(|e| format!("Decode base64: {e}"))?
+                .map_err(|e| format!("Decode base64: {e}"))?;
+            ensure_max_download_size(bytes.len()).map_err(|e| format!("Decode base64: {e}"))?;
+            bytes
         }
         (None, Some(url)) if url.starts_with("data:") => {
             // data:<mime>;base64,<payload>
             use base64::Engine;
-            let payload = url.splitn(2, ',').nth(1)
+            let payload = url
+                .split_once(',')
+                .map(|(_, payload)| payload)
                 .ok_or("Invalid data URI: missing comma")?;
-            base64::prelude::BASE64_STANDARD
+            let bytes = base64::prelude::BASE64_STANDARD
                 .decode(payload)
-                .map_err(|e| format!("Decode data URI: {e}"))?
+                .map_err(|e| format!("Decode data URI: {e}"))?;
+            ensure_max_download_size(bytes.len()).map_err(|e| format!("Decode data URI: {e}"))?;
+            bytes
         }
         (None, Some(url)) => {
-            reqwest::get(&url)
+            let client = reqwest::Client::builder()
+                .connect_timeout(Duration::from_secs(10))
+                .timeout(Duration::from_secs(60))
+                .build()
+                .map_err(|e| format!("Fetch file: {e}"))?;
+            let mut response = client
+                .get(&url)
+                .send()
                 .await
                 .map_err(|e| format!("Fetch file: {e}"))?
                 .error_for_status()
-                .map_err(|e| format!("Fetch file: {e}"))?
-                .bytes()
+                .map_err(|e| format!("Fetch file: {e}"))?;
+            ensure_content_length_limit(response.content_length())
+                .map_err(|e| format!("Fetch file: {e}"))?;
+
+            let mut bytes = Vec::new();
+            while let Some(chunk) = response
+                .chunk()
                 .await
                 .map_err(|e| format!("Read fetched file: {e}"))?
-                .to_vec()
+            {
+                let new_len = bytes
+                    .len()
+                    .checked_add(chunk.len())
+                    .ok_or_else(|| "Read fetched file: File exceeds 100 MB limit".to_string())?;
+                ensure_max_download_size(new_len)
+                    .map_err(|e| format!("Read fetched file: {e}"))?;
+                bytes.extend_from_slice(&chunk);
+            }
+            bytes
         }
         (None, None) => return Err("save_workspace_file: must supply either base64 or url".to_string()),
     };
@@ -219,7 +290,7 @@ async fn save_workspace_file(
     std::fs::create_dir_all(&cache_dir)
         .with_context(|| format!("Create cache dir {}", cache_dir.display()))
         .map_err(|e| format!("{e:#}"))?;
-    let path = cache_dir.join(&filename);
+    let path = unique_cache_path(&cache_dir, &filename).map_err(|e| format!("{e}"))?;
 
     std::fs::write(&path, &bytes)
         .with_context(|| format!("Write {}", path.display()))
@@ -343,8 +414,9 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        load_backend_config_from, normalize_base_url, normalize_server_name,
-        remove_backend_server_at, save_backend_config_to, AppBackendConfig,
+        ensure_max_download_size, load_backend_config_from, normalize_base_url,
+        normalize_server_name, remove_backend_server_at, save_backend_config_to,
+        unique_cache_path, AppBackendConfig, MAX_DOWNLOAD_BYTES,
     };
     use std::path::PathBuf;
     use tempfile::tempdir;
@@ -468,5 +540,62 @@ mod tests {
         std::fs::write(&path, b"{not json").unwrap();
 
         assert!(load_backend_config_from(&path).is_err());
+    }
+
+    #[test]
+    fn unique_cache_path_returns_original_when_no_collision() {
+        let dir = tempdir().unwrap();
+
+        let path = unique_cache_path(dir.path(), "report.txt").unwrap();
+
+        assert_eq!(path, dir.path().join("report.txt"));
+    }
+
+    #[test]
+    fn unique_cache_path_adds_suffix_for_single_collision() {
+        let dir = tempdir().unwrap();
+        std::fs::write(dir.path().join("report.txt"), b"existing").unwrap();
+
+        let path = unique_cache_path(dir.path(), "report.txt").unwrap();
+
+        assert_eq!(path, dir.path().join("report (1).txt"));
+    }
+
+    #[test]
+    fn unique_cache_path_skips_to_next_available_suffix() {
+        let dir = tempdir().unwrap();
+        std::fs::write(dir.path().join("report.txt"), b"existing").unwrap();
+        std::fs::write(dir.path().join("report (1).txt"), b"existing").unwrap();
+        std::fs::write(dir.path().join("report (2).txt"), b"existing").unwrap();
+
+        let path = unique_cache_path(dir.path(), "report.txt").unwrap();
+
+        assert_eq!(path, dir.path().join("report (3).txt"));
+    }
+
+    #[test]
+    fn unique_cache_path_preserves_extension() {
+        let dir = tempdir().unwrap();
+        std::fs::write(dir.path().join("archive.tar.gz"), b"existing").unwrap();
+
+        let path = unique_cache_path(dir.path(), "archive.tar.gz").unwrap();
+
+        assert_eq!(path, dir.path().join("archive.tar (1).gz"));
+    }
+
+    #[test]
+    fn unique_cache_path_handles_names_without_extension() {
+        let dir = tempdir().unwrap();
+        std::fs::write(dir.path().join("download"), b"existing").unwrap();
+
+        let path = unique_cache_path(dir.path(), "download").unwrap();
+
+        assert_eq!(path, dir.path().join("download (1)"));
+    }
+
+    #[test]
+    fn ensure_max_download_size_rejects_oversized_payload() {
+        assert!(ensure_max_download_size(MAX_DOWNLOAD_BYTES).is_ok());
+        assert!(ensure_max_download_size(MAX_DOWNLOAD_BYTES + 1).is_err());
     }
 }

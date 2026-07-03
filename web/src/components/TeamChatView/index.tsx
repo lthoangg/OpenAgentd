@@ -442,6 +442,13 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     if (isEmptyIdleSession()) return
     abortRef.current?.abort()
     abortRef.current = null
+    // Eagerly delete the current session's draft before beginResolvedSession
+    // resets store.sessionId to null. The InputBar's onValueChange('') effect
+    // fires asynchronously after setValue(''), so by the time it calls
+    // handleDraftValueChange the session id is already gone and the delete
+    // never happens — leaving the old '/new' text to reappear on switch-back.
+    const departingSessionId = useTeamStore.getState().sessionId
+    if (departingSessionId) delete draftBySessionRef.current[departingSessionId]
     inputRef.current?.setValue('')
     inputRef.current?.setFiles([])
     ;(async () => {

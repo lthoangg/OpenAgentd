@@ -4,6 +4,7 @@ import { forwardRef, useEffect, useImperativeHandle } from 'react'
 import { TeamChatView } from '@/components/TeamChatView'
 
 let latestOnValueChange: ((value: string) => void) | undefined
+let latestOnSlashCommand: ((id: string) => void) | undefined
 const setValueMock = mock(() => {})
 const setFilesMock = mock(() => {})
 
@@ -66,18 +67,20 @@ mock.module('@/components/TeamChatView/useTeamCommands', () => ({ useTeamCommand
 mock.module('@/components/FloatingInputBar', () => ({
   FloatingInputBar: forwardRef<
     { setValue: (value: string) => void; setFiles: (files: File[]) => void },
-    { onValueChange?: (value: string) => void }
-  >(function FloatingInputBarMock({ onValueChange }, ref) {
+    { onValueChange?: (value: string) => void; onSlashCommand?: (id: string) => void }
+  >(function FloatingInputBarMock({ onValueChange, onSlashCommand }, ref) {
     useImperativeHandle(ref, () => ({
       setValue: setValueMock,
       setFiles: setFilesMock,
     }))
     useEffect(() => {
       latestOnValueChange = onValueChange
+      latestOnSlashCommand = onSlashCommand
       return () => {
         latestOnValueChange = undefined
+        latestOnSlashCommand = undefined
       }
-    }, [onValueChange])
+    }, [onValueChange, onSlashCommand])
     return null
   }),
 }))
@@ -89,7 +92,8 @@ mock.module('@/stores/useTeamStore', () => {
     loadSession: async () => {},
     sendMessage: async () => {},
     continueTeam: async () => {},
-    beginResolvedSession: () => {},
+    beginResolvedSession: (sessionId: string | null) => { state.sessionId = sessionId },
+    isEmptyIdleSession: () => false,
     consumeResolvedSessionReady: () => false,
     setActiveAgent: () => {},
     setSessionModelSettings: () => {},
@@ -100,7 +104,7 @@ mock.module('@/stores/useTeamStore', () => {
     agentNames: ['lead'],
     isTeamWorking: false,
     isContinuing: false,
-    sessionId: null,
+    sessionId: null as string | null,
     sessionTitle: null,
     sessionModel: null,
     sessionThinkingLevel: null,
@@ -125,9 +129,38 @@ beforeEach(() => {
   setValueMock.mockClear()
   setFilesMock.mockClear()
   latestOnValueChange = undefined
+  latestOnSlashCommand = undefined
 })
 
 describe('TeamChatView session drafts', () => {
+  it('clears the draft of a session after /new so it does not reappear on switch-back', () => {
+    // Regression: handleNewSession called beginResolvedSession(null) which set
+    // store.sessionId=null before the onValueChange('') effect could fire.
+    // handleDraftValueChange bailed early on !currentSessionId, leaving the
+    // '/new' draft stored for the originating session. Switching back restored it.
+    const { rerender } = render(<TeamChatView sessionId="session-a" />)
+
+    // User types '/new' — draft is saved for session-a
+    latestOnValueChange?.('/new')
+
+    // User executes the /new slash command. InputBar calls executeSlashCommand
+    // which: 1) calls setValue('') (InputBar local), 2) calls onSlashCommand('new').
+    // handleNewSession immediately calls beginResolvedSession(null) → sessionId=null.
+    // The onValueChange('') from setValue('') fires AFTER this (useEffect timing).
+    latestOnSlashCommand?.('new')
+
+    // Now simulate the deferred onValueChange('') that InputBar fires via useEffect.
+    // By this point store.sessionId is null because beginResolvedSession ran first.
+    latestOnValueChange?.('')
+
+    // Navigate to new session (what handleNewSession does after resolveTeamSession)
+    rerender(<TeamChatView sessionId="new-session" />)
+
+    // Switch back to session-a — draft must be gone, not '/new'
+    rerender(<TeamChatView sessionId="session-a" />)
+    expect(setValueMock).toHaveBeenLastCalledWith('')
+  })
+
   it('restores the unsent draft when switching back to a previous session', () => {
     const { rerender } = render(<TeamChatView sessionId="session-a" />)
 

@@ -365,6 +365,37 @@ describe("InputBar — shell mode", () => {
     expect(screen.getByLabelText("Shell command input")).toBe(textarea)
   })
 
+  it("enters shell mode when the pasted text replaces an empty draft with a ! command", async () => {
+    const user = userEvent.setup()
+    render(<InputBar onSubmit={() => {}} />)
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+    await user.click(textarea)
+    await user.paste("!make")
+    expect(screen.getByLabelText("Shell command input")).toBe(textarea)
+    expect(textarea.value).toBe("make")
+  })
+
+  it("does not enter shell mode when pasting ! mid-sentence", async () => {
+    const user = userEvent.setup()
+    render(<InputBar onSubmit={() => {}} />)
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+    await user.type(textarea, "hello ")
+    await user.paste("!make")
+    expect(screen.getByLabelText("Message input")).toBe(textarea)
+    expect(textarea.value).toBe("hello !make")
+  })
+
+  it("does not enter shell mode when a ! paste only replaces a partial selection", async () => {
+    render(<InputBar onSubmit={() => {}} />)
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+    const user = userEvent.setup()
+    await user.type(textarea, "hello world")
+    textarea.setSelectionRange(0, 5)
+    await user.paste("!make")
+    expect(screen.getByLabelText("Message input")).toBe(textarea)
+    expect(textarea.value).toBe("!make world")
+  })
+
   it("enters shell mode when an inserted snippet's rendered body starts with !", async () => {
     const user = userEvent.setup()
     render(
@@ -532,6 +563,23 @@ describe("InputBar — ref API", () => {
     render(<InputBar onSubmit={() => {}} ref={ref} />)
     act(() => { ref.current?.focus(); ref.current?.insertText("!") })
     expect(screen.getByLabelText("Shell command input")).toBeTruthy()
+  })
+
+  it("appendValue('!make') on an empty draft triggers shell mode — the FloatingInputBar paste-while-minimized path", () => {
+    const ref = createRef<InputBarHandle>()
+    render(<InputBar onSubmit={() => {}} ref={ref} />)
+    act(() => { ref.current?.appendValue("!make") })
+    const textarea = screen.getByLabelText("Shell command input") as HTMLTextAreaElement
+    expect(textarea.value).toBe("make")
+  })
+
+  it("appendValue('!make') appends literally when the draft already has text", () => {
+    const ref = createRef<InputBarHandle>()
+    render(<InputBar onSubmit={() => {}} ref={ref} />)
+    act(() => { ref.current?.setValue("hello") })
+    act(() => { ref.current?.appendValue("!make") })
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+    expect(textarea.value).toBe("hello !make")
   })
 })
 

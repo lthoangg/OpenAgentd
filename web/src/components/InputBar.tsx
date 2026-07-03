@@ -424,11 +424,19 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       })
     },
     appendValue: (text: string) => {
+      // Mirrors the textarea's own paste handling: appending "!command" to
+      // an empty draft (the FloatingInputBar's paste-while-minimized path
+      // forwards clipboard text here) should land in shell mode with the
+      // bang stripped, not insert a literal "!" into a normal chat message.
+      // Only applies when the draft is empty — a mid-sentence append (e.g.
+      // voice transcript, @mention comment) keeps "!" as plain text.
+      const shouldEnterShellMode = !shellMode && value.length === 0 && text.startsWith('!')
       setValue((prev) => {
+        if (shouldEnterShellMode) return text.slice(1)
         const spacer = prev && !/\s$/.test(prev) ? ' ' : ''
         return `${prev}${spacer}${text}`
       })
-      setShellMode(false)
+      setShellMode(shouldEnterShellMode)
       setHistoryIndex(-1)
       setMentionRange(null)
       setSnippetRange(null)
@@ -626,8 +634,35 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     if (pastedFiles.length > 0) {
       e.preventDefault()
       setFiles((prev) => [...prev, ...pastedFiles])
+      return
     }
-  }, [capabilities])
+
+    // Pasting text starting with "!" so that it replaces the entire current
+    // draft (an empty composer, or existing text fully selected) enters
+    // shell mode with the bang stripped — the same destination the typed
+    // "!" shortcut reaches, just reached in one paste instead of one
+    // keystroke followed by more typing. Unlike the typed shortcut (which
+    // only ever sees a lone "!" and leaves the rest of the command for the
+    // user to type), a paste delivers the whole clipboard text at once, so
+    // everything after the leading "!" becomes the initial shell command.
+    const el = e.currentTarget
+    const text = e.clipboardData?.getData('text/plain') ?? ''
+    const replacesEntireDraft = el.selectionStart === 0 && el.selectionEnd === value.length
+    if (!shellMode && replacesEntireDraft && text.startsWith('!')) {
+      e.preventDefault()
+      const command = text.slice(1)
+      setValue(command)
+      setShellMode(true)
+      setHistoryIndex(-1)
+      setMentionRange(null)
+      setSnippetRange(null)
+      requestAnimationFrame(() => {
+        el.focus()
+        el.setSelectionRange(command.length, command.length)
+        resize()
+      })
+    }
+  }, [capabilities, resize, shellMode, value])
 
   const handleDragEnter = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()

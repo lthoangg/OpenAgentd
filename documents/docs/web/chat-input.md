@@ -101,10 +101,24 @@ only applies when the snippet is inserted into an otherwise-empty composer
 (nothing before or after the `#token`); inserting a shell-flavoured snippet
 mid-sentence keeps the `!` as plain text.
 
+Pasting text starting with `!` also enters shell mode, provided the paste
+replaces the *entire* current draft (empty composer, or existing text fully
+selected) — same "whole-draft" rule as the snippet case above, and the same
+destination the typed `!` shortcut reaches, just arrived at via one paste
+instead of a keystroke plus typing. Everything after the leading `!` becomes
+the initial shell command. This is handled in two places that both end up in
+shell mode the same way: a direct paste into the textarea (`onPaste`), and the
+desktop floating composer's paste-while-minimized forwarding (`⌘V`/`Ctrl+V`
+while collapsed → `appendValue`, see [`InputBarHandle`](#the-inputbarhandle-ref)
+below). Pasting `!` mid-sentence or over a partial selection inserts it as
+plain text.
+
+### The `InputBarHandle` ref
+
 The `InputBarHandle` ref exposes:
 - `focus()` — expand the floating composer when needed, then focus the textarea
 - `setValue(text)` — expand the floating composer when needed, inject text, and trigger height recalculation
-- `appendValue(text)` — append text to the current draft (with a space separator if needed) and recalculate height
+- `appendValue(text)` — append text to the current draft (with a space separator if needed) and recalculate height. If the draft is empty and `text` starts with `!`, enters shell mode with the bang stripped instead of appending it literally (see Shell mode above) — this is how the floating composer's paste-while-minimized path reaches shell mode.
 - `insertText(text)` — insert text at the current caret/selection, used by type-to-focus so the first keypress is not lost
 - `setFiles(files)` — replace the current attachments with the provided files
 - `addFiles(files)` — append the allowed files from the list to the current attachments and expand the composer if minimized

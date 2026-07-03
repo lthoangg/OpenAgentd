@@ -36,6 +36,16 @@ so a snippet authored as a shell command (e.g. `.openagentd/snippets/migration.m
 containing `!make revision MSG="…"`) runs as a shell command instead of being
 sent as a literal chat message starting with `!`.
 
+**Pasting** also enters shell mode: pasting clipboard text that starts with `!`
+so that it replaces the *entire* current draft — an empty composer, or
+existing text fully selected — strips the leading `!` and switches to shell
+mode with the rest of the pasted text as the initial command. This covers both
+a direct paste into the textarea and the desktop floating composer's
+paste-while-minimized path (`⌘V`/`Ctrl+V` while the bar is collapsed, which
+expands the bar and forwards the clipboard text). Pasting `!` mid-sentence, or
+over a partial selection, inserts it as plain text — only a paste that
+replaces the whole draft is treated as a shell-command shortcut.
+
 ## What is saved in history
 
 Shell sends are stored as normal shell-tool history so the UI, replay, and future

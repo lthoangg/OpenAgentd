@@ -185,6 +185,10 @@ class TerminalSession:
     def alive(self) -> bool:
         if self._closed:
             return False
+        # EOF on the master fd means the shell's PTY has closed — the shell
+        # process has exited even if the reap hasn't been collected yet.
+        if self._eof:
+            return False
         if self._proc is not None:
             # Popen.poll() does a WNOHANG waitpid and caches the result —
             # the single source of truth for this child's status, so every

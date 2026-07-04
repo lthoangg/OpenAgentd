@@ -21,7 +21,18 @@ mock.module('@tauri-apps/api/core', () => ({
   invoke: invokeMock,
 }))
 
-const listenMock = mock((...args: unknown[]) => {
+// The broadcast `listen()` from `@tauri-apps/api/event` must NOT be used for
+// `backend-ready` — it registers with `target: { kind: 'Any' }`, which every
+// window's emit matches regardless of which window Rust targeted. Only
+// `getCurrentWebviewWindow().listen(...)` (window-scoped target) should
+// receive it. This mock intentionally does not wire `backend-ready` through
+// the broadcast `listen`, so a regression back to the broadcast API would
+// leave `backendReadyListener` unset and fail the readiness test below.
+const listenMock = mock(() => {
+  return Promise.resolve(() => {})
+})
+
+const windowListenMock = mock((...args: unknown[]) => {
   const event = String(args[0])
   const callback = args[1] as ((event: BackendReadyEvent) => void) | undefined
   if (event === 'backend-ready' && callback) backendReadyListener = callback
@@ -32,6 +43,10 @@ const listenMock = mock((...args: unknown[]) => {
 
 mock.module('@tauri-apps/api/event', () => ({
   listen: listenMock,
+}))
+
+mock.module('@tauri-apps/api/webviewWindow', () => ({
+  getCurrentWebviewWindow: () => ({ listen: windowListenMock }),
 }))
 
 mock.module('@tanstack/react-router', () => ({
@@ -103,6 +118,18 @@ describe('App backend bootstrap', () => {
       expect(window.__OAD_API_BASE_URL__).toBe(TEST_BACKEND_URL)
       expect(window.__OAD_TOKEN__).toBe('ready-token')
     })
+  })
+
+  it('listens for backend-ready on this window only, never via the app-wide broadcast listener', async () => {
+    // Regression guard for the two-window bug: switching window B's backend
+    // must not affect window A. `getCurrentWebviewWindow().listen(...)`
+    // registers a window-scoped target that Tauri's event filter respects;
+    // the generic `listen()` from `@tauri-apps/api/event` registers
+    // `target: { kind: 'Any' }` and would receive every window's emit.
+    render(<App />)
+
+    await waitFor(() => expect(backendReadyListener).not.toBeNull())
+    expect(listenMock).not.toHaveBeenCalledWith('backend-ready', expect.anything())
   })
 
   it('does not finish bootstrap for bundled desktop mode until the sidecar is running', async () => {

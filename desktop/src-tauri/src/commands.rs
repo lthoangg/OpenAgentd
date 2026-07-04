@@ -11,7 +11,7 @@ use crate::config::{
     load_app_backend_config, save_app_backend_config, remove_app_backend_server,
     normalize_external_base_url, normalize_server_name, AppBackendStatus
 };
-use crate::window::{create_app_window, frontend_init_script};
+use crate::window::{create_app_window, frontend_init_script, MAIN_WINDOW};
 use crate::menu::update_tray_status;
 use crate::shutdown_sidecar_now;
 
@@ -237,11 +237,18 @@ pub async fn app_use_external_backend(
         .insert(window.label().to_string(), normalized.clone());
 
     if persist.unwrap_or(true) {
+        // `active_base_url` is only read at startup and applied to the
+        // *main* window (see `start_backend_and_window`), so only activate it
+        // when this switch happened in the main window. Doing so from a
+        // secondary window would silently redirect the main window (and any
+        // future windows) to this window's chosen server on the next app
+        // launch, even though the two windows are meant to be independent.
+        let activate = window.label() == MAIN_WINDOW;
         save_app_backend_config(
             &app,
             Some(&normalized),
             normalize_server_name(name).as_deref(),
-            true,
+            activate,
         )
         .map_err(|e| format!("{e:#}"))?;
     }
@@ -261,8 +268,13 @@ pub async fn app_use_external_backend(
         sidecar_running: bool,
     }
 
+    // Target this window only. A plain `.emit(...)` broadcasts to every
+    // window's JS listeners; `useAppBackendBootstrap` on the frontend applies
+    // whatever `backend-ready` payload it receives, so a broadcast here would
+    // live-redirect every other open window to this window's server.
     window
-        .emit(
+        .emit_to(
+            window.label(),
             "backend-ready",
             BackendReady {
                 port: 0,
@@ -371,13 +383,25 @@ pub async fn app_use_bundled_backend(
         .lock()
         .await
         .remove(window.label());
-    *state.backend_mode.lock().await = BackendMode::Bundled;
-    save_app_backend_config(&app, None, None, true).map_err(|e| format!("{e:#}"))?;
+    // Only clear the persisted `active_base_url` when the *main* window
+    // switched back to bundled — that field is only ever read at startup and
+    // applied to the main window, so clearing it from a secondary window
+    // would silently redirect the main window to the bundled sidecar on the
+    // next app launch. Other windows keep their own state in the per-window
+    // `window_backend_base_urls` map, which is the source of truth while the
+    // app is running.
+    if window.label() == MAIN_WINDOW {
+        save_app_backend_config(&app, None, None, true).map_err(|e| format!("{e:#}"))?;
+    }
     let init_script = frontend_init_script(backend_ready.token.as_deref(), &backend_ready.base_url);
     window
         .eval(&init_script)
         .map_err(|e| format!("inject bundled backend config: {e:#}"))?;
-    window.emit("backend-ready", backend_ready).ok();
+    // Target this window only — see the comment in `app_use_external_backend`
+    // for why a broadcast `.emit(...)` here would affect other open windows.
+    window
+        .emit_to(window.label(), "backend-ready", backend_ready)
+        .ok();
     Ok(())
 }
 

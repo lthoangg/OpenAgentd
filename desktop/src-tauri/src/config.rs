@@ -151,14 +151,19 @@ pub fn load_app_backend_config(app: &AppHandle) -> Result<AppBackendConfig> {
     Ok(config)
 }
 
-pub fn save_app_backend_config(
-    app: &AppHandle,
+/// Mutate `config` in place: upsert `base_url`/`name` into the known-servers
+/// list, and only touch `active_base_url` when `activate` is true.
+///
+/// Pulled out as a pure function (no file I/O, no `AppHandle`) so the
+/// activate/no-activate branching — which is what keeps one window's backend
+/// choice from leaking into another window's persisted startup config — is
+/// unit-testable on its own.
+fn apply_backend_config_update(
+    config: &mut AppBackendConfig,
     base_url: Option<&str>,
     name: Option<&str>,
     activate: bool,
-) -> Result<()> {
-    let path = app_backend_config_path(app)?;
-    let mut config = load_app_backend_config(app).unwrap_or_default();
+) {
     if activate {
         config.active_base_url = base_url.map(str::to_string);
     }
@@ -178,6 +183,17 @@ pub fn save_app_backend_config(
             });
         }
     }
+}
+
+pub fn save_app_backend_config(
+    app: &AppHandle,
+    base_url: Option<&str>,
+    name: Option<&str>,
+    activate: bool,
+) -> Result<()> {
+    let path = app_backend_config_path(app)?;
+    let mut config = load_app_backend_config(app).unwrap_or_default();
+    apply_backend_config_update(&mut config, base_url, name, activate);
     let bytes = serde_json::to_vec_pretty(&config).context("serialize desktop backend config")?;
     std::fs::write(&path, bytes).with_context(|| format!("write {}", path.display()))
 }
@@ -199,4 +215,106 @@ pub fn remove_app_backend_server(app: &AppHandle, base_url: &str) -> Result<()> 
     }
     let bytes = serde_json::to_vec_pretty(&config).context("serialize desktop backend config")?;
     std::fs::write(&path, bytes).with_context(|| format!("write {}", path.display()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── apply_backend_config_update ─────────────────────────────────────────
+    //
+    // `activate` is what keeps a secondary window's backend choice from
+    // leaking into the persisted `active_base_url` that startup applies to
+    // the main window — see the two-window bug this guards against.
+
+    #[test]
+    fn activate_false_leaves_active_base_url_untouched() {
+        let mut config = AppBackendConfig {
+            active_base_url: Some("http://127.0.0.1:4082".to_string()),
+            servers: vec![],
+        };
+
+        apply_backend_config_update(
+            &mut config,
+            Some("http://192.168.1.10:5000"),
+            Some("Window B server"),
+            false,
+        );
+
+        assert_eq!(
+            config.active_base_url.as_deref(),
+            Some("http://127.0.0.1:4082"),
+            "a non-activating save must not change which server is used on next launch"
+        );
+    }
+
+    #[test]
+    fn activate_false_still_records_the_server_in_the_known_list() {
+        let mut config = AppBackendConfig {
+            active_base_url: None,
+            servers: vec![],
+        };
+
+        apply_backend_config_update(
+            &mut config,
+            Some("http://192.168.1.10:5000"),
+            Some("Window B server"),
+            false,
+        );
+
+        assert_eq!(config.servers.len(), 1);
+        assert_eq!(config.servers[0].base_url, "http://192.168.1.10:5000");
+        assert_eq!(config.servers[0].name.as_deref(), Some("Window B server"));
+    }
+
+    #[test]
+    fn activate_true_sets_active_base_url() {
+        let mut config = AppBackendConfig {
+            active_base_url: None,
+            servers: vec![],
+        };
+
+        apply_backend_config_update(&mut config, Some("http://127.0.0.1:9000"), None, true);
+
+        assert_eq!(
+            config.active_base_url.as_deref(),
+            Some("http://127.0.0.1:9000")
+        );
+    }
+
+    #[test]
+    fn activate_true_with_no_base_url_clears_active_base_url() {
+        // Mirrors `app_use_bundled_backend`'s main-window path: switching the
+        // main window back to bundled clears the persisted external URL so
+        // the app doesn't reconnect to it on the next launch.
+        let mut config = AppBackendConfig {
+            active_base_url: Some("http://192.168.1.10:5000".to_string()),
+            servers: vec![],
+        };
+
+        apply_backend_config_update(&mut config, None, None, true);
+
+        assert_eq!(config.active_base_url, None);
+    }
+
+    #[test]
+    fn saving_an_existing_server_updates_its_name_without_duplicating() {
+        let mut config = AppBackendConfig {
+            active_base_url: None,
+            servers: vec![SavedAppServer {
+                base_url: "http://127.0.0.1:4082".to_string(),
+                name: Some("Old name".to_string()),
+            }],
+        };
+
+        apply_backend_config_update(
+            &mut config,
+            Some("http://127.0.0.1:4082"),
+            Some("New name"),
+            false,
+        );
+
+        assert_eq!(config.servers.len(), 1);
+        assert_eq!(config.servers[0].name.as_deref(), Some("New name"));
+    }
 }

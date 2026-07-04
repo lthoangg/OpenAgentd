@@ -144,7 +144,11 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   desktop window instead of globally across all open windows `[v1.66.1]`. On
   macOS, each desktop window now updates its native title to the active coding
   workspace name or cockpit session title so the Dock window list distinguishes
-  open windows `[v1.66.1]`.
+  open windows `[v1.66.1]`. Fixed a bug where switching one window's CLI server
+  could still redirect other open windows onto the same server: the backend
+  now targets its "backend ready" notification at the switching window only,
+  and the frontend listens for it on a per-window channel instead of the
+  app-wide broadcast channel it was previously (incorrectly) using `[v1.99.1]`.
   - **Hold Command + click session to open in new window** `[v1.62.1, v1.64.1]` — in the desktop app, holding `Cmd` (macOS) or `Ctrl/Cmd` (Linux) and clicking a session in either sidebar opens that session directly in a new independent desktop window; failures now surface an in-app error toast instead of silently doing nothing.
 - **Editable session titles** `[v1.27.0]` — double-click a session card or use its
   edit affordance in the sidebar to rename saved sessions.

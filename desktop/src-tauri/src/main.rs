@@ -281,7 +281,14 @@ async fn restart_sidecar_and_reload_window(app: &AppHandle) -> Result<()> {
         .replace(format!("http://127.0.0.1:{}", handshake.port));
     *state.backend_mode.lock().await = BackendMode::Bundled;
     let _ = state.sidecar.lock().await.replace(sidecar);
-    app.emit(
+    // Only notify windows that are actually on the bundled backend. A plain
+    // `app.emit(...)` broadcasts to every window's JS listener, which would
+    // live-redirect windows connected to an external server back onto this
+    // restarted sidecar (the same cross-window contamination as the
+    // `app_use_*_backend` commands — see their comments for the frontend
+    // mechanics).
+    let restarted_windows = external_windows;
+    app.emit_filter(
         "backend-ready",
         BackendReady {
             port: handshake.port,
@@ -289,6 +296,13 @@ async fn restart_sidecar_and_reload_window(app: &AppHandle) -> Result<()> {
             base_url: format!("http://127.0.0.1:{}", handshake.port),
             token: Some(token),
             sidecar_running: true,
+        },
+        |target| match target {
+            tauri::EventTarget::WebviewWindow { label }
+            | tauri::EventTarget::Window { label }
+            | tauri::EventTarget::Webview { label }
+            | tauri::EventTarget::AnyLabel { label } => !restarted_windows.contains_key(label),
+            _ => true,
         },
     )
     .ok();

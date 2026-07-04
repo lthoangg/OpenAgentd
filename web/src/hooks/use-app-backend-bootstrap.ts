@@ -72,16 +72,25 @@ export function useAppBackendBootstrap(): boolean {
       }
     }
 
-    void import('@tauri-apps/api/event').then(({ listen }) => {
+    // Listen scoped to *this* webview window only. The generic `listen()`
+    // from `@tauri-apps/api/event` registers with `target: { kind: 'Any' }`,
+    // which matches every emit regardless of what target the Rust side used
+    // — so a plain `listen('backend-ready', ...)` here would still pick up
+    // another window's backend switch even after the Rust command scopes its
+    // `emit_to`/`emit_filter` call to a specific window. Using
+    // `getCurrentWebviewWindow().listen(...)` registers with this window's
+    // label as the target, which Tauri's event filter actually respects.
+    void import('@tauri-apps/api/webviewWindow').then(({ getCurrentWebviewWindow }) => {
       if (cancelled) return
-      void listen<{ base_url: string; token?: string | null }>('backend-ready', (event) => {
-        if (cancelled || !event.payload.base_url) return
-        applyDesktopBackend(event.payload)
-        finishReady()
-      }).then((unlisten) => {
-        if (cancelled) unlisten()
-        else unlistenBackendReady = unlisten
-      }).catch(() => {})
+      void getCurrentWebviewWindow()
+        .listen<{ base_url: string; token?: string | null }>('backend-ready', (event) => {
+          if (cancelled || !event.payload.base_url) return
+          applyDesktopBackend(event.payload)
+          finishReady()
+        }).then((unlisten) => {
+          if (cancelled) unlisten()
+          else unlistenBackendReady = unlisten
+        }).catch(() => {})
     }).catch(() => {})
 
     void bootstrap()

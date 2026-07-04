@@ -908,11 +908,11 @@ class SummarizationHook(BaseAgentHook):
             last_usage = None
             model_id = getattr(self._llm_provider, "model", None) or self._model_id
             provider_name = getattr(self._llm_provider, "provider_name", None)
-            model_name = model_id
             span.set_attribute("gen_ai.operation.name", "summarization")
             if provider_name:
                 span.set_attribute("gen_ai.provider.name", provider_name)
             if model_id:
+                model_name: str = model_id
                 if ":" in model_id:
                     parsed_provider, _, parsed_model = model_id.partition(":")
                     if not provider_name:

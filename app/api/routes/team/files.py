@@ -581,15 +581,22 @@ async def get_coding_workspace_status(
     dirty_model = CodingWorkspaceStatusDirty(**counts) if counts else None
     head_model = CodingWorkspaceStatusHead(**head) if head else None
 
-    # Count local commits ahead of the tracking remote branch.
-    # ``git rev-list --count HEAD ^@{u}`` fails (non-zero) when no upstream
-    # is configured, in which case we return None so the UI omits the badge.
+    # Count local/remote divergence from the tracking branch.
+    # These ``rev-list`` calls fail (non-zero) when no upstream is configured,
+    # in which case we return None so the UI omits the badges.
     commits_ahead: int | None = None
     ahead_out = await _run_git(resolved, "rev-list", "--count", "HEAD", "^@{u}")
     if ahead_out is not None:
         stripped = ahead_out.strip()
         if stripped.isdigit():
             commits_ahead = int(stripped)
+
+    commits_behind: int | None = None
+    behind_out = await _run_git(resolved, "rev-list", "--count", "@{u}", "^HEAD")
+    if behind_out is not None:
+        stripped = behind_out.strip()
+        if stripped.isdigit():
+            commits_behind = int(stripped)
 
     return CodingWorkspaceStatusResponse(
         workspace=resolved,
@@ -599,6 +606,7 @@ async def get_coding_workspace_status(
         dirty=dirty_model,
         head=head_model,
         commits_ahead=commits_ahead,
+        commits_behind=commits_behind,
     )
 
 

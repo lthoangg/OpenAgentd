@@ -552,6 +552,10 @@ class TestTeamAgentsRouteExtra:
             "# branch.head main\n1 M. N... 100644 100644 100644 a a fileA\n? newfile.txt\n",
             # log -1
             "abc1234\x00fix scroll\x001700000000\n",
+            # rev-list --count HEAD ^@{u}
+            "2\n",
+            # rev-list --count @{u} ^HEAD
+            "1\n",
         ]
 
         def fake_run(*args, **kwargs):
@@ -575,6 +579,8 @@ class TestTeamAgentsRouteExtra:
             "subject": "fix scroll",
             "timestamp": 1700000000,
         }
+        assert body["commits_ahead"] == 2
+        assert body["commits_behind"] == 1
 
 
 # ---------------------------------------------------------------------------

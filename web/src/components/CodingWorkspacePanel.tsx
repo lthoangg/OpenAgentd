@@ -118,10 +118,30 @@ interface CommitDetailProps {
   commitDiffSections: Map<string, DiffFileSection>
   expandedCommitFiles: Set<string>
   setExpandedCommitFiles: React.Dispatch<React.SetStateAction<Set<string>>>
-  mobile: boolean
-  setMobileFileActions: (f: ChangedFileInfo) => void
-  setDesktopFileActions: (actions: { file: ChangedFileInfo; x: number; y: number } | null) => void
 }
+
+function CommitSyncBadge({
+  count,
+  direction,
+}: {
+  count: number
+  direction: 'ahead' | 'behind'
+}) {
+  const isAhead = direction === 'ahead'
+  const noun = count === 1 ? 'commit' : 'commits'
+  return (
+    <span
+      title={`${count} ${isAhead ? `local ${noun} ahead of origin` : `${noun} behind origin`}`}
+      className={cn(
+        'rounded border border-(--color-border-subtle) bg-(--bg-card) px-1 py-0.5 font-mono text-[9px] font-semibold leading-none',
+        isAhead ? 'text-(--color-diff-add-text)' : 'text-(--color-diff-del-text)',
+      )}
+    >
+      {count}{isAhead ? '↑' : '↓'}
+    </span>
+  )
+}
+
 
 function CommitDetail({
   commitDiff,
@@ -365,6 +385,7 @@ export function CodingWorkspacePanel({
   }, [gitHistory.data?.pages])
 
   const commitsAhead = workspaceStatus.data?.commits_ahead ?? null
+  const commitsBehind = workspaceStatus.data?.commits_behind ?? null
 
   const parsedGraphLines = useMemo<ParsedGraphLine[]>(() => {
     if (!graph) return []
@@ -696,12 +717,10 @@ export function CodingWorkspacePanel({
                             ? <span className="inline-flex items-center gap-1">
                                 Commits
                                 {commitsAhead != null && commitsAhead > 0 && (
-                                  <span
-                                    title={`${commitsAhead} local commit${commitsAhead === 1 ? '' : 's'} ahead of origin`}
-                                    className="rounded border border-(--color-border-subtle) bg-(--bg-card) px-1 py-0.5 font-mono text-[9px] font-semibold leading-none text-(--color-diff-add-text)"
-                                  >
-                                    {commitsAhead}↑
-                                  </span>
+                                  <CommitSyncBadge count={commitsAhead} direction="ahead" />
+                                )}
+                                {commitsBehind != null && commitsBehind > 0 && (
+                                  <CommitSyncBadge count={commitsBehind} direction="behind" />
                                 )}
                               </span>
                             : 'Tree'}
@@ -715,9 +734,10 @@ export function CodingWorkspacePanel({
                         <span className="inline-flex items-center gap-1.5">
                           Commits
                           {commitsAhead != null && commitsAhead > 0 && (
-                            <span className="rounded border border-(--color-border-subtle) bg-(--bg-card) px-1 py-0.5 font-mono text-[9px] font-semibold leading-none text-(--color-diff-add-text)">
-                              {commitsAhead}↑
-                            </span>
+                            <CommitSyncBadge count={commitsAhead} direction="ahead" />
+                          )}
+                          {commitsBehind != null && commitsBehind > 0 && (
+                            <CommitSyncBadge count={commitsBehind} direction="behind" />
                           )}
                         </span>
                       </DropdownItem>
@@ -752,12 +772,10 @@ export function CodingWorkspacePanel({
                         <span className="inline-flex items-center justify-center gap-1">
                           Commits
                           {commitsAhead != null && commitsAhead > 0 && (
-                            <span
-                              title={`${commitsAhead} local commit${commitsAhead === 1 ? '' : 's'} ahead of origin`}
-                              className="rounded border border-(--color-border-subtle) bg-(--bg-card) px-1 py-0.5 font-mono text-[9px] font-semibold leading-none text-(--color-diff-add-text)"
-                            >
-                              {commitsAhead}↑
-                            </span>
+                            <CommitSyncBadge count={commitsAhead} direction="ahead" />
+                          )}
+                          {commitsBehind != null && commitsBehind > 0 && (
+                            <CommitSyncBadge count={commitsBehind} direction="behind" />
                           )}
                         </span>
                       </button>

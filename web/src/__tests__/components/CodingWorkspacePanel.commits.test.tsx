@@ -336,28 +336,29 @@ describe('CodingWorkspacePanel – commit actions (undo/revert)', () => {
 
 // ── commits_ahead badge ───────────────────────────────────────────────────────
 
-const statusWithAhead = (ahead: number) => ({
+const statusWithDivergence = (ahead: number | null, behind: number | null) => ({
   workspace: WORKSPACE,
   name: 'project',
   is_git_repo: true,
   branch: 'main',
   commits_ahead: ahead,
+  commits_behind: behind,
 })
 
-function makeFetch(ahead: number | null) {
+function makeFetch(ahead: number | null, behind: number | null = null) {
   return mock(async (input: unknown) => {
     const url = String(input)
     if (url.includes('/workspace/git/history')) return new Response(JSON.stringify(historyResponse))
     if (url.includes('/workspace/git-diff'))    return new Response(JSON.stringify(emptyDiff))
     if (url.includes('/workspace/files/list'))  return new Response(JSON.stringify({ workspace: WORKSPACE, truncated: false, files: [] }))
     if (url.includes('/workspace/git/commit-diff')) return new Response(JSON.stringify({ sha: commitWithBody.sha, diff: '' }))
-    if (url.includes('/workspace/status'))      return new Response(JSON.stringify(ahead !== null ? statusWithAhead(ahead) : { workspace: WORKSPACE, name: 'project', is_git_repo: true, branch: 'main', commits_ahead: null }))
+    if (url.includes('/workspace/status'))      return new Response(JSON.stringify(statusWithDivergence(ahead, behind)))
     return new Response(null, { status: 404 })
   }) as typeof fetch
 }
 
-async function renderWithCommitsSubtab(ahead: number | null) {
-  globalThis.fetch = makeFetch(ahead)
+async function renderWithCommitsSubtab(ahead: number | null, behind: number | null = null) {
+  globalThis.fetch = makeFetch(ahead, behind)
   const { CodingWorkspacePanel } = await import('@/components/CodingWorkspacePanel')
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 
@@ -476,6 +477,24 @@ describe('CodingWorkspacePanel – commits_ahead badge', () => {
     await waitFor(() => {
       const badge = document.querySelector('[title*="ahead of origin"]')
       expect(badge?.getAttribute('title')).toBe('5 local commits ahead of origin')
+    })
+  })
+
+  it('shows both ahead and behind badges when the branch diverged from origin', async () => {
+    await renderWithCommitsSubtab(3, 2)
+
+    await waitFor(() => {
+      expect(screen.getByText((_, el) => el?.tagName === 'SPAN' && el.textContent === '3↑')).toBeTruthy()
+      expect(screen.getByText((_, el) => el?.tagName === 'SPAN' && el.textContent === '2↓')).toBeTruthy()
+    })
+  })
+
+  it('uses origin in the behind badge title', async () => {
+    await renderWithCommitsSubtab(0, 1)
+
+    await waitFor(() => {
+      const badge = document.querySelector('[title="1 commit behind origin"]')
+      expect(badge).toBeTruthy()
     })
   })
 })

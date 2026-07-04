@@ -351,6 +351,11 @@ team against it. Deeper doc: [`web/coding-sessions.md`](./web/coding-sessions.md
     - **Time shown alongside date in commit history** `[v1.92.0]` — the commits
       sub-tab shows a 24-hour `HH:MM` alongside the date so same-day commits
       are distinguishable without expanding each one.
+    - **Ahead/behind origin badges in the Commits sub-tab** `[v1.98.1]` — the
+      workspace dock now shows both local commits waiting to push (`↑`) and
+      remote commits waiting to pull (`↓`) next to **Commits** when the current
+      branch tracks an upstream. When no upstream is configured, both badges are
+      omitted.
 - **Compact coding sidebar** `[v1.61.0]` — single-line session entries with
   status dots and tooltip dates; flattened repository/worktree/session hierarchy
   without nested group labels; scroll-triggered pagination replaces the Load

@@ -103,6 +103,8 @@ export interface WorkspaceStatusResponse {
   head?: { sha: string; subject: string; timestamp: number } | null
   /** Local commits not yet pushed to the tracking remote. null when no upstream. */
   commits_ahead?: number | null
+  /** Remote commits not yet pulled locally. null when no upstream. */
+  commits_behind?: number | null
 }
 
 export interface GitCommit {

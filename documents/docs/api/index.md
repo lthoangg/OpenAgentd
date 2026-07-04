@@ -24,7 +24,7 @@ FastAPI backend running on `:4082`. All routes are served under the `/api` prefi
 | `GET` | `/api/team/workspace/browse` | `CodingWorkspaceBrowseResponse` — browse server-local folders for coding mode |
 | `GET` | `/api/team/workspace/files/list` | `CodingWorkspaceFilesResponse` for a selected coding workspace |
 | `GET` | `/api/team/workspace/git-diff/view` | `CodingWorkspaceGitDiffResponse` for the selected coding workspace |
-| `GET` | `/api/team/workspace/status` | `CodingWorkspaceStatusResponse` — lightweight overview for the coding-mode empty state |
+| `GET` | `/api/team/workspace/status` | `CodingWorkspaceStatusResponse` — lightweight overview for the coding-mode empty state and commit ahead/behind counts |
 | `GET` | `/api/team/workspace/git/history` | `WorkspaceGitHistoryResponse` — recent git commits and branch graph |
 | `GET` | `/api/team/workspace/git/commit-diff` | `WorkspaceCommitDiffResponse` — raw diff of a specific git commit |
 | `POST` | `/api/team/workspace/git/discard` | `DiscardWorkspaceFileResponse` — discard changes for a single file |

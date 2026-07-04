@@ -24,7 +24,7 @@ are fetched on demand from the media proxy (`/media/{path}`).
 
 Normal sessions list the per-session workspace. `/coding` uses **Changed & Files** for the selected project: a changed-files-first list plus the full recursive tree. New folders require a trust confirmation before opening, and `/coding` restores the last active workspace from local browser storage, including workspaces resolved from coding session restores. The coding session list shows a small running indicator on the active session while that turn is streaming. `.git/` and common generated directories (`node_modules`, `dist`, `.venv`, …) are always pruned; everything else defers to root `.gitignore` (including `!`-negation), so dot-trees like `.openagentd/skills/` show up when tracked. Full rules in [`api/index.md`](../api/index.md#workspace-file-listing). Large git diffs are capped and marked as truncated. Selecting a changed file opens the center file viewer; the right workspace sidebar stays list-only.
 
-In coding mode, the chat empty state replaces the default mascot with a `WorkspaceInfoCard` (`web/src/components/WorkspaceInfoCard.tsx`) showing workspace name + path, current git branch, dirty counts, and last commit. Backed by `GET /api/team/workspace/status`; refetched on every new-chat open (component re-mount).
+In coding mode, the chat empty state replaces the default mascot with a `WorkspaceInfoCard` (`web/src/components/WorkspaceInfoCard.tsx`) showing workspace name + path, current git branch, dirty counts, and last commit. The same `GET /api/team/workspace/status` payload also feeds the Commits tab's ahead/behind origin badges; it is refetched on every new-chat open (component re-mount).
 
 ```
 WorkspaceFilesPanel.tsx                (right drawer, w-[min(960px,95vw)])
@@ -228,11 +228,14 @@ with an opencode-style tab strip:
   as a dock tab in **Diff** mode. The endpoint uses `git diff HEAD` (plus an
   untracked-file scan), so changes stay listed whether or not they are staged.
 - **Commits** lists recent git history via `GET /api/team/workspace/git/history`.
-  Each card shows the subject, short SHA, author, date, and branch refs. Clicking
-  a card expands it to reveal (in order): the **commit body** (if present) and the
-  **changed-files diff**. The body is hidden by default and only shown when the
-  card is expanded; clicking the card again collapses both. Only one commit is
-  expanded at a time — opening a second one collapses the previous.
+  Each card shows the subject, short SHA, author, date, and branch refs. The
+  tab label also shows branch divergence from the tracked upstream when present:
+  `↑` for local commits ahead of origin and `↓` for commits still behind origin,
+  both sourced from `GET /api/team/workspace/status`. Clicking a card expands it
+  to reveal (in order): the **commit body** (if present) and the **changed-files
+  diff**. The body is hidden by default and only shown when the card is
+  expanded; clicking the card again collapses both. Only one commit is expanded
+  at a time — opening a second one collapses the previous.
 - **File tabs** open inside the dock. They render the same read-only preview
   content as the standalone file viewer, including the touch-friendly
   **File / Diff** toggle and scoped file diffs.

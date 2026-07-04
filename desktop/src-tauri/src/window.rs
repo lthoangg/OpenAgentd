@@ -53,11 +53,25 @@ pub fn show_main_window(app: &AppHandle) {
 }
 
 pub fn target_webview_window(app: &AppHandle) -> Option<tauri::WebviewWindow> {
+    // Prefer the actually focused webview over the app-global
+    // `active_window_label`. During multi-window reload/bootstrap churn,
+    // focus events can race just enough that the cached active label still
+    // points at another window, which can make reload-driven queries briefly
+    // retarget the wrong backend.
+    if let Some(window) = focused_webview_window(app) {
+        return Some(window);
+    }
     let state: tauri::State<'_, AppState> = app.state();
     let label =
         tauri::async_runtime::block_on(async { state.active_window_label.lock().await.clone() });
     app.get_webview_window(&label)
         .or_else(|| app.get_webview_window(MAIN_WINDOW))
+}
+
+pub fn focused_webview_window(app: &AppHandle) -> Option<tauri::WebviewWindow> {
+    app.webview_windows().into_values().find(|window| {
+        window.is_focused().unwrap_or(false)
+    })
 }
 
 pub fn show_target_window(app: &AppHandle) {
@@ -71,6 +85,9 @@ pub fn show_target_window(app: &AppHandle) {
 }
 
 pub async fn target_webview_window_async(app: &AppHandle) -> Option<tauri::WebviewWindow> {
+    if let Some(window) = focused_webview_window(app) {
+        return Some(window);
+    }
     let state: tauri::State<'_, AppState> = app.state();
     let label = state.active_window_label.lock().await.clone();
     app.get_webview_window(&label)

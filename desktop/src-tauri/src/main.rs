@@ -639,7 +639,7 @@ mod tests {
     use super::*;
     use std::collections::HashMap as StdHashMap;
     use tauri_plugin_dialog::MessageDialogResult;
-    use crate::window::{new_window_init_script, inherited_external_base_url, frontend_init_script};
+    use crate::window::{focused_webview_window, frontend_init_script, inherited_external_base_url, new_window_init_script};
     use crate::updater::{dialog_result_is_accept, format_update_prompt, format_download_progress, validate_install_preconditions};
     use crate::config::AppBackendConfig;
 
@@ -788,6 +788,13 @@ mod tests {
 
         assert!(external.contains_key("main-2"));
         assert!(!external.contains_key(MAIN_WINDOW));
+    }
+
+    #[test]
+    fn focused_webview_window_is_none_without_windows() {
+        let app = tauri::test::mock_app();
+
+        assert!(focused_webview_window(&app.app_handle()).is_none());
     }
 
     #[cfg(not(target_os = "macos"))]

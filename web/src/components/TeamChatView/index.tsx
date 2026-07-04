@@ -28,7 +28,6 @@ import { CodingSidebar } from '../CodingSidebar'
 import { CodingWorkspacePanel } from '../CodingWorkspacePanel'
 import { CodingFileViewerPanel } from '../CodingFileViewerPanel'
 import { WorkspaceFilesPanel } from '../WorkspaceFilesPanel'
-import { TerminalPanel } from '../Terminal/TerminalPanel'
 import { Sidebar } from '../Sidebar'
 import { useTodosQuery } from '@/queries/useTodosQuery'
 import { useProvidersQuery } from '@/queries'
@@ -131,8 +130,8 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const [codingFileViewer, setCodingFileViewer] = useState<WorkspaceFileInfo | null>(null)
   const [codingFileViewerDetached, setCodingFileViewerDetached] = useState(false)
   const [codingFileOpenKey, setCodingFileOpenKey] = useState(0)
+  // Terminal is coding-mode only for now — cockpit mode has no terminal UI.
   const [terminalOpenKey, setTerminalOpenKey] = useState(0)
-  const [showTerminalPanel, setShowTerminalPanel] = useState(false)
   const [codingSidebarCollapsed, setCodingSidebarCollapsed] = useState(true)
   const [openWorkspaceDialogKey, setOpenWorkspaceDialogKey] = useState(0)
   const [showTodos, setShowTodos] = useState(false)
@@ -520,7 +519,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     }
     if (toClose.has('todos')) setShowTodos(false)
     if (toClose.has('files')) setShowFilesPanel(false)
-    if (toClose.has('terminal')) setShowTerminalPanel(false)
     const ui = useUIStore.getState()
     if (toClose.has('scheduler')) ui.closeScheduler()
     if (toClose.has('capabilities')) ui.closeAgentCapabilities()
@@ -901,23 +899,15 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     })
   }, [closeOtherMobileOverlays, sessionIdState])
 
-  // Open (or focus) a terminal — app-wide.
-  // Coding: ensures the workspace panel is visible, then bumps the key so
-  // CodingWorkspacePanel focuses/opens its terminal tab (cwd = project).
-  // Cockpit: opens the TerminalPanel (cwd = per-session workspace on the
-  // server, derived from the session id).
+  // Open (or focus) a terminal — coding mode only for now. Ensures the
+  // workspace panel is visible, then bumps the key so CodingWorkspacePanel
+  // focuses/opens its terminal tab (cwd = project). Cockpit mode has no
+  // terminal UI (kept simple; may return later behind its own entry point).
   const handleOpenTerminal = useCallback(() => {
-    if (mode === 'coding') {
-      if (!workspace) return
-      setCodingPanel((prev) => prev ?? 'files')
-      setTerminalOpenKey((k) => k + 1)
-      return
-    }
-    if (!sessionIdState) return
-    setShowTerminalPanel(true)
-    closeOtherMobileOverlays('terminal')
+    if (mode !== 'coding' || !workspace) return
+    setCodingPanel((prev) => prev ?? 'files')
     setTerminalOpenKey((k) => k + 1)
-  }, [mode, workspace, sessionIdState, closeOtherMobileOverlays])
+  }, [mode, workspace])
 
   const commands = useTeamCommands({
     viewMode,
@@ -928,10 +918,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     handleCodingSidebarToggle,
     mode,
     handleNewSession,
-    handleOpenTerminal:
-      (mode === 'coding' && workspace) || (mode !== 'coding' && sessionIdState)
-        ? handleOpenTerminal
-        : undefined,
+    handleOpenTerminal: mode === 'coding' && workspace ? handleOpenTerminal : undefined,
     navigate,
   })
   const paletteCommands = commands
@@ -1320,16 +1307,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             open={showFilesPanel}
             sessionId={sessionIdState}
             onClose={() => setShowFilesPanel(false)}
-          />
-        )}
-        {/* Cockpit terminal panel — sessions survive closing it (they live
-            in useTerminalStore and are idle-reaped after 15 min). */}
-        {mode !== 'coding' && sessionIdState && (
-          <TerminalPanel
-            open={showTerminalPanel}
-            sessionId={sessionIdState}
-            openKey={terminalOpenKey}
-            onClose={() => setShowTerminalPanel(false)}
           />
         )}
         {mode === 'coding' && workspace && codingFileViewer !== null && codingFileViewerDetached && codingPanel === null && (

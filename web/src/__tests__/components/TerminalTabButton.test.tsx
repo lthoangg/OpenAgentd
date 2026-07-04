@@ -1,6 +1,5 @@
 /**
- * TerminalTabButton — shared tab chip for terminal sessions (used by both
- * CodingWorkspacePanel and the cockpit TerminalPanel).
+ * TerminalTabButton — tab chip for terminal sessions in CodingWorkspacePanel.
  *
  * Desktop: right-click opens a small menu (Rename / Close).
  * Mobile: long-press opens the same choice as an action sheet.

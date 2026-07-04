@@ -18,7 +18,6 @@ export type MobileOverlay =
   | 'coding-panel'
   | 'todos'
   | 'files'
-  | 'terminal'
   | 'scheduler'
   | 'capabilities'
   | 'palette'
@@ -30,7 +29,6 @@ const ALL_OVERLAYS: MobileOverlay[] = [
   ...DRAWER_OVERLAYS,
   'todos',
   'files',
-  'terminal',
   'scheduler',
   'capabilities',
   'palette',

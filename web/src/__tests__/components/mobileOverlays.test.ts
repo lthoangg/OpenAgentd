@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test'
 import { overlaysToClose, type MobileOverlay } from '@/components/TeamChatView/mobileOverlays'
 
 const ALL: MobileOverlay[] = [
-  'sidebar', 'actions', 'coding-panel', 'todos', 'files', 'terminal', 'scheduler', 'capabilities', 'palette',
+  'sidebar', 'actions', 'coding-panel', 'todos', 'files', 'scheduler', 'capabilities', 'palette',
 ]
 const DRAWERS: MobileOverlay[] = ['sidebar', 'actions', 'coding-panel']
 

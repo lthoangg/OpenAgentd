@@ -115,6 +115,19 @@ describe('useMobileViewportGuards', () => {
     expect(document.documentElement.style.getPropertyValue('--app-vt')).toBe('24px')
   })
 
+  it('pins the shell at top while the keyboard is open', () => {
+    const vv = installVisualViewport(800, 0)
+    renderHook(() => useMobileViewportGuards())
+
+    vv.height = 460
+    vv.emit('resize')
+    vv.offsetTop = 24
+    vv.emit('scroll')
+
+    expect(document.documentElement.hasAttribute('data-keyboard-open')).toBe(true)
+    expect(document.documentElement.style.getPropertyValue('--app-vt')).toBe('0px')
+  })
+
   it('dismissKeyboard blurs, snaps to full height, and eases the glide', () => {
     const vv = installVisualViewport(460, 0) // keyboard up
     renderHook(() => useMobileViewportGuards())

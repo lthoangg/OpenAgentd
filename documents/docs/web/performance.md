@@ -81,6 +81,14 @@ reflow (syntax highlighting, image load). Intentional user upward scroll
 is detected via `onWheel` (desktop) and `onTouchMove` (mobile) — NOT from
 the `scroll` event alone, which fires for programmatic scrolls too.
 
+On mobile with the virtual keyboard open, `ResizeObserver` must ignore
+scrollport-only height changes that come from `visualViewport` movement.
+Those resize events can fire while the user is manually dragging the chat;
+forcing `scrollTop = scrollHeight` on them makes the transcript fight the
+finger and flicker the scrollbar. Auto-stick still runs when the content
+itself grows, so streaming/reflow stays pinned without hijacking manual
+keyboard-time scrolling.
+
 ### Scroll-to-top pagination
 
 When the user scrolls within `LOAD_OLDER_THRESHOLD` (300 px) of the top,

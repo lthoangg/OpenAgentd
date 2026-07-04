@@ -175,6 +175,7 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   now detected via `onWheel` / `onTouchMove` only. `AgentPane` gains a
   `ResizeObserver` so content reflow (markdown, images, syntax highlight) also
   re-sticks correctly.
+- **Mobile keyboard viewport guardrails** `[v1.99.1]` — virtual-keyboard detection now uses the pre-keyboard layout height, the mobile shell stays pinned instead of following `visualViewport.offsetTop`, and chat auto-stick ignores keyboard-only scrollport resizes so manual transcript scrolling no longer flickers on iOS/WebViews. See [`web/mobile.md`](./web/mobile.md) and [`web/performance.md`](./web/performance.md#agentview-scroll-and-pagination).
 - **Tool-call inspector** `[since v1.0]` — every tool call expands to show
   arguments, status, results, and inline Git-like diffs for file edits. Read
   results and file-change diffs keep line numbers visible while scrolling

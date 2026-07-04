@@ -1,9 +1,13 @@
-import { describe, it, expect, afterEach, mock } from "bun:test"
+import { describe, it, expect, afterEach, beforeEach, mock } from "bun:test"
 import { act, render, cleanup } from "@testing-library/react"
 import { AgentView } from "@/components/AgentView"
 import type { ContentBlock } from "@/api/types"
 
 afterEach(cleanup)
+
+beforeEach(() => {
+  document.documentElement.removeAttribute("data-keyboard-open")
+})
 
 mock.module("lucide-react", () => new Proxy({}, { get: () => () => null }))
 
@@ -217,6 +221,7 @@ describe("AgentView — scroll-to-bottom button", () => {
       globalThis.ResizeObserver = originalResizeObserver
     }
   })
+
 
   it("does not detach on trailing scroll events after programmatic smooth scroll ends (due to scroll-up prevention)", async () => {
     const { container } = renderStream({ blocks: [makeTextBlock("b1", "Hi")] })

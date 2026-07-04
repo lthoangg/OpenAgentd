@@ -105,7 +105,11 @@ export function useMobileViewportGuards() {
       const height = vv ? vv.height : window.innerHeight
       const top = vv ? vv.offsetTop : 0
       root.style.setProperty('--app-vh', `${Math.round(height)}px`)
-      root.style.setProperty('--app-vt', `${Math.round(top)}px`)
+      // Keep the shell anchored at y=0 while the keyboard is open. Following
+      // visualViewport.offsetTop during keyboard-driven scroll/overscroll makes
+      // the whole app translate under the user's finger, which shows up as
+      // scrollbar flicker and laggy scroll on iOS WebViews.
+      root.style.setProperty('--app-vt', `${Math.round(keyboardOpen ? 0 : top)}px`)
       // Detect keyboard occlusion relative to the shell's baseline layout
       // height captured before the keyboard opens. On some mobile WebViews,
       // `window.innerHeight` also shrinks with the keyboard, so comparing the

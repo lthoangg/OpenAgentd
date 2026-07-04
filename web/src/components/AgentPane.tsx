@@ -468,13 +468,26 @@ export function AgentPane({
     if (scrollRef.current) scrollRef.current.scrollTop = 0
   }, [isEmpty])
 
-  // ResizeObserver: when attached and content grows or viewport resizes, scroll to bottom.
+  // ResizeObserver: when attached and content grows, keep the stream pinned to
+  // the bottom. Skip scrollport-height changes while the keyboard is open — on
+  // mobile those fire every frame during manual chat scrolling, and forcing
+  // scrollTop there fights the user's gesture and flickers the scrollbar.
   useEffect(() => {
     const el = scrollRef.current
     const content = contentRef.current
     if (!el || !content || typeof ResizeObserver === 'undefined') return
-    const ro = new ResizeObserver(() => {
+    let lastContentHeight = content.getBoundingClientRect().height
+    let lastClientHeight = el.clientHeight
+    const ro = new ResizeObserver((entries) => {
       if (!attachedRef.current) return
+      const nextContentHeight = content.getBoundingClientRect().height
+      const nextClientHeight = el.clientHeight
+      const contentGrew = nextContentHeight > lastContentHeight
+      const viewportChanged = nextClientHeight !== lastClientHeight
+      const contentChanged = entries.some((entry) => entry.target === content)
+      lastContentHeight = nextContentHeight
+      lastClientHeight = nextClientHeight
+      if (document.documentElement.hasAttribute('data-keyboard-open') && viewportChanged && !contentGrew && !contentChanged) return
       el.scrollTop = el.scrollHeight
     })
     ro.observe(content)

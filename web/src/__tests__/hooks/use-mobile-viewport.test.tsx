@@ -94,6 +94,19 @@ describe('useMobileViewportGuards', () => {
     expect(root.hasAttribute('data-keyboard-open')).toBe(false)
   })
 
+  it('still flags keyboard-open when innerHeight shrinks with the keyboard', () => {
+    const vv = installVisualViewport(800, 0)
+    renderHook(() => useMobileViewportGuards())
+    const root = document.documentElement
+
+    Object.defineProperty(window, 'innerHeight', { value: 460, configurable: true, writable: true })
+    vv.height = 460
+    vv.emit('resize')
+
+    expect(root.style.getPropertyValue('--app-vh')).toBe('460px')
+    expect(root.hasAttribute('data-keyboard-open')).toBe(true)
+  })
+
   it('tracks offsetTop on scroll for the pinned/scrolled case', () => {
     const vv = installVisualViewport(800, 0)
     renderHook(() => useMobileViewportGuards())

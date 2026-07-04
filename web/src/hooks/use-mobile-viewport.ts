@@ -100,17 +100,17 @@ export function useMobileViewportGuards() {
     //              no expensive content reflow.
     //   --app-vt → visual viewport offsetTop, for the rare scrolled/zoomed case.
     let keyboardOpen = false
+    const baselineLayoutHeight = window.innerHeight
     const applyViewport = () => {
       const height = vv ? vv.height : window.innerHeight
       const top = vv ? vv.offsetTop : 0
       root.style.setProperty('--app-vh', `${Math.round(height)}px`)
       root.style.setProperty('--app-vt', `${Math.round(top)}px`)
-      // Occlusion = layout viewport minus the visible region below the top
-      // offset. A meaningful occlusion means the soft keyboard is up. We flip a
-      // root attribute (not a CSS var) so `pb-safe` can drop the home-indicator
-      // inset while the keyboard covers it — otherwise `env(safe-area-inset-
-      // bottom)` wastes a strip of space above the keyboard.
-      const occlusion = window.innerHeight - (height + top)
+      // Detect keyboard occlusion relative to the shell's baseline layout
+      // height captured before the keyboard opens. On some mobile WebViews,
+      // `window.innerHeight` also shrinks with the keyboard, so comparing the
+      // live values would collapse to ~0 and miss the keyboard entirely.
+      const occlusion = baselineLayoutHeight - (height + top)
       const nextOpen = occlusion > 80
       if (nextOpen !== keyboardOpen) {
         keyboardOpen = nextOpen

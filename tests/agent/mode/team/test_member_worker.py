@@ -231,6 +231,46 @@ class TestOnDemandActivation:
         assert captured["summary_provider"] is override_provider
         assert captured["summary_model"] == "googlegenai:gemini-3.1-flash-lite"
 
+    async def test_lead_run_receives_session_model_override(self, monkeypatch):
+        session_uuid = uuid7()
+        session_id = str(session_uuid)
+        session_row = ChatSession(
+            id=session_uuid,
+            title="s",
+            model="googlegenai:gemini-3.1-flash-lite",
+        )
+        db_factory = _make_mock_db_factory_with_session(session_row)
+        default_provider = MockTeamProvider("default")
+        override_provider = MockTeamProvider("override")
+        captured: dict[str, object] = {}
+
+        async def fake_run(*_args, **kwargs):
+            captured["llm_provider"] = kwargs.get("llm_provider")
+            captured["model_id"] = kwargs.get("model_id")
+            return []
+
+        def provider_factory(model: str, model_kwargs=None):
+            captured["factory_model"] = model
+            return override_provider
+
+        lead = TeamLead(
+            Agent(name="lead", llm_provider=default_provider), db_factory=db_factory
+        )
+        lead.session_id = session_id
+        team = AgentTeam(
+            lead=lead, provider_factory=provider_factory, db_factory=db_factory
+        )
+        lead.register(team)
+        monkeypatch.setattr(lead.agent, "run", fake_run)
+
+        await lead._handle_messages(force_compaction=True)
+
+        assert captured == {
+            "factory_model": "googlegenai:gemini-3.1-flash-lite",
+            "llm_provider": override_provider,
+            "model_id": "googlegenai:gemini-3.1-flash-lite",
+        }
+
     async def test_worker_activates_on_inbox_message(self, team_with_db):
         """Worker activates when a message arrives in inbox."""
         team = team_with_db

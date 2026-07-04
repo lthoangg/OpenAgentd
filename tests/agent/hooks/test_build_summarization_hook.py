@@ -40,6 +40,7 @@ def test_builds_hook_with_module_defaults(mock_provider):
     assert result._keep_last_assistants == DEFAULT_KEEP_LAST_ASSISTANTS
     assert result._max_token_length == DEFAULT_MAX_TOKEN_LENGTH
     assert result._summary_prompt == CHAT_SUMMARY_PROMPT
+    assert result._model_id is None
     # default_provider is reused — no separate summariser model resolution.
     assert result._llm_provider is mock_provider
 
@@ -96,6 +97,7 @@ def test_builds_hook_with_model_threshold(mock_provider):
     result = build_summarization_hook(mock_provider, model_id="openai:gpt-realtime-2")
 
     assert result is not None
+    assert result._model_id == "openai:gpt-realtime-2"
     # gpt-realtime-2 has 32k context; 80% = 25600
     assert result._prompt_token_threshold == int(
         32000 * PROMPT_TOKEN_THRESHOLD_CONTEXT_RATIO

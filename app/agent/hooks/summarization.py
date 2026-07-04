@@ -396,6 +396,7 @@ def build_summarization_hook(
     return SummarizationHook(
         default_provider,
         summary_prompt=prompt_for_mode(mode),
+        model_id=model_id,
         prompt_token_threshold=resolve_prompt_token_threshold(
             model_id, custom_threshold
         ),
@@ -450,6 +451,7 @@ class SummarizationHook(BaseAgentHook):
         llm_provider: LLMProviderBase,
         summary_prompt: str,
         *,
+        model_id: str | None = None,
         prompt_token_threshold: int = DEFAULT_PROMPT_TOKEN_THRESHOLD,
         keep_last_assistants: int = DEFAULT_KEEP_LAST_ASSISTANTS,
         max_token_length: int = DEFAULT_MAX_TOKEN_LENGTH,
@@ -463,6 +465,7 @@ class SummarizationHook(BaseAgentHook):
                 "CODING_SUMMARY_PROMPT) or use build_summarization_hook()."
             )
         self._llm_provider = llm_provider
+        self._model_id = model_id
         self._prompt_token_threshold = prompt_token_threshold
         self._keep_last_assistants = keep_last_assistants
         self._summary_prompt = summary_prompt
@@ -903,15 +906,20 @@ class SummarizationHook(BaseAgentHook):
         ) as span:
             t0 = time.monotonic()
             last_usage = None
-            model_id = getattr(self._llm_provider, "model", None)
+            model_id = getattr(self._llm_provider, "model", None) or self._model_id
             provider_name = getattr(self._llm_provider, "provider_name", None)
+            model_name = model_id
             span.set_attribute("gen_ai.operation.name", "summarization")
             if provider_name:
                 span.set_attribute("gen_ai.provider.name", provider_name)
             if model_id:
-                span.set_attribute("gen_ai.request.model", model_id)
-                if not provider_name and ":" in model_id:
-                    provider_name, _, _ = model_id.partition(":")
+                if ":" in model_id:
+                    parsed_provider, _, parsed_model = model_id.partition(":")
+                    if not provider_name:
+                        provider_name = parsed_provider
+                    model_name = parsed_model or model_id
+                span.set_attribute("gen_ai.request.model", model_name)
+                if provider_name:
                     span.set_attribute("gen_ai.provider.name", provider_name)
             try:
                 # No explicit prompt_cache_key: the main chat/coding turns rely

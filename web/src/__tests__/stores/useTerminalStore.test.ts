@@ -15,7 +15,7 @@ interface FakeTerm {
   dispose: ReturnType<typeof mock>
   focus: ReturnType<typeof mock>
   onData: ReturnType<typeof mock>
-  options: { theme?: unknown }
+  options: { theme?: unknown; fontFamily?: string }
   rows: number
   cols: number
   element?: HTMLElement
@@ -38,11 +38,12 @@ function makeFakeTerm(): FakeTerm {
 }
 
 mock.module('@/components/Terminal/xterm-instance', () => ({
-  createXterm: mock(() => {
+  createXterm: mock(((options: { fontFamily: string }) => {
     const term = makeFakeTerm()
+    term.options.fontFamily = options.fontFamily
     createdTerms.push(term)
     return { term, fit: { fit: mock(() => {}) } }
-  }),
+  }) as (...args: unknown[]) => unknown),
 }))
 
 interface FakeSocket {
@@ -192,6 +193,25 @@ describe('useTerminalStore', () => {
     const lightBg = (createdTerms[0].options.theme as { background: string }).background
     s.syncTheme('dark')
     expect((createdTerms[0].options.theme as { background: string }).background).not.toBe(lightBg)
+  })
+
+  it('syncFont swaps the xterm fontFamily on every live session', async () => {
+    const s = useTerminalStore.getState()
+    s.open({ workspace: '/tmp/ws' }, '/tmp/ws')
+    s.open({ sessionId: 'sid-1' }, 'session:sid-1')
+    await flush()
+    s.syncFont('MesloLGS NF')
+    for (const t of createdTerms) {
+      expect(t.options.fontFamily).toContain('"MesloLGS NF"')
+    }
+  })
+
+  it('a newly opened terminal picks up the last-synced font', async () => {
+    const s = useTerminalStore.getState()
+    s.syncFont('Hack Nerd Font')
+    s.open({ workspace: '/tmp/ws' }, '/tmp/ws')
+    await flush()
+    expect(createdTerms[0].options.fontFamily).toContain('"Hack Nerd Font"')
   })
 
   it('reconnect() replaces a dead session in place', async () => {

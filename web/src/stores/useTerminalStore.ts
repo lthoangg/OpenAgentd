@@ -30,6 +30,7 @@ import { connectTerminal, type TerminalSocket, type TerminalTarget } from '@/api
 import { createXterm, type XtermHandle } from '@/components/Terminal/xterm-instance'
 import { TERMINAL_THEMES, type TerminalResolvedTheme } from '@/components/Terminal/terminal-themes'
 import { readStoredPreference, resolveTheme } from '@/lib/theme'
+import { buildTerminalFontFamily, readStoredTerminalFont } from '@/lib/terminal-font'
 
 export const TERMINAL_IDLE_CLOSE_MS = 15 * 60 * 1000
 const REAPER_TICK_MS = 60 * 1000
@@ -62,6 +63,7 @@ const runtimes = new Map<string, TerminalRuntime>()
 let nextOrder = 0
 let reaperTimer: ReturnType<typeof setInterval> | null = null
 let currentTheme: TerminalResolvedTheme = resolveTheme(readStoredPreference())
+let currentFontFamily: string = buildTerminalFontFamily(readStoredTerminalFont())
 
 export function getTerminalRuntime(id: string): TerminalRuntime | undefined {
   return runtimes.get(id)
@@ -86,6 +88,8 @@ interface TerminalStore {
   rename: (id: string, title: string) => void
   /** Swap every live terminal's palette when the app theme resolves anew. */
   syncTheme: (theme: TerminalResolvedTheme) => void
+  /** Swap every live terminal's font stack (Settings → Terminal font change). */
+  syncFont: (customFont: string | null) => void
   /** Close detached sessions idle past TERMINAL_IDLE_CLOSE_MS. */
   reapIdle: (now?: number) => void
   sessionsForContext: (contextKey: string) => TerminalSessionMeta[]
@@ -136,7 +140,7 @@ function connect(
   const rt = runtimes.get(id)
   if (!rt) return
   if (rt.handle === null) {
-    rt.handle = createXterm({ theme: currentTheme, fontSize: 13 })
+    rt.handle = createXterm({ theme: currentTheme, fontSize: 13, fontFamily: currentFontFamily })
   }
   const { term } = rt.handle
 
@@ -308,6 +312,13 @@ export const useTerminalStore = create<TerminalStore>()((set, get) => ({
     currentTheme = theme
     for (const rt of runtimes.values()) {
       if (rt.handle) rt.handle.term.options.theme = TERMINAL_THEMES[theme]
+    }
+  },
+
+  syncFont: (customFont) => {
+    currentFontFamily = buildTerminalFontFamily(customFont)
+    for (const rt of runtimes.values()) {
+      if (rt.handle) rt.handle.term.options.fontFamily = currentFontFamily
     }
   },
 

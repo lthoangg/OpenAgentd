@@ -25,6 +25,7 @@ export type SettingsSection =
   | 'summarization'
   | 'title-generation'
   | 'notifications'
+  | 'terminal'
 
 interface SettingsStore {
   open: boolean

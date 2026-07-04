@@ -17,6 +17,7 @@ import {
   Plug,
   Shield,
   Sparkles,
+  TerminalSquare,
   Type,
   Wrench,
   X,
@@ -49,13 +50,14 @@ import { MultimodalSettingsPage } from '@/routes/settings.multimodal'
 import { SummarizationSettingsPage } from '@/routes/settings.summarization'
 import { TitleGenerationSettingsPage } from '@/routes/settings.title-generation'
 import { NotificationSettingsPage } from '@/routes/settings.notifications'
+import { TerminalSettingsPage } from '@/routes/settings.terminal'
 
 // ── Sidebar ───────────────────────────────────────────────────────────────
 
 /** Sections that map directly to a top-level sidebar entry. */
 type TopLevelSection = Extract<
   SettingsSection,
-  'agents' | 'skills' | 'mcp' | 'providers' | 'sandbox' | 'multimodal' | 'summarization' | 'title-generation' | 'notifications' | 'about'
+  'agents' | 'skills' | 'mcp' | 'providers' | 'sandbox' | 'multimodal' | 'summarization' | 'title-generation' | 'notifications' | 'terminal' | 'about'
 >
 
 interface SidebarItem {
@@ -143,6 +145,7 @@ function ModalSidebar({ section, onSelect }: { section: SettingsSection; onSelec
     { section: 'summarization',    label: 'Summarization',    icon: AlignLeft },
     { section: 'title-generation', label: 'Title generation', icon: Type },
     { section: 'notifications',    label: 'Notifications',    icon: Bell },
+    { section: 'terminal',         label: 'Terminal',         icon: TerminalSquare },
   ]
 
   const aboutItems: SidebarItem[] = [
@@ -176,7 +179,8 @@ function MobileTabBar({ section, onSelect }: { section: SettingsSection; onSelec
     baseActive === 'multimodal' ||
     baseActive === 'summarization' ||
     baseActive === 'title-generation' ||
-    baseActive === 'notifications'
+    baseActive === 'notifications' ||
+    baseActive === 'terminal'
   ) ? 'about' : baseActive
   const items: SidebarItem[] = [
     { section: 'agents', label: 'Agents', icon: Wrench },
@@ -285,6 +289,7 @@ function SectionContent({ section, selectedName, setSection }: {
     case 'summarization':    return <SummarizationSettingsPage />
     case 'title-generation': return <TitleGenerationSettingsPage />
     case 'notifications':    return <NotificationSettingsPage />
+    case 'terminal':         return <TerminalSettingsPage />
     case 'about':
     default:                 return <SettingsHubPage />
   }
@@ -314,6 +319,7 @@ function getBreadcrumbs(section: SettingsSection, selectedName: string | null): 
       summarization: 'Summarization',
       'title-generation': 'Title Generation',
       notifications: 'Notifications',
+      terminal: 'Terminal',
       about: 'About',
     }
     parts.push(mapping[section] || section)
@@ -345,14 +351,16 @@ export function SettingsModal() {
     section === 'multimodal' ||
     section === 'summarization' ||
     section === 'title-generation' ||
-    section === 'notifications'
+    section === 'notifications' ||
+    section === 'terminal'
 
   const mobileBackSection =
     section === 'sandbox' ||
     section === 'multimodal' ||
     section === 'summarization' ||
     section === 'title-generation' ||
-    section === 'notifications'
+    section === 'notifications' ||
+    section === 'terminal'
       ? 'about'
       : parentSection(section)
 

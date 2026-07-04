@@ -33,6 +33,7 @@ mock.module('@/routes/settings.multimodal', () => ({ MultimodalSettingsPage: () 
 mock.module('@/routes/settings.summarization', () => ({ SummarizationSettingsPage: () => <div>summarization</div> }))
 mock.module('@/routes/settings.title-generation', () => ({ TitleGenerationSettingsPage: () => <div>title-gen</div> }))
 mock.module('@/routes/settings.notifications', () => ({ NotificationSettingsPage: () => <div>notifications</div> }))
+mock.module('@/routes/settings.terminal', () => ({ TerminalSettingsPage: () => <div>terminal</div> }))
 
 import { SettingsModal } from '@/components/SettingsModal'
 import { useSettingsStore } from '@/stores/useSettingsStore'

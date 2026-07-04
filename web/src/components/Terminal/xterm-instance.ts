@@ -24,19 +24,22 @@ export interface XtermHandle {
 export function createXterm(options: {
   theme: TerminalResolvedTheme
   fontSize: number
+  /**
+   * Full CSS font-family stack — build with
+   * `buildTerminalFontFamily()` (see `lib/terminal-font.ts`). Nerd-Font-
+   * first: users running Powerlevel10k / Starship / oh-my-zsh themes
+   * almost certainly have one installed locally (p10k's own
+   * recommendation is MesloLGS NF), and a user-supplied exact font name
+   * (Settings → Terminal) is layered in front of the guess stack —
+   * that has to be manual rather than auto-detected (browsers don't
+   * expose the OS's installed font list). Plain JetBrains Mono remains
+   * the fallback for everyone else.
+   */
+  fontFamily: string
 }): XtermHandle {
   const term = new Terminal({
     cursorBlink: true,
-    // Nerd-Font-first stack: users running Powerlevel10k / Starship /
-    // oh-my-zsh themes almost certainly have one of these installed
-    // locally (p10k's own recommendation is MesloLGS NF). WebViews can
-    // use locally-installed fonts, so preferring them renders powerline
-    // separators and devicons correctly; plain JetBrains Mono remains
-    // the fallback for everyone else.
-    fontFamily:
-      '"MesloLGS NF", "JetBrainsMono Nerd Font", "JetBrainsMono NF", ' +
-      '"Hack Nerd Font", "FiraCode Nerd Font", "Symbols Nerd Font Mono", ' +
-      '"JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace',
+    fontFamily: options.fontFamily,
     fontSize: options.fontSize,
     theme: TERMINAL_THEMES[options.theme],
     allowProposedApi: true,

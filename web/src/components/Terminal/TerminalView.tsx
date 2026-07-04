@@ -17,6 +17,12 @@
  * `useThemePreference`; the store swaps every session's palette so hidden
  * terminals wake up already matching.
  *
+ * Font: follows the user's custom terminal font (Settings → Terminal,
+ * `lib/terminal-font.ts`) live — a change there dispatches
+ * `oa-terminal-font-change`, which this view forwards to
+ * `useTerminalStore.syncFont` so every session (including ones not
+ * currently attached) picks up the new stack immediately.
+ *
  * `data-swipe-ignore` opts the surface out of mobile edge-swipe so
  * xterm owns its own touches (scrollback, selection).
  */
@@ -26,6 +32,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useThemePreference } from '@/hooks/useThemePreference'
 import { mediumHapticFeedback } from '@/lib/haptics'
+import { onTerminalFontChange, readStoredTerminalFont } from '@/lib/terminal-font'
 import { getTerminalRuntime, useTerminalStore } from '@/stores/useTerminalStore'
 import { TerminalActionSheet } from './TerminalActionSheet'
 import { TerminalKeyBar } from './TerminalKeyBar'
@@ -57,6 +64,16 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
   useEffect(() => {
     useTerminalStore.getState().syncTheme(resolved)
   }, [resolved])
+
+  // Keep every live terminal's font in sync with the user's Settings →
+  // Terminal preference — both on mount (in case it changed while this
+  // view wasn't rendered) and live while it's open.
+  useEffect(() => {
+    useTerminalStore.getState().syncFont(readStoredTerminalFont())
+    return onTerminalFontChange(() => {
+      useTerminalStore.getState().syncFont(readStoredTerminalFont())
+    })
+  }, [])
 
   // Sticky-Ctrl transform: single a–z letter → control code (0x01–0x1a).
   // Registered on the store so it applies to keystrokes from xterm's own

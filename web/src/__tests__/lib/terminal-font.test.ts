@@ -23,6 +23,9 @@ afterEach(() => {
   localStorage.removeItem(TERMINAL_FONT_STORAGE_KEY)
 })
 
+/** The CSS family name declared in our bundled @font-face block. */
+const BUNDLED_ICONS_FAMILY = 'Symbols Nerd Font Mono'
+
 describe('buildTerminalFontFamily', () => {
   it('puts a custom font first, quoted, ahead of the Nerd Font fallback stack', () => {
     const stack = buildTerminalFontFamily('MesloLGS NF')
@@ -52,6 +55,47 @@ describe('buildTerminalFontFamily', () => {
 
   it('ignores a blank/whitespace-only custom font', () => {
     expect(buildTerminalFontFamily('   ')).toBe(buildTerminalFontFamily(null))
+  })
+
+  // ── Bundled icons-only font fallback (mobile fix) ──────────────────────────
+
+  it('always includes the bundled Nerd Font icons family in the stack', () => {
+    // With no custom font — bundled fallback must be present
+    expect(buildTerminalFontFamily(null)).toContain(`"${BUNDLED_ICONS_FAMILY}"`)
+    // With a custom font — bundled fallback still present
+    expect(buildTerminalFontFamily('MesloLGS NF')).toContain(`"${BUNDLED_ICONS_FAMILY}"`)
+  })
+
+  it('places the bundled icons family before the generic monospace tail', () => {
+    const stack = buildTerminalFontFamily(null)
+    const bundledIdx = stack.indexOf(`"${BUNDLED_ICONS_FAMILY}"`)
+    const tailIdx = stack.indexOf('ui-monospace')
+    expect(bundledIdx).toBeGreaterThan(-1)
+    expect(tailIdx).toBeGreaterThan(-1)
+    expect(bundledIdx).toBeLessThan(tailIdx)
+  })
+
+  it('places the bundled icons family after the guess stack entries', () => {
+    const stack = buildTerminalFontFamily(null)
+    // JetBrains Mono Variable is the last entry in GUESS_STACK
+    const lastGuessIdx = stack.indexOf('"JetBrains Mono Variable"')
+    const bundledIdx = stack.indexOf(`"${BUNDLED_ICONS_FAMILY}"`)
+    expect(lastGuessIdx).toBeGreaterThan(-1)
+    expect(bundledIdx).toBeGreaterThan(lastGuessIdx)
+  })
+
+  it('does not duplicate the bundled family when the user sets it as their custom font', () => {
+    const stack = buildTerminalFontFamily(BUNDLED_ICONS_FAMILY)
+    const occurrences = stack.split(`"${BUNDLED_ICONS_FAMILY}"`).length - 1
+    expect(occurrences).toBe(1)
+  })
+
+  it('does not duplicate the bundled family when it appears in the guess stack', () => {
+    // Symbols Nerd Font Mono is already in GUESS_STACK — the bundled fallback
+    // logic must not add a second copy.
+    const stack = buildTerminalFontFamily(null)
+    const occurrences = stack.split(`"${BUNDLED_ICONS_FAMILY}"`).length - 1
+    expect(occurrences).toBe(1)
   })
 })
 

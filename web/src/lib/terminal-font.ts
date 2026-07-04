@@ -32,9 +32,23 @@ const GUESS_STACK = [
   'JetBrainsMono NF',
   'Hack Nerd Font',
   'FiraCode Nerd Font',
-  'Symbols Nerd Font Mono',
   'JetBrains Mono Variable',
 ] as const
+
+/**
+ * The CSS family name of our bundled icons-only Nerd Font (Symbols Nerd Font
+ * Mono, OFL-1.1). Declared via @font-face in assets/fonts/nerd-font-icons.css
+ * with unicode-range scoping so it's fetched lazily only when a PUA icon
+ * glyph is actually needed.
+ *
+ * This is the mobile fix: on iOS/Android WebViews the OS never exposes
+ * installed fonts to the webview, so every GUESS_STACK entry fails and PUA
+ * glyphs (p10k/Starship folder, git, branch icons) render as boxes. The
+ * bundled family guarantees working icon glyphs on every platform without
+ * requiring any user action. On desktop it sits after the guess stack so any
+ * real installed Nerd Font still wins.
+ */
+const BUNDLED_ICONS_FAMILY = 'Symbols Nerd Font Mono'
 
 const GENERIC_TAIL = 'ui-monospace, SFMono-Regular, Menlo, monospace'
 
@@ -43,18 +57,38 @@ function quote(fontName: string): string {
 }
 
 /**
- * Build the CSS `font-family` value xterm.js should use: the user's custom
- * font (if any and non-blank) first, then the built-in guess stack (minus
- * a duplicate if the custom font matches one of the guesses), then generic
- * monospace fallbacks.
+ * Build the CSS `font-family` value xterm.js should use.
+ *
+ * Stack order (highest → lowest priority):
+ *   1. User's custom font (if set in Settings → Terminal) — desktop precision path.
+ *   2. GUESS_STACK — common Nerd Font family names; resolves on desktop if installed.
+ *   3. BUNDLED_ICONS_FAMILY — our bundled Symbols Nerd Font Mono (@font-face,
+ *      unicode-range scoped to PUA icon blocks). Always resolves; guarantees
+ *      working p10k/Starship icon glyphs on mobile where no OS font is visible.
+ *   4. GENERIC_TAIL — ui-monospace et al.; last-resort text fallback.
+ *
+ * Dedup: if the custom font or a guess matches BUNDLED_ICONS_FAMILY by name,
+ * the bundled entry is dropped from its dedicated position (it's already present
+ * earlier in the stack).
  */
 export function buildTerminalFontFamily(customFont: string | null): string {
   const trimmed = customFont?.trim()
+
+  // Remove the custom font from the guess stack if it duplicates an entry.
   const guesses = trimmed
     ? GUESS_STACK.filter((name) => name.toLowerCase() !== trimmed.toLowerCase())
     : GUESS_STACK
+
   const names = trimmed ? [trimmed, ...guesses] : [...guesses]
-  return [...names.map(quote), GENERIC_TAIL].join(', ')
+
+  // Append the bundled icons fallback after the guess stack unless it's already
+  // present (because the user typed it as their custom font, or it remains in a
+  // future guess stack update).
+  const namesLower = names.map((n) => n.toLowerCase())
+  const bundledAlreadyPresent = namesLower.includes(BUNDLED_ICONS_FAMILY.toLowerCase())
+  const allNames = bundledAlreadyPresent ? names : [...names, BUNDLED_ICONS_FAMILY]
+
+  return [...allNames.map(quote), GENERIC_TAIL].join(', ')
 }
 
 function isBlank(value: string | null): value is null {

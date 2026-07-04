@@ -1,0 +1,64 @@
+/*
+ * Symbols Nerd Font Mono — icons-only subset, bundled as a mobile fallback.
+ *
+ * Why this exists:
+ *   On iOS/Android WebViews the OS font surface is never exposed to the
+ *   webview, so any font name the user types in Settings (or any entry in
+ *   the GUESS_STACK in terminal-font.ts) fails to resolve on mobile —
+ *   leaving Powerlevel10k / Starship PUA icon glyphs as missing-glyph boxes.
+ *   This @font-face provides a guaranteed fallback for those codepoints on
+ *   every platform without requiring the user to do anything.
+ *
+ * Design decisions:
+ *   - unicode-range restricted to the PUA / icon ranges only, so the .woff2
+ *     is only fetched when an icon glyph is actually needed (lazy / on-demand).
+ *     Users who never render p10k/Starship prompts pay zero network cost.
+ *   - font-display: swap — renders with the next font in the stack immediately,
+ *     swaps in once the woff2 loads. Correct for a terminal prompt where
+ *     missing boxes are worse than a brief reflow.
+ *   - Positioned after the user's custom/guess fonts in the CSS font stack
+ *     (see buildTerminalFontFamily in terminal-font.ts) so real installed
+ *     Nerd Fonts on desktop still take precedence — this is a safety net, not
+ *     an override.
+ *   - Curated subset (259 KB): common Powerline / Devicons / p10k ranges.
+ *     Excludes the huge SPUA-A Material Design Icons block (U+F0001–U+F1AF0)
+ *     which would push the file over the 500 KB pre-commit limit.
+ *
+ * License: SIL OFL 1.1 — see OFL.txt alongside this file.
+ * Source: https://github.com/ryanoasis/nerd-fonts (SymbolsNerdFontMono-Regular)
+ */
+@font-face {
+  font-family: "Symbols Nerd Font Mono";
+  src: url("./SymbolsNerdFontMono-Regular.woff2") format("woff2");
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+  /*
+   * Restrict to Nerd Font icon codepoint ranges only:
+   *   U+23FB–23FE  IEC Power Symbols
+   *   U+2665–26A1  Misc symbols (hearts, suits, power, arrows used by powerline)
+   *   U+2B58       Heavy circle (powerline)
+   *   U+E000–E00A  Custom / Powerline private use
+   *   U+E0A0–E0D7  Powerline Extra / branch/lock/line-number glyphs
+   *   U+E200–E3E3  Weather / FontAwesome subsets
+   *   U+E5FA–E8EF  Seti-UI, Devicons, file-type icons
+   *   U+EA60–EC1E  Codicons, Material Design (common subset)
+   *   U+ED00–F381  MDI, FontLinux, Octicons, Pomicons, Font Awesome
+   *   U+F400–F533  Octicons extended, Font Awesome brands
+   *
+   * Each sub-range loads lazily — the browser only fetches the woff2 once it
+   * encounters a glyph in one of these blocks, so sessions without p10k/Starship
+   * prompts never download the file.
+   */
+  unicode-range:
+    U+23FB-23FE,
+    U+2665-26A1,
+    U+2B58,
+    U+E000-E00A,
+    U+E0A0-E0D7,
+    U+E200-E3E3,
+    U+E5FA-E8EF,
+    U+EA60-EC1E,
+    U+ED00-F381,
+    U+F400-F533;
+}

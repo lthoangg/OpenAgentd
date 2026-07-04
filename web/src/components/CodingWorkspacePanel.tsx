@@ -122,6 +122,9 @@ interface CommitDetailProps {
   commitDiffSections: Map<string, DiffFileSection>
   expandedCommitFiles: Set<string>
   setExpandedCommitFiles: React.Dispatch<React.SetStateAction<Set<string>>>
+  mobile?: boolean
+  setMobileFileActions: React.Dispatch<React.SetStateAction<ChangedFileInfo | null>>
+  setDesktopFileActions: React.Dispatch<React.SetStateAction<{ file: ChangedFileInfo; x: number; y: number } | null>>
 }
 
 function CommitSyncBadge({
@@ -153,7 +156,7 @@ function CommitDetail({
   commitDiffSections,
   expandedCommitFiles,
   setExpandedCommitFiles,
-  mobile,
+  mobile = false,
   setMobileFileActions,
   setDesktopFileActions,
 }: CommitDetailProps) {

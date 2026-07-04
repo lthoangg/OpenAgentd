@@ -401,6 +401,18 @@ team against it. Deeper doc: [`web/coding-sessions.md`](./web/coding-sessions.md
   `*** Add File:`, `*** Update File:`, `*** Delete File:`, and `*** Move to:`
   operations; the full format spec is embedded in the tool's schema so the
   LLM always has it in context.
+- **Interactive terminal tab** `[v1.98.1]` — a real PTY shell (backend
+  `subprocess.Popen` + `pty.openpty()`, streamed over WebSocket to an
+  xterm.js instance) attached to the coding workspace panel, alongside
+  Changes/Commits/file tabs. Coding-mode only — there is no cockpit-mode
+  terminal. The session survives tab switches (detached PTYs idle-close
+  after 15 minutes of no input; the backend reaper is the 30-minute
+  backstop). Terminal font defaults to a best-guess Nerd Font stack
+  (MesloLGS NF and similar) for correct Powerlevel10k/Starship glyph
+  rendering; Settings → Terminal lets you type the exact name of any
+  Nerd Font already installed on your machine (browsers can't enumerate
+  installed fonts) and verifies it resolves via the Font Loading API
+  before applying it live to every open terminal.
 - **Workspace status card** `[v1.18.0]` — empty coding sessions show the
   workspace path, branch, dirty state, last commit instead of the old
   agent-selection fallback.

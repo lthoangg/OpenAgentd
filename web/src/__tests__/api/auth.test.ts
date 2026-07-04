@@ -87,16 +87,49 @@ function spyFetch(): {
 beforeEach(() => {
   // Wipe any token from a prior test.
   delete (window as { __OAD_TOKEN__?: string }).__OAD_TOKEN__
+  window.localStorage.clear()
 })
 
 afterEach(() => {
   restoreGlobals()
   delete (window as { __OAD_TOKEN__?: string }).__OAD_TOKEN__
+  window.localStorage.clear()
 })
 
 // ════════════════════════════════════════════════════════════════════════════
 //  installDesktopAuth — gating
 // ════════════════════════════════════════════════════════════════════════════
+describe("access key storage", () => {
+  it("stores and retrieves access keys per backend origin", async () => {
+    const auth = await freshAuth()
+
+    auth.setAccessKey('alpha', 'http://127.0.0.1:4082')
+    auth.setAccessKey('beta', 'http://192.168.1.20:4082')
+
+    expect(auth.getAccessKey('http://127.0.0.1:4082')).toBe('alpha')
+    expect(auth.getAccessKey('http://192.168.1.20:4082')).toBe('beta')
+    expect(auth.getAccessKey('http://127.0.0.1:4999')).toBeUndefined()
+  })
+
+  it("falls back to the legacy global key when no per-backend key exists", async () => {
+    window.localStorage.setItem('openagentd.accessKey', 'legacy-secret')
+    const auth = await freshAuth()
+
+    expect(auth.getAccessKey('http://127.0.0.1:4082')).toBe('legacy-secret')
+  })
+
+  it("removes only the targeted backend key when cleared", async () => {
+    const auth = await freshAuth()
+
+    auth.setAccessKey('alpha', 'http://127.0.0.1:4082')
+    auth.setAccessKey('beta', 'http://192.168.1.20:4082')
+    auth.setAccessKey('', 'http://127.0.0.1:4082')
+
+    expect(auth.getAccessKey('http://127.0.0.1:4082')).toBeUndefined()
+    expect(auth.getAccessKey('http://192.168.1.20:4082')).toBe('beta')
+  })
+})
+
 describe("installDesktopAuth — no token", () => {
   it("is a no-op when __OAD_TOKEN__ is not set", async () => {
     const { fn, calls } = spyFetch()

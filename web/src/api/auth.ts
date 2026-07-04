@@ -30,26 +30,57 @@ declare global {
 
 const TOKEN_KEY = '__OAD_TOKEN__'
 const ACCESS_KEY_STORAGE = 'openagentd.accessKey'
+const ACCESS_KEY_STORAGE_PREFIX = 'openagentd.accessKey:'
 
-export function getAccessKey(): string | undefined {
+function normalizeAccessKeyScope(baseUrl: string | undefined): string | null {
+  const trimmed = baseUrl?.trim()
+  if (!trimmed) return null
+  try {
+    const parsed = new URL(trimmed, window.location.origin)
+    return parsed.origin
+  } catch {
+    return null
+  }
+}
+
+function accessKeyStorageKey(baseUrl: string | undefined): string | null {
+  const scope = normalizeAccessKeyScope(baseUrl)
+  return scope ? `${ACCESS_KEY_STORAGE_PREFIX}${scope}` : null
+}
+
+export function getAccessKey(baseUrl?: string): string | undefined {
   if (typeof window === 'undefined') return undefined
+  const scopedKey = accessKeyStorageKey(baseUrl)
+  if (scopedKey) {
+    const scoped = window.localStorage.getItem(scopedKey)
+    if (scoped) return scoped
+  }
   return window.localStorage.getItem(ACCESS_KEY_STORAGE) || undefined
 }
 
 function getToken(): string | undefined {
   if (typeof window === 'undefined') return undefined
-  return window[TOKEN_KEY] || getAccessKey() || undefined
+  return window[TOKEN_KEY] || getAccessKey(apiBaseUrl()) || undefined
 }
 
-export function setAccessKey(key: string): void {
+export function setAccessKey(key: string, baseUrl?: string): void {
   if (typeof window === 'undefined') return
   const trimmed = key.trim()
+  const scopedKey = accessKeyStorageKey(baseUrl)
   if (trimmed) {
-    window.localStorage.setItem(ACCESS_KEY_STORAGE, trimmed)
+    if (scopedKey) {
+      window.localStorage.setItem(scopedKey, trimmed)
+    } else {
+      window.localStorage.setItem(ACCESS_KEY_STORAGE, trimmed)
+    }
     installDesktopAuth()
-  } else {
-    window.localStorage.removeItem(ACCESS_KEY_STORAGE)
+    return
   }
+  if (scopedKey) {
+    window.localStorage.removeItem(scopedKey)
+    return
+  }
+  window.localStorage.removeItem(ACCESS_KEY_STORAGE)
 }
 
 /**

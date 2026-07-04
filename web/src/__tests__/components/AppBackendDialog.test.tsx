@@ -376,7 +376,7 @@ describe('AppBackendDialog', () => {
     })
   })
 
-  it('stores the typed access key before invoking a connect command', async () => {
+  it('stores the typed access key under the target backend before invoking a connect command', async () => {
     const user = userEvent.setup()
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
@@ -385,7 +385,8 @@ describe('AppBackendDialog', () => {
     await user.click(screen.getByRole('button', { name: 'Connect' }))
 
     await waitFor(() => expect(window.__OAD_API_BASE_URL__).toBe('http://127.0.0.1:4082'))
-    expect(window.localStorage.getItem('openagentd.accessKey')).toBe('secret')
+    expect(window.localStorage.getItem('openagentd.accessKey:http://127.0.0.1:4082')).toBe('secret')
+    expect(window.localStorage.getItem('openagentd.accessKey')).toBeNull()
   })
 
   it('shows a local-specific failure message for localhost URLs', async () => {

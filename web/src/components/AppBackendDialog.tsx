@@ -84,13 +84,13 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
         setError(connectionFailureMessage(target))
         return
       }
-      const keyForConnect = accessKey.trim() || getAccessKey() || ''
+      const keyForConnect = accessKey.trim() || getAccessKey(target) || ''
       const authorized = await checkServerAuth(target, keyForConnect)
       if (!authorized) {
         setError('Server is reachable, but the access key is invalid or missing.')
         return
       }
-      if (accessKey.trim()) setAccessKey(accessKey)
+      if (accessKey.trim()) setAccessKey(accessKey, target)
       const next = await switchToExternalAppBackend(target, nextName, persist)
       setApiBaseUrl(next.base_url)
       const nextBaseUrl = normalizeServerBaseUrl(next.base_url)
@@ -356,7 +356,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
                   value={accessKey}
                   onChange={(event) => {
                     setAccessKeyInput(event.target.value)
-                    setAccessKey(event.target.value)
+                    setAccessKey(event.target.value, normalizeServerBaseUrl(baseUrl || status?.base_url || apiBaseUrl().replace(/\/api$/, '')))
                   }}
                   placeholder="Required when server was started with --key"
                   type="password"

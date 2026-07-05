@@ -39,6 +39,10 @@
 |---|---|
 | ![Command palette overlay for fast navigation and actions](documents/assets/readme/command-palette.png) | ![Composer switched into shell mode with a direct command ready to run](documents/assets/readme/shell-mode-input.png) |
 
+| Git commit tree | Terminal tab |
+|---|---|
+| ![Git history tree inside the coding workspace changes dock](documents/assets/readme/git-tree.png) | ![Interactive terminal tab running inside the coding workspace](documents/assets/readme/terminal-emulator.png) |
+
 | Session settings | Image lightbox |
 |---|---|
 | ![Session settings panel for per-chat model and thinking overrides](documents/assets/readme/session-settings.png) | ![Full-screen image lightbox for reviewing generated or attached media](documents/assets/readme/image-lightbox.png) |
@@ -46,6 +50,10 @@
 | Todos board | MCP settings |
 |---|---|
 | ![Live todos panel with assignments, priorities, and progress states](documents/assets/readme/todos-panel.png) | ![MCP settings page for adding and managing external tool servers](documents/assets/readme/settings-mcp.png) |
+
+| Mobile backend settings | Mobile coding view |
+|---|---|
+| ![Mobile backend connection settings for choosing and checking a remote OpenAgentd server](documents/assets/readme/AppBackendSetting.jpeg) | ![Mobile coding view with transcript, input composer, and token meter](documents/assets/readme/CodingViewWithTokenMeter.jpeg) |
 
 
 ---
@@ -58,11 +66,11 @@ A short list of the most important shipped capabilities. The canonical, version-
 
 **Run a team, not just one agent.** A lead agent can spawn specialist instances on demand, coordinate them through an async mailbox, and manage what tools, skills, or MCP servers each member can use. You can watch lead and worker sessions side by side in the split cockpit, follow each agent's output live, collapse back to a unified chronological transcript, or open multiple desktop windows when one conversation is not enough.
 
-**Use it as a coding cockpit.** Coding mode opens any local project folder with a workspace-aware team, a repo tree, live git changes, file previews, and an interactive terminal tab in one place. Create isolated git worktree sessions from the UI, inspect staged/unstaged diffs in the right-side dock, open `@file` mentions directly into the preview panel, and jump into shell mode without leaving the composer. After an agent edits code, OpenAgentd runs the project's own language servers over the change and feeds diagnostics back into the tool result so the next turn can fix them immediately.
+**Use it as a coding cockpit.** Coding mode opens any local project folder with a workspace-aware team, a repo tree, live git changes, commit history/tree views, file previews, and an interactive terminal tab in one place. Create isolated git worktree sessions from the UI, inspect staged/unstaged diffs in the right-side dock, browse recent commits and branch structure, open `@file` mentions directly into the preview panel, and jump into shell mode without leaving the composer. After an agent edits code, OpenAgentd runs the project's own language servers over the change and feeds diagnostics back into the tool result so the next turn can fix them immediately.
 
 **Pick your model, no lock-in.** OpenAgentd ships with 15 first-class providers — Anthropic, Gemini, OpenAI, OpenRouter, Bedrock, Grok, DeepSeek, Ollama, and more — while keeping the config format simple: `provider:model`. Manage provider connections from Settings, choose which models stay visible in pickers, and override the lead model or thinking level per session from Session Settings. Assistant replies keep the effective model in history so overrides stay auditable.
 
-**Desktop + mobile clients.** The main experience is the desktop cockpit on macOS and Linux, and there is also a Tauri mobile app that connects to a remote OpenAgentd server over LAN or the internet. Mobile uses the same shared UI, adapted for touch, safe areas, and single-pane navigation.
+**Desktop + mobile clients.** The main experience is the desktop cockpit on macOS and Linux, and there is also a Tauri mobile app that connects to a remote OpenAgentd server over LAN or the internet. Mobile uses the same shared UI, adapted for touch, safe areas, backend switching, and single-pane navigation, including coding sessions on a phone-sized screen.
 
 **Operate locally, extend when needed.** Scheduled tasks support cron, interval, and one-shot runs; todos stay on a live board; telemetry stays on your machine; MCP servers hot-reload from Settings; and sandbox rules plus permission decisions are managed without editing hidden app internals by hand.
 

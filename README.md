@@ -9,7 +9,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![React 19](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)](https://react.dev/)
 
-**The desktop cockpit for local AI agents.** A double-click app that runs a team of AI agents on your machine, with a real UI to watch every step. Persistent memory, 15 providers, your keys. Open source.
+**The desktop cockpit for local AI agents.** A double-click app that runs a team of AI agents on your machine, with a real UI to watch every step. Multiple windows, coding workspaces, git worktrees, scheduled tasks, local telemetry, and your own keys. Open source.
 
 [Features](https://github.com/lthoangg/openagentd/blob/main/documents/docs/features.md) · [Issues / roadmap](https://github.com/lthoangg/OpenAgentd/issues) · [Documentation](https://github.com/lthoangg/openagentd/blob/main/documents/docs/index.md) · [Migration](https://github.com/lthoangg/openagentd/blob/main/MIGRATION.md)
 
@@ -19,17 +19,34 @@
 
 ## Screenshots
 
-| Home | Coding workspace |
+| Home | Split team cockpit |
 |---|---|
-| ![OpenAgentd home screen with active agent session](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/screenshots/homepage.png) | ![Coding mode with chat, files, and diff sidebars](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/screenshots/coding-screen-with-2sidebars.png) |
+| ![OpenAgentd dark home screen with active chat and left navigation](documents/assets/readme/home-dark.png) | ![Split cockpit view with lead and worker agents running side by side](documents/assets/readme/cockpit-split-view.png) |
 
-| Agents settings | Sandbox settings |
+| Coding workspace | Diff inspector |
 |---|---|
-| ![Settings page for configuring lead and member agents](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/screenshots/settings-agents.png) | ![Settings page for filesystem sandbox and permission controls](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/screenshots/settings-sandbox.png) |
+| ![Coding workspace with repo tree, chat, files, and diff dock](documents/assets/readme/coding-workspace.png) | ![Inline diff view showing file changes and diagnostics in coding mode](documents/assets/readme/coding-diff-view.png) |
 
-| Voice input | Telemetry dashboard |
+| Providers settings | Sandbox settings |
 |---|---|
-| ![Chat input with client-side voice transcription](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/screenshots/homepage.png) | ![Telemetry dashboard with traces, tokens, and latency](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/screenshots/telemetry.png) |
+| ![Providers settings page with configured model backends and keys](documents/assets/readme/settings-providers.png) | ![Sandbox settings page with filesystem rules and permission controls](documents/assets/readme/settings-sandbox.png) |
+
+| Scheduler | Telemetry dashboard |
+|---|---|
+| ![Scheduler panel listing recurring and one-shot tasks](documents/assets/readme/scheduler.png) | ![Telemetry summary dashboard with traces, tokens, and latency breakdowns](documents/assets/readme/telemetry-summary.png) |
+
+| Command palette | Shell mode |
+|---|---|
+| ![Command palette overlay for fast navigation and actions](documents/assets/readme/command-palette.png) | ![Composer switched into shell mode with a direct command ready to run](documents/assets/readme/shell-mode-input.png) |
+
+| Session settings | Image lightbox |
+|---|---|
+| ![Session settings panel for per-chat model and thinking overrides](documents/assets/readme/session-settings.png) | ![Full-screen image lightbox for reviewing generated or attached media](documents/assets/readme/image-lightbox.png) |
+
+| Todos board | MCP settings |
+|---|---|
+| ![Live todos panel with assignments, priorities, and progress states](documents/assets/readme/todos-panel.png) | ![MCP settings page for adding and managing external tool servers](documents/assets/readme/settings-mcp.png) |
+
 
 ---
 
@@ -37,20 +54,17 @@
 
 A short list of the most important shipped capabilities. The canonical, version-cited catalogue is [`documents/docs/features.md`](https://github.com/lthoangg/openagentd/blob/main/documents/docs/features.md); other feature requests and future work live in [GitHub issues](https://github.com/lthoangg/OpenAgentd/issues).
 
-**A cockpit, not a chat box.** Command palette (⌘P/Ctrl+P), slash commands (`/init`, `/continue`, `/compact`, `/undo`, `/redo`), opencode-style shell sends (`!git status`), drag-and-drop files, full-screen image viewer, and an inspector that shows every tool call and what came back, including inline Git-like diffs for file edits.
+**A cockpit, not a chat box.** OpenAgentd gives you the missing UI around tool-using agents: command palette (⌘P/Ctrl+P), slash commands (`/init`, `/continue`, `/compact`, `/undo`, `/redo`), direct shell sends with `!command`, drag-and-drop attachments, a shared lightbox for generated and uploaded media, and a tool inspector that exposes arguments, status, timing, results, and inline Git-like diffs.
 
-![Tool call inspector — arguments, execution status, and results](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/tool-call-inspector.png)
+**Run a team, not just one agent.** A lead agent can spawn specialist instances on demand, coordinate them through an async mailbox, and manage what tools, skills, or MCP servers each member can use. You can watch lead and worker sessions side by side in the split cockpit, follow each agent's output live, collapse back to a unified chronological transcript, or open multiple desktop windows when one conversation is not enough.
 
-**Run a team, not just one agent.** A lead agent spawns specialist instances on demand (`executor#1`, `executor#2`, ...), coordinates through an async mailbox, and can grant/revoke member tools, skills, or MCP servers at runtime. Watch live agents in the default split view, resume interrupted work with `/continue`, or switch to a single unified view.
+**Use it as a coding cockpit.** Coding mode opens any local project folder with a workspace-aware team, a repo tree, live git changes, file previews, and an interactive terminal tab in one place. Create isolated git worktree sessions from the UI, inspect staged/unstaged diffs in the right-side dock, open `@file` mentions directly into the preview panel, and jump into shell mode without leaving the composer. After an agent edits code, OpenAgentd runs the project's own language servers over the change and feeds diagnostics back into the tool result so the next turn can fix them immediately.
 
-**Use it as a coding cockpit.** Coding mode ships with a workspace-aware team (`coding/openagentd`, `coding/coder`, `coding/explorer`) that can inspect a local codebase, make changes, run checks, and keep files/diffs visible while it works. A resizable right-side dock shows changed files with diff badges and opens file previews inline; clicking `@file` mentions opens the referenced file in the dock. Create git worktrees from the repository tree to start isolated coding sessions, rename sidebar titles, then remove OpenAgentd-managed worktrees from the UI when they are no longer needed. Type `!` in the composer to switch into shell-command mode and run commands directly without asking the model first. Type `@` in the composer to reference any workspace file or folder — the selected file's content (or a directory listing) is injected as hidden context so the model can act on it immediately without a separate `read` tool call; images and binary files produce a reference hint instead. After the agent writes or edits a file, OpenAgentd runs the project's own language servers over the change (matched from `pyproject.toml` / `Cargo.toml` / `package.json` — e.g. `ty` + `ruff` for Python, `rust-analyzer`, `typescript-language-server`) and feeds any errors/warnings straight back into the tool result, so the agent fixes them on the next turn — shown as a compact diagnostics strip under the diff.
+**Pick your model, no lock-in.** OpenAgentd ships with 15 first-class providers — Anthropic, Gemini, OpenAI, OpenRouter, Bedrock, Grok, DeepSeek, Ollama, and more — while keeping the config format simple: `provider:model`. Manage provider connections from Settings, choose which models stay visible in pickers, and override the lead model or thinking level per session from Session Settings. Assistant replies keep the effective model in history so overrides stay auditable.
 
-![Unified team view — lead and specialist agents visible together](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/team-unified.png)
+**Desktop + mobile clients.** The main experience is the desktop cockpit on macOS and Linux, and there is also a Tauri mobile app that connects to a remote OpenAgentd server over LAN or the internet. Mobile uses the same shared UI, adapted for touch, safe areas, and single-pane navigation.
 
-**Pick your model, no lock-in.** 15 providers — Anthropic, Gemini, OpenAI, OpenRouter, Bedrock, Grok, DeepSeek, Ollama, and more. Switch with one line in your agent config, or override the lead model/thinking level per session from Session Settings.
-Assistant replies show the effective model that generated them, so per-session overrides stay visible in history.
-
-**Local-first operations.** Voice input uses your browser or OS speech recognizer without backend audio transcription, scheduled tasks run on cron/interval/one-shot timers, todos update a live board, and the telemetry dashboard stays local with no third-party SaaS.
+**Operate locally, extend when needed.** Scheduled tasks support cron, interval, and one-shot runs; todos stay on a live board; telemetry stays on your machine; MCP servers hot-reload from Settings; and sandbox rules plus permission decisions are managed without editing hidden app internals by hand.
 
 ---
 
@@ -60,7 +74,7 @@ Coding agents (Claude Code, Codex CLI, Cursor, Windsurf, Aider, opencode) all ru
 
 |                            | **openagentd**                              | **Claude Code**             | **Codex CLI**         | **Cursor / Windsurf**     |
 |----------------------------|---------------------------------------------|-----------------------------|-----------------------|---------------------------|
-| **Surface**                | Desktop app + web cockpit                   | Terminal (CLI)              | Terminal (CLI)        | IDE (VS Code fork)        |
+| **Surface**                | Desktop app + mobile app + web cockpit      | Terminal (CLI)              | Terminal (CLI)        | IDE (VS Code fork)        |
 | **Multi-agent**            | Lead + workers, split-pane live view        | Sub-agents (sequential)     | —                     | —                         |
 | **Watch live**             | Tool inspector + diffs + per-call timing    | Terminal text               | Terminal text         | Inline in editor          |
 | **Direct shell from input**| `!command` shell mode + structured history  | CLI shell escapes           | CLI shell escapes     | Terminal/editor tasks     |
@@ -75,7 +89,7 @@ Full capability matrix (incl. Aider + opencode): [`documents/docs/comparison.md`
 
 ## Quick start
 
-**Desktop app** (double-click install, no terminal) — download from the [latest release](https://github.com/lthoangg/openagentd/releases/latest):
+**Desktop app** (double-click install, no terminal) — download from the [latest release](https://github.com/lthoangg/openagentd/releases/latest). OpenAgentd is the primary desktop cockpit on macOS and Linux, with support for multiple app windows and coding worktree sessions:
 
 | Platform | Artefact | First-launch note |
 |---|---|---|
@@ -113,7 +127,7 @@ openagentd address       # show local + LAN URLs again later
 openagentd health        # verify the backend is reachable and ready
 ```
 
-![Installing openagentd with uv tool install](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/openagentd-install.gif)
+**Mobile app** — OpenAgentd also ships a Tauri mobile client for connecting to a remote OpenAgentd server. Use `openagentd start --lan --key` on your host machine, then connect from the phone with the same backend-connection flow. See [`documents/docs/mobile.md`](https://github.com/lthoangg/openagentd/blob/main/documents/docs/mobile.md).
 
 Other install options (pip, pipx, from source) — see [`documents/docs/install.md`](https://github.com/lthoangg/openagentd/blob/main/documents/docs/install.md).
 
@@ -151,7 +165,7 @@ Existing agent files are not overwritten unless `--force` is passed. See [`MIGRA
 
 ## Providers
 
-Switch models with a single line in your agent's `.md` config file. Every provider uses the `provider:model` format.
+Switch models with a single line in your agent's `.md` config file. Every provider uses the `provider:model` format, and Settings → Providers can manage OAuth connections, API-key-backed providers, visible-model filters, and per-provider status from the UI.
 
 | Provider | Format | Auth |
 |---|---|---|
@@ -177,6 +191,8 @@ In the cockpit, Session Settings can override the lead agent's model and thinkin
 
 ## Built-in tools
 
+OpenAgentd starts with a compact local toolbelt for files, shell, web, generation, scheduling, and team coordination:
+
 | Category | Tools |
 |---|---|
 | Filesystem | `read`, `write`, `edit`, `patch`, `ls`, `glob`, `grep`, `rm` |
@@ -188,13 +204,13 @@ In the cockpit, Session Settings can override the lead agent's model and thinkin
 | Team coordination | `team_message`, `team_manage` (teams only) |
 | Utility | `date`, `skill` |
 
-Add any MCP server to expose more tools without writing code.
+Add any MCP server to expose more tools without writing custom app code.
 
 ---
 
 ## Agents and teams
 
-OpenAgentd ships with a compact cockpit team:
+OpenAgentd ships with a compact cockpit team. The desktop app can open multiple windows, while coding sessions can branch into separate git worktree-backed workspaces when you need isolated changes:
 
 | Agent | Role | Specialty |
 |---|---|---|
@@ -205,8 +221,6 @@ OpenAgentd ships with a compact cockpit team:
 Configure your team by editing `.md` files in your config directory. Exactly one agent must have `role: lead`; the rest are member blueprints. The lead uses `team_manage` to spawn/dismiss live instances (`executor#1`, `explorer#1`) and `team_message` to delegate and collect results.
 
 Fresh installs also seed a separate coding team under `agents/coding/`. Open `/coding` to select a server-local project folder and start workspace-aware sessions; Settings shows those agents as `coding/openagentd`, `coding/coder`, and `coding/explorer`.
-
-![OpenAgentd agent architecture — loop, hooks, tools, providers, memory, and team mode](https://raw.githubusercontent.com/lthoangg/openagentd/main/documents/assets/openagentd-agent-architecture.png)
 
 ### Agent config at a glance
 
@@ -240,6 +254,14 @@ Click the mic button in the chat input to start voice input. Click again to stop
 There is no backend speech service, no `faster-whisper` dependency, and no `speech.yaml` setting. If the current browser/WebView does not expose speech recognition, the mic button is disabled with an explanatory tooltip. Platform privacy and cloud/local processing semantics are controlled by the browser or operating system speech service.
 
 On macOS, voice input depends on the system speech service. If **Siri & Dictation** / **Dictation** is disabled in System Settings, Screen Time, or device management policy, speech recognition can fail with errors such as `Siri and Dictation are disabled` or `Microphone permission check has failed`. Enable **System Settings → Keyboard → Dictation**, then retry the mic flow.
+
+---
+
+## Mobile app
+
+OpenAgentd also has a Tauri mobile app for iPhone-class devices. It connects to a remote OpenAgentd server instead of bundling the Python backend locally, making it a companion client for the machine already running `openagentd start --lan --key` or another reachable server.
+
+Mobile uses the shared backend-connection flow, the same React UI, and touch-first adaptations such as safe-area-aware layouts, keyboard-aware composer spacing, and single-pane navigation. See [`documents/docs/mobile.md`](https://github.com/lthoangg/openagentd/blob/main/documents/docs/mobile.md).
 
 ---
 
@@ -353,7 +375,7 @@ Full documentation index: [`documents/docs/index.md`](https://github.com/lthoang
 | [Logging](https://github.com/lthoangg/openagentd/blob/main/documents/docs/logging.md) | App log + per-session JSONL, rotation, console format |
 | [Observability](https://github.com/lthoangg/openagentd/blob/main/documents/docs/observability.md) | OTel spans, DuckDB-backed `/api/observability/*`, `/telemetry` UI |
 | [Desktop distribution](https://github.com/lthoangg/openagentd/blob/main/documents/docs/desktop.md) | Tauri v2 shell, Python sidecar, token auth, release pipeline |
-| [Mobile app](https://github.com/lthoangg/openagentd/blob/main/documents/docs/mobile.md) | Tauri mobile shell for remote OpenAgentd API servers |
+| [Mobile app](https://github.com/lthoangg/openagentd/blob/main/documents/docs/mobile.md) | Tauri mobile shell for remote OpenAgentd API servers, backend connection flow, and touch-first layout details |
 | [Title generation](https://github.com/lthoangg/openagentd/blob/main/documents/docs/title-generation.md) | LLM-generated session titles, SSE event, config |
 
 ### Frontend (`web/`)

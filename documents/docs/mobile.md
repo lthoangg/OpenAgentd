@@ -9,7 +9,17 @@ updated: 2026-06-09
 
 The mobile app is a Tauri shell that embeds the shared React Web UI and connects to a remote OpenAgentd API server. It is remote-backend-only: it does not bundle, start, or supervise the Python/FastAPI backend.
 
+Use it as a companion client for an OpenAgentd server already running on your laptop, desktop, homelab, or another reachable machine. The mobile app shares the same sessions, tools, team model, and UI vocabulary as desktop, but adapts the experience for touch, safe areas, portrait-first navigation, and remote backend connection.
+
 ## Backend connection
+
+Typical flow:
+
+1. Start the server on your host machine with `openagentd start --lan --key`.
+2. Note the LAN/mobile URL from the command output or later via `openagentd address`.
+3. Open the mobile app, paste that server URL into **Backend connection**, then use **Check** and **Save**.
+4. Reuse the saved server entry for future launches.
+
 
 Mobile uses the shared **Backend connection** UI:
 

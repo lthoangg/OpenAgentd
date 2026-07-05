@@ -7,9 +7,9 @@ updated: 2026-06-01
 
 # OpenAgentd
 
-On-machine AI assistant. FastAPI backend, React web UI, runs locally.
+On-machine AI assistant. FastAPI backend, React web UI, desktop cockpit, and mobile companion client.
 
-Connects to LLM providers (Anthropic, Gemini, Vertex AI, OpenAI, OpenRouter, Copilot OAuth, Codex OAuth, xAI, DeepSeek, Bedrock, NVIDIA NIM, local proxies, Ollama), maintains persistent sessions, supports multimodal input, streams over SSE, and coordinates multi-agent teams.
+Connects to LLM providers (Anthropic, Gemini, Vertex AI, OpenAI, OpenRouter, Copilot OAuth, Codex OAuth, xAI, DeepSeek, Bedrock, NVIDIA NIM, local proxies, Ollama), maintains persistent sessions, supports multimodal input, streams over SSE, coordinates multi-agent teams, opens multiple desktop windows, and runs coding sessions in isolated git worktrees.
 
 **Quick start.** [`install.md`](./install.md) → `openagentd init` → `openagentd`. Use `openagentd start --lan --key` plus `openagentd address` for desktop/mobile clients on your network.
 
@@ -23,7 +23,7 @@ Connects to LLM providers (Anthropic, Gemini, Vertex AI, OpenAI, OpenRouter, Cop
 |-----|----------------|
 | [Features](./features.md) | **Canonical catalogue of every user-visible feature**, version-cited. Source of truth for slides, README, comparison docs. |
 | [Roadmap / issues](./roadmap.md) | Short planning note with links to GitHub issues for feature requests, future work, and known issues. |
-| [Install](./install.md) | Desktop app (macOS/Linux) first; CLI/uv/pipx/pip, source. First-run wizard. |
+| [Install](./install.md) | Desktop app (macOS/Linux) first; CLI/uv/pipx/pip, source. First-run wizard and LAN/mobile server setup. |
 | [Migration](../../MIGRATION.md) | Move setup from OpenClaw, Hermes, Claude Code, Codex CLI, or older OpenAgentd installs. |
 | [CLI reference](./cli.md) | Server lifecycle and diagnostics: `start --lan --key`, `restart`, `address`, `health`, `doctor`, `upgrade`, and more. |
 | [Configuration](./configuration.md) | Env vars, XDG paths, agent `.md` files, providers, tools, skills, sandbox, hooks. |
@@ -47,7 +47,7 @@ Connects to LLM providers (Anthropic, Gemini, Vertex AI, OpenAI, OpenRouter, Cop
 | [Logging](./logging.md) | App log + per-session JSONL, rotation, console format. |
 | [Observability](./observability.md) | OpenTelemetry spans, DuckDB-backed `/api/observability/*`, `/telemetry` UI. |
 | [Desktop distribution](./desktop.md) | Tauri v2 shell, Python sidecar, token auth, release pipeline. |
-| [Mobile app](./mobile.md) | Tauri mobile shell for remote OpenAgentd API servers. |
+| [Mobile app](./mobile.md) | Tauri mobile shell for remote OpenAgentd API servers, backend connection flow, and touch-first UI behavior. |
 | [Title generation](./title-generation.md) | LLM-generated session titles, SSE event, config. |
 
 ### Frontend (`web/`)

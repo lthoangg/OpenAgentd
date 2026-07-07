@@ -118,7 +118,7 @@ def build_provider(
     # rather than the generic invalid-format error — the caller (loader)
     # catches this specifically to substitute an UnconfiguredProvider stub
     # so the agent loads but defers the failure to LLM-call time.
-    from app.cli.seed import PROVIDER_MODEL_TOKEN
+    from app.core.config import PROVIDER_MODEL_TOKEN
 
     if model_str == PROVIDER_MODEL_TOKEN or PROVIDER_MODEL_TOKEN in model_str:
         raise UnconfiguredProviderError()

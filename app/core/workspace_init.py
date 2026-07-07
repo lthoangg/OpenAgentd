@@ -29,7 +29,8 @@ def ensure_workspace_initialized() -> None:
     if any(agents_dir.glob("*.md")):
         return
 
-    from app.cli.seed import PROVIDER_MODEL_TOKEN, SeedDownloadError, install_seed
+    from app.cli.seed import SeedDownloadError, install_seed
+    from app.core.config import PROVIDER_MODEL_TOKEN
 
     try:
         result = install_seed(

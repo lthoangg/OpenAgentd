@@ -51,7 +51,11 @@ from opentelemetry.trace import Status, StatusCode
 from pydantic import BaseModel, Field
 
 from app.agent.sandbox import get_sandbox
-from app.agent.tools.multimodalities import backends as _backends
+
+# Import the backends subpackage directly — routing through the parent
+# package __init__ creates a module-level import cycle (the parent
+# imports this module back).
+import app.agent.tools.multimodalities.backends as _backends
 from app.agent.tools.multimodalities._config import get_section
 from app.agent.tools.multimodalities._metrics import (
     video_duration_histogram,

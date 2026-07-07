@@ -90,7 +90,7 @@ _FRONTMATTER_RE = re.compile(r"^\s*---\r?\n(.*?)\r?\n---\r?\n?(.*)", re.DOTALL)
 
 def member_model_is_configured(model: str | None) -> bool:
     """Return whether a member model is configured enough to join a team."""
-    from app.cli.seed import PROVIDER_MODEL_TOKEN
+    from app.core.config import PROVIDER_MODEL_TOKEN
 
     return bool(model and model.strip() and model.strip() != PROVIDER_MODEL_TOKEN)
 
@@ -113,7 +113,7 @@ class AgentConfig(BaseModel):
         # Allow the seed placeholder unchanged — the loader substitutes an
         # UnconfiguredProvider stub at build time so first-run installs
         # without a real model still load cleanly.
-        from app.cli.seed import PROVIDER_MODEL_TOKEN
+        from app.core.config import PROVIDER_MODEL_TOKEN
 
         if self.model and self.model != PROVIDER_MODEL_TOKEN and ":" not in self.model:
             raise ValueError(
@@ -193,7 +193,7 @@ def ensure_builtin_agent_blueprints(agents_dir: Path, *, mode: str) -> list[str]
     existing ``.md`` files are never overwritten.
     """
     from app.agent.builtin_prompts import BUILTIN_AGENT_BLUEPRINTS
-    from app.cli.seed import PROVIDER_MODEL_TOKEN
+    from app.core.config import PROVIDER_MODEL_TOKEN
 
     agents_dir.mkdir(parents=True, exist_ok=True)
     model = _lead_model_for_dir(agents_dir) or PROVIDER_MODEL_TOKEN

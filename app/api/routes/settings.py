@@ -645,7 +645,8 @@ async def save_provider(
 @router.post("/seed")
 async def install_seed_defaults(body: SeedInstallRequest) -> SeedInstallResponse:
     """Install bundled first-run agents/skills into the user's config dir."""
-    from app.cli.seed import PROVIDER_MODEL_TOKEN, SeedDownloadError, install_seed
+    from app.cli.seed import SeedDownloadError, install_seed
+    from app.core.config import PROVIDER_MODEL_TOKEN
 
     provider_model = body.provider_model or PROVIDER_MODEL_TOKEN
     try:

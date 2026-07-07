@@ -45,6 +45,7 @@ from pathlib import Path
 from loguru import logger
 
 from app.core.config import settings
+from app.core.paths import session_artifacts_dir
 
 # ── Module-level defaults (no env-var overrides) ──────────────────────────
 DEFAULT_MAX_EXECUTION_SECONDS = 120
@@ -127,9 +128,7 @@ class SandboxConfig:
 
     def metadata_path(self, name: str) -> Path:
         """Return a path under ``.openagentd`` for this sandbox context."""
-        from app.agent.artifacts import session_artifact_dir
-
-        return session_artifact_dir(self.session_id) / name
+        return session_artifacts_dir(self.session_id) / name
 
     # ── Path validation ───────────────────────────────────────────────────
 
@@ -267,9 +266,7 @@ def _allowed_internal_roots(session_id: str | None) -> list[Path]:
     logs_root = Path(settings.OPENAGENTD_STATE_DIR).resolve() / "logs"
     roots = [logs_root, logs_root / "app"]
     if session_id:
-        from app.agent.artifacts import session_artifact_dir
-
-        roots.append(session_artifact_dir(session_id).resolve())
+        roots.append(session_artifacts_dir(session_id).resolve())
     return roots
 
 

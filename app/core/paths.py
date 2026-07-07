@@ -22,6 +22,28 @@ from pathlib import Path
 from app.core.config import settings
 
 
+#: Directory name under OPENAGENTD_DATA_DIR holding per-session artifacts.
+SESSIONS_DIR = "sessions"
+
+
+def sessions_root() -> Path:
+    """Return the root directory for all session artifact dirs."""
+    return Path(settings.OPENAGENTD_DATA_DIR) / SESSIONS_DIR
+
+
+def session_artifacts_dir(session_id: str | None) -> Path:
+    """Return the app-managed metadata directory for *session_id*.
+
+    Pure path computation — no sandbox/contextvar lookups.  The
+    sandbox-aware default lives in :func:`app.agent.artifacts.session_artifact_dir`;
+    this lower-level helper exists so ``app.agent.sandbox`` can compute the
+    path without importing ``app.agent.artifacts`` (which imports sandbox
+    back — a module-level cycle).
+    """
+    root = sessions_root()
+    return root / session_id if session_id else root
+
+
 def workspace_dir(session_id: str) -> Path:
     """Return the per-session agent workspace root (team sandbox)."""
     return Path(settings.OPENAGENTD_WORKSPACE_DIR) / session_id

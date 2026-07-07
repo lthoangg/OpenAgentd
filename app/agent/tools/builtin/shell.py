@@ -52,7 +52,12 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.agent.artifacts import shell_output_dir
 from app.agent.sandbox import get_sandbox
-from app.agent.tools.builtin import shell_runtime as _shell_mod
+
+# Import the sibling module directly — going through the package __init__
+# (``from app.agent.tools.builtin import shell_runtime``) reads an attribute
+# of the partially-initialized package while builtin/__init__.py is itself
+# importing this module, creating a module-level cycle.
+import app.agent.tools.builtin.shell_runtime as _shell_mod
 from app.agent.tools.registry import InjectedArg, Tool
 
 _SHELL_DESCRIPTION = (

@@ -48,15 +48,14 @@ from pathlib import Path
 
 import yaml
 
+# PROVIDER_MODEL_TOKEN's canonical home is app.core.config — re-exported here
+# for callers that historically imported it from the seed module.
+from app.core.config import PROVIDER_MODEL_TOKEN as PROVIDER_MODEL_TOKEN
 from app.core.version import VERSION
 
 #: GitHub ``owner/repo`` that hosts the seed bundle.
 #: Update this if the canonical repo location changes.
 REPO = "lthoangg/openagentd"
-
-#: Token used as the ``model:`` value in seed agent files.  Replaced at
-#: install time with the provider/model the user picked in ``openagentd init``.
-PROVIDER_MODEL_TOKEN = "__PROVIDER_MODEL__"
 
 #: Top-level files inside ``seed/`` that ship as user-editable config.
 #: Anything else at seed root (README.md, etc.) is **not** copied.

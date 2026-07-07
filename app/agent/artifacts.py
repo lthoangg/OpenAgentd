@@ -5,10 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.agent.sandbox import get_sandbox
-from app.core.config import settings
+from app.core.paths import SESSIONS_DIR as SESSIONS_DIR  # re-export (canonical home)
+from app.core.paths import session_artifacts_dir
 
 SESSION_METADATA_DIR = ".openagentd"
-SESSIONS_DIR = "sessions"
 TOOL_RESULTS_DIR = ".tool_results"
 SHELL_TOOL_DIR = "shell"
 TODOS_FILENAME = ".todos.json"
@@ -23,9 +23,7 @@ def session_artifact_dir(session_id: str | None = None) -> Path:
     root.
     """
     sandbox = get_sandbox()
-    sid = session_id or sandbox.session_id
-    root = Path(settings.OPENAGENTD_DATA_DIR) / SESSIONS_DIR
-    return root / sid if sid else root
+    return session_artifacts_dir(session_id or sandbox.session_id)
 
 
 def session_artifact_path(name: str, session_id: str | None = None) -> Path:

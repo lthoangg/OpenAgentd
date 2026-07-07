@@ -223,7 +223,7 @@ export function useSessionBootstrap({
         })
       }
     })()
-  }, [beginResolvedSession, isEmptyIdleSession, mode, navigate, queryClient, sessionIdState, sessionModel, sessionThinkingLevel, workspace])
+  }, [beginResolvedSession, inputRef, isEmptyIdleSession, mode, navigate, queryClient, sessionIdState, sessionModel, sessionThinkingLevel, workspace])
 
   // Focus the chat input. Callable directly (shortcut / Command Palette)
   // or indirectly via `window.dispatchEvent(new CustomEvent('focus-chat-input'))`

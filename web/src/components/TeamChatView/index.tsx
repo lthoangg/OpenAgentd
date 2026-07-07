@@ -19,9 +19,9 @@
  * (one primitive per ``useTeamStore`` call) to avoid the infinite loop
  * that returning a freshly-built object on every render would trigger.
  */
-import { useMemo, useRef, useState, useCallback } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { AgentView } from '../AgentView'
 import { WorkspaceInfoCard } from '../WorkspaceInfoCard'
 import { CodingSidebar } from '../CodingSidebar'
@@ -31,16 +31,10 @@ import { WorkspaceFilesPanel } from '../WorkspaceFilesPanel'
 import { Sidebar } from '../Sidebar'
 import { useTodosQuery } from '@/queries/useTodosQuery'
 import { useProvidersQuery } from '@/queries'
-import { queryKeys } from '@/queries/keys'
-import { useCommandsQuery } from '@/queries/useCommandsQuery'
-import { useSnippetsQuery } from '@/queries/useSnippetsQuery'
-import { listCodingWorkspaceFiles, renderCommand, renderSnippet } from '@/api/client'
 import { useTeamStore } from '@/stores/useTeamStore'
 import { useShallow } from 'zustand/react/shallow'
-import { useToastStore } from '@/stores/useToastStore'
 import { useUIStore } from '@/stores/useUIStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
-import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { useTeamAgentsQuery } from '@/queries/useAgentsQuery'
 import { useRegistryQuery } from '@/queries/useAgentFilesQuery'
 import { useFileRefsQuery } from '@/queries/useFileRefsQuery'
@@ -49,20 +43,20 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
 import { useTauriDrag } from '@/hooks/use-tauri-drag'
 import { Button } from '@/components/ui/button'
-import { type InputBarHandle, type SlashCommand, type SnippetCommand } from '../InputBar'
+import { type InputBarHandle } from '../InputBar'
 import { FloatingInputBar } from '../FloatingInputBar'
-import type { AgentCapabilities as AgentCapabilitiesType, WorkspaceFileInfo } from '@/api/types'
+import type { AgentCapabilities as AgentCapabilitiesType } from '@/api/types'
 import { SplitGrid } from './SplitGrid'
 import { TeamChatHeader } from './TeamChatHeader'
 import { TeamChatPanels } from './TeamChatPanels'
 import { AgentTabs } from './AgentTabs'
-import { useTeamCommands } from './useTeamCommands'
-import { VIEW_MODES, type ViewMode } from './types'
+import { type ViewMode } from './types'
 import { workspaceLabel } from '@/utils/workspace'
-import { BASE_SLASH_COMMANDS, attachmentToFile } from './helpers'
 import { useDragDrop } from './useDragDrop'
 import { useOverlayState } from './useOverlayState'
 import { useSessionBootstrap } from './useSessionBootstrap'
+import { useSlashCommands } from './useSlashCommands'
+import { useCommandPalette } from './useCommandPalette'
 
 interface TeamChatViewProps {
   sessionId?: string
@@ -169,7 +163,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     leadTotalTokens,
   } = storeState
 
-  const pushToast = useToastStore((s) => s.push)
 
   // Utility modal state lives in useUIStore so only one can be open at a time.
   const schedulerOpen = useUIStore((s) => s.schedulerOpen)
@@ -324,215 +317,43 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
 
   // ── Commands / shortcuts ───────────────────────────────────────────────────
 
-  // Shell shortcut: start a message with `!` to run the rest as a shell command.
-  // Slash commands for the input bar (type / to trigger).
-  // Built-ins execute immediately on pick; user-defined commands are inserted
-  // into the textarea (``keepInputOpen``) so the user can append
-  // ``$ARGUMENTS`` before submitting.
-  const commandsQ = useCommandsQuery(agentWorkspace)
-  const snippetsQ = useSnippetsQuery(mode === 'coding' ? agentWorkspace : null)
-  const userCommandNames = useMemo(
-    () => new Set<string>((commandsQ.data?.commands ?? []).map((c) => c.name)),
-    [commandsQ.data],
-  )
-  const slashCommands: SlashCommand[] = useMemo(() => [
-    ...BASE_SLASH_COMMANDS,
-    ...(commandsQ.data?.commands ?? []).map((c) => {
-      const displayName = c.name.replace('/', ':')
-      return {
-        id: c.name,
-        label: displayName,
-        displayName,
-        insertText: displayName,
-        description: c.description || `Custom command (${c.source})`,
-        category: 'command',
-        keepInputOpen: true,
-      }
-    }),
-  ], [commandsQ.data?.commands])
+  const {
+    slashCommands,
+    snippetCommands,
+    handleSlashCommand,
+    handleSnippetCommand,
+    expandUserCommand,
+  } = useSlashCommands({
+    mode,
+    agentWorkspace,
+    inputRef,
+    handleNewSession,
+  })
 
-  const snippetCommands: SnippetCommand[] = (snippetsQ.data?.snippets ?? []).map((item) => ({
-    id: item.name,
-    label: item.name.replace('/', ':'),
-    description: item.description || `Snippet (${item.source})`,
-    category: 'snippet',
-  }))
-
-  const handleSnippetCommand = useCallback(async (id: string) => {
-    if (!agentWorkspace) return null
-    try {
-      const res = await renderSnippet(id, agentWorkspace)
-      return res.content
-    } catch (err) {
-      pushToast({
-        tone: 'error',
-        title: `Failed to render #${id.replace('/', ':')}`,
-        description: (err as Error).message,
-      })
-      return null
-    }
-  }, [agentWorkspace, pushToast])
-
-  const handleSlashCommand = useCallback((id: string) => {
-    switch (id) {
-      case 'stop':
-        useTeamStore.getState().stopTeam()
-        break
-      case 'continue':
-        useTeamStore.getState().continueTeam()
-        break
-      case 'compact':
-        useTeamStore.getState().compactTeam()
-        break
-      case 'undo':
-        void useTeamStore.getState().undoTeam().then(async (response) => {
-          const message = response?.message
-          if (!message || message.role !== 'user' || message.is_summary) return
-          inputRef.current?.setValue(message.content ?? '')
-          const attachments = message.attachments ?? []
-          const files = (
-            await Promise.all(attachments.map((att) => attachmentToFile(att)))
-          ).filter((file): file is File => file !== null)
-          inputRef.current?.setFiles(files)
-          inputRef.current?.focus()
-        })
-        break
-      case 'redo':
-        void useTeamStore.getState().redoTeam().then(() => {
-          inputRef.current?.setValue('')
-          inputRef.current?.setFiles([])
-        })
-        break
-      case 'new':
-        handleNewSession()
-        break
-      case 'init':
-        // Prompt body lives on the backend so it can be tweaked without a
-        // web rebuild and stays the single source of truth.
-        void renderCommand('init', '', agentWorkspace)
-          .then((res) =>
-            useTeamStore.getState().sendMessage(res.content, undefined, {
-              mode,
-              workspace: agentWorkspace,
-            }),
-          )
-          .catch((err: Error) =>
-            pushToast({
-              tone: 'error',
-              title: 'Failed to start /init',
-              description: err.message,
-            }),
-          )
-        break
-    }
-  }, [handleNewSession, mode, agentWorkspace, pushToast])
-
-  /** If *content* starts with a known user-defined command, render server-side
-   *  and return the expanded body; otherwise return *content* unchanged. */
-  const expandUserCommand = useCallback(
-    async (content: string): Promise<string> => {
-      if (!content.startsWith('/')) return content
-      // The command name may include slashes (nested folders), so we
-      // greedily match the longest known prefix instead of splitting on
-      // the first space. Tokens are separated by whitespace.
-      const rest = content.slice(1)
-      // Try progressively shorter prefixes — start with the full first
-      // line, peel back to the longest known command name.
-      const firstLine = rest.split('\n', 1)[0]
-      const tokens = firstLine.split(' ')
-      for (let n = tokens.length; n > 0; n--) {
-        const candidate = tokens.slice(0, n).join(' ').trim()
-        const commandName = candidate.replace(':', '/')
-        if (userCommandNames.has(commandName)) {
-          const argsHead = tokens.slice(n).join(' ')
-          const restOfMessage = rest.slice(firstLine.length)
-          const args = (argsHead + restOfMessage).trim()
-          try {
-            const res = await renderCommand(commandName, args, agentWorkspace)
-            return res.content
-          } catch (err) {
-            pushToast({
-              tone: 'error',
-              title: `Failed to render /${candidate}`,
-              description: (err as Error).message,
-            })
-            return content
-          }
-        }
-      }
-      return content
-    },
-    [userCommandNames, agentWorkspace, pushToast],
-  )
-
-  const cycleViewMode = useCallback(() => {
-    setViewMode((v) => {
-      const idx = VIEW_MODES.indexOf(v)
-      return VIEW_MODES[(idx + 1) % VIEW_MODES.length]
-    })
-  }, [])
-
-  const commands = useTeamCommands({
+  const {
+    paletteCommands,
+    paletteWorkspaceFiles,
+    handlePaletteFileOpen,
+  } = useCommandPalette({
+    mode,
+    workspace,
+    paletteOpen,
+    sessionIdState,
     viewMode,
-    cycleViewMode,
-    toggleAgentCapabilities: handleToggleAgentCapabilities,
-    setShowTodos: handleSetShowTodos,
+    setViewMode,
+    navigate,
+    handleNewSession,
     handleWorkspaceFiles,
     handleCodingSidebarToggle,
-    mode,
-    handleNewSession,
-    handleOpenTerminal: mode === 'coding' && workspace ? handleOpenTerminal : undefined,
-    navigate,
-  })
-  const paletteCommands = commands
-
-  // ── Coding-mode file search in the palette ─────────────────────────────────
-  //
-  // Fetch the workspace file listing when the palette is open (coding mode
-  // only). We reuse the same query key as the @-mention picker so the two
-  // share a cache entry — no extra network request when both are warm.
-  const isCodingPaletteOpen = mode === 'coding' && Boolean(workspace) && paletteOpen
-  const { data: paletteFilesData } = useQuery<{ files: WorkspaceFileInfo[] }>({
-    queryKey: queryKeys.fileRefs.coding(workspace ?? ''),
-    queryFn: async () => {
-      const res = await listCodingWorkspaceFiles(workspace as string)
-      return { files: res.files }
-    },
-    enabled: isCodingPaletteOpen,
-    staleTime: 30_000,
-  })
-
-  const paletteWorkspaceFiles = isCodingPaletteOpen ? (paletteFilesData?.files ?? []) : []
-
-  const handlePaletteFileOpen = useCallback((file: WorkspaceFileInfo) => {
-    setCodingFileViewer(file)
-    setCodingFileViewerDetached(false)
-    setCodingFileOpenKey((k) => k + 1)
-    setCodingPanel((prev) => prev ?? 'files')
-  }, [])
-
-  useKeyboardShortcuts({
-    n: handleNewSession,
-    // ⌘⇧A / Ctrl+Shift+A — bare ⌘A is "Select All" on macOS, so Session
-    // Settings requires Shift to avoid clobbering it.
-    a: { handler: handleToggleAgentCapabilities, shift: true },
-    f: handleWorkspaceFiles,
-    t: () => { if (sessionIdState) handleSetShowTodos((v) => !v) },
-    p: isMobile ? undefined : handleTogglePalette,
-    b: mode === 'coding' ? handleCodingSidebarToggle : undefined,
-    // ⌘⇧V / Ctrl+Shift+V — toggle between agent view and split view.
-    v: { handler: cycleViewMode, shift: true },
-    // ⌘S / Ctrl+S — open the scheduler drawer (state in useUIStore).
-    s: handleToggleScheduler,
-    // ⌘I / Ctrl+I — focus the chat input (dispatched via CustomEvent so
-    // future callers don't need a ref to the input).
-    'i': () => window.dispatchEvent(new CustomEvent('focus-chat-input')),
-    // ⌘⇧` / Ctrl+Shift+` — open a terminal (any mode: coding workspace or
-    // the cockpit session workspace). Matched on the physical key
-    // (KeyboardEvent.code === 'Backquote') because e.key for
-    // Shift+backquote is layout-dependent ('~', '`', or even 'Dead' on
-    // layouts where backquote is a dead key).
-    Backquote: { handler: handleOpenTerminal, shift: true },
+    handleToggleAgentCapabilities,
+    handleSetShowTodos,
+    handleTogglePalette,
+    handleToggleScheduler,
+    handleOpenTerminal,
+    setCodingFileViewer,
+    setCodingFileViewerDetached,
+    setCodingFileOpenKey,
+    setCodingPanel,
   })
 
   // ── Render ─────────────────────────────────────────────────────────────────

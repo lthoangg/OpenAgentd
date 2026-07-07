@@ -3,10 +3,20 @@ import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import svgr from "vite-plugin-svgr"
 import { defineConfig } from "vite"
+import { visualizer } from "rollup-plugin-visualizer"
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), tailwindcss(), svgr()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    svgr(),
+    // Bundle analysis — opt-in only (`bun run build:analyze`), never part of
+    // the default build. Emits an interactive treemap to web/dist/stats.html.
+    ...(process.env.ANALYZE === "1"
+      ? [visualizer({ filename: "dist/stats.html", gzipSize: true, brotliSize: true, template: "treemap" })]
+      : []),
+  ],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

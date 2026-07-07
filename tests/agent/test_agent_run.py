@@ -475,6 +475,67 @@ async def test_agent_run_provider_resume_budget_exhausted_raises():
     assert isinstance(excinfo.value.__cause__, httpx.ReadTimeout)
 
 
+async def test_agent_run_interrupt_during_provider_resume_backoff_stops_turn():
+    """An interrupt firing while the loop backs off after a provider timeout
+    must stop the turn immediately rather than resuming the model call."""
+    import httpx
+
+    async def always_timeout(
+        messages: list[ChatMessage],
+        tools: list[dict] | None = None,
+        **kwargs,
+    ):
+        raise httpx.ReadTimeout("timed out")
+        yield  # pragma: no cover — makes it an async generator
+
+    provider = MockProvider([[]])
+    provider.stream = always_timeout  # type: ignore[method-assign]
+    agent = Agent(name="bot", llm_provider=provider)
+
+    # Pre-set so the ``interrupt_event.wait()`` inside the backoff resolves
+    # immediately instead of timing out — exercising the "interrupt fired
+    # during backoff" branch of ``_call_model_with_resume``.
+    interrupt_event = asyncio.Event()
+    interrupt_event.set()
+
+    msgs = await agent.run(
+        [HumanMessage(content="hi")], interrupt_event=interrupt_event
+    )
+
+    # No assistant message was produced — the turn stopped mid-backoff.
+    assert last_assistant(msgs) is None
+
+
+async def test_agent_run_pause_turn_continues_same_turn():
+    """Anthropic's ``pause_turn`` finish reason (server-side tool loop hit its
+    own iteration cap) must re-issue the model call within the same turn
+    rather than treating the response as final."""
+
+    def paused_chunk() -> ChatCompletionChunk:
+        return ChatCompletionChunk(
+            id="c-pause",
+            created=0,
+            model="m",
+            choices=[
+                ChatCompletionChunkChoice(
+                    index=0,
+                    delta=ChatCompletionDelta(content="still working..."),
+                    finish_reason="pause_turn",
+                )
+            ],
+        )
+
+    provider = MockProvider([[paused_chunk()], [make_text_chunk("Done.")]])
+    agent = Agent(name="bot", llm_provider=provider)
+
+    msgs = await agent.run([HumanMessage(content="long task")])
+
+    assistants = [m for m in msgs if isinstance(m, AssistantMessage)]
+    assert len(assistants) == 2
+    assert assistants[0].content == "still working..."
+    assert assistants[1].content == "Done."
+
+
 async def test_stream_with_retry_resets_partial_on_mid_stream_retry():
     """A retry after partial chunks must replace, not concatenate, the partial
     output — the assembler drops the partial buffer on ``StreamRestart``."""

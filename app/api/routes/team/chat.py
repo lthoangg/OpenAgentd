@@ -21,6 +21,7 @@ from app.api.routes.team._helpers import (
     _require_team,
     _validate_workspace_or_422,
     build_mention_context_blocks,
+    persist_queued_user_message,
     resolve_chat_team,
     validate_model_settings,
 )
@@ -68,7 +69,6 @@ from app.services.coding_workspace_service import (
     list_visible_coding_workspaces,
     upsert_coding_workspace,
 )
-from app.agent.schemas.chat import HumanMessage
 from app.services.chat_service import (
     BoundaryShift,
     cancel_queued_user_message,
@@ -276,82 +276,30 @@ async def team_chat(
                 await cleanup_reverted_tail(db, session_uuid)
 
         if session_uuid is not None and team_obj.has_active_user_turn():
-            # Persist all attachments (explicit uploads + @mentions) now so
-            # the queued row carries the same context the user composed.
-            # Capability checks run at queue time against the current model;
-            # the model may change before dequeue but that is an accepted
-            # edge case (documented in the queue design notes).
-            queued_attachment_metas: list[dict] = []
-            if attachments:
-                try:
-                    (
-                        _,
-                        queued_attachment_metas,
-                    ) = await agent_service.validate_and_persist_attachments(
-                        team_obj, attachments, session_id, workspace
-                    )
-                except AttachmentError as exc:
-                    raise HTTPException(
-                        status_code=exc.status, detail=str(exc)
-                    ) from exc
-            async with db.begin():
-                queued_extra: dict[str, object] = {}
-                effective_model = model or team_obj.lead.agent.model_id
-                if effective_model:
-                    queued_extra["model"] = effective_model
-                if thinking_level:
-                    queued_extra["thinking_level"] = thinking_level
-                if fast_mode_service_tier:
-                    queued_extra["service_tier"] = "fast"
-                if queued_attachment_metas:
-                    queued_extra["attachments"] = queued_attachment_metas
-                if body.mentions:
-                    queued_extra["mentions"] = body.mentions
-                existing_row = await db.get(ChatSession, session_uuid)
-                if existing_row is not None:
-                    if model_provided:
-                        existing_row.model = model
-                    if thinking_level_provided:
-                        existing_row.thinking_level = thinking_level
-                    effective_model = existing_row.model or team_obj.lead.agent.model_id
-                    if effective_model:
-                        queued_extra["model"] = effective_model
-                    if existing_row.thinking_level:
-                        queued_extra["thinking_level"] = existing_row.thinking_level
-                    if fast_mode_service_tier:
-                        queued_extra["service_tier"] = "fast"
-                    db.add(existing_row)
-                queued = await save_queued_user_message(
-                    db,
-                    session_uuid,
-                    message,
-                    extra=queued_extra,
-                )
-                # Write synthetic mention context rows (ephemeral, no uploads/).
-                for synthetic_content in mention_context_blocks:
-                    await save_message(
-                        db,
-                        session_uuid,
-                        HumanMessage(content=synthetic_content),
-                        extra={
-                            "hidden_from_user": True,
-                            "hidden_from_summary": True,
-                            "attachment_for_message_id": str(queued.id),
-                            "mention_context": True,
-                        },
-                    )
-            logger.info(
-                "team_chat_queued session_id={} message_id={} attachments={}",
-                session_id,
-                queued.id,
-                len(queued_attachment_metas),
+            queued_result = await persist_queued_user_message(
+                db,
+                team=team_obj,
+                session_id=session_id,
+                session_uuid=session_uuid,
+                workspace=workspace,
+                message=message,
+                attachments=attachments,
+                mention_context_blocks=mention_context_blocks,
+                mentions=body.mentions,
+                model=model,
+                model_provided=model_provided,
+                thinking_level=thinking_level,
+                thinking_level_provided=thinking_level_provided,
+                fast_mode_service_tier=fast_mode_service_tier,
+                save_queued_user_message=save_queued_user_message,
+                save_message=save_message,
             )
             if not team_obj.has_active_user_turn():
                 await team_obj._activate_queued_user_messages(session_id)
             return TeamChatResponse(
                 status="queued",
                 session_id=session_id,
-                message_id=str(queued.id),
+                message_id=queued_result.message_id,
             )
 
         try:

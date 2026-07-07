@@ -1,9 +1,10 @@
 """Unit tests for the chat-route resolution helpers in ``_helpers.py``.
 
-Covers ``_validate_workspace_or_422``, ``validate_model_settings``, and
-``resolve_chat_team`` — extracted from the ``POST /team/chat`` handler
-(see ``app.api.routes.team.chat.team_chat``). These tests exercise each
-helper directly rather than through the full route, complementing the
+Covers ``_validate_workspace_or_422``, ``validate_model_settings``,
+``resolve_chat_team``, and ``persist_queued_user_message`` — extracted
+from the ``POST /team/chat`` handler (see
+``app.api.routes.team.chat.team_chat``). These tests exercise each helper
+directly rather than through the full route, complementing the
 route-level tests in ``test_team.py`` / ``test_team_routes_extra.py``
 which already cover the same behaviour end-to-end and must keep passing
 unchanged.
@@ -12,6 +13,7 @@ unchanged.
 from __future__ import annotations
 
 import uuid
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import HTTPException
@@ -21,8 +23,10 @@ from app.agent.mode.team.member import TeamLead, TeamMember
 from app.agent.mode.team.team import AgentTeam
 from app.agent.providers.base import LLMProviderBase
 from app.api.routes.team._helpers import (
+    QueuedMessageResult,
     ResolvedChatTeam,
     _validate_workspace_or_422,
+    persist_queued_user_message,
     resolve_chat_team,
     validate_model_settings,
 )
@@ -282,3 +286,152 @@ async def test_resolve_chat_team_raises_409_for_workspace_mismatch(tmp_path):
             )
     assert exc_info.value.status_code == 409
     assert "different coding workspace" in exc_info.value.detail
+
+
+# ── persist_queued_user_message ──────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_persist_queued_user_message_persists_row_and_returns_result():
+    import app.core.db as _db
+
+    team = _make_team()
+    session_id = uuid.uuid7()
+
+    async with _db.async_session_factory() as db:
+        async with db.begin():
+            db.add(ChatSession(id=session_id, agent_name="lead"))
+
+    save_queue = AsyncMock()
+    queued_row = AsyncMock()
+    queued_row.id = uuid.uuid7()
+    save_queue.return_value = queued_row
+    save_message = AsyncMock()
+
+    async with _db.async_session_factory() as db:
+        result = await persist_queued_user_message(
+            db,
+            team=team,
+            session_id=str(session_id),
+            session_uuid=session_id,
+            workspace=None,
+            message="hello",
+            attachments=[],
+            mention_context_blocks=[],
+            mentions=None,
+            model=None,
+            model_provided=False,
+            thinking_level=None,
+            thinking_level_provided=False,
+            fast_mode_service_tier=None,
+            save_queued_user_message=save_queue,
+            save_message=save_message,
+        )
+
+    assert isinstance(result, QueuedMessageResult)
+    assert result.message_id == str(queued_row.id)
+    assert result.attachment_count == 0
+    save_queue.assert_awaited_once()
+    save_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_persist_queued_user_message_writes_mention_context_rows():
+    import app.core.db as _db
+
+    team = _make_team()
+    session_id = uuid.uuid7()
+
+    async with _db.async_session_factory() as db:
+        async with db.begin():
+            db.add(ChatSession(id=session_id, agent_name="lead"))
+
+    queued_row = AsyncMock()
+    queued_row.id = uuid.uuid7()
+    save_queue = AsyncMock(return_value=queued_row)
+    save_message = AsyncMock()
+
+    async with _db.async_session_factory() as db:
+        await persist_queued_user_message(
+            db,
+            team=team,
+            session_id=str(session_id),
+            session_uuid=session_id,
+            workspace=None,
+            message="look at @note.txt",
+            attachments=[],
+            mention_context_blocks=["[File: note.txt]\nhi\n[End file: note.txt]"],
+            mentions=["note.txt"],
+            model=None,
+            model_provided=False,
+            thinking_level=None,
+            thinking_level_provided=False,
+            fast_mode_service_tier=None,
+            save_queued_user_message=save_queue,
+            save_message=save_message,
+        )
+
+    save_message.assert_awaited_once()
+    call = save_message.await_args
+    assert call.kwargs["extra"]["mention_context"] is True
+    assert call.kwargs["extra"]["attachment_for_message_id"] == str(queued_row.id)
+
+    queued_extra = save_queue.await_args.kwargs["extra"]
+    assert queued_extra["mentions"] == ["note.txt"]
+    assert "attachments" not in queued_extra
+
+
+@pytest.mark.asyncio
+async def test_persist_queued_user_message_prefers_request_model_over_existing_row():
+    import app.core.db as _db
+
+    team = _make_team()
+    session_id = uuid.uuid7()
+
+    async with _db.async_session_factory() as db:
+        async with db.begin():
+            db.add(
+                ChatSession(
+                    id=session_id,
+                    agent_name="lead",
+                    model="openai:gpt-5.5",
+                    thinking_level="low",
+                )
+            )
+
+    queued_row = AsyncMock()
+    queued_row.id = uuid.uuid7()
+    save_queue = AsyncMock(return_value=queued_row)
+    save_message = AsyncMock()
+
+    async with _db.async_session_factory() as db:
+        await persist_queued_user_message(
+            db,
+            team=team,
+            session_id=str(session_id),
+            session_uuid=session_id,
+            workspace=None,
+            message="hello",
+            attachments=[],
+            mention_context_blocks=[],
+            mentions=None,
+            model="openai:gpt-6",
+            model_provided=True,
+            thinking_level="high",
+            thinking_level_provided=True,
+            fast_mode_service_tier="fast",
+            save_queued_user_message=save_queue,
+            save_message=save_message,
+        )
+
+    queued_extra = save_queue.await_args.kwargs["extra"]
+    # existing_row.model is overwritten by model_provided before being read
+    # back as the effective model — mirrors the original inline behaviour.
+    assert queued_extra["model"] == "openai:gpt-6"
+    assert queued_extra["thinking_level"] == "high"
+    assert queued_extra["service_tier"] == "fast"
+
+    async with _db.async_session_factory() as db:
+        refreshed = await db.get(ChatSession, session_id)
+        assert refreshed.model == "openai:gpt-6"
+        assert refreshed.thinking_level == "high"

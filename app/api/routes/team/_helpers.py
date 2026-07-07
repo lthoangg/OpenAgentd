@@ -19,6 +19,7 @@ from loguru import logger
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.agent.mode.team.team import AgentTeam
+from app.agent.schemas.chat import HumanMessage
 from app.api.schemas.sessions import MessageResponse
 from app.core.paths import session_workspace_dir
 from app.models.chat import ChatSession
@@ -192,6 +193,129 @@ async def resolve_chat_team(
         session_uuid=session_uuid,
         mode=mode,
         workspace=workspace,
+    )
+
+
+@dataclass
+class QueuedMessageResult:
+    """Result of persisting a user message onto the queue.
+
+    Returned by :func:`persist_queued_user_message` when the team lead has
+    an active turn — the caller (route) turns this straight into the
+    ``status="queued"`` response.
+    """
+
+    message_id: str
+    attachment_count: int
+
+
+async def persist_queued_user_message(
+    db: AsyncSession,
+    *,
+    team: AgentTeam,
+    session_id: str,
+    session_uuid: UUID,
+    workspace: str | None,
+    message: str,
+    attachments: list[RawAttachment],
+    mention_context_blocks: list[str],
+    mentions: list[str] | None,
+    model: str | None,
+    model_provided: bool,
+    thinking_level: str | None,
+    thinking_level_provided: bool,
+    fast_mode_service_tier: str | None,
+    save_queued_user_message,
+    save_message,
+) -> QueuedMessageResult:
+    """Persist a user message + its attachments/mentions onto the queue.
+
+    Used by ``POST /team/chat`` when the team lead already has an active
+    turn — the message is written as a hidden ``queue_status=queued`` row
+    instead of being dispatched immediately, and released once the lead
+    goes idle. Byte-for-byte move of the former inline ``team_chat`` queue
+    branch — no behavior change.
+
+    ``save_queued_user_message`` / ``save_message`` are injected (not
+    imported here) so existing test patches of
+    ``app.api.routes.team.chat.save_queued_user_message`` /
+    ``.save_message`` keep working.
+
+    Raises :class:`HTTPException` (translated from ``AttachmentError``) if
+    an explicit upload fails validation.
+    """
+    # Persist all attachments (explicit uploads + @mentions) now so
+    # the queued row carries the same context the user composed.
+    # Capability checks run at queue time against the current model;
+    # the model may change before dequeue but that is an accepted
+    # edge case (documented in the queue design notes).
+    queued_attachment_metas: list[dict] = []
+    if attachments:
+        try:
+            (
+                _,
+                queued_attachment_metas,
+            ) = await agent_service.validate_and_persist_attachments(
+                team, attachments, session_id, workspace
+            )
+        except agent_service.AttachmentError as exc:
+            raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+
+    async with db.begin():
+        queued_extra: dict[str, object] = {}
+        effective_model = model or team.lead.agent.model_id
+        if effective_model:
+            queued_extra["model"] = effective_model
+        if thinking_level:
+            queued_extra["thinking_level"] = thinking_level
+        if fast_mode_service_tier:
+            queued_extra["service_tier"] = "fast"
+        if queued_attachment_metas:
+            queued_extra["attachments"] = queued_attachment_metas
+        if mentions:
+            queued_extra["mentions"] = mentions
+        existing_row = await db.get(ChatSession, session_uuid)
+        if existing_row is not None:
+            if model_provided:
+                existing_row.model = model
+            if thinking_level_provided:
+                existing_row.thinking_level = thinking_level
+            effective_model = existing_row.model or team.lead.agent.model_id
+            if effective_model:
+                queued_extra["model"] = effective_model
+            if existing_row.thinking_level:
+                queued_extra["thinking_level"] = existing_row.thinking_level
+            if fast_mode_service_tier:
+                queued_extra["service_tier"] = "fast"
+            db.add(existing_row)
+        queued = await save_queued_user_message(
+            db,
+            session_uuid,
+            message,
+            extra=queued_extra,
+        )
+        # Write synthetic mention context rows (ephemeral, no uploads/).
+        for synthetic_content in mention_context_blocks:
+            await save_message(
+                db,
+                session_uuid,
+                HumanMessage(content=synthetic_content),
+                extra={
+                    "hidden_from_user": True,
+                    "hidden_from_summary": True,
+                    "attachment_for_message_id": str(queued.id),
+                    "mention_context": True,
+                },
+            )
+
+    logger.info(
+        "team_chat_queued session_id={} message_id={} attachments={}",
+        session_id,
+        queued.id,
+        len(queued_attachment_metas),
+    )
+    return QueuedMessageResult(
+        message_id=str(queued.id), attachment_count=len(queued_attachment_metas)
     )
 
 

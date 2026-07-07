@@ -381,6 +381,7 @@ class TestHandleUserMessageSessionRestore:
 
         existing_row = MagicMock()
         existing_row.id = existing_member_session_id
+        existing_row.agent_name = "worker"
 
         mock_db = MagicMock()
         mock_db.commit = AsyncMock()
@@ -389,6 +390,7 @@ class TestHandleUserMessageSessionRestore:
         mock_db.exec = AsyncMock(
             return_value=MagicMock(
                 first=MagicMock(return_value=existing_row),
+                all=MagicMock(return_value=[existing_row]),
             )
         )
 
@@ -416,3 +418,65 @@ class TestHandleUserMessageSessionRestore:
 
         # Member session should be updated to the existing DB row's id
         assert member.session_id == str(existing_member_session_id)
+
+
+# ---------------------------------------------------------------------------
+# _restore_or_drop_members_for_lead — batched roster lookup
+# ---------------------------------------------------------------------------
+
+
+class TestRestoreMembersBatchedQuery:
+    @pytest.mark.asyncio
+    async def test_roster_restore_uses_single_batched_query(self):
+        """Restoring N spawned members must not issue one SELECT per member.
+
+        Regression: _restore_or_drop_members_for_lead queried ChatSession
+        once per live handle. With many members this made team startup do
+        N sequential scans of the same child-session rows.
+        """
+        import uuid
+        from contextlib import asynccontextmanager
+
+        lead_uuid = uuid.uuid7()
+        handles = ["worker#1", "worker#2", "explorer#1"]
+        rows = []
+        for handle in handles:
+            row = MagicMock()
+            row.id = uuid.uuid7()
+            row.agent_name = handle
+            rows.append(row)
+
+        exec_calls = []
+
+        async def tracking_exec(stmt):
+            exec_calls.append(stmt)
+            result = MagicMock()
+            result.all = MagicMock(return_value=rows)
+            result.first = MagicMock(return_value=rows[0] if rows else None)
+            return result
+
+        mock_db = MagicMock()
+        mock_db.exec = tracking_exec
+        mock_db.commit = AsyncMock()
+
+        @asynccontextmanager
+        async def factory():
+            yield mock_db
+
+        lead = TeamLead(_make_agent("lead"), session_id="old-sid", db_factory=factory)
+        members = {}
+        for handle in handles:
+            members[handle] = TeamMember(
+                _make_agent(handle), session_id="stale-sid", db_factory=factory
+            )
+        team = AgentTeam(lead=lead, members=members, db_factory=factory)
+        for handle in ["lead", *handles]:
+            team.mailbox.register(handle)
+
+        await team._restore_or_drop_members_for_lead(str(lead_uuid))
+
+        # One batched query, not one per member.
+        assert len(exec_calls) == 1, f"expected 1 batched query, got {len(exec_calls)}"
+        # Every member realigned to its DB row.
+        for handle, row in zip(handles, rows):
+            assert team.members[handle].session_id == str(row.id)

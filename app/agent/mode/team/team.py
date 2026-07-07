@@ -1008,17 +1008,25 @@ class AgentTeam:
             return  # caller passed a non-UUID; nothing we can do
 
         try:
+            handles = list(self.members.keys())
             async with db_factory() as db:
+                # One batched query for the whole roster (was one SELECT per
+                # member).  Rows arrive newest-first; the first row seen per
+                # handle wins, matching the old per-handle LIMIT 1 DESC.
+                result = await db.exec(
+                    select(ChatSession)
+                    .where(col(ChatSession.parent_session_id) == lead_uuid)
+                    .where(col(ChatSession.agent_name).in_(handles))
+                    .order_by(col(ChatSession.created_at).desc())
+                )
+                newest_by_handle: dict[str, ChatSession] = {}
+                for row in result.all():
+                    if row.agent_name and row.agent_name not in newest_by_handle:
+                        newest_by_handle[row.agent_name] = row
+
                 for handle, member in list(self.members.items()):
                     is_spawned = parse_instance_handle(handle) is not None
-                    result = await db.exec(
-                        select(ChatSession)
-                        .where(col(ChatSession.parent_session_id) == lead_uuid)
-                        .where(col(ChatSession.agent_name) == handle)
-                        .order_by(col(ChatSession.created_at).desc())
-                        .limit(1)
-                    )
-                    existing = result.first()
+                    existing = newest_by_handle.get(handle)
                     if existing is not None:
                         # Realign to the existing child row regardless of
                         # whether the member was blueprint-spawned or eager:

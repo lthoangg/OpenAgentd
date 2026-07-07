@@ -34,7 +34,7 @@ import { useProvidersQuery } from '@/queries'
 import { queryKeys } from '@/queries/keys'
 import { useCommandsQuery } from '@/queries/useCommandsQuery'
 import { useSnippetsQuery } from '@/queries/useSnippetsQuery'
-import { listCodingWorkspaceFiles, renderCommand, renderSnippet, resolveApiUrl, resolveTeamSession } from '@/api/client'
+import { listCodingWorkspaceFiles, renderCommand, renderSnippet, resolveTeamSession } from '@/api/client'
 import { useTeamStore } from '@/stores/useTeamStore'
 import { useShallow } from 'zustand/react/shallow'
 import { useToastStore } from '@/stores/useToastStore'
@@ -64,6 +64,8 @@ import { overlaysToClose, type MobileOverlay } from './mobileOverlays'
 import { saveLastCodingWorkspace, workspaceLabel } from '@/utils/workspace'
 import { setTraySession } from '@/lib/tray'
 import { isEditableTarget } from '@/lib/is-editable-target'
+import { BASE_SLASH_COMMANDS, attachmentToFile } from './helpers'
+import { useDragDrop } from './useDragDrop'
 
 interface TeamChatViewProps {
   sessionId?: string
@@ -74,41 +76,6 @@ interface TeamChatViewProps {
 
 interface SessionDraft {
   value: string
-}
-
-const BASE_SLASH_COMMANDS: SlashCommand[] = [
-  { id: 'stop', label: 'Stop', description: 'Stop all working agents' },
-  { id: 'continue', label: 'Continue', description: 'Continue the last assistant response' },
-  { id: 'compact', label: 'Compact', description: 'Summarize and compact this session' },
-  { id: 'undo', label: 'Undo', description: 'Undo the previous message' },
-  { id: 'redo', label: 'Redo', description: 'Restore all undone messages back to the live tip' },
-  { id: 'new', label: 'New Chat', description: 'Start a fresh team conversation' },
-  { id: 'init', label: 'Init', description: 'Create or update AGENTS.md for this project' },
-]
-
-async function attachmentToFile(att: MessageAttachment): Promise<File | null> {
-  const url = resolveApiUrl(att.url)
-  if (!url) return null
-  const res = await fetch(url)
-  if (!res.ok) return null
-  const blob = await res.blob()
-  return new File(
-    [blob],
-    att.original_name ?? att.filename ?? 'attachment',
-    { type: att.media_type ?? blob.type },
-  )
-}
-
-function isDraggingFiles(dt: DataTransfer | null): boolean {
-  if (!dt) return false
-  if (!dt.types) return false
-  return Array.from(dt.types).some(
-    (type) =>
-      type === 'Files' ||
-      type === 'application/x-moz-file' ||
-      type.toLowerCase().includes('file') ||
-      type.toLowerCase().includes('uri')
-  )
 }
 
 export function TeamChatView({ sessionId, mode = 'normal', workspace = null, codingSessionLoading = false }: TeamChatViewProps) {
@@ -141,51 +108,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const [viewMode, setViewMode] = useState<ViewMode>('agent')
   const draftBySessionRef = useRef<Record<string, SessionDraft>>({})
 
-  const [isDraggingFile, setIsDraggingFile] = useState(false)
-  const dragCounterRef = useRef(0)
-
-  const handleDragEnter = useCallback((e: React.DragEvent) => {
-    if (!inputRef.current) return
-    if (isDraggingFiles(e.dataTransfer)) {
-      e.preventDefault()
-      dragCounterRef.current++
-      if (dragCounterRef.current === 1) {
-        setIsDraggingFile(true)
-      }
-    }
-  }, [])
-
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    if (!inputRef.current) return
-    if (isDraggingFiles(e.dataTransfer)) {
-      e.preventDefault()
-      dragCounterRef.current--
-      if (dragCounterRef.current === 0) {
-        setIsDraggingFile(false)
-      }
-    }
-  }, [])
-
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    if (!inputRef.current) return
-    if (isDraggingFiles(e.dataTransfer)) {
-      e.preventDefault()
-    }
-  }, [])
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    if (!inputRef.current) return
-    if (isDraggingFiles(e.dataTransfer)) {
-      e.preventDefault()
-      dragCounterRef.current = 0
-      setIsDraggingFile(false)
-
-      const droppedFiles = e.dataTransfer.files
-      if (droppedFiles && droppedFiles.length > 0) {
-        inputRef.current.addFiles(Array.from(droppedFiles))
-      }
-    }
-  }, [])
+  const { isDraggingFile, handleDragEnter, handleDragLeave, handleDragOver, handleDrop } = useDragDrop(inputRef)
 
   // On mobile, always force agent view — split/unified require a wide screen.
   // Also close any desktop-only panels when shrinking to mobile.

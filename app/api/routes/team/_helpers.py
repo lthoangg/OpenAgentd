@@ -9,15 +9,20 @@ from __future__ import annotations
 
 import mimetypes
 import re
+from dataclasses import dataclass
 from pathlib import Path
+from uuid import UUID
+from uuid import uuid7
 
 from fastapi import HTTPException, UploadFile
 from loguru import logger
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.agent.mode.team.team import AgentTeam
 from app.api.schemas.sessions import MessageResponse
 from app.core.paths import session_workspace_dir
-from app.services import agent_service
+from app.models.chat import ChatSession
+from app.services import agent_service, team_manager
 from app.services.agent_service import (
     GLOBAL_SIZE_LIMIT,
     SIZE_LIMITS,
@@ -53,6 +58,141 @@ def _require_team(team: AgentTeam | None) -> AgentTeam:
         return agent_service.require_team(team)
     except NoTeamConfigured as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+def _validate_workspace_or_422(workspace: str) -> str:
+    """Route ``workspace`` through the single validation authority.
+
+    ``team_manager.validate_workspace`` is the sole authority for workspace
+    path validation (see repo AGENTS.md) — this wrapper only translates its
+    ``ValueError`` into the route-facing 422. Do not add a parallel
+    ``Path(workspace).resolve()`` anywhere else.
+    """
+    try:
+        return team_manager.validate_workspace(workspace)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+async def validate_model_settings(
+    model: str | None,
+    thinking_level: str | None,
+    *,
+    is_registered_model_id,
+) -> tuple[str | None, str | None]:
+    """Strip whitespace from model/thinking_level and validate the model id.
+
+    Shared by ``POST /chat`` and ``POST /sessions/resolve`` — both accept an
+    optional per-request model override and must reject unregistered models
+    the same way. Returns the stripped ``(model, thinking_level)`` pair.
+
+    ``is_registered_model_id`` is injected (rather than imported here) so
+    callers' own module-level reference — and any test patch of it — is
+    honoured; see ``app.api.routes.team.chat.is_registered_model_id``.
+    """
+    stripped_model = model.strip() if model else None
+    stripped_thinking_level = thinking_level.strip() if thinking_level else None
+    if stripped_model and not await is_registered_model_id(stripped_model):
+        raise HTTPException(status_code=422, detail="Choose a model from the registry.")
+    return stripped_model, stripped_thinking_level
+
+
+@dataclass
+class ResolvedChatTeam:
+    """Result of resolving a ``POST /chat`` request to a team + session.
+
+    ``mode`` and ``workspace`` may differ from the request body — an
+    existing coding session's persisted workspace always wins (see
+    ``resolve_chat_team``).
+    """
+
+    team: AgentTeam
+    session_id: str
+    session_uuid: UUID | None
+    mode: str
+    workspace: str | None
+
+
+async def resolve_chat_team(
+    db: AsyncSession,
+    *,
+    session_id: str | None,
+    mode: str,
+    workspace: str | None,
+) -> ResolvedChatTeam:
+    """Resolve the session id, reconcile mode/workspace, and start/attach a team.
+
+    Mirrors the exact branching of the former inline ``team_chat`` body:
+
+    1. If ``session_id`` is given, parse it and look up the persisted
+       ``ChatSession`` row.
+    2. An existing **coding** session's persisted workspace is always
+       authoritative — a mismatched ``workspace`` in the request is a 409,
+       never silently overridden (security-relevant: prevents a session id
+       from being replayed against a different workspace).
+    3. Otherwise, mint a session id if omitted and start/attach the coding
+       or normal-mode team per the request's ``mode``.
+
+    Raises :class:`HTTPException` (422 invalid session id / workspace,
+    404 no team configured, 409 workspace mismatch) exactly as the inline
+    code did.
+    """
+    existing: ChatSession | None = None
+    session_uuid: UUID | None = None
+
+    if session_id:
+        try:
+            session_uuid = UUID(session_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Invalid session id.") from exc
+        async with db.begin():
+            existing = await db.get(ChatSession, session_uuid)
+
+    if existing and existing.mode == "coding" and existing.workspace:
+        persisted_workspace = _validate_workspace_or_422(existing.workspace)
+        if mode == "coding" and workspace is not None:
+            requested_workspace = _validate_workspace_or_422(workspace)
+            if requested_workspace != persisted_workspace:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "Session belongs to a different coding workspace: "
+                        f"{persisted_workspace}"
+                    ),
+                )
+        mode = "coding"
+        workspace = persisted_workspace
+        assert session_id is not None
+        try:
+            team_obj = await team_manager.get_or_start_coding_team(
+                workspace, session_id
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    elif mode == "coding":
+        if session_id is None:
+            session_id = str(uuid7())
+        assert workspace is not None
+        workspace = _validate_workspace_or_422(workspace)
+        try:
+            team_obj = await team_manager.get_or_start_coding_team(
+                workspace, session_id
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    else:
+        if session_id is None:
+            session_id = str(uuid7())
+        team_obj = await team_manager.get_or_start_team_for_session(session_id)
+        team_obj = _require_team(team_obj)
+
+    return ResolvedChatTeam(
+        team=team_obj,
+        session_id=session_id,
+        session_uuid=session_uuid,
+        mode=mode,
+        workspace=workspace,
+    )
 
 
 async def _read_upload_as_attachment(file: UploadFile) -> RawAttachment | None:

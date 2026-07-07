@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import AsyncGenerator, Literal
 from uuid import UUID
-from uuid import uuid7
 
 from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
 from loguru import logger
@@ -20,7 +19,10 @@ from app.api.routes.team._helpers import (
     _message_response,
     _read_upload_as_attachment,
     _require_team,
+    _validate_workspace_or_422,
     build_mention_context_blocks,
+    resolve_chat_team,
+    validate_model_settings,
 )
 from app.api.routes.agents import is_registered_model_id
 from app.api.schemas.sessions import (
@@ -160,13 +162,6 @@ def _serialize_blueprint(team_obj, bp) -> dict:
     return payload
 
 
-def _validate_workspace_or_422(workspace: str) -> str:
-    try:
-        return team_manager.validate_workspace(workspace)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-
 def _changed_paths_payload(shift: BoundaryShift) -> dict:
     """Serialise the A/M/D path partition from a /undo or /redo restore.
 
@@ -206,65 +201,24 @@ async def team_chat(
     receive the SSE event stream (supports reconnect + replay).
     """
     message = body.message
-    session_id = body.session_id
     interrupt = body.interrupt
-    mode = body.mode
-    workspace = body.workspace
     raw_form = await request.form()
     model_provided = "model" in raw_form
     thinking_level_provided = "thinking_level" in raw_form
-    model = body.model.strip() if body.model else None
-    thinking_level = body.thinking_level.strip() if body.thinking_level else None
-    if model and not await is_registered_model_id(model):
-        raise HTTPException(status_code=422, detail="Choose a model from the registry.")
-    existing: ChatSession | None = None
-    session_uuid: UUID | None = None
+    model, thinking_level = await validate_model_settings(
+        body.model,
+        body.thinking_level,
+        is_registered_model_id=is_registered_model_id,
+    )
 
-    if session_id:
-        try:
-            session_uuid = UUID(session_id)
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail="Invalid session id.") from exc
-        async with db.begin():
-            existing = await db.get(ChatSession, session_uuid)
-
-    if existing and existing.mode == "coding" and existing.workspace:
-        persisted_workspace = _validate_workspace_or_422(existing.workspace)
-        if mode == "coding" and workspace is not None:
-            requested_workspace = _validate_workspace_or_422(workspace)
-            if requested_workspace != persisted_workspace:
-                raise HTTPException(
-                    status_code=409,
-                    detail=(
-                        "Session belongs to a different coding workspace: "
-                        f"{persisted_workspace}"
-                    ),
-                )
-        mode = "coding"
-        workspace = persisted_workspace
-        assert session_id is not None
-        try:
-            team_obj = await team_manager.get_or_start_coding_team(
-                workspace, session_id
-            )
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-    elif mode == "coding":
-        if session_id is None:
-            session_id = str(uuid7())
-        assert workspace is not None
-        workspace = _validate_workspace_or_422(workspace)
-        try:
-            team_obj = await team_manager.get_or_start_coding_team(
-                workspace, session_id
-            )
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-    else:
-        if session_id is None:
-            session_id = str(uuid7())
-        team_obj = await team_manager.get_or_start_team_for_session(session_id)
-        team_obj = _require_team(team_obj)
+    resolved = await resolve_chat_team(
+        db, session_id=body.session_id, mode=body.mode, workspace=body.workspace
+    )
+    team_obj = resolved.team
+    session_id = resolved.session_id
+    session_uuid = resolved.session_uuid
+    mode = resolved.mode
+    workspace = resolved.workspace
 
     fast_mode_service_tier = "fast" if body.fast_mode else None
 
@@ -733,10 +687,11 @@ async def resolve_team_session(
         raise HTTPException(
             status_code=422, detail="mode must be 'normal' or 'coding'."
         )
-    model = body.model.strip() if body.model else None
-    thinking_level = body.thinking_level.strip() if body.thinking_level else None
-    if model and not await is_registered_model_id(model):
-        raise HTTPException(status_code=422, detail="Choose a model from the registry.")
+    model, thinking_level = await validate_model_settings(
+        body.model,
+        body.thinking_level,
+        is_registered_model_id=is_registered_model_id,
+    )
 
     workspace = body.workspace
     if body.mode == "normal":

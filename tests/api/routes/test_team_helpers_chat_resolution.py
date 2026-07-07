@@ -1,0 +1,284 @@
+"""Unit tests for the chat-route resolution helpers in ``_helpers.py``.
+
+Covers ``_validate_workspace_or_422``, ``validate_model_settings``, and
+``resolve_chat_team`` — extracted from the ``POST /team/chat`` handler
+(see ``app.api.routes.team.chat.team_chat``). These tests exercise each
+helper directly rather than through the full route, complementing the
+route-level tests in ``test_team.py`` / ``test_team_routes_extra.py``
+which already cover the same behaviour end-to-end and must keep passing
+unchanged.
+"""
+
+from __future__ import annotations
+
+import uuid
+
+import pytest
+from fastapi import HTTPException
+
+from app.agent.agent_loop import Agent
+from app.agent.mode.team.member import TeamLead, TeamMember
+from app.agent.mode.team.team import AgentTeam
+from app.agent.providers.base import LLMProviderBase
+from app.api.routes.team._helpers import (
+    ResolvedChatTeam,
+    _validate_workspace_or_422,
+    resolve_chat_team,
+    validate_model_settings,
+)
+from app.models.chat import ChatSession
+
+
+class MockProvider(LLMProviderBase):
+    model = "mock"
+
+    def stream(self, messages, tools=None, **kwargs):
+        async def gen():
+            return
+            yield
+
+        return gen()
+
+    async def chat(self, messages, tools=None, **kwargs):
+        from app.agent.schemas.chat import AssistantMessage
+
+        return AssistantMessage(content="OK")
+
+
+def _make_team() -> AgentTeam:
+    lead = TeamLead(
+        Agent(name="lead", llm_provider=MockProvider(), system_prompt="Lead")
+    )
+    worker = TeamMember(
+        Agent(name="worker", llm_provider=MockProvider(), system_prompt="Worker")
+    )
+    return AgentTeam(lead=lead, members={"worker": worker})
+
+
+# ── _validate_workspace_or_422 ────────────────────────────────────────────────
+
+
+def test_validate_workspace_or_422_returns_resolved_path(tmp_path):
+    result = _validate_workspace_or_422(str(tmp_path))
+    assert result == str(tmp_path.resolve())
+
+
+def test_validate_workspace_or_422_raises_422_for_missing_dir(tmp_path):
+    missing = tmp_path / "does-not-exist"
+    with pytest.raises(HTTPException) as exc_info:
+        _validate_workspace_or_422(str(missing))
+    assert exc_info.value.status_code == 422
+
+
+def test_validate_workspace_or_422_raises_422_for_blocked_root():
+    with pytest.raises(HTTPException) as exc_info:
+        _validate_workspace_or_422("/etc")
+    assert exc_info.value.status_code == 422
+
+
+# ── validate_model_settings ──────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_validate_model_settings_strips_whitespace():
+    async def always_true(_model_id: str) -> bool:
+        return True
+
+    model, thinking_level = await validate_model_settings(
+        "  openai:gpt-5.5  ",
+        "  high  ",
+        is_registered_model_id=always_true,
+    )
+    assert model == "openai:gpt-5.5"
+    assert thinking_level == "high"
+
+
+@pytest.mark.asyncio
+async def test_validate_model_settings_none_passthrough():
+    async def never_called(_model_id: str) -> bool:
+        raise AssertionError("must not be called when model is None")
+
+    model, thinking_level = await validate_model_settings(
+        None, None, is_registered_model_id=never_called
+    )
+    assert model is None
+    assert thinking_level is None
+
+
+@pytest.mark.asyncio
+async def test_validate_model_settings_empty_string_resets_to_none():
+    async def never_called(_model_id: str) -> bool:
+        raise AssertionError("must not be called for an empty model string")
+
+    model, thinking_level = await validate_model_settings(
+        "", "", is_registered_model_id=never_called
+    )
+    assert model is None
+    assert thinking_level is None
+
+
+@pytest.mark.asyncio
+async def test_validate_model_settings_rejects_unregistered_model():
+    async def always_false(_model_id: str) -> bool:
+        return False
+
+    with pytest.raises(HTTPException) as exc_info:
+        await validate_model_settings(
+            "bad:model", None, is_registered_model_id=always_false
+        )
+    assert exc_info.value.status_code == 422
+    assert "registry" in exc_info.value.detail
+
+
+# ── resolve_chat_team ─────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_resolve_chat_team_mints_session_id_for_normal_mode(monkeypatch):
+    import app.core.db as _db
+
+    team = _make_team()
+
+    async def fake_get_or_start_team_for_session(session_id: str):
+        return team
+
+    monkeypatch.setattr(
+        "app.api.routes.team._helpers.team_manager.get_or_start_team_for_session",
+        fake_get_or_start_team_for_session,
+    )
+
+    async with _db.async_session_factory() as db:
+        result = await resolve_chat_team(
+            db, session_id=None, mode="normal", workspace=None
+        )
+
+    assert isinstance(result, ResolvedChatTeam)
+    assert result.team is team
+    assert result.mode == "normal"
+    assert result.workspace is None
+    assert result.session_uuid is None
+    uuid.UUID(result.session_id)  # must not raise
+
+
+@pytest.mark.asyncio
+async def test_resolve_chat_team_raises_422_for_invalid_session_id():
+    import app.core.db as _db
+
+    async with _db.async_session_factory() as db:
+        with pytest.raises(HTTPException) as exc_info:
+            await resolve_chat_team(
+                db, session_id="not-a-uuid", mode="normal", workspace=None
+            )
+    assert exc_info.value.status_code == 422
+    assert exc_info.value.detail == "Invalid session id."
+
+
+@pytest.mark.asyncio
+async def test_resolve_chat_team_starts_coding_team_for_new_session(
+    tmp_path, monkeypatch
+):
+    import app.core.db as _db
+
+    team = _make_team()
+    captured = {}
+
+    async def fake_get_or_start_coding_team(workspace: str, session_id: str):
+        captured["workspace"] = workspace
+        captured["session_id"] = session_id
+        return team
+
+    monkeypatch.setattr(
+        "app.api.routes.team._helpers.team_manager.get_or_start_coding_team",
+        fake_get_or_start_coding_team,
+    )
+
+    async with _db.async_session_factory() as db:
+        result = await resolve_chat_team(
+            db, session_id=None, mode="coding", workspace=str(tmp_path)
+        )
+
+    assert result.team is team
+    assert result.mode == "coding"
+    assert result.workspace == str(tmp_path.resolve())
+    assert captured["workspace"] == str(tmp_path.resolve())
+    assert captured["session_id"] == result.session_id
+
+
+@pytest.mark.asyncio
+async def test_resolve_chat_team_persisted_workspace_wins_over_matching_request(
+    tmp_path, monkeypatch
+):
+    """An existing coding session's workspace is authoritative even when the
+    request repeats the same (already-matching) workspace."""
+    import app.core.db as _db
+
+    team = _make_team()
+    session_id = uuid.uuid7()
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+
+    async with _db.async_session_factory() as db:
+        async with db.begin():
+            db.add(
+                ChatSession(
+                    id=session_id,
+                    agent_name="lead",
+                    mode="coding",
+                    workspace=str(workspace),
+                )
+            )
+
+    async def fake_get_or_start_coding_team(_workspace: str, _session_id: str):
+        return team
+
+    monkeypatch.setattr(
+        "app.api.routes.team._helpers.team_manager.get_or_start_coding_team",
+        fake_get_or_start_coding_team,
+    )
+
+    async with _db.async_session_factory() as db:
+        result = await resolve_chat_team(
+            db,
+            session_id=str(session_id),
+            mode="coding",
+            workspace=str(workspace),
+        )
+
+    assert result.mode == "coding"
+    assert result.workspace == str(workspace.resolve())
+    assert result.session_uuid == session_id
+
+
+@pytest.mark.asyncio
+async def test_resolve_chat_team_raises_409_for_workspace_mismatch(tmp_path):
+    """Security invariant: a session id must not be replayed against a
+    different workspace than the one it was persisted with."""
+    import app.core.db as _db
+
+    session_id = uuid.uuid7()
+    persisted_workspace = tmp_path / "project"
+    other_workspace = tmp_path / "other"
+    persisted_workspace.mkdir()
+    other_workspace.mkdir()
+
+    async with _db.async_session_factory() as db:
+        async with db.begin():
+            db.add(
+                ChatSession(
+                    id=session_id,
+                    agent_name="lead",
+                    mode="coding",
+                    workspace=str(persisted_workspace),
+                )
+            )
+
+    async with _db.async_session_factory() as db:
+        with pytest.raises(HTTPException) as exc_info:
+            await resolve_chat_team(
+                db,
+                session_id=str(session_id),
+                mode="coding",
+                workspace=str(other_workspace),
+            )
+    assert exc_info.value.status_code == 409
+    assert "different coding workspace" in exc_info.value.detail

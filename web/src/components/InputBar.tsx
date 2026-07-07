@@ -8,7 +8,8 @@ import { MentionOverlay } from './InputBar.overlay'
 import { CHAR_WARN_THRESHOLD, findActiveSnippet, handleWordNavigation } from './InputBar.helpers'
 import { InputBarSuggestions } from './InputBar.suggestions'
 import type { AgentCapabilities } from '@/api/types'
-import { buildAcceptString, isFileTypeAllowed } from './InputBar.files'
+import { buildAcceptString } from './InputBar.files'
+import { useInputBarAttachments } from './InputBar.attachments'
 import {
   buildHistoryEntries,
   filterMentions,
@@ -192,7 +193,20 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   historyPrompts = [],
 }, ref) {
   const [value, setValue] = useState('')
-  const [files, setFiles] = useState<File[]>([])
+  const {
+    files,
+    setFiles,
+    fileInputRef,
+    blobUrls,
+    removeFile,
+    addFiles: addAllowedFiles,
+    extractPastedFiles,
+    handleDragEnter,
+    handleDragLeave,
+    handleDragOver,
+    handleDrop,
+    handleFileSelect,
+  } = useInputBarAttachments({ capabilities })
   const [slashMenuIndex, setSlashMenuIndex] = useState(0)
   const [snippetMenuIndex, setSnippetMenuIndex] = useState(0)
   const [mentionMenuIndex, setMentionMenuIndex] = useState(0)
@@ -248,8 +262,6 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     })
   }, [value])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const dragCounterRef = useRef(0)
   const isMobile = useIsMobile()
   const platform = usePlatform()
   const prefersReducedMotion = useReducedMotion()
@@ -294,22 +306,6 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       return next
     })
   }, [shellMode, mentions])
-
-  // Create blob URLs for files — memoized to avoid recreating on every render
-  const blobUrls = useMemo(() => {
-    const urls = new Map<number, string>()
-    files.forEach((file, idx) => {
-      urls.set(idx, URL.createObjectURL(file))
-    })
-    return urls
-  }, [files])
-
-  // Revoke blob URLs when files change or on unmount
-  useEffect(() => {
-    return () => {
-      blobUrls.forEach((url) => URL.revokeObjectURL(url))
-    }
-  }, [blobUrls])
 
   // ``isMultiLine`` is updated as a side-effect of ``resize`` rather
   // than a separate effect, so the DOM measurement and the React
@@ -477,11 +473,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       setFiles(nextFiles)
     },
     addFiles: (nextFiles: File[]) => {
-      setFiles((prev) => {
-        const allowed = nextFiles.filter((file) => isFileTypeAllowed(file, capabilities))
-        if (allowed.length === 0) return prev
-        return [...prev, ...allowed]
-      })
+      addAllowedFiles(nextFiles)
     },
   }))
 
@@ -605,32 +597,13 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     mentions,
     shellMode,
     onSubmit,
+    setFiles,
   ])
-
-  const addFile = useCallback((file: File) => {
-    if (!isFileTypeAllowed(file, capabilities)) return
-    setFiles((prev) => [...prev, file])
-  }, [capabilities])
-
-  const removeFile = useCallback((index: number) => {
-    // The blobUrls cleanup effect revokes URLs for any file that leaves the
-    // map, so we only need to update state here — no manual revocation needed.
-    setFiles((prev) => prev.filter((_, i) => i !== index))
-  }, [])
 
   const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const items = e.clipboardData?.items
     if (!items) return
-    const pastedFiles: File[] = []
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i]
-      if (item.kind === 'file') {
-        const file = item.getAsFile()
-        if (file && isFileTypeAllowed(file, capabilities)) {
-          pastedFiles.push(file)
-        }
-      }
-    }
+    const pastedFiles = extractPastedFiles(items)
     if (pastedFiles.length > 0) {
       e.preventDefault()
       setFiles((prev) => [...prev, ...pastedFiles])
@@ -662,46 +635,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         resize()
       })
     }
-  }, [capabilities, resize, shellMode, value])
-
-  const handleDragEnter = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault()
-    dragCounterRef.current++
-  }, [])
-
-  const handleDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault()
-    dragCounterRef.current--
-  }, [])
-
-  const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault()
-  }, [])
-
-  const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault()
-    dragCounterRef.current = 0
-    const droppedFiles = e.dataTransfer?.files
-    if (!droppedFiles) return
-    for (let i = 0; i < droppedFiles.length; i++) {
-      const file = droppedFiles[i]
-      if (isFileTypeAllowed(file, capabilities)) {
-        addFile(file)
-      }
-    }
-  }, [addFile, capabilities])
-
-  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFiles = e.currentTarget.files
-    if (!selectedFiles) return
-    for (let i = 0; i < selectedFiles.length; i++) {
-      const file = selectedFiles[i]
-      if (isFileTypeAllowed(file, capabilities)) {
-        addFile(file)
-      }
-    }
-    e.currentTarget.value = ''
-  }, [addFile, capabilities])
+  }, [extractPastedFiles, resize, setFiles, shellMode, value])
 
   // ── Slash command filtering ────────────────────────────────────────────────
 

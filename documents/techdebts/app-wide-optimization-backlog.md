@@ -126,6 +126,108 @@ Token/tool streaming can produce many events per second. Rendering per event was
 - Streaming remains visually smooth while reducing store writes/render commits.
 - Stop/cancel/status controls still update promptly.
 
+### 7. Slice `useTeamStore` by domain (Completed)
+
+**Problem**
+
+`web/src/stores/useTeamStore/index.ts` had grown into a large monolithic
+initializer mixing session lifecycle, streaming/SSE state, pending-message
+queueing, and small UI flags in one file, making it harder to review and
+change safely.
+
+**Changes**
+
+- Split the store into domain slices behind the same public `useTeamStore`
+  export:
+  - `session-slice.ts`
+  - `stream-slice.ts`
+  - `pending-slice.ts`
+  - `ui-slice.ts`
+- Kept the public state shape and action names unchanged so all consumers
+  compiled without API changes.
+
+**Success criteria**
+
+- Store internals are organized by concern without changing consumer code.
+- `bun run typecheck`, `bun run build`, and `bun test --parallel` stay green.
+
+### 8. Split `TeamChatView` / `InputBar` orchestration into focused hooks (Completed)
+
+**Problem**
+
+`TeamChatView/index.tsx` and `InputBar.tsx` had both become multi-hundred-line
+coordinators mixing unrelated concerns (overlays, drag/drop, session
+bootstrap, command palette, slash/snippet/mention menus, attachments,
+keyboard handling) into single component files.
+
+**Changes**
+
+- `TeamChatView` now delegates to colocated hooks/modules:
+  - `useDragDrop.ts`
+  - `useOverlayState.ts`
+  - `useSessionBootstrap.ts`
+  - `useSlashCommands.ts`
+  - `useCommandPalette.ts`
+  - `helpers.ts`
+- `InputBar` now delegates picker logic to
+  `InputBar.suggestionEngine.ts` and attachment handling to
+  `InputBar.attachments.ts`.
+
+**Success criteria**
+
+- The shell components are materially smaller and easier to navigate.
+- Behavior and mobile interaction parity remain unchanged.
+- Frontend typecheck/build/tests stay green.
+
+### 9. Split remaining coding cockpit god files
+
+**Open**
+
+Large coding-surface components still remain and are the next natural
+frontend structure pass:
+
+- `CodingWorkspacePanel.tsx`
+- `CodingSidebar.tsx`
+
+Use the same approach as `TeamChatView` / `InputBar`: extract focused,
+colocated hooks/modules first, preserve behavior, and verify with targeted
+component tests plus the full web suite.
+
+### 10. Lazy-load large tool results and artifacts
+
+**Problem**
+
+Shell spills, file reads, and MCP resources can be large. Loading them with normal session history increases memory and slows first render.
+
+**Candidate changes**
+
+- Keep history entries as metadata plus result references for large outputs.
+- Fetch large result bodies on expand/open.
+- Add cache invalidation by session id and artifact id.
+
+**Success criteria**
+
+- Session history API responses stay bounded even after large tool runs.
+- Opening a large tool result is explicit and shows loading/progress.
+
+### 11. Paginate session history by default
+
+**Problem**
+
+Very long sessions should not require loading all history before the user can continue.
+
+**Candidate changes**
+
+- Load the newest page first.
+- Fetch older pages when the user scrolls near the top.
+- Preserve current `loadOlderMessages` behavior while making the initial payload smaller.
+
+**Success criteria**
+
+- Opening a long session is dominated by the newest page, not total history size.
+
+## Priority 4 — Startup and bundle size
+
 ## Priority 3 — Payload and persistence efficiency
 
 ### 6. Optimize session deletion database queries (Completed)

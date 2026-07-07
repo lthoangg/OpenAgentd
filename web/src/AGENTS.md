@@ -162,7 +162,7 @@ The `data-keyboard-open` attribute is set/cleared by `useMobileViewportGuards`
 
 ## InputBar suggestion menus (`/`, `@`, `#`)
 
-`InputBar.suggestions.tsx` renders three picker menus (slash commands, `@`-mentions, snippets).
+`InputBar.suggestions.tsx` renders three picker menus (slash commands, `@`-mentions, snippets). Their filtering, keyboard navigation, and commit actions now live in `InputBar.suggestionEngine.ts`; `InputBar.tsx` should stay the coordinator/layout layer.
 
 **Positioning** — menus use `position: fixed` (not `absolute`) so they escape the `overflow: hidden` on `<main>`. Coordinates are computed from `getBoundingClientRect()` of the input bar's wrapper and stored as `{ top | bottom, left, right }` in state. `bottom` is set when the menu opens above the input; `top` when it opens below.
 
@@ -203,3 +203,4 @@ Desktop push-layout (flex sibling of `<main>`, animates `width 0→N`); mobile f
 - Store tests usually seed with `useStore.setState(...)` and assert via `useStore.getState()`.
 - Preserve desktop token injection rules: only same-origin `/api` requests receive auth.
 - `WorkspaceFilesPanel` uses `useWorkspaceFilesQuery` (TanStack Query) — wrap in `QueryClientProvider` in tests.
+- Large feature components should prefer colocated hooks/modules before growing further: see `TeamChatView/use*.ts`, `InputBar.suggestionEngine.ts`, and `InputBar.attachments.ts` for the current house pattern.

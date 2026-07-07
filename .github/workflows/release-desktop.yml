@@ -115,7 +115,7 @@ jobs:
         if: matrix.platform == 'linux'
         run: echo "APPIMAGE_EXTRACT_AND_RUN=1" >> "$GITHUB_ENV"
 
-      - uses: astral-sh/setup-uv@v8.2.0
+      - uses: astral-sh/setup-uv@v8.3.0
         with:
           enable-cache: true
 

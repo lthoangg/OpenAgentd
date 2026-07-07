@@ -276,16 +276,18 @@ class LspClient:
                     await self.send_message(
                         {"jsonrpc": "2.0", "method": "exit", "params": {}}
                     )
-            except Exception:
-                pass
+            except Exception as exc:
+                # Graceful shutdown is best-effort; terminate() below is the
+                # real stop.
+                logger.debug("lsp_graceful_shutdown_failed error={!r}", exc)
 
             # Terminate if still running
             try:
                 if self.process.returncode is None:
                     self.process.terminate()
                     await self.process.wait()
-            except Exception:
-                pass
+            except (OSError, ProcessLookupError) as exc:
+                logger.debug("lsp_terminate_failed error={!r}", exc)
             self.process = None
 
         # Resolve any remaining request futures and unblock diagnostics waiters.

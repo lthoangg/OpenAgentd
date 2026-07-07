@@ -313,8 +313,10 @@ async def stream_with_retry(
             if exc.response.status_code == 429:
                 try:
                     await exc.response.aread()
-                except Exception:
-                    pass
+                except Exception as read_exc:
+                    # Body read is best-effort — headers may still carry
+                    # Retry-After even when the body is gone.
+                    logger.debug("retry_429_body_read_failed error={!r}", read_exc)
                 if is_non_retryable_429(exc):
                     logger.warning(
                         "llm_provider_non_retryable_rate_limit model={} status={} attempt={}/{}",

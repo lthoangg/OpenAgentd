@@ -127,8 +127,10 @@ async def _get_user_path(*, force_refresh: bool = False) -> str:
                         if path_str:
                             _CACHED_USER_PATH = path_str
                             return _CACHED_USER_PATH
-        except Exception:
-            pass
+        except Exception as exc:
+            # Boundary catch-all: any probe failure must fall back to
+            # os.environ["PATH"] — never block MCP startup.
+            logger.debug("login_shell_path_probe_failed error={!r}", exc)
 
         _CACHED_USER_PATH = os.environ.get("PATH", "")
         return _CACHED_USER_PATH

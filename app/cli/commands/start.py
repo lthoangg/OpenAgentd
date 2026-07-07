@@ -128,8 +128,8 @@ def cmd_start(args: argparse.Namespace) -> None:
                     if resp.status == 200:
                         started = True
                         break
-            except Exception:
-                pass
+            except OSError:
+                pass  # server not up yet — poll again
             time.sleep(0.5)
 
         if started:

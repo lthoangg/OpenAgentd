@@ -258,5 +258,6 @@ async def terminal_ws(websocket: WebSocket) -> None:
         await session.close()
         try:
             await websocket.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            # Socket may already be closed by the client — nothing to do.
+            logger.debug("terminal_ws_close_failed error={!r}", exc)

@@ -181,8 +181,9 @@ class _BgProcess:
                     break
                 decoded = line.decode("utf-8", errors="replace").rstrip("\n")
                 self.output.append(decoded)
-        except Exception:
-            pass
+        except Exception as exc:
+            # Reader is best-effort: a dead transport just ends capture.
+            logger.debug("background_shell_reader_stopped error={!r}", exc)
 
     @property
     def pid(self) -> int:
@@ -336,8 +337,9 @@ async def _emit_tool_output(
         return
     try:
         await callback(text)
-    except Exception:
-        pass
+    except Exception as exc:
+        # Streaming callback (SSE push) failures must never kill the command.
+        logger.debug("shell_stream_callback_failed error={!r}", exc)
 
 
 # ── Foreground execute ────────────────────────────────────────────────────────
@@ -502,16 +504,19 @@ async def _shell(
                         decoded = remaining.decode("utf-8", errors="replace")
                         async with pending_lock:
                             pending_output.append(decoded)
-            except (asyncio.TimeoutError, Exception):
-                pass
+            except Exception as exc:
+                # Post-kill drain is best-effort; the process is already dead.
+                logger.debug("shell_postkill_drain_failed error={!r}", exc)
             await proc.wait()
             aborted = True
         finally:
             flusher_task.cancel()
             try:
                 await flusher_task
-            except Exception:
-                pass
+            except asyncio.CancelledError:
+                pass  # expected: we just cancelled it
+            except Exception as exc:
+                logger.debug("shell_flusher_task_failed error={!r}", exc)
 
         # Wait for exit code
         if not aborted:

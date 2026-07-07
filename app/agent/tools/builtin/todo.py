@@ -251,8 +251,9 @@ def _load_store() -> dict:
         data = json.loads(path.read_text(encoding="utf-8"))
         if isinstance(data, dict) and "items" in data:
             return data
-    except Exception:
-        pass
+    except (OSError, ValueError) as exc:
+        # Corrupt/unreadable store → start fresh rather than crash the tool.
+        logger.warning("todo_store_unreadable path={} error={!r}", path, exc)
     return {"counter": 0, "items": []}
 
 

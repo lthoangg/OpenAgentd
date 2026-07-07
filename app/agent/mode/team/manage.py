@@ -66,8 +66,8 @@ class TeamManageArgs(BaseModel):
                         return [
                             str(item).strip() for item in parsed if str(item).strip()
                         ]
-                except Exception:
-                    pass
+                except ValueError:
+                    pass  # not JSON — fall through to comma-splitting
             return [item.strip() for item in text.split(",") if item.strip()]
         if isinstance(v, (list, tuple, set)):
             return [str(item).strip() for item in v if str(item).strip()]

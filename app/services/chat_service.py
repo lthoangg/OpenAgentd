@@ -5,7 +5,9 @@ from datetime import datetime, timedelta, timezone
 from typing import NamedTuple
 from uuid import UUID
 
+import sqlalchemy as sa
 from loguru import logger
+from sqlalchemy.orm import aliased
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -582,8 +584,9 @@ async def _fetch_member_pages(
     Replaces the previous N+1 loop (one ``SELECT`` per sub-session) with a
     single batched ``WHERE session_id IN (...)`` query ordered newest-first,
     grouped back per session in Python. The per-session
-    ``_HISTORY_PAGE_SIZE + 1`` cap is enforced while grouping so a session
-    with a very long history doesn't pull unbounded rows into memory.
+    ``_HISTORY_PAGE_SIZE + 1`` cap is enforced in SQL via a
+    ``ROW_NUMBER() OVER (PARTITION BY session_id ...)`` window so a session
+    with a very long history never pulls unbounded rows into memory.
 
     Semantics match the old loop exactly:
     - ``before`` filter (from the lead's cursor) is applied uniformly;
@@ -594,24 +597,41 @@ async def _fetch_member_pages(
     - per-session order is chronological (ascending), sessions keep the
       caller-provided order.
 
-    The per-session newest-``_HISTORY_PAGE_SIZE`` trim happens in Python
-    after the single fetch, mirroring the old loop (which also fetched then
-    trimmed). Keeping it in SQLModel ``select``/``col`` idioms avoids raw
-    SQLAlchemy window/alias constructs that the rest of the codebase doesn't
-    use.
+    The final newest-``_HISTORY_PAGE_SIZE`` trim (after hidden-row
+    filtering) still happens in Python, but operates on at most
+    ``_HISTORY_PAGE_SIZE + 1`` rows per session.
     """
     if not sub_sessions:
         return []
 
     session_ids = [s.id for s in sub_sessions]
 
-    stmt = (
-        select(SessionMessage)
-        .where(col(SessionMessage.session_id).in_(session_ids))
-        .order_by(col(SessionMessage.created_at).desc(), col(SessionMessage.id).desc())
+    # Rank rows newest-first *within each session* so SQL enforces the
+    # per-session page cap. Without this, a member with a very long history
+    # materialized every row before the Python-side trim (unbounded memory).
+    rank = (
+        sa.func.row_number()
+        .over(
+            partition_by=col(SessionMessage.session_id),
+            order_by=(
+                col(SessionMessage.created_at).desc(),
+                col(SessionMessage.id).desc(),
+            ),
+        )
+        .label("rank")
+    )
+    inner = select(SessionMessage, rank).where(
+        col(SessionMessage.session_id).in_(session_ids)
     )
     if before is not None:
-        stmt = stmt.where(col(SessionMessage.created_at) < before)
+        inner = inner.where(col(SessionMessage.created_at) < before)
+    ranked = inner.subquery()
+    msg_alias = aliased(SessionMessage, ranked)
+    stmt = (
+        select(msg_alias)
+        .where(ranked.c.rank <= _HISTORY_PAGE_SIZE + 1)
+        .order_by(ranked.c.created_at.desc(), ranked.c.id.desc())
+    )
     rows = (await db.exec(stmt)).all()
 
     # Group newest-first per session (rows already arrive in DESC order, so
@@ -619,14 +639,8 @@ async def _fetch_member_pages(
     by_session: dict[UUID, list[SessionMessage]] = {sid: [] for sid in session_ids}
     for msg in rows:
         bucket = by_session.get(msg.session_id)
-        if bucket is None:
-            continue
-        # Stop accumulating once a session already has enough candidates to
-        # cover the page after hidden-row filtering — caps memory for
-        # sessions with very long histories.
-        if len(bucket) >= _HISTORY_PAGE_SIZE + 1:
-            continue
-        bucket.append(msg)
+        if bucket is not None:
+            bucket.append(msg)
 
     members: list[TeamHistoryMemberData] = []
     for sub in sub_sessions:

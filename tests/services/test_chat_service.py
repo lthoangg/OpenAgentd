@@ -1812,3 +1812,69 @@ async def test_undo_and_redo_use_workspace_snapshots(session, tmp_path, monkeypa
     refreshed = await session.get(ChatSession, chat_session.id)
     assert refreshed is not None
     assert refreshed.revert is None
+
+
+# ---------------------------------------------------------------------------
+# get_team_history — bounded member-page fetches
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_team_history_member_fetch_is_bounded(session):
+    """_fetch_member_pages must not materialize every member row.
+
+    Regression: the batched member-history query had no per-session LIMIT —
+    a member with a very long history pulled *all* its rows into memory and
+    trimmed in Python. The fetch must stay bounded per sub-session.
+    """
+    from app.services.chat_service import _HISTORY_PAGE_SIZE, get_team_history
+    from app.agent.schemas.chat import HumanMessage
+
+    lead = await create_chat_session(session, title="lead")
+    member = await create_chat_session(session, title="member")
+    member.parent_session_id = lead.id
+    session.add(member)
+    await session.commit()
+
+    total = _HISTORY_PAGE_SIZE * 3
+    for i in range(total):
+        await save_message(session, member.id, HumanMessage(content=f"m{i}"))
+
+    fetched_message_rows = 0
+    original_exec = session.exec
+
+    async def counting_exec(stmt, *args, **kwargs):
+        nonlocal fetched_message_rows
+        result = await original_exec(stmt, *args, **kwargs)
+        rows = result.all()
+        fetched_message_rows += sum(1 for r in rows if isinstance(r, SessionMessage))
+
+        class _Result:
+            def all(self):
+                return rows
+
+            def first(self):
+                return rows[0] if rows else None
+
+        return _Result()
+
+    session.exec = counting_exec
+    try:
+        data = await get_team_history(session, lead.id)
+    finally:
+        session.exec = original_exec
+
+    assert data is not None
+    assert len(data.members) == 1
+    member_msgs = data.members[0].messages
+    assert len(member_msgs) == _HISTORY_PAGE_SIZE
+    # Newest page, chronological order.
+    assert member_msgs[-1].content == f"m{total - 1}"
+    assert member_msgs[0].content == f"m{total - _HISTORY_PAGE_SIZE}"
+
+    # The lead page (empty) + member page must stay bounded — allow page+1
+    # sentinel per session, not the full 3x-page history.
+    assert fetched_message_rows <= (_HISTORY_PAGE_SIZE + 1) * 2, (
+        f"fetched {fetched_message_rows} message rows; member history fetch "
+        "is unbounded"
+    )

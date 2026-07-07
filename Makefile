@@ -43,8 +43,8 @@ dev-lan: kill-dev-ports ## Start backend (:8000 + reload) and frontend (Vite :51
 test: ## Run tests
 	uv run pytest -n auto -q
 
-coverage: ## Run tests with coverage report
-	uv run pytest --cov=app --cov-report=term-missing tests/
+coverage: ## Run tests with coverage report (terminal + htmlcov/)
+	uv run pytest --cov=app --cov-report=term-missing:skip-covered --cov-report=html tests/
 
 health: ## Rank god files + detect circular imports (text report)
 	uv run python -m scripts.codehealth

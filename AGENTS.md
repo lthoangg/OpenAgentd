@@ -30,7 +30,7 @@ Several directories carry their own `AGENTS.md` with local conventions and
 
 ```bash
 # Backend — run from repo root
-uv run pytest -n auto --no-cov -q
+uv run pytest -n auto -q
 
 # Frontend — always use --parallel
 cd web && bun test --parallel

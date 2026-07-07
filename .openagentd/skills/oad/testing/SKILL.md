@@ -23,9 +23,9 @@ description: >
 ## Run commands
 
 ```bash
-uv run pytest -n auto --no-cov -q                          # full suite, fast
-uv run pytest --no-cov tests/path/to/test_file.py -q       # single file
-uv run pytest --no-cov tests/path/to/test_file.py::test_x  # single test
+uv run pytest -n auto -q                          # full suite, fast
+uv run pytest tests/path/to/test_file.py -q       # single file
+uv run pytest tests/path/to/test_file.py::test_x  # single test
 ```
 
 ## Environment rules

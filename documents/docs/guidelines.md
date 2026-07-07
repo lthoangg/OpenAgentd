@@ -47,9 +47,9 @@ uv run ruff format app/ tests/
 uv run ty check app/
 
 # tests
-uv run pytest -n auto --no-cov -q    # parallel — fastest, skips coverage
-uv run pytest --no-cov -q            # fast — skip coverage
-uv run pytest                        # full — with coverage report (htmlcov/)
+uv run pytest -n auto -q    # parallel — fastest (default: no coverage)
+uv run pytest -q            # serial, no coverage
+make coverage                        # full — with coverage report (htmlcov/)
 uv run pytest tests/path/to/test.py::TestClass::test_name  # single test
 ```
 
@@ -163,7 +163,7 @@ tests/
 
 **Profiling slow tests:**
 ```bash
-uv run pytest --no-cov --durations=0 -q   # shows every test's time, slowest first
+uv run pytest --durations=0 -q   # shows every test's time, slowest first
 ```
 
 **Coverage:**
@@ -240,7 +240,7 @@ Multi-agent behaviour is controlled by `AgentTeamProtocolHook`, the `team_messag
 
 1. **Understand** — read the relevant docs and existing code patterns.
 2. **Lint before committing** — `uv run ruff check app/ tests/` (backend), `bun run lint` (web).
-3. **Tests must pass** — `uv run pytest --no-cov -q` + `cd web && bun run test`.
+3. **Tests must pass** — `uv run pytest -q` + `cd web && bun run test`.
 4. **Atomic commits** — one logical change per commit, conventional commit format.
 
 ---

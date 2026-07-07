@@ -24,7 +24,7 @@ Run it:
 
 ```bash
 # backend — single test
-uv run pytest --no-cov tests/path/to/test_file.py::test_new_behavior -q
+uv run pytest tests/path/to/test_file.py::test_new_behavior -q
 
 # frontend — single file
 cd web && bun test src/__tests__/components/Foo.test.tsx
@@ -39,7 +39,7 @@ Write the smallest change that makes the test pass. Don't add branches, config, 
 With the test green, improve naming/structure without changing behavior. Re-run after every refactor step.
 
 ```bash
-uv run pytest -n auto --no-cov -q
+uv run pytest -n auto -q
 cd web && bun test --parallel
 ```
 
@@ -62,7 +62,7 @@ Once the reproduction test is green after the fix, hand off to `oad/debug` step 
 
 - [ ] New behavior has a test at the mirrored path (see `oad/testing` for placement rules)
 - [ ] Bug fixes have a reproduction test that failed before the fix
-- [ ] `uv run pytest -n auto --no-cov -q` passes (backend changes)
+- [ ] `uv run pytest -n auto -q` passes (backend changes)
 - [ ] `cd web && bun test --parallel` passes (frontend changes)
 - [ ] Relevant `tests/manual/*.py` scenario script re-run if the touched subsystem has one (see `oad/testing`)
 - [ ] No tests skipped/disabled to make the suite pass

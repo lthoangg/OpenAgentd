@@ -104,8 +104,8 @@ uv run ruff check app/ tests/ --fix      # auto-fix
 uv run ruff format app/ tests/           # format
 uv run ty check app/                     # type check
 
-uv run pytest --no-cov -q               # fast tests
-uv run pytest                            # full run with coverage (htmlcov/)
+uv run pytest -n auto -q                 # fast tests (default: no coverage)
+make coverage                            # full run with coverage (htmlcov/)
 ```
 
 ### Frontend (web)
@@ -176,8 +176,8 @@ Tests mirror the `app/` structure under `tests/`. Key patterns:
 Coverage target: **≥ 80%** for `app/agent/` and `app/api/`.
 
 ```bash
-uv run pytest --no-cov -q               # quick pass/fail
-uv run pytest                            # full with HTML coverage report
+uv run pytest -n auto -q                 # quick pass/fail
+make coverage                            # full with HTML coverage report
 open htmlcov/index.html
 ```
 
@@ -198,7 +198,7 @@ Tests use Bun test + Happy DOM. Test store logic and pure utils directly; avoid 
 3. **Before opening a PR:**
    - `uv run ruff check app/ tests/` passes
    - `uv run ty check app/` passes
-   - `uv run pytest --no-cov -q` passes
+   - `uv run pytest -q` passes
    - `cd web && bun run lint && bun test src/__tests__` passes
 4. **Commit style:** [Conventional Commits](https://www.conventionalcommits.org/) — `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`.
 5. **PR description:**

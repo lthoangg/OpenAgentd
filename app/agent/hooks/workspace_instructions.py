@@ -1,4 +1,4 @@
-"""Inject workspace-local AGENTS.md instructions for coding mode."""
+"""Inject workspace-local AGENTS.md or CLAUDE.md instructions for coding mode."""
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ class WorkspaceInstructionsHook(BaseAgentHook):
         request: "ModelRequest",
         handler: "ModelCallHandler",
     ) -> "AssistantMessage":
-        instructions = self._read_agents_md()
+        instructions = self._read_workspace_instructions()
         if not instructions:
             return await handler(request)
         block = f"## Workspace Instructions\n\n{instructions}"
@@ -37,17 +37,23 @@ class WorkspaceInstructionsHook(BaseAgentHook):
         )
         return await handler(request.override(system_prompt=prompt))
 
-    def _read_agents_md(self) -> str:
+    def _read_workspace_instructions(self) -> str:
         if self._workspace is None:
             return ""
-        path = self._workspace / "AGENTS.md"
+        for filename in ("AGENTS.md", "CLAUDE.md"):
+            instructions = self._read_instruction_file(self._workspace / filename)
+            if instructions:
+                return instructions
+        return ""
+
+    def _read_instruction_file(self, path: Path) -> str:
         if not path.is_file():
             return ""
         try:
             size = path.stat().st_size
             if size > MAX_AGENTS_MD_BYTES:
                 logger.warning(
-                    "workspace_agents_md_too_large path={} bytes={} limit={}",
+                    "workspace_instructions_file_too_large path={} bytes={} limit={}",
                     path,
                     size,
                     MAX_AGENTS_MD_BYTES,
@@ -56,6 +62,6 @@ class WorkspaceInstructionsHook(BaseAgentHook):
             return path.read_text(encoding="utf-8").strip()
         except (OSError, UnicodeDecodeError) as exc:
             logger.warning(
-                "workspace_agents_md_read_failed path={} error={}", path, exc
+                "workspace_instructions_file_read_failed path={} error={}", path, exc
             )
             return ""

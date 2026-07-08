@@ -437,7 +437,8 @@ OpenAgentd carries context across sessions via rolling-window summarization. Dee
   instruction tool-call pairs remain active after repeated compaction while the
   summarizer keeps the same cacheable prompt prefix as normal chat turns.
 - **`AGENTS.md` at repo root and subfolders** `[v1.9.0]` — written by `/init`;
-  standard repo- and folder-scoped agent context files.
+  standard repo- and folder-scoped agent context files. Coding workspaces fall
+  back to root `CLAUDE.md` when root `AGENTS.md` is absent.
 - **Per-message provider metadata** `[v1.17.0]` — assistant messages persist
   the model that generated each reply (visible in inspector).
 

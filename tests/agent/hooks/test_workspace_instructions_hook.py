@@ -33,7 +33,52 @@ async def test_workspace_instructions_hook_injects_agents_md(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_workspace_instructions_hook_skips_missing_agents_md(tmp_path):
+async def test_workspace_instructions_hook_falls_back_to_claude_md(tmp_path):
+    (tmp_path / "CLAUDE.md").write_text("Follow Claude rules.", encoding="utf-8")
+    hook = WorkspaceInstructionsHook(str(tmp_path))
+    seen: dict[str, str] = {}
+
+    class Request:
+        system_prompt = "Base prompt"
+
+        def override(self, **kwargs):
+            return SimpleNamespace(**kwargs)
+
+    async def handler(request):
+        seen["prompt"] = request.system_prompt
+        return SimpleNamespace(content="ok")
+
+    await hook.wrap_model_call(None, None, Request(), handler)  # type: ignore[arg-type]
+
+    assert "Base prompt" in seen["prompt"]
+    assert "Follow Claude rules." in seen["prompt"]
+
+
+@pytest.mark.asyncio
+async def test_workspace_instructions_hook_prefers_agents_md_over_claude_md(tmp_path):
+    (tmp_path / "AGENTS.md").write_text("Follow project rules.", encoding="utf-8")
+    (tmp_path / "CLAUDE.md").write_text("Follow Claude rules.", encoding="utf-8")
+    hook = WorkspaceInstructionsHook(str(tmp_path))
+    seen: dict[str, str] = {}
+
+    class Request:
+        system_prompt = "Base prompt"
+
+        def override(self, **kwargs):
+            return SimpleNamespace(**kwargs)
+
+    async def handler(request):
+        seen["prompt"] = request.system_prompt
+        return SimpleNamespace(content="ok")
+
+    await hook.wrap_model_call(None, None, Request(), handler)  # type: ignore[arg-type]
+
+    assert "Follow project rules." in seen["prompt"]
+    assert "Follow Claude rules." not in seen["prompt"]
+
+
+@pytest.mark.asyncio
+async def test_workspace_instructions_hook_skips_missing_instruction_files(tmp_path):
     hook = WorkspaceInstructionsHook(str(tmp_path))
     seen: dict[str, str] = {}
 

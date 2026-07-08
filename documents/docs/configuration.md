@@ -45,7 +45,7 @@ Built-in lifecycle hooks intercept the agent loop without modifying the core. Th
 | `inject_current_date` | Injects current date into the system prompt |
 | `AgentTeamProtocolHook` | Team-only — injects communication protocol, workflow, and roster |
 | `TeamInboxHook` | Team-only — drains the mailbox into `state.messages` before each model call |
-| `WorkspaceInstructionsHook` | Coding mode — appends repo-level `AGENTS.md` |
+| `WorkspaceInstructionsHook` | Coding mode — appends repo-level `AGENTS.md`, falling back to `CLAUDE.md` |
 | `SessionLogHook` | Writes verbose JSONL per session to `{STATE_DIR}/logs/sessions/` |
 | `OpenTelemetryHook` | OTEL spans + metrics — see [`observability.md`](./observability.md) |
 | `ToolResultOffloadHook` | Offloads very large tool results to disk and replaces them with a compact preview |

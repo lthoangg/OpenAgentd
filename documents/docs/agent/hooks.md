@@ -346,7 +346,7 @@ LLM call details, SSE payload, client handling, and observability.
 
 **File:** `workspace_instructions.py`
 
-Coding-mode only. Reads a root `AGENTS.md` in the active workspace (when present and under the size limit) and appends it to the system prompt, so the agent picks up per-repo conventions without the user copying them into the agent `.md`.
+Coding-mode only. Reads a root `AGENTS.md` in the active workspace (or `CLAUDE.md` when `AGENTS.md` is absent), when present and under the size limit, and appends it to the system prompt so the agent picks up per-repo conventions without the user copying them into the agent `.md`.
 
 ---
 

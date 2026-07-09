@@ -7,6 +7,7 @@ only wires them up to ``argparse`` subparsers.
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 
 from app.cli.commands.auth import cmd_auth
 from app.cli.commands.address import cmd_address
@@ -327,6 +328,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
+    import os
+    import sys
+
+    if sys.argv and Path(sys.argv[0]).name == "openagentd":
+        os.environ.setdefault("APP_ENV", "production")
+
     parser = build_parser()
     args = parser.parse_args()
     args.func(args)

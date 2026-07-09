@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import os
 import signal
+import sys
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -500,6 +501,30 @@ class TestCmdCleanup:
         assert "Generated artifact cleanup" in out
         assert "Database not initialized yet" in out
         assert "No files deleted" in out
+
+
+class TestMainEntrypoint:
+    def test_main_forces_production_when_invoked_via_console_script(self, monkeypatch):
+        import importlib
+
+        main_mod = importlib.import_module("app.cli.main")
+
+        parser = build_parser()
+        seen: list[str | None] = []
+
+        def fake_cmd(_args):
+            seen.append(os.environ.get("APP_ENV"))
+
+        args = parser.parse_args(["cleanup"])
+        args.func = fake_cmd
+        monkeypatch.setattr(parser, "parse_args", lambda: args)
+        monkeypatch.setattr(main_mod, "build_parser", lambda: parser)
+        monkeypatch.setattr(sys, "argv", ["openagentd", "cleanup"])
+
+        monkeypatch.delenv("APP_ENV", raising=False)
+        main_mod.main()
+
+        assert seen == ["production"]
 
 
 class TestCmdCleanupReporting:

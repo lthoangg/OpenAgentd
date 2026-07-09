@@ -21,6 +21,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
+from sqlalchemy.exc import OperationalError
 
 import app.cli as cli
 from app.cli.net import ServerAddresses
@@ -38,6 +39,7 @@ from app.cli import (
     cmd_address,
     cmd_health,
     cmd_logs,
+    cmd_cleanup,
     cmd_restart,
     cmd_status,
     cmd_stop,
@@ -468,6 +470,36 @@ class TestCmdRestart:
 # ---------------------------------------------------------------------------
 # cmd_upgrade
 # ---------------------------------------------------------------------------
+
+
+class TestCmdCleanup:
+    def test_cleanup_handles_missing_chat_sessions_table(self, monkeypatch, capsys):
+        from app.cli.commands import cleanup as cleanup_mod
+
+        args = build_parser().parse_args(["cleanup"])
+
+        class _OrigExc(Exception):
+            pass
+
+        error = OperationalError(
+            "SELECT chat_sessions.id FROM chat_sessions",
+            {},
+            _OrigExc("no such table: chat_sessions"),
+        )
+
+        async def raise_missing_table(*_args, **_kwargs):
+            raise error
+
+        monkeypatch.setattr(
+            cleanup_mod, "cleanup_generated_artifacts", raise_missing_table
+        )
+
+        cmd_cleanup(args)
+
+        out = capsys.readouterr().out
+        assert "Generated artifact cleanup" in out
+        assert "Database not initialized yet" in out
+        assert "No files deleted" in out
 
 
 class TestCmdUpgrade:

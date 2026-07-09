@@ -115,10 +115,19 @@ openagentd cleanup --older-than-days 7
 openagentd cleanup --apply            # delete the listed artifacts
 ```
 
-Cleanup targets generated, regeneratable artifacts only:
+Cleanup targets generated artifacts and old normal chat-session state:
 
-- orphaned normal session workspaces under `OPENAGENTD_WORKSPACE_DIR`;
-- orphaned session artifact directories under `{OPENAGENTD_DATA_DIR}/sessions/`;
+- normal `chat_sessions` rows older than `--older-than-days`;
+- `session_messages` belonging to those expired normal sessions;
+- expired normal session workspaces under `OPENAGENTD_WORKSPACE_DIR`;
+- expired session artifact directories under `{OPENAGENTD_DATA_DIR}/sessions/`;
+- expired snapshot repositories under `{OPENAGENTD_STATE_DIR}/snapshot/`;
+- orphaned normal session workspaces/artifacts/snapshots whose DB rows are already gone;
+- old OpenAgentd-managed git worktrees under `{OPENAGENTD_DATA_DIR}/worktrees/` when they are not tied to a live coding session;
 - old state logs, telemetry files, and OTEL files.
 
-It intentionally does not delete `OPENAGENTD_DATA_DIR`, `OPENAGENTD_CONFIG_DIR`, or credential/cache files.
+Coding/worktree sessions are kept conservatively: cleanup does not delete live coding-session rows or their attached worktrees/artifacts/snapshots just because they are old.
+
+If the session table is temporarily unavailable, cleanup degrades gracefully and skips the session-backed lookup instead of crashing.
+
+It intentionally does not delete `OPENAGENTD_DATA_DIR`, `OPENAGENTD_CONFIG_DIR`, credential/cache files, or the main SQLite DB itself.

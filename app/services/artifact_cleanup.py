@@ -3,18 +3,22 @@
 from __future__ import annotations
 
 import shutil
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID
 
-from sqlmodel import select
+from sqlalchemy.exc import OperationalError
+from sqlmodel import delete, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.agent.artifacts import SESSIONS_DIR
+from app.api.routes.team.worktrees import find_managed_worktree_source
 from app.core.config import settings
-from app.models.chat import ChatSession
+from app.models.chat import ChatSession, SessionMessage
+from sqlmodel import col
+from app.services import snapshot_service
 
 
 @dataclass(frozen=True)
@@ -80,6 +84,20 @@ def _is_uuid(value: str) -> bool:
     return True
 
 
+def _is_missing_chat_sessions_table(exc: OperationalError) -> bool:
+    detail = str(getattr(exc, "orig", exc)).lower()
+    return "no such table" in detail and "chat_sessions" in detail
+
+
+async def _session_rows(db: AsyncSession) -> Sequence[ChatSession] | None:
+    try:
+        return (await db.exec(select(ChatSession))).all()
+    except OperationalError as exc:
+        if not _is_missing_chat_sessions_table(exc):
+            raise
+        return None
+
+
 async def cleanup_generated_artifacts(
     db: AsyncSession,
     *,
@@ -91,19 +109,39 @@ async def cleanup_generated_artifacts(
     The pass targets:
     - normal session workspaces whose DB session no longer exists;
     - app-managed state logs/telemetry/OTEL directories older than the cutoff;
-    - app-managed session artifact directories whose DB session no longer exists.
+    - app-managed session artifact directories whose DB session no longer exists;
+    - old snapshot repositories for sessions whose DB rows are gone;
+    - old managed git worktrees under ``OPENAGENTD_DATA_DIR/worktrees``.
 
     It intentionally does not delete config, cache credentials, or the DB.
     """
     cutoff = _older_than_cutoff(older_than_days)
-    rows = (await db.exec(select(ChatSession))).all()
-    live_ids = {str(row.id) for row in rows}
+    rows = await _session_rows(db)
+    live_ids = {str(row.id) for row in rows} if rows is not None else set()
+    expired_session_ids: set[str] = set()
+    coding_session_ids: set[str] = set()
+    coding_workspaces: set[str] = set()
+    if rows is not None:
+        for row in rows:
+            sid = str(row.id)
+            if row.mode == "coding":
+                coding_session_ids.add(sid)
+                if row.workspace:
+                    coding_workspaces.add(str(Path(row.workspace).resolve()))
+            if cutoff is not None and row.created_at < cutoff and row.mode != "coding":
+                expired_session_ids.add(sid)
 
     candidates: list[CleanupCandidate] = []
 
     workspace_root = Path(settings.OPENAGENTD_WORKSPACE_DIR)
     for child in _safe_child_dirs(workspace_root):
-        if (
+        if _is_uuid(child.name) and child.name in expired_session_ids:
+            candidates.append(
+                CleanupCandidate(
+                    child, "expired normal session workspace", _dir_size(child)
+                )
+            )
+        elif (
             child.name not in live_ids
             and _is_uuid(child.name)
             and _is_old_enough(child, cutoff)
@@ -127,7 +165,11 @@ async def cleanup_generated_artifacts(
 
     sessions_root = Path(settings.OPENAGENTD_DATA_DIR) / SESSIONS_DIR
     for child in _safe_child_dirs(sessions_root):
-        if (
+        if _is_uuid(child.name) and child.name in expired_session_ids:
+            candidates.append(
+                CleanupCandidate(child, "expired session artifacts", _dir_size(child))
+            )
+        elif (
             child.name not in live_ids
             and _is_uuid(child.name)
             and _is_old_enough(child, cutoff)
@@ -136,10 +178,54 @@ async def cleanup_generated_artifacts(
                 CleanupCandidate(child, "orphaned session artifacts", _dir_size(child))
             )
 
+    snapshot_root = Path(settings.OPENAGENTD_STATE_DIR) / "snapshot"
+    for child in _safe_child_dirs(snapshot_root):
+        if _is_uuid(child.name) and child.name in expired_session_ids:
+            candidates.append(
+                CleanupCandidate(child, "expired session snapshots", _dir_size(child))
+            )
+        elif (
+            child.name not in live_ids
+            and _is_uuid(child.name)
+            and _is_old_enough(child, cutoff)
+        ):
+            candidates.append(
+                CleanupCandidate(child, "old session snapshots", _dir_size(child))
+            )
+
+    worktrees_root = Path(settings.OPENAGENTD_DATA_DIR) / "worktrees"
+    for repo_root in _safe_child_dirs(worktrees_root):
+        for child in _safe_child_dirs(repo_root):
+            resolved = str(child.resolve())
+            if resolved in coding_workspaces:
+                continue
+            if _is_old_enough(child, cutoff) and find_managed_worktree_source(child):
+                candidates.append(
+                    CleanupCandidate(
+                        child, "old managed git worktrees", _dir_size(child)
+                    )
+                )
+
     deleted: list[Path] = []
     if not dry_run:
+        if expired_session_ids:
+            expired_ids = [UUID(value) for value in expired_session_ids]
+            await db.exec(
+                delete(SessionMessage).where(
+                    col(SessionMessage.session_id).in_(expired_ids)
+                )
+            )
+            await db.exec(
+                delete(ChatSession).where(col(ChatSession.id).in_(expired_ids))
+            )
+            await db.commit()
         for candidate in candidates:
             shutil.rmtree(candidate.path, ignore_errors=True)
             deleted.append(candidate.path)
+            if candidate.reason in {
+                "old session snapshots",
+                "expired session snapshots",
+            }:
+                snapshot_service._locks.pop(candidate.path.name, None)
 
     return CleanupResult(dry_run=dry_run, candidates=candidates, deleted=deleted)

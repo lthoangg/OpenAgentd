@@ -5,9 +5,11 @@ from __future__ import annotations
 import argparse
 import asyncio
 
+from sqlalchemy.exc import OperationalError
+
 from app.cli.ui import _bold, _cyan, _dim, _green, _yellow
 from app.core.db import get_session
-from app.services.artifact_cleanup import cleanup_generated_artifacts
+from app.services.artifact_cleanup import CleanupResult, cleanup_generated_artifacts
 
 
 def _format_bytes(size: int) -> str:
@@ -19,14 +21,34 @@ def _format_bytes(size: int) -> str:
     return f"{value:.1f} GB"
 
 
-async def _run_cleanup(args: argparse.Namespace) -> None:
+def _is_missing_chat_sessions_table(exc: OperationalError) -> bool:
+    detail = str(getattr(exc, "orig", exc)).lower()
+    return "no such table" in detail and "chat_sessions" in detail
+
+
+async def _cleanup_result(args: argparse.Namespace) -> tuple[CleanupResult, str | None]:
     async for db in get_session():
-        result = await cleanup_generated_artifacts(
-            db,
-            older_than_days=args.older_than_days,
-            dry_run=args.dry_run,
-        )
-        break
+        try:
+            result = await cleanup_generated_artifacts(
+                db,
+                older_than_days=args.older_than_days,
+                dry_run=args.dry_run,
+            )
+        except OperationalError as exc:
+            if not _is_missing_chat_sessions_table(exc):
+                raise
+            result = CleanupResult(dry_run=args.dry_run, candidates=[], deleted=[])
+            return (
+                result,
+                "Database not initialized yet; session-backed cleanup was skipped.",
+            )
+        return result, None
+
+    return CleanupResult(dry_run=args.dry_run, candidates=[], deleted=[]), None
+
+
+async def _run_cleanup(args: argparse.Namespace) -> None:
+    result, warning = await _cleanup_result(args)
 
     mode = "dry run" if result.dry_run else "deleted"
     print(f"  {_bold(_cyan('Generated artifact cleanup'))} ({mode})")
@@ -40,6 +62,9 @@ async def _run_cleanup(args: argparse.Namespace) -> None:
         )
     if len(result.candidates) > args.limit:
         print(f"  {_dim(f'... {len(result.candidates) - args.limit} more')}")
+
+    if warning:
+        print(f"  {_yellow(warning)}")
 
     if result.dry_run:
         print(

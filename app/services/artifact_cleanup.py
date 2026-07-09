@@ -121,6 +121,7 @@ async def cleanup_generated_artifacts(
     rows = await _session_rows(db)
     live_ids = {str(row.id) for row in rows} if rows is not None else set()
     expired_session_ids: set[str] = set()
+    normal_session_ids: set[str] = set()
     coding_session_ids: set[str] = set()
     coding_workspaces: set[str] = set()
     if rows is not None:
@@ -130,14 +131,20 @@ async def cleanup_generated_artifacts(
                 coding_session_ids.add(sid)
                 if row.workspace:
                     coding_workspaces.add(str(Path(row.workspace).resolve()))
-            if cutoff is not None and row.created_at < cutoff and row.mode != "coding":
+            else:
+                normal_session_ids.add(sid)
+            if cutoff is not None and row.created_at < cutoff:
                 expired_session_ids.add(sid)
 
     candidates: list[CleanupCandidate] = []
 
     workspace_root = Path(settings.OPENAGENTD_WORKSPACE_DIR)
     for child in _safe_child_dirs(workspace_root):
-        if _is_uuid(child.name) and child.name in expired_session_ids:
+        if (
+            _is_uuid(child.name)
+            and child.name in expired_session_ids
+            and child.name in normal_session_ids
+        ):
             candidates.append(
                 CleanupCandidate(
                     child, "expired normal session workspace", _dir_size(child)
@@ -168,9 +175,12 @@ async def cleanup_generated_artifacts(
     sessions_root = Path(settings.OPENAGENTD_DATA_DIR) / SESSIONS_DIR
     for child in _safe_child_dirs(sessions_root):
         if _is_uuid(child.name) and child.name in expired_session_ids:
-            candidates.append(
-                CleanupCandidate(child, "expired session artifacts", _dir_size(child))
+            reason = (
+                "expired coding session artifacts"
+                if child.name in coding_session_ids
+                else "expired session artifacts"
             )
+            candidates.append(CleanupCandidate(child, reason, _dir_size(child)))
         elif (
             child.name not in live_ids
             and _is_uuid(child.name)
@@ -183,9 +193,12 @@ async def cleanup_generated_artifacts(
     snapshot_root = Path(settings.OPENAGENTD_STATE_DIR) / "snapshot"
     for child in _safe_child_dirs(snapshot_root):
         if _is_uuid(child.name) and child.name in expired_session_ids:
-            candidates.append(
-                CleanupCandidate(child, "expired session snapshots", _dir_size(child))
+            reason = (
+                "expired coding session snapshots"
+                if child.name in coding_session_ids
+                else "expired session snapshots"
             )
+            candidates.append(CleanupCandidate(child, reason, _dir_size(child)))
         elif (
             child.name not in live_ids
             and _is_uuid(child.name)

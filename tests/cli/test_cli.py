@@ -560,6 +560,43 @@ class TestCmdCleanupReporting:
         assert "Candidates:" in out
         assert "0" in out
 
+    def test_cleanup_dry_run_does_not_dump_candidate_paths(self, monkeypatch, capsys):
+        from app.cli.commands import cleanup as cleanup_mod
+        from app.services.artifact_cleanup import CleanupCandidate, CleanupResult
+
+        args = build_parser().parse_args(
+            ["cleanup", "--older-than-days", "10", "--limit", "2"]
+        )
+
+        async def fake_cleanup_result(_args):
+            return (
+                CleanupResult(
+                    dry_run=True,
+                    candidates=[
+                        CleanupCandidate(
+                            Path("/tmp/a"), "orphaned normal session workspace", 1
+                        ),
+                        CleanupCandidate(
+                            Path("/tmp/b"), "expired session artifacts", 2
+                        ),
+                    ],
+                    deleted=[],
+                    expired_sessions=1,
+                    expired_messages=4,
+                ),
+                None,
+            )
+
+        monkeypatch.setattr(cleanup_mod, "_cleanup_result", fake_cleanup_result)
+
+        cmd_cleanup(args)
+
+        out = capsys.readouterr().out
+        assert "Candidates:" in out
+        assert "/tmp/a" not in out
+        assert "/tmp/b" not in out
+        assert "Expired sessions:" in out
+
 
 class TestCmdUpgrade:
     def test_upgrade_runs_package_manager_without_restart(self, monkeypatch):

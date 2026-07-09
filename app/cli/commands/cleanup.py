@@ -57,14 +57,6 @@ async def _run_cleanup(args: argparse.Namespace) -> None:
     print(f"  {_dim('Candidates:')} {len(result.candidates)}")
     print(f"  {_dim('Total:')}      {_format_bytes(result.total_bytes)}")
 
-    for candidate in result.candidates[: args.limit]:
-        print(
-            f"  - {_format_bytes(candidate.bytes):>9}  "
-            f"{candidate.reason}: {candidate.path}"
-        )
-    if len(result.candidates) > args.limit:
-        print(f"  {_dim(f'... {len(result.candidates) - args.limit} more')}")
-
     if warning:
         print(f"  {_yellow(warning)}")
 

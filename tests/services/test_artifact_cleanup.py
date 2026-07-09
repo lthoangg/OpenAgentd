@@ -192,7 +192,9 @@ async def test_cleanup_apply_deletes_old_normal_sessions_and_linked_storage(
 
 
 @pytest.mark.asyncio
-async def test_cleanup_keeps_old_coding_sessions_and_worktrees(tmp_path, monkeypatch):
+async def test_cleanup_apply_deletes_old_coding_session_metadata_but_keeps_worktree(
+    tmp_path, monkeypatch
+):
     from app.core import db as core_db
     from app.core.config import settings
     from app.services import artifact_cleanup as cleanup_mod
@@ -219,6 +221,8 @@ async def test_cleanup_keeps_old_coding_sessions_and_worktrees(tmp_path, monkeyp
                 updated_at=old_time,
             )
         )
+        await session.flush()
+        session.add(SessionMessage(session_id=coding_id, role="user", content="old"))
         await session.commit()
 
         monkeypatch.setattr(
@@ -226,14 +230,22 @@ async def test_cleanup_keeps_old_coding_sessions_and_worktrees(tmp_path, monkeyp
             "find_managed_worktree_source",
             lambda path: str(tmp_path / "repo") if path == worktree_dir else None,
         )
-        result = await cleanup_mod.cleanup_generated_artifacts(
-            session, older_than_days=7, dry_run=True
+        result = await cleanup_generated_artifacts(
+            session, older_than_days=7, dry_run=False
         )
 
-    paths = {candidate.path for candidate in result.candidates}
-    assert worktree_dir not in paths
-    assert artifact_dir not in paths
-    assert snapshot_dir not in paths
+        remaining_sessions = (await session.exec(select(ChatSession))).all()
+        remaining_messages = (await session.exec(select(SessionMessage))).all()
+
+    deleted_paths = set(result.deleted)
+    assert artifact_dir in deleted_paths
+    assert snapshot_dir in deleted_paths
+    assert not artifact_dir.exists()
+    assert not snapshot_dir.exists()
+    assert worktree_dir.exists()
+    assert worktree_dir not in deleted_paths
+    assert remaining_sessions == []
+    assert remaining_messages == []
 
 
 @pytest.mark.asyncio

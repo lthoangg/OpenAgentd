@@ -17,8 +17,8 @@ from app.agent.artifacts import SESSIONS_DIR
 from app.api.routes.team.worktrees import find_managed_worktree_source
 from app.core.config import settings
 from app.models.chat import ChatSession, SessionMessage
-from sqlmodel import col
 from app.services import snapshot_service
+from sqlmodel import col
 
 
 @dataclass(frozen=True)
@@ -37,6 +37,8 @@ class CleanupResult:
     dry_run: bool
     candidates: list[CleanupCandidate]
     deleted: list[Path]
+    expired_sessions: int = 0
+    expired_messages: int = 0
 
     @property
     def total_bytes(self) -> int:
@@ -207,6 +209,15 @@ async def cleanup_generated_artifacts(
                 )
 
     deleted: list[Path] = []
+    expired_messages = 0
+    if expired_session_ids:
+        expired_ids = [UUID(value) for value in expired_session_ids]
+        message_rows = await db.exec(
+            select(SessionMessage.id).where(
+                col(SessionMessage.session_id).in_(expired_ids)
+            )
+        )
+        expired_messages = len(message_rows.all())
     if not dry_run:
         if expired_session_ids:
             expired_ids = [UUID(value) for value in expired_session_ids]
@@ -228,4 +239,10 @@ async def cleanup_generated_artifacts(
             }:
                 snapshot_service._locks.pop(candidate.path.name, None)
 
-    return CleanupResult(dry_run=dry_run, candidates=candidates, deleted=deleted)
+    return CleanupResult(
+        dry_run=dry_run,
+        candidates=candidates,
+        deleted=deleted,
+        expired_sessions=len(expired_session_ids),
+        expired_messages=expired_messages,
+    )

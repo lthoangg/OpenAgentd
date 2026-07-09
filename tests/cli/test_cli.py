@@ -502,6 +502,40 @@ class TestCmdCleanup:
         assert "No files deleted" in out
 
 
+class TestCmdCleanupReporting:
+    def test_cleanup_prints_expired_db_counts_when_no_path_candidates(
+        self, monkeypatch, capsys
+    ):
+        from app.cli.commands import cleanup as cleanup_mod
+        from app.services.artifact_cleanup import CleanupResult
+
+        args = build_parser().parse_args(["cleanup", "--older-than-days", "10"])
+
+        async def fake_cleanup_result(_args):
+            return (
+                CleanupResult(
+                    dry_run=True,
+                    candidates=[],
+                    deleted=[],
+                    expired_sessions=3,
+                    expired_messages=12,
+                ),
+                None,
+            )
+
+        monkeypatch.setattr(cleanup_mod, "_cleanup_result", fake_cleanup_result)
+
+        cmd_cleanup(args)
+
+        out = capsys.readouterr().out
+        assert "Expired sessions:" in out
+        assert "3" in out
+        assert "Expired messages:" in out
+        assert "12" in out
+        assert "Candidates:" in out
+        assert "0" in out
+
+
 class TestCmdUpgrade:
     def test_upgrade_runs_package_manager_without_restart(self, monkeypatch):
         from app.cli.commands import upgrade as upgrade_mod

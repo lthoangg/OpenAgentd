@@ -234,3 +234,44 @@ async def test_cleanup_keeps_old_coding_sessions_and_worktrees(tmp_path, monkeyp
     assert worktree_dir not in paths
     assert artifact_dir not in paths
     assert snapshot_dir not in paths
+
+
+@pytest.mark.asyncio
+async def test_cleanup_dry_run_reports_expired_db_rows_without_paths(
+    tmp_path, monkeypatch
+):
+    from app.core import db as core_db
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "OPENAGENTD_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr(
+        settings, "OPENAGENTD_WORKSPACE_DIR", str(tmp_path / "workspace")
+    )
+    monkeypatch.setattr(settings, "OPENAGENTD_STATE_DIR", str(tmp_path / "state"))
+
+    old_id = uuid.uuid4()
+    old_time = datetime.now(timezone.utc) - timedelta(days=30)
+
+    async with core_db.async_session_factory() as session:
+        session.add(
+            ChatSession(
+                id=old_id,
+                agent_name="lead",
+                created_at=old_time,
+                updated_at=old_time,
+            )
+        )
+        await session.flush()
+        session.add(SessionMessage(session_id=old_id, role="user", content="old"))
+        session.add(
+            SessionMessage(session_id=old_id, role="assistant", content="reply")
+        )
+        await session.commit()
+
+        result = await cleanup_generated_artifacts(
+            session, older_than_days=7, dry_run=True
+        )
+
+    assert result.expired_sessions == 1
+    assert result.expired_messages == 2
+    assert result.candidates == []

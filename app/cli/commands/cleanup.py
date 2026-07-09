@@ -52,6 +52,8 @@ async def _run_cleanup(args: argparse.Namespace) -> None:
 
     mode = "dry run" if result.dry_run else "deleted"
     print(f"  {_bold(_cyan('Generated artifact cleanup'))} ({mode})")
+    print(f"  {_dim('Expired sessions:')} {result.expired_sessions}")
+    print(f"  {_dim('Expired messages:')} {result.expired_messages}")
     print(f"  {_dim('Candidates:')} {len(result.candidates)}")
     print(f"  {_dim('Total:')}      {_format_bytes(result.total_bytes)}")
 

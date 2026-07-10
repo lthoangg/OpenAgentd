@@ -17,7 +17,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, render, screen, waitFor, act } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import '@testing-library/jest-dom'
 
@@ -99,6 +99,11 @@ mock.module('@/utils/LazyMarkdownBlock', () => ({
   LazyMarkdownBlock: ({ content }: { content: string }) => <div>{content}</div>,
 }))
 
+let platform = { isTauri: true, os: 'macos', isMacOverlay: true }
+mock.module('@/hooks/use-platform', () => ({
+  getPlatform: () => platform,
+}))
+
 // ---------------------------------------------------------------------------
 // Import component after mocks are set up
 // ---------------------------------------------------------------------------
@@ -126,6 +131,7 @@ beforeEach(() => {
   invokeMock.mockClear()
   openExternalUrlMock.mockClear()
   window.localStorage.clear()
+  platform = { isTauri: true, os: 'macos', isMacOverlay: true }
 })
 
 afterEach(() => {
@@ -135,6 +141,28 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
+
+describe('UpdateCard — platform lifecycle', () => {
+  it('does not initialize desktop updater commands on mobile', async () => {
+    platform = { isTauri: true, os: 'ios', isMacOverlay: false }
+    render(<UpdateCard />)
+
+    await act(async () => {})
+
+    expect(listenMock).not.toHaveBeenCalled()
+    expect(invokeCalls).toHaveLength(0)
+  })
+
+  it('checks again when the desktop app returns to the foreground', async () => {
+    render(<UpdateCard />)
+    await waitFor(() => expect(capturedStatusListener).not.toBeNull())
+    invokeCalls.length = 0
+
+    act(() => document.dispatchEvent(new Event('visibilitychange')))
+
+    await waitFor(() => expect(invokeCalls.some((call) => call.command === 'updater_check')).toBe(true))
+  })
+})
 
 describe('UpdateCard — install flow', () => {
   it('shows "Install and restart" button when status is downloaded', async () => {
@@ -185,6 +213,36 @@ describe('UpdateCard — install flow', () => {
     )
     const installCalls = invokeCalls.filter((c) => c.command === 'updater_install')
     expect(installCalls).toHaveLength(1)
+  })
+
+  it('clears the restart timeout when unmounted during a pending install', async () => {
+    installBehaviour = 'hang'
+    const { unmount } = render(<UpdateCard />)
+
+    await waitFor(() => expect(capturedStatusListener).not.toBeNull())
+    act(() => emitStatus({ status: 'downloaded', version: '1.71.0', current_version: '1.70.0' }))
+    await screen.findByRole('button', { name: /install and restart/i })
+
+    const realSetTimeout = globalThis.setTimeout
+    const realClearTimeout = globalThis.clearTimeout
+    let timeoutCallback: (() => void) | undefined
+    let timeoutCleared = false
+    globalThis.setTimeout = ((callback: TimerHandler) => {
+      timeoutCallback = callback as () => void
+      return 1 as unknown as ReturnType<typeof setTimeout>
+    }) as unknown as typeof setTimeout
+    globalThis.clearTimeout = (() => { timeoutCleared = true }) as unknown as typeof clearTimeout
+    try {
+      fireEvent.click(screen.getByRole('button', { name: /install and restart/i }))
+      await act(async () => { await Promise.resolve() })
+      unmount()
+      expect(timeoutCleared).toBe(true)
+      act(() => timeoutCallback?.())
+      expect(screen.queryByText('Update failed')).not.toBeInTheDocument()
+    } finally {
+      globalThis.setTimeout = realSetTimeout
+      globalThis.clearTimeout = realClearTimeout
+    }
   })
 
   it('shows error state when updater_install rejects (e.g. missing download)', async () => {

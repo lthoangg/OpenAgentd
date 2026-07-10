@@ -75,6 +75,7 @@ export function resetSessionState(
   state._abortController = null
   state._pendingMessages = []
   clearReconnectTimer(state)
+  state._reconnectAttempts = 0
   state._sessionGeneration = (state._sessionGeneration ?? 0) + 1
   state.cacheInvalidations = []
   state.hasMore = false

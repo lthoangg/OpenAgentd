@@ -66,6 +66,7 @@ export interface TeamStoreState {
   _resolvedSessionReadyId: string | null
   _unloading: boolean
   _reconnectTimer: ReturnType<typeof setTimeout> | null
+  _reconnectAttempts: number
   cacheInvalidations: CacheInvalidation[]
 }
 

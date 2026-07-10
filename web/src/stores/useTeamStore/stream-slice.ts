@@ -60,6 +60,7 @@ export type StreamSlice = Pick<
   | 'setupRequired'
   | '_abortController'
   | '_reconnectTimer'
+  | '_reconnectAttempts'
   | '_unloading'
   | 'cacheInvalidations'
   | 'continueTeam'
@@ -87,6 +88,7 @@ export const createStreamSlice: StateCreator<
   setupRequired: null,
   _abortController: null,
   _reconnectTimer: null,
+  _reconnectAttempts: 0,
   _unloading: false,
   cacheInvalidations: [],
 
@@ -295,6 +297,9 @@ export const createStreamSlice: StateCreator<
             if (type === 'desktop_notification') current._handleSSEEvent(type, data)
             return
           }
+          if (current._reconnectAttempts > 0) {
+            set((draft) => { draft._reconnectAttempts = 0 })
+          }
           current._handleSSEEvent(type, data)
         },
         onParseError: (err) => {
@@ -308,9 +313,12 @@ export const createStreamSlice: StateCreator<
             set((draft) => {
               draft.isConnected = false
               clearReconnectTimer(draft)
-              // Reconnect after a short delay so transient network blips
-              // (WiFi switch, iOS background-kill, server restart) don't
-              // permanently break an in-progress session.
+              // Retry quickly for brief Wi-Fi switches, then back off while a
+              // mobile device remains offline so background wakeups do not run
+              // an unbounded 1.5-second polling loop. Any received SSE event
+              // resets the attempt counter above.
+              const delay = Math.min(30_000, 1_500 * 2 ** draft._reconnectAttempts)
+              draft._reconnectAttempts += 1
               draft._reconnectTimer = setTimeout(() => {
                 set((timerDraft) => {
                   if (timerDraft._reconnectTimer !== null) timerDraft._reconnectTimer = null
@@ -319,7 +327,7 @@ export const createStreamSlice: StateCreator<
                 if (s.sessionId !== sessionId || s._sessionGeneration !== generation) return
                 if (s._unloading || s.isConnected) return
                 get().connectStream()
-              }, 1500)
+              }, delay)
             })
             return
           }

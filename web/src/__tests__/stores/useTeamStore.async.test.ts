@@ -116,6 +116,7 @@ const INITIAL_STATE = {
   _resolvedSessionReadyId: null,
   _unloading: false,
   _reconnectTimer: null as ReturnType<typeof setTimeout> | null,
+  _reconnectAttempts: 0,
   cacheInvalidations: [],
 }
 
@@ -1109,6 +1110,31 @@ describe("connectStream", () => {
     expect(useTeamStore.getState().isConnected).toBe(true)
 
     globalThis.setTimeout = origSetTimeout
+  })
+
+  it("backs off repeated transient reconnects and resets after an event", () => {
+    const delays: number[] = []
+    const callbacks: Array<() => void> = []
+    spyOn(globalThis, "setTimeout").mockImplementation((...args: unknown[]) => {
+      const [cb, delay] = args as [() => void, number | undefined]
+      callbacks.push(cb)
+      delays.push(delay ?? 0)
+      return callbacks.length as unknown as ReturnType<typeof setTimeout>
+    })
+
+    useTeamStore.setState({ sessionId: "s1", isTeamWorking: true })
+    let streamCallbacks!: { onError: (err: Error) => void; onEvent: (type: string, data: unknown) => void }
+    mockTeamStream.mockImplementation((_sid: string, cbs: typeof streamCallbacks) => { streamCallbacks = cbs })
+
+    useTeamStore.getState().connectStream()
+    streamCallbacks.onError(new TypeError("Load failed"))
+    expect(delays[0]).toBe(1_500)
+    callbacks.shift()?.()
+
+    streamCallbacks.onError(new TypeError("Load failed"))
+    expect(delays[1]).toBe(3_000)
+    streamCallbacks.onEvent("message", { text: "recovered", agent: "lead" })
+    expect(useTeamStore.getState()._reconnectAttempts).toBe(0)
   })
 
   it("clears a pending reconnect timer when starting a new session", () => {

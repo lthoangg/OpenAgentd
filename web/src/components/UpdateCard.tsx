@@ -3,6 +3,7 @@ import { checkForUpdates as invokeCheckForUpdates, downloadUpdate as invokeDownl
 import { openExternalUrl } from '@/lib/open-external'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
+import { getPlatform } from '@/hooks/use-platform'
 
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000
 const DISMISSED_UNTIL_KEY = 'openagentd.updater.dismissedUntil'
@@ -11,6 +12,7 @@ export function UpdateCard() {
   const [status, setStatus] = useState<UpdateStatus>({ status: 'idle' })
   const [tauriReady, setTauriReady] = useState(false)
   const dismissedUntilNextCheckRef = useRef(isDismissedUntilNextInterval())
+  const restartTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   const checkForUpdates = useCallback(async (silent = false) => {
     setTauriReady(true)
@@ -44,21 +46,33 @@ export function UpdateCard() {
       // for any unexpected reason the card transitions to an error state
       // instead of staying frozen on "Installing update…" indefinitely.
       const RESTART_TIMEOUT_MS = 60_000
+      const restartTimeout = new Promise<never>((_, reject) => {
+        restartTimeoutRef.current = setTimeout(
+          () => reject(new Error('Restart timed out — please quit and reopen OpenAgentd.')),
+          RESTART_TIMEOUT_MS,
+        )
+      })
       await Promise.race([
         invokeInstallUpdate(),
-        new Promise<never>((_, reject) =>
-          setTimeout(
-            () => reject(new Error('Restart timed out — please quit and reopen OpenAgentd.')),
-            RESTART_TIMEOUT_MS,
-          ),
-        ),
+        restartTimeout,
       ])
     } catch (error) {
       setStatus({ status: 'error', message: String(error) })
+    } finally {
+      if (restartTimeoutRef.current) clearTimeout(restartTimeoutRef.current)
+      restartTimeoutRef.current = undefined
     }
   }, [])
 
   useEffect(() => {
+    const platform = getPlatform()
+    // Mobile releases are delivered by the platform distribution channel;
+    // only the desktop shell registers the custom updater commands below.
+    if (!platform.isTauri || platform.os === 'ios' || platform.os === 'android') {
+      setTauriReady(false)
+      return
+    }
+
     let cleanup: (() => void) | undefined
     let interval: number | undefined
     let cancelled = false
@@ -83,6 +97,17 @@ export function UpdateCard() {
         interval = window.setInterval(() => {
           void checkForUpdates(true)
         }, CHECK_INTERVAL_MS)
+        const handleForeground = () => {
+          if (document.visibilityState === 'visible') void checkForUpdates(true)
+        }
+        document.addEventListener('visibilitychange', handleForeground)
+        window.addEventListener('pageshow', handleForeground)
+        const previousCleanup = cleanup
+        cleanup = () => {
+          previousCleanup?.()
+          document.removeEventListener('visibilitychange', handleForeground)
+          window.removeEventListener('pageshow', handleForeground)
+        }
       } catch {
         setTauriReady(false)
       }
@@ -91,6 +116,8 @@ export function UpdateCard() {
     void start()
     return () => {
       cancelled = true
+      if (restartTimeoutRef.current) clearTimeout(restartTimeoutRef.current)
+      restartTimeoutRef.current = undefined
       cleanup?.()
       if (interval) window.clearInterval(interval)
     }

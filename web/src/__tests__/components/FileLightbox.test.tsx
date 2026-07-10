@@ -133,7 +133,7 @@ describe("FileLightbox", () => {
       expect(el).toBeTruthy()
       return el as HTMLCanvasElement
     })
-    const scrollContainer = canvas.parentElement as HTMLElement
+    const scrollContainer = canvas.closest('[role="list"]') as HTMLElement
     expect(scrollContainer.className).toContain("overflow-x-hidden")
     expect(scrollContainer.className).toContain("overflow-y-auto")
   })

@@ -33,11 +33,10 @@ export const queryKeys = {
     commitDiff: (workspace: string, sha: string) =>
       ['coding-workspace-commit-diff', workspace, sha] as const,
   },
-  // File references for the input bar's @-mention picker. Keyed by the
-  // workspace path (coding mode) or session id (normal mode) so the two
-  // origins don't share a cache entry.
+  // Normal-session file references for the input bar's @-mention picker.
+  // Coding-mode references use coding.files(workspace), shared with all other
+  // workspace file consumers.
   fileRefs: {
-    coding: (workspace: string) => ['file-refs', 'coding', workspace] as const,
     session: (sessionId: string) => ['file-refs', 'session', sessionId] as const,
   },
   quote: () => ['quote'] as const,

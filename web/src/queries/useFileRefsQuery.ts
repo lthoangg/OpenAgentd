@@ -62,7 +62,7 @@ export function useFileRefsQuery({
 
   const query = useQuery<FileListing>({
     queryKey: isCoding
-      ? queryKeys.fileRefs.coding(workspace ?? '')
+      ? queryKeys.coding.files(workspace ?? '')
       : queryKeys.fileRefs.session(sessionId ?? ''),
     queryFn: async (): Promise<FileListing> => {
       const res = isCoding

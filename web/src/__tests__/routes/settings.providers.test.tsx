@@ -6,6 +6,9 @@ import { setupServer } from 'msw/node'
 
 import { ToastStack } from '@/components/ToastStack'
 import { ProvidersSettingsPage } from '@/routes/settings.providers'
+import { eagerlyWarmProviderModels } from '@/routes/settings.providers/eagerModels'
+import { queryKeys } from '@/queries'
+import type { ProvidersListBody } from '@/api/client'
 import { useToastStore } from '@/stores/useToastStore'
 
 const server = setupServer()
@@ -61,6 +64,37 @@ function renderPage() {
 }
 
 describe('ProvidersSettingsPage', () => {
+  it('warms configured provider models in parallel then invalidates registry once', async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const provider = (id: string): ProvidersListBody['providers'][number] => ({
+      id, label: id, description: id, kind: 'api_key', credentials: [],
+      saved_credentials: {}, env_var: '', env_vars: [], oauth_command: '', docs_url: '',
+      is_configured: true, is_saved: true, is_reachable: true, cached_models: [],
+      visible_models: [], is_disconnected: false, supports_fast_mode: false,
+    })
+    const originalInvalidate = queryClient.invalidateQueries.bind(queryClient)
+    const invalidate = mock((...args: unknown[]) => originalInvalidate(...args as Parameters<typeof queryClient.invalidateQueries>)) as unknown as typeof queryClient.invalidateQueries
+    queryClient.invalidateQueries = invalidate
+    globalThis.fetch = mock(async (...args: unknown[]) => {
+      const input = args[0]
+      const url = String(input)
+      if (url.includes('/broken/')) throw new Error('unavailable')
+      const id = url.includes('/first/') ? 'first' : 'second'
+      return new Response(JSON.stringify({ provider: id, models: [`${id}-model`], source: 'provider' }))
+    }) as typeof fetch
+
+    await eagerlyWarmProviderModels([provider('first'), provider('broken'), provider('second')], queryClient)
+
+    expect(queryClient.getQueryData(queryKeys.settings.providerModels('first'))).toEqual({
+      provider: 'first', models: ['first-model'], source: 'provider',
+    })
+    expect(queryClient.getQueryData(queryKeys.settings.providerModels('second'))).toEqual({
+      provider: 'second', models: ['second-model'], source: 'provider',
+    })
+    expect(invalidate).toHaveBeenCalledTimes(1)
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.agentFiles.registry() })
+  })
+
   it('shows Connected for saved Codex OAuth when model listing fails', async () => {
     server.use(
       http.get('http://localhost/api/settings/providers', () => HttpResponse.json({

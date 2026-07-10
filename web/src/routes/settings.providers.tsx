@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { KeyRound, Loader2 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 
-import { listProviderModels, type ProvidersListBody, type ProviderInfo } from '@/api/client'
-import { queryKeys, useProvidersQuery } from '@/queries'
+import type { ProviderInfo } from '@/api/client'
+import { useProvidersQuery } from '@/queries'
+import { eagerlyWarmProviderModels } from './settings.providers/eagerModels'
 import { SearchBar } from '@/components/ui/search-bar'
 import { cn } from '@/lib/utils'
 import { providerKindLabel } from './settings.providers/providerUtils'
@@ -70,27 +71,11 @@ export function ProvidersSettingsPage() {
   const providers = useMemo(() => providersQ.data?.providers ?? [], [providersQ.data?.providers])
   const connectedCount = providers.filter((p) => p.is_configured).length
 
-  // Pre-fetch models for configured providers — skip if already cached
+  // Eagerly warm every uncached configured provider in parallel. The registry
+  // only needs one refresh after every request has settled.
   useEffect(() => {
     if (!providersQ.data) return
-    for (const provider of providersQ.data.providers) {
-      if (!provider.is_configured) continue
-      if (provider.is_disconnected) continue
-      if (queryClient.getQueryData(queryKeys.settings.providerModels(provider.id))) continue
-      void listProviderModels(provider.id, {}).then((listed) => {
-        queryClient.setQueryData(queryKeys.settings.providerModels(provider.id), listed)
-        queryClient.setQueryData<ProvidersListBody>(queryKeys.settings.providers(), (current) => {
-          if (!current) return current
-          return {
-            ...current,
-            providers: current.providers.map((item) =>
-              item.id === provider.id ? { ...item, cached_models: listed.models } : item,
-            ),
-          }
-        })
-        void queryClient.invalidateQueries({ queryKey: queryKeys.agentFiles.registry() })
-      }).catch(() => {})
-    }
+    void eagerlyWarmProviderModels(providersQ.data.providers, queryClient)
   }, [providersQ.data, queryClient])
 
   // Counts per kind (unaffected by kind filter, so chips don't vanish while

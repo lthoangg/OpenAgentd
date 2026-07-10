@@ -102,7 +102,7 @@ export function useCommandPalette({
   // share a cache entry — no extra network request when both are warm.
   const isCodingPaletteOpen = mode === 'coding' && Boolean(workspace) && paletteOpen
   const { data: paletteFilesData } = useQuery<{ files: WorkspaceFileInfo[] }>({
-    queryKey: queryKeys.fileRefs.coding(workspace ?? ''),
+    queryKey: queryKeys.coding.files(workspace ?? ''),
     queryFn: async () => {
       const res = await listCodingWorkspaceFiles(workspace as string)
       return { files: res.files }

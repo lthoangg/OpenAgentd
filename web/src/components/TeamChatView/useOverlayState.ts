@@ -27,7 +27,9 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { listCodingWorkspaceFiles } from '@/api/client'
+import { queryKeys } from '@/queries'
 import { useUIStore } from '@/stores/useUIStore'
 import { useEdgeSwipe, type EdgeSwipeHandlers } from '@/hooks/use-edge-swipe'
 import type { WorkspaceFileInfo } from '@/api/types'
@@ -96,6 +98,7 @@ export function useOverlayState({
   toggleAgentCapabilities,
   togglePalette,
 }: UseOverlayStateArgs): UseOverlayStateResult {
+  const queryClient = useQueryClient()
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const [showFilesPanel, setShowFilesPanel] = useState(false)
   const [codingPanel, setCodingPanel] = useState<null | 'changed' | 'files'>(null)
@@ -199,7 +202,11 @@ export function useOverlayState({
       return
     }
     try {
-      const result = await listCodingWorkspaceFiles(workspace)
+      const result = await queryClient.fetchQuery({
+        queryKey: queryKeys.coding.files(workspace),
+        queryFn: () => listCodingWorkspaceFiles(workspace),
+        staleTime: 5_000,
+      })
       const file = result.files.find((item) => item.path === cleanPath)
       if (file) {
         setCodingFileViewer(file)
@@ -210,7 +217,7 @@ export function useOverlayState({
     } catch {
       // Keep the current panel state; the panel query will surface listing errors.
     }
-  }, [codingFileViewer, mode, workspace])
+  }, [codingFileViewer, mode, queryClient, workspace])
 
   const closeMobileActionsMenu = useCallback(() => setShowMobileActions(false), [])
 

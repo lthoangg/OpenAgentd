@@ -46,3 +46,12 @@ export async function stopBundledAppBackend(): Promise<void> {
   const { invoke } = await import('@tauri-apps/api/core')
   await invoke('app_stop_bundled_backend')
 }
+
+export async function getBundledBackendLogPath(): Promise<string | null> {
+  try {
+    const { invoke } = await import('@tauri-apps/api/core')
+    return await invoke<string>('backend_logs_path')
+  } catch {
+    return null
+  }
+}

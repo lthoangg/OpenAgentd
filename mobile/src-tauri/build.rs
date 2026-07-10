@@ -7,6 +7,9 @@ fn main() {
                 "app_use_external_backend",
                 "app_remove_backend_server",
                 "save_workspace_file",
+                "secure_get_access_key",
+                "secure_set_access_key",
+                "secure_delete_access_key",
             ]),
         ),
     )

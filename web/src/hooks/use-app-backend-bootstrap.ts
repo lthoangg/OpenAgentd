@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { installDesktopAuth } from '@/api/auth'
+import { useCallback, useEffect, useState } from 'react'
+import { installDesktopAuth, primeStoredAccessKey } from '@/api/auth'
 import { onApiBaseUrlChange, setApiBaseUrl } from '@/api/base-url'
 import { getPlatform } from '@/hooks/use-platform'
 import { type AppBackendStatus, getAppBackendStatus } from '@/lib/app-backend'
@@ -8,7 +8,13 @@ import { queryClient } from '@/lib/query-client'
 const DESKTOP_BOOTSTRAP_POLL_MS = 300
 const DESKTOP_BOOTSTRAP_TIMEOUT_MS = 15_000
 
-function applyDesktopBackend(status: Pick<AppBackendStatus, 'base_url' | 'token'>): void {
+export interface AppBackendBootstrap {
+  ready: boolean
+  unavailable: boolean
+  retry: () => void
+}
+
+async function applyDesktopBackend(status: Pick<AppBackendStatus, 'base_url' | 'token'>): Promise<void> {
   if (status.token) {
     Object.defineProperty(window, '__OAD_TOKEN__', {
       value: status.token,
@@ -18,6 +24,9 @@ function applyDesktopBackend(status: Pick<AppBackendStatus, 'base_url' | 'token'
     installDesktopAuth()
   }
   setApiBaseUrl(status.base_url)
+  // Bundled sidecars authenticate with their ephemeral desktop token; never
+  // let unavailable persistent storage delay that startup path.
+  if (!status.token) await primeStoredAccessKey()
 }
 
 function isBootstrapReady(status: AppBackendStatus | null, isTauri: boolean): boolean {
@@ -27,8 +36,14 @@ function isBootstrapReady(status: AppBackendStatus | null, isTauri: boolean): bo
   return status.sidecar_running
 }
 
-export function useAppBackendBootstrap(): boolean {
+export function useAppBackendBootstrap(): AppBackendBootstrap {
   const [ready, setReady] = useState(false)
+  const [retryKey, setRetryKey] = useState(0)
+  const [unavailable, setUnavailable] = useState(false)
+  const retry = useCallback(() => {
+    setUnavailable(false)
+    setRetryKey((key) => key + 1)
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -39,12 +54,17 @@ export function useAppBackendBootstrap(): boolean {
 
     const finishReady = () => {
       if (cancelled) return
+      setUnavailable(false)
       setReady(true)
     }
 
     const schedulePoll = () => {
-      if (cancelled || !isTauri || Date.now() >= deadline) {
+      if (cancelled || !isTauri) {
         finishReady()
+        return
+      }
+      if (Date.now() >= deadline) {
+        setUnavailable(true)
         return
       }
       pollTimer = setTimeout(() => {
@@ -57,7 +77,7 @@ export function useAppBackendBootstrap(): boolean {
         const status = await getAppBackendStatus()
         if (cancelled) return
         if (isBootstrapReady(status, isTauri)) {
-          if (status?.base_url) applyDesktopBackend(status)
+          if (status?.base_url) await applyDesktopBackend(status)
           finishReady()
           return
         }
@@ -85,8 +105,9 @@ export function useAppBackendBootstrap(): boolean {
       void getCurrentWebviewWindow()
         .listen<{ base_url: string; token?: string | null }>('backend-ready', (event) => {
           if (cancelled || !event.payload.base_url) return
-          applyDesktopBackend(event.payload)
-          finishReady()
+          void applyDesktopBackend(event.payload).then(finishReady).catch(() => {
+            if (!cancelled) setUnavailable(true)
+          })
         }).then((unlisten) => {
           if (cancelled) unlisten()
           else unlistenBackendReady = unlisten
@@ -104,7 +125,7 @@ export function useAppBackendBootstrap(): boolean {
       unlistenBackendReady?.()
       unsubscribe()
     }
-  }, [])
+  }, [retryKey])
 
-  return ready
+  return { ready, unavailable, retry }
 }

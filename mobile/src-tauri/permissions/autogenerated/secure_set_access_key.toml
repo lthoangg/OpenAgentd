@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-secure-set-access-key"
+description = "Enables the secure_set_access_key command without any pre-configured scope."
+commands.allow = ["secure_set_access_key"]
+
+[[permission]]
+identifier = "deny-secure-set-access-key"
+description = "Denies the secure_set_access_key command without any pre-configured scope."
+commands.deny = ["secure_set_access_key"]

@@ -35,7 +35,11 @@
  * ``installed`` flag and any monkey-patched globals don't leak between
  * cases. Originals are restored in ``afterEach``.
  */
-import { describe, it, expect, afterEach, beforeEach } from "bun:test"
+import { describe, it, expect, afterEach, beforeEach, mock } from "bun:test"
+
+const invoke = mock(async (..._args: unknown[]): Promise<unknown> => null)
+mock.module('@tauri-apps/api/core', () => ({ invoke }))
+mock.module('@/hooks/use-platform', () => ({ getPlatform: () => ({ isTauri: true }) }))
 
 type AuthModule = typeof import("@/api/auth")
 
@@ -88,6 +92,7 @@ beforeEach(() => {
   // Wipe any token from a prior test.
   delete (window as { __OAD_TOKEN__?: string }).__OAD_TOKEN__
   window.localStorage.clear()
+  invoke.mockClear()
 })
 
 afterEach(() => {
@@ -100,6 +105,28 @@ afterEach(() => {
 //  installDesktopAuth — gating
 // ════════════════════════════════════════════════════════════════════════════
 describe("access key storage", () => {
+  it("migrates a scoped key only after native storage succeeds and caches it for requests", async () => {
+    window.localStorage.setItem('openagentd.accessKey:https://example.com', 'legacy-key')
+    invoke.mockImplementation(async (...args: unknown[]) => String(args[0]) === 'secure_get_access_key' ? null : undefined)
+    const auth = await freshAuth()
+
+    await expect(auth.getStoredAccessKey('https://example.com/api')).resolves.toBe('legacy-key')
+    expect(invoke).toHaveBeenCalledWith('secure_set_access_key', { origin: 'https://example.com', key: 'legacy-key' })
+    expect(window.localStorage.getItem('openagentd.accessKey:https://example.com')).toBeNull()
+  })
+
+  it('keeps legacy storage when native migration fails', async () => {
+    window.localStorage.setItem('openagentd.accessKey:https://example.com', 'legacy-key')
+    invoke.mockImplementation(async (...args: unknown[]) => {
+      if (String(args[0]) === 'secure_get_access_key') return null
+      throw new Error('store unavailable')
+    })
+    const auth = await freshAuth()
+
+    await expect(auth.getStoredAccessKey('https://example.com')).rejects.toThrow('store unavailable')
+    expect(window.localStorage.getItem('openagentd.accessKey:https://example.com')).toBe('legacy-key')
+  })
+
   it("stores and retrieves access keys per backend origin", async () => {
     const auth = await freshAuth()
 

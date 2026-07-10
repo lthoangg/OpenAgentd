@@ -71,6 +71,8 @@ jobs:
             libssl-dev
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
 
       - name: Cache cargo registry + target
         uses: Swatinem/rust-cache@v2
@@ -79,6 +81,14 @@ jobs:
 
       - name: Cargo check
         run: TAURI_CONFIG="$(cat tauri.dev.conf.json)" cargo check --locked
+
+      - name: Cargo test
+        run: TAURI_CONFIG="$(cat tauri.dev.conf.json)" cargo test --locked
+
+      # The desktop target is Linux-only here, so Clippy sees only portable
+      # code paths supported by this runner.
+      - name: Cargo clippy
+        run: TAURI_CONFIG="$(cat tauri.dev.conf.json)" cargo clippy --locked --all-targets
 
   mobile:
     name: Cargo check (mobile)

@@ -14,6 +14,9 @@ fn main() {
                 "updater_download",
                 "updater_install",
                 "updater_release_notes",
+                "secure_get_access_key",
+                "secure_set_access_key",
+                "secure_delete_access_key",
             ]),
         ),
     )

@@ -27,6 +27,7 @@ anyhow = "1"
 url = "2"
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 base64 = "0.22"
+keyring = { version = "3.6.3", default-features = false, features = ["apple-native"] }
 
 [target.'cfg(target_os = "ios")'.dependencies]
 objc2 = "0.6"

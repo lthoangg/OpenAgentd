@@ -29,6 +29,12 @@ log = "0.4"
 anyhow = "1"
 once_cell = "1"
 tauri-plugin-single-instance = "2"
+keyring = { version = "3.6.3", default-features = false, features = ["apple-native", "linux-native-sync-persistent", "windows-native"] }
+url = "2"
+
+[dev-dependencies]
+# Enables `tauri::test::mock_app()` used by the native unit-test suite.
+tauri = { version = "2", features = ["test"] }
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 block2 = "0.6"

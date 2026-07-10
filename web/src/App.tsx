@@ -1,27 +1,56 @@
-import { Suspense } from 'react'
+import { Suspense, useState } from 'react'
 import { RouterProvider } from '@tanstack/react-router'
 import OpenAgentdAppIcon from '@/assets/brand/openagentd-app-icon.png'
+import { AppBackendDialog } from '@/components/AppBackendDialog'
+import { Button } from '@/components/ui/button'
+import { getBundledBackendLogPath } from '@/lib/app-backend'
 import { UpdateCard } from './components/UpdateCard'
 import { useAppBackendBootstrap } from './hooks/use-app-backend-bootstrap'
 import { router } from './router'
 
 function App() {
-  const backendReady = useAppBackendBootstrap()
+  const { ready, unavailable, retry } = useAppBackendBootstrap()
+  const [backendDialogOpen, setBackendDialogOpen] = useState(false)
 
-  if (!backendReady) return <AppLoadingScreen />
+  if (!ready) return <AppLoadingScreen unavailable={unavailable} onRetry={retry} onChooseServer={() => setBackendDialogOpen(true)} backendDialogOpen={backendDialogOpen} onBackendDialogOpenChange={setBackendDialogOpen} />
 
   return (
-    <Suspense fallback={<AppLoadingScreen />}>
+    <Suspense fallback={<AppLoadingScreen unavailable={false} onRetry={() => {}} onChooseServer={() => {}} backendDialogOpen={false} onBackendDialogOpenChange={() => {}} />}>
       <RouterProvider router={router} />
       <UpdateCard />
     </Suspense>
   )
 }
 
-function AppLoadingScreen() {
+function AppLoadingScreen({ unavailable, onRetry, onChooseServer, backendDialogOpen, onBackendDialogOpenChange }: {
+  unavailable: boolean
+  onRetry: () => void
+  onChooseServer: () => void
+  backendDialogOpen: boolean
+  onBackendDialogOpenChange: (open: boolean) => void
+}) {
+  const [logCopied, setLogCopied] = useState(false)
+  const copyBackendLogPath = async () => {
+    const path = await getBundledBackendLogPath()
+    if (!path) return
+    await navigator.clipboard.writeText(path)
+    setLogCopied(true)
+  }
+
   return (
     <div className="mobile-safe-shell mobile-viewport flex h-dvh items-center justify-center bg-(--bg-page)" role="status" aria-label="Loading OpenAgentd" aria-live="polite">
-      <img src={OpenAgentdAppIcon} width={88} height={88} alt="" aria-hidden="true" className="rounded-2xl" />
+      <div className="flex max-w-sm flex-col items-center gap-5 px-6 text-center">
+        <img src={OpenAgentdAppIcon} width={88} height={88} alt="" aria-hidden="true" className="rounded-2xl" />
+        {unavailable && <>
+          <p className="text-sm text-(--color-text-muted)">OpenAgentd is taking longer than usual to start.</p>
+          <div className="flex flex-wrap justify-center gap-2">
+            <Button onClick={onRetry}>Retry</Button>
+            <Button variant="subtle" onClick={onChooseServer}>Choose Server</Button>
+            <Button variant="ghost" onClick={() => { void copyBackendLogPath() }}>{logCopied ? 'Backend Log Path Copied' : 'Copy Backend Log Path'}</Button>
+          </div>
+        </>}
+      </div>
+      <AppBackendDialog open={backendDialogOpen} onOpenChange={onBackendDialogOpenChange} />
     </div>
   )
 }

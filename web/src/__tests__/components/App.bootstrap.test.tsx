@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, render, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import App from '@/App'
 
 const TEST_BACKEND_URL = 'http://10.0.2.2:8000'
@@ -10,10 +10,50 @@ interface BackendReadyEvent {
 }
 
 let backendReadyListener: ((event: BackendReadyEvent) => void) | null = null
+let resolveSecureKey: (() => void) | null = null
+let routerMounted = false
+
+function useFakeTimers() {
+  const realSetTimeout = globalThis.setTimeout
+  const realClearTimeout = globalThis.clearTimeout
+  const realDateNow = Date.now
+  let now = 0
+  let sequence = 0
+  const timers = new Map<number, { callback: () => void; due: number }>()
+
+  globalThis.setTimeout = ((callback: TimerHandler, delay?: number) => {
+    const id = ++sequence
+    timers.set(id, { callback: callback as () => void, due: now + (delay ?? 0) })
+    return id as unknown as ReturnType<typeof setTimeout>
+  }) as unknown as typeof setTimeout
+  globalThis.clearTimeout = ((id: number) => { timers.delete(id) }) as typeof clearTimeout
+  Date.now = () => now
+
+  return {
+    tick(ms: number) {
+      now += ms
+      for (const [id, timer] of [...timers]) {
+        if (timer.due <= now) {
+          timers.delete(id)
+          timer.callback()
+        }
+      }
+    },
+    restore() {
+      globalThis.setTimeout = realSetTimeout
+      globalThis.clearTimeout = realClearTimeout
+      Date.now = realDateNow
+    },
+  }
+}
 
 const invokeMock = mock(async (...args: unknown[]) => {
   const command = String(args[0])
   if (command === 'app_backend_status') return statusPayload
+  if (command === 'secure_get_access_key') {
+    await new Promise<void>((resolve) => { resolveSecureKey = resolve })
+    return 'secure-key'
+  }
   throw new Error(`unexpected command: ${command}`)
 })
 
@@ -50,11 +90,15 @@ mock.module('@tauri-apps/api/webviewWindow', () => ({
 }))
 
 mock.module('@tanstack/react-router', () => ({
-  RouterProvider: () => null,
+  RouterProvider: () => { routerMounted = true; return null },
 }))
 
 mock.module('@/components/UpdateCard', () => ({
   UpdateCard: () => null,
+}))
+
+mock.module('@/components/AppBackendDialog', () => ({
+  AppBackendDialog: ({ open }: { open: boolean }) => open ? <div role="dialog">Server chooser</div> : null,
 }))
 
 mock.module('@/hooks/use-platform', () => ({
@@ -66,6 +110,8 @@ beforeEach(() => {
   delete window.__OAD_TOKEN__
   statusPayload = { base_url: TEST_BACKEND_URL, sidecar_running: true, external: false }
   backendReadyListener = null
+  resolveSecureKey = null
+  routerMounted = false
   invokeMock.mockClear()
 })
 
@@ -76,6 +122,16 @@ afterEach(() => {
 })
 
 describe('App backend bootstrap', () => {
+  it('waits for an external backend credential before mounting the router', async () => {
+    statusPayload = { base_url: TEST_BACKEND_URL, external: true, sidecar_running: false }
+    render(<App />)
+
+    await waitFor(() => expect(resolveSecureKey).not.toBeNull())
+    expect(routerMounted).toBe(false)
+    await act(async () => resolveSecureKey?.())
+    await waitFor(() => expect(routerMounted).toBe(true))
+  })
+
   it('hydrates the active mobile app backend URL on app startup', async () => {
     render(<App />)
 
@@ -157,5 +213,38 @@ describe('App backend bootstrap', () => {
     await waitFor(() => {
       expect(window.__OAD_API_BASE_URL__).toBe('http://192.168.1.20:4082')
     })
+  })
+
+  it('offers recovery after the bundled sidecar exceeds the eager splash timeout', async () => {
+    const timers = useFakeTimers()
+    statusPayload = { base_url: TEST_BACKEND_URL, sidecar_running: false, external: false }
+
+    render(<App />)
+    await act(async () => { await Promise.resolve() })
+    expect(invokeMock).toHaveBeenCalled()
+    await act(async () => { timers.tick(15_000) })
+
+    expect(screen.getByText('OpenAgentd is taking longer than usual to start.')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Choose Server' })).toBeTruthy()
+    timers.restore()
+  })
+
+  it('retries bootstrap and opens server selection from recovery', async () => {
+    const timers = useFakeTimers()
+    statusPayload = { base_url: TEST_BACKEND_URL, sidecar_running: false, external: false }
+    render(<App />)
+    await act(async () => { await Promise.resolve() })
+    expect(invokeMock).toHaveBeenCalled()
+    await act(async () => { timers.tick(15_000) })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Choose Server' }))
+    expect(screen.getByRole('dialog').textContent).toBe('Server chooser')
+
+    statusPayload = { base_url: TEST_BACKEND_URL, sidecar_running: true, external: false }
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    await act(async () => { await Promise.resolve(); await Promise.resolve() })
+    expect(window.__OAD_API_BASE_URL__).toBe(TEST_BACKEND_URL)
+    timers.restore()
   })
 })

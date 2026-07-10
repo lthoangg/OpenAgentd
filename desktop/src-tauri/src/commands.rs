@@ -15,6 +15,46 @@ use crate::window::{create_app_window, frontend_init_script, MAIN_WINDOW};
 use crate::menu::update_tray_status;
 use crate::shutdown_sidecar_now;
 
+const ACCESS_KEY_SERVICE: &str = "openagentd.backend-access-key";
+
+fn access_key_entry(origin: &str) -> Result<keyring::Entry, String> {
+    let parsed = url::Url::parse(origin).map_err(|_| "invalid backend origin".to_string())?;
+    if !matches!(parsed.scheme(), "http" | "https")
+        || parsed.origin().ascii_serialization() != origin
+    {
+        return Err("invalid backend origin".to_string());
+    }
+    keyring::Entry::new(ACCESS_KEY_SERVICE, origin)
+        .map_err(|_| "credential store unavailable".to_string())
+}
+
+#[tauri::command]
+pub fn secure_get_access_key(origin: String) -> Result<Option<String>, String> {
+    match access_key_entry(&origin)?.get_password() {
+        Ok(key) => Ok(Some(key)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(_) => Err("credential store unavailable".to_string()),
+    }
+}
+
+#[tauri::command]
+pub fn secure_set_access_key(origin: String, key: String) -> Result<(), String> {
+    if key.trim().is_empty() {
+        return Err("access key is required".to_string());
+    }
+    access_key_entry(&origin)?
+        .set_password(&key)
+        .map_err(|_| "credential store unavailable".to_string())
+}
+
+#[tauri::command]
+pub fn secure_delete_access_key(origin: String) -> Result<(), String> {
+    match access_key_entry(&origin)?.delete_credential() {
+        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Err(_) => Err("credential store unavailable".to_string()),
+    }
+}
+
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 #[tauri::command]
 pub fn request_voice_permissions() -> Result<bool, String> {
@@ -441,4 +481,17 @@ pub async fn wait_for_health(base: &str, attempts: u32, delay: Duration) -> Resu
     Err(anyhow!(
         "backend did not become healthy after {attempts} attempts"
     ))
+}
+
+#[cfg(test)]
+mod credential_tests {
+    use super::access_key_entry;
+
+    #[test]
+    fn access_key_origin_must_be_a_canonical_http_origin() {
+        assert!(access_key_entry("https://example.com").is_ok());
+        assert!(access_key_entry("https://example.com/api").is_err());
+        assert!(access_key_entry("ftp://example.com").is_err());
+        assert!(access_key_entry("https://example.com/").is_err());
+    }
 }

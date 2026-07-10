@@ -9,7 +9,7 @@ import { SectionCard, SectionCardHeader, SectionCardRows, SectionCardRow, Sectio
 import { apiBaseUrl, setApiBaseUrl } from '@/api/base-url'
 import { queryClient } from '@/lib/query-client'
 import { queryKeys } from '@/queries/keys'
-import { getAccessKey, setAccessKey } from '@/api/auth'
+import { getStoredAccessKey, setStoredAccessKey } from '@/api/auth'
 import {
   getAppBackendStatus,
   removeAppBackendServer,
@@ -84,13 +84,13 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
         setError(connectionFailureMessage(target))
         return
       }
-      const keyForConnect = accessKey.trim() || getAccessKey(target) || ''
+      const keyForConnect = accessKey.trim() || await getStoredAccessKey(target) || ''
       const authorized = await checkServerAuth(target, keyForConnect)
       if (!authorized) {
         setError('Server is reachable, but the access key is invalid or missing.')
         return
       }
-      if (accessKey.trim()) setAccessKey(accessKey, target)
+      if (accessKey.trim()) await setStoredAccessKey(accessKey, target)
       const next = await switchToExternalAppBackend(target, nextName, persist)
       setApiBaseUrl(next.base_url)
       const nextBaseUrl = normalizeServerBaseUrl(next.base_url)
@@ -356,7 +356,6 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
                   value={accessKey}
                   onChange={(event) => {
                     setAccessKeyInput(event.target.value)
-                    setAccessKey(event.target.value, normalizeServerBaseUrl(baseUrl || status?.base_url || apiBaseUrl().replace(/\/api$/, '')))
                   }}
                   placeholder="Required when server was started with --key"
                   type="password"

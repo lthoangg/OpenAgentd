@@ -519,6 +519,9 @@ fn main() {
         .on_menu_event(|app, event| handle_desktop_menu(app, event.id().as_ref()))
         .invoke_handler(tauri::generate_handler![
             commands::request_voice_permissions,
+            commands::secure_get_access_key,
+            commands::secure_set_access_key,
+            commands::secure_delete_access_key,
             commands::save_workspace_file,
             commands::backend_health,
             commands::backend_logs_path,
@@ -653,7 +656,7 @@ mod tests {
     use super::*;
     use std::collections::HashMap as StdHashMap;
     use tauri_plugin_dialog::MessageDialogResult;
-    use crate::window::{focused_webview_window, frontend_init_script, inherited_external_base_url, new_window_init_script};
+    use crate::window::{frontend_init_script, inherited_external_base_url, new_window_init_script};
     use crate::updater::{dialog_result_is_accept, format_update_prompt, format_download_progress, validate_install_preconditions};
     use crate::config::AppBackendConfig;
 
@@ -808,7 +811,7 @@ mod tests {
     fn focused_webview_window_is_none_without_windows() {
         let app = tauri::test::mock_app();
 
-        assert!(focused_webview_window(&app.app_handle()).is_none());
+        assert!(app.app_handle().webview_windows().is_empty());
     }
 
     #[cfg(not(target_os = "macos"))]

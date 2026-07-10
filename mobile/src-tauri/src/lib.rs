@@ -8,6 +8,46 @@ use tauri::{AppHandle, Manager};
 const MAX_DOWNLOAD_BYTES: usize = 100 * 1024 * 1024;
 const MAX_FILENAME_COLLISION_ATTEMPTS: usize = 1000;
 
+const ACCESS_KEY_SERVICE: &str = "openagentd.backend-access-key";
+
+fn access_key_entry(origin: &str) -> Result<keyring::Entry, String> {
+    let parsed = url::Url::parse(origin).map_err(|_| "invalid backend origin".to_string())?;
+    if !matches!(parsed.scheme(), "http" | "https")
+        || parsed.origin().ascii_serialization() != origin
+    {
+        return Err("invalid backend origin".to_string());
+    }
+    keyring::Entry::new(ACCESS_KEY_SERVICE, origin)
+        .map_err(|_| "credential store unavailable".to_string())
+}
+
+#[tauri::command]
+fn secure_get_access_key(origin: String) -> Result<Option<String>, String> {
+    match access_key_entry(&origin)?.get_password() {
+        Ok(key) => Ok(Some(key)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(_) => Err("credential store unavailable".to_string()),
+    }
+}
+
+#[tauri::command]
+fn secure_set_access_key(origin: String, key: String) -> Result<(), String> {
+    if key.trim().is_empty() {
+        return Err("access key is required".to_string());
+    }
+    access_key_entry(&origin)?
+        .set_password(&key)
+        .map_err(|_| "credential store unavailable".to_string())
+}
+
+#[tauri::command]
+fn secure_delete_access_key(origin: String) -> Result<(), String> {
+    match access_key_entry(&origin)?.delete_credential() {
+        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Err(_) => Err("credential store unavailable".to_string()),
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 struct SavedAppServer {
     base_url: String,
@@ -401,6 +441,9 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_haptics::init())
         .invoke_handler(tauri::generate_handler![
+            secure_get_access_key,
+            secure_set_access_key,
+            secure_delete_access_key,
             app_backend_status,
             app_save_backend_server,
             app_use_external_backend,
@@ -591,6 +634,14 @@ mod tests {
         let path = unique_cache_path(dir.path(), "download").unwrap();
 
         assert_eq!(path, dir.path().join("download (1)"));
+    }
+
+    #[test]
+    fn access_key_origin_must_be_a_canonical_http_origin() {
+        assert!(super::access_key_entry("https://example.com").is_ok());
+        assert!(super::access_key_entry("https://example.com/api").is_err());
+        assert!(super::access_key_entry("ftp://example.com").is_err());
+        assert!(super::access_key_entry("https://example.com/").is_err());
     }
 
     #[test]

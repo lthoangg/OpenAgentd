@@ -21,6 +21,7 @@
  */
 
 import { apiBaseUrl } from './base-url'
+import { getPlatform } from '@/hooks/use-platform'
 
 declare global {
   interface Window {
@@ -31,6 +32,7 @@ declare global {
 const TOKEN_KEY = '__OAD_TOKEN__'
 const ACCESS_KEY_STORAGE = 'openagentd.accessKey'
 const ACCESS_KEY_STORAGE_PREFIX = 'openagentd.accessKey:'
+const nativeAccessKeys = new Map<string, string>()
 
 function normalizeAccessKeyScope(baseUrl: string | undefined): string | null {
   const trimmed = baseUrl?.trim()
@@ -58,9 +60,58 @@ export function getAccessKey(baseUrl?: string): string | undefined {
   return window.localStorage.getItem(ACCESS_KEY_STORAGE) || undefined
 }
 
+/** Uses the shell credential store when available; browsers and dev retain the
+ * existing localStorage behavior. A legacy value is removed only after the
+ * shell confirms its secure write. */
+export async function getStoredAccessKey(baseUrl?: string): Promise<string | undefined> {
+  const origin = normalizeAccessKeyScope(baseUrl)
+  if (!origin || typeof window === 'undefined') return getAccessKey(baseUrl)
+  if (!getPlatform().isTauri) return getAccessKey(baseUrl)
+  const { invoke } = await import('@tauri-apps/api/core')
+  const stored = await invoke<string | null>('secure_get_access_key', { origin })
+  if (stored) {
+    nativeAccessKeys.set(origin, stored)
+    installDesktopAuth()
+    return stored
+  }
+  const legacy = window.localStorage.getItem(`${ACCESS_KEY_STORAGE_PREFIX}${origin}`)
+  if (legacy) {
+    await invoke('secure_set_access_key', { origin, key: legacy })
+    nativeAccessKeys.set(origin, legacy)
+    installDesktopAuth()
+    window.localStorage.removeItem(`${ACCESS_KEY_STORAGE_PREFIX}${origin}`)
+    return legacy
+  }
+  return undefined
+}
+
+/** Load the active shell credential before application requests begin. */
+export async function primeStoredAccessKey(): Promise<void> {
+  await getStoredAccessKey(apiBaseUrl())
+}
+
+export async function setStoredAccessKey(key: string, baseUrl?: string): Promise<void> {
+  const origin = normalizeAccessKeyScope(baseUrl)
+  if (!origin || typeof window === 'undefined' || !getPlatform().isTauri) {
+    setAccessKey(key, baseUrl)
+    return
+  }
+  const { invoke } = await import('@tauri-apps/api/core')
+  if (key.trim()) {
+    await invoke('secure_set_access_key', { origin, key: key.trim() })
+    nativeAccessKeys.set(origin, key.trim())
+    installDesktopAuth()
+  } else {
+    await invoke('secure_delete_access_key', { origin })
+    nativeAccessKeys.delete(origin)
+  }
+  window.localStorage.removeItem(`${ACCESS_KEY_STORAGE_PREFIX}${origin}`)
+}
+
 function getToken(): string | undefined {
   if (typeof window === 'undefined') return undefined
-  return window[TOKEN_KEY] || getAccessKey(apiBaseUrl()) || undefined
+  const origin = normalizeAccessKeyScope(apiBaseUrl())
+  return window[TOKEN_KEY] || (origin ? nativeAccessKeys.get(origin) : undefined) || getAccessKey(apiBaseUrl()) || undefined
 }
 
 export function setAccessKey(key: string, baseUrl?: string): void {

@@ -130,7 +130,7 @@ C4Component
 Every chat turn is backed by an in-memory state blob + asyncio fan-out queues (one per SSE client). This enables:
 - **Fire-and-forget POST**: `POST /api/team/chat` returns 202 immediately, agent runs in background.
 - **Mid-turn reconnect**: clients that disconnect and reconnect receive buffered content.
-- **Multi-client streaming**: multiple tabs can watch the same session simultaneously (single-process).
+- **Multi-client streaming**: multiple tabs can watch the same session simultaneously. Stream replay and fan-out are intentionally process-local, matching the bundled sidecar and personal-server deployment model; run one Uvicorn worker per OpenAgentd server.
 
 ### Data Layout (per session_id)
 

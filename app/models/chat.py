@@ -65,6 +65,24 @@ class TZDateTime(TypeDecorator):
 
 class ChatSession(SQLModel, table=True):
     __tablename__: str = "chat_sessions"  # type: ignore[reportIncompatibleVariableOverride]
+    __table_args__ = (
+        # Recent-session sidebars filter top-level rows by mode and order by
+        # created_at. Keep both the global and per-workspace hot paths out of
+        # SQLite's temporary sort B-tree as personal histories grow.
+        sa.Index(
+            "ix_chat_sessions_top_mode_created",
+            "parent_session_id",
+            "mode",
+            "created_at",
+        ),
+        sa.Index(
+            "ix_chat_sessions_top_mode_workspace_created",
+            "parent_session_id",
+            "mode",
+            "workspace",
+            "created_at",
+        ),
+    )
 
     id: UUID = Field(default_factory=uuid7, primary_key=True)
     parent_session_id: UUID | None = Field(

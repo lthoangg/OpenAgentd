@@ -6,7 +6,10 @@ Design
 - _subscribers: dict[session_id, list[asyncio.Queue]]  — live fan-out to SSE clients
 - _cleanup tasks expire state after STREAM_TTL seconds
 
-Single-process only — no cross-worker fan-out.
+Single-process only — no cross-worker fan-out. OpenAgentd's supported
+sidecar and personal-server launchers intentionally run one Uvicorn worker;
+do not start this app with ``--workers > 1`` because reconnect replay and live
+subscribers must share this process-local store.
 """
 
 from __future__ import annotations

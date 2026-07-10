@@ -167,13 +167,13 @@ def _fetch_models_dev() -> Any | None:
         return None
 
 
-def _load_models_dev_data() -> Any | None:
+def _load_models_dev_data(*, force: bool = False) -> Any | None:
     if not settings.OPENAGENTD_MODEL_REGISTRY_REFRESH:
         return _read_json_file(_models_dev_cache_path())
 
     cache_path = _models_dev_cache_path()
     cached = _read_json_file(cache_path)
-    if cached is not None:
+    if cached is not None and not force:
         try:
             if time.time() - cache_path.stat().st_mtime < MODELS_DEV_CACHE_TTL_SECONDS:
                 return cached
@@ -386,3 +386,23 @@ def load_model_registry() -> ModelRegistry:
         len(registry),
     )
     return registry
+
+
+def clear_model_registry_caches() -> None:
+    """Clear all memory caches for the model registry, capabilities, and metadata."""
+    from app.agent.providers import capabilities, model_metadata
+    load_model_registry.cache_clear()
+    capabilities._registry.cache_clear()
+    model_metadata._registry.cache_clear()
+
+
+def refresh_model_registry() -> None:
+    """Force fetch the latest models.dev registry and update/clear memory caches."""
+    try:
+        # Force fetch and update disk cache
+        _load_models_dev_data(force=True)
+    except Exception as exc:
+        logger.warning("failed to refresh model registry ({})", exc)
+    finally:
+        # Clear the memory caches so subsequent calls see the updated data
+        clear_model_registry_caches()

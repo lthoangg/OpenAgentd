@@ -15,9 +15,7 @@ from app.agent.providers.model_metadata import (
 
 
 def _clear_registry_caches() -> None:
-    model_registry.load_model_registry.cache_clear()
-    capabilities._registry.cache_clear()
-    model_metadata._registry.cache_clear()
+    model_registry.clear_model_registry_caches()
 
 
 @pytest.fixture(autouse=True)
@@ -480,3 +478,75 @@ codex:gpt-live:
     limits = get_model_limits("codex:gpt-live")
     assert limits.context_length == 999
     assert limits.max_completion_tokens == 88
+
+
+def test_refresh_model_registry_and_force_fetch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cache_dir = tmp_path / "cache"
+    config_dir = tmp_path / "config"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    config_dir.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setattr(
+        model_registry.settings, "OPENAGENTD_CACHE_DIR", str(cache_dir)
+    )
+    monkeypatch.setattr(
+        model_registry.settings, "OPENAGENTD_CONFIG_DIR", str(config_dir)
+    )
+    monkeypatch.setattr(
+        model_registry.settings, "OPENAGENTD_MODEL_REGISTRY_REFRESH", True
+    )
+
+    call_count = 0
+    payloads = [
+        {
+            "openai": {
+                "id": "openai",
+                "models": {
+                    "gpt-live": {
+                        "id": "gpt-live",
+                        "modalities": {"input": ["text"], "output": ["text"]},
+                        "limit": {"context": 1000},
+                    }
+                },
+            }
+        },
+        {
+            "openai": {
+                "id": "openai",
+                "models": {
+                    "gpt-live": {
+                        "id": "gpt-live",
+                        "modalities": {"input": ["text", "image"], "output": ["text"]},
+                        "limit": {"context": 2000},
+                    }
+                },
+            }
+        },
+    ]
+
+    def mock_fetch():
+        nonlocal call_count
+        val = payloads[call_count]
+        call_count += 1
+        return val
+
+    monkeypatch.setattr(model_registry, "_fetch_models_dev", mock_fetch)
+
+    _clear_registry_caches()
+    assert get_model_limits("openai:gpt-live").context_length == 1000
+    assert call_count == 1
+
+    assert get_model_limits("openai:gpt-live").context_length == 1000
+    assert call_count == 1
+
+    model_registry.clear_model_registry_caches()
+    assert get_model_limits("openai:gpt-live").context_length == 1000
+    assert call_count == 1
+
+    model_registry.refresh_model_registry()
+    assert call_count == 2
+
+    assert get_model_limits("openai:gpt-live").context_length == 2000
+

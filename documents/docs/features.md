@@ -56,15 +56,18 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
 - **Native desktop app for macOS, Linux** `[since v1.0]` — Tauri 2 shell,
   bundled Python sidecar, embedded Web UI, one process, no terminal required.
   *(Windows desktop builds dropped in v1.23.0 — see [§11](#11-distribution-and-updates).)*
-- **Explicit backend connection state** `[v1.68.0]` — desktop connection options
+- **Explicit backend connection state** `[v1.68.0, v1.99.8]` — desktop connection options
   are limited to the builtin sidecar and saved servers; no-backend dev windows
   show **Backend unreachable**, active server removal clears the current backend,
   the builtin row exposes **Stop** whenever the sidecar process is already
   running, and **Use builtin** starts + attaches the bundled backend when needed.
-- **In-app auto-updater** `[v1.22.0]` — bottom-right update card + Settings → About
+  If bundled startup exceeds 15 seconds, the native splash offers Retry, server
+  selection, and backend-log-path copy actions instead of waiting indefinitely.
+- **In-app auto-updater** `[v1.22.0, v1.99.8]` — bottom-right update card + Settings → About
   → Updates, cached downloads, install-and-restart, signed minisign payloads,
-  GitHub release notes rendered inline. Silent check at startup + every 6 hours.
-  Earlier iterations: `[v1.18.0]`, `[v1.20.0]`, `[v1.21.0]`.
+  GitHub release notes rendered inline. Desktop checks at startup, every 6 hours,
+  and after returning to the foreground; mobile leaves updates to its platform
+  distribution channel. Earlier iterations: `[v1.18.0]`, `[v1.20.0]`, `[v1.21.0]`.
 - **Native app notifications** `[v1.19.0]` — finished assistant turns,
   background tasks, scheduled reminders in the desktop app, plus local native
   notifications in the remote-backend mobile shell `[v1.34.0]`. Per-session
@@ -202,12 +205,14 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   clicked file mentions in sent user messages open that file in the workspace
   files sidebar. Caps at 20 mentions / 20 MB / ~32k chars per turn. Persists
   on queued messages.
-- **Multi-type file lightbox** `[since v1.0, v1.92.0]` — click any generated or
+- **Multi-type file lightbox** `[since v1.0, v1.92.0, v1.99.8]` — click any generated or
   attached file to open `FileLightbox`, a full-screen gallery covering images,
   video, audio, PDFs, text, and generic file types in one modal, with pinch-zoom
   and swipe-to-close for images and video, keyboard/swipe navigation between
   attachments, and `AttachmentStrip` unifying the previous separate image/file
-  card render paths. Multi-file paste into the composer now attaches every
+  card render paths. PDF documents render the first two pages immediately, then
+  rasterize later pages near the viewport with stable page geometry and bounded
+  device-pixel ratio. Multi-file paste into the composer now attaches every
   pasted file instead of only the last one `[v1.92.0]`.
 - **Unified download architecture** `[v1.92.0]` — FileLightbox, workspace
   downloads, and coding-workspace downloads share one download path instead of
@@ -241,7 +246,7 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   the shared Web UI and connects to saved remote API servers. See [`mobile.md`](./mobile.md).
 - **LAN access key for external clients** `[v1.43.0]` — `openagentd start --lan --key`
   stores a `settings.yaml` bearer key so desktop, mobile, and browser clients need the key before controlling a LAN-exposed server. See [`cli.md`](./cli.md).
-- **Desktop server connection manager** `[v1.43.4]` — the desktop **Server connection** dialog switches the current window between the builtin sidecar and saved external servers, validates LAN access keys, normalizes pasted `/api` URLs, and preserves other open windows' backend choices. Saved LAN access keys are now scoped per backend origin so different windows/servers do not overwrite each other's credentials `[v1.98.2]`. Remembered external servers reconnect on app launch with sidecar fallback, while the desktop window opens immediately as backend startup continues asynchronously `[v1.57.1]`. See [`desktop.md`](./desktop.md).
+- **Desktop server connection manager** `[v1.43.4, v1.99.8]` — the desktop **Server connection** dialog switches the current window between the builtin sidecar and saved external servers, validates LAN access keys, normalizes pasted `/api` URLs, and preserves other open windows' backend choices. Saved LAN access keys are scoped per backend origin and stored in the native OS credential store on installed desktop/mobile shells; browser development keeps the per-origin localStorage fallback. Remembered external servers reconnect on app launch with sidecar fallback, while the desktop window opens immediately as backend startup continues asynchronously `[v1.57.1]`. See [`desktop.md`](./desktop.md) and [ADR-0001](../adrs/0001-native-backend-access-key-storage.md).
   - **Reload after switching backend servers** `[v1.98.1]` — after connecting a desktop window to a different saved or typed external server, the webview reloads so stale frontend state is discarded and the window comes back against the newly selected backend cleanly. Reconnecting to the already active backend does not reload.
 
 ---

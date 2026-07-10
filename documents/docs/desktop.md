@@ -2,7 +2,7 @@
 title: Desktop distribution
 description: How OpenAgentd packages, ships, signs, and updates the native desktop app.
 status: stable
-updated: 2026-07-04
+updated: 2026-07-09
 ---
 
 # Desktop distribution
@@ -40,7 +40,7 @@ no Python install, no `uv tool install`, no terminal.
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-The Tauri shell opens the WebView immediately with the normal loading/backend-unreachable UI, then starts backend discovery and sidecar readiness asynchronously. It normally runs the bundled sidecar, but each desktop window can be pointed at an externally managed OpenAgentd server from the shared **Backend connection** UI: open Settings, click the sidebar health dot, or use the home-page server status. Connection options are intentionally limited to **Builtin sidecar** and user-saved servers. Saved servers can be named, renamed, removed, and show live status indicators. **Connect** probes `/api/health/live`, verifies `/api/auth/check` when the server supports it, and switches only the current window's runtime backend without reloading so the entry can still be named and saved. Backend-readiness notifications are now delivered to the switching window only, so connecting one window to a different CLI server no longer redirects any other open window onto that same server `[v1.99.1]`. Access keys entered in the dialog are now remembered per backend origin instead of one global slot, so two windows pointed at different LAN/CLI servers do not overwrite each other's saved credentials. When **Save this server and reconnect to it after reload** is enabled, the external server is also saved as the startup backend; the next app launch tries that server first, but if it is unreachable the app still opens by falling back to the bundled sidecar so the user can choose another server or use builtin. The builtin row now shows **Stop** whenever the bundled sidecar process is already running, even if the current window is attached to an external backend; when the sidecar is stopped, the row shows **Use builtin**, which starts the bundled backend if needed and attaches the current window to it. **Use builtin** clears the remembered startup backend. **Save server** persists or renames an entry without switching. Secondary windows now inherit the active window's current backend selection when they are opened, external-window overrides are cleared when that window closes, and removing a saved external server clears matching window overrides without stopping the bundled sidecar. If no sidecar/server is reachable, the home page shows **Backend unreachable** and the dialog lets the user choose or save a server. Desktop startup no longer accepts `OPENAGENTD_DESKTOP_BASE_URL` or the legacy `OPENAGENTD_DEV_BACKEND_URL` as implicit backend defaults.
+The Tauri shell opens the WebView immediately with the normal loading/backend-unreachable UI, then starts backend discovery and sidecar readiness asynchronously. If bundled startup is still unavailable after 15 seconds, the splash offers **Retry**, **Choose Server**, and **Copy Backend Log Path** so startup failures remain actionable without delaying the normal eager path. It normally runs the bundled sidecar, but each desktop window can be pointed at an externally managed OpenAgentd server from the shared **Backend connection** UI: open Settings, click the sidebar health dot, or use the home-page server status. Connection options are intentionally limited to **Builtin sidecar** and user-saved servers. Saved servers can be named, renamed, removed, and show live status indicators. **Connect** probes `/api/health/live`, verifies `/api/auth/check` when the server supports it, and switches only the current window's runtime backend without reloading so the entry can still be named and saved. Backend-readiness notifications are now delivered to the switching window only, so connecting one window to a different CLI server no longer redirects any other open window onto that same server `[v1.99.1]`. Access keys entered in the dialog are remembered per backend origin instead of one global slot, so two windows pointed at different LAN/CLI servers do not overwrite each other's saved credentials. Installed shells keep those keys in the OS credential store (Apple Keychain on macOS/iOS and the native persistent credential store on Linux); browser development retains per-origin localStorage. A legacy browser-stored key is removed only after its native write succeeds, and native-store failures surface recovery instead of silently persisting the secret in webview storage. When **Save this server and reconnect to it after reload** is enabled, the external server is also saved as the startup backend; the next app launch tries that server first, but if it is unreachable the app still opens by falling back to the bundled sidecar so the user can choose another server or use builtin. The builtin row now shows **Stop** whenever the bundled sidecar process is already running, even if the current window is attached to an external backend; when the sidecar is stopped, the row shows **Use builtin**, which starts the bundled backend if needed and attaches the current window to it. **Use builtin** clears the remembered startup backend. **Save server** persists or renames an entry without switching. Secondary windows now inherit the active window's current backend selection when they are opened, external-window overrides are cleared when that window closes, and removing a saved external server clears matching window overrides without stopping the bundled sidecar. If no sidecar/server is reachable, the home page shows **Backend unreachable** and the dialog lets the user choose or save a server. Desktop startup no longer accepts `OPENAGENTD_DESKTOP_BASE_URL` or the legacy `OPENAGENTD_DEV_BACKEND_URL` as implicit backend defaults.
 
 Coding workspaces are always selected on the machine running the backend. When the desktop app is using the bundled sidecar or a loopback backend (`localhost` / `127.0.0.1`), **Open folder…** can use the native desktop folder picker because the WebView and backend are on the same machine. When the desktop app is connected to a LAN/external backend such as `192.168.x.x` or `10.x.x.x`, **Open folder…** uses the web/server-local folder browser instead; the native picker would only select a folder on the client desktop, not on the backend host that will run file and shell tools.
 
@@ -167,12 +167,25 @@ Native desktop notifications use `tauri-plugin-notification` and are controlled 
 
 The backend emits `desktop_notification` SSE events for assistant completion and scheduled reminders, so completion notifications still fire even if the user has switched sessions. The frontend also emits a background-completion notification when a `bg` tool process exits or stops. Assistant completion text is session-centric: `Session completed` or `Session completed - <workspace>`, with the session title as the body when available.
 
+## Native smoke contract
+
+Before release, verify both bundled and remote modes on an installed desktop build:
+
+1. Launch with the bundled sidecar and confirm the eager splash transitions without opening recovery controls.
+2. Simulate an unavailable sidecar, then exercise Retry, server selection, and backend-log-path copy.
+3. Connect to a keyed remote server, relaunch, and confirm the credential is restored before application routes mount.
+4. Background and foreground the app and confirm the updater rechecks only on desktop.
+5. Open a long PDF, scroll beyond page 2, and confirm stable page slots and responsive native scrolling.
+6. Remove the saved remote server/key and confirm the bundled sidecar remains available.
+
+OS credential services, signed updater installation/relaunch, and packaged WebView lifecycle still require real installed-app checks; host unit tests cover their command and frontend contracts only.
+
 ## Updates
 
 The desktop bundle checks the signed Tauri updater manifest at `https://github.com/lthoangg/openagentd/releases/download/latest-desktop/latest.json`.
 
 - Users can check manually from **OpenAgentd → Check for Updates…** or **Settings → About → Updates**.
-- The app also runs a silent check shortly after startup and every 6 hours while open.
+- The app also runs a silent check shortly after startup, every 6 hours while open, and when the desktop window returns to the foreground.
 - Update UI is rendered in React as a bottom-right card. Native OS dialogs are not used for this flow.
 - Download and install are separate steps: the bundle downloads first, then the user chooses **Install and restart**.
 - Download progress is still mirrored in tray status. Downloaded updates are cached in the app cache dir so repeated checks can show the ready-to-install state instead of downloading again.

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from app.agent.providers import capabilities, model_metadata, model_registry
+from app.agent.providers import model_registry
 from app.agent.providers.capabilities import get_capabilities
 from app.agent.providers.model_metadata import (
     get_model_cost,
@@ -488,9 +488,7 @@ def test_refresh_model_registry_and_force_fetch(
     cache_dir.mkdir(parents=True, exist_ok=True)
     config_dir.mkdir(parents=True, exist_ok=True)
 
-    monkeypatch.setattr(
-        model_registry.settings, "OPENAGENTD_CACHE_DIR", str(cache_dir)
-    )
+    monkeypatch.setattr(model_registry.settings, "OPENAGENTD_CACHE_DIR", str(cache_dir))
     monkeypatch.setattr(
         model_registry.settings, "OPENAGENTD_CONFIG_DIR", str(config_dir)
     )
@@ -549,4 +547,3 @@ def test_refresh_model_registry_and_force_fetch(
     assert call_count == 2
 
     assert get_model_limits("openai:gpt-live").context_length == 2000
-

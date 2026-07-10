@@ -40,7 +40,9 @@ def slim_lifespan(monkeypatch: pytest.MonkeyPatch) -> Mock:
     monkeypatch.setattr(app_module.task_scheduler, "stop", AsyncMock())
     monkeypatch.setattr(app_module.mcp_manager, "stop", AsyncMock())
     # Mock refresh_model_registry to prevent network/cache access during lifespan tests
-    monkeypatch.setattr("app.agent.providers.model_registry.refresh_model_registry", Mock())
+    monkeypatch.setattr(
+        "app.agent.providers.model_registry.refresh_model_registry", Mock()
+    )
     return startup_logger
 
 

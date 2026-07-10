@@ -391,6 +391,7 @@ def load_model_registry() -> ModelRegistry:
 def clear_model_registry_caches() -> None:
     """Clear all memory caches for the model registry, capabilities, and metadata."""
     from app.agent.providers import capabilities, model_metadata
+
     load_model_registry.cache_clear()
     capabilities._registry.cache_clear()
     model_metadata._registry.cache_clear()

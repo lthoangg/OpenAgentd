@@ -1266,6 +1266,10 @@ describe('CodingSidebar workspace trust flow', () => {
     await waitFor(() => expect(screen.getByText('task-a')).toBeTruthy())
     await user.click(screen.getByLabelText('Remove worktree task-a'))
 
+    // Managed-worktree removal is destructive, so it now requires
+    // confirmation before it commits (error prevention).
+    await user.click(screen.getByRole('button', { name: 'Remove worktree' }))
+
     await waitFor(() => expect(screen.queryByText('task-a')).toBeNull())
     expect(screen.getByLabelText('Collapse repository project')).toBeTruthy()
     expect(screen.queryByLabelText('Collapse repository task-a')).toBeNull()

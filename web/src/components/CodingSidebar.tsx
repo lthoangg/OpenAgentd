@@ -208,6 +208,11 @@ export function CodingSidebar({
   const [worktreeRemoving, setWorktreeRemoving] = useState<string | null>(null)
   const [worktreesBySource, setWorktreesBySource] = useState<Record<string, WorktreeInfo[]>>({})
   const [removedWorktreePaths, setRemovedWorktreePaths] = useState<Set<string>>(() => new Set())
+  // Managed-worktree pending removal — null when no confirmation is open.
+  // Removing a managed worktree deletes it from disk (git worktree remove),
+  // which can drop uncommitted work, so it must be confirmed (error
+  // prevention) like session-delete and workspace-removal already are.
+  const [removeWorktreeTarget, setRemoveWorktreeTarget] = useState<WorktreeInfo | null>(null)
 
   const loadBrowser = useCallback(async (path?: string | null) => {
     setLoading(true)
@@ -396,6 +401,13 @@ export function CodingSidebar({
     } finally {
       setWorktreeRemoving(null)
     }
+  }
+
+  // Commit the removal from the confirmation dialog.
+  const confirmRemoveWorktree = () => {
+    const target = removeWorktreeTarget
+    setRemoveWorktreeTarget(null)
+    if (target) void handleRemoveWorktree(target)
   }
 
   const submitWorktree = async (event: React.FormEvent) => {
@@ -782,7 +794,7 @@ export function CodingSidebar({
                           {item.managed ? (
                             <button
                               type="button"
-                              onClick={() => { void handleRemoveWorktree(worktreeInfo) }}
+                              onClick={() => setRemoveWorktreeTarget(worktreeInfo)}
                               disabled={worktreeRemoving === directory}
                               className={`ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded text-(--color-text-subtle) transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) disabled:opacity-50 ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100'}`}
                               aria-label={`Remove worktree ${item.name}`}
@@ -1037,7 +1049,7 @@ export function CodingSidebar({
                     onClick={() => {
                       const item = mobileWorkspaceActions.worktree
                       setMobileWorkspaceActions(null)
-                      if (item) void handleRemoveWorktree(item)
+                      if (item) setRemoveWorktreeTarget(item)
                     }}
                   >
                     <Trash2 size={14} aria-hidden="true" />
@@ -1128,7 +1140,7 @@ export function CodingSidebar({
                           {item.managed ? (
                             <button
                               type="button"
-                              onClick={() => { void handleRemoveWorktree(item) }}
+                               onClick={() => setRemoveWorktreeTarget(item)}
                               disabled={worktreeRemoving === item.directory}
                               className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-(--color-text-subtle) opacity-100 transition-colors hover:bg-(--color-error-subtle) hover:text-(--color-error) disabled:opacity-50 md:opacity-0 md:group-hover:opacity-100"
                               aria-label={`Remove worktree ${item.name}`}
@@ -1237,7 +1249,7 @@ export function CodingSidebar({
                     onClick={() => {
                       const item = desktopWorkspaceActions.worktree
                       setDesktopWorkspaceActions(null)
-                      if (item) void handleRemoveWorktree(item)
+                      if (item) setRemoveWorktreeTarget(item)
                     }}
                   >
                     <Trash2 size={14} aria-hidden="true" />
@@ -1437,6 +1449,25 @@ export function CodingSidebar({
           <DialogFooter className="p-3">
             <Button type="button" variant="default" onClick={() => setRemoveWorkspaceTarget(null)}>Cancel</Button>
               <Button type="button" variant="danger" onClick={confirmRemoveWorkspace}>Remove from sidebar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={removeWorktreeTarget !== null}
+        onOpenChange={(open) => { if (!open) setRemoveWorktreeTarget(null) }}
+      >
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Remove worktree</DialogTitle>
+            <DialogDescription>
+              &ldquo;{removeWorktreeTarget ? workspaceLabel(removeWorktreeTarget.directory) : ''}&rdquo; will be
+              deleted from disk. Any uncommitted changes in this worktree will be lost. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="p-3">
+            <Button type="button" variant="default" onClick={() => setRemoveWorktreeTarget(null)}>Cancel</Button>
+            <Button type="button" variant="danger" onClick={confirmRemoveWorktree}>Remove worktree</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

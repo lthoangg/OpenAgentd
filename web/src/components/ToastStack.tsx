@@ -7,6 +7,7 @@
  */
 import { AnimatePresence, motion, useMotionValue, useTransform } from 'framer-motion'
 import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { useToastStore, type Toast } from '@/stores/useToastStore'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 
@@ -39,6 +40,21 @@ interface ToastItemProps {
 function ToastItem({ t, dismiss }: ToastItemProps) {
   const { icon: Icon, iconClass } = TONE_STYLES[t.tone]
   const prefersReducedMotion = useReducedMotion()
+
+  // Auto-dismiss timer lives here (not the store) so it can pause while the
+  // pointer or keyboard focus is on the toast — otherwise a toast the user is
+  // reading vanishes mid-sentence. Remaining time is preserved across pauses.
+  const [paused, setPaused] = useState(false)
+  const remainingRef = useRef(t.durationMs ?? 4500)
+  useEffect(() => {
+    if (paused || remainingRef.current <= 0) return
+    const startedAt = Date.now()
+    const timer = setTimeout(() => dismiss(t.id), remainingRef.current)
+    return () => {
+      clearTimeout(timer)
+      remainingRef.current = Math.max(0, remainingRef.current - (Date.now() - startedAt))
+    }
+  }, [paused, dismiss, t.id])
 
   const x = useMotionValue(0)
   const y = useMotionValue(0)
@@ -76,6 +92,10 @@ function ToastItem({ t, dismiss }: ToastItemProps) {
       dragMomentum={false}
       onDragEnd={handleDragEnd}
       whileDrag={{ cursor: 'grabbing' }}
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      onFocusCapture={() => setPaused(true)}
+      onBlurCapture={() => setPaused(false)}
       data-swipe-ignore
       className="pointer-events-auto flex cursor-grab items-start gap-3 rounded-sm border border-(--color-border) bg-(--bg-card) p-3 shadow-md select-none"
       // Errors must interrupt assistive tech (WCAG 4.1.3 Status Messages);

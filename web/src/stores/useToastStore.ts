@@ -13,6 +13,9 @@ export interface Toast {
   tone: ToastTone
   title: string
   description?: string
+  /** Auto-dismiss delay; the ToastStack item owns the timer so it can
+   * pause while the pointer/focus is on the toast. */
+  durationMs?: number
 }
 
 interface ToastStore {
@@ -22,14 +25,15 @@ interface ToastStore {
 }
 
 export const useToastStore = create<ToastStore>()(
-  immer((set, get) => ({
+  immer((set) => ({
     toasts: [],
     push: (t, durationMs = 4500) => {
       const id = `t-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+      // Auto-dismiss is owned by the ToastStack item (so it can pause on
+      // hover/focus), driven by the durationMs stored on the toast.
       set((state) => {
-        state.toasts.push({ id, ...t })
+        state.toasts.push({ id, ...t, durationMs })
       })
-      setTimeout(() => get().dismiss(id), durationMs)
     },
     dismiss: (id) => {
       set((state) => {

@@ -61,6 +61,7 @@ import {
 import type { CodingWorkspaceTreeRepository, SessionResponse, WorktreeInfo } from '@/api/types'
 import { LongPressButton } from '@/components/ui/long-press-button'
 import { WorkspaceSessionList } from './CodingSidebar/WorkspaceSessionList'
+import { CodingSidebarConfirmDialogs } from './CodingSidebar/ConfirmDialogs'
 import {
   addExpandedPaths,
   buildWorktreeSourceByDirectory,
@@ -1349,24 +1350,6 @@ export function CodingSidebar({
       </Dialog>
 
       <Dialog
-        open={deleteTarget !== null}
-        onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}
-      >
-        <DialogContent showCloseButton={false}>
-          <DialogHeader>
-            <DialogTitle>Delete session</DialogTitle>
-            <DialogDescription>
-              &ldquo;{deleteTarget?.title || 'Untitled'}&rdquo; will be permanently deleted. This cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="p-3">
-            <Button type="button" variant="default" onClick={() => setDeleteTarget(null)}>Cancel</Button>
-            <Button type="button" variant="danger" onClick={confirmSessionDelete}>Delete</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
         open={editTarget !== null}
         onOpenChange={(open) => { if (!open) setEditTarget(null) }}
       >
@@ -1434,43 +1417,17 @@ export function CodingSidebar({
         </DialogContent>
       </Dialog>
 
-      <Dialog
-        open={removeWorkspaceTarget !== null}
-        onOpenChange={(open) => { if (!open) setRemoveWorkspaceTarget(null) }}
-      >
-        <DialogContent showCloseButton={false}>
-          <DialogHeader>
-            <DialogTitle>Remove workspace from sidebar</DialogTitle>
-            <DialogDescription>
-              &ldquo;{removeWorkspaceTarget ? workspaceLabel(removeWorkspaceTarget) : ''}&rdquo; will be hidden from
-              the sidebar. Its sessions stay on disk — reopening this folder later restores the list.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="p-3">
-            <Button type="button" variant="default" onClick={() => setRemoveWorkspaceTarget(null)}>Cancel</Button>
-              <Button type="button" variant="danger" onClick={confirmRemoveWorkspace}>Remove from sidebar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={removeWorktreeTarget !== null}
-        onOpenChange={(open) => { if (!open) setRemoveWorktreeTarget(null) }}
-      >
-        <DialogContent showCloseButton={false}>
-          <DialogHeader>
-            <DialogTitle>Remove worktree</DialogTitle>
-            <DialogDescription>
-              &ldquo;{removeWorktreeTarget ? workspaceLabel(removeWorktreeTarget.directory) : ''}&rdquo; will be
-              deleted from disk. Any uncommitted changes in this worktree will be lost. This cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="p-3">
-            <Button type="button" variant="default" onClick={() => setRemoveWorktreeTarget(null)}>Cancel</Button>
-            <Button type="button" variant="danger" onClick={confirmRemoveWorktree}>Remove worktree</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <CodingSidebarConfirmDialogs
+        deleteTarget={deleteTarget}
+        setDeleteTarget={setDeleteTarget}
+        onConfirmSessionDelete={confirmSessionDelete}
+        removeWorkspaceTarget={removeWorkspaceTarget}
+        setRemoveWorkspaceTarget={setRemoveWorkspaceTarget}
+        onConfirmRemoveWorkspace={confirmRemoveWorkspace}
+        removeWorktreeTarget={removeWorktreeTarget}
+        setRemoveWorktreeTarget={setRemoveWorktreeTarget}
+        onConfirmRemoveWorktree={confirmRemoveWorktree}
+      />
     </motion.aside>
     </>
   )

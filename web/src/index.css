@@ -110,7 +110,7 @@ pre code.hljs {
     --color-text:           #F5EBD8;
     --color-text-2:         #C5B59A;
     --color-text-muted:     #9C8A72;
-     --color-text-subtle:    #8E7D66; /* AA-compliant on --bg-page (≥4.5:1) */
+    --color-text-subtle:    #8E7D66; /* AA-compliant on --bg-page (≥4.5:1) */
     --color-text-on-accent: #15110D;
     --fg-primary:           #F5EBD8;
     --fg-secondary:         #C5B59A;
@@ -230,7 +230,7 @@ pre code.hljs {
     --color-text:           #1A1714;
     --color-text-2:         #4B3E32;
     --color-text-muted:     #6E604F;
-     --color-text-subtle:    #7A6A54; /* AA-compliant on --bg-page (≥4.5:1) */
+    --color-text-subtle:    #7A6A54; /* AA-compliant on --bg-page (≥4.5:1) */
     --color-text-on-accent: #FFFDF7;
     --fg-primary:           #1F1A14;
     --fg-secondary:         #4B3E32;

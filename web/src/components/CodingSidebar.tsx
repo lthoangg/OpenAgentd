@@ -1141,7 +1141,7 @@ export function CodingSidebar({
                           {item.managed ? (
                             <button
                               type="button"
-                               onClick={() => setRemoveWorktreeTarget(item)}
+                              onClick={() => setRemoveWorktreeTarget(item)}
                               disabled={worktreeRemoving === item.directory}
                               className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-(--color-text-subtle) opacity-100 transition-colors hover:bg-(--color-error-subtle) hover:text-(--color-error) disabled:opacity-50 md:opacity-0 md:group-hover:opacity-100"
                               aria-label={`Remove worktree ${item.name}`}

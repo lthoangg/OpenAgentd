@@ -45,6 +45,7 @@ import { mediumHapticFeedback } from '@/lib/haptics'
 import { formatBytes } from '@/utils/format'
 import { ImageLightbox } from './ImageLightbox'
 import { isVideoSrc } from '@/utils/workspace'
+import { EmptyState } from '@/components/ui/empty-state'
 import type { WorkspaceFileInfo } from '@/api/types'
 
 // ── File-type helpers ─────────────────────────────────────────────────────────
@@ -640,18 +641,6 @@ function PreviewArea({
   )
 }
 
-// ── Empty states ──────────────────────────────────────────────────────────────
-
-function EmptyState({ message, hint }: { message: string; hint?: string }) {
-  return (
-    <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
-      <FileText size={24} className="text-(--color-text-subtle)" />
-      <p className="text-sm text-(--color-text-2)">{message}</p>
-      {hint && <p className="max-w-xs text-xs text-(--color-text-subtle)">{hint}</p>}
-    </div>
-  )
-}
-
 // ── Main drawer ──────────────────────────────────────────────────────────────
 
 interface WorkspaceFilesPanelProps {
@@ -885,8 +874,9 @@ export function WorkspaceFilesPanel({ open, sessionId, onClose }: WorkspaceFiles
               <PreviewArea key={selected.path} sessionId={sessionId} file={selected} />
             ) : (
               <EmptyState
-                message="Select a file"
-                hint="Images, markdown, and code files render inline. Other formats offer download."
+                icon={FileText}
+                title="Select a file"
+                body="Images, markdown, and code files render inline. Other formats offer download."
               />
             )}
           </div>

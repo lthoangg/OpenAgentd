@@ -8,7 +8,7 @@ import os
 import subprocess
 
 from app.cli.firstrun import ensure_initialised
-from app.cli.net import server_addresses
+from app.cli.net import require_loopback_or_auth, server_addresses
 from app.cli.paths import _ROOT, _server_log
 from app.cli.pids import _find_pids, _write_pids
 from app.cli.server import _server_cmd
@@ -76,6 +76,14 @@ def cmd_start(args: argparse.Namespace) -> None:
     _save_server_overrides(args)
     args.port = _resolve_port(args.port)
     args.host = _resolve_host(args)
+    require_loopback_or_auth(
+        host=args.host,
+        has_auth=bool(
+            os.environ.get("OPENAGENTD_DESKTOP_TOKEN")
+            or os.environ.get("OPENAGENTD_ACCESS_KEY")
+            or load_runtime_settings().server.access_key
+        ),
+    )
 
     srv_log = _server_log()
 

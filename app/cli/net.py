@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import socket
+from ipaddress import ip_address
 from dataclasses import dataclass
 
 
@@ -10,6 +11,28 @@ from dataclasses import dataclass
 class ServerAddresses:
     local: str
     lan: list[str]
+
+
+_NON_LOOPBACK_AUTH_ERROR = (
+    "Refusing to bind a non-loopback host without authentication; "
+    "configure --key or an access key."
+)
+
+
+def is_loopback_host(host: str) -> bool:
+    """Return whether a bind host is limited to this machine."""
+    if host.lower() == "localhost":
+        return True
+    try:
+        return ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def require_loopback_or_auth(*, host: str, has_auth: bool) -> None:
+    """Reject unauthenticated network-visible server binds."""
+    if not has_auth and not is_loopback_host(host):
+        raise SystemExit(_NON_LOOPBACK_AUTH_ERROR)
 
 
 def _format_url(host: str, port: int) -> str:

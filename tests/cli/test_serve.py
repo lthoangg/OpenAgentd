@@ -16,12 +16,16 @@ import sys
 import time
 from contextlib import redirect_stdout
 from types import SimpleNamespace
+from unittest.mock import patch
+
+import pytest
 
 from app.cli.commands.serve import (
     _configure_desktop_token,
     _emit_handshake,
     _pid_alive,
     _server_port,
+    cmd_serve,
 )
 from app.cli.main import build_parser
 
@@ -129,6 +133,31 @@ class TestDesktopTokenConfig:
                 os.environ.pop("OPENAGENTD_DESKTOP_TOKEN", None)
             else:
                 os.environ["OPENAGENTD_DESKTOP_TOKEN"] = original_token
+
+
+class TestBindAuthPolicy:
+    def test_non_loopback_host_without_key_refuses_before_uvicorn_starts(
+        self, monkeypatch
+    ):
+        monkeypatch.delenv("OPENAGENTD_DESKTOP_TOKEN", raising=False)
+        monkeypatch.delenv("OPENAGENTD_ACCESS_KEY", raising=False)
+        args = SimpleNamespace(
+            host="0.0.0.0",
+            port=0,
+            handshake=False,
+            generate_token=False,
+            parent_pid=None,
+        )
+
+        with (
+            patch("app.cli.commands.serve.load_runtime_settings") as runtime_settings,
+            patch("uvicorn.Config") as config,
+            pytest.raises(SystemExit, match="--key.*access key"),
+        ):
+            runtime_settings.return_value.server.access_key = None
+            cmd_serve(args)
+
+        config.assert_not_called()
 
 
 class TestPidAlive:

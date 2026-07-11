@@ -61,4 +61,5 @@ uv run ruff check app/ tests/ && uv run ruff format --check app/ tests/ && uv ru
 
 - Backend and testing conventions: `documents/docs/guidelines.md`.
 - Architecture overview: `documents/docs/architecture.md`.
+- Server binding/auth invariant: `documents/adrs/0002-require-authentication-for-non-loopback-bindings.md`.
 - Feature catalogue: `documents/docs/features.md`.

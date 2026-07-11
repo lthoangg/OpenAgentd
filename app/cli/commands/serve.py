@@ -59,6 +59,9 @@ import sys
 import threading
 from typing import Any
 
+from app.cli.net import require_loopback_or_auth
+from app.core.runtime_settings import load_runtime_settings
+
 
 def _add_serve_subparser(sub: argparse._SubParsersAction) -> None:
     """Register the ``serve`` subcommand on the given subparsers action."""
@@ -206,6 +209,14 @@ def cmd_serve(args: argparse.Namespace) -> None:
     # Token must be in env *before* the app is imported so the middleware
     # picks it up at construction time.
     token = _configure_desktop_token(args.generate_token)
+    require_loopback_or_auth(
+        host=args.host,
+        has_auth=bool(
+            token
+            or os.environ.get("OPENAGENTD_ACCESS_KEY")
+            or load_runtime_settings().server.access_key
+        ),
+    )
 
     # Hard-enforce production mode in this entry point — the desktop
     # sidecar must never run with dev hot-reload, dev XDG roots, etc.

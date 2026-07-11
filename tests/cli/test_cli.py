@@ -27,6 +27,7 @@ from sqlalchemy.exc import OperationalError
 import app.cli as cli
 from app.cli.net import ServerAddresses
 from app.cli.net import _lan_ips
+from app.cli.net import is_loopback_host, require_loopback_or_auth
 from app.cli import (
     _config_dir,
     _data_dir,
@@ -160,6 +161,43 @@ class TestLanIps:
         )
 
         assert _lan_ips() == ["10.4.28.34", "10.4.28.145"]
+
+
+class TestBindAuthPolicy:
+    @pytest.mark.parametrize("host", ["localhost", "127.0.0.1", "::1"])
+    def test_loopback_hosts_do_not_require_authentication(self, host):
+        assert is_loopback_host(host) is True
+        require_loopback_or_auth(host=host, has_auth=False)
+
+    @pytest.mark.parametrize("host", ["0.0.0.0", "::", "192.168.1.10", "example.com"])
+    def test_non_loopback_hosts_require_authentication(self, host):
+        assert is_loopback_host(host) is False
+        with pytest.raises(SystemExit, match="--key.*access key"):
+            require_loopback_or_auth(host=host, has_auth=False)
+
+    def test_non_loopback_host_allows_configured_authentication(self):
+        require_loopback_or_auth(host="0.0.0.0", has_auth=True)
+
+    def test_start_refuses_non_loopback_host_without_access_key(self):
+        from types import SimpleNamespace
+
+        from app.cli.commands.start import cmd_start
+
+        args = SimpleNamespace(
+            host="0.0.0.0", port=4082, lan=False, key=False, wait=False, watch=False
+        )
+        with (
+            patch("app.cli.commands.start._find_pids", return_value=[]),
+            patch("app.cli.commands.start.ensure_initialised"),
+            patch("app.cli.commands.start._save_server_overrides"),
+            patch("app.cli.commands.start.load_runtime_settings") as runtime_settings,
+            patch("app.cli.commands.start.subprocess.Popen") as popen,
+            pytest.raises(SystemExit, match="--key.*access key"),
+        ):
+            runtime_settings.return_value.server.access_key = None
+            cmd_start(args)
+
+        popen.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

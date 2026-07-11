@@ -19,7 +19,7 @@ All settings live in `app/core/config.py`. Copy `.env.example` to the right `.en
 |----------|---------|-------------|
 | `APP_ENV` | `development` | `production` or `development` — controls data directory, log level, and config YAML defaults. Source-checkout runs default to `development`; CLI-launched servers force `production`. |
 | `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR`. |
-| `API_HOST` | `0.0.0.0` | Bind address. |
+| `API_HOST` | `127.0.0.1` | Bind address. Non-loopback values require a configured access key in OpenAgentd-managed launchers. |
 | `API_PORT` | `4082` | Bind port. `make dev` overrides via uvicorn flags to use `:8000`. |
 | `API_RELOAD` | `False` | Enables uvicorn auto-reload when set true. |
 | `CORS_ORIGINS` | `["*"]` | Allowed CORS origins. |

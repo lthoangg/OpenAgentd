@@ -127,7 +127,7 @@ class Settings(BaseSettings):
     APP_ENV: str = "development"
 
     # API Server
-    API_HOST: str = "0.0.0.0"
+    API_HOST: str = "127.0.0.1"
     API_PORT: int = 4082
     API_RELOAD: bool = False
     CORS_ORIGINS: list[str] = ["*"]

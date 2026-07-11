@@ -110,7 +110,7 @@ pre code.hljs {
     --color-text:           #F5EBD8;
     --color-text-2:         #C5B59A;
     --color-text-muted:     #9C8A72;
-    --color-text-subtle:    #7A6B58;
+     --color-text-subtle:    #8E7D66; /* AA-compliant on --bg-page (≥4.5:1) */
     --color-text-on-accent: #15110D;
     --fg-primary:           #F5EBD8;
     --fg-secondary:         #C5B59A;
@@ -230,7 +230,7 @@ pre code.hljs {
     --color-text:           #1A1714;
     --color-text-2:         #4B3E32;
     --color-text-muted:     #6E604F;
-    --color-text-subtle:    #8E7E68;
+     --color-text-subtle:    #7A6A54; /* AA-compliant on --bg-page (≥4.5:1) */
     --color-text-on-accent: #FFFDF7;
     --fg-primary:           #1F1A14;
     --fg-secondary:         #4B3E32;
@@ -389,10 +389,14 @@ html[data-mobile-shell] code {
   user-select: text;
 }
 
-/* Phone screens make 9–10px metadata hard to read. Keep desktop dense, but
-   lift tiny utility text to an 11px floor inside mobile shells. */
-html[data-mobile-shell] .text-\[9px\],
-html[data-mobile-shell] .text-\[10px\] {
+/* Legibility floor — 11px minimum for tiny utility text on EVERY shell.
+   Previously this only applied inside mobile shells, which left desktop
+   (and iPad-as-desktop) rendering 9–10.5px metadata that fails comfortable-
+   reading guidance and made the same screen differ between platforms. An
+   11px floor keeps desktop dense while guaranteeing a readable minimum. */
+.text-\[9px\],
+.text-\[10px\],
+.text-\[10\.5px\] {
   font-size: 11px;
 }
 

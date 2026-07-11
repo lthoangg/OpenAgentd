@@ -25,7 +25,7 @@ The server runs as a detached background process and exposes the API on port 408
 
 If openagentd hasn't been initialised yet, `openagentd` automatically runs `openagentd init` before starting the server.
 
-For local frontend + backend development with hot-reload, use `make dev` (from the source checkout): it starts uvicorn with `--reload` on `:8000` and Vite on `:5173` together.
+For local frontend + backend development with hot-reload, use `make dev` (from the source checkout): it starts uvicorn with `--reload` on `:8000` and Vite on `:5173` together. `make dev-lan` exposes both servers on the LAN and refuses to start the API unless an access key or desktop token is configured.
 
 ---
 

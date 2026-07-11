@@ -18,6 +18,7 @@ from sqlmodel import select
 import app.core.db as _db_module
 from app.scheduler.models import ScheduledTask
 from app.scheduler.scheduler import TaskScheduler
+from app.scheduler.schemas import ScheduledTaskUpdate
 
 
 async def _db_task(db_factory, task_id):
@@ -148,6 +149,35 @@ class TestAdd:
 
 
 class TestRemove:
+    async def test_remove_during_fire_prevents_dispatch_and_finalizer(
+        self, scheduler, db_factory
+    ):
+        task = await scheduler.add(_make_task(name="remove_firing"))
+        await scheduler.stop()
+        dispatch_started = asyncio.Event()
+        release_dispatch = asyncio.Event()
+
+        async def _get_team():
+            dispatch_started.set()
+            await release_dispatch.wait()
+            return MagicMock()
+
+        with (
+            patch(
+                "app.services.team_manager.get_or_start_team", side_effect=_get_team
+            ) as get_team,
+            patch("app.services.agent_service.dispatch_user_message") as dispatch,
+        ):
+            firing = asyncio.create_task(scheduler._fire_task(task))
+            await _wait_for_task_start(dispatch_started)
+            await scheduler.remove(task.slug)
+            release_dispatch.set()
+            await firing
+
+        assert get_team.call_count == 1
+        assert dispatch.call_count == 0
+        assert await _db_task(db_factory, task.id) is None
+
     async def test_removes_task_and_cancels_timer(self, scheduler, db_factory):
         task = _make_task(name="to_remove")
         await scheduler.add(task)
@@ -172,6 +202,200 @@ class TestRemove:
 
 
 class TestUpdate:
+    async def test_update_during_team_resolution_clears_running_without_dispatch(
+        self, scheduler, db_factory
+    ):
+        task = await scheduler.add(
+            _make_task(name="update_resolving", every_seconds=60)
+        )
+        await scheduler.stop()
+        team_started = asyncio.Event()
+        release_team = asyncio.Event()
+
+        async def _block_team():
+            team_started.set()
+            await release_team.wait()
+            return MagicMock()
+
+        with (
+            patch(
+                "app.services.team_manager.get_or_start_team", side_effect=_block_team
+            ),
+            patch("app.services.agent_service.dispatch_user_message") as dispatch,
+        ):
+            firing = asyncio.create_task(scheduler._fire_task(task))
+            await _wait_for_task_start(team_started)
+            fresh = await scheduler.get_task(task.slug)
+            assert fresh is not None
+            fresh.every_seconds = 30
+            await scheduler.update(fresh)
+            release_team.set()
+            await firing
+
+        row = await _db_task(db_factory, task.id)
+        assert row is not None
+        assert dispatch.call_count == 0
+        assert row.every_seconds == 30
+        assert row.status == "pending"
+        assert row.run_count == 0
+
+    async def test_update_during_dispatch_preserves_schedule_and_accounts_run(
+        self, scheduler, db_factory
+    ):
+        task = await scheduler.add(
+            _make_task(name="update_dispatching", every_seconds=60)
+        )
+        await scheduler.stop()
+        dispatch_started = asyncio.Event()
+        release_dispatch = asyncio.Event()
+
+        async def _get_team():
+            return MagicMock()
+
+        async def _block_dispatch(*_args, **_kwargs):
+            dispatch_started.set()
+            await release_dispatch.wait()
+            return (str(uuid4()), 0)
+
+        with (
+            patch("app.services.team_manager.get_or_start_team", side_effect=_get_team),
+            patch(
+                "app.services.agent_service.dispatch_user_message",
+                side_effect=_block_dispatch,
+            ),
+        ):
+            firing = asyncio.create_task(scheduler._fire_task(task))
+            await _wait_for_task_start(dispatch_started)
+            fresh = await scheduler.get_task(task.slug)
+            assert fresh is not None
+            fresh.every_seconds = 30
+            await scheduler.update(fresh)
+            release_dispatch.set()
+            await firing
+
+        row = await _db_task(db_factory, task.id)
+        assert row is not None
+        assert row.every_seconds == 30
+        assert row.status == "pending"
+        assert row.run_count == 1
+
+    async def test_rename_during_dispatch_preserves_new_slug_and_accounts_run(
+        self, scheduler, db_factory
+    ):
+        task = await scheduler.add(
+            _make_task(name="rename_dispatching", every_seconds=60)
+        )
+        await scheduler.stop()
+        dispatch_started = asyncio.Event()
+        release_dispatch = asyncio.Event()
+
+        async def _get_team():
+            return MagicMock()
+
+        async def _block_dispatch(*_args, **_kwargs):
+            dispatch_started.set()
+            await release_dispatch.wait()
+            return (str(uuid4()), 0)
+
+        with (
+            patch("app.services.team_manager.get_or_start_team", side_effect=_get_team),
+            patch(
+                "app.services.agent_service.dispatch_user_message",
+                side_effect=_block_dispatch,
+            ),
+        ):
+            firing = asyncio.create_task(scheduler._fire_task(task))
+            await _wait_for_task_start(dispatch_started)
+            await scheduler.apply_update(
+                task.slug,
+                ScheduledTaskUpdate(slug="renamed-dispatch", every_seconds=30),
+            )
+            release_dispatch.set()
+            await firing
+
+        assert await scheduler.get_task(task.slug) is None
+        row = await scheduler.get_task("renamed-dispatch")
+        assert row is not None
+        assert row.every_seconds == 30
+        assert row.status == "pending"
+        assert row.run_count == 1
+
+    async def test_rename_during_fire_deduplicates_by_task_id(
+        self, scheduler, db_factory
+    ):
+        task = await scheduler.add(
+            _make_task(name="rename_deduplicate", every_seconds=1)
+        )
+        await scheduler.stop()
+        first_dispatch_started = asyncio.Event()
+        release_dispatch = asyncio.Event()
+        dispatch_count = 0
+
+        async def _get_team():
+            return MagicMock()
+
+        async def _block_dispatch(*_args, **_kwargs):
+            nonlocal dispatch_count
+            dispatch_count += 1
+            first_dispatch_started.set()
+            await release_dispatch.wait()
+            return (str(uuid4()), 0)
+
+        with (
+            patch("app.services.team_manager.get_or_start_team", side_effect=_get_team),
+            patch(
+                "app.services.agent_service.dispatch_user_message",
+                side_effect=_block_dispatch,
+            ),
+        ):
+            first = asyncio.create_task(scheduler._fire_task(task))
+            await _wait_for_task_start(first_dispatch_started)
+            renamed = await scheduler.apply_update(
+                task.slug,
+                ScheduledTaskUpdate(slug="rename-deduplicated", every_seconds=1),
+            )
+            second = asyncio.create_task(scheduler._fire_task(renamed))
+            await asyncio.sleep(0)
+            release_dispatch.set()
+            await asyncio.gather(first, second)
+
+        row = await scheduler.get_task("rename-deduplicated")
+        assert row is not None
+        assert dispatch_count == 1
+        assert row.run_count == 1
+
+    async def test_slug_rename_during_fire_invalidates_old_slug(
+        self, scheduler, db_factory
+    ):
+        task = await scheduler.add(_make_task(name="rename_firing"))
+        await scheduler.stop()
+        team_started = asyncio.Event()
+        release_team = asyncio.Event()
+
+        async def _block_team():
+            team_started.set()
+            await release_team.wait()
+            return MagicMock()
+
+        with (
+            patch(
+                "app.services.team_manager.get_or_start_team", side_effect=_block_team
+            ),
+            patch("app.services.agent_service.dispatch_user_message") as dispatch,
+        ):
+            firing = asyncio.create_task(scheduler._fire_task(task))
+            await _wait_for_task_start(team_started)
+            await scheduler.apply_update(task.slug, ScheduledTaskUpdate(slug="renamed"))
+            release_team.set()
+            await firing
+
+        assert dispatch.call_count == 0
+        assert await scheduler.get_task(task.slug) is None
+        row = await scheduler.get_task("renamed")
+        assert row is not None
+        assert row.status == "pending"
+        assert row.run_count == 0
+
     async def test_recomputes_next_fire_and_restarts_timer(self, scheduler, db_factory):
         task = _make_task(name="updatable", every_seconds=60)
         await scheduler.add(task)
@@ -223,6 +447,106 @@ class TestUpdate:
 
 
 class TestPauseResume:
+    async def test_active_session_skip_does_not_unpause_during_admin_pause(
+        self, scheduler, db_factory
+    ):
+        task = await scheduler.add(_make_task(name="skip_pause"))
+        task.session_id = "auto"
+        await scheduler.update(task)
+        await scheduler.stop()
+        skip_checked = asyncio.Event()
+
+        class _Team:
+            def has_active_user_turn(self):
+                skip_checked.set()
+                return True
+
+        async def _get_team():
+            return _Team()
+
+        with patch(
+            "app.services.team_manager.get_or_start_team", side_effect=_get_team
+        ):
+            firing = asyncio.create_task(scheduler._fire_task(task))
+            await _wait_for_task_start(skip_checked)
+            await scheduler.pause(task.slug)
+            await firing
+
+        row = await _db_task(db_factory, task.id)
+        assert row is not None
+        assert row.status == "paused"
+        assert row.enabled is False
+
+    async def test_pause_during_fire_is_not_overwritten_by_finalizer(
+        self, scheduler, db_factory
+    ):
+        task = await scheduler.add(_make_task(name="pause_firing"))
+        await scheduler.stop()
+        dispatch_started = asyncio.Event()
+        release_dispatch = asyncio.Event()
+
+        async def _get_team():
+            return MagicMock()
+
+        async def _block_dispatch(*_args, **_kwargs):
+            dispatch_started.set()
+            await release_dispatch.wait()
+            return (str(uuid4()), 0)
+
+        with (
+            patch("app.services.team_manager.get_or_start_team", side_effect=_get_team),
+            patch(
+                "app.services.agent_service.dispatch_user_message",
+                side_effect=_block_dispatch,
+            ),
+        ):
+            firing = asyncio.create_task(scheduler._fire_task(task))
+            await _wait_for_task_start(dispatch_started)
+            await scheduler.pause(task.slug)
+            release_dispatch.set()
+            await firing
+
+        row = await _db_task(db_factory, task.id)
+        assert row is not None
+        assert row.status == "paused"
+        assert row.enabled is False
+        assert row.run_count == 1
+
+    async def test_pause_after_dispatch_accounts_max_run_without_unpausing(
+        self, scheduler, db_factory
+    ):
+        task = await scheduler.add(_make_task(name="pause_max_runs", max_runs=1))
+        await scheduler.stop()
+        dispatch_started = asyncio.Event()
+        release_dispatch = asyncio.Event()
+
+        async def _get_team():
+            return MagicMock()
+
+        async def _block_dispatch(*_args, **_kwargs):
+            dispatch_started.set()
+            await release_dispatch.wait()
+            return (str(uuid4()), 0)
+
+        with (
+            patch("app.services.team_manager.get_or_start_team", side_effect=_get_team),
+            patch(
+                "app.services.agent_service.dispatch_user_message",
+                side_effect=_block_dispatch,
+            ),
+        ):
+            firing = asyncio.create_task(scheduler._fire_task(task))
+            await _wait_for_task_start(dispatch_started)
+            await scheduler.pause(task.slug)
+            release_dispatch.set()
+            await firing
+
+        row = await _db_task(db_factory, task.id)
+        assert row is not None
+        assert row.status == "paused"
+        assert row.enabled is False
+        assert row.run_count == 1
+
     async def test_pause_marks_paused_and_cancels_timer(self, scheduler, db_factory):
         task = _make_task(name="pausable")
         await scheduler.add(task)

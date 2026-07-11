@@ -259,38 +259,22 @@ def discover_skills(
 def _skills_dir_signature(directory: Path) -> int:
     """Cheap fingerprint that changes whenever any SKILL.md in the tree changes.
 
-    ~1ms for a typical user's <20 skills.  Returns the max of the directory's
-    own mtime_ns and every ``{name}/SKILL.md`` (flat) or
-    ``{parent}/{sub}/SKILL.md`` (one nested level) mtime_ns we can stat — so
-    in-place edits, additions, and removals all change the signature.
+    ~1ms for a typical user's <20 skills. The relative path, mtime, and size of
+    every discovered file are included so additions and removals invalidate the
+    cache even when directory and file mtimes tie on a fast filesystem.
     """
-    try:
-        max_mtime = directory.stat().st_mtime_ns
-    except OSError:
+    if not directory.is_dir():
         return 0
-    for subdir in directory.iterdir():
-        if not subdir.is_dir():
-            continue
-        # Flat skill: {parent}/SKILL.md
-        skill_file = subdir / "SKILL.md"
+    entries: list[tuple[str, int, int]] = []
+    for skill_file, _ in _iter_skill_paths(directory):
         try:
-            mtime = skill_file.stat().st_mtime_ns
-            if mtime > max_mtime:
-                max_mtime = mtime
+            stat = skill_file.stat()
         except OSError:
-            pass
-        # One nested level: {parent}/{sub}/SKILL.md
-        for nested in subdir.iterdir():
-            if not nested.is_dir():
-                continue
-            nested_file = nested / "SKILL.md"
-            try:
-                mtime = nested_file.stat().st_mtime_ns
-                if mtime > max_mtime:
-                    max_mtime = mtime
-            except OSError:
-                continue
-    return max_mtime
+            continue
+        entries.append(
+            (str(skill_file.relative_to(directory)), stat.st_mtime_ns, stat.st_size)
+        )
+    return hash(tuple(entries))
 
 
 @lru_cache(maxsize=16)

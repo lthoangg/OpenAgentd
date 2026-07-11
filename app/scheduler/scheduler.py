@@ -122,7 +122,9 @@ class TaskScheduler:
         # task slug → running asyncio.Task
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._fire_tasks: set[asyncio.Task[None]] = set()
-        self._firing_slugs: set[str] = set()
+        self._state_lock = asyncio.Lock()
+        self._firing_ids: set[UUID] = set()
+        self._fire_versions: dict[UUID, int] = {}
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -250,6 +252,13 @@ class TaskScheduler:
     async def apply_update(
         self, slug: str, body: "ScheduledTaskUpdate"
     ) -> ScheduledTask:
+        """Apply and persist an administrative update atomically with fire state."""
+        async with self._state_lock:
+            return await self._apply_update_locked(slug, body)
+
+    async def _apply_update_locked(
+        self, slug: str, body: "ScheduledTaskUpdate"
+    ) -> ScheduledTask:
         """Apply a partial update from *body* onto an existing task.
 
         Re-validates the routing target if ``mode`` or ``workspace`` change.
@@ -289,6 +298,7 @@ class TaskScheduler:
             )
 
         if body.slug is not None and body.slug != task.slug:
+            self._invalidate_fire(task.id)
             self._cancel_timer(task.slug)
             task.slug = body.slug
         if body.schedule_type is not None:
@@ -313,23 +323,35 @@ class TaskScheduler:
         if body.enabled is not None:
             task.enabled = body.enabled
 
-        return await self.update(task)
+        return await self._update_locked(task)
 
     async def remove(self, slug: str) -> None:
         """Cancel timer and delete *slug* from DB."""
-        self._cancel_timer(slug)
-        async with self._db() as session:
-            result = await session.exec(
-                select(ScheduledTask).where(ScheduledTask.slug == slug)
-            )
-            task = result.first()
+        async with self._state_lock:
+            task = await self.get_task(slug)
             if task is not None:
-                await session.delete(task)
-                await session.commit()
+                self._invalidate_fire(task.id)
+            self._cancel_timer(slug)
+            async with self._db() as session:
+                result = await session.exec(
+                    select(ScheduledTask).where(ScheduledTask.slug == slug)
+                )
+                task = result.first()
+                if task is not None:
+                    await session.delete(task)
+                    await session.commit()
 
     async def update(self, task: ScheduledTask) -> ScheduledTask:
         """Persist updated *task* and restart/cancel its timer."""
+        async with self._state_lock:
+            return await self._update_locked(task)
+
+    async def _update_locked(self, task: ScheduledTask) -> ScheduledTask:
+        """Persist an updated task while the scheduler state lock is held."""
+        self._invalidate_fire(task.id)
         self._cancel_timer(task.slug)
+        if task.status == "running":
+            task.status = "pending" if task.enabled else "paused"
         if _schedule_exhausted(task):
             task.enabled = False
             task.status = "completed"
@@ -354,47 +376,53 @@ class TaskScheduler:
 
     async def pause(self, slug: str) -> ScheduledTask:
         """Disable task and cancel its timer."""
-        self._cancel_timer(slug)
-        async with self._db() as session:
-            result = await session.exec(
-                select(ScheduledTask).where(ScheduledTask.slug == slug)
-            )
-            task = result.one()
-            task.enabled = False
-            task.status = "paused"
-            session.add(task)
-            await session.commit()
-            await session.refresh(task)
+        async with self._state_lock:
+            task = await self.get_task(slug)
+            if task is not None:
+                self._invalidate_fire(task.id)
+            self._cancel_timer(slug)
+            async with self._db() as session:
+                result = await session.exec(
+                    select(ScheduledTask).where(ScheduledTask.slug == slug)
+                )
+                task = result.one()
+                task.enabled = False
+                task.status = "paused"
+                session.add(task)
+                await session.commit()
+                await session.refresh(task)
         return task
 
     async def resume(self, slug: str) -> ScheduledTask:
         """Re-enable task, recompute next_fire_at, and start timer."""
-        async with self._db() as session:
-            result = await session.exec(
-                select(ScheduledTask).where(ScheduledTask.slug == slug)
-            )
-            task = result.one()
-            task.enabled = True
-            task.status = "pending"
-            if _schedule_exhausted(task):
-                task.enabled = False
-                task.status = "completed"
-                task.next_fire_at = None
-            else:
-                task.next_fire_at = next_fire(
-                    task.schedule_type,
-                    cron_expression=task.cron_expression,
-                    every_seconds=task.every_seconds,
-                    at_datetime=task.at_datetime,
-                    timezone=task.timezone,
-                    run_count=task.run_count,
+        async with self._state_lock:
+            async with self._db() as session:
+                result = await session.exec(
+                    select(ScheduledTask).where(ScheduledTask.slug == slug)
                 )
-            session.add(task)
-            await session.commit()
-            await session.refresh(task)
+                task = result.one()
+                self._invalidate_fire(task.id)
+                task.enabled = True
+                task.status = "pending"
+                if _schedule_exhausted(task):
+                    task.enabled = False
+                    task.status = "completed"
+                    task.next_fire_at = None
+                else:
+                    task.next_fire_at = next_fire(
+                        task.schedule_type,
+                        cron_expression=task.cron_expression,
+                        every_seconds=task.every_seconds,
+                        at_datetime=task.at_datetime,
+                        timezone=task.timezone,
+                        run_count=task.run_count,
+                    )
+                session.add(task)
+                await session.commit()
+                await session.refresh(task)
 
-        if task.enabled:
-            self._start_timer(task)
+            if task.enabled:
+                self._start_timer(task)
         return task
 
     async def trigger(self, slug: str) -> None:
@@ -451,6 +479,12 @@ class TaskScheduler:
         task = asyncio.create_task(coroutine)
         self._fire_tasks.add(task)
         task.add_done_callback(self._fire_tasks.discard)
+
+    def _invalidate_fire(self, task_id: UUID) -> None:
+        """Prevent an in-flight fire from applying stale work after an admin change."""
+        self._fire_versions[task_id] = self._fire_versions.get(task_id, 0) + 1
+        if task_id not in self._firing_ids:
+            self._fire_versions.pop(task_id, None)
 
     def _start_timer(self, task: ScheduledTask) -> None:
         """Spawn an asyncio task for *task*'s timer loop."""
@@ -511,42 +545,42 @@ class TaskScheduler:
 
     async def _fire_task(self, task: ScheduledTask) -> None:
         """Execute one non-overlapping scheduled firing of *task*."""
-        if task.slug in self._firing_slugs:
+        if task.id in self._firing_ids:
             return
-        self._firing_slugs.add(task.slug)
+        self._firing_ids.add(task.id)
+        fire_version = self._fire_versions.get(task.id, 0)
         try:
-            await self._fire_task_locked(task)
+            await self._fire_task_locked(task, fire_version)
         except asyncio.CancelledError:
-            await self._mark_fire_cancelled(task.slug)
+            await self._mark_fire_cancelled(task.id)
             raise
         finally:
-            self._firing_slugs.discard(task.slug)
+            self._firing_ids.discard(task.id)
+            self._fire_versions.pop(task.id, None)
 
-    async def _mark_fire_cancelled(self, slug: str) -> None:
+    async def _mark_fire_cancelled(self, task_id: UUID) -> None:
         """Restore a firing row interrupted by scheduler shutdown."""
-        async with self._db() as session:
-            result = await session.exec(
-                select(ScheduledTask).where(ScheduledTask.slug == slug)
-            )
-            task = result.first()
-            if task is not None and task.status == "running":
-                task.status = "pending" if task.enabled else "paused"
-                task.next_fire_at = (
-                    next_fire(
-                        task.schedule_type,
-                        cron_expression=task.cron_expression,
-                        every_seconds=task.every_seconds,
-                        at_datetime=task.at_datetime,
-                        timezone=task.timezone,
-                        run_count=task.run_count,
+        async with self._state_lock:
+            async with self._db() as session:
+                task = await session.get(ScheduledTask, task_id)
+                if task is not None and task.status == "running":
+                    task.status = "pending" if task.enabled else "paused"
+                    task.next_fire_at = (
+                        next_fire(
+                            task.schedule_type,
+                            cron_expression=task.cron_expression,
+                            every_seconds=task.every_seconds,
+                            at_datetime=task.at_datetime,
+                            timezone=task.timezone,
+                            run_count=task.run_count,
+                        )
+                        if task.enabled
+                        else None
                     )
-                    if task.enabled
-                    else None
-                )
-                session.add(task)
-                await session.commit()
+                    session.add(task)
+                    await session.commit()
 
-    async def _fire_task_locked(self, task: ScheduledTask) -> None:
+    async def _fire_task_locked(self, task: ScheduledTask, fire_version: int) -> None:
         """Execute the dispatch and bookkeeping for one firing."""
         from app.services import team_manager
         from app.services.agent_service import NoTeamConfigured, dispatch_user_message
@@ -554,17 +588,19 @@ class TaskScheduler:
         now = datetime.now(_utc)
 
         # 1. Mark running
-        async with self._db() as session:
-            result = await session.exec(
-                select(ScheduledTask).where(ScheduledTask.slug == task.slug)
-            )
-            db_task = result.first()
-            if db_task is None:
-                return
-            db_task.status = "running"
-            db_task.last_run_at = now
-            session.add(db_task)
-            await session.commit()
+        async with self._state_lock:
+            async with self._db() as session:
+                db_task = await session.get(ScheduledTask, task.id)
+                if (
+                    db_task is None
+                    or not db_task.enabled
+                    or _schedule_exhausted(db_task)
+                ):
+                    return
+                db_task.status = "running"
+                db_task.last_run_at = now
+                session.add(db_task)
+                await session.commit()
 
         # 2. Resolve session_id
         # "auto" → deterministic uuid5 derived from the task name so the same
@@ -581,6 +617,7 @@ class TaskScheduler:
         # 3. Dispatch — route to the lead of the matching team.
         error: str | None = None
         fired_sid: str | None = None
+        dispatch_attempted = False
         try:
             if task.mode == "coding":
                 if not task.workspace:
@@ -594,25 +631,30 @@ class TaskScheduler:
                 team = await team_manager.get_or_start_team()
                 if team is None:
                     raise NoTeamConfigured("No team configured.")
+            if self._fire_versions.get(task.id, 0) != fire_version:
+                return
             if resolved_sid is not None and team.has_active_user_turn() is True:
-                async with self._db() as session:
-                    result = await session.exec(
-                        select(ScheduledTask).where(ScheduledTask.slug == task.slug)
-                    )
-                    db_task = result.first()
-                    if db_task is not None:
-                        db_task.status = "pending"
-                        db_task.next_fire_at = next_fire(
-                            db_task.schedule_type,
-                            cron_expression=db_task.cron_expression,
-                            every_seconds=db_task.every_seconds,
-                            at_datetime=db_task.at_datetime,
-                            timezone=db_task.timezone,
-                            after=datetime.now(_utc),
-                            run_count=db_task.run_count,
-                        )
-                        session.add(db_task)
-                        await session.commit()
+                async with self._state_lock:
+                    async with self._db() as session:
+                        db_task = await session.get(ScheduledTask, task.id)
+                        if (
+                            db_task is not None
+                            and db_task.enabled
+                            and db_task.status != "paused"
+                            and self._fire_versions.get(task.id, 0) == fire_version
+                        ):
+                            db_task.status = "pending"
+                            db_task.next_fire_at = next_fire(
+                                db_task.schedule_type,
+                                cron_expression=db_task.cron_expression,
+                                every_seconds=db_task.every_seconds,
+                                at_datetime=db_task.at_datetime,
+                                timezone=db_task.timezone,
+                                after=datetime.now(_utc),
+                                run_count=db_task.run_count,
+                            )
+                            session.add(db_task)
+                            await session.commit()
                 logger.info(
                     "scheduler_skip_active_session task_slug={} name={} session_id={}",
                     task.slug,
@@ -620,6 +662,7 @@ class TaskScheduler:
                     resolved_sid,
                 )
                 return
+            dispatch_attempted = True
             fired_sid, _ = await dispatch_user_message(
                 team,
                 content=f"[Scheduled Task: {task.name}]\n{task.prompt}",
@@ -645,6 +688,12 @@ class TaskScheduler:
                 exc,
             )
 
+        if (
+            not dispatch_attempted
+            and self._fire_versions.get(task.id, 0) != fire_version
+        ):
+            return
+
         # 3b. Stamp the chat session so it's identifiable as scheduler-created.
         # fired_sid is always a valid UUID string at this point:
         #   None     → dispatch_user_message mints a uuid7
@@ -668,42 +717,43 @@ class TaskScheduler:
                     stamp_exc,
                 )
 
-        # 4. Update stats
-        nxt = next_fire(
-            task.schedule_type,
-            cron_expression=task.cron_expression,
-            every_seconds=task.every_seconds,
-            at_datetime=task.at_datetime,
-            timezone=task.timezone,
-            after=datetime.now(_utc),
-            run_count=task.run_count + 1,
-        )
-        async with self._db() as session:
-            result = await session.exec(
-                select(ScheduledTask).where(ScheduledTask.slug == task.slug)
-            )
-            db_task = result.first()
-            if db_task is None:
-                return
-            db_task.run_count += 1
-            db_task.last_error = error
-            finite_complete = (
-                not error
-                and db_task.max_runs is not None
-                and db_task.run_count >= db_task.max_runs
-            )
-            db_task.next_fire_at = None if finite_complete else nxt
-            if error:
-                db_task.status = "failed"
-            elif finite_complete:
-                db_task.enabled = False
-                db_task.status = "completed"
-            elif task.schedule_type == "at":
-                db_task.status = "completed"
-            else:
-                db_task.status = "pending"
-            session.add(db_task)
-            await session.commit()
+        # 4. Update stats. An administrative update after dispatch began must
+        # retain its schedule fields while still accounting for the sent run.
+        async with self._state_lock:
+            async with self._db() as session:
+                db_task = await session.get(ScheduledTask, task.id)
+                if db_task is None:
+                    return
+                was_paused = not db_task.enabled or db_task.status == "paused"
+                db_task.run_count += 1
+                db_task.last_error = error
+                if not was_paused:
+                    nxt = next_fire(
+                        db_task.schedule_type,
+                        cron_expression=db_task.cron_expression,
+                        every_seconds=db_task.every_seconds,
+                        at_datetime=db_task.at_datetime,
+                        timezone=db_task.timezone,
+                        after=datetime.now(_utc),
+                        run_count=db_task.run_count,
+                    )
+                    finite_complete = (
+                        not error
+                        and db_task.max_runs is not None
+                        and db_task.run_count >= db_task.max_runs
+                    )
+                    db_task.next_fire_at = None if finite_complete else nxt
+                    if error:
+                        db_task.status = "failed"
+                    elif finite_complete:
+                        db_task.enabled = False
+                        db_task.status = "completed"
+                    elif db_task.schedule_type == "at":
+                        db_task.status = "completed"
+                    else:
+                        db_task.status = "pending"
+                session.add(db_task)
+                await session.commit()
 
         logger.info(
             "scheduler_fired task_slug={} name={} run_count={} error={}",

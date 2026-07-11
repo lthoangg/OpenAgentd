@@ -19,6 +19,11 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 # Default: 4 MB
 _DEFAULT_MAX_BYTES = 4 * 1024 * 1024
 
+
+class _RequestTooLarge(Exception):
+    """Raised by the receive wrapper once a streaming body exceeds its limit."""
+
+
 # ── Security headers ─────────────────────────────────────────────────────────
 # openagentd is an on-machine single-owner app.  The bundled web UI is served
 # as static assets from the same origin, so a strict same-origin CSP is
@@ -119,11 +124,11 @@ class SecurityHeadersMiddleware:
 
 
 class RequestSizeLimitMiddleware:
-    """Reject requests whose ``Content-Length`` header exceeds ``max_bytes``.
+    """Reject requests whose actual body exceeds ``max_bytes``.
 
-    Returns HTTP 413 before the body is read, guarding against DoS via large
-    payloads.  Requests without a ``Content-Length`` header are allowed through
-    (chunked / streaming uploads are not blocked here).
+    A declared oversized ``Content-Length`` is rejected before the body is read.
+    All other HTTP request bodies, including chunked uploads and malformed or
+    negative ``Content-Length`` values, are counted while they are received.
 
     Args:
         app: The ASGI application to wrap.
@@ -138,12 +143,12 @@ class RequestSizeLimitMiddleware:
         if scope["type"] == "http":
             headers = dict(scope.get("headers", []))
             content_length_bytes = headers.get(b"content-length")
-            if content_length_bytes:
+            if content_length_bytes is not None:
                 try:
                     content_length = int(content_length_bytes)
                 except ValueError:
-                    content_length = 0
-                if content_length > self._max_bytes:
+                    content_length = None
+                if content_length is not None and content_length > self._max_bytes:
                     logger.warning(
                         "request_too_large content_length={} limit={}",
                         content_length,
@@ -155,4 +160,55 @@ class RequestSizeLimitMiddleware:
                     )
                     await response(scope, receive, send)
                     return
+
+            received_bytes = 0
+            request_complete = False
+            buffered_requests: list[Message] = []
+
+            async def consume_request() -> None:
+                nonlocal received_bytes, request_complete
+                while not request_complete:
+                    message = await receive()
+                    buffered_requests.append(message)
+                    if message["type"] == "http.request":
+                        received_bytes += len(message.get("body", b""))
+                        if received_bytes > self._max_bytes:
+                            raise _RequestTooLarge
+                        request_complete = not message.get("more_body", False)
+                    elif message["type"] == "http.disconnect":
+                        request_complete = True
+
+            async def send_wrapper(message: Message) -> None:
+                # An app may send a response before it reads its body. Drain and
+                # validate it first, so a late 413 never follows another start.
+                if not request_complete:
+                    await consume_request()
+                await send(message)
+
+            async def receive_wrapper() -> Message:
+                nonlocal received_bytes, request_complete
+                if buffered_requests:
+                    return buffered_requests.pop(0)
+                message = await receive()
+                if message["type"] == "http.request":
+                    received_bytes += len(message.get("body", b""))
+                    if received_bytes > self._max_bytes:
+                        raise _RequestTooLarge
+                    request_complete = not message.get("more_body", False)
+                return message
+
+            try:
+                await self.app(scope, receive_wrapper, send_wrapper)
+            except _RequestTooLarge:
+                logger.warning(
+                    "request_too_large received_bytes={} limit={}",
+                    received_bytes,
+                    self._max_bytes,
+                )
+                response = JSONResponse(
+                    status_code=413,
+                    content={"detail": "Request body too large."},
+                )
+                await response(scope, receive, send)
+            return
         await self.app(scope, receive, send)

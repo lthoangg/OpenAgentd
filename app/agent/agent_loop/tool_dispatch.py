@@ -25,6 +25,9 @@ if TYPE_CHECKING:
     from app.agent.schemas.chat import ToolCall
 
 
+_CANCELLATION_TIMEOUT = 0.1
+
+
 async def gather_or_cancel(
     coros: list,
     interrupt_event: asyncio.Event | None,
@@ -66,9 +69,19 @@ async def gather_or_cancel(
                 # Interrupt fired — cancel remaining tool tasks
                 for t in pending:
                     t.cancel()
-                # Wait for cancellation to propagate
+                # Do not let a tool that swallows cancellation block the agent.
                 if pending:
-                    await asyncio.wait(pending)
+                    _, still_pending = await asyncio.wait(
+                        pending, timeout=_CANCELLATION_TIMEOUT
+                    )
+                    for task in still_pending:
+                        task.add_done_callback(_consume_detached_task_exception)
+                    if still_pending:
+                        logger.warning(
+                            "tool_cancellation_timeout agent={} pending_tools={}",
+                            agent_name,
+                            len(still_pending),
+                        )
                 break
     finally:
         interrupt_waiter.cancel()
@@ -81,7 +94,7 @@ async def gather_or_cancel(
     # Build results — preserve order matching tc_list
     results: list[tuple[ToolCall, str] | BaseException] = []
     for task, tc in zip(tasks, tc_list):
-        if task.cancelled():
+        if task.cancelled() or not task.done():
             results.append((tc, "Cancelled by user."))
             logger.info(
                 "tool_cancelled agent={} tool={}",
@@ -93,3 +106,11 @@ async def gather_or_cancel(
         else:
             results.append(task.result())
     return results
+
+
+def _consume_detached_task_exception(task: asyncio.Future) -> None:
+    """Retrieve detached task failures so asyncio does not log them unhandled."""
+    try:
+        task.exception()
+    except asyncio.CancelledError:
+        pass

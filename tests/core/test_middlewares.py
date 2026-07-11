@@ -70,6 +70,145 @@ class TestRequestSizeLimitMiddleware:
         resp = client.post("/upload")
         assert resp.status_code == 200
 
+    async def test_streaming_body_without_content_length_is_limited_cumulatively(self):
+        received = bytearray()
+
+        async def app(scope, receive, send):
+            while True:
+                message = await receive()
+                received.extend(message.get("body", b""))
+                if not message.get("more_body", False):
+                    break
+            await send({"type": "http.response.start", "status": 200, "headers": []})
+            await send({"type": "http.response.body", "body": b"ok"})
+
+        messages = iter(
+            [
+                {"type": "http.request", "body": b"12345", "more_body": True},
+                {"type": "http.request", "body": b"67890", "more_body": True},
+                {"type": "http.request", "body": b"!", "more_body": False},
+            ]
+        )
+        sent = []
+
+        async def receive():
+            return next(messages)
+
+        async def send(message):
+            sent.append(message)
+
+        middleware = RequestSizeLimitMiddleware(app, max_bytes=10)
+        await middleware({"type": "http", "headers": []}, receive, send)
+
+        assert received == b"1234567890"
+        assert sent[0]["status"] == 413
+
+    async def test_malformed_or_negative_content_length_cannot_bypass_stream_limit(
+        self,
+    ):
+        async def app(scope, receive, send):
+            while (await receive()).get("more_body", False):
+                pass
+
+        for content_length in (b"not-a-number", b"-1"):
+            messages = iter(
+                [
+                    {
+                        "type": "http.request",
+                        "body": b"12345678901",
+                        "more_body": False,
+                    },
+                ]
+            )
+            sent = []
+
+            async def receive():
+                return next(messages)
+
+            async def send(message):
+                sent.append(message)
+
+            middleware = RequestSizeLimitMiddleware(app, max_bytes=10)
+            await middleware(
+                {"type": "http", "headers": [(b"content-length", content_length)]},
+                receive,
+                send,
+            )
+
+            assert sent[0]["status"] == 413
+
+    async def test_early_response_with_disconnect_does_not_read_past_disconnect(self):
+        received = []
+
+        async def app(scope, receive, send):
+            await send({"type": "http.response.start", "status": 200, "headers": []})
+            received.append(await receive())
+            await send({"type": "http.response.body", "body": b"ok"})
+
+        messages = iter([{"type": "http.disconnect"}])
+        sent = []
+
+        async def receive():
+            return next(messages)
+
+        async def send(message):
+            sent.append(message)
+
+        middleware = RequestSizeLimitMiddleware(app, max_bytes=10)
+        await middleware({"type": "http", "headers": []}, receive, send)
+
+        assert received == [{"type": "http.disconnect"}]
+        assert sent[0]["status"] == 200
+
+    async def test_oversized_body_replaces_response_started_before_body_read(self):
+        async def app(scope, receive, send):
+            await send({"type": "http.response.start", "status": 200, "headers": []})
+            while (await receive()).get("more_body", False):
+                pass
+            await send({"type": "http.response.body", "body": b"ok"})
+
+        messages = iter(
+            [
+                {"type": "http.request", "body": b"12345678901", "more_body": False},
+            ]
+        )
+        sent = []
+
+        async def receive():
+            return next(messages)
+
+        async def send(message):
+            sent.append(message)
+
+        middleware = RequestSizeLimitMiddleware(app, max_bytes=10)
+        await middleware({"type": "http", "headers": []}, receive, send)
+
+        assert [message["type"] for message in sent] == [
+            "http.response.start",
+            "http.response.body",
+        ]
+        assert sent[0]["status"] == 413
+
+    async def test_false_content_length_is_counted_from_stream(self):
+        async def app(scope, receive, send):
+            while (await receive()).get("more_body", False):
+                pass
+
+        sent = []
+
+        async def receive():
+            return {"type": "http.request", "body": b"12345678901", "more_body": False}
+
+        async def send(message):
+            sent.append(message)
+
+        middleware = RequestSizeLimitMiddleware(app, max_bytes=10)
+        await middleware(
+            {"type": "http", "headers": [(b"content-length", b"1")]}, receive, send
+        )
+
+        assert sent[0]["status"] == 413
+
     def test_default_max_bytes_is_4mb(self):
         middleware = RequestSizeLimitMiddleware(app=FastAPI())
         assert middleware._max_bytes == 4 * 1024 * 1024

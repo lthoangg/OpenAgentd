@@ -678,6 +678,17 @@ class TestClear:
         assert "sid-1" not in _turns
 
     @pytest.mark.asyncio
+    async def test_clear_unblocks_full_subscriber_queue(self):
+        await store.init_turn("sid-1")
+        queue: asyncio.Queue = asyncio.Queue(maxsize=1)
+        queue.put_nowait("stale event")
+        _turns["sid-1"].subscribers.append(queue)
+
+        await store.clear("sid-1")
+
+        assert queue.get_nowait() is _SENTINEL
+
+    @pytest.mark.asyncio
     async def test_clear_noop_when_no_state(self):
         await store.clear("unknown")  # Me should not raise
 

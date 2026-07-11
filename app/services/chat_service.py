@@ -517,34 +517,85 @@ async def delete_session(db: AsyncSession, session_id: UUID) -> bool:
     Returns:
         ``True`` if the session existed and was deleted, ``False`` if not found.
     """
-    delete_workspace = False
+    from sqlmodel import delete
+    from app.services import memory_stream_store, snapshot_service, team_manager
+
+    descendants: set[UUID] = {session_id}
     async with db.begin():
+        frontier = {session_id}
+        while frontier:
+            children = set(
+                (
+                    await db.exec(
+                        select(ChatSession.id).where(
+                            col(ChatSession.parent_session_id).in_(frontier)
+                        )
+                    )
+                ).all()
+            )
+            frontier = children - descendants
+            descendants.update(frontier)
+
         session = await db.get(ChatSession, session_id)
         if not session:
             return False
-        delete_workspace = session.workspace is None
-        from sqlmodel import delete
+        managed_workspace_ids = {
+            str(row.id)
+            for row in (
+                await db.exec(
+                    select(ChatSession).where(col(ChatSession.id).in_(descendants))
+                )
+            ).all()
+            if row.workspace is None
+        }
 
+    # Stop producers before rows disappear so they cannot persist a late turn.
+    session_ids = {str(sid) for sid in descendants}
+    await team_manager.evict_session_teams(session_ids)
+
+    async with db.begin():
         await db.exec(
-            delete(SessionMessage).where(col(SessionMessage.session_id) == session_id)
+            delete(SessionMessage).where(
+                col(SessionMessage.session_id).in_(descendants)
+            )
         )
-        await db.delete(session)
+        # Explicitly delete descendants for SQLite deployments where foreign
+        # key enforcement is disabled, and for portability across engines.
+        await db.exec(delete(ChatSession).where(col(ChatSession.id).in_(descendants)))
 
-    sid_str = str(session_id)
-    uploads = uploads_dir(sid_str)
-    if uploads.exists():
-        await asyncio.to_thread(shutil.rmtree, uploads, ignore_errors=True)
-        logger.info("uploads_dir_deleted session_id={}", session_id)
+    for descendant_id in session_ids:
+        try:
+            await memory_stream_store.clear(descendant_id)
+        except Exception:
+            logger.exception(
+                "session_stream_cleanup_failed session_id={}", descendant_id
+            )
+        try:
+            await snapshot_service.remove(descendant_id)
+        except Exception:
+            logger.exception(
+                "session_snapshot_cleanup_failed session_id={}", descendant_id
+            )
 
-    workspace = workspace_dir(sid_str)
-    if delete_workspace and workspace.exists():
-        await asyncio.to_thread(shutil.rmtree, workspace, ignore_errors=True)
-        logger.info("workspace_dir_deleted session_id={}", session_id)
+    async def remove_path(path, label: str) -> None:
+        if not path.exists():
+            return
+        try:
+            await asyncio.to_thread(shutil.rmtree, path)
+        except Exception:
+            logger.exception(
+                "session_path_cleanup_failed path={} label={}", path, label
+            )
+        else:
+            logger.info("{}_deleted session_id={}", label, session_id)
 
-    metadata = session_artifact_dir(sid_str)
-    if metadata.exists():
-        await asyncio.to_thread(shutil.rmtree, metadata, ignore_errors=True)
-        logger.info("session_metadata_deleted session_id={}", session_id)
+    for descendant_id in session_ids:
+        await remove_path(uploads_dir(descendant_id), "uploads_dir")
+        # Managed workspaces are disposable; a coding session's user-selected
+        # workspace is never here.
+        if descendant_id in managed_workspace_ids:
+            await remove_path(workspace_dir(descendant_id), "workspace_dir")
+        await remove_path(session_artifact_dir(descendant_id), "session_metadata")
 
     logger.info("session_deleted session_id={}", session_id)
     return True

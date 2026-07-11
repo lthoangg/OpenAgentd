@@ -565,98 +565,93 @@ class AgentTeam:
                 "team_interrupted cancelled={}",
                 [m.name for m in cancelled],
             )
-        # Persist user message and parent member sessions
-        try:
-            db_factory = resolve_db_factory(self.lead.db_factory)
-            lead_uuid = UUID(session_id)
-            async with db_factory() as db:
-                # Heal any tool_calls left orphaned by a previous crash /
-                # restart *before* persisting the new user message so the
-                # next turn's LLM input is well-formed.  See
-                # ``heal_orphaned_tool_calls`` for the full rationale.
-                await heal_orphaned_tool_calls(db, lead_uuid)
+        # Persist the user message before any turn state or mailbox delivery.
+        db_factory = resolve_db_factory(self.lead.db_factory)
+        lead_uuid = UUID(session_id)
+        async with db_factory() as db:
+            # Heal any tool_calls left orphaned by a previous crash /
+            # restart *before* persisting the new user message so the
+            # next turn's LLM input is well-formed.  See
+            # ``heal_orphaned_tool_calls`` for the full rationale.
+            await heal_orphaned_tool_calls(db, lead_uuid)
 
-                lead_row = await db.get(ChatSession, lead_uuid)
-                effective_model = model if model_provided else None
-                effective_thinking_level = (
-                    thinking_level if thinking_level_provided else None
+            lead_row = await db.get(ChatSession, lead_uuid)
+            effective_model = model if model_provided else None
+            effective_thinking_level = (
+                thinking_level if thinking_level_provided else None
+            )
+            if lead_row is not None:
+                lead_row.mode = self.mode
+                lead_row.workspace = self.workspace
+                if model_provided:
+                    lead_row.model = model
+                if thinking_level_provided:
+                    lead_row.thinking_level = thinking_level
+                effective_model = lead_row.model or self.lead.agent.model_id
+                effective_thinking_level = lead_row.thinking_level
+                db.add(lead_row)
+            else:
+                effective_model = model or self.lead.agent.model_id
+
+            user_msg = HumanMessage(content=content)
+            msg_extra: dict | None = (
+                {"attachments": attachment_metas} if attachment_metas else None
+            )
+            if mentions:
+                if msg_extra is None:
+                    msg_extra = {}
+                msg_extra["mentions"] = mentions
+
+            workspace_path = session_workspace_dir(str(lead_uuid), self.workspace)
+            snapshot_hash = await snapshot_service.track(str(lead_uuid), workspace_path)
+            if snapshot_hash:
+                extra_with_snapshot = dict(msg_extra or {})
+                extra_with_snapshot["snapshot"] = snapshot_hash
+                msg_extra = extra_with_snapshot
+
+            extra_with_model = dict(msg_extra or {})
+            extra_with_model["model"] = effective_model
+            if effective_thinking_level:
+                extra_with_model["thinking_level"] = effective_thinking_level
+            if service_tier:
+                extra_with_model["service_tier"] = service_tier
+            msg_extra = extra_with_model
+
+            saved_user_msg = await save_message(
+                db, lead_uuid, user_msg, extra=msg_extra
+            )
+
+            for synthetic_content in mention_context_blocks or []:
+                await save_message(
+                    db,
+                    lead_uuid,
+                    HumanMessage(content=synthetic_content),
+                    extra={
+                        "hidden_from_user": True,
+                        "hidden_from_summary": True,
+                        "attachment_for_message_id": str(saved_user_msg.id),
+                        "mention_context": True,
+                    },
                 )
-                if lead_row is not None:
-                    lead_row.mode = self.mode
-                    lead_row.workspace = self.workspace
-                    if model_provided:
-                        lead_row.model = model
-                    if thinking_level_provided:
-                        lead_row.thinking_level = thinking_level
-                    effective_model = lead_row.model or self.lead.agent.model_id
-                    effective_thinking_level = lead_row.thinking_level
-                    db.add(lead_row)
-                else:
-                    effective_model = model or self.lead.agent.model_id
 
-                user_msg = HumanMessage(content=content)
-                msg_extra: dict | None = (
-                    {"attachments": attachment_metas} if attachment_metas else None
-                )
-                if mentions:
-                    if msg_extra is None:
-                        msg_extra = {}
-                    msg_extra["mentions"] = mentions
-
-                workspace_path = session_workspace_dir(str(lead_uuid), self.workspace)
-                snapshot_hash = await snapshot_service.track(
-                    str(lead_uuid), workspace_path
-                )
-                if snapshot_hash:
-                    extra_with_snapshot = dict(msg_extra or {})
-                    extra_with_snapshot["snapshot"] = snapshot_hash
-                    msg_extra = extra_with_snapshot
-
-                extra_with_model = dict(msg_extra or {})
-                extra_with_model["model"] = effective_model
-                if effective_thinking_level:
-                    extra_with_model["thinking_level"] = effective_thinking_level
-                if service_tier:
-                    extra_with_model["service_tier"] = service_tier
-                msg_extra = extra_with_model
-
-                saved_user_msg = await save_message(
-                    db, lead_uuid, user_msg, extra=msg_extra
-                )
-
-                for synthetic_content in mention_context_blocks or []:
-                    await save_message(
-                        db,
-                        lead_uuid,
-                        HumanMessage(content=synthetic_content),
-                        extra={
-                            "hidden_from_user": True,
-                            "hidden_from_summary": True,
-                            "attachment_for_message_id": str(saved_user_msg.id),
-                            "mention_context": True,
-                        },
+            for member in self.members.values():
+                try:
+                    member_uuid = UUID(member.session_id)
+                    member_row = await db.get(ChatSession, member_uuid)
+                    if (
+                        member_row is not None
+                        and member_row.parent_session_id != lead_uuid
+                    ):
+                        member_row.parent_session_id = lead_uuid
+                        db.add(member_row)
+                except Exception as inner_exc:
+                    logger.warning(
+                        "team_parent_member_session_failed member={} error={}",
+                        member.name,
+                        inner_exc,
                     )
 
-                for member in self.members.values():
-                    try:
-                        member_uuid = UUID(member.session_id)
-                        member_row = await db.get(ChatSession, member_uuid)
-                        if (
-                            member_row is not None
-                            and member_row.parent_session_id != lead_uuid
-                        ):
-                            member_row.parent_session_id = lead_uuid
-                            db.add(member_row)
-                    except Exception as inner_exc:
-                        logger.warning(
-                            "team_parent_member_session_failed member={} error={}",
-                            member.name,
-                            inner_exc,
-                        )
-
-                await db.commit()
-        except Exception as exc:
-            logger.warning("team_save_user_message_failed error={}", exc)
+            await db.commit()
 
         # Initialise a fresh state blob for this turn synchronously before
         # delivering the message to the lead. This guarantees the state key

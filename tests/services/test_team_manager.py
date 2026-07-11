@@ -225,6 +225,26 @@ async def test_stop_when_no_team_is_noop():
 
 
 @pytest.mark.asyncio
+async def test_evict_session_teams_stops_normal_and_coding_teams(tmp_path):
+    normal = _make_team("normal")
+    coding = _make_team("coding")
+    session_id = "deleted-session"
+    team_manager._session_teams[session_id] = normal
+    team_manager._session_team_last_used[session_id] = 1
+    team_manager._coding_teams[(str(tmp_path), session_id)] = coding
+    team_manager._coding_team_last_used[(str(tmp_path), session_id)] = 1
+
+    await team_manager.evict_session_teams({session_id})
+
+    normal.stop.assert_awaited_once()
+    coding.stop.assert_awaited_once()
+    assert team_manager.current_team_for_session(session_id) is None
+    assert (
+        team_manager.current_coding_team_for_session(str(tmp_path), session_id) is None
+    )
+
+
+@pytest.mark.asyncio
 async def test_stop_clears_coding_teams_without_normal_team(tmp_path, monkeypatch):
     from app.core.config import settings
 

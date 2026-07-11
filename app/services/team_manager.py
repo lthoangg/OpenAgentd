@@ -243,6 +243,31 @@ async def _stop_session_teams(teams: list[tuple[str, "AgentTeam"]]) -> None:
             logger.info("team_session_idle_stopped session_id={}", session_id)
 
 
+async def evict_session_teams(session_ids: set[str]) -> None:
+    """Stop and evict normal and coding teams for deleted sessions.
+
+    This deliberately only removes cached team instances; it never touches a
+    coding workspace on disk.
+    """
+    async with _lock:
+        normal = [
+            (session_id, _session_teams.pop(session_id))
+            for session_id in session_ids
+            if session_id in _session_teams
+        ]
+        for session_id in session_ids:
+            _session_team_last_used.pop(session_id, None)
+        coding = [
+            (key, _coding_teams.pop(key))
+            for key in list(_coding_teams)
+            if key[1] in session_ids
+        ]
+        for key, _team in coding:
+            _coding_team_last_used.pop(key, None)
+    await _stop_session_teams(normal)
+    await _stop_coding_teams(coding)
+
+
 def current_team() -> "AgentTeam | None":
     return _team
 

@@ -15,6 +15,8 @@ from tests.agent.mode.team.conftest import MockTeamProvider
 def _make_db_factory(existing_row=None):
     mock_db = MagicMock()
     mock_db.commit = AsyncMock()
+    mock_db.flush = AsyncMock()
+    mock_db.refresh = AsyncMock()
     mock_db.get = AsyncMock(return_value=existing_row)
     mock_db.add = MagicMock()
     mock_db.exec = AsyncMock(
@@ -41,8 +43,16 @@ def _make_team():
     lead_agent = _make_agent("lead")
     member_agent = _make_agent("worker")
     db_factory, mock_db = _make_db_factory()
-    lead = TeamLead(lead_agent, session_id="lead-sid", db_factory=db_factory)
-    member = TeamMember(member_agent, session_id="worker-sid", db_factory=db_factory)
+    lead = TeamLead(
+        lead_agent,
+        session_id="00000000-0000-0000-0000-000000000001",
+        db_factory=db_factory,
+    )
+    member = TeamMember(
+        member_agent,
+        session_id="00000000-0000-0000-0000-000000000002",
+        db_factory=db_factory,
+    )
     team = AgentTeam(lead=lead, members={"worker": member})
     return team, mock_db
 
@@ -179,6 +189,8 @@ class TestHandleUserMessageParentSession:
 
         mock_db = MagicMock()
         mock_db.commit = AsyncMock()
+        mock_db.flush = AsyncMock()
+        mock_db.refresh = AsyncMock()
         mock_db.add = MagicMock()
         mock_db.exec = AsyncMock(
             return_value=MagicMock(
@@ -240,6 +252,8 @@ class TestHandleUserMessageParentSession:
 
         mock_db = MagicMock()
         mock_db.commit = AsyncMock()
+        mock_db.flush = AsyncMock()
+        mock_db.refresh = AsyncMock()
         mock_db.add = MagicMock()
         mock_db.exec = AsyncMock(
             return_value=MagicMock(
@@ -248,19 +262,14 @@ class TestHandleUserMessageParentSession:
             )
         )
 
-        call_count = 0
-
         async def fake_get(model, uid):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                # Lead session
-                from app.models.chat import ChatSession
+            from app.models.chat import ChatSession
 
+            if uid == lead_uuid:
                 row = MagicMock(spec=ChatSession)
                 row.id = lead_uuid
                 return row
-            # Member get raises
+            # Member parent repair is best-effort.
             raise RuntimeError("DB error for member")
 
         mock_db.get = fake_get
@@ -308,10 +317,10 @@ class TestHandleUserMessageInitTurn:
             patch("app.services.memory_stream_store.push_event", new=AsyncMock()),
             patch("app.services.memory_stream_store.init_turn", new=fake_init_turn),
         ):
-            await team.handle_user_message("test", session_id="lead-sid")
+            await team.handle_user_message("test", session_id=team.lead.session_id)
 
         assert len(init_turn_called) == 1
-        assert init_turn_called[0] == "lead-sid"
+        assert init_turn_called[0] == team.lead.session_id
 
     @pytest.mark.asyncio
     async def test_handle_user_message_init_turn_failure_swallowed(self):
@@ -327,7 +336,7 @@ class TestHandleUserMessageInitTurn:
             patch("app.services.memory_stream_store.init_turn", new=fake_init_turn),
         ):
             # Must not raise
-            await team.handle_user_message("test", session_id="lead-sid")
+            await team.handle_user_message("test", session_id=team.lead.session_id)
 
 
 # ---------------------------------------------------------------------------
@@ -385,6 +394,8 @@ class TestHandleUserMessageSessionRestore:
 
         mock_db = MagicMock()
         mock_db.commit = AsyncMock()
+        mock_db.flush = AsyncMock()
+        mock_db.refresh = AsyncMock()
         mock_db.add = MagicMock()
         mock_db.get = AsyncMock(return_value=None)
         mock_db.exec = AsyncMock(
@@ -402,9 +413,15 @@ class TestHandleUserMessageSessionRestore:
         member_agent = _make_agent("worker")
         # Lead starts with a *different* session_id so handle_user_message treats
         # the incoming session_id as a new session and enters the restore block.
-        lead = TeamLead(lead_agent, session_id="initial-lead-sid", db_factory=factory)
+        lead = TeamLead(
+            lead_agent,
+            session_id="00000000-0000-0000-0000-000000000003",
+            db_factory=factory,
+        )
         member = TeamMember(
-            member_agent, session_id="old-worker-sid", db_factory=factory
+            member_agent,
+            session_id="00000000-0000-0000-0000-000000000004",
+            db_factory=factory,
         )
         team = AgentTeam(lead=lead, members={"worker": member})
         team.mailbox.register("lead")
@@ -463,11 +480,17 @@ class TestRestoreMembersBatchedQuery:
         async def factory():
             yield mock_db
 
-        lead = TeamLead(_make_agent("lead"), session_id="old-sid", db_factory=factory)
+        lead = TeamLead(
+            _make_agent("lead"),
+            session_id="00000000-0000-0000-0000-000000000005",
+            db_factory=factory,
+        )
         members = {}
         for handle in handles:
             members[handle] = TeamMember(
-                _make_agent(handle), session_id="stale-sid", db_factory=factory
+                _make_agent(handle),
+                session_id="00000000-0000-0000-0000-000000000006",
+                db_factory=factory,
             )
         team = AgentTeam(lead=lead, members=members, db_factory=factory)
         for handle in ["lead", *handles]:

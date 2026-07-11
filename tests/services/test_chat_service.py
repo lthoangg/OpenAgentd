@@ -1,8 +1,9 @@
 import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-from sqlmodel import SQLModel
+from sqlmodel import SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
+from unittest.mock import AsyncMock
 
 from app.models.chat import ChatSession, SessionMessage
 from app.agent.schemas.chat import (
@@ -17,6 +18,7 @@ from app.services.chat_service import (
     cancel_queued_user_message,
     cleanup_reverted_tail,
     create_chat_session,
+    delete_session,
     get_messages,
     get_messages_for_llm,
     heal_orphaned_tool_calls,
@@ -110,6 +112,60 @@ async def test_get_messages_unhandled_role(session):
 
     fetched = await get_messages(session, chat_session.id)
     assert len(fetched) == 0  # It should be skipped by the current loop
+
+
+@pytest.mark.asyncio
+async def test_delete_session_removes_descendants_messages_and_runtime_state(
+    session, monkeypatch, tmp_path
+):
+    """Deleting a lead removes its whole tree and post-commit runtime state."""
+    lead = await create_chat_session(session)
+    child = await create_chat_session(session, parent_session_id=lead.id)
+    grandchild = await create_chat_session(session, parent_session_id=child.id)
+    for chat_session in (lead, child, grandchild):
+        await save_message(session, chat_session.id, HumanMessage(content="message"))
+    await session.commit()
+
+    roots = {
+        "uploads": tmp_path / "uploads",
+        "workspace": tmp_path / "workspace",
+        "metadata": tmp_path / "metadata",
+    }
+    for root in roots.values():
+        root.mkdir()
+        for chat_session in (lead, child, grandchild):
+            path = root / str(chat_session.id)
+            path.mkdir()
+            (path / "data").write_text("data")
+    monkeypatch.setattr(
+        "app.services.chat_service.uploads_dir", lambda sid: roots["uploads"] / sid
+    )
+    monkeypatch.setattr(
+        "app.services.chat_service.workspace_dir", lambda sid: roots["workspace"] / sid
+    )
+    monkeypatch.setattr(
+        "app.services.chat_service.session_artifact_dir",
+        lambda sid: roots["metadata"] / sid,
+    )
+
+    evict = AsyncMock()
+    clear = AsyncMock()
+    snapshot = AsyncMock()
+    monkeypatch.setattr("app.services.team_manager.evict_session_teams", evict)
+    monkeypatch.setattr("app.services.memory_stream_store.clear", clear)
+    monkeypatch.setattr("app.services.snapshot_service.remove", snapshot)
+
+    assert await delete_session(session, lead.id) is True
+
+    assert await session.get(ChatSession, lead.id) is None
+    assert await session.get(ChatSession, child.id) is None
+    assert await session.get(ChatSession, grandchild.id) is None
+    assert not (await session.exec(select(SessionMessage))).all()
+    expected = {str(lead.id), str(child.id), str(grandchild.id)}
+    evict.assert_awaited_once_with(expected)
+    assert {call.args[0] for call in clear.await_args_list} == expected
+    assert {call.args[0] for call in snapshot.await_args_list} == expected
+    assert all(not any(root.iterdir()) for root in roots.values())
 
 
 # ── Summarisation: save_message flags ────────────────────────────────────────

@@ -359,11 +359,23 @@ async def mark_done(session_id: str) -> None:
 
 
 async def clear(session_id: str) -> None:
-    """Delete state for this session."""
+    """Delete state for this session and unblock its SSE subscribers."""
     try:
         state = _turns.pop(session_id, None)
         if state is not None:
             _cancel_cleanup(state)
+            for queue in state.subscribers:
+                try:
+                    queue.put_nowait(_SENTINEL)
+                except asyncio.QueueFull:
+                    try:
+                        queue.get_nowait()
+                    except asyncio.QueueEmpty:
+                        pass
+                    try:
+                        queue.put_nowait(_SENTINEL)
+                    except asyncio.QueueFull:
+                        pass
     except Exception as exc:
         logger.warning(
             "memory_store_clear_failed session_id={} error={}",

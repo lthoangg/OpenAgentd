@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from contextlib import suppress
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -148,22 +148,25 @@ class TestAgentTeamUserMessage:
         await asyncio.sleep(0.1)
         await team.stop()
 
-    async def test_handle_user_message_continues_on_db_failure(self, basic_team):
+    async def test_handle_user_message_propagates_db_failure_without_delivery(
+        self, basic_team
+    ):
         team = basic_team
         team.lead.db_factory = MagicMock(
             side_effect=RuntimeError("DB connection failed")
         )
+        team.mailbox.send = AsyncMock()
         await team.start()
 
         session_id = str(uuid.uuid7())
-        await team.handle_user_message("Hello", session_id=session_id)
+        try:
+            with pytest.raises(RuntimeError, match="DB connection failed"):
+                await team.handle_user_message("Hello", session_id=session_id)
 
-        assert team._has_active_turn
-
-        if team.lead._active_task is not None:
-            with suppress(RuntimeError):
-                await team.lead._active_task
-        await team.stop()
+            assert not team._has_active_turn
+            team.mailbox.send.assert_not_awaited()
+        finally:
+            await team.stop()
 
     async def test_handle_user_message_returns_session_id(self, basic_team):
         """handle_user_message() returns the session_id for stream subscription."""

@@ -2,6 +2,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from app.core.db import get_session
+from app.models.chat import ChatSession, SessionMessage
 
 
 @pytest.mark.asyncio
@@ -38,3 +39,24 @@ async def test_get_session_base_exception_rolls_back():
     with pytest.raises(asyncio.CancelledError):
         async for session in get_session():
             raise asyncio.CancelledError()
+
+
+async def test_test_database_enforces_foreign_keys_and_cascades():
+    """The test connection hook mirrors production FK enforcement."""
+    import app.core.db as _db
+
+    async with _db.async_session_factory() as session:
+        foreign_keys = await session.execute(text("PRAGMA foreign_keys"))
+        assert foreign_keys.scalar_one() == 1
+
+        parent = ChatSession()
+        session.add(parent)
+        await session.commit()
+        session.add(SessionMessage(session_id=parent.id, role="user", content="hi"))
+        await session.commit()
+
+        await session.delete(parent)
+        await session.commit()
+
+        rows = await session.execute(text("SELECT COUNT(*) FROM session_messages"))
+        assert rows.scalar_one() == 0

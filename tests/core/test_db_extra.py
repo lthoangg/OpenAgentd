@@ -51,6 +51,19 @@ def test_sqlite_wal_sets_synchronous_normal(tmp_path):
         conn.close()
 
 
+def test_sqlite_pragmas_enable_foreign_keys(tmp_path):
+    """Every production SQLite connection enforces declared foreign keys."""
+    from app.core.db import _set_sqlite_pragmas
+    import sqlite3
+
+    conn = sqlite3.connect(tmp_path / "foreign-keys.db")
+    try:
+        _set_sqlite_pragmas(conn, None)
+        assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+    finally:
+        conn.close()
+
+
 # ── run_migrations() ──────────────────────────────────────────────────────────
 
 

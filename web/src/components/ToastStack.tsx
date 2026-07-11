@@ -1,7 +1,7 @@
 /**
  * ToastStack — renders all toasts from ``useToastStore`` in the top-right
- * corner.  Handles its own mount/unmount animations and auto-dismiss is
- * driven by the store.
+ * corner.  Handles its own mount/unmount animations; each item owns its
+ * auto-dismiss timer (see ToastItem) so it can pause on hover/focus.
  *
  * Swipe right or up to dismiss.
  */

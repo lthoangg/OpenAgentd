@@ -691,7 +691,7 @@ export function CodingSidebar({
                 <button
                   type="button"
                   onClick={() => { void selectWorkspace(path, { create: true }) }}
-                  className={`ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-(--color-border) text-(--color-text-muted) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100'}`}
+                  className={`ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded border border-(--color-border) text-(--color-text-muted) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100'}`}
                   aria-label={`New session in ${workspaceLabel(path)}`}
                   title="New session"
                 >
@@ -700,7 +700,7 @@ export function CodingSidebar({
                 <button
                   type="button"
                   onClick={(event) => setDesktopWorkspaceActions({ path, kind: 'main', x: event.clientX, y: event.clientY })}
-                  className={`mr-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-(--color-text-subtle) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100'}`}
+                  className={`mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded text-(--color-text-subtle) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100'}`}
                   aria-label={`Actions for ${workspaceLabel(path)}`}
                   title="Workspace actions"
                 >
@@ -764,7 +764,7 @@ export function CodingSidebar({
                           <button
                             type="button"
                             onClick={() => { void selectWorkspace(directory, { create: true }) }}
-                            className={`ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-(--color-border) text-(--color-text-muted) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100'}`}
+                            className={`ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded border border-(--color-border) text-(--color-text-muted) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100'}`}
                             aria-label={`New session in worktree ${item.name}`}
                             title={`New session in worktree ${item.name}`}
                           >
@@ -773,7 +773,7 @@ export function CodingSidebar({
                           <button
                             type="button"
                             onClick={() => handleWorktreeEdit(worktreeInfo)}
-                            className={`ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-(--color-text-subtle) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100'}`}
+                            className={`ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded text-(--color-text-subtle) transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100'}`}
                             aria-label={`Edit worktree title ${item.name}`}
                             title="Edit worktree title"
                           >
@@ -784,7 +784,7 @@ export function CodingSidebar({
                               type="button"
                               onClick={() => { void handleRemoveWorktree(worktreeInfo) }}
                               disabled={worktreeRemoving === directory}
-                              className={`ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-(--color-text-subtle) transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) disabled:opacity-50 ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100'}`}
+                              className={`ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded text-(--color-text-subtle) transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) disabled:opacity-50 ${mobileLongPressActions ? 'hidden' : 'opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100'}`}
                               aria-label={`Remove worktree ${item.name}`}
                               title="Remove managed worktree"
                             >

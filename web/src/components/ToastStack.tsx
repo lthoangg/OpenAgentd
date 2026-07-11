@@ -78,8 +78,10 @@ function ToastItem({ t, dismiss }: ToastItemProps) {
       whileDrag={{ cursor: 'grabbing' }}
       data-swipe-ignore
       className="pointer-events-auto flex cursor-grab items-start gap-3 rounded-sm border border-(--color-border) bg-(--bg-card) p-3 shadow-md select-none"
-      role="status"
-      aria-live="polite"
+      // Errors must interrupt assistive tech (WCAG 4.1.3 Status Messages);
+      // success/info stay polite so they don't preempt the user.
+      role={t.tone === 'error' ? 'alert' : 'status'}
+      aria-live={t.tone === 'error' ? 'assertive' : 'polite'}
     >
       <Icon size={16} className={`mt-0.5 shrink-0 ${iconClass}`} />
       <div className="min-w-0 flex-1">
@@ -91,7 +93,7 @@ function ToastItem({ t, dismiss }: ToastItemProps) {
       <button
         onClick={() => dismiss(t.id)}
         aria-label="Dismiss"
-        className="shrink-0 rounded-xs p-1 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+        className="flex min-h-6 min-w-6 shrink-0 items-center justify-center rounded-xs p-1 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
       >
         <X size={12} />
       </button>

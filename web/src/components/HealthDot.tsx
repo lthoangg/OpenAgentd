@@ -35,7 +35,7 @@ export function HealthDot() {
       <button
         type="button"
         onClick={() => setDialogOpen(true)}
-        className="flex h-8 w-8 items-center justify-center rounded-md transition-colors hover:bg-(--bg-key) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
+        className="flex h-11 w-11 items-center justify-center rounded-md transition-colors hover:bg-(--bg-key) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring) md:h-8 md:w-8"
         title={label}
         aria-label={label}
       >

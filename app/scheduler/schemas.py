@@ -141,25 +141,28 @@ class ScheduledTaskUpdate(BaseModel):
             return self  # partial update — schedule fields validated at service layer
 
         if st == "at":
+            if self.at_datetime is None:
+                raise ValueError("at_datetime is required for schedule_type='at'")
             if self.every_seconds is not None or self.cron_expression is not None:
                 raise ValueError("Only at_datetime may be set for schedule_type='at'")
         elif st == "every":
+            if self.every_seconds is None:
+                raise ValueError("every_seconds is required for schedule_type='every'")
             if self.at_datetime is not None or self.cron_expression is not None:
                 raise ValueError(
                     "Only every_seconds may be set for schedule_type='every'"
                 )
         elif st == "cron":
+            if self.cron_expression is None:
+                raise ValueError("cron_expression is required for schedule_type='cron'")
             if self.at_datetime is not None or self.every_seconds is not None:
                 raise ValueError(
                     "Only cron_expression may be set for schedule_type='cron'"
                 )
-            if self.cron_expression is not None:
-                from app.scheduler.cron import validate_cron
+            from app.scheduler.cron import validate_cron
 
-                if not validate_cron(self.cron_expression):
-                    raise ValueError(
-                        f"Invalid cron expression: '{self.cron_expression}'"
-                    )
+            if not validate_cron(self.cron_expression):
+                raise ValueError(f"Invalid cron expression: '{self.cron_expression}'")
         else:
             raise ValueError(
                 f"schedule_type must be 'at', 'every', or 'cron'; got '{st}'"

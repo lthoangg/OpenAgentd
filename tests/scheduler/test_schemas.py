@@ -314,11 +314,9 @@ class TestUpdate:
                 cron_expression="bogus",
             )
 
-    def test_cron_without_expression_allowed_for_partial_update(self):
-        # schedule_type=cron without cron_expression is permitted on partial
-        # updates because the existing row already has a valid expression.
-        body = ScheduledTaskUpdate(schedule_type="cron")
-        assert body.schedule_type == "cron"
+    def test_cron_without_expression_is_rejected_for_partial_update(self):
+        with pytest.raises(ValidationError, match="cron_expression is required"):
+            ScheduledTaskUpdate(schedule_type="cron")
 
     def test_unknown_schedule_type_rejected(self):
         with pytest.raises(ValidationError, match="schedule_type must be"):

@@ -121,6 +121,8 @@ class TaskScheduler:
         self._db = db_factory
         # task slug → running asyncio.Task
         self._tasks: dict[str, asyncio.Task[None]] = {}
+        self._fire_tasks: set[asyncio.Task[None]] = set()
+        self._firing_slugs: set[str] = set()
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -131,7 +133,7 @@ class TaskScheduler:
         now = datetime.now(_utc)
         for task in tasks:
             if task.next_fire_at is not None and task.next_fire_at <= now:
-                asyncio.create_task(self._fire_overdue_and_restart(task))
+                self._spawn_fire(self._fire_overdue_and_restart(task))
                 continue
 
             # One-shot "at" tasks whose fire time is in the past and haven't
@@ -142,7 +144,7 @@ class TaskScheduler:
                 and task.run_count == 0
                 and task.at_datetime <= now
             ):
-                asyncio.create_task(self._fire_task(task))
+                self._spawn_fire(self._fire_task(task))
             else:
                 self._start_timer(task)
 
@@ -173,12 +175,14 @@ class TaskScheduler:
             return list(result.all())
 
     async def stop(self) -> None:
-        """Cancel all running timer tasks."""
-        for t in list(self._tasks.values()):
-            t.cancel()
-        if self._tasks:
-            await asyncio.gather(*self._tasks.values(), return_exceptions=True)
+        """Cancel and await all timer and firing tasks."""
+        tasks = [*self._tasks.values(), *self._fire_tasks]
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
         self._tasks.clear()
+        self._fire_tasks.clear()
         logger.info("scheduler_stopped")
 
     # ── Public API ────────────────────────────────────────────────────────────
@@ -289,6 +293,9 @@ class TaskScheduler:
             task.slug = body.slug
         if body.schedule_type is not None:
             task.schedule_type = body.schedule_type
+            task.at_datetime = None
+            task.every_seconds = None
+            task.cron_expression = None
         if body.at_datetime is not None:
             task.at_datetime = body.at_datetime
         if body.every_seconds is not None:
@@ -423,7 +430,7 @@ class TaskScheduler:
         if was_disabled:
             self._start_timer(task)
 
-        asyncio.create_task(self._fire_task(task))
+        self._spawn_fire(self._fire_task(task))
 
     async def list_tasks(self) -> list[ScheduledTask]:
         async with self._db() as session:
@@ -438,6 +445,12 @@ class TaskScheduler:
             return result.first()
 
     # ── Internal helpers ──────────────────────────────────────────────────────
+
+    def _spawn_fire(self, coroutine) -> None:
+        """Track a detached firing task so lifecycle shutdown owns it."""
+        task = asyncio.create_task(coroutine)
+        self._fire_tasks.add(task)
+        task.add_done_callback(self._fire_tasks.discard)
 
     def _start_timer(self, task: ScheduledTask) -> None:
         """Spawn an asyncio task for *task*'s timer loop."""
@@ -497,7 +510,44 @@ class TaskScheduler:
         self._tasks.pop(task.slug, None)
 
     async def _fire_task(self, task: ScheduledTask) -> None:
-        """Execute one scheduled firing of *task*."""
+        """Execute one non-overlapping scheduled firing of *task*."""
+        if task.slug in self._firing_slugs:
+            return
+        self._firing_slugs.add(task.slug)
+        try:
+            await self._fire_task_locked(task)
+        except asyncio.CancelledError:
+            await self._mark_fire_cancelled(task.slug)
+            raise
+        finally:
+            self._firing_slugs.discard(task.slug)
+
+    async def _mark_fire_cancelled(self, slug: str) -> None:
+        """Restore a firing row interrupted by scheduler shutdown."""
+        async with self._db() as session:
+            result = await session.exec(
+                select(ScheduledTask).where(ScheduledTask.slug == slug)
+            )
+            task = result.first()
+            if task is not None and task.status == "running":
+                task.status = "pending" if task.enabled else "paused"
+                task.next_fire_at = (
+                    next_fire(
+                        task.schedule_type,
+                        cron_expression=task.cron_expression,
+                        every_seconds=task.every_seconds,
+                        at_datetime=task.at_datetime,
+                        timezone=task.timezone,
+                        run_count=task.run_count,
+                    )
+                    if task.enabled
+                    else None
+                )
+                session.add(task)
+                await session.commit()
+
+    async def _fire_task_locked(self, task: ScheduledTask) -> None:
+        """Execute the dispatch and bookkeeping for one firing."""
         from app.services import team_manager
         from app.services.agent_service import NoTeamConfigured, dispatch_user_message
 

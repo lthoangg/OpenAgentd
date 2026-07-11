@@ -265,6 +265,35 @@ class TestUpdate:
         assert resp.status_code == 200
         assert resp.json()["mode"] == "coding"
 
+    async def test_schedule_type_change_requires_its_schedule_field(self, client):
+        created = await client.post(
+            "/api/scheduler/tasks", json=_create_payload(name="change_type")
+        )
+
+        resp = await client.put(
+            f"/api/scheduler/tasks/{created.json()['slug']}",
+            json={"schedule_type": "cron"},
+        )
+
+        assert resp.status_code == 422
+
+    async def test_schedule_type_change_clears_stale_fields(self, client):
+        created = await client.post(
+            "/api/scheduler/tasks", json=_create_payload(name="complete_change")
+        )
+
+        resp = await client.put(
+            f"/api/scheduler/tasks/{created.json()['slug']}",
+            json={"schedule_type": "cron", "cron_expression": "0 0 * * *"},
+        )
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["schedule_type"] == "cron"
+        assert body["cron_expression"] == "0 0 * * *"
+        assert body["every_seconds"] is None
+        assert body["at_datetime"] is None
+
     async def test_unknown_slug_returns_404(self, client):
         resp = await client.put(
             "/api/scheduler/tasks/some-unknown-slug",

@@ -20,6 +20,15 @@ from app.scheduler.models import ScheduledTask
 from app.scheduler.scheduler import TaskScheduler
 
 
+async def _db_task(db_factory, task_id):
+    async with db_factory() as session:
+        return await session.get(ScheduledTask, task_id)
+
+
+async def _wait_for_task_start(started: asyncio.Event) -> None:
+    await asyncio.wait_for(started.wait(), timeout=1)
+
+
 _UTC = timezone.utc
 
 
@@ -406,6 +415,40 @@ class TestStop:
 
 
 class TestTrigger:
+    async def test_stop_cancels_owned_trigger_fire_without_leaving_task_running(
+        self, scheduler, db_factory
+    ):
+        task = _make_task(name="cancel_trigger")
+        task.enabled = False
+        task.status = "paused"
+        await scheduler.add(task)
+
+        dispatch_started = asyncio.Event()
+        release_dispatch = asyncio.Event()
+
+        async def _get_team():
+            return MagicMock()
+
+        async def _block_dispatch(*_args, **_kwargs):
+            dispatch_started.set()
+            await release_dispatch.wait()
+            return (str(uuid4()), 0)
+
+        with (
+            patch("app.services.team_manager.get_or_start_team", side_effect=_get_team),
+            patch(
+                "app.services.agent_service.dispatch_user_message",
+                side_effect=_block_dispatch,
+            ),
+        ):
+            await scheduler.trigger(task.slug)
+            await _wait_for_task_start(dispatch_started)
+            await scheduler.stop()
+
+        row = await _db_task(db_factory, task.id)
+        assert row is not None
+        assert row.status != "running"
+
     async def test_fires_task_immediately(self, scheduler, db_factory, mock_dispatch):
         task = _make_task(name="trigger_me")
         await scheduler.add(task)
@@ -451,6 +494,45 @@ class TestTrigger:
 
 
 class TestFireTaskErrors:
+    async def test_concurrent_fires_dispatch_once(self, scheduler, db_factory):
+        task = _make_task(name="single_dispatch")
+        await scheduler.add(task)
+        await scheduler.stop()
+
+        dispatch_started = asyncio.Event()
+        release_dispatch = asyncio.Event()
+        dispatch_count = 0
+
+        async def _get_team():
+            return MagicMock()
+
+        async def _block_dispatch(*_args, **_kwargs):
+            nonlocal dispatch_count
+            dispatch_count += 1
+            dispatch_started.set()
+            await release_dispatch.wait()
+            return (str(uuid4()), 0)
+
+        with (
+            patch("app.services.team_manager.get_or_start_team", side_effect=_get_team),
+            patch(
+                "app.services.agent_service.dispatch_user_message",
+                side_effect=_block_dispatch,
+            ),
+        ):
+            first = asyncio.create_task(scheduler._fire_task(task))
+            await _wait_for_task_start(dispatch_started)
+            second = asyncio.create_task(scheduler._fire_task(task))
+            await asyncio.sleep(0)
+            assert dispatch_count == 1
+            release_dispatch.set()
+            await asyncio.gather(first, second)
+
+        row = await _db_task(db_factory, task.id)
+        assert row is not None
+        assert dispatch_count == 1
+        assert row.run_count == 1
+
     async def test_no_team_marks_failed(self, scheduler, db_factory):
         task = _make_task(name="needs_team")
         await scheduler.add(task)

@@ -169,6 +169,8 @@ async def stream_and_assemble(
     reasoning = ""
     reasoning_signature = ""
     redacted_thinking_blocks: list[dict] = []
+    reasoning_item_id: str | None = None
+    reasoning_encrypted_content: str | None = None
     tool_calls_buffer: dict[int, dict] = {}
     last_usage: Usage | None = None
     last_finish_reason: str | None = None
@@ -218,6 +220,8 @@ async def stream_and_assemble(
             reasoning = ""
             reasoning_signature = ""
             redacted_thinking_blocks = []
+            reasoning_item_id = None
+            reasoning_encrypted_content = None
             tool_calls_buffer = {}
             last_finish_reason = None
             continue
@@ -242,6 +246,12 @@ async def stream_and_assemble(
             reasoning_signature += delta.reasoning_signature
         if delta.redacted_thinking_block:
             redacted_thinking_blocks.append(delta.redacted_thinking_block)
+        if delta.reasoning_encrypted_content:
+            # Me: delivered once, whole, when the reasoning item completes —
+            # not incremental text like reasoning_content, so assign rather
+            # than concatenate.
+            reasoning_item_id = delta.reasoning_item_id
+            reasoning_encrypted_content = delta.reasoning_encrypted_content
         if delta.content:
             full_content += delta.content
 
@@ -368,11 +378,17 @@ async def stream_and_assemble(
     if redacted_thinking_blocks:
         extra = extra or {}
         extra["redacted_thinking_blocks"] = redacted_thinking_blocks
+    if reasoning_encrypted_content:
+        extra = extra or {}
+        extra["reasoning_item_id"] = reasoning_item_id
+        extra["reasoning_encrypted_content"] = reasoning_encrypted_content
 
     msg = AssistantMessage(
         content=full_content or None,
         reasoning_content=reasoning or None,
         reasoning_signature=reasoning_signature or None,
+        reasoning_item_id=reasoning_item_id,
+        reasoning_encrypted_content=reasoning_encrypted_content or None,
         tool_calls=tc_list or None,
         agent_id=agent_id,
         agent_name=agent_name,

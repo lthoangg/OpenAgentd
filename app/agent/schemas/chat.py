@@ -182,6 +182,14 @@ class AssistantMessage(BaseMessage):
     # Me: Anthropic redacted_thinking blocks must be echoed verbatim in history.
     # Each entry is the raw block dict: {"type": "redacted_thinking", "data": "..."}.
     redacted_thinking_blocks: list[dict] | None = Field(default=None, exclude=True)
+    # Me: OpenAI Responses API reasoning item id + encrypted_content — required
+    # to replay the reasoning item ahead of its function_call on the next turn
+    # (see codex-rs client.rs: `include: ["reasoning.encrypted_content"]` is
+    # sent unconditionally and the whole reasoning item is replayed verbatim).
+    # Without this, stateless (store=false) multi-turn tool calls lose reasoning
+    # continuity.
+    reasoning_item_id: str | None = Field(default=None, exclude=True)
+    reasoning_encrypted_content: str | None = Field(default=None, exclude=True)
     tool_calls: list[ToolCall] | None = None
 
     # Me: agent tracking — internal only, never sent to provider
@@ -222,6 +230,10 @@ class ChatCompletionDelta(BaseModel):
     # Me: Anthropic redacted_thinking block received during streaming — the full
     # block dict must be stored verbatim and replayed in history (HTTP 400 if modified).
     redacted_thinking_block: dict | None = None
+    # Me: OpenAI Responses API reasoning item id + encrypted_content, delivered
+    # once when the reasoning output item completes (not incremental text).
+    reasoning_item_id: str | None = None
+    reasoning_encrypted_content: str | None = None
 
     @field_validator("reasoning_content", mode="before")
     @classmethod

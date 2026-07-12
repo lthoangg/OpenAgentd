@@ -98,6 +98,21 @@ class ResponsesHandler:
                     input_items.append({"role": "user", "content": msg.content or ""})
 
             elif isinstance(msg, AssistantMessage):
+                # Me: replay the reasoning item ahead of its function_call(s),
+                # matching upstream Codex CLI's history replay (codex-rs
+                # client_common.rs `get_formatted_input_for_request` clones the
+                # full turn history — including `Reasoning` items — verbatim
+                # into `input`). Without this, stateless (store=false)
+                # multi-turn tool calls lose reasoning continuity.
+                if msg.reasoning_encrypted_content:
+                    input_items.append(
+                        {
+                            "type": "reasoning",
+                            "id": msg.reasoning_item_id,
+                            "summary": [],
+                            "encrypted_content": msg.reasoning_encrypted_content,
+                        }
+                    )
                 if msg.content:
                     input_items.append(
                         {
@@ -227,6 +242,8 @@ class ResponsesHandler:
         output = data.get("output", [])
         content_parts: list[str] = []
         reasoning_parts: list[str] = []
+        reasoning_item_id: str | None = None
+        reasoning_encrypted_content: str | None = None
         tool_calls: list[ToolCall] = []
 
         for item in output:
@@ -239,6 +256,11 @@ class ResponsesHandler:
                 for s in item.get("summary", []):
                     if s.get("type") == "summary_text":
                         reasoning_parts.append(s.get("text", ""))
+                # Me: only present when `include: ["reasoning.encrypted_content"]`
+                # was requested — must be replayed verbatim on the next turn.
+                if item.get("encrypted_content"):
+                    reasoning_item_id = item.get("id")
+                    reasoning_encrypted_content = item.get("encrypted_content")
             elif item_type == "function_call":
                 tool_calls.append(
                     ToolCall(
@@ -259,6 +281,8 @@ class ResponsesHandler:
             reasoning_content=(
                 "\n\n".join(reasoning_parts) if reasoning_parts else None
             ),
+            reasoning_item_id=reasoning_item_id,
+            reasoning_encrypted_content=reasoning_encrypted_content,
             tool_calls=tool_calls if tool_calls else None,
             extra={"usage": usage_dict} if usage_dict is not None else None,
         )
@@ -396,6 +420,31 @@ class ResponsesHandler:
                     fn_name = item.get("name", "")
                     if fn_name:
                         tool_names[item_id] = fn_name
+
+            elif etype == "response.output_item.done":
+                # Me: the completed reasoning item carries `encrypted_content`
+                # when `include: ["reasoning.encrypted_content"]` was requested
+                # — must be replayed verbatim on the next turn (see
+                # convert_messages). Not incremental text, delivered once here.
+                item = event.get("item", {})
+                if item.get("type") == "reasoning" and item.get("encrypted_content"):
+                    yield ChatCompletionChunk(
+                        id=response_id,
+                        created=int(time.time()),
+                        model=self.model,
+                        choices=[
+                            ChatCompletionChunkChoice(
+                                index=0,
+                                delta=ChatCompletionDelta(
+                                    reasoning_item_id=item.get("id"),
+                                    reasoning_encrypted_content=item.get(
+                                        "encrypted_content"
+                                    ),
+                                ),
+                                finish_reason=None,
+                            )
+                        ],
+                    )
 
             elif etype == "response.reasoning_summary_part.added":
                 # Boundary marker: a new reasoning section is starting.

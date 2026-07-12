@@ -85,6 +85,12 @@ class _CodexResponsesHandler(ResponsesHandler):
 
         body["instructions"] = "\n\n".join(system_parts)
         body["store"] = False
+        # Me: upstream Codex CLI sends this unconditionally on every request
+        # (codex-rs/core/src/client.rs: `let include = vec!["reasoning.encrypted_content"...]`)
+        # regardless of store/service tier — required so `store: false` turns
+        # keep reasoning continuity across tool calls instead of silently
+        # dropping the reasoning item each turn.
+        body["include"] = ["reasoning.encrypted_content"]
 
         service_tier = str(merged.get("service_tier") or "").lower()
         if service_tier not in _NO_SERVICE_TIER:
@@ -105,6 +111,8 @@ class _CodexResponsesHandler(ResponsesHandler):
         """Return a final message using Codex's required streaming endpoint."""
         content = ""
         reasoning = ""
+        reasoning_item_id: str | None = None
+        reasoning_encrypted_content: str | None = None
         async for chunk in self.stream(messages, tools, merged):
             if not chunk.choices:
                 continue
@@ -113,9 +121,14 @@ class _CodexResponsesHandler(ResponsesHandler):
                 content += delta.content
             if delta.reasoning_content:
                 reasoning += delta.reasoning_content
+            if delta.reasoning_encrypted_content:
+                reasoning_item_id = delta.reasoning_item_id
+                reasoning_encrypted_content = delta.reasoning_encrypted_content
         return AssistantMessage(
             content=content or None,
             reasoning_content=reasoning or None,
+            reasoning_item_id=reasoning_item_id,
+            reasoning_encrypted_content=reasoning_encrypted_content,
         )
 
 

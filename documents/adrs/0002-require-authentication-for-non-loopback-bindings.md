@@ -20,14 +20,13 @@ token or a configured server access key. Documentation recommends
 points could otherwise bind a non-loopback address without a key.
 
 ## Decision
-OpenAgentd-managed server entry points must refuse to bind a non-loopback host
-unless either `OPENAGENTD_DESKTOP_TOKEN`, `OPENAGENTD_ACCESS_KEY`, or the
-persisted `server.access_key` setting is non-empty. Loopback hostnames and IP
-addresses remain usable without authentication. This startup invariant is
-checked before spawning or starting Uvicorn; request middleware continues to
-enforce the configured bearer credential. Operators who invoke Uvicorn as an
-external process remain responsible for configuring the same access-key
-invariant.
+OpenAgentd-managed server entry points refuse to bind a non-loopback host unless
+either `OPENAGENTD_DESKTOP_TOKEN`, `OPENAGENTD_ACCESS_KEY`, or the persisted
+`server.access_key` setting is non-empty. Loopback hostnames and IP addresses
+remain usable without authentication. The ASGI application also rejects HTTP
+and WebSocket requests accepted by an unauthenticated non-loopback listener,
+covering direct external Uvicorn invocation; request middleware enforces the
+configured bearer credential with that same credential source.
 
 ## Alternatives Considered
 
@@ -56,8 +55,8 @@ invariant.
 ## Consequences
 - `openagentd start --lan` without an access key fails with guidance to use
   `--key` or configure an access key.
-- Direct Uvicorn/module and foreground serve paths cannot accidentally expose
-  an unauthenticated API on non-loopback interfaces.
+- Direct Uvicorn/module paths may open a non-loopback socket, but cannot serve
+  unauthenticated HTTP or WebSocket API requests on it.
 - Existing loopback CLI and development workflows remain unchanged.
 - New server entry points must reuse the same binding-policy check before
   opening sockets.

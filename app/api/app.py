@@ -29,7 +29,11 @@ from app.core.config import settings
 from app.core.desktop_auth import DesktopTokenMiddleware
 from app.core.exception_handlers import EXCEPTION_HANDLERS
 from app.core.metrics import HTTPMetricsMiddleware, metrics_endpoint
-from app.core.middlewares import RequestSizeLimitMiddleware, SecurityHeadersMiddleware
+from app.core.middlewares import (
+    NetworkBindGuard,
+    RequestSizeLimitMiddleware,
+    SecurityHeadersMiddleware,
+)
 from app.core.otel import setup_otel, shutdown_otel
 from app.core.otel_retention import start_otel_retention, stop_otel_retention
 from app.core.workspace_init import ensure_workspace_initialized
@@ -128,6 +132,7 @@ def create_app() -> FastAPI:
     # Metrics first (outermost) so it wraps everything else and records the
     # true end-to-end latency, including CORS / size-limit rejects.
     app.add_middleware(HTTPMetricsMiddleware)
+    app.add_middleware(NetworkBindGuard)
     app.add_middleware(RequestSizeLimitMiddleware)
     app.add_middleware(GZipMiddleware, minimum_size=1000)
     # Desktop token auth — no-op unless OPENAGENTD_DESKTOP_TOKEN is set

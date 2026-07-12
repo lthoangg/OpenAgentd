@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import pytest
+from starlette.types import Message
 
 
 def test_api_host_defaults_to_loopback():
@@ -79,3 +80,94 @@ def test_server_main_refuses_non_loopback_host_without_auth(monkeypatch):
             sys.modules["app.server"] = saved
 
     mock_run.assert_not_called()
+
+
+async def test_raw_uvicorn_non_loopback_bind_rejects_api_requests_without_auth():
+    """The ASGI export does not expose APIs on an unauthenticated LAN bind."""
+    from app.core.middlewares import NetworkBindGuard
+
+    called = False
+    sent: list[Message] = []
+
+    async def app(scope, receive, send):
+        nonlocal called
+        called = True
+
+    async def receive():
+        return {"type": "http.disconnect"}
+
+    async def send(message: Message):
+        sent.append(message)
+
+    await NetworkBindGuard(app, has_auth=False)(
+        {"type": "http", "server": ("0.0.0.0", 4082)}, receive, send
+    )
+
+    assert called is False
+    assert sent[0]["status"] == 503
+
+
+async def test_non_tcp_asgi_listener_without_address_is_not_misclassified():
+    from app.core.middlewares import NetworkBindGuard
+
+    called = False
+    sent: list[Message] = []
+
+    async def app(scope, receive, send):
+        nonlocal called
+        called = True
+
+    async def receive():
+        return {"type": "http.disconnect"}
+
+    async def send(message: Message):
+        sent.append(message)
+
+    await NetworkBindGuard(app, has_auth=False)({"type": "http"}, receive, send)
+
+    assert called is True
+    assert sent == []
+
+
+async def test_raw_uvicorn_loopback_bind_preserves_unauthenticated_development():
+    from app.core.middlewares import NetworkBindGuard
+
+    called = False
+
+    async def app(scope, receive, send):
+        nonlocal called
+        called = True
+
+    async def receive():
+        return {"type": "http.disconnect"}
+
+    async def send(message: Message):
+        pass
+
+    await NetworkBindGuard(app, has_auth=False)(
+        {"type": "http", "server": ("127.0.0.1", 4082)}, receive, send
+    )
+
+    assert called is True
+
+
+async def test_raw_uvicorn_non_loopback_bind_allows_configured_authentication():
+    from app.core.middlewares import NetworkBindGuard
+
+    called = False
+
+    async def app(scope, receive, send):
+        nonlocal called
+        called = True
+
+    async def receive():
+        return {"type": "http.disconnect"}
+
+    async def send(message: Message):
+        pass
+
+    await NetworkBindGuard(app, has_auth=True)(
+        {"type": "http", "server": ("0.0.0.0", 4082)}, receive, send
+    )
+
+    assert called is True

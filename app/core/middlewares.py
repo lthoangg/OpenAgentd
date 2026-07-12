@@ -12,9 +12,14 @@ Usage::
 
 from __future__ import annotations
 
+from ipaddress import ip_address
+
 from fastapi.responses import JSONResponse
 from loguru import logger
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
+
+from app.cli.net import is_loopback_host
+from app.core.desktop_auth import configured_access_token
 
 # Default: 4 MB
 _DEFAULT_MAX_BYTES = 4 * 1024 * 1024
@@ -22,6 +27,46 @@ _DEFAULT_MAX_BYTES = 4 * 1024 * 1024
 
 class _RequestTooLarge(Exception):
     """Raised by the receive wrapper once a streaming body exceeds its limit."""
+
+
+class NetworkBindGuard:
+    """Reject unauthenticated requests accepted on non-loopback listeners."""
+
+    def __init__(self, app: ASGIApp, *, has_auth: bool | None = None) -> None:
+        self.app = app
+        self._has_auth = (
+            bool(configured_access_token()) if has_auth is None else has_auth
+        )
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] not in ("http", "websocket") or self._has_auth:
+            await self.app(scope, receive, send)
+            return
+
+        server = scope.get("server")
+        host = server[0] if server else None
+        if host is None or is_loopback_host(host):
+            await self.app(scope, receive, send)
+            return
+        try:
+            ip_address(host)
+        except ValueError:
+            # ASGI test transports and Unix-socket deployments may expose a
+            # synthetic server name rather than a listener IP. Uvicorn TCP
+            # scopes provide the concrete local address, which is the boundary
+            # this guard is responsible for enforcing.
+            await self.app(scope, receive, send)
+            return
+
+        logger.error("non_loopback_bind_rejected host={}", host)
+        if scope["type"] == "websocket":
+            await send({"type": "websocket.close", "code": 4403})
+            return
+        response = JSONResponse(
+            status_code=503,
+            content={"detail": "Non-loopback binding requires an access key."},
+        )
+        await response(scope, receive, send)
 
 
 # ── Security headers ─────────────────────────────────────────────────────────
@@ -195,6 +240,8 @@ class RequestSizeLimitMiddleware:
                     if received_bytes > self._max_bytes:
                         raise _RequestTooLarge
                     request_complete = not message.get("more_body", False)
+                elif message["type"] == "http.disconnect":
+                    request_complete = True
                 return message
 
             try:

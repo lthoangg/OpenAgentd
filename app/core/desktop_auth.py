@@ -84,6 +84,15 @@ _EXEMPT_PREFIXES: tuple[str, ...] = (
 _QS_TOKEN_PARAM = "_token"
 
 
+def configured_access_token() -> str:
+    """Return the configured bearer credential, if any."""
+    return (
+        os.environ.get(_ENV_VAR, "")
+        or os.environ.get(_ACCESS_KEY_ENV_VAR, "")
+        or (load_runtime_settings().server.access_key or "")
+    )
+
+
 def _path_is_api(path: str) -> bool:
     return path == "/api" or path.startswith("/api/")
 
@@ -183,13 +192,7 @@ class DesktopTokenMiddleware:
     def __init__(self, app: ASGIApp, *, expected_token: str | None = None) -> None:
         self.app = app
         self._token = (
-            expected_token
-            if expected_token is not None
-            else (
-                os.environ.get(_ENV_VAR, "")
-                or os.environ.get(_ACCESS_KEY_ENV_VAR, "")
-                or (load_runtime_settings().server.access_key or "")
-            )
+            expected_token if expected_token is not None else configured_access_token()
         )
         self._enabled = bool(self._token)
         if self._enabled:

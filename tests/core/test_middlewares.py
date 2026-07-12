@@ -160,6 +160,29 @@ class TestRequestSizeLimitMiddleware:
         assert received == [{"type": "http.disconnect"}]
         assert sent[0]["status"] == 200
 
+    async def test_disconnect_read_by_app_does_not_trigger_second_receive(self):
+        received = []
+
+        async def app(scope, receive, send):
+            received.append(await receive())
+            await send({"type": "http.response.start", "status": 200, "headers": []})
+            await send({"type": "http.response.body", "body": b"ok"})
+
+        messages = iter([{"type": "http.disconnect"}])
+        sent = []
+
+        async def receive():
+            return next(messages)
+
+        async def send(message):
+            sent.append(message)
+
+        middleware = RequestSizeLimitMiddleware(app, max_bytes=10)
+        await middleware({"type": "http", "headers": []}, receive, send)
+
+        assert received == [{"type": "http.disconnect"}]
+        assert sent[0]["status"] == 200
+
     async def test_oversized_body_replaces_response_started_before_body_read(self):
         async def app(scope, receive, send):
             await send({"type": "http.response.start", "status": 200, "headers": []})

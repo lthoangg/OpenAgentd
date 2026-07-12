@@ -9,9 +9,8 @@ When the interrupt fires mid-execution:
 
 1. All still-pending tasks are cancelled.
 2. Already-completed tasks keep their real results.
-3. Cancelled tasks are reported as ``(tc, "Cancelled by user.")``
-   so the caller can post a stub :class:`ToolMessage` and exit the
-   loop cleanly.
+3. Cancelled tasks are reported as cancelled. A task that ignores cancellation
+   is explicitly reported as still stopping and remains owned until it exits.
 """
 
 from __future__ import annotations
@@ -26,6 +25,12 @@ if TYPE_CHECKING:
 
 
 _CANCELLATION_TIMEOUT = 0.1
+_detached_tool_tasks: set[asyncio.Future] = set()
+
+
+def active_detached_tool_count() -> int:
+    """Return the number of cancellation-resistant tool tasks still running."""
+    return len(_detached_tool_tasks)
 
 
 async def gather_or_cancel(
@@ -75,7 +80,8 @@ async def gather_or_cancel(
                         pending, timeout=_CANCELLATION_TIMEOUT
                     )
                     for task in still_pending:
-                        task.add_done_callback(_consume_detached_task_exception)
+                        _detached_tool_tasks.add(task)
+                        task.add_done_callback(_finish_detached_tool_task)
                     if still_pending:
                         logger.warning(
                             "tool_cancellation_timeout agent={} pending_tools={}",
@@ -94,7 +100,14 @@ async def gather_or_cancel(
     # Build results — preserve order matching tc_list
     results: list[tuple[ToolCall, str] | BaseException] = []
     for task, tc in zip(tasks, tc_list):
-        if task.cancelled() or not task.done():
+        if not task.done():
+            results.append((tc, "Cancellation requested; tool is still stopping."))
+            logger.warning(
+                "tool_cancellation_pending agent={} tool={}",
+                agent_name,
+                tc.function.name,
+            )
+        elif task.cancelled():
             results.append((tc, "Cancelled by user."))
             logger.info(
                 "tool_cancelled agent={} tool={}",
@@ -108,8 +121,9 @@ async def gather_or_cancel(
     return results
 
 
-def _consume_detached_task_exception(task: asyncio.Future) -> None:
-    """Retrieve detached task failures so asyncio does not log them unhandled."""
+def _finish_detached_tool_task(task: asyncio.Future) -> None:
+    """Release an owned cancellation-resistant task and observe its failure."""
+    _detached_tool_tasks.discard(task)
     try:
         task.exception()
     except asyncio.CancelledError:

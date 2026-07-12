@@ -142,6 +142,55 @@ class TestResponsesHandler:
         assert result[1]["name"] == "get_weather"
         assert result[1]["arguments"] == '{"city": "NYC"}'
 
+    def test_convert_messages_replays_reasoning_item_before_function_call(
+        self, handler
+    ):
+        """A stored reasoning item (with encrypted_content) must be replayed
+        as its own `type: reasoning` input item, ahead of the function_call it
+        preceded — matching upstream Codex CLI's verbatim history replay."""
+        messages = [
+            AssistantMessage(
+                content="Calling a tool.",
+                reasoning_item_id="rs_1",
+                reasoning_encrypted_content="cipher123",
+                tool_calls=[
+                    ToolCall(
+                        id="call_123",
+                        function=FunctionCall(name="get_weather", arguments="{}"),
+                    ),
+                ],
+            )
+        ]
+        result = handler.convert_messages(messages)
+        assert [item.get("type") for item in result] == [
+            "reasoning",
+            None,  # the assistant text message item has no "type" key, only "role"
+            "function_call",
+        ]
+        assert result[0] == {
+            "type": "reasoning",
+            "id": "rs_1",
+            "summary": [],
+            "encrypted_content": "cipher123",
+        }
+
+    def test_convert_messages_no_reasoning_item_without_encrypted_content(
+        self, handler
+    ):
+        """Assistant messages without a stored reasoning item emit no extra item."""
+        messages = [
+            AssistantMessage(
+                tool_calls=[
+                    ToolCall(
+                        id="call_123",
+                        function=FunctionCall(name="get_weather", arguments="{}"),
+                    ),
+                ],
+            )
+        ]
+        result = handler.convert_messages(messages)
+        assert not any(item.get("type") == "reasoning" for item in result)
+
     def test_convert_messages_assistant_message_skips_empty_tool_call_id(self, handler):
         """Skip tool calls with empty call_id."""
         messages = [
@@ -490,6 +539,42 @@ class TestResponsesHandler:
         }
         result = handler.parse_response(data)
         assert result.content == "Part 1\nPart 2"
+
+    def test_parse_response_captures_reasoning_encrypted_content(self, handler):
+        """`encrypted_content` on the reasoning item must be surfaced so it can
+        be replayed as history on the next turn (see `convert_messages`)."""
+        data = {
+            "output": [
+                {
+                    "type": "reasoning",
+                    "id": "rs_1",
+                    "summary": [{"type": "summary_text", "text": "Let me think..."}],
+                    "encrypted_content": "cipher123",
+                },
+                {
+                    "type": "message",
+                    "content": [{"type": "output_text", "text": "The answer is 42."}],
+                },
+            ]
+        }
+        result = handler.parse_response(data)
+        assert result.reasoning_item_id == "rs_1"
+        assert result.reasoning_encrypted_content == "cipher123"
+
+    def test_parse_response_without_encrypted_content_leaves_fields_none(self, handler):
+        """No `include: reasoning.encrypted_content` requested -> nothing to capture."""
+        data = {
+            "output": [
+                {
+                    "type": "reasoning",
+                    "id": "rs_1",
+                    "summary": [{"type": "summary_text", "text": "Let me think..."}],
+                },
+            ]
+        }
+        result = handler.parse_response(data)
+        assert result.reasoning_item_id is None
+        assert result.reasoning_encrypted_content is None
 
     def test_parse_response_with_reasoning(self, handler):
         """Parse response with reasoning content."""

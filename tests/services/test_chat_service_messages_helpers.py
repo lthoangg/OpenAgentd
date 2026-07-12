@@ -316,3 +316,55 @@ def test_deserialize_messages_reasoning_signature_absent_when_extra_missing(
     assert isinstance(msg, AssistantMessage)
     assert msg.reasoning_content == "thoughts"
     assert msg.reasoning_signature is None
+
+
+def test_deserialize_messages_restores_reasoning_encrypted_content_from_extra(
+    session_id,
+) -> None:
+    """reasoning_encrypted_content stored in extra must be restored onto
+    AssistantMessage so it can be replayed as a `reasoning` input item ahead
+    of its function_call on the next Codex/OpenAI turn."""
+    db_messages = [
+        SessionMessage(
+            id=uuid7(),
+            session_id=session_id,
+            role="assistant",
+            content="Calling a tool.",
+            extra={
+                "reasoning_item_id": "rs_1",
+                "reasoning_encrypted_content": "cipher123",
+            },
+        ),
+    ]
+
+    result = deserialize_messages(db_messages)
+
+    assert len(result) == 1
+    msg = result[0]
+    assert isinstance(msg, AssistantMessage)
+    assert msg.reasoning_item_id == "rs_1"
+    assert msg.reasoning_encrypted_content == "cipher123"
+
+
+def test_deserialize_messages_reasoning_encrypted_content_absent_when_extra_missing(
+    session_id,
+) -> None:
+    """Rows with no reasoning_encrypted_content in extra must deserialize
+    cleanly with both fields None."""
+    db_messages = [
+        SessionMessage(
+            id=uuid7(),
+            session_id=session_id,
+            role="assistant",
+            content="answer",
+            extra={"finish_reason": "end_turn"},
+        ),
+    ]
+
+    result = deserialize_messages(db_messages)
+
+    assert len(result) == 1
+    msg = result[0]
+    assert isinstance(msg, AssistantMessage)
+    assert msg.reasoning_item_id is None
+    assert msg.reasoning_encrypted_content is None

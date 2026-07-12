@@ -617,6 +617,15 @@ class TestCodexResponsesHandlerBuildRequest:
         body = handler.build_request(messages, None, False, {})
         assert body["store"] is False
 
+    def test_build_request_includes_reasoning_encrypted_content(self):
+        """Codex always requests `reasoning.encrypted_content`, unconditionally,
+        matching upstream Codex CLI (codex-rs/core/src/client.rs `build_responses_request`)
+        so stateless (store=false) tool-calling turns keep reasoning continuity."""
+        handler = _CodexResponsesHandler("gpt-5.4", "https://api.example.com", {})
+        messages = [HumanMessage(content="Hello")]
+        body = handler.build_request(messages, None, False, {})
+        assert body["include"] == ["reasoning.encrypted_content"]
+
     def test_build_request_extracts_system_message_to_instructions(self):
         """build_request() extracts SystemMessage content to instructions."""
         handler = _CodexResponsesHandler("gpt-5.4", "https://api.example.com", {})
@@ -819,6 +828,72 @@ class TestCodexResponsesHandlerBuildRequest:
             "tools": None,
             "merged": {"max_tokens": 20},
         }
+
+    @pytest.mark.asyncio
+    async def test_chat_carries_reasoning_encrypted_content_through(self):
+        """chat() must surface the reasoning item id/encrypted_content emitted
+        mid-stream onto the returned AssistantMessage so it can be persisted
+        and replayed on the next turn."""
+        handler = _CodexResponsesHandler("gpt-5.4", "https://api.example.com", {})
+
+        async def fake_stream(messages, tools, merged):
+            yield ChatCompletionChunk(
+                id="resp_1",
+                created=1,
+                model="gpt-5.4",
+                choices=[
+                    ChatCompletionChunkChoice(
+                        index=0,
+                        delta=ChatCompletionDelta(
+                            reasoning_item_id="rs_1",
+                            reasoning_encrypted_content="cipher123",
+                        ),
+                    )
+                ],
+            )
+            yield ChatCompletionChunk(
+                id="resp_1",
+                created=1,
+                model="gpt-5.4",
+                choices=[
+                    ChatCompletionChunkChoice(
+                        index=0, delta=ChatCompletionDelta(content="Done")
+                    )
+                ],
+            )
+
+        handler.stream = fake_stream  # type: ignore[method-assign]
+
+        result = await handler.chat([HumanMessage(content="Hello")], None, {})
+
+        assert result.content == "Done"
+        assert result.reasoning_item_id == "rs_1"
+        assert result.reasoning_encrypted_content == "cipher123"
+
+    @pytest.mark.asyncio
+    async def test_chat_leaves_reasoning_encrypted_content_none_when_absent(self):
+        """No mid-stream reasoning item -> fields stay None (no regression for
+        models/turns that don't return one)."""
+        handler = _CodexResponsesHandler("gpt-5.4", "https://api.example.com", {})
+
+        async def fake_stream(messages, tools, merged):
+            yield ChatCompletionChunk(
+                id="resp_1",
+                created=1,
+                model="gpt-5.4",
+                choices=[
+                    ChatCompletionChunkChoice(
+                        index=0, delta=ChatCompletionDelta(content="Done")
+                    )
+                ],
+            )
+
+        handler.stream = fake_stream  # type: ignore[method-assign]
+
+        result = await handler.chat([HumanMessage(content="Hello")], None, {})
+
+        assert result.reasoning_item_id is None
+        assert result.reasoning_encrypted_content is None
 
 
 # ============================================================================

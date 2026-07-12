@@ -8,6 +8,7 @@ in ``_fire_task``.
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 from uuid import UUID, uuid4
@@ -739,6 +740,78 @@ class TestStop:
 
 
 class TestTrigger:
+    async def test_pause_racing_trigger_wins_over_trigger_enable(
+        self, scheduler, db_factory
+    ):
+        task = _make_task(name="trigger_pause_race")
+        task.enabled = False
+        task.status = "paused"
+        await scheduler.add(task)
+
+        trigger_commit_started = asyncio.Event()
+        release_trigger_commit = asyncio.Event()
+        factory_calls = 0
+
+        @asynccontextmanager
+        async def delayed_first_commit_factory():
+            nonlocal factory_calls
+            factory_calls += 1
+            async with db_factory() as session:
+                if factory_calls == 1:
+                    original_commit = session.commit
+
+                    async def delayed_commit():
+                        trigger_commit_started.set()
+                        await release_trigger_commit.wait()
+                        await original_commit()
+
+                    session.commit = delayed_commit
+                yield session
+
+        scheduler._db = delayed_first_commit_factory
+
+        trigger = asyncio.create_task(scheduler.trigger(task.slug))
+        await _wait_for_task_start(trigger_commit_started)
+        pause = asyncio.create_task(scheduler.pause(task.slug))
+        await asyncio.sleep(0)
+        assert not pause.done()
+        release_trigger_commit.set()
+        await asyncio.gather(trigger, pause)
+
+        row = await _db_task(db_factory, task.id)
+        assert row is not None
+        assert row.enabled is False
+        assert row.status == "paused"
+        await scheduler.stop()
+
+    async def test_update_before_queued_trigger_fire_prevents_stale_dispatch(
+        self, scheduler
+    ):
+        task = await scheduler.add(_make_task(name="queued_trigger_update"))
+        await scheduler.stop()
+        queued_fires = []
+
+        def queue_fire(coroutine, *, task_id):
+            scheduler._pending_fire_counts[task_id] = 1
+            queued_fires.append(coroutine)
+
+        scheduler._spawn_fire = queue_fire
+
+        await scheduler.trigger(task.slug)
+        await scheduler.apply_update(
+            task.slug, ScheduledTaskUpdate(prompt="replacement prompt")
+        )
+
+        with (
+            patch("app.services.team_manager.get_or_start_team") as get_team,
+            patch("app.services.agent_service.dispatch_user_message") as dispatch,
+        ):
+            await queued_fires.pop()
+
+        get_team.assert_not_called()
+        dispatch.assert_not_called()
+        await scheduler.stop()
+
     async def test_stop_cancels_owned_trigger_fire_without_leaving_task_running(
         self, scheduler, db_factory
     ):

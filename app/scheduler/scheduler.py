@@ -125,6 +125,7 @@ class TaskScheduler:
         self._state_lock = asyncio.Lock()
         self._firing_ids: set[UUID] = set()
         self._fire_versions: dict[UUID, int] = {}
+        self._pending_fire_counts: dict[UUID, int] = {}
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -135,7 +136,11 @@ class TaskScheduler:
         now = datetime.now(_utc)
         for task in tasks:
             if task.next_fire_at is not None and task.next_fire_at <= now:
-                self._spawn_fire(self._fire_overdue_and_restart(task))
+                fire_version = self._fire_versions.get(task.id, 0)
+                self._spawn_fire(
+                    self._fire_overdue_and_restart(task, fire_version),
+                    task_id=task.id,
+                )
                 continue
 
             # One-shot "at" tasks whose fire time is in the past and haven't
@@ -146,15 +151,18 @@ class TaskScheduler:
                 and task.run_count == 0
                 and task.at_datetime <= now
             ):
-                self._spawn_fire(self._fire_task(task))
+                fire_version = self._fire_versions.get(task.id, 0)
+                self._spawn_fire(self._fire_task(task, fire_version), task_id=task.id)
             else:
                 self._start_timer(task)
 
         logger.info("scheduler_started tasks={}", len(tasks))
 
-    async def _fire_overdue_and_restart(self, task: ScheduledTask) -> None:
+    async def _fire_overdue_and_restart(
+        self, task: ScheduledTask, fire_version: int
+    ) -> None:
         """Fire a persisted overdue task, then restart recurring timers."""
-        await self._fire_task(task)
+        await self._fire_task(task, fire_version)
 
         async with self._db() as session:
             result = await session.exec(
@@ -427,38 +435,40 @@ class TaskScheduler:
 
     async def trigger(self, slug: str) -> None:
         """Fire task immediately and ensure it is enabled."""
-        async with self._db() as session:
-            result = await session.exec(
-                select(ScheduledTask).where(ScheduledTask.slug == slug)
-            )
-            task = result.one()
-            if _schedule_exhausted(task):
-                task.enabled = False
-                task.status = "completed"
-                task.next_fire_at = None
-                session.add(task)
-                await session.commit()
-                return
-            was_disabled = not task.enabled or task.status == "paused"
-            if was_disabled:
-                task.enabled = True
-                task.status = "pending"
-                task.next_fire_at = next_fire(
-                    task.schedule_type,
-                    cron_expression=task.cron_expression,
-                    every_seconds=task.every_seconds,
-                    at_datetime=task.at_datetime,
-                    timezone=task.timezone,
-                    run_count=task.run_count,
+        async with self._state_lock:
+            async with self._db() as session:
+                result = await session.exec(
+                    select(ScheduledTask).where(ScheduledTask.slug == slug)
                 )
-                session.add(task)
-                await session.commit()
-                await session.refresh(task)
+                task = result.one()
+                if _schedule_exhausted(task):
+                    task.enabled = False
+                    task.status = "completed"
+                    task.next_fire_at = None
+                    session.add(task)
+                    await session.commit()
+                    return
+                was_disabled = not task.enabled or task.status == "paused"
+                if was_disabled:
+                    task.enabled = True
+                    task.status = "pending"
+                    task.next_fire_at = next_fire(
+                        task.schedule_type,
+                        cron_expression=task.cron_expression,
+                        every_seconds=task.every_seconds,
+                        at_datetime=task.at_datetime,
+                        timezone=task.timezone,
+                        run_count=task.run_count,
+                    )
+                    session.add(task)
+                    await session.commit()
+                    await session.refresh(task)
 
-        if was_disabled:
-            self._start_timer(task)
+            if was_disabled:
+                self._start_timer(task)
 
-        self._spawn_fire(self._fire_task(task))
+            fire_version = self._fire_versions.get(task.id, 0)
+            self._spawn_fire(self._fire_task(task, fire_version), task_id=task.id)
 
     async def list_tasks(self) -> list[ScheduledTask]:
         async with self._db() as session:
@@ -474,16 +484,30 @@ class TaskScheduler:
 
     # ── Internal helpers ──────────────────────────────────────────────────────
 
-    def _spawn_fire(self, coroutine) -> None:
+    def _spawn_fire(self, coroutine, *, task_id: UUID) -> None:
         """Track a detached firing task so lifecycle shutdown owns it."""
+        self._pending_fire_counts[task_id] = (
+            self._pending_fire_counts.get(task_id, 0) + 1
+        )
         task = asyncio.create_task(coroutine)
         self._fire_tasks.add(task)
-        task.add_done_callback(self._fire_tasks.discard)
+
+        def _discard(completed: asyncio.Task[None]) -> None:
+            self._fire_tasks.discard(completed)
+            remaining = self._pending_fire_counts.get(task_id, 1) - 1
+            if remaining > 0:
+                self._pending_fire_counts[task_id] = remaining
+            else:
+                self._pending_fire_counts.pop(task_id, None)
+                if task_id not in self._firing_ids:
+                    self._fire_versions.pop(task_id, None)
+
+        task.add_done_callback(_discard)
 
     def _invalidate_fire(self, task_id: UUID) -> None:
         """Prevent an in-flight fire from applying stale work after an admin change."""
         self._fire_versions[task_id] = self._fire_versions.get(task_id, 0) + 1
-        if task_id not in self._firing_ids:
+        if task_id not in self._firing_ids and task_id not in self._pending_fire_counts:
             self._fire_versions.pop(task_id, None)
 
     def _start_timer(self, task: ScheduledTask) -> None:
@@ -543,12 +567,17 @@ class TaskScheduler:
         # Remove ourselves from the tracking dict
         self._tasks.pop(task.slug, None)
 
-    async def _fire_task(self, task: ScheduledTask) -> None:
+    async def _fire_task(
+        self, task: ScheduledTask, fire_version: int | None = None
+    ) -> None:
         """Execute one non-overlapping scheduled firing of *task*."""
+        if fire_version is None:
+            fire_version = self._fire_versions.get(task.id, 0)
+        if self._fire_versions.get(task.id, 0) != fire_version:
+            return
         if task.id in self._firing_ids:
             return
         self._firing_ids.add(task.id)
-        fire_version = self._fire_versions.get(task.id, 0)
         try:
             await self._fire_task_locked(task, fire_version)
         except asyncio.CancelledError:
@@ -556,7 +585,8 @@ class TaskScheduler:
             raise
         finally:
             self._firing_ids.discard(task.id)
-            self._fire_versions.pop(task.id, None)
+            if task.id not in self._pending_fire_counts:
+                self._fire_versions.pop(task.id, None)
 
     async def _mark_fire_cancelled(self, task_id: UUID) -> None:
         """Restore a firing row interrupted by scheduler shutdown."""

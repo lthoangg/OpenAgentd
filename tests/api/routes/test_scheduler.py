@@ -377,7 +377,7 @@ class TestTrigger:
 
         monkeypatch.setattr(
             "app.scheduler.scheduler.TaskScheduler._fire_task",
-            lambda self, task: _noop(task),
+            lambda self, task, fire_version=None: _noop(task),
         )
 
         created = await client.post(

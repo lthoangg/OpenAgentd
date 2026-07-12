@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of every user-visible OpenAgentd feature. Source of truth for slides, README, comparison docs, and marketing copy.
 status: stable
-updated: 2026-07-10
+updated: 2026-07-12
 ---
 
 # Features
@@ -16,7 +16,7 @@ exists. When you ship something new, **add it here first** — slides, README,
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 15 providers. Your keys.
 
-**Latest release:** v1.100.0 · July 10, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.100.0)
+**Latest release:** v1.101.0 · July 12, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.101.0)
 
 ---
 
@@ -90,6 +90,10 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   unmounting, matching the open transitions. Dialog and sheet retain their
   existing close animations. Tooltip gains a CSS arrow and correctly appears
   over disabled buttons via a transparent span wrapper.
+- **In-app toasts pause on hover/focus** `[v1.101.0]` — the auto-dismiss timer
+  for toast notifications now pauses while the pointer or keyboard focus is on
+  the toast, resuming with the remaining time once it clears, so a toast can no
+  longer disappear mid-read.
 - **Type-to-focus composer** `[v1.40.0]` — in cockpit and coding chat, start
   typing on the chat surface to expand/focus the composer and capture the first
   character without pressing `⌘I`/`Ctrl+I` first. See [`web/chat-input.md`](./web/chat-input.md).
@@ -341,7 +345,8 @@ team against it. Deeper doc: [`web/coding-sessions.md`](./web/coding-sessions.md
 - **Git worktree sessions** `[v1.41.0, v1.61.0]` — create an isolated git worktree
   from an existing coding workspace, start a new coding session in that worktree,
   list existing worktrees, edit sidebar titles without renaming git directories,
-  and remove OpenAgentd-managed worktrees.
+  and remove OpenAgentd-managed worktrees. Removing a worktree asks for confirmation
+  first, warning that uncommitted changes will be lost `[v1.101.0]`.
 - **Warm-paper cockpit refresh** `[v1.74.0]` — coding panels, chat-adjacent
   surfaces, scheduled tasks, telemetry, home, provider/settings detail views,
   command/file search, and input attachments now share the custom warm-paper

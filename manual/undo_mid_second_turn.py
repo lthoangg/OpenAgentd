@@ -110,7 +110,7 @@ def main() -> int:
 
     # Sanity ping
     try:
-        httpx.get(f"{base.rsplit('/', 1)[0]}/health/ready", timeout=5).raise_for_status()
+        httpx.get(f"{base}/health/ready", timeout=5).raise_for_status()
     except httpx.HTTPError as exc:
         print(f"server unreachable at {base}: {exc}", file=sys.stderr)
         return 2

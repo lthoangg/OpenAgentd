@@ -8,3 +8,4 @@ supersedes rather than rewrites an earlier record.
 | --- | --- | --- | --- |
 | [0001](0001-native-backend-access-key-storage.md) | Native backend access-key storage | Accepted | 2026-07-09 |
 | [0002](0002-require-authentication-for-non-loopback-bindings.md) | Require authentication for non-loopback bindings | Accepted | 2026-07-11 |
+| [0003](0003-codex-reasoning-encrypted-content-replay.md) | Replay OpenAI reasoning items via `encrypted_content` for Codex | Accepted | 2026-07-12 |

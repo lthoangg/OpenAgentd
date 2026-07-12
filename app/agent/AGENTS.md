@@ -41,3 +41,4 @@ uv run ty check app/
 - Keep prompt bodies tool-agnostic because runtime capabilities can change.
 - Streaming loops must catch provider/tool chunk errors and emit recoverable events where possible.
 - `SummarizationHook` respects `provider.support_interrupt`: when `False`, summarisation only fires at the user-turn boundary (last visible message is a real `HumanMessage` from the user), never mid-loop. `build_summarization_hook` in `member.py` reads this flag automatically.
+- Codex/OpenAI Responses reasoning items are round-tripped via `AssistantMessage.reasoning_item_id`/`reasoning_encrypted_content` (persisted in `extra`, replayed ahead of the next `function_call`) — see `documents/adrs/0003-codex-reasoning-encrypted-content-replay.md`. This preserves reasoning continuity across turns; it does not guarantee the model emits human-readable reasoning detail text (a separate, server-side gap).

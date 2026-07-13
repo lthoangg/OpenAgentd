@@ -137,7 +137,7 @@ export async function cancelQueuedTeamMessage(sessionId: string, messageId: stri
 }
 
 export function teamStream(sessionId: string, callbacks: SSECallbacks, signal?: AbortSignal): void {
-  fetch(`${apiBaseUrl()}/team/${encodeURIComponent(sessionId)}/stream`, { signal })
+  fetch(withTokenParam(`${apiBaseUrl()}/team/${encodeURIComponent(sessionId)}/stream`), { signal })
     .then((res) => {
       if (!res.ok) throw new Error(`GET /team/${sessionId}/stream failed: ${res.status}`)
       readSSE(res, callbacks)

@@ -56,7 +56,7 @@ class MockProcess:
         self.returncode = 0
 
 
-def _only_pyright(exe):
+def _only_pyright(exe, path=None):
     """shutil.which stub: only pyright resolves, so Python stays single-server
     (keeps tests that aren't about the multi-server merge fast and focused)."""
     return "/usr/bin/pyright-langserver" if exe == "pyright-langserver" else None
@@ -465,7 +465,7 @@ async def test_lsp_manager_custom_command_from_settings(tmp_path):
         save_runtime_settings(cfg)
 
         # settings.yaml command is honoured (no project_root → skips tier 1).
-        cmds = manager._detect_commands("python")
+        cmds = await manager._detect_commands("python")
         assert cmds == [["ty"]]
 
 
@@ -661,8 +661,8 @@ async def test_detect_commands_prefers_project_config(tmp_path):
     )
 
     # Everything resolves on PATH, but the project only declares ty.
-    with patch("shutil.which", side_effect=lambda exe: f"/usr/bin/{exe}"):
-        cmds = manager._detect_commands("python", project_root=tmp_path)
+    with patch("shutil.which", side_effect=lambda exe, path=None: f"/usr/bin/{exe}"):
+        cmds = await manager._detect_commands("python", project_root=tmp_path)
         assert cmds == [["ty", "server"]]
 
 
@@ -676,9 +676,11 @@ async def test_detect_commands_python_defaults_run_all_installed(tmp_path):
     installed = {"ty", "ruff"}
     with patch(
         "shutil.which",
-        side_effect=lambda exe: f"/usr/bin/{exe}" if exe in installed else None,
+        side_effect=lambda exe, path=None: (
+            f"/usr/bin/{exe}" if exe in installed else None
+        ),
     ):
-        cmds = manager._detect_commands("python", project_root=tmp_path)
+        cmds = await manager._detect_commands("python", project_root=tmp_path)
         assert cmds == [["ty", "server"], ["ruff", "server"]]
 
 
@@ -687,9 +689,42 @@ async def test_detect_commands_non_python_single_server(tmp_path):
     """Non-Python languages stay single-server even though _detect_commands
     returns a list."""
     manager = LspManager()
-    with patch("shutil.which", side_effect=lambda exe: f"/usr/bin/{exe}"):
-        assert manager._detect_commands("go", project_root=tmp_path) == [["gopls"]]
-        assert manager._detect_commands("c", project_root=tmp_path) == [["clangd"]]
+    with patch("shutil.which", side_effect=lambda exe, path=None: f"/usr/bin/{exe}"):
+        assert await manager._detect_commands("go", project_root=tmp_path) == [
+            ["gopls"]
+        ]
+        assert await manager._detect_commands("c", project_root=tmp_path) == [
+            ["clangd"]
+        ]
+
+
+@pytest.mark.asyncio
+async def test_detect_commands_uses_login_shell_path_for_desktop_lsp_servers(
+    tmp_path, monkeypatch
+):
+    """Desktop sidecars must resolve user-installed LSP servers outside PATH."""
+    import app.services.lsp.manager as manager_mod
+
+    manager = LspManager()
+    checked_paths = []
+
+    async def fake_get_user_path(*, force_refresh=False):
+        return "/Users/test/.local/bin:/opt/homebrew/bin"
+
+    def fake_which(command, path=None):
+        checked_paths.append(path)
+        return "/Users/test/.local/bin/ty" if command == "ty" else None
+
+    monkeypatch.setattr(manager_mod, "_get_user_path", fake_get_user_path)
+    monkeypatch.setattr(manager_mod.shutil, "which", fake_which)
+
+    commands = await manager._detect_commands("python", project_root=tmp_path)
+
+    assert commands == [["ty", "server"]]
+    assert checked_paths
+    assert all(
+        path == "/Users/test/.local/bin:/opt/homebrew/bin" for path in checked_paths
+    )
 
 
 @pytest.mark.asyncio
@@ -752,7 +787,9 @@ async def test_python_multi_server_merges_diagnostics(tmp_path):
         patch("asyncio.create_subprocess_exec", side_effect=fake_exec),
         patch(
             "shutil.which",
-            side_effect=lambda exe: f"/usr/bin/{exe}" if exe in installed else None,
+            side_effect=lambda exe, path=None: (
+                f"/usr/bin/{exe}" if exe in installed else None
+            ),
         ),
     ):
         file_path = tmp_path / "demo.py"
@@ -915,7 +952,7 @@ async def test_lsp_monorepo_subfolder_uses_subfolder_root(tmp_path):
         patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec,
         patch(
             "shutil.which",
-            side_effect=lambda exe: (
+            side_effect=lambda exe, path=None: (
                 "/usr/bin/typescript-language-server"
                 if exe == "typescript-language-server"
                 else None
@@ -1032,7 +1069,7 @@ async def test_ts_client_receives_init_options_in_initialize(tmp_path):
         patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec,
         patch(
             "shutil.which",
-            side_effect=lambda exe: (
+            side_effect=lambda exe, path=None: (
                 "/usr/bin/typescript-language-server"
                 if exe == "typescript-language-server"
                 else None

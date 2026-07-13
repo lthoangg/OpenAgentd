@@ -1,11 +1,68 @@
 import asyncio
 import json
+import os
 import shutil
+from contextlib import suppress
 from pathlib import Path
 
 from loguru import logger
 
 from app.services.lsp.client import LspClient
+
+
+_CACHED_USER_PATH: str | None = None
+_USER_PATH_LOCK = asyncio.Lock()
+_USER_PATH_TIMEOUT_SECONDS = 3.0
+_PATH_OUTPUT_PREFIX = "__OPENAGENTD_PATH__"
+
+
+async def _get_user_path(*, force_refresh: bool = False) -> str:
+    """Return the user's login-shell PATH, not the minimal GUI-app PATH."""
+    global _CACHED_USER_PATH
+    if _CACHED_USER_PATH is not None and not force_refresh:
+        return _CACHED_USER_PATH
+
+    async with _USER_PATH_LOCK:
+        if _CACHED_USER_PATH is not None and not force_refresh:
+            return _CACHED_USER_PATH
+
+        try:
+            from app.agent.tools.builtin import shell_runtime
+
+            shell_bin = shell_runtime.acceptable()
+            argv = shell_runtime.build_argv(
+                shell_bin, f'printf "{_PATH_OUTPUT_PREFIX}%s\\n" "$PATH"'
+            )
+            proc = await asyncio.create_subprocess_exec(
+                shell_bin,
+                *argv,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+                stdin=asyncio.subprocess.DEVNULL,
+            )
+            try:
+                stdout, _ = await asyncio.wait_for(
+                    proc.communicate(), timeout=_USER_PATH_TIMEOUT_SECONDS
+                )
+            except TimeoutError:
+                with suppress(ProcessLookupError):
+                    proc.kill()
+                with suppress(ProcessLookupError):
+                    await proc.wait()
+                raise
+            if proc.returncode == 0:
+                for line in reversed(stdout.decode().splitlines()):
+                    if line.startswith(_PATH_OUTPUT_PREFIX):
+                        path = line.removeprefix(_PATH_OUTPUT_PREFIX).strip()
+                        if path:
+                            _CACHED_USER_PATH = path
+                            return path
+        except Exception as exc:
+            logger.debug("lsp_login_shell_path_probe_failed error={!r}", exc)
+
+        _CACHED_USER_PATH = os.environ.get("PATH", "")
+        return _CACHED_USER_PATH
+
 
 # Cap how many diagnostics we inject per file so a badly-broken file can't
 # flood the model's context window. Errors are prioritised over warnings.
@@ -376,7 +433,7 @@ class LspManager:
         except asyncio.CancelledError:
             pass
 
-    def _detect_commands(
+    async def _detect_commands(
         self, lang_id: str, project_root: Path | None = None
     ) -> list[list[str]]:
         """Resolve which LSP server command(s) to run for *lang_id*.
@@ -395,12 +452,17 @@ class LspManager:
                                  PYTHON_MULTI_SERVERS; others: first installed
                                  entry of LSP_COMMANDS.
         """
+        user_path = await _get_user_path()
+
+        def available(cmd: list[str]) -> bool:
+            return shutil.which(cmd[0], path=user_path) is not None
+
         # 1. Project-config-aware detection (may yield several for Python).
         if project_root is not None:
             project_cmds = [
                 cmd
                 for cmd in detect_project_lsp_commands(lang_id, project_root)
-                if shutil.which(cmd[0])
+                if available(cmd)
             ]
             if project_cmds:
                 logger.info(
@@ -426,11 +488,11 @@ class LspManager:
         # 3. Generic defaults.
         if lang_id == "python":
             # Run every installed Python server so types + lint are both covered.
-            installed = [c for c in PYTHON_MULTI_SERVERS if shutil.which(c[0])]
+            installed = [c for c in PYTHON_MULTI_SERVERS if available(c)]
             return installed
 
         for cmd in LSP_COMMANDS.get(lang_id, []):
-            if shutil.which(cmd[0]):
+            if available(cmd):
                 return [cmd]
         return []
 
@@ -444,7 +506,7 @@ class LspManager:
             return []
 
         async with self._lock:
-            cmds = self._detect_commands(lang_id, project_root=workspace_root)
+            cmds = await self._detect_commands(lang_id, project_root=workspace_root)
             if not cmds:
                 logger.info("No LSP server found for language: {}", lang_id)
                 self._mark_unsupported(lang_id)
@@ -466,6 +528,7 @@ class LspManager:
                     cmd,
                     workspace_root,
                     init_options=_build_init_options(lang_id, workspace_root),
+                    env={**os.environ, "PATH": await _get_user_path()},
                 )
                 try:
                     await client.start()

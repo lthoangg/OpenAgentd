@@ -2,7 +2,7 @@
 title: LSP Diagnostics Injection
 description: Real-time language-server diagnostics injected into write/edit/patch tool results in coding mode.
 status: stable
-updated: 2026-07-07
+updated: 2026-07-13
 ---
 
 # LSP Diagnostics Injection
@@ -44,7 +44,7 @@ precedence (first tier that yields a command wins):
 2. **`settings.yaml`** — a global `lsp:` map, e.g. `lsp: {python: [ty, server]}`.
 3. **Built-in defaults** — first installed server from the per-language list.
 
-A command is only used if its executable is found on `PATH`.
+A command is only used if its executable is found on `PATH`. In the desktop app, OpenAgentd resolves that PATH from your login shell, so servers installed through Homebrew, `uv`, Bun, Cargo, or other user-level toolchains work even when the GUI process starts with a minimal system PATH.
 
 ### Python runs multiple servers
 

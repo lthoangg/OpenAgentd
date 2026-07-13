@@ -94,6 +94,10 @@ The Gemini API rejects JSON Schema fields it doesn't recognise (`discriminator`,
 
 Usually means two server instances are running. Run `openagentd restart`; add `--lan --key` if mobile clients need LAN access and the server has not been configured for it yet.
 
+## Desktop LSP diagnostics do not appear
+
+Make sure the relevant language server is installed and available from your terminal (for example `ty` / `ruff` for Python or `typescript-language-server` for TypeScript). The desktop app resolves its LSP command PATH from your login shell; restart the desktop app after changing shell startup files or installing a server.
+
 ## MCP stdio server fails with `ExceptionGroup` or `FileNotFoundError`
 
 If an MCP server configured with stdio (e.g., using `npx` or `uvx`) fails to start:

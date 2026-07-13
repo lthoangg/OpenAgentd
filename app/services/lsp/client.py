@@ -2,7 +2,7 @@ import asyncio
 import json
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from loguru import logger
 
@@ -13,10 +13,12 @@ class LspClient:
         command: list[str],
         workspace_root: Path,
         init_options: dict | None = None,
+        env: Mapping[str, str] | None = None,
     ):
         self.command = command
         self.workspace_root = workspace_root
         self._init_options = init_options
+        self._env = dict(env) if env is not None else None
         self.process: asyncio.subprocess.Process | None = None
         self._id = 0
         self._pending_requests: dict[int, asyncio.Future] = {}
@@ -40,6 +42,7 @@ class LspClient:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
             cwd=str(self.workspace_root),
+            env=self._env,
         )
         self._read_task = asyncio.create_task(self._read_loop())
         self.last_used_at = asyncio.get_running_loop().time()

@@ -1,0 +1,162 @@
+import { useEffect } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import type { QueryClient } from '@tanstack/react-query'
+import { globalEventStream } from '@/api/global-events'
+import { sendDesktopNotification } from '@/lib/desktop-notifications'
+import { queryKeys } from '@/queries'
+import { patchSessionTitle } from '@/stores/cache-invalidation-bridge'
+import { useTeamStore } from '@/stores/useTeamStore'
+
+const notifiedIds = new Set<string>()
+const MAX_NOTIFIED_IDS = 200
+
+export function resetGlobalNotificationDedupe(): void {
+  notifiedIds.clear()
+}
+
+function rememberNotification(id: string): boolean {
+  if (notifiedIds.has(id)) return false
+  notifiedIds.add(id)
+  if (notifiedIds.size > MAX_NOTIFIED_IDS) notifiedIds.delete(notifiedIds.values().next().value!)
+  return true
+}
+
+export function invalidateGlobalEventQueries(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: queryKeys.team.sessions.all() })
+  queryClient.invalidateQueries({ queryKey: queryKeys.scheduler.list() })
+}
+
+export async function handleGlobalEvent(
+  queryClient: QueryClient,
+  type: string,
+  data: unknown,
+  connectionGeneration: number,
+  currentConnectionGeneration: () => number,
+): Promise<boolean> {
+  if (connectionGeneration !== currentConnectionGeneration() || !data || typeof data !== 'object') return false
+  const event = data as Record<string, unknown>
+
+  if (type === 'session_turn_started') {
+    const sessionId = typeof event.session_id === 'string' ? event.session_id : null
+    invalidateGlobalEventQueries(queryClient)
+    if (!sessionId) return false
+
+    const before = useTeamStore.getState()
+    if (before.sessionId !== sessionId) return true
+    const sessionGeneration = before._sessionGeneration
+    await before.loadSession(sessionId, before._workspace)
+    const after = useTeamStore.getState()
+    if (connectionGeneration !== currentConnectionGeneration()) return false
+    if (after.sessionId !== sessionId || after._sessionGeneration !== sessionGeneration) return false
+    after.connectStream()
+    return true
+  }
+
+  if (type === 'title_update') {
+    const sessionId = typeof event.session_id === 'string' ? event.session_id : null
+    const title = typeof event.title === 'string' ? event.title : null
+    if (!sessionId || title === null) return false
+    if (useTeamStore.getState().sessionId === sessionId) useTeamStore.setState({ sessionTitle: title })
+    patchSessionTitle(queryClient, sessionId, title)
+    return true
+  }
+
+  if (type === 'desktop_notification') {
+    const id = typeof event.notification_id === 'string' ? event.notification_id : null
+    const kind = event.kind
+    if (!id || (kind !== 'assistant_done' && kind !== 'background_done' && kind !== 'reminder_fired')) return false
+    if (!rememberNotification(id)) return true
+    if (typeof event.title !== 'string' || typeof event.body !== 'string') return false
+    await sendDesktopNotification({ kind, title: event.title, body: event.body })
+    return true
+  }
+
+  return false
+}
+
+export async function reconcileCurrentSession(
+  connectionGeneration: number,
+  currentConnectionGeneration: () => number,
+): Promise<void> {
+  const before = useTeamStore.getState()
+  const sessionId = before.sessionId
+  if (!sessionId) return
+  const sessionGeneration = before._sessionGeneration
+  await before.loadSession(sessionId, before._workspace)
+  const after = useTeamStore.getState()
+  if (connectionGeneration !== currentConnectionGeneration()) return
+  if (after.sessionId !== sessionId || after._sessionGeneration !== sessionGeneration) return
+  if (after.isTeamWorking) after.connectStream()
+}
+
+/** App-lifetime feed for session changes occurring outside this window. */
+export function useGlobalEventStream(): void {
+  const queryClient = useQueryClient()
+
+  useEffect(() => {
+    let disposed = false
+    let connectionGeneration = 0
+    let retryTimer: ReturnType<typeof setTimeout> | null = null
+    let attempts = 0
+    let controller: AbortController | null = null
+
+    const connect = (): number | null => {
+      if (disposed) return null
+      const generation = ++connectionGeneration
+      if (retryTimer) {
+        clearTimeout(retryTimer)
+        retryTimer = null
+      }
+      controller?.abort()
+      controller = new AbortController()
+      globalEventStream({
+        onOpen: () => {
+          if (disposed || generation !== connectionGeneration) return
+          attempts = 0
+          invalidateGlobalEventQueries(queryClient)
+          void reconcileCurrentSession(generation, () => connectionGeneration)
+        },
+        onEvent: (type, data) => {
+          void handleGlobalEvent(queryClient, type, data, generation, () => connectionGeneration)
+            .then((valid) => { if (valid && generation === connectionGeneration) attempts = 0 })
+        },
+        onError: (error) => {
+          if (disposed || generation !== connectionGeneration) return
+          // Old servers do not have this optional endpoint; leave them alone.
+          if (/GET \/events\/stream failed: 404/.test(error.message)) return
+          const delay = Math.min(30_000, 1_500 * 2 ** attempts++)
+          retryTimer = setTimeout(connect, delay)
+        },
+        onDone: () => {
+          if (disposed || generation !== connectionGeneration) return
+          const delay = Math.min(30_000, 1_500 * 2 ** attempts++)
+          retryTimer = setTimeout(connect, delay)
+        },
+      }, controller.signal)
+      return generation
+    }
+
+    connect()
+    const resume = () => {
+      connect()
+    }
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') resume()
+    }
+    window.addEventListener('pageshow', resume)
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => {
+      disposed = true
+      connectionGeneration += 1
+      controller?.abort()
+      if (retryTimer) clearTimeout(retryTimer)
+      window.removeEventListener('pageshow', resume)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
+  }, [queryClient])
+}
+
+export function GlobalEventStream(): null {
+  useGlobalEventStream()
+  return null
+}

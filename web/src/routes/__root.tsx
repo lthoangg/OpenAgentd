@@ -18,6 +18,7 @@ import { isPrimaryShortcut } from '@/lib/keyboard-shortcut'
 import { useContainerSelectAll } from '@/hooks/useContainerSelectAll'
 import { usePreventBackspaceNavigation } from '@/hooks/usePreventBackspaceNavigation'
 import { useHistoryBackForwardShortcuts } from '@/hooks/useHistoryBackForwardShortcuts'
+import { GlobalEventStream } from '@/hooks/use-global-event-stream'
 
 export function Root() {
   useMobileViewportGuards()
@@ -76,6 +77,7 @@ export function Root() {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <GlobalEventStream />
       <SkipLink />
       <MacTitleBar />
       <Suspense fallback={<RouteLoadingFallback />}>

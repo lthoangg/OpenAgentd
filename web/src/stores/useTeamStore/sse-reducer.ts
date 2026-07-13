@@ -116,11 +116,6 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         break
       }
 
-      case 'title_update': {
-        set((draft) => { draft.sessionTitle = d.title as string })
-        break
-      }
-
       case 'thinking': {
         const agent = d.agent as string
         const text = d.text as string
@@ -382,17 +377,6 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
           stream.currentBlocks.push(...newUserBlocks)
           stream._turnStartedAt = nextTurnStartedAt
           draft._pendingMessages = draft._pendingMessages.filter((msg) => !queuedIds.has(msg.id))
-        })
-        break
-      }
-
-      case 'desktop_notification': {
-        const kind = d.kind as string
-        if (kind !== 'assistant_done' && kind !== 'background_done' && kind !== 'reminder_fired') break
-        void sendDesktopNotification({
-          kind,
-          title: d.title as string,
-          body: d.body as string,
         })
         break
       }

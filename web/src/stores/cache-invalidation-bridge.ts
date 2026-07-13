@@ -133,10 +133,14 @@ function isInfiniteSessionData(value: unknown): value is InfiniteData<SessionPag
 }
 
 export function patchSessionTitle(
-  queryClient: Pick<QueryClient, 'setQueriesData'>,
+  queryClient: Pick<QueryClient, 'setQueriesData' | 'setQueryData'>,
   sessionId: string,
   title: string,
 ): void {
+  queryClient.setQueryData<SessionResponse>(
+    queryKeys.team.sessions.detail(sessionId),
+    (old) => old ? { ...old, title } : old,
+  )
   queryClient.setQueriesData<InfiniteData<SessionPageResponse>>(
     { queryKey: queryKeys.team.sessions.all() },
     (old) => {

@@ -17,6 +17,11 @@ router.ts     Route tree setup
 index.css     Tailwind v4 theme/global styles
 ```
 
+`hooks/use-global-event-stream.ts` owns the shared app-lifetime SSE feed
+for cross-session lifecycle and metadata events. Keep chat tokens/tools in the
+per-session store stream; global events should only refresh metadata, request
+native notifications, or tell the active session to attach its chat stream.
+
 ## Common feature checks
 
 - Backend API shape changed: update `api/client.ts`, query hooks, stores, and tests.

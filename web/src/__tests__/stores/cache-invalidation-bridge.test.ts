@@ -400,12 +400,11 @@ describe('patchSessionTitle', () => {
     })
   })
 
-  it('matches by exact queryKey prefix and skips non-infinite session caches', () => {
+  it('patches the detail cache while leaving unrelated team caches alone', () => {
     // ``queryKeys.team.sessions.all()`` returns ``['team', 'sessions']``
-    // and matches every key starting with that prefix (the infinite
-    // key is ``['team', 'sessions', 'infinite']``). Detail caches share
-    // that prefix too, so they must be skipped rather than treated as
-    // infinite query data. Other ``team.*`` caches must be left alone.
+    // and matches every key starting with that prefix (the infinite key is
+    // ``['team', 'sessions', 'infinite']``). Detail caches are not infinite
+    // data, so update them directly; unrelated ``team.*`` caches stay intact.
     const client = new QueryClient()
     seedInfinite(client, [[makeSession('s1', 'Old')]])
     client.setQueryData(queryKeys.team.sessions.detail('s1'), makeSession('s1', 'Detail'))
@@ -415,7 +414,7 @@ describe('patchSessionTitle', () => {
     patchSessionTitle(client, 's1', 'New')
 
     expect(readInfinite(client)!.pages[0].data[0].title).toBe('New')
-    expect(client.getQueryData(queryKeys.team.sessions.detail('s1'))).toEqual(makeSession('s1', 'Detail'))
+    expect(client.getQueryData(queryKeys.team.sessions.detail('s1'))).toEqual(makeSession('s1', 'New'))
     expect(client.getQueryData(queryKeys.team.files('s1'))).toEqual(['file-a.txt'])
     expect(client.getQueryData(queryKeys.team.status())).toEqual({ lead: 'x' })
   })

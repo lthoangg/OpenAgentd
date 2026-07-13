@@ -103,15 +103,8 @@ def import_config(
         # Detect explicit traversal attempts before resolving
         if ".." in Path(rel_str).parts:
             raise ValueError(f"path traversal detected in archive entry: {m.name!r}")
-        target = config_dir / rel_str
-        try:
-            target.resolve()
-        except (OSError, ValueError):
-            pass
-        # Extra safety: ensure the joined path is inside config_dir
-        # (resolve() may follow symlinks — use str prefix check on the
-        # normalised forms)
-        if not str(target).startswith(str(config_dir)):
+        target = (config_dir / rel_str).resolve()
+        if not target.is_relative_to(config_dir):
             raise ValueError(f"path traversal detected in archive entry: {m.name!r}")
 
     # ── 3. Extract ────────────────────────────────────────────────────────
@@ -120,7 +113,7 @@ def import_config(
     with tarfile.open(archive_path, "r:gz") as tf:
         for m in file_members:
             rel_str = m.name[len(ARCHIVE_ROOT) + 1 :]
-            target = config_dir / rel_str
+            target = (config_dir / rel_str).resolve()
 
             if target.exists() and not force:
                 result.files_skipped.append(rel_str)

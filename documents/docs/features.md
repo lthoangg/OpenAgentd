@@ -750,7 +750,9 @@ Desktop is primary. CLI / server is the developer path. Deeper doc:
   `.tar.gz` archive. `openagentd import <archive>` unpacks it on the target
   machine with fill-in-gaps merge (or `--force` to overwrite). API keys in
   `.env` are redacted by default; `--include-secrets` opts in for trusted
-  channels. DB and session workspaces are intentionally excluded.
+  channels. Imports resolve every destination inside the config root and reject
+  traversal through pre-existing symlinks `[v1.102.0]`. DB and session
+  workspaces are intentionally excluded.
 - **Cross-platform single-instance** `[v1.13.0]` — opening the app twice
   focuses the existing window instead of launching a duplicate.
 - **Desktop force reload respects backend mode** `[v1.68.0]` — external-server

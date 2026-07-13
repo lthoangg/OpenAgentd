@@ -455,6 +455,26 @@ class TestImportConfig:
         assert not (dest / "evil.md").exists()
         assert not (dest / "evil.md").is_symlink()
 
+    def test_import_rejects_destination_symlink_escape(self, tmp_path: Path):
+        """A destination symlink must not redirect an imported file outside config."""
+        arch = tmp_path / "symlink-escape.tar.gz"
+        with tarfile.open(arch, "w:gz") as tf:
+            content = b"evil"
+            fi = tarfile.TarInfo(name="openagentd-export/agents/lead.md")
+            fi.size = len(content)
+            tf.addfile(fi, io.BytesIO(content))
+
+        dest = tmp_path / "dest"
+        dest.mkdir()
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (dest / "agents").symlink_to(outside, target_is_directory=True)
+
+        with pytest.raises(ValueError, match="path traversal"):
+            import_config(arch, config_dir=dest)
+
+        assert not (outside / "lead.md").exists()
+
     def test_import_blocks_str_prefix_path_traversal(self, tmp_path: Path):
         """An entry with .. after the archive root prefix is rejected."""
         arch = tmp_path / "prefix-attack.tar.gz"

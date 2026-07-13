@@ -13,6 +13,7 @@ from app.cli.paths import _ROOT, _server_log
 from app.cli.pids import _find_pids, _write_pids
 from app.cli.server import _server_cmd
 from app.cli.ui import _bold, _dim, _print_banner, _yellow
+from app.core.runtime_settings import ServerSettings
 from app.core.server_settings import load_server_settings, save_server_settings
 
 
@@ -41,15 +42,8 @@ def _prompt_access_key() -> str:
     return key
 
 
-def _save_server_overrides(args: argparse.Namespace) -> None:
-    if not (
-        getattr(args, "lan", False)
-        or args.host
-        or args.port
-        or getattr(args, "key", False)
-    ):
-        return
-    cfg = load_server_settings()
+def _apply_server_overrides(args: argparse.Namespace, cfg: ServerSettings) -> None:
+    """Apply explicit CLI overrides in memory so they can be validated first."""
     if getattr(args, "lan", False):
         cfg.host = "0.0.0.0"
     elif args.host:
@@ -58,6 +52,16 @@ def _save_server_overrides(args: argparse.Namespace) -> None:
         cfg.port = args.port
     if getattr(args, "key", False):
         cfg.access_key = _prompt_access_key()
+
+
+def _save_server_overrides(args: argparse.Namespace, cfg: ServerSettings) -> None:
+    if not (
+        getattr(args, "lan", False)
+        or args.host
+        or args.port
+        or getattr(args, "key", False)
+    ):
+        return
     save_server_settings(cfg)
 
 
@@ -73,18 +77,21 @@ def cmd_start(args: argparse.Namespace) -> None:
     # before going any further. Headline UX is `openagentd` → working server.
     ensure_initialised()
 
-    _save_server_overrides(args)
-    args.port = _resolve_port(args.port)
-    args.host = _resolve_host(args)
     server_settings = load_server_settings()
+    _apply_server_overrides(args, server_settings)
+    port = _resolve_port(args.port)
+    host = _resolve_host(args)
     require_loopback_or_auth(
-        host=args.host,
+        host=host,
         has_auth=bool(
             os.environ.get("OPENAGENTD_DESKTOP_TOKEN")
             or os.environ.get("OPENAGENTD_ACCESS_KEY")
             or server_settings.access_key
         ),
     )
+    _save_server_overrides(args, server_settings)
+    args.port = port
+    args.host = host
 
     srv_log = _server_log()
 

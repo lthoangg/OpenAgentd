@@ -199,6 +199,29 @@ class TestBindAuthPolicy:
 
         popen.assert_not_called()
 
+    def test_start_does_not_save_non_loopback_override_without_authentication(self):
+        from types import SimpleNamespace
+
+        from app.cli.commands.start import cmd_start
+        from app.core.runtime_settings import ServerSettings
+
+        args = SimpleNamespace(
+            host="0.0.0.0", port=4082, lan=False, key=False, wait=False, watch=False
+        )
+        settings = ServerSettings(host="127.0.0.1", port=4082, access_key=None)
+        with (
+            patch("app.cli.commands.start._find_pids", return_value=[]),
+            patch("app.cli.commands.start.ensure_initialised"),
+            patch("app.cli.commands.start.load_server_settings", return_value=settings),
+            patch("app.cli.commands.start.save_server_settings") as save_settings,
+            patch("app.cli.commands.start.subprocess.Popen") as popen,
+            pytest.raises(SystemExit, match="--key.*access key"),
+        ):
+            cmd_start(args)
+
+        save_settings.assert_not_called()
+        popen.assert_not_called()
+
     def test_plain_restart_after_upgrade_uses_persisted_cli_server_key(self, tmp_path):
         from types import SimpleNamespace
 

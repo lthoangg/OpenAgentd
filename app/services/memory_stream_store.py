@@ -15,7 +15,7 @@ subscribers must share this process-local store.
 from __future__ import annotations
 
 import asyncio
-from typing import Any, AsyncGenerator, Literal, cast
+from typing import Any, AsyncGenerator
 
 from loguru import logger
 
@@ -441,10 +441,7 @@ async def attach(session_id: str) -> AsyncGenerator[dict[str, str], None]:
                 yield StreamEnvelope.from_event(
                     AgentStatusEvent(
                         agent=agent,
-                        status=cast(
-                            Literal["idle", "working", "offline", "error"],
-                            status,
-                        ),
+                        status=status,
                         metadata=state.agent_errors.get(agent, {}),
                     )
                 ).to_wire()

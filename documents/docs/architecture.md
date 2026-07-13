@@ -127,6 +127,22 @@ C4Component
 
 ### Overview
 
+OpenAgentd uses two deliberately separate SSE channels:
+
+- **Global app events** — `GET /api/events/stream` is a low-volume,
+  app-lifetime feed for cross-session lifecycle and metadata changes such as
+  `session_turn_started`, `title_update`, and `desktop_notification`.
+- **Per-session chat events** — `GET /api/team/{session_id}/stream` carries one
+  active turn's tokens, tools, agent lifecycle, errors, and completion.
+
+`app.services.event_broadcaster` fans global events to bounded per-client
+queues without retaining them. The shared frontend reconciles sessions over
+REST whenever this feed connects or reconnects, including app resume, because
+mobile suspension or a server
+restart can miss live-only events. A scheduled `session_turn_started` event
+causes the app to attach the existing per-session stream only when that session
+is currently displayed.
+
 Every chat turn is backed by an in-memory state blob + asyncio fan-out queues (one per SSE client). This enables:
 - **Fire-and-forget POST**: `POST /api/team/chat` returns 202 immediately, agent runs in background.
 - **Mid-turn reconnect**: clients that disconnect and reconnect receive buffered content.
@@ -181,7 +197,6 @@ All events flow server→client. Schemas live in `app/agent/schemas/events.py`; 
 | `rate_limit` | `StreamPublisherHook.on_rate_limit` | `retry_after`, `attempt`, `max_attempts` |
 | `provider_status` | Retry loop via `StreamPublisherHook` | `agent`, `status` (`retrying`\|`exhausted`), `model`, `attempt`, `max_attempts`, `delay_seconds`, `error_type`, `status_code` |
 | `permission_asked` | `StreamPublisherHook` (permission system) | `request_id`, `session_id`, `tool`, `patterns` |
-| `title_update` | `TitleGenerationHook` after first turn | `session_id`, `title` |
 | `error` | route exception handler | `message` |
 | `done` | `AgentTeam._try_emit_done` | — (turn-wide terminator) |
 

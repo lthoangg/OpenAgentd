@@ -2,12 +2,38 @@
 title: API Reference
 description: HTTP routes, SSE event protocol, file upload, workspace listing, media proxy, team chat, and planned speech endpoints.
 status: stable
-updated: 2026-06-29
+updated: 2026-07-13
 ---
 
 # API Reference
 
 FastAPI backend running on `:4082`. All routes are served under the `/api` prefix.
+
+## Application event endpoint
+
+| Method | Path | Returns |
+|--------|------|---------|
+| `GET` | `/api/events/stream` | Live, app-wide SSE lifecycle and metadata events |
+
+This low-volume stream is separate from chat streaming. It is used by the
+shared frontend for cross-session changes; chat tokens and tool
+events remain on `/api/team/{session_id}/stream`. Delivery is process-local and
+live-only, with no replay. Clients must reconcile DB-backed session state over
+REST after reconnecting or resuming.
+
+| Event | Payload | When |
+|-------|---------|------|
+| `session_turn_started` | `{session_id, source: "scheduled_task", task_slug, task_name, mode, workspace?, started_at}` | A scheduled prompt was dispatched and its session stream is ready to attach. |
+| `title_update` | `{session_id, title, updated_at}` | A generated title was committed to the session row. |
+| `desktop_notification` | `{notification_id, kind, session_id, title, body, metadata}` | An assistant completes or a scheduled reminder fires. |
+
+Capture the live feed or trigger an existing scheduled task after subscribing:
+
+```bash
+uv run python -m manual.global_events --wait 30
+uv run python -m manual.global_events --trigger-task <SLUG> \
+  --expect session_turn_started --expect desktop_notification
+```
 
 ## Team endpoints
 
@@ -458,7 +484,6 @@ data: {"name": "web_search", "tool_call_id": "tc_abc"}
 | `rate_limit` | `{retry_after?, attempt?, max_attempts?}` | Transient provider rate limit hit before a retry sleep. |
 | `error` | `{message, metadata?: {agent, exception}}` | Unrecoverable error. In team mode, emitted when the **lead** fails (member failures are routed to the lead via mailbox — see [`agent/teams.md`](../agent/teams.md#sse-events-team-specific)). The frontend surfaces this as an error toast via `useToastStore`. |
 | `done` | `{metadata?: {cancelled?: true}}` | Turn complete — DB is now authoritative. `cancelled: true` present when interrupted. Agent streams in `error` or `offline` status are **not** reset to `idle` by this event — those states persist until an explicit later lifecycle event. |
-| `title_update` | `{title}` | LLM-generated session title is ready. Fired on the first turn only, concurrently with the agent run. Pub/sub only — not replayed on reconnect. |
 
 ### Team-only events
 
@@ -693,7 +718,7 @@ Returns `{todos: []}` when the session todo file does not exist yet. `session_id
 | Field | Type | Notes |
 |-------|------|-------|
 | `id` | UUID | Session ID |
-| `title` | string? | Session title. Initially set to the first ~100 chars of the user message. Replaced by an LLM-generated title within ~1–2s via `title_update` SSE event on the first turn. |
+| `title` | string? | Session title. Initially set to the first ~100 chars of the user message. Replaced by an LLM-generated title within ~1–2s via the global `title_update` SSE event on the first turn. |
 | `agent_name` | string? | Agent name (team lead for team sessions) |
 | `created_at` | datetime? | |
 | `updated_at` | datetime? | |

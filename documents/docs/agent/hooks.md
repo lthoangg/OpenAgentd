@@ -317,7 +317,7 @@ hook = SessionLogHook(session_id=session_id, agent_name=agent_name)
 
 **File:** `title_generation.py`
 
-Generates an LLM-based session title on the first user turn and pushes a
+Generates an LLM-based session title on the first user turn and pushes a global
 `title_update` SSE event. Only injected for `role: lead` agents. Construct
 via `build_title_generation_hook` (reads title generation settings from
 `settings.yaml` and uses the built-in prompt); returns `None` when disabled or
@@ -333,9 +333,10 @@ model-less.
    *after* `dispatch_user_message` returns, so it is unavailable when the hook
    fires.
 
-`after_agent` does a best-effort `asyncio.wait_for` (default 3 s) so the
-`title_update` event arrives before `done`. Set `wait_timeout_seconds: 0` in
-the config for fully non-blocking mode.
+`after_agent` does a best-effort `asyncio.wait_for` (default 3 s) so the title
+usually lands near turn completion. The global title event and per-session
+`done` event have no ordering contract. Set `wait_timeout_seconds: 0` in the
+config for fully non-blocking mode.
 
 See [`title-generation.md`](../title-generation.md) for full configuration,
 LLM call details, SSE payload, client handling, and observability.

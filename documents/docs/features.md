@@ -772,10 +772,15 @@ The same HTTP + SSE API drives the desktop, browser, and mobile clients. Embed i
 - **REST + SSE chat API** `[since v1.0]` — `POST /api/team/chat` is
   fire-and-forget (returns 202 in <50ms); the agent streams events on
   `GET /api/team/{session_id}/stream`. Reconnect-safe replay.
+- **Global app event stream** `[v1.102.0]` — first-party clients keep a
+  lightweight `GET /api/events/stream` connection for cross-session
+  lifecycle and metadata events. Scheduled turns wake the matching session
+  stream, generated titles update every session surface, and native
+  notifications no longer depend on the originating chat being open.
 - **SSE event protocol** `[since v1.0]` — typed events: `thinking`, `message`,
   `tool_call`, `tool_start`, `tool_output_delta`, `tool_end`, `usage`,
   `inbox`, `agent_status`, `queued_turn_start`, `rate_limit`,
-  `provider_status`, `permission_asked`, `title_update`, `error`, `done`. See
+  `provider_status`, `permission_asked`, `error`, `done`. See
   [`architecture.md`](./architecture.md).
 - **Mid-turn reconnect** `[since v1.0]` — close the tab, reopen later; the
   stream replays buffered state then resumes live.

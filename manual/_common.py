@@ -40,12 +40,16 @@ def apply_env_override(args: argparse.Namespace) -> None:
         os.environ["APP_ENV"] = env
 
 
-def require_dev_server(base: str) -> None:
+def require_dev_server(base: str, *, access_key: str | None = None) -> None:
     """Fail fast when a manual smoke script is pointed at a non-dev server."""
 
+    headers = {"Authorization": f"Bearer {access_key}"} if access_key else None
     try:
         response = httpx.get(
-            f"{base.rstrip('/')}/diagnostics", params={"tail": 0}, timeout=10
+            f"{base.rstrip('/')}/diagnostics",
+            params={"tail": 0},
+            headers=headers,
+            timeout=10,
         )
         response.raise_for_status()
         data: dict[str, Any] = response.json()

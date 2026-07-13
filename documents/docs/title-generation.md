@@ -27,9 +27,10 @@ updated: 2026-07-13
    prompt's language. Tools are disabled, and thinking is disabled when the
    provider supports it.
 5. Title is cleaned (`_clean_title`) and written to `ChatSession.title` in DB.
-6. A `title_update` SSE event is pushed to the open stream.
+6. A `title_update` SSE event is pushed to the global app stream.
 7. `TitleGenerationHook.after_agent()` does a best-effort wait (default 3 s,
-   configurable — see below) so `title_update` arrives before the `done` event.
+   configurable — see below) so the title usually lands near turn completion;
+   the global and chat streams have no ordering contract.
 8. The client receives the event, updates the session title in the TanStack
    Query cache in-place (no re-fetch), and animates the title in the sidebar.
 
@@ -129,18 +130,19 @@ title_generation_hook_skipped reason=scheduled_task session_id=<uuid>
 The LLM call is fire-and-forget via `asyncio.create_task`. The hook stores
 the task handle on `self._task`.
 
-### Ordering guarantee (configurable)
+### Completion wait (configurable)
 
 `after_agent` does a best-effort wait on the background task so the
-`title_update` SSE event reaches the client before `done` is emitted. The
+generated title usually lands near the end of the first turn. The global
+`title_update` event and the per-session chat `done` event are independent, so
+clients must not rely on ordering between them. The
 wait is capped at `wait_timeout` seconds (default 3 s). On timeout or error,
 the wait is silently skipped — the title still arrives via SSE whenever the
 task finishes.
 
 Set `wait_timeout_seconds: 0` in the config file for fully non-blocking
-behavior — the agent loop emits `done` immediately; the `title_update` event
-races with reload-on-`done` but TanStack Query in-place patching handles the
-merge either way.
+behavior — the agent loop emits `done` immediately and the global title event
+updates the session whenever generation finishes.
 
 ---
 
@@ -192,28 +194,26 @@ fallback title stays.
 
 ---
 
-## SSE event
+## Global app event
 
 ```
 event: title_update
-data: {"type": "title_update", "title": "Japan trip planning"}
+data: {"session_id": "…", "title": "Japan trip planning", "updated_at": "2026-07-13T12:00:00Z"}
 ```
 
-Pushed after the DB write. Not replayed on reconnect (pub/sub only) — the DB
-title is the source of truth after `done`.
+Pushed on `GET /api/events/stream` after the DB write. It is no longer part of
+the per-session chat stream. Global events are not replayed, so the DB title
+remains authoritative after reconnect or app resume.
 
 ---
 
 ## Client handling
 
-Both `useChatStore` and `useTeamStore` store `sessionTitle: string | null` in
-state. On `title_update`, the store sets `sessionTitle`.
-
-Both route layouts (`chat.tsx`, `cockpit.tsx`) subscribe to the store and patch
-the cached session list on `sessionTitle` change. The team session list is an
-infinite query, so the cache shape is `InfiniteData<SessionPageResponse>` —
-the bridge maps over `pages[*].data`, not the wrapper object. See
-`web/src/routes/cockpit.tsx` (`title_update` branch) for the exact patch.
+The shared global event hook updates `useTeamStore.sessionTitle` when the
+event targets the displayed session and patches every matching session-list
+and detail cache. The team session list is an infinite query, so
+`patchSessionTitle` maps over `pages[*].data` rather than the wrapper object.
+Receiving a title event never opens a chat stream.
 
 `setQueriesData` patches the cache in-place — no network re-fetch.
 

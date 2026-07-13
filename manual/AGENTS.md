@@ -23,6 +23,7 @@ Multi-agent turns, history, todos, lifecycle, stop/continue/undo, queued message
 | `team_todos` | Print session todos; flag dependency/claim issues | `SESSION_ID` |
 | `team_usage` | Per-message usage metadata for a session | `SESSION_ID`, `--base` |
 | `team_sse` | Capture + pretty-print every SSE event (incl. lifecycle states) | `--session`, `--wait`, `--out`, `--no-summary` |
+| `global_events` | Capture app-global scheduler/title/notification SSE; optionally trigger an action and assert event types | `--trigger-task`, `--message`, `--expect`, `--wait`, `--out`, `--key` |
 | `team_spawn` | Exercise `team_manage` spawn/dismiss; stream per-agent content | `--message`, `--session`, `--wait`, `--out` |
 | `team_roster_lifecycle` | Fresh sessions carry no roster; stop → members `offline` | `--base`, `--wait` |
 | `team_message_idempotency` | Assert each turn's LLM window is an append-only prefix of the next (prompt-cache invariant); summarization rewrites treated as expected | `--session`, `--messages`, `--wait` |
@@ -44,6 +45,8 @@ uv run python -m manual.team_chat "Research the latest Python release"
 uv run python -m manual.team_chat "Summarise findings" --session <ID>    # follow-up
 uv run python -m manual.team_history <SESSION_ID>
 uv run python -m manual.team_sse "Ask the explorer to scan memory/" --out .openagentd/sse.jsonl
+uv run python -m manual.global_events --trigger-task daily-check --expect session_turn_started --expect desktop_notification
+uv run python -m manual.global_events --message "Explain Python context managers" --expect title_update --wait 180
 uv run python -m manual.team_open_task_nudge --direct                    # deterministic, no server
 uv run python -m manual.stop_mid_stream --only tool                      # single case
 uv run python -m manual.fast_mode --codex-model codex:gpt-5.4

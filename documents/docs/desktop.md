@@ -165,7 +165,17 @@ The formatting and decision logic (`format_summary_rows`, `format_footer`, `form
 
 Native desktop notifications use `tauri-plugin-notification` and are controlled from **Settings → Notifications**. They are enabled by default, skipped while the desktop window is focused, and can be tested with a forced notification from that settings page. Notification sounds are controlled by the operating system; OpenAgentd does not play an extra in-app sound.
 
-The backend emits `desktop_notification` SSE events for assistant completion and scheduled reminders, so completion notifications still fire even if the user has switched sessions. The frontend also emits a background-completion notification when a `bg` tool process exits or stops. Assistant completion text is session-centric: `Session completed` or `Session completed - <workspace>`, with the session title as the body when available.
+The app keeps a global `GET /api/events/stream` connection for
+`desktop_notification`, scheduled-session activation, and title changes. These
+events are independent of the currently open chat stream, so completion
+notifications still fire after the user switches sessions. Whenever the global
+feed connects or the window resumes, the app reconciles the current session
+over REST before
+reattaching its chat stream when needed. The frontend also emits a
+background-completion notification when a `bg` tool process exits or stops.
+Assistant completion text is session-centric: `Session completed` or
+`Session completed - <workspace>`, with the session title as the body when
+available.
 
 ## Native smoke contract
 

@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 from app.agent.agent_loop import Agent
 from app.agent import usage as usage_module
+from app.agent.checkpointer import InMemoryCheckpointer
+from app.agent.schemas.agent import RunConfig
 from app.agent.agent_loop.retry import (
     classify_provider_http_error,
     is_non_retryable_429,
@@ -1356,6 +1358,52 @@ async def test_agent_run_interrupt_event_stops_streaming():
     assert chunks_yielded == [] or last_assistant(msgs) is None or True
     # Most importantly — it didn't hang and returned cleanly
     assert isinstance(msgs, list)
+
+
+async def test_cancelled_stream_persists_partial_assistant_response():
+    """Cancelling an active turn keeps text already received from the provider."""
+    first_chunk_consumed = asyncio.Event()
+
+    class BlockingProvider(MockProvider):
+        def stream(
+            self,
+            messages: list[ChatMessage],
+            tools: list[dict] | None = None,
+            **kwargs,
+        ):
+            async def _gen():
+                yield make_text_chunk("Once upon a time")
+                first_chunk_consumed.set()
+                await asyncio.Event().wait()
+
+            return _gen()
+
+    checkpointer = InMemoryCheckpointer()
+    interrupt_event = asyncio.Event()
+    agent = Agent(name="bot", llm_provider=BlockingProvider([[]]))
+    task = asyncio.create_task(
+        agent.run(
+            [HumanMessage(content="Write a 500-word story.")],
+            config=RunConfig(session_id="story-session"),
+            interrupt_event=interrupt_event,
+            checkpointer=checkpointer,
+        )
+    )
+
+    await asyncio.wait_for(first_chunk_consumed.wait(), timeout=1)
+    interrupt_event.set()
+    task.cancel()
+    messages = await task
+
+    assistant = last_assistant(messages)
+    assert assistant is not None
+    assert assistant.content == "Once upon a time"
+
+    saved = await checkpointer.load("story-session")
+    assert saved is not None
+    saved_assistant = last_assistant(saved.messages)
+    assert saved_assistant is not None
+    assert saved_assistant.content == "Once upon a time"
 
 
 # ---------------------------------------------------------------------------

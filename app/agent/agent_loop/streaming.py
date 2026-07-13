@@ -74,6 +74,15 @@ async def _interruptible_stream(
                     {fetch, waiter},
                     return_when=asyncio.FIRST_COMPLETED,
                 )
+            except asyncio.CancelledError:
+                fetch.cancel()
+                if interrupt_event.is_set():
+                    try:
+                        await fetch
+                    except (asyncio.CancelledError, BaseException):
+                        pass
+                    return
+                raise
             except BaseException:
                 fetch.cancel()
                 raise

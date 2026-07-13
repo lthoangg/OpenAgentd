@@ -289,7 +289,7 @@ task = asyncio.create_task(agent.run(messages, interrupt_event=interrupt))
 interrupt.set()   # cancel mid-stream or mid-tool-execution
 ```
 
-Internal callers can use this cooperative event contract. The team HTTP Stop path is stronger: it also cancels the member's active activation task, which propagates cancellation into the current provider/tool await regardless of the provider's cooperative `support_interrupt` setting.
+Internal callers can use this cooperative event contract. The team HTTP Stop path is stronger: it also cancels the member's active activation task, which propagates cancellation into the current provider/tool await regardless of the provider's cooperative `support_interrupt` setting. For interruptible streams, text received before Stop is assembled and checkpointed as the partial assistant response rather than discarded.
 
 ### Non-interruptible providers
 

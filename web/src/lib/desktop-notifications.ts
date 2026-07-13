@@ -1,6 +1,6 @@
 import { getPlatform } from '@/hooks/use-platform'
 
-export type DesktopNotificationKind = 'assistant_done' | 'background_done' | 'reminder_fired'
+export type DesktopNotificationKind = 'assistant_done' | 'reminder_fired'
 export type DesktopNotificationStatus = 'sent' | 'disabled' | 'unsupported' | 'permission-denied' | 'error'
 
 export interface DesktopNotificationPayload {
@@ -45,11 +45,6 @@ export function areDesktopNotificationsEnabled(): boolean {
 export function setDesktopNotificationsEnabled(enabled: boolean): void {
   if (typeof window === 'undefined') return
   window.localStorage.setItem(ENABLED_KEY, String(enabled))
-}
-
-export function isBackgroundCompletion(toolName: string, result: string | undefined): boolean {
-  if (toolName !== 'bg' || !result) return false
-  return /PID \d+: (?:exited|stopped)/.test(result)
 }
 
 async function shouldNotify(options: { force?: boolean } = {}): Promise<DesktopNotificationResult | null> {

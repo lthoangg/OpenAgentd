@@ -130,4 +130,14 @@ describe('handleGlobalEvent', () => {
 
     expect(sendDesktopNotification).toHaveBeenCalledTimes(1)
   })
+
+  it('ignores background task completion notifications', async () => {
+    const client = new QueryClient()
+    const payload = { notification_id: 'notice-2', session_id: 'current', kind: 'background_done', title: 'Background task completed', body: 'Task done' }
+
+    const handled = await handleGlobalEvent(client, 'desktop_notification', payload, 1, () => 1)
+
+    expect(handled).toBe(false)
+    expect(sendDesktopNotification).not.toHaveBeenCalled()
+  })
 })

@@ -81,8 +81,6 @@ const mockSendDesktopNotification = mock(() => Promise.resolve()) as any
   health: mock(() => Promise.resolve({ status: "ok" })) as any,
 }));
 (mock as any).module("@/lib/desktop-notifications", () => ({
-  isBackgroundCompletion: (toolName: string, result?: string) =>
-    toolName === "bg" && !!result && /PID \d+: (?:exited|stopped)/.test(result),
   sendDesktopNotification: mockSendDesktopNotification,
 }))
 /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -825,7 +823,7 @@ describe("sendMessage: queue behaviour", () => {
     expect(textBlocks.map((block) => block.responseDurationMs)).toEqual([4700, 2900])
   })
 
-  it("notifies when a background process completes through bg", () => {
+  it("does not notify when a background process completes through bg", () => {
     useTeamStore.setState({
       sessionId: "session-a",
       leadName: "lead",
@@ -840,11 +838,7 @@ describe("sendMessage: queue behaviour", () => {
       result: "PID 123: exited (code 0)\nFinal output:\nok",
     })
 
-    expect(mockSendDesktopNotification).toHaveBeenCalledWith({
-      kind: "background_done",
-      title: "Background task completed",
-      body: "Session session-",
-    })
+    expect(mockSendDesktopNotification).not.toHaveBeenCalled()
   })
 
   it("does not notify directly from done because backend owns completion notifications", () => {

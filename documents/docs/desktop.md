@@ -170,10 +170,10 @@ The app keeps a global `GET /api/events/stream` connection for
 events are independent of the currently open chat stream, so completion
 notifications still fire after the user switches sessions. Whenever the global
 feed connects or the window resumes, the app reconciles the current session
-over REST before
-reattaching its chat stream when needed. The frontend also emits a
-background-completion notification when a `bg` tool process exits or stops.
-Assistant completion text is session-centric: `Session completed` or
+over REST before reattaching its chat stream when needed. Background-process
+completion notifications are deprecated; app clients do not emit them and
+ignore the legacy `background_done` event kind. Assistant completion text is
+session-centric: `Session completed` or
 `Session completed - <workspace>`, with the session title as the body when
 available.
 

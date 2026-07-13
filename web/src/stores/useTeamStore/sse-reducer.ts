@@ -17,31 +17,10 @@ import {
   TODO_MUTATING_TOOLS,
   extractToolPaths,
 } from './helpers'
-import { isBackgroundCompletion, sendDesktopNotification } from '@/lib/desktop-notifications'
 import type { CacheInvalidation, TeamStore } from './types'
 
 type Setter = (fn: (draft: TeamStore) => void) => void
 type Getter = () => TeamStore
-
-function compactSessionId(sessionId: string | null): string | null {
-  return sessionId ? sessionId.slice(0, 8) : null
-}
-
-function workspaceName(workspace: string | null): string | null {
-  if (!workspace) return null
-  return workspace.split('/').filter(Boolean).at(-1) ?? workspace
-}
-
-function sessionLabel(state: TeamStore): string {
-  const title = state.sessionTitle?.trim()
-  const id = compactSessionId(state.sessionId)
-  return title || (id ? `Session ${id}` : 'this session')
-}
-
-function codingWorkspaceSuffix(state: TeamStore): string {
-  const name = workspaceName(state._workspace)
-  return name ? ` - ${name}` : ''
-}
 
 function ensureAgent(draft: TeamStore, agent: string) {
   if (!draft.agentStreams[agent]) draft.agentStreams[agent] = createDefaultAgentStream()
@@ -205,14 +184,6 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
               serverDurationMs,
               mcpApp ? { mcp_app: mcpApp } : undefined,
             )
-          })
-        }
-        if (isBackgroundCompletion(toolName, result)) {
-          const state = get()
-          void sendDesktopNotification({
-            kind: 'background_done',
-            title: `Background task completed${codingWorkspaceSuffix(state)}`,
-            body: sessionLabel(state),
           })
         }
         const events: CacheInvalidation[] = []

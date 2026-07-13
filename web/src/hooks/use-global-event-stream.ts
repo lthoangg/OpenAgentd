@@ -64,7 +64,7 @@ export async function handleGlobalEvent(
   if (type === 'desktop_notification') {
     const id = typeof event.notification_id === 'string' ? event.notification_id : null
     const kind = event.kind
-    if (!id || (kind !== 'assistant_done' && kind !== 'background_done' && kind !== 'reminder_fired')) return false
+    if (!id || (kind !== 'assistant_done' && kind !== 'reminder_fired')) return false
     if (!rememberNotification(id)) return true
     if (typeof event.title !== 'string' || typeof event.body !== 'string') return false
     await sendDesktopNotification({ kind, title: event.title, body: event.body })

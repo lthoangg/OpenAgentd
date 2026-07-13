@@ -620,8 +620,8 @@ Four orthogonal ways to add capability. Deeper docs:
   on mtime change, token substitution. Compatible with the opencode skill spec.
   One nested namespace level (`parent/sub`) is supported `[v1.27.x]`; Settings
   lists the full runtime-visible catalog and can edit/delete non-bundled skills
-  in place `[v1.27.x]`. Bundled first-party skills include `browser-use` for
-  CLI-driven browser automation `[v1.43.4]`.
+  in place `[v1.27.x]`. The bundled `browser-use` skill for CLI-driven browser
+  automation is *(deprecated)* `[v1.43.4]`.
   - **Reference files and scripts support** `[v1.87.0, v1.92.0]` — fully compatible with the
     `agentskills.io` specification. Resolves `{SKILL_DIR}` and `${SKILL_DIR}` placeholders
     inside loaded skill instructions. Project-level skill directories resolve to clean relative

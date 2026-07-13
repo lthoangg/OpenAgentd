@@ -768,13 +768,6 @@ class TestBuiltinSkills:
             "skill-installer",
         }.issubset(result)
 
-    @pytest.mark.asyncio
-    async def test_builtin_skill_browser_use_dir_is_accessible(self):
-        """browser-use is a builtin skill with an auxiliary directory."""
-        body = await load_skill("browser-use")
-
-        assert "browser" in body.lower()
-
 
 # ---------------------------------------------------------------------------
 # Sub-skill support (one nested level)

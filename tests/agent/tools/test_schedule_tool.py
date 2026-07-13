@@ -859,6 +859,14 @@ def test_schedule_task_tool_has_description(clean_db):
     assert "schedule" in schedule_task.description.lower()
 
 
+def test_schedule_task_name_description_allows_human_readable_names(clean_db):
+    """The model should use a normal human-readable task name."""
+    params = schedule_task.definition["function"]["parameters"]["properties"]
+    assert params["name"]["description"] == (
+        "[create] Unique human-readable task name."
+    )
+
+
 def test_schedule_task_tool_definition(clean_db):
     """Verify tool definition is properly formatted."""
     definition = schedule_task.definition

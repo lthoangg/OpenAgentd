@@ -56,11 +56,7 @@ class ScheduleArgs(BaseModel):
     # ── create-only fields ──────────────────────────────────────────────
     name: str | None = Field(
         default=None,
-        description=(
-            "[create] Unique task name. "
-            "Pattern: ^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$. "
-            "Required for create."
-        ),
+        description="[create] Unique human-readable task name.",
     )
     schedule_type: Literal["at", "every", "cron"] | None = Field(
         default=None,

@@ -4,7 +4,13 @@ OpenAgentd is a desktop app that runs a team of AI agents on your machine. It's 
 
 ## Desktop app (recommended)
 
-A native double-click installer for users who don't want a terminal. The desktop build is a [Tauri 2](https://tauri.app) shell that embeds the React Web UI and launches a bundled Python API sidecar — no port to remember.
+The desktop build is a [Tauri 2](https://tauri.app) shell that embeds the React Web UI and launches a bundled Python API sidecar — no port to remember. Install the latest release for your platform with:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/lthoangg/openagentd/main/install.sh | sh
+```
+
+The installer supports macOS Apple Silicon and Debian/Ubuntu x86_64. The manual platform-specific options follow.
 
 ### macOS
 
@@ -109,7 +115,6 @@ uv tool install openagentd
 pipx install openagentd
 pip install --user openagentd
 brew install lthoangg/tap/openagentd
-curl -fsSL https://raw.githubusercontent.com/lthoangg/openagentd/main/install.sh | sh   # zero-setup: bootstraps uv, then installs
 ```
 
 The `lthoangg/tap/` prefix auto-taps the formula on first install — no separate `brew tap` step needed. Same isolation model as `uv tool`, slower install. On macOS Homebrew Python, Debian/Ubuntu system Python, and most modern distros, `pip install` may refuse with an `externally-managed-environment` error — use `uv tool install` or `pipx install` instead, or create a venv first.

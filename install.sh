@@ -1,50 +1,49 @@
 #!/bin/sh
-# install.sh — one-command installer for openagentd on macOS / Linux.
+# install.sh — one-command desktop app installer for OpenAgentd on macOS / Linux.
 #
 # Usage:
 #     curl -LsSf https://raw.githubusercontent.com/lthoangg/openagentd/main/install.sh | sh
-#     ./install.sh                           # local checkout
-#     ./install.sh --dev                     # install from GitHub main (pre-publish)
-#     ./install.sh --version 1.0.0           # pin a specific PyPI version
+#     ./install.sh
+#     ./install.sh --version 1.102.0
 #
-# What it does:
-#   1. Ensure `uv` is available (bootstrap from astral.sh/uv if missing).
-#   2. Run `uv tool install openagentd` so `openagentd` lands on PATH.
-#   3. Print next-step hint (`openagentd` auto-runs first-time setup).
-#
-# Design notes:
-#   - POSIX sh, not bash — runs on Alpine, BusyBox, default macOS sh.
-#   - `set -eu` aborts on any error or unset var; no `pipefail` (not POSIX).
-#   - Idempotent: rerunning upgrades the existing install (uv tool install
-#     replaces in place).
-#   - Never runs as root — uv installs to ~/.local/bin which is per-user.
+# Installs the macOS Apple Silicon app into /Applications or the Linux x86_64
+# .deb package through apt. Release artefacts are downloaded from GitHub.
 
 set -eu
 
 REPO="lthoangg/openagentd"
-PKG="openagentd"
+VERSION=""
 
-SOURCE="pypi"   # pypi | git
-VERSION=""      # optional pin, only meaningful for SOURCE=pypi
+usage() {
+    cat <<'EOF'
+OpenAgentd desktop app installer for macOS and Linux.
 
-# ── Argument parsing ────────────────────────────────────────────────────────
+Usage:
+    install.sh [--version VERSION]
+
+Options:
+    --version VERSION  Install a specific release (for example, 1.102.0).
+    -h, --help         Show this help.
+
+Supported platforms:
+    macOS 11+ on Apple Silicon
+    Debian/Ubuntu Linux on x86_64
+EOF
+}
+
 while [ $# -gt 0 ]; do
     case "$1" in
-        --dev)
-            SOURCE="git"
-            shift
-            ;;
         --version)
             shift
             if [ $# -eq 0 ]; then
                 echo "error: --version requires an argument" >&2
                 exit 2
             fi
-            VERSION="$1"
+            VERSION="${1#v}"
             shift
             ;;
         -h|--help)
-            sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+            usage
             exit 0
             ;;
         *)
@@ -55,7 +54,6 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-# ── Pretty output (only when stdout is a terminal) ──────────────────────────
 if [ -t 1 ]; then
     BOLD="$(printf '\033[1m')"
     DIM="$(printf '\033[2m')"
@@ -68,91 +66,99 @@ fi
 say()  { printf '%s\n' "$*"; }
 step() { printf '%s==>%s %s\n' "$GREEN" "$RESET" "$*"; }
 note() { printf '%s%s%s\n' "$DIM" "$*" "$RESET"; }
+fail() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
-# ── 1. uv ──────────────────────────────────────────────────────────────────
-ensure_uv() {
-    if command -v uv >/dev/null 2>&1; then
-        return 0
+command -v curl >/dev/null 2>&1 || fail "curl is required"
+
+resolve_version() {
+    if [ -z "$VERSION" ]; then
+        step "Finding the latest OpenAgentd desktop release"
+        release_url="$(curl -LsSf -o /dev/null -w '%{url_effective}' \
+            "https://github.com/${REPO}/releases/latest")" \
+            || fail "could not resolve the latest GitHub release"
+        VERSION="${release_url##*/}"
+        VERSION="${VERSION#v}"
     fi
 
-    step "Installing ${BOLD}uv${RESET} (Python package manager)"
-    note "    Source: https://astral.sh/uv/install.sh"
-
-    # Download to a temp file rather than piping to `sh` so a partial
-    # download can't execute half a script.
-    tmp="$(mktemp)"
-    trap 'rm -f "$tmp"' EXIT
-    if ! curl -LsSf https://astral.sh/uv/install.sh -o "$tmp"; then
-        echo "error: failed to download uv installer" >&2
-        exit 1
-    fi
-    sh "$tmp"
-    rm -f "$tmp"
-    trap - EXIT
-
-    # uv installs to ~/.local/bin (or $XDG_BIN_HOME); add to PATH for this
-    # shell so the next step works without a re-login.
-    if [ -d "$HOME/.local/bin" ]; then
-        PATH="$HOME/.local/bin:$PATH"
-    fi
-    if [ -d "${XDG_BIN_HOME:-}" ]; then
-        PATH="$XDG_BIN_HOME:$PATH"
-    fi
-    export PATH
-
-    if ! command -v uv >/dev/null 2>&1; then
-        cat >&2 <<EOF
-error: uv was installed but is not on PATH for this shell.
-       Open a new terminal and re-run this script, or add
-       \$HOME/.local/bin to PATH manually.
-EOF
-        exit 1
-    fi
-}
-
-# ── 2. install openagentd via uv tool ──────────────────────────────────────
-install_openagentd() {
-    case "$SOURCE" in
-        pypi)
-            if [ -n "$VERSION" ]; then
-                spec="${PKG}==${VERSION}"
-            else
-                spec="$PKG"
-            fi
-            step "Installing ${BOLD}${spec}${RESET} from PyPI"
-            uv tool install --force "$spec"
-            ;;
-        git)
-            spec="git+https://github.com/${REPO}@main"
-            step "Installing ${BOLD}${PKG}${RESET} from ${REPO}@main"
-            uv tool install --force "$spec"
-            ;;
-        *)
-            echo "internal error: unknown SOURCE=$SOURCE" >&2
-            exit 1
+    case "$VERSION" in
+        ""|*[!A-Za-z0-9._-]*)
+            fail "invalid version: $VERSION"
             ;;
     esac
 }
 
-# ── 3. report ──────────────────────────────────────────────────────────────
-report() {
-    say ""
-    step "${BOLD}Installed!${RESET}"
-    if command -v openagentd >/dev/null 2>&1; then
-        version="$(openagentd --version 2>/dev/null || echo unknown)"
-        note "    openagentd $version"
-    else
-        cat >&2 <<EOF
-warning: 'openagentd' is not on PATH for this shell.
-         Open a new terminal, or add \$HOME/.local/bin to PATH.
-EOF
-    fi
-    say ""
-    say "Next: run ${BOLD}openagentd${RESET} to launch the server."
-    note "      First run walks you through provider + model selection."
-    say ""
+install_macos() {
+    arch="$(uname -m)"
+    [ "$arch" = "arm64" ] || fail "macOS desktop releases require Apple Silicon (found $arch)"
+    command -v tar >/dev/null 2>&1 || fail "tar is required"
+
+    asset="OpenAgentd.app.tar.gz"
+    url="https://github.com/${REPO}/releases/download/v${VERSION}/${asset}"
+    archive="$tmpdir/$asset"
+
+    step "Downloading ${BOLD}OpenAgentd ${VERSION}${RESET} for macOS"
+    note "    Source: $url"
+    curl -LsSf --retry 3 -o "$archive" "$url" \
+        || fail "failed to download $asset"
+
+    step "Extracting the desktop app"
+    tar -xzf "$archive" -C "$tmpdir"
+    bundle="$tmpdir/OpenAgentd.app"
+    [ -d "$bundle" ] || fail "the release archive does not contain OpenAgentd.app"
+
+    helper="$bundle/Contents/Resources/install.sh"
+    [ -f "$helper" ] || fail "the release archive does not contain the desktop installer"
+
+    step "Installing ${BOLD}OpenAgentd.app${RESET} into /Applications"
+    # The bundled installer removes quarantine, applies the required local
+    # ad-hoc signature, verifies it, and copies the app into /Applications.
+    bash "$helper" --install "$bundle"
 }
 
-ensure_uv
-install_openagentd
-report
+install_linux() {
+    arch="$(uname -m)"
+    case "$arch" in
+        x86_64|amd64) ;;
+        *) fail "Linux desktop releases require x86_64 (found $arch)" ;;
+    esac
+    command -v apt-get >/dev/null 2>&1 \
+        || fail "Linux desktop installation currently requires Debian/Ubuntu (apt-get)"
+
+    asset="OpenAgentd_${VERSION}_amd64.deb"
+    url="https://github.com/${REPO}/releases/download/v${VERSION}/${asset}"
+    package="$tmpdir/$asset"
+
+    step "Downloading ${BOLD}OpenAgentd ${VERSION}${RESET} for Linux"
+    note "    Source: $url"
+    curl -LsSf --retry 3 -o "$package" "$url" \
+        || fail "failed to download $asset"
+
+    step "Installing the ${BOLD}OpenAgentd desktop app${RESET}"
+    if [ "$(id -u)" -eq 0 ]; then
+        apt-get install -y "$package"
+    elif command -v sudo >/dev/null 2>&1; then
+        sudo apt-get install -y "$package"
+    else
+        fail "sudo is required to install the Linux desktop package"
+    fi
+}
+
+resolve_version
+
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT HUP INT TERM
+
+case "$(uname -s)" in
+    Darwin) install_macos ;;
+    Linux) install_linux ;;
+    *) fail "unsupported platform: $(uname -s)" ;;
+esac
+
+say ""
+step "${BOLD}Installed OpenAgentd ${VERSION}!${RESET}"
+case "$(uname -s)" in
+    Darwin) say "Next: open ${BOLD}OpenAgentd${RESET} from Applications." ;;
+    Linux)  say "Next: open ${BOLD}OpenAgentd${RESET} from your application menu." ;;
+esac
+note "      The desktop app includes and manages its own local server."
+say ""

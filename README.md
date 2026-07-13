@@ -97,7 +97,11 @@ Full capability matrix (incl. Aider + opencode): [`documents/docs/comparison.md`
 
 ## Quick start
 
-**Desktop app** (double-click install, no terminal) — download from the [latest release](https://github.com/lthoangg/openagentd/releases/latest). OpenAgentd is the primary desktop cockpit on macOS and Linux, with support for multiple app windows and coding worktree sessions:
+**Desktop app** — install the latest release with one command, or download it from the [latest release](https://github.com/lthoangg/openagentd/releases/latest). OpenAgentd is the primary desktop cockpit on macOS and Linux, with support for multiple app windows and coding worktree sessions:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/lthoangg/openagentd/main/install.sh | sh
+```
 
 | Platform | Artefact | First-launch note |
 |---|---|---|
@@ -119,7 +123,6 @@ Then right-click **OpenAgentd.app → Open** the first time (single-click won't 
 # macOS / Linux
 uv tool install openagentd        # recommended
 brew install lthoangg/tap/openagentd
-curl -fsSL https://raw.githubusercontent.com/lthoangg/openagentd/main/install.sh | sh   # zero-setup: bootstraps uv, then installs
 ```
 
 ```bash

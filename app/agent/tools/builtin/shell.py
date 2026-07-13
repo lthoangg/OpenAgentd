@@ -11,9 +11,8 @@ Design parity with opencode's bash.ts:
 - ``workdir`` parameter (optional): run the command in a specific directory.
   Relative paths resolve inside the sandbox workspace. Absolute paths are
   allowed when the caller intentionally needs to run outside the workspace.
-- Abort via ``asyncio.Event``: callers can inject an ``asyncio.Event`` via
-  the injected ``_state`` mechanism; the shell tool checks ``interrupt_event``
-  from the run context when the helper is called from the agent loop.
+- Abort via task cancellation: foreground commands and background commands still
+  in startup are killed as a process group before cancellation propagates.
 - Default timeout raised to 120 seconds (2 minutes) matching opencode.
 - Background mode preserved for long-running processes (dev servers etc.).
 
@@ -432,7 +431,18 @@ async def _shell(
 
             # Wait up to 3s to capture initial output and detect instant crashes
             warmup_secs = min(max(3, timeout_seconds or 3), 5)
-            await asyncio.sleep(warmup_secs)
+            try:
+                await asyncio.sleep(warmup_secs)
+            except asyncio.CancelledError:
+                _kill_process_group(proc, signal.SIGKILL)
+                await proc.wait()
+                bg._reader_task.cancel()
+                try:
+                    await bg._reader_task
+                except asyncio.CancelledError:
+                    pass
+                _bg_processes.pop(bg.pid, None)
+                raise
 
             if not bg.alive:
                 del _bg_processes[bg.pid]
@@ -514,6 +524,10 @@ async def _shell(
                 logger.debug("shell_postkill_drain_failed error={!r}", exc)
             await proc.wait()
             aborted = True
+        except asyncio.CancelledError:
+            _kill_process_group(proc, signal.SIGKILL)
+            await proc.wait()
+            raise
         finally:
             flusher_task.cancel()
             try:

@@ -196,6 +196,9 @@ Line numbers drift; the canonical reference is the `logger.info("event_name …"
 | `tool_done` | INFO | `agent`, `tool`, `elapsed`, `result_len` | After successful tool execution |
 | `tool_result_preview` | DEBUG | `agent`, `tool`, `result` (first ~1000 chars) | Tool output snippet |
 | `tool_cancelled` | INFO | `agent`, `tool` | Tool cancelled mid-execution by interrupt |
+| `tool_cancellation_timeout` | WARNING | `agent`, `pending_tools` | One or more tools did not stop within the bounded cancellation wait |
+| `tool_cancellation_pending` | WARNING | `agent`, `tool` | A cancellation-resistant tool remains owned and is still stopping |
+| `team_interrupt_user_shells` | INFO | `session_id`, `cancelled` | Direct `!command` tasks cancelled and awaited for an interrupted session |
 | `tool_error` | ERROR | `agent`, `tool`, `elapsed`, `error` | Tool execution failed |
 | `tool_call_index_collision` | WARNING | `idx`, `existing_id`, `new_id` | Multiple tool calls collided on the same `.index` |
 | `tool_call_orphans_healed` | WARNING | `session_id`, `count`, `ids` | Synthetic tool replies inserted on crash recovery |

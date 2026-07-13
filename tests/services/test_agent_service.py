@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -18,6 +19,7 @@ from app.services.agent_service import (
     _validate_ext_mime_consistency,
     _validate_magic_bytes,
     categorize,
+    dispatch_user_shell_command,
     dispatch_user_message,
     interrupt_team,
     require_team,
@@ -637,6 +639,44 @@ async def test_dispatch_with_attachments_prefers_provided_session_id(tmp_path):
 
 
 # ── interrupt_team ────────────────────────────────────────────────────────────
+
+
+async def test_interrupt_team_cancels_direct_user_shell_task():
+    started = asyncio.Event()
+    cancelled = asyncio.Event()
+
+    async def blocking_shell(*args, **kwargs):
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+
+    team = MagicMock()
+    team.members = {}
+    team.all_members = []
+    team.lead.session_id = None
+
+    with (
+        patch(
+            "app.services.agent_service.dispatch_shell_command",
+            side_effect=blocking_shell,
+        ),
+        patch("app.services.agent_service.stream_store.init_turn", new=AsyncMock()),
+        patch("app.services.agent_service.stream_store.push_event", new=AsyncMock()),
+        patch("app.services.agent_service.stream_store.mark_done", new=AsyncMock()),
+    ):
+        await dispatch_user_shell_command(
+            team,
+            command="sleep 60",
+            session_id="sess-1",
+        )
+        await asyncio.wait_for(started.wait(), timeout=1)
+
+        await interrupt_team(team, session_id="sess-1")
+
+    assert cancelled.is_set()
 
 
 @pytest.mark.asyncio

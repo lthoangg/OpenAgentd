@@ -12,6 +12,7 @@ Covers the rewritten shell tool:
 from __future__ import annotations
 
 import asyncio
+import os
 import signal
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -209,6 +210,53 @@ async def test_execute_basic_command(sandbox_workspace):
     result = await shell_tool.arun(command="echo 'hello world'")
     assert "[Succeeded]" in result
     assert "hello world" in result
+
+
+@pytest.mark.asyncio
+async def test_cancelling_foreground_shell_terminates_process_group(sandbox_workspace):
+    process_started = asyncio.Event()
+    shell_pid: int | None = None
+
+    async def capture_output(output: str) -> None:
+        nonlocal shell_pid
+        shell_pid = int(output.strip())
+        process_started.set()
+
+    task = asyncio.create_task(_shell("echo $$; sleep 60", _tool_output=capture_output))
+    await asyncio.wait_for(process_started.wait(), timeout=2)
+
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert shell_pid is not None
+    with pytest.raises(ProcessLookupError):
+        os.kill(shell_pid, 0)
+
+
+@pytest.mark.asyncio
+async def test_cancelling_background_shell_during_startup_terminates_process(
+    sandbox_workspace, monkeypatch
+):
+    warmup_started = asyncio.Event()
+
+    async def block_warmup(_delay: float) -> None:
+        warmup_started.set()
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr("app.agent.tools.builtin.shell.asyncio.sleep", block_warmup)
+
+    task = asyncio.create_task(_shell("sleep 60", background=True))
+    await asyncio.wait_for(warmup_started.wait(), timeout=1)
+    [pid] = list(_bg_processes)
+
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert pid not in _bg_processes
+    with pytest.raises(ProcessLookupError):
+        os.kill(pid, 0)
 
 
 @pytest.mark.asyncio

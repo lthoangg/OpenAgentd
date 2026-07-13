@@ -30,6 +30,9 @@ from app.services.shell_service import dispatch_shell_command
 from app.services.stream_envelope import StreamEnvelope
 
 
+_user_shell_tasks: dict[str, set[asyncio.Task[None]]] = {}
+
+
 def _uploads_dir(session_id: str, workspace: str | None = None) -> Path:
     return session_uploads_dir(session_id, workspace)
 
@@ -579,7 +582,19 @@ async def dispatch_user_shell_command(
             await stream_store.push_event(sid, StreamEnvelope.from_event(DoneEvent()))
             await stream_store.mark_done(sid)
 
-    asyncio.create_task(_run_shell(), name=f"user_shell:{sid}")
+    task = asyncio.create_task(_run_shell(), name=f"user_shell:{sid}")
+    session_tasks = _user_shell_tasks.setdefault(sid, set())
+    session_tasks.add(task)
+
+    def _discard_finished_shell(finished: asyncio.Task[None]) -> None:
+        tasks = _user_shell_tasks.get(sid)
+        if tasks is None:
+            return
+        tasks.discard(finished)
+        if not tasks:
+            _user_shell_tasks.pop(sid, None)
+
+    task.add_done_callback(_discard_finished_shell)
     logger.info("agent_service_shell_dispatched session_id={}", sid)
     return sid
 
@@ -594,6 +609,21 @@ async def interrupt_team(team: "AgentTeam", session_id: str | None) -> list[str]
 
     names: list[str] = []
     effective_session_id = session_id or getattr(team.lead, "session_id", None)
+
+    direct_shell_tasks = (
+        list(_user_shell_tasks.pop(effective_session_id, ()))
+        if effective_session_id
+        else []
+    )
+    for task in direct_shell_tasks:
+        task.cancel()
+    if direct_shell_tasks:
+        await asyncio.gather(*direct_shell_tasks, return_exceptions=True)
+        logger.info(
+            "team_interrupt_user_shells session_id={} cancelled={}",
+            effective_session_id,
+            len(direct_shell_tasks),
+        )
 
     live_members = getattr(team, "members", {})
     if isinstance(live_members, dict):

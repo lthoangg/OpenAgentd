@@ -171,7 +171,9 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
     Loaded via the `oad/plan` skill.
 - **Bang shell commands** `[v1.39.0]` — start a message with `!` to run the
   remainder directly through the shell tool without a model turn; history stores
-  the run as structured shell tool output. See [`shell-commands.md`](./shell-commands.md).
+  the run as structured shell tool output. Stop terminates active direct and
+  foreground shell process groups; acknowledged background PIDs remain managed
+  through `bg`. See [`shell-commands.md`](./shell-commands.md).
 - **Drag-and-drop files into chat** `[since v1.0, v1.82.0]` — drag files (images, PDFs, text, etc.) anywhere onto the chat area (both cockpit and coding views) to show a drop overlay and attach them to the composer. Supports multi-file drops, file-type filtering, and cancellation.
 - **Composer history navigation** `[v1.32.0]` — when the input is empty, `↑` / `↓`
   walks previous user prompts from the current chat plus local submissions. See

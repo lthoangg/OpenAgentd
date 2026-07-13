@@ -2,7 +2,7 @@
 title: Shell commands from chat
 description: Run opencode-style `!command` shell commands from the OpenAgentd composer or API without asking the model to decide on a tool call.
 status: stable
-updated: 2026-05-31
+updated: 2026-07-13
 ---
 
 # Shell commands from chat
@@ -72,6 +72,17 @@ to attach files.
 In coding sessions, a `!command` is a normal visible user turn for `/undo` and
 `/redo`: undo can target the `!command` row and restore the associated workspace
 snapshot just like any other user turn.
+
+## Stop and background processes
+
+Pressing **Stop** terminates a running `!command` and any foreground shell
+process group started by the active agent turn. A command cancelled during
+`background=true` startup is also terminated and removed from the background
+process registry.
+
+After a background command has successfully returned a PID, it intentionally
+continues beyond the agent turn. Use `bg` with `action="stop"` to terminate that
+acknowledged background process.
 
 ## API
 

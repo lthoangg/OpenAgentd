@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from datetime import datetime, timezone
 from uuid import UUID
 
 from loguru import logger
@@ -22,11 +23,10 @@ from opentelemetry.trace import SpanKind, StatusCode
 from app.agent.usage import set_usage_span_attributes
 from app.agent.providers.base import LLMProviderBase
 from app.agent.schemas.chat import ChatMessage, HumanMessage, SystemMessage
-from app.agent.schemas.events import TitleUpdateEvent
 from app.core.db import DbFactory
 from app.core.otel import get_tracer
 from app.models.chat import ChatSession
-from app.services import memory_stream_store as stream_store
+from app.services import event_broadcaster
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
@@ -164,11 +164,13 @@ async def generate_and_save_title(
                 db.add(session)
                 await db.commit()
 
-            from app.services.stream_envelope import StreamEnvelope
-
-            await stream_store.push_event(
-                session_id_str,
-                StreamEnvelope.from_event(TitleUpdateEvent(title=title)),
+            await event_broadcaster.publish(
+                "title_update",
+                {
+                    "session_id": session_id_str,
+                    "title": title,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                },
             )
 
             span.set_attribute("title_generation.title_length", len(title))

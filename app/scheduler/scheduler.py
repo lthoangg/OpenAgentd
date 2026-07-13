@@ -18,6 +18,7 @@ from sqlmodel import col, select
 from app.core.db import DbFactory
 from app.scheduler.cron import next_fire
 from app.scheduler.models import ScheduledTask
+from app.services import event_broadcaster
 
 if TYPE_CHECKING:
     from app.scheduler.schemas import ScheduledTaskCreate, ScheduledTaskUpdate
@@ -700,6 +701,19 @@ class TaskScheduler:
                 mode=task.mode,
                 workspace=task.workspace,
             )
+            if fired_sid:
+                await event_broadcaster.publish(
+                    "session_turn_started",
+                    {
+                        "session_id": fired_sid,
+                        "source": "scheduled_task",
+                        "task_slug": task.slug,
+                        "task_name": task.name,
+                        "mode": task.mode,
+                        "workspace": task.workspace,
+                        "started_at": datetime.now(_utc).isoformat(),
+                    },
+                )
         except NoTeamConfigured as exc:
             error = str(exc)
             logger.warning(

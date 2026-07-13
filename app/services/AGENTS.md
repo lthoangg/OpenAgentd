@@ -9,6 +9,7 @@ chat_service.py          Chat/session orchestration
 team_manager.py          Team construction and session routing
 stream_envelope.py       SSE envelope helpers
 memory_stream_store.py   In-memory stream state
+event_broadcaster.py     Live-only global app event fan-out (scheduler/title/notifications)
 agent_fs.py              Agent/workspace filesystem helpers
 snapshot_service.py      Workspace/session snapshot support
 commands.py              Command handling helpers

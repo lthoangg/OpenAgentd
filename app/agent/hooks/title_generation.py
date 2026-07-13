@@ -2,14 +2,15 @@
 
 Fires a background ``asyncio.create_task`` in ``before_agent`` when the
 conversation has no prior assistant messages (i.e. the first user turn).
-The LLM call, DB write, and ``title_update`` SSE event are handled entirely
-by :func:`~app.services.title_service.generate_and_save_title` — this hook
-just decides *when* to trigger it.
+The LLM call, DB write, and global ``title_update`` SSE event are handled
+entirely by :func:`~app.services.title_service.generate_and_save_title` — this
+hook just decides *when* to trigger it.
 
 Because the task is fire-and-forget, the agent loop is never blocked by the
 LLM call itself. ``after_agent`` performs a best-effort ``await`` on the task
-so the ``title_update`` SSE arrives before ``done`` is emitted, but the wait
-is capped by ``wait_timeout`` (default ``3.0`` s, configurable via
+so the title usually lands near chat completion, but the global and chat
+streams have no ordering contract. The wait is capped by ``wait_timeout``
+(default ``3.0`` s, configurable via
 ``.openagentd/config/settings.yaml``). Set ``wait_timeout=0`` to make
 the hook fully non-blocking — the title still lands via SSE whenever it is
 ready.
@@ -184,7 +185,7 @@ class TitleGenerationHook(BaseAgentHook):
 
         if self._wait_timeout <= 0:
             # Non-blocking mode: leave the task running in the background.
-            # It will push the title_update SSE event when it finishes.
+            # It will push the global title_update event when it finishes.
             return
 
         try:

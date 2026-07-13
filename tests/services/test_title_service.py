@@ -170,7 +170,7 @@ class TestGenerateAndSaveTitle:
             engine, class_=AsyncSession, expire_on_commit=False
         )
 
-        with patch("app.services.title_service.stream_store.push_event") as mock_push:
+        with patch("app.services.title_service.event_broadcaster.publish") as mock_push:
             mock_push.return_value = None
 
             # Act
@@ -187,8 +187,10 @@ class TestGenerateAndSaveTitle:
             assert chat_session.title == "Japan Trip Planning"
             mock_push.assert_called_once()
             call_args = mock_push.call_args
-            assert call_args[0][0] == str(chat_session.id)
-            assert call_args[0][1].event == "title_update"
+            assert call_args[0][0] == "title_update"
+            assert call_args[0][1]["session_id"] == str(chat_session.id)
+            assert call_args[0][1]["title"] == "Japan Trip Planning"
+            assert "updated_at" in call_args[0][1]
 
     @pytest.mark.asyncio
     async def test_message_truncated_to_500_chars(self, engine, session, mock_provider):
@@ -205,7 +207,7 @@ class TestGenerateAndSaveTitle:
             engine, class_=AsyncSession, expire_on_commit=False
         )
 
-        with patch("app.services.title_service.stream_store.push_event"):
+        with patch("app.services.title_service.event_broadcaster.publish"):
             # Act
             await generate_and_save_title(
                 session_id=chat_session.id,
@@ -239,7 +241,7 @@ class TestGenerateAndSaveTitle:
             engine, class_=AsyncSession, expire_on_commit=False
         )
 
-        with patch("app.services.title_service.stream_store.push_event"):
+        with patch("app.services.title_service.event_broadcaster.publish"):
             # Act
             await generate_and_save_title(
                 session_id=chat_session.id,
@@ -269,7 +271,7 @@ class TestGenerateAndSaveTitle:
             engine, class_=AsyncSession, expire_on_commit=False
         )
 
-        with patch("app.services.title_service.stream_store.push_event") as mock_push:
+        with patch("app.services.title_service.event_broadcaster.publish") as mock_push:
             # Act & Assert (no exception raised)
             await generate_and_save_title(
                 session_id=chat_session.id,
@@ -301,7 +303,7 @@ class TestGenerateAndSaveTitle:
             engine, class_=AsyncSession, expire_on_commit=False
         )
 
-        with patch("app.services.title_service.stream_store.push_event") as mock_push:
+        with patch("app.services.title_service.event_broadcaster.publish") as mock_push:
             # Act & Assert (no exception raised)
             await generate_and_save_title(
                 session_id=chat_session.id,
@@ -332,7 +334,7 @@ class TestGenerateAndSaveTitle:
             engine, class_=AsyncSession, expire_on_commit=False
         )
 
-        with patch("app.services.title_service.stream_store.push_event") as mock_push:
+        with patch("app.services.title_service.event_broadcaster.publish") as mock_push:
             # Act
             await generate_and_save_title(
                 session_id=chat_session.id,
@@ -363,7 +365,7 @@ class TestGenerateAndSaveTitle:
             engine, class_=AsyncSession, expire_on_commit=False
         )
 
-        with patch("app.services.title_service.stream_store.push_event") as mock_push:
+        with patch("app.services.title_service.event_broadcaster.publish") as mock_push:
             # Act
             await generate_and_save_title(
                 session_id=chat_session.id,
@@ -391,7 +393,7 @@ class TestGenerateAndSaveTitle:
             engine, class_=AsyncSession, expire_on_commit=False
         )
 
-        with patch("app.services.title_service.stream_store.push_event") as mock_push:
+        with patch("app.services.title_service.event_broadcaster.publish") as mock_push:
             # Act
             await generate_and_save_title(
                 session_id=nonexistent_session_id,
@@ -418,7 +420,7 @@ class TestGenerateAndSaveTitle:
             engine, class_=AsyncSession, expire_on_commit=False
         )
 
-        with patch("app.services.title_service.stream_store.push_event"):
+        with patch("app.services.title_service.event_broadcaster.publish"):
             # Act
             await generate_and_save_title(
                 session_id=chat_session.id,
@@ -448,7 +450,7 @@ class TestGenerateAndSaveTitle:
             engine, class_=AsyncSession, expire_on_commit=False
         )
 
-        with patch("app.services.title_service.stream_store.push_event"):
+        with patch("app.services.title_service.event_broadcaster.publish"):
             # Act
             await generate_and_save_title(
                 session_id=chat_session.id,
@@ -494,7 +496,7 @@ class TestGenerateAndSaveTitle:
             engine, class_=AsyncSession, expire_on_commit=False
         )
 
-        with patch("app.services.title_service.stream_store.push_event"):
+        with patch("app.services.title_service.event_broadcaster.publish"):
             await generate_and_save_title(
                 session_id=chat_session.id,
                 user_message="hi",
@@ -530,7 +532,7 @@ class TestGenerateAndSaveTitle:
             engine, class_=AsyncSession, expire_on_commit=False
         )
 
-        with patch("app.services.title_service.stream_store.push_event") as mock_push:
+        with patch("app.services.title_service.event_broadcaster.publish") as mock_push:
             # Act
             await generate_and_save_title(
                 session_id=chat_session.id,
@@ -542,14 +544,13 @@ class TestGenerateAndSaveTitle:
 
             # Assert
             call_args = mock_push.call_args
-            session_id_str = call_args[0][0]
-            envelope = call_args[0][1]
+            event = call_args[0][0]
+            payload = call_args[0][1]
 
-            assert session_id_str == str(chat_session.id)
-            assert envelope.event == "title_update"
-            # data is a parsed dict on the envelope; wire form is a JSON string
-            assert isinstance(envelope.data, dict)
-            assert isinstance(envelope.to_wire()["data"], str)
+            assert event == "title_update"
+            assert payload["session_id"] == str(chat_session.id)
+            assert payload["title"] == "Test Title"
+            assert isinstance(payload["updated_at"], str)
 
     @pytest.mark.asyncio
     async def test_title_truncated_to_255_chars_before_save(
@@ -568,7 +569,7 @@ class TestGenerateAndSaveTitle:
             engine, class_=AsyncSession, expire_on_commit=False
         )
 
-        with patch("app.services.title_service.stream_store.push_event"):
+        with patch("app.services.title_service.event_broadcaster.publish"):
             # Act
             await generate_and_save_title(
                 session_id=chat_session.id,
@@ -600,7 +601,7 @@ class TestGenerateAndSaveTitle:
             engine, class_=AsyncSession, expire_on_commit=False
         )
 
-        with patch("app.services.title_service.stream_store.push_event") as mock_push:
+        with patch("app.services.title_service.event_broadcaster.publish") as mock_push:
             # Act
             await generate_and_save_title(
                 session_id=chat_session.id,
@@ -631,7 +632,7 @@ class TestGenerateAndSaveTitle:
             engine, class_=AsyncSession, expire_on_commit=False
         )
 
-        with patch("app.services.title_service.stream_store.push_event") as mock_push:
+        with patch("app.services.title_service.event_broadcaster.publish") as mock_push:
             # Act
             await generate_and_save_title(
                 session_id=chat_session.id,
@@ -660,7 +661,7 @@ class TestGenerateAndSaveTitle:
             engine, class_=AsyncSession, expire_on_commit=False
         )
 
-        with patch("app.services.title_service.stream_store.push_event"):
+        with patch("app.services.title_service.event_broadcaster.publish"):
             # Act
             await generate_and_save_title(
                 session_id=chat_session.id,

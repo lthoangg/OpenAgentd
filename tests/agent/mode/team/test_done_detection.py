@@ -78,28 +78,35 @@ class TestDoneDetectionMixedStates:
         team.members["worker"].state = "idle"
 
         pushed = []
+        notifications = []
 
         async def fake_push(sid, event):
             pushed.append(event)
 
-        with patch("app.services.memory_stream_store.push_event", new=fake_push):
-            with patch(
-                "app.services.memory_stream_store.mark_done", new_callable=AsyncMock
-            ):
-                await team._try_emit_done()
+        async def fake_publish(event, payload):
+            notifications.append((event, payload))
 
-        notification = pushed[0]
-        assert notification.event == "desktop_notification"
-        assert notification.data["kind"] == "assistant_done"
-        assert notification.data["title"] == "Session completed - openagentd"
-        assert notification.data["body"] == "Fix desktop notifications"
-        assert notification.data["metadata"] == {
+        with patch("app.services.memory_stream_store.push_event", new=fake_push):
+            with patch("app.services.event_broadcaster.publish", new=fake_publish):
+                with patch(
+                    "app.services.memory_stream_store.mark_done", new_callable=AsyncMock
+                ):
+                    await team._try_emit_done()
+
+        event, notification = notifications[0]
+        assert event == "desktop_notification"
+        assert notification["kind"] == "assistant_done"
+        assert notification["session_id"] == "018f0000-0000-7000-8000-000000000001"
+        assert notification["notification_id"]
+        assert notification["title"] == "Session completed - openagentd"
+        assert notification["body"] == "Fix desktop notifications"
+        assert notification["metadata"] == {
             "session_id": "018f0000-0000-7000-8000-000000000001",
             "title": "Fix desktop notifications",
             "mode": "coding",
             "workspace": str(Path("/repo/openagentd")),
         }
-        assert pushed[1].event == "done"
+        assert [event.event for event in pushed] == ["done"]
 
     @pytest.mark.asyncio
     async def test_completion_notification_falls_back_to_session_id_without_title(self):
@@ -111,21 +118,26 @@ class TestDoneDetectionMixedStates:
         team.members["worker"].state = "idle"
 
         pushed = []
+        notifications = []
 
         async def fake_push(sid, event):
             pushed.append(event)
 
-        with patch("app.services.memory_stream_store.push_event", new=fake_push):
-            with patch(
-                "app.services.memory_stream_store.mark_done", new_callable=AsyncMock
-            ):
-                await team._try_emit_done()
+        async def fake_publish(event, payload):
+            notifications.append((event, payload))
 
-        notification = pushed[0]
-        assert notification.event == "desktop_notification"
-        assert notification.data["title"] == "Session completed"
-        assert notification.data["body"] == "Session 018f0000"
-        assert pushed[1].event == "done"
+        with patch("app.services.memory_stream_store.push_event", new=fake_push):
+            with patch("app.services.event_broadcaster.publish", new=fake_publish):
+                with patch(
+                    "app.services.memory_stream_store.mark_done", new_callable=AsyncMock
+                ):
+                    await team._try_emit_done()
+
+        event, notification = notifications[0]
+        assert event == "desktop_notification"
+        assert notification["title"] == "Session completed"
+        assert notification["body"] == "Session 018f0000"
+        assert [event.event for event in pushed] == ["done"]
 
     @pytest.mark.asyncio
     async def test_done_emits_when_lead_idle_member_error(self):
@@ -147,7 +159,7 @@ class TestDoneDetectionMixedStates:
                 await team._try_emit_done()
 
         # Should have emitted done
-        assert [event.event for event in pushed] == ["desktop_notification", "done"]
+        assert [event.event for event in pushed] == ["done"]
 
     @pytest.mark.asyncio
     async def test_done_emits_when_lead_error_member_idle(self):
@@ -169,7 +181,7 @@ class TestDoneDetectionMixedStates:
                 await team._try_emit_done()
 
         # Should have emitted done
-        assert [event.event for event in pushed] == ["desktop_notification", "done"]
+        assert [event.event for event in pushed] == ["done"]
 
     @pytest.mark.asyncio
     async def test_done_not_emits_when_lead_working_member_error(self):
@@ -235,7 +247,7 @@ class TestDoneDetectionMixedStates:
                 await team._try_emit_done()
 
         # First call should emit done plus the desktop completion notification
-        assert [event.event for event in pushed] == ["desktop_notification", "done"]
+        assert [event.event for event in pushed] == ["done"]
         assert team._has_active_turn is False
 
         # Second call should be no-op
@@ -291,7 +303,7 @@ class TestDoneDetectionMixedStates:
                 await team._try_emit_done()
 
         # Should have emitted done (both are done, even if error)
-        assert [event.event for event in pushed] == ["desktop_notification", "done"]
+        assert [event.event for event in pushed] == ["done"]
 
     @pytest.mark.asyncio
     async def test_done_emits_when_both_idle(self):
@@ -313,7 +325,7 @@ class TestDoneDetectionMixedStates:
                 await team._try_emit_done()
 
         # Should have emitted done
-        assert [event.event for event in pushed] == ["desktop_notification", "done"]
+        assert [event.event for event in pushed] == ["done"]
 
     @pytest.mark.asyncio
     async def test_done_swallows_error(self):

@@ -891,6 +891,30 @@ class TestTrigger:
 
 
 class TestFireTaskErrors:
+    async def test_success_emits_scheduled_session_turn_started(
+        self, scheduler, mock_dispatch
+    ):
+        task = _make_task(name="scheduled event")
+        await scheduler.add(task)
+        await scheduler.stop()
+        published = []
+
+        async def fake_publish(event, payload):
+            published.append((event, payload))
+
+        with patch("app.services.event_broadcaster.publish", new=fake_publish):
+            await scheduler._fire_task(task)
+
+        event, payload = published[0]
+        assert event == "session_turn_started"
+        assert payload["session_id"] == mock_dispatch["sid"]
+        assert payload["source"] == "scheduled_task"
+        assert payload["task_slug"] == task.slug
+        assert payload["task_name"] == task.name
+        assert payload["mode"] == task.mode
+        assert payload["workspace"] == task.workspace
+        assert isinstance(payload["started_at"], str)
+
     async def test_concurrent_fires_dispatch_once(self, scheduler, db_factory):
         task = _make_task(name="single_dispatch")
         await scheduler.add(task)

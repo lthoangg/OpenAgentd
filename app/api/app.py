@@ -15,6 +15,7 @@ from app.api.routes.agents import router as agents_router
 from app.api.routes.auth import router as auth_router
 from app.api.routes.commands import router as commands_router
 from app.api.routes.diagnostics import router as diagnostics_router
+from app.api.routes.events import router as events_router
 from app.api.routes.health import router as health_router
 from app.api.routes.mcp import router as mcp_router
 from app.api.routes.observability import router as observability_router
@@ -38,7 +39,11 @@ from app.core.otel import setup_otel, shutdown_otel
 from app.core.otel_retention import start_otel_retention, stop_otel_retention
 from app.core.workspace_init import ensure_workspace_initialized
 from app.scheduler.scheduler import task_scheduler
-from app.services import memory_stream_store as stream_store, team_manager
+from app.services import (
+    event_broadcaster,
+    memory_stream_store as stream_store,
+    team_manager,
+)
 
 from app.core.version import VERSION
 
@@ -112,6 +117,7 @@ async def lifespan(app: FastAPI):
     await lsp_manager.stop()
 
     await stream_store.close()
+    await event_broadcaster.close()
     await stop_otel_retention()
     shutdown_otel()
 
@@ -165,6 +171,7 @@ def create_app() -> FastAPI:
 
     # ── Routers (all under /api) ─────────────────────────────────────────────
     app.include_router(health_router, prefix="/api/health", tags=["health"])
+    app.include_router(events_router, prefix="/api/events", tags=["events"])
     app.include_router(team_router, prefix="/api/team", tags=["team"])
     app.include_router(quote_router, prefix="/api/quote", tags=["quote"])
     app.include_router(agents_router, prefix="/api/agents", tags=["agents"])

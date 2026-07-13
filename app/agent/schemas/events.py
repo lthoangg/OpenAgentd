@@ -181,13 +181,6 @@ class AgentStatusEvent(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
-class TitleUpdateEvent(BaseModel):
-    """Session title was generated and saved."""
-
-    type: Literal["title_update"] = "title_update"
-    title: str
-
-
 class PermissionAskedEvent(BaseModel):
     """An agent is requesting permission to run a tool call.
 

@@ -23,7 +23,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
-from uuid import UUID
+from uuid import UUID, uuid7
 
 from loguru import logger
 from sqlmodel import col, select
@@ -44,7 +44,7 @@ from app.agent.tools.registry import Tool
 from app.core.db import DbFactory, resolve_db_factory
 from app.core.paths import session_workspace_dir
 from app.models.chat import ChatSession, SessionMessage
-from app.services import memory_stream_store as stream_store
+from app.services import event_broadcaster, memory_stream_store as stream_store
 from app.services import snapshot_service
 from app.services.stream_envelope import StreamEnvelope
 from app.services.chat_service import (
@@ -390,24 +390,22 @@ class AgentTeam:
         )
         title_text = title.strip() if title else ""
         notification_body = title_text or f"Session {session_id[:8]}"
-        await stream_store.push_event(
-            session_id,
-            StreamEnvelope.from_parts(
-                "desktop_notification",
-                {
-                    "type": "desktop_notification",
-                    "kind": "assistant_done",
+        await event_broadcaster.publish(
+            "desktop_notification",
+            {
+                "type": "desktop_notification",
+                "notification_id": str(uuid7()),
+                "kind": "assistant_done",
+                "session_id": session_id,
+                "title": notification_title,
+                "body": notification_body,
+                "metadata": {
                     "session_id": session_id,
-                    "title": notification_title,
-                    "body": notification_body,
-                    "metadata": {
-                        "session_id": session_id,
-                        "title": title,
-                        "mode": mode,
-                        "workspace": workspace,
-                    },
+                    "title": title,
+                    "mode": mode,
+                    "workspace": workspace,
                 },
-            ),
+            },
         )
 
     async def _try_activate_queued_after_lead_turn(self) -> None:
@@ -665,17 +663,17 @@ class AgentTeam:
             task_name = (
                 content.split("]", 1)[0].removeprefix("[Scheduled Task: ").strip()
             )
-            await stream_store.push_event(
-                session_id,
-                StreamEnvelope.from_parts(
-                    "desktop_notification",
-                    {
-                        "type": "desktop_notification",
-                        "kind": "reminder_fired",
-                        "title": "Reminder fired",
-                        "body": task_name,
-                    },
-                ),
+            await event_broadcaster.publish(
+                "desktop_notification",
+                {
+                    "type": "desktop_notification",
+                    "notification_id": str(uuid7()),
+                    "kind": "reminder_fired",
+                    "session_id": session_id,
+                    "title": "Reminder fired",
+                    "body": task_name,
+                    "metadata": {},
+                },
             )
 
         # Mark that a turn is now active

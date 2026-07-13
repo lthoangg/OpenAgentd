@@ -21,7 +21,7 @@ class WriteArgs(BaseModel):
     path: str = Field(description="Relative path for the file to create or overwrite.")
     content: str = Field(description="UTF-8 text content to write.")
     overwrite: bool = Field(
-        default=True, description="Fail if file exists when false (default true)."
+        default=True, description="Fail if the file exists when false."
     )
 
 

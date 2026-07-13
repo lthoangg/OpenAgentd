@@ -5,7 +5,7 @@ from app.agent.tools.registry import tool
 
 @tool(
     name="date",
-    description="Get the current local date, time, and timezone (e.g. '2026-04-06 14:30:00 ICT').",
+    description="Get the current local date, time, and timezone.",
 )
 def get_date() -> str:
     """Return the current local date, time, and timezone as a string."""

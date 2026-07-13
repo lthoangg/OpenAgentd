@@ -29,15 +29,13 @@ if TYPE_CHECKING:
 
 
 _LEAD_DESCRIPTION = (
-    "Send a message to one or more team members. "
-    "Use to: delegate tasks, provide instructions, relay scope changes, "
-    "or ask a member for status."
+    "Send a message to one or more recipients to delegate, instruct, update scope, "
+    "or request status."
 )
 
 _MEMBER_DESCRIPTION = (
-    "Your ONLY way to communicate — plain text output is silently discarded. "
-    "Call this tool to: deliver work output (findings, drafts, data) to the lead, "
-    "hand off results to a peer, or ask a specific unblocking question."
+    "Plain text output is silently discarded. Use this tool to deliver work, hand "
+    "off results, report blockers, or ask an unblocking question."
 )
 
 
@@ -47,19 +45,17 @@ class TeamMessageArgs(BaseModel):
     to: list[str] = Field(
         min_length=1,
         description=(
-            "Recipient names: exact live handles or an available bare "
-            "blueprint name when exactly one instance is live. "
-            "One call per intended audience; make separate calls for "
-            "different messages."
+            "Exact live handles, or a bare blueprint name when exactly one instance "
+            "is live. Use one call per audience."
         ),
     )
     content: str = Field(
         min_length=1,
         description=(
-            "The message body. Must be addressed ONLY to recipients in `to`. "
-            "Work output only: findings, drafts, data, task instructions, or questions. "
-            "NEVER greetings, status updates, or acknowledgements. "
-            "Do NOT prefix with your name — the system adds [your-name]: automatically."
+            "Message body for the listed recipients only: work output, instructions, "
+            "questions, requested progress, or blockers. Avoid greetings, "
+            "acknowledgements, and routine status chatter. Do not prefix your name; "
+            "the system adds [your-name]: automatically."
         ),
     )
 

@@ -314,25 +314,26 @@ team_message(to: list[str], content: str) -> str
 ```
 
 - `to`: list of exact recipient names from the team roster
-- `content`: work output only — findings, drafts, data, task instructions, or questions
+- `content`: work output, instructions, questions, requested progress, or coordination blockers; no routine chatter
 - Self-messaging is silently dropped (agent cannot message itself)
 - Recipients are validated against `mailbox.registered_agents` — unknown names return an error string listing available agents
 - The sender prefix `[agent_name]: ` is added automatically — agents must not include it in `content`
 
 The tool description is **role-specific** via the `role` parameter (`"lead"` or `"member"`):
-- **Lead**: "delegate tasks, provide instructions, relay scope changes, ask for status"
-- **Member**: "Your ONLY way to communicate. Call this tool to: deliver work output, hand off results to a peer, ask unblocking questions"
+- **Lead**: delegation, instructions, scope changes, and status requests
+- **Member**: work delivery, peer handoffs, blockers, and unblocking questions; it also states that plain text is discarded
 
-Tool-mechanical rules (one call per audience, no name prefix, content constraints) are self-contained in the Field descriptions — not repeated in protocol constants. Member protocol also says not to use plain text output; completed work must be delivered through `team_message`.
+Field descriptions cover audience, automatic sender prefixes, useful message categories, and routine-chatter avoidance. The team protocol reinforces routing and idle behavior.
 
 ### `team_manage` tool (lead-only)
 
 ```
-team_manage(action: "spawn"|"dismiss", members: list[str]) -> str
+team_manage(action: "list"|"spawn"|"dismiss", members: list[str]) -> str
 ```
 
 The lead manages the live roster with one batch-capable tool.
 
+- `action="list"`: pass `members=[]`; returns current live handles and the spawnable blueprint catalogue. This is the discovery path because the cache-stable system prompt does not embed the dynamic roster.
 - `action="spawn"`: each entry in `members` is either a bare blueprint name (`"executor"`) or an explicit handle (`"executor#1"`). Bare names allocate the next available `#N`; explicit handles restore/reuse that exact instance history.
 - `action="dismiss"`: each entry in `members` must be an explicit live handle (`"executor#1"`). Dismiss removes the in-memory member from the roster and preserves DB history. The lead protocol **keeps members alive by default** and reuses live handles across turns (a warm member preserves its prompt cache); dismiss is reserved for clearly-finished members or roster cleanup.
 - Partial success is allowed; the return string groups `Spawned`, `Dismissed`, `Already live`, `Not live`, and `Errors` entries.
@@ -342,6 +343,7 @@ Spawned members keep their blueprint prompt, but team protocol injects the concr
 Examples:
 
 ```python
+team_manage(action="list", members=[])
 team_manage(action="spawn", members=["executor", "executor", "explorer"])
 team_manage(action="spawn", members=["executor#1"])  # restore exact history
 team_manage(action="dismiss", members=["executor#1", "explorer#1"])
@@ -478,7 +480,7 @@ Protocol constants (`COMMUNICATION_RULES`, `MESSAGE_FORMAT`, `LEAD_PROTOCOL`, `M
 | Communication rules | plain text is user-visible and reserved for the final answer, plus one optional brief progress note after delegation; coordination via `team_message` tool | `team_message` is the ONLY way to send results — addressed to **any teammate** (peer or lead), not lead-only; no plain text output; no social messages; idle/waiting/done → respond exactly `<sleep>` (no tool calls) |
 | Message format | `[name]: content`, `[user]: content` | `[{lead_name}]: content` (lead), `[name]: content` (peers) |
 | Delegation sizing | handle small/quick tasks yourself — spawning has latency + token cost; delegate only substantial work (role-fit, parallel, context-heavy, or a sustained multi-step workstream); prefer reusing a live member | n/a |
-| Workflow | receive → plan with todos using `dependencies` and concrete `assigned_to` handles; spawn before assigning member todos; message only unblocked owners; delegate peer handoffs from the dependency graph; wait (or `<sleep>`) → synthesise | receive → claim assigned todo if provided → work when unblocked → `team_message` peers for help if needed → `team_message` output straight to whoever needs it (peer or lead) → `<sleep>` |
+| Workflow | assess → discover roster → spawn/restore → create todos with concrete `assigned_to` handles and `dependencies` → instruct unblocked owners → wait → verify → synthesise | claim assigned todo → work and verify → mark complete → send the result directly to its consumer → `<sleep>` |
 
 The protocol is static per session (no dynamic roster — see [`hooks.md`](hooks.md#agentteamprotocolhook)). Tool-mechanical rules (one call per audience, no name prefix in content, work-output-only content) are in the `team_message` tool description itself — not in the protocol constants. The tool description is role-specific: lead gets delegation-focused wording, members get delivery-focused wording.
 

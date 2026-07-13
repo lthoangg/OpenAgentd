@@ -32,7 +32,7 @@ class SkillArgs(BaseModel):
     """Arguments for the skill tool."""
 
     skill_name: str = Field(
-        description="Skill name from the available skills listed in this tool description (e.g. 'mcp-installer'). Do not call this again for a skill that is already loaded in the visible conversation; reuse the prior instructions instead because repeated loads return the same content."
+        description="Skill name from the available-skills list. Load each skill at most once per visible conversation."
     )
 
 

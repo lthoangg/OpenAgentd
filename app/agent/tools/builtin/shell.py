@@ -13,7 +13,7 @@ Design parity with opencode's bash.ts:
   allowed when the caller intentionally needs to run outside the workspace.
 - Abort via task cancellation: foreground commands and background commands still
   in startup are killed as a process group before cancellation propagates.
-- Default timeout raised to 120 seconds (2 minutes) matching opencode.
+- Foreground commands default to a 60-second timeout; callers can raise it explicitly.
 - Background mode preserved for long-running processes (dev servers etc.).
 
 Output format (foreground)::
@@ -60,16 +60,12 @@ import app.agent.tools.builtin.shell_runtime as _shell_mod
 from app.agent.tools.registry import InjectedArg, Tool
 
 _SHELL_DESCRIPTION = (
-    "Run a shell command via the user's POSIX shell. "
-    "Supports &&, ||, pipes, $VAR, subshells. "
-    "Default CWD is the session workspace. Relative workdir paths resolve inside it; "
-    "use an absolute path to run elsewhere. "
-    "Set background=true for long-running processes; returns a PID. "
-    "Prefer file tools for file ops. "
-    "IMPORTANT: stdin is /dev/null — the shell is non-interactive. "
-    "Always use non-interactive flags to suppress prompts "
-    "(e.g. npm init -y, npm create vite@latest -- --template react, "
-    "pip install -q, apt-get install -y, npx --yes, python3 -m venv --without-pip)."
+    "Run a command through the user's POSIX shell; supports &&, ||, pipes, variables, "
+    "and subshells. Relative workdir paths resolve inside the workspace; absolute "
+    "paths may run elsewhere. stdin is /dev/null, so use non-interactive flags such "
+    "as -y or --yes for commands that may prompt. Use background=true for servers "
+    "and watchers, then manage the returned PID with bg. Prefer file tools for file "
+    "operations."
 )
 
 _BG_DESCRIPTION = (
@@ -82,42 +78,31 @@ class ShellArgs(BaseModel):
     """Arguments for the shell tool."""
 
     command: str = Field(
-        description=(
-            "Shell command to run. Supports &&, ||, pipes, $VAR, subshells. "
-            "Runs via the user's preferred POSIX shell."
-        )
+        description="Command to run through the user's preferred POSIX shell."
     )
     description: str = Field(
         default="",
         description=(
-            "Clear, concise description of what this command does in 5-10 words. "
-            "Example: 'Run tests', 'Install dependencies', 'List directory'."
+            "Brief description of the command's purpose for logs and activity UI."
         ),
     )
     workdir: str | None = Field(
         default=None,
         description=(
-            "Working directory for the command. "
-            "Omit (or null) to run in the session workspace root. "
-            "Relative paths (e.g. 'subdir') resolve inside the session workspace. "
-            "Use an absolute path to run outside the workspace. "
-            "Use this instead of 'cd' commands."
+            "Working directory. Relative paths resolve inside the session workspace; "
+            "absolute paths may run outside it. Prefer this field over cd."
         ),
     )
     timeout_seconds: int | None = Field(
         default=None,
         ge=1,
         description=(
-            "Timeout in seconds. Defaults to 60. Increase for long builds. "
-            "If the command legitimately takes longer, retry with a higher value."
+            "Timeout in seconds; omitted uses 60. Increase it for known long commands."
         ),
     )
     background: bool = Field(
         default=False,
-        description=(
-            "Run without waiting. Use for dev servers/watchers. "
-            "Returns a PID; use bg tool to manage it."
-        ),
+        description=("Run without waiting and return a PID for the bg tool."),
     )
 
 
@@ -125,15 +110,15 @@ class BgArgs(BaseModel):
     """Arguments for the bg tool."""
 
     action: Literal["list", "status", "output", "stop", "wait"] = Field(
-        description="Action: 'list' (all processes), 'status', 'output', 'stop', or 'wait' (requires pid)."
+        description="list all processes, or status/output/stop/wait for one PID."
     )
     pid: int | None = Field(
-        default=None, description="PID (required for status/output/stop)."
+        default=None, description="PID (required for status/output/stop/wait)."
     )
     last_n_lines: int | None = Field(
         default=None,
         ge=1,
-        description="Lines to return for 'output' and 'wait' actions (default all, max 200).",
+        description="Lines to return for output/wait (maximum 200); omit for all retained lines.",
     )
 
     @model_validator(mode="after")

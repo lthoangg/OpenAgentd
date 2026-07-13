@@ -31,17 +31,17 @@ class WebSearchArgs(BaseModel):
 
     query: str = Field(description="Search query string.")
     max_results: int = Field(
-        default=5, ge=1, le=20, description="Number of results (default 5, max 20)."
+        default=5, ge=1, le=20, description="Number of results (maximum 20)."
     )
-    page: int = Field(default=1, ge=1, description="Page number (default 1).")
+    page: int = Field(default=1, ge=1, description="Results page number.")
     safesearch: Literal["on", "moderate", "off"] = Field(
-        default="moderate", description="Safe search level (default 'moderate')."
+        default="moderate", description="Safe search level."
     )
 
 
 @tool(
     name="web_search",
-    description="Search the web. Returns [{title, href, body}].",
+    description="Search the web.",
     args_schema=WebSearchArgs,
 )
 async def web_search(
@@ -112,13 +112,13 @@ class WebFetchArgs(BaseModel):
 
     url: str = Field(description="URL to fetch. https:// prepended if no scheme.")
     format: Literal["markdown", "html", "text"] = Field(  # noqa: A003
-        default="markdown", description="Response format (default 'markdown')."
+        default="markdown", description="Response format."
     )
     timeout: int | None = Field(
         default=None,
         ge=1,
         le=120,
-        description="Timeout in seconds (default 30, max 120).",
+        description="Timeout in seconds (maximum 120).",
     )
 
     @field_validator("url")
@@ -131,7 +131,7 @@ class WebFetchArgs(BaseModel):
 
 @tool(
     name="web_fetch",
-    description="Fetch a URL and return its content. Handles HTML, PDF, and plain text.",
+    description="Fetch a URL and convert its content to the requested format.",
     args_schema=WebFetchArgs,
 )
 async def web_fetch(

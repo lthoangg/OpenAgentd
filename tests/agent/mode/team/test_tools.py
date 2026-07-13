@@ -41,6 +41,28 @@ class TestMakeTeamMessageTool:
         tool = make_team_message_tool(mb, agent_name="alice")
         assert tool.name == "team_message"
 
+    def test_member_description_keeps_non_obvious_delivery_semantics(self):
+        """Member guidance explains discarded output and useful delivery cases."""
+        mb = _make_mailbox("alice", "bob")
+        tool = make_team_message_tool(mb, agent_name="alice")
+
+        assert "report blockers" in tool.description
+        assert "plain text output is silently discarded" in tool.description.lower()
+
+    def test_content_schema_shapes_useful_team_messages(self):
+        """Content guidance permits useful coordination and rejects routine chatter."""
+        mb = _make_mailbox("alice", "bob")
+        tool = make_team_message_tool(mb, agent_name="alice")
+        content_description = tool.definition["function"]["parameters"]["properties"][
+            "content"
+        ]["description"]
+
+        assert "listed recipients only" in content_description
+        assert "system adds [your-name]" in content_description
+        assert "requested progress" in content_description
+        assert "blockers" in content_description
+        assert "routine status" in content_description
+
 
 # ---------------------------------------------------------------------------
 # Delivery — no mode, just to + content

@@ -31,7 +31,7 @@ _MAX_CONTEXT_CHARS = 20_000  # keep read results within typical LLM context budg
 
 _DESCRIPTION = (
     "Read a file. Supports text files, images "
-    "(PNG, JPG, GIF, WebP), and documents (PDF, DOCX, PPTX, XLSX). "
+    "(PNG, JPG, GIF, WebP), and documents (PDF, DOCX, HTML). "
     "Images and documents are processed for visual/text analysis. "
     "Paths can be relative to the workspace or absolute."
 )
@@ -43,13 +43,11 @@ class ReadArgs(BaseModel):
     path: str = Field(
         description="Path to the file. Can be relative to the workspace or an absolute path."
     )
-    offset: int = Field(
-        default=1, ge=1, description="Line number to start from, 1-indexed (default 1)."
-    )
+    offset: int = Field(default=1, ge=1, description="1-indexed starting line.")
     limit: int | None = Field(
         default=None,
         ge=1,
-        description="Max lines to return. Omit for all lines from offset.",
+        description="Maximum lines to return; omit for all remaining lines.",
     )
 
 

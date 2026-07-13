@@ -229,6 +229,20 @@ class TestProtocolInjection:
     def test_protocol_constants_capture_current_communication_contract(self):
         """Prompt constants should preserve the team routing contract."""
         assert "one brief progress note after delegation" in LEAD_COMMUNICATION_RULES
+        assert "small, quick, self-contained tasks" in LEAD_COMMUNICATION_RULES
+        assert "Do not assume default member names exist" in LEAD_COMMUNICATION_RULES
+        assert LEAD_PROTOCOL.index("Discover before guessing") < LEAD_PROTOCOL.index(
+            "Spawn before assigning"
+        )
+        assert LEAD_PROTOCOL.index("Spawn before assigning") < LEAD_PROTOCOL.index(
+            "create or update the todo plan"
+        )
+        assert LEAD_PROTOCOL.index("create or update the todo plan") < (
+            LEAD_PROTOCOL.index("Send instructions only after")
+        )
+        assert "skill-installer" in LEAD_PROTOCOL
+        assert "Briefly tell the user" in LEAD_PROTOCOL
+        assert "Verify material claims" in LEAD_PROTOCOL
         assert (
             "Do not use plain text output for responses/results"
             in MEMBER_COMMUNICATION_RULES
@@ -240,6 +254,25 @@ class TestProtocolInjection:
         assert (
             "return exactly `<sleep>` directly when waiting or idle" in MEMBER_PROTOCOL
         )
+        assert MEMBER_PROTOCOL.index("claim") < MEMBER_PROTOCOL.index(
+            "mark it completed"
+        )
+        assert MEMBER_PROTOCOL.index("mark it completed") < MEMBER_PROTOCOL.index(
+            "final, complete result"
+        )
+        assert "partial (more coming) or final" in MEMBER_PROTOCOL
+        assert "directly to that peer" in MEMBER_PROTOCOL
+
+    @pytest.mark.asyncio
+    async def test_member_gets_exact_runtime_handle_guidance(self):
+        """Spawned members use their concrete handle, not a blueprint alias."""
+        team = _mock_team(member_names=["researcher#2"])
+        hook = AgentTeamProtocolHook(team=team, agent_name="researcher#2")
+
+        prompt = await _get_injected_prompt(hook, "Base.")
+
+        assert "You are `researcher#2`" in prompt
+        assert "do not use the blueprint name" in prompt
 
 
 # ---------------------------------------------------------------------------
@@ -405,10 +438,10 @@ class TestProtocolConstants:
     def test_lead_protocol_has_workflow(self):
         assert "Lead workflow" in LEAD_PROTOCOL
         assert "delegate" in LEAD_PROTOCOL.lower()
-        assert "peer handoff chain" in LEAD_PROTOCOL
+        assert "directly to the dependent owner" in LEAD_PROTOCOL
         assert "not as a message bus" in LEAD_PROTOCOL
-        assert "do not execute the same task in parallel yourself" in LEAD_PROTOCOL
-        assert "reclaim or cancel the member task first" in LEAD_PROTOCOL
+        assert "Do not duplicate delegated work" in LEAD_PROTOCOL
+        assert "Reclaim or cancel" in LEAD_PROTOCOL
         assert "dependencies" in LEAD_PROTOCOL
         assert "assigned_to" in LEAD_PROTOCOL
         assert "explorer#1" not in LEAD_PROTOCOL

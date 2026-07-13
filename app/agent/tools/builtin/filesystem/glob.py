@@ -19,8 +19,8 @@ from app.agent.tools.builtin.filesystem._ignore import (
 from app.agent.tools.registry import Tool
 
 _DESCRIPTION = (
-    "Find files by glob pattern. Use match='path' (default) for full-path patterns "
-    "like 'src/**/*.ts', or match='name' for filename-only like '*.py'."
+    "Find files by glob pattern. Use match='path' for full paths or match='name' "
+    "for filenames only."
 )
 
 
@@ -34,16 +34,16 @@ class GlobArgs(BaseModel):
         )
     )
     directory: str = Field(
-        default=".", description="Search root (default '.' = workspace root)."
+        default=".", description="Search root; '.' is the workspace root."
     )
     match: Literal["path", "name"] = Field(
         default="path",
-        description="Match against 'path' (default) or 'name' (filename only).",
+        description="Match against full 'path' or filename 'name'.",
     )
     max_results: int = Field(
         default=200,
         ge=1,
-        description="Maximum number of results to return (default 200).",
+        description="Maximum number of results to return.",
     )
 
 

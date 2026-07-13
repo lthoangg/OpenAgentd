@@ -14,7 +14,7 @@ class LsArgs(BaseModel):
     """Arguments for the ls tool."""
 
     path: str = Field(
-        default=".", description="Directory path (default '.' = workspace root)."
+        default=".", description="Directory path; '.' is the workspace root."
     )
 
 

@@ -41,7 +41,7 @@ lead's first turn
 ```
 
 `AgentTeam.spawn()` is the low-level entry point; the lead-facing roster tool
-is `team_manage(action="spawn"|"dismiss", members=[...])`.
+is `team_manage(action="list"|"spawn"|"dismiss", members=[...])`.
 
 ### Counter rules
 
@@ -82,31 +82,24 @@ The bare-blueprint shorthand is a convenience for the common single-instance
 case. With zero live instances the lead is told to `team_manage(action="spawn")` first; with
 two or more, it must disambiguate by handle.
 
-### What members see
+### What agents see
 
-A member's protocol prompt is rebuilt on every activation by
-`TeamMember.build_protocol`. It lists the lead and **only currently-live
-peer instances** — never spawnable blueprints. Spawning is a lead-only
-concern.
-
-The lead's protocol shows two sections:
-
-- **Spawnable blueprints** — every blueprint with its description and the
-  list of currently-live instance handles.
-- **Live members** — any plain (non-`blueprint#N`) members held in
-  `team.members` (only used by tests / direct construction; production
-  members all carry `#N` handles).
+Team protocol prompts are cache-stable and do not embed the dynamic roster.
+The lead discovers current live handles and spawnable blueprints with
+`team_manage(action="list", members=[])`. Members receive their exact runtime
+identity (`blueprint#N`) and mailbox messages from the lead or active peers;
+spawning remains a lead-only concern.
 
 ### Tool surface
 
 | tool          | available to | purpose                                       |
 |---------------|--------------|-----------------------------------------------|
 | `team_message`| lead, members| send a message to a specific recipient        |
-| `team_manage` | lead         | spawn/dismiss live roster instances           |
+| `team_manage` | lead         | list, spawn, or dismiss roster instances       |
 
-These are injected at `agent.run()` time by `AgentTeam.get_injected_tools`,
-so a lead always sees its live roster — no agent-cache bust required after
-spawning a peer mid-turn.
+These are injected at `agent.run()` time by `AgentTeam.get_injected_tools`.
+Roster changes are returned by the tool and persisted as append-only system
+messages, so spawning a peer does not require a system-prompt cache bust.
 
 ## Caveats
 
@@ -127,8 +120,8 @@ spawning a peer mid-turn.
 - **Eager-members back-compat path is still in `AgentTeam.__init__`.**
   Tests and a few direct callers still construct teams with
   `members={"name": TeamMember(...)}`. These plain members survive lead
-  session changes and are surfaced in the lead protocol's "Live members"
-  block. Production code paths use `blueprints=`. If we eventually drop
+  session changes and remain addressable through roster discovery. Production
+  code paths use `blueprints=`. If we eventually drop
   the eager path, simplify `_restore_or_drop_members_for_lead` and the
   protocol assembly.
 - **Mid-turn parenting.** When the lead spawns mid-turn, the new member's

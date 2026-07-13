@@ -33,14 +33,14 @@ class GrepArgs(BaseModel):
         description="Regex to match per line (e.g. 'def main', 'TODO|FIXME')."
     )
     directory: str = Field(
-        default=".", description="Search root (default '.' = workspace root)."
+        default=".", description="Search root; '.' is the workspace root."
     )
     include: str = Field(
         default="*",
-        description="Filename glob to filter files (e.g. '*.py'). Default '*'.",
+        description="Filename glob to filter files (e.g. '*.py').",
     )
     max_results: int = Field(
-        default=100, ge=1, description="Maximum matching lines to return (default 100)."
+        default=100, ge=1, description="Maximum matching lines to return."
     )
 
     @field_validator("pattern")

@@ -409,7 +409,7 @@ def _find_item(store: dict, task_id: str) -> dict | None:
 # ---------------------------------------------------------------------------
 
 _DESCRIPTION = """\
-Manage the structured task list as the lead. Pass one or more actions in a single call;
+Manage the structured task list. Pass one or more actions in a single call;
 they are executed in order.
 
 Actions
@@ -431,6 +431,8 @@ Rules
   (`clear`), so the list reflects current work instead of accumulating
   stale done/cancelled entries.
 - Assign member work with assigned_to and model ordering with dependencies.
+- Assigned member tasks remain pending until the member claims them; the lead
+  should not move another agent's task to in_progress.
 - Only ONE task per agent should be in_progress at a time.
 - Mark tasks completed immediately when done; do not batch updates across turns.
 - Use dependencies=["task_1"] for dependent work. A task with incomplete
@@ -455,7 +457,7 @@ Rules
 - Claim a task before starting work.
 - If claim reports blocked dependencies, do not start; respond `<sleep>` and wait.
 - Only update tasks assigned to or claimed by you.
-- Mark your task completed immediately when done.\
+- Mark the task completed before sending the final result to the lead or peer.\
 """
 
 

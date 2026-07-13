@@ -27,7 +27,7 @@ class RmArgs(BaseModel):
     path: str = Field(description="Relative path to the file or directory to remove.")
     recursive: bool = Field(
         default=False,
-        description="Remove directories recursively. Required when path is a non-empty directory (default false).",
+        description="Remove directories recursively; required for a non-empty directory.",
     )
 
 

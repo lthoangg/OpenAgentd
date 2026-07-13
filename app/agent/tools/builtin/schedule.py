@@ -29,39 +29,14 @@ from pydantic import BaseModel, Field, model_validator
 from app.agent.tools.registry import InjectedArg, Tool
 
 
-_DESCRIPTION = """
-Schedule a prompt to be delivered back to you at a future time or on a
-recurring schedule — and build self-scheduling agentic loops.
-
-Every task fires back to *you* (same team, same workspace). This is both
-a reminder tool and a **loop engine**: by combining `session_id='current'`
-with `every_seconds` + `max_runs` you create a bounded polling loop
-that re-invokes you automatically until a condition is met or the cap is hit.
-
-Loop recipe (bounded polling):
-
-```
-action='create', schedule_type='every', every_seconds=30, max_runs=20,
-session_id='current',
-prompt='Check build status and report. If still running, just note it
-        — the scheduler will call you again automatically.'
-```
-
-Then optionally call `trigger` on the returned id to fire the first
-iteration immediately without waiting for the first 30-second window.
-When the loop's goal is met, call `delete` (or `pause`) on its own
-task id to exit early — `max_runs` is only the safety backstop, not
-the intended stopping point for a condition-driven loop.
-
-Other uses:
-- One-shot follow-up: `schedule_type='at'`, specific `at_datetime`
-- Recurring background job: `schedule_type='cron'`, `session_id='auto'`
-- "Remind me in 30 minutes": `schedule_type='every'`, `every_seconds=1800`, `max_runs=1`
-
-Use `list` to inspect active loops, `pause`/`resume` to toggle them,
-`delete` to tear one down, `trigger` to fire immediately.
-Tasks from other teams or workspaces are invisible to you.
-""".strip()
+_DESCRIPTION = (
+    "Schedule a prompt for future or recurring delivery. Every task fires back to you "
+    "in the same team and workspace; this cannot schedule work for another team. "
+    "For a bounded polling loop, use schedule_type='every', every_seconds=30, "
+    "session_id='current', and max_runs. Use trigger to run the first iteration now; "
+    "pause or delete the task early when the goal is met. Use session_id='auto' for a "
+    "persistent background session, or omit it for a fresh session per firing."
+)
 
 
 class ScheduleArgs(BaseModel):
@@ -121,18 +96,15 @@ class ScheduleArgs(BaseModel):
     timezone: str = Field(
         default="UTC",
         description=(
-            "[create] IANA timezone name for cron/at interpretation, "
-            "e.g. 'Asia/Ho_Chi_Minh', 'America/New_York'. Defaults to 'UTC'."
+            "[create] IANA timezone for cron/at interpretation, such as "
+            "'Asia/Ho_Chi_Minh' or 'America/New_York'."
         ),
     )
     prompt: str | None = Field(
         default=None,
         description=(
             "[create] The prompt delivered back to you when the task fires. "
-            "Write it in the second person, addressed to your future self. "
-            "For self-scheduling loops this is the per-iteration instruction — "
-            "e.g. 'Check whether the deployment finished and report the result. "
-            "If still running, note it and stop (the scheduler re-invokes you).'. "
+            "Address your future self; for loops, give one iteration's instruction. "
             "Required for create."
         ),
     )
@@ -153,14 +125,12 @@ class ScheduleArgs(BaseModel):
         gt=0,
         description=(
             "[create] Hard cap on successful firings — the task auto-disables "
-            "after N runs. None = unlimited. "
-            "Use this to bound any polling or retry loop, "
-            "e.g. max_runs=20 with every_seconds=30 = poll for 10 minutes then stop."
+            "after N runs. None is unlimited. Bound polling and retry loops."
         ),
     )
     enabled: bool = Field(
         default=True,
-        description="[create] Whether the task starts enabled. Defaults to True.",
+        description="[create] Whether the task starts enabled.",
     )
     # ── pause / resume / delete / trigger fields ────────────────────────
     slug: str | None = Field(

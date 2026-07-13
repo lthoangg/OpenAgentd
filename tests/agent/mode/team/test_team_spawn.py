@@ -719,10 +719,10 @@ class TestRosterManageTool:
         team = _build_dynamic_team(tmp_path, {"executor": None})
         tool = make_team_manage_tool(team)
 
-        assert "discover spawnable member blueprints" in tool.description
-        assert "use only listed/available names" in tool.description
-        assert "reuse live/restorable handles" in tool.description
-        assert "dismiss only explicit live handles" in tool.description
+        assert "List live handles and spawnable blueprints" in tool.description
+        assert "spawn listed blueprints or restorable handles" in tool.description
+        assert "dismiss explicit live handles" in tool.description
+        assert "Lead-only" not in tool.description
         assert "executor" not in tool.description
 
     async def test_members_do_not_get_manage_tools(self, tmp_path):

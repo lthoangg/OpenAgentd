@@ -140,7 +140,7 @@ class VideoArgs(BaseModel):
     resolution: VideoResolution | None = Field(
         default=None,
         description=(
-            "Output resolution: '720p' (default), '1080p', or '4k'. "
+            "Output resolution: '720p', '1080p', or '4k'. "
             "1080p and 4k only support 8s duration."
         ),
     )

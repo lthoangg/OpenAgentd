@@ -38,7 +38,7 @@ class EditArgs(BaseModel):
     )
     replace_all: bool = Field(
         default=False,
-        description="Replace all occurrences of old_string (default false — replace only the unique match).",
+        description="Replace every occurrence; when false, the match must be unique.",
     )
 
     @model_validator(mode="after")

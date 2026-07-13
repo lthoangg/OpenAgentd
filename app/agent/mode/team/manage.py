@@ -18,11 +18,8 @@ if TYPE_CHECKING:
 
 
 _MANAGE_DESCRIPTION = (
-    "Manage the live team roster and discover spawnable member blueprints. "
-    "Blueprint names vary by workspace; use only listed/available names. "
-    "Spawn members before messaging them, reuse live/restorable handles when "
-    "continuing related work, and dismiss only explicit live handles when they "
-    "are no longer needed."
+    "List live handles and spawnable blueprints, spawn listed blueprints or "
+    "restorable handles, and dismiss explicit live handles."
 )
 
 
@@ -31,20 +28,16 @@ class TeamManageArgs(BaseModel):
 
     action: Literal["spawn", "dismiss", "list"] = Field(
         description=(
-            "'list' shows the current live member handles and the "
-            "spawnable blueprints for this workspace; 'spawn' brings "
-            "members online; 'dismiss' removes live instances from the "
-            "roster while preserving history."
+            "list shows live handles and spawnable blueprints; spawn creates "
+            "members; dismiss removes live instances and preserves history."
         )
     )
     members: list[str] = Field(
         default_factory=list,
         description=(
-            "For list: pass an empty array and read back the live "
-            "member handles plus spawnable blueprints. For spawn: pass "
-            "listed/available blueprint names or restorable handles. "
-            "For dismiss: pass explicit live handles. Multiple entries "
-            "are processed left-to-right."
+            "For list, pass an empty array. For spawn, pass blueprint names or "
+            "restorable handles. For dismiss, pass explicit live handles. "
+            "Entries are processed left-to-right."
         ),
     )
 

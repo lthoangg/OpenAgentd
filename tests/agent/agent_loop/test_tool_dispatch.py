@@ -55,3 +55,26 @@ async def test_interrupt_returns_when_tool_swallows_cancellation(monkeypatch):
     await finished.wait()
     await asyncio.sleep(0)
     assert active_detached_tool_count() == 0
+
+
+async def test_parent_cancellation_cancels_inflight_tools():
+    started = asyncio.Event()
+    cancelled = asyncio.Event()
+    interrupt = asyncio.Event()
+
+    async def blocking_tool():
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled.set()
+
+    dispatch = asyncio.create_task(
+        gather_or_cancel([blocking_tool()], interrupt, [_tool_call()], "agent")
+    )
+    await started.wait()
+    dispatch.cancel()
+    await asyncio.gather(dispatch, return_exceptions=True)
+    await asyncio.sleep(0)
+
+    assert cancelled.is_set()

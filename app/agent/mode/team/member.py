@@ -344,8 +344,10 @@ class TeamMemberBase(abc.ABC):
         logger.info("team_member_stopped name={}", self.name)
 
     def interrupt(self) -> None:
-        """Request cancellation of the current activation without deregistering."""
+        """Cancel the current activation without deregistering the member."""
         self._cancel_event.set()
+        if self._active_task is not None and not self._active_task.done():
+            self._active_task.cancel()
 
     # ------------------------------------------------------------------
     # On-demand activation
@@ -615,13 +617,19 @@ class TeamMemberBase(abc.ABC):
             # Drift → rebuild the agent at the start of the next turn.
             self._detect_config_drift()
 
-            # Me: re-activate if messages arrived while agent.run() was executing.
-            # agent.run() breaks on <sleep>/final-response without running
-            # TeamInboxHook again, so any message queued during that last LLM call
-            # sits in the inbox.  Calling _maybe_activate here is safe: state is
-            # already "idle", so it spawns a fresh activation task that loads
-            # history from DB and wakes the agent — exactly like a normal wakeup.
-            if not self._mailbox.inbox_empty(self.name):
+            # Re-activate for messages that arrived during a normal turn, but
+            # discard them after an explicit interrupt. Otherwise a late peer
+            # message can clear the cancellation event in a fresh activation and
+            # make the agent resume after the user pressed Stop.
+            if self._cancel_event.is_set():
+                discarded = self._mailbox.discard_pending(self.name)
+                if discarded:
+                    logger.info(
+                        "team_member_interrupted_inbox_discarded name={} count={}",
+                        self.name,
+                        discarded,
+                    )
+            elif not self._mailbox.inbox_empty(self.name):
                 logger.info(
                     "team_member_late_inbox_reactivate name={}",
                     self.name,

@@ -89,6 +89,12 @@ async def gather_or_cancel(
                             len(still_pending),
                         )
                 break
+    except asyncio.CancelledError:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        raise
     finally:
         interrupt_waiter.cancel()
         # Suppress the CancelledError from the waiter

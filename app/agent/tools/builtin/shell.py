@@ -163,15 +163,17 @@ _OUTPUT_MAX_BYTES = 131_072  # 128 KB (matches opencode Truncate.MAX_BYTES)
 class _BgProcess:
     """Tracks a single background subprocess and its ring-buffer output."""
 
-    __slots__ = ("proc", "command", "output", "_reader_task")
+    __slots__ = ("proc", "command", "session_id", "output", "_reader_task")
 
     def __init__(
         self,
         proc: asyncio.subprocess.Process,
         command: str,
+        session_id: str | None,
     ) -> None:
         self.proc = proc
         self.command = command
+        self.session_id = session_id
         self.output: deque[str] = deque(maxlen=_BG_OUTPUT_MAX_LINES)
         self._reader_task = asyncio.create_task(self._drain())
 
@@ -230,6 +232,28 @@ def _limited_bg_output(text: str) -> str:
 
 # Module-level registry: PID → _BgProcess
 _bg_processes: dict[int, _BgProcess] = {}
+
+
+async def stop_background_processes_for_session(session_id: str) -> int:
+    """Stop and remove background processes owned by one session."""
+    matching = [
+        (pid, bg) for pid, bg in _bg_processes.items() if bg.session_id == session_id
+    ]
+    stopped = 0
+    for pid, bg in matching:
+        try:
+            await bg.stop()
+        except Exception as exc:
+            logger.warning(
+                "background_shell_session_stop_failed pid={} session_id={} error={}",
+                pid,
+                session_id,
+                exc,
+            )
+            continue
+        _bg_processes.pop(pid, None)
+        stopped += 1
+    return stopped
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -426,7 +450,7 @@ async def _shell(
 
         # ── Background mode ───────────────────────────────────────────
         if background:
-            bg = _BgProcess(proc, command)
+            bg = _BgProcess(proc, command, sandbox.session_id)
             _bg_processes[bg.pid] = bg
 
             # Wait up to 3s to capture initial output and detect instant crashes

@@ -75,14 +75,10 @@ snapshot just like any other user turn.
 
 ## Stop and background processes
 
-Pressing **Stop** terminates a running `!command` and any foreground shell
-process group started by the active agent turn. A command cancelled during
-`background=true` startup is also terminated and removed from the background
-process registry.
-
-After a background command has successfully returned a PID, it intentionally
-continues beyond the agent turn. Use `bg` with `action="stop"` to terminate that
-acknowledged background process.
+Pressing **Stop** terminates a running `!command` plus foreground and
+background shell process groups owned by the active session. Background
+processes from other sessions are left running. Outside an active session Stop,
+use `bg` with `action="stop"` to terminate a specific process by PID.
 
 ## API
 

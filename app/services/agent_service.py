@@ -602,35 +602,95 @@ async def dispatch_user_shell_command(
 async def interrupt_team(team: "AgentTeam", session_id: str | None) -> list[str]:
     """Cancel all working team members. Returns the cancelled member names."""
     from app.agent.schemas.chat import HumanMessage
+    from app.agent.tools.builtin.shell import stop_background_processes_for_session
     from app.agent.tools.builtin.todo import release_in_progress_for_actor
     from app.core.db import resolve_db_factory
     from app.core.paths import session_workspace_dir
     from app.services.chat_service import release_queued_user_messages, save_message
 
-    names: list[str] = []
     effective_session_id = session_id or getattr(team.lead, "session_id", None)
+    if effective_session_id:
+        try:
+            db_factory = resolve_db_factory(team.lead.db_factory)
+            async with db_factory() as db:
+                released = await release_queued_user_messages(
+                    db, uuid.UUID(effective_session_id)
+                )
+                await db.commit()
+            if released:
+                logger.info(
+                    "team_interrupt_released_queued session_id={} count={}",
+                    effective_session_id,
+                    len(released),
+                )
+        except Exception as exc:
+            logger.warning(
+                "team_interrupt_release_queue_failed session_id={} error={}",
+                effective_session_id,
+                exc,
+            )
+
+    working_members = [m for m in team.all_members if m.state == "working"]
+    working_ids = {id(member) for member in working_members}
+    names = [member.name for member in working_members]
+    active_tasks = [
+        task
+        for member in working_members
+        if (task := getattr(member, "_active_task", None)) is not None
+        and not task.done()
+    ]
 
     direct_shell_tasks = (
         list(_user_shell_tasks.pop(effective_session_id, ()))
         if effective_session_id
         else []
     )
+
+    # Issue every cancellation before waiting for cleanup, so one slow task
+    # cannot delay cancellation of the others.
+    for member in working_members:
+        member.interrupt()
     for task in direct_shell_tasks:
         task.cancel()
+    background_cleanup = (
+        asyncio.create_task(stop_background_processes_for_session(effective_session_id))
+        if effective_session_id
+        else None
+    )
+    cleanup_tasks = [*active_tasks, *direct_shell_tasks]
+    if background_cleanup is not None:
+        cleanup_tasks.append(background_cleanup)
+    if cleanup_tasks:
+        await asyncio.gather(*cleanup_tasks, return_exceptions=True)
+
     if direct_shell_tasks:
-        await asyncio.gather(*direct_shell_tasks, return_exceptions=True)
         logger.info(
             "team_interrupt_user_shells session_id={} cancelled={}",
             effective_session_id,
             len(direct_shell_tasks),
         )
+    if background_cleanup is not None:
+        try:
+            stopped_background = background_cleanup.result()
+        except Exception as exc:
+            logger.warning(
+                "team_interrupt_background_shells_failed session_id={} error={}",
+                effective_session_id,
+                exc,
+            )
+        else:
+            if stopped_background:
+                logger.info(
+                    "team_interrupt_background_shells session_id={} stopped={}",
+                    effective_session_id,
+                    stopped_background,
+                )
 
     live_members = getattr(team, "members", {})
     if isinstance(live_members, dict):
         for handle, member in list(live_members.items()):
-            if member.state != "working":
+            if id(member) not in working_ids:
                 continue
-            names.append(member.name)
             sid = effective_session_id
             released = (
                 release_in_progress_for_actor(
@@ -676,35 +736,7 @@ async def interrupt_team(team: "AgentTeam", session_id: str | None) -> list[str]
                     member.name,
                     exc,
                 )
-            member.interrupt()
-
-    dismissed = set(names)
-    cancelled = [
-        m for m in team.all_members if m.state == "working" and m.name not in dismissed
-    ]
-    for member in cancelled:
-        member.interrupt()
-    names.extend(m.name for m in cancelled)
     if effective_session_id:
-        try:
-            db_factory = resolve_db_factory(team.lead.db_factory)
-            async with db_factory() as db:
-                released = await release_queued_user_messages(
-                    db, uuid.UUID(effective_session_id)
-                )
-                await db.commit()
-            if released:
-                logger.info(
-                    "team_interrupt_released_queued session_id={} count={}",
-                    effective_session_id,
-                    len(released),
-                )
-        except Exception as exc:
-            logger.warning(
-                "team_interrupt_release_queue_failed session_id={} error={}",
-                effective_session_id,
-                exc,
-            )
         await stream_store.push_event(
             effective_session_id,
             StreamEnvelope.from_parts(event="done", data={}),

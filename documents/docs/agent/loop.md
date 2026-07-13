@@ -289,7 +289,7 @@ task = asyncio.create_task(agent.run(messages, interrupt_event=interrupt))
 interrupt.set()   # cancel mid-stream or mid-tool-execution
 ```
 
-Team members use this for user-initiated interrupts. After the run, the last assistant message is annotated with `" [interrupted]"` in the DB.
+Internal callers can use this cooperative event contract. The team HTTP Stop path is stronger: it also cancels the member's active activation task, which propagates cancellation into the current provider/tool await regardless of the provider's cooperative `support_interrupt` setting.
 
 ### Non-interruptible providers
 
@@ -301,7 +301,7 @@ class MyProxyProvider(LLMProviderBase):
     ...
 ```
 
-When `support_interrupt = False`, `stream_and_assemble` passes `interrupt_event=None` to both `_interruptible_stream` and `stream_with_retry`, so the current LLM call always completes in full. The interrupt is still observed at points 1, 3, and 4 above — the loop exits cleanly at the **next between-iteration boundary**, tools are still cancelled, and the net latency difference is at most one LLM call's streaming time.
+When `support_interrupt = False`, `stream_and_assemble` passes `interrupt_event=None` to both `_interruptible_stream` and `stream_with_retry`, so an event-only programmatic interrupt lets the current LLM call complete before the loop exits at the next iteration boundary. User-initiated team Stop additionally cancels the outer activation task, so it does not wait for that provider stream to finish.
 
 Team queued follow-ups follow the same rule: they are not spliced into a running lead loop by `QueuedMessageInjectionHook` for non-interruptible providers. The queued rows stay persisted with `extra.queue_status="queued"` and are activated by the normal after-loop queue handoff once the lead activation returns to `idle`.
 
@@ -336,13 +336,16 @@ can only be guaranteed to stop when the remote service supports cancellation.
 ```
 POST /api/team/chat  interrupt=true  session_id=<sid>
 │
-├─ AgentTeam interrupts current member run
-│    └─ interrupt_event.set()     ← loop breaks after current chunk or cancels tools
-├─ Cancel and await direct `!command` tasks owned by this session
-└─ return {"status": "interrupted", "session_id": "..."}
+├─ Release queued user rows so they cannot reactivate the turn
+├─ Cancel active lead/member activation tasks
+│    └─ Parent cancellation propagates to provider and parallel tool awaits
+├─ Cancel and await direct `!command` tasks
+├─ Stop background shell process groups owned by this session
+├─ Discard late member-mailbox work from the interrupted activation
+└─ Emit `done` and return {"status": "interrupted", "session_id": "..."}
 ```
 
-The checkpointer (`SQLiteCheckpointer`) has already saved partial output at the most recent `sync()` call — no assistant text is lost. Empty assistant messages (interrupted before any content, reasoning, or tool calls were generated) are skipped during `sync()` to avoid persisting no-op rows. Once the loop exits, the SSE stream emits a final `done` event with `cancelled: true` in metadata, signalling clients to reload from DB.
+The request waits for tracked activation, tool, and shell cleanup before it returns. Content already persisted by `SQLiteCheckpointer` remains in history; uncheckpointed partial output may be omitted. Empty interrupted assistant messages are not persisted. A third-party synchronous/native operation can only stop at the cancellation boundary exposed by that dependency, so the request remains pending rather than reporting a false completion while its tracked task is still active.
 
 ### Non-graceful interrupt — orphaned tool calls
 

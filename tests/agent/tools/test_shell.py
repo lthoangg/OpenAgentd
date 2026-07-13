@@ -15,12 +15,13 @@ import asyncio
 import os
 import signal
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from app.agent.errors import ToolArgumentError
 from app.agent.sandbox import SandboxConfig, set_sandbox
+import app.agent.tools.builtin.shell as shell_module
 from app.agent.tools.builtin.shell import (
     _PYTHON_ENV_LEAK_KEYS,
     _BgProcess,
@@ -500,6 +501,52 @@ async def test_background_captures_initial_output_and_registry(
     _bg_processes[pid].proc.kill()
 
 
+async def test_session_cleanup_stops_only_owned_background_processes(tmp_path, fast_bg):
+    """Stopping one session preserves another session's background process."""
+    session_one = SandboxConfig(workspace=str(tmp_path / "one"), session_id="one")
+    session_one_token = set_sandbox(session_one)
+    try:
+        await _shell("sleep 30", background=True, timeout_seconds=1)
+        first_pid = next(iter(_bg_processes))
+    finally:
+        from app.agent.sandbox import _sandbox_ctx
+
+        _sandbox_ctx.reset(session_one_token)
+
+    session_two = SandboxConfig(workspace=str(tmp_path / "two"), session_id="two")
+    session_two_token = set_sandbox(session_two)
+    try:
+        await _shell("sleep 30", background=True, timeout_seconds=1)
+        second_pid = next(pid for pid in _bg_processes if pid != first_pid)
+    finally:
+        from app.agent.sandbox import _sandbox_ctx
+
+        _sandbox_ctx.reset(session_two_token)
+
+    assert await shell_module.stop_background_processes_for_session("one") == 1
+    assert first_pid not in _bg_processes
+    assert second_pid in _bg_processes
+    assert _bg_processes[second_pid].alive
+
+
+async def test_session_cleanup_attempts_every_owned_process_when_one_fails():
+    first = MagicMock(session_id="one")
+    first.stop = AsyncMock(side_effect=RuntimeError("stuck"))
+    second = MagicMock(session_id="one")
+    second.stop = AsyncMock(return_value=0)
+    _bg_processes[1001] = first
+    _bg_processes[1002] = second
+    try:
+        assert await shell_module.stop_background_processes_for_session("one") == 1
+        first.stop.assert_awaited_once()
+        second.stop.assert_awaited_once()
+        assert 1001 in _bg_processes
+        assert 1002 not in _bg_processes
+    finally:
+        _bg_processes.pop(1001, None)
+        _bg_processes.pop(1002, None)
+
+
 @pytest.mark.asyncio
 async def test_background_immediate_exit_treated_as_failure(sandbox_workspace, fast_bg):
     """If a background process exits immediately, it should report failure."""
@@ -631,7 +678,7 @@ async def test_background_process_status_exited(sandbox_workspace):
     )
     await proc.wait()
 
-    bg = _BgProcess(proc, "true")
+    bg = _BgProcess(proc, "true", None)
     pid = bg.pid
     _bg_processes[pid] = bg
     await asyncio.sleep(0.05)

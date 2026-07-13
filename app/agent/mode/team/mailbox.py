@@ -104,6 +104,19 @@ class TeamMailbox:
             return True
         return self._inboxes[agent_name].empty()
 
+    def discard_pending(self, agent_name: str) -> int:
+        """Discard queued messages for an interrupted activation."""
+        inbox = self._inboxes.get(agent_name)
+        if inbox is None:
+            return 0
+        discarded = 0
+        while True:
+            try:
+                inbox.get_nowait()
+            except asyncio.QueueEmpty:
+                return discarded
+            discarded += 1
+
     # ------------------------------------------------------------------
     # Introspection
     # ------------------------------------------------------------------

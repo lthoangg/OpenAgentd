@@ -84,6 +84,32 @@ async def team_with_db():
     return team
 
 
+class TestInterrupt:
+    async def test_interrupt_cancels_active_activation_task(self, team_with_db):
+        worker = team_with_db.members["worker"]
+        started = asyncio.Event()
+        cancelled = asyncio.Event()
+
+        async def active_turn():
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cancelled.set()
+
+        worker.state = "working"
+        worker._active_task = asyncio.create_task(active_turn())
+        await started.wait()
+
+        worker.interrupt()
+        await asyncio.wait_for(
+            asyncio.gather(worker._active_task, return_exceptions=True), timeout=0.1
+        )
+
+        assert cancelled.is_set()
+        assert worker._active_task.cancelled()
+
+
 class TestOnDemandActivation:
     """Test on-demand activation — agents activate when messages arrive."""
 
@@ -421,6 +447,40 @@ class TestLateInboxReactivation:
 
         # agent.run() was called twice: once for the first message, once for the late one
         assert reactivation_count == 2
+        assert worker.state == "idle"
+
+        await team.stop()
+
+    async def test_interrupt_discards_late_inbox_without_reactivation(
+        self, team_with_db
+    ):
+        """An interrupted activation must not restart from messages queued mid-turn."""
+        team = team_with_db
+        await team.start()
+
+        worker = team.members["worker"]
+        run_count = 0
+
+        async def run_that_is_interrupted(*args, **kwargs):
+            nonlocal run_count
+            run_count += 1
+            late = Message(
+                from_agent="lead",
+                to_agent="worker",
+                content="[lead]: stale after stop",
+            )
+            await team.mailbox.send(to="worker", message=late)
+            worker.interrupt()
+
+        worker.agent.run = AsyncMock(side_effect=run_that_is_interrupted)
+
+        msg = Message(from_agent="lead", to_agent="worker", content="[lead]: first")
+        await team.mailbox.send(to="worker", message=msg)
+        await _drain_activation(worker)
+        await asyncio.sleep(0)
+
+        assert run_count == 1
+        assert team.mailbox.inbox_empty("worker")
         assert worker.state == "idle"
 
         await team.stop()

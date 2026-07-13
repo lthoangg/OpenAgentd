@@ -84,7 +84,7 @@ skipped by the agent hook loader.
 
 OAuth plugins can emit a `code_required` event; the UI then shows a paste field and posts the code to `/api/auth/{provider}/callback`.
 
-**Non-interruptible providers.** Providers that route through stateful or quota-tracked streaming connections (e.g. proxy-based providers) should set `support_interrupt = False` on their `LLMProviderBase` subclass. This prevents the agent loop from cutting the in-flight stream short when the user presses Stop — the current LLM call completes in full, and only the next between-iteration check observes the interrupt. Tools and the between-iteration guard are still cancelled normally. The default is `True`.
+**Non-interruptible providers.** Providers that route through stateful or quota-tracked streaming connections (e.g. proxy-based providers) can set `support_interrupt = False` on their `LLMProviderBase` subclass. This makes cooperative, event-only interrupts wait for the current LLM call to finish before the next iteration boundary. User-initiated team Stop is a hard session cancellation and still cancels the outer activation/provider task immediately. The default is `True`.
 
 ```python
 class MyProxyProvider(LLMProviderBase):

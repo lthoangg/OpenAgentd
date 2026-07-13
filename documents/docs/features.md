@@ -310,6 +310,11 @@ spawns specialist members on demand. Deeper docs: [`agent/teams.md`](./agent/tea
   error event and lead notification. Exhausted connection/timeout failures
   likewise become a typed `ProviderConnectionError` naming the transport error
   and pointing at the provider's base URL.
+- **Stop cancels the whole active session run** `[v1.101.1]` — Stop directly
+  cancels the lead and working members, in-flight model/tool work, direct shell
+  commands, and session-owned background shell processes before the request
+  returns. Queued and late mailbox work cannot restart the stopped turn. See
+  [`agent/loop.md`](./agent/loop.md#http-layer-interrupt-team-mode).
 - **Stop pauses queued follow-ups instead of dropping them** `[v1.17.0]` — Stop
   releases queued hidden user messages into visible history so you can
   `/undo`, edit, or append before resuming.

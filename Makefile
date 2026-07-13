@@ -1,6 +1,6 @@
 # Makefile for openagentd
 
-.PHONY: all run dev kill-dev-ports test coverage health health-json migrate revision build-web build dist clean help
+.PHONY: all run dev kill-dev-ports test coverage health health-json prompt-budget prompt-budget-json migrate revision build-web build dist clean help
 
 # Default target
 all: test
@@ -51,6 +51,12 @@ health: ## Rank god files + detect circular imports (text report)
 
 health-json: ## Same as 'health' but emit JSON (for baselines / CI)
 	uv run python -m scripts.codehealth --json
+
+prompt-budget: ## Count system prompt, tool schema, and bundled skill tokens
+	@uv run python -m manual.inspect_prompt --dir seed/agents --date 2026-01-01 --skills-scope builtin --stats-only
+
+prompt-budget-json: ## Same as prompt-budget but emit stable JSON for tracking/CI
+	@uv run python -m manual.inspect_prompt --dir seed/agents --date 2026-01-01 --skills-scope builtin --stats-only --json
 
 migrate: ## Run Alembic migrations (dev only — production auto-migrates on startup)
 	uv run alembic -c app/alembic.ini upgrade head

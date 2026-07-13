@@ -2,7 +2,7 @@
 title: Tools & Execution
 description: Tool decorator, JSON schema, argument validation, and tool execution flow.
 status: stable
-updated: 2026-06-26
+updated: 2026-07-13
 ---
 
 # Tools
@@ -43,7 +43,7 @@ class WebSearchArgs(BaseModel):
 
 @tool(
     name="web_search",
-    description="Search the web. Returns [{title, href, body}].",
+    description="Search the web.",
     args_schema=WebSearchArgs,
 )
 async def web_search(query: str, max_results: int = 5, safesearch: str = "moderate") -> str:
@@ -97,6 +97,40 @@ See `app/agent/tools/registry.py:tool` for the full decorator signature and opti
 6. **`Literal[...]`** for enumerated string parameters.
 7. **Raise domain errors** — `ToolExecutionError` / `ToolArgumentError` /
    `SandboxPathError`, not bare `Exception`.
+
+---
+
+## Prompt budget diagnostics
+
+Use the offline prompt inspector to track the static context cost of first-party
+agents and tools without calling a model:
+
+```bash
+make prompt-budget       # human-readable report
+make prompt-budget-json  # stable JSON for baselines or CI
+```
+
+The stable Make targets inspect the committed `seed/agents` configuration with a
+fixed date and bundled-only skill catalog. The report includes:
+
+- the selected agent's built-in/user prompt plus date and team protocol;
+- compact OpenAI-style tool definitions, in total and per tool, including
+  runtime-injected team tools;
+- every code-owned first-party base prompt;
+- each bundled skill body, reported separately because skills load on demand.
+
+Counts use tiktoken's `o200k_base` encoding. They are exact for that encoding,
+but providers may tokenize the payload differently. Conversation messages,
+dynamic workspace instructions, and provider-specific envelope overhead are
+outside the reported baseline.
+
+For the current configured agents, another encoding, or a focused agent:
+
+```bash
+uv run python -m manual.inspect_prompt --stats-only
+uv run python -m manual.inspect_prompt --agent explorer --encoding o200k_base
+uv run python -m manual.inspect_prompt --stats-only --json
+```
 
 ---
 

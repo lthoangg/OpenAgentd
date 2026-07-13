@@ -686,6 +686,11 @@ Everything stays local. No third-party telemetry SaaS. Deeper doc:
 - **Estimated model-call cost telemetry** `[v1.34.0]` — chat, title-generation,
   and summarization spans include estimated USD cost when model-registry pricing
   and provider usage tokens are available.
+- **Prompt budget report** `[v1.102.0]` — `make prompt-budget` reports exact
+  `o200k_base` counts for the assembled static system prompt, compact tool-schema
+  JSON, every first-party base prompt, each tool, and bundled skill bodies;
+  `make prompt-budget-json` emits a stable machine-readable baseline for CI.
+  See [`agent/tools.md`](./agent/tools.md#prompt-budget-diagnostics).
 - **DuckDB-backed query API** `[since v1.0]` — `/api/observability/*` queries
   the local DuckDB span store.
 - **Two-tier logging** `[since v1.0]` — app log at `{STATE_DIR}/logs/app/`,

@@ -16,7 +16,7 @@ exists. When you ship something new, **add it here first** — slides, README,
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 15 providers. Your keys.
 
-**Latest release:** v1.102.0 · July 13, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.102.0)
+**Latest release:** v1.103.0 · July 13, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.103.0)
 
 ---
 
@@ -251,7 +251,7 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   last normal size saved on quit, while minimized/maximized dimensions are ignored.
 - **Remote-backend mobile shell** `[v1.34.0]` — Tauri mobile app scaffold embeds
   the shared Web UI and connects to saved remote API servers. See [`mobile.md`](./mobile.md).
-- **LAN access key for external clients** `[v1.43.0, v1.102.1]` — `openagentd start --lan --key`
+- **LAN access key for external clients** `[v1.43.0, v1.103.0]` — `openagentd start --lan --key`
   stores the CLI server's bind address, port, and bearer key in `server.yaml`, separate from the desktop builtin sidecar's ephemeral token while agents, providers, sessions, and other settings remain shared. Restart and upgrade preserve that key without exposing it in process arguments. OpenAgentd-managed launchers refuse non-loopback binds without a configured key `[v1.101.0]`. See [`cli.md`](./cli.md) and [ADR-0002](../adrs/0002-require-authentication-for-non-loopback-bindings.md).
 - **Desktop server connection manager** `[v1.43.4, v1.99.8]` — the desktop **Server connection** dialog switches the current window between the builtin sidecar and saved external servers, validates LAN access keys, normalizes pasted `/api` URLs, and preserves other open windows' backend choices. Saved LAN access keys are scoped per backend origin and stored in the native OS credential store on installed desktop/mobile shells; browser development keeps the per-origin localStorage fallback. Remembered external servers reconnect on app launch with sidecar fallback, while the desktop window opens immediately as backend startup continues asynchronously `[v1.57.1]`. See [`desktop.md`](./desktop.md) and [ADR-0001](../adrs/0001-native-backend-access-key-storage.md).
   - **Reload after switching backend servers** `[v1.98.1]` — after connecting a desktop window to a different saved or typed external server, the webview reloads so stale frontend state is discarded and the window comes back against the newly selected backend cleanly. Reconnecting to the already active backend does not reload.
@@ -752,7 +752,7 @@ Desktop is primary. CLI / server is the developer path. Deeper doc:
   machine with fill-in-gaps merge (or `--force` to overwrite). API keys in
   `.env` are redacted by default; `--include-secrets` opts in for trusted
   channels. Imports resolve every destination inside the config root and reject
-  traversal through pre-existing symlinks `[v1.102.0]`. DB and session
+  traversal through pre-existing symlinks `[v1.103.0]`. DB and session
   workspaces are intentionally excluded.
 - **Cross-platform single-instance** `[v1.13.0]` — opening the app twice
   focuses the existing window instead of launching a duplicate.
@@ -775,7 +775,7 @@ The same HTTP + SSE API drives the desktop, browser, and mobile clients. Embed i
 - **REST + SSE chat API** `[since v1.0]` — `POST /api/team/chat` is
   fire-and-forget (returns 202 in <50ms); the agent streams events on
   `GET /api/team/{session_id}/stream`. Reconnect-safe replay.
-- **Global app event stream** `[v1.102.0]` — first-party clients keep a
+- **Global app event stream** `[v1.103.0]` — first-party clients keep a
   lightweight `GET /api/events/stream` connection for cross-session
   lifecycle and metadata events. Scheduled turns wake the matching session
   stream, generated titles update every session surface, and native

@@ -374,6 +374,47 @@ class TestSQLiteCheckpointerSync:
         assert count == 1
 
     @pytest.mark.asyncio
+    async def test_sync_persists_cipher_only_reasoning_assistant_message(self):
+        """Opaque Codex reasoning must survive when the turn has no visible text/tools."""
+        import app.core.db as _db
+        from app.agent.providers.openai.responses import ResponsesHandler
+
+        sid = uuid.uuid7()
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                await _make_session(db, sid)
+
+        cipher_only = AssistantMessage(
+            reasoning_item_id="rs_1",
+            reasoning_encrypted_content="cipher123",
+            extra={
+                "reasoning_item_id": "rs_1",
+                "reasoning_encrypted_content": "cipher123",
+            },
+        )
+        cp = SQLiteCheckpointer(_db.async_session_factory)
+        await cp.sync(_ctx(str(sid)), AgentState(messages=[cipher_only]))
+
+        loaded = await cp.load(str(sid))
+
+        assert loaded is not None
+        assert len(loaded.messages) == 1
+        restored = loaded.messages[0]
+        assert isinstance(restored, AssistantMessage)
+        assert restored.reasoning_item_id == "rs_1"
+        assert restored.reasoning_encrypted_content == "cipher123"
+        assert ResponsesHandler(
+            "gpt-5.4", "https://api.example.com", {}
+        ).convert_messages([restored]) == [
+            {
+                "type": "reasoning",
+                "id": "rs_1",
+                "summary": [],
+                "encrypted_content": "cipher123",
+            }
+        ]
+
+    @pytest.mark.asyncio
     async def test_sync_persists_is_summary_and_extra(self):
         """is_summary and extra metadata are passed to save_message."""
         import app.core.db as _db

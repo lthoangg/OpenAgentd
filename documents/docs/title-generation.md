@@ -2,7 +2,7 @@
 title: Chat Title Generation
 description: Automatic LLM-generated session titles with configurable model, wait timeout, graceful degradation.
 status: stable
-updated: 2026-04-24
+updated: 2026-07-13
 ---
 
 # Chat Title Generation
@@ -23,7 +23,9 @@ updated: 2026-04-24
    in `state.messages`). It skips scheduled-task messages, greeting-only inputs,
    and messages shorter than three words; otherwise it spawns title generation.
 4. `title_service` calls `provider.chat()` with the built-in title prompt plus
-   the user's message (capped at 500 chars), asking for a short title.
+   the user's message (capped at 500 chars), asking for a short title in the
+   prompt's language. Tools are disabled, and thinking is disabled when the
+   provider supports it.
 5. Title is cleaned (`_clean_title`) and written to `ChatSession.title` in DB.
 6. A `title_update` SSE event is pushed to the open stream.
 7. `TitleGenerationHook.after_agent()` does a best-effort wait (default 3 s,

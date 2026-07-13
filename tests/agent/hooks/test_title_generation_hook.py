@@ -8,7 +8,10 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.agent.hooks.title_generation import TitleGenerationHook
+from app.agent.hooks.title_generation import (
+    TITLE_GENERATION_PROMPT,
+    TitleGenerationHook,
+)
 from app.agent.schemas.chat import AssistantMessage, HumanMessage, SystemMessage
 from app.agent.state import AgentState, RunContext
 
@@ -42,6 +45,11 @@ def make_hook(wait_timeout: float = 3.0) -> TitleGenerationHook:
         system_prompt="test title prompt",
         wait_timeout=wait_timeout,
     )
+
+
+def test_title_prompt_requires_matching_the_user_prompt_language():
+    assert "same language as the user's prompt" in TITLE_GENERATION_PROMPT
+    assert "Do not translate the title" in TITLE_GENERATION_PROMPT
 
 
 # ---------------------------------------------------------------------------

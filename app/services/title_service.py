@@ -95,8 +95,10 @@ async def generate_and_save_title(
                 async with asyncio.timeout(_TITLE_TIMEOUT):
                     result = await provider.chat(
                         messages,
+                        tools=[],
                         max_tokens=20,
                         thinking_level="none",
+                        tool_choice="none",
                     )
             except TimeoutError:
                 logger.warning("title_generation_timeout session_id={}", session_id_str)
@@ -115,7 +117,9 @@ async def generate_and_save_title(
                     async with asyncio.timeout(_TITLE_TIMEOUT):
                         result = await provider.chat(
                             messages,
+                            tools=[],
                             max_tokens=20,
+                            tool_choice="none",
                         )
                 except TimeoutError:
                     logger.warning(

@@ -469,8 +469,10 @@ class TestGenerateAndSaveTitle:
             assert isinstance(messages[1], HumanMessage)
             assert messages[1].content == "test message"
 
+            assert kwargs["tools"] == []
             assert kwargs["max_tokens"] == 20
             assert kwargs["thinking_level"] == "none"
+            assert kwargs["tool_choice"] == "none"
             assert "temperature" not in kwargs
 
     @pytest.mark.asyncio
@@ -504,8 +506,12 @@ class TestGenerateAndSaveTitle:
         assert mock_provider.chat.await_count == 2
         first_kwargs = mock_provider.chat.call_args_list[0].kwargs
         second_kwargs = mock_provider.chat.call_args_list[1].kwargs
+        assert first_kwargs.get("tools") == []
         assert first_kwargs.get("thinking_level") == "none"
+        assert first_kwargs.get("tool_choice") == "none"
+        assert second_kwargs.get("tools") == []
         assert "thinking_level" not in second_kwargs
+        assert second_kwargs.get("tool_choice") == "none"
 
         await session.refresh(chat_session)
         assert chat_session.title == "Recovered Title"

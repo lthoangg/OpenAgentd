@@ -66,7 +66,8 @@ Your output must be:
 - No explanations
 
 Rules:
-- Use the same language as the user message you are summarizing.
+- Use the same language as the user's prompt. Do not translate the title.
+- If the prompt mixes languages, use its primary language.
 - Title must be grammatically correct and read naturally.
 - Focus on the main topic, question, or goal the user wants to accomplish.
 - Keep exact proper nouns, numbers, names, and specific terms relevant to the topic.

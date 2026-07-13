@@ -198,11 +198,7 @@ class StreamPublisherHook(BaseAgentHook):
     ) -> str:
         import json as _json
 
-        from app.agent.permission import (
-            PermissionDeniedError,
-            PermissionRejectedError,
-            get_permission_service,
-        )
+        from app.agent.permission import get_permission_service
 
         fn_name = tool_call.function.name if tool_call.function else ""
         tc_id = self._resolver.resolve_start(fn_name, tool_call.id)
@@ -257,21 +253,13 @@ class StreamPublisherHook(BaseAgentHook):
             # Schedule without blocking wrap_tool_call
             _asyncio.create_task(_emit())
 
-        # Temporarily attach SSE callback for this call
-        original_on_ask = permission_service._on_ask
-        permission_service._on_ask = _on_ask_callback
-        try:
-            await permission_service.ask(
-                tool=fn_name,
-                patterns=patterns,
-                always_patterns=patterns,
-                metadata={"tool_call_id": tc_id, "agent": self._agent_name},
-            )
-        except (PermissionDeniedError, PermissionRejectedError):
-            permission_service._on_ask = original_on_ask
-            raise
-        finally:
-            permission_service._on_ask = original_on_ask
+        await permission_service.ask(
+            tool=fn_name,
+            patterns=patterns,
+            always_patterns=patterns,
+            metadata={"tool_call_id": tc_id, "agent": self._agent_name},
+            on_ask=_on_ask_callback,
+        )
 
         # ── Execute tool ──────────────────────────────────────────────
         started = time.monotonic()

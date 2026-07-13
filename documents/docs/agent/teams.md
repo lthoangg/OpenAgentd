@@ -276,7 +276,7 @@ await mailbox.send(to="explorer", message=Message(from_agent="lead", content="..
 
 # Broadcast — delivers to all inboxes except sender's
 await mailbox.broadcast(Message(from_agent="lead", content="[broadcast]: ..."))
-# → fires on_message(agent_name) for each recipient before returning
+# → delivers/activates recipients concurrently, then returns after all finish
 
 # Receive (blocking)
 msg = await mailbox.receive("explorer")
@@ -287,7 +287,7 @@ msg = await mailbox.receive("explorer")
 | `register(name)` | Create inbox (idempotent). |
 | `deregister(name)` | Remove inbox; undelivered messages discarded. |
 | `send(to, message)` | Single delivery. Raises `KeyError` if not registered. Fires `on_message` callback. |
-| `broadcast(message)` | Copies to all except sender. Marks `is_broadcast=True`. Fires `on_message` per recipient. |
+| `broadcast(message)` | Copies to all except sender. Marks `is_broadcast=True`. Delivers and fires `on_message` concurrently per recipient. |
 | `receive(name)` | Async, blocks until message. |
 | `receive_nowait(name)` | Sync, raises `asyncio.QueueEmpty` if empty. |
 | `inbox_empty(name)` | Non-blocking check. |

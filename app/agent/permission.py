@@ -188,6 +188,7 @@ class PermissionService:
         patterns: list[str],
         always_patterns: list[str] | None = None,
         metadata: dict | None = None,
+        on_ask: Callable[[PermissionRequest], None] | None = None,
     ) -> None:
         """Check permission for *tool* against *patterns*.
 
@@ -225,6 +226,8 @@ class PermissionService:
 
         if self._on_ask is not None:
             self._on_ask(req)
+        if on_ask is not None:
+            on_ask(req)
 
         assert req._future is not None, "PermissionRequest must be created via create()"
         try:
@@ -289,6 +292,7 @@ class AutoAllowPermissionService(PermissionService):
         patterns: list[str],
         always_patterns: list[str] | None = None,
         metadata: dict | None = None,
+        on_ask: Callable[[PermissionRequest], None] | None = None,
     ) -> None:
         """Check rules; auto-approve ``ask`` actions rather than blocking."""
         for pattern in patterns:
@@ -299,7 +303,7 @@ class AutoAllowPermissionService(PermissionService):
                 )
 
         # Fire on_ask callback for SSE visibility (non-blocking)
-        if self._on_ask is not None:
+        if self._on_ask is not None or on_ask is not None:
             req = PermissionRequest.create(
                 session_id=self.session_id,
                 tool=tool,
@@ -307,7 +311,10 @@ class AutoAllowPermissionService(PermissionService):
                 always_patterns=always_patterns or patterns,
                 metadata=metadata or {},
             )
-            self._on_ask(req)
+            if self._on_ask is not None:
+                self._on_ask(req)
+            if on_ask is not None:
+                on_ask(req)
             # Auto-allow — add to session ruleset
             for p in req.always_patterns:
                 self.session_ruleset.append(

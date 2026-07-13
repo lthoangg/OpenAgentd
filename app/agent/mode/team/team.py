@@ -685,7 +685,11 @@ class AgentTeam:
             to_agent=self.lead.name,
             content=f"[user]: {content}",
         )
-        await self.mailbox.send(to=self.lead.name, message=msg)
+        try:
+            await self.mailbox.send(to=self.lead.name, message=msg)
+        except BaseException:
+            self._has_active_turn = False
+            raise
 
         return session_id
 

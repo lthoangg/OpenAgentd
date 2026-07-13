@@ -150,6 +150,30 @@ class TestMailboxBroadcast:
         # No error, log updated
         assert len(mailbox.broadcast_log) == 1
 
+    async def test_broadcast_delivers_to_later_inboxes_while_callback_is_blocked(self):
+        callback_started = asyncio.Event()
+        release_callback = asyncio.Event()
+
+        async def on_message(agent_name: str, message: Message) -> None:
+            if agent_name == "a":
+                callback_started.set()
+                await release_callback.wait()
+
+        mailbox = TeamMailbox(on_message=on_message)
+        for agent_name in ("sender", "a", "b"):
+            mailbox.register(agent_name)
+
+        broadcast = asyncio.create_task(
+            mailbox.broadcast(Message(from_agent="sender", content="status"))
+        )
+        await callback_started.wait()
+        try:
+            received = await asyncio.wait_for(mailbox.receive("b"), timeout=0.1)
+            assert received.content == "status"
+        finally:
+            release_callback.set()
+            await broadcast
+
 
 class TestMailboxReceive:
     """Test mailbox.receive() — blocking receive."""

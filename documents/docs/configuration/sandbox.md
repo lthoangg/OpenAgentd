@@ -58,4 +58,4 @@ Independent of the sandbox. Every tool call goes through a `PermissionService`:
 | `AutoAllowPermissionService` | Default. Auto-allows every call. Emits `permission_asked` SSE events for observability but never blocks. |
 | `PermissionService` | Blocks on an `asyncio.Future` until the user replies via `POST /api/team/{session_id}/permissions/{request_id}/reply` (`once` / `always` / `reject`). |
 
-Rules use **wildcard matching with last-match-wins** evaluation (see `app/agent/permission.py:Rule` / `Ruleset`). The UI surface is `/settings/sandbox` (rules tab).
+Rules use **wildcard matching with last-match-wins** evaluation (see `app/agent/permission.py:Rule` / `Ruleset`). Each concurrent tool call supplies its own event callback, so `permission_asked` events remain scoped to the originating session without replacing the service-level observer. The UI surface is `/settings/sandbox` (rules tab).

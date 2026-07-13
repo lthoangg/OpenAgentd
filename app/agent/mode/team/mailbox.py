@@ -76,11 +76,19 @@ class TeamMailbox:
             update={"is_broadcast": True, "to_agent": None}
         )
         self._broadcast_log.append(broadcast_msg)
-        for name, inbox in self._inboxes.items():
-            if name != message.from_agent:
-                await inbox.put(broadcast_msg)
-                if self._on_message is not None:
-                    await self._on_message(name, broadcast_msg)
+
+        async def deliver(name: str, inbox: asyncio.Queue[Message]) -> None:
+            await inbox.put(broadcast_msg)
+            if self._on_message is not None:
+                await self._on_message(name, broadcast_msg)
+
+        await asyncio.gather(
+            *(
+                deliver(name, inbox)
+                for name, inbox in self._inboxes.items()
+                if name != message.from_agent
+            )
+        )
 
     # ------------------------------------------------------------------
     # Receiving

@@ -168,6 +168,34 @@ class TestAgentTeamUserMessage:
         finally:
             await team.stop()
 
+    async def test_handle_user_message_rolls_back_active_turn_when_delivery_fails(
+        self, basic_team
+    ):
+        team = basic_team
+        await team.start()
+        team.mailbox.send = AsyncMock(side_effect=RuntimeError("activation failed"))
+
+        try:
+            with pytest.raises(RuntimeError, match="activation failed"):
+                await team.handle_user_message("Hello", session_id=str(uuid.uuid7()))
+            assert not team._has_active_turn
+        finally:
+            await team.stop()
+
+    async def test_handle_user_message_rolls_back_active_turn_when_delivery_is_cancelled(
+        self, basic_team
+    ):
+        team = basic_team
+        await team.start()
+        team.mailbox.send = AsyncMock(side_effect=asyncio.CancelledError)
+
+        try:
+            with pytest.raises(asyncio.CancelledError):
+                await team.handle_user_message("Hello", session_id=str(uuid.uuid7()))
+            assert not team._has_active_turn
+        finally:
+            await team.stop()
+
     async def test_handle_user_message_returns_session_id(self, basic_team):
         """handle_user_message() returns the session_id for stream subscription."""
         team = basic_team

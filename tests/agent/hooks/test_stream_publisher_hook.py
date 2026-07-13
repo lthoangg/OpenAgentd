@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from app.agent.hooks.stream_publisher import StreamPublisherHook
+from app.agent.permission import PermissionService, Rule
 from app.agent.schemas.chat import (
     AssistantMessage,
     ChatCompletionChunk,
@@ -260,6 +263,69 @@ class TestOnModelDeltaToolCall:
 
 
 class TestWrapToolCall:
+    async def test_concurrent_permission_requests_keep_each_hooks_stream_callback(self):
+        """Shared permission services must not leak one hook's SSE callback."""
+        original_callback = MagicMock()
+        service = PermissionService(
+            session_id="permissions",
+            base_ruleset=[Rule(permission="shell", pattern="*", action="ask")],
+            on_ask=original_callback,
+        )
+        first = _make_hook(session_id="first-session", agent_name="first")
+        second = _make_hook(session_id="second-session", agent_name="second")
+        emitted = []
+        both_permission_events_emitted = asyncio.Event()
+
+        def make_tool_call(tool_id: str):
+            tool_call = MagicMock()
+            tool_call.id = tool_id
+            tool_call.function = MagicMock()
+            tool_call.function.name = "shell"
+            tool_call.function.arguments = '{"command":"echo hi"}'
+            return tool_call
+
+        async def fake_push(session_id, event):
+            emitted.append((session_id, event))
+            if event.event == "permission_asked":
+                if len([e for _, e in emitted if e.event == "permission_asked"]) == 2:
+                    both_permission_events_emitted.set()
+                    service.auto_allow_all_pending()
+                else:
+                    await both_permission_events_emitted.wait()
+
+        async def handler(ctx, state, tool_call):
+            return "ok"
+
+        with (
+            patch("app.agent.permission.get_permission_service", return_value=service),
+            patch("app.services.memory_stream_store.push_event", new=fake_push),
+        ):
+            first_task = asyncio.create_task(
+                first.wrap_tool_call(
+                    MagicMock(),
+                    SimpleNamespace(metadata={}),
+                    make_tool_call("one"),
+                    handler,
+                )
+            )
+            second_task = asyncio.create_task(
+                second.wrap_tool_call(
+                    MagicMock(),
+                    SimpleNamespace(metadata={}),
+                    make_tool_call("two"),
+                    handler,
+                )
+            )
+            await asyncio.gather(first_task, second_task)
+
+        permission_sessions = [
+            session_id
+            for session_id, event in emitted
+            if event.event == "permission_asked"
+        ]
+        assert sorted(permission_sessions) == ["first-session", "second-session"]
+        assert service._on_ask is original_callback
+
     @pytest.mark.asyncio
     async def test_pushes_tool_start_and_tool_end(self):
         hook = _make_hook()

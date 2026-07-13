@@ -338,6 +338,27 @@ class TestTeamAgentsRouteExtra:
         assert data["path"] == str(tmp_path.resolve())
         assert {entry["name"] for entry in data["directories"]} == {"project"}
 
+    async def test_workspace_browse_offloads_filesystem_work(
+        self, tmp_path, monkeypatch
+    ):
+        """Directory enumeration, stat, and resolution must not block the loop."""
+        from app.api.routes.team import chat as chat_routes
+
+        (tmp_path / "project").mkdir()
+        calls = []
+
+        async def recording_to_thread(function, /, *args, **kwargs):
+            calls.append((function, args, kwargs))
+            return function(*args, **kwargs)
+
+        monkeypatch.setattr(chat_routes.asyncio, "to_thread", recording_to_thread)
+
+        result = await chat_routes.browse_coding_workspace(str(tmp_path))
+
+        assert result.path == str(tmp_path.resolve())
+        assert [folder.name for folder in result.directories] == ["project"]
+        assert calls == [(chat_routes._browse_coding_workspace, (str(tmp_path),), {})]
+
     def test_workspace_files_lists_selected_workspace(self, app_without_team, tmp_path):
         (tmp_path / "src").mkdir()
         (tmp_path / "src" / "app.py").write_text("print('ok')", encoding="utf-8")

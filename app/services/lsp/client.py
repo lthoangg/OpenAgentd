@@ -181,12 +181,13 @@ class LspClient:
     async def send_request(self, method: str, params: dict | None = None) -> Any:
         self._id += 1
         req_id = self._id
-        msg = {
+        msg: dict[str, Any] = {
             "jsonrpc": "2.0",
             "id": req_id,
             "method": method,
-            "params": params or {},
         }
+        if params is not None:
+            msg["params"] = params
 
         fut = asyncio.get_running_loop().create_future()
         self._pending_requests[req_id] = fut
@@ -267,9 +268,7 @@ class LspClient:
                         event.set()
 
     async def stop(self):
-        if self._read_task:
-            self._read_task.cancel()
-            self._read_task = None
+        read_task = self._read_task
 
         if self.process:
             # Try shutdown and exit gracefully
@@ -292,6 +291,15 @@ class LspClient:
             except (OSError, ProcessLookupError) as exc:
                 logger.debug("lsp_terminate_failed error={!r}", exc)
             self.process = None
+
+        if read_task:
+            read_task.cancel()
+            try:
+                await read_task
+            except asyncio.CancelledError:
+                pass
+            if self._read_task is read_task:
+                self._read_task = None
 
         # Resolve any remaining request futures and unblock diagnostics waiters.
         for fut in list(self._pending_requests.values()):

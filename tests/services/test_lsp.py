@@ -1,5 +1,7 @@
 import asyncio
 import json
+from pathlib import Path
+
 import pytest
 from unittest.mock import AsyncMock, patch
 
@@ -134,6 +136,215 @@ async def test_lsp_client_lifecycle(tmp_path):
 
         await client.stop()
         assert client.process is None
+
+
+@pytest.mark.asyncio
+async def test_lsp_client_stop_reads_shutdown_response_before_cancelling_reader(
+    tmp_path,
+):
+    """A responsive server receives exit instead of waiting out shutdown timeout."""
+    stdout = MockStreamReader()
+    messages: list[dict] = []
+
+    def on_write(data):
+        message = json.loads(data.split(b"\r\n\r\n", 1)[1])
+        messages.append(message)
+        if message.get("method") == "shutdown":
+            stdout.feed_message({"jsonrpc": "2.0", "id": message["id"], "result": None})
+
+    proc = MockProcess(stdout, MockStreamWriter(on_write=on_write))
+    client = LspClient(["mock-lsp"], tmp_path)
+    client.process = proc
+    client._read_task = asyncio.create_task(client._read_loop())
+
+    async def immediate_timeout(awaitable, timeout):
+        task = asyncio.ensure_future(awaitable)
+        for _ in range(3):
+            await asyncio.sleep(0)
+            if task.done():
+                return task.result()
+        task.cancel()
+        raise TimeoutError
+
+    with patch("app.services.lsp.client.asyncio.wait_for", new=immediate_timeout):
+        await client.stop()
+
+    assert [message.get("method") for message in messages] == ["shutdown", "exit"]
+    assert "params" not in messages[0]
+    assert client._read_task is None
+    assert client.process is None
+
+
+@pytest.mark.asyncio
+async def test_get_diagnostics_moves_project_probe_and_file_read_off_event_loop(
+    tmp_path,
+):
+    """Project discovery and reading are synchronous filesystem work."""
+    manager = LspManager()
+    file_path = tmp_path / "test.py"
+    file_path.write_text("x = 1\n", encoding="utf-8")
+    thread_calls = []
+
+    async def run_in_thread(func, *args, **kwargs):
+        thread_calls.append(func)
+        return func(*args, **kwargs)
+
+    with (
+        patch("app.services.lsp.manager.asyncio.to_thread", side_effect=run_in_thread),
+        patch.object(
+            manager, "get_clients", new_callable=AsyncMock, return_value=[object()]
+        ),
+        patch.object(
+            manager,
+            "_diagnostics_from",
+            new_callable=AsyncMock,
+            return_value=[{"message": "diagnostic"}],
+        ),
+    ):
+        assert await manager.get_diagnostics(file_path, tmp_path) == [
+            {"message": "diagnostic"}
+        ]
+
+    assert [call.__name__ for call in thread_calls] == [
+        "find_project_root",
+        "_read_diagnostics_file",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_lsp_manager_starts_unrelated_workspace_clients_concurrently(tmp_path):
+    """A slow server start must not serialize another workspace's start."""
+    manager = LspManager()
+    first_started = asyncio.Event()
+    both_started = asyncio.Event()
+    allow_starts = asyncio.Event()
+    started_workspaces: set[Path] = set()
+
+    class BlockingClient:
+        def __init__(self, command, workspace_root, **kwargs):
+            self.workspace_root = workspace_root
+            self.process = None
+
+        async def start(self):
+            started_workspaces.add(self.workspace_root)
+            first_started.set()
+            if len(started_workspaces) == 2:
+                both_started.set()
+            await allow_starts.wait()
+            self.process = MockProcess(None, None)
+
+        async def stop(self):
+            self.process = None
+
+    with (
+        patch.object(
+            manager,
+            "_detect_commands",
+            new_callable=AsyncMock,
+            return_value=[["mock-lsp"]],
+        ),
+        patch("app.services.lsp.manager.LspClient", BlockingClient),
+    ):
+        first = asyncio.create_task(manager.get_clients(tmp_path / "one", "python"))
+        await first_started.wait()
+        second = asyncio.create_task(manager.get_clients(tmp_path / "two", "python"))
+        try:
+            await asyncio.wait_for(both_started.wait(), timeout=0.1)
+        finally:
+            allow_starts.set()
+            await asyncio.gather(first, second, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_lsp_manager_starts_same_workspace_client_once(tmp_path):
+    """Concurrent callers for one workspace/language share its startup."""
+    manager = LspManager()
+    first_started = asyncio.Event()
+    allow_start = asyncio.Event()
+    starts = 0
+
+    class BlockingClient:
+        def __init__(self, command, workspace_root, **kwargs):
+            self.process = None
+
+        async def start(self):
+            nonlocal starts
+            starts += 1
+            first_started.set()
+            await allow_start.wait()
+            self.process = MockProcess(None, None)
+
+        async def stop(self):
+            self.process = None
+
+    with (
+        patch.object(
+            manager,
+            "_detect_commands",
+            new_callable=AsyncMock,
+            return_value=[["mock-lsp"]],
+        ),
+        patch("app.services.lsp.manager.LspClient", BlockingClient),
+    ):
+        first = asyncio.create_task(manager.get_clients(tmp_path, "python"))
+        await first_started.wait()
+        second = asyncio.create_task(manager.get_clients(tmp_path, "python"))
+        try:
+            with pytest.raises(asyncio.TimeoutError):
+                await asyncio.wait_for(asyncio.shield(second), timeout=0.1)
+            assert starts == 1
+        finally:
+            allow_start.set()
+            clients_one, clients_two = await asyncio.gather(first, second)
+
+    assert clients_one[0] is clients_two[0]
+
+
+@pytest.mark.asyncio
+async def test_lsp_manager_stop_blocks_startup_and_allows_reuse_afterward(tmp_path):
+    """Stopping waits for an in-flight start, then permits a later restart."""
+    manager = LspManager()
+    first_started = asyncio.Event()
+    allow_start = asyncio.Event()
+    stopped = asyncio.Event()
+
+    class BlockingClient:
+        def __init__(self, command, workspace_root, **kwargs):
+            self.process = None
+            self.last_used_at = 0.0
+
+        async def start(self):
+            first_started.set()
+            await allow_start.wait()
+            self.process = MockProcess(None, None)
+
+        async def stop(self):
+            self.process = None
+            stopped.set()
+
+    with (
+        patch.object(
+            manager,
+            "_detect_commands",
+            new_callable=AsyncMock,
+            return_value=[["mock-lsp"]],
+        ),
+        patch("app.services.lsp.manager.LspClient", BlockingClient),
+    ):
+        starting = asyncio.create_task(manager.get_clients(tmp_path, "python"))
+        await first_started.wait()
+        stopping = asyncio.create_task(manager.stop())
+        with pytest.raises(asyncio.TimeoutError):
+            await asyncio.wait_for(asyncio.shield(stopping), timeout=0.1)
+        assert await manager.get_clients(tmp_path / "other", "python") == []
+
+        allow_start.set()
+        await starting
+        await stopping
+        assert stopped.is_set()
+        assert manager._clients == {}
+
+        assert await manager.get_clients(tmp_path, "python")
 
 
 @pytest.mark.asyncio

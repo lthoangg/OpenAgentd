@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import AsyncGenerator, Literal
 from uuid import UUID
@@ -548,6 +549,10 @@ async def validate_coding_workspace(
 async def browse_coding_workspace(
     path: str | None = Query(None, description="Directory to list."),
 ) -> CodingWorkspaceBrowseResponse:
+    return await asyncio.to_thread(_browse_coding_workspace, path)
+
+
+def _browse_coding_workspace(path: str | None) -> CodingWorkspaceBrowseResponse:
     root = Path(path).expanduser().resolve() if path else Path.home().resolve()
     if not root.is_dir():
         raise HTTPException(status_code=422, detail=f"Not a directory: {root}")

@@ -238,6 +238,12 @@ def find_project_root(file_path: Path, workspace_root: Path, lang_id: str) -> Pa
     return weak_candidate if weak_candidate is not None else workspace_root
 
 
+def _read_diagnostics_file(file_path: Path) -> tuple[str, str]:
+    """Resolve a file URI and read its text for an LSP didOpen request."""
+    resolved = file_path.resolve()
+    return resolved.as_uri(), resolved.read_text(encoding="utf-8")
+
+
 def _python_tools_from_pyproject(project_root: Path) -> list[list[str]]:
     """Infer preferred Python LSP commands from a project's pyproject.toml.
 
@@ -388,7 +394,8 @@ class LspManager:
         # have multiple servers (Python: ty + ruff) cached side by side.
         self._clients: dict[tuple[str, str, tuple[str, ...]], LspClient] = {}
         self._cleanup_task: asyncio.Task | None = None
-        self._lock = asyncio.Lock()
+        self._initialization_locks: dict[tuple[str, str], asyncio.Lock] = {}
+        self._stopping = False
         # lang_id -> monotonic time when it was marked unsupported.
         self._unsupported_langs: dict[str, float] = {}
 
@@ -414,22 +421,38 @@ class LspManager:
             while True:
                 await asyncio.sleep(60)
                 now = asyncio.get_running_loop().time()
-                to_remove = []
-                async with self._lock:
-                    for key, client in list(self._clients.items()):
-                        # Check if client has been idle for more than 5 minutes
-                        if now - client.last_used_at > 300:
-                            logger.info("Stopping idle LSP client for key={}", key)
-                            await client.stop()
-                            to_remove.append(key)
-                        # Also clean up if process died
-                        elif client.process and client.process.returncode is not None:
-                            logger.warning("LSP client process died for key={}", key)
-                            await client.stop()
-                            to_remove.append(key)
+                clients_by_init_key: dict[
+                    tuple[str, str],
+                    list[tuple[tuple[str, str, tuple[str, ...]], LspClient]],
+                ] = {}
+                for key, client in self._clients.items():
+                    clients_by_init_key.setdefault(key[:2], []).append((key, client))
+                for init_key, lock in list(self._initialization_locks.items()):
+                    to_remove = []
+                    async with lock:
+                        if self._stopping:
+                            return
+                        for key, client in clients_by_init_key.get(init_key, []):
+                            if self._clients.get(key) is not client:
+                                continue
+                            # Check if client has been idle for more than 5 minutes
+                            if now - client.last_used_at > 300:
+                                logger.info("Stopping idle LSP client for key={}", key)
+                                await client.stop()
+                                to_remove.append((key, client))
+                            # Also clean up if process died
+                            elif (
+                                client.process and client.process.returncode is not None
+                            ):
+                                logger.warning(
+                                    "LSP client process died for key={}", key
+                                )
+                                await client.stop()
+                                to_remove.append((key, client))
 
-                    for key in to_remove:
-                        self._clients.pop(key, None)
+                        for key, client in to_remove:
+                            if self._clients.get(key) is client:
+                                self._clients.pop(key, None)
         except asyncio.CancelledError:
             pass
 
@@ -505,7 +528,11 @@ class LspManager:
         if self._is_unsupported(lang_id):
             return []
 
-        async with self._lock:
+        init_key = (str(workspace_root), lang_id)
+        lock = self._initialization_locks.setdefault(init_key, asyncio.Lock())
+        async with lock:
+            if self._stopping:
+                return []
             cmds = await self._detect_commands(lang_id, project_root=workspace_root)
             if not cmds:
                 logger.info("No LSP server found for language: {}", lang_id)
@@ -553,16 +580,16 @@ class LspManager:
         if not lang_id:
             return []
 
-        proj_root = find_project_root(file_path, workspace_root, lang_id)
+        proj_root = await asyncio.to_thread(
+            find_project_root, file_path, workspace_root, lang_id
+        )
         clients = await self.get_clients(proj_root, lang_id)
         if not clients:
             return []
 
-        uri = file_path.resolve().as_uri()
-
         # Read file content once and share it across all servers.
         try:
-            content = file_path.read_text(encoding="utf-8")
+            uri, content = await asyncio.to_thread(_read_diagnostics_file, file_path)
         except Exception as e:
             logger.error("Failed to read file for LSP diagnostics: {}", e)
             return []
@@ -654,19 +681,27 @@ class LspManager:
         return client.get_diagnostics(uri)
 
     async def stop(self):
-        if self._cleanup_task:
-            self._cleanup_task.cancel()
-            try:
-                await self._cleanup_task
-            except asyncio.CancelledError:
-                pass
-            self._cleanup_task = None
+        self._stopping = True
+        try:
+            if self._cleanup_task:
+                self._cleanup_task.cancel()
+                try:
+                    await self._cleanup_task
+                except asyncio.CancelledError:
+                    pass
+                self._cleanup_task = None
 
-        async with self._lock:
-            for key, client in list(self._clients.items()):
-                logger.info("Stopping LSP client for key={}", key)
-                await client.stop()
-            self._clients.clear()
+            for init_key, lock in list(self._initialization_locks.items()):
+                async with lock:
+                    workspace, lang_id = init_key
+                    for key, client in list(self._clients.items()):
+                        if key[:2] == (workspace, lang_id):
+                            logger.info("Stopping LSP client for key={}", key)
+                            await client.stop()
+                            if self._clients.get(key) is client:
+                                self._clients.pop(key, None)
+        finally:
+            self._stopping = False
 
 
 # Singleton instance

@@ -97,6 +97,12 @@ sub-project root) and advertises the `workspace.workspaceFolders` capability, so
 servers like tsserver that gate monorepo / project-reference logic on this
 capability behave correctly.
 
+Server startup is serialized per `(project root, language)` rather than
+app-wide: concurrent checks for one project reuse a single client, while
+unrelated projects can initialize in parallel. Shutdown keeps the response
+reader alive through the protocol `shutdown`/`exit` exchange, then terminates
+unresponsive servers after the bounded grace period.
+
 ## TypeScript: path aliases and bun types
 
 When starting a TypeScript/JavaScript server the manager builds

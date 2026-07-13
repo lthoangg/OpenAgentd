@@ -68,11 +68,11 @@ def test_server_main_refuses_non_loopback_host_without_auth(monkeypatch):
     settings.API_HOST = "0.0.0.0"
     try:
         with (
-            patch("app.server.load_runtime_settings") as runtime_settings,
+            patch("app.server.load_server_settings") as server_settings,
             patch("uvicorn.run") as mock_run,
             pytest.raises(SystemExit, match="--key.*access key"),
         ):
-            runtime_settings.return_value.server.access_key = None
+            server_settings.return_value.access_key = None
             runpy.run_module("app.server", run_name="__main__", alter_sys=False)
     finally:
         settings.API_HOST = old_host

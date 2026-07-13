@@ -60,7 +60,7 @@ import threading
 from typing import Any
 
 from app.cli.net import require_loopback_or_auth
-from app.core.runtime_settings import load_runtime_settings
+from app.core.server_settings import load_server_settings
 
 
 def _add_serve_subparser(sub: argparse._SubParsersAction) -> None:
@@ -214,7 +214,7 @@ def cmd_serve(args: argparse.Namespace) -> None:
         has_auth=bool(
             token
             or os.environ.get("OPENAGENTD_ACCESS_KEY")
-            or load_runtime_settings().server.access_key
+            or load_server_settings().access_key
         ),
     )
 

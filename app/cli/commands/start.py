@@ -13,7 +13,7 @@ from app.cli.paths import _ROOT, _server_log
 from app.cli.pids import _find_pids, _write_pids
 from app.cli.server import _server_cmd
 from app.cli.ui import _bold, _dim, _print_banner, _yellow
-from app.core.runtime_settings import load_runtime_settings, save_runtime_settings
+from app.core.server_settings import load_server_settings, save_server_settings
 
 
 _API_PORT = 4082
@@ -23,7 +23,7 @@ def _resolve_port(port: int | None) -> int:
     """Pick the API port when the user didn't pass ``--port`` explicitly."""
     if port is not None:
         return port
-    return load_runtime_settings().server.port or _API_PORT
+    return load_server_settings().port or _API_PORT
 
 
 def _resolve_host(args: argparse.Namespace) -> str:
@@ -31,7 +31,7 @@ def _resolve_host(args: argparse.Namespace) -> str:
         return "0.0.0.0"
     if getattr(args, "host", None):
         return args.host
-    return load_runtime_settings().server.host
+    return load_server_settings().host
 
 
 def _prompt_access_key() -> str:
@@ -49,16 +49,16 @@ def _save_server_overrides(args: argparse.Namespace) -> None:
         or getattr(args, "key", False)
     ):
         return
-    cfg = load_runtime_settings()
+    cfg = load_server_settings()
     if getattr(args, "lan", False):
-        cfg.server.host = "0.0.0.0"
+        cfg.host = "0.0.0.0"
     elif args.host:
-        cfg.server.host = args.host
+        cfg.host = args.host
     if args.port:
-        cfg.server.port = args.port
+        cfg.port = args.port
     if getattr(args, "key", False):
-        cfg.server.access_key = _prompt_access_key()
-    save_runtime_settings(cfg)
+        cfg.access_key = _prompt_access_key()
+    save_server_settings(cfg)
 
 
 def cmd_start(args: argparse.Namespace) -> None:
@@ -76,12 +76,13 @@ def cmd_start(args: argparse.Namespace) -> None:
     _save_server_overrides(args)
     args.port = _resolve_port(args.port)
     args.host = _resolve_host(args)
+    server_settings = load_server_settings()
     require_loopback_or_auth(
         host=args.host,
         has_auth=bool(
             os.environ.get("OPENAGENTD_DESKTOP_TOKEN")
             or os.environ.get("OPENAGENTD_ACCESS_KEY")
-            or load_runtime_settings().server.access_key
+            or server_settings.access_key
         ),
     )
 
@@ -92,6 +93,8 @@ def cmd_start(args: argparse.Namespace) -> None:
     srv_log.parent.mkdir(parents=True, exist_ok=True)
 
     env = {**os.environ, "APP_ENV": "production"}
+    if server_settings.access_key and not env.get("OPENAGENTD_ACCESS_KEY"):
+        env["OPENAGENTD_ACCESS_KEY"] = server_settings.access_key
 
     with open(srv_log, "a") as srv_f:
         server = subprocess.Popen(

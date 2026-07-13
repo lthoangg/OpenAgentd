@@ -14,7 +14,7 @@ from app.api.app import create_app
 from app.cli.net import require_loopback_or_auth
 from app.core.config import settings
 from app.core.logging_config import setup_logging
-from app.core.runtime_settings import load_runtime_settings
+from app.core.server_settings import load_server_settings
 
 setup_logging(
     settings.LOG_LEVEL
@@ -29,7 +29,7 @@ if __name__ == "__main__":
         has_auth=bool(
             os.environ.get("OPENAGENTD_DESKTOP_TOKEN")
             or os.environ.get("OPENAGENTD_ACCESS_KEY")
-            or load_runtime_settings().server.access_key
+            or load_server_settings().access_key
         ),
     )
     uvicorn.run(

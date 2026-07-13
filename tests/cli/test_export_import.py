@@ -66,7 +66,11 @@ def _make_config_dir(tmp_path: Path) -> Path:
     # top-level config files
     (cfg / "mcp.json").write_text('{"mcpServers": {}}', encoding="utf-8")
     (cfg / "settings.yaml").write_text(
-        "server:\n  host: 127.0.0.1\n  port: 4082\n", encoding="utf-8"
+        "summarization:\n  prompt_token_threshold: 12000\n", encoding="utf-8"
+    )
+    (cfg / "server.yaml").write_text(
+        "host: 0.0.0.0\nport: 4082\naccess_key: lan-secret\n",
+        encoding="utf-8",
     )
     (cfg / "multimodal.yaml").write_text(
         "image:\n  model: googlegenai:x\n", encoding="utf-8"
@@ -156,6 +160,7 @@ class TestExportConfig:
             names = tf.getnames()
         assert "openagentd-export/mcp.json" in names
         assert "openagentd-export/settings.yaml" in names
+        assert "openagentd-export/server.yaml" in names
         assert "openagentd-export/multimodal.yaml" in names
 
     def test_skill_lock_excluded(self, tmp_path: Path):
@@ -198,6 +203,36 @@ class TestExportConfig:
             env_content = f.read().decode("utf-8")
         assert "sk-super-secret" in env_content
         assert "ant-key" in env_content
+
+    def test_server_access_key_redacted_by_default(self, tmp_path: Path):
+        cfg = _make_config_dir(tmp_path)
+        out = tmp_path / "out"
+        out.mkdir()
+
+        result = export_config(cfg, output_dir=out)
+
+        with tarfile.open(result.archive_path, "r:gz") as tf:
+            member = tf.getmember("openagentd-export/server.yaml")
+            f = tf.extractfile(member)
+            assert f is not None
+            server_content = f.read().decode("utf-8")
+        assert "lan-secret" not in server_content
+        assert "host: 0.0.0.0" in server_content
+        assert "port: 4082" in server_content
+
+    def test_server_access_key_preserved_with_include_secrets(self, tmp_path: Path):
+        cfg = _make_config_dir(tmp_path)
+        out = tmp_path / "out"
+        out.mkdir()
+
+        result = export_config(cfg, output_dir=out, include_secrets=True)
+
+        with tarfile.open(result.archive_path, "r:gz") as tf:
+            member = tf.getmember("openagentd-export/server.yaml")
+            f = tf.extractfile(member)
+            assert f is not None
+            server_content = f.read().decode("utf-8")
+        assert "access_key: lan-secret" in server_content
 
     def test_env_not_included_when_absent(self, tmp_path: Path):
         cfg = _make_config_dir(tmp_path)

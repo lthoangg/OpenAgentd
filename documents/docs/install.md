@@ -127,7 +127,7 @@ Useful server commands:
 openagentd start --lan --key  # save LAN bind + access key, then print mobile/LAN URLs
 openagentd address            # show local and LAN URLs
 openagentd health             # check PID, port, API liveness/readiness, LAN mode
-openagentd restart            # restart using settings.yaml server config
+openagentd restart            # restart using server.yaml bind/auth config
 openagentd upgrade       # stop, upgrade, and restart if running
 ```
 

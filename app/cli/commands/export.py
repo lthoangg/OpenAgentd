@@ -8,7 +8,8 @@ layer:
     commands/      — slash-command .md files
     plugins/       — user plugin .py files (no __pycache__)
     mcp.json       — MCP server config
-    settings.yaml  — runtime settings (title gen, summarisation, server, LSP)
+    settings.yaml  — shared runtime settings (title gen, summarisation, LSP)
+    server.yaml    — CLI server bind settings and access key
     multimodal.yaml — image/video generation model config
     .env           — credentials (secrets redacted by default)
 
@@ -29,6 +30,8 @@ import tarfile
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+
+import yaml
 
 from app.cli.paths import _config_dir
 from app.cli.ui import _bold, _cyan, _dim, _green, _yellow
@@ -73,6 +76,15 @@ def _redact_env(content: str) -> str:
     return "".join(out)
 
 
+def _redact_server_settings(content: str) -> str:
+    """Return server YAML without its persisted access key."""
+    raw = yaml.safe_load(content) or {}
+    if not isinstance(raw, dict):
+        raise ValueError("server.yaml must contain a YAML mapping.")
+    raw.pop("access_key", None)
+    return yaml.safe_dump(raw, sort_keys=False)
+
+
 # ---------------------------------------------------------------------------
 # What to include
 # ---------------------------------------------------------------------------
@@ -85,6 +97,7 @@ _TREE_DIRS: tuple[str, ...] = ("agents", "skills", "commands", "plugins")
 _ROOT_FILES: tuple[str, ...] = (
     "mcp.json",
     "settings.yaml",
+    "server.yaml",
     "multimodal.yaml",
     ".env",
 )
@@ -135,7 +148,8 @@ def export_config(
         Mutually exclusive with ``output_dir``.
     include_secrets
         When ``False`` (the default), known-secret env-var values in ``.env``
-        are replaced with an empty string before packing.  Pass ``True`` only
+        and the access key in ``server.yaml`` are removed before packing.
+        Pass ``True`` only
         over a trusted, encrypted channel — the secrets will be plaintext in
         the archive.
 
@@ -181,9 +195,13 @@ def export_config(
             rel = filename
             arc_name = f"{ARCHIVE_ROOT}/{rel}"
 
-            if filename == ".env" and not include_secrets:
+            if filename in {".env", "server.yaml"} and not include_secrets:
                 raw = src.read_text(encoding="utf-8")
-                redacted = _redact_env(raw).encode("utf-8")
+                redacted = (
+                    _redact_env(raw)
+                    if filename == ".env"
+                    else _redact_server_settings(raw)
+                ).encode("utf-8")
                 info = tarfile.TarInfo(name=arc_name)
                 info.size = len(redacted)
                 tf.addfile(info, io.BytesIO(redacted))
@@ -219,7 +237,7 @@ def cmd_export(args: argparse.Namespace) -> None:
     if include_secrets:
         print()
         print(
-            f"  {_yellow('⚠')}  {_bold('--include-secrets')} is set — API keys will be "
+            f"  {_yellow('⚠')}  {_bold('--include-secrets')} is set — API and server access keys will be "
             "stored in plaintext inside the archive."
         )
         print(
@@ -239,9 +257,12 @@ def cmd_export(args: argparse.Namespace) -> None:
     print(f"  {_green('✓')}  Archive: {_bold(str(result.archive_path))}")
     print(f"  {_dim('Packed')} {len(result.files_packed)} file(s):")
     for f in result.files_packed:
-        marker = _cyan("  •") if not f.startswith(".env") else _yellow("  •")
+        is_secret_file = f in {".env", "server.yaml"}
+        marker = _yellow("  •") if is_secret_file else _cyan("  •")
         suffix = (
-            _dim("  (secrets redacted)") if f == ".env" and not include_secrets else ""
+            _dim("  (secrets redacted)")
+            if is_secret_file and not include_secrets
+            else ""
         )
         print(f"    {marker} {f}{suffix}")
     print()

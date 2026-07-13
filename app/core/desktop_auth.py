@@ -40,7 +40,7 @@ import hmac
 import os
 
 from fastapi import Request
-from app.core.runtime_settings import load_runtime_settings
+from app.core.server_settings import load_server_settings
 from fastapi.responses import JSONResponse
 from loguru import logger
 from starlette.types import ASGIApp, Receive, Scope, Send
@@ -89,7 +89,7 @@ def configured_access_token() -> str:
     return (
         os.environ.get(_ENV_VAR, "")
         or os.environ.get(_ACCESS_KEY_ENV_VAR, "")
-        or (load_runtime_settings().server.access_key or "")
+        or (load_server_settings().access_key or "")
     )
 
 

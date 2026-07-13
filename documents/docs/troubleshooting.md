@@ -80,7 +80,7 @@ openagentd address
 openagentd health
 ```
 
-If `health` reports local-only binding, restart with `openagentd restart --lan --key`. This saves LAN binding and access-key protection in `settings.yaml`. Also make sure your phone and computer are on the same network and that the OS firewall allows inbound connections to port 4082.
+If `health` reports local-only binding, restart with `openagentd restart --lan --key`. This saves LAN binding and access-key protection in `server.yaml`. Also make sure your phone and computer are on the same network and that the OS firewall allows inbound connections to port 4082.
 
 ## `GOOGLE_API_KEY not set` or similar provider errors
 

@@ -150,11 +150,11 @@ class TestBindAuthPolicy:
         )
 
         with (
-            patch("app.cli.commands.serve.load_runtime_settings") as runtime_settings,
+            patch("app.cli.commands.serve.load_server_settings") as server_settings,
             patch("uvicorn.Config") as config,
             pytest.raises(SystemExit, match="--key.*access key"),
         ):
-            runtime_settings.return_value.server.access_key = None
+            server_settings.return_value.access_key = None
             cmd_serve(args)
 
         config.assert_not_called()

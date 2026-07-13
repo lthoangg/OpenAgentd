@@ -190,14 +190,49 @@ class TestBindAuthPolicy:
             patch("app.cli.commands.start._find_pids", return_value=[]),
             patch("app.cli.commands.start.ensure_initialised"),
             patch("app.cli.commands.start._save_server_overrides"),
-            patch("app.cli.commands.start.load_runtime_settings") as runtime_settings,
+            patch("app.cli.commands.start.load_server_settings") as server_settings,
             patch("app.cli.commands.start.subprocess.Popen") as popen,
             pytest.raises(SystemExit, match="--key.*access key"),
         ):
-            runtime_settings.return_value.server.access_key = None
+            server_settings.return_value.access_key = None
             cmd_start(args)
 
         popen.assert_not_called()
+
+    def test_plain_restart_after_upgrade_uses_persisted_cli_server_key(self, tmp_path):
+        from types import SimpleNamespace
+
+        from app.cli.commands.start import cmd_start
+        from app.core.runtime_settings import ServerSettings
+
+        args = SimpleNamespace(
+            host=None, port=None, lan=False, key=False, wait=False, watch=False
+        )
+        process = Mock(pid=4321)
+        server = ServerSettings(
+            host="0.0.0.0", port=4082, access_key="persisted-secret"
+        )
+        with (
+            patch("app.cli.commands.start._find_pids", return_value=[]),
+            patch("app.cli.commands.start.ensure_initialised"),
+            patch("app.cli.commands.start.load_server_settings", return_value=server),
+            patch(
+                "app.cli.commands.start._server_log", return_value=tmp_path / "app.log"
+            ),
+            patch("app.cli.commands.start._print_banner"),
+            patch("app.cli.commands.start._write_pids"),
+            patch(
+                "app.cli.commands.start.subprocess.Popen", return_value=process
+            ) as popen,
+        ):
+            cmd_start(args)
+
+        command = popen.call_args.args[0]
+        env = popen.call_args.kwargs["env"]
+        assert command[command.index("--host") + 1] == "0.0.0.0"
+        assert command[command.index("--port") + 1] == "4082"
+        assert env["OPENAGENTD_ACCESS_KEY"] == "persisted-secret"
+        assert "persisted-secret" not in command
 
 
 # ---------------------------------------------------------------------------

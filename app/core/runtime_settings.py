@@ -166,7 +166,9 @@ def load_runtime_settings(path: Path | None = None) -> RuntimeSettings:
 def save_runtime_settings(cfg: RuntimeSettings, path: Path | None = None) -> Path:
     resolved = path or runtime_settings_path()
     resolved.parent.mkdir(parents=True, exist_ok=True)
-    data = cfg.model_dump(mode="json", exclude_none=True)
+    # CLI bind/auth state is persisted separately in server.yaml. Keep the
+    # field on RuntimeSettings only so older settings.yaml files can migrate.
+    data = cfg.model_dump(mode="json", exclude_none=True, exclude={"server"})
     resolved.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
     return resolved
 

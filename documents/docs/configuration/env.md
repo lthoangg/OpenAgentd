@@ -2,7 +2,7 @@
 title: Environment Variables
 description: Every env var read by OpenAgentd — provider keys, ports, paths, optional extras.
 status: stable
-updated: 2026-06-28
+updated: 2026-07-13
 ---
 
 # Environment Variables
@@ -81,6 +81,7 @@ Tokens are cached at `{OPENAGENTD_CACHE_DIR}/copilot_oauth.json` and `{OPENAGENT
 Summarization thresholds, tool-result offload sizes, and sandbox limits are module-level constants in their respective service modules — **not** environment variables. Runtime settings such as title generation and LSP server overrides live in `{OPENAGENTD_CONFIG_DIR}/settings.yaml`; per-agent behavior stays in agent frontmatter.
 
 - `{OPENAGENTD_CONFIG_DIR}/settings.yaml` — see [`title-generation.md`](../title-generation.md) for title generation and [`lsp.md`](./lsp.md) for the `lsp:` server map.
+- `{OPENAGENTD_CONFIG_DIR}/server.yaml` — CLI server bind host, port, and access key; separate from the desktop builtin sidecar's launch token.
 - Per-agent `.md` frontmatter — see [`agents.md`](./agents.md).
 
 ## Optional extras

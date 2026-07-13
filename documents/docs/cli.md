@@ -7,21 +7,21 @@ The `openagentd` binary is the single entry point for running, managing, and ins
 ```bash
 openagentd                            # start in the background
 openagentd start --lan --key          # save LAN host + required client access key
-openagentd restart                    # reuse settings.yaml server.host/port/access_key
+openagentd restart                    # reuse server.yaml host/port/access_key
 ```
 
 **Flags**
 
 | Flag | Default | Description |
 |---|---|---|
-| `--host` | `settings.yaml server.host` | Bind address and save it to `settings.yaml` |
-| `--port` | `settings.yaml server.port` | API port and save it to `settings.yaml` |
+| `--host` | `server.yaml host` | Bind address and save it to `server.yaml` |
+| `--port` | `server.yaml port` | API port and save it to `server.yaml` |
 | `--lan` | off | Save/bind `0.0.0.0` and print LAN/mobile addresses; a configured access key is required |
-| `--key` | off | Prompt for a LAN access key, save it to `settings.yaml`, and require API clients to send `Authorization: Bearer <key>` |
+| `--key` | off | Prompt for a LAN access key, save it to `server.yaml`, and require API clients to send `Authorization: Bearer <key>` |
 | `--wait` | off | Wait/poll until the background server is fully started and ready |
 | `--watch` | off | Alias for `--wait` |
 
-The server runs as a detached background process and exposes the API on port 4082 by default. Non-loopback binds are refused unless a desktop token or access key is configured; use `--lan --key` for first-time LAN setup. It does not serve the React Web UI; use the desktop app for the packaged UI or `make dev` from source for Vite + API development. Logs go to `~/.local/state/openagentd/logs/app/app.log`. The server auto-migrates the database on startup. For mobile clients on the same network, use `openagentd start --lan --key` in public or shared networks. `--lan`, `--host`, `--port`, and `--key` update `~/.config/openagentd/settings.yaml`, so later `openagentd restart` keeps the same bind address, port, and access-key protection without another prompt. The desktop/mobile/web backend connection dialog has an **Access key** field that stores the key locally and sends it on API/SSE requests.
+The server runs as a detached background process and exposes the API on port 4082 by default. Non-loopback binds are refused unless a desktop token or access key is configured; use `--lan --key` for first-time LAN setup. It does not serve the React Web UI; use the desktop app for the packaged UI or `make dev` from source for Vite + API development. Logs go to `~/.local/state/openagentd/logs/app/app.log`. The server auto-migrates the database on startup. For mobile clients on the same network, use `openagentd start --lan --key` in public or shared networks. `--lan`, `--host`, `--port`, and `--key` update `~/.config/openagentd/server.yaml`, so later `openagentd restart` and `openagentd upgrade` keep the same bind address, port, and access-key protection without another prompt. Older `settings.yaml` server blocks are migrated automatically. Agents, providers, sessions, and the rest of the runtime configuration remain shared with the desktop builtin sidecar; only the independently launched servers' bind/auth state is separated. The desktop/mobile/web backend connection dialog has an **Access key** field that stores the key locally and sends it on API/SSE requests.
 
 If openagentd hasn't been initialised yet, `openagentd` automatically runs `openagentd init` before starting the server.
 
@@ -87,7 +87,7 @@ openagentd restart --host 127.0.0.1
 openagentd restart --key
 ```
 
-Stops the background server when it is running, then starts it again. `restart` reuses `settings.yaml` server config; pass `--host`, `--port`, `--lan`, or `--key` to update that config before the server starts.
+Stops the background server when it is running, then starts it again. `restart` reuses `server.yaml`; pass `--host`, `--port`, `--lan`, or `--key` to update that config before the server starts.
 
 ---
 

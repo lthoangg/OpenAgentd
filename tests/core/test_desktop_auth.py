@@ -7,7 +7,7 @@ from fastapi import FastAPI, Request, WebSocket
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
-from app.core.desktop_auth import DesktopTokenMiddleware
+from app.core.desktop_auth import DesktopTokenMiddleware, configured_access_token
 
 
 def _make_app(token: str | None) -> FastAPI:
@@ -53,6 +53,23 @@ def _make_app(token: str | None) -> FastAPI:
         return {"metrics": True}
 
     return app
+
+
+class TestConfiguredAccessToken:
+    def test_desktop_launch_token_wins_without_reading_cli_server_settings(
+        self, monkeypatch
+    ):
+        monkeypatch.setenv("OPENAGENTD_DESKTOP_TOKEN", "desktop-secret")
+        monkeypatch.setenv("OPENAGENTD_ACCESS_KEY", "cli-secret")
+
+        def fail_if_loaded():
+            raise AssertionError("desktop auth must not load CLI server settings")
+
+        monkeypatch.setattr(
+            "app.core.desktop_auth.load_server_settings", fail_if_loaded
+        )
+
+        assert configured_access_token() == "desktop-secret"
 
 
 class TestMiddlewareDisabled:

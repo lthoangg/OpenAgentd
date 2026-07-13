@@ -57,13 +57,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--version", action="version", version=f"openagentd v{VERSION}")
     parser.add_argument(
-        "--host", default=None, help="Bind host (default: settings.yaml server.host)"
+        "--host", default=None, help="Bind host (default: server.yaml host)"
     )
     parser.add_argument(
         "--port",
         type=int,
         default=None,
-        help="API port (default: settings.yaml server.port)",
+        help="API port (default: server.yaml port)",
     )
     parser.add_argument(
         "--lan",
@@ -145,13 +145,13 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument(
             "--host",
             default=argparse.SUPPRESS,
-            help="Bind host (default: settings.yaml server.host)",
+            help="Bind host (default: server.yaml host)",
         )
         p.add_argument(
             "--port",
             type=int,
             default=argparse.SUPPRESS,
-            help="API port (default: settings.yaml server.port)",
+            help="API port (default: server.yaml port)",
         )
         p.add_argument(
             "--lan",
@@ -269,9 +269,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="Pack config for migration to another server (agents, skills, commands, …)",
         description=(
             "Creates a .tar.gz archive of your portable config layer — agents, skills,\n"
-            "commands, plugins, mcp.json, settings.yaml, multimodal.yaml, and .env.\n"
+            "commands, plugins, mcp.json, settings.yaml, server.yaml, multimodal.yaml, and .env.\n"
             "\n"
-            "API-key values in .env are redacted by default so the archive is safe to\n"
+            "Secrets in .env and server.yaml are redacted by default so the archive is safe to\n"
             "copy over untrusted channels. Use --include-secrets to embed them verbatim."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,

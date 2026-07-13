@@ -2,7 +2,7 @@
 title: Configuration
 description: Hub for environment variables, paths, agent files, providers, tools, skills, sandbox, and hooks.
 status: stable
-updated: 2026-05-16
+updated: 2026-07-13
 ---
 
 # Configuration
@@ -30,7 +30,7 @@ openagentd             # start the API server in the background
 openagentd doctor      # health checks
 ```
 
-`init` writes config to `~/.config/openagentd/` (XDG standard). The database lives at `~/.local/share/openagentd/openagentd.db`. Logs live at `~/.local/state/openagentd/logs/app/app.log`, with a separate error-only stream at `~/.local/state/openagentd/logs/app/app-error.log`.
+`init` writes config to `~/.config/openagentd/` (XDG standard). Shared runtime settings live in `settings.yaml`; CLI server bind/auth settings live separately in `server.yaml`. The database lives at `~/.local/share/openagentd/openagentd.db`. Logs live at `~/.local/state/openagentd/logs/app/app.log`, with a separate error-only stream at `~/.local/state/openagentd/logs/app/app-error.log`.
 
 Two `.env` files are loaded if present: `~/.config/openagentd/.env` takes priority over `.env` in the project root.
 
@@ -74,4 +74,4 @@ For frontend + backend development with hot-reload, use `make dev` from a source
 
 - API: `http://localhost:4082/api`
 - Interactive docs: `http://localhost:4082/docs`
-- Desktop/mobile clients: use `openagentd address` to find the local or LAN URL. In shared networks, run `openagentd start --lan --key` once; `server.host`, `server.port`, and `server.access_key` are saved in `settings.yaml` for future restarts.
+- Desktop/mobile clients: use `openagentd address` to find the local or LAN URL. In shared networks, run `openagentd start --lan --key` once; `host`, `port`, and `access_key` are saved in `server.yaml` for future restarts and upgrades. The desktop builtin sidecar continues to use its separate ephemeral desktop token.

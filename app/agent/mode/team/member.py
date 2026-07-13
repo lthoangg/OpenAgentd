@@ -773,7 +773,13 @@ class TeamMemberBase(abc.ABC):
                 last_service_tier = value
                 break
         effective_model = session_model or (
-            self.agent.model_id if session_thinking_level or last_service_tier else None
+            self.agent.model_id
+            if (
+                session_thinking_level
+                or last_service_tier
+                or (self.agent.model_id or "").startswith("codex:")
+            )
+            else None
         )
         if (
             self._role_label == "lead"
@@ -785,6 +791,8 @@ class TeamMemberBase(abc.ABC):
                 model_kwargs["thinking_level"] = session_thinking_level
             if last_service_tier:
                 model_kwargs["service_tier"] = last_service_tier
+            if effective_model.startswith("codex:"):
+                model_kwargs["prompt_cache_key"] = f"openagentd:{self.session_id}"
             runtime_provider = self._team._provider_factory(
                 effective_model,
                 model_kwargs=model_kwargs,

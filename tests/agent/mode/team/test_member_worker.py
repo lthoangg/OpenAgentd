@@ -271,6 +271,94 @@ class TestOnDemandActivation:
             "model_id": "googlegenai:gemini-3.1-flash-lite",
         }
 
+    async def test_lead_thinking_override_uses_stable_session_prompt_cache_key(
+        self, monkeypatch
+    ):
+        session_uuid = uuid7()
+        session_id = str(session_uuid)
+        session_row = ChatSession(
+            id=session_uuid,
+            title="s",
+            thinking_level="high",
+        )
+        db_factory = _make_mock_db_factory_with_session(session_row)
+        default_provider = MockTeamProvider("default")
+        override_provider = MockTeamProvider("override")
+        factory_kwargs: list[dict[str, object] | None] = []
+
+        async def fake_run(*_args, **_kwargs):
+            return []
+
+        def provider_factory(model: str, model_kwargs=None):
+            factory_kwargs.append(model_kwargs)
+            return override_provider
+
+        lead = TeamLead(
+            Agent(
+                name="lead",
+                model_id="codex:gpt-5.4",
+                llm_provider=default_provider,
+            ),
+            db_factory=db_factory,
+        )
+        lead.session_id = session_id
+        team = AgentTeam(
+            lead=lead, provider_factory=provider_factory, db_factory=db_factory
+        )
+        lead.register(team)
+        monkeypatch.setattr(lead.agent, "run", fake_run)
+
+        await lead._handle_messages(force_compaction=True)
+        await lead._handle_messages(force_compaction=True)
+
+        assert factory_kwargs == [
+            {
+                "thinking_level": "high",
+                "prompt_cache_key": f"openagentd:{session_id}",
+            },
+            {
+                "thinking_level": "high",
+                "prompt_cache_key": f"openagentd:{session_id}",
+            },
+        ]
+
+    async def test_lead_codex_model_uses_session_prompt_cache_key_without_override(
+        self, monkeypatch
+    ):
+        session_uuid = uuid7()
+        session_id = str(session_uuid)
+        session_row = ChatSession(id=session_uuid, title="s")
+        db_factory = _make_mock_db_factory_with_session(session_row)
+        default_provider = MockTeamProvider("default")
+        override_provider = MockTeamProvider("override")
+        factory_kwargs: list[dict[str, object] | None] = []
+
+        async def fake_run(*_args, **_kwargs):
+            return []
+
+        def provider_factory(model: str, model_kwargs=None):
+            factory_kwargs.append(model_kwargs)
+            return override_provider
+
+        lead = TeamLead(
+            Agent(
+                name="lead",
+                model_id="codex:gpt-5.4",
+                llm_provider=default_provider,
+            ),
+            db_factory=db_factory,
+        )
+        lead.session_id = session_id
+        team = AgentTeam(
+            lead=lead, provider_factory=provider_factory, db_factory=db_factory
+        )
+        lead.register(team)
+        monkeypatch.setattr(lead.agent, "run", fake_run)
+
+        await lead._handle_messages(force_compaction=True)
+
+        assert factory_kwargs == [{"prompt_cache_key": f"openagentd:{session_id}"}]
+
     async def test_worker_activates_on_inbox_message(self, team_with_db):
         """Worker activates when a message arrives in inbox."""
         team = team_with_db

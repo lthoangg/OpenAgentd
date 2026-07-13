@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { Loader2, Pause, Play, Trash2, Zap } from 'lucide-react'
 import type { ScheduledTaskResponse } from '@/api/types'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useDeleteScheduledTaskMutation, usePauseScheduledTaskMutation, useResumeScheduledTaskMutation, useTriggerScheduledTaskMutation } from '@/queries'
 import { formatRelativeDate } from '@/utils/format'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -29,6 +30,7 @@ export function TaskListItem({
   const { isTauri, os } = usePlatform()
   const isTauriMobile = isTauri && (os === 'ios' || os === 'android')
   const [actionsPoint, setActionsPoint] = useState<{ x: number; y: number } | null>(null)
+  const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false)
   const longPressTimerRef = useRef<number | null>(null)
   const longPressStartRef = useRef<{ x: number; y: number } | null>(null)
 
@@ -44,9 +46,12 @@ export function TaskListItem({
     else pauseMutation.mutate(task.slug)
   }
   const deleteTask = () => {
-    if (confirm(`Delete task "${task.name}"?`)) {
-      deleteMutation.mutate(task.slug, { onSuccess: onDeleted })
-    }
+    deleteMutation.mutate(task.slug, {
+      onSuccess: () => {
+        setDeleteConfirmationOpen(false)
+        onDeleted()
+      },
+    })
   }
 
   const statusColor = {
@@ -168,7 +173,7 @@ export function TaskListItem({
             size="icon-xs"
             onClick={(e) => {
               e.stopPropagation()
-              deleteTask()
+              setDeleteConfirmationOpen(true)
             }}
             disabled={deleteMutation.isPending}
             title="Delete"
@@ -229,7 +234,7 @@ export function TaskListItem({
             className="flex w-full items-center gap-2 rounded-xs px-2 py-1 text-left text-xs text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none"
             onClick={() => {
               setActionsPoint(null)
-              deleteTask()
+              setDeleteConfirmationOpen(true)
             }}
           >
             <Trash2 size={14} aria-hidden="true" />
@@ -238,6 +243,31 @@ export function TaskListItem({
         </div>
       </div>
     )}
+    <Dialog open={deleteConfirmationOpen} onOpenChange={setDeleteConfirmationOpen}>
+      <DialogContent showCloseButton={false}>
+        <DialogHeader>
+          <DialogTitle>Delete scheduled task</DialogTitle>
+          <DialogDescription>
+            &ldquo;{task.name}&rdquo; will be permanently deleted. This cannot be undone.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter className="p-3">
+          <Button type="button" variant="default" onClick={() => setDeleteConfirmationOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="danger"
+            aria-label="Delete task permanently"
+            onClick={deleteTask}
+            disabled={deleteMutation.isPending}
+          >
+            {deleteMutation.isPending && <Loader2 size={13} className="animate-spin" />}
+            Delete
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
     </>
   )
 }

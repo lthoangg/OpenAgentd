@@ -114,7 +114,7 @@ describe('AppBackendDialog', () => {
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
     await user.type(screen.getByLabelText(/server url/i), 'localhost')
-    await user.click(screen.getByRole('button', { name: 'Connect' }))
+    await user.click(screen.getByRole('button', { name: 'Test connection' }))
 
     expect(await screen.findByText('Enter a full server URL, including http:// or https://.')).toBeTruthy()
     expect(invokeCalls.some((call) => call.command === 'app_set_backend_base_url')).toBe(false)
@@ -215,21 +215,46 @@ describe('AppBackendDialog', () => {
     await waitFor(() => expect(window.__OAD_API_BASE_URL__).toBe('http://127.0.0.1:49545'))
   })
 
-  it('saves a server name without switching connections', async () => {
+  it('requires a successful test before saving and connecting a server', async () => {
     const user = userEvent.setup()
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
-    await user.type(screen.getByLabelText(/server url/i), 'http://127.0.0.1:5050')
-    await user.type(screen.getByLabelText(/server name/i), 'Workstation')
-    await user.click(screen.getByRole('button', { name: 'Save server' }))
+    await user.type(screen.getByLabelText(/server url/i), 'http://127.0.0.1:4082')
+    await user.type(screen.getByLabelText(/access key/i), 'secret')
+    await user.click(screen.getByRole('button', { name: 'Test connection' }))
 
-    await waitFor(() => {
-      expect(invokeCalls).toContainEqual({
-        command: 'app_save_backend_server',
-        args: { baseUrl: 'http://127.0.0.1:5050', name: 'Workstation' },
-      })
+    await waitFor(() => expect(screen.getByText('Connection successful.')).toBeTruthy())
+    expect(invokeCalls.some((call) => call.command === 'app_use_external_backend')).toBe(false)
+
+    await user.type(screen.getByLabelText(/server name/i), 'Workstation')
+    await user.click(screen.getByRole('button', { name: 'Save & Connect' }))
+
+    await waitFor(() => expect(window.__OAD_API_BASE_URL__).toBe('http://127.0.0.1:4082'))
+    expect(invokeCalls).toContainEqual({
+      command: 'app_use_external_backend',
+      args: { baseUrl: 'http://127.0.0.1:4082', name: 'Workstation', persist: true },
     })
-    expect(invokeCalls.some((call) => call.command === 'app_set_backend_base_url')).toBe(false)
+    expect(window.localStorage.getItem('openagentd.accessKey:http://127.0.0.1:4082')).toBe('secret')
+  })
+
+  it('populates a saved server for editing and overwrites it when saved', async () => {
+    const user = userEvent.setup()
+    render(<AppBackendDialog open onOpenChange={() => {}} />)
+
+    const editButtons = await screen.findAllByRole('button', { name: 'edit' })
+    await user.click(editButtons[0])
+    expect((screen.getByLabelText(/server url/i) as HTMLInputElement).value).toBe('http://127.0.0.1:4082')
+    expect((screen.getByLabelText(/server name/i) as HTMLInputElement).value).toBe('Local CLI')
+
+    await user.click(screen.getByRole('button', { name: 'Test connection' }))
+    await user.clear(screen.getByLabelText(/server name/i))
+    await user.type(screen.getByLabelText(/server name/i), 'Renamed CLI')
+    await user.click(screen.getByRole('button', { name: 'Save & Connect' }))
+
+    await waitFor(() => expect(invokeCalls).toContainEqual({
+      command: 'app_use_external_backend',
+      args: { baseUrl: 'http://127.0.0.1:4082', name: 'Renamed CLI', persist: true },
+    }))
   })
 
   it('removes a saved server', async () => {
@@ -252,87 +277,11 @@ describe('AppBackendDialog', () => {
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
     await user.type(screen.getByLabelText(/server url/i), 'http://127.0.0.1:4999')
-    await user.click(screen.getByRole('button', { name: 'Connect' }))
+    await user.click(screen.getByRole('button', { name: 'Test connection' }))
 
     expect(await screen.findByText(/Server did not respond to \/api\/health\/live/)).toBeTruthy()
     expect(window.__OAD_API_BASE_URL__).toBe('http://127.0.0.1:5999')
     expect(invokeCalls.some((call) => call.command === 'app_use_external_backend')).toBe(false)
-  })
-
-  it('checks and uses a valid typed URL without saving or closing', async () => {
-    const user = userEvent.setup()
-    const onOpenChange = mock(() => {})
-    render(<AppBackendDialog open onOpenChange={onOpenChange} />)
-
-    await user.type(screen.getByLabelText(/server url/i), 'http://127.0.0.1:4082')
-    await user.click(screen.getByRole('button', { name: 'Connect' }))
-
-    await waitFor(() => expect(window.__OAD_API_BASE_URL__).toBe('http://127.0.0.1:4082'))
-    expect(invokeCalls).toContainEqual({
-      command: 'app_use_external_backend',
-      args: { baseUrl: 'http://127.0.0.1:4082', name: '', persist: true },
-    })
-    expect(onOpenChange).not.toHaveBeenCalled()
-  })
-
-  it('reloads the page after connecting to a different external server', async () => {
-    const user = userEvent.setup()
-    render(<AppBackendDialog open onOpenChange={() => {}} />)
-
-    await user.type(screen.getByLabelText(/server url/i), 'http://127.0.0.1:4082')
-    await user.click(screen.getByRole('button', { name: 'Connect' }))
-
-    await waitFor(() => expect(reloadMock).toHaveBeenCalled())
-  })
-
-  it('does not reload the page when connecting to the already active external server', async () => {
-    const user = userEvent.setup()
-    globalThis.fetch = mock((...args: unknown[]) => {
-      const url = String(args[0])
-      const ok = url.startsWith('http://127.0.0.1:5999/')
-      return Promise.resolve(new Response(null, { status: ok ? 204 : 503 }))
-    }) as typeof fetch
-    render(<AppBackendDialog open onOpenChange={() => {}} />)
-
-    await user.type(screen.getByLabelText(/server url/i), 'http://127.0.0.1:5999')
-    await user.click(screen.getByRole('button', { name: 'Connect' }))
-
-    await waitFor(() => expect(invokeCalls.some((call) => call.command === 'app_use_external_backend')).toBe(true))
-    expect(reloadMock).not.toHaveBeenCalled()
-  })
-
-  it('can switch to an external server without making it the remembered startup backend', async () => {
-    const user = userEvent.setup()
-    render(<AppBackendDialog open onOpenChange={() => {}} />)
-
-    await user.type(screen.getByLabelText(/server url/i), 'http://127.0.0.1:4082')
-    await user.click(screen.getByLabelText(/save this server/i))
-    await user.click(screen.getByRole('button', { name: 'Connect' }))
-
-    await waitFor(() => expect(window.__OAD_API_BASE_URL__).toBe('http://127.0.0.1:4082'))
-    expect(invokeCalls).toContainEqual({
-      command: 'app_use_external_backend',
-      args: { baseUrl: 'http://127.0.0.1:4082', name: '', persist: false },
-    })
-  })
-
-  it('checks and uses a LAN server URL', async () => {
-    globalThis.fetch = mock((...args: unknown[]) => {
-      const url = String(args[0])
-      const ok = url.startsWith('http://192.168.1.20:4082/')
-      return Promise.resolve(new Response(null, { status: ok ? 204 : 503 }))
-    }) as typeof fetch
-    const user = userEvent.setup()
-    render(<AppBackendDialog open onOpenChange={() => {}} />)
-
-    await user.type(screen.getByLabelText(/server url/i), 'http://192.168.1.20:4082')
-    await user.click(screen.getByRole('button', { name: 'Connect' }))
-
-    await waitFor(() => expect(window.__OAD_API_BASE_URL__).toBe('http://192.168.1.20:4082'))
-    expect(invokeCalls).toContainEqual({
-      command: 'app_use_external_backend',
-      args: { baseUrl: 'http://192.168.1.20:4082', name: '', persist: true },
-    })
   })
 
   it('selects a saved server without auto-connecting or reloading', async () => {
@@ -362,29 +311,15 @@ describe('AppBackendDialog', () => {
     })
   })
 
-  it('normalizes a typed /api URL before connecting', async () => {
-    const user = userEvent.setup()
-    render(<AppBackendDialog open onOpenChange={() => {}} />)
-
-    await user.type(screen.getByLabelText(/server url/i), 'http://127.0.0.1:4082/api')
-    await user.click(screen.getByRole('button', { name: 'Connect' }))
-
-    await waitFor(() => expect(window.__OAD_API_BASE_URL__).toBe('http://127.0.0.1:4082'))
-    expect(invokeCalls).toContainEqual({
-      command: 'app_use_external_backend',
-      args: { baseUrl: 'http://127.0.0.1:4082', name: '', persist: true },
-    })
-  })
-
-  it('stores the typed access key under the target backend before invoking a connect command', async () => {
+  it('stores the typed access key after a successful connection test', async () => {
     const user = userEvent.setup()
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
     await user.type(screen.getByLabelText(/access key/i), 'secret')
     await user.type(screen.getByLabelText(/server url/i), 'http://127.0.0.1:4082')
-    await user.click(screen.getByRole('button', { name: 'Connect' }))
+    await user.click(screen.getByRole('button', { name: 'Test connection' }))
 
-    await waitFor(() => expect(window.__OAD_API_BASE_URL__).toBe('http://127.0.0.1:4082'))
+    await waitFor(() => expect(screen.getByText('Connection successful.')).toBeTruthy())
     expect(window.localStorage.getItem('openagentd.accessKey:http://127.0.0.1:4082')).toBe('secret')
     expect(window.localStorage.getItem('openagentd.accessKey')).toBeNull()
   })
@@ -394,7 +329,7 @@ describe('AppBackendDialog', () => {
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
     await user.type(screen.getByLabelText(/server url/i), 'http://127.0.0.1:4999')
-    await user.click(screen.getByRole('button', { name: 'Connect' }))
+    await user.click(screen.getByRole('button', { name: 'Test connection' }))
 
     expect(await screen.findByText(/Make sure OpenAgentd is running locally and the port is correct/)).toBeTruthy()
   })

@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { Server } from 'lucide-react'
 import { AppOverlay } from '@/components/ui/app-overlay'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { SectionCard, SectionCardHeader, SectionCardRows, SectionCardRow, SectionCardBadge } from '@/components/ui/section-card'
 
@@ -13,7 +12,6 @@ import { getStoredAccessKey, setStoredAccessKey } from '@/api/auth'
 import {
   getAppBackendStatus,
   removeAppBackendServer,
-  saveAppBackendServer,
   stopBundledAppBackend,
   switchToExternalAppBackend,
   switchToBundledAppBackend,
@@ -35,7 +33,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
   const [baseUrl, setBaseUrl] = useState('')
   const [serverName, setServerName] = useState('')
   const [accessKey, setAccessKeyInput] = useState('')
-  const [rememberServer, setRememberServer] = useState(true)
+  const [testedBaseUrl, setTestedBaseUrl] = useState<string | null>(null)
   const [serverHealth, setServerHealth] = useState<Record<string, 'checking' | 'online' | 'offline'>>({})
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -49,7 +47,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
       setBaseUrl('')
       setServerName('')
       setAccessKeyInput('')
-      setRememberServer(true)
+      setTestedBaseUrl(null)
       const servers = next?.servers ?? DEFAULT_SERVERS
       setServerHealth(Object.fromEntries(servers.map((server) => [normalizeServerBaseUrl(server.base_url), 'checking'])))
       for (const server of servers) {
@@ -67,14 +65,14 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
 
   if (!open) return null
 
-  async function checkExternal(nextBaseUrl = baseUrl, nextName = serverName, persist = rememberServer) {
+  async function connectExternal(nextBaseUrl: string, nextName: string, persist: boolean) {
     const target = normalizeServerBaseUrl(nextBaseUrl)
-    const currentBaseUrl = normalizeServerBaseUrl(status?.base_url || apiBaseUrl().replace(/\/api$/, ''))
     const validationError = validateServerUrl(target)
     if (validationError) {
       setError(validationError)
       return
     }
+    const currentBaseUrl = normalizeServerBaseUrl(status?.base_url || apiBaseUrl().replace(/\/api$/, ''))
     setPending(true)
     setError(null)
     try {
@@ -97,9 +95,38 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
       const shouldReload = nextBaseUrl !== currentBaseUrl
       await refreshBackendQueries()
       setStatus(next)
-      if (shouldReload) {
-        window.location.reload()
+      if (shouldReload) window.location.reload()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setPending(false)
+    }
+  }
+
+  async function testConnection() {
+    const target = normalizeServerBaseUrl(baseUrl)
+    const validationError = validateServerUrl(target)
+    if (validationError) {
+      setError(validationError)
+      return
+    }
+    setPending(true)
+    setError(null)
+    try {
+      const online = await pingServer(target)
+      setServerHealth((prev) => ({ ...prev, [target]: online ? 'online' : 'offline' }))
+      if (!online) {
+        setError(connectionFailureMessage(target))
+        return
       }
+      const keyForTest = accessKey.trim() || await getStoredAccessKey(target) || ''
+      const authorized = await checkServerAuth(target, keyForTest)
+      if (!authorized) {
+        setError('Server is reachable, but the access key is invalid or missing.')
+        return
+      }
+      if (accessKey.trim()) await setStoredAccessKey(accessKey, target)
+      setTestedBaseUrl(target)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -115,28 +142,20 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
     await runConnectionSwitch(() => stopBundledAppBackend())
   }
 
-  async function saveServer() {
+  async function saveAndConnect() {
     const target = normalizeServerBaseUrl(baseUrl)
-    const validationError = validateServerUrl(target)
-    if (validationError) {
-      setError(validationError)
+    if (testedBaseUrl !== target) {
+      setError('Test the current server URL and access key before saving.')
       return
     }
-    setPending(true)
-    setError(null)
-    try {
-      const next = await saveAppBackendServer(target, serverName)
-      setStatus(next)
-      setBaseUrl('')
-      setServerName('')
-      setServerHealth((prev) => ({ ...prev, [target]: 'checking' }))
-      const online = await pingServer(target)
-      setServerHealth((prev) => ({ ...prev, [target]: online ? 'online' : 'offline' }))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setPending(false)
-    }
+    await connectExternal(target, serverName, true)
+  }
+
+  function editServer(nextBaseUrl: string, nextName: string) {
+    setBaseUrl(nextBaseUrl)
+    setServerName(nextName)
+    setTestedBaseUrl(null)
+    void getStoredAccessKey(nextBaseUrl).then((storedKey) => setAccessKeyInput(storedKey ?? ''))
   }
 
   async function removeServer(baseUrl: string) {
@@ -260,7 +279,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
                   <SectionCardRow key={server.base_url}>
                     <button
                       type="button"
-                      onClick={() => { setBaseUrl(normalizedServerUrl); setServerName(server.name ?? '') }}
+                      onClick={() => { editServer(normalizedServerUrl, server.name ?? '') }}
                       className="flex min-w-0 flex-1 items-center gap-2 text-left focus:outline-none"
                       disabled={pending}
                     >
@@ -278,7 +297,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
                         type="button"
                         variant="subtle"
                         size="xs"
-                        onClick={() => { void checkExternal(normalizedServerUrl, server.name ?? '', true) }}
+                        onClick={() => { void connectExternal(normalizedServerUrl, server.name ?? '', true) }}
                         disabled={pending}
                       >
                         connect
@@ -287,7 +306,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
                         type="button"
                         variant="subtle"
                         size="xs"
-                        onClick={() => { setBaseUrl(normalizedServerUrl); setServerName(server.name ?? '') }}
+                        onClick={() => { editServer(normalizedServerUrl, server.name ?? '') }}
                         disabled={pending}
                       >
                         edit
@@ -316,50 +335,32 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
                 <label className="text-[10.5px] font-semibold text-(--color-text-muted)" htmlFor="app-backend-url">
                   Server URL
                 </label>
-                <div className="flex gap-2">
-                  <Input
-                    id="app-backend-url"
-                    value={baseUrl}
-                    onChange={(event) => setBaseUrl(event.target.value)}
-                    placeholder="http://<backend-host>:4082"
-                    className="min-w-0 flex-1 font-mono"
-                  />
-                  <Button
-                    type="button"
-                    variant="default"
-                    size="sm"
-                    onClick={() => void checkExternal()}
-                    disabled={pending}
-                  >
-                    {pending ? 'Connecting…' : 'Connect'}
-                  </Button>
-                </div>
-              </div>
-
-              <label className="flex min-h-11 cursor-pointer select-none items-center gap-2 rounded-sm border border-transparent px-1 text-xs text-(--color-text-muted) transition-colors md:min-h-0">
-                <Checkbox
-                  checked={rememberServer}
-                  onChange={(event) => setRememberServer(event.currentTarget.checked)}
-                  className="border-(--color-border) bg-(--bg-card) checked:border-(--color-border-strong) checked:bg-(--bg-key)"
-                  checkClassName="peer-checked:text-(--color-text)"
-                  disabled={pending}
+                <Input
+                  id="app-backend-url"
+                  value={baseUrl}
+                  onChange={(event) => { setBaseUrl(event.target.value); setTestedBaseUrl(null) }}
+                  placeholder="http://<backend-host>:4082"
+                  className="font-mono"
                 />
-                <span>Save this server and reconnect to it after reload</span>
-              </label>
+              </div>
 
               <div className="grid gap-1.5">
                 <label className="text-[10.5px] font-semibold text-(--color-text-muted)" htmlFor="app-backend-key">
                   Access key
                 </label>
-                <Input
-                  id="app-backend-key"
-                  value={accessKey}
-                  onChange={(event) => {
-                    setAccessKeyInput(event.target.value)
-                  }}
-                  placeholder="Required when server was started with --key"
-                  type="password"
-                />
+                <div className="flex gap-2">
+                  <Input
+                    id="app-backend-key"
+                    value={accessKey}
+                    onChange={(event) => { setAccessKeyInput(event.target.value); setTestedBaseUrl(null) }}
+                    placeholder="Required when server was started with --key"
+                    type="password"
+                    className="min-w-0 flex-1"
+                  />
+                  <Button type="button" variant="default" size="sm" onClick={() => void testConnection()} disabled={pending}>
+                    {pending ? 'Testing…' : 'Test connection'}
+                  </Button>
+                </div>
               </div>
 
               <div className="grid gap-1.5">
@@ -378,10 +379,10 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
                     type="button"
                     variant="default"
                     size="sm"
-                    onClick={() => void saveServer()}
-                    disabled={pending}
+                    onClick={() => void saveAndConnect()}
+                    disabled={pending || testedBaseUrl !== normalizeServerBaseUrl(baseUrl)}
                   >
-                    Save server
+                    Save & Connect
                   </Button>
                 </div>
               </div>
@@ -389,8 +390,14 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
           </SectionCard>
 
           <p className="text-[10.5px] leading-relaxed text-(--color-text-subtle)">
-            Connect verifies and switches to a saved server. Save only stores or renames an entry. Use builtin returns this app to the bundled sidecar. If a LAN server fails, confirm the backend is not bound to localhost only and that firewall/local-network permissions allow access.
+            Test the server URL and access key before saving. Save & Connect stores new servers or overwrites an edited server configuration, then connects to it. Use builtin returns this app to the bundled sidecar.
           </p>
+
+          {testedBaseUrl === normalizeServerBaseUrl(baseUrl) ? (
+            <div className="rounded border border-(--color-success)/25 bg-(--color-success-subtle) px-3.5 py-2.5 text-xs text-(--color-success)" role="status">
+              Connection successful.
+            </div>
+          ) : null}
 
           {error ? (
             <div className="rounded border border-(--color-error)/25 bg-(--color-error-subtle) px-3.5 py-2.5 text-xs text-(--color-error)" role="alert">

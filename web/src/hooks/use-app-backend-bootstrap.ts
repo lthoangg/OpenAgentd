@@ -8,6 +8,7 @@ import { useLspInstallStore } from '@/stores/useLspInstallStore'
 
 const DESKTOP_BOOTSTRAP_POLL_MS = 300
 const DESKTOP_BOOTSTRAP_TIMEOUT_MS = 15_000
+const ACTIVE_BACKEND_URL_STORAGE = 'openagentd.activeBackendUrl'
 
 export interface AppBackendBootstrap {
   ready: boolean
@@ -54,6 +55,14 @@ export function useAppBackendBootstrap(): AppBackendBootstrap {
     let pollTimer: ReturnType<typeof setTimeout> | undefined
     const isTauri = getPlatform().isTauri
     const deadline = Date.now() + DESKTOP_BOOTSTRAP_TIMEOUT_MS
+    const rememberedBackendUrl = isTauri
+      ? window.localStorage.getItem(ACTIVE_BACKEND_URL_STORAGE)
+      : null
+    // Keychain reads can be the slowest part of a cold mobile launch. Start
+    // the read from the previously verified backend while the shell resolves
+    // its current status; applyDesktopBackend will reuse the same in-flight
+    // read after the native status confirms the URL.
+    if (rememberedBackendUrl) void primeStoredAccessKey(rememberedBackendUrl).catch(() => {})
 
     const finishReady = () => {
       if (cancelled) return
@@ -80,7 +89,12 @@ export function useAppBackendBootstrap(): AppBackendBootstrap {
         const status = await getAppBackendStatus()
         if (cancelled) return
         if (isBootstrapReady(status, isTauri)) {
-          if (status?.base_url) await applyDesktopBackend(status)
+          if (status?.base_url) {
+            if (status.external) {
+              window.localStorage.setItem(ACTIVE_BACKEND_URL_STORAGE, status.base_url)
+            }
+            await applyDesktopBackend(status)
+          }
           finishReady()
           return
         }

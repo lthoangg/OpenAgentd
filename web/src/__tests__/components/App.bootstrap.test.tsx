@@ -108,6 +108,7 @@ mock.module('@/hooks/use-platform', () => ({
 beforeEach(() => {
   delete window.__OAD_API_BASE_URL__
   delete window.__OAD_TOKEN__
+  window.localStorage.clear()
   statusPayload = { base_url: TEST_BACKEND_URL, sidecar_running: true, external: false }
   backendReadyListener = null
   resolveSecureKey = null
@@ -119,6 +120,7 @@ afterEach(() => {
   cleanup()
   delete window.__OAD_API_BASE_URL__
   delete window.__OAD_TOKEN__
+  window.localStorage.clear()
 })
 
 describe('App backend bootstrap', () => {
@@ -132,12 +134,14 @@ describe('App backend bootstrap', () => {
     await waitFor(() => expect(routerMounted).toBe(true))
   })
 
-  it('hydrates the active mobile app backend URL on app startup', async () => {
+  it('hydrates and remembers the active mobile app backend URL on app startup', async () => {
+    statusPayload = { base_url: TEST_BACKEND_URL, sidecar_running: false, external: true }
     render(<App />)
 
     await waitFor(() => {
       expect(window.__OAD_API_BASE_URL__).toBe(TEST_BACKEND_URL)
     })
+    expect(window.localStorage.getItem('openagentd.activeBackendUrl')).toBe(TEST_BACKEND_URL)
   })
 
   it('hydrates the desktop token after a force reload page load', async () => {

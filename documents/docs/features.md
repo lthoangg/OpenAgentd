@@ -252,8 +252,10 @@ run from the terminal. Deeper docs: [`desktop.md`](./desktop.md),
   window drag region; macOS gets the proper traffic-light overlay.
 - **Restored desktop window size** `[v1.52.0]` — desktop windows reopen at the
   last normal size saved on quit, while minimized/maximized dimensions are ignored.
-- **Remote-backend mobile shell** `[v1.34.0]` — Tauri mobile app scaffold embeds
-  the shared Web UI and connects to saved remote API servers. See [`mobile.md`](./mobile.md).
+- **Remote-backend mobile shell** `[v1.34.0, v1.105.0]` — Tauri mobile app scaffold embeds
+  the shared Web UI and connects to saved remote API servers. Foreground resume
+  now reconciles missed history and replaces potentially frozen chat streams;
+  remembered-server launches prefetch and reuse native credentials. See [`mobile.md`](./mobile.md).
 - **LAN access key for external clients** `[v1.43.0, v1.103.0]` — `openagentd start --lan --key`
   stores the CLI server's bind address, port, and bearer key in `server.yaml`, separate from the desktop builtin sidecar's ephemeral token while agents, providers, sessions, and other settings remain shared. Restart and upgrade preserve that key without exposing it in process arguments. OpenAgentd-managed launchers refuse non-loopback binds without a configured key `[v1.101.0]`. See [`cli.md`](./cli.md) and [ADR-0002](../adrs/0002-require-authentication-for-non-loopback-bindings.md).
 - **Desktop server connection manager** `[v1.43.4, v1.99.8, v1.104.0]` — the desktop **Server connection** dialog switches the current window between the builtin sidecar and saved external servers, normalizes pasted `/api` URLs, and preserves other open windows' backend choices. Typed servers now require a successful health and access-key test before they can be named, saved, and connected. Saved LAN access keys are scoped per backend origin and stored in the native OS credential store on installed desktop/mobile shells; browser development keeps the per-origin localStorage fallback. Remembered external servers reconnect on app launch with sidecar fallback, while the desktop window opens immediately as backend startup continues asynchronously `[v1.57.1]`. See [`desktop.md`](./desktop.md) and [ADR-0001](../adrs/0001-native-backend-access-key-storage.md).

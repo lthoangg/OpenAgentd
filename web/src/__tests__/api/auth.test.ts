@@ -105,6 +105,25 @@ afterEach(() => {
 //  installDesktopAuth — gating
 // ════════════════════════════════════════════════════════════════════════════
 describe("access key storage", () => {
+  it("deduplicates concurrent native reads and reuses the cached credential", async () => {
+    let resolveRead!: (value: string | null) => void
+    invoke.mockImplementation(async (...args: unknown[]) => {
+      if (String(args[0]) !== 'secure_get_access_key') return undefined
+      return await new Promise<string | null>((resolve) => { resolveRead = resolve })
+    })
+    const auth = await freshAuth()
+
+    const first = auth.getStoredAccessKey('https://example.com/api')
+    const second = auth.getStoredAccessKey('https://example.com/api')
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(invoke.mock.calls.filter((call: unknown[]) => call[0] === 'secure_get_access_key')).toHaveLength(1)
+
+    resolveRead('native-key')
+    await expect(Promise.all([first, second])).resolves.toEqual(['native-key', 'native-key'])
+    await expect(auth.getStoredAccessKey('https://example.com/api')).resolves.toBe('native-key')
+    expect(invoke.mock.calls.filter((call: unknown[]) => call[0] === 'secure_get_access_key')).toHaveLength(1)
+  })
+
   it("migrates a scoped key only after native storage succeeds and caches it for requests", async () => {
     window.localStorage.setItem('openagentd.accessKey:https://example.com', 'legacy-key')
     invoke.mockImplementation(async (...args: unknown[]) => String(args[0]) === 'secure_get_access_key' ? null : undefined)

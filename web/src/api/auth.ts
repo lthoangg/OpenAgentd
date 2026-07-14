@@ -33,6 +33,8 @@ const TOKEN_KEY = '__OAD_TOKEN__'
 const ACCESS_KEY_STORAGE = 'openagentd.accessKey'
 const ACCESS_KEY_STORAGE_PREFIX = 'openagentd.accessKey:'
 const nativeAccessKeys = new Map<string, string>()
+const nativeAccessKeyMisses = new Set<string>()
+const nativeAccessKeyReads = new Map<string, Promise<string | undefined>>()
 
 function normalizeAccessKeyScope(baseUrl: string | undefined): string | null {
   const trimmed = baseUrl?.trim()
@@ -67,27 +69,44 @@ export async function getStoredAccessKey(baseUrl?: string): Promise<string | und
   const origin = normalizeAccessKeyScope(baseUrl)
   if (!origin || typeof window === 'undefined') return getAccessKey(baseUrl)
   if (!getPlatform().isTauri) return getAccessKey(baseUrl)
-  const { invoke } = await import('@tauri-apps/api/core')
-  const stored = await invoke<string | null>('secure_get_access_key', { origin })
-  if (stored) {
-    nativeAccessKeys.set(origin, stored)
-    installDesktopAuth()
-    return stored
+  const cached = nativeAccessKeys.get(origin)
+  if (cached) return cached
+  if (nativeAccessKeyMisses.has(origin)) return undefined
+  const pending = nativeAccessKeyReads.get(origin)
+  if (pending) return pending
+
+  const read = (async () => {
+    const { invoke } = await import('@tauri-apps/api/core')
+    const stored = await invoke<string | null>('secure_get_access_key', { origin })
+    if (stored) {
+      nativeAccessKeys.set(origin, stored)
+      nativeAccessKeyMisses.delete(origin)
+      installDesktopAuth()
+      return stored
+    }
+    const legacy = window.localStorage.getItem(`${ACCESS_KEY_STORAGE_PREFIX}${origin}`)
+    if (legacy) {
+      await invoke('secure_set_access_key', { origin, key: legacy })
+      nativeAccessKeys.set(origin, legacy)
+      nativeAccessKeyMisses.delete(origin)
+      installDesktopAuth()
+      window.localStorage.removeItem(`${ACCESS_KEY_STORAGE_PREFIX}${origin}`)
+      return legacy
+    }
+    nativeAccessKeyMisses.add(origin)
+    return undefined
+  })()
+  nativeAccessKeyReads.set(origin, read)
+  try {
+    return await read
+  } finally {
+    nativeAccessKeyReads.delete(origin)
   }
-  const legacy = window.localStorage.getItem(`${ACCESS_KEY_STORAGE_PREFIX}${origin}`)
-  if (legacy) {
-    await invoke('secure_set_access_key', { origin, key: legacy })
-    nativeAccessKeys.set(origin, legacy)
-    installDesktopAuth()
-    window.localStorage.removeItem(`${ACCESS_KEY_STORAGE_PREFIX}${origin}`)
-    return legacy
-  }
-  return undefined
 }
 
 /** Load the active shell credential before application requests begin. */
-export async function primeStoredAccessKey(): Promise<void> {
-  await getStoredAccessKey(apiBaseUrl())
+export async function primeStoredAccessKey(baseUrl: string = apiBaseUrl()): Promise<void> {
+  await getStoredAccessKey(baseUrl)
 }
 
 export async function setStoredAccessKey(key: string, baseUrl?: string): Promise<void> {
@@ -100,10 +119,12 @@ export async function setStoredAccessKey(key: string, baseUrl?: string): Promise
   if (key.trim()) {
     await invoke('secure_set_access_key', { origin, key: key.trim() })
     nativeAccessKeys.set(origin, key.trim())
+    nativeAccessKeyMisses.delete(origin)
     installDesktopAuth()
   } else {
     await invoke('secure_delete_access_key', { origin })
     nativeAccessKeys.delete(origin)
+    nativeAccessKeyMisses.add(origin)
   }
   window.localStorage.removeItem(`${ACCESS_KEY_STORAGE_PREFIX}${origin}`)
 }

@@ -2,7 +2,7 @@
 title: Mobile app
 description: Tauri mobile shell for connecting to remote OpenAgentd API servers.
 status: draft
-updated: 2026-07-09
+updated: 2026-07-14
 ---
 
 # Mobile app
@@ -26,11 +26,13 @@ Mobile uses the shared **Backend connection** UI:
 - **Check** probes `<server>/api/health/live` and uses that server for the current WebView session.
 - **Save** persists or renames a server for future use.
 - Saved servers can be removed and show live status indicators.
+- On later launches, the app preloads the last verified server credential while
+  native backend status resolves, avoiding duplicate Keychain reads.
 - Access keys are scoped by normalized server origin and stored in the iOS Keychain. Legacy per-origin localStorage is removed only after a successful Keychain write; native-store failures are shown instead of silently downgrading storage.
 - The built-in desktop sidecar row is hidden because mobile has no bundled backend.
 - Shared web UI mobile affordances include safe-area-aware fullscreen MCP apps, keyboard-avoiding composer padding, pull-to-refresh for recent sessions, and touch gestures in the image lightbox. Native iOS and Web UI are locked to portrait-only orientation to ensure optimal single-pane readability and avoid cramped horizontal layouts. See [`web/mobile.md`](./web/mobile.md) for responsive layout details.
 
-For simulator development, `http://localhost:8000` usually reaches the Mac backend. Physical devices should use a LAN IP or HTTPS endpoint. The app keeps a lightweight global SSE feed for scheduled-session activation, title changes, and notifications in addition to the currently open chat stream. Both connections back off while offline. Whenever the global feed connects or reconnects, including foreground resume, the app reloads the current session from REST and reattaches its chat stream when the server reports it running. Global events are live-only, so this reconciliation is the recovery path after iOS suspends networking. It does not guarantee notification delivery while the app is terminated; that would require a separate APNs/FCM feature. Mobile does not initialize the desktop updater; releases are delivered through the platform distribution channel.
+For simulator development, `http://localhost:8000` usually reaches the Mac backend. Physical devices should use a LAN IP or HTTPS endpoint. The app keeps a lightweight global SSE feed for scheduled-session activation, title changes, and notifications in addition to the currently open chat stream. Both connections back off while offline. On foreground resume, the app treats the chat connection as potentially frozen even if the WebView still reports it connected: it replaces the stream, reloads missed session history from REST, and reattaches when the server reports the turn still running. The global feed performs the same reconciliation whenever it connects or reconnects. Global events are live-only, so this is the recovery path after iOS suspends networking. It does not guarantee notification delivery while the app is terminated; that would require a separate APNs/FCM feature. Mobile does not initialize the desktop updater; releases are delivered through the platform distribution channel.
 
 Production mobile builds allow `about:` in `frame-src` so sandboxed MCP Apps rendered through `iframe.srcdoc` stay interactive under the packaged Tauri CSP. The app HTML still receives its own MCP resource CSP from `_meta.ui.csp`; the shell-level rule only permits the `about:srcdoc` iframe document.
 

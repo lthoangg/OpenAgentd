@@ -91,6 +91,7 @@ export function useSessionBootstrap({
 }: UseSessionBootstrapArgs): UseSessionBootstrapResult {
   const draftBySessionRef = useRef<Record<string, SessionDraft>>({})
   const abortRef = useRef<AbortController | null>(null)
+  const resumeInFlightRef = useRef(false)
 
   // ── Init / reconnect ───────────────────────────────────────────────────────
 
@@ -143,18 +144,23 @@ export function useSessionBootstrap({
       const state = useTeamStore.getState()
       if (state.sessionId !== sessionId) return
       if (state._workspace !== agentWorkspace) return
-      if (state.isConnected && !state._unloading) return
+      if (resumeInFlightRef.current) return
 
-      useTeamStore.setState({ _unloading: false })
-      if (state.isTeamWorking) {
-        void loadSession(sessionId, agentWorkspace).then(() => {
-          const current = useTeamStore.getState()
-          if (current.sessionId !== sessionId || current._workspace !== agentWorkspace) return
-          abortRef.current = connectStream()
-        })
-      } else {
-        abortRef.current = connectStream()
-      }
+      // Mobile webviews may freeze a fetch-based SSE connection while the app
+      // is backgrounded without closing it. In that case isConnected remains
+      // true even though the stream can no longer deliver events. Always
+      // reconcile persisted history and replace the stream on foreground.
+      resumeInFlightRef.current = true
+      abortRef.current?.abort()
+      state._abortController?.abort()
+      useTeamStore.setState({ _unloading: false, isConnected: false, _abortController: null })
+      void loadSession(sessionId, agentWorkspace).then(() => {
+        const current = useTeamStore.getState()
+        if (current.sessionId !== sessionId || current._workspace !== agentWorkspace) return
+        if (current.isTeamWorking) abortRef.current = connectStream()
+      }).finally(() => {
+        resumeInFlightRef.current = false
+      })
     }
 
     const handleVisibilityChange = () => {

@@ -3,6 +3,7 @@ name: Release Desktop
 # Triggered manually from the Actions tab once a version is tagged.
 # Produces signed (where keys are available) installers for:
 #   - macOS arm64 (.dmg, .app.tar.gz)
+#   - Windows x64 (.msi)
 #   - Linux x64  (.AppImage, .deb)
 #
 # Outputs are attached to the GitHub Release matching `app/version.txt`
@@ -31,7 +32,7 @@ on:
       platform:
         description: "Platform matrix to build"
         type: choice
-        options: [all, macos, linux]
+        options: [all, windows, macos, linux]
         default: all
 
 permissions:
@@ -55,7 +56,7 @@ jobs:
       - id: version
         # Use the same ``v<X.Y.Z>`` tag as ``release.yml``. Both
         # workflows publish into one release so the artefact set
-        # (wheel + sdist + .dmg + .deb) lives under one tag the user
+        # (wheel + sdist + .dmg + .msi + .deb) lives under one tag the user
         # can compare-link to. The publish job below uploads with
         # ``--clobber`` so it does not matter which workflow runs first.
         run: |
@@ -66,10 +67,13 @@ jobs:
         run: |
           case "${{ github.event.inputs.platform }}" in
             all)
-              MATRIX='{"include":[{"platform":"macos","arch":"aarch64","runner":"macos-26","rust_target":"aarch64-apple-darwin","tauri_args":"--target aarch64-apple-darwin --verbose"},{"platform":"linux","arch":"x86_64","runner":"ubuntu-22.04","rust_target":"x86_64-unknown-linux-gnu","tauri_args":"--bundles deb --verbose"}]}'
+              MATRIX='{"include":[{"platform":"macos","arch":"aarch64","runner":"macos-26","rust_target":"aarch64-apple-darwin","tauri_args":"--target aarch64-apple-darwin --verbose"},{"platform":"windows","arch":"x86_64","runner":"windows-2025","rust_target":"x86_64-pc-windows-msvc","tauri_args":"--bundles msi --verbose"},{"platform":"linux","arch":"x86_64","runner":"ubuntu-22.04","rust_target":"x86_64-unknown-linux-gnu","tauri_args":"--bundles deb --verbose"}]}'
               ;;
             macos)
               MATRIX='{"include":[{"platform":"macos","arch":"aarch64","runner":"macos-26","rust_target":"aarch64-apple-darwin","tauri_args":"--target aarch64-apple-darwin --verbose"}]}'
+              ;;
+            windows)
+              MATRIX='{"include":[{"platform":"windows","arch":"x86_64","runner":"windows-2025","rust_target":"x86_64-pc-windows-msvc","tauri_args":"--bundles msi --verbose"}]}'
               ;;
             linux)
               MATRIX='{"include":[{"platform":"linux","arch":"x86_64","runner":"ubuntu-22.04","rust_target":"x86_64-unknown-linux-gnu","tauri_args":"--bundles deb --verbose"}]}'
@@ -165,6 +169,7 @@ jobs:
         with:
           path: |
             ~/.cargo/bin/cargo-tauri
+            ~/.cargo/bin/cargo-tauri.exe
           key: tauri-cli-2.11.1-${{ runner.os }}-${{ runner.arch }}
 
       - name: Install cargo-binstall
@@ -194,6 +199,7 @@ jobs:
 
 
       - name: Build Python sidecar bundle
+        shell: bash
         run: |
           python3 scripts/build_sidecar.py \
             --root . \
@@ -216,6 +222,43 @@ jobs:
             -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           security list-keychain -d user -s "$KEYCHAIN_PATH"
 
+      - name: Import Windows Authenticode certificate
+        id: windows_signing
+        if: matrix.platform == 'windows' && env.WINDOWS_CERTIFICATE != ''
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $pfxPath = Join-Path $env:RUNNER_TEMP "openagentd-signing.pfx"
+          [IO.File]::WriteAllBytes(
+            $pfxPath,
+            [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE)
+          )
+          $password = ConvertTo-SecureString `
+            $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
+          $certificate = Import-PfxCertificate `
+            -FilePath $pfxPath `
+            -CertStoreLocation Cert:\CurrentUser\My `
+            -Password $password
+          if (-not $certificate.Thumbprint) {
+            throw "Imported Windows certificate has no thumbprint"
+          }
+          $override = @{
+            bundle = @{
+              windows = @{
+                certificateThumbprint = $certificate.Thumbprint
+                digestAlgorithm = "sha256"
+                timestampUrl = "http://timestamp.digicert.com"
+              }
+            }
+          } | ConvertTo-Json -Compress -Depth 4
+          "TAURI_CONFIG=$override" | Out-File `
+            -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "signed=true" | Out-File `
+            -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          Remove-Item $pfxPath -Force
+
       # Tauri's signing env vars must be UNSET when there is no Apple
       # signing identity available — passing an empty
       # ``APPLE_SIGNING_IDENTITY`` makes Tauri try to find an identity
@@ -228,6 +271,7 @@ jobs:
       # back to the ad-hoc ``signingIdentity: "-"`` from tauri.conf.json.
       - name: Resolve signing env
         id: signing_env
+        shell: bash
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -259,14 +303,43 @@ jobs:
 
       - name: Build Tauri app
         working-directory: desktop/src-tauri
+        shell: bash
         run: cargo tauri build ${{ matrix.tauri_args }}
+
+      - name: Verify Windows MSI and signatures
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $msis = @(
+            Get-ChildItem `
+              -Path desktop/src-tauri/target/release/bundle/msi `
+              -Filter 'OpenAgentd_*.msi' `
+              -File -Recurse
+          )
+          if ($msis.Count -ne 1) {
+            throw "Expected exactly one OpenAgentd MSI, found $($msis.Count)"
+          }
+          $msi = $msis[0].FullName
+          if ('${{ steps.windows_signing.outputs.signed }}' -eq 'true') {
+            & signtool verify /pa /all $msi
+            if ($LASTEXITCODE -ne 0) {
+              throw "Authenticode verification failed for $msi"
+            }
+          }
+          if ($env:TAURI_SIGNING_PRIVATE_KEY) {
+            $signature = "$msi.sig"
+            if (-not (Test-Path $signature)) {
+              throw "Missing Tauri updater signature: $signature"
+            }
+          }
 
       - name: Collect artefacts
         id: collect
+        shell: bash
         run: |
           mkdir -p _release
           cd desktop/src-tauri/target
-          # Tauri writes to ${target}/release/bundle/{dmg,deb,appimage,...}
+          # Tauri writes to ${target}/release/bundle/{dmg,msi,deb,appimage,...}
           if [ -d release/bundle ]; then
             BUNDLE_DIR=release/bundle
           else
@@ -279,6 +352,7 @@ jobs:
           find "$BUNDLE_DIR" -type f \( \
             -name 'OpenAgentd_*.dmg' \
             -o -name 'OpenAgentd*.app.tar.gz' -o -name 'OpenAgentd*.app.tar.gz.sig' \
+            -o -name 'OpenAgentd_*.msi' -o -name 'OpenAgentd_*.msi.sig' \
             -o -name 'OpenAgentd_*.AppImage' -o -name 'OpenAgentd_*.AppImage.sig' \
             -o -name 'OpenAgentd_*.deb' \
           \) -print -exec cp {} "$GITHUB_WORKSPACE/_release/" \;
@@ -316,7 +390,8 @@ jobs:
             --tag "${{ needs.prepare.outputs.tag }}" \
             --artefact-dir _release \
             --out _release/latest.json \
-            --require-platform darwin-aarch64
+            --require-platform darwin-aarch64 \
+            --require-platform windows-x86_64
 
       - name: Create or update GitHub release
         # Releases land on the shared ``v<X.Y.Z>`` tag. If

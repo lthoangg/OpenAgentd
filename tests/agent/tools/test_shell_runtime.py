@@ -54,6 +54,81 @@ def test_build_argv_dash_uses_bare_c():
     assert argv == ["-c", "echo hi"]
 
 
+def test_build_argv_powershell_uses_noninteractive_command():
+    argv = shell_runtime.build_argv(
+        r"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        "Get-ChildItem",
+    )
+    assert argv == [
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        "Get-ChildItem",
+    ]
+
+
+def test_build_argv_cmd_uses_safe_command_flags():
+    assert shell_runtime.build_argv("cmd.exe", "dir") == ["/d", "/s", "/c", "dir"]
+
+
+@pytest.mark.parametrize("shell", ["pwsh", "powershell.exe", "cmd.exe"])
+def test_windows_build_argv_preserves_complex_command_as_one_argument(shell):
+    command = 'echo "hello world" | findstr "world"'
+
+    assert shell_runtime.build_argv(shell, command)[-1] == command
+
+
+def test_windows_fallback_prefers_powershell(monkeypatch):
+    monkeypatch.setattr(shell_runtime.sys, "platform", "win32")
+    monkeypatch.setattr(
+        shell_runtime,
+        "_which",
+        lambda name: rf"C:\\Tools\\{name}.exe" if name == "pwsh" else None,
+    )
+
+    assert shell_runtime._fallback() == r"C:\\Tools\\pwsh.exe"
+
+
+def test_windows_fallback_prefers_windows_powershell_over_cmd(monkeypatch):
+    monkeypatch.setattr(shell_runtime.sys, "platform", "win32")
+    available = {
+        "powershell": r"C:\\Windows\\System32\\WindowsPowerShell\\powershell.exe",
+        "cmd": r"C:\\Windows\\System32\\cmd.exe",
+    }
+    monkeypatch.setattr(shell_runtime, "_which", available.get)
+
+    assert shell_runtime._fallback() == available["powershell"]
+
+
+def test_windows_fallback_uses_cmd_executable_when_path_lookup_fails(monkeypatch):
+    monkeypatch.setattr(shell_runtime.sys, "platform", "win32")
+    monkeypatch.setattr(shell_runtime, "_which", lambda _name: None)
+
+    assert shell_runtime._fallback() == "cmd.exe"
+
+
+def test_windows_shell_name_handles_backslash_paths():
+    assert (
+        shell_runtime.name(
+            r"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+        )
+        == "powershell"
+    )
+
+
+def test_windows_detection_ignores_posix_shell_environment(monkeypatch):
+    monkeypatch.setattr(shell_runtime.sys, "platform", "win32")
+    monkeypatch.setenv("SHELL", "/bin/bash")
+    monkeypatch.setattr(
+        shell_runtime,
+        "_which",
+        lambda name: r"C:\\Windows\\System32\\cmd.exe" if name == "cmd" else None,
+    )
+
+    assert shell_runtime.acceptable() == r"C:\\Windows\\System32\\cmd.exe"
+
+
 def test_build_argv_preserves_command_quoting_unchanged():
     """The command is passed as a single argv element — quoting is the shell's job via eval."""
     cmd = """echo 'hello world' && echo "$HOME" """

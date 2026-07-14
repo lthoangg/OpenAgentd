@@ -1,8 +1,8 @@
 """Tests for app/services/terminal_service.py — PTY session lifecycle.
 
 These tests spawn real PTYs running ``/bin/sh`` (POSIX-guaranteed) with a
-minimal env, so they are fast and deterministic. macOS/Linux only — which
-matches the product's supported backend platforms.
+minimal env, so they are fast and deterministic. The real PTY lifecycle tests
+run on macOS/Linux; Windows coverage verifies the explicit ConPTY limitation.
 """
 
 from __future__ import annotations
@@ -46,6 +46,12 @@ async def _read_until(
 
 
 class TestCreateSession:
+    async def test_windows_reports_conpty_limitation(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(terminal_service.os, "name", "nt")
+
+        with pytest.raises(RuntimeError, match="not available on Windows"):
+            await create_session(workspace=str(tmp_path))
+
     async def test_spawns_shell_in_workspace(self, tmp_path):
         session = await create_session(workspace=str(tmp_path))
         try:

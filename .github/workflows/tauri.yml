@@ -90,6 +90,36 @@ jobs:
       - name: Cargo clippy
         run: TAURI_CONFIG="$(cat tauri.dev.conf.json)" cargo clippy --locked --all-targets
 
+  desktop-windows:
+    name: Cargo check (desktop / Windows)
+    needs: changes
+    if: needs.changes.outputs.desktop == 'true'
+    runs-on: windows-2025
+    defaults:
+      run:
+        working-directory: desktop/src-tauri
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache cargo registry + target
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+          key: windows-x86_64
+
+      - name: Cargo check
+        run: $env:TAURI_CONFIG = Get-Content tauri.dev.conf.json -Raw; cargo check --locked
+
+      - name: Cargo test
+        run: $env:TAURI_CONFIG = Get-Content tauri.dev.conf.json -Raw; cargo test --locked
+
+      - name: Cargo clippy
+        run: $env:TAURI_CONFIG = Get-Content tauri.dev.conf.json -Raw; cargo clippy --locked --all-targets
+
   mobile:
     name: Cargo check (mobile)
     needs: changes

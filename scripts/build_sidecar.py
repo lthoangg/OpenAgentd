@@ -35,7 +35,8 @@ Usage::
         --root ./ --out ./desktop/sidecar-bundle \\
         --python-version 3.14 [--extras office,audio]
 
-CI uses this same script on each runner (macos-26, ubuntu-22.04). The
+CI uses this same script on each runner (macos-26, ubuntu-22.04,
+windows-2025). The
 output is consumed by the Tauri bundler via the ``bundle.resources``
 entry in ``tauri.conf.json``.
 """
@@ -84,6 +85,10 @@ def detect_target_triple() -> str:
         if machine in ("aarch64", "arm64"):
             return "aarch64-unknown-linux-gnu"
         return "x86_64-unknown-linux-gnu"
+    if system == "Windows":
+        if machine in ("aarch64", "arm64"):
+            return "aarch64-pc-windows-msvc"
+        return "x86_64-pc-windows-msvc"
     raise SystemExit(f"unsupported host: {system}/{machine}")
 
 
@@ -137,7 +142,7 @@ def _find_python_binary(root: Path, version: str) -> Path | None:
     # ``python3`` is a symlink to it. Prefer the versioned name so the
     # rest of the script doesn't follow a symlink it then has to rewrite
     # during normalisation.
-    names = [f"python{version}", "python3"]
+    names = [f"python{version}", "python3", "python.exe"]
     for name in names:
         for candidate in root.rglob(name):
             # ``is_file()`` follows symlinks — we want both that the
@@ -166,11 +171,21 @@ def normalise_python_dir(install_root: Path, target: Path, python_bin: Path) -> 
 
     Returns the new path of the python binary inside ``target``.
     """
-    # <install_root>/bin/python3.X → parent.parent is the root.
-    source = python_bin.parent.parent
-
-    if not (source / "bin").is_dir():
-        raise SystemExit(f"resolved install root {source} missing bin/")
+    # POSIX builds put the executable in ``<root>/bin``; Windows builds put
+    # ``python.exe`` directly in ``<root>``. Preserve the path relative to
+    # that root so both layouts remain relocatable after the move.
+    source = (
+        python_bin.parent.parent
+        if python_bin.parent.name == "bin"
+        else python_bin.parent
+    )
+    try:
+        binary_relative = python_bin.relative_to(source)
+        source.relative_to(install_root)
+    except ValueError as exc:
+        raise SystemExit(
+            f"resolved python binary {python_bin} is outside install root {install_root}"
+        ) from exc
 
     if target.exists():
         shutil.rmtree(target)
@@ -182,13 +197,9 @@ def normalise_python_dir(install_root: Path, target: Path, python_bin: Path) -> 
     shutil.move(str(source), str(target))
 
     # Compute the new binary path inside ``target`` and verify.
-    new_bin = target / "bin" / python_bin.name
-    if not new_bin.is_file():
-        # Fall back to ``python3`` if the rglob picked the versioned
-        # name but only ``python3`` exists at the target.
-        alt = target / "bin" / "python3"
-        if alt.is_file():
-            new_bin = alt
+    new_bin = target / binary_relative
+    if not new_bin.is_file() and (target / "bin" / "python3").is_file():
+        new_bin = target / "bin" / "python3"
     if not new_bin.is_file():
         raise SystemExit(f"normalisation moved tree but binary not at {new_bin}")
     return new_bin

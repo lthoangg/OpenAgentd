@@ -16,27 +16,16 @@ For the channels we **do** ship today, see [`documents/docs/install.md`](../docs
 | Homebrew **cask** (macOS app, Apple Silicon) | Shipped, automated |
 | `install.sh` (curl-pipe, macOS/Linux) | Shipped, static |
 | Desktop `.dmg` / `.AppImage` / `.deb` | Shipped, automated |
+| Windows desktop `.msi` | Shipped, automated (x64) |
 
-## Recently removed
+## Recently restored
 
-### Windows desktop (`.exe` / `.msi`) and `install.ps1`
+### Windows desktop (`.msi`)
 
-**Status:** Removed in v1.23.0. The Windows leg of
-`release-desktop.yml` produced NSIS `.exe` and `.msi` installers, and
-`install.ps1` bootstrapped `uv` + installed the CLI. Both are gone.
-
-**Why removed:** The unsigned-SmartScreen UX was poor, Windows-specific
-sidecar quirks (Job Object lifetimes, the smoke-test hang documented
-below, pipe buffering) consumed disproportionate maintenance time
-relative to validated demand, and the team had no concrete user
-reports asking for Windows binaries. Windows users can still run the
-CLI/server under WSL2.
-
-**When to revisit:** Concrete user reports requesting Windows desktop
-builds, or before v2 if we want to ship to enterprise Windows
-environments. Restoring requires re-adding the Windows matrix entry,
-the Windows-specific shell handling, and an Authenticode certificate
-to make the install UX acceptable.
+**Status:** Restored in v1.105.0 with a native x64 release leg, bundled
+Python sidecar smoke test, Windows Rust CI, MSI updater manifest entry, Job
+Object cleanup, and PowerShell/cmd shell selection. The remaining distribution
+gap is an Authenticode certificate; unsigned builds can trigger SmartScreen.
 
 ### Docker / GHCR
 
@@ -80,8 +69,8 @@ Until then, the CLI + web cockpit is a sufficient fallback for Intel.
 
 ### Scoop bucket / winget (Windows)
 
-Both are gated on restoring Windows desktop support (see "Recently
-removed" above). Not worth scoping until that decision is reversed.
+These channels are optional follow-ups now that Windows desktop support is
+restored. They are not required for the direct MSI release path.
 
 ### AUR (`openagentd-bin`)
 

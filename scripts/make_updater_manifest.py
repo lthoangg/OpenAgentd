@@ -16,6 +16,10 @@ The Tauri updater hits the URL configured in ``tauri.conf.json``'s
         "linux-x86_64": {
           "signature": "<.sig contents>",
           "url": "https://.../OpenAgentd_0.6.0_amd64.AppImage"
+        },
+        "windows-x86_64": {
+          "signature": "<.sig contents>",
+          "url": "https://.../OpenAgentd_0.6.0_x64-setup.exe"
         }
       }
     }
@@ -44,6 +48,8 @@ from pathlib import Path
 PLATFORM_RULES: list[tuple[str, str]] = [
     (".app.tar.gz", "darwin-aarch64"),
     (".AppImage", "linux-x86_64"),
+    ("-setup.exe", "windows-x86_64"),
+    (".msi", "windows-x86_64"),
 ]
 
 
@@ -111,7 +117,10 @@ def main() -> int:
         return 1
 
     if not platforms:
-        print(f"error: no updater artefacts matched in {args.artefact_dir}", file=sys.stderr)
+        print(
+            f"error: no updater artefacts matched in {args.artefact_dir}",
+            file=sys.stderr,
+        )
         return 1
 
     missing_platforms = sorted(set(args.require_platform or []) - set(platforms))

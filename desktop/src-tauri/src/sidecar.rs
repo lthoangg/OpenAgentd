@@ -11,9 +11,8 @@
 //! - `sidecar/_web_dist/`: the built React frontend (also embedded in
 //!   `site-packages/app/_web_dist/`; either works).
 //!
-//! Windows-specific Job-Object code is retained behind `#[cfg(windows)]`
-//! gates as defensive portability for any future Windows desktop revival;
-//! it is dead today because CI does not build for Windows.
+//! Windows uses a Job Object with kill-on-close semantics so the sidecar cannot
+//! outlive the desktop shell, including after a crash.
 
 use anyhow::{anyhow, Context, Result};
 use serde::Deserialize;

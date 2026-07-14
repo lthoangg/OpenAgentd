@@ -10,6 +10,7 @@ constructs (``$VAR``, ``$(...)``, base64) are explicitly out of scope.
 from __future__ import annotations
 
 from pathlib import Path
+import sys
 
 import pytest
 
@@ -51,6 +52,8 @@ def _make(
         "../foo",
         "secrets/key",
         "a/b/c",
+        r"C:\\Users\\alice\\.env",
+        r"..\\secrets\\key.pem",
     ],
 )
 def test_looks_path_like_positive(token: str) -> None:
@@ -78,6 +81,19 @@ def test_looks_path_like_negative(token: str) -> None:
 # ---------------------------------------------------------------------------
 # check_command — pattern matches
 # ---------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="native Windows path semantics")
+def test_blocks_quoted_windows_path_under_denied_root(tmp_path: Path) -> None:
+    forbidden = tmp_path / "secrets"
+    forbidden.mkdir()
+    sandbox = _make(tmp_path, denied_roots=[forbidden])
+
+    hit = sandbox.check_command(f'Get-Content "{forbidden}\\key.pem"')
+
+    assert hit is not None
+    resolved, _ = hit
+    assert resolved == forbidden / "key.pem"
 
 
 def test_blocks_absolute_path_under_denied_root(tmp_path: Path) -> None:

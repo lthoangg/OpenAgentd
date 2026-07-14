@@ -9,13 +9,8 @@ updated: 2026-07-09
 
 The desktop app is a **Tauri v2 shell** wrapping the existing FastAPI
 backend as a **Python sidecar**. Non-technical users download a single
-installer (`.dmg` or `.AppImage`) and double-click to run —
+installer (`.dmg`, `.msi`, or `.AppImage`) and double-click to run —
 no Python install, no `uv tool install`, no terminal.
-
-> **Windows builds were removed in v1.23.0.** The Windows-specific details
-> below are retained for historical context and to make it easier to
-> restore Windows support later; they do **not** describe shipping behaviour
-> today. See [`features.md`](./features.md#11-distribution-and-updates).
 
 ## Architecture
 
@@ -257,6 +252,21 @@ AppImage is self-contained and the recommended Linux artefact.
 `.deb` requires `libwebkit2gtk-4.1-0` and `libgtk-3-0` (declared in
 the package manifest).
 
+### Windows (`OpenAgentd_<ver>_x64_en-US.msi`)
+
+The MSI installs the Tauri executable and bundled sidecar under the normal
+per-user Windows application location. The sidecar uses the bundled
+`python.exe`; no system Python is required. Tauri places it in a Job Object
+before resuming its primary thread, so closing or crashing the shell also
+terminates the backend. The WebView uses the system WebView2 runtime available
+on supported Windows 10 and Windows 11 systems.
+
+The agent shell tool selects PowerShell 7, Windows PowerShell, then `cmd.exe`.
+Commands run without opening a console window; timeout, cancellation, and
+background-stop paths terminate the full Windows process tree. The interactive
+terminal route remains disabled on Windows until a ConPTY implementation
+replaces the POSIX-only PTY service.
+
 ## Build pipeline
 
 ```bash
@@ -292,7 +302,7 @@ cd src-tauri && cargo tauri build
 ```
 
 Output artefacts land in
-`desktop/src-tauri/target/release/bundle/{dmg,deb,appimage}/`.
+`desktop/src-tauri/target/release/bundle/{dmg,msi,deb,appimage}/`.
 
 ## Release
 
@@ -301,7 +311,7 @@ A full release is **two workflows publishing into one GitHub tag** (`v<X.Y.Z>`):
 | Workflow | Trigger | Cadence | Artefacts |
 |---|---|---|---|
 | `.github/workflows/release.yml` | `workflow_dispatch confirm=release` | ~90 s | `openagentd-<ver>-py3-none-any.whl`, `openagentd-<ver>.tar.gz`; publishes to PyPI. |
-| `.github/workflows/release-desktop.yml` | `workflow_dispatch confirm=release-desktop` | ~20–25 min | `OpenAgentd_<ver>_aarch64.dmg`, `OpenAgentd_<ver>_amd64.deb`, `latest.json`. |
+| `.github/workflows/release-desktop.yml` | `workflow_dispatch confirm=release-desktop` | ~20–25 min | `OpenAgentd_<ver>_aarch64.dmg`, `OpenAgentd_<ver>_x64_en-US.msi`, `OpenAgentd_<ver>_amd64.deb`, `latest.json`. |
 
 Both workflows use a **create-or-upload** publish step (`gh release view "$TAG"` → `upload --clobber` if present, else `create`), so order doesn't matter for correctness. Run the PyPI workflow first so the canonical auto-generated release notes come from `release.yml`; the desktop matrix then appends its installers ~20 min later. The workflow dispatch inputs in `.github/workflows/release.yml` and `.github/workflows/release-desktop.yml` are the operator source of truth.
 
@@ -310,13 +320,18 @@ History — pre-1.0.9 releases used a split-tag scheme (`v<X.Y.Z>` for PyPI, `v<
 `release-desktop.yml` matrix:
 
 1. macOS arm64 on `macos-26` (Tahoe — the host SDK matters for the title-bar geometry; see "Window chrome" above).
-2. Linux x64 on `ubuntu-22.04`.
+2. Windows x64 on `windows-2025`.
+3. Linux x64 on `ubuntu-22.04`.
 
-Each runner: `scripts/build_sidecar.py` → `cargo tauri build` → `gh release upload`. The workflow pins current Node 24-compatible GitHub action majors for cache and artifact upload/download steps. The `latest.json` updater manifest is produced after all three matrix legs succeed and uploaded to a rolling `latest-desktop` release that mirrors only the manifest (artefact URLs *inside* `latest.json` still point at the immutable `v<X.Y.Z>` release).
+Each runner: `scripts/build_sidecar.py` → `cargo tauri build` → `gh release upload`. The Windows leg requires exactly one MSI, verifies Authenticode when configured, and requires its Tauri updater signature before publication. The workflow pins current Node 24-compatible GitHub action majors for cache and artifact upload/download steps. The `latest.json` updater manifest is produced after all three matrix legs succeed and uploaded to a rolling `latest-desktop` release that mirrors only the manifest (artefact URLs *inside* `latest.json` still point at the immutable `v<X.Y.Z>` release).
 
 Signing happens when secrets are present:
 
 - **macOS**: `APPLE_SIGNING_IDENTITY` + `APPLE_ID` + `APPLE_PASSWORD` + `APPLE_TEAM_ID` → notarized + stapled.
+- **Windows**: `WINDOWS_CERTIFICATE` (base64 PFX) +
+  `WINDOWS_CERTIFICATE_PASSWORD` → imports the certificate into the runner,
+  configures Tauri's `certificateThumbprint`, and Authenticode-signs the MSI.
+  Without them, the MSI is unsigned and can trigger SmartScreen.
 - **Updater**: `TAURI_SIGNING_PRIVATE_KEY` + `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` → `.sig` files alongside artefacts.
 
 When secrets are absent (today's default), the workflow conditionally **unsets** the Tauri signing env vars so `cargo tauri build` falls back to ad-hoc signing (`signingIdentity: "-"` in `tauri.conf.json`).
@@ -341,6 +356,7 @@ point per OS family:
 | Platform        | Artefact                          | Install command                                  |
 | --------------- | --------------------------------- | ------------------------------------------------ |
 | macOS arm64     | `OpenAgentd-x.y.z.dmg`            | mount, then `/Volumes/OpenAgentd/install.sh --install` |
+| Windows x64     | `OpenAgentd-x.y.z_x64_en-US.msi`  | open the MSI; verify the GitHub source if SmartScreen appears |
 | Linux (any)     | `OpenAgentd-x.y.z.AppImage` (+ `.deb`) | `./install.sh --install ./OpenAgentd-x.y.z.AppImage` |
 
 The unified script lives at `desktop/scripts/install.sh`. It does

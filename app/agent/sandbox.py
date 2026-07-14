@@ -217,11 +217,13 @@ class SandboxConfig:
     def check_command(self, command: str) -> tuple[Path, str] | None:
         """Best-effort scan of *command* for arguments inside denied paths."""
         try:
-            tokens = shlex.split(command, posix=True)
+            tokens = shlex.split(command, posix=os.name != "nt")
         except ValueError:
             return None
 
         for tok in tokens:
+            if os.name == "nt":
+                tok = tok.strip("\"'")
             if not _looks_path_like(tok):
                 continue
             expanded = os.path.expanduser(tok)
@@ -276,6 +278,8 @@ def _looks_path_like(token: str) -> bool:
     if token.startswith("-"):
         return False
     if "/" in token:
+        return True
+    if "\\" in token:
         return True
     if token.startswith("~"):
         return True

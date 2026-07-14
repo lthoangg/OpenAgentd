@@ -10,7 +10,9 @@ The desktop build is a [Tauri 2](https://tauri.app) shell that embeds the React 
 curl -fsSL https://raw.githubusercontent.com/lthoangg/openagentd/main/install.sh | sh
 ```
 
-The installer supports macOS Apple Silicon and Debian/Ubuntu x86_64. The manual platform-specific options follow.
+The shell installer supports macOS Apple Silicon and Debian/Ubuntu x86_64.
+Windows users install the native MSI from the releases page. The manual
+platform-specific options follow.
 
 ### macOS
 
@@ -27,11 +29,22 @@ Or grab the latest installer from the [releases page](https://github.com/lthoang
 | Platform | Artefact | Size |
 |---|---|---|
 | macOS (Apple Silicon, 11+) | `OpenAgentd_*_aarch64.dmg` or `OpenAgentd_*.app.tar.gz` | ~180 MB |
+| Windows (x64, Windows 10+) | `OpenAgentd_*_x64_en-US.msi` | ~180 MB |
 | Linux (x64) | `OpenAgentd_*_amd64.AppImage` or `OpenAgentd_*_amd64.deb` | ~160 MB |
 
-> **Windows desktop is not currently supported.** Builds were removed in
-> v1.23.0; see [`features.md`](./features.md#11-distribution-and-updates). Windows
-> users can run the CLI/server inside WSL2.
+### Windows
+
+Download `OpenAgentd_*_x64_en-US.msi` from the releases page and open it.
+Windows 10 version 1803 or newer is required; the app uses the system WebView2
+runtime. If Microsoft Defender SmartScreen appears on an unsigned build, use
+**More info → Run anyway** only after verifying that the file came from the
+project's GitHub release. Authenticode signing is used when the release
+certificate is configured in CI; updater payloads are always verified with the
+project's separate Tauri signing key.
+
+The agent shell tool runs commands through PowerShell 7, Windows PowerShell, or
+`cmd.exe` (in that order, based on availability). Interactive terminal tabs are
+currently unavailable on Windows because that UI requires a ConPTY backend.
 
 Mount the `.dmg`, then run the bundled installer:
 
@@ -71,6 +84,9 @@ That means:
 
 - **macOS:** Gatekeeper rejects the bundle on first launch with `"OpenAgentd.app" is damaged and can't be opened`. The bundled `install.sh` works around this by stripping the quarantine xattr and ad-hoc signing the app *with your own machine as the signer*. This is the same workaround used by every open-source macOS app you compile yourself.
 - **Linux:** No code-signing equivalent — the AppImage / .deb just runs.
+- **Windows:** Authenticode-signed releases install normally. Unsigned builds
+  may show Microsoft Defender SmartScreen; verify the GitHub release source
+  before choosing **Run anyway**.
 
 The Tauri auto-updater is a separate signing chain. Update payloads are signed with a minisign key we control (public half embedded in the app, private half in GitHub secrets), so even though macOS thinks the app is unsigned, **updates themselves are cryptographically verified**.
 

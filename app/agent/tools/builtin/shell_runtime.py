@@ -6,8 +6,8 @@ Mirrors the design of opencode's ``shell.ts``:
 - Rejects incompatible shells (``fish``, ``nu``) that do not speak
   POSIX syntax — agents produce POSIX commands so incompatible shells
   would misinterpret them.
-- Falls back through ``zsh`` → ``bash`` → ``sh`` when no usable shell is
-  found or the preference is blocked.
+- Falls back through ``zsh`` → ``bash`` → ``sh`` on POSIX, or ``pwsh`` →
+  Windows PowerShell → ``cmd.exe`` on Windows.
 - Exposes ``preferred()`` (exact user preference, may be None) and
   ``acceptable()`` (always non-None, safe to pass to subprocess).
 
@@ -19,6 +19,7 @@ per process, cached forever.  Tests can override by patching
 from __future__ import annotations
 
 import os
+import ntpath
 import shutil
 import sys
 from pathlib import Path
@@ -38,7 +39,8 @@ _POSIX_FALLBACKS: tuple[str, ...] = ("zsh", "bash", "sh")
 
 def _shell_name(path: str) -> str:
     """Return the lowercase basename of a shell path (no extension on any OS)."""
-    stem = Path(path).stem.lower()
+    basename = ntpath.basename(path) if "\\" in path else Path(path).name
+    stem = Path(basename).stem.lower()
     return stem
 
 
@@ -60,7 +62,13 @@ def _is_usable(path: str) -> bool:
 
 
 def _fallback() -> str:
-    """Return the best available POSIX shell on this machine."""
+    """Return the best available command shell on this machine."""
+    if sys.platform == "win32":
+        for name in ("pwsh", "powershell", "cmd"):
+            found = _which(name)
+            if found:
+                return found
+        return "cmd.exe"
     # macOS always ships /bin/zsh since Catalina
     if sys.platform == "darwin":
         return "/bin/zsh"
@@ -89,6 +97,13 @@ def _detect() -> str:
     """
     global _CACHED_SHELL
     if _CACHED_SHELL is not None:
+        return _CACHED_SHELL
+
+    # ``SHELL`` is a POSIX convention and is frequently inherited on Windows
+    # from Git Bash, MSYS, or development tooling. Native desktop commands
+    # must not accidentally select a Unix compatibility layer.
+    if sys.platform == "win32":
+        _CACHED_SHELL = _fallback()
         return _CACHED_SHELL
 
     env_shell = os.environ.get("SHELL", "")
@@ -154,6 +169,12 @@ def build_argv(shell_bin: str, command: str) -> list[str]:
     OS-level error instead of an opaque shell error.
     """
     shell_name = _shell_name(shell_bin)
+
+    if shell_name in {"pwsh", "powershell"}:
+        return ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command]
+
+    if shell_name == "cmd":
+        return ["/d", "/s", "/c", command]
 
     if shell_name == "zsh":
         # -l loads ~/.zprofile/~/.zlogin; explicit source covers ~/.zshenv

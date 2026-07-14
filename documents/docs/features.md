@@ -49,13 +49,13 @@ Conventions used in this document:
 
 ## 1. The desktop cockpit
 
-The product's primary surface. A native double-click app on macOS and
-Linux that hosts the same FastAPI sidecar + React UI you would otherwise run
-from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](./web/chrome.md).
+The product's primary surface. A native double-click app on macOS, Windows,
+and Linux that hosts the same FastAPI sidecar + React UI you would otherwise
+run from the terminal. Deeper docs: [`desktop.md`](./desktop.md),
+[`web/chrome.md`](./web/chrome.md).
 
-- **Native desktop app for macOS, Linux** `[since v1.0]` — Tauri 2 shell,
+- **Native desktop app for macOS, Windows, Linux** `[since v1.0; Windows restored v1.105.0]` — Tauri 2 shell,
   bundled Python sidecar, embedded Web UI, one process, no terminal required.
-  *(Windows desktop builds dropped in v1.23.0 — see [§11](#11-distribution-and-updates).)*
 - **Explicit backend connection state** `[v1.68.0, v1.99.8]` — desktop connection options
   are limited to the builtin sidecar and saved servers; no-backend dev windows
   show **Backend unreachable**, active server removal clears the current backend,
@@ -735,10 +735,11 @@ Desktop is primary. CLI / server is the developer path. Deeper doc:
   `install.sh` (ad-hoc signs locally).
 - **Linux desktop** `[since v1.0]` — AppImage (`chmod +x`) or `.deb` for
   Debian/Ubuntu.
-- **Windows desktop** *(deprecated, removed in v1.23.0)* — NSIS `.exe`
-  and `.msi` installers are no longer produced. The Windows leg of
-  `release-desktop.yml` and the `install.ps1` curl-pipe installer were
-  also removed. Windows users can still run the CLI/server via WSL2.
+- **Windows desktop** `[v1.105.0]` — native x64 `.msi` installer with the
+  bundled Python sidecar, WebView2 shell, Job Object process cleanup, native
+  PowerShell/cmd shell execution, and signed in-app updates. Interactive PTY
+  terminal tabs remain unavailable pending a ConPTY backend. See
+  [`desktop.md`](./desktop.md).
 - **Signed update manifests** `[v1.2.2+]` — minisign-signed `latest.json` at the
   rolling `latest-desktop` release; verified before install.
 - **In-app updater** `[v1.22.0]` — see [§1](#1-the-desktop-cockpit).

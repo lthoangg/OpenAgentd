@@ -79,3 +79,33 @@ jobs:
 
       - name: Run pytest
         run: uv run pytest -n auto -q
+
+  windows-smoke:
+    name: Windows sidecar smoke
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.3.2
+        with:
+          enable-cache: true
+
+      - name: Set up Python 3.14
+        run: uv python install 3.14
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Verify sidecar imports and Windows runtime helpers
+        run: >-
+          uv run pytest -q
+          tests/api/test_app_startup_imports.py
+          tests/scripts/test_build_sidecar.py
+          tests/agent/tools/test_shell_runtime.py
+          tests/agent/tools/test_shell.py::test_windows_subprocess_kwargs_create_new_process_group
+          tests/agent/tools/test_shell.py::test_windows_kill_terminates_entire_process_tree
+          tests/agent/tools/test_shell.py::test_windows_kill_falls_back_when_taskkill_fails
+          tests/agent/tools/test_shell.py::test_windows_shell_executes_native_command
+          tests/agent/test_sandbox_commands.py::test_looks_path_like_positive
+          tests/agent/test_sandbox_commands.py::test_blocks_quoted_windows_path_under_denied_root

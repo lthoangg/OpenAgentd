@@ -70,7 +70,7 @@ A short list of the most important shipped capabilities. The canonical, version-
 
 **Pick your model, no lock-in.** OpenAgentd ships with 15 first-class providers — Anthropic, Gemini, OpenAI, OpenRouter, Bedrock, Grok, DeepSeek, Ollama, and more — while keeping the config format simple: `provider:model`. Manage provider connections from Settings, choose which models stay visible in pickers, and override the lead model or thinking level per session from Session Settings. Assistant replies keep the effective model in history so overrides stay auditable.
 
-**Desktop + mobile clients.** The main experience is the desktop cockpit on macOS and Linux, and there is also a Tauri mobile app that connects to a remote OpenAgentd server over LAN or the internet. Mobile uses the same shared UI, adapted for touch, safe areas, backend switching, and single-pane navigation, including coding sessions on a phone-sized screen.
+**Desktop + mobile clients.** The main experience is the desktop cockpit on macOS, Windows, and Linux, and there is also a Tauri mobile app that connects to a remote OpenAgentd server over LAN or the internet. Mobile uses the same shared UI, adapted for touch, safe areas, backend switching, and single-pane navigation, including coding sessions on a phone-sized screen.
 
 **Operate locally, extend when needed.** Scheduled tasks support cron, interval, and one-shot runs; todos stay on a live board; telemetry stays on your machine; MCP servers hot-reload from Settings; and sandbox rules plus permission decisions are managed without editing hidden app internals by hand.
 
@@ -97,7 +97,7 @@ Full capability matrix (incl. Aider + opencode): [`documents/docs/comparison.md`
 
 ## Quick start
 
-**Desktop app** — install the latest release with one command, or download it from the [latest release](https://github.com/lthoangg/openagentd/releases/latest). OpenAgentd is the primary desktop cockpit on macOS and Linux, with support for multiple app windows and coding worktree sessions:
+**Desktop app** — install the latest release with one command, or download it from the [latest release](https://github.com/lthoangg/openagentd/releases/latest). OpenAgentd is the primary desktop cockpit on macOS, Windows, and Linux, with support for multiple app windows and coding worktree sessions:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/lthoangg/openagentd/main/install.sh | sh
@@ -106,6 +106,7 @@ curl -fsSL https://raw.githubusercontent.com/lthoangg/openagentd/main/install.sh
 | Platform | Artefact | First-launch note |
 |---|---|---|
 | macOS (Apple Silicon) | `brew install --cask lthoangg/tap/openagentd` *or* `OpenAgentd_*_aarch64.dmg` | The cask ad-hoc signs and installs automatically. With the `.dmg`, run the bundled `install.sh` then right-click → **Open**. The app is unsigned — [why](https://github.com/lthoangg/openagentd/blob/main/documents/docs/install.md#desktop-unsigned). |
+| Windows (x64) | `OpenAgentd_*_x64_en-US.msi` | Open the MSI. Unsigned builds may trigger SmartScreen; verify the GitHub release source before choosing **More info → Run anyway**. |
 | Linux | `OpenAgentd_*_amd64.AppImage` *or* `OpenAgentd_*_amd64.deb` | Run the AppImage directly (`chmod +x`, then execute it) or install the `.deb` with your package manager, e.g. `sudo apt install ./OpenAgentd_*_amd64.deb`. |
 
 macOS — after mounting the `.dmg`:

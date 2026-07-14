@@ -20,9 +20,9 @@ Design notes
   terminal matches the user's environment. The shell is spawned as an
   interactive login shell (``-il`` where supported) since this IS a
   real terminal, unlike the tool's non-interactive ``-c`` invocations.
-- **POSIX only** (``pty`` stdlib module). Backend hosts are macOS/Linux;
-  Windows desktop builds were dropped in v1.23.0 and Windows server
-  users run under WSL2.
+- **POSIX PTY only** (``pty`` stdlib module). The module remains importable
+  on Windows so the desktop sidecar can start; interactive terminal creation
+  returns a clear unsupported error until a ConPTY backend is added.
 - **Spawned via ``subprocess.Popen`` + ``pty.openpty()`` + ``os.login_tty``
   in ``preexec_fn``, not ``pty.fork()``.** By the time a user opens a
   terminal the process already has background threads (OTel span/metric
@@ -44,16 +44,18 @@ Design notes
 from __future__ import annotations
 
 import asyncio
-import fcntl
 import functools
 import os
-import pty
 import signal
 import struct
 import subprocess
-import termios
 import time
 import uuid
+
+if os.name != "nt":
+    import fcntl
+    import pty
+    import termios
 
 from loguru import logger
 
@@ -276,6 +278,10 @@ async def create_session(
     Callers are responsible for workspace validation
     (``team_manager.validate_workspace``) — this function trusts its input.
     """
+    if os.name == "nt":
+        raise RuntimeError(
+            "Interactive terminal sessions are not available on Windows yet."
+        )
     if len(_SESSIONS) >= MAX_SESSIONS:
         raise RuntimeError(
             f"Too many open terminal sessions (max {MAX_SESSIONS}). "

@@ -161,8 +161,9 @@ def _sqlite_migration_lock(db_path: Path) -> Iterator[None]:
     Uses ``fcntl.flock`` (POSIX) on a sibling ``.migrate.lock`` file. The
     lock file lives alongside the DB so it shares the DB's filesystem —
     important because ``flock`` is a no-op across NFS on some platforms.
-    On Windows ``fcntl`` is unavailable; we fall back to no-op which is
-    fine because Windows isn't a supported deployment target today.
+    On Windows ``fcntl`` is unavailable; we fall back to SQLite's own
+    write serialization. The desktop shell's single-instance guard prevents
+    the normal bundled-sidecar path from running concurrent migrations.
     """
     try:
         import fcntl

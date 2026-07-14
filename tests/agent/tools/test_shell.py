@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import os
 import signal
+import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -204,6 +205,14 @@ def test_shell_blacklist_nu_falls_back(monkeypatch):
 # ---------------------------------------------------------------------------
 # Foreground execution
 # ---------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="native Windows shell smoke")
+async def test_windows_shell_executes_native_command(sandbox_workspace):
+    result = await _shell("echo windows-shell-ok")
+
+    assert "[Succeeded]" in result
+    assert "windows-shell-ok" in result
 
 
 @pytest.mark.asyncio
@@ -738,6 +747,89 @@ async def test_background_process_status_exited(sandbox_workspace):
 # ---------------------------------------------------------------------------
 # Process group kill
 # ---------------------------------------------------------------------------
+
+
+def test_windows_subprocess_kwargs_create_new_process_group(monkeypatch):
+    monkeypatch.setattr(shell_module.os, "name", "nt")
+
+    assert shell_module._subprocess_platform_kwargs() == {"creationflags": 0x0800_0200}
+
+
+async def test_shell_passes_windows_creation_flags_to_subprocess(
+    sandbox_workspace, monkeypatch
+):
+    monkeypatch.setattr(shell_module.os, "name", "nt")
+    monkeypatch.setattr(shell_module._shell_mod, "acceptable", lambda: "cmd.exe")
+    proc = MagicMock()
+    proc.pid = 12345
+    proc.returncode = 0
+    proc.stdout = MagicMock()
+    proc.stdout.read = AsyncMock(return_value=b"")
+    proc.wait = AsyncMock(return_value=0)
+
+    with patch.object(
+        shell_module.asyncio,
+        "create_subprocess_exec",
+        new=AsyncMock(return_value=proc),
+    ) as spawn:
+        result = await _shell("echo ok")
+
+    assert "[Succeeded]" in result
+    kwargs = spawn.await_args.kwargs
+    assert kwargs["creationflags"] == 0x0800_0200
+    assert "start_new_session" not in kwargs
+
+
+def test_windows_kill_terminates_entire_process_tree(monkeypatch):
+    monkeypatch.setattr(shell_module.os, "name", "nt")
+    mock_proc = MagicMock()
+    mock_proc.pid = 12345
+
+    with patch.object(shell_module.subprocess, "run") as run:
+        run.return_value.returncode = 0
+        shell_module._kill_process_group(mock_proc, signal.SIGTERM)
+
+    run.assert_called_once_with(
+        ["taskkill", "/PID", "12345", "/T", "/F"],
+        check=False,
+        stdout=shell_module.subprocess.DEVNULL,
+        stderr=shell_module.subprocess.DEVNULL,
+        timeout=5,
+    )
+    mock_proc.kill.assert_not_called()
+
+
+def test_windows_kill_falls_back_when_taskkill_fails(monkeypatch):
+    monkeypatch.setattr(shell_module.os, "name", "nt")
+    mock_proc = MagicMock()
+    mock_proc.pid = 12345
+
+    with patch.object(shell_module.subprocess, "run") as run:
+        run.return_value.returncode = 1
+        shell_module._kill_process_group(mock_proc, signal.SIGTERM)
+
+    mock_proc.kill.assert_called_once_with()
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [OSError("missing"), shell_module.subprocess.TimeoutExpired("taskkill", 5)],
+)
+def test_windows_kill_falls_back_when_taskkill_cannot_run(monkeypatch, failure):
+    monkeypatch.setattr(shell_module.os, "name", "nt")
+    mock_proc = MagicMock()
+    mock_proc.pid = 12345
+
+    with patch.object(shell_module.subprocess, "run", side_effect=failure):
+        shell_module._kill_process_group(mock_proc, signal.SIGTERM)
+
+    mock_proc.kill.assert_called_once_with()
+
+
+def test_posix_subprocess_kwargs_keep_new_session(monkeypatch):
+    monkeypatch.setattr(shell_module.os, "name", "posix")
+
+    assert shell_module._subprocess_platform_kwargs() == {"start_new_session": True}
 
 
 def test_kill_process_group_handles_missing_pid():

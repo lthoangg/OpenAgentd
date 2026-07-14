@@ -1,9 +1,10 @@
-"""Shell execution tool — streaming output, workdir, $SHELL selection.
+"""Shell execution tool — streaming output, workdir, platform shell selection.
 
 Design parity with opencode's bash.ts:
 
-- Runs via the user's preferred POSIX shell (``$SHELL`` → zsh → bash → sh).
-  Incompatible shells (fish, nu) are rejected in favour of zsh/bash.
+- On POSIX, runs via ``$SHELL`` → zsh → bash → sh and rejects incompatible
+  shells such as fish/nu. On Windows, uses PowerShell 7 → Windows PowerShell →
+  cmd.exe.
 - Streaming output: bytes are read incrementally and spilled to a temp file
   in the workspace when they exceed ``max_output_bytes``.  The LLM receives
   the first and last output lines inline, with the spill path advertised so
@@ -40,11 +41,13 @@ from __future__ import annotations
 import asyncio
 import os
 import signal
+import subprocess
+import sys
 import uuid
 from collections import deque
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from loguru import logger
 from pydantic import BaseModel, Field, model_validator
@@ -59,9 +62,15 @@ from app.agent.sandbox import get_sandbox
 import app.agent.tools.builtin.shell_runtime as _shell_mod
 from app.agent.tools.registry import InjectedArg, Tool
 
+_SHELL_KIND = "native Windows shell" if sys.platform == "win32" else "POSIX shell"
+_SHELL_CAPABILITIES = (
+    "PowerShell/cmd-native chaining, pipes, and variables"
+    if sys.platform == "win32"
+    else "&&, ||, pipes, variables, and subshells"
+)
 _SHELL_DESCRIPTION = (
-    "Run a command through the user's POSIX shell; supports &&, ||, pipes, variables, "
-    "and subshells. Relative workdir paths resolve inside the workspace; absolute "
+    f"Run a command through the user's {_SHELL_KIND}; supports {_SHELL_CAPABILITIES}. "
+    "Relative workdir paths resolve inside the workspace; absolute "
     "paths may run elsewhere. stdin is /dev/null, so use non-interactive flags such "
     "as -y or --yes for commands that may prompt. Use background=true for servers "
     "and watchers, then manage the returned PID with bg. Prefer file tools for file "
@@ -79,7 +88,7 @@ class ShellArgs(BaseModel):
     """Arguments for the shell tool."""
 
     command: str = Field(
-        description="Command to run through the user's preferred POSIX shell."
+        description=f"Command to run through the user's preferred {_SHELL_KIND}."
     )
     description: str = Field(
         default="",
@@ -147,6 +156,9 @@ _BG_OUTPUT_MAX_LINES = 200  # ring-buffer per background process
 _OUTPUT_MAX_LINES = 300
 # Bytes kept inline; output beyond this spills to a temp file
 _OUTPUT_MAX_BYTES = 131_072  # 128 KB (matches opencode Truncate.MAX_BYTES)
+_WINDOWS_CREATE_NEW_PROCESS_GROUP = 0x0000_0200
+_WINDOWS_CREATE_NO_WINDOW = 0x0800_0000
+_FORCE_KILL_SIGNAL = getattr(signal, "SIGKILL", signal.SIGTERM)
 
 
 # ── Background process registry ──────────────────────────────────────────────
@@ -203,7 +215,7 @@ class _BgProcess:
             try:
                 await asyncio.wait_for(self.proc.wait(), timeout=5)
             except asyncio.TimeoutError:
-                _kill_process_group(self.proc, signal.SIGKILL)
+                _kill_process_group(self.proc, _FORCE_KILL_SIGNAL)
                 await self.proc.wait()
         await self._reader_task
         return self.proc.returncode
@@ -298,6 +310,24 @@ def _kill_process_group(proc: asyncio.subprocess.Process, sig: signal.Signals) -
     pid = proc.pid
     if pid is None:
         return
+    if os.name == "nt":
+        try:
+            result = subprocess.run(
+                ["taskkill", "/PID", str(pid), "/T", "/F"],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=5,
+            )
+            if result.returncode == 0:
+                return
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        try:
+            proc.kill()
+        except (ProcessLookupError, OSError):
+            pass
+        return
     try:
         os.killpg(os.getpgid(pid), sig)
     except (ProcessLookupError, PermissionError, OSError):
@@ -305,6 +335,17 @@ def _kill_process_group(proc: asyncio.subprocess.Process, sig: signal.Signals) -
             proc.send_signal(sig)
         except (ProcessLookupError, OSError):
             pass
+
+
+def _subprocess_platform_kwargs() -> dict[str, Any]:
+    """Return process-group options accepted by the current platform."""
+    if os.name == "nt":
+        return {
+            "creationflags": (
+                _WINDOWS_CREATE_NEW_PROCESS_GROUP | _WINDOWS_CREATE_NO_WINDOW
+            )
+        }
+    return {"start_new_session": True}
 
 
 def _tail_text(text: str, max_lines: int, max_bytes: int) -> tuple[str, bool]:
@@ -384,8 +425,8 @@ async def _shell(
 ) -> str:
     """Run a shell command and return combined stdout+stderr.
 
-    Uses the user's preferred POSIX shell (``$SHELL`` → zsh → bash → sh).
-    Supports ``&&``, ``||``, pipes, ``$VAR``, subshells.
+    Uses the native platform shell: ``$SHELL`` → zsh/bash/sh on POSIX, or
+    PowerShell 7 → Windows PowerShell → cmd.exe on Windows.
     Large output is streamed: the first and last output lines are returned inline;
     the full output is saved to the XDG session artifact directory.
     Set ``background=true`` for long-running processes.
@@ -443,7 +484,7 @@ async def _shell(
             stderr=asyncio.subprocess.STDOUT,
             cwd=str(cwd),
             env=_scrubbed_env(),
-            start_new_session=True,  # new process group → clean killTree
+            **_subprocess_platform_kwargs(),
         )
 
         # ── Background mode ───────────────────────────────────────────
@@ -456,7 +497,7 @@ async def _shell(
             try:
                 await asyncio.sleep(warmup_secs)
             except asyncio.CancelledError:
-                _kill_process_group(proc, signal.SIGKILL)
+                _kill_process_group(proc, _FORCE_KILL_SIGNAL)
                 await proc.wait()
                 bg._reader_task.cancel()
                 try:
@@ -531,7 +572,7 @@ async def _shell(
                         pending_output.append(decoded)
 
         except asyncio.TimeoutError:
-            _kill_process_group(proc, signal.SIGKILL)
+            _kill_process_group(proc, _FORCE_KILL_SIGNAL)
             # Drain any remaining output after kill
             try:
                 async with asyncio.timeout(2):
@@ -547,7 +588,7 @@ async def _shell(
             await proc.wait()
             aborted = True
         except asyncio.CancelledError:
-            _kill_process_group(proc, signal.SIGKILL)
+            _kill_process_group(proc, _FORCE_KILL_SIGNAL)
             await proc.wait()
             raise
         finally:

@@ -1386,7 +1386,7 @@ wheels = [
 
 [[package]]
 name = "openagentd"
-version = "1.104.2"
+version = "1.104.3"
 source = { editable = "." }
 dependencies = [
     { name = "aiosqlite" },

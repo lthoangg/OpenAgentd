@@ -19,6 +19,7 @@ from loguru import logger
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.cli.net import is_loopback_host
+from app.core.config import settings
 from app.core.desktop_auth import configured_access_token
 
 # Default: 4 MB
@@ -32,14 +33,29 @@ class _RequestTooLarge(Exception):
 class NetworkBindGuard:
     """Reject unauthenticated requests accepted on non-loopback listeners."""
 
-    def __init__(self, app: ASGIApp, *, has_auth: bool | None = None) -> None:
+    def __init__(
+        self,
+        app: ASGIApp,
+        *,
+        has_auth: bool | None = None,
+        allow_insecure: bool | None = None,
+    ) -> None:
         self.app = app
         self._has_auth = (
             bool(configured_access_token()) if has_auth is None else has_auth
         )
+        self._allow_insecure = (
+            settings.API_ALLOW_INSECURE_LAN
+            if allow_insecure is None
+            else allow_insecure
+        )
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] not in ("http", "websocket") or self._has_auth:
+        if (
+            scope["type"] not in ("http", "websocket")
+            or self._has_auth
+            or self._allow_insecure
+        ):
             await self.app(scope, receive, send)
             return
 

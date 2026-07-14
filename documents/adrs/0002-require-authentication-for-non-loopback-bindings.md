@@ -28,6 +28,11 @@ and WebSocket requests accepted by an unauthenticated non-loopback listener,
 covering direct external Uvicorn invocation; request middleware enforces the
 configured bearer credential with that same credential source.
 
+The source-checkout-only `make dev-lan` workflow sets the explicit
+`API_ALLOW_INSECURE_LAN=true` escape hatch so developers can test from phones
+and other LAN devices without configuring a key. This opt-out is disabled by
+default and is not set by packaged or CLI launchers.
+
 ## Alternatives Considered
 
 ### Automatically generate a key for every non-loopback launch
@@ -58,5 +63,7 @@ configured bearer credential with that same credential source.
 - Direct Uvicorn/module paths may open a non-loopback socket, but cannot serve
   unauthenticated HTTP or WebSocket API requests on it.
 - Existing loopback CLI and development workflows remain unchanged.
+- `make dev-lan` is intentionally unauthenticated and must only be used on a
+  trusted development network.
 - New server entry points must reuse the same binding-policy check before
   opening sockets.

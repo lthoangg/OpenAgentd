@@ -130,6 +130,7 @@ class Settings(BaseSettings):
     API_HOST: str = "127.0.0.1"
     API_PORT: int = 4082
     API_RELOAD: bool = False
+    API_ALLOW_INSECURE_LAN: bool = False
     CORS_ORIGINS: list[str] = ["*"]
 
     # ── XDG-aligned roots ────────────────────────────────────────────────

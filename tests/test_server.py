@@ -12,13 +12,14 @@ def test_api_host_defaults_to_loopback():
     from app.core.config import Settings
 
     assert Settings().API_HOST == "127.0.0.1"
+    assert Settings().API_ALLOW_INSECURE_LAN is False
 
 
 def test_server_module_creates_app():
     """Importing app.server produces a FastAPI application."""
     import importlib
 
-    import app.server as server_mod
+    server_mod = importlib.import_module("app.server")
 
     importlib.reload(server_mod)
 
@@ -80,6 +81,35 @@ def test_server_main_refuses_non_loopback_host_without_auth(monkeypatch):
             sys.modules["app.server"] = saved
 
     mock_run.assert_not_called()
+
+
+def test_server_main_allows_explicit_insecure_development_lan(monkeypatch):
+    import runpy
+    import sys
+
+    from app.core.config import settings
+
+    monkeypatch.delenv("OPENAGENTD_DESKTOP_TOKEN", raising=False)
+    monkeypatch.delenv("OPENAGENTD_ACCESS_KEY", raising=False)
+    saved = sys.modules.pop("app.server", None)
+    old_host = settings.API_HOST
+    old_allow_insecure = settings.API_ALLOW_INSECURE_LAN
+    settings.API_HOST = "0.0.0.0"
+    settings.API_ALLOW_INSECURE_LAN = True
+    try:
+        with (
+            patch("app.server.load_server_settings") as server_settings,
+            patch("uvicorn.run") as mock_run,
+        ):
+            server_settings.return_value.access_key = None
+            runpy.run_module("app.server", run_name="__main__", alter_sys=False)
+    finally:
+        settings.API_HOST = old_host
+        settings.API_ALLOW_INSECURE_LAN = old_allow_insecure
+        if saved is not None:
+            sys.modules["app.server"] = saved
+
+    mock_run.assert_called_once()
 
 
 async def test_raw_uvicorn_non_loopback_bind_rejects_api_requests_without_auth():
@@ -167,6 +197,28 @@ async def test_raw_uvicorn_non_loopback_bind_allows_configured_authentication():
         pass
 
     await NetworkBindGuard(app, has_auth=True)(
+        {"type": "http", "server": ("0.0.0.0", 4082)}, receive, send
+    )
+
+    assert called is True
+
+
+async def test_non_loopback_bind_allows_explicit_insecure_development():
+    from app.core.middlewares import NetworkBindGuard
+
+    called = False
+
+    async def app(scope, receive, send):
+        nonlocal called
+        called = True
+
+    async def receive():
+        return {"type": "http.disconnect"}
+
+    async def send(message: Message):
+        pass
+
+    await NetworkBindGuard(app, has_auth=False, allow_insecure=True)(
         {"type": "http", "server": ("0.0.0.0", 4082)}, receive, send
     )
 

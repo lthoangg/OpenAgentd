@@ -30,6 +30,7 @@ if __name__ == "__main__":
             os.environ.get("OPENAGENTD_DESKTOP_TOKEN")
             or os.environ.get("OPENAGENTD_ACCESS_KEY")
             or load_server_settings().access_key
+            or settings.API_ALLOW_INSECURE_LAN
         ),
     )
     uvicorn.run(

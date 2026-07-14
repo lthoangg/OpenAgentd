@@ -36,7 +36,7 @@ dev: kill-dev-ports ## Start backend (:8000 + reload) and frontend (Vite :5173) 
 
 dev-lan: kill-dev-ports ## Start backend (:8000 + reload) and frontend (Vite :5173) together, accessible on LAN
 	@trap 'kill 0' INT TERM EXIT; \
-	(API_HOST=0.0.0.0 API_PORT=8000 API_RELOAD=true uv run python -m app.server 2>&1 | sed 's/^/[api] /') & \
+	(API_ALLOW_INSECURE_LAN=true API_HOST=0.0.0.0 API_PORT=8000 API_RELOAD=true uv run python -m app.server 2>&1 | sed 's/^/[api] /') & \
 	(cd web && bun dev --host 0.0.0.0 2>&1 | sed 's/^/[web] /') & \
 	wait
 

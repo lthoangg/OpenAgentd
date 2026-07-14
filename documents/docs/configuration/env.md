@@ -2,7 +2,7 @@
 title: Environment Variables
 description: Every env var read by OpenAgentd — provider keys, ports, paths, optional extras.
 status: stable
-updated: 2026-07-13
+updated: 2026-07-14
 ---
 
 # Environment Variables
@@ -22,6 +22,7 @@ All settings live in `app/core/config.py`. Copy `.env.example` to the right `.en
 | `API_HOST` | `127.0.0.1` | Bind address. Non-loopback values require a configured access key in OpenAgentd-managed launchers. |
 | `API_PORT` | `4082` | Bind port. `make dev` overrides via uvicorn flags to use `:8000`. |
 | `API_RELOAD` | `False` | Enables uvicorn auto-reload when set true. |
+| `API_ALLOW_INSECURE_LAN` | `False` | Explicitly permits an unauthenticated non-loopback bind. `make dev-lan` sets this for trusted-network development; do not use it in production. |
 | `CORS_ORIGINS` | `["*"]` | Allowed CORS origins. |
 | `DATABASE_URL` | `{OPENAGENTD_DATA_DIR}/openagentd.db` | SQLite path or async DB URL. |
 

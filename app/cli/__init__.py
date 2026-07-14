@@ -14,6 +14,7 @@ Usage
   openagentd logs          Tail the server log
   openagentd version       Print version and exit
   openagentd doctor        Check system health and report issues
+  openagentd lsp           Inspect or install managed language servers
   openagentd upgrade       Upgrade openagentd to the latest version
 
 This package replaces the former monolithic ``app/cli.py`` module.  The

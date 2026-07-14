@@ -18,6 +18,7 @@ from app.cli.commands.health import cmd_health
 from app.cli.commands.importcmd import cmd_import
 from app.cli.commands.init import cmd_init
 from app.cli.commands.logs import cmd_logs
+from app.cli.commands.lsp import cmd_lsp
 from app.cli.commands.migrate import cmd_migrate
 from app.cli.commands.restart import cmd_restart
 from app.cli.commands.serve import _add_serve_subparser
@@ -49,6 +50,7 @@ def build_parser() -> argparse.ArgumentParser:
             "  openagentd health         # run server/mobile diagnostics\n"
             "  openagentd logs           # tail the server log\n"
             "  openagentd doctor         # check system health\n"
+            "  openagentd lsp status     # inspect managed language servers\n"
             "  openagentd cleanup        # dry-run generated artifact cleanup\n"
             "  openagentd upgrade        # upgrade to the latest version\n"
             "  openagentd export         # pack config for migration (agents, skills, commands, …)\n"
@@ -222,6 +224,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Lines to show initially (default: 50)",
     )
     p_logs.set_defaults(func=cmd_logs)
+
+    # ── lsp ──────────────────────────────────────────────────────────────────
+    p_lsp = sub.add_parser("lsp", help="Inspect or install managed LSP tools")
+    lsp_sub = p_lsp.add_subparsers(dest="lsp_action", required=True)
+    lsp_sub.add_parser("status", help="Show managed LSP tool status")
+    p_lsp_install = lsp_sub.add_parser(
+        "install", help="Install a managed LSP component"
+    )
+    p_lsp_install.add_argument("component", choices=("typescript",))
+    p_lsp.set_defaults(func=cmd_lsp)
 
     # ── version ───────────────────────────────────────────────────────────────
     sub.add_parser("version", help="Print version and exit").set_defaults(

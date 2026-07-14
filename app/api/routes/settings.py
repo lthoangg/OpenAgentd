@@ -49,6 +49,9 @@ from app.api.schemas.settings import (
     ProviderVisibleModelsResponse,
     ProvidersListBody,
     MultimodalSettingsBody,
+    LspPythonToolsBody,
+    LspToolsBody,
+    LspTypescriptToolBody,
     SandboxSettingsBody,
     SeedInstallRequest,
     SeedInstallResponse,
@@ -56,6 +59,12 @@ from app.api.schemas.settings import (
     TitleGenerationSettingsBody,
 )
 from app.services.provider_connection import provider_is_configured
+from app.services.lsp.managed import (
+    TYPESCRIPT_LANGUAGE_SERVER_VERSION,
+    TYPESCRIPT_VERSION,
+    ManagedLspStatus,
+    managed_lsp_tools,
+)
 from app.services.provider_usage import (
     ProviderUsageCredentialsError,
     ProviderUsageUnavailableError,
@@ -65,6 +74,23 @@ from app.services.provider_usage import (
 )
 
 router = APIRouter()
+
+
+def _lsp_tools_body(status: ManagedLspStatus) -> LspToolsBody:
+    return LspToolsBody(
+        downloads_enabled=status.downloads_enabled,
+        python=LspPythonToolsBody(
+            ty=status.ty_available,
+            ruff=status.ruff_available,
+        ),
+        typescript=LspTypescriptToolBody(
+            state=status.state,
+            detail=status.detail,
+            language_server_version=TYPESCRIPT_LANGUAGE_SERVER_VERSION,
+            typescript_version=TYPESCRIPT_VERSION,
+        ),
+    )
+
 
 # Serialises concurrent provider tests. ``build_provider`` reads credentials
 # from ``os.environ`` deep in the factory; the test endpoint has to mutate
@@ -106,6 +132,28 @@ async def update_sandbox_settings(body: SandboxSettingsBody) -> SandboxSettingsB
     cleaned = [p.strip() for p in body.denied_patterns if p.strip()]
     save_config(SandboxFileConfig(denied_patterns=cleaned))
     return SandboxSettingsBody(denied_patterns=cleaned)
+
+
+@router.get("/lsp")
+async def get_lsp_tools() -> LspToolsBody:
+    return _lsp_tools_body(managed_lsp_tools.status())
+
+
+@router.post("/lsp/typescript/install")
+async def install_typescript_lsp() -> LspToolsBody:
+    try:
+        status = await managed_lsp_tools.install_typescript()
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.warning(
+            "managed_lsp_install_request_failed error_type={}", type(exc).__name__
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="TypeScript language-server installation failed; check backend logs.",
+        ) from exc
+    return _lsp_tools_body(status)
 
 
 @router.get("/summarization")

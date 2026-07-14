@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -1557,3 +1557,84 @@ def test_registry_warms_cached_models_for_configured_providers(
     assert "openai:gpt-5" in ids
     assert "openai:gpt-5-mini" in ids
     assert provider_cached_models("openai") == ["gpt-5", "gpt-5-mini"]
+
+
+def test_get_lsp_tools_reports_managed_component_state(monkeypatch) -> None:
+    from app.services.lsp.managed import ManagedLspStatus
+
+    monkeypatch.setattr(
+        settings_routes.managed_lsp_tools,
+        "status",
+        lambda: ManagedLspStatus(
+            state="missing",
+            detail=None,
+            downloads_enabled=True,
+            ty_available=True,
+            ruff_available=True,
+        ),
+    )
+
+    response = TestClient(_make_app()).get("/api/settings/lsp")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "downloads_enabled": True,
+        "python": {"ty": True, "ruff": True},
+        "typescript": {
+            "state": "missing",
+            "detail": None,
+            "language_server_version": "5.3.0",
+            "typescript_version": "6.0.3",
+        },
+    }
+
+
+def test_install_lsp_typescript_returns_ready_after_user_consent(monkeypatch) -> None:
+    from app.services.lsp.managed import ManagedLspStatus
+
+    monkeypatch.setattr(
+        settings_routes.managed_lsp_tools,
+        "install_typescript",
+        AsyncMock(
+            return_value=ManagedLspStatus(
+                state="ready",
+                detail=None,
+                downloads_enabled=True,
+                ty_available=True,
+                ruff_available=True,
+            )
+        ),
+    )
+
+    response = TestClient(_make_app()).post("/api/settings/lsp/typescript/install")
+
+    assert response.status_code == 200
+    assert response.json()["typescript"]["state"] == "ready"
+
+
+def test_install_lsp_typescript_returns_403_when_downloads_are_disabled(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        settings_routes.managed_lsp_tools,
+        "install_typescript",
+        AsyncMock(side_effect=PermissionError("Managed LSP downloads are disabled")),
+    )
+
+    response = TestClient(_make_app()).post("/api/settings/lsp/typescript/install")
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Managed LSP downloads are disabled"}
+
+
+def test_install_lsp_typescript_does_not_expose_installer_output(monkeypatch) -> None:
+    monkeypatch.setattr(
+        settings_routes.managed_lsp_tools,
+        "install_typescript",
+        AsyncMock(side_effect=RuntimeError("registry token secret-value")),
+    )
+
+    response = TestClient(_make_app()).post("/api/settings/lsp/typescript/install")
+
+    assert response.status_code == 502
+    assert "secret-value" not in response.text

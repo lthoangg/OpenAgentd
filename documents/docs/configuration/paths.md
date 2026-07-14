@@ -82,7 +82,8 @@ Dev-mode paths shown below — substitute the production columns from the table 
 │   └── cache/                             # OPENAGENTD_CACHE_DIR
 │       ├── quoteoftheday.json             # Quote of the Day cache
 │       ├── copilot_oauth.json             # GitHub Copilot token
-│       └── codex_oauth.json               # OpenAI Codex OAuth token
+│       ├── codex_oauth.json               # OpenAI Codex OAuth token
+│       └── lsp/                           # Managed Bun + TypeScript language-server component
 ├── commands/                              # project slash commands
 └── skills/                                # project skills
 ```

@@ -2,7 +2,7 @@
 title: LSP Diagnostics Injection
 description: Real-time language-server diagnostics injected into write/edit/patch tool results in coding mode.
 status: stable
-updated: 2026-07-13
+updated: 2026-07-14
 ---
 
 # LSP Diagnostics Injection
@@ -44,7 +44,40 @@ precedence (first tier that yields a command wins):
 2. **`settings.yaml`** — a global `lsp:` map, e.g. `lsp: {python: [ty, server]}`.
 3. **Built-in defaults** — first installed server from the per-language list.
 
-A command is only used if its executable is found on `PATH`. In the desktop app, OpenAgentd resolves that PATH from your login shell, so servers installed through Homebrew, `uv`, Bun, Cargo, or other user-level toolchains work even when the GUI process starts with a minimal system PATH.
+A project or user command is used only when its executable is found on `PATH`.
+The desktop app resolves that PATH from your login shell, so servers installed
+through Homebrew, `uv`, Bun, Cargo, or other user-level toolchains work even
+when the GUI process starts with a minimal system PATH. OpenAgentd-managed
+servers are resolved independently of `PATH`.
+
+## Managed language servers
+
+OpenAgentd ships pinned `ty` and `ruff` executables with its Python runtime, so
+Python type and lint diagnostics work in CLI and bundled-desktop installations
+without a separate global install. Project configuration and explicit
+`settings.yaml` commands still take precedence.
+
+TypeScript support is an optional backend component. On the first TypeScript or
+JavaScript edit without an available server, connected desktop, browser, and
+mobile clients ask before installing it. The prompt installs a pinned Bun
+runtime, `typescript-language-server`, and fallback TypeScript package on the
+backend that owns the workspace, not on the viewing device. Headless servers
+can install it explicitly:
+
+```bash
+openagentd lsp status
+openagentd lsp install typescript
+```
+
+The component lives under `{OPENAGENTD_CACHE_DIR}/lsp/`, is reusable across
+projects, and can be deleted safely when OpenAgentd is stopped. Bun release
+archives are version-pinned and SHA-256 verified; npm package versions and
+integrities are locked, and lifecycle scripts are disabled. Set
+`OPENAGENTD_DISABLE_LSP_DOWNLOAD=true` to disable managed downloads entirely.
+
+OpenAgentd prefers a project's own `node_modules/typescript` when present and
+uses the managed TypeScript copy only as a fallback. The language-server process
+remains rooted at the nearest project manifest, just like an external server.
 
 ### Python runs multiple servers
 
@@ -119,8 +152,9 @@ Path aliases (`@/` → `src/`) resolve automatically once tsserver reads the
 
 ## Caveats (expected LSP behavior, not bugs)
 
-- **Install the server.** No diagnostics appear for a language whose server
-  isn't on `PATH`.
+- **Other languages still use system tools.** Go and C/C++ diagnostics require
+  `gopls` and `clangd` on the backend's `PATH`; custom servers must also be
+  installed separately.
 - **TypeScript scope.** Strictness/lib behavior follows the nearest
   `tsconfig.json`; loose files use inferred defaults.
 - **Type vs. syntax.** Lint-only servers (e.g. `ruff` alone) never report type

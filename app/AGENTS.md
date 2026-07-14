@@ -56,6 +56,7 @@ uv run ruff check app/ tests/ && uv run ruff format --check app/ tests/ && uv ru
 | `import` | `app/cli/commands/importcmd.py` — unpacks a migration archive (named `importcmd` to avoid the Python builtin) |
 | `migrate` | `app/cli/commands/migrate.py` — imports from OpenClaw / Hermes |
 | `init` | `app/cli/commands/init.py` — first-time setup |
+| `lsp` | `app/cli/commands/lsp.py` — inspect/install managed language-server components |
 
 ## Documentation pointers
 

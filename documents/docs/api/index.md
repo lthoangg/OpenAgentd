@@ -227,6 +227,8 @@ User-editable runtime settings persisted under `{OPENAGENTD_CONFIG_DIR}`. Sandbo
 | `PUT` | `/api/settings/title-generation` | Persist title generation runtime settings |
 | `GET` | `/api/settings/multimodal` | `{image, video}` from `multimodal.yaml` |
 | `PUT` | `/api/settings/multimodal` | Persist image/video generation defaults |
+| `GET` | `/api/settings/lsp` | Bundled Python and managed TypeScript LSP component status |
+| `POST` | `/api/settings/lsp/typescript/install` | Consent action: install the pinned TypeScript component on the backend |
 | `GET` | `/api/settings/providers/{provider}/usage` | Live usage snapshot when supported (`codex`, `copilot`, or OAuth provider plugins with usage hooks) |
 
 Provider usage responses return `{provider, limits}`. Codex may include rolling

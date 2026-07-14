@@ -156,6 +156,21 @@ Warnings (degraded but bootable) don't affect the exit code. Run this first when
 
 ---
 
+## lsp
+
+```bash
+openagentd lsp status
+openagentd lsp install typescript
+```
+
+`status` reports bundled Python tools and the managed TypeScript component.
+`install typescript` downloads the pinned, checksum-verified Bun runtime and
+locked TypeScript language-server packages into
+`{OPENAGENTD_CACHE_DIR}/lsp/`. It never modifies the current project. Set
+`OPENAGENTD_DISABLE_LSP_DOWNLOAD=true` to prohibit the download.
+
+---
+
 ## upgrade
 
 ```bash

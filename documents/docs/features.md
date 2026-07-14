@@ -557,7 +557,7 @@ MCP. Deeper doc: [`agent/tools.md`](./agent/tools.md).
 | Team coordination | `team_message`, `team_manage` |
 | Utility | `date`, `skill` |
 
-- **Real-time LSP diagnostics injection** `[v1.89.0]` — in **coding mode**, after a
+- **Real-time LSP diagnostics injection** `[v1.89.0, v1.104.4]` — in **coding mode**, after a
   `write`, `edit`, or `patch` tool modifies one or more files, OpenAgentd runs the
   matching language server(s) over the changed files and injects the resulting
   errors/warnings straight into the tool result as a compact `[LSP Diagnostics]`
@@ -575,7 +575,12 @@ MCP. Deeper doc: [`agent/tools.md`](./agent/tools.md).
   summary) to protect the context window, and the whole hook is fail-safe — an LSP
   error never crashes the tool. The cockpit renders the block as a compact,
   color-coded `ERR`/`WARN` strip beneath the diff. Diagnostics depend on the server
-  being installed and on normal LSP scope rules (e.g. TypeScript honours `tsconfig.json`).
+  being available and on normal LSP scope rules (e.g. TypeScript honours `tsconfig.json`).
+  Pinned `ty` + `ruff` now ship with the Python runtime, while TypeScript is a
+  consented, on-demand backend component with a verified Bun download, locked
+  npm packages, a cross-surface install prompt, and `openagentd lsp` status/install
+  commands. Managed tools live under the regeneratable cache and do not modify
+  the user's project.
   Deeper doc: [`configuration/lsp.md`](./configuration/lsp.md).
 - **Clean tool argument validation errors** `[v1.77.0]` — when a tool call
   fails Pydantic validation, the LLM receives a compact `field: message`

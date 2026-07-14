@@ -8,6 +8,11 @@ from pathlib import Path
 from loguru import logger
 
 from app.services.lsp.client import LspClient
+from app.services.lsp.managed import (
+    find_packaged_python_command,
+    find_project_tsserver,
+    managed_lsp_tools,
+)
 
 
 _CACHED_USER_PATH: str | None = None
@@ -344,6 +349,13 @@ def _build_ts_init_options(project_root: Path) -> dict:
     path aliases.
     """
     options: dict = {"preferences": {"includeInlayParameterNameHints": "none"}}
+    tsserver = find_project_tsserver(project_root)
+    if tsserver is None:
+        managed = managed_lsp_tools.typescript_command(project_root)
+        if managed is not None:
+            tsserver = managed[1]
+    if tsserver is not None:
+        options["tsserver"] = {"path": str(tsserver)}
 
     tsconfig_path = project_root / "tsconfig.json"
     if not tsconfig_path.exists():
@@ -477,15 +489,19 @@ class LspManager:
         """
         user_path = await _get_user_path()
 
-        def available(cmd: list[str]) -> bool:
-            return shutil.which(cmd[0], path=user_path) is not None
+        def resolve(cmd: list[str]) -> list[str] | None:
+            if shutil.which(cmd[0], path=user_path) is not None:
+                return cmd
+            if cmd[0] in {"ty", "ruff"}:
+                return find_packaged_python_command(cmd[0])
+            return None
 
         # 1. Project-config-aware detection (may yield several for Python).
         if project_root is not None:
             project_cmds = [
-                cmd
+                resolved
                 for cmd in detect_project_lsp_commands(lang_id, project_root)
-                if available(cmd)
+                if (resolved := resolve(cmd)) is not None
             ]
             if project_cmds:
                 logger.info(
@@ -511,12 +527,26 @@ class LspManager:
         # 3. Generic defaults.
         if lang_id == "python":
             # Run every installed Python server so types + lint are both covered.
-            installed = [c for c in PYTHON_MULTI_SERVERS if available(c)]
+            installed = [
+                resolved
+                for cmd in PYTHON_MULTI_SERVERS
+                if (resolved := resolve(cmd)) is not None
+            ]
             return installed
 
         for cmd in LSP_COMMANDS.get(lang_id, []):
-            if available(cmd):
+            if resolve(cmd) is not None:
                 return [cmd]
+        if project_root is not None and lang_id in {
+            "typescript",
+            "typescriptreact",
+            "javascript",
+            "javascriptreact",
+        }:
+            managed = managed_lsp_tools.typescript_command(project_root)
+            if managed is not None:
+                return [managed[0]]
+            await managed_lsp_tools.announce_typescript_required(project_root)
         return []
 
     async def get_clients(self, workspace_root: Path, lang_id: str) -> list[LspClient]:
@@ -536,7 +566,16 @@ class LspManager:
             cmds = await self._detect_commands(lang_id, project_root=workspace_root)
             if not cmds:
                 logger.info("No LSP server found for language: {}", lang_id)
-                self._mark_unsupported(lang_id)
+                # A missing managed TypeScript component may be installed from
+                # the permission prompt at any time. Re-check on the next edit
+                # instead of hiding the new install behind the generic TTL.
+                if lang_id not in {
+                    "typescript",
+                    "typescriptreact",
+                    "javascript",
+                    "javascriptreact",
+                }:
+                    self._mark_unsupported(lang_id)
                 return []
 
             clients: list[LspClient] = []
@@ -621,7 +660,20 @@ class LspManager:
             logger.error("Failed to open document on LSP server: {}", e)
             return []
 
-        diagnostics = await self._await_settled(client, uri, event)
+        typescript_family = lang_id in {
+            "typescript",
+            "typescriptreact",
+            "javascript",
+            "javascriptreact",
+        }
+        overall_timeout = 10.0 if typescript_family else 3.0
+        diagnostics = await self._await_settled(
+            client,
+            uri,
+            event,
+            overall_timeout=overall_timeout,
+            empty_settle_window=1.0 if typescript_family else 0.25,
+        )
 
         try:
             await client.close_document(uri)
@@ -630,7 +682,15 @@ class LspManager:
 
         return diagnostics
 
-    async def _await_settled(self, client: LspClient, uri: str, event) -> list[dict]:
+    async def _await_settled(
+        self,
+        client: LspClient,
+        uri: str,
+        event,
+        *,
+        overall_timeout: float = 3.0,
+        empty_settle_window: float = 0.25,
+    ) -> list[dict]:
         """Wait for diagnostics, debouncing only when needed.
 
         Fast linters (ty, ruff) publish exactly once and go quiet, so paying a
@@ -643,8 +703,6 @@ class LspManager:
              ack-then-real-diagnostics, so briefly debounce to see whether a
              real batch follows before concluding the file is clean.
         """
-        overall_timeout = 3.0
-        settle_window = 0.25
         loop = asyncio.get_running_loop()
         deadline = loop.time() + overall_timeout
 
@@ -669,7 +727,7 @@ class LspManager:
                 break
             try:
                 await asyncio.wait_for(
-                    event.wait(), timeout=min(settle_window, remaining)
+                    event.wait(), timeout=min(empty_settle_window, remaining)
                 )
             except asyncio.TimeoutError:
                 # Quiet window elapsed with no further publish → settled clean.

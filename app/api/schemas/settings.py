@@ -43,6 +43,30 @@ class MultimodalSettingsBody(BaseModel):
     video: MultimodalSectionBody = Field(default_factory=MultimodalSectionBody)
 
 
+class LspPythonToolsBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    ty: bool
+    ruff: bool
+
+
+class LspTypescriptToolBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    state: Literal["missing", "installing", "ready", "error"]
+    detail: str | None = None
+    language_server_version: str
+    typescript_version: str
+
+
+class LspToolsBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    downloads_enabled: bool
+    python: LspPythonToolsBody
+    typescript: LspTypescriptToolBody
+
+
 # ── Providers (Settings → Providers tab) ────────────────────────────────────
 
 

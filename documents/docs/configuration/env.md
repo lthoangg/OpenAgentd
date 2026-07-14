@@ -37,6 +37,7 @@ See [`paths.md`](./paths.md) for what lives under each root and the production /
 | `OPENAGENTD_STATE_DIR` | Root for logs, telemetry, OTEL rollups, PID file. |
 | `OPENAGENTD_CACHE_DIR` | Root for regeneratable throwaway data. |
 | `OPENAGENTD_WORKSPACE_DIR` | Per-session agent workspaces (`{root}/<sid>/`). Allowed by the sandbox. |
+| `OPENAGENTD_DISABLE_LSP_DOWNLOAD` | Set to `true` to disable consented, on-demand managed LSP component downloads. |
 | `AGENTS_DIR` | Defaults to `{OPENAGENTD_CONFIG_DIR}/agents`. |
 | `SKILLS_DIR` | Defaults to `{OPENAGENTD_CONFIG_DIR}/skills`. |
 | `OPENAGENTD_PLUGINS_DIRS` | List of plugin directories separated by the OS path separator (`:` on macOS/Linux, `;` on Windows — same convention as `PATH`/`PYTHONPATH`). Defaults to `{OPENAGENTD_CONFIG_DIR}/plugins`. See [`agent/plugins.md`](../agent/plugins.md). |

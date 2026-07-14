@@ -496,6 +496,31 @@ async def test_await_settled_debounces_empty_then_real():
 
 
 @pytest.mark.asyncio
+async def test_typescript_diagnostics_use_longer_cold_start_timeout():
+    from unittest.mock import MagicMock
+
+    manager = LspManager()
+    client = MagicMock()
+    client.open_or_update_document = AsyncMock()
+    client.close_document = AsyncMock()
+    event = asyncio.Event()
+    client.reset_diagnostics.return_value = event
+    client.get_diagnostics.return_value = []
+
+    with patch.object(
+        manager, "_await_settled", new=AsyncMock(return_value=[])
+    ) as wait:
+        await manager._diagnostics_from(
+            client, "file:///x.ts", "typescript", "const x = 1"
+        )
+
+    assert wait.await_args.kwargs == {
+        "overall_timeout": 10.0,
+        "empty_settle_window": 1.0,
+    }
+
+
+@pytest.mark.asyncio
 async def test_check_lsp_diagnostics_formatting(tmp_path):
     manager = LspManager()
     stdout = MockStreamReader()
@@ -939,6 +964,86 @@ async def test_detect_commands_uses_login_shell_path_for_desktop_lsp_servers(
 
 
 @pytest.mark.asyncio
+async def test_detect_commands_falls_back_to_packaged_python_servers(
+    tmp_path, monkeypatch
+):
+    """Packaged ty and ruff work even when the login-shell PATH is empty."""
+    import app.services.lsp.manager as manager_mod
+
+    manager = LspManager()
+    monkeypatch.setattr(manager_mod.shutil, "which", lambda command, path=None: None)
+    monkeypatch.setattr(
+        manager_mod,
+        "find_packaged_python_command",
+        lambda command: (
+            [f"/runtime/bin/{command}", "server"] if command in {"ty", "ruff"} else None
+        ),
+    )
+
+    assert await manager._detect_commands("python", project_root=tmp_path) == [
+        ["/runtime/bin/ty", "server"],
+        ["/runtime/bin/ruff", "server"],
+    ]
+
+
+@pytest.mark.asyncio
+async def test_detect_commands_uses_ready_managed_typescript_component(
+    tmp_path, monkeypatch
+):
+    import app.services.lsp.manager as manager_mod
+
+    manager = LspManager()
+    monkeypatch.setattr(manager_mod.shutil, "which", lambda command, path=None: None)
+    command = [
+        "/cache/lsp/bin/bun",
+        "/cache/lsp/node_modules/.bin/typescript-language-server",
+        "--stdio",
+    ]
+    monkeypatch.setattr(
+        manager_mod.managed_lsp_tools,
+        "typescript_command",
+        lambda root: (
+            command,
+            Path("/cache/lsp/node_modules/typescript/lib/tsserver.js"),
+        ),
+    )
+
+    assert await manager._detect_commands("typescript", project_root=tmp_path) == [
+        command
+    ]
+
+
+@pytest.mark.asyncio
+async def test_detect_commands_announces_missing_typescript_component(
+    tmp_path, monkeypatch
+):
+    import app.services.lsp.manager as manager_mod
+
+    manager = LspManager()
+    monkeypatch.setattr(manager_mod.shutil, "which", lambda command, path=None: None)
+    monkeypatch.setattr(
+        manager_mod.managed_lsp_tools, "typescript_command", lambda root: None
+    )
+    required = AsyncMock()
+    monkeypatch.setattr(
+        manager_mod.managed_lsp_tools, "announce_typescript_required", required
+    )
+
+    assert await manager._detect_commands("typescript", project_root=tmp_path) == []
+    required.assert_awaited_once_with(tmp_path)
+
+
+@pytest.mark.asyncio
+async def test_missing_managed_typescript_is_rechecked_after_user_installs(tmp_path):
+    manager = LspManager()
+
+    with patch.object(manager, "_detect_commands", new=AsyncMock(return_value=[])):
+        assert await manager.get_clients(tmp_path, "typescript") == []
+
+    assert "typescript" not in manager._unsupported_langs
+
+
+@pytest.mark.asyncio
 async def test_python_multi_server_merges_diagnostics(tmp_path):
     """ty + ruff both run for Python and their diagnostics are merged — so a
     file with a type error (ty) and a lint warning (ruff) surfaces both."""
@@ -1229,6 +1334,34 @@ def test_build_ts_init_options_reads_tsconfig_types(tmp_path):
     types = opts.get("compilerOptions", {}).get("types", [])
     assert "node" in types
     assert "jest" in types
+
+
+def test_build_ts_init_options_points_to_project_typescript(tmp_path):
+    from app.services.lsp.manager import _build_ts_init_options
+
+    tsserver = tmp_path / "node_modules" / "typescript" / "lib" / "tsserver.js"
+    tsserver.parent.mkdir(parents=True)
+    tsserver.write_text("// project typescript", encoding="utf-8")
+
+    assert _build_ts_init_options(tmp_path)["tsserver"]["path"] == str(tsserver)
+
+
+def test_build_ts_init_options_points_to_managed_typescript(tmp_path, monkeypatch):
+    import app.services.lsp.manager as manager_mod
+
+    managed_tsserver = Path("/cache/lsp/typescript/lib/tsserver.js")
+    monkeypatch.setattr(
+        manager_mod.managed_lsp_tools,
+        "typescript_command",
+        lambda root: (
+            ["bun", "typescript-language-server", "--stdio"],
+            managed_tsserver,
+        ),
+    )
+
+    assert manager_mod._build_ts_init_options(tmp_path)["tsserver"]["path"] == str(
+        managed_tsserver
+    )
 
 
 def test_build_ts_init_options_bun_not_duplicated_when_already_in_tsconfig(tmp_path):

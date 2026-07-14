@@ -28,7 +28,7 @@ into**.
 | Native desktop GUI | ✅ OpenAgentd | terminal | terminal | IDE | terminal | terminal |
 | In-app auto-updater | ✅ OpenAgentd | brew/manual | brew/manual | yes (editor) | pip/brew | brew/manual |
 | Watch live tool calls (inspector + arguments + results + diffs in GUI) | ✅ OpenAgentd | terminal text | terminal text | inline in editor | terminal text | TUI |
-| Real-time LSP diagnostics feedback on edits | ✅ on-demand LSP per project (ty+ruff, tsserver…) injected into tool result | — | — | ✅ editor diagnostics | partial (linter run) | — |
+| Real-time LSP diagnostics feedback on edits | ✅ on-demand LSP per project (bundled ty+ruff; consented managed tsserver) injected into tool result | — | — | ✅ editor diagnostics | partial (linter run) | — |
 | Multi-agent concurrent team view (split pane, lead + workers) | ✅ OpenAgentd | sub-agents (sequential) | — | — | — | build/plan agents |
 | Git-backed `/undo` and `/redo` across chat history | ✅ OpenAgentd | — | — | editor undo | git commits | — |
 | `@file` inline context + `@folder` directory listing on first turn | ✅ OpenAgentd | manual @ in v0.2+ | — | yes | manual /add | yes |

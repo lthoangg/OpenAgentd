@@ -19,8 +19,10 @@ import os
 import signal
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+import httpx
 import pytest
 from sqlalchemy.exc import OperationalError
 
@@ -88,6 +90,34 @@ class TestCliEnvironment:
         )
 
         assert result.stdout.strip() == str(tmp_path / ".config" / "openagentd")
+
+
+def test_lsp_cli_parses_status_and_typescript_install() -> None:
+    parser = build_parser()
+
+    status = parser.parse_args(["lsp", "status"])
+    install = parser.parse_args(["lsp", "install", "typescript"])
+
+    assert status.lsp_action == "status"
+    assert install.lsp_action == "install"
+    assert install.component == "typescript"
+
+
+def test_lsp_cli_sanitizes_unexpected_install_errors() -> None:
+    from app.cli.commands.lsp import cmd_lsp
+
+    with (
+        patch(
+            "app.cli.commands.lsp.managed_lsp_tools.install_typescript",
+            side_effect=httpx.ConnectError("registry token=secret"),
+        ),
+        pytest.raises(SystemExit) as exc_info,
+    ):
+        cmd_lsp(SimpleNamespace(lsp_action="install", component="typescript"))
+
+    assert str(exc_info.value) == (
+        "TypeScript LSP installation failed; check backend logs."
+    )
 
 
 class TestXdgDirs:

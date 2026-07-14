@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import cast
 
 import yaml
 
@@ -54,8 +55,14 @@ def load_server_settings(
             raise ValueError(f"server.yaml YAML parse error: {exc}") from exc
         if not isinstance(raw, dict):
             raise ValueError("server.yaml must contain a YAML mapping.")
-        _pop_legacy_server_settings(legacy_path or runtime_settings_path())
-        return ServerSettings.model_validate(raw)
+        current = ServerSettings.model_validate(raw)
+        legacy = _pop_legacy_server_settings(legacy_path or runtime_settings_path())
+        if current.access_key is None and isinstance(legacy, dict):
+            legacy_key = cast(dict[str, object], legacy).get("access_key")
+            if isinstance(legacy_key, str) and legacy_key:
+                current.access_key = legacy_key
+                save_server_settings(current, resolved)
+        return current
 
     legacy = legacy_path or runtime_settings_path()
     migrated = _pop_legacy_server_settings(legacy, validate=True)

@@ -67,6 +67,30 @@ def test_server_settings_migrate_legacy_settings_yaml_once(tmp_path: Path) -> No
     assert "legacy-secret" not in migrated_shared
 
 
+def test_existing_server_yaml_inherits_missing_legacy_access_key(
+    tmp_path: Path,
+) -> None:
+    shared_path = tmp_path / "settings.yaml"
+    shared_path.write_text(
+        "server:\n  host: 0.0.0.0\n  port: 4082\n  access_key: legacy-secret\n",
+        encoding="utf-8",
+    )
+    server_path = tmp_path / "server.yaml"
+    server_path.write_text("host: 0.0.0.0\nport: 4082\n", encoding="utf-8")
+
+    result = load_server_settings(server_path, legacy_path=shared_path)
+
+    assert result == ServerSettings(
+        host="0.0.0.0", port=4082, access_key="legacy-secret"
+    )
+    assert yaml.safe_load(server_path.read_text(encoding="utf-8")) == {
+        "host": "0.0.0.0",
+        "port": 4082,
+        "access_key": "legacy-secret",
+    }
+    assert "server:" not in shared_path.read_text(encoding="utf-8")
+
+
 def test_existing_server_yaml_wins_over_legacy_settings(tmp_path: Path) -> None:
     shared_path = tmp_path / "settings.yaml"
     shared_path.write_text(

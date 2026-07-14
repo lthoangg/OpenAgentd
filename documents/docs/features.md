@@ -16,7 +16,7 @@ exists. When you ship something new, **add it here first** — slides, README,
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 15 providers. Your keys.
 
-**Latest release:** v1.104.3 · July 14, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.104.3)
+**Latest release:** v1.105.0 · July 14, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.105.0)
 
 ---
 
@@ -174,7 +174,10 @@ from the terminal. Deeper docs: [`desktop.md`](./desktop.md), [`web/chrome.md`](
   remainder directly through the shell tool without a model turn; history stores
   the run as structured shell tool output. Stop terminates active direct and
   foreground shell process groups; acknowledged background PIDs remain managed
-  through `bg`. See [`shell-commands.md`](./shell-commands.md).
+  through `bg`. Background waits are session-scoped and bounded to 30 seconds by
+  default (300 seconds maximum), returning a still-running result without
+  terminating the process `[v1.105.0]`. See
+  [`shell-commands.md`](./shell-commands.md).
 - **Drag-and-drop files into chat** `[since v1.0, v1.82.0]` — drag files (images, PDFs, text, etc.) anywhere onto the chat area (both cockpit and coding views) to show a drop overlay and attach them to the composer. Supports multi-file drops, file-type filtering, and cancellation.
 - **Composer history navigation** `[v1.32.0]` — when the input is empty, `↑` / `↓`
   walks previous user prompts from the current chat plus local submissions. See
@@ -557,7 +560,7 @@ MCP. Deeper doc: [`agent/tools.md`](./agent/tools.md).
 | Team coordination | `team_message`, `team_manage` |
 | Utility | `date`, `skill` |
 
-- **Real-time LSP diagnostics injection** `[v1.89.0, v1.104.4]` — in **coding mode**, after a
+- **Real-time LSP diagnostics injection** `[v1.89.0, v1.105.0]` — in **coding mode**, after a
   `write`, `edit`, or `patch` tool modifies one or more files, OpenAgentd runs the
   matching language server(s) over the changed files and injects the resulting
   errors/warnings straight into the tool result as a compact `[LSP Diagnostics]`

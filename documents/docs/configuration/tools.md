@@ -36,7 +36,7 @@ Filesystem tools normally output workspace-relative paths. The `read` tool also 
 | Tool | What it does |
 |------|--------------|
 | `shell` | Run a shell command inside the sandbox (60 s default timeout; supports `background=true` for long-running processes). |
-| `bg` | Manage background processes: list, check status, read output, wait, stop. |
+| `bg` | Manage background processes for the active session: list, check status, read output, bounded wait, stop. |
 
 ### Web
 

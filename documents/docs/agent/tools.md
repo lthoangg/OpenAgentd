@@ -349,7 +349,8 @@ When `background=true`:
 - If the process exits during warmup, it is treated as a foreground failure.
 - Otherwise, returns `[Background — PID <pid>]` with the command and initial output.
 - Output is continuously drained into a 200-line ring buffer.
-- Use `bg` to inspect, wait for completion, or stop it.
+- Use `bg` to inspect, wait briefly for completion, or stop it. Only processes
+  owned by the active session are visible and manageable.
 
 #### `bg` parameters
 
@@ -357,7 +358,12 @@ When `background=true`:
 |-----------|------|---------|-------------|
 | `action` | `Literal['list','status','output','wait','stop']` | required | `list` all processes; other actions require a PID |
 | `pid` | `int \| None` | `None` | PID (required except for `list`) |
-| `last_n_lines` | `int \| None` | `None` | For `output` and `wait`: return only the last N lines (default all, max 200) |
+| `last_n_lines` | `int \| None` | `None` | For `output`, `wait`, and `stop`: return only the last N lines (default all, max 200) |
+| `timeout_seconds` | `int` | `30` | Maximum time for `wait` before it returns a still-running result (maximum 300 seconds) |
+
+`wait` removes a completed process from the registry after returning its final
+status and buffered output. If the timeout expires, the process stays tracked
+and running so it can be inspected, waited on again, or stopped.
 
 #### Non-interactive execution
 

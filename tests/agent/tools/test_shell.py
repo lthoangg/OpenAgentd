@@ -596,7 +596,7 @@ async def test_background_process_output_and_status(sandbox_workspace, fast_bg):
 
 @pytest.mark.asyncio
 async def test_background_process_wait(sandbox_workspace, fast_bg):
-    """wait blocks until the process exits and returns final output."""
+    """wait returns final output and removes the completed process."""
     await shell_tool.arun(
         command="printf 'start\\n' && sleep 0.05 && printf 'done\\n'",
         background=True,
@@ -609,7 +609,22 @@ async def test_background_process_wait(sandbox_workspace, fast_bg):
     assert f"PID {pid}: exited (code 0)" in result
     assert "start" in result
     assert "done" in result
+    assert pid not in _bg_processes
+
+
+@pytest.mark.asyncio
+async def test_background_process_wait_is_bounded(sandbox_workspace, fast_bg):
+    """wait returns control when a process is still running after its timeout."""
+    await shell_tool.arun(command="sleep 30", background=True, timeout_seconds=1)
+    pid = next(iter(_bg_processes))
+
+    result = await shell_module._background_process(
+        action="wait", pid=pid, timeout_seconds=0.01
+    )
+
+    assert f"PID {pid}: still running after 0.01 seconds" in result
     assert pid in _bg_processes
+    assert _bg_processes[pid].alive
 
 
 @pytest.mark.asyncio
@@ -641,6 +656,36 @@ async def test_background_process_stop(sandbox_workspace, fast_bg):
     result = await background_process.arun(action="stop", pid=pid)
     assert "stopped" in result
     assert pid not in _bg_processes
+
+
+@pytest.mark.asyncio
+async def test_background_process_stop_honors_output_limit(sandbox_workspace, fast_bg):
+    """stop uses the requested line limit for its final output."""
+    await shell_tool.arun(
+        command="printf 'line1\\nline2\\nline3\\n' && sleep 30",
+        background=True,
+        timeout_seconds=1,
+    )
+    pid = next(iter(_bg_processes))
+
+    result = await background_process.arun(action="stop", pid=pid, last_n_lines=1)
+
+    assert "line3" in result
+    assert "line1" not in result
+
+
+@pytest.mark.asyncio
+async def test_background_actions_are_scoped_to_current_session(sandbox_workspace):
+    """A session cannot discover or manage another session's process."""
+    foreign = MagicMock(session_id="session-2", alive=True, command="secret command")
+    _bg_processes[4242] = foreign
+
+    listing = await background_process.arun(action="list")
+    status = await background_process.arun(action="status", pid=4242)
+
+    assert "No background processes" in listing
+    assert "No tracked background process with PID 4242" in status
+    assert "Known PIDs: none" in status
 
 
 @pytest.mark.asyncio
@@ -678,7 +723,7 @@ async def test_background_process_status_exited(sandbox_workspace):
     )
     await proc.wait()
 
-    bg = _BgProcess(proc, "true", None)
+    bg = _BgProcess(proc, "true", "session-1")
     pid = bg.pid
     _bg_processes[pid] = bg
     await asyncio.sleep(0.05)

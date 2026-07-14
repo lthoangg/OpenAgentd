@@ -70,7 +70,8 @@ _SHELL_DESCRIPTION = (
 
 _BG_DESCRIPTION = (
     "Manage background processes started with shell(background=true). "
-    "Actions: list, status, output, stop, wait."
+    "Actions: list, status, output, stop, wait. Wait is bounded and returns "
+    "control if the process is still running."
 )
 
 
@@ -119,6 +120,12 @@ class BgArgs(BaseModel):
         default=None,
         ge=1,
         description="Lines to return for output/wait (maximum 200); omit for all retained lines.",
+    )
+    timeout_seconds: int = Field(
+        default=30,
+        ge=1,
+        le=300,
+        description="Maximum seconds for wait (default 30, maximum 300).",
     )
 
     @model_validator(mode="after")
@@ -198,11 +205,11 @@ class _BgProcess:
             except asyncio.TimeoutError:
                 _kill_process_group(self.proc, signal.SIGKILL)
                 await self.proc.wait()
-        self._reader_task.cancel()
+        await self._reader_task
         return self.proc.returncode
 
-    async def wait(self) -> int | None:
-        await self.proc.wait()
+    async def wait(self, timeout_seconds: float) -> int | None:
+        await asyncio.wait_for(self.proc.wait(), timeout=timeout_seconds)
         await self._reader_task
         return self.proc.returncode
 
@@ -217,6 +224,12 @@ def _limited_bg_output(text: str) -> str:
 
 # Module-level registry: PID → _BgProcess
 _bg_processes: dict[int, _BgProcess] = {}
+
+
+def _session_bg_processes() -> dict[int, _BgProcess]:
+    """Return processes owned by the active tool-call session."""
+    session_id = get_sandbox().session_id
+    return {pid: bg for pid, bg in _bg_processes.items() if bg.session_id == session_id}
 
 
 async def stop_background_processes_for_session(session_id: str) -> int:
@@ -625,14 +638,16 @@ async def _background_process(
     action: Literal["list", "status", "output", "stop", "wait"],
     pid: int | None = None,
     last_n_lines: int | None = None,
+    timeout_seconds: float = 30,
 ) -> str:
     """Manage background processes started with shell(background=true)."""
+    processes = _session_bg_processes()
     if action == "list":
-        if not _bg_processes:
+        if not processes:
             return "No background processes running."
         lines = ["PID     | Status  | Command"]
         lines.append("--------|---------|--------")
-        for pid_key, bg in _bg_processes.items():
+        for pid_key, bg in processes.items():
             status = "running" if bg.alive else f"exited ({bg.proc.returncode})"
             lines.append(f"{pid_key:<7} | {status:<7} | {bg.command[:60]}")
         return "\n".join(lines)
@@ -640,9 +655,9 @@ async def _background_process(
     if pid is None:
         return "Error: 'pid' is required for action '{}'.".format(action)
 
-    bg = _bg_processes.get(pid)
+    bg = processes.get(pid)
     if bg is None:
-        known = ", ".join(str(p) for p in _bg_processes) if _bg_processes else "none"
+        known = ", ".join(str(p) for p in processes) if processes else "none"
         return (
             f"Error: No tracked background process with PID {pid}. Known PIDs: {known}."
         )
@@ -654,14 +669,23 @@ async def _background_process(
             return f"PID {pid}: exited (code {bg.proc.returncode})\nCommand: {bg.command}\nBuffered lines: {len(bg.output)}"
 
     if action == "output":
+        if not bg.alive:
+            await bg._reader_task
         text = bg.read_output(last_n=last_n_lines)
         if not text:
             return f"PID {pid}: no output captured yet."
         return f"PID {pid} output:\n{_limited_bg_output(text)}"
 
     if action == "wait":
-        exit_code = await bg.wait()
+        try:
+            exit_code = await bg.wait(timeout_seconds)
+        except asyncio.TimeoutError:
+            return (
+                f"PID {pid}: still running after {timeout_seconds:g} seconds.\n"
+                "Use status or output to inspect it, wait again, or stop it."
+            )
         text = bg.read_output(last_n=last_n_lines)
+        _bg_processes.pop(pid, None)
         if not text:
             return f"PID {pid}: exited (code {exit_code})\nNo output captured."
         return f"PID {pid}: exited (code {exit_code})\nFinal output:\n{_limited_bg_output(text)}"
@@ -669,7 +693,10 @@ async def _background_process(
     # action == "stop"
     exit_code = await bg.stop()
     _bg_processes.pop(pid, None)
-    return f"PID {pid}: stopped (exit code {exit_code})\nFinal output:\n{bg.read_output(last_n=20)}"
+    text = bg.read_output(last_n=last_n_lines)
+    if not text:
+        return f"PID {pid}: stopped (exit code {exit_code})\nNo output captured."
+    return f"PID {pid}: stopped (exit code {exit_code})\nFinal output:\n{_limited_bg_output(text)}"
 
 
 background_process = Tool(

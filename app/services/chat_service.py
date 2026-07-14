@@ -722,26 +722,40 @@ async def get_team_history(
     if lead_session is None:
         return None
 
-    def _fetch_page(session_id: UUID):
-        stmt = (
-            select(SessionMessage)
-            .where(col(SessionMessage.session_id) == session_id)
-            .order_by(col(SessionMessage.created_at).desc())
-            .limit(_HISTORY_PAGE_SIZE + 1)
-        )
-        if before is not None:
-            stmt = stmt.where(col(SessionMessage.created_at) < before)
-        return stmt
-
     # Me: summaries are NOT filtered here. The compaction divider in the
     # web UI keys off ``is_summary=True`` rows to render the inline
     # "Session compacted" marker + summary body; hiding them would make
     # the divider vanish on reload. Undo uses ``extra.hidden_from_user``.
-    raw_lead = [
-        msg
-        for msg in (await db.exec(_fetch_page(lead_session_id))).all()
-        if not _is_hidden_from_user(msg)
-    ]
+    raw_lead: list[SessionMessage] = []
+    scan_before = before
+    scan_before_id: UUID | None = None
+    while len(raw_lead) <= _HISTORY_PAGE_SIZE:
+        stmt = (
+            select(SessionMessage)
+            .where(col(SessionMessage.session_id) == lead_session_id)
+            .order_by(
+                col(SessionMessage.created_at).desc(),
+                col(SessionMessage.id).desc(),
+            )
+            .limit(_HISTORY_PAGE_SIZE + 1)
+        )
+        if scan_before_id is not None:
+            stmt = stmt.where(
+                (col(SessionMessage.created_at) < scan_before)
+                | (
+                    (col(SessionMessage.created_at) == scan_before)
+                    & (col(SessionMessage.id) < scan_before_id)
+                )
+            )
+        elif scan_before is not None:
+            stmt = stmt.where(col(SessionMessage.created_at) < scan_before)
+        rows = list((await db.exec(stmt)).all())
+        raw_lead.extend(msg for msg in rows if not _is_hidden_from_user(msg))
+        if len(rows) < _HISTORY_PAGE_SIZE + 1:
+            break
+        scan_before = rows[-1].created_at
+        scan_before_id = rows[-1].id
+
     has_more = len(raw_lead) > _HISTORY_PAGE_SIZE
     raw_lead = raw_lead[:_HISTORY_PAGE_SIZE]
     lead_msgs = list(reversed(raw_lead))

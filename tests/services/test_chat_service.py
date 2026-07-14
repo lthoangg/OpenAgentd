@@ -1876,6 +1876,35 @@ async def test_undo_and_redo_use_workspace_snapshots(session, tmp_path, monkeypa
 
 
 @pytest.mark.asyncio
+async def test_get_team_history_pages_past_hidden_messages(session):
+    """Hidden rows must not consume the sentinel used to detect older history."""
+    from app.agent.schemas.chat import HumanMessage
+    from app.services.chat_service import _HISTORY_PAGE_SIZE, get_team_history
+
+    lead = await create_chat_session(session, title="lead")
+    for i in range(_HISTORY_PAGE_SIZE + 1):
+        await save_message(session, lead.id, HumanMessage(content=f"visible-{i}"))
+    await save_message(
+        session,
+        lead.id,
+        HumanMessage(content="hidden"),
+        extra={"hidden_from_user": True},
+    )
+
+    data = await get_team_history(session, lead.id)
+
+    assert data is not None
+    assert len(data.lead_messages) == _HISTORY_PAGE_SIZE
+    assert data.has_more is True
+    assert data.next_cursor is not None
+
+    older = await get_team_history(session, lead.id, before=data.next_cursor)
+    assert older is not None
+    assert [message.content for message in older.lead_messages] == ["visible-0"]
+    assert older.has_more is False
+
+
+@pytest.mark.asyncio
 async def test_get_team_history_member_fetch_is_bounded(session):
     """_fetch_member_pages must not materialize every member row.
 

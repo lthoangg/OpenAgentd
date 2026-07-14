@@ -23,6 +23,12 @@ that ``openagentd = "app.cli:main"`` and existing test imports keep working.
 
 from __future__ import annotations
 
+import os
+
+# The installed CLI is a production launcher. Set this before importing command
+# modules because they transitively construct the global settings object.
+os.environ.setdefault("APP_ENV", "production")
+
 from app.cli.commands.address import cmd_address
 from app.cli.commands.auth import cmd_auth
 from app.cli.commands.cleanup import cmd_cleanup

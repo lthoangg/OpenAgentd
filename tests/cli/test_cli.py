@@ -54,6 +54,42 @@ from app.cli import (
 # ---------------------------------------------------------------------------
 
 
+class TestCliEnvironment:
+    def test_cli_defaults_to_production_paths(self, tmp_path):
+        import subprocess
+
+        env = {
+            key: value
+            for key, value in os.environ.items()
+            if key
+            not in {
+                "APP_ENV",
+                "OPENAGENTD_CONFIG_DIR",
+                "OPENAGENTD_DATA_DIR",
+                "OPENAGENTD_STATE_DIR",
+                "OPENAGENTD_CACHE_DIR",
+            }
+        }
+        env["HOME"] = str(tmp_path)
+        env["PYTHONPATH"] = str(Path(__file__).parents[2])
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import app.cli; from app.core.config import settings; "
+                "print(settings.OPENAGENTD_CONFIG_DIR)",
+            ],
+            cwd=tmp_path,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+
+        assert result.stdout.strip() == str(tmp_path / ".config" / "openagentd")
+
+
 class TestXdgDirs:
     def test_state_env_var_overrides(self, tmp_path, monkeypatch):
         monkeypatch.setenv("OPENAGENTD_STATE_DIR", str(tmp_path))

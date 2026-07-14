@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, patch
 from app.agent.hooks.lsp import LspHook
 from app.agent.sandbox import SandboxConfig, set_sandbox
 from app.agent.schemas.chat import ToolCall, FunctionCall
+from app.services.lsp.managed import managed_lsp_tools
 from app.services.lsp.manager import LspManager, check_lsp_diagnostics, lsp_manager
 
 PASS = "✅ PASS"
@@ -141,6 +142,7 @@ async def run_mocked_scenarios(tmp_path):
 
 async def run_real_scenarios(tmp_path, lang_id, cmd):
     print(f"\n── Running Real LSP Scenarios using {cmd[0]} (lang: {lang_id}) ──")
+    tmp_path.mkdir(parents=True, exist_ok=True)
 
     # Ensure manager is started
     lsp_manager.start()
@@ -166,6 +168,12 @@ async def run_real_scenarios(tmp_path, lang_id, cmd):
     check("Real 1: report is not None for invalid file", report is not None, True)
     if report:
         check("Real 2: report contains header", "[LSP Diagnostics]" in report, True)
+        if lang_id == "typescript":
+            check(
+                "Real 2b: managed TypeScript reports the type mismatch",
+                "not assignable to type 'number'" in report,
+                True,
+            )
 
     # Write a valid file
     if lang_id == "python":
@@ -213,12 +221,31 @@ async def main():
 
         if real_lang and real_cmd:
             try:
-                await run_real_scenarios(tmp_path, real_lang, real_cmd)
+                await run_real_scenarios(tmp_path / "system", real_lang, real_cmd)
             except Exception as e:
                 print(f"  ⚠️ Real scenario failed: {e}")
         else:
             print(
                 "\n⚠️ No real LSP server detected on this system. Skipping real scenarios."
+            )
+
+        managed_typescript = managed_lsp_tools.typescript_command(
+            tmp_path / "managed-typescript"
+        )
+        if managed_typescript is not None:
+            try:
+                await run_real_scenarios(
+                    tmp_path / "managed-typescript",
+                    "typescript",
+                    managed_typescript[0],
+                )
+            except Exception as e:
+                print(f"  ⚠️ Managed TypeScript scenario failed: {e}")
+                results.append((FAIL, "Managed TypeScript scenario completes"))
+        else:
+            print(
+                "\n⚠️ Managed TypeScript component is not installed. "
+                "Run `uv run openagentd lsp install typescript` to exercise it."
             )
 
     print("\n=== Summary ===")

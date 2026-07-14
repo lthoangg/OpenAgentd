@@ -24,7 +24,7 @@ Each script prints a ✅/❌ line per check and exits non-zero on any failure.
 | `manual_scenarios.py` | A – G (21 checks) | Core paths: normal compaction, undo summary (user + LLM view), two-summary over-restore guard, queued message visibility, redo, restore-all |
 | `extended_scenarios.py` | H – P (24 checks) | Edge cases: no-undo baseline, `hidden_from_user` summary, `heal_orphaned` respects boundary, double-undo layering, `keep_last_n` undo, empty session, plain-message undo, Anthropic replay sanitization for interrupted tool stubs |
 | `mention_scenarios.py` | A – I (30 checks) | `@mention` context injection: code file extensions (.ts/.py/.yaml/…), directory listing (with/without trailing slash), binary skip, image/document hint blocks, safety check, non-existent path, line references, multiple mentions, path traversal rejection |
-| `lsp_scenarios.py` | Mocked + Real | LSP diagnostics and LspHook: client initialization, message exchange, diagnostics parsing, formatting, and tool-result injection |
+| `lsp_scenarios.py` | Mocked + Real | LSP diagnostics and LspHook: client initialization, message exchange, diagnostics parsing, formatting, tool-result injection, and the installed managed TypeScript fallback |
 
 ## When to re-run
 

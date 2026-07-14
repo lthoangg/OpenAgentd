@@ -10,6 +10,7 @@ Flow:
   5. Verify that the assistant's subsequent response acknowledges the error.
 
 Usage:
+  uv run python -m manual.lsp_smoketest --direct
   uv run python -m manual.lsp_smoketest
   uv run python -m manual.lsp_smoketest --base http://localhost:8000/api
 """
@@ -17,13 +18,17 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import sys
+import tempfile
 import time
+from pathlib import Path
 
 import httpx
 
 from manual._common import DEFAULT_BASE
+
 BASE = DEFAULT_BASE
 PROMPT = (
     "Please use the write tool to write a python file named `test_syntax_error.py` "
@@ -82,11 +87,70 @@ def get_history(base: str, session_id: str) -> list[dict]:
     return list(response.json()["lead"]["messages"])
 
 
+async def run_direct() -> int:
+    from app.services.lsp.managed import managed_lsp_tools
+    from app.services.lsp.manager import check_lsp_diagnostics, lsp_manager
+
+    status = managed_lsp_tools.status()
+    print(
+        "Managed LSP status: "
+        f"ty={'ready' if status.ty_available else 'missing'}, "
+        f"ruff={'ready' if status.ruff_available else 'missing'}, "
+        f"typescript={status.state}"
+    )
+    if not status.ty_available or not status.ruff_available:
+        print("✗ Bundled Python diagnostics are unavailable.")
+        return 1
+    if status.state != "ready":
+        print(
+            "✗ Managed TypeScript is not ready. With user consent, run "
+            "`uv run openagentd lsp install typescript`."
+        )
+        return 1
+
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = Path(tmpdir)
+            python_file = workspace / "managed_lsp_smoke.py"
+            python_file.write_text("def broken(\n", encoding="utf-8")
+            python_report = await check_lsp_diagnostics(python_file, workspace)
+            if not python_report or "[LSP Diagnostics]" not in python_report:
+                print("✗ Bundled Python tools did not report the syntax error.")
+                return 1
+            print(f"✓ Bundled Python diagnostics:\n{python_report}")
+
+            typescript_file = workspace / "managed_lsp_smoke.ts"
+            typescript_file.write_text(
+                "const value: number = 'wrong';\n", encoding="utf-8"
+            )
+            typescript_report = await check_lsp_diagnostics(typescript_file, workspace)
+            if (
+                not typescript_report
+                or "not assignable to type 'number'" not in typescript_report
+            ):
+                print("✗ Managed TypeScript did not report the type mismatch.")
+                return 1
+            print(f"✓ Managed TypeScript diagnostics:\n{typescript_report}")
+    finally:
+        await lsp_manager.stop()
+
+    print("✓ Direct managed LSP smoke test completed successfully.")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base", default=BASE)
     parser.add_argument("--wait", type=int, default=120)
+    parser.add_argument(
+        "--direct",
+        action="store_true",
+        help="run bundled Python and managed TypeScript diagnostics in-process",
+    )
     args = parser.parse_args()
+
+    if args.direct:
+        return asyncio.run(run_direct())
 
     base = args.base.rstrip("/")
 
@@ -94,8 +158,10 @@ def main() -> int:
     try:
         r = httpx.get(f"{base}/health/ready")
         r.raise_for_status()
-    except Exception as e:
-        print(f"✗ Dev server is not running or unreachable at {base}. Start it with `make dev` or `uv run python -m app.server` first.")
+    except Exception:
+        print(
+            f"✗ Dev server is not running or unreachable at {base}. Start it with `make dev` or `uv run python -m app.server` first."
+        )
         return 1
 
     print(f"Starting session with prompt: {PROMPT!r}")
@@ -123,14 +189,18 @@ def main() -> int:
             break
 
     if not tool_response_text:
-        print("✗ Did not find any tool response in history. Did the agent call the write tool?")
+        print(
+            "✗ Did not find any tool response in history. Did the agent call the write tool?"
+        )
         return 1
 
     print(f"\nObserved tool response:\n{tool_response_text}\n")
 
     if "[LSP Diagnostics]" not in tool_response_text:
         print("✗ [LSP Diagnostics] block was NOT found in the tool response.")
-        print("  Make sure an LSP server (like ruff, pyright-langserver, or pylsp) is installed and available in the server's path.")
+        print(
+            "  Make sure an LSP server (like ruff, pyright-langserver, or pylsp) is installed and available in the server's path."
+        )
         return 1
 
     print("✓ [LSP Diagnostics] block was successfully injected into the tool response!")

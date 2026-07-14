@@ -66,7 +66,7 @@ uv run python -m manual.fast_mode --codex-model codex:gpt-5.4
 | `skill_tool_analytics` | **(no server)** Real tool/skill usage frequency from persisted `tool_calls`, split by mode (the DB is the only complete source) | `--env production`, `--since-days`, `--only`, `--top` |
 | `scheduler` | Smoke-test the scheduler API (create/trigger/pause/resume/delete + demos) | `list\|create\|trigger\|…`, `--type`, `--every`, `--cron`, `--at`, `--prompt` |
 | `patch_tool` | Agent uses filesystem `patch`; verify the tool call | `--base`, `--wait` |
-| `lsp_smoketest` | E2E check of LSP diagnostics injection in a live chat turn | `--base`, `--wait` |
+| `lsp_smoketest` | E2E check of LSP diagnostics injection; `--direct` checks bundled Python + managed TypeScript without a server | `--direct`, `--base`, `--wait` |
 | `shell_output_delta` | Verify live `tool_output_delta` events from shell output | `--base`, `--message`, `--wait` |
 | `bang_shell` | `!command` input dispatches to the shell tool, streams + persists | `--command`, `--expect`, `--session`, `--wait` |
 | `tool_result_offload_test` | Verify large tool results are offloaded to the workspace | — |

@@ -2,10 +2,12 @@ import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import type { QueryClient } from '@tanstack/react-query'
 import { globalEventStream } from '@/api/global-events'
+import { onApiBaseUrlChange } from '@/api/base-url'
 import { sendDesktopNotification } from '@/lib/desktop-notifications'
 import { queryKeys } from '@/queries'
 import { patchSessionTitle } from '@/stores/cache-invalidation-bridge'
 import { useTeamStore } from '@/stores/useTeamStore'
+import { useLspInstallStore } from '@/stores/useLspInstallStore'
 
 const notifiedIds = new Set<string>()
 const MAX_NOTIFIED_IDS = 200
@@ -58,6 +60,23 @@ export async function handleGlobalEvent(
     if (!sessionId || title === null) return false
     if (useTeamStore.getState().sessionId === sessionId) useTeamStore.setState({ sessionTitle: title })
     patchSessionTitle(queryClient, sessionId, title)
+    return true
+  }
+
+  if (type === 'lsp_install_required') {
+    const component = event.component
+    const workspace = event.workspace
+    const downloadsEnabled = event.downloads_enabled
+    const languageServerVersion = event.language_server_version
+    const typeScriptVersion = event.typescript_version
+    if (
+      component !== 'typescript' ||
+      typeof workspace !== 'string' ||
+      downloadsEnabled !== true ||
+      typeof languageServerVersion !== 'string' ||
+      typeof typeScriptVersion !== 'string'
+    ) return false
+    useLspInstallStore.getState().requestInstall({ workspace, languageServerVersion, typeScriptVersion })
     return true
   }
 
@@ -137,6 +156,7 @@ export function useGlobalEventStream(): void {
     }
 
     connect()
+    const unsubscribeApiBaseUrl = onApiBaseUrlChange(connect)
     const resume = () => {
       connect()
     }
@@ -150,6 +170,7 @@ export function useGlobalEventStream(): void {
       connectionGeneration += 1
       controller?.abort()
       if (retryTimer) clearTimeout(retryTimer)
+      unsubscribeApiBaseUrl()
       window.removeEventListener('pageshow', resume)
       document.removeEventListener('visibilitychange', onVisibilityChange)
     }

@@ -5,7 +5,12 @@ import { describe, it, expect, mock } from 'bun:test'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
-import { getSandboxSettings, updateSandboxSettings } from '@/api/client'
+import {
+  getLspToolsStatus,
+  getSandboxSettings,
+  installTypeScriptLsp,
+  updateSandboxSettings,
+} from '@/api/client'
 import { SandboxSettingsPage } from '@/routes/settings.sandbox'
 
 // ── API client ──────────────────────────────────────────────────────────────
@@ -60,6 +65,50 @@ describe('updateSandboxSettings', () => {
       expect(JSON.parse(String(captured.init?.body))).toEqual({
         denied_patterns: ['**/foo'],
       })
+    } finally {
+      globalThis.fetch = original
+    }
+  })
+})
+
+describe('managed LSP settings API', () => {
+  const status = {
+    downloads_enabled: true,
+    python: { ty: true, ruff: false },
+    typescript: {
+      state: 'missing', detail: null,
+      language_server_version: '4.3.3', typescript_version: '5.8.2',
+    },
+  }
+
+  it('GETs the managed LSP status', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = []
+    const original = globalThis.fetch
+    globalThis.fetch = mock((async (url: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ url: String(url), init })
+      return new Response(JSON.stringify(status), { status: 200 })
+    }) as (...args: unknown[]) => unknown) as unknown as typeof fetch
+    try {
+      await expect(getLspToolsStatus()).resolves.toEqual(status)
+      expect(calls).toEqual([{ url: '/api/settings/lsp', init: undefined }])
+    } finally {
+      globalThis.fetch = original
+    }
+  })
+
+  it('POSTs only to the managed TypeScript installer endpoint', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = []
+    const original = globalThis.fetch
+    globalThis.fetch = mock((async (url: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ url: String(url), init })
+      return new Response(JSON.stringify({
+        ...status,
+        typescript: { ...status.typescript, state: 'ready' },
+      }), { status: 200 })
+    }) as (...args: unknown[]) => unknown) as unknown as typeof fetch
+    try {
+      await expect(installTypeScriptLsp()).resolves.toMatchObject({ typescript: { state: 'ready' } })
+      expect(calls).toEqual([{ url: '/api/settings/lsp/typescript/install', init: { method: 'POST' } }])
     } finally {
       globalThis.fetch = original
     }

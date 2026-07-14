@@ -4,6 +4,7 @@ import { onApiBaseUrlChange, setApiBaseUrl } from '@/api/base-url'
 import { getPlatform } from '@/hooks/use-platform'
 import { type AppBackendStatus, getAppBackendStatus } from '@/lib/app-backend'
 import { queryClient } from '@/lib/query-client'
+import { useLspInstallStore } from '@/stores/useLspInstallStore'
 
 const DESKTOP_BOOTSTRAP_POLL_MS = 300
 const DESKTOP_BOOTSTRAP_TIMEOUT_MS = 15_000
@@ -120,6 +121,7 @@ export function useAppBackendBootstrap(): AppBackendBootstrap {
 
     const unsubscribe = onApiBaseUrlChange(() => {
       queryClient.clear()
+      useLspInstallStore.getState().dismiss()
     })
     return () => {
       cancelled = true

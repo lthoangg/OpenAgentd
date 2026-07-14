@@ -9,6 +9,29 @@ import { parseDetailOrThrow } from './_shared'
 
 export type SandboxSettings = { denied_patterns: string[] }
 
+export type LspToolsStatus = {
+  downloads_enabled: boolean
+  python: { ty: boolean; ruff: boolean }
+  typescript: {
+    state: 'missing' | 'installing' | 'ready' | 'error'
+    detail: string | null
+    language_server_version: string
+    typescript_version: string
+  }
+}
+
+export async function getLspToolsStatus(): Promise<LspToolsStatus> {
+  const res = await fetch(`${apiBaseUrl()}/settings/lsp`)
+  if (!res.ok) await parseDetailOrThrow(res, 'GET /settings/lsp')
+  return res.json()
+}
+
+export async function installTypeScriptLsp(): Promise<LspToolsStatus> {
+  const res = await fetch(`${apiBaseUrl()}/settings/lsp/typescript/install`, { method: 'POST' })
+  if (!res.ok) await parseDetailOrThrow(res, 'POST /settings/lsp/typescript/install')
+  return res.json()
+}
+
 export async function getSandboxSettings(): Promise<SandboxSettings> {
   const res = await fetch(`${apiBaseUrl()}/settings/sandbox`)
   if (!res.ok) await parseDetailOrThrow(res, 'GET /settings/sandbox')

@@ -2,18 +2,23 @@ import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { createElement } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, waitFor } from '@testing-library/react'
+import { setApiBaseUrl } from '@/api/base-url'
 
 const sendDesktopNotification = mock(async () => ({ status: 'sent', message: 'sent' }))
 mock.module('@/lib/desktop-notifications', () => ({ sendDesktopNotification }))
-let globalCallbacks: { onOpen?: () => void } | null = null
+type GlobalCallbacks = { onOpen?: () => void; onEvent?: (type: string, data: unknown) => void }
+let globalCallbacks: GlobalCallbacks | null = null
+let globalSignals: AbortSignal[] = []
 const globalEventStream = mock((...args: unknown[]) => {
-  globalCallbacks = args[0] as { onOpen?: () => void }
+  globalCallbacks = args[0] as GlobalCallbacks
+  globalSignals.push(args[1] as AbortSignal)
 })
 mock.module('@/api/global-events', () => ({ globalEventStream }))
 
 import { GlobalEventStream, handleGlobalEvent, reconcileCurrentSession, resetGlobalNotificationDedupe } from '@/hooks/use-global-event-stream'
 import { queryKeys } from '@/queries'
 import { useTeamStore } from '@/stores/useTeamStore'
+import { useLspInstallStore } from '@/stores/useLspInstallStore'
 
 const INITIAL = {
   sessionId: null as string | null,
@@ -24,11 +29,14 @@ const INITIAL = {
 }
 
 beforeEach(() => {
+  setApiBaseUrl('')
   useTeamStore.setState(INITIAL)
   sendDesktopNotification.mockClear()
   resetGlobalNotificationDedupe()
   globalEventStream.mockClear()
   globalCallbacks = null
+  globalSignals = []
+  useLspInstallStore.setState({ request: null })
 })
 
 afterEach(cleanup)
@@ -38,6 +46,23 @@ it('opens the global stream in the shared frontend runtime', () => {
   render(createElement(QueryClientProvider, { client }, createElement(GlobalEventStream)))
 
   expect(globalEventStream).toHaveBeenCalledTimes(1)
+})
+
+it('replaces the global stream on a backend switch and ignores old-backend LSP events', async () => {
+  const client = new QueryClient()
+  render(createElement(QueryClientProvider, { client }, createElement(GlobalEventStream)))
+  const oldCallbacks = globalCallbacks
+  const oldSignal = globalSignals[0]
+
+  setApiBaseUrl('http://127.0.0.1:5001')
+
+  expect(globalEventStream).toHaveBeenCalledTimes(2)
+  expect(oldSignal?.aborted).toBe(true)
+  oldCallbacks?.onEvent?.('lsp_install_required', {
+    component: 'typescript', workspace: '/old-backend', downloads_enabled: true,
+    language_server_version: '4.3.3', typescript_version: '5.8.2',
+  })
+  await waitFor(() => expect(useLspInstallStore.getState().request).toBeNull())
 })
 
 it('reconciles the active session whenever the global connection opens', async () => {
@@ -119,6 +144,23 @@ describe('handleGlobalEvent', () => {
     expect(useTeamStore.getState().sessionTitle).toBe('New')
     expect(client.getQueryData(queryKeys.team.sessions.detail('current'))).toEqual({ id: 'current', title: 'New' })
     expect(connectStream).not.toHaveBeenCalled()
+  })
+
+  it('prompts for TypeScript tooling only when backend downloads are enabled', async () => {
+    const client = new QueryClient()
+    const payload = {
+      component: 'typescript', workspace: '/workspace', downloads_enabled: true,
+      language_server_version: '4.3.3', typescript_version: '5.8.2',
+    }
+
+    expect(await handleGlobalEvent(client, 'lsp_install_required', payload, 1, () => 1)).toBe(true)
+    expect(useLspInstallStore.getState().request).toEqual({
+      workspace: '/workspace', languageServerVersion: '4.3.3', typeScriptVersion: '5.8.2',
+    })
+
+    useLspInstallStore.getState().dismiss()
+    expect(await handleGlobalEvent(client, 'lsp_install_required', { ...payload, downloads_enabled: false }, 1, () => 1)).toBe(false)
+    expect(useLspInstallStore.getState().request).toBeNull()
   })
 
   it('deduplicates replayed desktop notifications by notification_id', async () => {

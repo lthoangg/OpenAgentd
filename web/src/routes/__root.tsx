@@ -19,6 +19,7 @@ import { useContainerSelectAll } from '@/hooks/useContainerSelectAll'
 import { usePreventBackspaceNavigation } from '@/hooks/usePreventBackspaceNavigation'
 import { useHistoryBackForwardShortcuts } from '@/hooks/useHistoryBackForwardShortcuts'
 import { GlobalEventStream } from '@/hooks/use-global-event-stream'
+import { LspInstallPrompt } from '@/components/LspInstallPrompt'
 
 export function Root() {
   useMobileViewportGuards()
@@ -84,6 +85,7 @@ export function Root() {
         <Outlet />
       </Suspense>
       <SettingsModal />
+      <LspInstallPrompt />
       <ToastStack />
       {/* <ReactQueryDevtools initialIsOpen={false} /> */}
     </QueryClientProvider>

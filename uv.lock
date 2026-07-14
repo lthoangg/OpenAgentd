@@ -1407,8 +1407,10 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "python-multipart" },
     { name = "pyyaml" },
+    { name = "ruff" },
     { name = "sqlmodel" },
     { name = "sse-starlette" },
+    { name = "ty" },
     { name = "uvicorn" },
     { name = "websockets" },
 ]
@@ -1433,9 +1435,7 @@ dev = [
     { name = "pytest-randomly" },
     { name = "pytest-xdist" },
     { name = "respx" },
-    { name = "ruff" },
     { name = "tiktoken" },
-    { name = "ty" },
 ]
 experiment = [
     { name = "sentence-transformers" },
@@ -1465,8 +1465,10 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.13.1" },
     { name = "python-multipart", specifier = ">=0.0.24" },
     { name = "pyyaml", specifier = ">=6.0.3" },
+    { name = "ruff", specifier = "==0.15.21" },
     { name = "sqlmodel", specifier = ">=0.0.22" },
     { name = "sse-starlette", specifier = ">=3.3.4" },
+    { name = "ty", specifier = "==0.0.59" },
     { name = "uvicorn", specifier = ">=0.42.0" },
     { name = "websockets", specifier = ">=16.0" },
 ]
@@ -1481,9 +1483,7 @@ dev = [
     { name = "pytest-randomly", specifier = ">=4.1.0" },
     { name = "pytest-xdist", specifier = ">=3.6.1" },
     { name = "respx", specifier = ">=0.22.0" },
-    { name = "ruff", specifier = ">=0.15.8" },
     { name = "tiktoken", specifier = ">=0.12.0" },
-    { name = "ty", specifier = ">=0.0.33,<0.1" },
 ]
 experiment = [
     { name = "sentence-transformers", specifier = ">=5.6.0" },

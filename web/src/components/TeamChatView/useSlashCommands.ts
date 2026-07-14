@@ -153,7 +153,7 @@ export function useSlashCommands({
           )
         break
     }
-  }, [handleNewSession, mode, agentWorkspace, pushToast])
+  }, [handleNewSession, inputRef, mode, agentWorkspace, pushToast])
 
   /** If *content* starts with a known user-defined command, render server-side
    *  and return the expanded body; otherwise return *content* unchanged. */

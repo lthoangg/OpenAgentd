@@ -37,7 +37,6 @@ function makeArgs(overrides: Partial<Parameters<typeof useTeamCommands>[0]> = {}
   const noop = () => {}
   return {
     viewMode: "agent" as ViewMode,
-    cycleViewMode: noop,
     toggleAgentCapabilities: noop,
     setShowTodos: noop,
     handleWorkspaceFiles: noop,

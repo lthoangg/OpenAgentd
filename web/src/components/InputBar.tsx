@@ -255,42 +255,6 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     [localHistory, historyPrompts],
   )
 
-  // Refresh the active mention window from the current caret position. Called
-  // whenever the caret might have moved without the value changing (arrow keys,
-  // click, focus from history nav). Cheap; just a left-scan from the caret.
-  const syncMention = useCallback(() => {
-    const el = textareaRef.current
-    if (!el) return
-    const caret = el.selectionStart ?? el.value.length
-    const selectionEnd = el.selectionEnd ?? caret
-
-    // Atomic mention selection: if the cursor is placed inside an explicit mention,
-    // select the entire mention so that any edit/delete action applies to it as a whole.
-    if (caret === selectionEnd) {
-      const ranges = getExplicitMentionRanges(el.value, mentions)
-      const hit = ranges.find((r) => caret > r.start && caret < r.end)
-      if (hit) {
-        requestAnimationFrame(() => {
-          el.setSelectionRange(hit.start, hit.end)
-        })
-        return
-      }
-    }
-
-    const next = shellMode ? null : findActiveMention(el.value, caret)
-    setSnippetRange((next !== null || shellMode) ? null : findActiveSnippet(el.value, caret))
-    setMentionRange((prev) => {
-      if (!prev && !next) return prev
-      if (
-        prev && next &&
-        prev.start === next.start &&
-        prev.end === next.end &&
-        prev.query === next.query
-      ) return prev
-      return next
-    })
-  }, [shellMode, mentions])
-
   // ``isMultiLine`` is updated as a side-effect of ``resize`` rather
   // than a separate effect, so the DOM measurement and the React
   // state stay in lock-step (one render cycle, no cascade).
@@ -390,6 +354,42 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     onSuggestionsMenuChange,
   })
 
+  // Refresh the active mention window from the current caret position. Called
+  // whenever the caret might have moved without the value changing (arrow keys,
+  // click, focus from history nav). Cheap; just a left-scan from the caret.
+  const syncMention = useCallback(() => {
+    const el = textareaRef.current
+    if (!el) return
+    const caret = el.selectionStart ?? el.value.length
+    const selectionEnd = el.selectionEnd ?? caret
+
+    // Atomic mention selection: if the cursor is placed inside an explicit mention,
+    // select the entire mention so that any edit/delete action applies to it as a whole.
+    if (caret === selectionEnd) {
+      const ranges = getExplicitMentionRanges(el.value, mentions)
+      const hit = ranges.find((r) => caret > r.start && caret < r.end)
+      if (hit) {
+        requestAnimationFrame(() => {
+          el.setSelectionRange(hit.start, hit.end)
+        })
+        return
+      }
+    }
+
+    const next = shellMode ? null : findActiveMention(el.value, caret)
+    setSnippetRange((next !== null || shellMode) ? null : findActiveSnippet(el.value, caret))
+    setMentionRange((prev) => {
+      if (!prev && !next) return prev
+      if (
+        prev && next &&
+        prev.start === next.start &&
+        prev.end === next.end &&
+        prev.query === next.query
+      ) return prev
+      return next
+    })
+  }, [shellMode, mentions, setMentionRange, setSnippetRange])
+
   const navigateHistory = useCallback((dir: 'up' | 'down') => {
     if (history.length === 0) return false
     const direction = dir === 'up' ? 1 : -1
@@ -424,7 +424,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       return true
     }
     return false
-  }, [history, value, historyIndex, resize])
+  }, [history, value, historyIndex, resize, setMentionRange, setSnippetRange])
 
   useImperativeHandle(ref, () => ({
     focus: () => textareaRef.current?.focus(),
@@ -579,7 +579,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       el.style.height = 'auto'
       resize()
     })
-  }, [disabled, value, files, isStreaming, shellMode, onSubmit, mentions, resize])
+  }, [disabled, value, files, isStreaming, shellMode, onSubmit, mentions, resize, setFiles, setMentionMenuIndex, setMentionRange, setSlashMenuIndex, setSnippetMenuIndex, setSnippetRange])
 
   const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const items = e.clipboardData?.items
@@ -608,7 +608,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         resize()
       })
     }
-  }, [extractPastedFiles, resize, shellMode, value])
+  }, [extractPastedFiles, resize, shellMode, value, setFiles, setMentionRange, setSnippetRange])
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // IME composition guard: when a user is mid-composition (CJK, etc.) the

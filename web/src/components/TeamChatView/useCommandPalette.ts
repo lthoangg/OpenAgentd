@@ -84,7 +84,6 @@ export function useCommandPalette({
 
   const paletteCommands = useTeamCommands({
     viewMode,
-    cycleViewMode,
     toggleAgentCapabilities: handleToggleAgentCapabilities,
     setShowTodos: handleSetShowTodos,
     handleWorkspaceFiles,

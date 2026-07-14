@@ -24,7 +24,6 @@ import { dispatchShortcutKey, formatShortcut } from '@/lib/keyboard-shortcut'
 interface UseTeamCommandsArgs {
   // View / layout
   viewMode: ViewMode
-  cycleViewMode: () => void
   toggleAgentCapabilities: () => void
   setShowTodos: (fn: (v: boolean) => boolean) => void
   handleWorkspaceFiles: () => void
@@ -43,7 +42,6 @@ interface UseTeamCommandsArgs {
 
 export function useTeamCommands({
   viewMode,
-  cycleViewMode,
   toggleAgentCapabilities,
   setShowTodos,
   handleWorkspaceFiles,
@@ -76,5 +74,5 @@ export function useTeamCommands({
     { id: 'go-home',     group: 'Navigation', label: 'Go to Home',     description: '', action: () => navigate({ to: '/' }) },
     ...(mode === 'normal' ? [{ id: 'go-coding', group: 'Navigation', label: 'Go to Coding Mode', description: 'Open the coding workbench', action: () => navigate({ to: '/coding' }) }] : []),
     { id: 'go-settings', group: 'Navigation', label: 'Open Settings',  description: 'Manage agents, skills, providers & more', shortcut: formatShortcut(',', os), action: () => openSettings('agents') },
-  ], [os, viewMode, cycleViewMode, toggleAgentCapabilities, setShowTodos, handleWorkspaceFiles, handleCodingSidebarToggle, mode, handleNewSession, handleOpenTerminal, navigate, openSettings])
+  ], [os, viewMode, toggleAgentCapabilities, setShowTodos, handleWorkspaceFiles, handleCodingSidebarToggle, mode, handleNewSession, handleOpenTerminal, navigate, openSettings])
 }

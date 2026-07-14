@@ -294,7 +294,7 @@ OpenAgentd exports OpenTelemetry spans to local JSONL partitions and serves a bu
 
 - **Summary** — token usage, error rates, latency distribution, model breakdown
 - **Trace explorer** — full span waterfall per session, filterable by date range
-- **Prometheus endpoint** — `/metrics` for external scraping
+- **Prometheus endpoint** — authenticated `/api/metrics` for external scraping
 
 No external collector required. All data stays on your machine.
 

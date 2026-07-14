@@ -34,7 +34,7 @@ no Python install, no `uv tool install`, no terminal.
 │  │  + site-packages/             │  │  injects               │   │
 │  │  + app/ (FastAPI API only)    │  │    __OAD_API_BASE_URL__│   │
 │  │  bound to 127.0.0.1:<port>    │  │    __OAD_TOKEN__       │   │
-│  │  serves /api/* + /metrics     │  └────────────────────────┘   │
+│  │  serves authenticated /api/*  │  └────────────────────────┘   │
 │  └───────────────────────────────┘                                 │
 │                                                                    │
 └─────────────────────────────────────────────────────────────────────┘
@@ -81,7 +81,7 @@ agent tools). The token mitigates that.
 | Token lifetime                               | One launch only. Regenerated next start. Never persisted.                                                  |
 | Token transport                              | `Authorization: Bearer …` for `fetch`/SSE; `?_token=…` for image/video/download URLs the browser can't header-stamp. |
 | Comparison                                   | `hmac.compare_digest` (constant-time).                                                                     |
-| Bypassable routes                            | `/api/health/live`, `/api/health/ready`, `/metrics`.                                                       |
+| Bypassable routes                            | `/api/health/live`, `/api/health/ready`.                                                                   |
 | Credential check                             | `/api/auth/check` is intentionally a no-op handler behind the same middleware; desktop clients use it to verify a LAN access key before switching servers. |
 | Off-switch                                   | Unset `OPENAGENTD_DESKTOP_TOKEN` and any configured access key — the middleware becomes a no-op. CLI / Docker users keep open behaviour unless they enable a key. |
 

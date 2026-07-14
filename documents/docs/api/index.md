@@ -279,7 +279,7 @@ Returns a `PermissionReplyResponse` on success; 404 if not found or already reso
 |--------|------|---------|
 | `GET` | `/api/health/live` | `HealthLiveResponse` — always 200 |
 | `GET` | `/api/health/ready` | `HealthReadyResponse` — 200 when DB is healthy; 503 otherwise |
-| `GET` | `/metrics`         | Prometheus exposition (scrape target) |
+| `GET` | `/api/metrics`     | Prometheus exposition (scrape target); requires the configured access token |
 | `GET` | `/api/observability/summary?days=N` | `ObservabilitySummaryResponse` — span-derived aggregates (turns, tokens, latency, errors, `sample_ratio`) |
 | `GET` | `/api/observability/traces?days=N&limit=L&offset=O` | `TracesListResponse` — trace list (one row per root `agent_run`), newest first |
 | `GET` | `/api/observability/traces/{trace_id}?days=N` | `TraceDetailResponse` — full span tree for one trace; 404 when outside the `days` window |

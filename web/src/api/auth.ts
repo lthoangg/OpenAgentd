@@ -8,7 +8,7 @@
  *
  *     window.__OAD_TOKEN__ = "<random>"
  *
- * The backend rejects any /api/* request that doesn't carry that token
+ * The backend rejects protected /api/* requests that don't carry that token
  * in either `Authorization: Bearer …` or `?_token=…`.
  *
  * Rather than touch every `fetch('/api/…')` call site, we monkey-patch
@@ -135,8 +135,8 @@ export function setAccessKey(key: string, baseUrl?: string): void {
 }
 
 /**
- * Returns true if the given URL points at this origin's /api/* surface.
- * The token must NEVER be attached to cross-origin requests.
+ * Returns true if the URL is a protected endpoint on the backend origin.
+ * The token must NEVER be attached to any other origin.
  */
 function isLocalApiRequest(url: string): boolean {
   if (typeof window === 'undefined') return false

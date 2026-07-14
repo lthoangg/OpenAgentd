@@ -48,7 +48,7 @@ def _make_app(token: str | None) -> FastAPI:
     def asset() -> dict:
         return {"asset": True}
 
-    @app.get("/metrics")
+    @app.get("/api/metrics")
     def metrics() -> dict:
         return {"metrics": True}
 
@@ -159,10 +159,14 @@ class TestMiddlewareEnabled:
         client = TestClient(app)
         assert client.get("/api/health/live").status_code == 200
 
-    def test_metrics_does_not_require_token(self):
+    def test_metrics_requires_token(self):
         app = _make_app(token="secret")
         client = TestClient(app)
-        assert client.get("/metrics").status_code == 200
+        assert client.get("/api/metrics").status_code == 401
+        response = client.get(
+            "/api/metrics", headers={"Authorization": "Bearer secret"}
+        )
+        assert response.status_code == 200
 
     def test_spa_root_does_not_require_token(self):
         app = _make_app(token="secret")

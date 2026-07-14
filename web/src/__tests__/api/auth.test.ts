@@ -234,15 +234,25 @@ describe("installDesktopAuth — fetch with string URL", () => {
     expect(headers.get("Authorization")).toBeNull()
   })
 
-  it("does NOT attach to a non-/api/ path on the same origin (e.g. /metrics)", async () => {
-    // The token is meant for /api/* only — /metrics doesn't need it
-    // because the backend exempts /metrics from the middleware.
+  it("attaches to the authenticated /api/metrics endpoint", async () => {
     window.__OAD_TOKEN__ = "tok-abc"
     const { calls } = spyFetch()
     const auth = await freshAuth()
     auth.installDesktopAuth()
 
-    await window.fetch("/metrics")
+    await window.fetch("/api/metrics")
+
+    const headers = new Headers(calls[0].init?.headers)
+    expect(headers.get("Authorization")).toBe("Bearer tok-abc")
+  })
+
+  it("does NOT attach to cross-origin /api/metrics URLs", async () => {
+    window.__OAD_TOKEN__ = "tok-abc"
+    const { calls } = spyFetch()
+    const auth = await freshAuth()
+    auth.installDesktopAuth()
+
+    await window.fetch("https://evil.example.com/api/metrics")
 
     const headers = new Headers(calls[0].init?.headers)
     expect(headers.get("Authorization")).toBeNull()

@@ -1,6 +1,6 @@
 """Prometheus metrics registry + ASGI middleware.
 
-Exposes a ``/metrics`` endpoint (text/plain in Prometheus exposition format)
+Exposes a ``/api/metrics`` endpoint (text/plain in Prometheus exposition format)
 and an ``HTTPMetricsMiddleware`` that records per-request duration + status
 histograms.
 
@@ -17,7 +17,7 @@ Usage::
     )
 
     app.add_middleware(HTTPMetricsMiddleware)
-    app.add_route("/metrics", metrics_endpoint)
+    app.add_route("/api/metrics", metrics_endpoint)
 
     SPANS_DROPPED.inc()
     TURNS_TOTAL.labels(status="ok").inc()
@@ -113,7 +113,7 @@ SPANS_WRITTEN = Counter(
 def _route_template(request: Request) -> str:
     """Return a stable route template ('/api/team/{sid}') for label cardinality.
 
-    Falls back to the raw path when no route matches (404, /metrics, etc).
+    Falls back to the raw path when no route matches (404, /api/metrics, etc).
     """
     for route in request.app.router.routes:
         match, _ = route.matches(request.scope)
@@ -138,10 +138,10 @@ class HTTPMetricsMiddleware:
             await self.app(scope, receive, send)
             return
 
-        # Skip the /metrics endpoint itself — otherwise every scrape would
+        # Skip the /api/metrics endpoint itself — otherwise every scrape would
         # bump the counter and the histogram would drown in self-traffic.
         path = scope.get("path", "")
-        if path == "/metrics":
+        if path == "/api/metrics":
             await self.app(scope, receive, send)
             return
 
@@ -176,7 +176,7 @@ class HTTPMetricsMiddleware:
         )
 
 
-# ── /metrics endpoint ─────────────────────────────────────────────────────────
+# ── /api/metrics endpoint ─────────────────────────────────────────────────────
 
 
 async def metrics_endpoint(_request: Request) -> Response:

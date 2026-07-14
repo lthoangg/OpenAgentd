@@ -25,7 +25,6 @@ Routes exempted from the check:
 
 - ``/api/health/live``  — orchestrator probes need to work without auth.
 - ``/api/health/ready`` — same.
-- ``/metrics``          — Prometheus scrape target.
 - ``/`` and SPA static assets — the bundled web UI needs to load *before*
   it can read the token and put it in its fetch headers.
 
@@ -50,11 +49,10 @@ _ENV_VAR = "OPENAGENTD_DESKTOP_TOKEN"
 _ACCESS_KEY_ENV_VAR = "OPENAGENTD_ACCESS_KEY"
 
 # Exact paths that never require auth. Entries are matched literally —
-# **not** as prefixes — so ``/metrics-evil`` cannot impersonate
-# ``/metrics``.
+# **not** as prefixes — so similarly named paths cannot impersonate an
+# exempt endpoint.
 _EXEMPT_EXACT: frozenset[str] = frozenset(
     {
-        "/metrics",
         "/api/health/live",
         "/api/health/ready",
         # SPA shell entry points the UI may navigate to before it's

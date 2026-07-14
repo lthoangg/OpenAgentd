@@ -17,7 +17,7 @@ from app.core.metrics import (
 def _make_app() -> FastAPI:
     app = FastAPI()
     app.add_middleware(HTTPMetricsMiddleware)
-    app.add_route("/metrics", metrics_endpoint, methods=["GET"])
+    app.add_route("/api/metrics", metrics_endpoint, methods=["GET"])
 
     @app.get("/ok")
     async def ok():
@@ -37,7 +37,7 @@ def _make_app() -> FastAPI:
 class TestMetricsEndpoint:
     def test_serves_prometheus_text(self):
         client = TestClient(_make_app())
-        resp = client.get("/metrics")
+        resp = client.get("/api/metrics")
         assert resp.status_code == 200
         assert resp.headers["content-type"].startswith("text/plain")
         assert "openagentd_http_requests_total" in resp.text
@@ -89,14 +89,14 @@ class TestMetricsEndpoint:
         before = _counter_value(
             "openagentd_http_requests_total",
             method="GET",
-            route="/metrics",
+            route="/api/metrics",
             status="2xx",
         )
-        client.get("/metrics")
+        client.get("/api/metrics")
         after = _counter_value(
             "openagentd_http_requests_total",
             method="GET",
-            route="/metrics",
+            route="/api/metrics",
             status="2xx",
         )
         assert after == before

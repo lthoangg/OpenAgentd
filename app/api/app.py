@@ -130,6 +130,9 @@ def create_app() -> FastAPI:
         title="OpenAgentd",
         description="On-machine AI agents",
         version=VERSION,
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
         lifespan=lifespan,
         exception_handlers=EXCEPTION_HANDLERS,
     )
@@ -165,9 +168,9 @@ def create_app() -> FastAPI:
         expose_headers=["Accept-Ranges", "Content-Range", "Content-Length"],
     )
 
-    # ── /metrics (Prometheus scrape target) ───────────────────────────────────
-    # Deliberately un-prefixed (not under /api) to match Prometheus convention.
-    app.add_route("/metrics", metrics_endpoint, methods=["GET"])
+    # ── /api/metrics (Prometheus scrape target) ───────────────────────────────
+    # Keep operational metrics under the authenticated API namespace.
+    app.add_route("/api/metrics", metrics_endpoint, methods=["GET"])
 
     # ── Routers (all under /api) ─────────────────────────────────────────────
     app.include_router(health_router, prefix="/api/health", tags=["health"])

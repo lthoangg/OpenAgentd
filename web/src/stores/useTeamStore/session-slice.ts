@@ -214,9 +214,10 @@ export const createSessionSlice: StateCreator<
     })
   },
 
-  loadTeamStatus: async (workspace?: string | null) => {
+  loadTeamStatus: async (workspace?: string | null, expectedGeneration?: number) => {
     try {
       const status = await teamStatus(workspace)
+      if (expectedGeneration !== undefined && get()._sessionGeneration !== expectedGeneration) return
       if (status) {
         const allAgents = [status.lead, ...status.members]
         const liveNames = allAgents.map((a) => a.name)
@@ -246,6 +247,7 @@ export const createSessionSlice: StateCreator<
         })
       }
     } catch (err) {
+      if (expectedGeneration !== undefined && get()._sessionGeneration !== expectedGeneration) return
       set((draft) => {
         draft.error = err instanceof Error ? err.message : 'Failed to load team status'
       })
@@ -259,14 +261,8 @@ export const createSessionSlice: StateCreator<
       draft.isContinuing = false
     })
     try {
-      const existingLiveNames = get().liveAgentNames
-      const liveNamesPromise = existingLiveNames === null
-        ? teamStatus(workspace).then((status) =>
-            status ? [status.lead, ...status.members].map((agent) => agent.name) : null,
-          )
-        : Promise.resolve(existingLiveNames)
-      const historyPromise = teamHistory(sessionId)
-      const [liveNames, history] = await Promise.all([liveNamesPromise, historyPromise])
+      const liveNames = get().liveAgentNames
+      const history = await teamHistory(sessionId)
 
       if (get()._sessionGeneration !== gen) return
 
@@ -356,6 +352,10 @@ export const createSessionSlice: StateCreator<
         draft._loadingOlder = false
         draft._resolvedSessionReadyId = null
       })
+
+      if (liveNames === null && get()._sessionGeneration === gen) {
+        void get().loadTeamStatus(workspace, gen)
+      }
     } catch (err) {
       if (get()._sessionGeneration !== gen) return
       set((draft) => {

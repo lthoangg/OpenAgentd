@@ -1472,6 +1472,40 @@ describe("loadTeamStatus", () => {
 // ── loadSession ───────────────────────────────────────────────────────────────
 
 describe("loadSession", () => {
+  it("renders history without waiting for team status", async () => {
+    let resolveStatus!: (value: unknown) => void
+    mockTeamStatus.mockImplementation(() => new Promise((resolve) => { resolveStatus = resolve }))
+    mockTeamHistory.mockImplementation(() =>
+      Promise.resolve({
+        lead: {
+          id: "lead-sess",
+          agent_name: "lead",
+          title: null,
+          created_at: null,
+          updated_at: null,
+          sub_sessions: [],
+          messages: [makeMessageResponse({ id: "m1", content: "loaded history" })],
+        },
+        members: [],
+        has_more: false,
+        next_cursor: null,
+      })
+    )
+
+    let loadResolved = false
+    const loadPromise = useTeamStore.getState().loadSession("sess-1").then(() => {
+      loadResolved = true
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(loadResolved).toBe(true)
+    expect(useTeamStore.getState().agentStreams.lead.blocks[0]?.content).toBe("loaded history")
+
+    resolveStatus(null)
+    await loadPromise
+  })
+
   it("sets sessionId from the argument", async () => {
     await useTeamStore.getState().loadSession("my-team-session")
     expect(useTeamStore.getState().sessionId).toBe("my-team-session")
@@ -1527,10 +1561,11 @@ describe("loadSession", () => {
     )
 
     await useTeamStore.getState().loadSession("sess-1")
+    await Promise.resolve()
 
     expect(useTeamStore.getState().leadName).toBe("lead")
     expect(useTeamStore.getState().activeAgent).toBe("lead")
-    expect(useTeamStore.getState().agentNames).toEqual(["lead"])
+    expect(useTeamStore.getState().agentNames[0]).toBe("lead")
     expect(useTeamStore.getState().agentStreams.lead).toBeDefined()
   })
 

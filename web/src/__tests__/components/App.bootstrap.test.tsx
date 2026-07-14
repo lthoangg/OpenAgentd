@@ -151,6 +151,18 @@ describe('App backend bootstrap', () => {
     })
   })
 
+  it('clears a stale bundled token before activating an external backend', async () => {
+    window.__OAD_TOKEN__ = 'stale-bundled-token'
+    statusPayload = { base_url: 'http://192.168.1.20:4082', external: true, sidecar_running: false }
+
+    render(<App />)
+
+    await waitFor(() => {
+      expect(window.__OAD_API_BASE_URL__).toBe('http://192.168.1.20:4082')
+      expect(window.__OAD_TOKEN__).toBeUndefined()
+    })
+  })
+
   it('leaves the default web API base URL when no app backend is configured', async () => {
     statusPayload = null
 

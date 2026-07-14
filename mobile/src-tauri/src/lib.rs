@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
@@ -69,6 +70,18 @@ struct AppBackendStatus {
     servers: Vec<SavedAppServer>,
 }
 
+#[derive(Default)]
+struct MobileBackendState {
+    active_base_url: Mutex<Option<String>>,
+}
+
+fn resolve_active_base_url(
+    runtime_base_url: Option<String>,
+    persisted_base_url: Option<String>,
+) -> String {
+    runtime_base_url.or(persisted_base_url).unwrap_or_default()
+}
+
 impl Default for AppBackendConfig {
     fn default() -> Self {
         Self {
@@ -82,10 +95,18 @@ impl Default for AppBackendConfig {
 }
 
 #[tauri::command]
-fn app_backend_status(app: AppHandle) -> Result<AppBackendStatus, String> {
+fn app_backend_status(
+    app: AppHandle,
+    state: tauri::State<'_, MobileBackendState>,
+) -> Result<AppBackendStatus, String> {
     let config = load_backend_config(&app).map_err(|e| format!("{e:#}"))?;
+    let runtime_base_url = state
+        .active_base_url
+        .lock()
+        .map_err(|_| "backend state unavailable".to_string())?
+        .clone();
     Ok(AppBackendStatus {
-        base_url: config.active_base_url.unwrap_or_default(),
+        base_url: resolve_active_base_url(runtime_base_url, config.active_base_url),
         sidecar_running: false,
         external: true,
         supports_bundled: false,
@@ -94,28 +115,65 @@ fn app_backend_status(app: AppHandle) -> Result<AppBackendStatus, String> {
 }
 
 #[tauri::command]
-fn app_save_backend_server(app: AppHandle, base_url: String, name: Option<String>) -> Result<AppBackendStatus, String> {
+fn app_save_backend_server(
+    app: AppHandle,
+    state: tauri::State<'_, MobileBackendState>,
+    base_url: String,
+    name: Option<String>,
+) -> Result<AppBackendStatus, String> {
     let normalized = normalize_base_url(&base_url).map_err(|e| format!("{e:#}"))?;
-    save_backend_config(&app, Some(&normalized), normalize_server_name(name).as_deref())
-        .map_err(|e| format!("{e:#}"))?;
-    app_backend_status(app)
+    save_backend_config(
+        &app,
+        Some(&normalized),
+        normalize_server_name(name).as_deref(),
+        false,
+    )
+    .map_err(|e| format!("{e:#}"))?;
+    app_backend_status(app, state)
 }
 
 #[tauri::command]
-fn app_use_external_backend(app: AppHandle, base_url: String, name: Option<String>, persist: Option<bool>) -> Result<AppBackendStatus, String> {
+fn app_use_external_backend(
+    app: AppHandle,
+    state: tauri::State<'_, MobileBackendState>,
+    base_url: String,
+    name: Option<String>,
+    persist: Option<bool>,
+) -> Result<AppBackendStatus, String> {
     let normalized = normalize_base_url(&base_url).map_err(|e| format!("{e:#}"))?;
     if persist.unwrap_or(true) {
-        save_backend_config(&app, Some(&normalized), normalize_server_name(name).as_deref())
-            .map_err(|e| format!("{e:#}"))?;
+        save_backend_config(
+            &app,
+            Some(&normalized),
+            normalize_server_name(name).as_deref(),
+            true,
+        )
+        .map_err(|e| format!("{e:#}"))?;
     }
-    app_backend_status(app)
+    *state
+        .active_base_url
+        .lock()
+        .map_err(|_| "backend state unavailable".to_string())? = Some(normalized);
+    app_backend_status(app, state)
 }
 
 #[tauri::command]
-fn app_remove_backend_server(app: AppHandle, base_url: String) -> Result<AppBackendStatus, String> {
+fn app_remove_backend_server(
+    app: AppHandle,
+    state: tauri::State<'_, MobileBackendState>,
+    base_url: String,
+) -> Result<AppBackendStatus, String> {
     let normalized = normalize_base_url(&base_url).map_err(|e| format!("{e:#}"))?;
     remove_backend_server(&app, &normalized).map_err(|e| format!("{e:#}"))?;
-    app_backend_status(app)
+    let mut active = state
+        .active_base_url
+        .lock()
+        .map_err(|_| "backend state unavailable".to_string())?;
+    if active.as_deref() == Some(normalized.as_str()) {
+        *active = None;
+    }
+    drop(active);
+    app_backend_status(app, state)
 }
 
 fn normalize_base_url(base_url: &str) -> Result<String> {
@@ -149,9 +207,14 @@ fn load_backend_config(app: &AppHandle) -> Result<AppBackendConfig> {
     load_backend_config_from(&path)
 }
 
-fn save_backend_config(app: &AppHandle, base_url: Option<&str>, name: Option<&str>) -> Result<()> {
+fn save_backend_config(
+    app: &AppHandle,
+    base_url: Option<&str>,
+    name: Option<&str>,
+    activate: bool,
+) -> Result<()> {
     let path = config_path(app)?;
-    save_backend_config_to(&path, base_url, name)
+    save_backend_config_to(&path, base_url, name, activate)
 }
 
 fn load_backend_config_from(path: &std::path::Path) -> Result<AppBackendConfig> {
@@ -167,9 +230,16 @@ fn load_backend_config_from(path: &std::path::Path) -> Result<AppBackendConfig> 
     Ok(config)
 }
 
-fn save_backend_config_to(path: &std::path::Path, base_url: Option<&str>, name: Option<&str>) -> Result<()> {
+fn save_backend_config_to(
+    path: &std::path::Path,
+    base_url: Option<&str>,
+    name: Option<&str>,
+    activate: bool,
+) -> Result<()> {
     let mut config = load_backend_config_from(path).unwrap_or_default();
-    config.active_base_url = base_url.map(str::to_string);
+    if activate {
+        config.active_base_url = base_url.map(str::to_string);
+    }
     if let Some(url) = base_url {
         if let Some(saved) = config.servers.iter_mut().find(|saved| saved.base_url == url) {
             if let Some(name) = name {
@@ -437,6 +507,7 @@ fn share_file_ios(path: &str) -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(MobileBackendState::default())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_haptics::init())
@@ -458,8 +529,8 @@ pub fn run() {
 mod tests {
     use super::{
         ensure_max_download_size, load_backend_config_from, normalize_base_url,
-        normalize_server_name, remove_backend_server_at, save_backend_config_to,
-        unique_cache_path, AppBackendConfig, MAX_DOWNLOAD_BYTES,
+        normalize_server_name, remove_backend_server_at, resolve_active_base_url,
+        save_backend_config_to, unique_cache_path, AppBackendConfig, MAX_DOWNLOAD_BYTES,
     };
     use std::path::PathBuf;
     use tempfile::tempdir;
@@ -497,6 +568,25 @@ mod tests {
     }
 
     #[test]
+    fn runtime_backend_overrides_persisted_startup_backend() {
+        assert_eq!(
+            resolve_active_base_url(
+                Some("https://runtime.example".to_string()),
+                Some("https://persisted.example".to_string()),
+            ),
+            "https://runtime.example",
+        );
+    }
+
+    #[test]
+    fn persisted_backend_is_used_without_runtime_override() {
+        assert_eq!(
+            resolve_active_base_url(None, Some("https://persisted.example".to_string())),
+            "https://persisted.example",
+        );
+    }
+
+    #[test]
     fn load_backend_config_returns_default_when_missing() {
         let (_dir, path) = config_file();
 
@@ -509,24 +599,38 @@ mod tests {
     }
 
     #[test]
-    fn save_backend_config_adds_new_server() {
+    fn save_backend_config_adds_new_server_without_activating() {
         let (_dir, path) = config_file();
 
-        save_backend_config_to(&path, Some("https://example.com"), Some("Example")).unwrap();
+        save_backend_config_to(&path, Some("https://example.com"), Some("Example"), false)
+            .unwrap();
         let config = load_backend_config_from(&path).unwrap();
 
-        assert_eq!(config.active_base_url.as_deref(), Some("https://example.com"));
+        assert_eq!(config.active_base_url, None);
         assert!(config.servers.iter().any(|server| {
             server.base_url == "https://example.com" && server.name.as_deref() == Some("Example")
         }));
     }
 
     #[test]
+    fn save_backend_config_can_activate_server() {
+        let (_dir, path) = config_file();
+
+        save_backend_config_to(&path, Some("https://example.com"), Some("Example"), true)
+            .unwrap();
+        let config = load_backend_config_from(&path).unwrap();
+
+        assert_eq!(config.active_base_url.as_deref(), Some("https://example.com"));
+    }
+
+    #[test]
     fn save_backend_config_updates_existing_server_name() {
         let (_dir, path) = config_file();
 
-        save_backend_config_to(&path, Some("https://example.com"), Some("Before")).unwrap();
-        save_backend_config_to(&path, Some("https://example.com"), Some("After")).unwrap();
+        save_backend_config_to(&path, Some("https://example.com"), Some("Before"), false)
+            .unwrap();
+        save_backend_config_to(&path, Some("https://example.com"), Some("After"), false)
+            .unwrap();
         let config = load_backend_config_from(&path).unwrap();
         let matching: Vec<_> = config
             .servers
@@ -542,7 +646,8 @@ mod tests {
     fn remove_backend_server_clears_active_base_url_when_matching() {
         let (_dir, path) = config_file();
 
-        save_backend_config_to(&path, Some("https://example.com"), Some("Example")).unwrap();
+        save_backend_config_to(&path, Some("https://example.com"), Some("Example"), true)
+            .unwrap();
         remove_backend_server_at(&path, "https://example.com").unwrap();
         let config = load_backend_config_from(&path).unwrap();
 
@@ -568,7 +673,8 @@ mod tests {
         assert_eq!(loaded.servers.len(), 1);
         assert_eq!(loaded.servers[0].base_url, "http://127.0.0.1:4082");
 
-        save_backend_config_to(&path, Some("https://example.com"), Some("Example")).unwrap();
+        save_backend_config_to(&path, Some("https://example.com"), Some("Example"), true)
+            .unwrap();
         remove_backend_server_at(&path, "https://example.com").unwrap();
         let after_remove = load_backend_config_from(&path).unwrap();
 

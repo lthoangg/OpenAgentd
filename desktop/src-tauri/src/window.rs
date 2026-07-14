@@ -153,12 +153,15 @@ pub fn frontend_init_script_with_path(
     base_url: &str,
     initial_path: Option<&str>,
 ) -> String {
-    let token_define = token.map(|t| {
-        format!(
-            "Object.defineProperty(window, '__OAD_TOKEN__', {{ value: {token_json}, writable: true, configurable: true }});",
-            token_json = serde_json::to_string(t).unwrap_or_else(|_| "\"\"".into())
-        )
-    }).unwrap_or_default();
+    let token_define = token.map_or_else(
+        || "delete window.__OAD_TOKEN__;".to_string(),
+        |t| {
+            format!(
+                "Object.defineProperty(window, '__OAD_TOKEN__', {{ value: {token_json}, writable: true, configurable: true }});",
+                token_json = serde_json::to_string(t).unwrap_or_else(|_| "\"\"".into())
+            )
+        },
+    );
     let route_define = initial_path.map(|r| {
         format!(
             "Object.defineProperty(window, '__OAD_INITIAL_ROUTE__', {{ value: {route_json}, writable: true, configurable: true }});",

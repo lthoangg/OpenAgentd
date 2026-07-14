@@ -22,6 +22,8 @@ async function applyDesktopBackend(status: Pick<AppBackendStatus, 'base_url' | '
       configurable: true,
     })
     installDesktopAuth()
+  } else {
+    delete window.__OAD_TOKEN__
   }
   setApiBaseUrl(status.base_url)
   // Bundled sidecars authenticate with their ephemeral desktop token; never

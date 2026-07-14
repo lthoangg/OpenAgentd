@@ -799,6 +799,13 @@ mod tests {
     }
 
     #[test]
+    fn external_backend_init_script_clears_bundled_token() {
+        let script = frontend_init_script(None, "http://192.168.1.10:4082");
+
+        assert!(script.contains("delete window.__OAD_TOKEN__"));
+    }
+
+    #[test]
     fn new_window_external_backend_map_can_identify_force_reload_scope() {
         let mut external = StdHashMap::new();
         external.insert("main-2".to_string(), "http://192.168.1.10:4082".to_string());

@@ -17,7 +17,7 @@ Design
        ``OTEL_SPAN_SAMPLE_RATIO`` (default 1.0 — keep everything; lower the
        ratio only if span volume becomes unmanageable).
 - **JsonlBatchWriter** is used for both spans and metrics — bounded queue,
-  drop-on-backpressure with a Prometheus counter, hourly span partitioning.
+  drop-on-backpressure, and hourly span partitioning.
 
 Env vars
 --------
@@ -60,7 +60,6 @@ from app.core.jsonl_writer import (
     daily_partition,
     hourly_partition,
 )
-from app.core.metrics import SPANS_DROPPED, SPANS_WRITTEN
 
 _INSTRUMENTATION_SCOPE = "openagentd"
 _logger = logging.getLogger(__name__)
@@ -272,8 +271,6 @@ def setup_otel(
         _span_writer = JsonlBatchWriter(
             root=spans_dir,
             partition_fn=hourly_partition,
-            on_write=lambda n: SPANS_WRITTEN.inc(n),
-            on_drop=lambda: SPANS_DROPPED.inc(),
             name="spans",
         )
         _tracer_provider.add_span_processor(

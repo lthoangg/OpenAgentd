@@ -29,7 +29,6 @@ from app.api.routes.terminal import router as terminal_router
 from app.core.config import settings
 from app.core.desktop_auth import DesktopTokenMiddleware
 from app.core.exception_handlers import EXCEPTION_HANDLERS
-from app.core.metrics import HTTPMetricsMiddleware, metrics_endpoint
 from app.core.middlewares import (
     NetworkBindGuard,
     RequestSizeLimitMiddleware,
@@ -138,9 +137,6 @@ def create_app() -> FastAPI:
     )
 
     # ── Middleware ────────────────────────────────────────────────────────────
-    # Metrics first (outermost) so it wraps everything else and records the
-    # true end-to-end latency, including CORS / size-limit rejects.
-    app.add_middleware(HTTPMetricsMiddleware)
     app.add_middleware(NetworkBindGuard)
     app.add_middleware(RequestSizeLimitMiddleware)
     app.add_middleware(GZipMiddleware, minimum_size=1000)
@@ -167,10 +163,6 @@ def create_app() -> FastAPI:
         # parity.
         expose_headers=["Accept-Ranges", "Content-Range", "Content-Length"],
     )
-
-    # ── /api/metrics (Prometheus scrape target) ───────────────────────────────
-    # Keep operational metrics under the authenticated API namespace.
-    app.add_route("/api/metrics", metrics_endpoint, methods=["GET"])
 
     # ── Routers (all under /api) ─────────────────────────────────────────────
     app.include_router(health_router, prefix="/api/health", tags=["health"])

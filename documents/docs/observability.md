@@ -36,7 +36,7 @@ When no `OTEL_EXPORTER_OTLP_ENDPOINT` is set (default), spans and metrics are wr
 .openagentd/state/otel/metrics/YYYY-MM-DD.jsonl     ← daily partition, one JSON object per 60-second export cycle
 ```
 
-Partitioning is done by `JsonlBatchWriter` (see `app/core/jsonl_writer.py`); spans are written through a bounded queue with drop-on-backpressure counted in the `openagentd_otel_spans_dropped_total` Prometheus metric. `OPENAGENTD_STATE_DIR` overrides the root (e.g. `OPENAGENTD_STATE_DIR=/var/lib/openagentd/state`).
+Partitioning is done by `JsonlBatchWriter` (see `app/core/jsonl_writer.py`); spans are written through a bounded queue with drop-on-backpressure behavior. `OPENAGENTD_STATE_DIR` overrides the root (e.g. `OPENAGENTD_STATE_DIR=/var/lib/openagentd/state`).
 
 Both files are JSONL — one record per line, readable with `jq`, `grep`, or `manual/otel_inspect.py`.
 

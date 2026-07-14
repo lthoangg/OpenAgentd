@@ -10,8 +10,8 @@ Design goals
 - **Never block the hot path.** Producers (agent loop, OTEL BatchSpanProcessor
   worker thread) call :py:meth:`write` which only performs a bounded
   ``queue.put_nowait`` — no disk I/O in producer context.
-- **Drop on backpressure.** Queue full → silently drop the record and
-  increment a Prometheus counter.  Loss is acceptable; lock contention is not.
+- **Drop on backpressure.** Queue full → silently drop the record and invoke
+  the optional drop callback. Loss is acceptable; lock contention is not.
 - **Daemon flusher thread.** Drains the queue in batches and appends to
   a partitioned file.  Partition key is recomputed per record from UTC.
 - **Clean shutdown.** :py:meth:`close` flushes pending records and joins the
@@ -81,7 +81,7 @@ class JsonlBatchWriter:
         flush_interval: Flush at least this often (seconds) even if the batch
             is not full.
         on_write: Optional callback invoked with the count after each
-            successful flush.  Use to increment a Prometheus counter.
+            successful flush.
         on_drop: Optional callback invoked once per dropped record.
         name: Human-readable identifier for log lines ("spans", "metrics", …).
     """

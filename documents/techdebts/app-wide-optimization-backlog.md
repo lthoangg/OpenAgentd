@@ -262,7 +262,7 @@ In `get_trace_detail`, spans were queried using `WHERE lower(trace_id) = ?`. In 
 
 **Problem**
 
-All custom middlewares (`HTTPMetricsMiddleware`, `DesktopTokenMiddleware`, `SecurityHeadersMiddleware`, `RequestSizeLimitMiddleware`) inherited from `BaseHTTPMiddleware`. In Starlette, `BaseHTTPMiddleware` spawns a separate asyncio task per request and uses a proxy send/receive channel. Stacking 4 of these middlewares added significant per-request overhead and latency, and risked memory growth.
+At the time, all custom middlewares (`HTTPMetricsMiddleware`, `DesktopTokenMiddleware`, `SecurityHeadersMiddleware`, `RequestSizeLimitMiddleware`) inherited from `BaseHTTPMiddleware`. In Starlette, `BaseHTTPMiddleware` spawns a separate asyncio task per request and uses a proxy send/receive channel. Stacking 4 of these middlewares added significant per-request overhead and latency, and risked memory growth.
 
 **Changes**
 

@@ -178,22 +178,45 @@ async def test_web_fetch_http_error_returns_error_string():
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_web_fetch_content_length_too_large():
-    """Responses with content-length > 5MB are rejected."""
-    url = "https://example.com/bigfile"
+async def test_web_fetch_content_length_over_50_mb_is_rejected():
+    """Responses above the hard 50 MB safety cap are rejected."""
+    url = "https://example.com/bigfile.md"
     respx.get(url).mock(
         return_value=httpx.Response(
             200,
-            text="x",
+            content=b"small",
             headers={
-                "content-type": "text/plain",
-                "content-length": str(6 * 1024 * 1024),
+                "content-type": "text/markdown",
+                "content-length": str(51 * 1024 * 1024),
             },
         )
     )
 
     result = await web_fetch(url)
+
     assert "too large" in result
+    assert "50 MB limit" in result
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_web_fetch_allows_11_mb_content_length():
+    """The former 5 MB cap no longer rejects an 11 MB response."""
+    url = "https://example.com/file.md"
+    respx.get(url).mock(
+        return_value=httpx.Response(
+            200,
+            content=b"small",
+            headers={
+                "content-type": "text/markdown",
+                "content-length": str(11 * 1024 * 1024),
+            },
+        )
+    )
+
+    result = await web_fetch(url)
+
+    assert result == "small"
 
 
 @pytest.mark.asyncio
@@ -227,28 +250,24 @@ async def test_web_fetch_cloudflare_retry():
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_web_fetch_body_too_large_without_content_length():
-    """Responses where body exceeds 5MB (no content-length header) are rejected.
-
-    Covers web_tools.py:107 — the body-size check after reading content.
-    """
-    url = "https://example.com/bigbody"
-    # Serve a body larger than _MAX_RESPONSE_BYTES (5 MB).
-    # Build the httpx.Response manually and strip the content-length header so
-    # that only the body-size check (line 107) is reached, not the header check.
-    big_body = b"x" * (5 * 1024 * 1024 + 1)
+async def test_web_fetch_body_over_limit_without_content_length_is_rejected(
+    monkeypatch,
+):
+    """Oversized bodies without content-length still hit the safety cap."""
+    monkeypatch.setattr("app.agent.tools.builtin.web._MAX_RESPONSE_BYTES", 10)
+    url = "https://example.com/bigbody.md"
     response = httpx.Response(
         200,
-        content=big_body,
-        headers={"content-type": "text/plain"},
+        content=b"abcdefghijk",
+        headers={"content-type": "text/markdown"},
     )
-    # Remove the auto-set content-length so the header branch is skipped
     response.headers.pop("content-length", None)
     respx.get(url).mock(return_value=response)
 
     result = await web_fetch(url)
+
     assert "too large" in result
-    assert "bytes exceeds" in result
+    assert "11 bytes" in result
 
 
 @pytest.mark.asyncio

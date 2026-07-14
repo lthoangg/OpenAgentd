@@ -778,8 +778,15 @@ class TeamMemberBase(abc.ABC):
             and self._team._provider_factory is not None
         ):
             model_kwargs: dict[str, object] = {}
-            if session_thinking_level:
-                model_kwargs["thinking_level"] = session_thinking_level
+            effective_thinking_level = session_thinking_level
+            if not effective_thinking_level and effective_model == self.agent.model_id:
+                configured_level = self.agent.llm_provider.model_kwargs.get(
+                    "thinking_level"
+                )
+                if isinstance(configured_level, str) and configured_level:
+                    effective_thinking_level = configured_level
+            if effective_thinking_level:
+                model_kwargs["thinking_level"] = effective_thinking_level
             if last_service_tier:
                 model_kwargs["service_tier"] = last_service_tier
             if effective_model.startswith("codex:"):

@@ -127,7 +127,7 @@ Model metadata lives beside modality flags and is resolved through `model_metada
   thinking: { levels: [minimal, low, medium, high] }
 ```
 
-`thinking.levels` is descriptive metadata for callers such as settings UIs or validation layers. Runtime provider behavior still treats `thinking_level: none`/`off` as disable/default even when `none` is not listed for a model.
+`thinking.levels` is descriptive metadata for callers such as settings UIs or validation layers. Runtime mapping remains provider-specific: most providers treat `none`/`off` as disable/default, while Codex sends the documented `reasoning.effort: "none"` value explicitly.
 
 ## Provider notes
 
@@ -157,7 +157,7 @@ Prompt caching now follows Anthropic's explicit breakpoint pattern instead of ma
 
 ### `codex`
 
-Uses your **ChatGPT Plus/Pro/Business subscription** to access OpenAI models via `https://chatgpt.com/backend-api/codex/responses`. The endpoint is Responses API only and requires streaming; non-streaming `chat()` calls are assembled from the stream. `temperature`, `top_p`, and `max_tokens` are ignored because the private endpoint rejects those public API fields. `thinking_level` maps to `reasoning.effort`. Session settings show a Codex Fast mode toggle when the effective lead model is `codex:*`; OpenAgentd sends that upstream as priority service tier for new requests while unsupported providers ignore `fast_mode`. OpenAI currently documents Fast mode for GPT-5.5 and GPT-5.4, with higher credit consumption than Standard mode. OpenAgentd identifies itself with `originator: openagentd`, retries transient `response.failed` stream errors such as overloads, and treats Codex usage-limit/quota responses as immediate fallback candidates. Settings → Providers shows live Codex OAuth usage windows, resets, credits, spend-cap/limit states, and unlimited-credit plans from the same token. The same OAuth token also powers `generate_image` when `multimodal.yaml` sets `image.model: codex:<chat-model>`.
+Uses your **ChatGPT Plus/Pro/Business subscription** to access OpenAI models via `https://chatgpt.com/backend-api/codex/responses`. The endpoint is Responses API only and requires streaming; non-streaming `chat()` calls are assembled from the stream. `temperature`, `top_p`, and `max_tokens` are ignored because the private endpoint rejects those public API fields. `thinking_level` maps to `reasoning.effort`, including an explicit `none`; enabled levels request `summary: auto` for readable reasoning on supported models, while models such as GPT-5.3 Codex Spark that reject summaries omit that field. Session settings show a Codex Fast mode toggle when the effective lead model is `codex:*`; OpenAgentd sends that upstream as priority service tier for new requests while unsupported providers ignore `fast_mode`. OpenAI currently documents Fast mode for GPT-5.5 and GPT-5.4, with higher credit consumption than Standard mode. OpenAgentd identifies itself with `originator: openagentd`, retries transient `response.failed` stream errors such as overloads, and treats Codex usage-limit/quota responses as immediate fallback candidates. Settings → Providers shows live Codex OAuth usage windows, resets, credits, spend-cap/limit states, and unlimited-credit plans from the same token. The same OAuth token also powers `generate_image` when `multimodal.yaml` sets `image.model: codex:<chat-model>`.
 
 ### `copilot`
 

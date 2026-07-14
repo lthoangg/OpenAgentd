@@ -747,6 +747,32 @@ class TestCodexResponsesHandlerBuildRequest:
         body = handler.build_request(messages, tools, False, {})
         assert "tools" in body
 
+    def test_build_request_sends_none_as_explicit_reasoning_effort(self):
+        handler = _CodexResponsesHandler("gpt-5.4", "https://api.example.com", {})
+        messages = [HumanMessage(content="Hello")]
+
+        body = handler.build_request(messages, None, False, {"thinking_level": "none"})
+
+        assert body["reasoning"] == {"effort": "none"}
+
+    def test_build_request_requests_reasoning_summary_for_supported_model(self):
+        handler = _CodexResponsesHandler("gpt-5.6-terra", "https://api.example.com", {})
+        messages = [HumanMessage(content="Hello")]
+
+        body = handler.build_request(messages, None, False, {"thinking_level": "xhigh"})
+
+        assert body["reasoning"] == {"effort": "xhigh", "summary": "auto"}
+
+    def test_build_request_omits_reasoning_summary_for_spark(self):
+        handler = _CodexResponsesHandler(
+            "gpt-5.3-codex-spark", "https://api.example.com", {}
+        )
+        messages = [HumanMessage(content="Hello")]
+
+        body = handler.build_request(messages, None, False, {"thinking_level": "high"})
+
+        assert body["reasoning"] == {"effort": "high"}
+
     def test_build_request_drops_max_tokens(self):
         """Match upstream: ``ResponsesApiRequest`` has no token-cap field.
 

@@ -9,7 +9,8 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.agent.tools.registry import tool
 
-_MAX_RESPONSE_BYTES = 5 * 1024 * 1024  # 5 MB
+_MAX_RESPONSE_MB = 50
+_MAX_RESPONSE_BYTES = _MAX_RESPONSE_MB * 1024 * 1024
 _DEFAULT_TIMEOUT = 30.0
 _MAX_TIMEOUT = 120.0
 
@@ -171,11 +172,19 @@ async def web_fetch(
 
             content_length = response.headers.get("content-length")
             if content_length and int(content_length) > _MAX_RESPONSE_BYTES:
-                return f"Error: Response too large (content-length {content_length} exceeds 5 MB limit)"
+                return (
+                    "Error: Response too large "
+                    f"(content-length {content_length} exceeds "
+                    f"{_MAX_RESPONSE_MB} MB limit)"
+                )
 
             content_bytes = response.content
             if len(content_bytes) > _MAX_RESPONSE_BYTES:
-                return f"Error: Response too large ({len(content_bytes)} bytes exceeds 5 MB limit)"
+                return (
+                    "Error: Response too large "
+                    f"({len(content_bytes)} bytes exceeds "
+                    f"{_MAX_RESPONSE_MB} MB limit)"
+                )
 
             content_type = response.headers.get("content-type", "")
 

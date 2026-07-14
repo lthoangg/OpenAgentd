@@ -16,7 +16,7 @@ exists. When you ship something new, **add it here first** — slides, README,
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 15 providers. Your keys.
 
-**Latest release:** v1.104.2 · July 14, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.104.2)
+**Latest release:** v1.104.3 · July 14, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.104.3)
 
 ---
 
@@ -319,10 +319,12 @@ spawns specialist members on demand. Deeper docs: [`agent/teams.md`](./agent/tea
 - **Stop pauses queued follow-ups instead of dropping them** `[v1.17.0]` — Stop
   releases queued hidden user messages into visible history so you can
   `/undo`, edit, or append before resuming.
-- **Session-level model + thinking-level override** `[v1.16.0, v1.66.1, v1.79.0]` — override the
+- **Session-level model + thinking-level override** `[v1.16.0, v1.66.1, v1.79.0, v1.104.3]` — override the
   lead agent's model and thinking level for the current chat. The thinking
   picker uses each model's advertised reasoning levels when registry metadata is
-  available, and history keeps the model used for each user turn.
+  available, and history keeps the model used for each user turn. Codex keeps
+  the configured thinking level across provider reconstruction and streams
+  readable reasoning summaries on supported models.
 - **Coding team variant** `[since v1.0]` — `agents/coding/` ships a separate
   compact team (`coding/openagentd`, `coding/coder`, `coding/explorer`) tuned for
   workspace-aware sessions; the coding explorer focuses on inspecting the current

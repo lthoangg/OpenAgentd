@@ -322,7 +322,7 @@ class TestOnDemandActivation:
             },
         ]
 
-    async def test_lead_codex_model_uses_session_prompt_cache_key_without_override(
+    async def test_lead_codex_model_preserves_configured_thinking_level(
         self, monkeypatch
     ):
         session_uuid = uuid7()
@@ -330,6 +330,7 @@ class TestOnDemandActivation:
         session_row = ChatSession(id=session_uuid, title="s")
         db_factory = _make_mock_db_factory_with_session(session_row)
         default_provider = MockTeamProvider("default")
+        default_provider.model_kwargs["thinking_level"] = "low"
         override_provider = MockTeamProvider("override")
         factory_kwargs: list[dict[str, object] | None] = []
 
@@ -357,7 +358,12 @@ class TestOnDemandActivation:
 
         await lead._handle_messages(force_compaction=True)
 
-        assert factory_kwargs == [{"prompt_cache_key": f"openagentd:{session_id}"}]
+        assert factory_kwargs == [
+            {
+                "thinking_level": "low",
+                "prompt_cache_key": f"openagentd:{session_id}",
+            }
+        ]
 
     async def test_worker_activates_on_inbox_message(self, team_with_db):
         """Worker activates when a message arrives in inbox."""

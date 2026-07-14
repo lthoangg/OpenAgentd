@@ -30,6 +30,7 @@ from app.agent.schemas.chat import AssistantMessage, ChatMessage, SystemMessage
 CODEX_API_BASE = "https://chatgpt.com/backend-api/codex"
 CODEX_STREAM_IDLE_TIMEOUT_SECONDS = 10.0
 _NO_SERVICE_TIER = {"", "auto", "default", "none", "off", "standard"}
+_NO_REASONING_SUMMARY_MODELS = {"gpt-5.3-codex-spark"}
 
 # Identify requests honestly as OpenAgentd.
 _DEFAULT_HEADERS = {
@@ -60,6 +61,18 @@ class _CodexResponsesHandler(ResponsesHandler):
             if item.get("role") == "user" and isinstance(content, str):
                 item["content"] = [{"type": "input_text", "text": content}]
         return items
+
+    def customize_thinking(self, merged: dict[str, Any], body: dict[str, Any]) -> None:
+        """Send effort and request readable summaries on supported Codex models."""
+        thinking_level = merged.get("thinking_level")
+        if thinking_level and thinking_level != "off":
+            reasoning = {"effort": thinking_level}
+            if (
+                thinking_level != "none"
+                and self.model not in _NO_REASONING_SUMMARY_MODELS
+            ):
+                reasoning["summary"] = "auto"
+            body["reasoning"] = reasoning
 
     def build_request(
         self,

@@ -162,8 +162,8 @@ try:
         max_tokens=20,
         thinking_level="none",
     )
-# Codex (and any future provider that rejects missing ``reasoning``) →
-# retry once with the agent's configured ``thinking_level`` flowing through.
+# Any provider that rejects the cheap override → retry once with the
+# agent's configured ``thinking_level`` flowing through.
 except TimeoutError:
     ...
 except Exception:
@@ -176,14 +176,12 @@ except Exception:
 
 `max_tokens=20` is sufficient — the ≤50 character output cap is at most
 ~12–13 tokens. The cheap path uses `thinking_level="none"` to skip
-reasoning on providers that accept it (OpenAI API-key, ZAI, Gemini, …) —
-saving cost and latency on a throwaway call. The Codex
-`chatgpt.com/backend-api/codex` endpoint rejects requests with no
-`reasoning` field (`ResponsesHandler.customize_thinking` omits it whenever
-the level is `"none"`/`"off"`), so the retry path drops the override and
-lets the provider's constructor `model_kwargs` supply the agent's
-configured level. The retry sets the `title_generation.retried` span
-attribute for observability.
+reasoning, saving cost and latency on a throwaway call. Codex serializes
+that selection explicitly as `reasoning.effort: "none"`; other providers
+apply their own disable mapping. If an upstream rejects the override, the
+retry path drops it and lets the provider's constructor `model_kwargs`
+supply the agent's configured level. The retry sets the
+`title_generation.retried` span attribute for observability.
 
 Timeout: 15 seconds (inside `title_service`, separate from the hook wait)
 applies to **each** attempt independently. On first-attempt timeout the

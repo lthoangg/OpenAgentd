@@ -25,6 +25,7 @@ UI changes and new core features require discussion first — open an issue befo
 - [Quick start](#quick-start)
 - [Project layout](#project-layout)
 - [Development workflow](#development-workflow)
+- [Change validation policy](#change-validation-policy)
 - [Code style](#code-style)
 - [Testing](#testing)
 - [Submitting changes](#submitting-changes)
@@ -91,6 +92,16 @@ Key design rules:
 ---
 
 ## Development workflow
+
+### Change validation policy
+
+Use the canonical [Change Validation, Context, and Friction Policy](documents/docs/contributing/change-policy.md)
+to select the tiny, normal, or high-risk validation lane. It defines hard
+gates, the files-to-required-checks matrix, bounded context retrieval, and how
+to capture recurring agent or repository friction. Use [`make verify`](Makefile) for the
+portable pre-merge contract, or its focused `verify-backend`, `verify-web`,
+`verify-docs`, and `verify-version` targets when only one surface changed.
+Native targets require local platform dependencies.
 
 ### Backend
 
@@ -173,7 +184,9 @@ Tests mirror the `app/` structure under `tests/`. Key patterns:
 - In-memory SQLite and `AsyncMock` for all external dependencies — no external services needed in unit tests.
 - `app.dependency_overrides` for FastAPI dependency injection.
 
-Coverage target: **≥ 80%** for `app/agent/` and `app/api/`.
+Coverage aspiration: aim for **≥ 80%** for `app/agent/` and `app/api/`; this is a
+quality goal, **not a CI-enforced merge gate**. Add focused regression coverage
+for changed behavior where practical.
 
 ```bash
 uv run pytest -n auto -q                 # quick pass/fail
@@ -195,11 +208,7 @@ Tests use Bun test + Happy DOM. Test store logic and pure utils directly; avoid 
 
 1. **Open an issue first** for anything non-trivial — discuss the approach before writing code.
 2. **Branch naming:** `feat/<topic>`, `fix/<topic>`, `docs/<topic>`, `refactor/<topic>`.
-3. **Before opening a PR:**
-   - `uv run ruff check app/ tests/` passes
-   - `uv run ty check app/` passes
-   - `uv run pytest -q` passes
-   - `cd web && bun run lint && bun test src/__tests__` passes
+3. **Before opening a PR:** run the applicable focused checks from the [change policy](documents/docs/contributing/change-policy.md), then run `make verify`. Run `make verify-native` as well when desktop or mobile Rust code changes and the required native dependencies are available.
 4. **Commit style:** [Conventional Commits](https://www.conventionalcommits.org/) — `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`.
 5. **PR description:**
 

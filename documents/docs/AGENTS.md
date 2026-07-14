@@ -34,4 +34,4 @@ testing/          Testing guides
 
 ## Checks
 
-No dedicated docs linter is configured. Manually verify relative links and run product checks when documenting commands or behavior.
+Run `make verify-docs`. Use the canonical [change policy](contributing/change-policy.md) to select product checks when documenting commands or behavior.

@@ -13,6 +13,7 @@ Maintainer scripts for benchmarks, sidecar packaging, updater keys, and release 
 build_sidecar.py              Build the desktop Python sidecar bundle
 make_updater_manifest.py      Generate updater release manifests
 update_model_registry.py      Refresh bundled model metadata from models.dev
+validate_docs.py              Verify Markdown links, metadata, ADR index, and Make targets
 codehealth/                   Rank god files + map deps + detect import cycles
 bump_version.sh               Update release-facing versions and refresh lockfiles
 check_version_consistency.sh  Verify all release-facing versions stay in sync

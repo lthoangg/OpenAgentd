@@ -30,4 +30,4 @@ techdebts/      Tracked technical debt notes
 
 ## Checks
 
-Documentation-only edits usually do not need the full app test suite unless commands or generated docs are changed. Validate links/paths manually when touching navigation or cross-references.
+Run `make verify-docs` for documentation changes. Use the canonical [change policy](docs/contributing/change-policy.md) to select additional checks when documentation changes commands, generated output, or product behavior.

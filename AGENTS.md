@@ -23,20 +23,24 @@ documents/   Developer docs (see documents/docs/index.md)
 Several directories carry their own `AGENTS.md` with local conventions and
 "where to look first" maps — consult the nearest one before editing:
 `app/AGENTS.md`, `app/agent/AGENTS.md`, `app/api/AGENTS.md`,
-`app/services/AGENTS.md`, `web/src/AGENTS.md`, `manual/AGENTS.md`,
-`tests/manual/AGENTS.md`, `documents/AGENTS.md`.
+`app/services/AGENTS.md`, `web/AGENTS.md`, `web/src/AGENTS.md`,
+`desktop/AGENTS.md`, `desktop/src-tauri/AGENTS.md`, `manual/AGENTS.md`,
+`tests/AGENTS.md`, `tests/manual/AGENTS.md`, `scripts/AGENTS.md`,
+`seed/AGENTS.md`, `documents/AGENTS.md`, and `documents/docs/AGENTS.md`.
 
-## Running tests
+## Validation
+
+Choose the applicable risk lane and checks from the canonical [change policy](documents/docs/contributing/change-policy.md). Use the Make targets as the command source of truth:
 
 ```bash
-# Backend — run from repo root
-uv run pytest -n auto -q
-
-# Frontend — always use --parallel
-cd web && bun test --parallel
+make verify          # portable backend + web + docs + version contract
+make verify-backend  # Python lint, format, types, and tests
+make verify-web      # frontend lint, types, and tests
+make verify-docs     # links, frontmatter, ADR index, and documented targets
+make verify-native   # desktop + mobile Rust checks; native dependencies required
 ```
 
-All other dev commands are in the `Makefile`. Run `make help` for a full list.
+Run `make help` for focused scenario, health, prompt-budget, and build targets.
 
 ## Manual smoke/debug helpers
 
@@ -59,10 +63,10 @@ See [`manual/AGENTS.md`](manual/AGENTS.md) for the full script catalogue.
 `tests/manual/` contains standalone scenario scripts that exercise service-layer logic against an in-memory SQLite database or temporary filesystem — no running server needed. Run them directly to verify behaviour after changes to the covered subsystems:
 
 ```bash
-uv run python tests/manual/manual_scenarios.py    # chat_service: compaction, undo/redo, queued messages (A–G, 21 checks)
-uv run python tests/manual/extended_scenarios.py  # chat_service edge cases: orphan healing, double-undo, Anthropic sanitization (H–P, 24 checks)
-uv run python tests/manual/mention_scenarios.py   # @mention context injection: code files, dirs, binary skip, image hints, line refs, path traversal (A–I, 30 checks)
-uv run python tests/manual/lsp_scenarios.py       # LSP diagnostics + LspHook: client init, message exchange, formatting, tool-result injection (mocked + real servers)
+make scenarios-chat      # chat_service compaction, undo/redo, queues, and edge cases
+make scenarios-mentions  # workspace mentions, binary/image handling, and path traversal
+make scenarios-lsp       # LSP client, manager, hook, formatting, and diagnostics
+make scenarios           # all service-layer scenarios
 ```
 
 Re-run `mention_scenarios.py` after any change to `build_mention_context_blocks`, `_read_mention_as_attachment`, or `_safe_join*` in `app/api/routes/team/_helpers.py`. Re-run `lsp_scenarios.py` after any change to `LspHook` (`app/agent/hooks/lsp.py`), `LspManager`/`check_lsp_diagnostics` (`app/services/lsp/manager.py`), or `LspClient` (`app/services/lsp/client.py`).

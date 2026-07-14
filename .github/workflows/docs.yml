@@ -1,0 +1,50 @@
+name: Documentation contracts
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "**/*.md"
+      - "Makefile"
+      - "scripts/validate_docs.py"
+      - "tests/scripts/test_validate_docs.py"
+      - ".github/workflows/docs.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "**/*.md"
+      - "Makefile"
+      - "scripts/validate_docs.py"
+      - "tests/scripts/test_validate_docs.py"
+      - ".github/workflows/docs.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate documentation contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.3.2
+        with:
+          enable-cache: true
+
+      - name: Set up Python 3.14
+        run: uv python install 3.14
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Run validator tests
+        run: uv run pytest --no-cov tests/scripts/test_validate_docs.py -q
+
+      - name: Validate repository documentation
+        run: uv run python scripts/validate_docs.py

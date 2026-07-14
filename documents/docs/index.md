@@ -68,6 +68,7 @@ Connects to LLM providers (Anthropic, Gemini, Vertex AI, OpenAI, OpenRouter, Cop
 | Doc | What it covers |
 |-----|----------------|
 | [Guidelines](./guidelines.md) | Dev commands, code style, testing, GitHub conventions. |
+| [Change validation policy](./contributing/change-policy.md) | Risk lanes, required checks, bounded context retrieval, and friction capture. |
 | [Team testing](./testing/team.md) | Manual test guide for the multi-agent team flow. |
 
 ---

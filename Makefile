@@ -1,6 +1,6 @@
 # Makefile for openagentd
 
-.PHONY: all run dev kill-dev-ports test coverage health health-json prompt-budget prompt-budget-json migrate revision build-web build dist clean help
+.PHONY: all run dev dev-lan kill-dev-ports test coverage verify verify-backend verify-web verify-docs verify-version verify-native verify-desktop verify-mobile scenarios scenarios-chat scenarios-mentions scenarios-lsp health health-json prompt-budget prompt-budget-json migrate revision build-web icons build dist clean help
 
 # Default target
 all: test
@@ -45,6 +45,51 @@ test: ## Run tests
 
 coverage: ## Run tests with coverage report (terminal + htmlcov/)
 	uv run pytest --cov=app --cov-report=term-missing:skip-covered --cov-report=html tests/
+
+verify: verify-backend verify-web verify-docs verify-version ## Run the portable pre-merge contract
+
+verify-backend: ## Lint, format-check, type-check, and test the Python backend
+	uv run ruff check app/ tests/
+	uv run ruff format --check app/ tests/
+	uv run ty check app/
+	uv run pytest -n auto -q
+
+verify-web: ## Lint, type-check, and test the web frontend
+	cd web && bun run lint
+	cd web && bun run typecheck
+	cd web && bunx tsc -p tsconfig.test.json --noEmit
+	cd web && bun test --parallel
+
+verify-docs: ## Validate documentation links, metadata, and repository references
+	uv run python scripts/validate_docs.py
+
+verify-version: ## Verify release-facing versions and release docs stay synchronized
+	scripts/check_version_consistency.sh
+	@VERSION=$$(tr -d '[:space:]' < app/version.txt); \
+		grep -F "**Latest release:** v$${VERSION} ·" documents/docs/features.md; \
+		grep -E '^updated: [0-9]{4}-[0-9]{2}-[0-9]{2}$$' documents/docs/features.md
+
+verify-native: verify-desktop verify-mobile ## Run desktop and mobile Rust checks (requires native build dependencies)
+
+verify-desktop: ## Check, test, and lint the desktop Rust crate
+	cd desktop/src-tauri && TAURI_CONFIG="$$(cat tauri.dev.conf.json)" cargo check --locked
+	cd desktop/src-tauri && TAURI_CONFIG="$$(cat tauri.dev.conf.json)" cargo test --locked
+	cd desktop/src-tauri && TAURI_CONFIG="$$(cat tauri.dev.conf.json)" cargo clippy --locked --all-targets
+
+verify-mobile: ## Check the mobile Rust crate
+	cd mobile/src-tauri && TAURI_CONFIG='{"bundle":{"icon":["icons/icon.png"]}}' cargo check --locked
+
+scenarios: scenarios-chat scenarios-mentions scenarios-lsp ## Run all service-layer manual scenarios
+
+scenarios-chat: ## Run chat service compaction, undo/redo, queue, and edge-case scenarios
+	uv run python tests/manual/manual_scenarios.py
+	uv run python tests/manual/extended_scenarios.py
+
+scenarios-mentions: ## Run workspace mention and path-safety scenarios
+	uv run python tests/manual/mention_scenarios.py
+
+scenarios-lsp: ## Run mocked and real-server LSP scenarios
+	uv run python tests/manual/lsp_scenarios.py
 
 health: ## Rank god files + detect circular imports (text report)
 	uv run python -m scripts.codehealth

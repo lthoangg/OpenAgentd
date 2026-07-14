@@ -303,7 +303,7 @@ A full release is **two workflows publishing into one GitHub tag** (`v<X.Y.Z>`):
 | `.github/workflows/release.yml` | `workflow_dispatch confirm=release` | ~90 s | `openagentd-<ver>-py3-none-any.whl`, `openagentd-<ver>.tar.gz`; publishes to PyPI. |
 | `.github/workflows/release-desktop.yml` | `workflow_dispatch confirm=release-desktop` | ~20–25 min | `OpenAgentd_<ver>_aarch64.dmg`, `OpenAgentd_<ver>_amd64.deb`, `latest.json`. |
 
-Both workflows use a **create-or-upload** publish step (`gh release view "$TAG"` → `upload --clobber` if present, else `create`), so order doesn't matter for correctness. The runbook orders them PyPI-first so the canonical auto-generated release notes come from `release.yml`; the desktop matrix then appends its installers ~20 min later. See [`.opencode/commands/release.md`](../../.opencode/commands/release.md) for the operator runbook.
+Both workflows use a **create-or-upload** publish step (`gh release view "$TAG"` → `upload --clobber` if present, else `create`), so order doesn't matter for correctness. Run the PyPI workflow first so the canonical auto-generated release notes come from `release.yml`; the desktop matrix then appends its installers ~20 min later. The workflow dispatch inputs in `.github/workflows/release.yml` and `.github/workflows/release-desktop.yml` are the operator source of truth.
 
 History — pre-1.0.9 releases used a split-tag scheme (`v<X.Y.Z>` for PyPI, `v<X.Y.Z>-desktop` for installers). That produced fragmented compare-links, duplicate release notes, and a confusing release listing. 1.0.9 consolidated everything under one tag; older `v*-desktop` tags remain on GitHub for archival but aren't created by the workflows anymore.
 

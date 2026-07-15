@@ -800,17 +800,25 @@ async def check_lsp_diagnostics(file_path: Path, workspace_root: Path) -> str | 
     total = len(relevant)
     capped = relevant[:MAX_DIAGNOSTICS_PER_FILE]
 
-    formatted_lines = []
+    # Repeated diagnostics at different positions are common (for example,
+    # the same missing type annotation in several callback parameters). Group
+    # them so each message/source pair is injected once with its locations.
+    grouped: dict[tuple[int, str, str], list[tuple[int, int]]] = {}
     for diag in capped:
-        severity_str = "error" if diag.get("severity", 1) == 1 else "warning"
-        start = diag.get("range", {}).get("start", {})
-        line = start.get("line", 0) + 1
-        char = start.get("character", 0) + 1
+        severity = diag.get("severity", 1)
         msg = diag.get("message", "").strip()
         source = diag.get("source", "LSP")
-        formatted_lines.append(
-            f"- {rel_path}:{line}:{char}: {severity_str}: {msg} ({source})"
-        )
+        start = diag.get("range", {}).get("start", {})
+        location = (start.get("line", 0) + 1, start.get("character", 0) + 1)
+        grouped.setdefault((severity, msg, source), []).append(location)
+
+    formatted_lines = []
+    for (severity, msg, source), locations in grouped.items():
+        severity_str = "error" if severity == 1 else "warning"
+        first_line, first_char = locations[0]
+        location_text = f"{rel_path}:{first_line}:{first_char}"
+        location_text += "".join(f", {line}:{char}" for line, char in locations[1:])
+        formatted_lines.append(f"- {location_text}: {severity_str}: {msg} ({source})")
 
     if total > len(capped):
         formatted_lines.append(f"- …and {total - len(capped)} more in {rel_path}")

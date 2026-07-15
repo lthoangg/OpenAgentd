@@ -600,6 +600,35 @@ async def test_check_lsp_diagnostics_formatting(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_check_lsp_diagnostics_groups_repeated_messages_to_save_tokens(tmp_path):
+    file_path = tmp_path / "src" / "example.ts"
+    file_path.parent.mkdir()
+    file_path.write_text("const broken = true;\n", encoding="utf-8")
+    message = "Parameter 'b' implicitly has an 'any' type."
+    diagnostics = [
+        {
+            "range": {"start": {"line": line - 1, "character": character - 1}},
+            "severity": 1,
+            "message": message,
+            "source": "ts",
+        }
+        for line, character in ((159, 36), (297, 36), (324, 50))
+    ]
+
+    with patch(
+        "app.services.lsp.manager.lsp_manager.get_diagnostics",
+        new=AsyncMock(return_value=diagnostics),
+    ):
+        report = await check_lsp_diagnostics(file_path, tmp_path)
+
+    assert report == (
+        "[LSP Diagnostics]\n"
+        "- src/example.ts:159:36, 297:36, 324:50: error: "
+        "Parameter 'b' implicitly has an 'any' type. (ts)"
+    )
+
+
+@pytest.mark.asyncio
 async def test_lsp_hook_intercepts_and_formats(tmp_path):
     from app.agent.hooks.lsp import LspHook
     from app.agent.schemas.chat import ToolCall, FunctionCall

@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from sqlalchemy.dialects import sqlite
 
 from app.agent.mode.team.member import TeamLead, TeamMember
 from app.agent.mode.team.team import AgentTeam
@@ -503,3 +504,47 @@ class TestRestoreMembersBatchedQuery:
         # Every member realigned to its DB row.
         for handle, row in zip(handles, rows):
             assert team.members[handle].session_id == str(row.id)
+
+    @pytest.mark.asyncio
+    async def test_roster_restore_query_bounds_duplicate_sessions_per_handle(self):
+        """The database must return at most the newest row for each handle."""
+        import uuid
+        from contextlib import asynccontextmanager
+
+        lead_uuid = uuid.uuid7()
+        handles = ["worker#1", "worker#2"]
+        rows = []
+        for handle in handles:
+            row = MagicMock()
+            row.id = uuid.uuid7()
+            row.agent_name = handle
+            rows.append(row)
+
+        statements = []
+
+        async def tracking_exec(stmt):
+            statements.append(stmt)
+            return MagicMock(all=MagicMock(return_value=rows))
+
+        mock_db = MagicMock()
+        mock_db.exec = tracking_exec
+
+        @asynccontextmanager
+        async def factory():
+            yield mock_db
+
+        lead = TeamLead(_make_agent("lead"), db_factory=factory)
+        team = AgentTeam(
+            lead=lead,
+            members={
+                handle: TeamMember(_make_agent(handle), db_factory=factory)
+                for handle in handles
+            },
+            db_factory=factory,
+        )
+
+        await team._restore_or_drop_members_for_lead(str(lead_uuid))
+
+        sql = str(statements[0].compile(dialect=sqlite.dialect()))
+        assert "row_number() OVER" in sql
+        assert "PARTITION BY chat_sessions.agent_name" in sql

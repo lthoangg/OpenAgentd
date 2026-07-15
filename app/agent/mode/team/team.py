@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING, Literal
 from uuid import UUID, uuid7
 
 from loguru import logger
-from sqlmodel import col, select
+from sqlmodel import col, func, select
 
 from app.agent.hooks.continuation import CONTINUATION_DIRECTIVE
 from app.agent.mode.team.mailbox import Message, TeamMailbox
@@ -1023,18 +1023,30 @@ class AgentTeam:
             handles = list(self.members.keys())
             async with db_factory() as db:
                 # One batched query for the whole roster (was one SELECT per
-                # member).  Rows arrive newest-first; the first row seen per
-                # handle wins, matching the old per-handle LIMIT 1 DESC.
-                result = await db.exec(
-                    select(ChatSession)
+                # member). Rank child sessions within each handle so SQLite
+                # returns at most one row per live member.
+                ranked = (
+                    select(
+                        col(ChatSession.id).label("id"),
+                        func.row_number()
+                        .over(
+                            partition_by=col(ChatSession.agent_name),
+                            order_by=col(ChatSession.created_at).desc(),
+                        )
+                        .label("rank"),
+                    )
                     .where(col(ChatSession.parent_session_id) == lead_uuid)
                     .where(col(ChatSession.agent_name).in_(handles))
-                    .order_by(col(ChatSession.created_at).desc())
+                    .subquery()
                 )
-                newest_by_handle: dict[str, ChatSession] = {}
-                for row in result.all():
-                    if row.agent_name and row.agent_name not in newest_by_handle:
-                        newest_by_handle[row.agent_name] = row
+                result = await db.exec(
+                    select(ChatSession)
+                    .join(ranked, col(ChatSession.id) == ranked.c.id)
+                    .where(ranked.c.rank == 1)
+                )
+                newest_by_handle = {
+                    row.agent_name: row for row in result.all() if row.agent_name
+                }
 
                 for handle, member in list(self.members.items()):
                     is_spawned = parse_instance_handle(handle) is not None

@@ -82,6 +82,12 @@ class ChatSession(SQLModel, table=True):
             "workspace",
             "created_at",
         ),
+        sa.Index(
+            "ix_chat_sessions_parent_agent_created",
+            "parent_session_id",
+            "agent_name",
+            sa.desc("created_at"),
+        ),
     )
 
     id: UUID = Field(default_factory=uuid7, primary_key=True)

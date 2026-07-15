@@ -176,7 +176,13 @@ class TaskScheduler:
 
     async def has_enabled_tasks(self) -> bool:
         """Return whether the DB has any enabled scheduled tasks."""
-        return bool(await self._enabled_tasks())
+        async with self._db() as session:
+            result = await session.exec(
+                select(ScheduledTask.id)
+                .where(col(ScheduledTask.enabled).is_(True))
+                .limit(1)
+            )
+            return result.first() is not None
 
     async def _enabled_tasks(self) -> list[ScheduledTask]:
         async with self._db() as session:

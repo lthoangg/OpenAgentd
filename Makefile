@@ -1,6 +1,6 @@
 # Makefile for openagentd
 
-.PHONY: all run dev dev-lan kill-dev-ports test coverage verify verify-backend verify-web verify-docs verify-version verify-native verify-desktop verify-mobile scenarios scenarios-chat scenarios-mentions scenarios-lsp health health-json prompt-budget prompt-budget-json migrate revision build-web icons build dist clean help
+.PHONY: all run dev dev-lan kill-dev-ports test coverage verify verify-backend verify-web verify-docs verify-version verify-native verify-desktop verify-mobile scenarios scenarios-chat scenarios-mentions scenarios-lsp scenarios-performance health health-json prompt-budget prompt-budget-json migrate revision build-web icons build dist clean help
 
 # Default target
 all: test
@@ -79,7 +79,7 @@ verify-desktop: ## Check, test, and lint the desktop Rust crate
 verify-mobile: ## Check the mobile Rust crate
 	cd mobile/src-tauri && TAURI_CONFIG='{"bundle":{"icon":["icons/icon.png"]}}' cargo check --locked
 
-scenarios: scenarios-chat scenarios-mentions scenarios-lsp ## Run all service-layer manual scenarios
+scenarios: scenarios-chat scenarios-mentions scenarios-lsp scenarios-performance ## Run all service-layer manual scenarios
 
 scenarios-chat: ## Run chat service compaction, undo/redo, queue, and edge-case scenarios
 	uv run python tests/manual/manual_scenarios.py
@@ -90,6 +90,9 @@ scenarios-mentions: ## Run workspace mention and path-safety scenarios
 
 scenarios-lsp: ## Run mocked and real-server LSP scenarios
 	uv run python tests/manual/lsp_scenarios.py
+
+scenarios-performance: ## Run deterministic persistence query-count scenarios
+	uv run python tests/manual/performance_scenarios.py
 
 health: ## Rank god files + detect circular imports (text report)
 	uv run python -m scripts.codehealth

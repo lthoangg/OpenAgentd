@@ -13,6 +13,7 @@ uv run python tests/manual/manual_scenarios.py
 uv run python tests/manual/extended_scenarios.py
 uv run python tests/manual/mention_scenarios.py
 uv run python tests/manual/lsp_scenarios.py
+make scenarios-performance
 ```
 
 Each script prints a ✅/❌ line per check and exits non-zero on any failure.
@@ -25,6 +26,7 @@ Each script prints a ✅/❌ line per check and exits non-zero on any failure.
 | `extended_scenarios.py` | H – P (24 checks) | Edge cases: no-undo baseline, `hidden_from_user` summary, `heal_orphaned` respects boundary, double-undo layering, `keep_last_n` undo, empty session, plain-message undo, Anthropic replay sanitization for interrupted tool stubs |
 | `mention_scenarios.py` | A – I (30 checks) | `@mention` context injection: code file extensions (.ts/.py/.yaml/…), directory listing (with/without trailing slash), binary skip, image/document hint blocks, safety check, non-existent path, line references, multiple mentions, path traversal rejection |
 | `lsp_scenarios.py` | Mocked + Real | LSP diagnostics and LspHook: client initialization, message exchange, diagnostics parsing, formatting, tool-result injection, and the installed managed TypeScript fallback |
+| `performance_scenarios.py` | A – C (10 checks) | Scheduler existence and unique coding-workspace mutations use bounded, single-statement SQLite paths |
 
 ## When to re-run
 

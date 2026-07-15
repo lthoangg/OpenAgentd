@@ -57,6 +57,12 @@ describe("ToolCall — header", () => {
     expect(screen.queryByText("pending")).toBeNull()
   })
 
+  it("shows the basename for a Windows file path", () => {
+    const args = JSON.stringify({ path: String.raw`C:\repo\src\main.py` })
+    render(<ToolCall name="read" args={args} done={false} />)
+    expect(getHeader("main.py")).toBeTruthy()
+  })
+
   it("shows running state when args are set and result is not done", () => {
     render(<ToolCall name="read" args='{"path":"x"}' done={false} />)
     expect(screen.queryByText("pending")).toBeNull()

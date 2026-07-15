@@ -89,7 +89,8 @@ def _parse_summary(name: str, content: str) -> AgentSummary:
 
 
 def _mode_for_agent_path(name: str) -> str:
-    return "coding" if Path(name).parts[:1] == ("coding",) else "normal"
+    normalized = name.replace("\\", "/")
+    return "coding" if normalized.split("/", 1)[0] == "coding" else "normal"
 
 
 def _effective_config(cfg: AgentConfig, *, mode: str) -> AgentConfig:

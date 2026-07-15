@@ -16,6 +16,7 @@ import { Folder, GitBranch } from 'lucide-react'
 
 import { getCodingWorkspaceStatus } from '@/api/client'
 import { queryKeys } from '@/queries'
+import { workspaceLabel } from '@/utils/workspace'
 
 interface Props {
   workspace: string
@@ -31,7 +32,7 @@ export function WorkspaceInfoCard({ workspace }: Props) {
     staleTime: 30_000,
   })
 
-  const name = data?.name ?? workspace.split('/').filter(Boolean).pop() ?? workspace
+  const name = data?.name ?? workspaceLabel(workspace)
   const dirty = data?.dirty
   const dirtyTotal = dirty ? dirty.staged + dirty.unstaged + dirty.untracked : 0
 

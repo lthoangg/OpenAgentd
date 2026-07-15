@@ -17,6 +17,7 @@
 import type { ReactNode } from 'react'
 import type { ToolDisplay } from './types'
 import { parsePatchText } from './diffUtils'
+import { pathBasename } from '@/utils/workspace'
 import { summarizeText, parsePartialJSON } from './displayText'
 
 /**
@@ -423,7 +424,7 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
   // ── write: file name in header, content as args ───────────────────
   if (name === 'write') {
     const path = str(parsed, 'path')
-    const fileName = path ? path.split('/').pop() ?? path : null
+    const fileName = path ? pathBasename(path) : null
     const content = str(parsed, 'content')
     return {
       header: fileName ? <Arg>{fileName}</Arg> : 'file',
@@ -435,7 +436,7 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
   // ── read: file name in header, custom result renderer shows content ──
   if (name === 'read') {
     const path = str(parsed, 'path')
-    const fileName = path ? path.split('/').pop() ?? path : null
+    const fileName = path ? pathBasename(path) : null
     return {
       header: fileName ? <Arg>{fileName}</Arg> : 'file',
       headerTitle: fileName ? fileName : 'file',
@@ -458,7 +459,7 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
   // ── edit: file name in header, args as-is ─────────────────────────
   if (name === 'edit') {
     const path = str(parsed, 'path')
-    const fileName = path ? path.split('/').pop() ?? path : null
+    const fileName = path ? pathBasename(path) : null
     return {
       header: fileName ? <Arg>{fileName}</Arg> : 'file',
       headerTitle: fileName ? fileName : 'file',
@@ -469,7 +470,7 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
   // ── rm: file name in header, hide args ────────────────────────────
   if (name === 'rm') {
     const path = str(parsed, 'path')
-    const fileName = path ? path.split('/').pop() ?? path : null
+    const fileName = path ? pathBasename(path) : null
     return {
       header: fileName ? <Arg>{fileName}</Arg> : 'file',
       headerTitle: fileName ? fileName : 'file',

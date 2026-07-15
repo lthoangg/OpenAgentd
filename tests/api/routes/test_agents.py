@@ -16,9 +16,13 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
-from app.api.routes.agents import router as agents_router
+from app.api.routes.agents import _mode_for_agent_path, router as agents_router
 from app.api.routes.skills import router as skills_router
 from app.services import team_manager
+
+
+def test_mode_for_agent_path_accepts_windows_separators():
+    assert _mode_for_agent_path(r"coding\coder") == "coding"
 
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────

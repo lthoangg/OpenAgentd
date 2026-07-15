@@ -1,3 +1,4 @@
+import { pathBasename } from '@/utils/workspace'
 import { splitFrontmatter, type AgentFrontmatter } from '../frontmatter'
 
 export const NORMAL_BUILT_IN_MEMBERS = new Set(['executor', 'explorer'])
@@ -10,8 +11,10 @@ export function isBuiltInProfile(
 ): boolean {
   if (!name || !role) return false
   const path = agentPath ?? name
-  const isCoding = path.startsWith('coding/')
-  const basename = path.split('/').pop() ?? name
+  const normalized = path.replaceAll('\\', '/')
+  const parts = normalized.split('/').filter(Boolean)
+  const isCoding = parts.at(-2) === 'coding'
+  const basename = pathBasename(path).replace(/\.md$/i, '')
   if (role === 'lead') return basename === 'openagentd'
   if (role !== 'member') return false
   return isCoding

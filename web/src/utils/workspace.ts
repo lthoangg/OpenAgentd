@@ -3,10 +3,14 @@ export function normalizeWorkspaceInput(value: string): string | null {
   return trimmed.length > 0 ? trimmed : null
 }
 
+export function pathBasename(path: string): string {
+  const trimmed = path.replace(/[\\/]+$/, '')
+  if (!trimmed) return path
+  return trimmed.split(/[\\/]/).pop() || path
+}
+
 export function workspaceLabel(workspace: string): string {
-  const trimmed = workspace.replace(/[\\/]+$/, '')
-  if (!trimmed) return workspace
-  return trimmed.split(/[\\/]/).pop() || workspace
+  return pathBasename(workspace)
 }
 
 const CODING_WORKSPACES_KEY = 'oa-coding-workspaces'

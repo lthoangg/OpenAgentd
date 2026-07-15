@@ -164,7 +164,7 @@ def list_agents() -> list[str]:
     return sorted(
         name
         for p in root.rglob("*.md")
-        if (name := str(p.relative_to(root).with_suffix(""))) != "coding/executor"
+        if (name := p.relative_to(root).with_suffix("").as_posix()) != "coding/executor"
     )
 
 

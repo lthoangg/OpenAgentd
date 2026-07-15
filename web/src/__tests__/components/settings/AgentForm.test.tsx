@@ -326,6 +326,17 @@ model: openai:gpt-5.4
     expect(screen.getByText(/Built-in tools are always included/i)).toBeTruthy()
   })
 
+  it('recognizes coding built-in members with Windows path separators', () => {
+    renderForm(`---
+name: coder
+role: member
+model: openai:gpt-5.4
+---
+`, String.raw`C:\Users\dev\.config\openagentd\agents\coding\coder.md`)
+
+    expect(screen.getByText('Built-in OpenAgentd profile')).toBeTruthy()
+  })
+
   it('renders the existing mcp selection as a chip', () => {
     renderForm()
     const trigger = comboboxIn('MCP servers')

@@ -168,6 +168,37 @@ async def test_delete_session_removes_descendants_messages_and_runtime_state(
     assert all(not any(root.iterdir()) for root in roots.values())
 
 
+@pytest.mark.asyncio
+async def test_delete_session_finds_all_descendants_with_one_recursive_query(
+    session, monkeypatch
+):
+    lead = await create_chat_session(session)
+    child = await create_chat_session(session, parent_session_id=lead.id)
+    await create_chat_session(session, parent_session_id=child.id)
+    await session.commit()
+
+    from app.core import db as core_db
+
+    statements = []
+    original_exec = core_db.AsyncSession.exec
+
+    async def recording_exec(self, statement, *args, **kwargs):
+        rendered = str(statement)
+        if "parent_session_id" in rendered:
+            statements.append(rendered)
+        return await original_exec(self, statement, *args, **kwargs)
+
+    monkeypatch.setattr(core_db.AsyncSession, "exec", recording_exec)
+    monkeypatch.setattr("app.services.team_manager.evict_session_teams", AsyncMock())
+    monkeypatch.setattr("app.services.memory_stream_store.clear", AsyncMock())
+    monkeypatch.setattr("app.services.snapshot_service.remove", AsyncMock())
+
+    assert await delete_session(session, lead.id) is True
+
+    assert len(statements) == 1
+    assert "WITH RECURSIVE" in statements[0]
+
+
 # ── Summarisation: save_message flags ────────────────────────────────────────
 
 
@@ -668,6 +699,53 @@ async def test_undo_and_redo_skip_team_messages(session):
     assert first_redo.target and first_redo.target.id == second_user.id
     assert second_redo.applied is True
     assert second_redo.target is None
+
+
+@pytest.mark.asyncio
+async def test_undo_filters_non_targets_in_sql(session):
+    """Undo should not materialize excluded rows while finding its target."""
+    chat_session = await create_chat_session(session)
+    target = await save_message(
+        session, chat_session.id, HumanMessage(content="undo target")
+    )
+    for i in range(150):
+        await save_message(
+            session,
+            chat_session.id,
+            HumanMessage(content=f"excluded-{i}"),
+            exclude_from_context=True,
+        )
+    await session.commit()
+
+    fetched_message_rows = 0
+    original_exec = session.exec
+
+    async def counting_exec(stmt, *args, **kwargs):
+        nonlocal fetched_message_rows
+        result = await original_exec(stmt, *args, **kwargs)
+        rows = result.all()
+        fetched_message_rows += sum(
+            1 for row in rows if isinstance(row, SessionMessage)
+        )
+
+        class _Result:
+            def all(self):
+                return rows
+
+            def first(self):
+                return rows[0] if rows else None
+
+        return _Result()
+
+    session.exec = counting_exec
+    try:
+        shift = await undo_session_messages(session, chat_session.id)
+    finally:
+        session.exec = original_exec
+
+    assert shift.target is not None
+    assert shift.target.id == target.id
+    assert fetched_message_rows == 1
 
 
 async def test_cleanup_reverted_tail_preserves_queued_messages(session):
@@ -1941,6 +2019,55 @@ async def test_get_team_history_pages_past_hidden_messages(session):
     assert older is not None
     assert [message.content for message in older.lead_messages] == ["visible-0"]
     assert older.has_more is False
+
+
+@pytest.mark.asyncio
+async def test_get_team_history_filters_hidden_lead_rows_in_sql(session):
+    """Hidden lead rows must not force additional history-page scans."""
+    from app.services.chat_service import _HISTORY_PAGE_SIZE, get_team_history
+
+    lead = await create_chat_session(session, title="lead")
+    for i in range(_HISTORY_PAGE_SIZE + 1):
+        await save_message(session, lead.id, HumanMessage(content=f"visible-{i}"))
+    for i in range(_HISTORY_PAGE_SIZE * 2):
+        await save_message(
+            session,
+            lead.id,
+            HumanMessage(content=f"hidden-{i}"),
+            extra={"hidden_from_user": True},
+        )
+    await session.commit()
+
+    fetched_message_rows = 0
+    original_exec = session.exec
+
+    async def counting_exec(stmt, *args, **kwargs):
+        nonlocal fetched_message_rows
+        result = await original_exec(stmt, *args, **kwargs)
+        rows = result.all()
+        fetched_message_rows += sum(
+            1 for row in rows if isinstance(row, SessionMessage)
+        )
+
+        class _Result:
+            def all(self):
+                return rows
+
+            def first(self):
+                return rows[0] if rows else None
+
+        return _Result()
+
+    session.exec = counting_exec
+    try:
+        data = await get_team_history(session, lead.id)
+    finally:
+        session.exec = original_exec
+
+    assert data is not None
+    assert len(data.lead_messages) == _HISTORY_PAGE_SIZE
+    assert data.has_more is True
+    assert fetched_message_rows == _HISTORY_PAGE_SIZE + 1
 
 
 @pytest.mark.asyncio

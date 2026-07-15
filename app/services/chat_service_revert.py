@@ -193,12 +193,21 @@ async def undo_session_messages(db: AsyncSession, session_id: UUID) -> BoundaryS
         return BoundaryShift(applied=False)
     boundary = await revert_boundary(db, session_id)
     from_agent = col(SessionMessage.extra)["from_agent"].as_string()
+    hidden_from_user = col(SessionMessage.extra)["hidden_from_user"].as_boolean()
     stmt = (
         select(SessionMessage)
         .where(col(SessionMessage.session_id) == session_id)
         .where(col(SessionMessage.role) == "user")
         .where(or_(from_agent.is_(None), from_agent == "user"))
+        .where(or_(hidden_from_user.is_(None), hidden_from_user.is_(False)))
+        .where(
+            or_(
+                col(SessionMessage.is_summary),
+                ~col(SessionMessage.exclude_from_context),
+            )
+        )
         .order_by(col(SessionMessage.created_at).desc())
+        .limit(1)
     )
     if boundary is not None:
         stmt = stmt.where(col(SessionMessage.created_at) < boundary.created_at)

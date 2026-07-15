@@ -520,30 +520,29 @@ async def delete_session(db: AsyncSession, session_id: UUID) -> bool:
     from sqlmodel import delete
     from app.services import memory_stream_store, snapshot_service, team_manager
 
-    descendants: set[UUID] = {session_id}
     async with db.begin():
-        frontier = {session_id}
-        while frontier:
-            children = set(
-                (
-                    await db.exec(
-                        select(ChatSession.id).where(
-                            col(ChatSession.parent_session_id).in_(frontier)
-                        )
-                    )
-                ).all()
-            )
-            frontier = children - descendants
-            descendants.update(frontier)
-
         session = await db.get(ChatSession, session_id)
         if not session:
             return False
+        descendants_cte = (
+            select(ChatSession.id)
+            .where(ChatSession.id == session_id)
+            .cte("descendants", recursive=True)
+        )
+        descendants_cte = descendants_cte.union(
+            select(ChatSession.id).join(
+                descendants_cte,
+                col(ChatSession.parent_session_id) == descendants_cte.c.id,
+            )
+        )
+        descendants = set((await db.exec(select(descendants_cte.c.id))).all())
         managed_workspace_ids = {
             str(row.id)
             for row in (
                 await db.exec(
-                    select(ChatSession).where(col(ChatSession.id).in_(descendants))
+                    select(ChatSession.id, ChatSession.workspace).where(
+                        col(ChatSession.id).in_(descendants)
+                    )
                 )
             ).all()
             if row.workspace is None
@@ -729,10 +728,12 @@ async def get_team_history(
     raw_lead: list[SessionMessage] = []
     scan_before = before
     scan_before_id: UUID | None = None
+    hidden_from_user = col(SessionMessage.extra)["hidden_from_user"].as_boolean()
     while len(raw_lead) <= _HISTORY_PAGE_SIZE:
         stmt = (
             select(SessionMessage)
             .where(col(SessionMessage.session_id) == lead_session_id)
+            .where(sa.or_(hidden_from_user.is_(None), hidden_from_user.is_(False)))
             .order_by(
                 col(SessionMessage.created_at).desc(),
                 col(SessionMessage.id).desc(),

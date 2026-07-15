@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 15 providers. Your keys.
 
-**Latest release:** v1.109.0 · July 15, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.109.0)
+**Latest release:** v1.110.0 · July 15, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.110.0)
 
 ---
 
@@ -473,7 +473,7 @@ agnostic by design.
 | ZAI / GLM | `zai:glm-5-turbo` | `ZAI_API_KEY` |
 | xAI Grok | `xai:grok-4.20` | `XAI_API_KEY` |
 | DeepSeek | `deepseek:deepseek-v4-flash` | `DEEPSEEK_API_KEY` |
-| AWS Bedrock | `bedrock:anthropic.claude-sonnet-4-6` | Bedrock Mantle bearer token (`AWS_BEARER_TOKEN_BEDROCK`) or AWS profile/default credential chain `[v1.109.0]` |
+| AWS Bedrock | `bedrock:anthropic.claude-sonnet-4-6` | Bedrock Mantle bearer token (`AWS_BEARER_TOKEN_BEDROCK`) or AWS profile/default credential chain `[v1.110.0]` |
 | NVIDIA NIM | `nvidia:stepfun-ai/step-3.5-flash` | `NVIDIA_API_KEY` |
 | GitHub Copilot (OAuth) | `copilot:gpt-4.1` | `openagentd auth copilot` |
 | OpenAI Codex (OAuth) | `codex:gpt-5.5` | `openagentd auth codex` |
@@ -489,7 +489,7 @@ agnostic by design.
 - **Chat-completions-only compatible routing** `[v1.44.3]` — OpenAI-compatible
   providers that do not expose OpenAI's Responses API stay on `/v1/chat/completions`
   even when session or agent thinking settings are enabled.
-- **AWS Bedrock Mantle-only routing** `[v1.109.0]` — Bedrock models use Mantle's
+- **AWS Bedrock Mantle-only routing** `[v1.110.0]` — Bedrock models use Mantle's
   Anthropic- or OpenAI-compatible route metadata and bearer-token auth; native
   Converse and the access-key/secret-key Settings path were removed. This is an
   explicit user-approved hard conversion, so it does not follow the normal

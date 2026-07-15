@@ -513,6 +513,22 @@ pub fn reveal_backend_log(app: &AppHandle) {
     });
 }
 
+/// Load the saved access key for an external backend without exposing it in
+/// the tray's state or logs. A credential-store failure leaves the request
+/// unauthenticated; the backend response remains the source of truth.
+fn external_usage_access_key(
+    base_url: &str,
+    load: impl FnOnce(String) -> std::result::Result<Option<String>, String>,
+) -> Option<String> {
+    match load(base_url.to_string()) {
+        Ok(key) => key,
+        Err(_) => {
+            log::debug!("usage_summary_access_key_unavailable");
+            None
+        }
+    }
+}
+
 /// Resolve the ``(base_url, bearer_token)`` pair the tray should use to
 /// reach the OpenAgentd backend right now: the main window's external
 /// server if one is configured, otherwise the bundled sidecar (with its
@@ -527,7 +543,8 @@ async fn resolve_backend_endpoint(app: &AppHandle) -> Option<(String, Option<Str
         .get(crate::window::MAIN_WINDOW)
         .cloned()
     {
-        return Some((base, None));
+        let access_key = external_usage_access_key(&base, crate::commands::secure_get_access_key);
+        return Some((base, access_key));
     }
     let base = state.backend_base_url.lock().await.clone()?;
     let token = state.desktop_token.lock().await.clone();
@@ -767,5 +784,20 @@ pub async fn run_usage_poll_loop(app: AppHandle) {
             USAGE_POLL_MAX_BACKOFF,
         );
         tokio::time::sleep(delay).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::external_usage_access_key;
+
+    #[test]
+    fn external_usage_access_key_loads_the_key_for_the_current_backend() {
+        let key = external_usage_access_key("https://agents.example.com", |origin| {
+            assert_eq!(origin, "https://agents.example.com");
+            Ok(Some("access-key".to_string()))
+        });
+
+        assert_eq!(key.as_deref(), Some("access-key"));
     }
 }

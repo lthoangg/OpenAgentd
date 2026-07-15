@@ -719,6 +719,9 @@ Desktop is primary. CLI / server is the developer path.
   bundled Python sidecar, WebView2 shell, Job Object process cleanup, native
   PowerShell/cmd shell execution, and signed in-app updates. Interactive PTY
   terminal tabs remain unavailable pending a ConPTY backend.
+- **Windows one-command install** `[v1.107.0]` — the `install.ps1` PowerShell
+  installer resolves the latest GitHub release, downloads its x64 MSI, rejects
+  a non-MSI download before elevation, and invokes Windows Installer.
 - **Signed update manifests** `[v1.2.2+]` — minisign-signed `latest.json` at the
   rolling `latest-desktop` release; verified before install.
 - **In-app updater** `[v1.22.0]` — see [§1](#1-the-desktop-cockpit).

@@ -41,10 +41,16 @@ The versioned [feature catalogue](documents/docs/features.md) is the canonical r
 Install the current desktop release:
 
 ```bash
+# macOS / Linux
 curl -fsSL https://raw.githubusercontent.com/lthoangg/openagentd/main/install.sh | sh
 ```
 
-Open **OpenAgentd** from your applications folder. The desktop app runs its bundled backend automatically; add a provider in Settings and start a conversation.
+```powershell
+# Windows PowerShell
+irm https://raw.githubusercontent.com/lthoangg/openagentd/main/install.ps1 | iex
+```
+
+Open **OpenAgentd** from your applications folder or Start menu. The desktop app runs its bundled backend automatically; add a provider in Settings and start a conversation.
 
 Release artifacts are available for macOS, Windows, and Linux on the [latest release page](https://github.com/lthoangg/openagentd/releases/latest). Unsigned desktop builds may require an explicit operating-system confirmation before first launch.
 

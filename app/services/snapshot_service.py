@@ -389,24 +389,26 @@ async def restore(
 
 def _delete_extras(workspace: Path, extras: set[str]) -> None:
     """Unlink files in ``extras`` and drop any now-empty directories."""
+    workspace_root = workspace.resolve()
+    parent_dirs: set[Path] = set()
     for rel in extras:
-        target = workspace / rel
+        relative_path = Path(rel)
+        if relative_path.is_absolute() or ".." in relative_path.parts:
+            continue
+        target = workspace_root / relative_path
+        if not target.parent.resolve().is_relative_to(workspace_root):
+            continue
         try:
             target.unlink()
         except OSError as exc:
             logger.debug("snapshot_extra_unlink_failed path={} error={}", target, exc)
-    if not extras:
-        return
-    for dirpath, _, _ in sorted(
-        ((Path(dp), dn, fn) for dp, dn, fn in os.walk(workspace, topdown=False)),
-        key=lambda item: len(item[0].parts),
-        reverse=True,
-    ):
-        if dirpath == workspace:
-            continue
+        parent = target.parent
+        while parent != workspace_root:
+            parent_dirs.add(parent)
+            parent = parent.parent
+    for dirpath in sorted(parent_dirs, key=lambda path: len(path.parts), reverse=True):
         try:
-            if not any(dirpath.iterdir()):
-                dirpath.rmdir()
+            dirpath.rmdir()
         except OSError:
             continue
 

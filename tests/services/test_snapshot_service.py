@@ -33,6 +33,49 @@ def workspace(tmp_path: Path) -> Path:
     return ws
 
 
+def test_delete_extras_prunes_only_deleted_file_ancestors_and_contains_paths(
+    workspace: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Restore cleanup must not scan the workspace or follow escaped paths."""
+    deleted = workspace / "nested" / "child" / "gone.txt"
+    deleted.parent.mkdir(parents=True)
+    deleted.write_text("gone")
+    retained = workspace / "unrelated" / "keep.txt"
+    retained.parent.mkdir()
+    retained.write_text("keep")
+    outside = tmp_path / "outside.txt"
+    outside.write_text("protected")
+
+    def unexpected_walk(*args, **kwargs):
+        raise AssertionError("cleanup must only visit deleted-file ancestors")
+
+    monkeypatch.setattr(snapshot_service.os, "walk", unexpected_walk)
+
+    snapshot_service._delete_extras(
+        workspace, {"nested/child/gone.txt", "../outside.txt"}
+    )
+
+    assert not deleted.exists()
+    assert not (workspace / "nested").exists()
+    assert retained.read_text() == "keep"
+    assert outside.read_text() == "protected"
+
+
+def test_delete_extras_unlinks_workspace_symlink_without_touching_target(
+    workspace: Path, tmp_path: Path
+) -> None:
+    outside = tmp_path / "outside.txt"
+    outside.write_text("protected")
+    link = workspace / "external-link"
+    link.symlink_to(outside)
+
+    snapshot_service._delete_extras(workspace, {"external-link"})
+
+    assert not link.exists()
+    assert not link.is_symlink()
+    assert outside.read_text() == "protected"
+
+
 @pytest.mark.asyncio
 async def test_track_returns_tree_hash(state_dir: Path, workspace: Path) -> None:
     (workspace / "a.txt").write_text("hello")

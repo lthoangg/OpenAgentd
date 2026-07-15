@@ -10,7 +10,13 @@ import { createPortal } from 'react-dom'
 import { useEffect, useRef, useState } from 'react'
 
 import { cn } from '@/lib/utils'
-import { formatUsd } from '@/utils/telemetryFormat'
+
+const tokenMeterUsdFmt = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  minimumFractionDigits: 4,
+  maximumFractionDigits: 4,
+})
 
 export const DEFAULT_SUMMARY_TRIGGER_TOKENS = 250_000
 
@@ -202,7 +208,7 @@ export function TokenMeter({
           <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">output</span><span>{output.toLocaleString()}</span></div>
           <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">cache</span><span>{cached.toLocaleString()}</span></div>
           {sessionCostUsd !== undefined && sessionCostUsd > 0 && (
-            <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">cost</span><span>{formatUsd(sessionCostUsd)}</span></div>
+            <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">cost</span><span>{tokenMeterUsdFmt.format(sessionCostUsd)}</span></div>
           )}
         </div>,
         document.body,

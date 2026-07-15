@@ -3,7 +3,6 @@ from uuid import UUID, uuid7
 
 import sqlalchemy as sa
 from sqlalchemy import Column, DateTime, ForeignKey, JSON
-import sqlalchemy.dialects.postgresql as pg
 from sqlalchemy.types import TypeDecorator
 from sqlmodel import Field, SQLModel
 
@@ -120,10 +119,7 @@ class ChatSession(SQLModel, table=True):
     thinking_level: str | None = Field(default=None, max_length=50)
     revert: dict | None = Field(
         default=None,
-        sa_column=Column(
-            JSON().with_variant(pg.JSONB(), "postgresql"),
-            nullable=True,
-        ),
+        sa_column=Column(JSON(), nullable=True),
     )
     created_at: datetime = Field(
         default_factory=_utcnow,
@@ -207,12 +203,9 @@ class SessionMessage(SQLModel, table=True):
     name: str | None = Field(default=None, max_length=100)
 
     # Flexible extra data (usage stats, etc.)
-    # JSONB on Postgres, JSON on SQLite
     extra: dict | None = Field(
         default=None,
-        sa_column=Column(
-            JSON().with_variant(pg.JSONB(), "postgresql"),
-        ),
+        sa_column=Column(JSON()),
     )
 
     # Summarization support

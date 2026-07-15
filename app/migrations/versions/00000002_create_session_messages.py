@@ -5,7 +5,7 @@ Revises: 00000001
 Create Date: 2026-04-27
 
 Domain: SessionMessage.  Captures the table in its final shape with
-``extra`` as a JSON/JSONB blob and ``exclude_from_context`` (formerly
+``extra`` as a JSON blob and ``exclude_from_context`` (formerly
 ``is_hidden``) for summarized turns.  Composite indexes cover the hot
 read paths used by ``get_messages`` and ``get_messages_for_llm``.
 """
@@ -14,7 +14,6 @@ from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects import postgresql
 
 from app.models.chat import TZDateTime
 
@@ -37,13 +36,7 @@ def upgrade() -> None:
         sa.Column("tool_calls", sa.JSON(), nullable=True),
         sa.Column("tool_call_id", sa.String(length=100), nullable=True),
         sa.Column("name", sa.String(length=100), nullable=True),
-        sa.Column(
-            "extra",
-            sa.JSON().with_variant(
-                postgresql.JSONB(astext_type=sa.Text()), "postgresql"
-            ),
-            nullable=True,
-        ),
+        sa.Column("extra", sa.JSON(), nullable=True),
         sa.Column(
             "is_summary",
             sa.Boolean(),

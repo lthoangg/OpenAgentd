@@ -210,11 +210,13 @@ class Settings(BaseSettings):
         data = Path(self.OPENAGENTD_DATA_DIR)
         config = Path(self.OPENAGENTD_CONFIG_DIR)
 
-        # DATABASE_URL: default to SQLite inside DATA_DIR if not explicitly set
+        # DATABASE_URL: default to SQLite inside DATA_DIR if not explicitly set.
         if not self.DATABASE_URL.get_secret_value():
             self.DATABASE_URL = SecretStr(
                 f"sqlite+aiosqlite:///{data / 'openagentd.db'}"
             )
+        if not self.DATABASE_URL.get_secret_value().startswith("sqlite+aiosqlite://"):
+            raise ValueError("DATABASE_URL must use sqlite+aiosqlite://.")
 
         # Agents directory — defaults to ``{CONFIG_DIR}/agents``.
         if not self.AGENTS_DIR:

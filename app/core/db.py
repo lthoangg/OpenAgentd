@@ -16,32 +16,20 @@ if TYPE_CHECKING:
     from alembic.config import Config
 
 _db_url = settings.DATABASE_URL.get_secret_value()
-_is_sqlite = "sqlite" in _db_url
-# Resolved on-disk DB path for SQLite, or "" otherwise. Used by
-# ``run_migrations`` to take a sibling file lock so concurrent processes
-# don't race on ``CREATE TABLE alembic_version``.
-_db_path: str = ""
+# ``sqlite+aiosqlite:///<abs-path>`` → strip the scheme. The path is used by
+# ``run_migrations`` to take a sibling file lock so concurrent processes do
+# not race on ``CREATE TABLE alembic_version``.
+_db_path = _db_url.split("///", 1)[-1]
 
-# SQLite cannot create the parent directory itself — without this, a
-# fresh ``uv tool install`` install fails on first start with
-# ``sqlite3.OperationalError: unable to open database file`` because
-# ``~/.local/share/openagentd/`` doesn't exist yet. ``mkdir`` is cheap
-# and idempotent; safer to do it unconditionally for SQLite URLs.
-if _is_sqlite:
-    # ``sqlite+aiosqlite:///<abs-path>`` → strip the scheme.
-    _db_path = _db_url.split("///", 1)[-1]
-    if _db_path and _db_path != ":memory:":
-        Path(_db_path).expanduser().parent.mkdir(parents=True, exist_ok=True)
+# SQLite cannot create the parent directory itself — without this, a fresh
+# install fails on first start with ``sqlite3.OperationalError: unable to open
+# database file``. Keep in-memory SQLite unchanged.
+if _db_path and _db_path != ":memory:":
+    Path(_db_path).expanduser().parent.mkdir(parents=True, exist_ok=True)
 
-_pool_kwargs: dict = (
-    # Me SQLite with WAL: concurrent reads are safe; writes serialise at the DB level.
-    # pool_size covers single-agent sessions; max_overflow handles burst from team members
-    # (each member acquires a connection at startup + during turns).
-    {"pool_size": 5, "max_overflow": 10}
-    if _is_sqlite
-    # Me size pool for concurrent async requests on Postgres/MySQL; defaults too small (5+10)
-    else {"pool_size": 20, "max_overflow": 10}
-)
+# WAL permits concurrent reads while SQLite serialises writes. This pool covers
+# ordinary sessions and bursty member activity.
+_pool_kwargs = {"pool_size": 5, "max_overflow": 10}
 
 engine = create_async_engine(
     _db_url,
@@ -51,16 +39,15 @@ engine = create_async_engine(
     **_pool_kwargs,
 )
 
-# Me enable WAL mode for SQLite — 5-10x write throughput, concurrent reads during writes
-if _is_sqlite:
 
-    @event.listens_for(engine.sync_engine, "connect")
-    def _set_sqlite_pragmas(dbapi_conn, connection_record):
-        cursor = dbapi_conn.cursor()
-        cursor.execute("PRAGMA journal_mode=WAL")
-        cursor.execute("PRAGMA synchronous=NORMAL")
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.close()
+# Enable WAL mode — concurrent reads continue while writes are in progress.
+@event.listens_for(engine.sync_engine, "connect")
+def _set_sqlite_pragmas(dbapi_conn, connection_record):
+    cursor = dbapi_conn.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA synchronous=NORMAL")
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.close()
 
 
 async_session_factory = async_sessionmaker(
@@ -99,8 +86,7 @@ def run_migrations() -> None:
     a daemon wrapper and the actual uvicorn worker) can race on
     ``CREATE TABLE alembic_version`` and one ends up logging a noisy
     ``OperationalError: table … already exists`` even though both end up
-    in the correct state. Postgres/MySQL serialise DDL themselves, so we
-    skip the lock there.
+    in the correct state.
     """
     from alembic.config import Config
 
@@ -119,7 +105,7 @@ def run_migrations() -> None:
     # regardless of what alembic.ini has hardcoded.
     cfg.set_main_option("sqlalchemy.url", settings.DATABASE_URL.get_secret_value())
 
-    if _is_sqlite and _db_path and _db_path != ":memory:":
+    if _db_path and _db_path != ":memory:":
         with _sqlite_migration_lock(Path(_db_path).expanduser()):
             _run_alembic_upgrade(cfg)
     else:

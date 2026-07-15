@@ -140,7 +140,7 @@ class InMemoryCheckpointer(Checkpointer):
         )
 
 
-# ── SQLite / Postgres (production) ────────────────────────────────────────────
+# ── SQLite (production) ───────────────────────────────────────────────────────
 
 
 class SQLiteCheckpointer(Checkpointer):

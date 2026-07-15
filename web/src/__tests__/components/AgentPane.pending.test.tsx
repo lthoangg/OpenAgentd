@@ -213,6 +213,31 @@ describe("AgentPane — pending dots indicator", () => {
     expect(dots.length).toBe(3)
   })
 
+  // Regression: a whitespace-only thinking/text chunk (e.g. a provider's
+  // blank reasoning-section separator, or the very first delta before real
+  // content arrives) renders no visible output, but previously still
+  // flipped `currentBlocks.every(b => b.type === 'user')` to false and hid
+  // the dots — leaving a blank pane with neither dots nor content.
+  it("shows bounce dots when the only non-user block is a whitespace-only thinking chunk", () => {
+    const stream = makeStream({
+      status: "working",
+      currentBlocks: [makeUserBlock("u1", "Hi"), makeThinkingBlock("t1", "\n\n")],
+    })
+    const { container } = renderPanel(stream)
+    const dots = container.querySelectorAll(".animate-bounce")
+    expect(dots.length).toBe(3)
+  })
+
+  it("shows bounce dots when the only non-user block is a whitespace-only text chunk", () => {
+    const stream = makeStream({
+      status: "working",
+      currentBlocks: [makeUserBlock("u1", "Hi"), makeTextBlock("b1", "   ")],
+    })
+    const { container } = renderPanel(stream)
+    const dots = container.querySelectorAll(".animate-bounce")
+    expect(dots.length).toBe(3)
+  })
+
   it("does not show bounce dots when status=working with only finalized blocks and no currentBlocks", () => {
     // Regression: `[].every()` returns true, so the working branch of the
     // dots condition must require a non-empty currentBlocks list. Without

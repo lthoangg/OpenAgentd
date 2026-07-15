@@ -319,4 +319,29 @@ describe("AgentView — bounce dots indicator", () => {
     })
     expect(container.querySelectorAll(".animate-bounce").length).toBe(0)
   })
+
+  // Regression: a provider (e.g. OpenAI /responses reasoning-part boundary,
+  // or the very first reasoning delta) can emit a whitespace-only chunk
+  // before any real content exists. `appendThinking` still creates a
+  // `thinking` block from it, which flips `currentBlocks.every(b => b.type
+  // === 'user')` to false — hiding the dots — even though `Thinking`
+  // renders no visible sections for blank content. The user is left
+  // staring at a blank chat area with no dots and no content.
+  it("still shows dots when the only non-user block is a whitespace-only thinking chunk", () => {
+    const { container } = renderStream({
+      blocks: [],
+      currentBlocks: [makeUserBlock("u1", "Hi"), makeThinkingBlock("t1", "\n\n")],
+      isWorking: true,
+    })
+    expect(container.querySelectorAll(".animate-bounce").length).toBe(3)
+  })
+
+  it("still shows dots when the only non-user block is a whitespace-only text chunk", () => {
+    const { container } = renderStream({
+      blocks: [],
+      currentBlocks: [makeUserBlock("u1", "Hi"), makeTextBlock("b1", "   ")],
+      isWorking: true,
+    })
+    expect(container.querySelectorAll(".animate-bounce").length).toBe(3)
+  })
 })

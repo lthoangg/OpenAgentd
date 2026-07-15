@@ -52,6 +52,16 @@ function isDirectUserBlock(block: ContentBlock): boolean {
   return block.type === 'user' && !block.extra?.from_agent
 }
 
+/** True for a `thinking`/`text` block that has streamed in only whitespace
+ *  so far (e.g. a provider's blank reasoning-section separator, or the
+ *  very first chunk before real content arrives). Such a block renders no
+ *  visible output, so it must not count as "content has started" when
+ *  deciding whether to keep showing the pending dots — otherwise the user
+ *  is left staring at a blank chat area with no dots and no content. */
+function isBlankContentBlock(block: ContentBlock): boolean {
+  return (block.type === 'thinking' || block.type === 'text') && block.content.trim().length === 0
+}
+
 function shortModelName(modelId: string | null | undefined): string | null {
   if (!modelId) return null
   return modelId.split(':').at(-1)?.split('/').at(-1) || modelId
@@ -589,7 +599,7 @@ export function AgentPane({
           {(isPending ||
             (isWorking && (
               (isContinuing && stream.currentBlocks.length === 0) ||
-              (stream.currentBlocks.length > 0 && stream.currentBlocks.every((b) => b.type === 'user'))
+              (stream.currentBlocks.length > 0 && stream.currentBlocks.every((b) => b.type === 'user' || isBlankContentBlock(b)))
             ))) && (
             <div className="flex items-center gap-1.5 px-3 pt-3" role="status" aria-label={`${name} is preparing a response`}>
               <span aria-hidden="true" className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '0ms' }} />

@@ -1,13 +1,13 @@
-"""Test AWS Bedrock provider directly — streaming, chat, and tools.
+"""Test AWS Bedrock Mantle provider directly — streaming, chat, and tools.
 
-Auth: profile (AWS_BEDROCK_PROFILE from .env or --profile) or default boto3 chain.
-Region: AWS_BEDROCK_REGION from .env or --region, falls back to us-east-1.
+Auth: AWS_BEARER_TOKEN_BEDROCK, profile (AWS_BEDROCK_PROFILE/--profile), or
+the default botocore chain. Region falls back to us-east-1.
 
 Usage:
   uv run python -m manual.try_providers.try_bedrock
   uv run python -m manual.try_providers.try_bedrock --profile fyc
-  uv run python -m manual.try_providers.try_bedrock --model global.anthropic.claude-opus-4-7
-  uv run python -m manual.try_providers.try_bedrock --model amazon.nova-pro-v1:0
+  uv run python -m manual.try_providers.try_bedrock --model xai.grok-4.3
+  uv run python -m manual.try_providers.try_bedrock --model openai.gpt-oss-20b
   uv run python -m manual.try_providers.try_bedrock --tools
   uv run python -m manual.try_providers.try_bedrock --real-tools
   uv run python -m manual.try_providers.try_bedrock --list-models
@@ -41,8 +41,8 @@ async def main():
     p = argparse.ArgumentParser(description="Test AWS Bedrock provider")
     p.add_argument(
         "--model",
-        default="global.anthropic.claude-sonnet-4-6",
-        help="Bedrock model ID (default: global.anthropic.claude-sonnet-4-6)",
+        default="xai.grok-4.3",
+        help="Bedrock Mantle model ID (default: xai.grok-4.3)",
     )
     p.add_argument(
         "--profile",
@@ -88,6 +88,7 @@ async def main():
         model=args.model,
         profile_name=profile,
         region_name=region,
+        bearer_token=settings.AWS_BEARER_TOKEN_BEDROCK,
     )
 
     prompt = SIMPLE_PROMPT if args.simple else REASONING_PROMPT

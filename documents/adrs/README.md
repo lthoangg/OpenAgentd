@@ -11,3 +11,4 @@ supersedes rather than rewrites an earlier record.
 | [0003](0003-codex-reasoning-encrypted-content-replay.md) | Replay OpenAI reasoning items via `encrypted_content` for Codex | Accepted | 2026-07-12 |
 | [0004](0004-managed-lsp-toolchain.md) | Manage language-server toolchains on demand | Accepted | 2026-07-14 |
 | [0005](0005-cache-backed-model-registry.md) | Use a cache-backed Models.dev registry | Accepted | 2026-07-15 |
+| [0006](0006-bedrock-mantle-only-routing.md) | Route AWS Bedrock exclusively through Mantle | Accepted | 2026-07-15 |

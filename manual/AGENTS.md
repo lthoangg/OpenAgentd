@@ -144,6 +144,7 @@ Hit LLM provider APIs directly — **no server required**, uses API keys from `.
 | `try_googlegenai` | Gemini |
 | `try_vertexai` | Vertex AI |
 | `try_bedrock` | AWS Bedrock; auth via `AWS_BEDROCK_PROFILE`/`--profile`, region `AWS_BEDROCK_REGION`/`--region` |
+| `try_bedrock_mantle` | Bedrock Mantle `/v1` or `/openai/v1`: Chat, Responses, and models; set `AWS_BEARER_TOKEN_BEDROCK` directly or mint from `AWS_BEDROCK_PROFILE`/`--profile` |
 | `try_zai` | ZAI |
 | `try_deepseek` | DeepSeek (`DEEPSEEK_API_KEY`) |
 | `try_ollama` | Local daemon; cloud via `-cloud` model suffix after `ollama signin` |

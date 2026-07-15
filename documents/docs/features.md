@@ -54,7 +54,7 @@ and Linux that hosts the same FastAPI sidecar + React UI you would otherwise
 run from the terminal. Deeper docs: [`desktop.md`](./desktop.md),
 [`web/chrome.md`](./web/chrome.md).
 
-- **Native desktop app for macOS, Windows, Linux** `[since v1.0; Windows restored v1.105.0]` — Tauri 2 shell,
+- **Native desktop app for macOS, Windows, Linux** `[since v1.0; Windows restored v1.106.0]` — Tauri 2 shell,
   bundled Python sidecar, embedded Web UI, one process, no terminal required.
 - **Explicit backend connection state** `[v1.68.0, v1.99.8]` — desktop connection options
   are limited to the builtin sidecar and saved servers; no-backend dev windows
@@ -252,7 +252,7 @@ run from the terminal. Deeper docs: [`desktop.md`](./desktop.md),
   window drag region; macOS gets the proper traffic-light overlay.
 - **Restored desktop window size** `[v1.52.0]` — desktop windows reopen at the
   last normal size saved on quit, while minimized/maximized dimensions are ignored.
-- **Remote-backend mobile shell** `[v1.34.0, v1.105.0]` — Tauri mobile app scaffold embeds
+- **Remote-backend mobile shell** `[v1.34.0, v1.106.0]` — Tauri mobile app scaffold embeds
   the shared Web UI and connects to saved remote API servers. Foreground resume
   now reconciles missed history and replaces potentially frozen chat streams;
   remembered-server launches prefetch and reuse native credentials. See [`mobile.md`](./mobile.md).
@@ -737,7 +737,7 @@ Desktop is primary. CLI / server is the developer path. Deeper doc:
   `install.sh` (ad-hoc signs locally).
 - **Linux desktop** `[since v1.0]` — AppImage (`chmod +x`) or `.deb` for
   Debian/Ubuntu.
-- **Windows desktop** `[v1.105.0]` — native x64 `.msi` installer with the
+- **Windows desktop** `[v1.106.0]` — native x64 `.msi` installer with the
   bundled Python sidecar, WebView2 shell, Job Object process cleanup, native
   PowerShell/cmd shell execution, and signed in-app updates. Interactive PTY
   terminal tabs remain unavailable pending a ConPTY backend. See

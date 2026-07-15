@@ -51,6 +51,7 @@ def test_default_manifest_urls_point_at_shared_release_tag(tmp_path, monkeypatch
 
 def test_manifest_includes_windows_nsis_updater(tmp_path, monkeypatch):
     module = _load_manifest_module()
+    monkeypatch.delenv("GITHUB_REPOSITORY", raising=False)
     artefact_dir = tmp_path / "artefacts"
     artefact_dir.mkdir()
     installer = artefact_dir / "OpenAgentd_1.2.0_x64-setup.exe"
@@ -87,6 +88,7 @@ def test_manifest_includes_windows_nsis_updater(tmp_path, monkeypatch):
 
 def test_manifest_includes_windows_msi_updater(tmp_path, monkeypatch):
     module = _load_manifest_module()
+    monkeypatch.delenv("GITHUB_REPOSITORY", raising=False)
     artefact_dir = tmp_path / "artefacts"
     artefact_dir.mkdir()
     installer = artefact_dir / "OpenAgentd_1.2.0_x64_en-US.msi"

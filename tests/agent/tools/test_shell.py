@@ -68,6 +68,8 @@ def sandbox_workspace(tmp_path):
 @pytest.fixture(autouse=True)
 def fast_shell(monkeypatch):
     """Use bare /bin/sh in shell tests unless a test exercises detection."""
+    if sys.platform == "win32":
+        return
     monkeypatch.setattr(
         "app.agent.tools.builtin.shell_runtime._CACHED_SHELL", "/bin/sh"
     )

@@ -22,7 +22,7 @@ For the channels we **do** ship today, see [`documents/docs/install.md`](../docs
 
 ### Windows desktop (`.msi`)
 
-**Status:** Restored in v1.105.0 with a native x64 release leg, bundled
+**Status:** Restored in v1.106.0 with a native x64 release leg, bundled
 Python sidecar smoke test, Windows Rust CI, MSI updater manifest entry, Job
 Object cleanup, and PowerShell/cmd shell selection. The remaining distribution
 gap is an Authenticode certificate; unsigned builds can trigger SmartScreen.

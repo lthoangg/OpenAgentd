@@ -14,7 +14,6 @@ from __future__ import annotations
 import base64
 
 from app.agent.providers.anthropic.anthropic import _split_messages
-from app.agent.providers.bedrock.bedrock import _messages_to_bedrock
 from app.agent.providers.deepseek.deepseek import _DeepSeekCompletionsHandler
 from app.agent.providers.googlegenai.googlegenai import GoogleGenAIProvider
 from app.agent.providers.openai.completions import CompletionsHandler
@@ -134,41 +133,6 @@ def test_deepseek_human_message_parts_text_and_image() -> None:
     assert converted.content[0]["type"] == "text"
     assert converted.content[1]["type"] == "image_url"
     assert converted.content[1]["image_url"]["url"].startswith("data:image/png;base64,")
-
-
-def test_bedrock_human_message_parts_text_and_image() -> None:
-    msg = HumanMessage(
-        parts=[
-            TextBlock(text="describe it"),
-            ImageDataBlock(data=_img_b64(), media_type="image/png"),
-        ]
-    )
-
-    _, converted = _messages_to_bedrock([msg])
-
-    assert converted[0]["role"] == "user"
-    assert converted[0]["content"][0] == {"text": "describe it"}
-    assert converted[0]["content"][1]["image"]["format"] == "png"
-
-
-def test_bedrock_tool_message_parts_text_and_image() -> None:
-    msg = ToolMessage(
-        tool_call_id="tool-1",
-        name="read",
-        content="[Image: ./uploads/example.png]",
-        parts=[
-            TextBlock(text="[Image: ./uploads/example.png]"),
-            ImageDataBlock(data=_img_b64(), media_type="image/png"),
-        ],
-    )
-
-    _, converted = _messages_to_bedrock([msg])
-
-    assert converted[0]["role"] == "user"
-    result = converted[0]["content"][0]["toolResult"]
-    assert result["toolUseId"] == "tool-1"
-    assert result["content"][0] == {"text": "[Image: ./uploads/example.png]"}
-    assert result["content"][1]["image"]["format"] == "png"
 
 
 def test_googlegenai_human_message_parts_text_and_image() -> None:

@@ -343,8 +343,13 @@ def _uses_beta_messages_api(_model: str, kwargs: dict[str, Any]) -> bool:
     return bool(explicit)
 
 
+def _anthropic_model_name(model: str) -> str:
+    """Normalize direct and Bedrock Mantle Anthropic model IDs."""
+    return model.lower().removeprefix("anthropic.")
+
+
 def _uses_adaptive_thinking(model: str) -> bool:
-    return model.lower().startswith(
+    return _anthropic_model_name(model).startswith(
         (
             "claude-opus-4-6",
             "claude-opus-4-7",
@@ -363,8 +368,9 @@ def _apply_thinking(
     level = str(kwargs.pop("thinking_level", "") or "").lower()
     if not level:
         return False
+    normalized_model = _anthropic_model_name(model)
     if level in {"none", "off"}:
-        if model.lower().startswith("claude-sonnet-5"):
+        if normalized_model.startswith("claude-sonnet-5"):
             payload["thinking"] = {"type": "disabled"}
         return False
     if _uses_adaptive_thinking(model):
@@ -377,7 +383,7 @@ def _apply_thinking(
         "budget_tokens": _thinking_budget(level, max_tokens),
         "display": "summarized",
     }
-    if model.lower().startswith("claude-opus-4-5"):
+    if normalized_model.startswith("claude-opus-4-5"):
         payload["output_config"] = {"effort": level}
     return True
 

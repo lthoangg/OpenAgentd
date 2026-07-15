@@ -4,6 +4,7 @@ import os
 from collections.abc import Mapping
 
 import httpx
+from botocore.credentials import CredentialProvider, Credentials
 from loguru import logger
 
 from app.agent.providers.catalog import ProviderEntry
@@ -30,6 +31,14 @@ _NON_AGENT_MODEL_MARKERS = (
     "sora",
     "veo",
 )
+
+
+class _ProfileCredentialsProvider(CredentialProvider):
+    def __init__(self, credentials: Credentials | None) -> None:
+        self._credentials = credentials
+
+    def load(self) -> Credentials | None:
+        return self._credentials
 
 
 def _secret_value(value: object) -> str:
@@ -191,65 +200,41 @@ async def _codex_models() -> list[str]:
     )
 
 
+def _bedrock_bearer_token(overrides: Mapping[str, str] | None, region: str) -> str:
+    bearer_token = _resolve(overrides, "AWS_BEARER_TOKEN_BEDROCK")
+    if bearer_token:
+        return bearer_token
+
+    from aws_bedrock_token_generator import provide_token
+
+    profile = _resolve(overrides, "AWS_BEDROCK_PROFILE")
+    if not profile:
+        return provide_token(region=region)
+
+    from botocore.session import Session
+
+    credentials = Session(profile=profile).get_credentials()
+
+    return provide_token(
+        region=region,
+        aws_credentials_provider=_ProfileCredentialsProvider(credentials),
+    )
+
+
 async def _bedrock_models(overrides: Mapping[str, str] | None = None) -> list[str]:
-    import boto3
+    from app.agent.providers.bedrock.bedrock import resolve_bedrock_region
 
-    region = (
+    region = resolve_bedrock_region(
         _resolve(overrides, "AWS_BEDROCK_REGION")
-        or settings.AWS_BEDROCK_REGION
-        or os.getenv("AWS_BEDROCK_REGION")
         or os.getenv("AWS_DEFAULT_REGION")
-        or "us-east-1"
+        or None
     )
-    kwargs: dict[str, str] = {"region_name": region}
-    profile = (
-        overrides["AWS_BEDROCK_PROFILE"]
-        if overrides and "AWS_BEDROCK_PROFILE" in overrides
-        else settings.AWS_BEDROCK_PROFILE or os.getenv("AWS_BEDROCK_PROFILE")
+    bearer_token = _bedrock_bearer_token(overrides, region)
+    return await _openai_compatible_models(
+        provider_id="bedrock",
+        base_url=f"https://bedrock-mantle.{region}.api.aws/v1",
+        api_key=bearer_token,
     )
-    access_key = _resolve(overrides, "AWS_ACCESS_KEY_ID")
-    secret_key = _resolve(overrides, "AWS_SECRET_ACCESS_KEY")
-    if profile:
-        session = boto3.Session(profile_name=profile)
-        client = session.client("bedrock", **kwargs)
-    elif access_key and secret_key:
-        session = boto3.Session(
-            aws_access_key_id=access_key,
-            aws_secret_access_key=secret_key,
-        )
-        client = session.client("bedrock", **kwargs)
-    else:
-        client = boto3.client("bedrock", **kwargs)
-    model_ids: set[str] = set()
-
-    response = client.list_foundation_models(byOutputModality="TEXT")
-    summaries = response.get("modelSummaries", [])
-    model_ids.update(
-        str(item["modelId"])
-        for item in summaries
-        if isinstance(item, dict) and isinstance(item.get("modelId"), str)
-    )
-
-    for profile_type in ("SYSTEM_DEFINED", "APPLICATION"):
-        next_token: str | None = None
-        while True:
-            params = {"typeEquals": profile_type, "maxResults": 1000}
-            if next_token:
-                params["nextToken"] = next_token
-            profiles_response = client.list_inference_profiles(**params)
-            profile_summaries = profiles_response.get("inferenceProfileSummaries", [])
-            model_ids.update(
-                str(item["inferenceProfileId"])
-                for item in profile_summaries
-                if isinstance(item, dict)
-                and isinstance(item.get("inferenceProfileId"), str)
-                and item.get("status") in (None, "ACTIVE")
-            )
-            next_token = profiles_response.get("nextToken")
-            if not isinstance(next_token, str) or not next_token:
-                break
-
-    return sorted(model_ids)
 
 
 async def discover_provider_models(

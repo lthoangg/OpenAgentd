@@ -1,72 +1,71 @@
 from __future__ import annotations
 
-import sys
-from types import SimpleNamespace
-
 import pytest
+import respx
+from httpx import Response
 
 from app.agent.providers.model_discovery import _bedrock_models, _copilot_models
 
 
-class _BedrockClient:
-    def list_foundation_models(self, **kwargs):
-        assert kwargs == {"byOutputModality": "TEXT"}
-        return {
-            "modelSummaries": [
-                {"modelId": "anthropic.claude-sonnet-4-6"},
-                {"modelId": "amazon.nova-pro-v1:0"},
-            ]
-        }
-
-    def list_inference_profiles(self, **kwargs):
-        assert kwargs["typeEquals"] in {"SYSTEM_DEFINED", "APPLICATION"}
-        assert kwargs["maxResults"] == 1000
-        if kwargs["typeEquals"] == "SYSTEM_DEFINED":
-            return {
-                "inferenceProfileSummaries": [
-                    {
-                        "inferenceProfileId": "global.anthropic.claude-sonnet-4-6",
-                        "status": "ACTIVE",
-                    }
+@respx.mock
+async def test_bedrock_models_use_mantle_with_a_direct_bearer_token() -> None:
+    route = respx.get("https://bedrock-mantle.us-east-1.api.aws/v1/models").mock(
+        return_value=Response(
+            200,
+            json={
+                "data": [
+                    {"id": "anthropic.claude-sonnet-4-6"},
+                    {"id": "openai.gpt-oss-20b"},
                 ]
-            }
-        return {
-            "inferenceProfileSummaries": [
-                {
-                    "inferenceProfileId": "my-serverless-profile",
-                    "type": "APPLICATION",
-                    "status": "ACTIVE",
-                },
-                {
-                    "inferenceProfileId": "inactive-profile",
-                    "type": "APPLICATION",
-                    "status": "DELETING",
-                },
-            ]
-        }
-
-
-@pytest.mark.asyncio
-async def test_bedrock_models_include_foundation_and_inference_profiles(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    client = _BedrockClient()
-    monkeypatch.setitem(
-        sys.modules,
-        "boto3",
-        SimpleNamespace(client=lambda *args, **kwargs: client),
+            },
+        )
     )
 
     models = await _bedrock_models(
-        {"AWS_BEDROCK_REGION": "us-east-1", "AWS_BEDROCK_PROFILE": ""}
+        {
+            "AWS_BEDROCK_REGION": "us-east-1",
+            "AWS_BEARER_TOKEN_BEDROCK": "bedrock-api-key-test",
+        }
     )
 
-    assert models == [
-        "amazon.nova-pro-v1:0",
-        "anthropic.claude-sonnet-4-6",
-        "global.anthropic.claude-sonnet-4-6",
-        "my-serverless-profile",
-    ]
+    assert models == ["anthropic.claude-sonnet-4-6", "openai.gpt-oss-20b"]
+    assert route.calls[0].request.headers["Authorization"] == (
+        "Bearer bedrock-api-key-test"
+    )
+
+
+@respx.mock
+async def test_bedrock_models_generate_a_mantle_bearer_token_from_profile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    credentials = object()
+
+    class _Session:
+        def __init__(self, *, profile: str) -> None:
+            assert profile == "production"
+
+        def get_credentials(self) -> object:
+            return credentials
+
+    def _provide_token(*, region: str, aws_credentials_provider: object) -> str:
+        assert region == "eu-west-1"
+        assert aws_credentials_provider.load() is credentials
+        return "generated-bedrock-token"
+
+    monkeypatch.setattr("botocore.session.Session", _Session)
+    monkeypatch.setattr("aws_bedrock_token_generator.provide_token", _provide_token)
+    route = respx.get("https://bedrock-mantle.eu-west-1.api.aws/v1/models").mock(
+        return_value=Response(200, json={"data": [{"id": "openai.gpt-oss-20b"}]})
+    )
+
+    models = await _bedrock_models(
+        {"AWS_BEDROCK_REGION": "eu-west-1", "AWS_BEDROCK_PROFILE": "production"}
+    )
+
+    assert models == ["openai.gpt-oss-20b"]
+    assert route.calls[0].request.headers["Authorization"] == (
+        "Bearer generated-bedrock-token"
+    )
 
 
 @pytest.mark.asyncio

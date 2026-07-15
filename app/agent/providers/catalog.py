@@ -189,15 +189,14 @@ _CATALOG: list[ProviderEntry] = [
     {
         "id": "bedrock",
         "label": "AWS Bedrock",
-        "description": "AWS Bedrock using an AWS profile or access keys. Region defaults to us-east-1.",
+        "description": "AWS Bedrock Mantle using a bearer token or AWS profile. Region defaults to us-east-1.",
         "kind": "cloud_creds",
         "env_var": "",
         "models_dev_provider_id": "amazon-bedrock",
         "env_vars": [
             "AWS_BEDROCK_REGION",
             "AWS_BEDROCK_PROFILE",
-            "AWS_ACCESS_KEY_ID",
-            "AWS_SECRET_ACCESS_KEY",
+            "AWS_BEARER_TOKEN_BEDROCK",
         ],
         "credentials": [
             {
@@ -215,15 +214,8 @@ _CATALOG: list[ProviderEntry] = [
                 "placeholder": "default",
             },
             {
-                "name": "AWS_ACCESS_KEY_ID",
-                "label": "AWS Access Key ID",
-                "secret": False,
-                "required": False,
-                "placeholder": "AKIA...",
-            },
-            {
-                "name": "AWS_SECRET_ACCESS_KEY",
-                "label": "AWS Secret Access Key",
+                "name": "AWS_BEARER_TOKEN_BEDROCK",
+                "label": "Bedrock API Key",
                 "secret": True,
                 "required": False,
                 "placeholder": "••••••••",

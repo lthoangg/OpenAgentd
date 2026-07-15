@@ -49,17 +49,16 @@ def provider_is_configured(entry: "ProviderEntry") -> bool:
         return bool(token_file and token_file.is_file())
     if kind == "cloud_creds":
         if entry["id"] == "bedrock":
+            # Do not probe the default botocore chain here: static settings
+            # checks must not trigger instance/container metadata requests.
             store = ProviderCredentialStore(entry["id"])
-            profile = os.environ.get("AWS_BEDROCK_PROFILE") or store.get(
-                "AWS_BEDROCK_PROFILE"
+            return bool(
+                os.environ.get("AWS_BEARER_TOKEN_BEDROCK")
+                or store.get("AWS_BEARER_TOKEN_BEDROCK")
+                or os.environ.get("AWS_BEDROCK_PROFILE")
+                or store.get("AWS_BEDROCK_PROFILE")
+                or os.environ.get("AWS_PROFILE")
             )
-            access_key = os.environ.get("AWS_ACCESS_KEY_ID") or store.get(
-                "AWS_ACCESS_KEY_ID"
-            )
-            secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY") or store.get(
-                "AWS_SECRET_ACCESS_KEY"
-            )
-            return bool(profile or (access_key and secret_key))
         # Vertex AI: need project + location *and* gcloud ADC. We can't
         # check gcloud from here without shelling out, so the UI's
         # "Test connection" button is the source of truth.

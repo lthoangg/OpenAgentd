@@ -49,8 +49,7 @@ _SECRET_VAR_PATTERN = re.compile(
         | [A-Z0-9_]*_TOKEN
         | [A-Z0-9_]*_PASSWORD
         | ACCESS_KEY
-        | AWS_ACCESS_KEY_ID
-        | AWS_SECRET_ACCESS_KEY
+        | AWS_BEARER_TOKEN_BEDROCK
     )=(.+)$
     """,
     re.VERBOSE,

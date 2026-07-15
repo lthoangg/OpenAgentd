@@ -78,14 +78,14 @@ class Settings(BaseSettings):
     DEEPSEEK_API_KEY: SecretStr | None = None
     NINJA_API_KEY: SecretStr | None = None
 
-    # AWS Bedrock — region and optional named profile.
+    # AWS Bedrock Mantle — direct bearer token or optional named profile.
     # AWS_BEDROCK_REGION: override the region for Bedrock API calls.
     #   Falls back to AWS_DEFAULT_REGION env var, then "us-east-1".
     # AWS_BEDROCK_PROFILE: named profile from ~/.aws/credentials.
-    #   None (default) uses the standard boto3 credential chain
-    #   (env vars AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY, instance profile, etc.).
+    #   None (default) uses the standard botocore credential chain.
     AWS_BEDROCK_REGION: str | None = None
     AWS_BEDROCK_PROFILE: str | None = None
+    AWS_BEARER_TOKEN_BEDROCK: SecretStr | None = None
 
     # 9Router (https://github.com/decolua/9router) — local proxy that exposes
     # an OpenAI-compatible /v1/chat/completions endpoint. Generate the API key

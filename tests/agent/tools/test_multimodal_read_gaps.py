@@ -220,7 +220,7 @@ class TestHandleDocumentOversizedPdf:
         # Too large — no image fallback
         assert len(result.parts) == 1
         assert isinstance(result.parts[0], TextBlock)
-        assert "Unable to extract text" in result.parts[0].text
+        assert "exceeds the" in result.parts[0].text
 
     def test_pdf_at_size_limit_allows_fallback(self, tmp_path):
         """When PDF is at or below 10MB, the raw-bytes fallback fires."""

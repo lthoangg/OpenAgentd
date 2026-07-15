@@ -11,6 +11,7 @@ Tests the new multimodal read feature:
 from __future__ import annotations
 
 import base64
+import io
 from pathlib import Path
 from unittest.mock import patch
 
@@ -25,7 +26,9 @@ from app.agent.schemas.chat import (
     ToolResult,
 )
 from app.agent.tools.builtin.filesystem import read_file
+from app.agent.tools.builtin.filesystem import read as read_module
 from app.agent.tools.builtin.filesystem.handlers import (
+    _MAX_IMAGE_BYTES,
     classify_file,
     handle_document,
     handle_image,
@@ -158,6 +161,14 @@ class TestHandleImage:
         result = handle_image(img, Path("ok.png"))
         assert len(result.parts) == 2
 
+    def test_oversized_image_is_rejected_before_reading(self, tmp_path):
+        img = tmp_path / "big.png"
+        img.write_bytes(b"\x00" * (_MAX_IMAGE_BYTES + 1))
+
+        with patch.object(Path, "read_bytes", side_effect=AssertionError("read")):
+            with pytest.raises(ValueError, match="exceeds the"):
+                handle_image(img, Path("big.png"))
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # handle_document() tests
@@ -222,6 +233,24 @@ class TestHandleDocument:
         # Too large for image fallback — falls through to text error
         assert len(result.parts) == 1
 
+    def test_oversized_document_is_rejected_before_reading_or_conversion(
+        self, tmp_path
+    ):
+        pdf = tmp_path / "big.pdf"
+        pdf.write_bytes(b"\x00" * (_MAX_IMAGE_BYTES + 1))
+
+        with (
+            patch.object(Path, "read_bytes", side_effect=AssertionError("read")),
+            patch(
+                "app.agent.tools.builtin.filesystem.handlers._convert_with_markitdown"
+            ) as convert,
+        ):
+            result = handle_document(pdf, Path("big.pdf"))
+
+        assert len(result.parts) == 1
+        assert "exceeds the" in result.parts[0].text
+        convert.assert_not_called()
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # read_file integration — vision model
@@ -239,6 +268,29 @@ class TestReadFileVision:
         )
         assert isinstance(result, str)
         assert result == "hello world"
+
+    @pytest.mark.asyncio
+    async def test_text_read_requests_at_most_cap_plus_one_bytes(self, workspace):
+        path = workspace / "large.txt"
+        path.write_bytes(b"x" * (read_module._MAX_READ_BYTES + 2))
+        contents = path.read_bytes()
+        read_sizes: list[int] = []
+
+        class TrackingReader(io.BytesIO):
+            def read(self, size=-1):
+                read_sizes.append(size)
+                return super().read(size)
+
+        def open_tracking(path_arg, *args, **kwargs):
+            return TrackingReader(contents)
+
+        with patch.object(Path, "open", autospec=True, side_effect=open_tracking):
+            result = await read_file.arun(
+                _injected={"_state": _make_state(vision=True)}, path="large.txt"
+            )
+
+        assert isinstance(result, str)
+        assert read_sizes == [read_module._MAX_READ_BYTES + 1]
 
     @pytest.mark.asyncio
     async def test_image_returns_tool_result(self, workspace):

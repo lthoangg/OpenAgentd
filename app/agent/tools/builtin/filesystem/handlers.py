@@ -91,12 +91,13 @@ def handle_image(resolved: Path, rel: Path | str) -> ToolResult:
     Raises:
         ValueError: If the file exceeds the image size limit.
     """
-    raw = resolved.read_bytes()
-    if len(raw) > _MAX_IMAGE_BYTES:
+    size = resolved.stat().st_size
+    if size > _MAX_IMAGE_BYTES:
         raise ValueError(
-            f"Image '{rel}' is {len(raw) // 1024} KB — "
+            f"Image '{rel}' is {size // 1024} KB — "
             f"exceeds the {_MAX_IMAGE_BYTES // 1024} KB limit for vision input."
         )
+    raw = resolved.read_bytes()
 
     ext = resolved.suffix.lower()
     media_type = mimetypes.guess_type(str(resolved))[0] or _IMAGE_MIME_FALLBACK.get(
@@ -123,9 +124,22 @@ def handle_document(resolved: Path, rel: Path | str) -> ToolResult:
         resolved: Absolute resolved path to the file.
         rel: Display-relative path (string or Path) used only in labels.
     """
-    raw = resolved.read_bytes()
     ext = resolved.suffix.lower()
     media_type = mimetypes.guess_type(str(resolved))[0] or "application/octet-stream"
+    size = resolved.stat().st_size
+    if size > _MAX_IMAGE_BYTES:
+        return ToolResult(
+            parts=[
+                TextBlock(
+                    text=(
+                        f"[Document: {rel}] ({media_type}, {size:,} bytes)\n"
+                        f"File exceeds the {_MAX_IMAGE_BYTES // 1024} KB limit for processing."
+                    )
+                )
+            ],
+        )
+
+    raw = resolved.read_bytes()
 
     converted = _convert_with_markitdown(raw, media_type, resolved.name)
 
@@ -136,7 +150,7 @@ def handle_document(resolved: Path, rel: Path | str) -> ToolResult:
 
     # Conversion failed — for PDFs, send raw bytes as a fallback so
     # vision-capable models can still parse the document.
-    if ext == ".pdf" and len(raw) <= _MAX_IMAGE_BYTES:
+    if ext == ".pdf":
         logger.info(
             "document_markitdown_failed_pdf_fallback path={} size={}", rel, len(raw)
         )

@@ -99,7 +99,8 @@ async def _read_file(
         return handle_document(resolved, rel)
 
     # ── Text files → existing behaviour ───────────────────────────────────
-    raw = resolved.read_bytes()
+    with resolved.open("rb") as file:
+        raw = file.read(_MAX_READ_BYTES + 1)
     truncated = len(raw) > _MAX_READ_BYTES
     if truncated:
         logger.warning("file_read_truncated path={} size={}", resolved, len(raw))

@@ -93,3 +93,17 @@ def test_normalise_posix_layout_still_preserves_bin_directory(tmp_path):
 
     assert normalised == target / "bin" / "python3.14"
     assert normalised.is_file()
+
+
+def test_python_home_matches_windows_flat_runtime_layout(tmp_path):
+    module = _load_module()
+    python_bin = tmp_path / "bundle" / "python" / "python.exe"
+
+    assert module._python_home_for(python_bin) == python_bin.parent
+
+
+def test_python_home_matches_posix_bin_runtime_layout(tmp_path):
+    module = _load_module()
+    python_bin = tmp_path / "bundle" / "python" / "bin" / "python3.14"
+
+    assert module._python_home_for(python_bin) == python_bin.parent.parent

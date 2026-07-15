@@ -135,7 +135,11 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
   }
 
   async function connectBundled() {
-    await runConnectionSwitch(() => switchToBundledAppBackend())
+    const currentBaseUrl = normalizeServerBaseUrl(status?.base_url || apiBaseUrl().replace(/\/api$/, ''))
+    const next = await runConnectionSwitch(() => switchToBundledAppBackend())
+    if (next?.base_url && normalizeServerBaseUrl(next.base_url) !== currentBaseUrl) {
+      window.location.reload()
+    }
   }
 
   async function stopBundled() {
@@ -177,7 +181,7 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
     }
   }
 
-  async function runConnectionSwitch(action: () => Promise<void>) {
+  async function runConnectionSwitch(action: () => Promise<void>): Promise<AppBackendStatus | null> {
     setPending(true)
     setError(null)
     try {
@@ -188,8 +192,10 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
       }
       await refreshBackendQueries()
       setStatus(next)
+      return next
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
+      return null
     } finally {
       setPending(false)
     }

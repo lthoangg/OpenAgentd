@@ -190,6 +190,7 @@ describe('AppBackendDialog', () => {
       })
     })
     await waitFor(() => expect(window.__OAD_API_BASE_URL__).toBe('http://127.0.0.1:49545'))
+    expect(reloadMock).toHaveBeenCalledTimes(1)
   })
 
   it('lets users recover from an unreachable external backend by choosing builtin when the sidecar is stopped', async () => {
@@ -213,6 +214,7 @@ describe('AppBackendDialog', () => {
       })
     })
     await waitFor(() => expect(window.__OAD_API_BASE_URL__).toBe('http://127.0.0.1:49545'))
+    expect(reloadMock).toHaveBeenCalledTimes(1)
   })
 
   it('requires a successful test before saving and connecting a server', async () => {

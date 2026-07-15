@@ -48,7 +48,13 @@ describe("appendCurrentTurns", () => {
 
     const result = appendCurrentTurns(finalized, 2, [user("u2"), text("live")])
 
-    expect(result).toMatchObject([
+    expect(
+      result.map((item) =>
+        item.kind === "user"
+          ? { kind: item.kind, index: item.index }
+          : { kind: item.kind, startIndex: item.startIndex },
+      ),
+    ).toEqual([
       { kind: "user", index: 0 },
       { kind: "assistant", startIndex: 1 },
       { kind: "user", index: 2 },

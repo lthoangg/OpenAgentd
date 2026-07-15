@@ -132,8 +132,7 @@ mock.module('framer-motion', () => ({
     aside: ({ children, animate, initial, exit, transition, ...props }: React.ComponentProps<'aside'> & { animate?: unknown; initial?: unknown; exit?: unknown; transition?: unknown }) => {
       void initial
       void exit
-      void transition
-      return <aside data-animate={JSON.stringify(animate)} {...props}>{children}</aside>
+      return <aside data-animate={JSON.stringify(animate)} data-transition={JSON.stringify(transition)} {...props}>{children}</aside>
     },
     div: ({ children, initial, animate, exit, transition, ...props }: React.ComponentProps<'div'> & { initial?: unknown; animate?: unknown; exit?: unknown; transition?: unknown }) => {
       void initial
@@ -776,6 +775,13 @@ describe('CodingSidebar workspace trust flow', () => {
     })
     expect(screen.getByText('Trust this workspace?')).toBeTruthy()
     expect(screen.getByText('/repo/project')).toBeTruthy()
+  })
+
+  it('snaps desktop collapse width to avoid repeatedly reflowing the coding panel', async () => {
+    const view = await renderCodingSidebarWithProps({ desktopCollapsed: true })
+    const sidebar = view.container.querySelector('aside')
+
+    expect(JSON.parse(sidebar?.getAttribute('data-transition') ?? '{}')).toMatchObject({ duration: 0.01 })
   })
 
   it('keeps the mobile drawer visible after a desktop-collapsed coding sidebar crosses the breakpoint', async () => {

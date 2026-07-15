@@ -777,11 +777,11 @@ describe('CodingSidebar workspace trust flow', () => {
     expect(screen.getByText('/repo/project')).toBeTruthy()
   })
 
-  it('snaps desktop collapse width to avoid repeatedly reflowing the coding panel', async () => {
+  it('animates desktop collapse width', async () => {
     const view = await renderCodingSidebarWithProps({ desktopCollapsed: true })
     const sidebar = view.container.querySelector('aside')
 
-    expect(JSON.parse(sidebar?.getAttribute('data-transition') ?? '{}')).toMatchObject({ duration: 0.01 })
+    expect(JSON.parse(sidebar?.getAttribute('data-transition') ?? '{}')).toMatchObject({ duration: 0.22 })
   })
 
   it('keeps the mobile drawer visible after a desktop-collapsed coding sidebar crosses the breakpoint', async () => {

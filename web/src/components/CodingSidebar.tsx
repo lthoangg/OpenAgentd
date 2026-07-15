@@ -605,10 +605,7 @@ export function CodingSidebar({
       transition={
         mobileDragOffset !== null
           ? { duration: 0 }
-          // Desktop width animation repeatedly resizes the chat panel (and
-          // its ResizeObservers) for the full transition. Snap that layout
-          // change; only the overlay drawer animates.
-          : { duration: !isMobile || resizable.isResizing || prefersReducedMotion ? 0.01 : 0.22, ease: [0.4, 0, 0.2, 1] }
+          : { duration: resizable.isResizing || prefersReducedMotion ? 0.01 : 0.22, ease: [0.4, 0, 0.2, 1] }
       }
       className={
         isMobile

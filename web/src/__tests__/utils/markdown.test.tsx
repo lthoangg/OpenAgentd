@@ -1,4 +1,4 @@
-import { describe, it, expect } from "bun:test";
+import { describe, it, expect, spyOn } from "bun:test";
 import { render, screen } from "@testing-library/react";
 import { fixNestedFences, extractText, MarkdownBlock } from "@/utils/markdown";
 
@@ -12,6 +12,18 @@ describe("fixNestedFences", () => {
   it("passes plain text through unchanged", () => {
     const input = "Hello, world!\nThis is plain text.\nNo fences here.";
     expect(fixNestedFences(input)).toBe(input);
+  });
+
+  it("does not split streaming prose that contains no fenced code", () => {
+    const split = spyOn(String.prototype, "split");
+    try {
+      expect(fixNestedFences("A long streamed markdown response without code fences.")).toBe(
+        "A long streamed markdown response without code fences.",
+      );
+      expect(split).not.toHaveBeenCalled();
+    } finally {
+      split.mockRestore();
+    }
   });
 
   it("passes empty string through unchanged", () => {

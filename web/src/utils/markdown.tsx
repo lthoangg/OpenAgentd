@@ -34,6 +34,10 @@ import { isVideoSrc } from '@/utils/workspace'
  */
 // eslint-disable-next-line react-refresh/only-export-components
 export function fixNestedFences(content: string): string {
+  // Most streamed prose has no fenced code. Avoid allocating and walking a
+  // line array on every display update when nested-fence repair cannot apply.
+  if (!content.includes('```')) return content
+
   const lines = content.split('\n')
   const result: string[] = []
   let i = 0

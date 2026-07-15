@@ -337,6 +337,53 @@ describe("appendToolOutput", () => {
     expect(outputLines[1]).toBe("line 100");
     expect(outputLines[40]).toBe("line 139");
   });
+
+  it("does not truncate when exactly at the 40-line boundary", () => {
+    const blocks: ContentBlock[] = [
+      { id: "t1", type: "tool", content: "", toolName: "shell", toolDone: false, toolCallId: "tc1", toolOutput: "" },
+    ];
+    // 40 lines (39 newlines) — must NOT trigger truncation (lines.length > 40 is false).
+    const lines = Array.from({ length: 40 }, (_, i) => `line ${i}`).join("\n");
+    const result = appendToolOutput(blocks, "shell", "tc1", lines);
+    expect(result[0].toolOutput).toBe(lines);
+    expect(result[0].toolOutput).not.toContain("truncated");
+  });
+
+  it("truncates at exactly 41 lines (one over the boundary)", () => {
+    const blocks: ContentBlock[] = [
+      { id: "t1", type: "tool", content: "", toolName: "shell", toolDone: false, toolCallId: "tc1", toolOutput: "" },
+    ];
+    const lines = Array.from({ length: 41 }, (_, i) => `line ${i}`).join("\n");
+    const result = appendToolOutput(blocks, "shell", "tc1", lines);
+    const output = result[0].toolOutput || "";
+    expect(output).toContain("... [truncated live output] ...");
+    const outputLines = output.split("\n");
+    expect(outputLines.length).toBe(41); // header + 40 retained lines
+    expect(outputLines[1]).toBe("line 1");
+    expect(outputLines[40]).toBe("line 40");
+  });
+
+  it("handles output with no newlines at all", () => {
+    const blocks: ContentBlock[] = [
+      { id: "t1", type: "tool", content: "", toolName: "shell", toolDone: false, toolCallId: "tc1", toolOutput: "" },
+    ];
+    const result = appendToolOutput(blocks, "shell", "tc1", "single line, no newline");
+    expect(result[0].toolOutput).toBe("single line, no newline");
+  });
+
+  it("truncates by byte length even when line count is under the limit", () => {
+    const blocks: ContentBlock[] = [
+      { id: "t1", type: "tool", content: "", toolName: "shell", toolDone: false, toolCallId: "tc1", toolOutput: "" },
+    ];
+    // A single line far exceeding 24,000 chars — line-count check doesn't
+    // fire (only 1 line), but the byte-length truncation must still apply.
+    const longLine = "x".repeat(30_000);
+    const result = appendToolOutput(blocks, "shell", "tc1", longLine);
+    const output = result[0].toolOutput || "";
+    expect(output).toContain("... [truncated live output] ...");
+    expect(output.length).toBeLessThan(30_000);
+    expect(output.endsWith("x")).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------

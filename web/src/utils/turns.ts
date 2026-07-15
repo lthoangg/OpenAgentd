@@ -47,3 +47,34 @@ export function partitionTurns(blocks: ContentBlock[]): TurnItem[] {
   }
   return items
 }
+
+/**
+ * Add a live suffix to already-partitioned, finalized history. Streaming
+ * replaces `currentBlocks` on every delta, so re-partitioning the combined
+ * array would otherwise walk the entire session for each token.
+ */
+export function appendCurrentTurns(
+  finalizedTurns: TurnItem[],
+  finalizedBlockCount: number,
+  currentBlocks: ContentBlock[],
+): TurnItem[] {
+  if (currentBlocks.length === 0) return finalizedTurns
+
+  const currentTurns = partitionTurns(currentBlocks).map((item) => (
+    item.kind === 'user'
+      ? { ...item, index: item.index + finalizedBlockCount }
+      : { ...item, startIndex: item.startIndex + finalizedBlockCount }
+  ))
+  const lastFinalized = finalizedTurns[finalizedTurns.length - 1]
+  const firstCurrent = currentTurns[0]
+
+  if (lastFinalized?.kind === 'assistant' && firstCurrent?.kind === 'assistant') {
+    return [
+      ...finalizedTurns.slice(0, -1),
+      { ...lastFinalized, blocks: [...lastFinalized.blocks, ...firstCurrent.blocks] },
+      ...currentTurns.slice(1),
+    ]
+  }
+
+  return [...finalizedTurns, ...currentTurns]
+}

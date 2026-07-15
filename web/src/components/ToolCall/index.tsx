@@ -161,8 +161,13 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
         ? 'failed'
         : 'success'
 
+  // Me: getToolDisplay/getDiffStats are pure functions of (name, args,
+  // result) — memoize them so ToolCall's own 100ms elapsed-timer tick
+  // (`now`, below) doesn't re-run a full JSON.parse and, for edit/patch/
+  // write, an O(oldLines*newLines) diff on every tick for the entire
+  // lifetime of a running tool call just to redraw the duration label.
   const { header, headerTitle, formattedArgs, language, suppressResult } =
-    getToolDisplay(name, args)
+    useMemo(() => getToolDisplay(name, args), [name, args])
   const displayedArgs = useMemo(() => {
     if (!formattedArgs) return ''
     const parsed = tryParseJSON(formattedArgs)
@@ -174,9 +179,10 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
   }, [formattedArgs])
   const usesDiffView = name === 'edit' || name === 'patch' || (name === 'write' && done)
   const usesReadView = name === 'read'
-  const diffStats = (usesDiffView || name === 'rm') && args
-    ? getDiffStats(name, args, result)
-    : null
+  const diffStats = useMemo(
+    () => (usesDiffView || name === 'rm') && args ? getDiffStats(name, args, result) : null,
+    [usesDiffView, name, args, result],
+  )
   // Pending-state header comes from getToolDisplay's no-args branch
   // (e.g. ``recall`` → "Checking memory…", ``team_message`` →
   // "Preparing message…"). Tools without a custom pending header return

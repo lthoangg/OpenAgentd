@@ -24,10 +24,10 @@ import { ImageAttachment } from './ImageAttachment'
 import { FileCard } from './FileCard'
 import { AssistantTurn } from './AssistantTurnFooter'
 import { TokenMeter } from '@/components/ui/token-meter'
-import { partitionTurns } from '@/utils/turns'
-import { latestDirectUserBlockId, mergeBlocks } from '@/utils/blocks'
+import { appendCurrentTurns, partitionTurns } from '@/utils/turns'
+import { latestDirectUserBlockIdFromParts, mergeBlocks } from '@/utils/blocks'
 import { extractSleepPrefix, formatTime } from '@/utils/format'
-import { latestMCPAppResourceBlockIds } from '@/utils/mcp-app-artifacts'
+import { latestMCPAppResourceBlockIdsFromParts, latestMCPAppResources } from '@/utils/mcp-app-artifacts'
 import { useTeamStore } from '@/stores/useTeamStore'
 import { findCommittedMentions } from './InputBar.mentions'
 import type { AgentStream } from '@/stores/useTeamStore'
@@ -454,9 +454,20 @@ export function AgentPane({
     () => mergeBlocks(stream.blocks, stream.currentBlocks),
     [stream.blocks, stream.currentBlocks],
   )
-  const latestUserBlockId = useMemo(() => latestDirectUserBlockId(allBlocks), [allBlocks])
-  const turnItems = useMemo(() => partitionTurns(allBlocks), [allBlocks])
-  const latestMCPAppBlockIds = useMemo(() => latestMCPAppResourceBlockIds(allBlocks), [allBlocks])
+  const latestUserBlockId = useMemo(
+    () => latestDirectUserBlockIdFromParts(stream.blocks, stream.currentBlocks),
+    [stream.blocks, stream.currentBlocks],
+  )
+  const finalizedTurnItems = useMemo(() => partitionTurns(stream.blocks), [stream.blocks])
+  const turnItems = useMemo(
+    () => appendCurrentTurns(finalizedTurnItems, stream.blocks.length, stream.currentBlocks),
+    [finalizedTurnItems, stream.blocks.length, stream.currentBlocks],
+  )
+  const finalizedMCPAppResources = useMemo(() => latestMCPAppResources(stream.blocks), [stream.blocks])
+  const latestMCPAppBlockIds = useMemo(
+    () => latestMCPAppResourceBlockIdsFromParts(finalizedMCPAppResources, stream.currentBlocks),
+    [finalizedMCPAppResources, stream.currentBlocks],
+  )
 
   // Me single scroll effect — block count or last block text changed
   const lastBlockContent = allBlocks[allBlocks.length - 1]?.content ?? ''

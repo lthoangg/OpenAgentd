@@ -21,6 +21,15 @@ export function latestDirectUserBlockId(blocks: ContentBlock[]): string | undefi
   return undefined
 }
 
+/** Check the live suffix first, then the stable finalized history. This avoids
+ * scanning a merged session-sized array for every streamed delta. */
+export function latestDirectUserBlockIdFromParts(
+  blocks: ContentBlock[],
+  currentBlocks: ContentBlock[],
+): string | undefined {
+  return latestDirectUserBlockId(currentBlocks) ?? latestDirectUserBlockId(blocks)
+}
+
 export function appendThinking(
   blocks: ContentBlock[],
   text: string
@@ -210,6 +219,34 @@ export function completeTool(
   return result
 }
 
+/** Count newlines in `s`, stopping as soon as `limit` is reached. Used to
+ *  cheaply answer "does this have more than N lines?" without allocating a
+ *  full `split('\n')` array of the (potentially many-KB) live-output
+ *  buffer on every streamed chunk. */
+function countNewlinesAtLeast(s: string, limit: number): number {
+  let count = 0
+  let idx = -1
+  while (count < limit) {
+    idx = s.indexOf('\n', idx + 1)
+    if (idx === -1) break
+    count++
+  }
+  return count
+}
+
+/** Return the last `n` lines of `s` without materializing a `split('\n')`
+ *  array of the whole string — walks backward with `lastIndexOf` to find
+ *  the cut point, so cost scales with the retained tail, not the full
+ *  (already-truncated-to-24000-char) buffer. */
+function lastNLines(s: string, n: number): string {
+  let idx = s.length
+  for (let i = 0; i < n; i++) {
+    idx = s.lastIndexOf('\n', idx - 1)
+    if (idx === -1) return s
+  }
+  return s.slice(idx + 1)
+}
+
 export function appendToolOutput(
   blocks: ContentBlock[],
   name: string,
@@ -226,9 +263,9 @@ export function appendToolOutput(
         (!toolCallId && block.toolName === name && !block.toolDone))
     ) {
       let newOutput = `${block.toolOutput ?? ''}${text}`
-      const lines = newOutput.split('\n')
-      if (lines.length > 40) {
-        newOutput = '... [truncated live output] ...\n' + lines.slice(-40).join('\n')
+      // lines.length > 40  <=>  newlines_count + 1 > 40  <=>  >= 40 newlines
+      if (countNewlinesAtLeast(newOutput, 40) >= 40) {
+        newOutput = '... [truncated live output] ...\n' + lastNLines(newOutput, 40)
       }
       if (newOutput.length > 24_000) {
         newOutput = `... [truncated live output] ...\n${newOutput.slice(-24_000)}`

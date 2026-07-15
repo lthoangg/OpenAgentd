@@ -27,10 +27,10 @@ import { InboxBubble } from './InboxBubble'
 import { CompactionDivider } from './CompactionDivider'
 import { AssistantTurn } from './AssistantTurnFooter'
 import { PendingMessageQueue } from './PendingMessageQueue'
-import { getVisibleTurnWindow, partitionTurns } from '@/utils/turns'
-import { latestDirectUserBlockId, mergeBlocks } from '@/utils/blocks'
+import { appendCurrentTurns, getVisibleTurnWindow, partitionTurns } from '@/utils/turns'
+import { latestDirectUserBlockIdFromParts, mergeBlocks } from '@/utils/blocks'
 import { extractSleepPrefix } from '@/utils/format'
-import { latestMCPAppResourceBlockIds } from '@/utils/mcp-app-artifacts'
+import { latestMCPAppResourceBlockIdsFromParts, latestMCPAppResources } from '@/utils/mcp-app-artifacts'
 import { useTeamStore } from '@/stores/useTeamStore'
 import type { ContentBlock } from '@/api/types'
 import { UserBubble } from './AgentView/UserBubble'
@@ -207,13 +207,24 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
     [allBlocks],
   )
   const totalLen = allBlocks.length
-  const latestUserBlockId = useMemo(() => latestDirectUserBlockId(allBlocks), [allBlocks])
-  const turnItems = useMemo(() => partitionTurns(allBlocks), [allBlocks])
+  const latestUserBlockId = useMemo(
+    () => latestDirectUserBlockIdFromParts(blocks, currentBlocks),
+    [blocks, currentBlocks],
+  )
+  const finalizedTurnItems = useMemo(() => partitionTurns(blocks), [blocks])
+  const turnItems = useMemo(
+    () => appendCurrentTurns(finalizedTurnItems, blocks.length, currentBlocks),
+    [blocks.length, currentBlocks, finalizedTurnItems],
+  )
   const { hiddenTurnCount, visibleTurnItems } = useMemo(
     () => getVisibleTurnWindow(turnItems, renderedTurnCount),
     [renderedTurnCount, turnItems],
   )
-  const latestMCPAppBlockIds = useMemo(() => latestMCPAppResourceBlockIds(allBlocks), [allBlocks])
+  const finalizedMCPAppResources = useMemo(() => latestMCPAppResources(blocks), [blocks])
+  const latestMCPAppBlockIds = useMemo(
+    () => latestMCPAppResourceBlockIdsFromParts(finalizedMCPAppResources, currentBlocks),
+    [currentBlocks, finalizedMCPAppResources],
+  )
 
   const showEarlierTurns = useCallback(() => {
     const el = scrollRef.current

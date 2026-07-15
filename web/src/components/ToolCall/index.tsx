@@ -192,6 +192,7 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
   const shownResult = suppressResult ? undefined : result
   const shownLiveOutput = shownResult ? undefined : liveOutput
   const hasReadResult = usesReadView
+  const isBackgroundProcess = name === 'bg'
   const isShell = language === 'bash'
   const isShellTerminal = isShell && Boolean(formattedArgs)
   const shellResult = isShell ? formatShellResult(shownResult) : null
@@ -233,6 +234,21 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
       // ignore
     }
   }
+
+  const resultCopyButton = (
+    <button
+      onClick={handleCopyResult}
+      className="flex h-7 w-7 items-center justify-center rounded-sm text-(--color-text-muted) opacity-100 transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40 md:h-6 md:w-6 md:opacity-0 md:group-hover:opacity-100"
+      aria-label="Copy result"
+      title="Copy result"
+    >
+      {copiedResult ? (
+        <Check size={12} className="text-(--color-success)" />
+      ) : (
+        <Copy size={12} />
+      )}
+    </button>
+  )
 
   const hasDetails = Boolean(formattedArgs || shownLiveOutput || shownResult || hasReadResult)
   const expanded = manualExpanded ?? Boolean(shownLiveOutput)
@@ -390,30 +406,24 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
                     </div>
                   )}
 
-                  {/* Result section — same caption treatment as args. */}
+                  {/* Background-process output owns its PID/status header, so it
+                      replaces the generic Result caption rather than nesting below it. */}
                   {shownResult && !isShellTerminal && (
-                    <div>
-                      <div className={`flex items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-sidebar) py-0.5 pr-1.5 pl-3 ${formattedArgs || shownLiveOutput ? 'border-t' : ''}`}>
-                        <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted)">
-                          result
-                        </span>
-                        <button
-                          onClick={handleCopyResult}
-                          className="flex h-7 w-7 items-center justify-center rounded-sm text-(--color-text-muted) opacity-100 transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40 md:h-6 md:w-6 md:opacity-0 md:group-hover:opacity-100"
-                          aria-label="Copy result"
-                          title="Copy result"
-                        >
-                          {copiedResult ? (
-                            <Check size={12} className="text-(--color-success)" />
-                          ) : (
-                            <Copy size={12} />
-                          )}
-                        </button>
+                    isBackgroundProcess ? (
+                      <ToolResult toolName={name} result={shownResult} headerAction={resultCopyButton} />
+                    ) : (
+                      <div>
+                        <div className={`flex items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-sidebar) py-0.5 pr-1.5 pl-3 ${formattedArgs || shownLiveOutput ? 'border-t' : ''}`}>
+                          <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted)">
+                            result
+                          </span>
+                          {resultCopyButton}
+                        </div>
+                        <div className="bg-(--bg-input) px-3 py-2.5 text-xs leading-relaxed text-(--color-text)">
+                          <ToolResult toolName={name} result={shownResult} />
+                        </div>
                       </div>
-                      <div className="bg-(--bg-input) px-3 py-2.5 text-xs leading-relaxed text-(--color-text)">
-                        <ToolResult toolName={name} result={shownResult} />
-                      </div>
-                    </div>
+                    )
                   )}
                 </>
               )}

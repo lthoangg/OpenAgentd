@@ -13,6 +13,7 @@
  */
 
 import { ExternalLink, FileText, Globe } from 'lucide-react'
+import type { ReactNode } from 'react'
 import { truncateForDisplay } from './ToolCall/displayText'
 
 // ---------------------------------------------------------------------------
@@ -343,7 +344,7 @@ function statusColor(status: string): string {
   return 'text-(--color-error)'
 }
 
-function BackgroundProcessResult({ result }: { result: string }) {
+function BackgroundProcessResult({ result, headerAction }: { result: string; headerAction?: ReactNode }) {
   if (result === 'No background processes running.') {
     return <p className="font-mono text-[11px] leading-relaxed text-(--color-text-muted)">{result}</p>
   }
@@ -357,10 +358,11 @@ function BackgroundProcessResult({ result }: { result: string }) {
 
   if (result.startsWith('PID     | Status') && listRows.length > 0) {
     return (
-      <div className="min-w-0 overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card)">
+      <div className="min-w-0 overflow-hidden">
         <div className="flex items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-sidebar) px-2.5 py-1.5 font-mono text-[10px] text-(--color-text-muted)">
           <span>{listRows.length} {listRows.length === 1 ? 'process' : 'processes'}</span>
           <span className="hidden sm:block">background processes</span>
+          {headerAction}
         </div>
         <ul className="max-h-64 overflow-y-auto">
           {listRows.map((process) => (
@@ -383,10 +385,13 @@ function BackgroundProcessResult({ result }: { result: string }) {
     const body = finalBody ?? statusOrBody
     const status = finalOutputMatch?.[2]
     return (
-      <div className="min-w-0 overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card)">
-        <div className="flex items-center gap-2 border-b border-(--color-border) bg-(--bg-sidebar) px-2.5 py-1.5 font-mono text-[10px]">
-          <span className="text-(--color-text)">PID {pid} output</span>
-          {status && <span className={statusColor(status)}>{status}</span>}
+      <div className="min-w-0 overflow-hidden">
+        <div className="flex items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-sidebar) px-2.5 py-1.5 font-mono text-[10px]">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="text-(--color-text)">PID {pid} output</span>
+            {status && <span className={statusColor(status)}>{status}</span>}
+          </div>
+          {headerAction}
         </div>
         <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap break-words px-3 py-2.5 font-mono text-[11px] leading-relaxed text-(--color-text-2)">{truncateForDisplay(body)}</pre>
       </div>
@@ -542,12 +547,12 @@ export function LspDiagnosticsView({
   )
 }
 
-function ToolResultInner({ toolName, result }: { toolName: string; result: string }) {
+function ToolResultInner({ toolName, result, headerAction }: { toolName: string; result: string; headerAction?: ReactNode }) {
   if (WEB_SEARCH_TOOLS.has(toolName)) {
     return <WebSearchResult result={result} />
   }
   if (BACKGROUND_PROCESS_TOOLS.has(toolName)) {
-    return <BackgroundProcessResult result={result} />
+    return <BackgroundProcessResult result={result} headerAction={headerAction} />
   }
   if (SHELL_TOOLS.has(toolName)) {
     return <ShellResult result={result} />
@@ -572,17 +577,17 @@ function ToolResultInner({ toolName, result }: { toolName: string; result: strin
   return <GenericResult result={result} />
 }
 
-export function ToolResult({ toolName, result }: { toolName: string; result: string }) {
+export function ToolResult({ toolName, result, headerAction }: { toolName: string; result: string; headerAction?: ReactNode }) {
   const lspData = parseLspDiagnostics(result)
 
   if (lspData) {
     return (
       <div className="flex flex-col gap-1">
-        <ToolResultInner toolName={toolName} result={lspData.cleanText} />
+        <ToolResultInner toolName={toolName} result={lspData.cleanText} headerAction={headerAction} />
         <LspDiagnosticsView diagnostics={lspData.diagnostics} overflowCount={lspData.overflowCount} />
       </div>
     )
   }
 
-  return <ToolResultInner toolName={toolName} result={result} />
+  return <ToolResultInner toolName={toolName} result={result} headerAction={headerAction} />
 }

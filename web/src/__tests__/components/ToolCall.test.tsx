@@ -935,7 +935,7 @@ describe("ToolCall — bg display", () => {
     expect(screen.queryByText("arguments")).toBeNull()
   })
 
-  it("shows result section when expanded with result", async () => {
+  it("shows bg output without a generic result section", async () => {
     const user = userEvent.setup()
     const args = JSON.stringify({ action: "output", pid: 123 })
     render(
@@ -947,7 +947,7 @@ describe("ToolCall — bg display", () => {
       />
     )
     await user.click(screen.getByRole("button"))
-    expect(screen.getByText("result")).toBeTruthy()
+    expect(screen.queryByText("result")).toBeNull()
     expect(screen.getByText("process output here")).toBeTruthy()
   })
 })

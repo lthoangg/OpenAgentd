@@ -198,82 +198,9 @@ git log ${PREV_TAG}..HEAD --oneline --no-merges
 
 Sections:
 
-- `## Breaking Changes`: only if migration required.
+- `## Breaking Changes`: only if migration required. Include only the required migration steps.
 - `## What's changed`: bullet list of user-noticeable changes, grouped by outcome.
-- `## Upgrade`: only if users need action; be specific.
-- `## Install`: structure by install **surface**, not by chronology. One labelled block per channel — desktop, CLI, Docker — so a reader picks their channel and stops. **Source of truth is this release's published asset list**, not the previous release's notes — the desktop matrix can silently skip a target. List the previous release only to copy styling/labelling, never to copy bullet contents:
-
-  ```bash
-  gh release view v<version> --repo lthoangg/openagentd | grep -E "^asset:"   # source of truth
-  gh release view v<prev-version> --repo lthoangg/openagentd                  # styling reference only
-  ```
-
-  **CLI-only block** (patch/minor releases that don't change install surfaces — copy verbatim):
-
-  ````
-  ```
-  uv tool install openagentd
-  # or
-  pip install openagentd
-  # or
-  brew install lthoangg/tap/openagentd
-  ```
-
-  `brew install lthoangg/tap/openagentd` installs the base package only; optional extras (e.g. `openagentd[full]`) must be installed via `uv` or `pip`:
-
-  ```
-  uv tool install "openagentd[full]"
-  # or
-  pip install "openagentd[full]"
-  ```
-  ````
-
-  **Expanded block** (when the release introduces/changes desktop, Homebrew cask, Docker, or install-script surfaces) — drop the channels that aren't relevant, keep the labelling consistent:
-
-  ````
-  **Desktop app** — download from this release (CLI + desktop ship under one tag since 1.0.9):
-
-  - macOS Apple Silicon → `brew install --cask lthoangg/tap/openagentd` (recommended — ad-hoc signs automatically), or `OpenAgentd_*_aarch64.dmg` (run bundled `install.sh`, right-click → Open the first time).
-  - Linux → `OpenAgentd_*_amd64.AppImage` (`chmod +x` and run) or the `.deb`.
-
-  **CLI / API server**
-
-  ```
-  uv tool install openagentd
-  # or
-  pip install openagentd
-  # or
-  brew install lthoangg/tap/openagentd
-  ```
-
-  `brew install lthoangg/tap/openagentd` installs the base package only; optional extras (e.g. `openagentd[full]`) must be installed via `uv` or `pip`:
-
-  ```
-  uv tool install "openagentd[full]"
-  # or
-  pip install "openagentd[full]"
-  ```
-
-  **Docker**
-
-  ```
-  docker pull ghcr.io/lthoangg/openagentd:<version>
-  ```
-  ````
-
-- `## Upgrade`: when present, **split by install channel** — never combine channels in one prose paragraph. Each bullet is a copy-pasteable command (or "Settings → … → Install" path). Example shape:
-
-  ````
-  - **Desktop app (in-app updater)** — Settings → Application update → Check for updates → Install.
-  - **Desktop app via Homebrew** — `brew upgrade --cask openagentd`.
-  - **CLI via uv** — `uv tool install --upgrade openagentd`.
-  - **CLI via pip** — `pip install --upgrade openagentd`.
-  - **CLI via Homebrew** — `brew upgrade openagentd`.
-  - **Docker** — `docker compose pull && docker compose up -d`.
-  ````
-
-  If a channel has extra requirements (data move, env var rename, config migration), spell it out under the matching bullet — not in a generic preamble.
-
+- Installation and upgrade guidance belongs in the README, not the release notes. Link to the README only when readers need it to act on a breaking change.
 - End with `**Full changelog:** https://github.com/lthoangg/openagentd/compare/<prev>...<next>`.
 - Avoid `## Tests` section.
 - Avoid internal file paths.
@@ -309,25 +236,7 @@ gh run list --workflow=release-desktop.yml --limit=3
 
 10. GitHub release notes:
 
-- Only after **both** workflows finish, draft the notes from the actually-published artefacts. Never copy the Install block from a previous release verbatim — confirm against this release's asset list, because the desktop matrix may have skipped a target (v1.24.0 shipped macOS arm64 + Linux `.deb` only, no Windows `.exe`, no `.AppImage`):
-
-```bash
-git fetch --tags
-gh release view v<version> --repo lthoangg/openagentd | grep -E "^asset:"
-gh release view v<prev-version> --repo lthoangg/openagentd
-```
-
-- Generate the `## Install` block from the published asset suffixes instead of rewriting it by hand:
-
-```bash
-scripts/render_release_install_block.sh --version <version> > /tmp/install-block.md
-cat /tmp/install-block.md
-```
-
-- The helper uses the actual release asset names to decide which desktop bullets to include:
-  - `OpenAgentd_<ver>_aarch64.dmg` → macOS bullet
-  - `OpenAgentd_<ver>_amd64.AppImage` → Linux AppImage mention
-  - `OpenAgentd_<ver>_amd64.deb` → Linux `.deb` mention
+- Only after **both** workflows finish, draft concise, user-facing notes. Focus on `## What's changed`, adding `## Breaking Changes` only when migration is required. Keep installation and upgrade instructions in the README.
 - Write the drafted release notes to an OS temp path (for example `/tmp/release-notes-v<version>.md`), not to a file under the repository workspace. This keeps ad-hoc release artefacts out of the repo tree.
 - Replace the auto-generated notes from that `/tmp` file, then verify:
 
@@ -336,8 +245,8 @@ gh release edit v<version> --repo lthoangg/openagentd --notes-file /tmp/release-
 gh release view v<version> --repo lthoangg/openagentd | sed -n '/## What.s changed/,/Full changelog/p'
 ```
 
-- Final verification — the release must contain both CLI and desktop artefacts, and the generated install block must reflect what is actually downloadable:
+- Final verification — confirm the release body contains no `## Install` or `## Upgrade` sections:
 
 ```bash
-gh release view v<version> --repo lthoangg/openagentd | sed -n '/asset:/p;/## Install/,/Full changelog/p'
+gh release view v<version> --repo lthoangg/openagentd | grep -E '^## (Install|Upgrade)' && exit 1 || true
 ```

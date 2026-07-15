@@ -17,7 +17,6 @@ validate_docs.py              Verify Markdown links, metadata, ADR index, and Ma
 codehealth/                   Rank god files + map deps + detect import cycles
 bump_version.sh               Update release-facing versions and refresh lockfiles
 check_version_consistency.sh  Verify all release-facing versions stay in sync
-render_release_install_block.sh Render release-note Install block from published assets
 generate_updater_keys.sh      Tauri updater signing key helper
 ```
 

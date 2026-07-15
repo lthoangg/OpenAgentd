@@ -289,6 +289,8 @@ class Agent(Generic[TContext]):
         if ctx.session_id is not None:
             state.metadata["session_id"] = ctx.session_id
         state.metadata["agent_name"] = ctx.agent_name
+        if active_model_id:
+            state.metadata["effective_model"] = active_model_id
 
         # Surface caller-supplied per-run metadata to tools/hooks.  Used by
         # team leads to pass ``mode`` and ``workspace`` so the schedule tool
@@ -706,7 +708,7 @@ class Agent(Generic[TContext]):
         state = env.state
         tc_list = assistant_msg.tool_calls or []
         bk.last_usage = usage
-        effective_model = state.metadata.pop("effective_model", None)
+        effective_model = state.metadata.get("effective_model")
         stream_elapsed = time.monotonic() - iter_start
 
         logger.info(

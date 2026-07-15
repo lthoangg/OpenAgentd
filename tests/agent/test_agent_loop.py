@@ -728,3 +728,20 @@ async def test_stream_and_assemble_merges_consecutive_user_messages():
     user_msgs = [m for m in sent if isinstance(m, HumanMessage)]
     assert len(user_msgs) == 1
     assert user_msgs[0].content == "first\n\nsecond"
+
+
+async def test_setup_run_exposes_qualified_active_model_to_hooks():
+    """Streaming hooks need the registry-qualified model to estimate cost."""
+    agent = _make_agent([])
+
+    env, _ = await agent._setup_run(
+        messages=[HumanMessage(content="hi")],
+        config=RunConfig(session_id="cost-session"),
+        hooks=None,
+        injected_tools=None,
+        checkpointer=None,
+        llm_provider=None,
+        model_id="openai:gpt-5.6-sol",
+    )
+
+    assert env.state.metadata["effective_model"] == "openai:gpt-5.6-sol"

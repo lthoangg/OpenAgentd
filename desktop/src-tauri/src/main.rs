@@ -842,6 +842,20 @@ mod tests {
         );
     }
 
+    #[test]
+    fn macos_bundle_explains_local_network_access() {
+        let info_plist = std::fs::read_to_string(format!(
+            "{}/Info.plist",
+            env!("CARGO_MANIFEST_DIR")
+        ))
+        .expect("read macOS Info.plist");
+
+        assert!(
+            info_plist.contains("<key>NSLocalNetworkUsageDescription</key>"),
+            "LAN CLI server connections need a macOS local-network permission description"
+        );
+    }
+
     // ── format_update_prompt ────────────────────────────────────────────────
     //
     // The prompt is the only thing the user reads before deciding to install,

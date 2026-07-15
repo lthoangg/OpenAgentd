@@ -5,6 +5,7 @@ All three endpoints read OTEL span JSONL files via DuckDB (a core dependency).
 
 from __future__ import annotations
 
+import asyncio
 import re
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -16,9 +17,8 @@ from app.api.schemas.observability import (
     TracesListResponse,
 )
 from app.services.observability_service import (
-    count_traces,
     get_trace,
-    list_traces,
+    list_traces_with_count,
     summarize,
 )
 
@@ -30,7 +30,8 @@ async def summary(
     days: int = Query(default=7, ge=1, le=90),
 ) -> ObservabilitySummaryResponse:
     """Return span-derived aggregates over the last ``days`` days."""
-    return ObservabilitySummaryResponse.model_validate(summarize(days=days).to_dict())
+    result = await asyncio.to_thread(summarize, days=days)
+    return ObservabilitySummaryResponse.model_validate(result.to_dict())
 
 
 @router.get("/traces")
@@ -44,8 +45,9 @@ async def traces(
     Each item identifies a trace (``trace_id``) plus summary metrics; the UI
     uses ``trace_id`` to fetch the full span tree via ``GET /traces/{id}``.
     """
-    items = list_traces(days=days, limit=limit, offset=offset)
-    total = count_traces(days=days)
+    items, total = await asyncio.to_thread(
+        list_traces_with_count, days=days, limit=limit, offset=offset
+    )
     return TracesListResponse(
         traces=[TraceListItemResponse.model_validate(t.to_dict()) for t in items],
         limit=limit,
@@ -79,7 +81,7 @@ async def trace_detail(
             status_code=422,
             detail="Invalid trace_id: expected a hex string.",
         )
-    detail = get_trace(trace_id=trace_id, days=days)
+    detail = await asyncio.to_thread(get_trace, trace_id=trace_id, days=days)
     if detail is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

@@ -506,11 +506,11 @@ def _run_queries(
 # ── Trace list + detail ───────────────────────────────────────────────────────
 
 
-def list_traces(
+def list_traces_with_count(
     days: int = 7,
     limit: int = 50,
     offset: int = 0,
-) -> list[TraceListItem]:
+) -> tuple[list[TraceListItem], int]:
     """Return ``agent_run`` spans (one per turn) in the window.
 
     Each row is a user-facing "turn" — ordered newest-first by ``end_time``.
@@ -533,7 +533,7 @@ def list_traces(
 
     files = _candidate_files(window_start)
     if not files:
-        return []
+        return [], 0
 
     con = duckdb.connect(":memory:")
     try:
@@ -575,13 +575,21 @@ def list_traces(
               coalesce(counts.estimated_cost_usd, 0.0) AS estimated_cost_usd,
               coalesce(counts.llm_calls,  0) AS llm_calls,
               coalesce(counts.tool_calls, 0) AS tool_calls,
-              (runs.status = 'ERROR')        AS error
+              (runs.status = 'ERROR')        AS error,
+              count(*) OVER ()               AS total
             FROM runs LEFT JOIN counts USING (trace_id)
             ORDER BY runs.end_time DESC
             LIMIT ? OFFSET ?
             """,
             [limit, offset],
         ).fetchall()
+        if rows:
+            total = int(rows[0][-1])
+        else:
+            total_row = con.execute(
+                "SELECT count(*) FROM spans_window WHERE name LIKE 'agent_run%'"
+            ).fetchone()
+            total = int(total_row[0]) if total_row is not None else 0
     finally:
         con.close()
 
@@ -628,8 +636,17 @@ def list_traces(
             llm_calls,
             tool_calls,
             error,
-        ) in rows
-    ]
+        ) in (row[:-1] for row in rows)
+    ], total
+
+
+def list_traces(
+    days: int = 7,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[TraceListItem]:
+    """Return a paginated trace list without its total count."""
+    return list_traces_with_count(days=days, limit=limit, offset=offset)[0]
 
 
 def count_traces(days: int = 7) -> int:

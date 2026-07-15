@@ -12,6 +12,7 @@ from app.services.observability_service import (
     count_traces,
     get_trace,
     list_traces,
+    list_traces_with_count,
     summarize,
 )
 
@@ -437,6 +438,29 @@ def test_list_traces_pagination(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     assert [r.run_id for r in first] == ["run-0", "run-1"]
     assert [r.run_id for r in second] == ["run-2", "run-3"]
     assert count_traces(days=7) == 5
+
+
+def test_list_traces_with_count_returns_page_and_total_in_one_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    spans_dir = _point_openagentd_at(tmp_path, monkeypatch)
+    base_ns = int(datetime.now(timezone.utc).timestamp() * 1e9)
+    for i in range(5):
+        _write_trace(
+            spans_dir,
+            trace_id=f"0x{i:032x}",
+            end_time_ns=base_ns - i * 1_000_000_000,
+            run_id=f"run-{i}",
+        )
+
+    page, total = list_traces_with_count(days=7, limit=2, offset=2)
+
+    assert [row.run_id for row in page] == ["run-2", "run-3"]
+    assert total == 5
+
+    empty_page, total = list_traces_with_count(days=7, limit=2, offset=50)
+    assert empty_page == []
+    assert total == 5
 
 
 def test_list_traces_clamps_inputs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

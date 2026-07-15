@@ -5,9 +5,10 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 from app.api.routes.observability import router
@@ -174,6 +175,45 @@ def test_traces_list_respects_query_bounds(tmp_path, monkeypatch: pytest.MonkeyP
     assert client.get("/api/observability/traces?limit=0").status_code == 422
     assert client.get("/api/observability/traces?limit=201").status_code == 422
     assert client.get("/api/observability/traces?offset=-1").status_code == 422
+
+
+async def test_observability_routes_offload_sync_services_to_a_thread():
+    """DuckDB reads must not block FastAPI's event loop."""
+    from app.api.routes import observability
+
+    async def run_in_thread(func, /, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    with patch.object(
+        observability,
+        "asyncio",
+    ) as asyncio_mock:
+        asyncio_mock.to_thread = AsyncMock(side_effect=run_in_thread)
+        with (
+            patch.object(
+                observability,
+                "summarize",
+                return_value=MagicMock(to_dict=lambda: {}),
+            ),
+            patch.object(observability, "list_traces_with_count", return_value=([], 0)),
+            patch.object(observability, "get_trace", return_value=None),
+            patch.object(
+                observability.ObservabilitySummaryResponse,
+                "model_validate",
+                return_value=object(),
+            ),
+            patch.object(
+                observability.TraceListItemResponse,
+                "model_validate",
+                return_value=object(),
+            ),
+        ):
+            await observability.summary(days=7)
+            await observability.traces(days=7, limit=50, offset=0)
+            with pytest.raises(HTTPException):
+                await observability.trace_detail("0x1", days=30)
+
+    assert asyncio_mock.to_thread.await_count == 3
 
 
 # ── /traces/{trace_id} ────────────────────────────────────────────────────────

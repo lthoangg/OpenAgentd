@@ -253,6 +253,10 @@ pub async fn build_app_window(
         .copied()
         .unwrap_or(ZOOM_DEFAULT);
     win.set_zoom(zoom).ok();
+    // Windows keeps the app menu for keyboard accelerators, but the native
+    // OpenAgentd/File/Edit/View/Window bar duplicates the in-app chrome.
+    #[cfg(target_os = "windows")]
+    win.hide_menu().context("hide Windows application menu")?;
     win.show().context("show window")?;
     win.set_focus().ok();
     Ok(win)

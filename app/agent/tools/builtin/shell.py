@@ -43,6 +43,7 @@ import os
 import signal
 import subprocess
 import sys
+import time
 import uuid
 from collections import deque
 from collections.abc import Awaitable, Callable
@@ -151,6 +152,8 @@ _DEFAULT_TIMEOUT_SECONDS = (
     60  # 60 s default; background mode handles long-running processes
 )
 _BG_OUTPUT_MAX_LINES = 200  # ring-buffer per background process
+_BG_COMPLETED_TTL_SECONDS = 10 * 60
+_BG_MAX_COMPLETED_PROCESSES = 100
 
 # Maximum lines and bytes to include inline in the result
 _OUTPUT_MAX_LINES = 300
@@ -167,7 +170,14 @@ _FORCE_KILL_SIGNAL = getattr(signal, "SIGKILL", signal.SIGTERM)
 class _BgProcess:
     """Tracks a single background subprocess and its ring-buffer output."""
 
-    __slots__ = ("proc", "command", "session_id", "output", "_reader_task")
+    __slots__ = (
+        "proc",
+        "command",
+        "session_id",
+        "output",
+        "completed_at",
+        "_reader_task",
+    )
 
     def __init__(
         self,
@@ -179,6 +189,7 @@ class _BgProcess:
         self.command = command
         self.session_id = session_id
         self.output: deque[str] = deque(maxlen=_BG_OUTPUT_MAX_LINES)
+        self.completed_at: float | None = None
         self._reader_task = asyncio.create_task(self._drain())
 
     async def _drain(self) -> None:
@@ -194,6 +205,9 @@ class _BgProcess:
         except Exception as exc:
             # Reader is best-effort: a dead transport just ends capture.
             logger.debug("background_shell_reader_stopped error={!r}", exc)
+        finally:
+            if not self.alive:
+                self.completed_at = time.monotonic()
 
     @property
     def pid(self) -> int:
@@ -238,6 +252,34 @@ def _limited_bg_output(text: str) -> str:
 _bg_processes: dict[int, _BgProcess] = {}
 
 
+def _prune_completed_bg_processes(
+    *, clock: Callable[[], float] = time.monotonic
+) -> None:
+    """Bound retained completed jobs without ever evicting live processes."""
+    now = clock()
+    completed: list[tuple[int, _BgProcess]] = []
+    expired: list[int] = []
+    for pid, bg in _bg_processes.items():
+        if bg.alive:
+            continue
+        if bg.completed_at is None:
+            bg.completed_at = now
+        if now - bg.completed_at > _BG_COMPLETED_TTL_SECONDS:
+            expired.append(pid)
+            continue
+        completed.append((pid, bg))
+
+    for pid in expired:
+        del _bg_processes[pid]
+
+    overflow = len(completed) - _BG_MAX_COMPLETED_PROCESSES
+    if overflow > 0:
+        for pid, _ in sorted(completed, key=lambda item: item[1].completed_at)[
+            :overflow
+        ]:
+            del _bg_processes[pid]
+
+
 def _session_bg_processes() -> dict[int, _BgProcess]:
     """Return processes owned by the active tool-call session."""
     session_id = get_sandbox().session_id
@@ -246,6 +288,7 @@ def _session_bg_processes() -> dict[int, _BgProcess]:
 
 async def stop_background_processes_for_session(session_id: str) -> int:
     """Stop and remove background processes owned by one session."""
+    _prune_completed_bg_processes()
     matching = [
         (pid, bg) for pid, bg in _bg_processes.items() if bg.session_id == session_id
     ]
@@ -489,6 +532,7 @@ async def _shell(
 
         # ── Background mode ───────────────────────────────────────────
         if background:
+            _prune_completed_bg_processes()
             bg = _BgProcess(proc, command, sandbox.session_id)
             _bg_processes[bg.pid] = bg
 
@@ -682,6 +726,7 @@ async def _background_process(
     timeout_seconds: float = 30,
 ) -> str:
     """Manage background processes started with shell(background=true)."""
+    _prune_completed_bg_processes()
     processes = _session_bg_processes()
     if action == "list":
         if not processes:

@@ -492,6 +492,69 @@ def fast_bg(monkeypatch):
     )
 
 
+def test_completed_background_processes_expire_after_ten_minutes():
+    """Pruning expires completed records without sleeping in the test."""
+    completed = MagicMock(alive=False)
+    completed.completed_at = None
+    _bg_processes[1001] = completed
+
+    shell_module._prune_completed_bg_processes(clock=lambda: 0)
+    assert 1001 in _bg_processes
+
+    shell_module._prune_completed_bg_processes(clock=lambda: 600)
+    assert 1001 in _bg_processes
+
+    shell_module._prune_completed_bg_processes(clock=lambda: 600.001)
+    assert 1001 not in _bg_processes
+
+
+def test_completed_background_process_limit_never_evicts_alive_processes():
+    """The completed-record cap retains all live jobs and newest completions."""
+    alive = MagicMock(alive=True)
+    _bg_processes[1] = alive
+    for pid in range(2, 103):
+        completed = MagicMock(alive=False)
+        completed.completed_at = float(pid)
+        _bg_processes[pid] = completed
+
+    shell_module._prune_completed_bg_processes(clock=lambda: 200)
+
+    assert 1 in _bg_processes
+    assert len(_bg_processes) == 101
+    assert 2 not in _bg_processes
+    assert set(_bg_processes) == {1, *range(3, 103)}
+
+
+@pytest.mark.asyncio
+async def test_background_actions_lazily_prune_completed_records(sandbox_workspace):
+    """A registry action removes expired completed jobs while retaining live jobs."""
+    expired = MagicMock(alive=False, session_id="session-1")
+    expired.completed_at = 0.0
+    alive = MagicMock(alive=True, session_id="session-1", command="sleep 30")
+    _bg_processes[1001] = expired
+    _bg_processes[1002] = alive
+
+    result = await background_process.arun(action="list")
+
+    assert "sleep 30" in result
+    assert 1001 not in _bg_processes
+    assert 1002 in _bg_processes
+
+
+@pytest.mark.asyncio
+async def test_background_start_lazily_prunes_completed_records(
+    sandbox_workspace, fast_bg
+):
+    """Starting a job also prunes expired completed records."""
+    expired = MagicMock(alive=False)
+    expired.completed_at = 0.0
+    _bg_processes[1001] = expired
+
+    await shell_tool.arun(command="sleep 30", background=True, timeout_seconds=1)
+
+    assert 1001 not in _bg_processes
+
+
 @pytest.mark.asyncio
 async def test_background_captures_initial_output_and_registry(
     sandbox_workspace, fast_bg

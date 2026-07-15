@@ -517,6 +517,20 @@ pub fn format_notification_body(labels: &[String]) -> String {
 mod tests {
     use super::*;
 
+    #[test]
+    fn native_client_uses_platform_certificate_roots() {
+        let manifest = std::fs::read_to_string(format!(
+            "{}/Cargo.toml",
+            env!("CARGO_MANIFEST_DIR")
+        ))
+        .expect("read Cargo manifest");
+
+        assert!(
+            manifest.contains("rustls-tls-native-roots"),
+            "external health checks must trust certificates installed in the platform trust store"
+        );
+    }
+
     fn item_ok(provider: &str, label: &str, used_percent: f64, resets_at: Option<i64>) -> UsageSummaryItem {
         UsageSummaryItem {
             provider: provider.to_string(),

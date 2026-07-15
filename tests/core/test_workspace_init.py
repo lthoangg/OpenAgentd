@@ -100,6 +100,53 @@ def test_ensure_workspace_initialized_skips_seed_when_agents_exist(
     assert (config / "plugins").is_dir()
 
 
+def test_ensure_workspace_initialized_restores_missing_default_lead(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    import app.core.workspace_init as workspace_init
+
+    config = tmp_path / "config"
+    agents = config / "agents"
+    agents.mkdir(parents=True)
+    (agents / "executor.md").write_text(
+        "---\nname: executor\nrole: member\nmodel: openai:gpt-5\n---\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        workspace_init.settings, "OPENAGENTD_DATA_DIR", str(tmp_path / "data")
+    )
+    monkeypatch.setattr(workspace_init.settings, "OPENAGENTD_CONFIG_DIR", str(config))
+    monkeypatch.setattr(
+        workspace_init.settings, "OPENAGENTD_STATE_DIR", str(tmp_path / "state")
+    )
+    monkeypatch.setattr(
+        workspace_init.settings, "OPENAGENTD_CACHE_DIR", str(tmp_path / "cache")
+    )
+    monkeypatch.setattr(
+        workspace_init.settings, "OPENAGENTD_WORKSPACE_DIR", str(tmp_path / "workspace")
+    )
+    monkeypatch.setattr(workspace_init.settings, "AGENTS_DIR", str(agents))
+    monkeypatch.setattr(workspace_init.settings, "SKILLS_DIR", str(config / "skills"))
+    monkeypatch.setattr(
+        workspace_init.settings, "OPENAGENTD_PLUGINS_DIRS", str(config / "plugins")
+    )
+    monkeypatch.setattr(
+        "app.cli.seed.install_seed",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("unexpected seed")
+        ),
+    )
+
+    ensure_workspace_initialized()
+
+    assert (agents / "executor.md").is_file()
+    lead = agents / "openagentd.md"
+    assert lead.is_file()
+    assert "role: lead" in lead.read_text(encoding="utf-8")
+
+
 def test_ensure_workspace_initialized_materializes_builtins_without_seed(
     monkeypatch,
     tmp_path: Path,

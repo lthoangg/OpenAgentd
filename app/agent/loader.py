@@ -223,6 +223,48 @@ def ensure_builtin_agent_blueprints(agents_dir: Path, *, mode: str) -> list[str]
     return written
 
 
+def ensure_builtin_openagentd_lead(agents_dir: Path, *, mode: str) -> bool:
+    """Restore the default lead only when an agent directory has none.
+
+    Existing agent files, including a user-owned ``openagentd.md``, are never
+    overwritten. A malformed file remains a validation error for the user to
+    correct rather than being silently replaced.
+    """
+    for path in agents_dir.glob("*.md"):
+        try:
+            if parse_agent_md(path).role == "lead":
+                return False
+        except Exception:
+            continue
+
+    target = agents_dir / "openagentd.md"
+    if target.exists():
+        return False
+
+    from app.agent.builtin_prompts import (
+        CODING_OPENAGENTD_DESCRIPTION,
+        NORMAL_OPENAGENTD_DESCRIPTION,
+    )
+    from app.core.config import PROVIDER_MODEL_TOKEN
+
+    _atomic_write_text(
+        target,
+        _builtin_agent_md(
+            name="openagentd",
+            role="lead",
+            description=(
+                CODING_OPENAGENTD_DESCRIPTION
+                if mode == "coding"
+                else NORMAL_OPENAGENTD_DESCRIPTION
+            ),
+            model=PROVIDER_MODEL_TOKEN,
+            thinking_level="low",
+        ),
+    )
+    logger.info("builtin_openagentd_lead_materialized mode={} path={}", mode, target)
+    return True
+
+
 def _lead_model_for_dir(agents_dir: Path) -> str | None:
     if not agents_dir.exists():
         return None

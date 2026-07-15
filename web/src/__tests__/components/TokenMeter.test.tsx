@@ -32,7 +32,7 @@ describe('TokenMeter', () => {
 
     await user.hover(screen.getByRole('button'))
 
-    expect(screen.getByText('used this session')).toBeTruthy()
+    expect(screen.getByText('cost')).toBeTruthy()
     expect(screen.getByText('$0.0045')).toBeTruthy()
   })
 

@@ -202,7 +202,7 @@ export function TokenMeter({
           <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">output</span><span>{output.toLocaleString()}</span></div>
           <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">cache</span><span>{cached.toLocaleString()}</span></div>
           {sessionCostUsd !== undefined && sessionCostUsd > 0 && (
-            <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">used this session</span><span>{formatUsd(sessionCostUsd)}</span></div>
+            <div className="flex justify-between gap-4"><span className="text-(--color-text-muted)">cost</span><span>{formatUsd(sessionCostUsd)}</span></div>
           )}
         </div>,
         document.body,

@@ -2,8 +2,7 @@
 
 This script does NOT restart the server. It assumes you started the server
 with a low ``DEFAULT_PROMPT_TOKEN_THRESHOLD`` so summarization fires during
-the test. There is no file-based config — see
-``documents/docs/agent/summarization.md``.
+the test. There is no file-based configuration for this threshold.
 
 Usage:
   # 1. In ``app/agent/hooks/summarization.py``, set:

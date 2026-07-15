@@ -8,7 +8,6 @@
  * On macOS Tauri the OS overlays the traffic-light buttons over our
  * WebView; we reserve a 70 px left inset for them and use
  * `useTauriDrag` to make the header act as the window-drag region.
- * See `documents/docs/web/chrome.md` for the wider story.
  */
 import { Link } from '@tanstack/react-router'
 import { Home, Menu } from 'lucide-react'

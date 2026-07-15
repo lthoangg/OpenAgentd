@@ -124,7 +124,7 @@ class ProviderModelsResponse(BaseModel):
     # because `openai:` is vision-true), and a curated registry would be
     # stale by the time the user upgraded the app. If capability ever
     # needs to surface on this endpoint, build it from a runtime-fetched
-    # registry — see ``documents/techdebts/model-capabilities-registry.md``.
+    # registry fetched at runtime rather than bundled as stale static metadata.
     models: list[str] = Field(default_factory=list)
     source: Literal["provider"]
 

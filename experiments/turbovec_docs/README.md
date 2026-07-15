@@ -34,26 +34,16 @@ uv run --group experiment python experiments/turbovec_docs/build_index.py
 uv run --group experiment python experiments/turbovec_docs/search.py "how does session summarization work"
 uv run --group experiment python experiments/turbovec_docs/search.py "styling colors" -k 3
 
-# Benchmark search quality against a hand-written testset (52 cases spanning
-# every doc file: docs/, styling-specs/, techdebts/, top-level AGENTS.md)
+# Benchmark search quality against the retained feature catalogue and top-level instructions
 uv run --group experiment python experiments/turbovec_docs/benchmark.py
 uv run --group experiment python experiments/turbovec_docs/benchmark.py -k 3 -v   # print every case
 ```
 
-### Current results (`all-MiniLM-L6-v2`, k=5, 52 cases)
+### Benchmark baseline
 
-| Metric | Score |
-|---|---|
-| Hit@1 | 88.5% |
-| Hit@3 | 100% |
-| Hit@5 | 100% |
-| MRR | 0.939 |
-
-The rare rank-2/3 misses are near-misses, not failures — the expected doc is
-one of the next two results, and the doc that outranks it is usually
-`docs/features.md` (a hub page that legitimately references most features
-briefly). Re-run `benchmark.py -v` after changing the chunking strategy,
-embedding model, or `documents/` content to catch regressions.
+The testset intentionally covers only the retained feature catalogue and
+repository instructions. Run `benchmark.py -v` after changing the chunking
+strategy, embedding model, or retained documents to establish a new baseline.
 
 ## How it works
 

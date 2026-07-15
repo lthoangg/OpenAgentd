@@ -28,8 +28,8 @@ uv run pytest --no-cov -q tests/cli
 
 Run focused CLI/init tests when changing seed install behavior or validation logic.
 
-## Documentation pointers
+## Source of truth
 
 - Maintainer notes: `README.md`.
-- Agent frontmatter contract: `../documents/docs/configuration/agents.md`.
-- Skills documentation: `../documents/docs/configuration/skills.md`.
+- Agent frontmatter contract: `app/agent/loader.py` and its focused tests.
+- Skills contract: `app/agent/plugins/` and builtin skill definitions.

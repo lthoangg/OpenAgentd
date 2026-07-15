@@ -38,6 +38,6 @@ uv run ruff format --check app/ tests/
 - Mock sleeps/timeouts in production code; do not wait out real delays.
 - Fake `os.execvp` in CLI tests by raising `SystemExit(0)`.
 
-## Documentation pointers
+## Source of truth
 
-- Full testing guide and performance notes: `documents/docs/guidelines.md#testing`.
+- Test commands and conventions are defined in this file, the Makefile, and the tests themselves.

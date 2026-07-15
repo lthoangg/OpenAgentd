@@ -68,5 +68,4 @@ cd desktop && make dev
 
 ## Packaging
 
-See [`../documents/docs/desktop.md`](../documents/docs/desktop.md) for the
-full release pipeline (matrix builds, signing, notarization, updater).
+The `desktop/Makefile`, Tauri configuration, release workflows, and packaging scripts are authoritative for matrix builds, signing, notarization, and updates.

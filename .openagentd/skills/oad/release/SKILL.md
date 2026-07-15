@@ -53,18 +53,19 @@ gh issue comment <issue-number> --repo lthoangg/openagentd --body "Included in t
 
 4. Documentation readiness:
 
-- Before confirming the release, check whether the diff requires documentation updates. At minimum inspect the canonical feature catalogue and roadmap, plus any related docs for touched areas.
+- Before confirming the release, inspect the canonical feature catalogue and README for user-visible changes.
 
 ```bash
 git diff --name-only main..HEAD
-git diff --stat main..HEAD -- documents/docs/features.md documents/docs/roadmap.md documents/docs README.md
+git diff --stat main..HEAD -- documents/docs/features.md README.md documents/adrs
 ```
 
 - For user-visible features, behavior changes, install/update changes, or removed/deprecated functionality, update `documents/docs/features.md` first; it is the canonical feature catalogue.
-- Update `documents/docs/roadmap.md` when the release completes, changes, adds, or invalidates roadmap items.
-- Update related files as needed, such as `README.md`, `documents/docs/comparison.md`, installation docs, agent/team docs, or operation docs for the affected area.
+- Update `README.md` only when the product story or first-run setup changes.
+- Track future work, bugs, and roadmap changes in GitHub issues rather than repository roadmap or technical-debt documents.
+- Keep implementation, API, configuration, CLI, operation, and UI details in source, tests, CLI help, and the UI. Record only significant, expensive-to-reverse decisions as ADRs.
 - If no documentation changes are needed, record the rationale in the release PR body (for example: `Docs: no user-facing behavior changed`).
-- Include documentation updates in the feature branch before the version bump PR is created; do not leave release-blocking docs fixes until after publishing.
+- Include required feature-catalogue, README, or ADR updates in the feature branch before the version bump PR is created; do not leave release-blocking docs fixes until after publishing.
 
 5. Confirm release:
 

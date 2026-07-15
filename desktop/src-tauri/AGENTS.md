@@ -32,7 +32,7 @@ build.rs                     Tauri build integration
 - Config/Persisted State: inspect `src/config.rs`.
 - Bundle/config change: update all relevant Tauri config variants, not just production.
 - Permission/plugin change: update Tauri capabilities and verify frontend plugin usage.
-- Release/update change: check `desktop/Makefile`, `scripts/make_updater_manifest.py`, and `documents/docs/desktop.md`.
+- Release/update change: check `desktop/Makefile`, `scripts/make_updater_manifest.py`, and the release workflow files.
 
 ## Commands
 

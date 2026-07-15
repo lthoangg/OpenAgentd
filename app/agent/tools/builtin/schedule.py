@@ -8,10 +8,8 @@ tasks bound to the calling lead's routing context.
 Beyond one-shot reminders, the tool doubles as a **loop engine**: combining
 ``session_id='current'`` with ``every_seconds`` + ``max_runs`` lets the lead
 schedule a prompt that re-invokes itself into a bounded self-scheduling loop.
-The LLM-facing guidance for that lives in the tool/parameter descriptions
-below; the conceptual reference (loop patterns, exit paths, primitives) is in
-``documents/docs/agent/tools.md`` → "Loop engineering — self-scheduling
-agentic loops".
+The LLM-facing tool and parameter descriptions below define the loop patterns,
+exit paths, and scheduling primitives.
 
 All operations proxy through the in-process
 :data:`~app.scheduler.scheduler.task_scheduler` singleton so no HTTP

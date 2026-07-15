@@ -6,9 +6,7 @@
  * inline styles computed at render time, animation delays). For static CSS
  * or Tailwind arbitrary values, prefer `var(--motion-*)` directly.
  *
- * Keep in sync with:
- * - `web/src/index.css` token block
- * - `documents/styling-specs/motion.md` (semantic meaning of each value)
+ * Keep these values in sync with the `web/src/index.css` token block.
  */
 
 /** Durations in milliseconds. */

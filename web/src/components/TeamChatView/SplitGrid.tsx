@@ -32,8 +32,7 @@ interface SplitGridProps {
 }
 
 // Easing + durations mirror tokens in index.css so the motion matches sibling
-// animations (tool-row-enter, done-pulse, etc.). Per styling-specs/motion.md
-// (Split pane enter / exit), exit is faster than enter so dismissal stays
+// animations (tool-row-enter, done-pulse, etc.). Exit is faster than enter so dismissal stays
 // readable without delaying the next interaction.
 const SPRING_SOFT = [0.34, 1.2, 0.64, 1] as const
 const MOTION_BASE_S = 0.24 // matches --motion-base (240ms)

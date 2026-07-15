@@ -401,8 +401,7 @@ class TestBedrockCapabilities:
     Bedrock capabilities come from the bundled YAML registry. Claude
     4.x and Nova are listed with vision=true (both in-region and global
     inference profile IDs); unlisted Bedrock model IDs fall through to
-    the all-false defaults. See
-    ``documents/techdebts/model-capabilities-registry.md``.
+    the all-false defaults.
     """
 
     def test_unknown_bedrock_model_defaults_no_vision(self):

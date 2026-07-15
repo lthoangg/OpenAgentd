@@ -9,8 +9,7 @@ Usage:
   #        DEFAULT_PROMPT_TOKEN_THRESHOLD = 2000
   #        DEFAULT_MAX_TOKEN_LENGTH = 500
   #    Then start the server: uv run python -m app.server
-  #    (There is no file-based config — see
-  #    ``documents/docs/agent/summarization.md``.)
+  #    (There is no file-based configuration for these values.)
   #
   # 2. Run this script:
   uv run python -m manual.summarization_max_tokens_test

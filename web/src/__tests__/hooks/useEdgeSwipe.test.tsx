@@ -59,10 +59,28 @@ describe('useEdgeSwipe', () => {
     const el = getByTestId('surface')
     fireEvent.touchStart(el, touchEvt(10, 200))
     fireEvent.touchMove(el, touchEvt(120, 205))
+    fireEvent.touchEnd(el)
 
     expect(onLeft).toHaveBeenCalledTimes(1)
     expect(onRight).not.toHaveBeenCalled()
     expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('waits for release before committing a full left-edge swipe', () => {
+    const onLeft = mock(() => undefined)
+    const { getByTestId } = render(
+      <Harness activeDrawer={null} onLeft={onLeft} onRight={() => undefined} onClose={() => undefined} />,
+    )
+    const el = getByTestId('surface')
+    fireEvent.touchStart(el, touchEvt(8, 200))
+    fireEvent.touchMove(el, touchEvt(200, 205))
+
+    // Keep tracking the finger across the drawer's entire travel instead
+    // of snapping open as soon as the commit distance is crossed.
+    expect(onLeft).not.toHaveBeenCalled()
+
+    fireEvent.touchEnd(el)
+    expect(onLeft).toHaveBeenCalledTimes(1)
   })
 
   it('opens the right drawer on an inward swipe from the right edge', () => {
@@ -75,6 +93,7 @@ describe('useEdgeSwipe', () => {
     const el = getByTestId('surface')
     fireEvent.touchStart(el, touchEvt(392, 200))
     fireEvent.touchMove(el, touchEvt(280, 205))
+    fireEvent.touchEnd(el)
 
     expect(onRight).toHaveBeenCalledTimes(1)
     expect(onLeft).not.toHaveBeenCalled()
@@ -107,6 +126,7 @@ describe('useEdgeSwipe', () => {
     // Swipe leftward (back toward the left edge) to dismiss.
     fireEvent.touchStart(el, touchEvt(200, 200))
     fireEvent.touchMove(el, touchEvt(80, 205))
+    fireEvent.touchEnd(el)
 
     expect(onClose).toHaveBeenCalledTimes(1)
     expect(onLeft).not.toHaveBeenCalled()

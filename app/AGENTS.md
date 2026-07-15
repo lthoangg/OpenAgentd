@@ -61,7 +61,7 @@ uv run ruff check app/ tests/ && uv run ruff format --check app/ tests/ && uv ru
 ## Documentation pointers
 
 - CLI server bind/auth persistence: `app/core/server_settings.py` (`server.yaml`); shared agent/runtime settings remain in `app/core/runtime_settings.py` (`settings.yaml`).
-- Backend and testing conventions: `documents/docs/guidelines.md`.
-- Architecture overview: `documents/docs/architecture.md`.
+- Backend conventions: source modules, adjacent tests, and Make targets are authoritative.
+- Architecture: follow the package layout above and trace runtime behavior through the source.
 - Server binding/auth invariant: `documents/adrs/0002-require-authentication-for-non-loopback-bindings.md`.
 - Feature catalogue: `documents/docs/features.md`.

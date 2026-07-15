@@ -30,7 +30,7 @@ Several directories carry their own `AGENTS.md` with local conventions and
 
 ## Validation
 
-Choose the applicable risk lane and checks from the canonical [change policy](documents/docs/contributing/change-policy.md). Use the Make targets as the command source of truth:
+Choose checks appropriate to the files and risk involved. Use the Make targets as the command source of truth:
 
 ```bash
 make verify          # portable backend + web + docs + version contract
@@ -115,16 +115,12 @@ When using team-spawning tools (e.g. `coder`, `explorer` blueprints) to parallel
 
 ## Documentation
 
-Start at [`documents/docs/index.md`](documents/docs/index.md) — it groups every doc by audience (getting-started / architecture / operations / frontend / contributing). Tracked tech debt: [`documents/techdebts/`](documents/techdebts/). Significant architectural decisions are recorded as ADRs in [`documents/adrs/`](documents/adrs/) (use the `adr-writing` skill; keep the index `README.md` in sync).
+Product documentation is intentionally small. [`documents/docs/features.md`](documents/docs/features.md) is the canonical catalogue of shipped user-visible capabilities; [`README.md`](README.md) is the user-facing product and installation entry point. Code, tests, CLI help, and the UI are authoritative for implementation and operation. Significant, expensive-to-reverse decisions are recorded as ADRs in [`documents/adrs/`](documents/adrs/) (use the `adr-writing` skill; keep the index `README.md` in sync).
 
 ## When shipping a feature
 
-Update in this order so docs stay coherent:
-
-1. [`documents/docs/features.md`](documents/docs/features.md) — add a one-line entry under the right pillar with the `[vX.Y.Z]` tag. This is the canonical record.
-2. [`README.md`](README.md) — refresh "What you get" / comparison table only if the change is user-visible and pitch-worthy.
-3. [`documents/docs/comparison.md`](documents/docs/comparison.md) — add a row if it's a capability that differentiates against Claude Code / Codex CLI / Cursor / Aider / opencode.
-4. Deeper doc under `documents/docs/` (e.g. `agent/teams.md`, `configuration/lsp.md`) — link it back from the `features.md` entry, and surface it from the relevant index/hub (`documents/docs/index.md` or `configuration.md`).
-5. If the change adds or reshapes a subsystem, update the nearest `AGENTS.md` "where to look first" map (e.g. `app/services/AGENTS.md`) so future agents can find it.
+1. Add a concise, version-cited entry to [`documents/docs/features.md`](documents/docs/features.md).
+2. Update [`README.md`](README.md) only when the feature changes the user-facing product story or setup.
+3. Update the nearest `AGENTS.md` map when a subsystem's ownership or entry points change.
 
 When removing a feature, mark it *(deprecated)* in `features.md` for at least one release before deleting.

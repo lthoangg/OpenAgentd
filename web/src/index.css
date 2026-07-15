@@ -696,7 +696,6 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
 
 /* ─────────────────────────────────────────────────────────────
  * Focus ring — :focus-visible only, never on mouse click
- * See documents/styling-specs/interaction.md#focus-ring-specification
  * ───────────────────────────────────────────────────────────── */
 @layer base {
   :focus-visible {
@@ -728,7 +727,6 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
 
 /* ─────────────────────────────────────────────────────────────
  * Animations — each conveys a specific piece of information.
- * See documents/styling-specs/motion.md#choreography-patterns
  * ───────────────────────────────────────────────────────────── */
 
 /* Thinking dot — one of three; stagger set inline on element. */

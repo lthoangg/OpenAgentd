@@ -25,8 +25,8 @@ Why this is fine:
   ``uv tool upgrade openagentd`` / ``pip install -U`` / Tauri
   auto-update all replace the package directory atomically, so users
   get the latest registry whenever they upgrade.
-- Long-term direction: a runtime-fetched registry — see
-  ``documents/techdebts/model-capabilities-registry.md``.
+- A future runtime-fetched registry can add new model metadata without
+  risking stale prefix- or name-based guesses in the shipped client.
 
 Usage::
 

@@ -11,14 +11,6 @@ from urllib.parse import unquote
 
 FRONTMATTER_REQUIREMENTS: tuple[tuple[str, frozenset[str]], ...] = (
     ("documents/docs/", frozenset({"title", "description", "status", "updated"})),
-    (
-        "documents/styling-specs/",
-        frozenset({"title", "description", "status", "updated"}),
-    ),
-    (
-        "documents/techdebts/",
-        frozenset({"title", "status", "owner", "opened", "updated"}),
-    ),
     ("seed/agents/", frozenset({"name", "role", "model", "thinking_level"})),
     (".github/ISSUE_TEMPLATE/", frozenset({"name", "about", "labels"})),
 )
@@ -40,8 +32,9 @@ def tracked_markdown_files(root: Path) -> list[Path]:
     if result.returncode:
         raise RuntimeError("could not list tracked Markdown files with git")
     return [
-        root / Path(name)
+        path
         for name in sorted(filter(None, result.stdout.decode().split("\0")))
+        if (path := root / Path(name)).is_file()
     ]
 
 

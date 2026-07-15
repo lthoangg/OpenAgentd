@@ -26,4 +26,4 @@ Only the latest version on the `main` branch receives security fixes.
 | **Security headers** | Every response carries `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, strict CSP, `frame-ancestors 'none'`, and a `Permissions-Policy` header via `SecurityHeadersMiddleware`. |
 | **Request size cap** | `RequestSizeLimitMiddleware` rejects bodies over 4 MB (via `Content-Length`) before the body is read. |
 
-For the full threat model and trust boundary analysis see [`documents/docs/architecture.md` — Security & trust model](documents/docs/architecture.md).
+The security invariants above, their enforcement points in source, and their tests are the authoritative threat-model record.

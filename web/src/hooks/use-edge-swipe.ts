@@ -20,7 +20,8 @@
  *     edge, signed pixel offset) so the drawer tracks the finger instead
  *     of snapping at a fixed threshold.
  *   - **Velocity / fling** — a fast flick commits with much less travel
- *     than a slow drag, matching native drawer feel.
+ *     than a slow drag, matching native drawer feel. The drawer follows
+ *     the finger for the entire gesture and commits only on release.
  *   - **Haptics** — a short tick when a gesture commits.
  *
  * Only active on Tauri iOS/Android shells — desktop pointer swipes are
@@ -228,9 +229,9 @@ export function useEdgeSwipe({
         ? (state.intent === 'open' ? instX : -instX)
         : (state.intent === 'open' ? -instX : instX)
       state.velocity = state.velocity * 0.7 + instSigned * 0.3
-      state.lastX = touch.clientX
-      state.lastT = now
     }
+    state.lastX = touch.clientX
+    state.lastT = now
 
     // ── Drag-follow feedback ──────────────────────────────────────────
     // Resting x for the drawer: open drawers rest at 0; for a close drag
@@ -246,18 +247,29 @@ export function useEdgeSwipe({
     const offset = hidden * (1 - progress)
 
     setDrag({ drawerId: state.drawerId, edge: state.edge, intent: state.intent, offset, progress })
-
-    if (state.fired) return
-
-    const flingCommit = state.velocity >= FLING_VELOCITY && signed >= FLING_MIN_DISTANCE
-    const distanceCommit = signed >= COMMIT_DISTANCE
-    if (flingCommit || distanceCommit) {
-      event.preventDefault()
-      commit(state)
-    }
-  }, [clearDrag, commit, drawerWidth])
+    // Once horizontal intent is established, prevent the page from moving
+    // beneath the drawer while it tracks the complete finger travel.
+    event.preventDefault()
+  }, [clearDrag, drawerWidth])
 
   const onTouchEnd = useCallback(() => {
+    const state = stateRef.current
+    if (state && state.locked && !state.fired) {
+      const deltaX = state.lastX - state.startX
+      const towardOpen = state.edge === 'left' ? deltaX : -deltaX
+      const signed = state.intent === 'open' ? towardOpen : -towardOpen
+      const flingCommit = state.velocity >= FLING_VELOCITY && signed >= FLING_MIN_DISTANCE
+      const distanceCommit = signed >= COMMIT_DISTANCE
+      if (flingCommit || distanceCommit) {
+        commit(state)
+        return
+      }
+    }
+    stateRef.current = null
+    clearDrag()
+  }, [clearDrag, commit])
+
+  const onTouchCancel = useCallback(() => {
     stateRef.current = null
     clearDrag()
   }, [clearDrag])
@@ -266,8 +278,8 @@ export function useEdgeSwipe({
     onTouchStart,
     onTouchMove,
     onTouchEnd,
-    onTouchCancel: onTouchEnd,
-  }), [onTouchStart, onTouchMove, onTouchEnd])
+    onTouchCancel,
+  }), [onTouchStart, onTouchMove, onTouchEnd, onTouchCancel])
 
   return { handlers, drag, enabled }
 }

@@ -353,7 +353,7 @@ async fn start_backend_and_window(app: AppHandle) -> Result<()> {
                         .insert(MAIN_WINDOW.to_string(), base.clone());
                     if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
                         window
-                            .eval(&frontend_init_script(None, &base))
+                            .eval(frontend_init_script(None, &base))
                             .context("inject external backend config")?;
                     }
                     update_tray_status(&app, "Status: Running");

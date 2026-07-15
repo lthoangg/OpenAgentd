@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 from app.agent.hooks.base import BaseAgentHook
 from app.agent.tool_id_resolver import ToolIdResolver
+from app.agent.usage import usage_to_dict
 from app.services import memory_stream_store as stream_store
 from app.agent.schemas.events import (
     MessageEvent,
@@ -128,6 +129,9 @@ class StreamPublisherHook(BaseAgentHook):
                 self._current_model = chunk.model
                 self._used_models.add(chunk.model)
                 metadata["model"] = chunk.model
+            usage_data = usage_to_dict(u, model if isinstance(model, str) else None)
+            cost = usage_data.get("cost")
+            estimated_cost = cost.get("estimated_usd") if isinstance(cost, dict) else None
             await self._push(
                 UsageEvent(
                     prompt_tokens=pt,
@@ -136,6 +140,7 @@ class StreamPublisherHook(BaseAgentHook):
                     cached_tokens=getattr(u, "cached_tokens", None),
                     thoughts_tokens=getattr(u, "thoughts_tokens", None),
                     tool_use_tokens=getattr(u, "tool_use_tokens", None),
+                    estimated_cost_usd=estimated_cost,
                     metadata=metadata,
                 )
             )

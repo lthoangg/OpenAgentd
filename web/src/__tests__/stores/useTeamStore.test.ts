@@ -429,6 +429,25 @@ describe("_handleSSEEvent: usage", () => {
     expect(usage.cachedTokens).toBe(2);
   });
 
+  it("accumulates estimated cost for the session", () => {
+    useTeamStore.getState()._handleSSEEvent("usage", {
+      prompt_tokens: 10,
+      completion_tokens: 5,
+      total_tokens: 15,
+      estimated_cost_usd: 0.0012,
+      metadata: { agent: "lead" },
+    });
+    useTeamStore.getState()._handleSSEEvent("usage", {
+      prompt_tokens: 20,
+      completion_tokens: 8,
+      total_tokens: 28,
+      estimated_cost_usd: 0.0023,
+      metadata: { agent: "lead" },
+    });
+
+    expect(useTeamStore.getState().agentStreams.lead.usage.estimatedCostUsd).toBe(0.0035);
+  });
+
   it("falls back to top-level agent field", () => {
     useTeamStore.getState()._handleSSEEvent("usage", {
       agent: "worker",

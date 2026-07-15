@@ -305,6 +305,8 @@ export interface AgentUsage {
   completionTokens: number
   totalTokens: number
   cachedTokens: number
+  /** Estimated USD cost accumulated for this agent in the active session. */
+  estimatedCostUsd?: number
   turnPromptTokens?: number
   turnCompletionTokens?: number
   turnTotalTokens?: number

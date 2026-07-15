@@ -124,6 +124,10 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         leadCompletionTokens: leadStream?.usage.completionTokens ?? 0,
         leadCachedTokens: leadStream?.usage.cachedTokens ?? 0,
         leadTotalTokens: leadStream?.usage.totalTokens ?? 0,
+        sessionCostUsd: Object.values(s.agentStreams).reduce(
+          (total, stream) => total + (stream.usage.estimatedCostUsd ?? 0),
+          0,
+        ),
       }
     })
   )
@@ -161,6 +165,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     leadCompletionTokens,
     leadCachedTokens,
     leadTotalTokens,
+    sessionCostUsd,
   } = storeState
 
 
@@ -284,6 +289,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         cached: leadCachedTokens,
         trigger: summaryTriggerTokens,
         pulsing: isTeamWorking,
+        sessionCostUsd,
       }
     : undefined
 

@@ -233,7 +233,7 @@ run from the terminal.
 - **Header context meter** `[v1.53.0]` — desktop and mobile chat headers show an
   icon-sized input-token progress ring against the backend's model-aware
   summarization trigger; hover, focus, or tap/click reveals input/output/cache
-  details.
+  details and the estimated USD used across the active session `[v1.107.0]`; the estimate sums provider-reported input, output, and cache-read usage at the active model's registry rates, so compaction never reduces previously incurred spend.
 - **Todos panel** `[since v1.0]` — task board with a topbar progress badge
   `<finished>/<total>` `[v1.17.0]`. Live invalidation.
 - **Mobile / phone-first layout** `[since v1.0]` — breakpoints, safe areas, drawer

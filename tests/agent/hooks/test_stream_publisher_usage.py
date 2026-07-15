@@ -14,6 +14,7 @@ from app.agent.schemas.chat import (
 )
 from app.agent.state import AgentState
 from app.agent.schemas.chat import HumanMessage
+from app.agent.providers.model_metadata import ModelCost
 
 
 def _make_hook(session_id="sess-1", agent_name="lead") -> StreamPublisherHook:
@@ -58,10 +59,16 @@ async def test_on_model_delta_emits_usage_event():
     hook = _make_hook(agent_name="lead")
     pushed = []
 
-    with patch(
-        "app.services.memory_stream_store.push_event",
-        new_callable=AsyncMock,
-        side_effect=lambda sid, ev: pushed.append(ev),
+    with (
+        patch(
+            "app.services.memory_stream_store.push_event",
+            new_callable=AsyncMock,
+            side_effect=lambda sid, ev: pushed.append(ev),
+        ),
+        patch(
+            "app.agent.usage.get_model_cost",
+            return_value=ModelCost(input=2.0, output=5.0),
+        ),
     ):
         state = _make_state()
         await hook.on_model_delta(MagicMock(), state, _make_chunk_with_usage())
@@ -73,6 +80,7 @@ async def test_on_model_delta_emits_usage_event():
     assert event.data["prompt_tokens"] == 100
     assert event.data["completion_tokens"] == 40
     assert event.data["total_tokens"] == 140
+    assert event.data["estimated_cost_usd"] == 0.0004
 
 
 async def test_on_model_delta_usage_agent_name_in_metadata():

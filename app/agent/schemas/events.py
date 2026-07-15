@@ -108,6 +108,7 @@ class UsageEvent(BaseModel):
     cached_tokens: int | None = None
     thoughts_tokens: int | None = None
     tool_use_tokens: int | None = None
+    estimated_cost_usd: float | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

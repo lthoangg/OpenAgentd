@@ -161,7 +161,7 @@ export function parseApiMessages(msgs: MessageResponse[]): ChatMessage[] {
     if (msg.role === 'assistant') {
       const timestamp = msg.created_at ? new Date(msg.created_at) : new Date()
       const blocks = assistantBlocks(msg, pendingToolBlocks, timestamp)
-      const extra = msg.extra as { usage?: { input?: number; output?: number; cache?: number } } | null
+      const extra = msg.extra as { usage?: { input?: number; output?: number; cache?: number; cost?: { estimated_usd?: number } } } | null
       const usage = extra?.usage ? {
         promptTokens: extra.usage.input ?? 0,
         completionTokens: extra.usage.output ?? 0,
@@ -189,16 +189,17 @@ export function parseApiMessages(msgs: MessageResponse[]): ChatMessage[] {
  * Reads from message.extra.usage persisted by DatabaseHook.
  */
 export function sumUsageFromMessages(msgs: MessageResponse[]): AgentUsage {
-  const acc = { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0 }
+  const acc = { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0, estimatedCostUsd: 0 }
   let lastInput = 0
   let lastCache = 0
   for (const msg of sortMessages(msgs)) {
     if (msg.role !== 'assistant') continue
-    const extra = msg.extra as { usage?: { input?: number; output?: number; cache?: number } } | null
+    const extra = msg.extra as { usage?: { input?: number; output?: number; cache?: number; cost?: { estimated_usd?: number } } } | null
     if (!extra?.usage) continue
     const i = extra.usage.input ?? 0
     const o = extra.usage.output ?? 0
     acc.completionTokens += o
+    acc.estimatedCostUsd += extra.usage.cost?.estimated_usd ?? 0
     lastInput = i
     lastCache = extra.usage.cache ?? 0
   }

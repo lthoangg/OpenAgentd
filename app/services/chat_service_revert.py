@@ -167,6 +167,8 @@ def is_hidden_from_user(row: SessionMessage) -> bool:
 def is_undo_target(row: SessionMessage) -> bool:
     if is_hidden_from_user(row):
         return False
+    if row.extra and row.extra.get("from_agent") not in (None, "user"):
+        return False
     return row.is_summary or not row.exclude_from_context
 
 
@@ -190,10 +192,12 @@ async def undo_session_messages(db: AsyncSession, session_id: UUID) -> BoundaryS
     if session is None:
         return BoundaryShift(applied=False)
     boundary = await revert_boundary(db, session_id)
+    from_agent = col(SessionMessage.extra)["from_agent"].as_string()
     stmt = (
         select(SessionMessage)
         .where(col(SessionMessage.session_id) == session_id)
         .where(col(SessionMessage.role) == "user")
+        .where(or_(from_agent.is_(None), from_agent == "user"))
         .order_by(col(SessionMessage.created_at).desc())
     )
     if boundary is not None:
@@ -244,12 +248,14 @@ async def redo_session_messages(db: AsyncSession, session_id: UUID) -> BoundaryS
     if session is None or boundary is None:
         return BoundaryShift(applied=False)
     anchor = redo_anchor(session)
+    from_agent = col(SessionMessage.extra)["from_agent"].as_string()
     next_user = (
         await db.exec(
             select(SessionMessage)
             .where(col(SessionMessage.session_id) == session_id)
             .where(col(SessionMessage.role) == "user")
             .where(col(SessionMessage.created_at) > boundary.created_at)
+            .where(or_(from_agent.is_(None), from_agent == "user"))
             .order_by(col(SessionMessage.created_at).asc())
             .limit(1)
         )

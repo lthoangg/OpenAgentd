@@ -631,6 +631,45 @@ async def test_cancel_queued_user_message_skips_pop(session):
     assert popped == []
 
 
+async def test_undo_and_redo_skip_team_messages(session):
+    chat_session = await create_chat_session(session)
+    first_user = await save_message(
+        session, chat_session.id, HumanMessage(content="first user turn")
+    )
+    await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="[executor#1]: first result"),
+        extra={"from_agent": "executor#1", "is_broadcast": False},
+    )
+    second_user = await save_message(
+        session, chat_session.id, HumanMessage(content="second user turn")
+    )
+    await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="[executor#1]: second result"),
+        extra={"from_agent": "executor#1", "is_broadcast": False},
+    )
+    await session.commit()
+
+    first_undo = await undo_session_messages(session, chat_session.id)
+    await session.commit()
+    second_undo = await undo_session_messages(session, chat_session.id)
+    await session.commit()
+
+    assert first_undo.target and first_undo.target.id == second_user.id
+    assert second_undo.target and second_undo.target.id == first_user.id
+
+    first_redo = await redo_session_messages(session, chat_session.id)
+    await session.commit()
+    second_redo = await redo_session_messages(session, chat_session.id)
+
+    assert first_redo.target and first_redo.target.id == second_user.id
+    assert second_redo.applied is True
+    assert second_redo.target is None
+
+
 async def test_cleanup_reverted_tail_preserves_queued_messages(session):
     chat_session = await create_chat_session(session, "Queue")
     await save_message(session, chat_session.id, HumanMessage(content="first"))

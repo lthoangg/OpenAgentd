@@ -290,11 +290,15 @@ def _thinking_from_model(model: dict[str, Any]) -> dict[str, list[str]]:
 
     levels: list[str] = []
     has_budget_tokens = False
+    has_toggle = False
     for option in options:
         if not isinstance(option, dict):
             continue
         if option.get("type") == "budget_tokens":
             has_budget_tokens = True
+            continue
+        if option.get("type") == "toggle":
+            has_toggle = True
             continue
         if option.get("type") != "effort":
             continue
@@ -304,6 +308,8 @@ def _thinking_from_model(model: dict[str, Any]) -> dict[str, list[str]]:
         for value in values:
             if isinstance(value, str) and value and value not in levels:
                 levels.append(value)
+    if has_toggle and "none" not in levels:
+        levels.insert(0, "none")
     if levels:
         return {"levels": levels}
     if has_budget_tokens:

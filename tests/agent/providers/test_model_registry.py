@@ -98,6 +98,51 @@ def test_models_dev_metadata_is_normalized(
     assert features.release_date == "2026-01-02"
 
 
+def test_models_dev_toggle_reasoning_includes_none_level(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        model_registry.settings, "OPENAGENTD_CACHE_DIR", str(tmp_path / "cache")
+    )
+    monkeypatch.setattr(
+        model_registry.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path / "config")
+    )
+    monkeypatch.setattr(
+        model_registry.settings, "OPENAGENTD_MODEL_REGISTRY_REFRESH", True
+    )
+    monkeypatch.setattr(
+        model_registry,
+        "_fetch_models_dev",
+        lambda: {
+            "anthropic": {
+                "id": "anthropic",
+                "models": {
+                    "claude-sonnet-5": {
+                        "id": "claude-sonnet-5",
+                        "reasoning": True,
+                        "reasoning_options": [
+                            {"type": "toggle"},
+                            {
+                                "type": "effort",
+                                "values": ["low", "medium", "high", "xhigh", "max"],
+                            },
+                        ],
+                    }
+                },
+            }
+        },
+    )
+
+    assert get_model_thinking_levels("anthropic:claude-sonnet-5") == (
+        "none",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+    )
+
+
 def test_models_dev_budget_reasoning_maps_to_standard_thinking_levels(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

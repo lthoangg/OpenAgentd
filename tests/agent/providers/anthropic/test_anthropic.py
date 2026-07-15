@@ -112,6 +112,61 @@ def test_anthropic_messages_api_beta_respects_override(explicit: bool) -> None:
     assert kwargs == {}
 
 
+def test_anthropic_payload_explicitly_disables_default_thinking_for_sonnet_5() -> None:
+    provider = AnthropicProvider(
+        api_key="sk-ant-test",
+        model="claude-sonnet-5",
+        model_kwargs={"thinking_level": "none"},
+    )
+
+    payload = provider._payload(
+        [HumanMessage(content="hi")],
+        None,
+        provider._merged_kwargs(),
+    )
+
+    assert payload["thinking"] == {"type": "disabled"}
+    assert "output_config" not in payload
+
+
+def test_anthropic_payload_does_not_disable_always_on_thinking() -> None:
+    provider = AnthropicProvider(
+        api_key="sk-ant-test",
+        model="claude-fable-5",
+        model_kwargs={"thinking_level": "none"},
+    )
+
+    payload = provider._payload(
+        [HumanMessage(content="hi")],
+        None,
+        provider._merged_kwargs(),
+    )
+
+    assert "thinking" not in payload
+    assert "output_config" not in payload
+
+
+def test_anthropic_payload_combines_manual_thinking_and_effort_for_opus_4_5() -> None:
+    provider = AnthropicProvider(
+        api_key="sk-ant-test",
+        model="claude-opus-4-5",
+        model_kwargs={"thinking_level": "medium", "max_tokens": 4096},
+    )
+
+    payload = provider._payload(
+        [HumanMessage(content="hi")],
+        None,
+        provider._merged_kwargs(),
+    )
+
+    assert payload["thinking"] == {
+        "type": "enabled",
+        "budget_tokens": 1638,
+        "display": "summarized",
+    }
+    assert payload["output_config"] == {"effort": "medium"}
+
+
 def test_anthropic_payload_uses_manual_thinking_for_older_models() -> None:
     provider = AnthropicProvider(
         api_key="sk-ant-test",

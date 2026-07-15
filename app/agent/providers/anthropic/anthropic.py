@@ -361,7 +361,11 @@ def _apply_thinking(
     model: str, kwargs: dict[str, Any], payload: dict[str, Any]
 ) -> bool:
     level = str(kwargs.pop("thinking_level", "") or "").lower()
-    if not level or level in {"none", "off"}:
+    if not level:
+        return False
+    if level in {"none", "off"}:
+        if model.lower().startswith("claude-sonnet-5"):
+            payload["thinking"] = {"type": "disabled"}
         return False
     if _uses_adaptive_thinking(model):
         payload["thinking"] = {"type": "adaptive", "display": "summarized"}
@@ -373,6 +377,8 @@ def _apply_thinking(
         "budget_tokens": _thinking_budget(level, max_tokens),
         "display": "summarized",
     }
+    if model.lower().startswith("claude-opus-4-5"):
+        payload["output_config"] = {"effort": level}
     return True
 
 

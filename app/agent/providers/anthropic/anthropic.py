@@ -343,12 +343,30 @@ def _uses_beta_messages_api(_model: str, kwargs: dict[str, Any]) -> bool:
     return bool(explicit)
 
 
+def _uses_adaptive_thinking(model: str) -> bool:
+    return model.lower().startswith(
+        (
+            "claude-opus-4-6",
+            "claude-opus-4-7",
+            "claude-opus-4-8",
+            "claude-sonnet-4-6",
+            "claude-sonnet-5",
+            "claude-fable-5",
+            "claude-mythos",
+        )
+    )
+
+
 def _apply_thinking(
     model: str, kwargs: dict[str, Any], payload: dict[str, Any]
 ) -> bool:
     level = str(kwargs.pop("thinking_level", "") or "").lower()
     if not level or level in {"none", "off"}:
         return False
+    if _uses_adaptive_thinking(model):
+        payload["thinking"] = {"type": "adaptive", "display": "summarized"}
+        payload["output_config"] = {"effort": level}
+        return True
     max_tokens = int(payload["max_tokens"])
     payload["thinking"] = {
         "type": "enabled",

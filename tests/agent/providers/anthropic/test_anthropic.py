@@ -83,11 +83,10 @@ def test_anthropic_payload_converts_system_tools_and_thinking() -> None:
     ]
     assert payload["tools"][0]["name"] == "lookup"
     assert payload["thinking"] == {
-        "type": "enabled",
-        "budget_tokens": 1024,
+        "type": "adaptive",
         "display": "summarized",
     }
-    assert "output_config" not in payload
+    assert payload["output_config"] == {"effort": "low"}
 
 
 @pytest.mark.parametrize(

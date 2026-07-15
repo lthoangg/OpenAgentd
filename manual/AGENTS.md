@@ -147,6 +147,8 @@ Hit LLM provider APIs directly — **no server required**, uses API keys from `.
 | `try_zai` | ZAI |
 | `try_deepseek` | DeepSeek (`DEEPSEEK_API_KEY`) |
 | `try_ollama` | Local daemon; cloud via `-cloud` model suffix after `ollama signin` |
+| `try_xai` | xAI/Grok; Chat Completions or Responses via `--level` |
+| `try_router9` | Local 9Router; requires a model ID exposed by the running router |
 | `try_continue_probe` | Probe whether providers continue from a trailing-assistant message (informs `/continue` design); `--model` |
 
 ```bash

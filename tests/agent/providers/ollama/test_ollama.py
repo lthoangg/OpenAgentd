@@ -97,13 +97,23 @@ class TestOllamaProviderInit:
         p = self._make_provider(model_kwargs={"extra_param": "value"})
         assert p.model_kwargs.get("extra_param") == "value"
 
-    def test_thinking_level_stays_on_chat_completions(self):
+    def test_thinking_level_routes_to_responses(self):
         p = self._make_provider(model_kwargs={"thinking_level": "high"})
-        assert p._use_responses is False
+        assert p._use_responses is True
 
-    def test_responses_api_true_stays_on_chat_completions(self):
+    def test_responses_api_true_routes_to_responses(self):
         p = self._make_provider(model_kwargs={"responses_api": True})
-        assert p._use_responses is False
+        assert p._use_responses is True
+
+    def test_chat_completions_uses_ollama_max_tokens_field(self):
+        p = OllamaProvider(model="llama3.2", max_tokens=1024)
+
+        body = p._completions.build_request(
+            [], tools=None, stream=False, merged={"max_tokens": 1024}
+        )
+
+        assert body["max_tokens"] == 1024
+        assert "max_completion_tokens" not in body
 
 
 # ============================================================================

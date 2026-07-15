@@ -96,17 +96,22 @@ class TestBedrockToolChoiceStripped:
         assert additional.get("custom_vendor_param") == "abc"
         assert "tool_choice" not in additional
 
-    def test_tool_choice_auto_also_stripped(self):
-        """Any value for tool_choice is stripped — the key is in the known set."""
+    def test_tool_choice_auto_uses_bedrock_auto(self):
         p = _make_provider()
-        req = _build_request(p, tool_choice="auto")
-        assert "tool_choice" not in req
+        req = _build_request(p, tools=[_TOOL], tool_choice="auto")
+        assert req["toolConfig"]["toolChoice"] == {"auto": {}}
         assert "tool_choice" not in req.get("additionalModelRequestFields", {})
 
-    def test_tool_choice_required_also_stripped(self):
+    def test_tool_choice_required_uses_bedrock_any(self):
         p = _make_provider()
-        req = _build_request(p, tool_choice="required")
-        assert "tool_choice" not in req
+        req = _build_request(p, tools=[_TOOL], tool_choice="required")
+        assert req["toolConfig"]["toolChoice"] == {"any": {}}
+        assert "tool_choice" not in req.get("additionalModelRequestFields", {})
+
+    def test_tool_choice_is_omitted_without_tools(self):
+        p = _make_provider()
+        req = _build_request(p, tools=None, tool_choice="required")
+        assert "toolConfig" not in req
         assert "tool_choice" not in req.get("additionalModelRequestFields", {})
 
     def test_toolconfig_shape_unaffected_by_tool_choice_stripping(self):

@@ -179,6 +179,17 @@ async def test_chat_success(google_provider):
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_chat_rejects_response_without_candidates(google_provider):
+    respx.post(
+        f"{google_provider.base_url}/models/gemini-1.5-flash:generateContent"
+    ).mock(return_value=httpx.Response(200, json={"promptFeedback": {}}))
+
+    with pytest.raises(ValueError, match="no candidates"):
+        await google_provider.chat(messages=[HumanMessage(content="hi")])
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_chat_with_tool_call(google_provider):
     respx.post(
         f"{google_provider.base_url}/models/gemini-1.5-flash:generateContent"

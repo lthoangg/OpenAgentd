@@ -4,6 +4,8 @@ from pydantic.types import SecretStr
 
 from app.agent.providers.googlegenai.googlegenai import GeminiProviderBase
 
+# Vertex GenerateContent REST API:
+# https://cloud.google.com/vertex-ai/generative-ai/docs/reference/rest/v1/projects.locations.publishers.models/generateContent
 # Express mode — no project/location, API key only
 VERTEX_EXPRESS_BASE_URL = "https://aiplatform.googleapis.com/v1"
 # Normal mode — regional endpoint

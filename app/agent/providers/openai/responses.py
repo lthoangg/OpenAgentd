@@ -53,11 +53,13 @@ class ResponsesHandler:
         base_url: str,
         headers: dict[str, str],
         request_timeout: float = 120.0,
+        preserve_stateless_reasoning: bool = False,
     ) -> None:
         self.model = model
         self.base_url = base_url
         self.headers = headers
         self.request_timeout = request_timeout
+        self.preserve_stateless_reasoning = preserve_stateless_reasoning
 
     # ------------------------------------------------------------------
     # Message / tool conversion
@@ -182,6 +184,10 @@ class ResponsesHandler:
             "input": self.convert_messages(sanitize_openai_tool_pairs(messages)),
             "stream": stream,
         }
+        if self.preserve_stateless_reasoning:
+            # https://developers.openai.com/api/docs/guides/migrate-to-responses
+            body["store"] = False
+            body["include"] = ["reasoning.encrypted_content"]
 
         resp_tools = self.convert_tools(tools)
         if resp_tools:

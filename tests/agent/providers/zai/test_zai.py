@@ -316,3 +316,41 @@ async def test_no_thinking_level_sends_neither_field():
     body = json.loads(route.calls[0].request.content)
     assert "thinking" not in body
     assert "reasoning_effort" not in body
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_max_tokens_uses_zai_legacy_field():
+    """Z.AI's Chat Completions API accepts max_tokens, not its OpenAI successor."""
+    import json
+
+    route = respx.post("https://api.z.ai/api/paas/v4/chat/completions").mock(
+        return_value=httpx.Response(200, json=_OK_RESPONSE)
+    )
+
+    prov = ZAIProvider(api_key="k", model="m", max_tokens=123)
+    await prov.chat(messages=[HumanMessage(content="hi")])
+
+    body = json.loads(route.calls[0].request.content)
+    assert body["max_tokens"] == 123
+    assert "max_completion_tokens" not in body
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_tool_choice_none_is_omitted_for_zai():
+    """Z.AI's function-calling API only accepts tool_choice='auto'."""
+    import json
+
+    route = respx.post("https://api.z.ai/api/paas/v4/chat/completions").mock(
+        return_value=httpx.Response(200, json=_OK_RESPONSE)
+    )
+
+    prov = ZAIProvider(api_key="k", model="m", model_kwargs={"tool_choice": "none"})
+    await prov.chat(
+        messages=[HumanMessage(content="hi")],
+        tools=[{"type": "function", "function": {"name": "search"}}],
+    )
+
+    body = json.loads(route.calls[0].request.content)
+    assert "tool_choice" not in body

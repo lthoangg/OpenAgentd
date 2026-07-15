@@ -11,6 +11,7 @@ import pytest
 import respx
 from pydantic.types import SecretStr
 
+from app.agent.providers.copilot.oauth import CopilotOAuth
 from app.agent.providers.copilot.copilot import (
     COPILOT_API_BASE,
     CopilotProvider,
@@ -126,6 +127,28 @@ class TestCopilotProviderInit:
                 return_value=None,
             ),
             patch.dict(os.environ, {"GITHUB_COPILOT_TOKEN": "gho_env_token"}),
+        ):
+            p = CopilotProvider(model="gpt-5-mini")
+        assert p._github_token == "gho_env_token"
+
+    def test_accepts_official_copilot_github_token_env_var(self):
+        with (
+            patch(
+                "app.agent.providers.copilot.copilot.CopilotOAuth.load",
+                return_value=None,
+            ),
+            patch.dict(os.environ, {"COPILOT_GITHUB_TOKEN": "gho_env_token"}),
+        ):
+            p = CopilotProvider(model="gpt-5-mini")
+        assert p._github_token == "gho_env_token"
+
+    def test_official_env_token_takes_precedence_over_stored_credentials(self):
+        with (
+            patch(
+                "app.agent.providers.copilot.copilot.CopilotOAuth.load",
+                return_value=CopilotOAuth(github_token=SecretStr("gho_stored_token")),
+            ),
+            patch.dict(os.environ, {"COPILOT_GITHUB_TOKEN": "gho_env_token"}),
         ):
             p = CopilotProvider(model="gpt-5-mini")
         assert p._github_token == "gho_env_token"

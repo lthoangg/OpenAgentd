@@ -65,6 +65,36 @@ class TestOpenAIProvider:
         )
         assert provider._use_responses is True
 
+    def test_responses_request_preserves_stateless_reasoning(self):
+        """Native Responses requests request encrypted reasoning for replay."""
+        provider = OpenAIProvider(
+            api_key="sk-test",
+            model="gpt-5.4",
+            model_kwargs={"responses_api": True},
+        )
+
+        body = provider._responses.build_request(
+            [], tools=None, stream=False, merged={}
+        )
+
+        assert body["store"] is False
+        assert body["include"] == ["reasoning.encrypted_content"]
+
+    def test_custom_responses_endpoint_does_not_get_openai_reasoning_fields(self):
+        provider = OpenAIProvider(
+            api_key="sk-test",
+            model="compatible-model",
+            base_url="https://api.openai.com.proxy.example/v1",
+            model_kwargs={"responses_api": True},
+        )
+
+        body = provider._responses.build_request(
+            [], tools=None, stream=False, merged={}
+        )
+
+        assert "store" not in body
+        assert "include" not in body
+
     def test_init_with_explicit_responses_api_false(self):
         """Initialize with explicit responses_api: false."""
         provider = OpenAIProvider(

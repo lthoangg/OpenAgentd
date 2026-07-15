@@ -403,7 +403,16 @@ class BedrockProvider(LLMProviderBase):
         if inference_config:
             req["inferenceConfig"] = inference_config
         if bedrock_tools:
-            req["toolConfig"] = {"tools": bedrock_tools}
+            tool_config: dict[str, Any] = {"tools": bedrock_tools}
+            # Converse supports auto/any tool choices. See:
+            # https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ToolConfiguration.html
+            # "none" has no Bedrock equivalent, so omit toolChoice to use the API default.
+            tool_choice = merged.get("tool_choice")
+            if tool_choice == "auto":
+                tool_config["toolChoice"] = {"auto": {}}
+            elif tool_choice == "required":
+                tool_config["toolChoice"] = {"any": {}}
+            req["toolConfig"] = tool_config
         if additional:
             req["additionalModelRequestFields"] = additional
 

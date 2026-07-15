@@ -1,11 +1,11 @@
 """Ollama provider — OpenAI-compatible API.
 
-Ollama exposes an OpenAI-compatible ``/v1/chat/completions`` endpoint on
-the local daemon at ``http://localhost:11434/v1``. This single endpoint
-serves both locally-pulled models *and* hosted Ollama Cloud models —
-cloud models are routed transparently when the model name carries the
-``-cloud`` suffix (e.g. ``kimi-k2.6-cloud``) and the user has signed in
-via ``ollama signin``.
+Ollama exposes OpenAI-compatible ``/v1/chat/completions`` and
+``/v1/responses`` endpoints on the local daemon at
+``http://localhost:11434/v1``. These endpoints serve both locally-pulled
+models *and* hosted Ollama Cloud models — cloud models are routed
+transparently when the model name carries the ``-cloud`` suffix (e.g.
+``kimi-k2.6-cloud``) and the user has signed in via ``ollama signin``.
 
 There is no separate cloud HTTPS endpoint. ``ollama.com`` exposes only
 its native (non-OpenAI) API at ``/api/chat``; the OpenAI compatibility
@@ -32,8 +32,15 @@ from typing import Any
 from pydantic.types import SecretStr
 
 from app.agent.providers.openai import OpenAIProvider
+from app.agent.providers.openai.completions import CompletionsHandler
 
 OLLAMA_LOCAL_API_BASE = "http://localhost:11434/v1"
+
+
+class _OllamaCompletionsHandler(CompletionsHandler):
+    """Ollama's Chat Completions endpoint uses the legacy token-limit field."""
+
+    uses_max_completion_tokens = False
 
 
 class OllamaProvider(OpenAIProvider):
@@ -79,6 +86,8 @@ class OllamaProvider(OpenAIProvider):
             model_kwargs=model_kwargs,
         )
 
-    def _use_responses_for(self, model_kwargs: dict[str, Any]) -> bool:
-        # Ollama exposes the OpenAI-compatible chat-completions endpoint only.
-        return False
+    def _make_completions_handler(
+        self, model: str, base_url: str, headers: dict[str, str]
+    ) -> CompletionsHandler:
+        # https://docs.ollama.com/api/openai-compatibility
+        return _OllamaCompletionsHandler(model, base_url, headers)

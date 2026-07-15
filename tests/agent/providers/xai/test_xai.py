@@ -79,13 +79,13 @@ class TestXAIProviderInit:
         p = self._make_provider(model_kwargs={"extra_param": "value"})
         assert p.model_kwargs.get("extra_param") == "value"
 
-    def test_thinking_level_stays_on_chat_completions(self):
+    def test_thinking_level_uses_responses_api(self):
         p = self._make_provider(model_kwargs={"thinking_level": "high"})
-        assert p._use_responses is False
+        assert p._use_responses is True
 
-    def test_responses_api_true_stays_on_chat_completions(self):
+    def test_responses_api_true_uses_responses_api(self):
         p = self._make_provider(model_kwargs={"responses_api": True})
-        assert p._use_responses is False
+        assert p._use_responses is True
 
     def test_default_max_tokens_is_none(self):
         p = self._make_provider()

@@ -17,11 +17,12 @@ few facets differ:
   Copilot; Claude / Gemini / Grok reject it. Other reasoning fields
   flow through unchanged.
 
-Token resolution order (preserved from the previous implementation):
+Token resolution order:
 
 1. Explicit ``github_token`` constructor arg.
-2. ``{CACHE_DIR}/copilot_oauth.json`` (written by ``openagentd auth copilot``).
-3. ``GITHUB_COPILOT_TOKEN`` env var.
+2. ``COPILOT_GITHUB_TOKEN``, ``GH_TOKEN``, or ``GITHUB_TOKEN`` env var
+   (then legacy ``GITHUB_COPILOT_TOKEN``).
+3. ``{CACHE_DIR}/copilot_oauth.json`` (written by ``openagentd auth copilot``).
 """
 
 from __future__ import annotations
@@ -38,6 +39,8 @@ from app.agent.providers.openai.responses import ResponsesHandler
 from app.agent.schemas.chat import ChatMessage, Usage
 from app.core.version import VERSION
 
+# This internal gateway is undocumented; public auth reference:
+# https://docs.github.com/en/copilot/how-tos/copilot-sdk/auth/authenticate
 COPILOT_API_BASE = "https://api.githubcopilot.com"
 COPILOT_API_VERSION = "2026-06-01"
 
@@ -173,12 +176,17 @@ def _resolve_github_token(
             else explicit,
             {},
         )
-    token, metadata = _oauth_context()
-    if token:
-        return token, metadata
     import os
 
-    return os.getenv("GITHUB_COPILOT_TOKEN") or None, {}
+    token = (
+        os.getenv("COPILOT_GITHUB_TOKEN")
+        or os.getenv("GH_TOKEN")
+        or os.getenv("GITHUB_TOKEN")
+        or os.getenv("GITHUB_COPILOT_TOKEN")
+    )
+    if token:
+        return token, {}
+    return _oauth_context()
 
 
 class _CopilotCompletionsHandler(CompletionsHandler):
@@ -256,7 +264,7 @@ class CopilotProvider(OpenAIProvider):
             raise ValueError(
                 "GitHub token not found.  Run:\n"
                 "  openagentd auth copilot\n"
-                "Or set GITHUB_COPILOT_TOKEN env var."
+                "Or set COPILOT_GITHUB_TOKEN env var."
             )
         super().__init__(
             api_key=token,

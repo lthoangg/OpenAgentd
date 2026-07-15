@@ -26,6 +26,7 @@ from pydantic.types import SecretStr
 from app.agent.providers.openai import OpenAIProvider
 from app.agent.providers.openai.completions import CompletionsHandler
 
+# API reference: https://docs.z.ai/api-reference/llm/chat-completion.md
 ZAI_API_BASE = "https://api.z.ai/api/paas/v4"
 
 
@@ -37,7 +38,11 @@ class _ZAICompletionsHandler(CompletionsHandler):
     to disable it via ``thinking: {"type": "disabled"}``.
     """
 
+    uses_max_completion_tokens = False
+
     def customize_thinking(self, merged: dict[str, Any], body: dict[str, Any]) -> None:
+        if body.get("tool_choice") != "auto":
+            body.pop("tool_choice", None)
         if merged.get("thinking_level") == "none":
             body["thinking"] = {"type": "disabled"}
 

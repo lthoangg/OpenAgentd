@@ -147,7 +147,7 @@ _CATALOG: list[ProviderEntry] = [
         "description": "Local proxy aggregating 40+ providers.",
         "kind": "api_key",
         "env_var": "ROUTER9_API_KEY",
-        "docs_url": "https://github.com/9router/9router",
+        "docs_url": "https://github.com/decolua/9router",
     },
     {
         "id": "cliproxy",

@@ -159,7 +159,14 @@ class OpenAIProvider(LLMProviderBase):
 
         Override to inject a ``ResponsesHandler`` subclass.
         """
-        return ResponsesHandler(model, base_url, headers)
+        return ResponsesHandler(
+            model,
+            base_url,
+            headers,
+            # Official stateless reasoning replay contract:
+            # https://developers.openai.com/api/docs/guides/migrate-to-responses
+            preserve_stateless_reasoning=base_url.rstrip("/") == API_BASE_URL,
+        )
 
     # ------------------------------------------------------------------
     # Public interface

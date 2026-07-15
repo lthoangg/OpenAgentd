@@ -236,7 +236,8 @@ class TestDeepSeekThinking:
 
     The base ``CompletionsHandler.customize_thinking`` only sends ``reasoning_effort``.
     DeepSeek needs ``thinking: {type: enabled}`` alongside it.
-    When thinking_level is absent/disabled, neither field should be sent.
+    When thinking_level is absent, DeepSeek's default thinking mode applies;
+    explicit ``none``/``off`` must send the API's disabled toggle.
     """
 
     def _build_body(self, thinking_level: str | None = None) -> dict:
@@ -268,14 +269,14 @@ class TestDeepSeekThinking:
         assert body.get("thinking") == {"type": "enabled"}
         assert body.get("reasoning_effort") == "low"
 
-    def test_thinking_not_sent_when_thinking_level_none(self):
+    def test_thinking_disabled_when_thinking_level_none(self):
         body = self._build_body("none")
-        assert "thinking" not in body
+        assert body["thinking"] == {"type": "disabled"}
         assert "reasoning_effort" not in body
 
-    def test_thinking_not_sent_when_thinking_level_off(self):
+    def test_thinking_disabled_when_thinking_level_off(self):
         body = self._build_body("off")
-        assert "thinking" not in body
+        assert body["thinking"] == {"type": "disabled"}
         assert "reasoning_effort" not in body
 
     def test_thinking_not_sent_when_thinking_level_absent(self):

@@ -46,6 +46,7 @@ from .schemas import (
     ToolConfig,
 )
 
+# GenerateContent REST API: https://ai.google.dev/api/generate-content
 API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 
 
@@ -344,6 +345,8 @@ class GeminiProviderBase(LLMProviderBase):
             data = response.json()
 
         gemini_resp = GeminiChatResponse.model_validate(data)
+        if not gemini_resp.candidates:
+            raise ValueError("Gemini API response contained no candidates")
         candidate = gemini_resp.candidates[0]
         content = ""
         reasoning = ""

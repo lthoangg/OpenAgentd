@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from app.agent.providers.openai import ChatCompletionsOnlyProvider
 
+# API reference: https://github.com/decolua/9router#-api-reference
+
 
 class Router9Provider(ChatCompletionsOnlyProvider):
     """9Router provider.

@@ -581,6 +581,20 @@ async def dispatch_user_shell_command(
             )
             await stream_store.push_event(sid, StreamEnvelope.from_event(DoneEvent()))
             await stream_store.mark_done(sid)
+            try:
+                from app.services import event_broadcaster
+
+                await event_broadcaster.publish(
+                    "session_turn_completed",
+                    {
+                        "session_id": sid,
+                        "status": "completed",
+                    },
+                )
+            except Exception as publish_exc:
+                logger.warning(
+                    "agent_service_shell_publish_failed error={}", publish_exc
+                )
 
     task = asyncio.create_task(_run_shell(), name=f"user_shell:{sid}")
     session_tasks = _user_shell_tasks.setdefault(sid, set())
@@ -742,5 +756,17 @@ async def interrupt_team(team: "AgentTeam", session_id: str | None) -> list[str]
             StreamEnvelope.from_parts(event="done", data={}),
         )
         await stream_store.mark_done(effective_session_id)
+        try:
+            from app.services import event_broadcaster
+
+            await event_broadcaster.publish(
+                "session_turn_completed",
+                {
+                    "session_id": effective_session_id,
+                    "status": "stopped",
+                },
+            )
+        except Exception as exc:
+            logger.warning("team_interrupt_publish_failed error={}", exc)
     logger.info("team_interrupt session_id={} cancelled={}", session_id, names)
     return names

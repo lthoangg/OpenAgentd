@@ -93,6 +93,7 @@ class TestDoneDetectionMixedStates:
                 ):
                     await team._try_emit_done()
 
+        assert len(notifications) == 2
         event, notification = notifications[0]
         assert event == "desktop_notification"
         assert notification["kind"] == "assistant_done"
@@ -105,6 +106,12 @@ class TestDoneDetectionMixedStates:
             "title": "Fix desktop notifications",
             "mode": "coding",
             "workspace": str(Path("/repo/openagentd")),
+        }
+        event2, payload2 = notifications[1]
+        assert event2 == "session_turn_completed"
+        assert payload2 == {
+            "session_id": "018f0000-0000-7000-8000-000000000001",
+            "status": "completed",
         }
         assert [event.event for event in pushed] == ["done"]
 
@@ -133,10 +140,17 @@ class TestDoneDetectionMixedStates:
                 ):
                     await team._try_emit_done()
 
+        assert len(notifications) == 2
         event, notification = notifications[0]
         assert event == "desktop_notification"
         assert notification["title"] == "Session completed"
         assert notification["body"] == "Session 018f0000"
+        event2, payload2 = notifications[1]
+        assert event2 == "session_turn_completed"
+        assert payload2 == {
+            "session_id": "018f0000-0000-7000-8000-000000000001",
+            "status": "completed",
+        }
         assert [event.event for event in pushed] == ["done"]
 
     @pytest.mark.asyncio

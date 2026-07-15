@@ -236,3 +236,15 @@ async def dispatch_shell_command(
     await team._emit(team.lead.name, "agent_status", status="idle")
     await stream_store.push_event(session_id, StreamEnvelope.from_event(DoneEvent()))
     await stream_store.mark_done(session_id)
+    try:
+        from app.services import event_broadcaster
+
+        await event_broadcaster.publish(
+            "session_turn_completed",
+            {
+                "session_id": session_id,
+                "status": "completed",
+            },
+        )
+    except Exception as exc:
+        logger.warning("user_shell_publish_failed error={}", exc)

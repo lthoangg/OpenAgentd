@@ -926,3 +926,30 @@ async def test_interrupt_team_no_working_members():
     assert names == []
     push.assert_not_awaited()
     mark_done.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_interrupt_team_publishes_stopped_event():
+    idle = MagicMock()
+    idle.state = "idle"
+    idle.name = "idler"
+
+    team = MagicMock()
+    team.members = {}
+    team.all_members = [idle]
+    team.lead.session_id = None
+
+    with (
+        patch("app.services.agent_service.stream_store.push_event", new=AsyncMock()),
+        patch("app.services.agent_service.stream_store.mark_done", new=AsyncMock()),
+        patch("app.services.event_broadcaster.publish", new=AsyncMock()) as publish,
+    ):
+        await interrupt_team(team, session_id="sess-1")
+
+    publish.assert_awaited_once_with(
+        "session_turn_completed",
+        {
+            "session_id": "sess-1",
+            "status": "stopped",
+        },
+    )

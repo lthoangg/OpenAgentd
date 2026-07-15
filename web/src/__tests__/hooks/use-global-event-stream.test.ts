@@ -115,6 +115,44 @@ describe('handleGlobalEvent', () => {
     expect(connectStream).not.toHaveBeenCalled()
   })
 
+  it('invalidates sessions and reloads the current session on session_turn_completed', async () => {
+    const client = new QueryClient()
+    client.setQueryData(queryKeys.team.sessions.infinite(), { pages: [], pageParams: [] })
+    const loadSession = mock(async () => {})
+    useTeamStore.setState({
+      sessionId: 'current',
+      _workspace: '/workspace',
+      loadSession,
+    })
+
+    await handleGlobalEvent(client, 'session_turn_completed', {
+      session_id: 'current',
+      status: 'completed',
+    }, 1, () => 1)
+
+    expect(client.getQueryState(queryKeys.team.sessions.infinite())?.isInvalidated).toBe(true)
+    expect(loadSession).toHaveBeenCalledWith('current', '/workspace')
+  })
+
+  it('invalidates sessions and reloads the current session on session_turn_completed (stopped)', async () => {
+    const client = new QueryClient()
+    client.setQueryData(queryKeys.team.sessions.infinite(), { pages: [], pageParams: [] })
+    const loadSession = mock(async () => {})
+    useTeamStore.setState({
+      sessionId: 'current',
+      _workspace: '/workspace',
+      loadSession,
+    })
+
+    await handleGlobalEvent(client, 'session_turn_completed', {
+      session_id: 'current',
+      status: 'stopped',
+    }, 1, () => 1)
+
+    expect(client.getQueryState(queryKeys.team.sessions.infinite())?.isInvalidated).toBe(true)
+    expect(loadSession).toHaveBeenCalledWith('current', '/workspace')
+  })
+
   it('reconciles the active session on resume and attaches its stream only when REST reports it working', async () => {
     const loadSession = mock(async () => { useTeamStore.setState({ isTeamWorking: true }) })
     const connectStream = mock(() => new AbortController())

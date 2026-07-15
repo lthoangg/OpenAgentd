@@ -54,6 +54,17 @@ export async function handleGlobalEvent(
     return true
   }
 
+  if (type === 'session_turn_completed') {
+    const sessionId = typeof event.session_id === 'string' ? event.session_id : null
+    invalidateGlobalEventQueries(queryClient)
+    if (!sessionId) return false
+
+    const before = useTeamStore.getState()
+    if (before.sessionId !== sessionId) return true
+    await before.loadSession(sessionId, before._workspace)
+    return true
+  }
+
   if (type === 'title_update') {
     const sessionId = typeof event.session_id === 'string' ? event.session_id : null
     const title = typeof event.title === 'string' ? event.title : null

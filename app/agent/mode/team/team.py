@@ -352,6 +352,13 @@ class AgentTeam:
                     StreamEnvelope.from_event(DoneEvent()),
                 )
                 await stream_store.mark_done(session_id)
+                await event_broadcaster.publish(
+                    "session_turn_completed",
+                    {
+                        "session_id": session_id,
+                        "status": "completed",
+                    },
+                )
             except Exception as exc:
                 logger.warning("team_emit_done_failed error={}", exc)
             logger.info("team_turn_done session_id={}", session_id)

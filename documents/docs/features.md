@@ -771,7 +771,8 @@ The same HTTP + SSE API drives the desktop, browser, and mobile clients. Embed i
 - **Global app event stream** `[v1.103.0]` — first-party clients keep a
   lightweight `GET /api/events/stream` connection for cross-session
   lifecycle and metadata events. Scheduled turns wake the matching session
-  stream, generated titles update every session surface, and native
+  stream, completed and stopped turns notify clients to sync and update session
+  states globally, generated titles update every session surface, and native
   notifications no longer depend on the originating chat being open.
 - **SSE event protocol** `[since v1.0]` — typed events: `thinking`, `message`,
   `tool_call`, `tool_start`, `tool_output_delta`, `tool_end`, `usage`,

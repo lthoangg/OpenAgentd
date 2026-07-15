@@ -346,7 +346,12 @@ function statusColor(status: string): string {
 
 function BackgroundProcessResult({ result, headerAction }: { result: string; headerAction?: ReactNode }) {
   if (result === 'No background processes running.') {
-    return <p className="font-mono text-[11px] leading-relaxed text-(--color-text-muted)">{result}</p>
+    return (
+      <div className="flex items-center justify-between gap-2">
+        <p className="font-mono text-[11px] leading-relaxed text-(--color-text-muted)">{result}</p>
+        {headerAction}
+      </div>
+    )
   }
 
   const listRows = result.split('\n').slice(2).map((line): BackgroundProcess | null => {
@@ -403,9 +408,12 @@ function BackgroundProcessResult({ result, headerAction }: { result: string; hea
     const [, pid, status, command, bufferedLines] = statusMatch
     return (
       <div className="flex flex-col gap-1.5 font-mono text-[11px] leading-relaxed">
-        <div className="flex items-center gap-2">
-          <span className="font-medium text-(--color-text)">PID {pid}</span>
-          <span className={statusColor(status)}>{status}</span>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="font-medium text-(--color-text)">PID {pid}</span>
+            <span className={statusColor(status)}>{status}</span>
+          </div>
+          {headerAction}
         </div>
         {command && <code className="break-words text-(--color-text-2)">{command}</code>}
         {bufferedLines && <span className="text-(--color-text-muted)">{bufferedLines} buffered lines</span>}
@@ -415,9 +423,12 @@ function BackgroundProcessResult({ result, headerAction }: { result: string; hea
 
   const isError = result.startsWith('Error:')
   return (
-    <pre className={`max-h-[calc(10*1.55em)] overflow-y-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed ${isError ? 'text-(--color-error)' : 'text-(--color-text-2)'}`}>
-      {truncateForDisplay(result)}
-    </pre>
+    <div className="relative">
+      {headerAction && <div className="absolute top-0 right-0">{headerAction}</div>}
+      <pre className={`max-h-[calc(10*1.55em)] overflow-y-auto whitespace-pre-wrap break-words pr-9 font-mono text-[11px] leading-relaxed ${isError ? 'text-(--color-error)' : 'text-(--color-text-2)'}`}>
+        {truncateForDisplay(result)}
+      </pre>
+    </div>
   )
 }
 

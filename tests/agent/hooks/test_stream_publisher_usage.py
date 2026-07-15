@@ -83,6 +83,52 @@ async def test_on_model_delta_emits_usage_event():
     assert event.data["estimated_cost_usd"] == 0.0004
 
 
+async def test_on_model_delta_cost_uses_qualified_effective_model():
+    """Cost lookup must use the fully-qualified provider:model id, not the raw
+    model string providers echo back on chunks.
+
+    Regression test for a bug where chunk.model (e.g. "gpt-4o") always won
+    the precedence over state.metadata["effective_model"] (e.g.
+    "openai:gpt-4o"), so get_model_cost() never matched the pricing registry
+    and estimated_cost_usd was always None in production.
+    """
+    hook = _make_hook(agent_name="lead")
+    pushed = []
+    seen_model_ids: list[str | None] = []
+
+    def _fake_get_model_cost(model_id):
+        seen_model_ids.append(model_id)
+        if model_id == "openai:gpt-4o":
+            return ModelCost(input=2.0, output=5.0)
+        return ModelCost()
+
+    with (
+        patch(
+            "app.services.memory_stream_store.push_event",
+            new_callable=AsyncMock,
+            side_effect=lambda sid, ev: pushed.append(ev),
+        ),
+        patch(
+            "app.agent.usage.get_model_cost",
+            side_effect=_fake_get_model_cost,
+        ),
+    ):
+        state = _make_state()
+        state.metadata["effective_model"] = "openai:gpt-4o"
+        # chunk.model mimics the raw, unprefixed string providers return.
+        await hook.on_model_delta(
+            MagicMock(), state, _make_chunk_with_usage(model="gpt-4o")
+        )
+
+    assert "openai:gpt-4o" in seen_model_ids, (
+        f"expected cost lookup with qualified model id, got {seen_model_ids}"
+    )
+    event = pushed[0]
+    assert event.data["estimated_cost_usd"] == 0.0004
+    # Display metadata should still show the raw model string from the chunk.
+    assert event.data["metadata"]["model"] == "gpt-4o"
+
+
 async def test_on_model_delta_usage_agent_name_in_metadata():
     """agent name is stored in metadata.agent, not as a top-level field."""
     hook = _make_hook(agent_name="researcher")

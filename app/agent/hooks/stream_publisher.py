@@ -115,11 +115,11 @@ class StreamPublisherHook(BaseAgentHook):
         self, ctx: "RunContext", state: "AgentState", chunk: "ChatCompletionChunk"
     ) -> None:
         metadata: dict[str, Any] = {}
-        model = (
+        display_model = (
             chunk.model or self._current_model or state.metadata.get("effective_model")
         )
-        if isinstance(model, str) and model:
-            metadata["model"] = model
+        if isinstance(display_model, str) and display_model:
+            metadata["model"] = display_model
         if chunk.usage:
             u = chunk.usage
             pt = u.prompt_tokens or 0
@@ -129,9 +129,18 @@ class StreamPublisherHook(BaseAgentHook):
                 self._current_model = chunk.model
                 self._used_models.add(chunk.model)
                 metadata["model"] = chunk.model
-            usage_data = usage_to_dict(u, model if isinstance(model, str) else None)
+            # Cost lookups need the fully-qualified `provider:model` registry
+            # key, not the raw model string providers echo back on chunks
+            # (e.g. "gpt-4o" instead of "openai:gpt-4o"), so prefer
+            # effective_model here even though display_model prefers chunk.model.
+            cost_model = state.metadata.get("effective_model") or display_model
+            usage_data = usage_to_dict(
+                u, cost_model if isinstance(cost_model, str) else None
+            )
             cost = usage_data.get("cost")
-            estimated_cost = cost.get("estimated_usd") if isinstance(cost, dict) else None
+            estimated_cost = (
+                cost.get("estimated_usd") if isinstance(cost, dict) else None
+            )
             await self._push(
                 UsageEvent(
                     prompt_tokens=pt,

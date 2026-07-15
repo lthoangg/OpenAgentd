@@ -20,6 +20,7 @@ from unittest.mock import patch
 
 import pytest
 
+import app.cli.commands.serve as serve_module
 from app.cli.commands.serve import (
     _configure_desktop_token,
     _emit_handshake,
@@ -161,6 +162,14 @@ class TestBindAuthPolicy:
 
 
 class TestPidAlive:
+    def test_windows_uses_the_windows_process_probe(self, monkeypatch):
+        """Windows must not rely on ``os.kill(pid, 0)`` for liveness."""
+        monkeypatch.setattr(serve_module.os, "name", "nt")
+        monkeypatch.setattr(serve_module, "_windows_pid_alive", lambda pid: pid == 123)
+
+        assert _pid_alive(123) is True
+        assert _pid_alive(456) is False
+
     def test_current_process_is_alive(self):
         assert _pid_alive(os.getpid()) is True
 

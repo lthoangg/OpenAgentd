@@ -130,14 +130,11 @@ class TestGetCapabilities:
         "model_id",
         [
             "openai:gpt-5.5",
-            "codex:gpt-5.5-mini",
             "codex:gpt-5.2-codex",
             "openai:gpt-5.4-mini",
             "googlegenai:gemini-3.1-pro-preview",
             "vertexai:gemini-2.5-pro",
             "xai:grok-4.3",
-            "copilot:claude-opus-4-7",
-            "router9:gh/gpt-5",
             "bedrock:anthropic.claude-opus-4-7",
             "bedrock:global.anthropic.claude-sonnet-4-6",
             "bedrock:amazon.nova-pro-v1:0",
@@ -155,8 +152,6 @@ class TestGetCapabilities:
         [
             # Text-only chat models — intentionally NOT in the YAML.
             "deepseek:deepseek-v4-pro",
-            "openrouter:anthropic/claude-sonnet-4.6",
-            "nvidia:meta/llama-4-maverick-17b-128e-instruct",
             "ollama:llama3.2",
             # Z.AI non-vision GLMs (the vision-capable ones end in `v`).
             "zai:glm-5",

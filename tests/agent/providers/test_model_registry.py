@@ -25,6 +25,23 @@ def _registry_cache_cleanup():
     _clear_registry_caches()
 
 
+def test_empty_cache_and_failed_fetch_has_no_registry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        model_registry.settings, "OPENAGENTD_CACHE_DIR", str(tmp_path / "cache")
+    )
+    monkeypatch.setattr(
+        model_registry.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path / "config")
+    )
+    monkeypatch.setattr(
+        model_registry.settings, "OPENAGENTD_MODEL_REGISTRY_REFRESH", True
+    )
+    monkeypatch.setattr(model_registry, "_fetch_models_dev", lambda: None)
+
+    assert model_registry.load_model_registry() == {}
+
+
 def test_models_dev_metadata_is_normalized(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -380,7 +397,7 @@ def test_model_aliases_ignore_malformed_and_missing_sources(
     assert "broken:gpt-source" not in aliased
 
 
-def test_refreshed_source_metadata_updates_stale_alias_entry(
+def test_refreshed_source_metadata_populates_provider_alias(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
@@ -401,16 +418,6 @@ def test_refreshed_source_metadata_updates_stale_alias_entry(
     )
     monkeypatch.setattr(
         model_registry,
-        "_load_bundled_registry",
-        lambda: {
-            "runtime:gpt-live": {
-                "capabilities": {"input": {"audio": True}},
-                "limits": {"context_length": 100, "max_completion_tokens": 20},
-            }
-        },
-    )
-    monkeypatch.setattr(
-        model_registry,
         "_fetch_models_dev",
         lambda: {
             "openai": {
@@ -426,7 +433,7 @@ def test_refreshed_source_metadata_updates_stale_alias_entry(
 
     caps = get_capabilities("runtime:gpt-live")
     limits = get_model_limits("runtime:gpt-live")
-    assert caps.input.audio is True
+    assert caps.input.audio is False
     assert caps.input.vision is True
     assert limits.context_length == 900
     assert limits.max_completion_tokens == 80
@@ -592,3 +599,26 @@ def test_refresh_model_registry_and_force_fetch(
     assert call_count == 2
 
     assert get_model_limits("openai:gpt-live").context_length == 2000
+
+
+def test_non_forced_refresh_respects_the_cache_ttl(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cache_dir = tmp_path / "cache"
+    monkeypatch.setattr(model_registry.settings, "OPENAGENTD_CACHE_DIR", str(cache_dir))
+    monkeypatch.setattr(
+        model_registry.settings, "OPENAGENTD_MODEL_REGISTRY_REFRESH", True
+    )
+    monkeypatch.setattr(
+        model_registry,
+        "_fetch_models_dev",
+        lambda: {"openai": {"models": {"gpt-live": {"id": "gpt-live"}}}},
+    )
+
+    assert model_registry._load_models_dev_data() is not None
+
+    def fail_if_called() -> None:
+        raise AssertionError("fresh cache should not be fetched")
+
+    monkeypatch.setattr(model_registry, "_fetch_models_dev", fail_if_called)
+    model_registry.refresh_model_registry(force=False)

@@ -12,21 +12,21 @@ from app.agent.providers.model_metadata import (
 def test_get_model_limits_returns_known_limits() -> None:
     limits = get_model_limits("openai:gpt-5")
 
-    assert limits.context_length == 272000
+    assert limits.context_length == 400000
     assert limits.max_completion_tokens == 128000
 
 
 def test_get_model_limits_returns_codex_registry_limits() -> None:
     limits = get_model_limits("codex:gpt-5.2-codex")
 
-    assert limits.context_length == 272000
+    assert limits.context_length == 400000
     assert limits.max_completion_tokens == 128000
 
 
 def test_get_model_metadata_is_case_insensitive() -> None:
     metadata = get_model_metadata("OPENAI:GPT-5")
 
-    assert metadata.limits.context_length == 272000
+    assert metadata.limits.context_length == 400000
 
 
 def test_get_model_limits_unknown_model_returns_none_limits() -> None:

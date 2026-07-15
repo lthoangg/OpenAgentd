@@ -10,9 +10,8 @@ Lookup rule (intentionally trivial):
 2. **Anything else** → return the all-false / text-out-only defaults.
 
 There are **no prefix fallbacks and no name-substring heuristics**. A
-model that isn't listed is treated as text-in / text-out. The YAML is
-therefore the authoritative document — read it to know what each
-flagship model can do.
+model that isn't listed is treated as text-in / text-out. The cached
+Models.dev registry is therefore authoritative for model metadata.
 
 Why this is fine:
 
@@ -20,13 +19,10 @@ Why this is fine:
   read tool's image handler (``app/agent/tools/builtin/filesystem/read.py``)
   ask :func:`get_capabilities` before allowing image input. An
   un-curated model just refuses images, which is the safe default.
-- The YAML ships *inside* the ``app`` package
-  (see ``pyproject.toml`` ``[tool.hatch.build.targets.wheel] packages``).
-  ``uv tool upgrade openagentd`` / ``pip install -U`` / Tauri
-  auto-update all replace the package directory atomically, so users
-  get the latest registry whenever they upgrade.
-- A future runtime-fetched registry can add new model metadata without
-  risking stale prefix- or name-based guesses in the shipped client.
+- A missing cache entry refuses images, which is safer than guessing from a
+  model name while the registry is unavailable.
+- The runtime cache refreshes from Models.dev without requiring an application
+  update.
 
 Usage::
 
@@ -121,11 +117,8 @@ _DEFAULT = ModelCapabilities()
 
 
 def _load_registry() -> dict[str, ModelCapabilities]:
-    """Load capability entries from the installed model registry.
+    """Load capability entries from the cached model registry.
 
-    ``model_registry.load_model_registry`` uses :mod:`importlib.resources` so
-    the loader also works inside PyInstaller / Tauri-bundled sidecars where
-    package data lives in a zip archive.
 
     Malformed entries are logged and skipped — one bad row should not
     crash the whole resolver. The file shipping inside the wheel means
@@ -152,7 +145,7 @@ def _load_registry() -> dict[str, ModelCapabilities]:
 
 
 def _merge_caps(spec: dict[str, Any]) -> ModelCapabilities:
-    """Sparse-merge a YAML mapping onto :data:`_DEFAULT`.
+    """Sparse-merge a mapping onto :data:`_DEFAULT`.
 
     Only fields explicitly present in ``spec`` override defaults. This
     lets entries write ``input: { vision: true }`` without spelling out

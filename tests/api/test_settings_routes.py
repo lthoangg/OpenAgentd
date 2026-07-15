@@ -1518,13 +1518,11 @@ def test_registry_includes_static_multimodal_models_without_cached_discovery(
     assert response.status_code == 200
     ids = {m["id"] for m in response.json()["models"]}
     assert "openai:gpt-image-2" in ids
-    assert "googlegenai:veo-3.1-generate-preview" in ids
     multimodal = {
         m["id"]: (m["output_image"], m["output_video"])
         for m in response.json()["models"]
     }
     assert multimodal["openai:gpt-image-2"] == (True, False)
-    assert multimodal["googlegenai:veo-3.1-generate-preview"] == (False, True)
 
 
 def test_registry_warms_cached_models_for_configured_providers(

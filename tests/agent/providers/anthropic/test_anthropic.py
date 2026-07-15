@@ -644,7 +644,7 @@ def test_anthropic_provider_8k_output_sonnet_v2() -> None:
     )
     assert "anthropic-beta" not in provider_46.headers
     payload_46 = provider_46._payload([HumanMessage(content="hi")], None, {})
-    assert payload_46["max_tokens"] in (64000, 4096)
+    assert payload_46["max_tokens"] in (128000, 4096)
 
     # Claude 4.8 Opus should have its registry limit or 4k fallback
     provider_48 = AnthropicProvider(

@@ -2,9 +2,8 @@
 
 Registry precedence is:
 
-1. bundled ``model_registry.json`` snapshot for cold/offline starts;
-2. cached/refreshed ``https://models.dev/api.json`` metadata;
-3. local ``{OPENAGENTD_CONFIG_DIR}/model_registry.yaml`` overrides.
+1. cached/refreshed ``https://models.dev/api.json`` metadata;
+2. local ``{OPENAGENTD_CONFIG_DIR}/model_registry.yaml`` overrides.
 
 Public resolver APIs stay in ``capabilities.py`` and ``model_metadata.py``; this
 module owns source loading, normalization, and merge order.
@@ -16,7 +15,6 @@ import json
 import time
 from copy import deepcopy
 from functools import lru_cache
-from importlib.resources import files
 from pathlib import Path
 from typing import Any
 
@@ -135,12 +133,6 @@ def _coerce_registry(parsed: Any, source: str) -> ModelRegistry:
             continue
         registry[key.lower()] = value
     return registry
-
-
-def _load_bundled_registry() -> ModelRegistry:
-    resource = files("app.agent.providers").joinpath("model_registry.json")
-    raw = resource.read_text(encoding="utf-8")
-    return _coerce_registry(json.loads(raw), "model_registry.json")
 
 
 def _models_dev_cache_path() -> Path:
@@ -370,9 +362,8 @@ def _load_user_overlay() -> ModelRegistry:
 
 @lru_cache(maxsize=1)
 def load_model_registry() -> ModelRegistry:
-    """Load bundled, models.dev, and user model metadata in precedence order."""
-    registry = _load_bundled_registry()
-    bundled_count = len(registry)
+    """Load cached/refreshed models.dev and user model metadata."""
+    registry: ModelRegistry = {}
     models_dev = _normalize_models_dev(_load_models_dev_data())
     overlay = _load_user_overlay()
 
@@ -385,8 +376,7 @@ def load_model_registry() -> ModelRegistry:
                 registry[key] = _deep_merge(registry.get(key, {}), value)
 
     logger.debug(
-        "model registry loaded bundled={} models_dev={} overlay={} final={}",
-        bundled_count,
+        "model registry loaded models_dev={} overlay={} final={}",
         len(models_dev),
         len(overlay),
         len(registry),
@@ -403,11 +393,10 @@ def clear_model_registry_caches() -> None:
     model_metadata._registry.cache_clear()
 
 
-def refresh_model_registry() -> None:
-    """Force fetch the latest models.dev registry and update/clear memory caches."""
+def refresh_model_registry(*, force: bool = True) -> None:
+    """Refresh the models.dev cache and clear memory caches."""
     try:
-        # Force fetch and update disk cache
-        _load_models_dev_data(force=True)
+        _load_models_dev_data(force=force)
     except Exception as exc:
         logger.warning("failed to refresh model registry ({})", exc)
     finally:

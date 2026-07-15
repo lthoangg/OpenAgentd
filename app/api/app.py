@@ -57,7 +57,7 @@ async def lifespan(app: FastAPI):
     # Trigger model registry refresh in a background thread so it does not block startup
     from app.agent.providers.model_registry import refresh_model_registry
 
-    asyncio.create_task(asyncio.to_thread(refresh_model_registry))
+    asyncio.create_task(asyncio.to_thread(refresh_model_registry, force=False))
 
     from app.services.lsp import lsp_manager
 

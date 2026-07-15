@@ -525,9 +525,9 @@ agnostic by design.
   `[v1.74.0]`.
 - **Curated multimodal model registry** `[v1.34.0]` — model modality gates,
   token limits, cost, support flags, and thinking-level metadata are maintained
-  in one exact-match registry: bundled JSON snapshot, runtime `models.dev`
-  cache, explicit compatibility aliases for runtime provider/model IDs that differ
-  from the upstream source IDs, and optional local YAML overlay.
+  in one exact-match registry: runtime `models.dev` cache, explicit compatibility
+  aliases for runtime provider/model IDs that differ from the upstream source
+  IDs, and an optional local YAML overlay.
 
 ---
 

@@ -1,4 +1,6 @@
 import os
+import gzip
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -39,18 +41,31 @@ _test_engine = None
 # ---------------------------------------------------------------------------
 # Test fixture config files — .tests/ is gitignored, so the fixture below is
 # materialised on-demand the first time the test session runs. pytest.ini pins
-# the four XDG dirs to .tests/{data,config,state,cache}.
+# the four XDG dirs to .tests/{data,config,state,cache}. The production model
+# registry is cache-backed, so tests seed a fixed Models.dev response instead
+# of reaching the network.
 # ---------------------------------------------------------------------------
 
 
 @pytest.fixture(scope="session", autouse=True)
 def _materialise_openagentd_config(tmp_path_factory):
-    """Ensure the test config directory exists."""
+    """Ensure test config and cache fixtures exist."""
     from app.core.config import settings
+    from app.agent.providers.model_registry import clear_model_registry_caches
 
     # settings already resolved — CONFIG_DIR = .tests/config.
     config_dir = Path(settings.OPENAGENTD_CONFIG_DIR)
     config_dir.mkdir(parents=True, exist_ok=True)
+    cache_path = Path(settings.OPENAGENTD_CACHE_DIR) / "models-dev.json"
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    with (
+        gzip.open(
+            Path(__file__).parent / "fixtures" / "models-dev.json.gz", "rb"
+        ) as source,
+        cache_path.open("wb") as destination,
+    ):
+        shutil.copyfileobj(source, destination)
+    clear_model_registry_caches()
 
     yield
 

@@ -184,13 +184,13 @@ class TestXAIProviderFactory:
 class TestXAICapabilities:
     """``xai:`` capabilities come from the bundled YAML registry.
 
-    Grok-4 / Grok-4.3 are listed with vision=true. Older or unlisted
+    Grok-4.3 is listed with vision=true. Older or unlisted
     Grok IDs fall through to the all-false defaults (the resolver no
     longer matches by provider prefix).
     """
 
     def test_grok_4_listed_with_vision(self):
-        caps = get_capabilities("xai:grok-4")
+        caps = get_capabilities("xai:grok-4.3")
         assert caps.input.vision is True
 
     def test_unlisted_grok_defaults_no_vision(self):
@@ -201,24 +201,24 @@ class TestXAICapabilities:
         assert caps.input.vision is False
 
     def test_document_text_true(self):
-        caps = get_capabilities("xai:grok-4")
+        caps = get_capabilities("xai:grok-4.3")
         assert caps.input.document_text is True
 
     def test_output_text_true(self):
-        caps = get_capabilities("xai:grok-4")
+        caps = get_capabilities("xai:grok-4.3")
         assert caps.output.text is True
 
     def test_output_image_false(self):
-        caps = get_capabilities("xai:grok-4")
+        caps = get_capabilities("xai:grok-4.3")
         assert caps.output.image is False
 
     def test_audio_false(self):
-        caps = get_capabilities("xai:grok-4")
+        caps = get_capabilities("xai:grok-4.3")
         assert caps.input.audio is False
 
     def test_case_insensitive_lookup(self):
-        caps_lower = get_capabilities("xai:grok-4")
-        caps_upper = get_capabilities("XAI:grok-4")
+        caps_lower = get_capabilities("xai:grok-4.3")
+        caps_upper = get_capabilities("XAI:grok-4.3")
         assert caps_lower == caps_upper
 
 

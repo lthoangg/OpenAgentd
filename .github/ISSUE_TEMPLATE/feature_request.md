@@ -10,7 +10,7 @@ labels: enhancement
 
 - [ ] I searched existing issues and did not find a duplicate.
 - [ ] I checked [`documents/docs/features.md`](../../documents/docs/features.md) to confirm this is not already shipped.
-- [ ] I checked [`documents/docs/roadmap.md`](../../documents/docs/roadmap.md) for related roadmap items.
+- [ ] I searched open GitHub issues for related roadmap items.
 
 ## Problem / motivation
 

@@ -56,7 +56,7 @@ make run
 cd web && bun dev
 ```
 
-See [Configuration](documents/docs/configuration.md) for the full env var reference.
+Use `openagentd init`, Settings, and `openagentd --help` for the current setup and configuration surface.
 
 ---
 
@@ -75,9 +75,9 @@ openagentd/
 ├── seed/                   # Default config copied on first init
 │   ├── agents/             # Default global/coding agent descriptors
 │   └── mcp.json            # Empty default MCP server config
-├── documents/              # All documentation
-│   ├── docs/               # Architecture, configuration, guidelines
-│   └── styling-specs/      # Design tokens and visual specifications
+├── documents/              # Feature catalogue, decision records, and assets
+│   ├── docs/               # Version-cited shipped features
+│   └── adrs/               # Significant architecture/security decisions
 └── .github/                # Issue templates, PR template, CI workflows
 ```
 
@@ -95,13 +95,10 @@ Key design rules:
 
 ### Change validation policy
 
-Use the canonical [Change Validation, Context, and Friction Policy](documents/docs/contributing/change-policy.md)
-to select the tiny, normal, or high-risk validation lane. It defines hard
-gates, the files-to-required-checks matrix, bounded context retrieval, and how
-to capture recurring agent or repository friction. Use [`make verify`](Makefile) for the
-portable pre-merge contract, or its focused `verify-backend`, `verify-web`,
-`verify-docs`, and `verify-version` targets when only one surface changed.
-Native targets require local platform dependencies.
+Use [`make verify`](Makefile) for the portable pre-merge contract, or its
+focused `verify-backend`, `verify-web`, `verify-docs`, and `verify-version`
+targets when only one surface changed. Native targets require local platform
+dependencies. Check the nearest `AGENTS.md` before changing a subsystem.
 
 ### Backend
 
@@ -208,7 +205,7 @@ Tests use Bun test + Happy DOM. Test store logic and pure utils directly; avoid 
 
 1. **Open an issue first** for anything non-trivial — discuss the approach before writing code.
 2. **Branch naming:** `feat/<topic>`, `fix/<topic>`, `docs/<topic>`, `refactor/<topic>`.
-3. **Before opening a PR:** run the applicable focused checks from the [change policy](documents/docs/contributing/change-policy.md), then run `make verify`. Run `make verify-native` as well when desktop or mobile Rust code changes and the required native dependencies are available.
+3. **Before opening a PR:** run the applicable focused checks, then run `make verify`. Run `make verify-native` as well when desktop or mobile Rust code changes and the required native dependencies are available.
 4. **Commit style:** [Conventional Commits](https://www.conventionalcommits.org/) — `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`.
 5. **PR description:**
 
@@ -230,8 +227,8 @@ The templates follow the same pattern used by large open-source projects: ask
 for reproducible facts, link/remind about conduct and private security reporting,
 and avoid mandatory Code of Conduct agreement checkboxes.
 
-The short roadmap page is [`documents/docs/roadmap.md`](documents/docs/roadmap.md);
-shipped capabilities belong in [`documents/docs/features.md`](documents/docs/features.md).
+GitHub issues are the roadmap; shipped capabilities belong in
+[`documents/docs/features.md`](documents/docs/features.md).
 
 - **Bugs / known issues:** use the Bug report template. Confirmed known issues
   are labeled `known issue` by maintainers and stay out of the roadmap page.

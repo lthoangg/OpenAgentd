@@ -163,8 +163,7 @@ function connect(
   // Fully closing that gap would mean deferring ticket issuance until
   // after first attach, which would delay the WS handshake behind layout
   // — not worth it for a sub-frame visual correction on local backends,
-  // though a slow remote/LAN server (see documents/docs/desktop.md) could
-  // make it briefly visible.
+  // though a slow remote or LAN server can make it briefly visible.
   connectTerminal(
     rt.target,
     {

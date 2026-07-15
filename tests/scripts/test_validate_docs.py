@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 from pathlib import Path
 
 
@@ -33,6 +34,20 @@ def _write_repo(tmp_path: Path) -> list[Path]:
     )
     (tmp_path / "documents" / "adrs" / "0001-example.md").write_text("# ADR\n")
     return sorted(tmp_path.rglob("*.md"))
+
+
+def test_tracked_markdown_files_excludes_removed_worktree_files(tmp_path, monkeypatch):
+    module = _load_module()
+    existing = tmp_path / "README.md"
+    existing.write_text("# Home\n")
+    output = b"README.md\0documents/docs/removed.md\0"
+    monkeypatch.setattr(
+        module.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args, 0, output, b""),
+    )
+
+    assert module.tracked_markdown_files(tmp_path) == [existing]
 
 
 def test_validate_repository_accepts_coherent_documentation_contract(tmp_path):

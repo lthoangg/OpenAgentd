@@ -48,10 +48,8 @@ For normal desktop development, run `make dev` at the repo root first, then `mak
 - Preserve dev/prod config split (`tauri.dev.conf.json`, `tauri.dev-bundled.conf.json`, production config).
 - Do not commit generated sidecar bundles or target artifacts.
 
-## Documentation pointers
+## Source of truth
 
-- Local architecture: `README.md`.
-- Release/signing/update pipeline: `../documents/docs/desktop.md`.
-- Why the webview CSP is permissive and the macOS entitlements are broad:
-  `../documents/adrs/0001-permissive-webview-csp-and-macos-entitlements.md` —
-  read before "tightening" either.
+- Local architecture: `README.md` and the Rust modules named above.
+- Release, signing, and updater behavior: `Makefile`, Tauri configuration, scripts, and release workflows.
+- Treat webview CSP and macOS entitlement changes as security-sensitive: trace their call sites and platform requirements before tightening them.

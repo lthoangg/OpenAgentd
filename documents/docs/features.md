@@ -1,16 +1,14 @@
 ---
 title: Features
-description: Canonical, version-cited catalogue of every user-visible OpenAgentd feature. Source of truth for slides, README, comparison docs, and marketing copy.
+description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
 updated: 2026-07-15
 ---
 
 # Features
 
-The single source of truth for everything OpenAgentd does. Every feature lists the
-release that introduced it (where known) and links to the deeper doc when one
-exists. When you ship something new, **add it here first** — slides, README,
-[`comparison.md`](./comparison.md), and external copy should cite this page.
+The canonical source of truth for shipped user-visible capabilities. Every feature lists the
+release that introduced it (where known). When you ship something new, **add it here first** — README and external copy should cite this page.
 
 > **Headline.** OpenAgentd is the desktop cockpit for local AI agents — a
 > double-clickable app that runs a team of AI agents on your machine, with a
@@ -51,8 +49,7 @@ Conventions used in this document:
 
 The product's primary surface. A native double-click app on macOS, Windows,
 and Linux that hosts the same FastAPI sidecar + React UI you would otherwise
-run from the terminal. Deeper docs: [`desktop.md`](./desktop.md),
-[`web/chrome.md`](./web/chrome.md).
+run from the terminal.
 
 - **Native desktop app for macOS, Windows, Linux** `[since v1.0; Windows restored v1.106.0]` — Tauri 2 shell,
   bundled Python sidecar, embedded Web UI, one process, no terminal required.
@@ -85,7 +82,7 @@ run from the terminal. Deeper docs: [`desktop.md`](./desktop.md),
   Palette, and native Tauri menu accelerators. Session Settings moved to
   `⌘⇧A`/`Ctrl+Shift+A` to avoid clobbering Select All; view-mode cycling and
   session-list refresh lost their dedicated shortcuts (palette-only, low
-  frequency). Full table: [`interaction.md#keyboard-model`](../styling-specs/interaction.md#keyboard-model).
+  frequency).
 - **Smooth close animations on UI components** `[v1.77.0]` — dropdown, tooltip,
   and popover now play a 100–150 ms exit animation (fade-out + zoom-out) before
   unmounting, matching the open transitions. Dialog and sheet retain their
@@ -97,8 +94,8 @@ run from the terminal. Deeper docs: [`desktop.md`](./desktop.md),
   longer disappear mid-read.
 - **Type-to-focus composer** `[v1.40.0]` — in cockpit and coding chat, start
   typing on the chat surface to expand/focus the composer and capture the first
-  character without pressing `⌘I`/`Ctrl+I` first. See [`web/chat-input.md`](./web/chat-input.md).
-- **Developer-friendly word navigation in composer** `[v1.86.0]` — `Option + Arrow` (macOS) and `Ctrl + Arrow` (Windows/Linux) stop at programming separators like `.`, `-`, `_`, `/`, and `@` for precise navigation and text selection (`Shift` modified). See [`web/chat-input.md`](./web/chat-input.md).
+  character without pressing `⌘I`/`Ctrl+I` first.
+- **Developer-friendly word navigation in composer** `[v1.86.0]` — `Option + Arrow` (macOS) and `Ctrl + Arrow` (Windows/Linux) stop at programming separators like `.`, `-`, `_`, `/`, and `@` for precise navigation and text selection (`Shift` modified).
 - **Native menu/tray shortcuts** `[v1.39.0, v1.93.1]` — menubar shortcuts for Home,
   Cockpit, Coding, Command Palette, Scheduled Tasks, Session Settings,
   key settings pages, updates, reload, config folder, and backend log; compact
@@ -129,8 +126,7 @@ run from the terminal. Deeper docs: [`desktop.md`](./desktop.md),
     Settings → Providers. Each measurable row also carries a compact
     block-character meter (`████░░░░░░`) between the percent and reset
     countdown — a CodexBar-style bar rendered in plain text, since native
-    tray `MenuItem`s can't host custom widgets `[v1.94.0]`. See
-    [`documents/docs/desktop.md`](./desktop.md#tray-usage-limits).
+    tray `MenuItem`s can't host custom widgets `[v1.94.0]`.
   - **Settings → Providers usage panel redesign** `[v1.94.0]` — the
     per-provider "Usage" card in Settings → Providers (`UsagePanel.tsx`)
     was restyled after CodexBar's menu-bar popover: a bold label per limit
@@ -163,9 +159,9 @@ run from the terminal. Deeper docs: [`desktop.md`](./desktop.md),
 - **Mode-scoped recent-session lists** `[v1.66.1]` — cockpit and coding sidebars
   now fetch their own session pages (`mode=normal` vs `mode=coding`) instead of
   sharing one mixed cache, preventing intermittent empty recent-session lists
-  when prior conversations exist. See [`web/coding-sessions.md`](./web/coding-sessions.md).
+  when prior conversations exist.
 - **Slash commands** `[since v1.0]` — `/init`, `/continue`, `/compact`, `/undo`,
-  `/redo`, plus user-defined commands. See [`commands.md`](./commands.md).
+  `/redo`, plus user-defined commands.
   - **`/plan` slash command** `[v1.96.0]` — triggers a research-then-approve
     workflow: the agent investigates the problem space and proposes a step-by-step
     implementation plan, then waits for explicit approval before writing any code.
@@ -176,12 +172,10 @@ run from the terminal. Deeper docs: [`desktop.md`](./desktop.md),
   foreground shell process groups; acknowledged background PIDs remain managed
   through `bg`. Background waits are session-scoped and bounded to 30 seconds by
   default (300 seconds maximum), returning a still-running result without
-  terminating the process `[v1.105.0]`. See
-  [`shell-commands.md`](./shell-commands.md).
+  terminating the process `[v1.105.0]`.
 - **Drag-and-drop files into chat** `[since v1.0, v1.82.0]` — drag files (images, PDFs, text, etc.) anywhere onto the chat area (both cockpit and coding views) to show a drop overlay and attach them to the composer. Supports multi-file drops, file-type filtering, and cancellation.
 - **Composer history navigation** `[v1.32.0]` — when the input is empty, `↑` / `↓`
-  walks previous user prompts from the current chat plus local submissions. See
-  [`web/chat-input.md`](./web/chat-input.md#composer-history-navigation).
+  walks previous user prompts from the current chat plus local submissions.
 - **Clickable URLs in user message bubbles** `[v1.77.0]` — plain-text URLs typed
   or pasted into a user message are rendered as tappable links; style matches
   agent response links.
@@ -192,7 +186,7 @@ run from the terminal. Deeper docs: [`desktop.md`](./desktop.md),
   now detected via `onWheel` / `onTouchMove` only. `AgentPane` gains a
   `ResizeObserver` so content reflow (markdown, images, syntax highlight) also
   re-sticks correctly.
-- **Mobile keyboard viewport guardrails** `[v1.99.1]` — virtual-keyboard detection now uses the pre-keyboard layout height, the mobile shell stays pinned instead of following `visualViewport.offsetTop`, and chat auto-stick ignores keyboard-only scrollport resizes so manual transcript scrolling no longer flickers on iOS/WebViews. See [`web/mobile.md`](./web/mobile.md) and [`web/performance.md`](./web/performance.md#agentview-scroll-and-pagination).
+- **Mobile keyboard viewport guardrails** `[v1.99.1]` — virtual-keyboard detection now uses the pre-keyboard layout height, the mobile shell stays pinned instead of following `visualViewport.offsetTop`, and chat auto-stick ignores keyboard-only scrollport resizes so manual transcript scrolling no longer flickers on iOS/WebViews.
 - **Tool-call inspector** `[since v1.0]` — every tool call expands to show
   arguments, status, results, and inline Git-like diffs for file edits. Read
   results and file-change diffs keep line numbers visible while scrolling
@@ -235,19 +229,18 @@ run from the terminal. Deeper docs: [`desktop.md`](./desktop.md),
   download; desktop downloads use a native save dialog instead of navigating
   away from the app `[v1.52.0]`. Image and video previews in the coding
   workspace panel now open in the shared full-screen lightbox on click
-  `[v1.93.1]`. See [`web/workspace-files.md`](./web/workspace-files.md).
+  `[v1.93.1]`.
 - **Header context meter** `[v1.53.0]` — desktop and mobile chat headers show an
   icon-sized input-token progress ring against the backend's model-aware
   summarization trigger; hover, focus, or tap/click reveals input/output/cache
-  details. See [`web/chrome.md`](./web/chrome.md).
+  details.
 - **Todos panel** `[since v1.0]` — task board with a topbar progress badge
-  `<finished>/<total>` `[v1.17.0]`. Live invalidation. See [`web/todos.md`](./web/todos.md).
+  `<finished>/<total>` `[v1.17.0]`. Live invalidation.
 - **Mobile / phone-first layout** `[since v1.0]` — breakpoints, safe areas, drawer
   shapes, composer keyboard avoidance, touch row actions, pull-to-refresh,
   haptics, and legibility guards optimized for small screens `[v1.45.2]`;
   long-press rows get native impact haptics (`tauri-plugin-haptics`) and an
-  iOS-style press-and-hold scale animation `[v1.47.0]`. See
-  [`web/mobile.md`](./web/mobile.md).
+  iOS-style press-and-hold scale animation `[v1.47.0]`.
 - **macOS overlay + Tauri drag region** `[since v1.0]` — the header doubles as the
   window drag region; macOS gets the proper traffic-light overlay.
 - **Restored desktop window size** `[v1.52.0]` — desktop windows reopen at the
@@ -255,10 +248,10 @@ run from the terminal. Deeper docs: [`desktop.md`](./desktop.md),
 - **Remote-backend mobile shell** `[v1.34.0, v1.106.0]` — Tauri mobile app scaffold embeds
   the shared Web UI and connects to saved remote API servers. Foreground resume
   now reconciles missed history and replaces potentially frozen chat streams;
-  remembered-server launches prefetch and reuse native credentials. See [`mobile.md`](./mobile.md).
+  remembered-server launches prefetch and reuse native credentials.
 - **LAN access key for external clients** `[v1.43.0, v1.103.0]` — `openagentd start --lan --key`
-  stores the CLI server's bind address, port, and bearer key in `server.yaml`, separate from the desktop builtin sidecar's ephemeral token while agents, providers, sessions, and other settings remain shared. Restart and upgrade preserve that key without exposing it in process arguments. OpenAgentd-managed launchers refuse non-loopback binds without a configured key `[v1.101.0]`. See [`cli.md`](./cli.md) and [ADR-0002](../adrs/0002-require-authentication-for-non-loopback-bindings.md).
-- **Desktop server connection manager** `[v1.43.4, v1.99.8, v1.104.0]` — the desktop **Server connection** dialog switches the current window between the builtin sidecar and saved external servers, normalizes pasted `/api` URLs, and preserves other open windows' backend choices. Typed servers now require a successful health and access-key test before they can be named, saved, and connected. Saved LAN access keys are scoped per backend origin and stored in the native OS credential store on installed desktop/mobile shells; browser development keeps the per-origin localStorage fallback. Remembered external servers reconnect on app launch with sidecar fallback, while the desktop window opens immediately as backend startup continues asynchronously `[v1.57.1]`. See [`desktop.md`](./desktop.md) and [ADR-0001](../adrs/0001-native-backend-access-key-storage.md).
+  stores the CLI server's bind address, port, and bearer key in `server.yaml`, separate from the desktop builtin sidecar's ephemeral token while agents, providers, sessions, and other settings remain shared. Restart and upgrade preserve that key without exposing it in process arguments. OpenAgentd-managed launchers refuse non-loopback binds without a configured key `[v1.101.0]`. See [ADR-0002](../adrs/0002-require-authentication-for-non-loopback-bindings.md).
+- **Desktop server connection manager** `[v1.43.4, v1.99.8, v1.104.0]` — the desktop **Server connection** dialog switches the current window between the builtin sidecar and saved external servers, normalizes pasted `/api` URLs, and preserves other open windows' backend choices. Typed servers now require a successful health and access-key test before they can be named, saved, and connected. Saved LAN access keys are scoped per backend origin and stored in the native OS credential store on installed desktop/mobile shells; browser development keeps the per-origin localStorage fallback. Remembered external servers reconnect on app launch with sidecar fallback, while the desktop window opens immediately as backend startup continues asynchronously `[v1.57.1]`. See [ADR-0001](../adrs/0001-native-backend-access-key-storage.md).
   - **Reload after switching backend servers** `[v1.98.1]` — after connecting a desktop window to a different saved or typed external server, the webview reloads so stale frontend state is discarded and the window comes back against the newly selected backend cleanly. Reconnecting to the already active backend does not reload.
 
 ---
@@ -266,8 +259,7 @@ run from the terminal. Deeper docs: [`desktop.md`](./desktop.md),
 ## 2. Agents and teams
 
 OpenAgentd is multi-agent by default. A lead agent drives the conversation and
-spawns specialist members on demand. Deeper docs: [`agent/teams.md`](./agent/teams.md),
-[`agent/loop.md`](./agent/loop.md), [`agent/hooks.md`](./agent/hooks.md).
+spawns specialist members on demand.
 
 - **Lead agent + member blueprints** `[since v1.0]` — exactly one `role: lead`
   agent; any number of `role: member` blueprints in `agents/`. Lead drives
@@ -288,13 +280,11 @@ spawns specialist members on demand. Deeper docs: [`agent/teams.md`](./agent/tea
   command palette and assistant footer.
 - **Automatic empty-after-tool recovery** `[v1.36.0]` — if a provider returns
   an empty assistant response immediately after a tool result, the lead keeps
-  the same turn moving instead of silently ending after the tool call. See
-  [`agent/loop.md`](./agent/loop.md#empty-after-tool-recovery).
+  the same turn moving instead of silently ending after the tool call.
 - **Provider-timeout resume for long tasks** `[v1.37.0]` — when a slow or flaky
   model endpoint exhausts its retry budget mid-task (`ReadTimeout` /
   `ConnectError`), the loop resumes the same turn from where it left off
   instead of dropping the agent after a tool call. Bounded and interrupt-aware.
-  See [`agent/loop.md`](./agent/loop.md#provider-timeout-resume).
 - **Automatic max-tokens truncation recovery** `[v1.87.0]` — when a provider
   hits the output token limit (`finish_reason="max_tokens"` or `"length"`), the
   loop automatically injects a recovery message (requesting a continuation for
@@ -319,8 +309,7 @@ spawns specialist members on demand. Deeper docs: [`agent/teams.md`](./agent/tea
 - **Stop cancels the whole active session run** `[v1.101.1]` — Stop directly
   cancels the lead and working members, in-flight model/tool work, direct shell
   commands, and session-owned background shell processes before the request
-  returns. Queued and late mailbox work cannot restart the stopped turn. See
-  [`agent/loop.md`](./agent/loop.md#http-layer-interrupt-team-mode).
+  returns. Queued and late mailbox work cannot restart the stopped turn.
 - **Stop pauses queued follow-ups instead of dropping them** `[v1.17.0]` — Stop
   releases queued hidden user messages into visible history so you can
   `/undo`, edit, or append before resuming.
@@ -349,7 +338,7 @@ spawns specialist members on demand. Deeper docs: [`agent/teams.md`](./agent/tea
 ## 3. The coding workspace
 
 Coding mode (`/coding`) opens a local project folder and runs a workspace-aware
-team against it. Deeper doc: [`web/coding-sessions.md`](./web/coding-sessions.md).
+team against it.
 
 - **Open any local project folder** `[since v1.0]` — server-local paths only.
   Coding mode shows file tree + live git diff (staged, unstaged, and untracked
@@ -452,9 +441,7 @@ team against it. Deeper doc: [`web/coding-sessions.md`](./web/coding-sessions.md
 
 ## 4. Memory and context
 
-OpenAgentd carries context across sessions via rolling-window summarization. Deeper doc:
-[`agent/context.md`](./agent/context.md),
-[`agent/summarization.md`](./agent/summarization.md).
+OpenAgentd carries context across sessions via rolling-window summarization.
 
 - **`/compact` rolling-window summarization** `[v1.5.0]` — compresses old turns
   into a single summary message kept in context; UI shows the unabridged
@@ -472,7 +459,7 @@ OpenAgentd carries context across sessions via rolling-window summarization. Dee
 ## 5. Providers and models
 
 Switch providers with one line in your agent config. The product is provider-
-agnostic by design. Deeper doc: [`configuration/providers.md`](./configuration/providers.md).
+agnostic by design.
 
 **15 first-class providers:**
 
@@ -509,14 +496,12 @@ agnostic by design. Deeper doc: [`configuration/providers.md`](./configuration/p
   the system block and latest cacheable turn block, matching Anthropic's
   breakpoint model instead of marking every block. Stored/model usage now counts
   total prompt input as cold + cache-read + cache-write tokens while preserving
-  cached reads as a separate metric. Deeper doc:
-  [`configuration/providers.md`](./configuration/providers.md#anthropic).
+  cached reads as a separate metric.
 - **Budget-based thinking metadata synthesis** `[v1.83.0]` — models whose
   registry metadata exposes raw `budget_tokens` reasoning support but no named
   effort levels now surface standard `none/low/medium/high` thinking choices in
   Settings, with Anthropic runtime mapping those levels to proportional token
-  budgets. Deeper doc:
-  [`configuration/providers.md`](./configuration/providers.md#anthropic).
+  budgets.
 - **OAuth subscription support** `[v1.8.0]` — Copilot, Codex, others via the
   built-in OAuth helper.
 - **Codex usage monitor** `[v1.32.0]` — Settings → Providers shows live Codex
@@ -549,7 +534,7 @@ agnostic by design. Deeper doc: [`configuration/providers.md`](./configuration/p
 ## 6. Built-in tools
 
 Tools the agent can call without any extra configuration. Add more via skills or
-MCP. Deeper doc: [`agent/tools.md`](./agent/tools.md).
+MCP.
 
 | Category | Tools |
 |---|---|
@@ -586,7 +571,6 @@ MCP. Deeper doc: [`agent/tools.md`](./agent/tools.md).
   npm packages, a cross-surface install prompt, and `openagentd lsp` status/install
   commands. Managed tools live under the regeneratable cache and do not modify
   the user's project.
-  Deeper doc: [`configuration/lsp.md`](./configuration/lsp.md).
 - **Clean tool argument validation errors** `[v1.77.0]` — when a tool call
   fails Pydantic validation, the LLM receives a compact `field: message`
   summary instead of the full Pydantic noise (type codes, raw input value,
@@ -610,9 +594,7 @@ MCP. Deeper doc: [`agent/tools.md`](./agent/tools.md).
 
 ## 7. Extension surface
 
-Four orthogonal ways to add capability. Deeper docs:
-[`agent/plugins.md`](./agent/plugins.md), [`configuration/skills.md`](./configuration/skills.md),
-[`configuration.md`](./configuration.md).
+Four orthogonal ways to add capability.
 
 - **MCP servers** `[since v1.0]` — any Model Context Protocol server, hot-reloaded
   via `POST /api/mcp/apply`. Per-agent scoping. OAuth-backed setup. Session Settings
@@ -655,7 +637,7 @@ Four orthogonal ways to add capability. Deeper docs:
   - **Semantic docs search skill experiment** `[v1.98.0]` *(beta)* — project workspaces can ship
     an `oad/search-doc` skill plus a turbovec-based document-search experiment for semantic lookup
     over `documents/`, giving agents a higher-level alternative to exact-string grep when docs
-    queries are conceptual or paraphrased. See [`configuration/skills.md`](./configuration/skills.md).
+    queries are conceptual or paraphrased.
 - **Plugins** `[v1.6.0]` — Python files dropped into `OPENAGENTD_PLUGINS_DIRS`.
   Register `@plugin` functions or `Plugin(BaseAgentHook)` classes with
   `tool.before` / `tool.after` / agent lifecycle hooks. Per `(agent, role)` filter.
@@ -670,8 +652,7 @@ Four orthogonal ways to add capability. Deeper docs:
 
 ## 8. Sandbox and permissions
 
-Single-user trust model. The host is trusted. The operator is the user. Deeper
-doc: [`configuration/sandbox.md`](./configuration/sandbox.md).
+Single-user trust model. The host is trusted. The operator is the user.
 
 - **Path denylist** `[since v1.0]` — absolute paths anywhere on disk are accepted
   *unless* they resolve under a denied root (`OPENAGENTD_DATA_DIR`,
@@ -688,8 +669,7 @@ doc: [`configuration/sandbox.md`](./configuration/sandbox.md).
 
 ## 9. Observability
 
-Everything stays local. No third-party telemetry SaaS. Deeper doc:
-[`observability.md`](./observability.md), [`logging.md`](./logging.md).
+Everything stays local. No third-party telemetry SaaS.
 
 - **Built-in telemetry dashboard** `[since v1.0]` — `/telemetry` route in the web
   UI. Focused usage/cost cards, cache hit/miss by step and provider:model,
@@ -703,7 +683,6 @@ Everything stays local. No third-party telemetry SaaS. Deeper doc:
   `o200k_base` counts for the assembled static system prompt, compact tool-schema
   JSON, every first-party base prompt, each tool, and bundled skill bodies;
   `make prompt-budget-json` emits a stable machine-readable baseline for CI.
-  See [`agent/tools.md`](./agent/tools.md#prompt-budget-diagnostics).
 - **DuckDB-backed query API** `[since v1.0]` — `/api/observability/*` queries
   the local DuckDB span store.
 - **Two-tier logging** `[since v1.0]` — app log at `{STATE_DIR}/logs/app/`,
@@ -723,14 +702,13 @@ Client-side speech recognition. OpenAgentd does not run backend microphone trans
   stop. Transcript text is inserted into the chat input for review before sending.
 - **Browser / OS speech recognition** `[v1.34.0]` — uses the current browser or
   app WebView speech recognizer when available. No `/api/speech/*` backend,
-  `speech.yaml`, or bundled `faster-whisper`. See [`web/voice-input.md`](./web/voice-input.md).
+  `speech.yaml`, or bundled `faster-whisper`.
 
 ---
 
 ## 11. Distribution and updates
 
-Desktop is primary. CLI / server is the developer path. Deeper doc:
-[`install.md`](./install.md).
+Desktop is primary. CLI / server is the developer path.
 
 - **macOS desktop** `[since v1.0]` — Homebrew cask
   (`brew install --cask lthoangg/tap/openagentd`) or `.dmg` with bundled
@@ -740,8 +718,7 @@ Desktop is primary. CLI / server is the developer path. Deeper doc:
 - **Windows desktop** `[v1.106.0]` — native x64 `.msi` installer with the
   bundled Python sidecar, WebView2 shell, Job Object process cleanup, native
   PowerShell/cmd shell execution, and signed in-app updates. Interactive PTY
-  terminal tabs remain unavailable pending a ConPTY backend. See
-  [`desktop.md`](./desktop.md).
+  terminal tabs remain unavailable pending a ConPTY backend.
 - **Signed update manifests** `[v1.2.2+]` — minisign-signed `latest.json` at the
   rolling `latest-desktop` release; verified before install.
 - **In-app updater** `[v1.22.0]` — see [§1](#1-the-desktop-cockpit).
@@ -783,7 +760,7 @@ Desktop is primary. CLI / server is the developer path. Deeper doc:
 
 ## 12. Embed and API
 
-The same HTTP + SSE API drives the desktop, browser, and mobile clients. Embed it elsewhere with no extra work. Deeper doc: [`api/index.md`](./api/index.md).
+The same HTTP + SSE API drives the desktop, browser, and mobile clients. Embed it elsewhere with no extra work.
 
 - **REST + SSE chat API** `[since v1.0]` — `POST /api/team/chat` is
   fire-and-forget (returns 202 in <50ms); the agent streams events on
@@ -796,8 +773,7 @@ The same HTTP + SSE API drives the desktop, browser, and mobile clients. Embed i
 - **SSE event protocol** `[since v1.0]` — typed events: `thinking`, `message`,
   `tool_call`, `tool_start`, `tool_output_delta`, `tool_end`, `usage`,
   `inbox`, `agent_status`, `queued_turn_start`, `rate_limit`,
-  `provider_status`, `permission_asked`, `error`, `done`. See
-  [`architecture.md`](./architecture.md).
+  `provider_status`, `permission_asked`, `error`, `done`.
 - **Mid-turn reconnect** `[since v1.0]` — close the tab, reopen later; the
   stream replays buffered state then resumes live.
 - **Multi-client streaming** `[since v1.0]` — multiple tabs can watch the same
@@ -809,12 +785,9 @@ The same HTTP + SSE API drives the desktop, browser, and mobile clients. Embed i
 
 ## Not yet shipped
 
-Future work and known issues are tracked in GitHub issues, not in this feature
-catalogue. See [`roadmap.md`](./roadmap.md) for the short priority list and
-issue-label links.
+Future work and known issues are tracked in [GitHub issues](https://github.com/lthoangg/OpenAgentd/issues), not in this feature catalogue.
 
-When a feature ships, add it to the right pillar above with its `[vX.Y.Z]` tag
-and link to the relevant doc.
+When a feature ships, add it to the right pillar above with its `[vX.Y.Z]` tag.
 
 ---
 
@@ -826,14 +799,12 @@ When you cut a release:
    one-line entry with the `[vX.Y.Z]` tag.
 2. If a pillar doesn't fit, add a new one — but don't shoehorn unrelated work
    into an existing pillar.
-3. If the change is user-visible, also update:
-   - [`../../README.md`](../../README.md) "What you get" section only if it is
-     important enough for the short README feature list
-   - [`comparison.md`](./comparison.md) if the new feature lands in the capability matrix
+3. If the change is important to the product story or setup, also update
+   [`../../README.md`](../../README.md).
 4. Close the GitHub issue that tracked the feature, or create one if the shipped
    work did not have an issue yet.
-5. If the change is technical / architectural, link the relevant doc under
-   `documents/docs/` from the entry.
+5. If the change is technical / architectural, keep its non-obvious rationale
+   beside the implementation or record a significant decision as an ADR.
 6. Bump the `updated:` field in the frontmatter to the release date.
 7. If you remove a feature, mark it *(deprecated)* in place for at least one
    release before deleting the entry.

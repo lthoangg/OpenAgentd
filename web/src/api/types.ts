@@ -508,7 +508,6 @@ export interface ScheduledTaskResponse {
   name: string
   // Routing target — every task delivers to the team lead of the matching
   // team (default lead for ``normal``, workspace lead for ``coding``).
-  // See documents/docs/agent/tools.md#scheduler-builtinschedulepy.
   mode: ScheduledTaskMode
   workspace: string | null
   schedule_type: 'at' | 'every' | 'cron'

@@ -1,14 +1,11 @@
 ---
 name: oad/search-doc
-description: Semantic search over documents/ (OpenAgentd docs, styling specs, techdebt notes) using the turbovec experiment index. Use instead of grep when a query is conceptual/paraphrased rather than an exact string match.
+description: Semantic search over the retained OpenAgentd feature catalogue, ADRs, and repository instructions using the turbovec experiment index.
 ---
 
-Search `documents/` semantically instead of relying on exact-string `grep` — useful for
-conceptual questions ("how does session summarization work", "what's the tech debt
-around model capabilities") where the answer may not share the query's wording.
+Search `documents/` semantically only for product-capability, decision-rationale, or repository-policy questions. The codebase, tests, CLI help, and UI are authoritative for implementation and operation; use `grep`, `glob`, and source reads for those questions.
 
-This wraps the experiment at `experiments/turbovec_docs/` (turbovec index +
-local sentence-transformers embeddings). Reuse it, don't rebuild it.
+This wraps the experiment at `experiments/turbovec_docs/` (turbovec index + local sentence-transformers embeddings). Reuse the index when current; rebuild it only after the retained Markdown corpus changes.
 
 ## 1. Check the index exists
 
@@ -16,14 +13,13 @@ local sentence-transformers embeddings). Reuse it, don't rebuild it.
 ls experiments/turbovec_docs/index/docs.tvim 2>/dev/null
 ```
 
-- If missing, or if `documents/` has changed since the last build (new/edited/deleted `.md` files), build/rebuild it:
+- If missing, or if `documents/` has changed since the last build, rebuild it:
 
 ```bash
 uv run --group experiment python experiments/turbovec_docs/build_index.py
 ```
 
-This re-chunks every `documents/**/*.md` file and overwrites the index — cheap for this
-corpus size, so rebuild whenever `documents/` might be stale rather than guessing.
+The corpus is intentionally small: feature catalogue, ADRs, and repository instructions. Rebuild whenever it might be stale rather than treating old search results as authoritative.
 
 ## 2. Search
 
@@ -31,23 +27,18 @@ corpus size, so rebuild whenever `documents/` might be stale rather than guessin
 uv run --group experiment python experiments/turbovec_docs/search.py "<query>" -k 5
 ```
 
-- Write the query as a natural-language question or description, not keywords — the
-  embedding model matches meaning, not substrings.
-- `-k` controls result count (default 5); raise it for broad/exploratory questions,
-  lower it when you expect one clear answer.
-- Output per result: similarity score, `path:start_line-end_line`, the section heading,
-  and a text snippet — open the file at that line range for full context before quoting
-  or acting on it.
+- Use natural-language questions about shipped features, historical decisions, or repository documentation policy.
+- `-k` controls result count (default 5); lower it when one clear result is expected.
+- Open the returned file and line range before quoting or acting on a result.
 
-## 3. When to fall back to grep/glob instead
+## 3. Use source search instead when
 
-- Exact identifiers, function/variable names, error strings, config keys → `grep` is
-  faster and exact; semantic search adds noise for literal lookups.
-- If the top result's score is low (roughly < 0.4) and doesn't look relevant, the corpus
-  likely doesn't cover the question — say so rather than forcing a weak match into the answer.
+- You need implementation behavior, API routes, schemas, configuration keys, CLI arguments, UI details, tests, or error strings.
+- You are looking for an exact identifier, function/variable name, or literal text.
+- The semantic result is low-confidence or the retained corpus does not cover the question.
 
 ## Notes
 
-- This is a local, offline, no-API-key tool — safe to use freely, no network cost per query beyond the one-time model download (cached after first run).
-- `experiments/turbovec_docs/README.md` has the full design rationale (chunking strategy, why local embeddings, known limitations) if deeper context is needed.
-- The `experiment` uv dependency group is dev/local-only — never assume it's present outside this workspace's environment.
+- This is local and offline after the one-time model download.
+- `experiments/turbovec_docs/README.md` describes the experimental index and its limitations.
+- The `experiment` uv dependency group is dev/local-only; never assume it exists outside this workspace.

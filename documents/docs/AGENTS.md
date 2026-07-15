@@ -1,37 +1,21 @@
 # documents/docs/ — Agent Instructions
 
-Published documentation for users and developers. Use this tree to confirm product behavior before explaining or changing it.
+This directory contains only the public feature catalogue.
 
-## Where to look first
+## Files
 
 ```
-index.md          Documentation map by audience
-features.md       Canonical feature catalogue
-architecture.md   System architecture
-guidelines.md     Development commands, style, testing patterns
-desktop.md        Desktop build/release/signing pipeline
-configuration/    Agent, provider, MCP, tool, skill config docs
-agent/            Agent loop, hooks, tools, team, context, summarization docs
-api/              API documentation
-web/              Frontend/UI documentation
-testing/          Testing guides
+index.md     Minimal public entry point
+features.md  Canonical version-cited catalogue of shipped user-visible features
 ```
 
-## Common feature checks
+## Rules
 
-- Before claiming support: check `features.md` first.
-- New user-visible feature: add a one-line `[vX.Y.Z]` entry in `features.md` and link deeper docs.
-- Config/schema change: update the matching file under `configuration/`.
-- Team/agent runtime change: update `agent/` docs and cross-link from `features.md` when user-visible.
-- Desktop behavior change: update `desktop.md`.
-
-## Style
-
-- Preserve YAML frontmatter when present.
-- Keep docs direct and practical; prefer commands and exact paths over prose.
-- Use relative links and keep `index.md` useful as the entry point.
-- Do not document commands that were not checked against repo files.
+- Update `features.md` for a shipped, user-visible capability; include its `[vX.Y.Z]` tag.
+- Keep entries factual and concise. Do not add implementation guides, API references, configuration manuals, roadmaps, or troubleshooting pages here.
+- Source code, tests, CLI help, and the UI are authoritative for behavior and operation.
+- User-facing setup and product copy belong in `../../README.md`.
 
 ## Checks
 
-Run `make verify-docs`. Use the canonical [change policy](contributing/change-policy.md) to select product checks when documenting commands or behavior.
+Run `make verify-docs` after changes.

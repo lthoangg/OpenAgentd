@@ -13,8 +13,6 @@ Public API:
 * :class:`MCPManager` — lifecycle owner, accessed via :data:`mcp_manager`.
 * :class:`MCPServerConfig` / :class:`MCPConfig` — config schema for ``mcp.json``.
 * :func:`load_config` / :func:`save_config` — file I/O helpers.
-
-See ``documents/docs/agent/tools.md`` for user-facing docs.
 """
 
 from __future__ import annotations

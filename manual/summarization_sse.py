@@ -16,8 +16,7 @@ Prerequisites:
   - Lower ``DEFAULT_PROMPT_TOKEN_THRESHOLD`` in
     ``app/agent/hooks/summarization.py`` to a small value (e.g. ``2000``)
     and restart the server so summarisation actually fires during the
-    warm-up turns. (There is no file-based config — see
-    ``documents/docs/agent/summarization.md``.)
+    warm-up turns. There is no file-based configuration for this threshold.
 
 Usage:
   uv run python -m manual.summarization_sse

@@ -10,8 +10,7 @@
  *
  * The terminal runs **on the backend host**. When the app is connected
  * to an external/LAN server this is a shell on that machine, not the
- * local device — the exit/error copy makes that explicit (same nuance
- * as the "Open folder…" server-side picker, see documents/docs/desktop.md).
+ * local device — the exit/error copy and server-side folder picker make that explicit.
  *
  * Theme: follows the app's resolved light/dark theme live via
  * `useThemePreference`; the store swaps every session's palette so hidden

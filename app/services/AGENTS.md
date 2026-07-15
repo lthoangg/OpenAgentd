@@ -20,9 +20,7 @@ provider_usage.py        Per-provider usage dispatch + connected-provider usage-
 ```
 
 The LSP subsystem (`lsp/client.py`, `lsp/manager.py`) is driven by
-`app/agent/hooks/lsp.py` and documented in
-[`documents/docs/configuration/lsp.md`](../../documents/docs/configuration/lsp.md).
-Managed language-server provisioning and its trust boundary are defined by
+`app/agent/hooks/lsp.py`. Managed language-server provisioning and its trust boundary are defined by
 [`ADR-0004`](../../documents/adrs/0004-managed-lsp-toolchain.md).
 
 ## Common feature checks

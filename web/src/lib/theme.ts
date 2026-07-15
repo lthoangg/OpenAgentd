@@ -88,13 +88,22 @@ export function initTheme(): () => void {
   }
 
   const mql = window.matchMedia(MEDIA_QUERY)
-  const handler = () => {
+  const onSystemChange = () => {
     // Only react when the user prefers "system"; explicit picks are sticky.
     if (readStoredPreference() === 'system') {
       applyTheme(mql.matches ? 'dark' : 'light')
     }
   }
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === THEME_STORAGE_KEY || event.key === null) {
+      applyTheme(resolveTheme(readStoredPreference()))
+    }
+  }
 
-  mql.addEventListener('change', handler)
-  return () => mql.removeEventListener('change', handler)
+  mql.addEventListener('change', onSystemChange)
+  window.addEventListener('storage', onStorage)
+  return () => {
+    mql.removeEventListener('change', onSystemChange)
+    window.removeEventListener('storage', onStorage)
+  }
 }

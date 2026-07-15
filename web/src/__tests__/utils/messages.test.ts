@@ -32,7 +32,13 @@ function makeMsg(overrides: Partial<MessageResponse> = {}): MessageResponse {
 describe("sumUsageFromMessages", () => {
   it("returns zeros when no messages", () => {
     const result = sumUsageFromMessages([]);
-    expect(result).toEqual({ promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0 });
+    expect(result).toEqual({
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+      cachedTokens: 0,
+      estimatedCostUsd: 0,
+    });
   });
 
   it("returns zeros when no assistant messages have usage", () => {

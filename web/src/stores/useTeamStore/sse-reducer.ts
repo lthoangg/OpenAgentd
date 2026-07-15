@@ -266,7 +266,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
           u.completionTokens = stream._completionBase + completionTokens
           u.cachedTokens     = cachedTokens ?? u.cachedTokens
           u.totalTokens      = u.promptTokens + u.completionTokens
-          u.estimatedCostUsd = (u.estimatedCostUsd ?? 0) + ((d.estimated_cost_usd as number) || 0)
+          u.estimatedCostUsd = Math.round(((u.estimatedCostUsd ?? 0) + ((d.estimated_cost_usd as number) || 0)) * 1e8) / 1e8
           stream._completionEstimated = completionTokens
         })
         break

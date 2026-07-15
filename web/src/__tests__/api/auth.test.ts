@@ -146,6 +146,19 @@ describe("access key storage", () => {
     expect(window.localStorage.getItem('openagentd.accessKey:https://example.com')).toBe('legacy-key')
   })
 
+  it('migrates the pre-scoping global key for an explicitly selected saved server', async () => {
+    window.localStorage.setItem('openagentd.accessKey', 'legacy-global-key')
+    invoke.mockImplementation(async (...args: unknown[]) => String(args[0]) === 'secure_get_access_key' ? null : undefined)
+    const auth = await freshAuth()
+
+    await expect(auth.getStoredAccessKey('http://192.168.1.20:4082')).resolves.toBe('legacy-global-key')
+    expect(invoke).toHaveBeenCalledWith('secure_set_access_key', {
+      origin: 'http://192.168.1.20:4082',
+      key: 'legacy-global-key',
+    })
+    expect(window.localStorage.getItem('openagentd.accessKey')).toBeNull()
+  })
+
   it("stores and retrieves access keys per backend origin", async () => {
     const auth = await freshAuth()
 

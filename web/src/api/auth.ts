@@ -84,13 +84,17 @@ export async function getStoredAccessKey(baseUrl?: string): Promise<string | und
       installDesktopAuth()
       return stored
     }
-    const legacy = window.localStorage.getItem(`${ACCESS_KEY_STORAGE_PREFIX}${origin}`)
-    if (legacy) {
+    const scopedLegacyKey = `${ACCESS_KEY_STORAGE_PREFIX}${origin}`
+    const scopedLegacy = window.localStorage.getItem(scopedLegacyKey)
+    const globalLegacy = window.localStorage.getItem(ACCESS_KEY_STORAGE)
+    const legacyStorageKey = scopedLegacy ? scopedLegacyKey : globalLegacy ? ACCESS_KEY_STORAGE : null
+    const legacy = scopedLegacy || globalLegacy
+    if (legacy && legacyStorageKey) {
       await invoke('secure_set_access_key', { origin, key: legacy })
       nativeAccessKeys.set(origin, legacy)
       nativeAccessKeyMisses.delete(origin)
       installDesktopAuth()
-      window.localStorage.removeItem(`${ACCESS_KEY_STORAGE_PREFIX}${origin}`)
+      window.localStorage.removeItem(legacyStorageKey)
       return legacy
     }
     nativeAccessKeyMisses.add(origin)

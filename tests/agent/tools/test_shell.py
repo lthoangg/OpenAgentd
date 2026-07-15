@@ -529,7 +529,9 @@ def test_completed_background_process_limit_never_evicts_alive_processes():
 async def test_background_actions_lazily_prune_completed_records(sandbox_workspace):
     """A registry action removes expired completed jobs while retaining live jobs."""
     expired = MagicMock(alive=False, session_id="session-1")
-    expired.completed_at = 0.0
+    expired.completed_at = (
+        shell_module.time.monotonic() - shell_module._BG_COMPLETED_TTL_SECONDS - 1
+    )
     alive = MagicMock(alive=True, session_id="session-1", command="sleep 30")
     _bg_processes[1001] = expired
     _bg_processes[1002] = alive
@@ -547,7 +549,9 @@ async def test_background_start_lazily_prunes_completed_records(
 ):
     """Starting a job also prunes expired completed records."""
     expired = MagicMock(alive=False)
-    expired.completed_at = 0.0
+    expired.completed_at = (
+        shell_module.time.monotonic() - shell_module._BG_COMPLETED_TTL_SECONDS - 1
+    )
     _bg_processes[1001] = expired
 
     await shell_tool.arun(command="sleep 30", background=True, timeout_seconds=1)

@@ -318,6 +318,26 @@ def smoke_test(python_bin: Path, site_packages: Path) -> None:
         "runpy.run_path(_entry, run_name='__main__')"
     )
 
+    if os.name == "nt":
+        # Sanity-check that the Windows-only ``.pth`` bootstrap (the v1.22.2
+        # regression) still works before the full handshake. This is fast
+        # and gives a clean failure signal if the sidecar can't even import
+        # its core deps; without it, an import failure would hide behind
+        # the 60s handshake timeout below.
+        run(
+            [
+                str(python_bin),
+                "-c",
+                "import sys, site; "
+                "site.addsitedir(sys.argv[1]); "
+                "import pywintypes; "
+                "import app.cli; "
+                "print('smoke test: windows imports ok')",
+                str(site_packages),
+            ],
+            env=env,
+        )
+
     smoke_cmd = [
         str(python_bin),
         "-c",
@@ -339,9 +359,14 @@ def smoke_test(python_bin: Path, site_packages: Path) -> None:
         stderr=subprocess.PIPE,
         env=env,
         text=True,
-        # New process group so the smoke test can hard-kill the child
-        # (and any uvicorn worker it spawns) on timeout.
-        start_new_session=True,
+        # Cross-platform process group so the smoke test can hard-kill
+        # the child (and any uvicorn worker it spawns) on timeout.
+        # On POSIX this is a new session; on Windows a new process group
+        # (``start_new_session`` is silently ignored there).
+        start_new_session=(os.name != "nt"),
+        creationflags=(
+            subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0  # type: ignore[attr-defined]
+        ),
     )
 
     # Read output from background threads so the main thread can

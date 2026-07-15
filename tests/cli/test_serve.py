@@ -108,6 +108,55 @@ class TestHandshakeFormat:
         )
         assert "token" not in payload
 
+    def test_handshake_file_env_var_writes_payload(self, monkeypatch, tmp_path):
+        """When ``OPENAGENTD_HANDSHAKE_FILE`` is set, the JSON payload is
+        also written to that path atomically (tmp + rename).
+
+        The desktop sidecar on Windows uses this as a fallback channel
+        because the anonymous-pipe + tokio overlapped-I/O combination has,
+        on at least two user installs, failed to deliver the stdout
+        handshake line (v1.22.8 regression, reintroduced when Windows
+        support was restored).  The Python side must be cross-platform —
+        the file is written whenever the env var is set, regardless of OS.
+        """
+        target = tmp_path / "handshake.json"
+        monkeypatch.setenv("OPENAGENTD_HANDSHAKE_FILE", str(target))
+
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            _emit_handshake(port=54321, token="tok", version="9.9.9")
+
+        # Stdout still got the handshake line (primary channel).
+        assert buf.getvalue().startswith("OPENAGENTD_HANDSHAKE ")
+
+        # File got the same payload.
+        assert target.exists()
+        payload = json.loads(target.read_text())
+        assert payload["port"] == 54321
+        assert payload["token"] == "tok"
+        assert payload["version"] == "9.9.9"
+        assert payload["pid"] == os.getpid()
+
+        # ``.tmp`` rename intermediate must be cleaned up.
+        assert not (tmp_path / "handshake.json.tmp").exists()
+
+    def test_handshake_no_file_env_var_skips_file(self, monkeypatch, tmp_path):
+        """Without ``OPENAGENTD_HANDSHAKE_FILE``, no file is written.
+
+        Guards against a regression that would create an unexpected file
+        in the working directory on every desktop spawn on macOS/Linux.
+        """
+        monkeypatch.delenv("OPENAGENTD_HANDSHAKE_FILE", raising=False)
+        cwd_before = set(tmp_path.iterdir())
+        monkeypatch.chdir(tmp_path)
+
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            _emit_handshake(port=1, token=None, version="0")
+
+        assert buf.getvalue().startswith("OPENAGENTD_HANDSHAKE ")
+        assert set(tmp_path.iterdir()) == cwd_before
+
 
 class TestDesktopTokenConfig:
     def test_reuses_existing_desktop_token(self, monkeypatch):

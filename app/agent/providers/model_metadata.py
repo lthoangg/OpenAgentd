@@ -86,6 +86,14 @@ class ModelFeatures:
 
 
 @dataclass(frozen=True)
+class ModelTransport:
+    """A provider-neutral, region-independent transport selection."""
+
+    endpoint_variant: str
+    api_family: str
+
+
+@dataclass(frozen=True)
 class ModelMetadata:
     """Non-modality metadata for one ``provider:model`` pair."""
 
@@ -93,6 +101,7 @@ class ModelMetadata:
     thinking: ModelThinking = ModelThinking()
     cost: ModelCost = ModelCost()
     features: ModelFeatures = ModelFeatures()
+    transport: ModelTransport | None = None
 
     def to_dict(
         self,
@@ -156,11 +165,29 @@ def _optional_string(value: Any, field: str) -> str | None:
     return value
 
 
+def _transport(value: Any) -> ModelTransport | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise TypeError("`transport` must be a mapping")
+    endpoint_variant = value.get("endpoint_variant")
+    api_family = value.get("api_family")
+    if endpoint_variant not in {"default", "openai"} or api_family != "responses":
+        raise ValueError(
+            "`transport` must contain a known endpoint variant and API family"
+        )
+    return ModelTransport(
+        endpoint_variant=endpoint_variant,
+        api_family=api_family,
+    )
+
+
 def _merge_metadata(spec: dict[str, Any]) -> ModelMetadata:
     limits_spec = spec.get("limits") or {}
     thinking_spec = spec.get("thinking") or {}
     cost_spec = spec.get("cost") or {}
     features_spec = spec.get("features") or {}
+    transport_spec = spec.get("transport")
     if not isinstance(limits_spec, dict):
         raise TypeError("`limits` must be a mapping")
     if not isinstance(thinking_spec, dict):
@@ -207,6 +234,7 @@ def _merge_metadata(spec: dict[str, Any]) -> ModelMetadata:
                 features_spec.get("release_date"), "features.release_date"
             ),
         ),
+        transport=_transport(transport_spec),
     )
 
 
@@ -215,7 +243,7 @@ def _load_registry() -> dict[str, ModelMetadata]:
     for key, value in load_model_registry().items():
         metadata = {
             field: value[field]
-            for field in ("limits", "thinking", "cost", "features")
+            for field in ("limits", "thinking", "cost", "features", "transport")
             if field in value
         }
         if not metadata:
@@ -258,3 +286,8 @@ def get_model_features(model_id: str | None) -> ModelFeatures:
 def get_model_thinking_levels(model_id: str | None) -> tuple[str, ...]:
     """Return supported thinking levels for a fully-qualified model ID."""
     return get_model_metadata(model_id).thinking.levels
+
+
+def get_model_transport(model_id: str | None) -> ModelTransport | None:
+    """Return a normalized transport selection when the catalog defines one."""
+    return get_model_metadata(model_id).transport

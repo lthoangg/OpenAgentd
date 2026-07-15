@@ -30,6 +30,11 @@ ModelRegistry = dict[str, dict[str, Any]]
 MODELS_DEV_URL = "https://models.dev/api.json"
 MODELS_DEV_CACHE_TTL_SECONDS = 24 * 60 * 60
 
+_MANTLE_API_URLS = {
+    "https://bedrock-mantle.${AWS_REGION}.api.aws/v1": "default",
+    "https://bedrock-mantle.${AWS_REGION}.api.aws/openai/v1": "openai",
+}
+
 
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     result = deepcopy(base)
@@ -309,6 +314,16 @@ def _thinking_from_model(model: dict[str, Any]) -> dict[str, list[str]]:
     return {}
 
 
+def _mantle_transport(provider: Any) -> dict[str, str] | None:
+    """Normalize a known Mantle provider block without retaining its URL."""
+    if not isinstance(provider, dict):
+        return None
+    endpoint_variant = _MANTLE_API_URLS.get(provider.get("api"))
+    if endpoint_variant is None or provider.get("shape") != "responses":
+        return None
+    return {"endpoint_variant": endpoint_variant, "api_family": "responses"}
+
+
 def _normalize_models_dev(data: Any, *, include_plugins: bool = True) -> ModelRegistry:
     if not isinstance(data, dict):
         return {}
@@ -318,8 +333,8 @@ def _normalize_models_dev(data: Any, *, include_plugins: bool = True) -> ModelRe
     for provider_key, provider in data.items():
         if not isinstance(provider_key, str) or not isinstance(provider, dict):
             continue
-        provider_id = str(provider.get("id") or provider_key).lower()
-        provider_id = provider_aliases.get(provider_id, provider_id)
+        source_provider_id = str(provider.get("id") or provider_key).lower()
+        provider_id = provider_aliases.get(source_provider_id, source_provider_id)
         models = provider.get("models")
         if not isinstance(models, dict):
             continue
@@ -333,6 +348,9 @@ def _normalize_models_dev(data: Any, *, include_plugins: bool = True) -> ModelRe
             cost = _cost_from_model(model)
             features = _features_from_model(model)
             thinking = _thinking_from_model(model)
+            transport = None
+            if source_provider_id == "amazon-bedrock":
+                transport = _mantle_transport(model.get("provider"))
             if capabilities:
                 entry["capabilities"] = capabilities
             if limits:
@@ -343,6 +361,8 @@ def _normalize_models_dev(data: Any, *, include_plugins: bool = True) -> ModelRe
                 entry["features"] = features
             if thinking:
                 entry["thinking"] = thinking
+            if transport:
+                entry["transport"] = transport
             if entry:
                 registry[f"{provider_id}:{model_id}".lower()] = entry
     return registry

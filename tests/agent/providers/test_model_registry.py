@@ -11,6 +11,7 @@ from app.agent.providers.model_metadata import (
     get_model_features,
     get_model_limits,
     get_model_thinking_levels,
+    get_model_transport,
 )
 
 
@@ -242,6 +243,100 @@ def test_models_dev_provider_aliases(
     )
     assert get_capabilities("googlegenai:gemini-live").input.vision is True
     assert get_model_limits("googlegenai:gemini-live").context_length == 1000
+
+
+def test_models_dev_bedrock_mantle_transport_preserves_model_metadata(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        model_registry.settings, "OPENAGENTD_CACHE_DIR", str(tmp_path / "cache")
+    )
+    monkeypatch.setattr(
+        model_registry.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path / "config")
+    )
+    monkeypatch.setattr(
+        model_registry.settings, "OPENAGENTD_MODEL_REGISTRY_REFRESH", True
+    )
+    monkeypatch.setattr(
+        model_registry,
+        "_fetch_models_dev",
+        lambda: {
+            "amazon-bedrock": {
+                "id": "amazon-bedrock",
+                "models": {
+                    "openai.gpt-5.4": {
+                        "id": "openai.gpt-5.4",
+                        "provider": {
+                            "api": "https://bedrock-mantle.${AWS_REGION}.api.aws/openai/v1",
+                            "shape": "responses",
+                        },
+                        "modalities": {"input": ["text", "image"], "output": ["text"]},
+                        "limit": {"context": 200000, "output": 64000},
+                        "cost": {"input": 3, "output": 15, "cache_read": 0.3},
+                        "reasoning_options": [{"type": "budget_tokens", "min": 1024}],
+                    }
+                },
+            }
+        },
+    )
+
+    model_id = "bedrock:openai.gpt-5.4"
+    assert get_capabilities(model_id).input.vision is True
+    assert get_model_limits(model_id).context_length == 200000
+    assert get_model_limits(model_id).max_completion_tokens == 64000
+    assert get_model_cost(model_id).input == 3
+    assert get_model_cost(model_id).cache_read == 0.3
+    assert get_model_thinking_levels(model_id) == ("none", "low", "medium", "high")
+    transport = get_model_transport(model_id)
+    assert transport is not None
+    assert transport.endpoint_variant == "openai"
+    assert transport.api_family == "responses"
+
+
+def test_models_dev_bedrock_mantle_default_api_uses_responses_transport() -> None:
+    registry = model_registry._normalize_models_dev(
+        {
+            "amazon-bedrock": {
+                "models": {
+                    "openai.gpt-oss": {
+                        "provider": {
+                            "api": "https://bedrock-mantle.${AWS_REGION}.api.aws/v1",
+                            "shape": "responses",
+                        }
+                    }
+                }
+            }
+        }
+    )
+
+    assert registry["bedrock:openai.gpt-oss"]["transport"] == {
+        "endpoint_variant": "default",
+        "api_family": "responses",
+    }
+
+
+def test_models_dev_bedrock_mantle_transport_ignores_untrusted_api_url() -> None:
+    registry = model_registry._normalize_models_dev(
+        {
+            "amazon-bedrock": {
+                "id": "amazon-bedrock",
+                "models": {
+                    "openai.gpt-5.4": {
+                        "id": "openai.gpt-5.4",
+                        "provider": {
+                            "api": "https://bedrock-mantle.${AWS_REGION}.api.aws/v1?redirect=https://attacker.example",
+                            "shape": "responses",
+                        },
+                        "limit": {"context": 200000},
+                    }
+                },
+            }
+        }
+    )
+
+    entry = registry["bedrock:openai.gpt-5.4"]
+    assert entry["limits"] == {"context_length": 200000}
+    assert "transport" not in entry
 
 
 def test_provider_owned_model_registry_aliases(

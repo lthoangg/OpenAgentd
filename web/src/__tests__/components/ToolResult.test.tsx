@@ -200,6 +200,58 @@ describe("ToolResult — read", () => {
 })
 
 // ---------------------------------------------------------------------------
+// Background-process renderer
+// ---------------------------------------------------------------------------
+
+describe("ToolResult - bg", () => {
+  it("renders the process list as structured rows", () => {
+    render(
+      <ToolResult
+        toolName="bg"
+        result={"PID     | Status  | Command\n--------|---------|--------\n1234    | running | bun run dev\n5678    | exited (1) | bun test"}
+      />,
+    )
+
+    expect(screen.getByText("2 processes")).toBeTruthy()
+    expect(screen.getByText("PID 1234")).toBeTruthy()
+    expect(screen.getByText("running")).toBeTruthy()
+    expect(screen.getByText("bun run dev")).toBeTruthy()
+    expect(screen.getByText("exited (1)")).toBeTruthy()
+  })
+
+  it("renders a process status with command and buffered-line metadata", () => {
+    render(
+      <ToolResult
+        toolName="bg"
+        result={"PID 1234: running\nCommand: bun run dev\nBuffered lines: 18"}
+      />,
+    )
+
+    expect(screen.getByText("PID 1234")).toBeTruthy()
+    expect(screen.getByText("running")).toBeTruthy()
+    expect(screen.getByText("bun run dev")).toBeTruthy()
+    expect(screen.getByText("18 buffered lines")).toBeTruthy()
+  })
+
+  it("keeps captured output in a scrollable terminal block", () => {
+    const { container } = render(
+      <ToolResult toolName="bg" result={"PID 1234 output:\nfirst line\nsecond line"} />,
+    )
+
+    expect(screen.getByText("PID 1234 output")).toBeTruthy()
+    expect(screen.getByText(/first line/)).toBeTruthy()
+    expect(container.querySelector("pre")?.className).toContain("overflow-y-auto")
+  })
+
+  it("renders an empty process list as a concise empty state", () => {
+    render(<ToolResult toolName="bg" result="No background processes running." />)
+
+    expect(screen.getByText("No background processes running.")).toBeTruthy()
+    expect(document.querySelector("pre")).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
 // GenericResult fallback
 // ---------------------------------------------------------------------------
 

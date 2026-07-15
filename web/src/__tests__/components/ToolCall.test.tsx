@@ -858,6 +858,12 @@ describe("ToolCall — bg display", () => {
     expect(header.querySelector("em")).toBeNull()
   })
 
+  it("shows 'Waiting for process {pid}…' for action=wait with pid", () => {
+    const args = JSON.stringify({ action: "wait", pid: 2468 })
+    render(<ToolCall name="bg" args={args} done={false} />)
+    expectPlainArg(getHeader("Waiting for process 2468…"), "2468")
+  })
+
   it("shows 'Stopping process {pid}…' for action=stop with pid", () => {
     const args = JSON.stringify({ action: "stop", pid: 9999 })
     render(<ToolCall name="bg" args={args} done={false} />)

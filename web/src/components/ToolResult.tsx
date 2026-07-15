@@ -328,6 +328,95 @@ function TeamManageResult({ result }: { result: string }) {
 }
 
 // ---------------------------------------------------------------------------
+// Background-process renderer
+// ---------------------------------------------------------------------------
+
+interface BackgroundProcess {
+  pid: string
+  status: string
+  command: string
+}
+
+function statusColor(status: string): string {
+  if (status === 'running') return 'text-(--color-success)'
+  if (status.startsWith('exited') || status.startsWith('stopped')) return 'text-(--color-text-muted)'
+  return 'text-(--color-error)'
+}
+
+function BackgroundProcessResult({ result }: { result: string }) {
+  if (result === 'No background processes running.') {
+    return <p className="font-mono text-[11px] leading-relaxed text-(--color-text-muted)">{result}</p>
+  }
+
+  const listRows = result.split('\n').slice(2).map((line): BackgroundProcess | null => {
+    const [pid, status, ...command] = line.split('|').map((value) => value.trim())
+    return pid && status && command.length > 0
+      ? { pid, status, command: command.join('|') }
+      : null
+  }).filter((row): row is BackgroundProcess => row !== null)
+
+  if (result.startsWith('PID     | Status') && listRows.length > 0) {
+    return (
+      <div className="min-w-0 overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card)">
+        <div className="flex items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-sidebar) px-2.5 py-1.5 font-mono text-[10px] text-(--color-text-muted)">
+          <span>{listRows.length} {listRows.length === 1 ? 'process' : 'processes'}</span>
+          <span className="hidden sm:block">background processes</span>
+        </div>
+        <ul className="max-h-64 overflow-y-auto">
+          {listRows.map((process) => (
+            <li key={process.pid} className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-0.5 border-b border-(--color-border) px-2.5 py-2 font-mono text-[11px] last:border-b-0 sm:grid-cols-[4rem_5.5rem_minmax(0,1fr)] sm:items-center">
+              <span className="text-(--color-text)">PID {process.pid}</span>
+              <span className={statusColor(process.status)}>{process.status}</span>
+              <code className="col-span-2 break-words text-(--color-text-2) sm:col-span-1">{process.command}</code>
+            </li>
+          ))}
+        </ul>
+      </div>
+    )
+  }
+
+  const outputMatch = result.match(/^PID (\d+) output:\n([\s\S]*)$/)
+  const finalOutputMatch = result.match(/^PID (\d+): ([^\n]+)\nFinal output:\n([\s\S]*)$/)
+  const output = outputMatch ?? finalOutputMatch
+  if (output) {
+    const [, pid, statusOrBody, finalBody] = output
+    const body = finalBody ?? statusOrBody
+    const status = finalOutputMatch?.[2]
+    return (
+      <div className="min-w-0 overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card)">
+        <div className="flex items-center gap-2 border-b border-(--color-border) bg-(--bg-sidebar) px-2.5 py-1.5 font-mono text-[10px]">
+          <span className="text-(--color-text)">PID {pid} output</span>
+          {status && <span className={statusColor(status)}>{status}</span>}
+        </div>
+        <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap break-words px-3 py-2.5 font-mono text-[11px] leading-relaxed text-(--color-text-2)">{truncateForDisplay(body)}</pre>
+      </div>
+    )
+  }
+
+  const statusMatch = result.match(/^PID (\d+): ([^\n]+)(?:\nCommand: ([^\n]+))?(?:\nBuffered lines: (\d+))?$/)
+  if (statusMatch) {
+    const [, pid, status, command, bufferedLines] = statusMatch
+    return (
+      <div className="flex flex-col gap-1.5 font-mono text-[11px] leading-relaxed">
+        <div className="flex items-center gap-2">
+          <span className="font-medium text-(--color-text)">PID {pid}</span>
+          <span className={statusColor(status)}>{status}</span>
+        </div>
+        {command && <code className="break-words text-(--color-text-2)">{command}</code>}
+        {bufferedLines && <span className="text-(--color-text-muted)">{bufferedLines} buffered lines</span>}
+      </div>
+    )
+  }
+
+  const isError = result.startsWith('Error:')
+  return (
+    <pre className={`max-h-[calc(10*1.55em)] overflow-y-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed ${isError ? 'text-(--color-error)' : 'text-(--color-text-2)'}`}>
+      {truncateForDisplay(result)}
+    </pre>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Generic fallback renderer
 // ---------------------------------------------------------------------------
 
@@ -356,6 +445,7 @@ const FILE_READ_TOOLS = new Set(['read'])
 const FILE_WRITE_TOOLS = new Set(['write', 'edit', 'rm'])
 const SHELL_TOOLS = new Set(['shell'])
 const WEB_SEARCH_TOOLS = new Set(['web_search'])
+const BACKGROUND_PROCESS_TOOLS = new Set(['bg'])
 
 export interface LspDiagnosticItem {
   filePath: string
@@ -455,6 +545,9 @@ export function LspDiagnosticsView({
 function ToolResultInner({ toolName, result }: { toolName: string; result: string }) {
   if (WEB_SEARCH_TOOLS.has(toolName)) {
     return <WebSearchResult result={result} />
+  }
+  if (BACKGROUND_PROCESS_TOOLS.has(toolName)) {
+    return <BackgroundProcessResult result={result} />
   }
   if (SHELL_TOOLS.has(toolName)) {
     return <ShellResult result={result} />

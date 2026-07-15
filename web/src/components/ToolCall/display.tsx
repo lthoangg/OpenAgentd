@@ -287,6 +287,15 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
           headerTitle = 'Reading process output…'
         }
         break
+      case 'wait':
+        if (pid) {
+          header = <>Waiting for process <Arg>{pid}</Arg>…</>
+          headerTitle = `Waiting for process ${pid}…`
+        } else {
+          header = 'Waiting for process…'
+          headerTitle = 'Waiting for process…'
+        }
+        break
       case 'stop':
         if (pid) {
           header = <>Stopping process <Arg>{pid}</Arg>…</>

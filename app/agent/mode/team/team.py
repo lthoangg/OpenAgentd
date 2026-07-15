@@ -58,6 +58,7 @@ from app.services.chat_service import (
 )
 
 if TYPE_CHECKING:
+    from app.agent.agent_loop import Agent
     from app.agent.providers.factory import ProviderFactory
 
 
@@ -86,6 +87,13 @@ class MemberBlueprint:
     # sessions for the *current* lead session.  Reset when the lead session
     # changes so a fresh chat starts the counter at #1 again.
     counter_reconciled_for: str | None = field(default=None)
+    # Rebuilding from disk is needed only when the source file changes. The
+    # cached Agent is used for read-only API serialization, never as a live
+    # member instance.
+    _serialized_agent: Agent | None = field(default=None, init=False, repr=False)
+    _serialized_agent_fingerprint: tuple[str, int, int] | None = field(
+        default=None, init=False, repr=False
+    )
 
 
 # ---------------------------------------------------------------------------

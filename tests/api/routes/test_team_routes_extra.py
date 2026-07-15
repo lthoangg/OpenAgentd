@@ -160,6 +160,40 @@ class TestTeamAgentsRouteExtra:
         assert "model" in blueprint
         assert "capabilities" in blueprint
 
+    def test_agents_caches_unchanged_blueprint_rebuilds_and_invalidates_on_edit(
+        self, app_with_team, test_team, tmp_path, monkeypatch
+    ):
+        from app.core.config import settings
+
+        source_path = tmp_path / "executor.md"
+        source_path.write_text(
+            "---\nname: executor\nrole: member\nmodel: mock:model\n---\nfirst\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(settings, "AGENTS_DIR", str(tmp_path))
+        test_team.blueprints["executor"] = MemberBlueprint(
+            name="executor", description="writes code", source_path=source_path
+        )
+        blueprint_agent = Agent(
+            name="executor", llm_provider=MockProvider(), system_prompt="Blueprint"
+        )
+
+        with patch(
+            "app.agent.loader.rebuild_agent_from_disk", return_value=blueprint_agent
+        ) as rebuild:
+            client = TestClient(app_with_team)
+            assert client.get("/api/team/agents").status_code == 200
+            assert client.get("/api/team/agents").status_code == 200
+            assert rebuild.call_count == 1
+
+            source_path.write_text(
+                "---\nname: executor\nrole: member\nmodel: mock:model\n---\nedited\n",
+                encoding="utf-8",
+            )
+            assert client.get("/api/team/agents").status_code == 200
+
+        assert rebuild.call_count == 2
+
     def test_agents_workspace_returns_coding_team(
         self, app_without_team, test_team, monkeypatch
     ):

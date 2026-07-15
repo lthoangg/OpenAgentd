@@ -152,12 +152,31 @@ def _serialize_agent(
 def _serialize_blueprint(team_obj, bp) -> dict:
     from app.agent.loader import rebuild_agent_from_disk
 
-    agent = rebuild_agent_from_disk(
-        bp.source_path,
-        provider_factory=team_obj._provider_factory,
-        extra_tools=team_obj._extra_tools,
-        mode=team_obj.mode,
-    )
+    try:
+        stat = bp.source_path.stat()
+    except OSError:
+        agent = rebuild_agent_from_disk(
+            bp.source_path,
+            provider_factory=team_obj._provider_factory,
+            extra_tools=team_obj._extra_tools,
+            mode=team_obj.mode,
+        )
+    else:
+        fingerprint = (str(bp.source_path), stat.st_mtime_ns, stat.st_size)
+        if (
+            bp._serialized_agent is not None
+            and bp._serialized_agent_fingerprint == fingerprint
+        ):
+            agent = bp._serialized_agent
+        else:
+            agent = rebuild_agent_from_disk(
+                bp.source_path,
+                provider_factory=team_obj._provider_factory,
+                extra_tools=team_obj._extra_tools,
+                mode=team_obj.mode,
+            )
+            bp._serialized_agent = agent
+            bp._serialized_agent_fingerprint = fingerprint
     payload = _serialize_agent(agent, workspace=team_obj.workspace)
     payload["live_instances"] = team_obj.live_instances_for_blueprint(bp.name)
     return payload

@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
+from app.services import observability_service
 from app.services.observability_service import (
     count_traces,
     get_trace,
@@ -562,3 +565,177 @@ def test_get_trace_accepts_unprefixed_trace_id(
     detail = get_trace("1" * 32)
     assert detail is not None
     assert detail.trace_id == trace
+
+
+# ── Bounded JSONL query cache ────────────────────────────────────────────────
+
+
+def _clear_observability_caches() -> None:
+    observability_service._summarize_cached.cache_clear()
+    observability_service._list_traces_with_count_cached.cache_clear()
+    observability_service._count_traces_cached.cache_clear()
+    observability_service._get_trace_cached.cache_clear()
+
+
+def _cache_span_attributes() -> dict:
+    """Supply the unioned JSON schema expected by all observability queries."""
+    return {
+        "gen_ai.agent.name": "lead",
+        "gen_ai.provider.name": "test",
+        "gen_ai.request.model": "test-model",
+        "gen_ai.conversation.id": "session",
+        "run_id": "run",
+        "gen_ai.operation.name": "chat",
+        "gen_ai.tool.name": "read",
+        "gen_ai.usage.input_tokens": 1,
+        "gen_ai.usage.output_tokens": 1,
+        "gen_ai.usage.cache_read.input_tokens": 0,
+        "gen_ai.usage.estimated_cost_usd": 0.0,
+    }
+
+
+def test_summary_cache_invalidates_when_span_files_change(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Appends, truncations, rotations, and new files must bust cached reads."""
+    spans_dir = _point_openagentd_at(tmp_path, monkeypatch)
+    spans_dir.mkdir(parents=True)
+    key = datetime.now(timezone.utc).strftime("%Y-%m-%d-%H")
+    span_file = spans_dir / f"{key}.jsonl"
+    span_file.write_text("{}\n", encoding="utf-8")
+
+    _clear_observability_caches()
+    with (
+        patch.object(observability_service, "_create_spans_window_view"),
+        patch.object(
+            observability_service,
+            "_run_queries",
+            side_effect=lambda _con, start, end: observability_service._empty_summary(
+                start, end
+            ),
+        ) as run_queries,
+    ):
+        summarize(days=7)
+        summarize(days=7)
+        span_file.write_text("{}\n{}\n", encoding="utf-8")
+        summarize(days=7)
+        span_file.write_text("{}\n", encoding="utf-8")
+        summarize(days=7)
+        os.replace(span_file, spans_dir / f"{key}.old")
+        span_file.write_text("{}\n", encoding="utf-8")
+        summarize(days=7)
+        (spans_dir / f"{key}-extra.jsonl").write_text("{}\n", encoding="utf-8")
+        summarize(days=7)
+
+    assert run_queries.call_count == 5
+
+
+def test_summary_cache_key_includes_query_arguments(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spans_dir = _point_openagentd_at(tmp_path, monkeypatch)
+    spans_dir.mkdir(parents=True)
+    key = datetime.now(timezone.utc).strftime("%Y-%m-%d-%H")
+    (spans_dir / f"{key}.jsonl").write_text("{}\n", encoding="utf-8")
+
+    _clear_observability_caches()
+    with (
+        patch.object(observability_service, "_create_spans_window_view"),
+        patch.object(
+            observability_service,
+            "_run_queries",
+            side_effect=lambda _con, start, end: observability_service._empty_summary(
+                start, end
+            ),
+        ) as run_queries,
+    ):
+        summarize(days=1)
+        summarize(days=7)
+        summarize(days=1)
+
+    assert run_queries.call_count == 2
+
+
+@pytest.mark.parametrize("query", ["list", "detail", "count"])
+def test_trace_query_caches_invalidate_on_jsonl_signature_change(
+    query: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every trace query reuses unchanged scans and refreshes after an append."""
+    spans_dir = _point_openagentd_at(tmp_path, monkeypatch)
+    now = datetime.now(timezone.utc)
+    trace_id = "0x" + "c" * 32
+    span_file = spans_dir / f"{now:%Y-%m-%d-%H}.jsonl"
+    _write_spans(
+        span_file,
+        [
+            _span(
+                name="agent_run lead",
+                trace_id=trace_id,
+                end_time_ns=int(now.timestamp() * 1e9),
+                duration_ms=10.0,
+                attributes=_cache_span_attributes(),
+            )
+        ],
+    )
+    _clear_observability_caches()
+
+    def run_query() -> object:
+        if query == "list":
+            return list_traces_with_count(days=7)
+        if query == "detail":
+            return get_trace(trace_id, days=7)
+        return count_traces(days=7)
+
+    with patch.object(
+        observability_service,
+        "_create_spans_window_view",
+        wraps=observability_service._create_spans_window_view,
+    ) as create_view:
+        run_query()
+        run_query()
+        _write_spans(
+            span_file,
+            [
+                _span(
+                    name="chat model",
+                    trace_id=trace_id,
+                    end_time_ns=int(now.timestamp() * 1e9),
+                    duration_ms=5.0,
+                )
+            ],
+        )
+        run_query()
+
+    assert create_view.call_count == 2
+
+
+def test_cached_results_do_not_leak_caller_mutations(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spans_dir = _point_openagentd_at(tmp_path, monkeypatch)
+    now = datetime.now(timezone.utc)
+    trace_id = "0x" + "d" * 32
+    _write_spans(
+        spans_dir / f"{now:%Y-%m-%d-%H}.jsonl",
+        [
+            _span(
+                name="agent_run lead",
+                trace_id=trace_id,
+                end_time_ns=int(now.timestamp() * 1e9),
+                duration_ms=10.0,
+                attributes=_cache_span_attributes(),
+            )
+        ],
+    )
+    _clear_observability_caches()
+
+    summary = summarize(days=7)
+    summary.daily_turns.append({"day": "poisoned"})
+    detail = get_trace(trace_id, days=7)
+    assert detail is not None
+    detail.spans[0].attributes["poisoned"] = True
+
+    assert all(day["day"] != "poisoned" for day in summarize(days=7).daily_turns)
+    refreshed_detail = get_trace(trace_id, days=7)
+    assert refreshed_detail is not None
+    assert "poisoned" not in refreshed_detail.spans[0].attributes

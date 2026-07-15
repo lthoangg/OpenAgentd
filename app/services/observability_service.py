@@ -18,12 +18,19 @@ Design
 from __future__ import annotations
 
 import os
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 from pathlib import Path
 
 import duckdb
 from loguru import logger
+
+
+_CACHE_BUCKET_SECONDS = 5
+_CACHE_MAXSIZE = 64
+FileSignatures = tuple[tuple[str, int, int], ...]
 
 
 @dataclass(frozen=True)
@@ -251,6 +258,29 @@ def _candidate_files(window_start: datetime) -> list[Path]:
     return sorted(p for p in spans_dir.glob("*.jsonl") if p.stem >= cutoff_key)
 
 
+def _cache_context(days: int) -> tuple[int, str, FileSignatures]:
+    """Build a cache key fragment from the current JSONL partition set."""
+    now = datetime.now(timezone.utc)
+    spans_dir = _spans_dir()
+    files = _candidate_files(now - timedelta(days=days))
+    signatures: list[tuple[str, int, int]] = []
+    for path in files:
+        try:
+            stat = path.stat()
+        except FileNotFoundError:
+            continue
+        signatures.append((str(path), stat.st_size, stat.st_mtime_ns))
+    return (
+        int(now.timestamp()) // _CACHE_BUCKET_SECONDS,
+        str(spans_dir),
+        tuple(signatures),
+    )
+
+
+def _signature_paths(signatures: FileSignatures) -> list[Path]:
+    return [Path(path) for path, _size, _mtime_ns in signatures]
+
+
 def _percent(part: int | float, total: int | float) -> float:
     if total <= 0:
         return 0.0
@@ -295,10 +325,23 @@ def summarize(days: int = 7) -> ObservabilitySummary:
         days: Look-back window in days (1–90).
     """
     days = max(1, min(90, days))
+    bucket, spans_dir, signatures = _cache_context(days)
+    return deepcopy(
+        _summarize_cached(days, bucket, spans_dir, signatures, _sample_ratio())
+    )
+
+
+@lru_cache(maxsize=_CACHE_MAXSIZE)
+def _summarize_cached(
+    days: int,
+    _bucket: int,
+    _spans_dir: str,
+    signatures: FileSignatures,
+    _sample_ratio_key: float,
+) -> ObservabilitySummary:
     now = datetime.now(timezone.utc)
     window_start = now - timedelta(days=days)
-
-    files = _candidate_files(window_start)
+    files = _signature_paths(signatures)
     if not files:
         return _empty_summary(window_start, now)
 
@@ -528,10 +571,26 @@ def list_traces_with_count(
     days = max(1, min(90, days))
     limit = max(1, min(200, limit))
     offset = max(0, offset)
+    bucket, spans_dir, signatures = _cache_context(days)
+    items, total = _list_traces_with_count_cached(
+        days, limit, offset, bucket, spans_dir, signatures
+    )
+    return list(items), total
+
+
+@lru_cache(maxsize=_CACHE_MAXSIZE)
+def _list_traces_with_count_cached(
+    days: int,
+    limit: int,
+    offset: int,
+    _bucket: int,
+    _spans_dir: str,
+    signatures: FileSignatures,
+) -> tuple[list[TraceListItem], int]:
     now = datetime.now(timezone.utc)
     window_start = now - timedelta(days=days)
 
-    files = _candidate_files(window_start)
+    files = _signature_paths(signatures)
     if not files:
         return [], 0
 
@@ -652,10 +711,18 @@ def list_traces(
 def count_traces(days: int = 7) -> int:
     """Return total agent-run rows in the window for trace pagination."""
     days = max(1, min(90, days))
+    bucket, spans_dir, signatures = _cache_context(days)
+    return _count_traces_cached(days, bucket, spans_dir, signatures)
+
+
+@lru_cache(maxsize=_CACHE_MAXSIZE)
+def _count_traces_cached(
+    days: int, _bucket: int, _spans_dir: str, signatures: FileSignatures
+) -> int:
     now = datetime.now(timezone.utc)
     window_start = now - timedelta(days=days)
 
-    files = _candidate_files(window_start)
+    files = _signature_paths(signatures)
     if not files:
         return 0
 
@@ -687,16 +754,23 @@ def get_trace(trace_id: str, days: int = 30) -> TraceDetail | None:
         days: Look-back window in days (1–90).
     """
     days = max(1, min(90, days))
-    now = datetime.now(timezone.utc)
-    window_start = now - timedelta(days=days)
-
     # Normalise: accept both "0xabcd…" and "abcd…" but query with the prefix
     # form because that's what the exporter writes.
     tid = trace_id.lower()
     if not tid.startswith("0x"):
         tid = "0x" + tid
 
-    files = _candidate_files(window_start)
+    bucket, spans_dir, signatures = _cache_context(days)
+    return deepcopy(_get_trace_cached(tid, days, bucket, spans_dir, signatures))
+
+
+@lru_cache(maxsize=_CACHE_MAXSIZE)
+def _get_trace_cached(
+    tid: str, days: int, _bucket: int, _spans_dir: str, signatures: FileSignatures
+) -> TraceDetail | None:
+    now = datetime.now(timezone.utc)
+    window_start = now - timedelta(days=days)
+    files = _signature_paths(signatures)
     if not files:
         return None
 

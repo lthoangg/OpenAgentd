@@ -115,6 +115,20 @@ describe('useMobileViewportGuards', () => {
     expect(document.documentElement.style.getPropertyValue('--app-vt')).toBe('24px')
   })
 
+  it('pins the shell immediately when the keyboard opens with a viewport offset', () => {
+    const vv = installVisualViewport(800, 0)
+    renderHook(() => useMobileViewportGuards())
+
+    // iOS can report offsetTop in the same event that first signals keyboard
+    // occlusion. The shell must not follow that offset for one frame.
+    vv.height = 460
+    vv.offsetTop = 24
+    vv.emit('resize')
+
+    expect(document.documentElement.hasAttribute('data-keyboard-open')).toBe(true)
+    expect(document.documentElement.style.getPropertyValue('--app-vt')).toBe('0px')
+  })
+
   it('pins the shell at top while the keyboard is open', () => {
     const vv = installVisualViewport(800, 0)
     renderHook(() => useMobileViewportGuards())
@@ -126,6 +140,65 @@ describe('useMobileViewportGuards', () => {
 
     expect(document.documentElement.hasAttribute('data-keyboard-open')).toBe(true)
     expect(document.documentElement.style.getPropertyValue('--app-vt')).toBe('0px')
+  })
+
+  it('does not move a containing scroller when its focused control is already visible', () => {
+    installVisualViewport(800, 0)
+    renderHook(() => useMobileViewportGuards())
+
+    const container = document.createElement('div')
+    container.className = 'overflow-y-auto'
+    const input = document.createElement('input')
+    container.appendChild(input)
+    document.body.appendChild(container)
+
+    const scrollTo = mock(() => undefined)
+    Object.defineProperty(container, 'scrollTo', { value: scrollTo })
+    container.getBoundingClientRect = () => ({ top: 100, bottom: 500 }) as DOMRect
+    input.getBoundingClientRect = () => ({ top: 200, bottom: 240 }) as DOMRect
+
+    const originalSetTimeout = globalThis.setTimeout
+    globalThis.setTimeout = ((callback: TimerHandler) => {
+      if (typeof callback === 'function') callback()
+      return 0 as unknown as ReturnType<typeof setTimeout>
+    }) as unknown as typeof setTimeout
+    try {
+      input.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
+    } finally {
+      globalThis.setTimeout = originalSetTimeout
+      container.remove()
+    }
+
+    expect(scrollTo).not.toHaveBeenCalled()
+    expect(container.scrollTop).toBe(0)
+  })
+
+  it('moves the nearest scroll container when a focused control is obscured', () => {
+    installVisualViewport(800, 0)
+    renderHook(() => useMobileViewportGuards())
+
+    const container = document.createElement('div')
+    container.className = 'overflow-y-auto'
+    const input = document.createElement('input')
+    container.appendChild(input)
+    document.body.appendChild(container)
+
+    container.getBoundingClientRect = () => ({ top: 100, bottom: 500 }) as DOMRect
+    input.getBoundingClientRect = () => ({ top: 600, bottom: 640 }) as DOMRect
+
+    const originalSetTimeout = globalThis.setTimeout
+    globalThis.setTimeout = ((callback: TimerHandler) => {
+      if (typeof callback === 'function') callback()
+      return 0 as unknown as ReturnType<typeof setTimeout>
+    }) as unknown as typeof setTimeout
+    try {
+      input.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
+    } finally {
+      globalThis.setTimeout = originalSetTimeout
+      container.remove()
+    }
+
+    expect(container.scrollTop).toBe(480)
   })
 
   it('dismissKeyboard blurs, snaps to full height, and eases the glide', () => {

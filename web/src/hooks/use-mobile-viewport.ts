@@ -83,6 +83,21 @@ export function useMobileViewportGuards() {
 
     const vv = window.visualViewport
 
+    const scrollFocusedControlIntoView = (target: HTMLElement) => {
+      const container = target.closest('.overflow-y-auto') as HTMLElement | null
+      if (!container) return
+
+      const containerRect = container.getBoundingClientRect()
+      const controlRect = target.getBoundingClientRect()
+      const visibleBottom = Math.min(containerRect.bottom, vv?.height ?? window.innerHeight)
+      if (controlRect.top >= containerRect.top && controlRect.bottom <= visibleBottom) return
+
+      // Scroll only when the focused control is genuinely clipped. Moving an
+      // already-visible control makes dialogs, comboboxes, and chat panes jump
+      // as the keyboard animates into view.
+      container.scrollTop = Math.max(0, container.scrollTop + controlRect.top - containerRect.top - 20)
+    }
+
     // ── Visual-viewport → CSS variable binding ──────────────────────────────
     // iOS WKWebView does NOT shrink the layout viewport for the soft keyboard
     // (no `interactive-widget` support) — only `window.visualViewport` changes.
@@ -104,18 +119,18 @@ export function useMobileViewportGuards() {
     const applyViewport = () => {
       const height = vv ? vv.height : window.innerHeight
       const top = vv ? vv.offsetTop : 0
-      root.style.setProperty('--app-vh', `${Math.round(height)}px`)
-      // Keep the shell anchored at y=0 while the keyboard is open. Following
-      // visualViewport.offsetTop during keyboard-driven scroll/overscroll makes
-      // the whole app translate under the user's finger, which shows up as
-      // scrollbar flicker and laggy scroll on iOS WebViews.
-      root.style.setProperty('--app-vt', `${Math.round(keyboardOpen ? 0 : top)}px`)
       // Detect keyboard occlusion relative to the shell's baseline layout
       // height captured before the keyboard opens. On some mobile WebViews,
       // `window.innerHeight` also shrinks with the keyboard, so comparing the
       // live values would collapse to ~0 and miss the keyboard entirely.
       const occlusion = baselineLayoutHeight - (height + top)
       const nextOpen = occlusion > 80
+      root.style.setProperty('--app-vh', `${Math.round(height)}px`)
+      // Keep the shell anchored at y=0 while the keyboard is open. Use the
+      // newly-calculated state, not the previous event's state, so an iOS
+      // offsetTop reported alongside the first keyboard resize cannot shift
+      // the entire app for one frame.
+      root.style.setProperty('--app-vt', `${Math.round(nextOpen ? 0 : top)}px`)
       if (nextOpen !== keyboardOpen) {
         keyboardOpen = nextOpen
         if (nextOpen) {
@@ -128,26 +143,10 @@ export function useMobileViewportGuards() {
         }
       }
 
-      // Keep active input scrolled into view inside its scrollable container
       if (nextOpen) {
         const active = document.activeElement
         if (active instanceof HTMLElement && active.matches('input, textarea, [contenteditable="true"]')) {
-          const container = active.closest('.overflow-y-auto') as HTMLElement | null
-          if (container) {
-            if (!container.classList.contains('relative')) {
-              container.classList.add('relative')
-            }
-            let offsetTop = 0
-            let el: HTMLElement | null = active
-            while (el && el !== container) {
-              offsetTop += el.offsetTop
-              el = el.offsetParent as HTMLElement | null
-            }
-            container.scrollTo({
-              top: Math.max(0, offsetTop - 20),
-              behavior: 'smooth',
-            })
-          }
+          scrollFocusedControlIntoView(active)
         }
       }
     }
@@ -187,27 +186,11 @@ export function useMobileViewportGuards() {
     }
 
     const handleFocusIn = (e: FocusEvent) => {
-      const target = e.target as HTMLElement
-      if (target.matches('input, textarea, [contenteditable="true"]')) {
-        const container = target.closest('.overflow-y-auto') as HTMLElement | null
-        if (container) {
-          if (!container.classList.contains('relative')) {
-            container.classList.add('relative')
-          }
-          setTimeout(() => {
-            let offsetTop = 0
-            let el: HTMLElement | null = target
-            while (el && el !== container) {
-              offsetTop += el.offsetTop
-              el = el.offsetParent as HTMLElement | null
-            }
-            container.scrollTo({
-              top: Math.max(0, offsetTop - 20),
-              behavior: 'smooth',
-            })
-          }, 120)
-        }
-      }
+      const target = e.target
+      if (!(target instanceof HTMLElement) || !target.matches('input, textarea, [contenteditable="true"]')) return
+      // Wait for the keyboard's viewport update, then move only genuinely
+      // obscured controls. This keeps nested overlay scrollers stable.
+      setTimeout(() => scrollFocusedControlIntoView(target), 120)
     }
     document.addEventListener('focusin', handleFocusIn)
 

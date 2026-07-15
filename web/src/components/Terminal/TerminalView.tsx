@@ -119,8 +119,15 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
 
     const resizeObserver = new ResizeObserver(refit)
     resizeObserver.observe(el)
+    // A mobile soft keyboard only changes visualViewport. Its height update
+    // normally reaches this element through ResizeObserver, but that can lag
+    // behind xterm's measurement in WKWebView. Refit in the same viewport
+    // event so the terminal never keeps rows hidden behind the keyboard.
+    const visualViewport = isMobile ? window.visualViewport : undefined
+    visualViewport?.addEventListener('resize', refit)
 
     return () => {
+      visualViewport?.removeEventListener('resize', refit)
       resizeObserver.disconnect()
       useTerminalStore.getState().setAttached(sessionId, false)
       // Detach the DOM so the next mount can re-parent it cleanly.
@@ -131,7 +138,7 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
     // `status` in deps: after a reconnect the store may have built a fresh
     // xterm handle (idle-close disposes the old one), so re-attach on every
     // lifecycle change. Re-parenting an unchanged handle is a cheap no-op.
-  }, [sessionId, status])
+  }, [isMobile, sessionId, status])
 
   const sendKey = useCallback(
     (data: string) => {

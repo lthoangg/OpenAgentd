@@ -93,8 +93,17 @@ async def gather_or_cancel(
         for task in tasks:
             if not task.done():
                 task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
-        raise
+        _, still_pending = await asyncio.wait(tasks, timeout=_CANCELLATION_TIMEOUT)
+        for task in still_pending:
+            _detached_tool_tasks.add(task)
+            task.add_done_callback(_finish_detached_tool_task)
+        if still_pending:
+            logger.warning(
+                "tool_cancellation_timeout agent={} pending_tools={}",
+                agent_name,
+                len(still_pending),
+            )
+        return [(tc, "Cancelled by user.") for tc in tc_list]
     finally:
         interrupt_waiter.cancel()
         # Suppress the CancelledError from the waiter

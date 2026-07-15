@@ -78,3 +78,32 @@ async def test_parent_cancellation_cancels_inflight_tools():
     await asyncio.sleep(0)
 
     assert cancelled.is_set()
+
+
+async def test_parent_cancellation_returns_when_tool_resists_cancellation():
+    """Stopping a response must not wait for a tool's cancellation cleanup."""
+    started = asyncio.Event()
+    release = asyncio.Event()
+    interrupt = asyncio.Event()
+
+    async def stubborn_tool():
+        try:
+            started.set()
+            await release.wait()
+        except asyncio.CancelledError:
+            await release.wait()
+        return (_tool_call(), "finished")
+
+    dispatch = asyncio.create_task(
+        gather_or_cancel([stubborn_tool()], interrupt, [_tool_call()], "agent")
+    )
+    await started.wait()
+    dispatch.cancel()
+
+    try:
+        results = await asyncio.wait_for(asyncio.shield(dispatch), timeout=0.3)
+    finally:
+        release.set()
+        await asyncio.gather(dispatch, return_exceptions=True)
+
+    assert results == [(_tool_call(), "Cancelled by user.")]

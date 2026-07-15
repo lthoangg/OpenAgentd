@@ -413,14 +413,9 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
         </div>
 
         <div className="flex flex-wrap justify-end gap-2 border-t border-(--color-border) bg-(--bg-sidebar) px-4 py-3 select-none">
-          <button
-            type="button"
-            onClick={() => onOpenChange(false)}
-            className="rounded border border-(--color-border) bg-(--bg-card) px-3 py-1.5 text-xs font-medium text-(--color-text) hover:bg-(--bg-key)/40 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none transition-colors"
-            disabled={pending}
-          >
+          <Button type="button" variant="default" size="sm" onClick={() => onOpenChange(false)} disabled={pending}>
             Cancel
-          </button>
+          </Button>
       </div>
     </AppOverlay>
   )

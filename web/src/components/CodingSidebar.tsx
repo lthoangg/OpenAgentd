@@ -835,7 +835,7 @@ export function CodingSidebar({
         <button
           type="button"
           onClick={() => { void openWorkspaceDialog() }}
-          className="flex h-8 items-center gap-2 px-3 text-left text-xs italic text-(--color-accent) transition-colors"
+          className="mx-2 flex h-8 items-center gap-2 rounded-md px-2.5 text-left text-xs font-medium text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
           aria-label="Open folder"
           title="Open a new workspace folder"
         >
@@ -1067,7 +1067,7 @@ export function CodingSidebar({
         open={worktreeTarget !== null}
         onOpenChange={(open) => { if (!open) setWorktreeTarget(null) }}
       >
-        <DialogContent showCloseButton={false} className="flex max-h-[min(86dvh,520px)] w-[calc(100vw-1.5rem)] max-w-md flex-col overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) p-0 shadow-xl sm:w-[min(560px,calc(100vw-2rem))] sm:max-w-none">
+        <DialogContent showCloseButton={false} className="flex max-h-[min(86dvh,520px)] w-[calc(100vw-1.5rem)] max-w-md flex-col overflow-hidden p-0 sm:w-[min(560px,calc(100vw-2rem))] sm:max-w-none">
           <form onSubmit={submitWorktree} className="flex h-full min-h-0 flex-col">
             <DialogHeader className="shrink-0 gap-0 border-b border-(--color-border) bg-(--bg-page) px-3 py-2.5 sm:px-4">
               <div className="flex items-start gap-2">
@@ -1374,7 +1374,7 @@ export function CodingSidebar({
                 <p className="mt-2 text-xs text-(--color-error)">Failed to update title.</p>
               )}
             </div>
-            <DialogFooter className="mx-0 mb-0 flex-row justify-end gap-2 rounded-none border-0 bg-transparent p-0">
+            <DialogFooter className="-mx-3 -mb-3 p-3">
               <Button type="button" size="sm" variant="default" onClick={() => setEditTarget(null)}>Cancel</Button>
               <Button type="submit" size="sm" disabled={!editTitle.trim() || updateSessionTitle.isPending}>
                 {updateSessionTitle.isPending ? 'Saving…' : 'Save'}
@@ -1407,7 +1407,7 @@ export function CodingSidebar({
               />
               {error && <p className="mt-2 text-xs text-(--color-error)">{error}</p>}
             </div>
-            <DialogFooter className="mx-0 mb-0 flex-row justify-end gap-2 rounded-none border-0 bg-transparent p-0">
+            <DialogFooter className="-mx-3 -mb-3 p-3">
               <Button type="button" size="sm" variant="default" onClick={() => setWorktreeEditTarget(null)}>Cancel</Button>
               <Button type="submit" size="sm" disabled={!worktreeEditTitle.trim() || worktreeEditLoading}>
                 {worktreeEditLoading ? 'Saving…' : 'Save'}

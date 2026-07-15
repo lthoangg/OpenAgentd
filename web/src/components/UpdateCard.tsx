@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { checkForUpdates as invokeCheckForUpdates, downloadUpdate as invokeDownloadUpdate, fetchReleaseNotes, installUpdate as invokeInstallUpdate, type ReleaseNotes, type UpdateStatus } from '@/lib/updater'
 import { openExternalUrl } from '@/lib/open-external'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
 import { getPlatform } from '@/hooks/use-platform'
 
@@ -138,13 +139,18 @@ export function UpdateCard() {
           <div className="font-medium">{titleForStatus(status)}</div>
           <div className="mt-1 text-xs text-(--color-text-muted)">{descriptionForStatus(status)}</div>
         </div>
-        <button className="rounded-md px-2 py-1 text-xs text-(--color-text-muted) hover:bg-(--bg-page)" onClick={() => {
-          dismissedUntilNextCheckRef.current = true
-          persistDismissedUntilNextInterval()
-          setStatus({ status: 'idle' })
-        }}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="xs"
+          onClick={() => {
+            dismissedUntilNextCheckRef.current = true
+            persistDismissedUntilNextInterval()
+            setStatus({ status: 'idle' })
+          }}
+        >
           Later
-        </button>
+        </Button>
       </div>
 
         {status.version && (status.status === 'available' || status.status === 'downloaded') ? <ReleaseNotesButton fallbackNotes={status.notes} version={status.version} /> : null}
@@ -160,9 +166,15 @@ export function UpdateCard() {
       ) : null}
 
       <div className="mt-4 flex justify-end gap-2">
-        {status.status === 'error' ? <button className="rounded-md border border-(--color-border) px-3 py-1.5 text-xs hover:bg-(--bg-page)" onClick={() => void checkForUpdates(false)}>Try again</button> : null}
-        {status.status === 'available' ? <button className="rounded-md border border-(--color-border-strong) bg-(--bg-key) px-3 py-1.5 text-xs font-medium text-(--color-text) hover:bg-(--bg-page)" onClick={() => void downloadUpdate()}>Download</button> : null}
-        {status.status === 'downloaded' ? <button className="rounded-md border border-(--color-border-strong) bg-(--bg-key) px-3 py-1.5 text-xs font-medium text-(--color-text) hover:bg-(--bg-page)" onClick={() => void installUpdate()}>Install and restart</button> : null}
+        {status.status === 'error' ? (
+          <Button type="button" variant="default" size="sm" onClick={() => void checkForUpdates(false)}>Try again</Button>
+        ) : null}
+        {status.status === 'available' ? (
+          <Button type="button" variant="primary" size="sm" onClick={() => void downloadUpdate()}>Download</Button>
+        ) : null}
+        {status.status === 'downloaded' ? (
+          <Button type="button" variant="primary" size="sm" onClick={() => void installUpdate()}>Install and restart</Button>
+        ) : null}
       </div>
     </aside>
   )
@@ -195,14 +207,14 @@ function ReleaseNotesButton({ fallbackNotes, version }: { fallbackNotes?: string
         <DialogContent
           showCloseButton={false}
           aria-label="Release notes"
-          className="z-60 w-full max-w-lg overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card) p-0 text-(--color-text) shadow-xl"
+          className="z-60 w-full max-w-lg overflow-hidden rounded-xl border border-(--color-border) bg-(--bg-card) p-0 text-(--color-text) shadow-xl"
         >
           <DialogHeader className="flex-row items-center justify-between gap-3 border-b border-(--color-border) px-4 py-3">
             <DialogTitle className="text-sm font-semibold">Release notes</DialogTitle>
             <div className="flex items-center gap-2">
               {notes?.url ? (
                 <a
-                  className="rounded-md px-2 py-1 text-xs text-(--color-accent) hover:bg-(--bg-page)"
+                  className={buttonVariants({ variant: 'ghost', size: 'xs' })}
                   href={notes.url}
                   target="_blank"
                   rel="noopener noreferrer"
@@ -214,12 +226,9 @@ function ReleaseNotesButton({ fallbackNotes, version }: { fallbackNotes?: string
                   View in GitHub
                 </a>
               ) : null}
-              <button
-                className="rounded-md px-2 py-1 text-xs text-(--color-text-muted) hover:bg-(--bg-page)"
-                onClick={() => setOpen(false)}
-              >
+              <Button type="button" variant="ghost" size="xs" onClick={() => setOpen(false)}>
                 Close
-              </button>
+              </Button>
             </div>
           </DialogHeader>
           <div className="max-h-[24rem] overflow-y-auto overscroll-contain touch-pan-y px-4 py-3 text-(--color-text)">

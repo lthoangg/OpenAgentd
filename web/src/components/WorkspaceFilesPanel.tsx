@@ -499,14 +499,14 @@ function BinaryPreview({ sessionId, file }: { sessionId: string; file: Workspace
           href={url}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-1.5 rounded-md bg-(--bg-key) px-3 py-1.5 text-xs text-(--color-accent) transition-colors hover:bg-(--bg-key)"
+          className="flex items-center gap-1.5 rounded-sm border border-(--color-border-strong) bg-(--bg-key) px-2.5 py-1.5 text-xs text-(--color-accent) transition-colors hover:bg-(--bg-key)/70"
         >
           <ExternalLink size={12} /> Open in new tab
         </a>
         <DownloadWorkspaceFileButton
           sessionId={sessionId}
           file={file}
-          className="flex items-center gap-1.5 rounded-md border border-(--color-border) px-3 py-1.5 text-xs text-(--color-text-2) transition-colors hover:border-(--color-border-strong)"
+          className="flex items-center gap-1.5 rounded-sm border border-(--color-border) bg-(--bg-card) px-2.5 py-1.5 text-xs text-(--color-text-2) transition-colors hover:border-(--color-border-strong)"
         >
           <Download size={12} /> Download
         </DownloadWorkspaceFileButton>

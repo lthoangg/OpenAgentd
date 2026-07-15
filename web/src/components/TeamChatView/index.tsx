@@ -43,6 +43,7 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { usePlatform } from '@/hooks/use-platform'
 import { useTauriDrag } from '@/hooks/use-tauri-drag'
 import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
 import { type InputBarHandle } from '../InputBar'
 import { FloatingInputBar } from '../FloatingInputBar'
 import type { AgentCapabilities as AgentCapabilitiesType } from '@/api/types'
@@ -526,20 +527,16 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             </div>
           </div>
         ) : mode === 'coding' && !workspace ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-(--bg-key) text-(--color-accent)">
-              <FolderCode size={24} />
-            </div>
-            <div>
-              <h2 className="text-base font-medium text-(--color-text)">No workspace attached</h2>
-              <p className="mt-1 max-w-sm text-sm text-(--color-text-muted)">
-                Choose a local project folder from the sidebar to start a coding session.
-              </p>
-            </div>
-            <Button type="button" onClick={handleOpenWorkspaceDialog}>
-              Open workspace
-            </Button>
-          </div>
+          <EmptyState
+            icon={FolderCode}
+            title="No workspace attached"
+            body="Choose a local project folder from the sidebar to start a coding session."
+            action={
+              <Button type="button" onClick={handleOpenWorkspaceDialog}>
+                Open workspace
+              </Button>
+            }
+          />
         ) : activeAgent && agentStreams[activeAgent] ? (
           <div className="flex flex-1 flex-col min-h-0">
             {effectiveViewMode === 'agent' && splitAgentNames.length > 1 && (

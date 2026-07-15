@@ -87,8 +87,8 @@ export function InboxBubble({ content, fromAgent, compact = false }: InboxBubble
                 'bg-(--bg-page) text-(--color-text-muted)',
                 compact ? 'h-4 w-4' : 'h-5 w-5',
                 'transition-all duration-150',
-                'hover:border-(--color-syn-operator) hover:text-(--color-syn-operator)',
-                'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--color-syn-operator)',
+                'hover:border-(--color-border-strong) hover:text-(--color-text)',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40',
                 'active:scale-90',
               ].join(' ')}
             >

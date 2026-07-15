@@ -43,7 +43,7 @@ class TestInitTurn:
     @pytest.mark.asyncio
     async def test_init_turn_replaces_old_state(self):
         await store.init_turn("sid-1")
-        _turns["sid-1"].content = {"bot": "old data"}
+        _turns["sid-1"].content = {"bot": ["old data"]}
         await store.init_turn("sid-1")
         assert _turns["sid-1"].content == {}
 
@@ -113,16 +113,16 @@ class TestPushEvent:
         await store.push_event("unknown", StreamEnvelope.from_parts("message", {}))
 
     @pytest.mark.asyncio
-    async def test_push_message_appends_content(self):
+    async def test_push_message_stores_single_content_chunk(self):
         await store.init_turn("sid-1")
         await store.push_event(
             "sid-1",
             StreamEnvelope.from_parts("message", {"agent": "bot", "text": "hello"}),
         )
-        assert _turns["sid-1"].content == {"bot": "hello"}
+        assert _turns["sid-1"].content == {"bot": ["hello"]}
 
     @pytest.mark.asyncio
-    async def test_push_message_accumulates_content(self):
+    async def test_push_message_stores_content_as_chunks(self):
         await store.init_turn("sid-1")
         await store.push_event(
             "sid-1",
@@ -132,7 +132,30 @@ class TestPushEvent:
             "sid-1",
             StreamEnvelope.from_parts("message", {"agent": "bot", "text": "lo"}),
         )
-        assert _turns["sid-1"].content == {"bot": "hello"}
+        assert _turns["sid-1"].content == {"bot": ["hel", "lo"]}
+
+    @pytest.mark.asyncio
+    async def test_push_thinking_stores_thinking_as_chunks(self):
+        await store.init_turn("sid-1")
+        await store.push_event(
+            "sid-1",
+            StreamEnvelope.from_parts("thinking", {"agent": "bot", "text": "step"}),
+        )
+        await store.push_event(
+            "sid-1",
+            StreamEnvelope.from_parts("thinking", {"agent": "bot", "text": " one"}),
+        )
+        assert _turns["sid-1"].thinking == {"bot": ["step", " one"]}
+
+        async def _mark_done():
+            await asyncio.sleep(0.05)
+            await store.mark_done("sid-1")
+
+        task = asyncio.create_task(_mark_done())
+        events = [event async for event in store.attach("sid-1")]
+        await task
+        thinking = [event for event in events if event["event"] == "thinking"]
+        assert json.loads(thinking[0]["data"])["text"] == "step one"
 
     @pytest.mark.asyncio
     async def test_push_message_separates_agents(self):
@@ -153,8 +176,8 @@ class TestPushEvent:
             ),
         )
         assert _turns["sid-1"].content == {
-            "lead": "hi from lead",
-            "worker": "hi from worker",
+            "lead": ["hi from lead"],
+            "worker": ["hi from worker"],
         }
 
     @pytest.mark.asyncio
@@ -184,13 +207,13 @@ class TestPushEvent:
         assert data["action"]["tab"] == "providers"
 
     @pytest.mark.asyncio
-    async def test_push_thinking_appends_thinking(self):
+    async def test_push_thinking_stores_single_thinking_chunk(self):
         await store.init_turn("sid-1")
         await store.push_event(
             "sid-1",
             StreamEnvelope.from_parts("thinking", {"agent": "bot", "text": "step1"}),
         )
-        assert _turns["sid-1"].thinking == {"bot": "step1"}
+        assert _turns["sid-1"].thinking == {"bot": ["step1"]}
 
     @pytest.mark.asyncio
     async def test_push_tool_call_adds_entry(self):
@@ -498,25 +521,25 @@ class TestCommitAgentContent:
     async def test_commit_drops_content_for_agent(self):
         """commit_agent_content removes only the named agent's content bucket."""
         await store.init_turn("sid-1")
-        _turns["sid-1"].content["alice"] = "hello from alice"
-        _turns["sid-1"].content["bob"] = "hello from bob"
+        _turns["sid-1"].content["alice"] = ["hello from alice"]
+        _turns["sid-1"].content["bob"] = ["hello from bob"]
 
         await store.commit_agent_content("sid-1", "alice")
 
         assert "alice" not in _turns["sid-1"].content
-        assert _turns["sid-1"].content["bob"] == "hello from bob"
+        assert _turns["sid-1"].content["bob"] == ["hello from bob"]
 
     @pytest.mark.asyncio
     async def test_commit_drops_thinking_for_agent(self):
         """commit_agent_content removes only the named agent's thinking bucket."""
         await store.init_turn("sid-1")
-        _turns["sid-1"].thinking["alice"] = "reasoning..."
-        _turns["sid-1"].thinking["bob"] = "bob reasoning"
+        _turns["sid-1"].thinking["alice"] = ["reasoning..."]
+        _turns["sid-1"].thinking["bob"] = ["bob reasoning"]
 
         await store.commit_agent_content("sid-1", "alice")
 
         assert "alice" not in _turns["sid-1"].thinking
-        assert _turns["sid-1"].thinking["bob"] == "bob reasoning"
+        assert _turns["sid-1"].thinking["bob"] == ["bob reasoning"]
 
     @pytest.mark.asyncio
     async def test_commit_drops_tool_calls_owned_by_agent(self):
@@ -553,8 +576,8 @@ class TestCommitAgentContent:
     async def test_attach_after_commit_does_not_replay_content(self):
         """Reconnect after commit must not re-emit the persisted text or tools."""
         await store.init_turn("sid-1")
-        _turns["sid-1"].content["alice"] = "persisted content"
-        _turns["sid-1"].thinking["alice"] = "persisted thinking"
+        _turns["sid-1"].content["alice"] = ["persisted content"]
+        _turns["sid-1"].thinking["alice"] = ["persisted thinking"]
         _turns["sid-1"].tool_calls = [
             {
                 "tool_call_id": "t1",
@@ -607,8 +630,8 @@ class TestCommitAgentContent:
     async def test_commit_concurrent_agents_dont_interfere(self):
         """Concurrent commits for different agents on same session don't interfere."""
         await store.init_turn("sid-1")
-        _turns["sid-1"].content = {"alice": "alice text", "bob": "bob text"}
-        _turns["sid-1"].thinking = {"alice": "alice think", "bob": "bob think"}
+        _turns["sid-1"].content = {"alice": ["alice text"], "bob": ["bob text"]}
+        _turns["sid-1"].thinking = {"alice": ["alice think"], "bob": ["bob think"]}
         _turns["sid-1"].tool_calls = [
             {"tool_call_id": "t1", "agent": "alice"},
             {"tool_call_id": "t2", "agent": "bob"},
@@ -739,7 +762,7 @@ class TestAttach:
     @pytest.mark.asyncio
     async def test_attach_replays_content_as_message(self):
         await store.init_turn("sid-1")
-        _turns["sid-1"].content = {"bot": "hello world"}
+        _turns["sid-1"].content = {"bot": ["hello ", "world"]}
 
         # Me mark done after a short delay so attach exits
         async def _mark_done():
@@ -763,7 +786,10 @@ class TestAttach:
     async def test_attach_replays_content_per_agent(self):
         """Multi-agent turn: each agent's accumulated text replays separately."""
         await store.init_turn("sid-1")
-        _turns["sid-1"].content = {"lead": "lead text", "worker": "worker text"}
+        _turns["sid-1"].content = {
+            "lead": ["lead text"],
+            "worker": ["worker text"],
+        }
 
         async def _mark_done():
             await asyncio.sleep(0.05)
@@ -784,7 +810,7 @@ class TestAttach:
     @pytest.mark.asyncio
     async def test_attach_replays_thinking(self):
         await store.init_turn("sid-1")
-        _turns["sid-1"].thinking = {"bot": "my reasoning"}
+        _turns["sid-1"].thinking = {"bot": ["my ", "reasoning"]}
 
         async def _mark_done():
             await asyncio.sleep(0.05)
@@ -940,7 +966,7 @@ class TestAttach:
             "worker": "idle",
             "executor#1": "offline",
         }
-        _turns["sid-1"].content = {"lead": "partial reply"}
+        _turns["sid-1"].content = {"lead": ["partial ", "reply"]}
 
         async def _mark_done():
             await asyncio.sleep(0.05)

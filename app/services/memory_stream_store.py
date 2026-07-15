@@ -64,8 +64,8 @@ class _TurnState:
         # can re-emit with correct attribution. A single-blob was ambiguous in
         # team turns where multiple agents stream text and the replayed event
         # went to agent="" (no UI panel renders that bucket).
-        self.content: dict[str, str] = {}
-        self.thinking: dict[str, str] = {}
+        self.content: dict[str, list[str]] = {}
+        self.thinking: dict[str, list[str]] = {}
         self.tool_calls: list[dict[str, Any]] = []
         # Me last-known lifecycle state per agent. Without this, a reconnect
         # mid-turn would never see `agent_status=working` and the composer's
@@ -168,11 +168,11 @@ async def push_event(session_id: str, envelope: StreamEnvelope) -> None:
         # Me update state blob
         if event_type == "message" and data.get("text"):
             agent = envelope.agent
-            state.content[agent] = state.content.get(agent, "") + data["text"]
+            state.content.setdefault(agent, []).append(data["text"])
 
         elif event_type == "thinking" and data.get("text"):
             agent = envelope.agent
-            state.thinking[agent] = state.thinking.get(agent, "") + data["text"]
+            state.thinking.setdefault(agent, []).append(data["text"])
 
         elif event_type == "tool_call":
             state.tool_calls.append(
@@ -480,11 +480,11 @@ async def attach(session_id: str) -> AsyncGenerator[dict[str, str], None]:
             # Me replay accumulated thinking per-agent so the frontend can
             # route each chunk to the correct agent panel. A single empty-
             # agent event would land in agentStreams[""] which no UI renders.
-            for agent, text in state.thinking.items():
-                if not text:
+            for agent, chunks in state.thinking.items():
+                if not chunks:
                     continue
                 yield StreamEnvelope.from_event(
-                    ThinkingEvent(agent=agent, text=text)
+                    ThinkingEvent(agent=agent, text="".join(chunks))
                 ).to_wire()
 
             # Me replay tool events
@@ -522,11 +522,11 @@ async def attach(session_id: str) -> AsyncGenerator[dict[str, str], None]:
             # push_event.
 
             # Me replay accumulated content per-agent (see thinking note above).
-            for agent, text in state.content.items():
-                if not text:
+            for agent, chunks in state.content.items():
+                if not chunks:
                     continue
                 yield StreamEnvelope.from_event(
-                    MessageEvent(agent=agent, text=text)
+                    MessageEvent(agent=agent, text="".join(chunks))
                 ).to_wire()
 
             # Me drain live events until sentinel.  Items on the queue are

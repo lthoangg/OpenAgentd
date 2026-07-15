@@ -546,7 +546,7 @@ describe("_handleSSEEvent: usage", () => {
 // ── _handleSSEEvent: summarization ────────────────────────────────────────────
 
 describe("_handleSSEEvent: summarization", () => {
-  it("summarization_start appends a compacting block to the agent's currentBlocks", () => {
+  it("summarization_start appends a compacting block to the agent's finalized blocks", () => {
     useTeamStore.getState()._handleSSEEvent("summarization_start", { agent: "lead" });
     const stream = useTeamStore.getState().agentStreams.lead;
     expect(stream.currentBlocks).toHaveLength(0);
@@ -599,23 +599,27 @@ describe("_handleSSEEvent: summarization", () => {
     expect(blocks[0].content).toBe("halfway");
   });
 
-  it("keeps active compaction before later streaming content", () => {
+  it("places auto-triggered compaction after content already streamed in the turn", () => {
     useTeamStore.setState({
       agentStreams: {
         lead: makeStream({
-          blocks: [{ id: "old", type: "text" as const, content: "before" }],
-          currentBlocks: [{ id: "live", type: "text" as const, content: "streaming" }],
+          blocks: [{ id: "old", type: "text" as const, content: "earlier turn" }],
+          currentBlocks: [{ id: "pre-trigger", type: "text" as const, content: "streamed before trigger" }],
         }),
       },
       agentNames: ["lead"],
       leadName: "lead",
     });
+
     useTeamStore.getState()._handleSSEEvent("summarization_start", { agent: "lead" });
     useTeamStore.getState()._handleSSEEvent("summarization_content", { agent: "lead", text: "summary" });
+    useTeamStore.getState()._handleSSEEvent("message", { agent: "lead", text: "streamed after trigger" });
+
     const stream = useTeamStore.getState().agentStreams.lead;
-    expect(stream.blocks.map((block) => block.type)).toEqual(["text", "compaction"]);
-    expect(stream.currentBlocks.map((block) => block.id)).toEqual(["live"]);
-    expect(stream.blocks[1].content).toBe("summary");
+    expect(stream.blocks.map((block) => block.id)).toEqual(["old", "pre-trigger", expect.stringContaining("block-")]);
+    expect(stream.blocks.map((block) => block.type)).toEqual(["text", "text", "compaction"]);
+    expect(stream.blocks[2].content).toBe("summary");
+    expect(stream.currentBlocks.map((block) => block.content)).toEqual(["streamed after trigger"]);
   });
 
   it("ignores events with empty agent", () => {
@@ -623,16 +627,13 @@ describe("_handleSSEEvent: summarization", () => {
     expect(useTeamStore.getState().agentStreams).toEqual({});
   });
 
-  // ── full sequence with live currentBlocks ────────────────────────────────
-  // The critical real-world scenario: agent is mid-response (currentBlocks
-  // has live text) when summarization fires.  The compaction marker must
-  // land in blocks BEFORE the live content — so when the user sees the
-  // merged allBlocks = [...blocks, ...currentBlocks] the order is:
-  //   [prev-text, COMPACTING-MARKER, ...live-response]
-  // not:
-  //   [prev-text, ...live-response, COMPACTING-MARKER]
+  // ── full sequence with pre-trigger currentBlocks ─────────────────────────
+  // Auto-compaction fires between model iterations, so currentBlocks may
+  // already contain output shown earlier in this turn. That output must be
+  // sealed before the marker; model output emitted after compaction remains
+  // in currentBlocks and therefore renders below it.
 
-  it("full sequence: start→content→end order with concurrent live currentBlocks", () => {
+  it("full sequence: start→content→end preserves the auto-trigger boundary", () => {
     useTeamStore.setState({
       agentStreams: {
         lead: makeStream({
@@ -647,30 +648,32 @@ describe("_handleSSEEvent: summarization", () => {
       leadName: "lead",
     });
 
-    // start — marker inserted after last compacted block (t0), before live content
+    // start — content already shown in this turn is sealed before the marker.
     useTeamStore.getState()._handleSSEEvent("summarization_start", { agent: "lead" });
     let stream = useTeamStore.getState().agentStreams.lead;
-    expect(stream.blocks.map((b) => b.type)).toEqual(["text", "compaction"]);
-    expect(stream.blocks[1].extra?.state).toBe("compacting");
-    expect(stream.currentBlocks.map((b) => b.id)).toEqual(["u1", "t1"]); // untouched
+    expect(stream.blocks.map((b) => b.type)).toEqual(["text", "user", "text", "compaction"]);
+    expect(stream.blocks[3].extra?.state).toBe("compacting");
+    expect(stream.currentBlocks).toHaveLength(0);
 
-    // content — accumulates on the compacting block, not the live text
+    // content — accumulates on the compacting block; later model output starts
+    // a fresh live block after the marker.
     useTeamStore.getState()._handleSSEEvent("summarization_content", { agent: "lead", text: "Sum " });
     useTeamStore.getState()._handleSSEEvent("summarization_content", { agent: "lead", text: "mary." });
+    useTeamStore.getState()._handleSSEEvent("message", { agent: "lead", text: "post-compaction" });
     stream = useTeamStore.getState().agentStreams.lead;
-    expect(stream.blocks[1].content).toBe("Sum mary.");
-    expect(stream.blocks[1].extra?.state).toBe("compacting");
-    expect(stream.currentBlocks[1].content).toBe("live response"); // live unaffected
+    expect(stream.blocks[3].content).toBe("Sum mary.");
+    expect(stream.blocks[3].extra?.state).toBe("compacting");
+    expect(stream.currentBlocks[0].content).toBe("post-compaction");
 
-    // end — compacting block flips; live blocks still in currentBlocks
+    // end — compacting block flips without moving later streaming output.
     useTeamStore.getState()._handleSSEEvent("summarization_end", {
       agent: "lead",
       summary: "Final summary.",
     });
     stream = useTeamStore.getState().agentStreams.lead;
-    expect(stream.blocks[1].extra?.state).toBe("compacted");
-    expect(stream.blocks[1].content).toBe("Final summary.");
-    expect(stream.currentBlocks.map((b) => b.id)).toEqual(["u1", "t1"]); // still there
+    expect(stream.blocks[3].extra?.state).toBe("compacted");
+    expect(stream.blocks[3].content).toBe("Final summary.");
+    expect(stream.currentBlocks[0].content).toBe("post-compaction");
   });
 
   it("done flushes currentBlocks AFTER compaction block — order preserved", () => {
@@ -751,15 +754,13 @@ describe("_handleSSEEvent: summarization", () => {
     expect(compactionBlocks[1].content).toBe("second summary");
     expect(compactionBlocks[0].extra?.state).toBe("compacted");
     expect(compactionBlocks[1].extra?.state).toBe("compacted");
-    // startCompaction inserts the new marker right after the last compaction
-    // block it finds (index 0 = first compacted), NOT at the tail — so the
-    // second compaction lands before the "new turn" text block.
-    // Expected order: [compacted(first), compacted(second), text(new turn)]
+    // A later compaction stays chronological: the intervening turn remains
+    // between the two compaction boundaries.
     const types = blocks.map((b) => b.type);
     const firstCompIdx = types.indexOf("compaction");
     const secondCompIdx = types.lastIndexOf("compaction");
     const textIdx = types.indexOf("text");
-    expect(firstCompIdx).toBeLessThan(secondCompIdx);
-    expect(secondCompIdx).toBeLessThan(textIdx);
+    expect(firstCompIdx).toBeLessThan(textIdx);
+    expect(textIdx).toBeLessThan(secondCompIdx);
   });
 });

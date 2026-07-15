@@ -388,21 +388,17 @@ describe("startCompaction", () => {
   // boundary.  startCompaction must insert the new marker right after the
   // last compaction block, NOT after those live blocks.
 
-  it("inserts new compacting block right after last compacted block, not at the tail", () => {
-    // [prev-compacted, live-text-A, live-text-B]
-    // New marker must land at index 1, keeping the live text blocks AFTER it.
+  it("appends a new compacting block after content since the previous compaction", () => {
     const blocks: ContentBlock[] = [
       { id: "c1", type: "compaction", content: "old summary", extra: { state: "compacted" } },
-      { id: "t1", type: "text", content: "live A" },
-      { id: "t2", type: "text", content: "live B" },
+      { id: "t1", type: "text", content: "later A" },
+      { id: "t2", type: "text", content: "later B" },
     ];
     const result = startCompaction(blocks);
     expect(result).toHaveLength(4);
-    expect(result[0].id).toBe("c1");          // prev compacted — stays first
-    expect(result[1].type).toBe("compaction"); // new compacting marker inserted here
-    expect(result[1].extra?.state).toBe("compacting");
-    expect(result[2].id).toBe("t1");          // live blocks shift right
-    expect(result[3].id).toBe("t2");
+    expect(result.slice(0, 3).map((block) => block.id)).toEqual(["c1", "t1", "t2"]);
+    expect(result[3].type).toBe("compaction");
+    expect(result[3].extra?.state).toBe("compacting");
   });
 
   it("is idempotent on replay even when live blocks follow the compacting marker", () => {

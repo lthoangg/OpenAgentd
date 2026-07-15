@@ -435,7 +435,12 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         set((draft) => {
           ensureAgent(draft, agent)
           const stream = draft.agentStreams[agent]
-          stream.blocks = startCompaction(stream.blocks)
+          // Auto-compaction can start between model iterations, after this
+          // turn has already streamed text/tools into currentBlocks. Seal
+          // those blocks first so the divider lands at the actual trigger
+          // point; subsequent deltas then remain after it.
+          stream.blocks = startCompaction([...stream.blocks, ...stream.currentBlocks])
+          stream.currentBlocks = []
         })
         break
       }

@@ -248,37 +248,23 @@ function getCompactionState(block: ContentBlock): 'compacting' | 'compacted' | n
   return state === 'compacting' || state === 'compacted' ? state : null
 }
 
-function findLastCompactionIndex(blocks: ContentBlock[]): number {
-  for (let i = blocks.length - 1; i >= 0; i--) {
-    if (blocks[i].type === 'compaction') return i
-  }
-  return -1
-}
-
 /** summarization_start — append a fresh "compacting" divider block, or
- *  re-use the trailing one if it's still in the ``compacting`` state.
- *  Idempotent against reconnect replay (the backend re-emits ``start``
- *  whenever a subscriber attaches mid-compaction). */
+ *  re-use an existing in-flight one. Idempotent against reconnect replay
+ *  (the backend re-emits ``start`` whenever a subscriber attaches during
+ *  compaction). */
 export function startCompaction(blocks: ContentBlock[]): ContentBlock[] {
-  const lastCompactionIndex = findLastCompactionIndex(blocks)
-  const lastCompaction = lastCompactionIndex >= 0 ? blocks[lastCompactionIndex] : undefined
-  if (lastCompaction && getCompactionState(lastCompaction) === 'compacting') {
+  if (blocks.some((block) => getCompactionState(block) === 'compacting')) {
     // Reconnect replay — block already exists, leave it alone.
     return blocks
   }
-  const compactionBlock: ContentBlock = {
-    id: generateBlockId(),
-    type: 'compaction',
-    content: '',
-    extra: { state: 'compacting' },
-  }
-  if (lastCompactionIndex < 0 || lastCompactionIndex === blocks.length - 1) {
-    return [...blocks, compactionBlock]
-  }
   return [
-    ...blocks.slice(0, lastCompactionIndex + 1),
-    compactionBlock,
-    ...blocks.slice(lastCompactionIndex + 1),
+    ...blocks,
+    {
+      id: generateBlockId(),
+      type: 'compaction',
+      content: '',
+      extra: { state: 'compacting' },
+    },
   ]
 }
 

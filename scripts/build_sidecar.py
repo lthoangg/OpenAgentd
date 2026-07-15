@@ -252,6 +252,15 @@ def strip_bundle(site_packages: Path) -> int:
     return removed
 
 
+def _python_home_for(python_bin: Path) -> Path:
+    """Return the bundled runtime root for POSIX and flat Windows layouts."""
+    return (
+        python_bin.parent.parent
+        if python_bin.parent.name == "bin"
+        else python_bin.parent
+    )
+
+
 def smoke_test(python_bin: Path, site_packages: Path) -> None:
     """Invoke the sidecar briefly to prove the bundle actually works.
 
@@ -274,10 +283,10 @@ def smoke_test(python_bin: Path, site_packages: Path) -> None:
     import urllib.request
 
     smoke_root = site_packages.parent / "_smoke"
-    # PYTHONHOME must point at the python-build-standalone install root —
-    # the directory containing ``lib/``. The interpreter lives at
-    # ``<root>/bin/python3.X`` so the root is parent.parent.
-    python_home = python_bin.parent.parent
+    # PYTHONHOME must point at the python-build-standalone install root.
+    # POSIX places the interpreter under ``<root>/bin``; Windows keeps
+    # ``python.exe`` directly under ``<root>``.
+    python_home = _python_home_for(python_bin)
     env = {
         **os.environ,
         "PYTHONHOME": str(python_home),

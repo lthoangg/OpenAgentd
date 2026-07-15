@@ -10,7 +10,7 @@ from pathlib import Path
 from uuid import UUID
 
 from sqlalchemy.exc import OperationalError
-from sqlmodel import delete, select
+from sqlmodel import col, delete, func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.agent.artifacts import SESSIONS_DIR
@@ -18,7 +18,6 @@ from app.api.routes.team.worktrees import find_managed_worktree_source
 from app.core.config import settings
 from app.models.chat import ChatSession, SessionMessage
 from app.services import snapshot_service
-from sqlmodel import col
 
 
 @dataclass(frozen=True)
@@ -91,9 +90,27 @@ def _is_missing_chat_sessions_table(exc: OperationalError) -> bool:
     return "no such table" in detail and "chat_sessions" in detail
 
 
-async def _session_rows(db: AsyncSession) -> Sequence[ChatSession] | None:
+@dataclass(frozen=True)
+class _CleanupSession:
+    id: UUID
+    mode: str
+    workspace: str | None
+    created_at: datetime
+
+
+async def _session_rows(db: AsyncSession) -> Sequence[_CleanupSession] | None:
     try:
-        return (await db.exec(select(ChatSession))).all()
+        rows = (
+            await db.exec(
+                select(
+                    ChatSession.id,
+                    ChatSession.mode,
+                    ChatSession.workspace,
+                    ChatSession.created_at,
+                )
+            )
+        ).all()
+        return [_CleanupSession(*row) for row in rows]
     except OperationalError as exc:
         if not _is_missing_chat_sessions_table(exc):
             raise
@@ -225,12 +242,13 @@ async def cleanup_generated_artifacts(
     expired_messages = 0
     if expired_session_ids:
         expired_ids = [UUID(value) for value in expired_session_ids]
-        message_rows = await db.exec(
-            select(SessionMessage.id).where(
-                col(SessionMessage.session_id).in_(expired_ids)
+        expired_messages = (
+            await db.exec(
+                select(func.count())
+                .select_from(SessionMessage)
+                .where(col(SessionMessage.session_id).in_(expired_ids))
             )
-        )
-        expired_messages = len(message_rows.all())
+        ).one()
     if not dry_run:
         if expired_session_ids:
             expired_ids = [UUID(value) for value in expired_session_ids]

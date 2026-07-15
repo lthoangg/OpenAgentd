@@ -287,3 +287,63 @@ async def test_cleanup_dry_run_reports_expired_db_rows_without_paths(
     assert result.expired_sessions == 1
     assert result.expired_messages == 2
     assert result.candidates == []
+
+
+@pytest.mark.asyncio
+async def test_cleanup_reads_only_session_fields_needed_for_candidates(monkeypatch):
+    """Cleanup avoids loading large session payload columns just to find paths."""
+    from app.core import db as core_db
+
+    statements = []
+    original_exec = core_db.AsyncSession.exec
+
+    async def recording_exec(self, statement, *args, **kwargs):
+        statements.append(str(statement))
+        return await original_exec(self, statement, *args, **kwargs)
+
+    monkeypatch.setattr(core_db.AsyncSession, "exec", recording_exec)
+
+    async with core_db.async_session_factory() as session:
+        await cleanup_generated_artifacts(session, dry_run=True)
+
+    session_query = next(
+        statement for statement in statements if "chat_sessions" in statement
+    )
+    assert "chat_sessions.title" not in session_query
+    assert "chat_sessions.extra" not in session_query
+
+
+@pytest.mark.asyncio
+async def test_cleanup_counts_expired_messages_in_sql(monkeypatch):
+    """Dry-run totals do not materialize every expired message id."""
+    from app.core import db as core_db
+
+    old_session = ChatSession(
+        agent_name="lead", created_at=datetime.now(timezone.utc) - timedelta(days=30)
+    )
+    async with core_db.async_session_factory() as session:
+        session.add(old_session)
+        await session.flush()
+        session.add(
+            SessionMessage(session_id=old_session.id, role="user", content="old")
+        )
+        await session.commit()
+
+    statements = []
+    original_exec = core_db.AsyncSession.exec
+
+    async def recording_exec(self, statement, *args, **kwargs):
+        rendered = str(statement)
+        if "session_messages" in rendered:
+            statements.append(rendered)
+        return await original_exec(self, statement, *args, **kwargs)
+
+    monkeypatch.setattr(core_db.AsyncSession, "exec", recording_exec)
+    async with core_db.async_session_factory() as session:
+        result = await cleanup_generated_artifacts(
+            session, older_than_days=7, dry_run=True
+        )
+
+    assert result.expired_messages == 1
+    assert "count(*)" in statements[0].lower()
+    assert "session_messages.id" not in statements[0]

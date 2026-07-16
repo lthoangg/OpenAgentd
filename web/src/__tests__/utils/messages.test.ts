@@ -69,6 +69,24 @@ describe("sumUsageFromMessages", () => {
     expect(result.cachedTokens).toBe(5);       // latest turn cache only
   });
 
+  it("keeps an exact running sum of cost across assistant messages", () => {
+    const msgs = [
+      makeMsg({ extra: { usage: { input: 10, output: 5, cost: { estimated_usd: 0.0012 } } } }),
+      makeMsg({ extra: { usage: { input: 20, output: 8, cost: { estimated_usd: 0.0023 } } } }),
+    ];
+
+    expect(sumUsageFromMessages(msgs).estimatedCostUsd).toBe(0.0035);
+  });
+
+  it("restores the running session cost across 100 assistant messages", () => {
+    const msgs = Array.from({ length: 100 }, (_, turn) => makeMsg({
+      created_at: new Date(Date.UTC(2026, 0, 1, 0, 0, turn)).toISOString(),
+      extra: { usage: { input: (turn + 1) * 10, output: 5, cost: { estimated_usd: 0.0012 } } },
+    }));
+
+    expect(sumUsageFromMessages(msgs).estimatedCostUsd).toBe(0.12);
+  });
+
   it("skips non-assistant messages", () => {
     const msgs = [
       makeMsg({ role: "user", extra: { usage: { input: 999, output: 999, cache: 0 } } }),

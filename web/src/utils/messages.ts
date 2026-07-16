@@ -199,7 +199,7 @@ export function sumUsageFromMessages(msgs: MessageResponse[]): AgentUsage {
     const i = extra.usage.input ?? 0
     const o = extra.usage.output ?? 0
     acc.completionTokens += o
-    acc.estimatedCostUsd += extra.usage.cost?.estimated_usd ?? 0
+    acc.estimatedCostUsd = Math.round((acc.estimatedCostUsd + (extra.usage.cost?.estimated_usd ?? 0)) * 1e8) / 1e8
     lastInput = i
     lastCache = extra.usage.cache ?? 0
   }

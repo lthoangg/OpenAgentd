@@ -448,6 +448,20 @@ describe("_handleSSEEvent: usage", () => {
     expect(useTeamStore.getState().agentStreams.lead.usage.estimatedCostUsd).toBe(0.0035);
   });
 
+  it("keeps a running session cost across 100 usage events", () => {
+    for (let turn = 1; turn <= 100; turn += 1) {
+      useTeamStore.getState()._handleSSEEvent("usage", {
+        prompt_tokens: turn * 10,
+        completion_tokens: 5,
+        total_tokens: turn * 10 + 5,
+        estimated_cost_usd: 0.0012,
+        metadata: { agent: "lead" },
+      });
+    }
+
+    expect(useTeamStore.getState().agentStreams.lead.usage.estimatedCostUsd).toBe(0.12);
+  });
+
   it("falls back to top-level agent field", () => {
     useTeamStore.getState()._handleSSEEvent("usage", {
       agent: "worker",

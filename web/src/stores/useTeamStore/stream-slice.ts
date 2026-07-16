@@ -137,6 +137,14 @@ export const createStreamSlice: StateCreator<
         }
       })
       await postTeamCommand('compact', sessionId)
+      set((draft) => {
+        draft._leadRevertTime = null
+        Object.values(draft.agentStreams).forEach((stream) => {
+          stream._revertedSuffix = []
+          stream.revertedCount = 0
+          stream.revertedMessages = []
+        })
+      })
       get().connectStream()
     } catch (err) {
       set((draft) => {

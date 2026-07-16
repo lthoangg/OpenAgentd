@@ -50,6 +50,7 @@ from app.services import snapshot_service
 from app.services.stream_envelope import StreamEnvelope
 from app.services.chat_service import (
     BoundaryShift,
+    cleanup_reverted_tail,
     get_messages_for_llm,
     heal_orphaned_tool_calls,
     pop_queued_user_messages,
@@ -888,9 +889,15 @@ class AgentTeam:
                     f"Session belongs to '{row.agent_name}', not '{self.lead.name}'."
                 )
             messages = await get_messages_for_llm(db, lead_uuid)
-
-        if not messages:
-            raise ContinuePreconditionError("Session has no messages to compact.")
+            if not messages:
+                raise ContinuePreconditionError("Session has no messages to compact.")
+            # Compaction creates a new durable branch, just like sending an
+            # edited message after /undo. Drop the undone tail and clear the
+            # redo boundary before the summarizer persists its replacement;
+            # otherwise the new summary lands beyond that boundary and is
+            # immediately treated as reverted itself.
+            await cleanup_reverted_tail(db, lead_uuid)
+            await db.commit()
 
         if self.lead.session_id != session_id:
             self.lead.session_id = session_id

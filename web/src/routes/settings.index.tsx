@@ -11,6 +11,7 @@ import {
   Info,
   Shield,
   Image,
+  AlignLeft,
   Type,
   Bell,
   TerminalSquare,
@@ -219,6 +220,17 @@ export function SettingsHubPage() {
                 <div className="flex items-center gap-2.5">
                   <Image size={14} className="text-(--color-text-muted)" />
                   <span>Multimodal Settings</span>
+                </div>
+                <ChevronRight size={14} className="text-(--color-text-subtle)" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setSection('summarization')}
+                className="flex w-full items-center justify-between py-2.5 text-left text-xs text-(--color-text) hover:bg-(--bg-key)/20 focus:outline-none"
+              >
+                <div className="flex items-center gap-2.5">
+                  <AlignLeft size={14} className="text-(--color-text-muted)" />
+                  <span>Summarization Settings</span>
                 </div>
                 <ChevronRight size={14} className="text-(--color-text-subtle)" />
               </button>

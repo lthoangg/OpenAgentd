@@ -358,20 +358,15 @@ class TestTeamChatRoute:
         assert response.json()["status"] == "queued"
         test_team._activate_queued_user_messages.assert_awaited_once_with(session_id)
 
-    def test_team_chat_queues_when_turn_active_before_lead_state_flips(
+    def test_team_chat_activates_queue_when_lead_idle_members_running(
         self, app_with_team, test_team
     ):
-        """Quick follow-up POSTs must queue once a turn is active.
-
-        Regression guard for two requests arriving close together: the first
-        request sets ``_has_active_turn`` before the lead activation task may
-        visibly flip ``lead.state`` to ``working``. The second request should
-        still persist as queued, not as an adjacent normal user row.
-        """
+        """Keep durable ordering, but wake an idle lead without waiting for members."""
         session_id = str(uuid.uuid7())
         test_team.lead.state = "idle"
-        test_team._has_active_turn = True
-        test_team._activate_queued_user_messages = AsyncMock(return_value=False)
+        test_team._has_active_turn = True  # members from the prior lead turn still run
+        test_team._activate_queued_user_messages = AsyncMock(return_value=True)
+        test_team.handle_user_message = AsyncMock(return_value=session_id)
 
         async def save_queue(_db, _session_id, _message, *, extra=None):
             queued = AsyncMock()
@@ -390,7 +385,8 @@ class TestTeamChatRoute:
 
         assert response.status_code == 202
         assert response.json()["status"] == "queued"
-        test_team._activate_queued_user_messages.assert_not_awaited()
+        test_team._activate_queued_user_messages.assert_awaited_once_with(session_id)
+        test_team.handle_user_message.assert_not_awaited()
 
     def test_team_chat_queued_message_persists_explicit_uploads(
         self, app_with_team, test_team

@@ -314,7 +314,7 @@ async def team_chat(
                 save_queued_user_message=save_queued_user_message,
                 save_message=save_message,
             )
-            if not team_obj.has_active_user_turn():
+            if not team_obj.has_active_lead_turn():
                 await team_obj._activate_queued_user_messages(session_id)
             return TeamChatResponse(
                 status="queued",

@@ -571,14 +571,19 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     setSlashMenuIndex(0)
     setSnippetMenuIndex(0)
 
+    // Reset the visible height synchronously. On mobile, the send button keeps
+    // the composer mounted, so waiting for the next animation frame leaves the
+    // now-empty textarea at its old multiline height for a frame (and can look
+    // stuck if a pending input resize measures first).
+    if (resizeFrameRef.current != null) {
+      cancelAnimationFrame(resizeFrameRef.current)
+      resizeFrameRef.current = null
+    }
+    const el = textareaRef.current
+    if (el) el.style.height = 'auto'
     setIsMultiLine(false)
     promoteLengthRef.current = 0
-    requestAnimationFrame(() => {
-      const el = textareaRef.current
-      if (!el) return
-      el.style.height = 'auto'
-      resize()
-    })
+    requestAnimationFrame(resize)
   }, [disabled, value, files, isStreaming, shellMode, onSubmit, mentions, resize, setFiles, setMentionMenuIndex, setMentionRange, setSlashMenuIndex, setSnippetMenuIndex, setSnippetRange])
 
   const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {

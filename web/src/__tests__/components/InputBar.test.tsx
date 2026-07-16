@@ -691,6 +691,27 @@ describe("InputBar — height reset after submit", () => {
     expect(textarea.value).toBe("")
   })
 
+  it("collapses the textarea immediately after sending multiline content on mobile", async () => {
+    isMobile = true
+    render(<InputBar onSubmit={() => {}} />)
+    const textarea = screen.getByLabelText("Message input") as HTMLTextAreaElement
+    Object.defineProperty(textarea, "scrollHeight", {
+      configurable: true,
+      get: () => textarea.value ? 60 : 24,
+    })
+
+    fireEvent.change(textarea, { target: { value: "line one\nline two" } })
+    await act(async () => { await new Promise((resolve) => requestAnimationFrame(resolve)) })
+    expect(textarea.style.height).toBe("60px")
+
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }))
+
+    expect(textarea.value).toBe("")
+    expect(textarea.style.height).toBe("auto")
+    const slot = textarea.closest("div.min-w-0") as HTMLElement
+    expect(slot.style.flexBasis).toBe("")
+  })
+
   it("expands the composer to fit a multiline snippet insertion", async () => {
     const user = userEvent.setup()
     render(

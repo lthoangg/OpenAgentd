@@ -257,8 +257,8 @@ class AgentTeam:
         return self._user_message_lock
 
     def has_active_user_turn(self) -> bool:
-        """Return whether a user turn is active or the lead is already running."""
-        return self._has_active_turn or self.lead.state == "working"
+        """Return whether the lead is actively working on a user turn."""
+        return self.lead.state == "working"
 
     # ------------------------------------------------------------------
     # Lifecycle

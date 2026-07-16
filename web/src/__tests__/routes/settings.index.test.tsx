@@ -93,12 +93,14 @@ describe('SettingsHubPage — header', () => {
 // ── Mobile Preferences ─────────────────────────────────────────────────────
 
 describe('SettingsHubPage — mobile preferences', () => {
-  it('renders preferences links for sandbox, multimodal, title-generation, and notifications', () => {
+  it('renders preferences links for sandbox, multimodal, summarization, title-generation, notifications, and terminal', () => {
     renderHub({ status: 'ok', version: '1.2.3' })
 
     expect(screen.getByText(/sandbox settings/i)).toBeInTheDocument()
     expect(screen.getByText(/multimodal settings/i)).toBeInTheDocument()
+    expect(screen.getByText(/summarization settings/i)).toBeInTheDocument()
     expect(screen.getByText(/title generation settings/i)).toBeInTheDocument()
     expect(screen.getByText(/notification settings/i)).toBeInTheDocument()
+    expect(screen.getByText(/terminal settings/i)).toBeInTheDocument()
   })
 })

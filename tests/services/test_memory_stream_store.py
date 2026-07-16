@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -102,11 +103,85 @@ class TestInitTurn:
 
 
 # ---------------------------------------------------------------------------
+# cleanup expiry
+# ---------------------------------------------------------------------------
+
+
+class TestCleanupExpiry:
+    def test_expire_turn_rearms_then_expires_and_ignores_replaced_state(self):
+        class FakeLoop:
+            def __init__(self):
+                self.now = 100.0
+                self.calls: list[tuple[float, object, tuple[object, ...]]] = []
+
+            def time(self) -> float:
+                return self.now
+
+            def call_later(self, delay: float, callback, *args):
+                self.calls.append((delay, callback, args))
+                return object()
+
+        loop = FakeLoop()
+        original_get_event_loop = store.asyncio.get_event_loop
+        store.asyncio.get_event_loop = lambda: loop
+        try:
+            state = store._TurnState()
+            state._cleanup_deadline = 120.0
+            _turns["sid-1"] = state
+
+            store._expire_turn("sid-1", state)
+
+            assert _turns["sid-1"] is state
+            assert loop.calls == [(20.0, store._expire_turn, ("sid-1", state))]
+
+            loop.now = 120.0
+            store._expire_turn("sid-1", state)
+            assert "sid-1" not in _turns
+
+            replacement = store._TurnState()
+            _turns["sid-1"] = replacement
+            store._expire_turn("sid-1", state)
+            assert _turns["sid-1"] is replacement
+            assert len(loop.calls) == 1
+        finally:
+            store.asyncio.get_event_loop = original_get_event_loop
+
+
+# ---------------------------------------------------------------------------
 # push_event
 # ---------------------------------------------------------------------------
 
 
 class TestPushEvent:
+    @pytest.mark.asyncio
+    async def test_pushes_refresh_ttl_without_rescheduling_each_delta(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        scheduled = MagicMock(wraps=store._schedule_cleanup)
+        monkeypatch.setattr(store, "_schedule_cleanup", scheduled)
+        await store.init_turn("sid-1")
+
+        for text in ("a", "b", "c"):
+            await store.push_event(
+                "sid-1",
+                StreamEnvelope.from_parts("message", {"agent": "bot", "text": text}),
+            )
+
+        assert scheduled.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_push_without_subscribers_skips_wire_serialization(self):
+        await store.init_turn("sid-1")
+        envelope = StreamEnvelope.from_parts(
+            "message", {"agent": "bot", "text": "hello"}
+        )
+
+        with patch.object(StreamEnvelope, "to_wire", autospec=True) as to_wire:
+            await store.push_event("sid-1", envelope)
+
+        to_wire.assert_not_called()
+        assert _turns["sid-1"].content == {"bot": ["hello"]}
+
     @pytest.mark.asyncio
     async def test_push_noop_when_no_state(self):
         """Push to unknown session is silently ignored."""

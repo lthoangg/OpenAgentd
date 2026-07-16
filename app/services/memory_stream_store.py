@@ -56,6 +56,7 @@ class _TurnState:
         "agent_not_configured",
         "subscribers",
         "_cleanup_handle",
+        "_cleanup_deadline",
     )
 
     def __init__(self) -> None:
@@ -86,6 +87,7 @@ class _TurnState:
         # Me keep list of queues — one per SSE client
         self.subscribers: list[asyncio.Queue] = []
         self._cleanup_handle: asyncio.TimerHandle | None = None
+        self._cleanup_deadline: float = 0.0
 
     def reset_for_next_turn(self) -> None:
         self.is_streaming = True
@@ -114,7 +116,31 @@ def _schedule_cleanup(session_id: str, state: _TurnState) -> None:
     """Schedule automatic expiry after STREAM_TTL seconds."""
     _cancel_cleanup(state)
     loop = asyncio.get_event_loop()
-    state._cleanup_handle = loop.call_later(STREAM_TTL, _turns.pop, session_id, None)
+    state._cleanup_deadline = loop.time() + STREAM_TTL
+    state._cleanup_handle = loop.call_later(STREAM_TTL, _expire_turn, session_id, state)
+
+
+def _refresh_cleanup(session_id: str, state: _TurnState) -> None:
+    """Extend the sliding TTL without cancelling and recreating the timer."""
+    loop = asyncio.get_event_loop()
+    state._cleanup_deadline = loop.time() + STREAM_TTL
+    if state._cleanup_handle is None:
+        _schedule_cleanup(session_id, state)
+
+
+def _expire_turn(session_id: str, state: _TurnState) -> None:
+    """Expire only after the latest activity deadline for this state object."""
+    if _turns.get(session_id) is not state:
+        return
+    loop = asyncio.get_event_loop()
+    remaining = state._cleanup_deadline - loop.time()
+    if remaining > 0:
+        state._cleanup_handle = loop.call_later(
+            remaining, _expire_turn, session_id, state
+        )
+        return
+    state._cleanup_handle = None
+    _turns.pop(session_id, None)
 
 
 # ── Write side ────────────────────────────────────────────────────────────────
@@ -264,8 +290,8 @@ async def push_event(session_id: str, envelope: StreamEnvelope) -> None:
                 if isinstance(meta, dict) and meta.get("error"):
                     entry["error"] = True
 
-        # Me refresh TTL on every write
-        _schedule_cleanup(session_id, state)
+        # Me extend TTL on every write without recreating the timer per delta.
+        _refresh_cleanup(session_id, state)
 
         # Me fan-out to all live SSE clients.
         #
@@ -276,7 +302,7 @@ async def push_event(session_id: str, envelope: StreamEnvelope) -> None:
         # "executing", `done` never arrives, etc.). To recover cleanly we
         # push a sentinel so `attach()` exits → the SSE coroutine yields →
         # the client's `onDone` fires → it reloads state from the DB.
-        wire = envelope.to_wire()
+        wire = envelope.to_wire() if state.subscribers else None
         dead: list[asyncio.Queue] = []
         for q in state.subscribers:
             try:
@@ -343,7 +369,7 @@ async def mark_done(session_id: str) -> None:
         if state is None:
             return
         state.is_streaming = False
-        _schedule_cleanup(session_id, state)
+        _refresh_cleanup(session_id, state)
         # Me send sentinel to all subscribers so they exit
         for q in list(state.subscribers):
             try:
@@ -553,4 +579,6 @@ async def attach(session_id: str) -> AsyncGenerator[dict[str, str], None]:
 
 async def close() -> None:
     """Clear all state (called on server shutdown)."""
+    for state in _turns.values():
+        _cancel_cleanup(state)
     _turns.clear()

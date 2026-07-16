@@ -1076,11 +1076,59 @@ class TestSandboxCommandScan:
         assert "chunk2" in combined
         assert "chunk3" in combined
 
-        # Because of the 100ms throttling interval, chunk1, chunk2, and chunk3
-        # should be grouped together or at least not emitted as 3 separate individual calls.
+        # The throttling interval should group these chunks together rather than
+        # emitting three separate UI updates.
         # With 0.02s sleeps, they all complete within ~50ms, so they should be grouped
         # into at most 2 emissions (often just 1).
         assert len(emitted_chunks) <= 2
+
+    @pytest.mark.asyncio
+    async def test_shell_streaming_limits_render_updates_for_sustained_output(
+        self, sandbox_workspace, monkeypatch
+    ):
+        """Sustained noisy commands must not trigger UI updates every 100ms."""
+        monkeypatch.setattr(
+            "app.agent.tools.builtin.shell._shell_mod.acceptable", lambda: "/bin/sh"
+        )
+        emitted_chunks: list[str] = []
+
+        async def capture(text: str) -> None:
+            emitted_chunks.append(text)
+
+        result = await _shell(
+            command="for i in 1 2 3 4 5 6 7 8; do echo chunk$i; sleep 0.05; done",
+            timeout_seconds=2,
+            _tool_output=capture,
+        )
+
+        assert "[Succeeded]" in result
+        assert "chunk1" in "".join(emitted_chunks)
+        assert "chunk8" in "".join(emitted_chunks)
+        assert len(emitted_chunks) <= 2
+
+    @pytest.mark.asyncio
+    async def test_shell_streaming_caps_each_live_payload(
+        self, sandbox_workspace, monkeypatch
+    ):
+        """A rapid output burst must not become one oversized SSE payload."""
+        monkeypatch.setattr(
+            "app.agent.tools.builtin.shell._shell_mod.acceptable", lambda: "/bin/sh"
+        )
+        emitted_chunks: list[str] = []
+
+        async def capture(text: str) -> None:
+            emitted_chunks.append(text)
+
+        result = await _shell(
+            command="i=0; while [ $i -lt 20000 ]; do echo line-$i; i=$((i+1)); done",
+            timeout_seconds=2,
+            _tool_output=capture,
+        )
+
+        assert "[Succeeded]" in result
+        assert emitted_chunks
+        assert max(map(len, emitted_chunks)) <= 24_100
+        assert "line-19999" in emitted_chunks[-1]
 
     @pytest.mark.asyncio
     async def test_shell_streaming_immediate_flush_on_completion(
@@ -1096,7 +1144,7 @@ class TestSandboxCommandScan:
             emitted_chunks.append(text)
 
         # Run a command that exits immediately after printing.
-        # The flusher task runs on a 100ms loop, but the command exits in <10ms.
+        # The flusher task has not reached its next interval when the command exits.
         # The remaining output must be flushed immediately on exit via the finally block.
         result = await _shell(
             command="echo 'immediate_flush'",

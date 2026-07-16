@@ -159,6 +159,10 @@ _BG_MAX_COMPLETED_PROCESSES = 100
 _OUTPUT_MAX_LINES = 300
 # Bytes kept inline; output beyond this spills to a temp file
 _OUTPUT_MAX_BYTES = 131_072  # 128 KB (matches opencode Truncate.MAX_BYTES)
+# Limit live-output UI churn for noisy commands while keeping progress responsive.
+_OUTPUT_STREAM_INTERVAL_SECONDS = 0.25
+_LIVE_OUTPUT_MAX_CHARS = 24_000
+_LIVE_OUTPUT_TRUNCATED = "... [truncated live output] ...\n"
 _WINDOWS_CREATE_NEW_PROCESS_GROUP = 0x0000_0200
 _WINDOWS_CREATE_NO_WINDOW = 0x0800_0000
 _FORCE_KILL_SIGNAL = getattr(signal, "SIGKILL", signal.SIGTERM)
@@ -445,6 +449,9 @@ async def _emit_tool_output(
 ) -> None:
     if callback is None or not text:
         return
+    if len(text) > _LIVE_OUTPUT_MAX_CHARS:
+        tail_chars = _LIVE_OUTPUT_MAX_CHARS - len(_LIVE_OUTPUT_TRUNCATED)
+        text = _LIVE_OUTPUT_TRUNCATED + text[-tail_chars:]
     try:
         await callback(text)
     except Exception as exc:
@@ -588,7 +595,7 @@ async def _shell(
         async def flusher() -> None:
             try:
                 while True:
-                    await asyncio.sleep(0.1)
+                    await asyncio.sleep(_OUTPUT_STREAM_INTERVAL_SECONDS)
                     async with pending_lock:
                         if pending_output:
                             to_emit = "".join(pending_output)

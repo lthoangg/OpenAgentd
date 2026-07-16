@@ -1,7 +1,7 @@
 /**
  * Performance regression: `getToolDisplay` / `getDiffStats` must not be
  * recomputed on every render while a tool is "running" — specifically not
- * on every 100ms elapsed-timer tick driven by `ToolCall`'s internal
+ * on every elapsed-timer tick driven by `ToolCall`'s internal
  * `setInterval`. Both derivations are pure functions of `(name, args,
  * result)`; recomputing them on an unrelated timer tick wastes CPU (full
  * JSON.parse + an O(oldLines*newLines) diff for edit/patch/write tools)
@@ -43,6 +43,9 @@ function useFakeTimers() {
   Date.now = () => now
 
   return {
+    intervals() {
+      return [...timers.values()].map((timer) => timer.interval)
+    },
     tick(ms: number) {
       now += ms
       for (const [id, timer] of [...timers]) {
@@ -62,6 +65,18 @@ function useFakeTimers() {
 }
 
 describe("ToolCall — perf: memoized display/diff derivation", () => {
+  it("updates the elapsed label at most once per second", () => {
+    const timers = useFakeTimers()
+    try {
+      render(<ToolCall name="shell" args='{"command":"bun test"}' done={false} startedAt={-1000} />)
+
+      expect(timers.intervals()).toContain(1000)
+      expect(timers.intervals()).not.toContain(100)
+    } finally {
+      timers.restore()
+    }
+  })
+
   it("does not recompute getToolDisplay on every elapsed-timer tick while running", () => {
     const spy = spyOn(displayModule, "getToolDisplay")
     const timers = useFakeTimers()
@@ -72,10 +87,9 @@ describe("ToolCall — perf: memoized display/diff derivation", () => {
       const callsAfterMount = spy.mock.calls.length
       expect(callsAfterMount).toBeGreaterThan(0)
 
-      // Advance 5 elapsed-timer ticks (500ms @ 100ms interval) without any
-      // prop change — only the internal `now` state changes to redraw the
-      // duration label.
-      act(() => { timers.tick(500) })
+      // Advance one elapsed-timer tick without any prop change — only the
+      // internal `now` state changes to redraw the duration label.
+      act(() => { timers.tick(1000) })
 
       // The memoized derivation must not scale with unrelated re-renders.
       expect(spy.mock.calls.length).toBe(callsAfterMount)
@@ -99,7 +113,7 @@ describe("ToolCall — perf: memoized display/diff derivation", () => {
       const callsAfterMount = spy.mock.calls.length
       expect(callsAfterMount).toBeGreaterThan(0)
 
-      act(() => { timers.tick(500) })
+      act(() => { timers.tick(1000) })
 
       expect(spy.mock.calls.length).toBe(callsAfterMount)
     } finally {

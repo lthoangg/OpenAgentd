@@ -30,7 +30,7 @@ import { PendingMessageQueue } from './PendingMessageQueue'
 import { appendCurrentTurns, getVisibleTurnWindow, partitionTurns } from '@/utils/turns'
 import { latestDirectUserBlockIdFromParts, mergeBlocks } from '@/utils/blocks'
 import { extractSleepPrefix } from '@/utils/format'
-import { latestMCPAppResourceBlockIdsFromParts, latestMCPAppResources } from '@/utils/mcp-app-artifacts'
+import { latestMCPAppResourceBlockIdsFromParts, latestMCPAppResources, mcpAppResourceUri } from '@/utils/mcp-app-artifacts'
 import { useTeamStore } from '@/stores/useTeamStore'
 import type { ContentBlock } from '@/api/types'
 import { UserBubble } from './AgentView/UserBubble'
@@ -420,7 +420,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
                        isStreaming={false}
                          sessionId={sessionId}
                          onRevert={item.block.id === latestUserBlockId ? handleRevert : undefined}
-                         latestMCPAppBlockIds={latestMCPAppBlockIds}
+                         latestMCPAppBlockIds={mcpAppResourceUri(item.block) ? latestMCPAppBlockIds : undefined}
                          onMentionFileOpen={onMentionFileOpen}
                         />
                    )
@@ -444,7 +444,7 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
                             isStreaming={isStreaming}
                             sessionId={sessionId}
                             onRevert={isDirectUserBlock(block) && block.id === latestUserBlockId ? handleRevert : undefined}
-                            latestMCPAppBlockIds={latestMCPAppBlockIds}
+                            latestMCPAppBlockIds={mcpAppResourceUri(block) ? latestMCPAppBlockIds : undefined}
                          onMentionFileOpen={onMentionFileOpen}
                           />
                      )}

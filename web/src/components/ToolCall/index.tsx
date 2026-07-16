@@ -200,7 +200,7 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
 
   useEffect(() => {
     if (done || !startedAt) return
-    const id = window.setInterval(() => setNow(Date.now()), 100)
+    const id = window.setInterval(() => setNow(Date.now()), 1000)
     return () => window.clearInterval(id)
   }, [done, startedAt])
 

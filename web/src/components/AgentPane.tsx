@@ -27,7 +27,7 @@ import { TokenMeter } from '@/components/ui/token-meter'
 import { appendCurrentTurns, partitionTurns } from '@/utils/turns'
 import { latestDirectUserBlockIdFromParts, mergeBlocks } from '@/utils/blocks'
 import { extractSleepPrefix, formatTime } from '@/utils/format'
-import { latestMCPAppResourceBlockIdsFromParts, latestMCPAppResources } from '@/utils/mcp-app-artifacts'
+import { latestMCPAppResourceBlockIdsFromParts, latestMCPAppResources, mcpAppResourceUri } from '@/utils/mcp-app-artifacts'
 import { useTeamStore } from '@/stores/useTeamStore'
 import { findCommittedMentions } from './InputBar.mentions'
 import type { AgentStream } from '@/stores/useTeamStore'
@@ -573,7 +573,7 @@ export function AgentPane({
                          isStreaming={false}
                            sessionId={sessionId}
                            onRevert={item.block.id === latestUserBlockId ? handleRevert : undefined}
-                           latestMCPAppBlockIds={latestMCPAppBlockIds}
+                           latestMCPAppBlockIds={mcpAppResourceUri(item.block) ? latestMCPAppBlockIds : undefined}
                           />
                      )
                    }
@@ -594,7 +594,7 @@ export function AgentPane({
                            block={block}
                            isStreaming={isStreaming}
                             sessionId={sessionId}
-                            latestMCPAppBlockIds={latestMCPAppBlockIds}
+                            latestMCPAppBlockIds={mcpAppResourceUri(block) ? latestMCPAppBlockIds : undefined}
                           />
                        )}
                      />

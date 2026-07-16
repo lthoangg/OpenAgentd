@@ -67,6 +67,20 @@ if TYPE_CHECKING:
     from app.agent.providers.base import LLMProviderBase
 
 
+async def _close_provider(provider: "LLMProviderBase") -> None:
+    try:
+        await provider.aclose()
+    except Exception as exc:
+        logger.warning("provider_close_failed provider={} error={}", provider, exc)
+
+
+def _schedule_provider_close(provider: "LLMProviderBase") -> None:
+    try:
+        asyncio.get_running_loop().create_task(_close_provider(provider))
+    except RuntimeError:
+        logger.warning("provider_close_skipped_no_running_loop provider={}", provider)
+
+
 # -- Protocol prompt blocks (shared by build_protocol) -------------------------
 
 LEAD_MESSAGE_FORMAT = """\
@@ -320,6 +334,8 @@ class TeamMemberBase(abc.ABC):
                 pass
             self._active_task = None
 
+        await _close_provider(self.agent.llm_provider)
+
         if self._mailbox and self.name in self._mailbox.registered_agents:
             self._mailbox.deregister(self.name)
 
@@ -467,8 +483,10 @@ class TeamMemberBase(abc.ABC):
         # but live spawned instances must keep their concrete handle.
         new_agent.name = self.name
 
-        old_model = self.agent.model_id
+        old_agent = self.agent
+        old_model = old_agent.model_id
         self.agent = new_agent
+        _schedule_provider_close(old_agent.llm_provider)
         self._config_dirty = False
         logger.info(
             "agent_config_refreshed name={} model={} tools={}",
@@ -938,6 +956,8 @@ class TeamMemberBase(abc.ABC):
 
             await self._maybe_inject_open_task_nudge()
         finally:
+            if runtime_provider is not None:
+                await _close_provider(runtime_provider)
             reset_role(role_token)
             _sandbox_ctx.reset(token)
             _permission_ctx.reset(perm_token)

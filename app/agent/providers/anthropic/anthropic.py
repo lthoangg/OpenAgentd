@@ -514,11 +514,12 @@ class AnthropicProvider(LLMProviderBase):
             if _uses_beta_messages_api(self.model, merged) or self._beta
             else self._messages_path
         )
-        async with httpx.AsyncClient(timeout=self._timeout) as client:
+        async with self._http_client_context() as client:
             response = await client.post(
                 f"{self.base_url}{messages_path}",
                 headers=self.headers,
                 json=self._payload(messages, tools, merged),
+                timeout=self._timeout,
             )
             response.raise_for_status()
         return self._parse_response(response.json())
@@ -590,12 +591,13 @@ class AnthropicProvider(LLMProviderBase):
         )
         usage = Usage()
         tool_call_indexes: dict[int, int] = {}
-        async with httpx.AsyncClient(timeout=self._timeout) as client:
+        async with self._http_client_context() as client:
             async with client.stream(
                 "POST",
                 f"{self.base_url}{messages_path}",
                 headers=self.headers,
                 json=payload,
+                timeout=self._timeout,
             ) as response:
                 if response.status_code >= 400:
                     await response.aread()

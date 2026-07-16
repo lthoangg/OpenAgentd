@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import yaml
@@ -91,6 +92,30 @@ def test_refresh_replaces_agent_in_place(
     assert "Updated prompt." in member.agent.system_prompt
     assert member._config_dirty is False
     assert member.session_id == original_session
+
+
+@pytest.mark.asyncio
+async def test_refresh_closes_replaced_provider(
+    _settings_dirs: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import app.agent.loader as _loader
+
+    monkeypatch.setattr(_loader, "build_provider", _provider_factory())
+    member = _build_member(
+        _settings_dirs, {"name": "worker", "model": "openai:v1", "tools": []}
+    )
+    old_provider = member.agent.llm_provider
+    old_provider.aclose = AsyncMock()
+
+    md = _settings_dirs / "agents" / "worker.md"
+    _write_agent(md, {"name": "worker", "model": "openai:v2", "tools": []})
+    _bump_mtime(md)
+    member._config_dirty = True
+
+    member._refresh_agent_from_disk()
+    await asyncio.sleep(0)
+
+    old_provider.aclose.assert_awaited_once()
 
 
 def test_refresh_preserves_spawned_instance_handle(

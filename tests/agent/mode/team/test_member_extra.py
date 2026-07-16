@@ -120,6 +120,23 @@ class TestTeamMemberStop:
         assert member._active_task is None or member._active_task.done()
 
     @pytest.mark.asyncio
+    async def test_stop_closes_configured_provider_after_cancelling_turn(self):
+        from app.agent.agent_loop import Agent
+
+        provider = MockTeamProvider()
+        provider.aclose = AsyncMock()
+        member = TeamMember(Agent(name="w", llm_provider=provider, system_prompt=""))
+
+        async def never_ends():
+            await asyncio.sleep(999)
+
+        member._active_task = asyncio.create_task(never_ends())
+
+        await member.stop()
+
+        provider.aclose.assert_awaited_once()
+
+    @pytest.mark.asyncio
     async def test_stop_without_mailbox_is_safe(self):
         from app.agent.agent_loop import Agent
 

@@ -17,7 +17,9 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 from base64 import urlsafe_b64encode
 
+import httpx
 import pytest
+import respx
 from pydantic import SecretStr
 
 from app.agent.providers.codex.oauth import (
@@ -992,6 +994,32 @@ class TestCodexProviderInit:
 
             assert isinstance(provider._responses, _CodexResponsesHandler)
             assert provider._responses.model == "gpt-5.4"
+
+    @respx.mock
+    async def test_request_uses_provider_http_client_and_closes_it(self):
+        with patch(
+            "app.agent.providers.codex.codex._load_token", return_value=("key", None)
+        ):
+            provider = CodexProvider(model="gpt-5.4")
+        route = respx.post("https://chatgpt.com/backend-api/codex/responses").mock(
+            return_value=httpx.Response(
+                200,
+                text=(
+                    'data: {"type":"response.created","response":{"id":"r1"}}\n\n'
+                    'data: {"type":"response.output_text.delta","delta":"Hi"}\n\n'
+                    "data: [DONE]\n\n"
+                ),
+            )
+        )
+
+        response = await provider.chat([HumanMessage(content="Hello")])
+
+        assert response.content == "Hi"
+        assert route.called
+        assert provider._responses.client is provider.http_client
+        client = provider.http_client
+        await provider.aclose()
+        assert client.is_closed
 
     def test_init_uses_codex_stream_idle_timeout(self):
         """Codex mirrors upstream's 300s stream idle timeout."""

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import time
+from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, AsyncIterator
 
 import httpx
@@ -60,6 +61,15 @@ class ResponsesHandler:
         self.headers = headers
         self.request_timeout = request_timeout
         self.preserve_stateless_reasoning = preserve_stateless_reasoning
+        self.client: httpx.AsyncClient | None = None
+
+    @asynccontextmanager
+    async def _request_client(self) -> AsyncIterator[httpx.AsyncClient]:
+        if self.client is not None:
+            yield self.client
+        else:
+            async with httpx.AsyncClient() as client:
+                yield client
 
     # ------------------------------------------------------------------
     # Message / tool conversion
@@ -320,7 +330,7 @@ class ResponsesHandler:
         body = self.build_request(messages, tools, stream=False, merged=merged)
         url = f"{self.base_url}/responses"
 
-        async with httpx.AsyncClient() as client:
+        async with self._request_client() as client:
             headers = self.headers
             prepare = getattr(self, "_prepare_request_headers", None)
             if callable(prepare):
@@ -346,7 +356,7 @@ class ResponsesHandler:
         body = self.build_request(messages, tools, stream=True, merged=merged)
         url = f"{self.base_url}/responses"
 
-        async with httpx.AsyncClient() as client:
+        async with self._request_client() as client:
             headers = self.headers
             prepare = getattr(self, "_prepare_request_headers", None)
             if callable(prepare):

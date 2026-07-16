@@ -2,7 +2,6 @@ import json
 import time
 from typing import Any
 
-import httpx
 from loguru import logger
 from pydantic.types import SecretStr
 
@@ -333,7 +332,7 @@ class GeminiProviderBase(LLMProviderBase):
 
         url = self._build_url("generateContent")
 
-        async with httpx.AsyncClient() as client:
+        async with self._http_client_context() as client:
             request_body = request.model_dump(exclude_none=True, by_alias=True)
             response = await client.post(
                 url,
@@ -432,7 +431,7 @@ class GeminiProviderBase(LLMProviderBase):
 
         url = self._build_url("streamGenerateContent") + "?alt=sse"
 
-        async with httpx.AsyncClient() as client:
+        async with self._http_client_context() as client:
             request_body = request.model_dump(exclude_none=True, by_alias=True)
             async with client.stream(
                 "POST",

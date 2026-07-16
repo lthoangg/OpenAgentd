@@ -180,7 +180,9 @@ class OpenAIProvider(LLMProviderBase):
     ) -> AssistantMessage:
         merged = self._merged_kwargs(**kwargs)
         if self._use_responses:
+            self._responses.client = self.http_client
             return await self._responses.chat(messages, tools, merged)
+        self._completions.client = self.http_client
         return await self._completions.chat(messages, tools, merged)
 
     async def stream(
@@ -191,8 +193,10 @@ class OpenAIProvider(LLMProviderBase):
     ):
         merged = self._merged_kwargs(**kwargs)
         if self._use_responses:
+            self._responses.client = self.http_client
             async for chunk in self._responses.stream(messages, tools, merged):
                 yield chunk
         else:
+            self._completions.client = self.http_client
             async for chunk in self._completions.stream(messages, tools, merged):
                 yield chunk

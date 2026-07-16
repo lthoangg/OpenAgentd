@@ -6,7 +6,9 @@ See `app/agent/providers/openai/openai.py:OpenAIProvider`.
 from __future__ import annotations
 
 
+import httpx
 import pytest
+import respx
 
 from app.agent.providers.openai.openai import (
     OpenAIProvider,
@@ -130,6 +132,43 @@ class TestOpenAIProvider:
             max_tokens=1000,
         )
         assert provider.max_tokens == 1000
+
+    async def test_reuses_one_http_client_and_closes_it(self):
+        provider = OpenAIProvider(api_key="sk-test", model="gpt-4o")
+
+        client = provider.http_client
+        assert provider.http_client is client
+        await provider.aclose()
+
+        assert client.is_closed
+
+    @respx.mock
+    async def test_chat_request_uses_provider_http_client(self):
+        provider = OpenAIProvider(api_key="sk-test", model="gpt-4o")
+        route = respx.post("https://api.openai.com/v1/chat/completions").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": "chatcmpl-1",
+                    "created": 1,
+                    "model": "gpt-4o",
+                    "choices": [
+                        {
+                            "index": 0,
+                            "message": {"role": "assistant", "content": "Hi"},
+                            "finish_reason": "stop",
+                        }
+                    ],
+                },
+            )
+        )
+
+        response = await provider.chat([HumanMessage(content="Hello")])
+
+        assert response.content == "Hi"
+        assert route.called
+        assert provider._completions.client is provider.http_client
+        await provider.aclose()
 
 
 # ─────────────────────────────────────────────────────────────────────────────

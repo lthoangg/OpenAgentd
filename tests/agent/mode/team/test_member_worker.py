@@ -242,6 +242,7 @@ class TestOnDemandActivation:
         db_factory = _make_mock_db_factory_with_session(session_row)
         default_provider = MockTeamProvider("default")
         override_provider = MockTeamProvider("override")
+        override_provider.aclose = AsyncMock()
         captured: dict[str, object] = {}
 
         async def fake_run(*_args, **kwargs):
@@ -270,6 +271,7 @@ class TestOnDemandActivation:
             "llm_provider": override_provider,
             "model_id": "googlegenai:gemini-3.1-flash-lite",
         }
+        override_provider.aclose.assert_awaited_once()
 
     async def test_lead_thinking_override_uses_stable_session_prompt_cache_key(
         self, monkeypatch

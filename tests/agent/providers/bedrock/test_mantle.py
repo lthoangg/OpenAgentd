@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -142,3 +142,31 @@ async def test_expired_profile_credentials_raise_without_leaking_token() -> None
             await provider.chat([HumanMessage(content="hello")])
 
     assert "token-secret" not in str(error.value)
+
+
+@pytest.mark.asyncio
+async def test_delegate_is_closed_after_chat_and_cancelled_stream() -> None:
+    provider = BedrockProvider(model="amazon.nova-pro-v1:0", bearer_token="token")
+    chat_delegate = MagicMock()
+    chat_delegate.chat = AsyncMock(return_value=MagicMock())
+    chat_delegate.aclose = AsyncMock()
+    provider._delegate = MagicMock(return_value=chat_delegate)
+
+    await provider.chat([HumanMessage(content="hello")])
+
+    chat_delegate.aclose.assert_awaited_once()
+
+    stream_delegate = MagicMock()
+    stream_delegate.aclose = AsyncMock()
+
+    async def stream(*_args, **_kwargs):
+        yield MagicMock()
+        yield MagicMock()
+
+    stream_delegate.stream = stream
+    provider._delegate = MagicMock(return_value=stream_delegate)
+    source = provider.stream([HumanMessage(content="hello")])
+    await anext(source)
+    await source.aclose()
+
+    stream_delegate.aclose.assert_awaited_once()

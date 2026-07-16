@@ -154,7 +154,11 @@ class BedrockProvider(LLMProviderBase):
         tools: list[dict] | None = None,
         **kwargs: Any,
     ) -> AssistantMessage:
-        return await self._delegate().chat(messages, tools, **kwargs)
+        delegate = self._delegate()
+        try:
+            return await delegate.chat(messages, tools, **kwargs)
+        finally:
+            await delegate.aclose()
 
     async def stream(
         self,
@@ -162,5 +166,9 @@ class BedrockProvider(LLMProviderBase):
         tools: list[dict] | None = None,
         **kwargs: Any,
     ) -> AsyncIterator[ChatCompletionChunk]:
-        async for chunk in self._delegate().stream(messages, tools, **kwargs):
-            yield chunk
+        delegate = self._delegate()
+        try:
+            async for chunk in delegate.stream(messages, tools, **kwargs):
+                yield chunk
+        finally:
+            await delegate.aclose()

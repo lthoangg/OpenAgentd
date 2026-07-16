@@ -224,6 +224,7 @@ class CodexProvider(LLMProviderBase):
         **kwargs: Any,
     ) -> AssistantMessage:
         merged = self._merged_kwargs(**kwargs)
+        self._responses.client = self.http_client
         return await self._responses.chat(messages, tools, merged)
 
     async def stream(
@@ -233,5 +234,6 @@ class CodexProvider(LLMProviderBase):
         **kwargs: Any,
     ):
         merged = self._merged_kwargs(**kwargs)
+        self._responses.client = self.http_client
         async for chunk in self._responses.stream(messages, tools, merged):
             yield chunk

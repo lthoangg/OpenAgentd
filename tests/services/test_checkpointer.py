@@ -9,6 +9,7 @@ import uuid
 from unittest.mock import MagicMock
 
 import pytest
+from sqlalchemy import event
 
 from app.agent.checkpointer import (
     Checkpointer,
@@ -501,6 +502,56 @@ class TestSQLiteCheckpointerSync:
         assert rows[0].exclude_from_context is True
 
     @pytest.mark.asyncio
+    async def test_sync_bulk_updates_exclusion_without_per_message_selects(self):
+        """Seen excluded messages use one conditional UPDATE, not N PK SELECTs."""
+        import app.core.db as _db
+        from app.services.chat_service import get_messages
+
+        sid = uuid.uuid7()
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                await _make_session(db, sid)
+
+        cp = SQLiteCheckpointer(_db.async_session_factory)
+        ctx = _ctx(str(sid))
+        messages = [AssistantMessage(content=f"message-{i}") for i in range(3)]
+        state = AgentState(messages=messages)
+        await cp.sync(ctx, state)
+        for message in messages:
+            message.exclude_from_context = True
+
+        statements: list[str] = []
+
+        def record_statement(_conn, _cursor, statement, _parameters, _context, _many):
+            statements.append(statement)
+
+        event.listen(_db.engine.sync_engine, "before_cursor_execute", record_statement)
+        try:
+            await cp.sync(ctx, state)
+        finally:
+            event.remove(
+                _db.engine.sync_engine, "before_cursor_execute", record_statement
+            )
+
+        exclusion_selects = [
+            statement
+            for statement in statements
+            if "SELECT" in statement.upper() and "session_messages" in statement
+        ]
+        exclusion_updates = [
+            statement
+            for statement in statements
+            if "UPDATE session_messages" in statement
+        ]
+        assert exclusion_selects == []
+        assert len(exclusion_updates) == 1
+
+        async with _db.async_session_factory() as db:
+            persisted = await get_messages(db, sid)
+        assert persisted == []
+        assert all(id(message) in cp._persisted[str(sid)] for message in messages)
+
+    @pytest.mark.asyncio
     async def test_update_exclude_flags_skips_non_assistant_tool(self):
         """sync() skips exclude_from_context updates for system/human messages."""
         import app.core.db as _db
@@ -564,6 +615,26 @@ class TestSQLiteCheckpointerSync:
         msg.exclude_from_context = True
         # Me should not raise
         await cp.sync(ctx, state)
+
+    @pytest.mark.asyncio
+    async def test_update_exclude_flags_missing_db_row_is_safe(self):
+        """A stale persisted db_id is harmless when the bulk UPDATE matches no row."""
+        import app.core.db as _db
+
+        sid = uuid.uuid7()
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                await _make_session(db, sid)
+
+        cp = SQLiteCheckpointer(_db.async_session_factory)
+        ctx = _ctx(str(sid))
+        msg = AssistantMessage(content="deleted row", exclude_from_context=True)
+        msg.db_id = uuid.uuid7()
+        cp._persisted[str(sid)] = {id(msg)}
+
+        await cp.sync(ctx, AgentState(messages=[msg]))
+
+        assert id(msg) in cp._persisted[str(sid)]
 
     @pytest.mark.asyncio
     async def test_sync_system_message_in_seen_skipped(self):

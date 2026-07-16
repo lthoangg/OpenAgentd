@@ -22,8 +22,9 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 from uuid import UUID
 
+import sqlalchemy as sa
 from loguru import logger
-from sqlmodel import col, select
+from sqlmodel import col
 
 from app.agent.schemas.chat import (
     AssistantMessage,
@@ -300,27 +301,27 @@ class SQLiteCheckpointer(Checkpointer):
         async with self._session_factory() as db:
             async with db.begin():
                 # ── Update exclude_from_context on already-persisted messages ─────
-                # Re-read the flag directly — no diff tracking needed.
-                # db_id is set on all messages after first persist, so PK lookup is safe.
-                for msg in seen_messages:
-                    if isinstance(msg, SystemMessage):
-                        continue
-                    if not msg.exclude_from_context:
-                        continue
-                    if msg.db_id is None:
-                        continue
-                    stmt = select(SessionMessage).where(
-                        col(SessionMessage.id) == msg.db_id
+                # One-way conditional UPDATE avoids re-reading every tracked row.
+                exclude_ids = [
+                    msg.db_id
+                    for msg in seen_messages
+                    if not isinstance(msg, SystemMessage)
+                    and msg.exclude_from_context
+                    and msg.db_id is not None
+                ]
+                if exclude_ids:
+                    stmt = (
+                        sa.update(SessionMessage)
+                        .where(col(SessionMessage.id).in_(exclude_ids))
+                        .where(col(SessionMessage.exclude_from_context).is_(False))
+                        .values(exclude_from_context=True)
                     )
-                    row = (await db.exec(stmt)).first()
-                    if row is not None and not row.exclude_from_context:
-                        row.exclude_from_context = True
-                        db.add(row)
-                        logger.debug(
-                            "checkpointer_exclude_flag_updated session_id={} db_id={}",
-                            sid,
-                            msg.db_id,
-                        )
+                    await db.exec(stmt)
+                    logger.debug(
+                        "checkpointer_exclude_flags_updated session_id={} count={}",
+                        sid,
+                        len(exclude_ids),
+                    )
 
                 # ── Persist new messages ──────────────────────────────────────────
                 for msg in new_messages:

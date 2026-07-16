@@ -358,34 +358,35 @@ class TestTeamChatRoute:
         assert response.json()["status"] == "queued"
         test_team._activate_queued_user_messages.assert_awaited_once_with(session_id)
 
-    def test_team_chat_does_not_queue_when_lead_idle_members_running(
+    def test_team_chat_activates_queue_when_lead_idle_members_running(
         self, app_with_team, test_team
     ):
-        """When the lead is idle but members are still running, a new message
-        dispatches directly — the lead can accept a new turn.
-
-        Previously ``has_active_user_turn`` checked ``_has_active_turn``
-        (which stays True until all members finish), causing messages to be
-        queued unnecessarily. With the fix it only checks lead state, so a
-        message goes straight to the idle lead.
-        """
+        """Keep durable ordering, but wake an idle lead without waiting for members."""
         session_id = str(uuid.uuid7())
         test_team.lead.state = "idle"
-        test_team._has_active_turn = True  # members still running
+        test_team._has_active_turn = True  # members from the prior lead turn still run
+        test_team._activate_queued_user_messages = AsyncMock(return_value=True)
         test_team.handle_user_message = AsyncMock(return_value=session_id)
+
+        async def save_queue(_db, _session_id, _message, *, extra=None):
+            queued = AsyncMock()
+            queued.id = uuid.uuid7()
+            return queued
 
         client = TestClient(app_with_team)
         try:
-            response = client.post(
-                "/api/team/chat",
-                data={"message": "new message", "session_id": session_id},
-            )
+            with patch("app.api.routes.team.chat.save_queued_user_message", save_queue):
+                response = client.post(
+                    "/api/team/chat",
+                    data={"message": "queued", "session_id": session_id},
+                )
         finally:
             test_team._has_active_turn = False
 
         assert response.status_code == 202
-        assert response.json()["status"] == "accepted"
-        test_team.handle_user_message.assert_awaited_once()
+        assert response.json()["status"] == "queued"
+        test_team._activate_queued_user_messages.assert_awaited_once_with(session_id)
+        test_team.handle_user_message.assert_not_awaited()
 
     def test_team_chat_queued_message_persists_explicit_uploads(
         self, app_with_team, test_team

@@ -32,6 +32,7 @@ from app.services.chat_service_revert import (
     get_dynamically_visible_messages as _get_dynamically_visible_messages,
     history_messages_stmt as _history_messages_stmt,
     is_hidden_from_user as _is_hidden_from_user,
+    llm_history_messages_stmt as _llm_history_messages_stmt,
 )
 
 
@@ -99,7 +100,12 @@ async def heal_orphaned_tool_calls(db: AsyncSession, session_id: UUID) -> int:
     case).  Caller is responsible for the commit.
     """
     boundary = await _boundary_created_at(db, session_id)
-    rows = (await db.exec(_history_messages_stmt(session_id, boundary))).all()
+    stmt = (
+        _llm_history_messages_stmt(session_id)
+        if boundary is None
+        else _history_messages_stmt(session_id, boundary)
+    )
+    rows = (await db.exec(stmt)).all()
     db_messages = await _get_dynamically_visible_messages(
         db, session_id, boundary, rows
     )
@@ -314,7 +320,12 @@ async def get_messages_for_llm(db: AsyncSession, session_id: UUID) -> list[ChatM
     logger.debug("loading_llm_messages session_id={}", session_id)
     try:
         boundary = await _boundary_created_at(db, session_id)
-        rows = (await db.exec(_history_messages_stmt(session_id, boundary))).all()
+        stmt = (
+            _llm_history_messages_stmt(session_id)
+            if boundary is None
+            else _history_messages_stmt(session_id, boundary)
+        )
+        rows = (await db.exec(stmt)).all()
         db_messages = await _get_dynamically_visible_messages(
             db, session_id, boundary, rows
         )

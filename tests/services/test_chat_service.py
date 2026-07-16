@@ -29,6 +29,7 @@ from app.services.chat_service import (
     undo_session_messages,
     save_message,
 )
+from app.services.chat_service_revert import llm_history_messages_stmt
 
 
 @pytest_asyncio.fixture
@@ -971,6 +972,31 @@ async def test_queued_messages_always_visible_despite_exclude_flag(session):
 
 
 # ── get_messages_for_llm ──────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_llm_history_query_without_revert_excludes_compacted_rows(session):
+    """The ordinary LLM query reads only visible, summary, and queued rows."""
+    chat_session = await create_chat_session(session)
+    await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="compacted"),
+        exclude_from_context=True,
+    )
+    await save_message(
+        session,
+        chat_session.id,
+        HumanMessage(content="summary"),
+        is_summary=True,
+    )
+    await save_message(session, chat_session.id, HumanMessage(content="visible"))
+    await save_queued_user_message(session, chat_session.id, "queued")
+    await session.commit()
+
+    rows = (await session.exec(llm_history_messages_stmt(chat_session.id))).all()
+
+    assert [row.content for row in rows] == ["summary", "visible", "queued"]
 
 
 @pytest.mark.asyncio

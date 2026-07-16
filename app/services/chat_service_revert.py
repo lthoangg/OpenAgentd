@@ -76,6 +76,23 @@ def history_messages_stmt(session_id: UUID, boundary: datetime | None = None):
     return stmt.order_by(col(SessionMessage.created_at).asc())
 
 
+def llm_history_messages_stmt(session_id: UUID):
+    """Select the rows needed for the ordinary, non-reverted LLM window."""
+    queued = col(SessionMessage.extra)["queue_status"].as_string() == "queued"
+    return (
+        select(SessionMessage)
+        .where(col(SessionMessage.session_id) == session_id)
+        .where(
+            or_(
+                ~col(SessionMessage.exclude_from_context),
+                col(SessionMessage.is_summary),
+                queued,
+            )
+        )
+        .order_by(col(SessionMessage.created_at).asc())
+    )
+
+
 def is_history_visible(row: SessionMessage) -> bool:
     if not row.exclude_from_context:
         return True

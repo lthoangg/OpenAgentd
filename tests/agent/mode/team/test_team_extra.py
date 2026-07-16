@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import uuid
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from sqlalchemy import event
 from sqlalchemy.dialects import sqlite
 
 from app.agent.mode.team.member import TeamLead, TeamMember
@@ -178,6 +180,90 @@ class TestTryEmitDone:
 
 class TestHandleUserMessageParentSession:
     @pytest.mark.asyncio
+    async def test_handle_user_message_bulk_update_repairs_parent_rows(self):
+        import app.core.db as app_db
+        from app.models.chat import ChatSession
+
+        lead_uuid = uuid.uuid7()
+        member_uuid = uuid.uuid7()
+        async with app_db.async_session_factory() as db:
+            async with db.begin():
+                db.add(ChatSession(id=lead_uuid))
+                db.add(ChatSession(id=member_uuid))
+
+        lead = TeamLead(
+            _make_agent("lead"),
+            session_id=str(lead_uuid),
+            db_factory=app_db.async_session_factory,
+        )
+        member = TeamMember(
+            _make_agent("worker"),
+            session_id=str(member_uuid),
+            db_factory=app_db.async_session_factory,
+        )
+        team = AgentTeam(lead=lead, members={"worker": member})
+        statements: list[str] = []
+
+        def record_statement(_conn, _cursor, statement, _parameters, _context, _many):
+            statements.append(statement)
+
+        event.listen(
+            app_db.engine.sync_engine, "before_cursor_execute", record_statement
+        )
+        try:
+            with (
+                patch(
+                    "app.services.snapshot_service.track",
+                    new=AsyncMock(return_value=None),
+                ),
+                patch("app.services.memory_stream_store.init_turn", new=AsyncMock()),
+                patch.object(team.mailbox, "send", new=AsyncMock()),
+            ):
+                await team.handle_user_message("hello", session_id=str(lead_uuid))
+        finally:
+            event.remove(
+                app_db.engine.sync_engine, "before_cursor_execute", record_statement
+            )
+
+        updates = [
+            statement
+            for statement in statements
+            if statement.lstrip().upper().startswith("UPDATE CHAT_SESSIONS")
+        ]
+        assert len(updates) == 1
+        async with app_db.async_session_factory() as db:
+            member_row = await db.get(ChatSession, member_uuid)
+        assert member_row is not None
+        assert member_row.parent_session_id == lead_uuid
+
+    @pytest.mark.asyncio
+    async def test_handle_user_message_bulk_repairs_live_member_parents(self):
+        team, mock_db = _make_team()
+        second = TeamMember(
+            _make_agent("second"),
+            session_id="00000000-0000-0000-0000-000000000003",
+            db_factory=team.lead.db_factory,
+        )
+        team.members["second"] = second
+        team._members_by_name[second.name] = second
+        team.mailbox.register("lead")
+
+        with (
+            patch("app.services.snapshot_service.track", new=AsyncMock()),
+            patch("app.services.memory_stream_store.init_turn", new=AsyncMock()),
+            patch.object(team.mailbox, "send", new=AsyncMock()),
+        ):
+            await team.handle_user_message("hello", session_id=team.lead.session_id)
+
+        assert mock_db.get.await_count == 2
+        updates = [
+            call.args[0]
+            for call in mock_db.exec.await_args_list
+            if str(call.args[0]).lstrip().upper().startswith("UPDATE")
+        ]
+        assert len(updates) == 1
+
+    @pytest.mark.asyncio
     async def test_handle_user_message_updates_parent_session_id(self):
         import uuid
 
@@ -245,7 +331,7 @@ class TestHandleUserMessageParentSession:
 
     @pytest.mark.asyncio
     async def test_handle_user_message_exception_in_member_update_is_swallowed(self):
-        """Lines 197-198: exception in member parent update must not propagate."""
+        """A bulk member-parent UPDATE failure must not block user delivery."""
         import uuid
 
         lead_uuid = uuid.uuid7()
@@ -256,12 +342,15 @@ class TestHandleUserMessageParentSession:
         mock_db.flush = AsyncMock()
         mock_db.refresh = AsyncMock()
         mock_db.add = MagicMock()
-        mock_db.exec = AsyncMock(
-            return_value=MagicMock(
-                all=MagicMock(return_value=[]),
-                first=MagicMock(return_value=None),
+
+        async def fake_exec(statement):
+            if str(statement).lstrip().upper().startswith("UPDATE"):
+                raise RuntimeError("DB error for member bulk update")
+            return MagicMock(
+                all=MagicMock(return_value=[]), first=MagicMock(return_value=None)
             )
-        )
+
+        mock_db.exec = AsyncMock(side_effect=fake_exec)
 
         async def fake_get(model, uid):
             from app.models.chat import ChatSession
@@ -270,8 +359,7 @@ class TestHandleUserMessageParentSession:
                 row = MagicMock(spec=ChatSession)
                 row.id = lead_uuid
                 return row
-            # Member parent repair is best-effort.
-            raise RuntimeError("DB error for member")
+            return None
 
         mock_db.get = fake_get
 
@@ -292,9 +380,12 @@ class TestHandleUserMessageParentSession:
         with (
             patch("app.services.memory_stream_store.push_event", new=AsyncMock()),
             patch("app.services.memory_stream_store.init_turn", new=AsyncMock()),
+            patch.object(team.mailbox, "send", new=AsyncMock()) as send,
         ):
-            # Must not raise even if member DB update fails
             await team.handle_user_message("hello", session_id=str(lead_uuid))
+
+        send.assert_awaited_once()
+        mock_db.commit.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------

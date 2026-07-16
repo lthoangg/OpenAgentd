@@ -9,9 +9,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.agent.mode.team.mailbox import TeamMailbox
+from app.agent.mode.team.mailbox import Message, TeamMailbox
 from app.agent.mode.team.member import (
     _mark_last_assistant_interrupted,
+    TeamLead,
     TeamMember,
 )
 from tests.agent.mode.team.conftest import MockTeamProvider
@@ -253,3 +254,153 @@ class TestEnsureDbSession:
 
         member = TeamMember(agent, session_id=sid, db_factory=bad_factory)
         await member._ensure_db_session()  # Must not raise
+
+
+class TestInboxPersistence:
+    @pytest.mark.asyncio
+    async def test_lead_inbox_skips_user_rows_but_persists_peer_rows_in_order(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        from app.agent.agent_loop import Agent
+
+        factory_calls = 0
+
+        class Db:
+            @asynccontextmanager
+            async def begin(self):
+                yield
+
+        @asynccontextmanager
+        async def factory():
+            nonlocal factory_calls
+            factory_calls += 1
+            yield Db()
+
+        async def fake_save(_db, _session_id, _message, **_kwargs):
+            return type("Row", (), {"id": uuid.uuid7()})()
+
+        monkeypatch.setattr("app.agent.mode.team.member.save_message", fake_save)
+        lead = TeamLead(
+            Agent(name="lead", llm_provider=MockTeamProvider()),
+            session_id=str(uuid.uuid7()),
+            db_factory=factory,
+        )
+
+        persisted = await lead._persist_inbox(
+            [
+                Message(from_agent="user", to_agent="lead", content="user"),
+                Message(from_agent="worker", to_agent="lead", content="peer"),
+            ]
+        )
+
+        assert factory_calls == 1
+        assert [message.content for message in persisted] == ["user", "peer"]
+        assert persisted[0].db_id is None
+        assert persisted[1].db_id is not None
+
+    @pytest.mark.asyncio
+    async def test_persist_inbox_rolls_back_the_entire_batch_on_save_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        import app.core.db as app_db
+        from app.agent.agent_loop import Agent
+        from app.models.chat import ChatSession, SessionMessage
+        from app.services.chat_service import save_message as real_save_message
+        from sqlmodel import col, select
+
+        session_id = uuid.uuid7()
+        async with app_db.async_session_factory() as db:
+            async with db.begin():
+                db.add(ChatSession(id=session_id))
+
+        calls = 0
+
+        async def failing_second_save(db, *args, **kwargs):
+            nonlocal calls
+            calls += 1
+            row = await real_save_message(db, *args, **kwargs)
+            if calls == 2:
+                raise RuntimeError("second insert failed")
+            return row
+
+        monkeypatch.setattr(
+            "app.agent.mode.team.member.save_message", failing_second_save
+        )
+        member = TeamMember(
+            Agent(name="worker", llm_provider=MockTeamProvider()),
+            session_id=str(session_id),
+            db_factory=app_db.async_session_factory,
+        )
+
+        with pytest.raises(RuntimeError, match="second insert failed"):
+            await member._persist_inbox(
+                [
+                    Message(from_agent="lead", to_agent="worker", content="first"),
+                    Message(from_agent="lead", to_agent="worker", content="second"),
+                ]
+            )
+
+        async with app_db.async_session_factory() as db:
+            rows = (
+                await db.exec(
+                    select(SessionMessage).where(
+                        col(SessionMessage.session_id) == session_id
+                    )
+                )
+            ).all()
+        assert rows == []
+
+    @pytest.mark.asyncio
+    async def test_persist_inbox_uses_one_transaction_and_preserves_message_order(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        from app.agent.agent_loop import Agent
+
+        factory_calls = 0
+        transactions = 0
+
+        class Db:
+            @asynccontextmanager
+            async def begin(self):
+                nonlocal transactions
+                transactions += 1
+                yield
+
+        @asynccontextmanager
+        async def factory():
+            nonlocal factory_calls
+            factory_calls += 1
+            yield Db()
+
+        saved: list[tuple[str, dict]] = []
+
+        async def fake_save(_db, _session_id, message, *, extra=None, **_kwargs):
+            saved.append((message.content or "", extra or {}))
+            return type("Row", (), {"id": uuid.uuid7()})()
+
+        monkeypatch.setattr("app.agent.mode.team.member.save_message", fake_save)
+        member = TeamMember(
+            Agent(name="worker", llm_provider=MockTeamProvider()),
+            session_id=str(uuid.uuid7()),
+            db_factory=factory,
+        )
+        inbox = [
+            Message(from_agent="lead", to_agent="worker", content="first"),
+            Message(
+                from_agent="peer",
+                to_agent="worker",
+                content="second",
+                is_broadcast=True,
+            ),
+        ]
+
+        persisted = await member._persist_inbox(inbox)
+
+        assert factory_calls == 1
+        assert transactions == 1
+        assert [message.content for message in persisted] == ["first", "second"]
+        assert all(message.db_id is not None for message in persisted)
+        assert saved == [
+            ("first", {"from_agent": "lead", "is_broadcast": False}),
+            ("second", {"from_agent": "peer", "is_broadcast": True}),
+        ]

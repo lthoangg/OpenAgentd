@@ -716,29 +716,34 @@ class TeamMemberBase(abc.ABC):
         crashes.  Returns the list of HumanMessages (may be empty).
         """
         result: list[HumanMessage] = []
+        to_persist: list[tuple[HumanMessage, dict[str, object]]] = []
 
         for msg in messages:
             # tool always delivers "[agent]: content" — user/broadcast pass through as-is
             content = msg.content
 
             human_msg = HumanMessage(content=content)
-            extra = {
+            extra: dict[str, object] = {
                 "from_agent": msg.from_agent,
                 "is_broadcast": msg.is_broadcast,
             }
 
             # Let subclass decide whether to skip persistence
             if not self._skip_inbox_persistence([msg.from_agent]):
-                db_factory = resolve_db_factory(self.db_factory)
-                session_uuid = uuid.UUID(self.session_id)
-                async with db_factory() as db:
-                    async with db.begin():
+                to_persist.append((human_msg, extra))
+
+            result.append(human_msg)
+
+        if to_persist:
+            db_factory = resolve_db_factory(self.db_factory)
+            session_uuid = uuid.UUID(self.session_id)
+            async with db_factory() as db:
+                async with db.begin():
+                    for human_msg, extra in to_persist:
                         saved_row = await save_message(
                             db, session_uuid, human_msg, extra=extra
                         )
                         human_msg.db_id = saved_row.id  # stash db_id for sync()
-
-            result.append(human_msg)
 
         return result
 

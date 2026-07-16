@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 from uuid import UUID, uuid7
 
+import sqlalchemy as sa
 from loguru import logger
 from sqlmodel import col, func, select
 
@@ -647,21 +648,33 @@ class AgentTeam:
                     },
                 )
 
+            member_ids: list[UUID] = []
             for member in self.members.values():
                 try:
-                    member_uuid = UUID(member.session_id)
-                    member_row = await db.get(ChatSession, member_uuid)
-                    if (
-                        member_row is not None
-                        and member_row.parent_session_id != lead_uuid
-                    ):
-                        member_row.parent_session_id = lead_uuid
-                        db.add(member_row)
+                    member_ids.append(UUID(member.session_id))
                 except Exception as inner_exc:
                     logger.warning(
                         "team_parent_member_session_failed member={} error={}",
                         member.name,
                         inner_exc,
+                    )
+            if member_ids:
+                try:
+                    stmt = (
+                        sa.update(ChatSession)
+                        .where(col(ChatSession.id).in_(member_ids))
+                        .where(
+                            sa.or_(
+                                col(ChatSession.parent_session_id).is_(None),
+                                col(ChatSession.parent_session_id) != lead_uuid,
+                            )
+                        )
+                        .values(parent_session_id=lead_uuid)
+                    )
+                    await db.exec(stmt)
+                except Exception as inner_exc:
+                    logger.warning(
+                        "team_parent_member_sessions_failed error={}", inner_exc
                     )
 
             await db.commit()

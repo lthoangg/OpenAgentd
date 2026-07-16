@@ -161,7 +161,12 @@ text, markdown reflow, image load). This is the sole auto-follow mechanism.
 
 **Do not use `scrollTo({ behavior: 'smooth' })` directly** — it is unreliable on iOS
 WKWebView (may be instant or silently no-op), which leaves scroll events
-mid-flight that falsely detach the view. Always use `el.scrollTop = el.scrollHeight` for auto-scroll. If smooth scrolling is required for user actions (e.g. clicking the scroll-to-bottom button), wrap it using a programmatic scroll ref to ignore intermediate scroll events.
+mid-flight that falsely detach the view. For auto-scroll, target the exact maximum
+`Math.max(0, el.scrollHeight - el.clientHeight)` and record the resulting
+`el.scrollTop`; relying on browser clamping from `scrollHeight` leaves a stale
+position after layout contractions. If smooth scrolling is required for user
+actions (e.g. clicking the scroll-to-bottom button), wrap it using a programmatic
+scroll ref to ignore intermediate scroll events.
 
 The `data-keyboard-open` attribute is set/cleared by `useMobileViewportGuards`
 (`hooks/use-mobile-viewport.ts`) in sync with `window.visualViewport` resize events.

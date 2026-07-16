@@ -243,11 +243,12 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
     const el = scrollRef.current
     if (!el) return
+    const bottom = Math.max(0, el.scrollHeight - el.clientHeight)
     attachedRef.current = true
     setShowScrollBtn(false)
     if (behavior === 'smooth' && typeof el.scrollTo === 'function') {
       isProgrammaticScrollRef.current = true
-      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+      el.scrollTo({ top: bottom, behavior: 'smooth' })
       const handleScrollEnd = () => {
         isProgrammaticScrollRef.current = false
         el.removeEventListener('scrollend', handleScrollEnd)
@@ -258,8 +259,8 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
         el.removeEventListener('scrollend', handleScrollEnd)
       }, 500)
     } else {
-      el.scrollTop = el.scrollHeight
-      lastScrollTopRef.current = el.scrollHeight
+      el.scrollTop = bottom
+      lastScrollTopRef.current = el.scrollTop
     }
   }, [])
 
@@ -367,7 +368,8 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
       lastContentHeight = nextContentHeight
       lastClientHeight = nextClientHeight
       if (document.documentElement.hasAttribute('data-keyboard-open') && viewportChanged && !contentGrew && !contentChanged) return
-      el.scrollTop = el.scrollHeight
+      el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight)
+      lastScrollTopRef.current = el.scrollTop
     })
     ro.observe(content)
     ro.observe(el)

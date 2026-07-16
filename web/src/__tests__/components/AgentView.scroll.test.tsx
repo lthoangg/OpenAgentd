@@ -1,7 +1,9 @@
 import { describe, it, expect, afterEach, beforeEach, mock } from "bun:test"
 import { act, render, cleanup } from "@testing-library/react"
+import { AgentPane } from "@/components/AgentPane"
 import { AgentView } from "@/components/AgentView"
 import type { ContentBlock } from "@/api/types"
+import type { AgentStream } from "@/stores/useTeamStore"
 
 afterEach(cleanup)
 
@@ -31,6 +33,25 @@ function renderStream(props: Partial<React.ComponentProps<typeof AgentView>> = {
       isWorking={props.isWorking ?? false}
     />,
   )
+}
+
+function makeAgentStream(blocks: ContentBlock[]): AgentStream {
+  return {
+    blocks,
+    currentBlocks: [],
+    currentText: "",
+    currentThinking: "",
+    status: "idle",
+    usage: {
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+      cachedTokens: 0,
+    },
+    _completionBase: 0,
+    model: null,
+    lastError: null,
+  }
 }
 
 async function waitFrame() {
@@ -99,7 +120,7 @@ describe("AgentView — scroll-to-bottom button", () => {
     const btn = container.querySelector('button[aria-label="Scroll to bottom"]') as HTMLButtonElement
     await act(async () => { btn.click() })
 
-    expect(scrollToMock).toHaveBeenCalledWith({ top: el.scrollHeight, behavior: "smooth" })
+    expect(scrollToMock).toHaveBeenCalledWith({ top: el.scrollHeight - el.clientHeight, behavior: "smooth" })
 
     // During the smooth scroll, intermediate scroll events should not detach the view
     await fireScroll(el, 150)
@@ -260,6 +281,98 @@ describe("AgentView — scroll-to-bottom button", () => {
 
     expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
   })
+})
+
+describe("chat layout resize", () => {
+  for (const [name, viewportWidth, renderChat] of [
+    ["AgentView on desktop", 1440, () => renderStream({ blocks: [makeTextBlock("b1", "Hi")] })],
+    ["AgentView on mobile", 390, () => renderStream({ blocks: [makeTextBlock("b1", "Hi")] })],
+    ["AgentPane in desktop split view", 1440, () => render(<AgentPane name="researcher" stream={makeAgentStream([makeTextBlock("b1", "Hi")])} isLead={false} />)],
+  ] as const) {
+    it(`${name} stays attached when collapsing content lowers the scroll range`, async () => {
+      const originalResizeObserver = globalThis.ResizeObserver
+      const originalInnerWidth = window.innerWidth
+      const resizeObservers: Array<{
+        callback: ResizeObserverCallback
+        targets: Element[]
+      }> = []
+
+      globalThis.ResizeObserver = class {
+        private readonly entry: (typeof resizeObservers)[number]
+
+        constructor(callback: ResizeObserverCallback) {
+          this.entry = { callback, targets: [] }
+          resizeObservers.push(this.entry)
+        }
+        observe(target: Element) {
+          this.entry.targets.push(target)
+        }
+        unobserve() {}
+        disconnect() {}
+      } as unknown as typeof globalThis.ResizeObserver
+
+      try {
+        Object.defineProperty(window, "innerWidth", { configurable: true, value: viewportWidth })
+        const { container } = renderChat()
+        const el = container.querySelector(".overflow-y-auto") as HTMLDivElement
+        const content = name.startsWith("AgentView")
+          ? container.querySelector(".mx-auto") as HTMLDivElement
+          : el.firstElementChild as HTMLDivElement
+        let scrollHeight = 1200
+        const clientHeight = 500
+        let scrollTop = 0
+        let requestedScrollTop = 0
+        let contentHeight = 1200
+
+        Object.defineProperties(el, {
+          scrollHeight: { configurable: true, get: () => scrollHeight },
+          clientHeight: { configurable: true, get: () => clientHeight },
+          scrollTop: {
+            configurable: true,
+            get: () => scrollTop,
+            set: (value: number) => {
+              requestedScrollTop = value
+              scrollTop = Math.min(value, Math.max(0, scrollHeight - clientHeight))
+            },
+          },
+        })
+        content.getBoundingClientRect = () => ({
+          x: 0,
+          y: 0,
+          width: 800,
+          height: contentHeight,
+          top: 0,
+          right: 800,
+          bottom: contentHeight,
+          left: 0,
+          toJSON: () => ({}),
+        })
+        const observer = resizeObservers.find((entry) => entry.targets.includes(content))
+        expect(observer).toBeTruthy()
+
+        await act(async () => {
+          observer?.callback([{ target: content } as unknown as ResizeObserverEntry], {} as ResizeObserver)
+          el.dispatchEvent(new Event("scroll"))
+        })
+        expect(scrollTop).toBe(700)
+        expect(requestedScrollTop).toBe(700)
+
+        scrollHeight = 900
+        contentHeight = 900
+        await act(async () => {
+          observer?.callback([{ target: content } as unknown as ResizeObserverEntry], {} as ResizeObserver)
+          el.dispatchEvent(new Event("scroll"))
+        })
+
+        expect(scrollTop).toBe(400)
+        expect(requestedScrollTop).toBe(400)
+        expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
+      } finally {
+        globalThis.ResizeObserver = originalResizeObserver
+        Object.defineProperty(window, "innerWidth", { configurable: true, value: originalInnerWidth })
+      }
+    })
+  }
 })
 
 // ── bounce dots ───────────────────────────────────────────────────────────

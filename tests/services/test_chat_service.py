@@ -1,5 +1,6 @@
 import pytest
 import pytest_asyncio
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -222,6 +223,41 @@ async def test_save_message_with_hidden_flag(session):
     saved = await save_message(session, chat_session.id, msg, is_hidden=True)
     assert saved.exclude_from_context is True
     assert saved.is_summary is False
+
+
+@pytest.mark.asyncio
+async def test_save_message_flushes_returned_tool_row_without_refresh_select(
+    session, engine
+):
+    """Flush populates Python defaults and tool fields without a post-insert SELECT."""
+    chat_session = await create_chat_session(session)
+    statements: list[str] = []
+
+    def record_statement(_conn, _cursor, statement, _parameters, _context, _many):
+        statements.append(statement)
+
+    event.listen(engine.sync_engine, "before_cursor_execute", record_statement)
+    try:
+        saved = await save_message(
+            session,
+            chat_session.id,
+            ToolMessage(content="result", tool_call_id="call-1", name="search"),
+            extra={"duration_ms": 12.5},
+        )
+    finally:
+        event.remove(engine.sync_engine, "before_cursor_execute", record_statement)
+
+    assert not any("SELECT" in statement.upper() for statement in statements)
+    assert saved.id is not None
+    assert saved.created_at is not None
+    assert saved.session_id == chat_session.id
+    assert saved.role == "tool"
+    assert saved.content == "result"
+    assert saved.tool_call_id == "call-1"
+    assert saved.name == "search"
+    assert saved.extra == {"duration_ms": 12.5}
+    assert saved.is_summary is False
+    assert saved.exclude_from_context is False
 
 
 @pytest.mark.asyncio

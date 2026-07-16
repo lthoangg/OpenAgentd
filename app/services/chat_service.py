@@ -253,7 +253,6 @@ async def save_message(
         db_message = SessionMessage(**kwargs)
         db.add(db_message)
         await db.flush()
-        await db.refresh(db_message)
         logger.debug(
             "message_saved session_id={} message_id={} role={}",
             session_id,

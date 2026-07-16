@@ -107,6 +107,16 @@ def test_tail_text_cuts_by_bytes():
     assert len(tail.encode()) <= 1024 + 200  # generous for newlines
 
 
+def test_tail_text_caps_a_single_oversized_line():
+    text = "x" * 20_000
+
+    tail, cut = _tail_text(text, max_lines=200, max_bytes=1024)
+
+    assert cut is True
+    assert len(tail.encode()) <= 1024
+    assert tail.endswith("x" * 100)
+
+
 # ---------------------------------------------------------------------------
 # _scrubbed_env — strip daemon-Python leak vars before spawning user shell
 # ---------------------------------------------------------------------------
@@ -523,6 +533,21 @@ def test_completed_background_process_limit_never_evicts_alive_processes():
     assert len(_bg_processes) == 101
     assert 2 not in _bg_processes
     assert set(_bg_processes) == {1, *range(3, 103)}
+
+
+@pytest.mark.asyncio
+async def test_background_reader_bounds_a_single_oversized_line():
+    reader = asyncio.StreamReader()
+    reader.feed_data(b"x" * 200_000)
+    reader.feed_eof()
+    proc = MagicMock(stdout=reader, returncode=0, pid=4242)
+
+    bg = _BgProcess(proc, "noisy-command", "session-1")
+    await bg._reader_task
+
+    output = bg.read_output()
+    assert output.endswith("x" * 100)
+    assert len(output) <= 24_100
 
 
 @pytest.mark.asyncio

@@ -152,6 +152,7 @@ _DEFAULT_TIMEOUT_SECONDS = (
     60  # 60 s default; background mode handles long-running processes
 )
 _BG_OUTPUT_MAX_LINES = 200  # ring-buffer per background process
+_BG_OUTPUT_MAX_LINE_BYTES = 24_000
 _BG_COMPLETED_TTL_SECONDS = 10 * 60
 _BG_MAX_COMPLETED_PROCESSES = 100
 
@@ -197,15 +198,36 @@ class _BgProcess:
         self._reader_task = asyncio.create_task(self._drain())
 
     async def _drain(self) -> None:
-        """Read lines from stdout until EOF."""
+        """Read bounded lines from stdout until EOF."""
         assert self.proc.stdout is not None
+        pending = b""
+        pending_was_cut = False
+
+        def append_line(raw: bytes, was_cut: bool = False) -> None:
+            if len(raw) > _BG_OUTPUT_MAX_LINE_BYTES:
+                raw = raw[-_BG_OUTPUT_MAX_LINE_BYTES:]
+                was_cut = True
+            decoded = raw.rstrip(b"\r").decode("utf-8", errors="replace")
+            if was_cut:
+                decoded = _LIVE_OUTPUT_TRUNCATED.rstrip("\n") + decoded
+            self.output.append(decoded)
+
         try:
             while True:
-                line = await self.proc.stdout.readline()
-                if not line:
+                chunk = await self.proc.stdout.read(8192)
+                if not chunk:
                     break
-                decoded = line.decode("utf-8", errors="replace").rstrip("\n")
-                self.output.append(decoded)
+                parts = (pending + chunk).split(b"\n")
+                pending = parts.pop()
+                for index, line in enumerate(parts):
+                    append_line(line, pending_was_cut and index == 0)
+                if parts:
+                    pending_was_cut = False
+                if len(pending) > _BG_OUTPUT_MAX_LINE_BYTES:
+                    pending = pending[-_BG_OUTPUT_MAX_LINE_BYTES:]
+                    pending_was_cut = True
+            if pending or pending_was_cut:
+                append_line(pending, pending_was_cut)
         except Exception as exc:
             # Reader is best-effort: a dead transport just ends capture.
             logger.debug("background_shell_reader_stopped error={!r}", exc)
@@ -415,7 +437,20 @@ def _tail_text(text: str, max_lines: int, max_bytes: int) -> tuple[str, bool]:
         else:
             del out[0]
 
-    return "\n".join(out), True
+    limited = "\n".join(out)
+    encoded = limited.encode()
+    if len(encoded) <= max_bytes:
+        return limited, True
+
+    marker = b"\n...output truncated...\n"
+    if max_bytes <= len(marker):
+        return encoded[-max_bytes:].decode("utf-8", errors="ignore"), True
+    content_bytes = max_bytes - len(marker)
+    head_bytes = content_bytes // 2
+    tail_bytes = content_bytes - head_bytes
+    head = encoded[:head_bytes].decode("utf-8", errors="ignore")
+    tail = encoded[-tail_bytes:].decode("utf-8", errors="ignore")
+    return head + marker.decode() + tail, True
 
 
 def _spill_output(content: str, workspace: Path, call_id: str) -> Path:

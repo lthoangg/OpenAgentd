@@ -1056,6 +1056,52 @@ async def test_stream_with_retry_on_retryable_http_error():
     assert chunks[0].choices[0].delta.content == "finally"
 
 
+async def test_stream_with_retry_retries_400_server_error_code():
+    """Provider-declared server errors are transient even when sent as HTTP 400."""
+    import httpx
+    from unittest.mock import patch
+
+    call_count = 0
+
+    async def mock_stream(
+        messages: list[ChatMessage],
+        tools: list[dict] | None = None,
+        **kwargs,
+    ):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            response = httpx.Response(
+                400,
+                request=httpx.Request("POST", "http://x"),
+                json={
+                    "error": {
+                        "code": "server_error",
+                        "message": "An error occurred while processing your request. You can retry your request.",
+                    }
+                },
+            )
+            raise httpx.HTTPStatusError(
+                "server error", request=response.request, response=response
+            )
+        yield make_text_chunk("recovered")
+
+    provider = MockProvider([[]])
+    provider.stream = mock_stream  # type: ignore[method-assign]
+    agent = Agent(name="bot", llm_provider=provider)
+
+    with patch("app.agent.agent_loop.retry.asyncio.sleep", new_callable=AsyncMock):
+        chunks = [
+            chunk
+            async for chunk in stream_with_retry(
+                **retry_args(agent), messages=[], tools=None
+            )
+        ]
+
+    assert call_count == 2
+    assert chunks[0].choices[0].delta.content == "recovered"
+
+
 async def test_stream_with_retry_non_retryable_http_error_raises():
     """Non-retryable 400 is classified into a typed ProviderRequestError.
 

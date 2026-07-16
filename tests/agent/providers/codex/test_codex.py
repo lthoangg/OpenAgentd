@@ -999,9 +999,8 @@ class TestCodexProviderInit:
             mock_load.return_value = ("access_token_123", "account_789")
             provider = CodexProvider(model="gpt-5.4")
 
-            assert (
-                provider._responses.request_timeout == CODEX_STREAM_IDLE_TIMEOUT_SECONDS
-            )
+            assert CODEX_STREAM_IDLE_TIMEOUT_SECONDS == 300.0
+            assert provider._responses.request_timeout == 300.0
 
     def test_init_accepts_max_tokens_parameter(self):
         """__init__() accepts max_tokens parameter."""

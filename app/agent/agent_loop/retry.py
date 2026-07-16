@@ -124,6 +124,17 @@ _BASE_DELAY = 1.0  # seconds — exponential base 3: 1, 3, 9, 27, 81
 _MAX_DELAY = 60.0  # seconds
 
 
+def _is_retryable_http_error(exc: httpx.HTTPStatusError) -> bool:
+    if exc.response.status_code in _RETRYABLE_STATUS_CODES:
+        return True
+    try:
+        payload = exc.response.json()
+    except (ValueError, json.JSONDecodeError):
+        return False
+    error = payload.get("error") if isinstance(payload, dict) else None
+    return isinstance(error, dict) and error.get("code") == "server_error"
+
+
 def parse_retry_after(exc: httpx.HTTPStatusError) -> int:
     """Extract ``retry_after`` seconds from a 429 response.
 
@@ -293,7 +304,7 @@ async def stream_with_retry(
                 yield chunk
             return  # successful completion — stop retry loop
         except httpx.HTTPStatusError as exc:
-            if exc.response.status_code not in _RETRYABLE_STATUS_CODES:
+            if not _is_retryable_http_error(exc):
                 try:
                     await exc.response.aread()
                     body = exc.response.text[:500]

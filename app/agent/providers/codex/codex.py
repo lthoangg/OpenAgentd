@@ -28,7 +28,7 @@ from app.agent.providers.openai.responses import ResponsesHandler
 from app.agent.schemas.chat import AssistantMessage, ChatMessage, SystemMessage
 
 CODEX_API_BASE = "https://chatgpt.com/backend-api/codex"
-CODEX_STREAM_IDLE_TIMEOUT_SECONDS = 10.0
+CODEX_STREAM_IDLE_TIMEOUT_SECONDS = 300.0
 _NO_SERVICE_TIER = {"", "auto", "default", "none", "off", "standard"}
 _NO_REASONING_SUMMARY_MODELS = {"gpt-5.3-codex-spark"}
 

@@ -33,79 +33,54 @@ export default defineConfig({
     },
   },
   build: {
-    rollupOptions: {
+    rolldownOptions: {
       output: {
-        manualChunks(id) {
-          // React core — loaded first, cached longest
-          if (id.includes("node_modules/react/") || id.includes("node_modules/react-dom/") || id.includes("node_modules/scheduler/")) {
-            return "react"
-          }
-          // Routing + query (always needed, changes with app versions)
-          if (
-            id.includes("node_modules/@tanstack/react-router") ||
-            id.includes("node_modules/@tanstack/router-") ||
-            id.includes("node_modules/@tanstack/react-query") ||
-            id.includes("node_modules/@tanstack/query-")
-          ) {
-            return "tanstack"
-          }
-          // Animation (framer-motion is large ~150 kB gz)
-          if (id.includes("node_modules/framer-motion")) {
-            return "motion"
-          }
-          // Markdown rendering (react-markdown + remark + rehype chain) — lazy loaded on demand
-          if (
-            id.includes("node_modules/react-markdown") ||
-            id.includes("node_modules/remark") ||
-            id.includes("node_modules/rehype") ||
-            id.includes("node_modules/unified") ||
-            id.includes("node_modules/vfile") ||
-            id.includes("node_modules/hast") ||
-            id.includes("node_modules/mdast") ||
-            id.includes("node_modules/micromark") ||
-            id.includes("node_modules/unist") ||
-            id.includes("node_modules/property-information") ||
-            id.includes("node_modules/lowlight") ||
-            id.includes("node_modules/highlight.js")
-          ) {
-            return "markdown"
-          }
-          // Icons (lucide ships many SVGs — lazy chunk)
-          if (id.includes("node_modules/lucide-react")) {
-            return "icons"
-          }
-          // State + utilities (zustand, immer, zod, clsx, cva, tailwind-merge)
-          if (
-            id.includes("node_modules/zustand") ||
-            id.includes("node_modules/immer") ||
-            id.includes("node_modules/zod") ||
-            id.includes("node_modules/clsx") ||
-            id.includes("node_modules/class-variance-authority") ||
-            id.includes("node_modules/tailwind-merge") ||
-            id.includes("node_modules/nuqs")
-          ) {
-            return "state-utils"
-          }
-          // UI primitives (@base-ui/react, radix, shadcn wrappers)
-          if (id.includes("node_modules/@base-ui/react") || id.includes("node_modules/@radix-ui")) {
-            return "ui"
-          }
-          // Dev tools (query devtools, router devtools) — stripped in prod but split anyway
-          if (
-            id.includes("node_modules/@tanstack/react-query-devtools") ||
-            id.includes("node_modules/@tanstack/router-devtools")
-          ) {
-            return "devtools"
-          }
-          // Tauri APIs — keep in one chunk so the static import from
-          // use-tauri-drag does not land in the main index bundle.
-          if (
-            id.includes("node_modules/@tauri-apps/") ||
-            id.includes("node_modules/@tauri-apps/api") ||
-            id.includes("node_modules/@tauri-apps/plugin-")
-          ) {
-            return "tauri"
-          }
+        // Rolldown-native chunk groups (the deprecated function-form
+        // `manualChunks` shim captured shared helpers — e.g. react's
+        // jsx-runtime — into the "markdown" group, which made every eager
+        // chunk statically depend on the 720 kB markdown chunk and forced it
+        // into the startup modulepreload set). Groups are matched by
+        // priority; unmatched shared helpers stay with their importers.
+        codeSplitting: {
+          groups: [
+            // React core — loaded first, cached longest.
+            { name: "react", test: /node_modules[\\/](react|react-dom|scheduler)[\\/]/, priority: 100 },
+            // Routing + query (always needed, changes with app versions).
+            {
+              name: "tanstack",
+              test: /node_modules[\\/]@tanstack[\\/](react-router|router-|react-query|query-)/,
+              priority: 90,
+            },
+            // Animation (framer-motion is large ~150 kB gz).
+            { name: "motion", test: /node_modules[\\/]framer-motion[\\/]/, priority: 90 },
+            // Syntax highlighting — separate from "markdown" because the app
+            // shell statically imports highlight.js (ToolCall shell commands,
+            // CodingFileViewerPanel); shared by the lazy markdown chunk.
+            { name: "syntax", test: /node_modules[\\/](highlight\.js|lowlight)[\\/]/, priority: 85 },
+            // Markdown rendering (react-markdown + remark/rehype chain +
+            // katex) — must stay OUT of the eager preload graph; it is
+            // dynamically imported via LazyMarkdownBlock.
+            // `includeDependenciesRecursively: false` keeps shared tiny
+            // helpers (extend, style-to-object, …) from being captured here,
+            // which would re-create eager → markdown import edges.
+            {
+              name: "markdown",
+              test: /node_modules[\\/](react-markdown|remark|rehype|unified|vfile|hast|mdast|micromark|unist|property-information|katex)/,
+              priority: 80,
+              includeDependenciesRecursively: false,
+            },
+            // Icons (lucide ships many SVGs).
+            { name: "icons", test: /node_modules[\\/]lucide-react[\\/]/, priority: 70 },
+            // State + utilities (zustand, immer, zod, nuqs).
+            {
+              name: "state-utils",
+              test: /node_modules[\\/](zustand|immer|zod|clsx|class-variance-authority|tailwind-merge|nuqs)[\\/]/,
+              priority: 70,
+            },
+            // Tauri APIs — keep in one chunk so the static import from
+            // use-tauri-drag does not land in the main index bundle.
+            { name: "tauri", test: /node_modules[\\/]@tauri-apps[\\/]/, priority: 70 },
+          ],
         },
       },
     },

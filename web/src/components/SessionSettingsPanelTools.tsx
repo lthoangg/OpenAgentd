@@ -6,7 +6,12 @@ import type { AgentInfo } from '@/api/types'
 import type { ServerStatus } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { SearchBar } from '@/components/ui/search-bar'
-import { MarkdownBlock } from '@/utils/markdown'
+// LazyMarkdownBlock (not MarkdownBlock) — a static import of `@/utils/markdown`
+// here would force the whole react-markdown chunk (~724 kB) to load and parse
+// at startup, defeating the app-wide lazy-markdown split (rolldown warns with
+// INEFFECTIVE_DYNAMIC_IMPORT). Tool descriptions render on expand, so the
+// plain-text Suspense fallback is fine.
+import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
 
 const TOOL_SEARCH_THRESHOLD = 8
 
@@ -75,7 +80,7 @@ function ToolRow({ name, description }: { name: string; description: string }) {
             className="overflow-hidden"
           >
             <div className="tool-desc border-t border-(--color-border) px-3 py-2">
-              <MarkdownBlock content={description.trim()} />
+              <LazyMarkdownBlock content={description.trim()} />
             </div>
           </motion.div>
         )}

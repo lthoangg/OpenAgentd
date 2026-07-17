@@ -81,6 +81,23 @@ def _schedule_provider_close(provider: "LLMProviderBase") -> None:
         logger.warning("provider_close_skipped_no_running_loop provider={}", provider)
 
 
+def _provider_supports_prompt_cache_key(provider_id: str) -> bool:
+    """Whether ``provider_id`` (e.g. ``"grok"``, ``"codex"``) honours
+    ``prompt_cache_key`` — looked up from the provider catalog rather than
+    hardcoded here, so this stays in sync with
+    :data:`app.agent.providers.catalog.ProviderEntry.supports_prompt_cache_key`
+    (e.g. xAI/Codex route requests sharing a cache key to the same backend
+    server, which is required to hit their per-server prefix KV cache — see
+    https://docs.x.ai/developers/advanced-api-usage/prompt-caching/maximizing-cache-hits).
+    """
+    if not provider_id:
+        return False
+    from app.agent.providers.catalog import find as find_provider
+
+    entry = find_provider(provider_id)
+    return bool(entry and entry.get("supports_prompt_cache_key", False))
+
+
 # -- Protocol prompt blocks (shared by build_protocol) -------------------------
 
 LEAD_MESSAGE_FORMAT = """\
@@ -786,13 +803,17 @@ class TeamMemberBase(abc.ABC):
             if isinstance(value, str) and value:
                 last_service_tier = value
                 break
+        # Providers whose backend routes on ``prompt_cache_key`` need a
+        # stable one on every call, even outside a thinking-level/service-tier
+        # override — so this must factor into whether we rebuild the
+        # provider at all, not just which kwargs it gets.
+        configured_provider_id, _, _ = (self.agent.model_id or "").partition(":")
+        provider_wants_cache_key = _provider_supports_prompt_cache_key(
+            configured_provider_id
+        )
         effective_model = session_model or (
             self.agent.model_id
-            if (
-                session_thinking_level
-                or last_service_tier
-                or (self.agent.model_id or "").startswith(("codex:", "grok:"))
-            )
+            if (session_thinking_level or last_service_tier or provider_wants_cache_key)
             else None
         )
         if (
@@ -812,15 +833,8 @@ class TeamMemberBase(abc.ABC):
                 model_kwargs["thinking_level"] = effective_thinking_level
             if last_service_tier:
                 model_kwargs["service_tier"] = last_service_tier
-            if effective_model.startswith(("codex:", "grok:")):
-                # xAI's Responses API routes requests sharing a
-                # ``prompt_cache_key`` to the same backend server, which is
-                # required to hit its per-server prefix KV cache — the
-                # message prefix being byte-stable is necessary but not
-                # sufficient. Without this, otherwise-identical Grok Build
-                # turns can land on a different replica each request and
-                # never hit the cache.
-                # https://docs.x.ai/developers/advanced-api-usage/prompt-caching/maximizing-cache-hits
+            effective_provider_id, _, _ = effective_model.partition(":")
+            if _provider_supports_prompt_cache_key(effective_provider_id):
                 model_kwargs["prompt_cache_key"] = f"openagentd:{self.session_id}"
             runtime_provider = self._team._provider_factory(
                 effective_model,

@@ -48,6 +48,7 @@ class ProviderEntry(TypedDict, total=False):
     metadata_source_provider: str  # source provider for same-model-id metadata aliases
     model_registry_aliases: dict[str, str]  # target model -> source provider:model
     supports_fast_mode: bool  # whether the provider honours service_tier="fast"
+    supports_prompt_cache_key: bool  # whether the provider honours prompt_cache_key
 
 
 _CATALOG: list[ProviderEntry] = [
@@ -138,6 +139,12 @@ _CATALOG: list[ProviderEntry] = [
         "description": "Use your Grok subscription through Grok Build OAuth.",
         "kind": "oauth",
         "env_var": "",
+        # xAI's Responses API routes requests sharing a prompt_cache_key to
+        # the same backend server, which is required to hit its per-server
+        # prefix KV cache (a byte-stable message prefix alone is necessary
+        # but not sufficient).
+        # https://docs.x.ai/developers/advanced-api-usage/prompt-caching/maximizing-cache-hits
+        "supports_prompt_cache_key": True,
         "metadata_source_provider": "xai",
         "oauth_command": "openagentd auth grok",
         "docs_url": "https://docs.x.ai/build/overview",
@@ -192,6 +199,7 @@ _CATALOG: list[ProviderEntry] = [
         "kind": "oauth",
         "env_var": "",
         "supports_fast_mode": True,
+        "supports_prompt_cache_key": True,
         "metadata_source_provider": "openai",
         "oauth_command": "openagentd auth codex",
         "docs_url": "https://platform.openai.com/docs/codex",
@@ -274,6 +282,7 @@ def all_providers() -> list[ProviderEntry]:
             "metadata_source_provider": plugin.metadata_source_provider,
             "model_registry_aliases": dict(plugin.model_registry_aliases),
             "supports_fast_mode": plugin.supports_fast_mode,
+            "supports_prompt_cache_key": plugin.supports_prompt_cache_key,
         }
         entry["credentials"] = credential_map(plugin.credentials)
         entries.append(entry)

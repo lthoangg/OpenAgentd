@@ -171,6 +171,34 @@ async def team_with_db():
     return team
 
 
+class TestProviderSupportsPromptCacheKey:
+    """Unit coverage for the catalog-driven prompt_cache_key lookup helper.
+
+    Provider-specific behavior belongs in the provider catalog
+    (``supports_prompt_cache_key``, mirroring ``supports_fast_mode``), not
+    as hardcoded prefix checks in the team orchestration layer.
+    """
+
+    def test_grok_and_codex_support_prompt_cache_key(self):
+        from app.agent.mode.team.member import _provider_supports_prompt_cache_key
+
+        assert _provider_supports_prompt_cache_key("grok") is True
+        assert _provider_supports_prompt_cache_key("codex") is True
+
+    def test_other_providers_do_not_support_prompt_cache_key(self):
+        from app.agent.mode.team.member import _provider_supports_prompt_cache_key
+
+        assert _provider_supports_prompt_cache_key("openai") is False
+        assert _provider_supports_prompt_cache_key("anthropic") is False
+        assert _provider_supports_prompt_cache_key("xai") is False
+
+    def test_empty_or_unknown_provider_id_is_false(self):
+        from app.agent.mode.team.member import _provider_supports_prompt_cache_key
+
+        assert _provider_supports_prompt_cache_key("") is False
+        assert _provider_supports_prompt_cache_key("not-a-real-provider") is False
+
+
 class TestOnDemandActivation:
     """Test on-demand activation — agents activate when messages arrive."""
 

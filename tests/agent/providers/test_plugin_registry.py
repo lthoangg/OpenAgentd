@@ -361,3 +361,117 @@ def test_plugin_without_fast_mode_forwarded_as_false(
     entry = find("slowplugin")
     assert entry is not None
     assert not entry.get("supports_fast_mode")
+
+
+# ── supports_prompt_cache_key ──────────────────────────────────────────────
+
+
+def test_plugin_supports_prompt_cache_key_defaults_false() -> None:
+    """ProviderPlugin.supports_prompt_cache_key is False when not specified."""
+    from app.agent.providers.plugin_api import ProviderPlugin
+
+    plugin = ProviderPlugin(
+        id="myplugin",
+        label="My Plugin",
+        description="A plugin.",
+        kind="api_key",
+        factory=lambda ctx: None,  # type: ignore[arg-type]
+    )
+    assert plugin.supports_prompt_cache_key is False
+
+
+def test_plugin_supports_prompt_cache_key_can_be_set_true() -> None:
+    """ProviderPlugin.supports_prompt_cache_key is forwarded when explicitly set."""
+    from app.agent.providers.plugin_api import ProviderPlugin
+
+    plugin = ProviderPlugin(
+        id="cacheplugin",
+        label="Cache Plugin",
+        description="A plugin that supports prompt cache keys.",
+        kind="api_key",
+        factory=lambda ctx: None,  # type: ignore[arg-type]
+        supports_prompt_cache_key=True,
+    )
+    assert plugin.supports_prompt_cache_key is True
+
+
+def test_builtin_providers_prompt_cache_key_flags() -> None:
+    """Known builtin providers have the correct supports_prompt_cache_key flag."""
+    from app.agent.providers.catalog import all_providers
+
+    entries = {e["id"]: e for e in all_providers()}
+
+    for provider_id in ("codex", "grok"):
+        assert entries[provider_id].get("supports_prompt_cache_key") is True, (
+            f"{provider_id} should support prompt_cache_key"
+        )
+
+    for provider_id in ("anthropic", "googlegenai", "openai", "ollama", "xai"):
+        assert not entries[provider_id].get("supports_prompt_cache_key"), (
+            f"{provider_id} should not support prompt_cache_key"
+        )
+
+
+def test_plugin_supports_prompt_cache_key_forwarded_to_all_providers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A plugin with supports_prompt_cache_key=True appears with that flag
+    in all_providers()."""
+    plugin_dir = _point_plugin_dirs(monkeypatch, tmp_path)
+    _write_plugin(
+        plugin_dir,
+        """
+        from app.agent.providers.base import LLMProviderBase
+        from app.agent.providers.plugin_api import ProviderPlugin
+
+        class DummyProvider(LLMProviderBase):
+            async def chat(self, messages, tools=None, **kwargs): ...
+            async def stream(self, messages, tools=None, **kwargs):
+                if False: yield None
+
+        provider = ProviderPlugin(
+            id="cacheplugin",
+            label="Cache Plugin",
+            description="Supports prompt cache keys.",
+            kind="api_key",
+            factory=lambda ctx: DummyProvider(),
+            supports_prompt_cache_key=True,
+        )
+        """,
+    )
+
+    entry = find("cacheplugin")
+    assert entry is not None
+    assert entry.get("supports_prompt_cache_key") is True
+
+
+def test_plugin_without_prompt_cache_key_forwarded_as_false(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A plugin without supports_prompt_cache_key appears with False in
+    all_providers()."""
+    plugin_dir = _point_plugin_dirs(monkeypatch, tmp_path)
+    _write_plugin(
+        plugin_dir,
+        """
+        from app.agent.providers.base import LLMProviderBase
+        from app.agent.providers.plugin_api import ProviderPlugin
+
+        class DummyProvider(LLMProviderBase):
+            async def chat(self, messages, tools=None, **kwargs): ...
+            async def stream(self, messages, tools=None, **kwargs):
+                if False: yield None
+
+        provider = ProviderPlugin(
+            id="nocacheplugin",
+            label="No Cache Plugin",
+            description="No prompt cache key support.",
+            kind="api_key",
+            factory=lambda ctx: DummyProvider(),
+        )
+        """,
+    )
+
+    entry = find("nocacheplugin")
+    assert entry is not None
+    assert not entry.get("supports_prompt_cache_key")

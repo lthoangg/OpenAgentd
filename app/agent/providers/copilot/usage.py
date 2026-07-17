@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping
 from datetime import datetime
 from typing import Any, cast
@@ -177,7 +178,11 @@ def _usage_limit(
 
 
 async def get_usage() -> ProviderUsageResponse:
-    payload = _usage_payload()
+    # ``_usage_payload`` blocks on a sync httpx call (up to 5s timeout).
+    # Run it off-loop — this coroutine is awaited from request handlers on
+    # the single-worker event loop, where a blocking call stalls every
+    # in-flight SSE stream and request.
+    payload = await asyncio.to_thread(_usage_payload)
 
     values = cast("dict[str, object]", payload)
     plan_type = _extract_plan_type(values)

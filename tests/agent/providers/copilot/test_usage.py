@@ -134,6 +134,54 @@ async def test_get_usage_rejects_invalid_payload(
         await usage.get_usage()
 
 
+@pytest.mark.asyncio
+async def test_get_usage_does_not_block_the_event_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A slow usage endpoint must not starve other coroutines.
+
+    The GitHub request runs over a sync httpx.Client with a 5s timeout;
+    if it executes directly on the event loop, every other coroutine
+    (SSE streams, request handlers) freezes for the duration. Simulate a
+    slow network with a sync sleep and assert a concurrent heartbeat
+    keeps ticking while ``get_usage`` is in flight.
+    """
+    import asyncio
+    import time
+
+    monkeypatch.setattr(
+        "app.agent.providers.copilot.oauth.CopilotOAuth.load",
+        lambda: CopilotOAuth(github_token=SecretStr("github-token")),
+    )
+
+    class _SlowClient(_FakeClient):
+        def get(self, _url, *, headers):  # type: ignore[no-untyped-def]
+            time.sleep(0.3)  # sync sleep — models a slow network read
+            return super().get(_url, headers=headers)
+
+    _SlowClient.payload = {"copilot_plan": "individual", "quota_snapshots": {}}
+    monkeypatch.setattr(usage.httpx, "Client", _SlowClient)
+
+    ticks = 0
+
+    async def _heartbeat() -> None:
+        nonlocal ticks
+        while True:
+            await asyncio.sleep(0.01)
+            ticks += 1
+
+    hb = asyncio.create_task(_heartbeat())
+    try:
+        await usage.get_usage()
+    finally:
+        hb.cancel()
+
+    # With a responsive loop the heartbeat fires ~30 times during the
+    # 0.3s call; a blocked loop yields 0-1 ticks. Threshold of 5 keeps
+    # the assertion robust on slow CI machines.
+    assert ticks >= 5, f"event loop starved during get_usage (ticks={ticks})"
+
+
 def test_model_allowed_for_plan_uses_restricted_to_aliases() -> None:
     assert usage.model_allowed_for_plan(["edu"], "student") is True
     assert usage.model_allowed_for_plan(["business"], "student") is False

@@ -563,7 +563,14 @@ describe("sendMessage: queue behaviour", () => {
     expect(pending[0].content).toBe("queued message")
   })
 
-  it("does not queue attachments while lead is working", async () => {
+  it("queues explicit file attachments while lead is working", async () => {
+    // Regression: the backend accepts file uploads on queued messages
+    // (f44b0544), but the frontend kept a stale pre-support guard that
+    // rejected them with an error — breaking attach-while-streaming on
+    // both desktop and mobile.
+    mockPostTeamChat.mockImplementationOnce(() =>
+      Promise.resolve({ status: "queued", session_id: "session-a", message_id: "pm-file" }),
+    )
     const file = new File(["data"], "doc.txt", { type: "text/plain" })
     useTeamStore.setState({
       sessionId: "session-a",
@@ -573,9 +580,35 @@ describe("sendMessage: queue behaviour", () => {
 
     await useTeamStore.getState().sendMessage("queued with file", [file])
 
-    expect(mockPostTeamChat).not.toHaveBeenCalled()
-    expect(useTeamStore.getState()._pendingMessages).toHaveLength(0)
-    expect(useTeamStore.getState().error).toBe("Files cannot be queued yet. Wait for this response to finish, then send the attachment.")
+    expect(mockPostTeamChat).toHaveBeenCalledTimes(1)
+    expect(mockPostTeamChat.mock.calls[0][3]).toEqual([file])
+    const pending = useTeamStore.getState()._pendingMessages
+    expect(pending).toHaveLength(1)
+    expect(pending[0].id).toBe("pm-file")
+    expect(pending[0].content).toBe("queued with file")
+    expect(pending[0].files).toEqual([file])
+    expect(pending[0].attachments).toEqual([
+      { original_name: "doc.txt", media_type: "text/plain", category: "document" },
+    ])
+    expect(useTeamStore.getState().error).toBeNull()
+  })
+
+  it("categorises queued image attachments as images", async () => {
+    mockPostTeamChat.mockImplementationOnce(() =>
+      Promise.resolve({ status: "queued", session_id: "session-a", message_id: "pm-img" }),
+    )
+    const image = new File(["data"], "photo.png", { type: "image/png" })
+    useTeamStore.setState({
+      sessionId: "session-a",
+      leadName: "lead",
+      agentStreams: { lead: makeStream({ status: "working" as const }) },
+    })
+
+    await useTeamStore.getState().sendMessage("queued image", [image])
+
+    expect(useTeamStore.getState()._pendingMessages[0].attachments).toEqual([
+      { original_name: "photo.png", media_type: "image/png", category: "image" },
+    ])
   })
 
   it("treats a queued response without message_id as an error", async () => {
@@ -651,6 +684,26 @@ describe("sendMessage: queue behaviour", () => {
     expect(useTeamStore.getState().isTeamWorking).toBe(true)
     expect(useTeamStore.getState().agentStreams.lead.status).toBe("working")
     expect(useTeamStore.getState()._pendingMessages).toHaveLength(0)
+  })
+
+  it("carries queued attachments onto the spliced user block", () => {
+    const attachments = [
+      { original_name: "doc.txt", media_type: "text/plain", category: "document" as const },
+    ]
+    useTeamStore.setState({
+      sessionId: "session-a",
+      leadName: "lead",
+      agentStreams: { lead: makeStream({ status: "idle" as const }) },
+      _pendingMessages: [
+        { id: "pm-1", sessionId: "session-a", content: "queued with file", attachments },
+      ],
+    })
+
+    useTeamStore.getState()._handleSSEEvent("queued_turn_start", { agent: "lead" })
+
+    const blocks = useTeamStore.getState().agentStreams.lead.currentBlocks
+    expect(blocks).toHaveLength(1)
+    expect(blocks[0].attachments).toEqual(attachments)
   })
 
   it("keeps the frontend streaming when a queued turn starts after undo reset state", () => {
@@ -1664,9 +1717,37 @@ describe("loadSession", () => {
     await useTeamStore.getState().loadSession("sess-1")
 
     expect(useTeamStore.getState()._pendingMessages).toEqual([
-      { id: "q1", sessionId: "sess-1", content: "queued", submittedAt: 1704067200000 },
+      { id: "q1", sessionId: "sess-1", content: "queued", submittedAt: 1704067200000, attachments: undefined },
     ])
     expect(useTeamStore.getState().agentStreams.lead.blocks.map((block) => block.content)).toEqual(["response"])
+  })
+
+  it("keeps attachments on queued history messages loaded into the pending queue", async () => {
+    const attachments = [
+      { original_name: "doc.txt", media_type: "text/plain", category: "text" as const, url: "/api/team/sess-1/uploads/doc.txt" },
+    ]
+    mockTeamHistory.mockImplementationOnce(() =>
+      Promise.resolve({
+        lead: {
+          id: "lead-sess",
+          agent_name: "lead",
+          title: null,
+          created_at: null,
+          updated_at: null,
+          sub_sessions: [],
+          messages: [
+            makeMessageResponse({ id: "q1", role: "user", content: "queued with file", extra: { queue_status: "queued" }, attachments }),
+          ],
+        },
+        members: [],
+        has_more: false,
+        next_cursor: null,
+      })
+    )
+
+    await useTeamStore.getState().loadSession("sess-1")
+
+    expect(useTeamStore.getState()._pendingMessages[0].attachments).toEqual(attachments)
   })
 
   it("clears currentBlocks for lead after loading", async () => {

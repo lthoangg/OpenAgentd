@@ -313,12 +313,14 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
               id: msg.id,
               content: msg.content,
               submittedAt: msg.submittedAt,
+              attachments: msg.attachments,
             })),
             ...eventMessages
               .filter((msg) => !queuedIds.has(msg.id))
               .map((msg) => ({
                 ...msg,
                 submittedAt: Date.now(),
+                attachments: undefined,
               })),
           ]
           if (messages.length === 0) return
@@ -345,6 +347,9 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
               type: 'user' as const,
               content: msg.content,
               timestamp: new Date(msg.submittedAt ?? now),
+              ...(msg.attachments && msg.attachments.length > 0
+                ? { attachments: msg.attachments }
+                : {}),
             }))
           stream.currentBlocks.push(...newUserBlocks)
           stream._turnStartedAt = nextTurnStartedAt

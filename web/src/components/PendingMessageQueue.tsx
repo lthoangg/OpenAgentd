@@ -1,11 +1,28 @@
 import { useState } from 'react'
-import { ChevronDown, ChevronUp, X } from 'lucide-react'
+import { ChevronDown, ChevronUp, Paperclip, X } from 'lucide-react'
 import { useTeamStore } from '@/stores/useTeamStore'
+import type { MessageAttachment } from '@/api/types'
 
 const QUEUED_COLLAPSE_LINES = 10
 const QUEUED_COLLAPSE_CHARS = 700
 
-function QueuedMessageContent({ content }: { content: string }) {
+function QueuedAttachmentList({ attachments }: { attachments: MessageAttachment[] }) {
+  return (
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {attachments.map((att, i) => (
+        <span
+          key={`${att.original_name ?? att.filename ?? 'file'}-${i}`}
+          className="inline-flex max-w-full items-center gap-1 rounded-sm border border-(--color-border) bg-(--bg-key)/60 px-1.5 py-0.5 text-[11px] text-(--color-text-2)"
+        >
+          <Paperclip size={11} aria-hidden="true" className="shrink-0" />
+          <span className="truncate">{att.original_name ?? att.filename ?? 'attachment'}</span>
+        </span>
+      ))}
+    </div>
+  )
+}
+
+function QueuedMessageContent({ content, attachments }: { content: string; attachments?: MessageAttachment[] }) {
   const [expanded, setExpanded] = useState(false)
   const lines = content.split('\n')
   const needsCollapse = lines.length > QUEUED_COLLAPSE_LINES || content.length > QUEUED_COLLAPSE_CHARS
@@ -28,6 +45,7 @@ function QueuedMessageContent({ content }: { content: string }) {
         </button>
       )}
       <p className="min-w-0 break-words whitespace-pre-wrap [overflow-wrap:anywhere]">{visibleContent}</p>
+      {attachments && attachments.length > 0 && <QueuedAttachmentList attachments={attachments} />}
       {needsCollapse && !expanded && (
         <div
           className="pointer-events-none absolute inset-x-0 bottom-0 backdrop-blur-[1px]"
@@ -49,14 +67,15 @@ export function PendingMessageQueue() {
 
   if (messages.length === 0) return null
 
-  const handleRemove = (id: string, content: string) => {
-    // Move the queued text back into the composer so the user can edit
-    // or resend it instead of losing what they typed. Mirrors the
-    // restore-on-/undo flow in TeamChatView. The CustomEvent matches
-    // the existing `focus-chat-input` pattern and decouples this
-    // component from the chat view's inputRef.
+  const handleRemove = (id: string, content: string, files?: File[]) => {
+    // Move the queued text (and any queued files) back into the composer so
+    // the user can edit or resend instead of losing what they typed. Files
+    // must ride along because cancelling deletes the persisted uploads
+    // server-side. Mirrors the restore-on-/undo flow in TeamChatView. The
+    // CustomEvent matches the existing `focus-chat-input` pattern and
+    // decouples this component from the chat view's inputRef.
     window.dispatchEvent(
-      new CustomEvent('queue:restore-draft', { detail: { content } }),
+      new CustomEvent('queue:restore-draft', { detail: { content, files } }),
     )
     removePendingMessage(id)
   }
@@ -67,9 +86,9 @@ export function PendingMessageQueue() {
         <div key={msg.id} className="group flex justify-end">
           <div className="flex max-w-full flex-col items-end gap-1.5 md:max-w-[78%]">
             <div className="flex max-w-full items-start gap-2">
-              <QueuedMessageContent content={msg.content} />
+              <QueuedMessageContent content={msg.content} attachments={msg.attachments} />
               <button
-                onClick={() => handleRemove(msg.id, msg.content)}
+                onClick={() => handleRemove(msg.id, msg.content, msg.files)}
                 aria-label="Edit queued message"
                 title="Edit queued message"
                 className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-(--color-text-muted) opacity-100 transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-6 md:w-6 md:opacity-70 md:group-hover:opacity-100"

@@ -63,4 +63,56 @@ describe('PendingMessageQueue', () => {
     expect(useTeamStore.getState()._pendingMessages).toEqual([])
     window.removeEventListener('queue:restore-draft', restoreListener)
   })
+
+  it('shows attachment names on queued messages', () => {
+    useTeamStore.setState({
+      sessionId: 'session-1',
+      _pendingMessages: [
+        {
+          id: 'pending-1',
+          sessionId: 'session-1',
+          content: 'Queued with file',
+          attachments: [
+            { original_name: 'doc.txt', media_type: 'text/plain', category: 'document' },
+          ],
+        },
+      ],
+    })
+
+    render(<PendingMessageQueue />)
+
+    expect(screen.getByText('doc.txt')).toBeTruthy()
+  })
+
+  it('restores queued files into the composer on cancel', async () => {
+    const user = userEvent.setup()
+    const file = new File(['data'], 'doc.txt', { type: 'text/plain' })
+    let restoredFiles: File[] | undefined
+    const restoreListener = mock((e: unknown) => {
+      restoredFiles = (e as CustomEvent<{ files?: File[] }>).detail?.files
+    })
+    window.addEventListener('queue:restore-draft', restoreListener)
+    useTeamStore.setState({
+      sessionId: 'session-1',
+      _pendingMessages: [
+        {
+          id: 'pending-1',
+          sessionId: 'session-1',
+          content: 'Queued with file',
+          attachments: [
+            { original_name: 'doc.txt', media_type: 'text/plain', category: 'document' },
+          ],
+          files: [file],
+        },
+      ],
+    })
+
+    render(<PendingMessageQueue />)
+
+    await user.click(screen.getByLabelText('Edit queued message'))
+
+    expect(restoreListener).toHaveBeenCalledTimes(1)
+    expect(restoredFiles).toEqual([file])
+    window.removeEventListener('queue:restore-draft', restoreListener)
+  })
 })

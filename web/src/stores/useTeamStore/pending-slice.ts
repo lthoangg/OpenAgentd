@@ -25,12 +25,6 @@ export const createPendingSlice: StateCreator<
     const leadWorking = leadName ? agentStreams[leadName]?.status === 'working' : false
 
     if (leadWorking) {
-      if (files && files.length > 0) {
-        set((draft) => {
-          draft.error = 'Files cannot be queued yet. Wait for this response to finish, then send the attachment.'
-        })
-        return
-      }
       try {
         const result = await postTeamChat(
           content,
@@ -48,6 +42,14 @@ export const createPendingSlice: StateCreator<
         if (result.status === 'queued' && !result.message_id) {
           throw new Error('Backend did not return a queued message id')
         }
+        // Display metadata only — no blob URLs, so nothing to revoke when the
+        // queued message is spliced into the stream or cancelled. Real URLs
+        // arrive with the next history load.
+        const queuedAttachments = files?.map((f) => ({
+          original_name: f.name,
+          media_type: f.type,
+          category: (f.type.startsWith('image/') ? 'image' : 'document') as 'image' | 'document' | 'text',
+        }))
         set((draft) => {
           draft.sessionId = result.session_id
           draft.sessionModel = options?.model ?? get().sessionModel
@@ -57,6 +59,9 @@ export const createPendingSlice: StateCreator<
             sessionId: result.session_id,
             content,
             submittedAt: Date.now(),
+            ...(queuedAttachments && queuedAttachments.length > 0
+              ? { attachments: queuedAttachments, files }
+              : {}),
           })
           draft.error = null
         })

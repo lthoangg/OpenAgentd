@@ -277,14 +277,17 @@ export function useSessionBootstrap({
     inputRef.current?.focus()
   }, [inputRef])
 
-  // Restore a queued message's text into the composer (fired by the
-  // X button on PendingMessageQueue). Overwrites any current draft —
-  // matches the /undo restore semantics above.
+  // Restore a queued message's text and files into the composer (fired by
+  // the X button on PendingMessageQueue). Overwrites any current draft —
+  // matches the /undo restore semantics above. Files come back as the
+  // original File objects kept on the pending message, since cancelling
+  // deletes the persisted uploads server-side.
   useEffect(() => {
     const handler = (e: Event) => {
-      const detail = (e as CustomEvent<{ content?: string }>).detail
+      const detail = (e as CustomEvent<{ content?: string; files?: File[] }>).detail
       const content = detail?.content ?? ''
       inputRef.current?.setValue(content)
+      inputRef.current?.setFiles(detail?.files ?? [])
       inputRef.current?.focus()
     }
     window.addEventListener('queue:restore-draft', handler)

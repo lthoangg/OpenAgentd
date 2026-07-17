@@ -34,6 +34,7 @@ function queuedMessagesFromHistory(sessionId: string, messages: MessageResponse[
       sessionId,
       content: msg.content ?? '',
       submittedAt: msg.created_at ? new Date(msg.created_at).getTime() : undefined,
+      attachments: msg.attachments ?? undefined,
     }))
 }
 

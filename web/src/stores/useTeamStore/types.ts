@@ -1,10 +1,14 @@
-import type { ContentBlock, AgentUsage, TeamCommandResponse } from '@/api/types'
+import type { ContentBlock, AgentUsage, MessageAttachment, TeamCommandResponse } from '@/api/types'
 
 export interface PendingMessage {
   id: string
   sessionId?: string | null
   content: string
   submittedAt?: number
+  /** Display metadata for files queued with this message (no blob URLs). */
+  attachments?: MessageAttachment[]
+  /** Original File objects, kept so cancelling restores them into the composer. */
+  files?: File[]
 }
 
 export type CacheInvalidation =

@@ -298,7 +298,10 @@ spawns specialist members on demand.
   queued messages are collapsible while a response runs `[v1.22.0]`. Queued
   messages now splice into the running turn at the next LLM-step boundary
   (not mid-tool-call), so the agent sees them on the very next iteration
-  instead of waiting for the current turn to finish `[v1.25.0]`.
+  instead of waiting for the current turn to finish `[v1.25.0]`. File
+  attachments queue too: attaching files while the agent is replying no longer
+  errors — the queued bubble lists the filenames, and cancelling the queued
+  message restores both text and files into the composer `[v1.113.0]`.
 - **`provider_status` SSE events in stream** `[v1.17.0]` — retry, exhaustion,
   and fallback transitions surface live in single-agent and split-pane views.
 - **Actionable provider HTTP errors** `[v1.56.0]` — non-retryable provider

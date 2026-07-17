@@ -44,6 +44,7 @@ def provider_is_configured(entry: "ProviderEntry") -> bool:
         token_files = {
             "codex": cache_dir / "codex_oauth.json",
             "copilot": cache_dir / "copilot_oauth.json",
+            "grok": cache_dir / "grok_oauth.json",
         }
         token_file = token_files.get(entry["id"])
         return bool(token_file and token_file.is_file())

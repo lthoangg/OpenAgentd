@@ -133,6 +133,16 @@ _CATALOG: list[ProviderEntry] = [
         "docs_url": "https://console.x.ai",
     },
     {
+        "id": "grok",
+        "label": "Grok Build",
+        "description": "Use your Grok subscription through Grok Build OAuth.",
+        "kind": "oauth",
+        "env_var": "",
+        "metadata_source_provider": "xai",
+        "oauth_command": "openagentd auth grok",
+        "docs_url": "https://docs.x.ai/build/overview",
+    },
+    {
         "id": "deepseek",
         "label": "DeepSeek",
         "description": "DeepSeek's direct API.",

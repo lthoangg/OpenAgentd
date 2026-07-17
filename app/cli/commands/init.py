@@ -97,6 +97,9 @@ _PROVIDER_MODELS: dict[str, list[str]] = {
         "grok-4-fast",
         "grok-code-fast-1",
     ],
+    "grok": [
+        "grok-4.5",
+    ],
     "deepseek": [
         "deepseek-v4-pro",
         "deepseek-v4-flash",
@@ -189,6 +192,7 @@ def cmd_init(_args: argparse.Namespace) -> None:  # noqa: C901
         "codex        — OpenAI Codex via ChatGPT subscription (OAuth)",
         "vertexai     — Vertex AI (needs GCP project + gcloud auth)",
         "xai          — xAI Grok (grok-4, grok-code-fast-1)",
+        "grok         — Grok Build via Grok subscription (OAuth)",
         "deepseek     — DeepSeek (deepseek-v4, deepseek-r1)",
         "router9      — 9Router local proxy (40+ providers, OpenAI-compatible)",
         "cliproxy     — CLIProxyAPI local proxy (multiple CLI-backed models)",
@@ -219,6 +223,9 @@ def cmd_init(_args: argparse.Namespace) -> None:  # noqa: C901
     elif provider == "codex":
         print(f"  {_dim('ℹ')}  No API key needed — authenticate via OAuth after setup.")
         print(f"     Run: {_bold('openagentd auth codex')}")
+    elif provider == "grok":
+        print(f"  {_dim('ℹ')}  No API key needed — authenticate via OAuth after setup.")
+        print(f"     Run: {_bold('openagentd auth grok')}")
     elif provider == "ollama":
         print(
             f"  {_dim('ℹ')}  Ollama needs no API key — make sure the daemon is running "
@@ -339,6 +346,10 @@ def cmd_init(_args: argparse.Namespace) -> None:  # noqa: C901
     elif provider == "codex":
         print(f"  {_bold('Next:')} authenticate with your ChatGPT subscription:")
         print(f"    {_bold('openagentd auth codex')}")
+        print()
+    elif provider == "grok":
+        print(f"  {_bold('Next:')} authenticate with your Grok subscription:")
+        print(f"    {_bold('openagentd auth grok')}")
         print()
     print(f"  {_bold('Start:')}  {_bold('openagentd')}")
     print()

@@ -28,6 +28,7 @@ from app.agent.providers.codex import CodexProvider
 from app.agent.providers.copilot import CopilotProvider
 from app.agent.providers.deepseek import DeepSeekProvider
 from app.agent.providers.googlegenai import GoogleGenAIProvider
+from app.agent.providers.grok import GrokBuildProvider
 from app.agent.providers.ollama import OllamaProvider
 from app.agent.providers.openai import ChatCompletionsOnlyProvider, OpenAIProvider
 from app.agent.providers.openai.compatible import OPENAI_COMPATIBLE_PROVIDER_SPECS
@@ -46,6 +47,7 @@ SUPPORTED_PROVIDERS: tuple[str, ...] = (
     "copilot",
     "deepseek",
     "googlegenai",
+    "grok",
     "nvidia",
     "ollama",
     "openai",
@@ -255,6 +257,11 @@ def build_provider(
             # codex uses OAuth tokens — no API key.
             return _with_provider_name(
                 CodexProvider(model=model, model_kwargs=kwargs), name
+            )
+        case "grok":
+            # Grok Build uses OAuth session credentials — no API key.
+            return _with_provider_name(
+                GrokBuildProvider(model=model, model_kwargs=kwargs), name
             )
         case "zai":
             return _with_provider_name(

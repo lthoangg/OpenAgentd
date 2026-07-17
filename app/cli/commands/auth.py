@@ -34,6 +34,10 @@ _PROVIDERS: dict[str, tuple[str, str]] = {
         "app.agent.providers.codex.oauth",
         "OpenAI Codex — PKCE OAuth (ChatGPT subscription)",
     ),
+    "grok": (
+        "app.agent.providers.grok.oauth",
+        "Grok Build — device-flow OAuth (Grok subscription)",
+    ),
 }
 
 

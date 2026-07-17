@@ -187,6 +187,8 @@ export type ProviderUsageLimit = {
   } | null
   plan_type?: string | null
   rate_limit_reached_type?: string | null
+  period_start_at?: number | null
+  period_end_at?: number | null
 }
 
 export type ProviderUsageResponse = {

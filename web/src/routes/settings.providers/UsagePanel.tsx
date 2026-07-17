@@ -32,6 +32,21 @@ function formatResetIn(resetsAt?: number | null): string | null {
   return remHours === 0 ? `Resets in ${days}d` : `Resets in ${days}d ${remHours}h`
 }
 
+function formatPeriodEndIn(periodEndAt?: number | null): string | null {
+  if (typeof periodEndAt !== 'number') return null
+  const remainingS = periodEndAt - Date.now() / 1000
+  if (remainingS <= 0) return 'Ending now'
+  const minutes = Math.round(remainingS / 60)
+  if (minutes < 1) return 'Ends in <1m'
+  if (minutes < 60) return `Ends in ${minutes}m`
+  const hours = Math.floor(minutes / 60)
+  const remMinutes = minutes % 60
+  if (hours < 24) return remMinutes === 0 ? `Ends in ${hours}h` : `Ends in ${hours}h ${remMinutes}m`
+  const days = Math.floor(hours / 24)
+  const remHours = hours % 24
+  return remHours === 0 ? `Ends in ${days}d` : `Ends in ${days}d ${remHours}h`
+}
+
 function usageLabel(limit: ProviderUsageLimit): string {
   if (limit.limit_name) return limit.limit_name
   if (limit.limit_id === 'codex') return 'Codex'
@@ -119,6 +134,20 @@ function CreditsRow({
   )
 }
 
+function PeriodRow({ label, periodEndAt }: { label: string; periodEndAt?: number | null }) {
+  const periodEnd = formatPeriodEndIn(periodEndAt)
+  return (
+    <div className="px-4 py-3 space-y-1.5">
+      <p className="text-[13px] font-semibold leading-none text-(--color-text)">{label}</p>
+      <div className="h-1.5 rounded-full bg-(--bg-key)" />
+      <div className="flex items-center justify-between text-[11px] text-(--color-text-muted)">
+        <span>Usage period available</span>
+        {periodEnd && <span className="tabular-nums">{periodEnd}</span>}
+      </div>
+    </div>
+  )
+}
+
 function LimitSections({ limit }: { limit: ProviderUsageLimit }) {
   const base = usageLabel(limit)
   const primaryDuration = formatWindowDuration(limit.primary?.window_minutes)
@@ -132,6 +161,10 @@ function LimitSections({ limit }: { limit: ProviderUsageLimit }) {
         <UsageRow label={secondaryDuration ? `${base} \u00B7 ${secondaryDuration}` : base} window={limit.secondary} />
       )}
       {limit.credits && !limit.primary && !limit.secondary && <CreditsRow label={base} credits={limit.credits} />}
+      {!limit.primary && !limit.secondary && !limit.credits &&
+        (typeof limit.period_start_at === 'number' || typeof limit.period_end_at === 'number') && (
+          <PeriodRow label={base} periodEndAt={limit.period_end_at} />
+        )}
     </>
   )
 }

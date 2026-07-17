@@ -18,6 +18,11 @@ from app.agent.providers.copilot.usage import (
     CopilotUsageUnavailableError,
     get_usage as get_copilot_usage,
 )
+from app.agent.providers.grok.usage import (
+    GrokUsageCredentialsError,
+    GrokUsageUnavailableError,
+    get_usage as get_grok_usage,
+)
 from app.agent.providers.plugin_registry import (
     ProviderCredentialStore,
     find_provider_plugin,
@@ -43,10 +48,11 @@ if TYPE_CHECKING:
 _BUILTIN_USAGE_PROVIDERS: dict[str, str] = {
     "codex": "OpenAI Codex",
     "copilot": "GitHub Copilot",
+    "grok": "Grok Build",
 }
 
 # Per-provider timeout for the *aggregate* summary. Individual usage
-# modules (codex/copilot) already apply their own client timeouts; this
+# modules already apply their own client timeouts; this
 # is a hard backstop so one slow/hanging plugin can't stall the whole
 # tray poll.
 _SUMMARY_PROVIDER_TIMEOUT_S = 6.0
@@ -92,9 +98,19 @@ async def get_provider_usage(provider_id: str) -> ProviderUsageResponse:
             return await get_codex_usage()
         if provider_id == "copilot":
             return await get_copilot_usage()
-    except (CodexUsageCredentialsError, CopilotUsageCredentialsError) as exc:
+        if provider_id == "grok":
+            return await get_grok_usage()
+    except (
+        CodexUsageCredentialsError,
+        CopilotUsageCredentialsError,
+        GrokUsageCredentialsError,
+    ) as exc:
         raise ProviderUsageCredentialsError(str(exc)) from exc
-    except (CodexUsageUnavailableError, CopilotUsageUnavailableError) as exc:
+    except (
+        CodexUsageUnavailableError,
+        CopilotUsageUnavailableError,
+        GrokUsageUnavailableError,
+    ) as exc:
         raise ProviderUsageUnavailableError(str(exc)) from exc
 
     plugin = find_provider_plugin(provider_id)

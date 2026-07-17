@@ -123,6 +123,28 @@ describe('UsagePanel', () => {
     expect(screen.getByText('No usage credits left')).toBeTruthy()
   })
 
+  it('renders a period-only limit as neutral availability rather than unlimited usage', () => {
+    const nowS = Math.floor(Date.now() / 1000)
+    render(
+      <UsagePanel
+        limits={[
+          makeLimit({
+            limit_name: 'Weekly usage period',
+            primary: null,
+            secondary: null,
+            credits: null,
+            period_start_at: nowS - 24 * 60 * 60,
+            period_end_at: nowS + 6 * 24 * 60 * 60,
+          }),
+        ]}
+      />,
+    )
+    expect(screen.getByText('Weekly usage period')).toBeTruthy()
+    expect(screen.getByText('Usage period available')).toBeTruthy()
+    expect(screen.getByText('Ends in 6d')).toBeTruthy()
+    expect(screen.queryByText('Unlimited usage')).toBeNull()
+  })
+
   it('shows the plan type badge from the first limit', () => {
     render(<UsagePanel limits={[makeLimit({ plan_type: 'Max' })]} />)
     expect(screen.getByText('Max')).toBeTruthy()

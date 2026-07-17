@@ -53,3 +53,17 @@ async def test_get_provider_usage_plugin_value_error_is_credentials_error(monkey
 
     with pytest.raises(provider_usage.ProviderUsageCredentialsError):
         await provider_usage.get_provider_usage("plugin-oauth")
+
+
+@pytest.mark.asyncio
+async def test_get_provider_usage_dispatches_to_grok(monkeypatch):
+    from app.api.schemas.settings import ProviderUsageResponse
+
+    async def _grok_usage():
+        return ProviderUsageResponse(provider="grok")
+
+    monkeypatch.setattr(provider_usage, "get_grok_usage", _grok_usage)
+
+    result = await provider_usage.get_provider_usage("grok")
+
+    assert result.provider == "grok"

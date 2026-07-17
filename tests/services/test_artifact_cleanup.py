@@ -103,9 +103,10 @@ async def test_cleanup_falls_back_when_chat_sessions_query_fails(tmp_path, monke
 
     monkeypatch.setattr(core_db.AsyncSession, "exec", flaky_exec)
 
-    monkeypatch.setattr(
-        cleanup_mod, "find_managed_worktree_source", lambda path: str(tmp_path / "repo")
-    )
+    async def _fake_source(path):
+        return str(tmp_path / "repo")
+
+    monkeypatch.setattr(cleanup_mod, "find_managed_worktree_source", _fake_source)
 
     async with core_db.async_session_factory() as session:
         result = await cleanup_mod.cleanup_generated_artifacts(
@@ -225,10 +226,11 @@ async def test_cleanup_apply_deletes_old_coding_session_metadata_but_keeps_workt
         session.add(SessionMessage(session_id=coding_id, role="user", content="old"))
         await session.commit()
 
+        async def _fake_source(path):
+            return str(tmp_path / "repo") if path == worktree_dir else None
+
         monkeypatch.setattr(
-            cleanup_mod,
-            "find_managed_worktree_source",
-            lambda path: str(tmp_path / "repo") if path == worktree_dir else None,
+            cleanup_mod, "find_managed_worktree_source", _fake_source
         )
         result = await cleanup_generated_artifacts(
             session, older_than_days=7, dry_run=False

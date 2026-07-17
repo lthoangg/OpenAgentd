@@ -231,7 +231,9 @@ async def cleanup_generated_artifacts(
             resolved = str(child.resolve())
             if resolved in coding_workspaces:
                 continue
-            if _is_old_enough(child, cutoff) and find_managed_worktree_source(child):
+            if _is_old_enough(child, cutoff) and await find_managed_worktree_source(
+                child
+            ):
                 candidates.append(
                     CleanupCandidate(
                         child, "old managed git worktrees", _dir_size(child)

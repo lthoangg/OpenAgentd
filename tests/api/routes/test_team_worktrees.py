@@ -69,7 +69,7 @@ def test_create_worktree_returns_directory_and_branch(
     ).read_text(encoding="utf-8") == "hello\n"
 
 
-def test_find_managed_worktree_source_detects_openagentd_worktree(
+async def test_find_managed_worktree_source_detects_openagentd_worktree(
     app_without_team, tmp_path, monkeypatch
 ):
     repo = _repo(tmp_path)
@@ -84,7 +84,7 @@ def test_find_managed_worktree_source_detects_openagentd_worktree(
         json={"source_workspace": str(repo), "name": "Task"},
     ).json()
 
-    assert find_managed_worktree_source(Path(created["directory"])) == str(
+    assert await find_managed_worktree_source(Path(created["directory"])) == str(
         repo.resolve()
     )
 
@@ -375,7 +375,7 @@ def test_remove_missing_managed_worktree_cleans_registry(
     ]
 
 
-def test_find_managed_worktree_source_does_not_create_root(
+async def test_find_managed_worktree_source_does_not_create_root(
     app_without_team, tmp_path, monkeypatch
 ):
     repo = _repo(tmp_path)
@@ -392,11 +392,11 @@ def test_find_managed_worktree_source_does_not_create_root(
     )
     _git(repo, "worktree", "add", "-b", "unmanaged-no-root", str(unmanaged))
 
-    assert find_managed_worktree_source(unmanaged) is None
+    assert await find_managed_worktree_source(unmanaged) is None
     assert not root.exists()
 
 
-def test_find_managed_worktree_source_rejects_external_worktree(
+async def test_find_managed_worktree_source_rejects_external_worktree(
     app_without_team, tmp_path, monkeypatch
 ):
     repo = _repo(tmp_path)
@@ -408,7 +408,7 @@ def test_find_managed_worktree_source_rejects_external_worktree(
     )
     _git(repo, "worktree", "add", "-b", "unmanaged-detect", str(unmanaged))
 
-    assert find_managed_worktree_source(unmanaged) is None
+    assert await find_managed_worktree_source(unmanaged) is None
 
 
 def test_remove_rejects_unmanaged_worktree(app_without_team, tmp_path):
@@ -453,3 +453,52 @@ def test_resolve_validates_model_before_creating_worktree(
 
     assert resp.status_code == 422
     assert not (data_dir / "worktrees").exists()
+
+
+async def test_worktree_git_calls_do_not_block_the_event_loop(
+    tmp_path, monkeypatch
+):
+    """Git subprocess calls must run off-loop.
+
+    Worktree routes run on the single-worker event loop; `git worktree
+    add` + `reset --hard` on a large repo takes seconds (subprocess
+    timeout allows up to 20s). Executed inline, that freezes every
+    in-flight SSE stream and request. Simulate a slow git binary and
+    assert a concurrent heartbeat keeps ticking during the route call.
+    """
+    import asyncio
+    import time
+
+    from app.api.routes.team import worktrees as wt
+
+    repo = _repo(tmp_path)
+    monkeypatch.setattr(
+        "app.services.team_manager.validate_workspace", lambda ws: str(repo)
+    )
+
+    real_run = subprocess.run
+
+    def _slow_git(*args, **kwargs):
+        time.sleep(0.3)  # models a slow git operation on a big repo
+        return real_run(*args, **kwargs)
+
+    monkeypatch.setattr(wt.subprocess, "run", _slow_git)
+
+    ticks = 0
+
+    async def _heartbeat() -> None:
+        nonlocal ticks
+        while True:
+            await asyncio.sleep(0.01)
+            ticks += 1
+
+    hb = asyncio.create_task(_heartbeat())
+    try:
+        await wt.list_coding_workspace_worktrees(str(repo))
+    finally:
+        hb.cancel()
+
+    # The route makes >=2 git calls (rev-parse + worktree list) = >=0.6s of
+    # simulated git time; a responsive loop ticks ~60 times. A blocked loop
+    # yields 0-1. Threshold 5 keeps it robust on slow CI machines.
+    assert ticks >= 5, f"event loop starved during worktree route (ticks={ticks})"

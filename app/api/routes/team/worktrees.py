@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import os
 import re
@@ -72,8 +73,13 @@ class WorktreeRemoveResponse(BaseModel):
     removed: bool
 
 
-def _run_git(workspace: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    try:
+async def _run_git(workspace: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    # to_thread: these routes run on the single-worker event loop, and git
+    # operations (`worktree add`, `reset --hard`) can take seconds on large
+    # repos (subprocess timeout allows up to 20s). Executed inline they
+    # freeze every in-flight SSE stream and request — same policy as the
+    # git helpers in files.py.
+    def _invoke() -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             ["git", "-C", str(workspace), *args],
             capture_output=True,
@@ -81,12 +87,15 @@ def _run_git(workspace: Path, *args: str) -> subprocess.CompletedProcess[str]:
             timeout=20,
             check=False,
         )
+
+    try:
+        return await asyncio.to_thread(_invoke)
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise HTTPException(status_code=500, detail=f"git failed: {exc}") from exc
 
 
-def _require_git_repo(workspace: Path) -> None:
-    result = _run_git(workspace, "rev-parse", "--is-inside-work-tree")
+async def _require_git_repo(workspace: Path) -> None:
+    result = await _run_git(workspace, "rev-parse", "--is-inside-work-tree")
     if result.returncode != 0 or result.stdout.strip() != "true":
         raise HTTPException(
             status_code=422, detail="Worktrees are only supported for git projects."
@@ -108,7 +117,7 @@ def _validate_name(value: str | None) -> str:
     return name
 
 
-def _validate_branch(
+async def _validate_branch(
     source: Path, value: str | None, *, name: str, detached: bool
 ) -> str | None:
     if detached:
@@ -116,7 +125,7 @@ def _validate_branch(
     branch = value.strip() if value else f"openagentd/{name}"
     if not branch or branch.startswith("-"):
         raise HTTPException(status_code=422, detail="Invalid branch name.")
-    result = _run_git(source, "check-ref-format", "--branch", branch)
+    result = await _run_git(source, "check-ref-format", "--branch", branch)
     if result.returncode != 0:
         raise HTTPException(status_code=422, detail="Invalid branch name.")
     return branch
@@ -130,7 +139,7 @@ def _worktree_root(source: Path, *, create: bool = True) -> Path:
     return root.resolve()
 
 
-def _candidate(source: Path, name: str, branch: str | None) -> WorktreeInfo:
+async def _candidate(source: Path, name: str, branch: str | None) -> WorktreeInfo:
     root = _worktree_root(source)
     for attempt in range(27):
         suffix = "" if attempt == 0 else f"-{attempt}"
@@ -142,7 +151,7 @@ def _candidate(source: Path, name: str, branch: str | None) -> WorktreeInfo:
             continue
         candidate_branch = f"{branch}{suffix}" if branch and attempt > 0 else branch
         if candidate_branch:
-            result = _run_git(
+            result = await _run_git(
                 source,
                 "show-ref",
                 "--verify",
@@ -174,8 +183,8 @@ def _parse_worktree_list(text: str) -> list[dict[str, str]]:
     return entries
 
 
-def _list_worktree_entries(source: Path) -> list[dict[str, str]]:
-    result = _run_git(source, "worktree", "list", "--porcelain")
+async def _list_worktree_entries(source: Path) -> list[dict[str, str]]:
+    result = await _run_git(source, "worktree", "list", "--porcelain")
     if result.returncode != 0:
         detail = (
             result.stderr.strip()
@@ -194,24 +203,24 @@ def _canonical(path: str | Path) -> str:
     return os.path.realpath(Path(path).expanduser().resolve())
 
 
-def _entry_for_directory(source: Path, directory: Path) -> dict[str, str] | None:
+async def _entry_for_directory(source: Path, directory: Path) -> dict[str, str] | None:
     target = _canonical(directory)
-    for entry in _list_worktree_entries(source):
+    for entry in await _list_worktree_entries(source):
         entry_dir = entry.get("directory")
         if entry_dir and _canonical(entry_dir) == target:
             return entry
     return None
 
 
-def find_managed_worktree_source(directory: Path) -> str | None:
+async def find_managed_worktree_source(directory: Path) -> str | None:
     resolved = directory.expanduser().resolve()
     data_root = (Path(settings.OPENAGENTD_DATA_DIR) / "worktrees").resolve()
     if data_root not in resolved.parents:
         return None
-    result = _run_git(resolved, "rev-parse", "--show-toplevel")
+    result = await _run_git(resolved, "rev-parse", "--show-toplevel")
     if result.returncode != 0 or Path(result.stdout.strip()).resolve() != resolved:
         return None
-    common_dir = _run_git(
+    common_dir = await _run_git(
         resolved, "rev-parse", "--path-format=absolute", "--git-common-dir"
     )
     if common_dir.returncode != 0:
@@ -233,12 +242,12 @@ async def list_coding_workspace_worktrees(source_workspace: str) -> list[Worktre
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    _require_git_repo(source)
+    await _require_git_repo(source)
 
     source_real = os.path.realpath(source)
     managed_root = _managed_root(source)
     infos: list[WorktreeInfo] = []
-    for entry in _list_worktree_entries(source):
+    for entry in await _list_worktree_entries(source):
         directory = entry.get("directory")
         if not directory or os.path.realpath(directory) == source_real:
             continue
@@ -263,7 +272,7 @@ async def remove_coding_workspace_worktree(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    _require_git_repo(source)
+    await _require_git_repo(source)
     directory = Path(body.directory).expanduser().resolve()
     root = _managed_root(source)
     if root not in directory.parents:
@@ -271,14 +280,14 @@ async def remove_coding_workspace_worktree(
             status_code=403,
             detail="Only OpenAgentd-managed worktrees can be removed.",
         )
-    entry = _entry_for_directory(source, directory)
+    entry = await _entry_for_directory(source, directory)
     if entry is None:
         async with db_module.async_session_factory() as db:
             async with db.begin():
                 await mark_coding_workspace_deleted(db, str(directory))
         return WorktreeRemoveResponse(removed=True)
 
-    removed = _run_git(source, "worktree", "remove", "--force", str(directory))
+    removed = await _run_git(source, "worktree", "remove", "--force", str(directory))
     if removed.returncode != 0:
         detail = (
             removed.stderr.strip()
@@ -289,7 +298,7 @@ async def remove_coding_workspace_worktree(
 
     branch = entry.get("branch")
     if branch and branch.startswith("openagentd/"):
-        _run_git(source, "branch", "-D", branch)
+        await _run_git(source, "branch", "-D", branch)
     async with db_module.async_session_factory() as db:
         async with db.begin():
             await mark_coding_workspace_deleted(db, str(directory))
@@ -323,17 +332,19 @@ async def create_coding_workspace_worktree(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    _require_git_repo(source)
+    await _require_git_repo(source)
     name = _validate_name(body.name)
-    branch = _validate_branch(source, body.branch, name=name, detached=body.detached)
-    info = _candidate(source, name, branch)
+    branch = await _validate_branch(
+        source, body.branch, name=name, detached=body.detached
+    )
+    info = await _candidate(source, name, branch)
 
     args = ["worktree", "add", "--no-checkout"]
     if info.branch:
         args.extend(["-b", info.branch, info.directory])
     else:
         args.extend(["--detach", info.directory, "HEAD"])
-    created = _run_git(source, *args)
+    created = await _run_git(source, *args)
     if created.returncode != 0:
         detail = (
             created.stderr.strip()
@@ -342,11 +353,11 @@ async def create_coding_workspace_worktree(
         )
         raise HTTPException(status_code=500, detail=detail)
 
-    populated = _run_git(Path(info.directory), "reset", "--hard")
+    populated = await _run_git(Path(info.directory), "reset", "--hard")
     if populated.returncode != 0:
-        _run_git(source, "worktree", "remove", "--force", info.directory)
+        await _run_git(source, "worktree", "remove", "--force", info.directory)
         if info.branch:
-            _run_git(source, "branch", "-D", info.branch)
+            await _run_git(source, "branch", "-D", info.branch)
         detail = (
             populated.stderr.strip()
             or populated.stdout.strip()

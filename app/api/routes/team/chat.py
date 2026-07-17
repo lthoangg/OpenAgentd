@@ -712,7 +712,7 @@ async def resolve_team_session(
             )
             db.add(session)
         if body.mode == "coding" and workspace:
-            managed_source = find_managed_worktree_source(Path(workspace))
+            managed_source = await find_managed_worktree_source(Path(workspace))
             if managed_source:
                 await upsert_coding_workspace(
                     db,

@@ -64,6 +64,17 @@ def _load_jsonl(path: Path) -> list[dict[str, Any]]:
     return records
 
 
+def _load_span_records(path: Path) -> list[dict[str, Any]]:
+    """Load either a legacy JSONL file or the current partitioned span directory."""
+    if path.is_dir():
+        return [
+            record
+            for partition in sorted(path.glob("*.jsonl"))
+            for record in _load_jsonl(partition)
+        ]
+    return _load_jsonl(path)
+
+
 def _short_id(hex_id: str | None, length: int = 12) -> str:
     if not hex_id:
         return "none"
@@ -416,7 +427,7 @@ def main() -> None:
     args, _ = parser.parse_known_args()
     apply_env_override(args)
     state_dir = _default_state_dir()
-    default_spans = state_dir / "otel" / "spans.jsonl"
+    default_spans = state_dir / "otel" / "spans"
     default_metrics = state_dir / "otel" / "metrics.jsonl"
 
     parser.add_argument(
@@ -467,7 +478,7 @@ def main() -> None:
         print_metrics(records)
         return
 
-    spans = _load_jsonl(args.spans)
+    spans = _load_span_records(args.spans)
     print(f"spans file: {args.spans}  ({len(spans)} total)\n")
 
     if args.summary:

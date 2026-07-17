@@ -441,7 +441,11 @@ async def get_coding_workspace_git_diff(
         scoped_set = set(scoped)
         untracked = [u for u in untracked if u in scoped_set]
     tracked_diff = str(result.stdout)
-    full_diff = tracked_diff + _untracked_diff(root, untracked)
+    # to_thread: reads up to 256KB per untracked file and runs difflib on
+    # each — measured ~100ms inline for 30 ~200KB files, scaling linearly
+    # with untracked-file count. Keep it off the event loop like every
+    # other blocking call in this route.
+    full_diff = tracked_diff + await asyncio.to_thread(_untracked_diff, root, untracked)
     truncated = len(full_diff) > _MAX_GIT_DIFF_CHARS
     diff = full_diff[:_MAX_GIT_DIFF_CHARS]
     return CodingWorkspaceGitDiffResponse(

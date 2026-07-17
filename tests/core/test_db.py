@@ -41,6 +41,43 @@ async def test_get_session_base_exception_rolls_back():
             raise asyncio.CancelledError()
 
 
+async def test_production_pragma_hook_sets_busy_timeout_and_wal(tmp_path):
+    """The production connect hook must enforce SQLite pragmas by itself.
+
+    ``connect_args={"timeout": 0}`` disables the sqlite3 driver's implicit
+    5s busy handler, so this fails if the hook stops setting
+    ``busy_timeout`` explicitly — we must not depend on driver defaults.
+    """
+    from sqlalchemy import event
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    from app.core.db import _set_sqlite_pragmas
+
+    engine = create_async_engine(
+        f"sqlite+aiosqlite:///{tmp_path / 'pragmas.sqlite'}",
+        connect_args={"timeout": 0},
+    )
+    event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragmas)
+    try:
+        async with engine.connect() as conn:
+            pragmas = {
+                name: (await conn.execute(text(f"PRAGMA {name}"))).scalar()
+                for name in (
+                    "busy_timeout",
+                    "journal_mode",
+                    "synchronous",
+                    "foreign_keys",
+                )
+            }
+    finally:
+        await engine.dispose()
+
+    assert pragmas["busy_timeout"] == 5000
+    assert pragmas["journal_mode"] == "wal"
+    assert pragmas["synchronous"] == 1  # NORMAL
+    assert pragmas["foreign_keys"] == 1
+
+
 async def test_test_database_enforces_foreign_keys_and_cascades():
     """The test connection hook mirrors production FK enforcement."""
     import app.core.db as _db

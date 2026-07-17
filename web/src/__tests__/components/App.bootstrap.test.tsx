@@ -4,12 +4,17 @@ import App from '@/App'
 
 const TEST_BACKEND_URL = 'http://10.0.2.2:8000'
 
-let statusPayload: { base_url: string; token?: string | null; external?: boolean; sidecar_running?: boolean } | null = { base_url: TEST_BACKEND_URL }
+let statusPayload: { base_url: string; token?: string | null; external?: boolean; sidecar_running?: boolean; supports_bundled?: boolean; backend_starting?: boolean } | null = { base_url: TEST_BACKEND_URL }
+let resolveBundledRestart: (() => void) | null = null
 interface BackendReadyEvent {
   payload: { base_url: string; token?: string | null }
 }
+interface BackendErrorEvent {
+  payload: { message: string }
+}
 
 let backendReadyListener: ((event: BackendReadyEvent) => void) | null = null
+let backendErrorListener: ((event: BackendErrorEvent) => void) | null = null
 let resolveSecureKey: (() => void) | null = null
 let routerMounted = false
 
@@ -54,6 +59,10 @@ const invokeMock = mock(async (...args: unknown[]) => {
     await new Promise<void>((resolve) => { resolveSecureKey = resolve })
     return 'secure-key'
   }
+  if (command === 'app_use_bundled_backend') {
+    await new Promise<void>((resolve) => { resolveBundledRestart = resolve })
+    return null
+  }
   throw new Error(`unexpected command: ${command}`)
 })
 
@@ -74,10 +83,16 @@ const listenMock = mock(() => {
 
 const windowListenMock = mock((...args: unknown[]) => {
   const event = String(args[0])
-  const callback = args[1] as ((event: BackendReadyEvent) => void) | undefined
-  if (event === 'backend-ready' && callback) backendReadyListener = callback
+  const callback = args[1] as ((event: BackendReadyEvent | BackendErrorEvent) => void) | undefined
+  if (event === 'backend-ready' && callback) {
+    backendReadyListener = callback as (event: BackendReadyEvent) => void
+  }
+  if (event === 'backend-error' && callback) {
+    backendErrorListener = callback as (event: BackendErrorEvent) => void
+  }
   return Promise.resolve(() => {
-    backendReadyListener = null
+    if (event === 'backend-ready') backendReadyListener = null
+    if (event === 'backend-error') backendErrorListener = null
   })
 })
 
@@ -111,7 +126,9 @@ beforeEach(() => {
   window.localStorage.clear()
   statusPayload = { base_url: TEST_BACKEND_URL, sidecar_running: true, external: false }
   backendReadyListener = null
+  backendErrorListener = null
   resolveSecureKey = null
+  resolveBundledRestart = null
   routerMounted = false
   invokeMock.mockClear()
 })
@@ -231,6 +248,19 @@ describe('App backend bootstrap', () => {
     })
   })
 
+  it('shows recovery immediately when the native shell reports a startup error', async () => {
+    statusPayload = { base_url: '', sidecar_running: false, external: false, backend_starting: true }
+    render(<App />)
+    await waitFor(() => expect(backendErrorListener).not.toBeNull())
+
+    await act(async () => {
+      backendErrorListener?.({ payload: { message: 'Sidecar handshake failed' } })
+    })
+
+    expect(screen.getByText('OpenAgentd is taking longer than usual to start.')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
+  })
+
   it('offers recovery after the bundled sidecar exceeds the eager splash timeout', async () => {
     const timers = useFakeTimers()
     statusPayload = { base_url: TEST_BACKEND_URL, sidecar_running: false, external: false }
@@ -243,6 +273,48 @@ describe('App backend bootstrap', () => {
     expect(screen.getByText('OpenAgentd is taking longer than usual to start.')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Choose Server' })).toBeTruthy()
+    timers.restore()
+  })
+
+  it('does not start a duplicate bundled sidecar while startup is in progress', async () => {
+    const timers = useFakeTimers()
+    statusPayload = {
+      base_url: '',
+      sidecar_running: false,
+      backend_starting: true,
+      external: false,
+      supports_bundled: true,
+    }
+    render(<App />)
+    await act(async () => { await Promise.resolve() })
+    await act(async () => { timers.tick(15_000) })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    await act(async () => { await Promise.resolve(); await Promise.resolve() })
+    expect(invokeMock.mock.calls.some((call) => call[0] === 'app_use_bundled_backend')).toBe(false)
+    timers.restore()
+  })
+
+  it('restarts a failed bundled sidecar from the recovery screen', async () => {
+    const timers = useFakeTimers()
+    statusPayload = {
+      base_url: TEST_BACKEND_URL,
+      sidecar_running: false,
+      external: false,
+      supports_bundled: true,
+    }
+    render(<App />)
+    await act(async () => { await Promise.resolve() })
+    await act(async () => { timers.tick(15_000) })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    await act(async () => { await Promise.resolve() })
+    expect(invokeMock.mock.calls.some((call) => call[0] === 'app_use_bundled_backend')).toBe(true)
+    expect(screen.getByRole('button', { name: 'Restarting…' }).hasAttribute('disabled')).toBe(true)
+
+    statusPayload = { base_url: TEST_BACKEND_URL, sidecar_running: true, external: false }
+    await act(async () => { resolveBundledRestart?.(); await Promise.resolve(); await Promise.resolve() })
+    expect(window.__OAD_API_BASE_URL__).toBe(TEST_BACKEND_URL)
     timers.restore()
   })
 

@@ -8,6 +8,8 @@ export interface AppBackendStatus {
   token?: string | null
   mode?: 'bundled' | 'external'
   sidecar_running: boolean
+  /** Desktop bundled-sidecar spawn/handshake is already in progress. */
+  backend_starting?: boolean
   external: boolean
   supports_bundled: boolean
   servers: SavedAppServer[]

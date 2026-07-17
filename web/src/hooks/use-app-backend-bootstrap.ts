@@ -2,7 +2,11 @@ import { useCallback, useEffect, useState } from 'react'
 import { installDesktopAuth, primeStoredAccessKey } from '@/api/auth'
 import { onApiBaseUrlChange, setApiBaseUrl } from '@/api/base-url'
 import { getPlatform } from '@/hooks/use-platform'
-import { type AppBackendStatus, getAppBackendStatus } from '@/lib/app-backend'
+import {
+  type AppBackendStatus,
+  getAppBackendStatus,
+  switchToBundledAppBackend,
+} from '@/lib/app-backend'
 import { queryClient } from '@/lib/query-client'
 import { useLspInstallStore } from '@/stores/useLspInstallStore'
 
@@ -13,6 +17,7 @@ const ACTIVE_BACKEND_URL_STORAGE = 'openagentd.activeBackendUrl'
 export interface AppBackendBootstrap {
   ready: boolean
   unavailable: boolean
+  retrying: boolean
   retry: () => void
 }
 
@@ -44,14 +49,31 @@ export function useAppBackendBootstrap(): AppBackendBootstrap {
   const [ready, setReady] = useState(false)
   const [retryKey, setRetryKey] = useState(0)
   const [unavailable, setUnavailable] = useState(false)
+  const [retrying, setRetrying] = useState(false)
   const retry = useCallback(() => {
-    setUnavailable(false)
-    setRetryKey((key) => key + 1)
-  }, [])
+    if (retrying) return
+    setRetrying(true)
+    void getAppBackendStatus()
+      .then(async (status) => {
+        // On desktop, a failed initial spawn needs a real native retry —
+        // restarting the frontend-only polling loop cannot make a missing
+        // sidecar appear. Mobile/external backends retain poll-only retry.
+        if (status?.supports_bundled && !status.sidecar_running && !status.backend_starting && !status.external) {
+          await switchToBundledAppBackend()
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        setRetrying(false)
+        setUnavailable(false)
+        setRetryKey((key) => key + 1)
+      })
+  }, [retrying])
 
   useEffect(() => {
     let cancelled = false
     let unlistenBackendReady: (() => void) | undefined
+    let unlistenBackendError: (() => void) | undefined
     let pollTimer: ReturnType<typeof setTimeout> | undefined
     const isTauri = getPlatform().isTauri
     const deadline = Date.now() + DESKTOP_BOOTSTRAP_TIMEOUT_MS
@@ -119,7 +141,8 @@ export function useAppBackendBootstrap(): AppBackendBootstrap {
     // label as the target, which Tauri's event filter actually respects.
     void import('@tauri-apps/api/webviewWindow').then(({ getCurrentWebviewWindow }) => {
       if (cancelled) return
-      void getCurrentWebviewWindow()
+      const currentWindow = getCurrentWebviewWindow()
+      void currentWindow
         .listen<{ base_url: string; token?: string | null }>('backend-ready', (event) => {
           if (cancelled || !event.payload.base_url) return
           void applyDesktopBackend(event.payload).then(finishReady).catch(() => {
@@ -128,6 +151,16 @@ export function useAppBackendBootstrap(): AppBackendBootstrap {
         }).then((unlisten) => {
           if (cancelled) unlisten()
           else unlistenBackendReady = unlisten
+        }).catch(() => {})
+      void currentWindow
+        .listen<{ message: string }>('backend-error', () => {
+          // Do not wait out the generic 15 s timeout when native startup has
+          // already failed. The shell's detailed error remains in its log;
+          // the recovery UI intentionally exposes only safe generic copy.
+          if (!cancelled) setUnavailable(true)
+        }).then((unlisten) => {
+          if (cancelled) unlisten()
+          else unlistenBackendError = unlisten
         }).catch(() => {})
     }).catch(() => {})
 
@@ -141,9 +174,10 @@ export function useAppBackendBootstrap(): AppBackendBootstrap {
       cancelled = true
       if (pollTimer) clearTimeout(pollTimer)
       unlistenBackendReady?.()
+      unlistenBackendError?.()
       unsubscribe()
     }
   }, [retryKey])
 
-  return { ready, unavailable, retry }
+  return { ready, unavailable, retrying, retry }
 }

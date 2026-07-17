@@ -9,21 +9,22 @@ import { useAppBackendBootstrap } from './hooks/use-app-backend-bootstrap'
 import { router } from './router'
 
 function App() {
-  const { ready, unavailable, retry } = useAppBackendBootstrap()
+  const { ready, unavailable, retrying, retry } = useAppBackendBootstrap()
   const [backendDialogOpen, setBackendDialogOpen] = useState(false)
 
-  if (!ready) return <AppLoadingScreen unavailable={unavailable} onRetry={retry} onChooseServer={() => setBackendDialogOpen(true)} backendDialogOpen={backendDialogOpen} onBackendDialogOpenChange={setBackendDialogOpen} />
+  if (!ready) return <AppLoadingScreen unavailable={unavailable} retrying={retrying} onRetry={retry} onChooseServer={() => setBackendDialogOpen(true)} backendDialogOpen={backendDialogOpen} onBackendDialogOpenChange={setBackendDialogOpen} />
 
   return (
-    <Suspense fallback={<AppLoadingScreen unavailable={false} onRetry={() => {}} onChooseServer={() => {}} backendDialogOpen={false} onBackendDialogOpenChange={() => {}} />}>
+    <Suspense fallback={<AppLoadingScreen unavailable={false} retrying={false} onRetry={() => {}} onChooseServer={() => {}} backendDialogOpen={false} onBackendDialogOpenChange={() => {}} />}>
       <RouterProvider router={router} />
       <UpdateCard />
     </Suspense>
   )
 }
 
-function AppLoadingScreen({ unavailable, onRetry, onChooseServer, backendDialogOpen, onBackendDialogOpenChange }: {
+function AppLoadingScreen({ unavailable, retrying, onRetry, onChooseServer, backendDialogOpen, onBackendDialogOpenChange }: {
   unavailable: boolean
+  retrying: boolean
   onRetry: () => void
   onChooseServer: () => void
   backendDialogOpen: boolean
@@ -44,7 +45,7 @@ function AppLoadingScreen({ unavailable, onRetry, onChooseServer, backendDialogO
         {unavailable && <>
           <p className="text-sm text-(--color-text-muted)">OpenAgentd is taking longer than usual to start.</p>
           <div className="flex flex-wrap justify-center gap-2">
-            <Button onClick={onRetry}>Retry</Button>
+            <Button onClick={onRetry} disabled={retrying}>{retrying ? 'Restarting…' : 'Retry'}</Button>
             <Button variant="subtle" onClick={onChooseServer}>Choose Server</Button>
             <Button variant="ghost" onClick={() => { void copyBackendLogPath() }}>{logCopied ? 'Backend Log Path Copied' : 'Copy Backend Log Path'}</Button>
           </div>

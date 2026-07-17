@@ -5,7 +5,7 @@ use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_dialog::DialogExt;
 
-use crate::{AppState, BackendMode};
+use crate::{AppState, BackendMode, BackendStartGuard};
 use crate::sidecar::Sidecar;
 use crate::config::{
     load_app_backend_config, save_app_backend_config, remove_app_backend_server,
@@ -230,6 +230,9 @@ pub async fn app_backend_status_for_window(
         token,
         mode: mode.as_str().to_string(),
         sidecar_running,
+        backend_starting: state
+            .backend_starting
+            .load(std::sync::atomic::Ordering::SeqCst),
         external: mode == BackendMode::External,
         supports_bundled: true,
         servers,
@@ -389,19 +392,29 @@ pub async fn app_use_bundled_backend(
             sidecar_running: true,
         }
     } else {
+        let _start_guard = BackendStartGuard::try_acquire(state.backend_starting.clone())
+            .ok_or_else(|| "bundled backend is already starting".to_string())?;
         let mut sidecar = if let Some(token) = existing_token.as_deref() {
             Sidecar::spawn_with_desktop_token(&app, Some(token)).map_err(|e| format!("{e:#}"))?
         } else {
             Sidecar::spawn(&app).map_err(|e| format!("{e:#}"))?
         };
-        let handshake = sidecar
-            .read_handshake(Duration::from_secs(30))
-            .await
-            .map_err(|e| format!("{e:#}"))?;
+        let handshake = match sidecar.read_handshake(Duration::from_secs(30)).await {
+            Ok(handshake) => handshake,
+            Err(e) => {
+                sidecar
+                    .shutdown_with_grace(Duration::from_millis(750))
+                    .await;
+                return Err(format!("{e:#}"));
+            }
+        };
         let base = format!("http://127.0.0.1:{}", handshake.port);
-        wait_for_health(&base, 60, Duration::from_millis(250))
-            .await
-            .map_err(|e| format!("{e:#}"))?;
+        if let Err(e) = wait_for_health(&base, 60, Duration::from_millis(250)).await {
+            sidecar
+                .shutdown_with_grace(Duration::from_millis(750))
+                .await;
+            return Err(format!("{e:#}"));
+        }
 
         let token = handshake.token.clone();
         let _ = state.sidecar.lock().await.replace(sidecar);

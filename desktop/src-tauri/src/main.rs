@@ -44,6 +44,10 @@ pub struct AppState {
     pub desktop_token: Arc<Mutex<Option<String>>>,
     pub backend_base_url: Arc<Mutex<Option<String>>>,
     pub backend_mode: Arc<Mutex<BackendMode>>,
+    /// True only while a bundled-sidecar spawn/handshake/health sequence is
+    /// in progress. Shared with the retry command to prevent two Python
+    /// backends from being launched concurrently after a slow cold start.
+    pub backend_starting: Arc<AtomicBool>,
     pub window_backend_base_urls: Arc<Mutex<HashMap<String, String>>>,
     pub force_reloading: Arc<AtomicBool>,
     pub quitting: Arc<AtomicBool>,
@@ -96,6 +100,26 @@ impl BackendMode {
             Self::Bundled => "bundled",
             Self::External => "external",
         }
+    }
+}
+
+/// RAII guard for the singleton bundled-backend startup path. Clearing the
+/// flag in Drop covers every `?`/error return without hand-maintained resets.
+pub struct BackendStartGuard {
+    flag: Arc<AtomicBool>,
+}
+
+impl BackendStartGuard {
+    pub fn try_acquire(flag: Arc<AtomicBool>) -> Option<Self> {
+        flag.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .ok()
+            .map(|_| Self { flag })
+    }
+}
+
+impl Drop for BackendStartGuard {
+    fn drop(&mut self) {
+        self.flag.store(false, Ordering::SeqCst);
     }
 }
 
@@ -380,6 +404,8 @@ async fn start_backend_and_window(app: AppHandle) -> Result<()> {
         }
     }
 
+    let _start_guard = BackendStartGuard::try_acquire(state.backend_starting.clone())
+        .ok_or_else(|| anyhow::anyhow!("bundled backend is already starting"))?;
     match Sidecar::spawn(&app) {
         Ok(mut sidecar) => {
             let handshake_result = sidecar
@@ -398,6 +424,14 @@ async fn start_backend_and_window(app: AppHandle) -> Result<()> {
                     let base = format!("http://127.0.0.1:{}", handshake.port);
                     if let Err(e) = wait_for_health(&base, 60, Duration::from_millis(250)).await {
                         log::warn!("desktop: sidecar health check failed at startup: {e:#}");
+                        // The sidecar is not stored in AppState on failure, so
+                        // explicitly reap it before exposing Retry. Dropping a
+                        // tokio Child alone does not guarantee process exit on
+                        // Unix; an orphan would waste memory and contend with
+                        // the replacement backend.
+                        sidecar
+                            .shutdown_with_grace(Duration::from_millis(750))
+                            .await;
                         update_tray_status(&app, "Status: Error");
                         app.emit(
                             "backend-error",
@@ -437,6 +471,9 @@ async fn start_backend_and_window(app: AppHandle) -> Result<()> {
                 }
                 Err(e) => {
                     log::warn!("desktop: sidecar handshake failed at startup: {e:#}");
+                    sidecar
+                        .shutdown_with_grace(Duration::from_millis(750))
+                        .await;
                     update_tray_status(&app, "Status: Error");
                     app.emit(
                         "backend-error",
@@ -470,6 +507,7 @@ fn main() {
         desktop_token: Arc::new(Mutex::new(None)),
         backend_base_url: Arc::new(Mutex::new(None)),
         backend_mode: Arc::new(Mutex::new(BackendMode::Bundled)),
+        backend_starting: Arc::new(AtomicBool::new(false)),
         window_backend_base_urls: Arc::new(Mutex::new(HashMap::new())),
         force_reloading: Arc::new(AtomicBool::new(false)),
         quitting: Arc::new(AtomicBool::new(false)),
@@ -659,6 +697,18 @@ mod tests {
     use crate::window::{frontend_init_script, inherited_external_base_url, new_window_init_script};
     use crate::updater::{dialog_result_is_accept, format_update_prompt, format_download_progress, validate_install_preconditions};
     use crate::config::AppBackendConfig;
+
+    #[test]
+    fn backend_start_guard_prevents_concurrent_start_and_resets_on_drop() {
+        let flag = Arc::new(AtomicBool::new(false));
+        let guard = BackendStartGuard::try_acquire(flag.clone()).expect("first startup guard");
+        assert!(flag.load(Ordering::SeqCst));
+        assert!(BackendStartGuard::try_acquire(flag.clone()).is_none());
+
+        drop(guard);
+        assert!(!flag.load(Ordering::SeqCst));
+        assert!(BackendStartGuard::try_acquire(flag).is_some());
+    }
 
     #[test]
     fn new_window_uses_active_external_backend_before_bundled() {

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -266,14 +267,17 @@ def _skills_dir_signature(directory: Path) -> int:
     if not directory.is_dir():
         return 0
     entries: list[tuple[str, int, int]] = []
-    for skill_file, _ in _iter_skill_paths(directory):
+    for skill_file, stem in _iter_skill_paths(directory):
         try:
             stat = skill_file.stat()
         except OSError:
             continue
-        entries.append(
-            (str(skill_file.relative_to(directory)), stat.st_mtime_ns, stat.st_size)
-        )
+        # ``stem`` is the path of the skill relative to *directory* (flat
+        # ``name`` or nested ``parent/sub``), so it carries the same
+        # add/remove/rename sensitivity ``relative_to`` did — without the
+        # pathlib cost. This runs on every cache validation, i.e. every
+        # dynamic `skill` tool description access (once per agent turn).
+        entries.append((f"{stem}/SKILL.md", stat.st_mtime_ns, stat.st_size))
     return hash(tuple(entries))
 
 
@@ -384,19 +388,34 @@ def _iter_skill_paths(directory: Path):
     Returns nothing for non-existent or non-directory paths so callers
     can pass roots that may not be present on this machine.
     """
-    if not directory.is_dir():
+    # os.scandir over pathlib.iterdir: DirEntry.is_dir() answers from the
+    # readdir d_type on most filesystems (no per-entry stat syscall), and we
+    # skip constructing intermediate Path objects for non-skill entries.
+    # This walk runs on every skill-cache validation — once per dynamic
+    # `skill` tool description access, i.e. once per agent turn.
+    try:
+        with os.scandir(directory) as it:
+            subdirs = sorted((e for e in it if e.is_dir()), key=lambda e: e.name)
+    except OSError:
         return
-    for subdir in sorted(p for p in directory.iterdir() if p.is_dir()):
-        skill_file = subdir / "SKILL.md"
-        if skill_file.is_file():
+    for subdir in subdirs:
+        skill_file = os.path.join(subdir.path, "SKILL.md")
+        if os.path.isfile(skill_file):
             # Flat skill — yield and *also* check for nested sub-skills
             # below (they coexist with the parent's own SKILL.md).
-            yield skill_file, subdir.name
+            yield Path(skill_file), subdir.name
         # One level of nesting: {parent}/{sub}/SKILL.md → "parent/sub"
-        for nested in sorted(p for p in subdir.iterdir() if p.is_dir()):
-            nested_file = nested / "SKILL.md"
-            if nested_file.is_file():
-                yield nested_file, f"{subdir.name}/{nested.name}"
+        try:
+            with os.scandir(subdir.path) as nested_it:
+                nested_dirs = sorted(
+                    (e for e in nested_it if e.is_dir()), key=lambda e: e.name
+                )
+        except OSError:
+            continue
+        for nested in nested_dirs:
+            nested_file = os.path.join(nested.path, "SKILL.md")
+            if os.path.isfile(nested_file):
+                yield Path(nested_file), f"{subdir.name}/{nested.name}"
 
 
 def _loaded_skills_from_messages(state: Any) -> dict[str, str]:

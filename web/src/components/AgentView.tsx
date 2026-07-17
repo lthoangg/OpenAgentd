@@ -249,15 +249,25 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
     if (behavior === 'smooth' && typeof el.scrollTo === 'function') {
       isProgrammaticScrollRef.current = true
       el.scrollTo({ top: bottom, behavior: 'smooth' })
-      const handleScrollEnd = () => {
+      let finished = false
+      const finish = () => {
+        if (finished) return
+        finished = true
         isProgrammaticScrollRef.current = false
-        el.removeEventListener('scrollend', handleScrollEnd)
+        el.removeEventListener('scrollend', finish)
+        // WKWebView (macOS desktop + iOS) can silently no-op a smooth
+        // scrollTo (see AGENTS.md). Recompute the bottom — the stream may
+        // have grown during the animation — and jump instantly if the view
+        // did not actually get there, so the button always lands the user
+        // at the stream tail.
+        const target = Math.max(0, el.scrollHeight - el.clientHeight)
+        if (Math.abs(el.scrollTop - target) > 1) {
+          el.scrollTop = target
+          lastScrollTopRef.current = el.scrollTop
+        }
       }
-      el.addEventListener('scrollend', handleScrollEnd)
-      setTimeout(() => {
-        isProgrammaticScrollRef.current = false
-        el.removeEventListener('scrollend', handleScrollEnd)
-      }, 500)
+      el.addEventListener('scrollend', finish)
+      setTimeout(finish, 500)
     } else {
       el.scrollTop = bottom
       lastScrollTopRef.current = el.scrollTop
@@ -327,6 +337,17 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
     el.scrollTop = el.scrollHeight - prevScrollHeightRef.current
     prevScrollHeightRef.current = null
   }, [blocks.length, renderedTurnCount])
+
+  // Me re-attach on session switch. A detach is a statement about *this*
+  // conversation; carrying it into the next one left newly opened sessions
+  // sitting mid-transcript and not following their live stream.
+  useEffect(() => {
+    pendingRestoreRef.current = false
+    prevScrollHeightRef.current = null
+    attachedRef.current = true
+    setShowScrollBtn(false)
+    scrollToBottom()
+  }, [sessionId, scrollToBottom])
 
   // Me single scroll effect — block count or last block text changed
   const lastContent = allBlocks[allBlocks.length - 1]?.content ?? ''

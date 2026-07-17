@@ -150,7 +150,8 @@ browsers treat table layout specially and it breaks column alignment.
 | Event | Effect on `attachedRef` |
 |---|---|
 | User sends a message (new `user` block) | → `true` |
-| Click chevron-down button | → `true`, instantly `scrollTop = scrollHeight` |
+| Click chevron-down button | → `true`, smooth scroll with instant fallback (see below) |
+| Session id changes (`useTeamStore.sessionId`) | → `true`, instant scroll to bottom — a detach belongs to one conversation and must not leak into the next |
 | Scroll event reaches `dist ≤ 40px` from bottom | → `true` |
 | Scroll event with `dist > 40px` AND no `data-keyboard-open` | → `false` (only if scroll direction is UP), show button |
 | Virtual keyboard opens (`data-keyboard-open` on `<html>`) | scroll event ignored — viewport shrink is not user scroll |
@@ -158,15 +159,21 @@ browsers treat table layout specially and it breaks column alignment.
 When `attachedRef.current === true`, a **`ResizeObserver`** on the content
 element runs `el.scrollTop = el.scrollHeight` on every layout change (streaming
 text, markdown reflow, image load). This is the sole auto-follow mechanism.
+In `AgentPane` the content div only renders once blocks exist, so the observer
+effect keys on empty ↔ populated — mount-only deps left panes that mounted
+empty permanently unobserved.
 
-**Do not use `scrollTo({ behavior: 'smooth' })` directly** — it is unreliable on iOS
-WKWebView (may be instant or silently no-op), which leaves scroll events
-mid-flight that falsely detach the view. For auto-scroll, target the exact maximum
+**Do not use `scrollTo({ behavior: 'smooth' })` directly** — it is unreliable on
+WKWebView (macOS desktop and iOS; may be instant or silently no-op), which leaves
+scroll events mid-flight that falsely detach the view, or leaves the view not
+scrolled at all. For auto-scroll, target the exact maximum
 `Math.max(0, el.scrollHeight - el.clientHeight)` and record the resulting
 `el.scrollTop`; relying on browser clamping from `scrollHeight` leaves a stale
 position after layout contractions. If smooth scrolling is required for user
 actions (e.g. clicking the scroll-to-bottom button), wrap it using a programmatic
-scroll ref to ignore intermediate scroll events.
+scroll ref to ignore intermediate scroll events, and when the programmatic window
+closes (`scrollend` or the 500ms fallback) re-check the position and jump
+instantly if the smooth scroll never arrived.
 
 The `data-keyboard-open` attribute is set/cleared by `useMobileViewportGuards`
 (`hooks/use-mobile-viewport.ts`) in sync with `window.visualViewport` resize events.

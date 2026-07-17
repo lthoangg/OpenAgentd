@@ -402,15 +402,25 @@ export function AgentPane({
     if (behavior === 'smooth' && typeof el.scrollTo === 'function') {
       isProgrammaticScrollRef.current = true
       el.scrollTo({ top: bottom, behavior: 'smooth' })
-      const handleScrollEnd = () => {
+      let finished = false
+      const finish = () => {
+        if (finished) return
+        finished = true
         isProgrammaticScrollRef.current = false
-        el.removeEventListener('scrollend', handleScrollEnd)
+        el.removeEventListener('scrollend', finish)
+        // WKWebView (macOS desktop + iOS) can silently no-op a smooth
+        // scrollTo (see AGENTS.md). Recompute the bottom — the stream may
+        // have grown during the animation — and jump instantly if the view
+        // did not actually get there, so the button always lands the user
+        // at the stream tail.
+        const target = Math.max(0, el.scrollHeight - el.clientHeight)
+        if (Math.abs(el.scrollTop - target) > 1) {
+          el.scrollTop = target
+          lastScrollTopRef.current = el.scrollTop
+        }
       }
-      el.addEventListener('scrollend', handleScrollEnd)
-      setTimeout(() => {
-        isProgrammaticScrollRef.current = false
-        el.removeEventListener('scrollend', handleScrollEnd)
-      }, 500)
+      el.addEventListener('scrollend', finish)
+      setTimeout(finish, 500)
     } else {
       el.scrollTop = bottom
       lastScrollTopRef.current = el.scrollTop
@@ -490,10 +500,25 @@ export function AgentPane({
     if (scrollRef.current) scrollRef.current.scrollTop = 0
   }, [isEmpty])
 
+  // Me re-attach on session switch. A detach is a statement about *this*
+  // conversation; carrying it into the next one left newly opened sessions
+  // sitting mid-transcript and not following their live stream.
+  useEffect(() => {
+    attachedRef.current = true
+    setShowScrollBtn(false)
+    scrollToBottom()
+  }, [sessionId, scrollToBottom])
+
   // ResizeObserver: when attached and content grows, keep the stream pinned to
   // the bottom. Skip scrollport-height changes while the keyboard is open — on
   // mobile those fire every frame during manual chat scrolling, and forcing
   // scrollTop there fights the user's gesture and flickers the scrollbar.
+  //
+  // The content div only renders once blocks exist, so this effect must re-run
+  // when the pane goes empty ↔ populated — with mount-only deps a pane that
+  // mounted empty never observed anything and auto-follow stayed dead for its
+  // whole lifetime.
+  const hasContent = !isEmpty
   useEffect(() => {
     const el = scrollRef.current
     const content = contentRef.current
@@ -516,7 +541,7 @@ export function AgentPane({
     ro.observe(content)
     ro.observe(el)
     return () => ro.disconnect()
-  }, [])
+  }, [hasContent])
 
   const borderClass = isError
     ? 'border-(--color-error)'

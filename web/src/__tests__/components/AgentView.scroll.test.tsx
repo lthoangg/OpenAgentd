@@ -2,10 +2,16 @@ import { describe, it, expect, afterEach, beforeEach, mock } from "bun:test"
 import { act, render, cleanup } from "@testing-library/react"
 import { AgentPane } from "@/components/AgentPane"
 import { AgentView } from "@/components/AgentView"
+import { useTeamStore } from "@/stores/useTeamStore"
 import type { ContentBlock } from "@/api/types"
 import type { AgentStream } from "@/stores/useTeamStore"
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  act(() => {
+    useTeamStore.setState({ sessionId: null })
+  })
+})
 
 beforeEach(() => {
   document.documentElement.removeAttribute("data-keyboard-open")
@@ -280,6 +286,121 @@ describe("AgentView — scroll-to-bottom button", () => {
     await waitFrame()
 
     expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
+  })
+})
+
+// ── attach-to-stream regressions (desktop + mobile) ───────────────────────
+
+describe("attach-to-stream — session switch", () => {
+  it("AgentView re-attaches and scrolls to the bottom when the session changes", async () => {
+    act(() => {
+      useTeamStore.setState({ sessionId: "session-a" })
+    })
+    const { container } = renderStream({ blocks: [makeTextBlock("b1", "Hello")] })
+    const el = container.querySelector(".overflow-y-auto") as HTMLDivElement
+
+    // Detach in session A (user scrolled up to read).
+    await fireScroll(el, 200)
+    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
+
+    // Switch to session B — the stale detach must not leak across sessions.
+    await act(async () => {
+      useTeamStore.setState({ sessionId: "session-b" })
+    })
+    await waitFrame()
+
+    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
+    expect(el.scrollTop).toBe(500) // scrollHeight 1000 - clientHeight 500
+  })
+
+  it("AgentPane re-attaches and scrolls to the bottom when the session changes", async () => {
+    act(() => {
+      useTeamStore.setState({ sessionId: "session-a" })
+    })
+    const { container } = render(
+      <AgentPane name="researcher" stream={makeAgentStream([makeTextBlock("b1", "Hello")])} isLead={false} />,
+    )
+    const el = container.querySelector(".overflow-y-auto") as HTMLDivElement
+
+    await fireScroll(el, 200)
+    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
+
+    await act(async () => {
+      useTeamStore.setState({ sessionId: "session-b" })
+    })
+    await waitFrame()
+
+    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
+    expect(el.scrollTop).toBe(500)
+  })
+})
+
+describe("attach-to-stream — smooth scroll no-op fallback (WKWebView)", () => {
+  it("falls back to an instant jump when smooth scrollTo silently does nothing", async () => {
+    const { container } = renderStream({ blocks: [makeTextBlock("b1", "Hi")] })
+    const el = container.querySelector(".overflow-y-auto") as HTMLDivElement
+
+    await fireScroll(el, 200) // detach at scrollTop=300
+    const btn = container.querySelector('button[aria-label="Scroll to bottom"]') as HTMLButtonElement
+    expect(btn).toBeTruthy()
+
+    // WKWebView can silently no-op scrollTo({behavior:'smooth'}) — the view
+    // never moves and no scroll/scrollend events fire.
+    el.scrollTo = mock(() => {}) as unknown as typeof el.scrollTo
+
+    await act(async () => { btn.click() })
+    expect(el.scrollTop).toBe(300) // smooth scroll did nothing
+
+    // After the programmatic-scroll window closes, the click must still land
+    // the user at the bottom.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 600))
+    })
+    expect(el.scrollTop).toBe(500)
+    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
+  })
+})
+
+describe("attach-to-stream — AgentPane mounted empty", () => {
+  it("starts observing content that appears after an empty mount", async () => {
+    const originalResizeObserver = globalThis.ResizeObserver
+    const resizeObservers: Array<{ targets: Element[] }> = []
+
+    globalThis.ResizeObserver = class {
+      private readonly entry: (typeof resizeObservers)[number]
+      constructor() {
+        this.entry = { targets: [] }
+        resizeObservers.push(this.entry)
+      }
+      observe(target: Element) {
+        this.entry.targets.push(target)
+      }
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof globalThis.ResizeObserver
+
+    try {
+      // Pane mounts with zero blocks — the content div does not exist yet.
+      const { container, rerender } = render(
+        <AgentPane name="researcher" stream={makeAgentStream([])} isLead={false} />,
+      )
+      const el = container.querySelector(".overflow-y-auto") as HTMLDivElement
+      expect(el.querySelector(".space-y-3")).toBeNull()
+
+      // First blocks arrive (agent starts streaming).
+      await act(async () => {
+        rerender(
+          <AgentPane name="researcher" stream={makeAgentStream([makeTextBlock("b1", "Hi")])} isLead={false} />,
+        )
+      })
+
+      const content = el.querySelector(".space-y-3") as HTMLDivElement
+      expect(content).toBeTruthy()
+      // The auto-follow ResizeObserver must observe the late-mounted content.
+      expect(resizeObservers.some((o) => o.targets.includes(content))).toBe(true)
+    } finally {
+      globalThis.ResizeObserver = originalResizeObserver
+    }
   })
 })
 

@@ -279,7 +279,8 @@ spawns specialist members on demand.
   the whole team for reading or sharing.
 - **`/continue` resumes interrupted work** `[v1.5.0]` — restores the team's
   pending plan and resumes streaming from the last turn. Available in the
-  command palette and assistant footer.
+  command palette and assistant footer. Continuations use the session's model
+  and reasoning settings.
 - **Automatic empty-after-tool recovery** `[v1.36.0]` — if a provider returns
   an empty assistant response immediately after a tool result, the lead keeps
   the same turn moving instead of silently ending after the tool call.

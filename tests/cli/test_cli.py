@@ -92,6 +92,40 @@ class TestCliEnvironment:
         assert result.stdout.strip() == str(tmp_path / ".config" / "openagentd")
 
 
+def test_cli_import_and_parser_stay_light() -> None:
+    """``import app.cli`` + ``build_parser()`` must not pull the server stack.
+
+    Every CLI invocation (``--version``, ``status``, shell completion) pays
+    the import of this package. Command bodies import their heavy
+    dependencies lazily at dispatch time; this guards against a stray
+    top-level import regressing startup from ~0.1s to >1s (measured: the
+    eager import chain through artifact_cleanup -> api.routes.team was
+    ~75% of a 1.05s import).
+    """
+    import subprocess
+
+    sentinels = (
+        "app.api.routes.team.chat",
+        "app.services.artifact_cleanup",
+        "app.cli.commands.start",
+        "app.core.db",
+        "sqlalchemy",
+        "fastapi",
+        "uvicorn",
+    )
+    code = (
+        "import sys; import app.cli; app.cli.build_parser(); "
+        f"heavy = [m for m in {sentinels!r} if m in sys.modules]; "
+        "assert not heavy, f'eagerly imported: {heavy}'"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
 def test_lsp_cli_parses_status_and_typescript_install() -> None:
     parser = build_parser()
 

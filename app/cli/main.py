@@ -7,27 +7,54 @@ only wires them up to ``argparse`` subparsers.
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable
 from pathlib import Path
 
-from app.cli.commands.auth import cmd_auth
-from app.cli.commands.address import cmd_address
-from app.cli.commands.cleanup import cmd_cleanup
-from app.cli.commands.doctor import cmd_doctor
-from app.cli.commands.export import cmd_export
-from app.cli.commands.health import cmd_health
-from app.cli.commands.importcmd import cmd_import
-from app.cli.commands.init import cmd_init
-from app.cli.commands.logs import cmd_logs
-from app.cli.commands.lsp import cmd_lsp
-from app.cli.commands.migrate import cmd_migrate
-from app.cli.commands.restart import cmd_restart
-from app.cli.commands.serve import _add_serve_subparser
-from app.cli.commands.start import cmd_start
-from app.cli.commands.status import cmd_status
-from app.cli.commands.stop import cmd_stop
-from app.cli.commands.upgrade import cmd_upgrade
-from app.cli.commands.version import cmd_version
 from app.core.version import VERSION
+
+
+def _lazy_cmd(module: str, attr: str) -> Callable[[argparse.Namespace], object]:
+    """Return a dispatcher that imports the command module at call time.
+
+    Every CLI invocation builds the full parser, so eager ``cmd_*`` imports
+    made ``openagentd --version`` pay for the whole server stack (~1.05s
+    measured, ~75% through the artifact_cleanup → api.routes.team chain).
+    Importing inside the dispatcher defers that cost to the one command
+    that actually runs.
+    """
+
+    def _dispatch(args: argparse.Namespace) -> object:
+        from importlib import import_module
+
+        return getattr(import_module(module), attr)(args)
+
+    return _dispatch
+
+
+cmd_address = _lazy_cmd("app.cli.commands.address", "cmd_address")
+cmd_auth = _lazy_cmd("app.cli.commands.auth", "cmd_auth")
+cmd_cleanup = _lazy_cmd("app.cli.commands.cleanup", "cmd_cleanup")
+cmd_doctor = _lazy_cmd("app.cli.commands.doctor", "cmd_doctor")
+cmd_export = _lazy_cmd("app.cli.commands.export", "cmd_export")
+cmd_health = _lazy_cmd("app.cli.commands.health", "cmd_health")
+cmd_import = _lazy_cmd("app.cli.commands.importcmd", "cmd_import")
+cmd_init = _lazy_cmd("app.cli.commands.init", "cmd_init")
+cmd_logs = _lazy_cmd("app.cli.commands.logs", "cmd_logs")
+cmd_lsp = _lazy_cmd("app.cli.commands.lsp", "cmd_lsp")
+cmd_migrate = _lazy_cmd("app.cli.commands.migrate", "cmd_migrate")
+cmd_restart = _lazy_cmd("app.cli.commands.restart", "cmd_restart")
+cmd_start = _lazy_cmd("app.cli.commands.start", "cmd_start")
+cmd_status = _lazy_cmd("app.cli.commands.status", "cmd_status")
+cmd_stop = _lazy_cmd("app.cli.commands.stop", "cmd_stop")
+cmd_upgrade = _lazy_cmd("app.cli.commands.upgrade", "cmd_upgrade")
+cmd_version = _lazy_cmd("app.cli.commands.version", "cmd_version")
+
+
+def _add_serve_subparser(sub: argparse._SubParsersAction) -> None:
+    """Defer :mod:`app.cli.commands.serve` import to parser build time."""
+    from app.cli.commands.serve import _add_serve_subparser as _add
+
+    _add(sub)
 
 
 def build_parser() -> argparse.ArgumentParser:

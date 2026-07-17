@@ -20,76 +20,74 @@ Usage
 This package replaces the former monolithic ``app/cli.py`` module.  The
 package-level ``__init__`` re-exports the public (and legacy-private) API so
 that ``openagentd = "app.cli:main"`` and existing test imports keep working.
+
+Re-exports are lazy (PEP 562): every CLI invocation pays this package's
+import cost, and the eager command imports used to pull the whole server
+stack (measured ~1.05s, ~75% of it through the artifact_cleanup →
+api.routes.team chain) before even parsing ``--version``. Command modules
+are now imported on first attribute access or at dispatch time in
+:mod:`app.cli.main`.
 """
 
 from __future__ import annotations
 
 import os
+from typing import Any
 
 # The installed CLI is a production launcher. Set this before importing command
 # modules because they transitively construct the global settings object.
 os.environ.setdefault("APP_ENV", "production")
 
-from app.cli.commands.address import cmd_address
-from app.cli.commands.auth import cmd_auth
-from app.cli.commands.cleanup import cmd_cleanup
-from app.cli.commands.doctor import cmd_doctor
-from app.cli.commands.health import cmd_health
-from app.cli.commands.init import cmd_init
-from app.cli.commands.logs import cmd_logs
-from app.cli.commands.migrate import cmd_migrate
-from app.cli.commands.restart import cmd_restart
-from app.cli.commands.start import cmd_start
-from app.cli.commands.status import cmd_status
-from app.cli.commands.stop import cmd_stop
-from app.cli.commands.upgrade import cmd_upgrade
-from app.cli.commands.version import cmd_version
-from app.cli.main import build_parser, main
-from app.cli.paths import (
-    _config_dir,
-    _data_dir,
-    _pid_file,
-    _server_log,
-    _state_dir,
-    _web_log,
-)
-from app.cli.pids import (
-    _clear_pids,
-    _find_pids,
-    _pid_alive,
-    _read_pids,
-    _write_pids,
-)
-
-__all__ = [
-    "build_parser",
-    "main",
-    # commands
-    "cmd_address",
-    "cmd_auth",
-    "cmd_cleanup",
-    "cmd_doctor",
-    "cmd_health",
-    "cmd_init",
-    "cmd_logs",
-    "cmd_migrate",
-    "cmd_restart",
-    "cmd_start",
-    "cmd_status",
-    "cmd_stop",
-    "cmd_upgrade",
-    "cmd_version",
+#: name → defining module for every lazy re-export.
+_LAZY_EXPORTS: dict[str, str] = {
+    "build_parser": "app.cli.main",
+    "main": "app.cli.main",
+    # commands — resolved to the lazy dispatchers in app.cli.main so that
+    # ``app.cli.cmd_x is parser_args.func`` identity holds. The dispatchers
+    # import the real command module only when invoked.
+    "cmd_address": "app.cli.main",
+    "cmd_auth": "app.cli.main",
+    "cmd_cleanup": "app.cli.main",
+    "cmd_doctor": "app.cli.main",
+    "cmd_health": "app.cli.main",
+    "cmd_init": "app.cli.main",
+    "cmd_logs": "app.cli.main",
+    "cmd_migrate": "app.cli.main",
+    "cmd_restart": "app.cli.main",
+    "cmd_start": "app.cli.main",
+    "cmd_status": "app.cli.main",
+    "cmd_stop": "app.cli.main",
+    "cmd_upgrade": "app.cli.main",
+    "cmd_version": "app.cli.main",
     # path helpers (kept public for tests)
-    "_config_dir",
-    "_data_dir",
-    "_pid_file",
-    "_server_log",
-    "_state_dir",
-    "_web_log",
+    "_config_dir": "app.cli.paths",
+    "_data_dir": "app.cli.paths",
+    "_pid_file": "app.cli.paths",
+    "_server_log": "app.cli.paths",
+    "_state_dir": "app.cli.paths",
+    "_web_log": "app.cli.paths",
     # pid helpers
-    "_clear_pids",
-    "_find_pids",
-    "_pid_alive",
-    "_read_pids",
-    "_write_pids",
-]
+    "_clear_pids": "app.cli.pids",
+    "_find_pids": "app.cli.pids",
+    "_pid_alive": "app.cli.pids",
+    "_read_pids": "app.cli.pids",
+    "_write_pids": "app.cli.pids",
+}
+
+__all__ = list(_LAZY_EXPORTS)
+
+
+def __getattr__(name: str) -> Any:
+    """Resolve re-exports on first access (PEP 562 module ``__getattr__``)."""
+    module_name = _LAZY_EXPORTS.get(name)
+    if module_name is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    from importlib import import_module
+
+    value = getattr(import_module(module_name), name)
+    globals()[name] = value  # cache — __getattr__ won't fire for it again
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(_LAZY_EXPORTS))

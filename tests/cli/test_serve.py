@@ -200,7 +200,9 @@ class TestBindAuthPolicy:
         )
 
         with (
-            patch("app.cli.commands.serve.load_server_settings") as server_settings,
+            # cmd_serve imports load_server_settings at call time (keeps the
+            # CLI parser build light), so patch the definition site.
+            patch("app.core.server_settings.load_server_settings") as server_settings,
             patch("uvicorn.Config") as config,
             pytest.raises(SystemExit, match="--key.*access key"),
         ):

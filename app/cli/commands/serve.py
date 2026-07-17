@@ -61,9 +61,6 @@ import sys
 import threading
 from typing import Any
 
-from app.cli.net import require_loopback_or_auth
-from app.core.server_settings import load_server_settings
-
 
 def _add_serve_subparser(sub: argparse._SubParsersAction) -> None:
     """Register the ``serve`` subcommand on the given subparsers action."""
@@ -275,9 +272,13 @@ def _configure_desktop_token(generate_token: bool) -> str | None:
 
 
 def cmd_serve(args: argparse.Namespace) -> None:
-    # Lazy imports so ``openagentd --help`` stays fast.
+    # Lazy imports so ``openagentd --help`` stays fast. server_settings
+    # transitively imports app.core.db (SQLAlchemy, ~360ms) — keep it out
+    # of module scope, which every parser build touches.
     import uvicorn
 
+    from app.cli.net import require_loopback_or_auth
+    from app.core.server_settings import load_server_settings
     from app.core.version import VERSION
 
     # Token must be in env *before* the app is imported so the middleware

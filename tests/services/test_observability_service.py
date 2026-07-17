@@ -577,6 +577,21 @@ def _clear_observability_caches() -> None:
     observability_service._get_trace_cached.cache_clear()
 
 
+@pytest.fixture
+def frozen_cache_bucket(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin the cache-key time bucket for multi-call cache-hit assertions.
+
+    The cache key includes ``int(now.timestamp()) // _CACHE_BUCKET_SECONDS``
+    (5s freshness TTL). Tests that assert "identical file state == cache
+    hit" flake whenever the wall clock crosses a 5s bucket boundary between
+    two calls — reproduced deterministically by aligning the first call
+    ~50ms before a boundary (call_count came back 2 instead of 1). A huge
+    bucket keeps every call in this test within one bucket; file-signature
+    invalidation — the behavior under test — is unaffected.
+    """
+    monkeypatch.setattr(observability_service, "_CACHE_BUCKET_SECONDS", 10_000)
+
+
 def _cache_span_attributes() -> dict:
     """Supply the unioned JSON schema expected by all observability queries."""
     return {
@@ -595,7 +610,7 @@ def _cache_span_attributes() -> dict:
 
 
 def test_summary_cache_invalidates_when_span_files_change(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, frozen_cache_bucket: None
 ) -> None:
     """Appends, truncations, rotations, and new files must bust cached reads."""
     spans_dir = _point_openagentd_at(tmp_path, monkeypatch)
@@ -631,7 +646,7 @@ def test_summary_cache_invalidates_when_span_files_change(
 
 
 def test_summary_cache_key_includes_query_arguments(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, frozen_cache_bucket: None
 ) -> None:
     spans_dir = _point_openagentd_at(tmp_path, monkeypatch)
     spans_dir.mkdir(parents=True)
@@ -658,7 +673,10 @@ def test_summary_cache_key_includes_query_arguments(
 
 @pytest.mark.parametrize("query", ["list", "detail", "count"])
 def test_trace_query_caches_invalidate_on_jsonl_signature_change(
-    query: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    query: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    frozen_cache_bucket: None,
 ) -> None:
     """Every trace query reuses unchanged scans and refreshes after an append."""
     spans_dir = _point_openagentd_at(tmp_path, monkeypatch)

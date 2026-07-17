@@ -32,9 +32,16 @@ async def _clean_registry():
 
 
 async def _read_until(
-    session: TerminalSession, needle: bytes, timeout: float = 5.0
+    session: TerminalSession, needle: bytes, timeout: float = 30.0
 ) -> bytes:
-    """Drain session output until *needle* appears or timeout."""
+    """Drain session output until *needle* appears or timeout.
+
+    The deadline is deliberately generous: it is an event-driven wait (zero
+    cost when the shell is healthy), and the spawned shell is the user's
+    real ``$SHELL -il`` whose startup varies wildly under parallel-suite
+    CPU contention. 5s deadlines flaked under ``-n auto``; reproduced
+    deterministically with a shell wrapper that sleeps 6s before exec.
+    """
     buf = b""
     async with asyncio.timeout(timeout):
         while needle not in buf:
@@ -106,7 +113,7 @@ class TestIO:
         session = await create_session(workspace=str(tmp_path))
         try:
             await session.write(b"exit\n")
-            async with asyncio.timeout(5):
+            async with asyncio.timeout(30):
                 while True:
                     chunk = await session.read()
                     if chunk is None:
@@ -160,7 +167,7 @@ class TestSessionEnvIsolation:
             # *output* (read second, further down the stream) contains
             # the expanded value, which is what we're asserting on.
             await session.write(b'echo "MARKER_DONE_TAG=$TERM_SESSION_ID."\n')
-            out = await _read_until(session, b"MARKER_DONE_TAG=.", timeout=8.0)
+            out = await _read_until(session, b"MARKER_DONE_TAG=.", timeout=30.0)
             assert b"outer-terminal-session-id" not in out
             assert b"Restored session" not in out
         finally:
@@ -213,15 +220,22 @@ class TestJobControl:
         """
         session = await create_session(workspace=str(tmp_path))
         try:
+            # Readiness barrier: wait until the shell *evaluates* a command.
+            # Matching the echoed "sleep 30" text is not enough — the kernel
+            # PTY echoes typed input before the shell has even finished
+            # sourcing rc files, and a Ctrl+C delivered during startup kills
+            # the queued line instead of a running `sleep` (reproduced with
+            # a shell wrapper that sleeps 6s before exec).
+            await session.write(b"echo READY_$((1+1))\n")
+            await _read_until(session, b"READY_2")
             await session.write(b"sleep 30\n")
-            # Wait for the shell to actually echo the command (rather than
-            # a fixed sleep) before interrupting — a loaded CI box can be
-            # slow enough that a blind 0.3s isn't always past the echo.
-            await _read_until(session, b"sleep 30", timeout=5.0)
+            # Shell is at its prompt now, so the fork happens within
+            # milliseconds — 0.2s only needs to cover fork+exec latency,
+            # not shell initialization.
             await asyncio.sleep(0.2)
             await session.write(b"\x03")
             await session.write(b"echo INTERRUPT_OK_$((40+2))\n")
-            out = await _read_until(session, b"INTERRUPT_OK_42", timeout=10.0)
+            out = await _read_until(session, b"INTERRUPT_OK_42", timeout=30.0)
             assert b"INTERRUPT_OK_42" in out
         finally:
             await session.close()
@@ -233,7 +247,7 @@ class TestIdleReaping:
         session = await create_session(workspace=str(tmp_path))
         sid = session.session_id
         # No I/O for > timeout → reaper closes it.
-        async with asyncio.timeout(5):
+        async with asyncio.timeout(30):
             while get_session(sid) is not None:
                 await asyncio.sleep(0.1)
         assert not session.alive

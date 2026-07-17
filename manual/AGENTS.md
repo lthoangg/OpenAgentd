@@ -149,12 +149,15 @@ Hit LLM provider APIs directly — **no server required**, uses API keys from `.
 | `try_deepseek` | DeepSeek (`DEEPSEEK_API_KEY`) |
 | `try_ollama` | Local daemon; cloud via `-cloud` model suffix after `ollama signin` |
 | `try_xai` | xAI/Grok; Chat Completions or Responses via `--level` |
+| `try_grok` | Grok Build OAuth; supports live model listing, billing usage, Responses, streaming, and tools |
 | `try_router9` | Local 9Router; requires a model ID exposed by the running router |
 | `try_continue_probe` | Probe whether providers continue from a trailing-assistant message (informs `/continue` design); `--model` |
 
 ```bash
 uv run python -m manual.try_providers.try_openai
 uv run python -m manual.try_providers.try_codex --model gpt-5.5 --level low
+uv run python -m manual.try_providers.try_grok --list-models
+uv run python -m manual.try_providers.try_grok --usage
 uv run python -m manual.try_providers.try_googlegenai --real-tools
 uv run python -m manual.try_providers.try_ollama --model kimi-k2.6-cloud --simple
 ```

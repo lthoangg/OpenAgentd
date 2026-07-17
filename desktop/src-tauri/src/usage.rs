@@ -50,6 +50,10 @@ pub struct UsageLimit {
     pub plan_type: Option<String>,
     #[serde(default)]
     pub rate_limit_reached_type: Option<String>,
+    #[serde(default)]
+    pub period_start_at: Option<i64>,
+    #[serde(default)]
+    pub period_end_at: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
@@ -191,6 +195,36 @@ fn format_reset_in(resets_at: i64, now_unix: i64) -> String {
     }
 }
 
+fn format_period_end_in(period_end_at: i64, now_unix: i64) -> String {
+    let remaining = period_end_at - now_unix;
+    if remaining <= 0 {
+        return "ending now".to_string();
+    }
+    let minutes = remaining / 60;
+    if minutes < 1 {
+        return "ends <1m".to_string();
+    }
+    if minutes < 60 {
+        return format!("ends {minutes}m");
+    }
+    let hours = minutes / 60;
+    let rem_minutes = minutes % 60;
+    if hours < 24 {
+        return if rem_minutes == 0 {
+            format!("ends {hours}h")
+        } else {
+            format!("ends {hours}h {rem_minutes}m")
+        };
+    }
+    let days = hours / 24;
+    let rem_hours = hours % 24;
+    if rem_hours == 0 {
+        format!("ends {days}d")
+    } else {
+        format!("ends {days}d {rem_hours}h")
+    }
+}
+
 /// Hard cap on a single tray row's rendered width. Long plugin-supplied
 /// limit names (or, in principle, a translated/localised label) could
 /// otherwise stretch the native menu uncomfortably wide — mirrors the
@@ -284,6 +318,22 @@ fn format_credits_line(label: &str, credits: &UsageCredits) -> String {
     truncate_row(text)
 }
 
+fn format_period_line(label: &str, limit: &UsageLimit, now_unix: i64) -> String {
+    let name = limit.limit_name.as_deref().unwrap_or(label);
+    let end = limit
+        .period_end_at
+        .map(|period_end_at| {
+            format!(
+                " \u{00B7} {}",
+                format_period_end_in(period_end_at, now_unix)
+            )
+        })
+        .unwrap_or_default();
+    truncate_row(format!(
+        "\u{26AA} {label} \u{00B7} {name} \u{00B7} period available{end}"
+    ))
+}
+
 /// Build the tray's dynamic usage rows for one provider's summary item.
 /// A single connected provider can report multiple limit windows (e.g.
 /// Codex's primary quota plus per-feature add-ons); each becomes its own
@@ -323,6 +373,12 @@ fn format_item_rows(item: &UsageSummaryItem, now_unix: i64, max_limits: usize) -
                     usage.limits.first().and_then(|l| l.credits.as_ref())
                 {
                     format_credits_line(&item.label, credits)
+                } else if let Some(period_limit) = usage
+                    .limits
+                    .iter()
+                    .find(|limit| limit.period_start_at.is_some() || limit.period_end_at.is_some())
+                {
+                    format_period_line(&item.label, period_limit, now_unix)
                 } else {
                     truncate_row(format!("\u{26AA} {} \u{00B7} no usage data", item.label))
                 };
@@ -552,6 +608,8 @@ mod tests {
                     credits: None,
                     plan_type: None,
                     rate_limit_reached_type: None,
+                    period_start_at: None,
+                    period_end_at: None,
                 }],
             }),
         }
@@ -599,6 +657,8 @@ mod tests {
             credits: None,
             plan_type: None,
             rate_limit_reached_type: None,
+            period_start_at: None,
+            period_end_at: None,
         };
         let (_, suffix) = format_limit_suffix(&limit, 1_000).expect("measurable limit");
         assert_eq!(suffix, format!("50% {} \u{00B7} resets 16m", render_bar(50.0)));
@@ -619,6 +679,41 @@ mod tests {
         assert!(rows[0].text.contains("OpenAI Codex"));
         assert!(rows[0].text.contains("42%"));
         assert!(rows[1].text.starts_with("\u{1F534}"));
+    }
+
+    #[test]
+    fn period_only_limits_render_neutral_availability_without_unlimited_usage() {
+        let item = UsageSummaryItem {
+            provider: "grok".to_string(),
+            label: "Grok".to_string(),
+            status: "ok".to_string(),
+            error: None,
+            stale: false,
+            usage: Some(UsageResponse {
+                provider: "grok".to_string(),
+                limits: vec![UsageLimit {
+                    limit_id: None,
+                    limit_name: Some("Weekly usage period".to_string()),
+                    primary: None,
+                    secondary: None,
+                    credits: None,
+                    plan_type: None,
+                    rate_limit_reached_type: None,
+                    period_start_at: Some(1_000),
+                    period_end_at: Some(1_000 + 6 * 86_400),
+                }],
+            }),
+        };
+        let rows = format_item_rows(&item, 1_000, 3);
+        assert_eq!(rows.len(), 1);
+        assert!(
+            rows[0].text.contains("Weekly usage period"),
+            "{}",
+            rows[0].text
+        );
+        assert!(rows[0].text.contains("period available"), "{}", rows[0].text);
+        assert!(rows[0].text.contains("ends 6d"), "{}", rows[0].text);
+        assert!(!rows[0].text.contains("unlimited"), "{}", rows[0].text);
     }
 
     #[test]
@@ -831,6 +926,8 @@ mod tests {
                     rate_limit_reached_type: Some(
                         "workspace_member_usage_limit_reached".to_string(),
                     ),
+                    period_start_at: None,
+                    period_end_at: None,
                 }],
             }),
         };
@@ -865,6 +962,8 @@ mod tests {
                     credits: None,
                     plan_type: None,
                     rate_limit_reached_type: None,
+                    period_start_at: None,
+                    period_end_at: None,
                 }],
             }),
         };
@@ -889,6 +988,8 @@ mod tests {
                 credits: None,
                 plan_type: None,
                 rate_limit_reached_type: None,
+                period_start_at: None,
+                period_end_at: None,
             });
         }
         let item = UsageSummaryItem {
@@ -951,6 +1052,8 @@ mod tests {
             credits: None,
             plan_type: None,
             rate_limit_reached_type: None,
+            period_start_at: None,
+            period_end_at: None,
         };
         let item = UsageSummaryItem {
             provider: "agy".to_string(),

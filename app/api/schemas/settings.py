@@ -155,6 +155,10 @@ class ProviderUsageLimit(BaseModel):
     credits: ProviderUsageCredits | None = None
     plan_type: str | None = None
     rate_limit_reached_type: str | None = None
+    # Some subscription providers expose a billing period but no measurable
+    # allowance. Keep the period visible without fabricating a 0% quota.
+    period_start_at: int | None = None
+    period_end_at: int | None = None
 
 
 class ProviderUsageResponse(BaseModel):

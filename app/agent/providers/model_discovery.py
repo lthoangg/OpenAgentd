@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 from collections.abc import Mapping
 
@@ -200,6 +201,33 @@ async def _codex_models() -> list[str]:
     )
 
 
+async def _grok_models() -> list[str]:
+    from app.agent.providers.grok.oauth import (
+        GROK_BUILD_API_BASE,
+        GrokOAuth,
+        session_headers,
+    )
+
+    oauth = GrokOAuth.load()
+    if oauth is None:
+        return []
+    if oauth.is_expired():
+        oauth = await asyncio.to_thread(oauth.refresh)
+    async with httpx.AsyncClient(timeout=TIMEOUT_S) as client:
+        response = await client.get(
+            f"{GROK_BUILD_API_BASE}/models",
+            headers=session_headers(oauth.access_token.get_secret_value()),
+        )
+        response.raise_for_status()
+    data = response.json()
+    items = data.get("data", []) if isinstance(data, dict) else []
+    return sorted(
+        str(item["id"])
+        for item in items
+        if isinstance(item, dict) and isinstance(item.get("id"), str)
+    )
+
+
 def _bedrock_bearer_token(overrides: Mapping[str, str] | None, region: str) -> str:
     bearer_token = _resolve(overrides, "AWS_BEARER_TOKEN_BEDROCK")
     if bearer_token:
@@ -281,6 +309,8 @@ async def discover_provider_models(
                 models = await _copilot_models()
             case "codex":
                 models = await _codex_models()
+            case "grok":
+                models = await _grok_models()
             case "bedrock":
                 models = await _bedrock_models(overrides)
             case _:

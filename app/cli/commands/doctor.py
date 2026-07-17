@@ -32,7 +32,7 @@ _LLM_API_KEY_VARS: tuple[str, ...] = (
 #: ``ollama`` is here too: the local daemon ignores auth and the
 #: settings layer ships a placeholder key by default.
 _OAUTH_PROVIDERS: frozenset[str] = frozenset(
-    {"copilot", "codex", "vertexai", "cliproxy", "router9", "ollama"}
+    {"copilot", "codex", "grok", "vertexai", "cliproxy", "router9", "ollama"}
 )
 
 

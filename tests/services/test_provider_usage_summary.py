@@ -39,6 +39,7 @@ def _catalog_entries(configured: dict[str, bool]):
     entries = {
         "codex": {"id": "codex", "label": "OpenAI Codex", "kind": "oauth"},
         "copilot": {"id": "copilot", "label": "GitHub Copilot", "kind": "oauth"},
+        "grok": {"id": "grok", "label": "Grok Build", "kind": "oauth"},
     }
 
     def _find(provider_id: str):
@@ -72,6 +73,27 @@ async def test_summary_includes_only_connected_builtin_providers(monkeypatch):
     assert body.items[0].status == "ok"
     assert body.items[0].usage is not None
     assert body.cached is False
+
+
+@pytest.mark.asyncio
+async def test_summary_includes_connected_grok_provider(monkeypatch):
+    monkeypatch.setattr("app.agent.providers.catalog.find", _catalog_entries({}))
+    monkeypatch.setattr(provider_usage, "provider_plugins", lambda: {})
+    monkeypatch.setattr(
+        provider_usage,
+        "provider_is_configured",
+        lambda entry: entry["id"] == "grok",
+    )
+
+    async def _fake_get_usage(provider_id: str) -> ProviderUsageResponse:
+        assert provider_id == "grok"
+        return ProviderUsageResponse(provider="grok", limits=[])
+
+    monkeypatch.setattr(provider_usage, "get_provider_usage", _fake_get_usage)
+
+    body = await provider_usage.get_connected_provider_usage_summary()
+
+    assert [item.provider for item in body.items] == ["grok"]
 
 
 @pytest.mark.asyncio
@@ -343,7 +365,11 @@ async def test_user_disconnected_provider_is_excluded(monkeypatch):
     the tray even though its credentials still exist on disk."""
     monkeypatch.setattr("app.agent.providers.catalog.find", _catalog_entries({}))
     monkeypatch.setattr(provider_usage, "provider_plugins", lambda: {})
-    monkeypatch.setattr(provider_usage, "provider_is_configured", lambda entry: True)
+    monkeypatch.setattr(
+        provider_usage,
+        "provider_is_configured",
+        lambda entry: entry["id"] in {"codex", "copilot"},
+    )
     monkeypatch.setattr(
         provider_usage, "provider_is_disconnected", lambda pid: pid == "codex"
     )

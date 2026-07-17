@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-07-16
+updated: 2026-07-17
 ---
 
 # Features
@@ -12,9 +12,9 @@ release that introduced it (where known). When you ship something new, **add it 
 
 > **Headline.** OpenAgentd is the desktop cockpit for local AI agents — a
 > double-clickable app that runs a team of AI agents on your machine, with a
-> real UI to watch every step. Open source (Apache 2.0). 15 providers. Your keys.
+> real UI to watch every step. Open source (Apache 2.0). 16 providers. Your keys.
 
-**Latest release:** v1.111.0 · July 16, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.111.0)
+**Latest release:** v1.112.0 · July 17, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.112.0)
 
 ---
 
@@ -133,8 +133,10 @@ run from the terminal.
     window, a flat progress bar with a leading dot marker, `N% used ·
     Resets in Xh Ym` under each bar, a header strip showing "Updated Xm
     ago" plus the plan badge, and a dedicated rate-limit-reached banner.
-    No new data — same `ProviderUsageLimit` payload from
-    `GET /api/settings/providers/{provider}/usage`.
+    The same `ProviderUsageLimit` payload comes from
+    `GET /api/settings/providers/{provider}/usage`; period-only billing data
+    renders as neutral availability rather than an invented percentage or
+    unlimited allowance `[v1.112.0]`.
 - **Touch back/forward navigation** `[v1.53.1]` *(deprecated)* — desktop Tauri windows support
   edge swipes on touch/pen devices: right from the left edge goes back, left
   from the right edge goes forward, while editable fields and scroll-like
@@ -461,7 +463,7 @@ OpenAgentd carries context across sessions via rolling-window summarization.
 Switch providers with one line in your agent config. The product is provider-
 agnostic by design.
 
-**15 first-class providers:**
+**16 first-class providers:**
 
 | Provider | Config syntax | Auth |
 |---|---|---|
@@ -472,6 +474,7 @@ agnostic by design.
 | OpenRouter | `openrouter:qwen/qwen3.6-plus:free` | `OPENROUTER_API_KEY` |
 | ZAI / GLM | `zai:glm-5-turbo` | `ZAI_API_KEY` |
 | xAI Grok | `xai:grok-4.20` | `XAI_API_KEY` |
+| Grok Build | `grok:grok-4.5` | `openagentd auth grok` `[v1.112.0]` |
 | DeepSeek | `deepseek:deepseek-v4-flash` | `DEEPSEEK_API_KEY` |
 | AWS Bedrock | `bedrock:anthropic.claude-sonnet-4-6` | Bedrock Mantle bearer token (`AWS_BEARER_TOKEN_BEDROCK`) or AWS profile/default credential chain `[v1.110.0]` |
 | NVIDIA NIM | `nvidia:stepfun-ai/step-3.5-flash` | `NVIDIA_API_KEY` |
@@ -509,6 +512,13 @@ agnostic by design.
   budgets.
 - **OAuth subscription support** `[v1.8.0]` — Copilot, Codex, others via the
   built-in OAuth helper.
+- **Grok Build subscription provider** `[v1.112.0]` — `grok:` uses xAI's
+  device OAuth flow and refreshable session credentials independently of the
+  direct API-key-backed `xai:` provider, with live model discovery and the
+  Grok Build proxy's required model-routing headers. Grok billing usage is
+  available in Settings, the native usage tray, and the manual provider smoke
+  script; billing periods with no measurable allowance stay period-only and
+  zero values are not treated as unlimited.
 - **Codex usage monitor** `[v1.32.0]` — Settings → Providers shows live Codex
   OAuth usage windows, resets, credits, unlimited plans, and spend-cap/limit states.
 - **Priority / Fast mode** `[v1.90.0, v1.92.0]` — session settings can opt new messages into Fast/Priority mode. Supported on models and providers that implement service/latency tiers (Anthropic maps to `auto`, Google Gemini maps to `priority`, OpenAI maps to `auto`, and ChatGPT Codex maps to `priority`). Availability is driven by a `supports_fast_mode` registry flag instead of a hard-coded provider-prefix list, so plugin providers can opt in without frontend changes `[v1.92.0]`.

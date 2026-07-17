@@ -229,9 +229,7 @@ async def test_cleanup_apply_deletes_old_coding_session_metadata_but_keeps_workt
         async def _fake_source(path):
             return str(tmp_path / "repo") if path == worktree_dir else None
 
-        monkeypatch.setattr(
-            cleanup_mod, "find_managed_worktree_source", _fake_source
-        )
+        monkeypatch.setattr(cleanup_mod, "find_managed_worktree_source", _fake_source)
         result = await cleanup_generated_artifacts(
             session, older_than_days=7, dry_run=False
         )

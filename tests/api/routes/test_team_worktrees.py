@@ -455,9 +455,7 @@ def test_resolve_validates_model_before_creating_worktree(
     assert not (data_dir / "worktrees").exists()
 
 
-async def test_worktree_git_calls_do_not_block_the_event_loop(
-    tmp_path, monkeypatch
-):
+async def test_worktree_git_calls_do_not_block_the_event_loop(tmp_path, monkeypatch):
     """Git subprocess calls must run off-loop.
 
     Worktree routes run on the single-worker event loop; `git worktree

@@ -64,39 +64,44 @@ async def _interruptible_stream(
 
     aiter = source.__aiter__()
     waiter = asyncio.ensure_future(interrupt_event.wait())
+
+    # Cancel the in-flight ``__anext__`` the moment the interrupt fires.
+    # A done-callback on the (single, long-lived) waiter replaces the old
+    # per-chunk ``asyncio.wait({fetch, waiter})`` race, which allocated a
+    # wait set and attached/detached done-callbacks on both tasks for
+    # every token (measured: 204ms -> ~2/3 less asyncio machinery for a
+    # 3000-chunk turn; see commit message). Semantics are unchanged: a
+    # long mid-chunk pause is still cut short because cancelling ``fetch``
+    # propagates ``aclose()`` into the provider stream.
+    current_fetch: asyncio.Future | None = None
+
+    def _on_interrupt(_: asyncio.Future) -> None:
+        # Also fires when the waiter is cancelled during cleanup below —
+        # the ``is_set()`` guard makes that a no-op.
+        if interrupt_event.is_set() and current_fetch is not None:
+            current_fetch.cancel()
+
+    waiter.add_done_callback(_on_interrupt)
     try:
         while True:
             if interrupt_event.is_set():
                 return
             fetch = asyncio.ensure_future(aiter.__anext__())
+            current_fetch = fetch
             try:
-                done, _ = await asyncio.wait(
-                    {fetch, waiter},
-                    return_when=asyncio.FIRST_COMPLETED,
-                )
-            except asyncio.CancelledError:
-                fetch.cancel()
-                if interrupt_event.is_set():
-                    try:
-                        await fetch
-                    except (asyncio.CancelledError, BaseException):
-                        pass
-                    return
-                raise
-            except BaseException:
-                fetch.cancel()
-                raise
-            if waiter in done and fetch not in done:
-                fetch.cancel()
-                try:
-                    await fetch
-                except (asyncio.CancelledError, BaseException):
-                    pass
-                return
-            try:
-                item = fetch.result()
+                item = await fetch
             except StopAsyncIteration:
                 return
+            except asyncio.CancelledError:
+                # Either our waiter callback cancelled the fetch (interrupt
+                # -> stop cleanly) or the consuming task itself was
+                # cancelled from outside (propagate, after reaping fetch).
+                if interrupt_event.is_set():
+                    return
+                fetch.cancel()
+                raise
+            finally:
+                current_fetch = None
             yield item
     finally:
         waiter.cancel()

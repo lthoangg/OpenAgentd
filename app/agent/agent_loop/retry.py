@@ -119,6 +119,16 @@ _NON_RETRYABLE_429_MARKERS = (
     "insufficient balance",
     "no resource package",
     "billing_not_active",
+    # Grok Build's well-known free-tier paywall code (flat body:
+    # {"code": "subscription:free-usage-exhausted", "error": "..."}).
+    # Quota resets on a rolling 24h window server-side — no client backoff
+    # (even the full MAX_RETRIES budget) will make it succeed sooner, so
+    # retrying just burns ~42s per turn before failing anyway. Matches
+    # xAI's own grok-build CLI, which treats this exact code as a terminal
+    # paywall rather than a transient 429
+    # (xai-org/grok-build crates/codegen/xai-grok-pager/src/app/dispatch/billing.rs
+    # FREE_USAGE_EXHAUSTED_ERROR_CODE).
+    "subscription:free-usage-exhausted",
 )
 _BASE_DELAY = 1.0  # seconds — exponential base 3: 1, 3, 9, 27, 81
 _MAX_DELAY = 60.0  # seconds

@@ -791,7 +791,7 @@ class TeamMemberBase(abc.ABC):
             if (
                 session_thinking_level
                 or last_service_tier
-                or (self.agent.model_id or "").startswith("codex:")
+                or (self.agent.model_id or "").startswith(("codex:", "grok:"))
             )
             else None
         )
@@ -812,7 +812,15 @@ class TeamMemberBase(abc.ABC):
                 model_kwargs["thinking_level"] = effective_thinking_level
             if last_service_tier:
                 model_kwargs["service_tier"] = last_service_tier
-            if effective_model.startswith("codex:"):
+            if effective_model.startswith(("codex:", "grok:")):
+                # xAI's Responses API routes requests sharing a
+                # ``prompt_cache_key`` to the same backend server, which is
+                # required to hit its per-server prefix KV cache — the
+                # message prefix being byte-stable is necessary but not
+                # sufficient. Without this, otherwise-identical Grok Build
+                # turns can land on a different replica each request and
+                # never hit the cache.
+                # https://docs.x.ai/developers/advanced-api-usage/prompt-caching/maximizing-cache-hits
                 model_kwargs["prompt_cache_key"] = f"openagentd:{self.session_id}"
             runtime_provider = self._team._provider_factory(
                 effective_model,

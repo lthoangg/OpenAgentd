@@ -1708,6 +1708,35 @@ def test_codex_workspace_usage_limit_is_non_retryable_429():
     assert is_non_retryable_429(exc) is True
 
 
+def test_grok_free_usage_exhausted_is_non_retryable_429():
+    """Grok Build's flat-body free-tier paywall code must not be retried.
+
+    The quota resets on a rolling 24h window server-side — no client
+    backoff can make it succeed sooner, so retrying just burns the full
+    retry budget (~42s) before failing anyway. Matches xAI's own
+    grok-build CLI, which treats this exact code as a terminal paywall
+    (xai-org/grok-build FREE_USAGE_EXHAUSTED_ERROR_CODE).
+    """
+    import httpx
+
+    response = httpx.Response(
+        429,
+        json={
+            "code": "subscription:free-usage-exhausted",
+            "error": (
+                "You've used all the included free usage for model "
+                "grok-4.5-build-free for now. Usage resets over a rolling "
+                "24-hour window."
+            ),
+        },
+        request=httpx.Request("POST", "http://x"),
+    )
+    exc = httpx.HTTPStatusError(
+        "free usage exhausted", request=response.request, response=response
+    )
+    assert is_non_retryable_429(exc) is True
+
+
 # ---------------------------------------------------------------------------
 # stream_with_retry: non-retryable with aread() raising
 # on_rate_limit called on hooks

@@ -108,7 +108,7 @@ export function WorkspaceSessionList({
                 e.stopPropagation()
                 onSessionEdit(session)
               }}
-              className={`absolute right-6 top-1/2 flex -translate-y-1/2 items-center justify-center rounded p-1 text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--bg-key) hover:text-(--color-text) group-hover:opacity-100 ${mobileLongPressActions ? 'hidden' : 'pointer-coarse:opacity-100'}`}
+              className={`absolute right-6 top-1/2 flex -translate-y-1/2 items-center justify-center rounded p-1 text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--bg-key) hover:text-(--color-text) group-hover:opacity-100 group-focus-within:opacity-100 ${mobileLongPressActions ? 'hidden' : 'pointer-coarse:opacity-100'}`}
               aria-label={`Edit session ${session.title || 'Untitled'}`}
             >
               <Pencil size={11} />
@@ -116,7 +116,7 @@ export function WorkspaceSessionList({
             <button
               type="button"
               onClick={(e) => onSessionDelete(e, session)}
-              className={`absolute right-1 top-1/2 flex -translate-y-1/2 items-center justify-center rounded p-1 text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) group-hover:opacity-100 ${mobileLongPressActions ? 'hidden' : 'pointer-coarse:opacity-100'}`}
+              className={`absolute right-1 top-1/2 flex -translate-y-1/2 items-center justify-center rounded p-1 text-(--color-text-subtle) opacity-0 transition-all hover:bg-(--color-error-subtle) hover:text-(--color-error) group-hover:opacity-100 group-focus-within:opacity-100 ${mobileLongPressActions ? 'hidden' : 'pointer-coarse:opacity-100'}`}
               aria-label={`Delete session ${session.title || 'Untitled'}`}
             >
               <Trash2 size={11} />

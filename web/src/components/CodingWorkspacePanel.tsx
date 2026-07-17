@@ -770,7 +770,7 @@ export function CodingWorkspacePanel({
                         closeTab(tabItem.id)
                       }
                     }}
-                    className="ml-0.5 rounded text-(--color-text-subtle) opacity-70 hover:text-(--color-text) md:opacity-0 md:group-hover:opacity-100"
+                    className="ml-0.5 rounded text-(--color-text-subtle) opacity-70 hover:text-(--color-text) md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
                     aria-label={`Close ${tabItem.title}`}
                   >
                     <X size={11} aria-hidden="true" />
@@ -996,7 +996,7 @@ export function CodingWorkspacePanel({
                                       openFileTab(file)
                                     }}
                                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.currentTarget.click() }}
-                                    className="hidden shrink-0 rounded p-0.5 text-(--color-text-subtle) opacity-0 group-hover:opacity-100 hover:text-(--color-text) md:block"
+                                    className="hidden shrink-0 rounded p-0.5 text-(--color-text-subtle) opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover:text-(--color-text) md:block"
                                     title="Open file"
                                     aria-label={`Open ${changedFile.path}`}
                                   >

@@ -12,9 +12,10 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { formatDistanceToNowStrict } from 'date-fns'
-import { Folder, GitBranch } from 'lucide-react'
+import { Folder, GitBranch, RefreshCw } from 'lucide-react'
 
 import { getCodingWorkspaceStatus } from '@/api/client'
+import { Button } from '@/components/ui/button'
 import { queryKeys } from '@/queries'
 import { workspaceLabel } from '@/utils/workspace'
 
@@ -23,7 +24,7 @@ interface Props {
 }
 
 export function WorkspaceInfoCard({ workspace }: Props) {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, isFetching, refetch } = useQuery({
     queryKey: queryKeys.coding.status(workspace),
     queryFn: () => getCodingWorkspaceStatus(workspace),
     // Workspace status is informational and can be reused across route
@@ -54,6 +55,21 @@ export function WorkspaceInfoCard({ workspace }: Props) {
 
       {isLoading ? (
         <p className="mt-3 text-xs text-(--color-text-subtle)">Loading…</p>
+      ) : isError ? (
+        <div className="mt-3 flex items-center gap-2">
+          <p className="text-xs text-(--color-error)">Could not load workspace status</p>
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            disabled={isFetching}
+            onClick={() => { void refetch() }}
+            aria-label="Retry workspace status"
+          >
+            <RefreshCw className={isFetching ? 'animate-spin' : ''} aria-hidden="true" />
+            Retry
+          </Button>
+        </div>
       ) : data?.is_git_repo ? (
         <div className="mt-3 space-y-2 text-xs">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">

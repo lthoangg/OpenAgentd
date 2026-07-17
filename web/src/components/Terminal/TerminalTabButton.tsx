@@ -104,7 +104,7 @@ export function TerminalTabButton({
                 useTerminalStore.getState().close(meta.id)
               }
             }}
-            className="ml-0.5 shrink-0 rounded p-0.5 text-(--color-text-subtle) opacity-70 hover:text-(--color-text) md:opacity-0 md:group-hover:opacity-100"
+            className="ml-0.5 shrink-0 rounded p-0.5 text-(--color-text-subtle) opacity-70 hover:text-(--color-text) md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
             aria-label={`Close ${meta.title}`}
           >
             <X size={11} aria-hidden="true" />

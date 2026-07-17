@@ -1027,6 +1027,51 @@ describe("connectStream", () => {
     expect(mockTeamStream.mock.calls[0][0]).toBe("stream-sid")
   })
 
+  it("coalesces streaming text deltas into one store update per frame window", () => {
+    const realSetTimeout = globalThis.setTimeout
+    const realClearTimeout = globalThis.clearTimeout
+    let scheduled: (() => void) | null = null
+    globalThis.setTimeout = ((callback: TimerHandler) => {
+      scheduled = callback as () => void
+      return 1 as unknown as ReturnType<typeof setTimeout>
+    }) as unknown as typeof setTimeout
+    globalThis.clearTimeout = (() => { scheduled = null }) as typeof clearTimeout
+
+    try {
+      useTeamStore.setState({ sessionId: "stream-sid" })
+      let callbacks!: { onEvent: (type: string, data: unknown) => void }
+      mockTeamStream.mockImplementation((_sid: string, cbs: typeof callbacks) => { callbacks = cbs })
+      useTeamStore.getState().connectStream()
+
+      let notifications = 0
+      const unsubscribe = useTeamStore.subscribe(() => { notifications += 1 })
+      callbacks.onEvent("message", { agent: "lead", text: "one " })
+      callbacks.onEvent("message", { agent: "lead", text: "two " })
+      callbacks.onEvent("message", { agent: "lead", text: "three" })
+
+      // Deltas received in the same frame window should not produce one
+      // immer snapshot + subscriber notification each.
+      expect(notifications).toBe(0)
+      expect(scheduled).not.toBeNull()
+      ;(scheduled as unknown as () => void)()
+      expect(notifications).toBe(1)
+      expect(useTeamStore.getState().agentStreams.lead.currentBlocks[0].content).toBe("one two three")
+
+      // A structural event must flush pending text synchronously first, so
+      // `done` commits every preceding byte instead of finalising early.
+      callbacks.onEvent("message", { agent: "lead", text: " done" })
+      callbacks.onEvent("done", {})
+      expect(scheduled).toBeNull()
+      expect(useTeamStore.getState().agentStreams.lead.currentBlocks).toHaveLength(0)
+      expect(useTeamStore.getState().agentStreams.lead.blocks[0].content).toBe("one two three done")
+      expect(notifications).toBe(3) // one delta flush + one delta flush + done
+      unsubscribe()
+    } finally {
+      globalThis.setTimeout = realSetTimeout
+      globalThis.clearTimeout = realClearTimeout
+    }
+  })
+
   it("sets isConnected=true", () => {
     useTeamStore.setState({ sessionId: "stream-sid" })
     useTeamStore.getState().connectStream()

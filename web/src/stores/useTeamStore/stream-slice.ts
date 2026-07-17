@@ -1,7 +1,12 @@
 import type { StateCreator } from 'zustand'
 import { postTeamChat, postTeamCommand, teamStream } from '@/api/client'
 import { applyRevertBoundary } from './helpers'
-import { createSSEHandler } from './sse-reducer'
+import {
+  applySSEDeltaBatch,
+  createSSEHandler,
+  isBufferedSSEDelta,
+  type BufferedSSEDelta,
+} from './sse-reducer'
 import { isTransientNetworkError } from '@/utils/errors'
 import type { TeamStore } from './types'
 
@@ -295,6 +300,36 @@ export const createStreamSlice: StateCreator<
     const abort = new AbortController()
     set((draft) => { draft.isConnected = true; draft._abortController = abort })
 
+    // Providers can emit dozens of text/tool-output deltas per second. Applying
+    // each in its own immer transaction forces the full chat selector/render
+    // path to run per token. Coalesce only the append-only delta events into a
+    // ~60 fps window; flush synchronously before every structural event so SSE
+    // ordering remains exact (e.g. final text before `done`).
+    let bufferedDeltas: BufferedSSEDelta[] = []
+    let deltaFlushTimer: ReturnType<typeof setTimeout> | null = null
+    const flushBufferedDeltas = () => {
+      if (deltaFlushTimer !== null) {
+        clearTimeout(deltaFlushTimer)
+        deltaFlushTimer = null
+      }
+      if (bufferedDeltas.length === 0) return
+      const events = bufferedDeltas
+      bufferedDeltas = []
+      const current = get()
+      if (current.sessionId !== sessionId || current._sessionGeneration !== generation) return
+      applySSEDeltaBatch(set, events)
+    }
+    const queueBufferedDelta = (event: BufferedSSEDelta) => {
+      bufferedDeltas.push(event)
+      if (deltaFlushTimer === null) {
+        deltaFlushTimer = setTimeout(flushBufferedDeltas, 16)
+      }
+    }
+    // A manual reconnect aborts the old fetch. Flush already-received deltas
+    // before the replacement stream opens; a session-generation mismatch
+    // safely discards them during a session switch.
+    abort.signal.addEventListener('abort', flushBufferedDeltas, { once: true })
+
     teamStream(
       sessionId,
       {
@@ -305,12 +340,19 @@ export const createStreamSlice: StateCreator<
           if (current._reconnectAttempts > 0) {
             set((draft) => { draft._reconnectAttempts = 0 })
           }
+          if (isBufferedSSEDelta(type)) {
+            queueBufferedDelta({ type, data: data as Record<string, unknown> })
+            return
+          }
+          flushBufferedDeltas()
           current._handleSSEEvent(type, data)
         },
         onParseError: (err) => {
           console.warn(err.message)
         },
         onError: (err) => {
+          flushBufferedDeltas()
+          abort.signal.removeEventListener('abort', flushBufferedDeltas)
           const current = get()
           if (current.sessionId !== sessionId || current._sessionGeneration !== generation) return
           if (current._unloading || abort.signal.aborted) return
@@ -343,6 +385,8 @@ export const createStreamSlice: StateCreator<
           set((draft) => { draft.error = err.message; draft.isConnected = false })
         },
         onDone: () => {
+          flushBufferedDeltas()
+          abort.signal.removeEventListener('abort', flushBufferedDeltas)
           const current = get()
           if (current.sessionId !== sessionId || current._sessionGeneration !== generation) return
           // If the backend closed the SSE channel while the session is

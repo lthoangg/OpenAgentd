@@ -34,6 +34,15 @@ interface CreateSSEHandlerArgs {
 
 type BufferedTextKind = 'message' | 'thinking'
 
+export type BufferedSSEDelta = {
+  type: BufferedTextKind | 'tool_output_delta'
+  data: Record<string, unknown>
+}
+
+export function isBufferedSSEDelta(type: string): type is BufferedSSEDelta['type'] {
+  return type === 'message' || type === 'thinking' || type === 'tool_output_delta'
+}
+
 function stampOpenTextBlocks(
   blocks: TeamStore['agentStreams'][string]['currentBlocks'],
   completedAt: number,
@@ -85,6 +94,41 @@ function appendStreamingText(
   }
 }
 
+function applyBufferedSSEDelta(draft: TeamStore, event: BufferedSSEDelta) {
+  const d = event.data
+  if (event.type === 'message' || event.type === 'thinking') {
+    appendStreamingText(
+      draft,
+      d.agent as string,
+      event.type,
+      d.text as string,
+      typeof (d.metadata as Record<string, unknown> | undefined)?.model === 'string'
+        ? ((d.metadata as Record<string, unknown>).model as string)
+        : null,
+    )
+    return
+  }
+
+  if (TODO_MUTATING_TOOLS.has(d.name as string)) return
+  const agent = d.agent as string
+  ensureAgent(draft, agent)
+  draft.agentStreams[agent].currentBlocks = appendToolOutput(
+    draft.agentStreams[agent].currentBlocks,
+    d.name as string,
+    d.tool_call_id as string | undefined,
+    d.text as string,
+  )
+}
+
+/** Apply a group of high-frequency text/tool-output deltas in one immer
+ * transaction, producing a single Zustand subscriber notification. */
+export function applySSEDeltaBatch(set: Setter, events: BufferedSSEDelta[]) {
+  if (events.length === 0) return
+  set((draft) => {
+    for (const event of events) applyBufferedSSEDelta(draft, event)
+  })
+}
+
 export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
   return (type: string, data: unknown) => {
     const d = data as Record<string, unknown>
@@ -95,23 +139,9 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         break
       }
 
-      case 'thinking': {
-        const agent = d.agent as string
-        const text = d.text as string
-        const meta = d.metadata as Record<string, unknown> | undefined
-        set((draft) => {
-          appendStreamingText(draft, agent, 'thinking', text, typeof meta?.model === 'string' ? meta.model : null)
-        })
-        break
-      }
-
+      case 'thinking':
       case 'message': {
-        const agent = d.agent as string
-        const text = d.text as string
-        const meta = d.metadata as Record<string, unknown> | undefined
-        set((draft) => {
-          appendStreamingText(draft, agent, 'message', text, typeof meta?.model === 'string' ? meta.model : null)
-        })
+        applySSEDeltaBatch(set, [{ type, data: d }])
         break
       }
 
@@ -147,17 +177,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
       }
 
       case 'tool_output_delta': {
-        if (TODO_MUTATING_TOOLS.has(d.name as string)) break
-        const agent = d.agent as string
-        set((draft) => {
-          ensureAgent(draft, agent)
-          draft.agentStreams[agent].currentBlocks = appendToolOutput(
-            draft.agentStreams[agent].currentBlocks,
-            d.name as string,
-            d.tool_call_id as string | undefined,
-            d.text as string,
-          )
-        })
+        applySSEDeltaBatch(set, [{ type, data: d }])
         break
       }
 

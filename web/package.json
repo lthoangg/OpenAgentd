@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && bun run check:chunks",
+    "check:chunks": "bun scripts/check-chunk-cycles.mjs",
     "build:analyze": "tsc -b && ANALYZE=1 vite build",
     "typecheck": "tsc -b --noEmit",
     "lint": "eslint .",

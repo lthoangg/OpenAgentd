@@ -12,7 +12,7 @@
  */
 
 import { Component, type ReactNode } from 'react'
-import OpenAgentdAppIcon from '@/assets/brand/openagentd-app-icon.png'
+import { OPENAGENTD_APP_ICON } from '@/lib/brand-assets'
 import { Button } from '@/components/ui/button'
 
 interface AppErrorBoundaryProps {
@@ -61,7 +61,7 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
     return (
       <div className="mobile-safe-shell mobile-viewport flex h-dvh items-center justify-center bg-(--bg-page)" role="alert">
         <div className="flex max-w-sm flex-col items-center gap-5 px-6 text-center">
-          <img src={OpenAgentdAppIcon} width={88} height={88} alt="" aria-hidden="true" className="rounded-2xl" />
+          <img src={OPENAGENTD_APP_ICON} width={88} height={88} alt="" aria-hidden="true" className="rounded-2xl" />
           <div className="flex flex-col gap-1.5">
             <h1 className="text-base font-semibold text-(--color-text)">Something went wrong</h1>
             <p className="text-sm text-(--color-text-muted)">

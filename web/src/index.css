@@ -2,8 +2,11 @@
 @import "tw-animate-css";
 @import "@fontsource-variable/inter";
 @import "@fontsource-variable/jetbrains-mono";
-@import "@fontsource/caveat/400.css";
-@import "@fontsource/caveat/700.css";
+/* Handwritten font is used only for English UI headings. Importing the
+ * all-subset entrypoints emitted 16 Cyrillic/extended/Latin font files into
+ * every Tauri bundle; the Latin subsets cover all actual hand-font copy. */
+@import "@fontsource/caveat/latin-400.css";
+@import "@fontsource/caveat/latin-700.css";
 @import "highlight.js/styles/atom-one-dark.css";
 /* Bundled Nerd Font icons fallback — mobile fix (see nerd-font-icons.css). */
 @import "./assets/fonts/nerd-font-icons.css";

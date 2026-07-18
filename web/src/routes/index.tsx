@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion'
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import OpenAgentdAppIcon from '@/assets/brand/openagentd-app-icon.png'
+import { OPENAGENTD_APP_ICON } from '@/lib/brand-assets'
 
 import { AppBackendDialog } from '@/components/AppBackendDialog'
 import { Activity, AlertCircle, Code2, Gauge, Wifi } from 'lucide-react'
@@ -59,7 +59,7 @@ export function HomePage() {
           <div className="relative">
             <div className="absolute inset-0 rounded-2xl bg-(--bg-key) blur-2xl" />
             <div className={`relative flex items-center justify-center rounded-2xl border border-(--color-border) bg-(--bg-card) shadow-sm ${isTauriMobile ? 'h-16 w-16' : 'h-20 w-20'}`}>
-              <img src={OpenAgentdAppIcon} width={isTauriMobile ? 58 : 72} height={isTauriMobile ? 58 : 72} alt="OpenAgentd logo" className="rounded-xl" />
+              <img src={OPENAGENTD_APP_ICON} width={isTauriMobile ? 58 : 72} height={isTauriMobile ? 58 : 72} alt="OpenAgentd logo" className="rounded-xl" />
             </div>
           </div>
           <div className="text-center">

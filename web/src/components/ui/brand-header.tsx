@@ -5,7 +5,7 @@
  *   [mascot 44]  OpenAgentd                 [⫶]
  *                on-machine ai
  *
- * - Mascot 44×44 (image fill from /openagentd-app-icon.png)
+ * - Mascot 44×44 (image fill from /brand-assets/openagentd-app-icon.png)
  * - Title: font-hand (Caveat), 28px, weight 700, --color-text
  * - Subtitle: font-mono, 11px, --color-text-muted
  * - Dock toggle: 32×32 outlined button on the right
@@ -17,7 +17,7 @@
  */
 
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
-import OpenAgentdAppIcon from '@/assets/brand/openagentd-app-icon.png'
+import { OPENAGENTD_APP_ICON } from '@/lib/brand-assets'
 import { cn } from '@/lib/utils'
 
 export interface BrandHeaderProps {
@@ -43,7 +43,7 @@ export function BrandHeader({
   const brandContent = (
     <>
       <img
-        src={OpenAgentdAppIcon}
+        src={OPENAGENTD_APP_ICON}
         alt=""
         aria-hidden="true"
         className="h-11 w-11 shrink-0 select-none"

@@ -1,6 +1,6 @@
 import { Suspense, useState } from 'react'
 import { RouterProvider } from '@tanstack/react-router'
-import OpenAgentdAppIcon from '@/assets/brand/openagentd-app-icon.png'
+import { OPENAGENTD_APP_ICON } from '@/lib/brand-assets'
 import { AppBackendDialog } from '@/components/AppBackendDialog'
 import { Button } from '@/components/ui/button'
 import { getBundledBackendLogPath } from '@/lib/app-backend'
@@ -41,7 +41,7 @@ function AppLoadingScreen({ unavailable, retrying, onRetry, onChooseServer, back
   return (
     <div className="mobile-safe-shell mobile-viewport flex h-dvh items-center justify-center bg-(--bg-page)" role="status" aria-label="Loading OpenAgentd" aria-live="polite">
       <div className="flex max-w-sm flex-col items-center gap-5 px-6 text-center">
-        <img src={OpenAgentdAppIcon} width={88} height={88} alt="" aria-hidden="true" className="rounded-2xl" />
+        <img src={OPENAGENTD_APP_ICON} width={88} height={88} alt="" aria-hidden="true" className="rounded-2xl" />
         {unavailable && <>
           <p className="text-sm text-(--color-text-muted)">OpenAgentd is taking longer than usual to start.</p>
           <div className="flex flex-wrap justify-center gap-2">

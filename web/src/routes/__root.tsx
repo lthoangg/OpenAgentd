@@ -4,6 +4,7 @@ import { Suspense, useEffect, useRef } from 'react'
 // import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { Link, Outlet, useLocation, useNavigate } from '@tanstack/react-router'
 import { queryClient } from '@/lib/query-client'
+import { OPENAGENTD_APP_ICON } from '@/lib/brand-assets'
 import { Home } from 'lucide-react'
 import { ToastStack } from '@/components/ToastStack'
 import { SettingsModal } from '@/components/SettingsModal'
@@ -95,7 +96,7 @@ export function Root() {
 function RouteLoadingFallback() {
   return (
     <div className="mobile-safe-shell mobile-viewport flex h-dvh items-center justify-center bg-(--bg-page)" role="status" aria-label="Loading OpenAgentd" aria-live="polite">
-      <img src="/openagentd-app-icon.png" width={88} height={88} alt="" aria-hidden="true" className="rounded-2xl" />
+      <img src={OPENAGENTD_APP_ICON} width={88} height={88} alt="" aria-hidden="true" className="rounded-2xl" />
     </div>
   )
 }

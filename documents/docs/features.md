@@ -53,13 +53,18 @@ run from the terminal.
 
 - **Native desktop app for macOS, Windows, Linux** `[since v1.0; Windows restored v1.106.0]` — Tauri 2 shell,
   bundled Python sidecar, embedded Web UI, one process, no terminal required.
-- **Explicit backend connection state** `[v1.68.0, v1.99.8]` — desktop connection options
+- **Explicit backend connection state** `[v1.68.0, v1.99.8, v1.112.1]` — desktop connection options
   are limited to the builtin sidecar and saved servers; no-backend dev windows
   show **Backend unreachable**, active server removal clears the current backend,
   the builtin row exposes **Stop** whenever the sidecar process is already
   running, and **Use builtin** starts + attaches the bundled backend when needed.
   If bundled startup exceeds 15 seconds, the native splash offers Retry, server
-  selection, and backend-log-path copy actions instead of waiting indefinitely.
+  selection, and backend-log-path copy actions instead of waiting indefinitely;
+  native startup failures surface immediately, and Retry re-spawns the builtin
+  backend without allowing duplicate sidecar processes `[v1.112.1]`.
+- **In-app crash recovery** `[v1.112.1]` — an unexpected UI render failure opens
+  a recovery screen with Reload and copyable error details instead of leaving a
+  dead webview that must be force-quit.
 - **In-app auto-updater** `[v1.22.0, v1.99.8]` — bottom-right update card + Settings → About
   → Updates, cached downloads, install-and-restart, signed minisign payloads,
   GitHub release notes rendered inline. Desktop checks at startup, every 6 hours,

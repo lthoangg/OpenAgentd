@@ -179,7 +179,9 @@ run from the terminal.
   foreground shell process groups; acknowledged background PIDs remain managed
   through `bg`. Background waits are session-scoped and bounded to 30 seconds by
   default (300 seconds maximum), returning a still-running result without
-  terminating the process `[v1.105.0]`.
+  terminating the process `[v1.105.0]`. Background process lists, status, wait
+  metadata, and final output render as compact structured cards with bounded
+  scroll regions on mobile and desktop `[v1.112.1]`.
 - **Drag-and-drop files into chat** `[since v1.0, v1.82.0]` — drag files (images, PDFs, text, etc.) anywhere onto the chat area (both cockpit and coding views) to show a drop overlay and attach them to the composer. Supports multi-file drops, file-type filtering, and cancellation.
 - **Composer history navigation** `[v1.32.0]` — when the input is empty, `↑` / `↓`
   walks previous user prompts from the current chat plus local submissions.

@@ -238,7 +238,7 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
   const resultCopyButton = (
     <button
       onClick={handleCopyResult}
-      className="flex h-7 w-7 items-center justify-center rounded-sm text-(--color-text-muted) opacity-100 transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40 md:h-6 md:w-6 md:opacity-0 md:group-hover:opacity-100"
+      className="flex h-7 w-7 items-center justify-center rounded-sm text-(--color-text-muted) opacity-100 transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40 md:h-6 md:w-6 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
       aria-label="Copy result"
       title="Copy result"
     >
@@ -351,7 +351,7 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
                         </span>
                         <button
                           onClick={handleCopyArgs}
-                          className="flex h-7 w-7 items-center justify-center rounded-sm text-(--color-text-muted) opacity-100 transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40 md:h-6 md:w-6 md:opacity-0 md:group-hover:opacity-100"
+                          className="flex h-7 w-7 items-center justify-center rounded-sm text-(--color-text-muted) opacity-100 transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40 md:h-6 md:w-6 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
                           aria-label="Copy arguments"
                           title="Copy"
                         >
@@ -366,7 +366,7 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
                         <div className="flex flex-col gap-1 bg-(--bg-input) p-2.5">
                           <pre
                             ref={shownLiveOutput ? liveOutputRef : undefined}
-                            className="max-h-64 overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-(--color-text)"
+                            className="max-h-40 overflow-auto sm:max-h-64 whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-(--color-text)"
                           >
                             <span className="select-none text-(--color-text-muted)">$ </span><ShellCommand command={formattedArgs} />{shellOutput ? `\n${shellOutput}` : ''}
                           </pre>
@@ -383,7 +383,7 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
                           )}
                         </div>
                       ) : (
-                        <pre className="max-h-[calc(10*1.55em)] overflow-y-auto whitespace-pre-wrap break-all bg-(--bg-input) px-3 py-2.5 font-mono text-xs leading-relaxed text-(--color-text)">
+                        <pre className="max-h-[calc(8*1.55em)] sm:max-h-[calc(10*1.55em)] overflow-y-auto whitespace-pre-wrap break-all bg-(--bg-input) px-3 py-2.5 font-mono text-xs leading-relaxed text-(--color-text)">
                           {displayedArgs}
                         </pre>
                       )}
@@ -399,7 +399,7 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
                       </div>
                       <pre
                         ref={liveOutputRef}
-                        className="max-h-64 overflow-auto whitespace-pre-wrap break-words bg-(--bg-input) px-3 py-2.5 font-mono text-[11px] leading-relaxed text-(--color-text)"
+                        className="max-h-40 overflow-auto sm:max-h-64 whitespace-pre-wrap break-words bg-(--bg-input) px-3 py-2.5 font-mono text-[11px] leading-relaxed text-(--color-text)"
                       >
                         {shownLiveOutput}
                       </pre>

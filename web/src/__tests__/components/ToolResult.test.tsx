@@ -233,6 +233,24 @@ describe("ToolResult - bg", () => {
     expect(screen.getByText("18 buffered lines")).toBeTruthy()
   })
 
+  it("structures wait results instead of dumping the orchestration wrapper as raw output", () => {
+    const { container } = render(
+      <ToolResult
+        toolName="bg"
+        result={"Waited on background process 194522 for 300.00 seconds.\n\nProcess exited (code 2)\nFinal output:\nfirst line\nsecond line"}
+      />,
+    )
+
+    expect(screen.getByText("PID 194522")).toBeTruthy()
+    expect(screen.getByText("exited (code 2)")).toBeTruthy()
+    expect(screen.getByText("waited 300.00 seconds")).toBeTruthy()
+    expect(screen.queryByText(/Waited on background process/)).toBeNull()
+    const output = container.querySelector("pre")
+    expect(output?.textContent).toContain("first line")
+    expect(output?.className).toContain("max-h-40")
+    expect(output?.className).toContain("sm:max-h-64")
+  })
+
   it("keeps captured output in a scrollable terminal block", () => {
     const { container } = render(
       <ToolResult toolName="bg" result={"PID 1234 output:\nfirst line\nsecond line"} />,

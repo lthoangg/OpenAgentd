@@ -59,7 +59,7 @@ export function ReadView({ args, result, onCollapse }: ReadViewProps) {
   }
 
   return (
-    <div className="flex max-h-80 flex-col overflow-hidden">
+    <div className="flex max-h-56 sm:max-h-80 flex-col overflow-hidden">
       <div className="flex w-full items-center border-b border-(--color-border) bg-(--bg-sidebar) font-mono text-xs font-semibold text-(--color-text-2) shadow-sm">
         <button
           type="button"

@@ -73,7 +73,7 @@ function WebSearchResult({ result }: { result: string }) {
   }
 
   return (
-    <ul className="space-y-2">
+    <ul className="max-h-40 space-y-2 overflow-y-auto pr-1 sm:max-h-64">
       {items.map((item, i) => {
         const link = item.href ?? item.url ?? ''
         const title = item.title ?? link
@@ -153,7 +153,7 @@ function ShellResult({ result }: { result: string }) {
 
       {/* stdout / stderr output */}
       {body && (
-        <pre className="max-h-[calc(10*1.55em)] overflow-y-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-(--color-text-2)">
+        <pre className="max-h-[calc(8*1.55em)] sm:max-h-[calc(10*1.55em)] overflow-y-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-(--color-text-2)">
           {body}
         </pre>
       )}
@@ -180,7 +180,7 @@ function FileListResult({ result }: { result: string }) {
       <span className="font-mono text-[10px] text-(--color-text-muted)">
         {entries.length} {entries.length === 1 ? 'entry' : 'entries'}
       </span>
-      <ul className="max-h-[calc(10*1.55em)] min-w-0 space-y-0.5 overflow-y-auto">
+      <ul className="max-h-[calc(8*1.55em)] sm:max-h-[calc(10*1.55em)] min-w-0 space-y-0.5 overflow-y-auto">
         {entries.map((e, i) => (
           <li
             key={i}
@@ -211,7 +211,7 @@ function FileReadResult({ result }: { result: string }) {
           {rangeLabel}
         </span>
       </div>
-      <pre className="max-h-[calc(10*1.55em)] min-w-0 overflow-auto whitespace-pre-wrap break-words px-3 py-2.5 font-mono text-[11px] leading-relaxed text-(--color-text)">
+      <pre className="max-h-[calc(8*1.55em)] sm:max-h-[calc(10*1.55em)] min-w-0 overflow-auto whitespace-pre-wrap break-words px-3 py-2.5 font-mono text-[11px] leading-relaxed text-(--color-text)">
         {body}
       </pre>
     </div>
@@ -344,6 +344,38 @@ function statusColor(status: string): string {
   return 'text-(--color-error)'
 }
 
+function BackgroundOutputBlock({
+  pid,
+  status,
+  detail,
+  body,
+  headerAction,
+  outputLabel = true,
+}: {
+  pid: string
+  status?: string
+  detail?: string
+  body: string
+  headerAction?: ReactNode
+  outputLabel?: boolean
+}) {
+  return (
+    <div className="min-w-0 overflow-hidden">
+      <div className="flex min-w-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-sidebar) px-2.5 py-1.5 font-mono text-[10px]">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+          <span className="text-(--color-text)">PID {pid}{outputLabel ? ' output' : ''}</span>
+          {status && <span className={statusColor(status)}>{status}</span>}
+          {detail && <span className="text-(--color-text-muted)">{detail}</span>}
+        </div>
+        {headerAction}
+      </div>
+      <pre className="max-h-40 overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words px-3 py-2.5 font-mono text-[11px] leading-relaxed text-(--color-text-2) sm:max-h-64">
+        {truncateForDisplay(body)}
+      </pre>
+    </div>
+  )
+}
+
 function BackgroundProcessResult({ result, headerAction }: { result: string; headerAction?: ReactNode }) {
   if (result === 'No background processes running.') {
     return (
@@ -369,7 +401,7 @@ function BackgroundProcessResult({ result, headerAction }: { result: string; hea
           <span className="hidden sm:block">background processes</span>
           {headerAction}
         </div>
-        <ul className="max-h-64 overflow-y-auto">
+        <ul className="max-h-40 overflow-y-auto sm:max-h-64">
           {listRows.map((process) => (
             <li key={process.pid} className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-0.5 border-b border-(--color-border) px-2.5 py-2 font-mono text-[11px] last:border-b-0 sm:grid-cols-[4rem_5.5rem_minmax(0,1fr)] sm:items-center">
               <span className="text-(--color-text)">PID {process.pid}</span>
@@ -382,6 +414,26 @@ function BackgroundProcessResult({ result, headerAction }: { result: string; hea
     )
   }
 
+  // Some tool transports wrap `bg wait` with an orchestration summary before
+  // the process output. Promote that wrapper to compact metadata instead of
+  // rendering it as the first four lines of a giant raw terminal block.
+  const waitedOutputMatch = result.match(
+    /^Waited on background process (\d+)(?: for ([\d.]+) seconds)?\.\n(?:\n)?Process ([^\n]+)\nFinal output:\n([\s\S]*)$/,
+  )
+  if (waitedOutputMatch) {
+    const [, pid, seconds, status, body] = waitedOutputMatch
+    return (
+      <BackgroundOutputBlock
+        pid={pid}
+        status={status}
+        detail={seconds ? `waited ${seconds} seconds` : undefined}
+        body={body}
+        headerAction={headerAction}
+        outputLabel={false}
+      />
+    )
+  }
+
   const outputMatch = result.match(/^PID (\d+) output:\n([\s\S]*)$/)
   const finalOutputMatch = result.match(/^PID (\d+): ([^\n]+)\nFinal output:\n([\s\S]*)$/)
   const output = outputMatch ?? finalOutputMatch
@@ -389,18 +441,7 @@ function BackgroundProcessResult({ result, headerAction }: { result: string; hea
     const [, pid, statusOrBody, finalBody] = output
     const body = finalBody ?? statusOrBody
     const status = finalOutputMatch?.[2]
-    return (
-      <div className="min-w-0 overflow-hidden">
-        <div className="flex items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-sidebar) px-2.5 py-1.5 font-mono text-[10px]">
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="text-(--color-text)">PID {pid} output</span>
-            {status && <span className={statusColor(status)}>{status}</span>}
-          </div>
-          {headerAction}
-        </div>
-        <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap break-words px-3 py-2.5 font-mono text-[11px] leading-relaxed text-(--color-text-2)">{truncateForDisplay(body)}</pre>
-      </div>
-    )
+    return <BackgroundOutputBlock pid={pid} status={status} body={body} headerAction={headerAction} />
   }
 
   const statusMatch = result.match(/^PID (\d+): ([^\n]+)(?:\nCommand: ([^\n]+))?(?:\nBuffered lines: (\d+))?$/)
@@ -425,7 +466,7 @@ function BackgroundProcessResult({ result, headerAction }: { result: string; hea
   return (
     <div className="relative">
       {headerAction && <div className="absolute top-0 right-0">{headerAction}</div>}
-      <pre className={`max-h-[calc(10*1.55em)] overflow-y-auto whitespace-pre-wrap break-words pr-9 font-mono text-[11px] leading-relaxed ${isError ? 'text-(--color-error)' : 'text-(--color-text-2)'}`}>
+      <pre className={`max-h-[calc(8*1.55em)] sm:max-h-[calc(10*1.55em)] overflow-y-auto whitespace-pre-wrap break-words pr-9 font-mono text-[11px] leading-relaxed ${isError ? 'text-(--color-error)' : 'text-(--color-text-2)'}`}>
         {truncateForDisplay(result)}
       </pre>
     </div>
@@ -446,7 +487,7 @@ function GenericResult({ result }: { result: string }) {
   const clipped = truncateForDisplay(display)
 
   return (
-    <pre className="max-h-[calc(10*1.55em)] overflow-y-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-(--color-text-2)">
+    <pre className="max-h-[calc(8*1.55em)] sm:max-h-[calc(10*1.55em)] overflow-y-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-(--color-text-2)">
       {clipped}
     </pre>
   )

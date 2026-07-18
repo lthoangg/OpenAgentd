@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-07-17
+updated: 2026-07-18
 ---
 
 # Features
@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 16 providers. Your keys.
 
-**Latest release:** v1.112.1 · July 17, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.112.1)
+**Latest release:** v1.113.0 · July 18, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.113.0)
 
 ---
 
@@ -53,7 +53,7 @@ run from the terminal.
 
 - **Native desktop app for macOS, Windows, Linux** `[since v1.0; Windows restored v1.106.0]` — Tauri 2 shell,
   bundled Python sidecar, embedded Web UI, one process, no terminal required.
-- **Explicit backend connection state** `[v1.68.0, v1.99.8, v1.112.1]` — desktop connection options
+- **Explicit backend connection state** `[v1.68.0, v1.99.8, v1.113.0]` — desktop connection options
   are limited to the builtin sidecar and saved servers; no-backend dev windows
   show **Backend unreachable**, active server removal clears the current backend,
   the builtin row exposes **Stop** whenever the sidecar process is already
@@ -61,8 +61,8 @@ run from the terminal.
   If bundled startup exceeds 15 seconds, the native splash offers Retry, server
   selection, and backend-log-path copy actions instead of waiting indefinitely;
   native startup failures surface immediately, and Retry re-spawns the builtin
-  backend without allowing duplicate sidecar processes `[v1.112.1]`.
-- **In-app crash recovery** `[v1.112.1]` — an unexpected UI render failure opens
+  backend without allowing duplicate sidecar processes `[v1.113.0]`.
+- **In-app crash recovery** `[v1.113.0]` — an unexpected UI render failure opens
   a recovery screen with Reload and copyable error details instead of leaving a
   dead webview that must be force-quit.
 - **In-app auto-updater** `[v1.22.0, v1.99.8]` — bottom-right update card + Settings → About
@@ -181,7 +181,7 @@ run from the terminal.
   default (300 seconds maximum), returning a still-running result without
   terminating the process `[v1.105.0]`. Background process lists, status, wait
   metadata, and final output render as compact structured cards with bounded
-  scroll regions on mobile and desktop `[v1.112.1]`.
+  scroll regions on mobile and desktop `[v1.113.0]`.
 - **Drag-and-drop files into chat** `[since v1.0, v1.82.0]` — drag files (images, PDFs, text, etc.) anywhere onto the chat area (both cockpit and coding views) to show a drop overlay and attach them to the composer. Supports multi-file drops, file-type filtering, and cancellation.
 - **Composer history navigation** `[v1.32.0]` — when the input is empty, `↑` / `↓`
   walks previous user prompts from the current chat plus local submissions.

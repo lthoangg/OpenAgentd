@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "openagentd"
-version = "1.112.1"  # keep in sync with app/version.txt
+version = "1.113.0"  # keep in sync with app/version.txt
 description = "Self-hosted AI agents — streaming chat, tool use, persistent memory, multi-agent teams"
 readme = "README.md"
 requires-python = ">=3.14"

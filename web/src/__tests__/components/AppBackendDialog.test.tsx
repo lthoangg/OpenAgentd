@@ -221,14 +221,20 @@ describe('AppBackendDialog', () => {
     const user = userEvent.setup()
     render(<AppBackendDialog open onOpenChange={() => {}} />)
 
-    await user.type(screen.getByLabelText(/server url/i), 'http://127.0.0.1:4082')
-    await user.type(screen.getByLabelText(/access key/i), 'secret')
+    // This test verifies the test-before-save state machine, not per-key
+    // semantics. Paste each value in one input event so the parallel suite
+    // does not spend its 5 s test budget dispatching every character.
+    await user.click(screen.getByLabelText(/server url/i))
+    await user.paste('http://127.0.0.1:4082')
+    await user.click(screen.getByLabelText(/access key/i))
+    await user.paste('secret')
     await user.click(screen.getByRole('button', { name: 'Test connection' }))
 
     await waitFor(() => expect(screen.getByText('Connection successful.')).toBeTruthy())
     expect(invokeCalls.some((call) => call.command === 'app_use_external_backend')).toBe(false)
 
-    await user.type(screen.getByLabelText(/server name/i), 'Workstation')
+    await user.click(screen.getByLabelText(/server name/i))
+    await user.paste('Workstation')
     await user.click(screen.getByRole('button', { name: 'Save & Connect' }))
 
     await waitFor(() => expect(window.__OAD_API_BASE_URL__).toBe('http://127.0.0.1:4082'))

@@ -57,18 +57,10 @@ export default defineConfig({
             // shell statically imports highlight.js (ToolCall shell commands,
             // CodingFileViewerPanel); shared by the lazy markdown chunk.
             { name: "syntax", test: /node_modules[\\/](highlight\.js|lowlight)[\\/]/, priority: 85 },
-            // Markdown rendering (react-markdown + remark/rehype chain +
-            // katex) — must stay OUT of the eager preload graph; it is
-            // dynamically imported via LazyMarkdownBlock.
-            // `includeDependenciesRecursively: false` keeps shared tiny
-            // helpers (extend, style-to-object, …) from being captured here,
-            // which would re-create eager → markdown import edges.
-            {
-              name: "markdown",
-              test: /node_modules[\\/](react-markdown|remark|rehype|unified|vfile|hast|mdast|micromark|unist|property-information|katex)/,
-              priority: 80,
-              includeDependenciesRecursively: false,
-            },
+            // Markdown remains behind LazyMarkdownBlock's dynamic import.
+            // Do not force its dependency graph into a named group: Rolldown
+            // can otherwise emit a vendor chunk that imports its own dynamic
+            // entry, which crashes production WebViews during module init.
             // Icons (lucide ships many SVGs).
             { name: "icons", test: /node_modules[\\/]lucide-react[\\/]/, priority: 70 },
             // State + utilities (zustand, immer, zod, nuqs).

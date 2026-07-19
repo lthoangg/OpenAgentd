@@ -379,9 +379,13 @@ function BackgroundOutputBlock({
 function BackgroundProcessResult({ result, headerAction }: { result: string; headerAction?: ReactNode }) {
   if (result === 'No background processes running.') {
     return (
-      <div className="flex items-center justify-between gap-2">
-        <p className="font-mono text-[11px] leading-relaxed text-(--color-text-muted)">{result}</p>
-        {headerAction}
+      <div className="min-w-0 overflow-hidden">
+        <div className="flex items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-sidebar) px-2.5 py-1.5 font-mono text-[10px] text-(--color-text-muted)">
+          <span>0 processes</span>
+          <span className="hidden sm:block">background processes</span>
+          {headerAction}
+        </div>
+        <p className="px-2.5 py-2 font-mono text-[11px] leading-relaxed text-(--color-text-muted)">{result}</p>
       </div>
     )
   }
@@ -448,16 +452,20 @@ function BackgroundProcessResult({ result, headerAction }: { result: string; hea
   if (statusMatch) {
     const [, pid, status, command, bufferedLines] = statusMatch
     return (
-      <div className="flex flex-col gap-1.5 font-mono text-[11px] leading-relaxed">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="font-medium text-(--color-text)">PID {pid}</span>
+      <div className="min-w-0 overflow-hidden">
+        <div className="flex min-w-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-sidebar) px-2.5 py-1.5 font-mono text-[10px]">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+            <span className="text-(--color-text)">PID {pid}</span>
             <span className={statusColor(status)}>{status}</span>
+            {bufferedLines && <span className="text-(--color-text-muted)">{bufferedLines} buffered lines</span>}
           </div>
           {headerAction}
         </div>
-        {command && <code className="break-words text-(--color-text-2)">{command}</code>}
-        {bufferedLines && <span className="text-(--color-text-muted)">{bufferedLines} buffered lines</span>}
+        {command && (
+          <code className="block break-words px-3 py-2.5 font-mono text-[11px] leading-relaxed text-(--color-text-2)">
+            {command}
+          </code>
+        )}
       </div>
     )
   }

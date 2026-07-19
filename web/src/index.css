@@ -68,14 +68,14 @@ pre code.hljs {
     --font-hand: 'Caveat', 'Bradley Hand', cursive;
 
 
-    --radius-xs: 6px;
-    --radius-sm: 8px;
-    --radius-md: 10px;
-    --radius-lg: 14px;
-    --radius-xl: 18px;
-    --radius-2xl: 24px;
-    --radius-3xl: 32px;
-    --radius-4xl: 40px;
+    --radius-xs: 2px;
+    --radius-sm: 4px;
+    --radius-md: 6px;
+    --radius-lg: 8px;
+    --radius-xl: 10px;
+    --radius-2xl: 12px;
+    --radius-3xl: 16px;
+    --radius-4xl: 20px;
 
     /* App header — 40 px shared bar. The 70 px inset clears the
      * macOS traffic-light overlay (x=12 origin + ~58 button group). */

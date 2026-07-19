@@ -62,6 +62,11 @@ run from the terminal.
   selection, and backend-log-path copy actions instead of waiting indefinitely;
   native startup failures surface immediately, and Retry re-spawns the builtin
   backend without allowing duplicate sidecar processes `[v1.113.0]`.
+- **Connection-ready screen warmup** `[v1.113.3]` — after either the bundled
+  sidecar or an external server connects, the app preloads shared Cockpit and
+  Coding data in the background so the first mode switch can render from cache.
+  Packaged desktop launches also canonicalise the `index.html` entrypoint to Home
+  instead of showing the client-side 404 screen.
 - **In-app crash recovery** `[v1.113.0]` — an unexpected UI render failure opens
   a recovery screen with Reload and copyable error details instead of leaving a
   dead webview that must be force-quit.

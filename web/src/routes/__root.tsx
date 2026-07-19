@@ -63,6 +63,10 @@ export function Root() {
     }
 
     const LAST_ROUTE_KEY = 'oa-last-route'
+    if (window.location.pathname === '/index.html') {
+      navigate({ to: closestRestorableRoute(window.location.pathname + window.location.search + window.location.hash), replace: true })
+      return
+    }
     if (window.location.pathname === '/' && window.location.search === '') {
       const savedRoute = localStorage.getItem(LAST_ROUTE_KEY)
       if (savedRoute && savedRoute !== '/') {

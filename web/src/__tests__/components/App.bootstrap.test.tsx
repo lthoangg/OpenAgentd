@@ -17,6 +17,7 @@ let backendReadyListener: ((event: BackendReadyEvent) => void) | null = null
 let backendErrorListener: ((event: BackendErrorEvent) => void) | null = null
 let resolveSecureKey: (() => void) | null = null
 let routerMounted = false
+const preloadConnectedAppMock = mock(() => {})
 
 function useFakeTimers() {
   const realSetTimeout = globalThis.setTimeout
@@ -112,6 +113,10 @@ mock.module('@/components/UpdateCard', () => ({
   UpdateCard: () => null,
 }))
 
+mock.module('@/lib/connected-app-preload', () => ({
+  preloadConnectedApp: preloadConnectedAppMock,
+}))
+
 mock.module('@/components/AppBackendDialog', () => ({
   AppBackendDialog: ({ open }: { open: boolean }) => open ? <div role="dialog">Server chooser</div> : null,
 }))
@@ -130,6 +135,7 @@ beforeEach(() => {
   resolveSecureKey = null
   resolveBundledRestart = null
   routerMounted = false
+  preloadConnectedAppMock.mockClear()
   invokeMock.mockClear()
 })
 
@@ -149,6 +155,13 @@ describe('App backend bootstrap', () => {
     expect(routerMounted).toBe(false)
     await act(async () => resolveSecureKey?.())
     await waitFor(() => expect(routerMounted).toBe(true))
+  })
+
+  it('starts background preloading after the backend is ready', async () => {
+    render(<App />)
+
+    await waitFor(() => expect(routerMounted).toBe(true))
+    await waitFor(() => expect(preloadConnectedAppMock).toHaveBeenCalledTimes(1))
   })
 
   it('hydrates and remembers the active mobile app backend URL on app startup', async () => {

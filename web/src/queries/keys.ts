@@ -21,6 +21,7 @@ export const queryKeys = {
   // ``coding_workspace`` invalidations on every file-mutating tool_end and
   // after /undo + /redo so the panel reflects disk state in real time.
   coding: {
+    tree: () => ['coding-workspace-tree'] as const,
     all: (workspace: string) => ['coding-workspace', workspace] as const,
     files: (workspace: string) =>
       ['coding-workspace-files', workspace] as const,

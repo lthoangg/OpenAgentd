@@ -1,0 +1,34 @@
+import { describe, expect, it, mock } from 'bun:test'
+import type { QueryClient } from '@tanstack/react-query'
+import { preloadConnectedApp } from '@/lib/connected-app-preload'
+import { queryKeys } from '@/queries/keys'
+
+function createClient() {
+  const prefetchQuery = mock(() => Promise.resolve())
+  const prefetchInfiniteQuery = mock(() => Promise.resolve())
+  return {
+    client: { prefetchQuery, prefetchInfiniteQuery } as unknown as QueryClient,
+    prefetchQuery,
+    prefetchInfiniteQuery,
+  }
+}
+
+describe('preloadConnectedApp', () => {
+  it('warms the shared cockpit and coding entry data after a connection', () => {
+    const { client, prefetchQuery, prefetchInfiniteQuery } = createClient()
+
+    preloadConnectedApp(client)
+
+    expect(prefetchQuery).toHaveBeenCalledTimes(3)
+    expect(prefetchQuery.mock.calls.map(([options]) => (options as { queryKey: readonly unknown[] }).queryKey)).toEqual([
+      queryKeys.team.status(),
+      queryKeys.settings.providers(),
+      queryKeys.coding.tree(),
+    ])
+    expect(prefetchInfiniteQuery).toHaveBeenCalledTimes(2)
+    expect(prefetchInfiniteQuery.mock.calls.map(([options]) => (options as { queryKey: readonly unknown[] }).queryKey)).toEqual([
+      queryKeys.team.sessions.infinite(),
+      queryKeys.team.sessions.workspace('__all_coding__'),
+    ])
+  })
+})

@@ -14,6 +14,10 @@ describe('closestRestorableRoute', () => {
     expect(closestRestorableRoute('/telemetry')).toBe('/telemetry')
   })
 
+  it('canonicalizes the packaged desktop entrypoint to home', () => {
+    expect(closestRestorableRoute('/index.html?oa-window-id=main#ready')).toBe('/?oa-window-id=main#ready')
+  })
+
   it('redirects all /settings/* paths to home (settings is now a modal)', () => {
     expect(closestRestorableRoute('/settings/providers')).toBe('/')
     expect(closestRestorableRoute('/settings/agents')).toBe('/')

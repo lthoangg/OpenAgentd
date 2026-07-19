@@ -43,6 +43,7 @@ import {
   X,
 } from 'lucide-react'
 import { useDeleteTeamSessionMutation, useTeamSessionsQuery, useUpdateTeamSessionTitleMutation } from '@/queries/useSessionsQuery'
+import { queryKeys } from '@/queries/keys'
 import { getCodingWorkspaceTree, listWorktrees } from '@/api/client'
 import { workspaceLabel } from '@/utils/workspace'
 import { ThemeToggle } from './ThemeToggle'
@@ -156,7 +157,9 @@ export function CodingSidebar({
     (session) => session.workspace,
   )
 
-  const [workspaceTree, setWorkspaceTree] = useState<CodingWorkspaceTreeRepository[]>([])
+  const [workspaceTree, setWorkspaceTree] = useState<CodingWorkspaceTreeRepository[]>(
+    () => queryClient.getQueryData<{ repositories: CodingWorkspaceTreeRepository[] }>(queryKeys.coding.tree())?.repositories ?? [],
+  )
   const visibleWorkspaces = workspaceTree.map((repo) => repo.path)
   const activeWorkspace = workspace ?? null
   const worktreeSourceByDirectory = buildWorktreeSourceByDirectory(workspaceTree)
@@ -269,14 +272,21 @@ export function CodingSidebar({
     }
   }, [isTauri, isTauriMobile, openWebWorkspaceDialog])
 
-  const refreshWorkspaceTree = useCallback(async () => {
-    const tree = await getCodingWorkspaceTree()
+  const refreshWorkspaceTree = useCallback(async (force = false) => {
+    if (force) {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.coding.tree(), refetchType: 'none' })
+    }
+    const tree = await queryClient.fetchQuery({
+      queryKey: queryKeys.coding.tree(),
+      queryFn: getCodingWorkspaceTree,
+      staleTime: 30_000,
+    })
     setWorkspaceTree(tree.repositories)
-  }, [])
+  }, [queryClient])
 
   useEffect(() => {
     void refreshWorkspaceTree()
-    const handler = () => { void refreshWorkspaceTree() }
+    const handler = () => { void refreshWorkspaceTree(true) }
     window.addEventListener('coding-workspaces-changed', handler)
     window.addEventListener('storage', handler)
     return () => {

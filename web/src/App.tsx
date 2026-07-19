@@ -1,4 +1,4 @@
-import { Suspense, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { RouterProvider } from '@tanstack/react-router'
 import { OPENAGENTD_APP_ICON } from '@/lib/brand-assets'
 import { AppBackendDialog } from '@/components/AppBackendDialog'
@@ -7,10 +7,16 @@ import { getBundledBackendLogPath } from '@/lib/app-backend'
 import { UpdateCard } from './components/UpdateCard'
 import { useAppBackendBootstrap } from './hooks/use-app-backend-bootstrap'
 import { router } from './router'
+import { queryClient } from '@/lib/query-client'
+import { preloadConnectedApp } from '@/lib/connected-app-preload'
 
 function App() {
   const { ready, unavailable, retrying, retry } = useAppBackendBootstrap()
   const [backendDialogOpen, setBackendDialogOpen] = useState(false)
+
+  useEffect(() => {
+    if (ready) preloadConnectedApp(queryClient)
+  }, [ready])
 
   if (!ready) return <AppLoadingScreen unavailable={unavailable} retrying={retrying} onRetry={retry} onChooseServer={() => setBackendDialogOpen(true)} backendDialogOpen={backendDialogOpen} onBackendDialogOpenChange={setBackendDialogOpen} />
 

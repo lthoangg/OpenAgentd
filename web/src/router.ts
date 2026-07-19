@@ -17,6 +17,15 @@ const indexRoute = createRoute({
   component: HomePage,
 })
 
+// Tauri's packaged asset URL may surface as /index.html before the root
+// effect canonicalizes it. Render Home immediately instead of flashing the
+// not-found screen on a first desktop launch.
+const packagedIndexRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/index.html',
+  component: HomePage,
+})
+
 // /cockpit layout — persists across /cockpit and /cockpit/$sessionId
 const teamLayoutRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -67,6 +76,7 @@ const schedulerRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   indexRoute,
+  packagedIndexRoute,
   teamLayoutRoute.addChildren([teamIndexRoute, teamSessionRoute]),
   codingLayoutRoute.addChildren([codingIndexRoute, codingSessionRoute]),
   telemetryRoute,

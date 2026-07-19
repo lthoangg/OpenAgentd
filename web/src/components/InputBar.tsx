@@ -870,16 +870,16 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   ) : null
 
   // Reusable pill button styles for the action row (attach, mic — pencil
-  // calls these `inputBarAttach`, `inputBarMic`: 32×32, rounded-sm border,
+  // calls these `inputBarAttach`, `inputBarMic`: 32×32 rounded controls,
   // warm card fill).
   // ``active:scale-90`` gives a tactile press response on touch (``hover``
   // never fires on a finger), and ``motion-reduce`` opts out for users who
   // disable animation. The transition is transform+color only — both
   // GPU-cheap, no layout.
   const actionBtnClass =
-    'flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-(--color-border) bg-(--bg-card) text-(--color-text-2) transition duration-100 hover:bg-(--bg-key) hover:text-(--color-text) active:scale-90 active:bg-(--bg-key) motion-reduce:transition-none motion-reduce:active:scale-100 disabled:cursor-not-allowed disabled:opacity-50'
+    'flex h-7 w-7 shrink-0 items-center justify-center rounded-[10px] border border-(--color-border) bg-(--bg-card) text-(--color-text-2) transition duration-100 hover:bg-(--bg-key) hover:text-(--color-text) active:scale-90 active:bg-(--bg-key) motion-reduce:transition-none motion-reduce:active:scale-100 disabled:cursor-not-allowed disabled:opacity-50'
   const shellBtnClass = shellMode
-    ? 'flex h-7 shrink-0 items-center gap-1 rounded-md border border-(--color-accent) bg-(--bg-key) px-2 font-mono text-xs text-(--color-text) transition duration-100 hover:bg-(--bg-card) active:scale-95 motion-reduce:transition-none motion-reduce:active:scale-100 disabled:cursor-not-allowed disabled:opacity-50'
+    ? 'flex h-7 shrink-0 items-center gap-1 rounded-[10px] border border-(--color-accent) bg-(--bg-key) px-2 font-mono text-xs text-(--color-text) transition duration-100 hover:bg-(--bg-card) active:scale-95 motion-reduce:transition-none motion-reduce:active:scale-100 disabled:cursor-not-allowed disabled:opacity-50'
     : actionBtnClass
 
   // Three states share one DOM tree: minimized, single-line, multi-line.
@@ -979,7 +979,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       type="button"
       onClick={(e) => { stopClick(e); onStop?.() }}
       aria-label="Stop generation"
-      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-(--color-error) bg-(--color-error) text-(--bg-page) transition duration-100 hover:opacity-90 active:scale-90 motion-reduce:transition-none motion-reduce:active:scale-100"
+      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[10px] border border-(--color-error) bg-(--color-error) text-(--bg-page) transition duration-100 hover:opacity-90 active:scale-90 motion-reduce:transition-none motion-reduce:active:scale-100"
     >
       <Square size={12} fill="currentColor" />
     </button>
@@ -993,7 +993,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       disabled={!canSend}
       aria-label="Send message"
       title={isMobile ? 'Send message' : 'Send (Enter) · New line (Shift+Enter) · Commands (/)'}
-      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition duration-100 active:scale-90 motion-reduce:transition-none motion-reduce:active:scale-100 disabled:cursor-not-allowed disabled:opacity-50 ${
+      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-[10px] border transition duration-100 active:scale-90 motion-reduce:transition-none motion-reduce:active:scale-100 disabled:cursor-not-allowed disabled:opacity-50 ${
         canSend
           // When there's something to send, promote the button to an accent
           // fill so the primary action reads clearly — a small but meaningful
@@ -1106,7 +1106,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     </div>
   )
 
-  const pillClassName = `relative block rounded-lg border bg-(--color-surface) transition-[border-color,box-shadow,background-color] duration-200 ${
+  const pillClassName = `relative block rounded-[14px] border bg-(--color-surface) transition-[border-color,box-shadow,background-color] duration-200 ${
     minimized
       ? 'w-fit border-(--color-border) shadow-sm hover:bg-(--bg-key)'
       : shellMode

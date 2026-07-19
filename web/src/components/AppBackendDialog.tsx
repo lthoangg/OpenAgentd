@@ -206,8 +206,8 @@ export function AppBackendDialog({ open, onOpenChange }: AppBackendDialogProps) 
       {/* Header / Title Bar */}
       <div className="flex h-11 shrink-0 items-center justify-between border-b border-(--color-border) bg-(--bg-sidebar) px-4 select-none">
         <div className="flex items-center gap-2">
-          <Server size={13} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
-          <h2 className="text-xs font-semibold text-(--color-text)">Backend connection</h2>
+          <Server size={14} className="shrink-0 text-(--color-text-muted)" aria-hidden="true" />
+          <h2 className="text-base font-semibold text-(--color-text)">Backend connection</h2>
         </div>
       </div>
 

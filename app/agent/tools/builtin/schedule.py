@@ -204,7 +204,6 @@ def _fmt_task(task: Any) -> str:
     name = getattr(task, "name", "?")
     mode = getattr(task, "mode", "normal")
     workspace = getattr(task, "workspace", None)
-    task_id = getattr(task, "id", "?")
     slug = getattr(task, "slug", "?")
 
     target = f"mode={mode}"
@@ -212,7 +211,6 @@ def _fmt_task(task: Any) -> str:
         target += f" workspace={workspace}"
 
     parts = [
-        f"id={task_id}",
         f"slug={slug}",
         f"name={name}",
         target,

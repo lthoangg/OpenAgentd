@@ -38,18 +38,11 @@ function trunc(s: string, maxLen = 60): string {
   return s.length > maxLen ? s.slice(0, maxLen) + '…' : s
 }
 
-function patchPathSummary(patchText: string, maxLen = 96): string | null {
+function patchFileCount(patchText: string): number {
   const paths = parsePatchText(patchText).flatMap((diff) => (
     diff.moveTo ? [diff.path, diff.moveTo] : [diff.path]
   ))
-  if (paths.length === 0) return null
-  const seen = new Set<string>()
-  const unique = paths.filter((path) => {
-    if (seen.has(path)) return false
-    seen.add(path)
-    return true
-  })
-  return trunc(unique.join(', '), maxLen)
+  return new Set(paths).size
 }
 
 function actionList(parsed: Record<string, unknown>): Record<string, unknown>[] {
@@ -448,7 +441,8 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
   // ── patch: all touched paths in header, full envelope as args ─────
   if (name === 'patch') {
     const patchText = str(parsed, 'patch_text')
-    const summary = patchText ? patchPathSummary(patchText) : null
+    const fileCount = patchText ? patchFileCount(patchText) : 0
+    const summary = fileCount > 0 ? `${fileCount} file${fileCount === 1 ? '' : 's'}` : null
     return {
       header: summary ? <Arg>{summary}</Arg> : 'patch',
       headerTitle: summary ?? 'patch',
@@ -630,6 +624,13 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
       return {
         header: <>Dismissing <Arg>{truncated}</Arg></>,
         headerTitle: `Dismissing ${truncated}`,
+        formattedArgs: null,
+      }
+    }
+    if (action === 'list') {
+      return {
+        header: 'Listing team roster…',
+        headerTitle: 'Listing team roster…',
         formattedArgs: null,
       }
     }

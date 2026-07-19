@@ -69,6 +69,7 @@ function formatShellResult(result: string | undefined): { statusLine: string | n
 
 function formatToolLabel(name: string): string {
   if (!name) return 'Tool'
+  if (name === 'rm') return 'Remove'
   return name
     .split('_')
     .filter(Boolean)
@@ -193,6 +194,7 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
   const shownLiveOutput = shownResult ? undefined : liveOutput
   const hasReadResult = usesReadView
   const isBackgroundProcess = name === 'bg'
+  const isScheduleTaskList = name === 'schedule_task' && shownResult?.startsWith('Scheduled tasks (')
   const isShell = language === 'bash'
   const isShellTerminal = isShell && Boolean(formattedArgs)
   const shellResult = isShell ? formatShellResult(shownResult) : null
@@ -238,7 +240,7 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
   const resultCopyButton = (
     <button
       onClick={handleCopyResult}
-      className="flex h-7 w-7 items-center justify-center rounded-sm text-(--color-text-muted) opacity-100 transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40 md:h-6 md:w-6 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
+      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) opacity-100 transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40 md:h-6 md:w-6 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
       aria-label="Copy result"
       title="Copy result"
     >
@@ -345,13 +347,13 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
                   {/* Args section — caption + copy sit above the content. */}
                   {formattedArgs && (
                     <div>
-                      <div className="flex items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-sidebar) py-0.5 pr-1.5 pl-3">
-                        <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted)">
+                      <div onClick={() => setManualExpanded(false)} className="group flex cursor-pointer items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-sidebar) py-0.5 pr-1.5 pl-3 transition-colors hover:text-(--color-text)">
+                        <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted) transition-colors group-hover:text-(--color-text)">
                           {isShellTerminal ? 'terminal' : 'arguments'}
                         </span>
                         <button
                           onClick={handleCopyArgs}
-                          className="flex h-7 w-7 items-center justify-center rounded-sm text-(--color-text-muted) opacity-100 transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40 md:h-6 md:w-6 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
+                          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) opacity-100 transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40 md:h-6 md:w-6 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
                           aria-label="Copy arguments"
                           title="Copy"
                         >
@@ -392,8 +394,8 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
 
                   {shownLiveOutput && !isShellTerminal && (
                     <div>
-                      <div className={`flex items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-sidebar) py-0.5 pr-1.5 pl-3 ${formattedArgs ? 'border-t' : ''}`}>
-                        <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted)">
+                      <div onClick={() => setManualExpanded(false)} className={`group flex cursor-pointer items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-sidebar) py-0.5 pr-1.5 pl-3 transition-colors hover:text-(--color-text) ${formattedArgs ? 'border-t' : ''}`}>
+                        <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted) transition-colors group-hover:text-(--color-text)">
                           output
                         </span>
                       </div>
@@ -410,16 +412,18 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
                       replaces the generic Result caption rather than nesting below it. */}
                   {shownResult && !isShellTerminal && (
                     isBackgroundProcess ? (
-                      <ToolResult toolName={name} result={shownResult} headerAction={resultCopyButton} />
+                      <ToolResult toolName={name} result={shownResult} headerAction={resultCopyButton} onCollapse={() => setManualExpanded(false)} />
+                    ) : isScheduleTaskList ? (
+                      <ToolResult toolName={name} result={shownResult} />
                     ) : (
                       <div>
-                        <div className={`flex items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-sidebar) py-0.5 pr-1.5 pl-3 ${formattedArgs || shownLiveOutput ? 'border-t' : ''}`}>
-                          <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted)">
+                        <div onClick={() => setManualExpanded(false)} className={`group flex cursor-pointer items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-sidebar) py-0.5 pr-1.5 pl-3 transition-colors hover:text-(--color-text) ${formattedArgs || shownLiveOutput ? 'border-t' : ''}`}>
+                          <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted) transition-colors group-hover:text-(--color-text)">
                             result
                           </span>
                           {resultCopyButton}
                         </div>
-                        <div className="bg-(--bg-input) px-3 py-2.5 text-xs leading-relaxed text-(--color-text)">
+                        <div className={isScheduleTaskList ? 'bg-(--bg-input) text-xs leading-relaxed text-(--color-text)' : 'bg-(--bg-input) px-3 py-2.5 text-xs leading-relaxed text-(--color-text)'}>
                           <ToolResult toolName={name} result={shownResult} />
                         </div>
                       </div>

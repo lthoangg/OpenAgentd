@@ -204,7 +204,7 @@ function FileReadResult({ result }: { result: string }) {
 
   return (
     <div className="min-w-0 overflow-hidden rounded-sm border border-(--color-border) bg-(--bg-card)">
-      <div className="flex items-center gap-2 border-b border-(--color-border) bg-(--bg-sidebar) px-2.5 py-1 font-mono text-[10px] font-semibold tracking-wider text-(--color-text-muted) uppercase">
+      <div className="flex min-h-8 items-center gap-2 border-b border-(--color-border) bg-(--bg-sidebar) px-3 py-0 font-mono text-[10px] font-semibold tracking-wider text-(--color-text-muted) uppercase">
         <FileText size={12} className="shrink-0" aria-hidden />
         <span className="truncate">read</span>
         <span className="ml-auto shrink-0 font-normal normal-case tracking-normal">
@@ -350,6 +350,7 @@ function BackgroundOutputBlock({
   detail,
   body,
   headerAction,
+  onCollapse,
   outputLabel = true,
 }: {
   pid: string
@@ -357,16 +358,17 @@ function BackgroundOutputBlock({
   detail?: string
   body: string
   headerAction?: ReactNode
+  onCollapse?: () => void
   outputLabel?: boolean
 }) {
   return (
     <div className="min-w-0 overflow-hidden">
-      <div className="flex min-w-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-sidebar) px-2.5 py-1.5 font-mono text-[10px]">
-        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+      <div className="flex min-h-8 min-w-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-sidebar) py-0 pr-2 pl-3 font-mono text-[10px]">
+        <button type="button" onClick={onCollapse} className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 text-left transition-colors hover:text-(--color-text)">
           <span className="text-(--color-text)">PID {pid}{outputLabel ? ' output' : ''}</span>
           {status && <span className={statusColor(status)}>{status}</span>}
           {detail && <span className="text-(--color-text-muted)">{detail}</span>}
-        </div>
+        </button>
         {headerAction}
       </div>
       <pre className="max-h-40 overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words px-3 py-2.5 font-mono text-[11px] leading-relaxed text-(--color-text-2) sm:max-h-64">
@@ -376,13 +378,15 @@ function BackgroundOutputBlock({
   )
 }
 
-function BackgroundProcessResult({ result, headerAction }: { result: string; headerAction?: ReactNode }) {
+function BackgroundProcessResult({ result, headerAction, onCollapse }: { result: string; headerAction?: ReactNode; onCollapse?: () => void }) {
   if (result === 'No background processes running.') {
     return (
       <div className="min-w-0 overflow-hidden">
-        <div className="flex items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-sidebar) px-2.5 py-1.5 font-mono text-[10px] text-(--color-text-muted)">
-          <span>0 processes</span>
-          <span className="hidden sm:block">background processes</span>
+        <div className="flex min-h-8 items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-sidebar) py-0 pr-2 pl-3 font-mono text-[10px] text-(--color-text-muted)">
+          <button type="button" onClick={onCollapse} className="flex min-w-0 flex-1 items-center justify-between gap-3 text-left transition-colors hover:text-(--color-text)">
+            <span>0 processes</span>
+            <span className="hidden sm:block">background processes</span>
+          </button>
           {headerAction}
         </div>
         <p className="px-2.5 py-2 font-mono text-[11px] leading-relaxed text-(--color-text-muted)">{result}</p>
@@ -400,9 +404,11 @@ function BackgroundProcessResult({ result, headerAction }: { result: string; hea
   if (result.startsWith('PID     | Status') && listRows.length > 0) {
     return (
       <div className="min-w-0 overflow-hidden">
-        <div className="flex items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-sidebar) px-2.5 py-1.5 font-mono text-[10px] text-(--color-text-muted)">
-          <span>{listRows.length} {listRows.length === 1 ? 'process' : 'processes'}</span>
-          <span className="hidden sm:block">background processes</span>
+        <div className="flex min-h-8 items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-sidebar) py-0 pr-2 pl-3 font-mono text-[10px] text-(--color-text-muted)">
+          <button type="button" onClick={onCollapse} className="flex min-w-0 flex-1 items-center justify-between gap-3 text-left transition-colors hover:text-(--color-text)">
+            <span>{listRows.length} {listRows.length === 1 ? 'process' : 'processes'}</span>
+            <span className="hidden sm:block">background processes</span>
+          </button>
           {headerAction}
         </div>
         <ul className="max-h-40 overflow-y-auto sm:max-h-64">
@@ -433,6 +439,7 @@ function BackgroundProcessResult({ result, headerAction }: { result: string; hea
         detail={seconds ? `waited ${seconds} seconds` : undefined}
         body={body}
         headerAction={headerAction}
+        onCollapse={onCollapse}
         outputLabel={false}
       />
     )
@@ -445,7 +452,7 @@ function BackgroundProcessResult({ result, headerAction }: { result: string; hea
     const [, pid, statusOrBody, finalBody] = output
     const body = finalBody ?? statusOrBody
     const status = finalOutputMatch?.[2]
-    return <BackgroundOutputBlock pid={pid} status={status} body={body} headerAction={headerAction} />
+    return <BackgroundOutputBlock pid={pid} status={status} body={body} headerAction={headerAction} onCollapse={onCollapse} />
   }
 
   const statusMatch = result.match(/^PID (\d+): ([^\n]+)(?:\nCommand: ([^\n]+))?(?:\nBuffered lines: (\d+))?$/)
@@ -453,12 +460,12 @@ function BackgroundProcessResult({ result, headerAction }: { result: string; hea
     const [, pid, status, command, bufferedLines] = statusMatch
     return (
       <div className="min-w-0 overflow-hidden">
-        <div className="flex min-w-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-sidebar) px-2.5 py-1.5 font-mono text-[10px]">
-          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+        <div className="flex min-h-8 min-w-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-sidebar) py-0 pr-2 pl-3 font-mono text-[10px]">
+          <button type="button" onClick={onCollapse} className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 text-left transition-colors hover:text-(--color-text)">
             <span className="text-(--color-text)">PID {pid}</span>
             <span className={statusColor(status)}>{status}</span>
             {bufferedLines && <span className="text-(--color-text-muted)">{bufferedLines} buffered lines</span>}
-          </div>
+          </button>
           {headerAction}
         </div>
         {command && (
@@ -473,10 +480,88 @@ function BackgroundProcessResult({ result, headerAction }: { result: string; hea
   const isError = result.startsWith('Error:')
   return (
     <div className="relative">
-      {headerAction && <div className="absolute top-0 right-0">{headerAction}</div>}
-      <pre className={`max-h-[calc(8*1.55em)] sm:max-h-[calc(10*1.55em)] overflow-y-auto whitespace-pre-wrap break-words pr-9 font-mono text-[11px] leading-relaxed ${isError ? 'text-(--color-error)' : 'text-(--color-text-2)'}`}>
+      {headerAction && <div className="absolute top-0 right-1.5">{headerAction}</div>}
+      <pre className={`max-h-[calc(8*1.55em)] sm:max-h-[calc(10*1.55em)] overflow-y-auto whitespace-pre-wrap break-words pr-10 font-mono text-[11px] leading-relaxed ${isError ? 'text-(--color-error)' : 'text-(--color-text-2)'}`}>
         {truncateForDisplay(result)}
       </pre>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Scheduled-task list renderer
+// ---------------------------------------------------------------------------
+
+interface ScheduledTaskRow {
+  slug: string
+  name: string
+  schedule: string
+  status: string
+  runs: string
+  next?: string
+}
+
+function parseScheduledTaskList(result: string): ScheduledTaskRow[] | null {
+  if (!result.startsWith('Scheduled tasks (')) return null
+
+  const rows = result.split('\n').slice(1).flatMap((line) => {
+    const fields = new Map(
+      line.trim().split('|').map((part) => {
+        const separator = part.indexOf('=')
+        return separator >= 0
+          ? [part.slice(0, separator).trim(), part.slice(separator + 1).trim()]
+          : ['', '']
+      }),
+    )
+    const name = fields.get('name')
+    const schedule = fields.get('schedule')
+    const status = fields.get('status')
+    const runs = fields.get('runs')
+    if (!name || !schedule || !status || !runs) return []
+    return [{
+      slug: fields.get('slug') ?? '',
+      name,
+      schedule: schedule.replaceAll("'", ''),
+      status,
+      runs,
+      next: fields.get('next'),
+    }]
+  })
+
+  return rows.length > 0 ? rows : null
+}
+
+function ScheduleTaskListResult({ result }: { result: string }) {
+  const rows = parseScheduledTaskList(result)
+  if (!rows) return <GenericResult result={result} />
+
+  return (
+    <div className="oa-table-wrap">
+      <table className="w-full min-w-max font-mono text-[11px] leading-relaxed text-(--color-text-2)">
+        <thead className="border-b border-(--color-border) bg-(--bg-sidebar) text-left text-[10px] font-semibold tracking-wider text-(--color-text-muted) uppercase">
+          <tr>
+            <th className="px-3 py-1.5 font-semibold">Task</th>
+            <th className="px-3 py-1.5 font-semibold">Schedule</th>
+            <th className="px-3 py-1.5 font-semibold">Status</th>
+            <th className="px-3 py-1.5 font-semibold">Runs</th>
+            <th className="px-3 py-1.5 font-semibold">Next</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((task) => (
+            <tr key={task.slug || task.name} className="border-b border-(--color-border) last:border-b-0">
+              <td className="px-3 py-2 align-top text-(--color-text)">
+                <div>{task.name}</div>
+                {task.slug && <div className="text-[10px] text-(--color-text-muted)">{task.slug}</div>}
+              </td>
+              <td className="px-3 py-2 align-top">{task.schedule}</td>
+              <td className="px-3 py-2 align-top">{task.status}</td>
+              <td className="px-3 py-2 align-top">{task.runs}</td>
+              <td className="px-3 py-2 align-top">{task.next ?? '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }
@@ -511,6 +596,7 @@ const FILE_WRITE_TOOLS = new Set(['write', 'edit', 'rm'])
 const SHELL_TOOLS = new Set(['shell'])
 const WEB_SEARCH_TOOLS = new Set(['web_search'])
 const BACKGROUND_PROCESS_TOOLS = new Set(['bg'])
+const SCHEDULE_TOOLS = new Set(['schedule_task'])
 
 export interface LspDiagnosticItem {
   filePath: string
@@ -607,12 +693,15 @@ export function LspDiagnosticsView({
   )
 }
 
-function ToolResultInner({ toolName, result, headerAction }: { toolName: string; result: string; headerAction?: ReactNode }) {
+function ToolResultInner({ toolName, result, headerAction, onCollapse }: { toolName: string; result: string; headerAction?: ReactNode; onCollapse?: () => void }) {
   if (WEB_SEARCH_TOOLS.has(toolName)) {
     return <WebSearchResult result={result} />
   }
   if (BACKGROUND_PROCESS_TOOLS.has(toolName)) {
-    return <BackgroundProcessResult result={result} headerAction={headerAction} />
+    return <BackgroundProcessResult result={result} headerAction={headerAction} onCollapse={onCollapse} />
+  }
+  if (SCHEDULE_TOOLS.has(toolName)) {
+    return <ScheduleTaskListResult result={result} />
   }
   if (SHELL_TOOLS.has(toolName)) {
     return <ShellResult result={result} />
@@ -637,17 +726,17 @@ function ToolResultInner({ toolName, result, headerAction }: { toolName: string;
   return <GenericResult result={result} />
 }
 
-export function ToolResult({ toolName, result, headerAction }: { toolName: string; result: string; headerAction?: ReactNode }) {
+export function ToolResult({ toolName, result, headerAction, onCollapse }: { toolName: string; result: string; headerAction?: ReactNode; onCollapse?: () => void }) {
   const lspData = parseLspDiagnostics(result)
 
   if (lspData) {
     return (
       <div className="flex flex-col gap-1">
-        <ToolResultInner toolName={toolName} result={lspData.cleanText} headerAction={headerAction} />
+        <ToolResultInner toolName={toolName} result={lspData.cleanText} headerAction={headerAction} onCollapse={onCollapse} />
         <LspDiagnosticsView diagnostics={lspData.diagnostics} overflowCount={lspData.overflowCount} />
       </div>
     )
   }
 
-  return <ToolResultInner toolName={toolName} result={result} headerAction={headerAction} />
+  return <ToolResultInner toolName={toolName} result={result} headerAction={headerAction} onCollapse={onCollapse} />
 }

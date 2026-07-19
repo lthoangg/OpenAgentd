@@ -82,7 +82,7 @@ async def test_list_single_task(mock_task_scheduler, sample_task, clean_db):
         result = await schedule_task.arun(action="list")
 
     assert "Scheduled tasks (1):" in result
-    assert f"id={sample_task.id}" in result
+    assert f"id={sample_task.id}" not in result
     assert f"slug={sample_task.slug}" in result
     assert "name=test-task" in result
     assert "mode=normal" in result

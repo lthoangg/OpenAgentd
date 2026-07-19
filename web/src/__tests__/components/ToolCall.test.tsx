@@ -550,6 +550,18 @@ describe("ToolCall — expand/collapse", () => {
     expect(screen.getByText("arguments")).toBeTruthy()
     expect(screen.getByText("result")).toBeTruthy()
   })
+
+  it("collapses from a standard result section header", async () => {
+    const user = userEvent.setup()
+    render(<ToolCall name="date" args="{}" done result="2026-07-19" />)
+
+    await user.click(screen.getByRole("button", { name: "Expand date details" }))
+    await user.click(screen.getByText("result"))
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Expand date details" })).toBeTruthy()
+    })
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -811,6 +823,48 @@ describe("ToolCall — schedule_task display", () => {
     expect(getHeader("Listing scheduled tasks…")).toBeTruthy()
     await user.click(screen.getByRole("button"))
     expect(screen.queryByText("arguments")).toBeNull()
+  })
+
+  it("renders scheduled task lists as a table without internal IDs", async () => {
+    const user = userEvent.setup()
+    const result = "Scheduled tasks (1):\n  slug=daily-standup | name=Daily standup | mode=normal | schedule=cron '0 8 * * 1-5' (UTC) | status=enabled/pending | runs=2/5 | next=2026-07-20 08:00:00+00:00"
+
+    render(<ToolCall name="schedule_task" args={JSON.stringify({ action: "list" })} done result={result} />)
+
+    await user.click(screen.getByRole("button", { name: "Expand schedule_task details" }))
+    expect(screen.getByRole("table")).toBeTruthy()
+    expect(screen.queryByText("result")).toBeNull()
+    expect(screen.getByText("Daily standup")).toBeTruthy()
+    expect(screen.getByText("cron 0 8 * * 1-5 (UTC)")).toBeTruthy()
+    expect(screen.queryByText(/id=/)).toBeNull()
+  })
+})
+
+describe("ToolCall — concise tool labels", () => {
+  it("summarizes patch arguments by their file count", () => {
+    const args = JSON.stringify({
+      patch_text: "*** Begin Patch\n*** Update File: src/a.ts\n@@\n-old\n+new\n*** Add File: src/b.ts\n+hello\n*** End Patch",
+    })
+
+    render(<ToolCall name="patch" args={args} done={false} />)
+
+    expect(getHeader("Patch: 2 files")).toBeTruthy()
+    expect(screen.queryByText("src/a.ts")).toBeNull()
+    expect(screen.queryByText("src/b.ts")).toBeNull()
+  })
+
+  it("uses Remove rather than the rm command name", () => {
+    render(<ToolCall name="rm" args={JSON.stringify({ path: "tmp/output.txt" })} done={false} />)
+
+    expect(screen.getByText("Remove")).toBeTruthy()
+    expect(screen.queryByText("Rm")).toBeNull()
+  })
+
+  it("describes a team roster list without implying a mutation", () => {
+    render(<ToolCall name="team_manage" args={JSON.stringify({ action: "list", members: [] })} done={false} />)
+
+    expect(getHeader("Listing team roster…")).toBeTruthy()
+    expect(screen.queryByText("Managing team roster…")).toBeNull()
   })
 })
 
@@ -1503,7 +1557,7 @@ describe("ToolCall with incomplete JSON args (streaming)", () => {
     const user = userEvent.setup()
     const partialArgs = '{"patch_text": "*** Begin Patch\\n*** Update File: src/components/ToolResult.tsx\\n@@ -1,1 +1,2 @@\\n hello\\n+world'
     render(<ToolCall name="patch" args={partialArgs} done={false} />)
-    expect(screen.getByText("src/components/ToolResult.tsx")).toBeTruthy()
+    expect(getHeader("Patch: 1 file")).toBeTruthy()
     await user.click(screen.getByRole("button"))
     expect(screen.getAllByText("src/components/ToolResult.tsx").length).toBeGreaterThan(0)
   })

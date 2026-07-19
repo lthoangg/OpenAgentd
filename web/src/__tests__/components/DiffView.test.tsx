@@ -79,8 +79,8 @@ describe("DiffView", () => {
     expect(screen.getByText("old line")).toBeTruthy()
 
     fireEvent.click(header)
-    expect(screen.queryByText("old line")).toBeNull()
     expect(screen.getByRole("button", { name: "Expand diff for src/main.py" })).toBeTruthy()
+    expect(screen.getByText("old line").closest('[aria-hidden="true"]')).toBeTruthy()
 
     fireEvent.click(screen.getByRole("button", { name: "Expand diff for src/main.py" }))
     expect(screen.getByText("old line")).toBeTruthy()
@@ -144,8 +144,8 @@ describe("DiffView", () => {
     expect(screen.getByText("old line")).toBeTruthy()
 
     fireEvent.click(header)
-    expect(screen.queryByText("old line")).toBeNull()
     expect(screen.getByRole("button", { name: "Expand diff for src/utils.py" })).toBeTruthy()
+    expect(screen.getByText("old line").closest('[aria-hidden="true"]')).toBeTruthy()
   })
 
   it("calls the outer collapse handler when clicking an expanded patch file header", () => {
@@ -194,8 +194,8 @@ describe("DiffView", () => {
     expect(screen.getByText("old main line")).toBeTruthy()
 
     fireEvent.click(utilsHeader)
-    expect(screen.queryByText("old utils line")).toBeNull()
-    expect(screen.getByText("old main line")).toBeTruthy()
+    expect(screen.getByText("old utils line").closest('[aria-hidden="true"]')).toBeTruthy()
+    expect(screen.getByText("old main line").closest('[aria-hidden="true"]')).toBeNull()
     expect(screen.getByRole("button", { name: "Expand diff for src/utils.py" })).toBeTruthy()
     expect(screen.getByRole("button", { name: "Collapse diff for src/main.py" })).toBeTruthy()
   })
@@ -226,8 +226,8 @@ describe("DiffView", () => {
     fireEvent.click(screen.getByRole("button", { name: "Collapse diff for src/utils.py" }))
 
     expect(collapsed).toBe(false)
-    expect(screen.queryByText("old utils line")).toBeNull()
-    expect(screen.getByText("old main line")).toBeTruthy()
+    expect(screen.getByText("old utils line").closest('[aria-hidden="true"]')).toBeTruthy()
+    expect(screen.getByText("old main line").closest('[aria-hidden="true"]')).toBeNull()
   })
 
   it("renders patch hunks with their own line starts", () => {

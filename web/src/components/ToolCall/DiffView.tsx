@@ -1,10 +1,8 @@
 import { useMemo, useState } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
 import { FileCode, ArrowRight, Trash2, PlusCircle, ChevronRight } from 'lucide-react'
 import { diffLines, parseDiffMeta, parsePatchText, type DiffLine } from './diffUtils'
 import { parsePartialJSON } from './displayText'
 import { parseLspDiagnostics, LspDiagnosticsView } from '../ToolResult'
-import { DURATIONS_S, EASINGS } from '@/lib/motion'
 
 interface SingleFileDiffProps {
   path: string
@@ -78,16 +76,14 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1,
       </button>
 
       {/* Diff Content */}
-      <AnimatePresence initial={false}>
-        {expanded && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: DURATIONS_S.base, ease: EASINGS.out }}
-            className="overflow-hidden"
-          >
-            <div className="overflow-y-auto bg-(--bg-input) font-mono text-xs leading-relaxed">
+      <div
+        aria-hidden={!expanded}
+        className={`grid transition-[grid-template-rows,opacity] duration-(--motion-base) ease-(--ease-out) ${
+          expanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+        }`}
+      >
+        <div className="min-h-0 overflow-hidden">
+          <div className="overflow-y-auto bg-(--bg-input) font-mono text-xs leading-relaxed">
               {linesWithNumbers.length === 0 ? (
                 <div className="px-3 py-4 text-center text-(--color-text-muted) italic">
                   No content changes
@@ -123,10 +119,9 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1,
                   })}
                 </div>
               )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

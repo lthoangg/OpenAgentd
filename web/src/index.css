@@ -655,6 +655,19 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
  * Scrollbar — minimal, theme-aware
  * ───────────────────────────────────────────────────────────── */
 @layer base {
+  /* Scrollbars are invisible at rest and only fade in while the element
+   * carrying them is hovered/focused (or, on WebKit, while it is actively
+   * being scrolled). This keeps the UI free of always-on scrollbar chrome
+   * without removing scroll affordance when it's actually needed. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+  *:hover,
+  *:focus-within {
+    scrollbar-color: var(--color-border) transparent;
+  }
+
   ::-webkit-scrollbar {
     width: 5px;
     height: 5px;
@@ -663,8 +676,13 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: var(--color-border);
+    background: transparent;
     border-radius: 3px;
+    transition: background-color 0.15s ease;
+  }
+  :hover::-webkit-scrollbar-thumb,
+  :focus-within::-webkit-scrollbar-thumb {
+    background: var(--color-border);
   }
   ::-webkit-scrollbar-thumb:hover {
     background: var(--color-text-muted);

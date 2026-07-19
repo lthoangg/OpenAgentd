@@ -727,7 +727,7 @@ export function Sidebar({
                  ref={editTitleInputRef}
                  value={editTitle}
                  onChange={(e) => setEditTitle(e.target.value)}
-                 className="h-9 w-full min-w-0 rounded-[10px] border border-(--color-border) bg-(--bg-page) px-3 py-1 text-sm text-(--color-text) outline-none focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25"
+                 className="min-h-11 w-full min-w-0 rounded-md border border-(--color-border) bg-(--bg-page) px-3 py-1 text-sm text-(--color-text) outline-none focus-visible:border-(--focus-ring) focus-visible:ring-2 focus-visible:ring-(--focus-ring)/25 md:min-h-9"
                  aria-label="Session title"
                  maxLength={255}
                />

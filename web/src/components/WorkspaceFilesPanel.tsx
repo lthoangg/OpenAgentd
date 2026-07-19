@@ -779,14 +779,14 @@ export function WorkspaceFilesPanel({ open, sessionId, onClose }: WorkspaceFiles
           {isMobile && mobilePane === 'preview' && (
             <button
               onClick={() => setMobilePane('tree')}
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
               aria-label="Back to file list"
             >
               <ArrowLeft size={14} />
             </button>
           )}
           <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-(--color-text)">Workspace</h2>
+            <h2 className="text-base font-semibold text-(--color-text)">Workspace</h2>
             <p className="truncate text-[11px] text-(--color-text-subtle)">
               {isMobile && mobilePane === 'preview' && selected
                 ? selected.name
@@ -799,7 +799,7 @@ export function WorkspaceFilesPanel({ open, sessionId, onClose }: WorkspaceFiles
           <button
             onClick={() => refetch()}
             disabled={!sessionId || isFetching}
-            className="rounded p-1.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:opacity-50"
+            className="flex h-11 w-11 items-center justify-center rounded text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:opacity-50 md:h-7 md:w-7"
             title="Refresh"
             aria-label="Refresh"
           >
@@ -807,11 +807,11 @@ export function WorkspaceFilesPanel({ open, sessionId, onClose }: WorkspaceFiles
           </button>
           <button
             onClick={onClose}
-            className="rounded p-1.5 text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text)"
+            className="flex h-11 w-11 items-center justify-center rounded text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7"
             title="Close (Esc)"
             aria-label="Close workspace files panel"
           >
-            <X size={16} />
+            <X size={14} />
           </button>
         </div>
       </header>

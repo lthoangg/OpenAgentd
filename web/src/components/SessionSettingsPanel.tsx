@@ -204,11 +204,11 @@ export function SessionSettingsPanel({
           )}
           <button
             onClick={onClose}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) md:h-7 md:w-7"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) md:h-7 md:w-7"
             aria-label="Close (Esc)"
             title="Close (Esc)"
           >
-            <X size={16} />
+            <X size={14} />
           </button>
         </header>
 

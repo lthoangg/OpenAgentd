@@ -678,12 +678,12 @@ export function CodingFileViewerPanel({
             <p className="mt-0.5 text-[10px] text-(--color-text-subtle)">{formatBytes(file.size)} · {file.mime}</p>
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            <button type="button" onClick={() => void downloadCodingWorkspaceFile(workspace, file)} disabled={deleted} title={deleted ? 'File deleted from workspace' : 'Download'} className="flex h-9 w-9 items-center justify-center rounded text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:cursor-not-allowed disabled:opacity-40 md:h-auto md:w-auto md:p-1.5">
+            <button type="button" onClick={() => void downloadCodingWorkspaceFile(workspace, file)} disabled={deleted} title={deleted ? 'File deleted from workspace' : 'Download'} className="flex h-11 w-11 items-center justify-center rounded text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) disabled:cursor-not-allowed disabled:opacity-40 md:h-7 md:w-7">
               <Download size={14} />
             </button>
             {kind === 'text' && !deleted && <CopyButton workspace={workspace} file={file} />}
-            <button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-auto md:w-auto md:p-1.5" aria-label="Close file viewer">
-              <X size={16} />
+            <button type="button" onClick={onClose} className="flex h-11 w-11 items-center justify-center rounded text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text) md:h-7 md:w-7" aria-label="Close file viewer">
+              <X size={14} />
             </button>
           </div>
         </header>

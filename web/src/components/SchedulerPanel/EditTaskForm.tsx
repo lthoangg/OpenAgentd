@@ -151,11 +151,11 @@ export function EditTaskForm({
           </div>
           <button
             onClick={onCancel}
-            className="flex h-7 w-7 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
+            className="flex h-11 w-11 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) md:h-7 md:w-7"
             aria-label="Cancel edit"
             title="Cancel"
           >
-            <X size={16} />
+            <X size={14} />
           </button>
         </div>
         <p className="mt-1 text-sm text-(--color-text-muted)">{task.name}</p>

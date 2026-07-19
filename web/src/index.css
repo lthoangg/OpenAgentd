@@ -510,7 +510,10 @@ html[data-mobile-shell] .mobile-safe-header {
   bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
   left: max(0.5rem, env(safe-area-inset-left, 0px));
   height: auto;
-  border-radius: 0.5rem;
+  /* Matches .settings-modal-shell's rounded-lg (--radius-lg) so every
+   * AppOverlay-based panel (Scheduler, Session Settings, Command Palette)
+   * reads as the same family as Settings — the documented visual reference. */
+  border-radius: var(--radius-lg);
   border: 1px solid var(--color-border);
 }
 
@@ -544,7 +547,7 @@ html[data-mobile-shell] .app-overlay-modal {
   left: max(0.5rem, env(safe-area-inset-left, 0px));
   right: max(0.5rem, env(safe-area-inset-right, 0px));
   height: auto;
-  border-radius: 0.5rem;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--color-border);
 }
 

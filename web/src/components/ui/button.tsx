@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils'
 
 const BASE = [
   'inline-flex shrink-0 items-center justify-center gap-1.5',
-  'rounded border font-medium whitespace-nowrap select-none',
+  'border font-medium whitespace-nowrap select-none',
   'transition-colors focus-visible:outline-none',
   'focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40',
   'disabled:cursor-not-allowed disabled:opacity-50',
@@ -65,15 +65,20 @@ const VARIANT: Record<string, string> = {
   ].join(' '),
 }
 
+// Corner radius follows the app's --radius-* scale (index.css @theme) rather
+// than bare Tailwind `rounded` (which is an un-themed 4px default that drifts
+// from every hand-rolled icon button in the app, most of which use rounded-md
+// /rounded-sm). xs/icon-xs use radius-xs, sm/icon-sm use radius-sm, everything
+// else uses radius-md — matching the most common hand-rolled icon-button radius.
 const SIZE: Record<string, string> = {
-  xs:       'h-6 px-2 text-[10.5px] rounded-[4px] gap-1',
-  trigger:  'px-2 py-1 text-xs rounded gap-1.5',
-  sm:       'h-8 px-2.5 text-[0.8rem] rounded',
-  default:  'h-9 px-3 text-xs rounded',
-  lg:       'h-10 px-4 text-sm rounded',
-  icon:     'size-9 p-0 rounded',
-  'icon-xs':'size-6 p-0 rounded-[4px]',
-  'icon-sm':'size-8 p-0 rounded',
+  xs:       'h-6 px-2 text-[10.5px] rounded-xs gap-1',
+  trigger:  'px-2 py-1 text-xs rounded-md gap-1.5',
+  sm:       'h-8 px-2.5 text-[0.8rem] rounded-sm',
+  default:  'h-9 px-3 text-xs rounded-md',
+  lg:       'h-10 px-4 text-sm rounded-md',
+  icon:     'size-9 p-0 rounded-md',
+  'icon-xs':'size-6 p-0 rounded-xs',
+  'icon-sm':'size-8 p-0 rounded-sm',
 }
 
 // ─── buttonVariants helper (kept for external consumers) ─────────────────────

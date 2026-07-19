@@ -120,7 +120,7 @@ export function SchedulerPanel({
                 {isMobile && mobilePane !== 'list' && (
                   <button
                     onClick={handleBackToList}
-                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
                     aria-label="Back to task list"
                   >
                     <ArrowLeft size={14} />
@@ -154,20 +154,20 @@ export function SchedulerPanel({
                 {isMobile && mobilePane === 'list' && (
                   <button
                     onClick={handleOpenCreate}
-                    className="flex h-7 w-7 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
+                    className="flex h-11 w-11 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
                     aria-label="Create new task"
                     title="Create task"
                   >
-                    <Plus size={16} />
+                    <Plus size={14} />
                   </button>
                 )}
                 <button
                   onClick={onClose}
-                  className="flex h-7 w-7 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2)"
+                  className="flex h-11 w-11 items-center justify-center rounded-sm text-(--color-text-muted) transition-colors hover:bg-(--bg-key) hover:text-(--color-text-2) md:h-7 md:w-7"
                   aria-label="Close scheduler panel"
                   title="Close (Esc)"
                 >
-                  <X size={16} />
+                  <X size={14} />
                 </button>
               </div>
             </header>

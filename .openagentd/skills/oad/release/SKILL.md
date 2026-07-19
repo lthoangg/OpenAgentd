@@ -222,21 +222,9 @@ gh run list --workflow=release.yml --limit=3
 # Watch this workflow in-session until status=completed conclusion=success before continuing.
 ```
 
-9. Trigger desktop release:
+9. GitHub release notes:
 
-```bash
-# Desktop release (~20–25 minutes for the matrix build)
-gh workflow run release-desktop.yml --field confirm=release-desktop --field channel=stable
-gh run list --workflow=release-desktop.yml --limit=3
-# Watch this workflow in-session until status=completed conclusion=success.
-```
-
-- **Do not patch release notes before the desktop workflow finishes.** The desktop workflow re-uploads `latest.json` and can rewrite the release body as a side effect (observed on v1.24.0 — notes patched between the CLI and desktop runs were reverted to the auto-generated text). Wait for `status=completed conclusion=success` on `release-desktop.yml` before editing.
-- If the push-triggered `tauri.yml` workflow fails right after the version-bump commit, inspect it before retrying the release workflows. The common failure mode is stale `desktop/src-tauri/Cargo.lock` / `mobile/src-tauri/Cargo.lock`; fix those on `main`, push, and re-run the release only after `tauri.yml` is green.
-
-10. GitHub release notes:
-
-- Only after **both** workflows finish, draft concise, user-facing notes. Focus on `## What's changed`, adding `## Breaking Changes` only when migration is required. Keep installation and upgrade instructions in the README.
+- After the CLI/PyPI workflow creates the release and **before** starting the desktop workflow, draft concise, user-facing notes. Focus on `## What's changed`, adding `## Breaking Changes` only when migration is required. Keep installation and upgrade instructions in the README.
 - Write the drafted release notes to an OS temp path (for example `/tmp/release-notes-v<version>.md`), not to a file under the repository workspace. This keeps ad-hoc release artefacts out of the repo tree.
 - Replace the auto-generated notes from that `/tmp` file, then verify:
 
@@ -245,6 +233,17 @@ gh release edit v<version> --repo lthoangg/openagentd --notes-file /tmp/release-
 gh release view v<version> --repo lthoangg/openagentd | sed -n '/## What.s changed/,/Full changelog/p'
 ```
 
+10. Trigger desktop release:
+
+```bash
+# Desktop release (~20–25 minutes for the matrix build)
+gh workflow run release-desktop.yml --field confirm=release-desktop --field channel=stable
+gh run list --workflow=release-desktop.yml --limit=3
+# Watch this workflow in-session until status=completed conclusion=success.
+```
+
+- After the desktop workflow finishes, verify the release body still contains the published notes. Reapply the same `/tmp/release-notes-v<version>.md` file only if the workflow changed it.
+- If the push-triggered `tauri.yml` workflow fails right after the version-bump commit, inspect it before retrying the release workflows. The common failure mode is stale `desktop/src-tauri/Cargo.lock` / `mobile/src-tauri/Cargo.lock`; fix those on `main`, push, and re-run the release only after `tauri.yml` is green.
 - Final verification — confirm the release body contains no `## Install` or `## Upgrade` sections:
 
 ```bash

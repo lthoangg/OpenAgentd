@@ -860,6 +860,13 @@ describe("ToolCall — concise tool labels", () => {
     expect(screen.queryByText("Rm")).toBeNull()
   })
 
+  it("uses List without repeating Listing in the ls header", () => {
+    render(<ToolCall name="ls" args={JSON.stringify({ path: "src" })} done={false} />)
+
+    expect(getHeader("List: src")).toBeTruthy()
+    expect(screen.queryByText(/Listing/)).toBeNull()
+  })
+
   it("describes a team roster list without implying a mutation", () => {
     render(<ToolCall name="team_manage" args={JSON.stringify({ action: "list", members: [] })} done={false} />)
 

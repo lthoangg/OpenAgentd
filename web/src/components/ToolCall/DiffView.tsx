@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import { FileCode, ArrowRight, Trash2, PlusCircle, ChevronRight } from 'lucide-react'
 import { diffLines, parseDiffMeta, parsePatchText, type DiffLine } from './diffUtils'
 import { parsePartialJSON } from './displayText'
 import { parseLspDiagnostics, LspDiagnosticsView } from '../ToolResult'
+import { DURATIONS_S, EASINGS } from '@/lib/motion'
 
 interface SingleFileDiffProps {
   path: string
@@ -76,45 +78,55 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1,
       </button>
 
       {/* Diff Content */}
-      {expanded && (
-        <div className="overflow-y-auto  bg-(--bg-input) font-mono text-xs leading-relaxed">
-        {linesWithNumbers.length === 0 ? (
-          <div className="px-3 py-4 text-center text-(--color-text-muted) italic">
-            No content changes
-          </div>
-        ) : (
-          <div className="min-w-0">
-            {linesWithNumbers.map((line, idx) => {
-              const isAdded = line.type === 'added'
-              const isRemoved = line.type === 'removed'
-
-              const lineBg = isAdded
-                ? 'bg-[var(--color-diff-add-bg)]'
-                : isRemoved
-                  ? 'bg-[var(--color-diff-del-bg)]'
-                  : 'bg-(--bg-input)'
-
-              const lineText = isAdded
-                ? 'text-[var(--color-diff-add-text)]'
-                : isRemoved
-                  ? 'text-[var(--color-diff-del-text)]'
-                  : 'text-(--color-text)'
-
-              return (
-                <div key={idx} className={`flex min-w-0 items-stretch ${lineBg} ${lineText}`}>
-                  {/* Line Numbers */}
-                  <div className="sticky left-0 z-[1] flex shrink-0 select-none border-r border-(--color-border)/40 bg-inherit text-right text-[10px] text-(--color-text-subtle)">
-                    <span className="w-9 py-0.5 pr-1.5">{line.num}</span>
-                  </div>
-                  {/* Code Line */}
-                  <pre className="m-0 min-w-0 flex-1 whitespace-pre-wrap break-words px-2 py-0.5 [overflow-wrap:anywhere]">{line.value}</pre>
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: DURATIONS_S.base, ease: EASINGS.out }}
+            className="overflow-hidden"
+          >
+            <div className="overflow-y-auto bg-(--bg-input) font-mono text-xs leading-relaxed">
+              {linesWithNumbers.length === 0 ? (
+                <div className="px-3 py-4 text-center text-(--color-text-muted) italic">
+                  No content changes
                 </div>
-              )
-            })}
-          </div>
+              ) : (
+                <div className="min-w-0">
+                  {linesWithNumbers.map((line, idx) => {
+                    const isAdded = line.type === 'added'
+                    const isRemoved = line.type === 'removed'
+
+                    const lineBg = isAdded
+                      ? 'bg-[var(--color-diff-add-bg)]'
+                      : isRemoved
+                        ? 'bg-[var(--color-diff-del-bg)]'
+                        : 'bg-(--bg-input)'
+
+                    const lineText = isAdded
+                      ? 'text-[var(--color-diff-add-text)]'
+                      : isRemoved
+                        ? 'text-[var(--color-diff-del-text)]'
+                        : 'text-(--color-text)'
+
+                    return (
+                      <div key={idx} className={`flex min-w-0 items-stretch ${lineBg} ${lineText}`}>
+                        {/* Line Numbers */}
+                        <div className="sticky left-0 z-[1] flex shrink-0 select-none border-r border-(--color-border)/40 bg-inherit text-right text-[10px] text-(--color-text-subtle)">
+                          <span className="w-9 py-0.5 pr-1.5">{line.num}</span>
+                        </div>
+                        {/* Code Line */}
+                        <pre className="m-0 min-w-0 flex-1 whitespace-pre-wrap break-words px-2 py-0.5 [overflow-wrap:anywhere]">{line.value}</pre>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </motion.div>
         )}
-        </div>
-      )}
+      </AnimatePresence>
     </div>
   )
 }

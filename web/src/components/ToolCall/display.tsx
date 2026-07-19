@@ -479,12 +479,12 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     const path = str(parsed, 'path')
     const isRoot = !path || path === '.' || path === './'
     if (isRoot) {
-      return { header: 'Listing workspace', headerTitle: 'Listing workspace', formattedArgs: null }
+      return { header: 'workspace', headerTitle: 'workspace', formattedArgs: null }
     }
     const truncated = trunc(path)
     return {
-      header: <>Listing <Arg>{truncated}</Arg></>,
-      headerTitle: `Listing ${truncated}`,
+      header: <Arg>{truncated}</Arg>,
+      headerTitle: truncated,
       formattedArgs: null,
     }
   }

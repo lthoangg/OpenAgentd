@@ -70,6 +70,7 @@ function formatShellResult(result: string | undefined): { statusLine: string | n
 function formatToolLabel(name: string): string {
   if (!name) return 'Tool'
   if (name === 'rm') return 'Remove'
+  if (name === 'ls') return 'List'
   return name
     .split('_')
     .filter(Boolean)
@@ -347,8 +348,8 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
                   {/* Args section — caption + copy sit above the content. */}
                   {formattedArgs && (
                     <div>
-                      <div onClick={() => setManualExpanded(false)} className="group flex cursor-pointer items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-sidebar) py-0.5 pr-1.5 pl-3 transition-colors hover:text-(--color-text)">
-                        <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted) transition-colors group-hover:text-(--color-text)">
+                      <div onClick={() => setManualExpanded(false)} className="group/result-header flex cursor-pointer items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-sidebar) py-0.5 pr-1.5 pl-3 transition-colors hover:text-(--color-text)">
+                        <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted) transition-colors group-hover/result-header:text-(--color-text)">
                           {isShellTerminal ? 'terminal' : 'arguments'}
                         </span>
                         <button
@@ -394,8 +395,8 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
 
                   {shownLiveOutput && !isShellTerminal && (
                     <div>
-                      <div onClick={() => setManualExpanded(false)} className={`group flex cursor-pointer items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-sidebar) py-0.5 pr-1.5 pl-3 transition-colors hover:text-(--color-text) ${formattedArgs ? 'border-t' : ''}`}>
-                        <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted) transition-colors group-hover:text-(--color-text)">
+                      <div onClick={() => setManualExpanded(false)} className={`group/result-header flex cursor-pointer items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-sidebar) py-0.5 pr-1.5 pl-3 transition-colors hover:text-(--color-text) ${formattedArgs ? 'border-t' : ''}`}>
+                        <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted) transition-colors group-hover/result-header:text-(--color-text)">
                           output
                         </span>
                       </div>
@@ -417,13 +418,13 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
                       <ToolResult toolName={name} result={shownResult} />
                     ) : (
                       <div>
-                        <div onClick={() => setManualExpanded(false)} className={`group flex cursor-pointer items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-sidebar) py-0.5 pr-1.5 pl-3 transition-colors hover:text-(--color-text) ${formattedArgs || shownLiveOutput ? 'border-t' : ''}`}>
-                          <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted) transition-colors group-hover:text-(--color-text)">
+                        <div onClick={() => setManualExpanded(false)} className={`group/result-header flex cursor-pointer items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-sidebar) py-0.5 pr-1.5 pl-3 transition-colors hover:text-(--color-text) ${formattedArgs || shownLiveOutput ? 'border-t' : ''}`}>
+                          <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted) transition-colors group-hover/result-header:text-(--color-text)">
                             result
                           </span>
                           {resultCopyButton}
                         </div>
-                        <div className={isScheduleTaskList ? 'bg-(--bg-input) text-xs leading-relaxed text-(--color-text)' : 'bg-(--bg-input) px-3 py-2.5 text-xs leading-relaxed text-(--color-text)'}>
+                        <div className="bg-(--bg-input) px-3 py-2.5 text-xs leading-relaxed text-(--color-text)">
                           <ToolResult toolName={name} result={shownResult} />
                         </div>
                       </div>

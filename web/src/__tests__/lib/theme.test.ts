@@ -1,22 +1,43 @@
 import { afterEach, describe, expect, it } from 'bun:test'
-import { applyTheme, initTheme, THEME_STORAGE_KEY } from '@/lib/theme'
+import {
+  applyTheme,
+  readStoredPreference,
+  setThemePreference,
+  THEME_STORAGE_KEY,
+} from '@/lib/theme'
 
 afterEach(() => {
-  localStorage.removeItem(THEME_STORAGE_KEY)
+  localStorage.clear()
+  history.replaceState(null, '', '/')
+  delete document.documentElement.dataset.openagentdAppId
+  delete document.documentElement.dataset.openagentdWindowId
   document.documentElement.classList.remove('dark', 'light')
   document.querySelector('meta[name="theme-color"][data-openagentd-theme]')?.remove()
 })
 
 describe('theme', () => {
-  it('syncs another app window when the stored preference changes', () => {
-    localStorage.setItem(THEME_STORAGE_KEY, 'light')
-    const cleanup = initTheme()
+  it('keeps preferences isolated between desktop app identifiers', () => {
+    history.replaceState(null, '', '/?oa-app-id=com.openagentd.desktop')
+    document.documentElement.dataset.openagentdAppId = 'com.openagentd.desktop'
+    setThemePreference('dark')
 
-    localStorage.setItem(THEME_STORAGE_KEY, 'dark')
-    window.dispatchEvent(new StorageEvent('storage', { key: THEME_STORAGE_KEY }))
+    history.replaceState(null, '', '/?oa-app-id=com.openagentd.desktop.dev')
+    document.documentElement.dataset.openagentdAppId = 'com.openagentd.desktop.dev'
 
-    expect(document.documentElement.classList.contains('dark')).toBe(true)
-    cleanup()
+    expect(readStoredPreference()).toBe('system')
+    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBeNull()
+  })
+
+  it('keeps preferences isolated between desktop windows in the same app', () => {
+    history.replaceState(null, '', '/?oa-app-id=com.openagentd.desktop&oa-window-id=main')
+    document.documentElement.dataset.openagentdAppId = 'com.openagentd.desktop'
+    document.documentElement.dataset.openagentdWindowId = 'main'
+    setThemePreference('dark')
+
+    history.replaceState(null, '', '/?oa-app-id=com.openagentd.desktop&oa-window-id=main-2')
+    document.documentElement.dataset.openagentdWindowId = 'main-2'
+
+    expect(readStoredPreference()).toBe('system')
   })
 
   it('syncs theme-color meta with the resolved theme', () => {

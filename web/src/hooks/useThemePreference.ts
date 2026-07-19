@@ -13,7 +13,7 @@ import {
   readStoredPreference,
   resolveTheme,
   setThemePreference as setStored,
-  THEME_STORAGE_KEY,
+  themeStorageKey,
 } from '@/lib/theme'
 
 const THEME_CHANGE_EVENT = 'oa-theme-change'
@@ -41,7 +41,7 @@ export function useThemePreference(): {
     }
 
     const onStorage = (e: StorageEvent) => {
-      if (e.key === THEME_STORAGE_KEY) sync()
+      if (e.key === themeStorageKey()) sync()
     }
     const onCustom = () => sync()
 

@@ -1,7 +1,14 @@
 // Pre-paint theme application. Keep in sync with web/src/lib/theme.ts.
 (function () {
   try {
-    var stored = localStorage.getItem('oa-theme');
+    var appId = new URLSearchParams(window.location.search).get('oa-app-id');
+    var windowId = new URLSearchParams(window.location.search).get('oa-window-id');
+    if (appId) document.documentElement.dataset.openagentdAppId = appId;
+    if (windowId) document.documentElement.dataset.openagentdWindowId = windowId;
+    var storageKey = appId && windowId
+      ? 'oa-theme:' + appId + ':' + windowId
+      : appId ? 'oa-theme:' + appId : 'oa-theme';
+    var stored = localStorage.getItem(storageKey);
     var pref = stored === 'light' || stored === 'dark' || stored === 'system' ? stored : 'system';
     var resolved = pref === 'system'
       ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')

@@ -14,7 +14,24 @@ export type ThemePreference = 'light' | 'dark' | 'system'
 export type ResolvedTheme = 'light' | 'dark'
 
 export const THEME_STORAGE_KEY = 'oa-theme'
+const DESKTOP_APP_ID_PARAM = 'oa-app-id'
+const DESKTOP_WINDOW_ID_PARAM = 'oa-window-id'
 const MEDIA_QUERY = '(prefers-color-scheme: dark)'
+
+/**
+ * Separate desktop windows can share a webview origin, so namespace their
+ * preference by Tauri's app and window identifiers. Browser builds retain the
+ * legacy key.
+ */
+export function themeStorageKey(): string {
+  const appId = document.documentElement.dataset.openagentdAppId
+    ?? new URLSearchParams(window.location.search).get(DESKTOP_APP_ID_PARAM)
+  const windowId = document.documentElement.dataset.openagentdWindowId
+    ?? new URLSearchParams(window.location.search).get(DESKTOP_WINDOW_ID_PARAM)
+  return appId && windowId
+    ? `${THEME_STORAGE_KEY}:${appId}:${windowId}`
+    : appId ? `${THEME_STORAGE_KEY}:${appId}` : THEME_STORAGE_KEY
+}
 const THEME_COLOR: Record<ResolvedTheme, string> = {
   light: '#FAFAFA',
   dark: '#0A0A0B',
@@ -26,7 +43,7 @@ function isTheme(value: unknown): value is ThemePreference {
 
 export function readStoredPreference(): ThemePreference {
   try {
-    const raw = localStorage.getItem(THEME_STORAGE_KEY)
+    const raw = localStorage.getItem(themeStorageKey())
     if (isTheme(raw)) return raw
   } catch {
     // localStorage unavailable (SSR, privacy mode) — fall through
@@ -63,7 +80,7 @@ export function applyTheme(resolved: ResolvedTheme): void {
 
 export function setThemePreference(preference: ThemePreference): void {
   try {
-    localStorage.setItem(THEME_STORAGE_KEY, preference)
+    localStorage.setItem(themeStorageKey(), preference)
   } catch {
     // best-effort — still apply class below
   }
@@ -95,7 +112,7 @@ export function initTheme(): () => void {
     }
   }
   const onStorage = (event: StorageEvent) => {
-    if (event.key === THEME_STORAGE_KEY || event.key === null) {
+    if (event.key === themeStorageKey() || event.key === null) {
       applyTheme(resolveTheme(readStoredPreference()))
     }
   }

@@ -288,9 +288,13 @@ async fn restart_sidecar_and_reload_window(app: &AppHandle) -> Result<()> {
         if cfg!(debug_assertions) {
             window
                 .navigate(
-                    "http://localhost:5173"
-                        .parse()
-                        .context("parse dev frontend url")?,
+                    format!(
+                        "http://localhost:5173/?oa-app-id={}&oa-window-id={}",
+                        app.config().identifier,
+                        window.label(),
+                    )
+                    .parse()
+                    .context("parse dev frontend url")?,
                 )
                 .context("navigate app window")?;
         }

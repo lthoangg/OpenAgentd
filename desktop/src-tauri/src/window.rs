@@ -127,15 +127,20 @@ pub fn emit_frontend_command(app: &AppHandle, command: &str) {
     });
 }
 
-pub fn frontend_webview_url() -> Result<WebviewUrl> {
+pub fn frontend_webview_url(app: &AppHandle, window_label: &str) -> Result<WebviewUrl> {
+    // Desktop windows share a webview origin. Pass both identifiers so frontend
+    // localStorage preferences remain scoped to the individual app window.
+    let app_id = &app.config().identifier;
     if cfg!(debug_assertions) {
         Ok(WebviewUrl::External(
-            "http://localhost:5173"
+            format!("http://localhost:5173/?oa-app-id={app_id}&oa-window-id={window_label}")
                 .parse()
                 .context("parse dev frontend url")?,
         ))
     } else {
-        Ok(WebviewUrl::App("index.html".into()))
+        Ok(WebviewUrl::App(
+            format!("index.html?oa-app-id={app_id}&oa-window-id={window_label}").into(),
+        ))
     }
 }
 
@@ -216,7 +221,7 @@ pub async fn build_app_window(
     label: String,
     init_script: String,
 ) -> Result<tauri::WebviewWindow> {
-    let url = frontend_webview_url()?;
+    let url = frontend_webview_url(app, &label)?;
     let saved_size = load_window_state(app).ok().flatten();
     let initial_size = saved_size.unwrap_or(SavedWindowState {
         width: 1280,

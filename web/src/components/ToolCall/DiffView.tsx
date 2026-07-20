@@ -53,7 +53,7 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1,
           }
           setExpanded((value) => !value)
         }}
-        className="flex w-full items-center gap-2 border-b border-(--color-border) bg-(--bg-sidebar) px-3 py-1.5 text-left font-mono text-xs font-semibold text-(--color-text-2) shadow-sm transition-colors hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40"
+        className="flex w-full shrink-0 items-center gap-2 border-b border-(--color-border) bg-(--bg-sidebar) px-3 py-1.5 text-left font-mono text-xs font-semibold text-(--color-text-2) shadow-sm transition-colors hover:text-(--color-text) focus-visible:outline-2 focus-visible:outline-(--focus-ring)/40"
         aria-expanded={expanded}
         aria-label={`${expanded ? 'Collapse' : 'Expand'} diff for ${path}`}
       >
@@ -78,12 +78,12 @@ function SingleFileDiff({ path, kind, moveTo, lines, oldStart = 1, newStart = 1,
       {/* Diff Content */}
       <div
         aria-hidden={!expanded}
-        className={`grid transition-[grid-template-rows,opacity] duration-(--motion-base) ease-(--ease-out) ${
+        className={`grid min-h-0 flex-1 transition-[grid-template-rows,opacity] duration-(--motion-base) ease-(--ease-out) ${
           expanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
         }`}
       >
         <div className="min-h-0 overflow-hidden">
-          <div className="overflow-y-auto bg-(--bg-input) font-mono text-xs leading-relaxed">
+          <div className="h-full touch-pan-y overflow-y-auto bg-(--bg-input) font-mono text-xs leading-relaxed">
               {linesWithNumbers.length === 0 ? (
                 <div className="px-3 py-4 text-center text-(--color-text-muted) italic">
                   No content changes

@@ -164,7 +164,7 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
   }
 })
 
-export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError, isContinuing = false, onContinue, emptyState, onMentionFileOpen }: AgentViewProps) {
+export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError, onContinue, emptyState, onMentionFileOpen }: AgentViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   // attachedRef: true = follow the stream.
@@ -292,16 +292,17 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
         attachedRef.current = true
         setShowScrollBtn(false)
       } else if (attachedRef.current) {
-        // Don't detach when the virtual keyboard opened (viewport shrink, not user scroll).
-        if (document.documentElement.hasAttribute('data-keyboard-open')) return
-
-        // We only detach if the user scrolled UP (meaning scrollTop decreased).
-        // If scrollTop increased or stayed the same, it could be due to layout/ResizeObserver/smooth scroll
-        // and we want to remain attached.
-        const isScrollUp = currentScrollTop < prevScrollTop
-        if (isScrollUp) {
-          attachedRef.current = false
-          setShowScrollBtn(true)
+        // Don't detach when the virtual keyboard opened (viewport shrink, not user scroll),
+        // but keep processing the event so scroll-to-top pagination still works.
+        if (!document.documentElement.hasAttribute('data-keyboard-open')) {
+          // We only detach if the user scrolled UP (meaning scrollTop decreased).
+          // If scrollTop increased or stayed the same, it could be due to layout/ResizeObserver/smooth scroll
+          // and we want to remain attached.
+          const isScrollUp = currentScrollTop < prevScrollTop
+          if (isScrollUp) {
+            attachedRef.current = false
+            setShowScrollBtn(true)
+          }
         }
       }
 
@@ -476,20 +477,12 @@ export function AgentView({ blocks, currentBlocks, isWorking, isError, lastError
                 })}
 
             {/* Me show dots when:
-             *   1. pending — user just sent, agent hasn't woken yet (no agent_status event yet), OR
-             *   2. working with no agent content yet (user bubbles don't count).
-             * Covers the POST → first SSE event gap so the user always gets immediate feedback.
-             *
-             * Note: `[].every()` returns true, so the working branch must
-             * also require a non-empty currentBlocks list — otherwise dots
-             * stick around after `done` flushes the buffer if a stale
-             * `working` status briefly survives.
+             *   1. pending - user just sent, agent hasn't woken yet (no agent_status event yet), OR
+             *   2. working with no visible agent content yet (user bubbles don't count).
+             * Covers the POST to first SSE event gap so the user always gets immediate feedback.
              */}
             {((!isWorking && !isError && currentBlocks.some(isDirectUserBlock)) ||
-              (isWorking && (
-                (isContinuing && currentBlocks.length === 0) ||
-                (currentBlocks.length > 0 && currentBlocks.every((b) => b.type === 'user' || isBlankContentBlock(b)))
-              ))) && (
+              (isWorking && currentBlocks.every((b) => b.type === 'user' || isBlankContentBlock(b)))) && (
               <div className="flex items-center gap-1.5 py-1" role="status" aria-label="Agent is preparing a response">
                 <span aria-hidden="true" className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '0ms' }} />
                 <span aria-hidden="true" className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '150ms' }} />

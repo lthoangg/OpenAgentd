@@ -366,7 +366,7 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
 })
 
 export function AgentPane({
-  name, stream, isLead, isContinuing = false, onContinue,
+  name, stream, isLead, onContinue,
 }: AgentPaneProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
@@ -630,15 +630,9 @@ export function AgentPane({
               </div>
             )}
 
-          {/* Me show dots when pending (user sent, agent not woken) or working with no agent content yet.
-            * `[].every()` returns true, so the working branch also requires a non-empty
-            * currentBlocks list — otherwise dots persist after `done` flushes the buffer
-            * if a stale `working` status briefly survives. */}
+          {/* Me show dots when pending (user sent, agent not woken) or working with no visible agent content yet. */}
           {(isPending ||
-            (isWorking && (
-              (isContinuing && stream.currentBlocks.length === 0) ||
-              (stream.currentBlocks.length > 0 && stream.currentBlocks.every((b) => b.type === 'user' || isBlankContentBlock(b)))
-            ))) && (
+            (isWorking && stream.currentBlocks.every((b) => b.type === 'user' || isBlankContentBlock(b)))) && (
             <div className="flex items-center gap-1.5 px-3 pt-3" role="status" aria-label={`${name} is preparing a response`}>
               <span aria-hidden="true" className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '0ms' }} />
               <span aria-hidden="true" className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '150ms' }} />

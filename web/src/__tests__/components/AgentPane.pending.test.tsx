@@ -238,11 +238,7 @@ describe("AgentPane — pending dots indicator", () => {
     expect(dots.length).toBe(3)
   })
 
-  it("does not show bounce dots when status=working with only finalized blocks and no currentBlocks", () => {
-    // Regression: `[].every()` returns true, so the working branch of the
-    // dots condition must require a non-empty currentBlocks list. Without
-    // that guard the dots stuck around after `done` flushed the buffer
-    // whenever a stale `working` status briefly survived.
+  it("shows bounce dots when status=working before the next block arrives", () => {
     const stream = makeStream({
       status: "working",
       blocks: [makeTextBlock("b1", "Previous response")],
@@ -250,6 +246,6 @@ describe("AgentPane — pending dots indicator", () => {
     })
     const { container } = renderPanel(stream)
     const dots = container.querySelectorAll(".animate-bounce")
-    expect(dots.length).toBe(0)
+    expect(dots.length).toBe(3)
   })
 })

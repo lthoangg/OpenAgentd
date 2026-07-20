@@ -38,6 +38,22 @@ describe("DiffView", () => {
     expect(screen.getByText('42')).toBeTruthy()
   })
 
+  it("keeps long diff content vertically scrollable", () => {
+    const args = JSON.stringify({
+      path: "src/main.py",
+      old_string: Array.from({ length: 40 }, (_, i) => `old line ${i}`).join("\n"),
+      new_string: Array.from({ length: 40 }, (_, i) => `new line ${i}`).join("\n"),
+    })
+
+    render(<DiffView toolName="edit" args={args} />)
+
+    const scrollContainer = screen.getByText("old line 0").closest(".overflow-y-auto")
+    expect(scrollContainer).toBeTruthy()
+    expect(scrollContainer?.className).toContain("h-full")
+    expect(scrollContainer?.className).toContain("touch-pan-y")
+    expect(scrollContainer?.className).not.toContain("overscroll-contain")
+  })
+
   it("keeps diff line numbers sticky and inherits row highlight", () => {
     const args = JSON.stringify({
       path: "src/main.py",

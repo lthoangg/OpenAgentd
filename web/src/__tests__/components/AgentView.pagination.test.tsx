@@ -84,6 +84,7 @@ afterEach(() => {
   storeState.hasMore = false
   storeState.nextCursor = null
   storeState._loadingOlder = false
+  document.documentElement.removeAttribute("data-keyboard-open")
 })
 
 describe("AgentView — scroll-to-top pagination", () => {
@@ -106,6 +107,19 @@ describe("AgentView — scroll-to-top pagination", () => {
     )
     const el = getScrollEl(container)
     setScrollProps(el, { scrollTop: 0, scrollHeight: 1000, clientHeight: 500 })
+    await scrollTo(el, 0)
+    expect(mockLoadOlderMessages).toHaveBeenCalledTimes(1)
+  })
+
+  it("loads older messages at the top while the mobile keyboard is open", async () => {
+    storeState.hasMore = true
+    storeState.nextCursor = "cursor-1"
+    document.documentElement.setAttribute("data-keyboard-open", "")
+    const { container } = render(
+      <AgentView blocks={[block("b1")]} currentBlocks={[]} isWorking={false} />,
+    )
+    const el = getScrollEl(container)
+    setScrollProps(el, { scrollTop: 500, scrollHeight: 1000, clientHeight: 400 })
     await scrollTo(el, 0)
     expect(mockLoadOlderMessages).toHaveBeenCalledTimes(1)
   })

@@ -504,9 +504,9 @@ describe("AgentView — bounce dots indicator", () => {
     expect(container.querySelectorAll(".animate-bounce").length).toBe(0)
   })
 
-  it("no dots when isWorking=true with no blocks", () => {
+  it("shows 3 dots when isWorking=true before the first block arrives", () => {
     const { container } = renderStream({ blocks: [], currentBlocks: [], isWorking: true })
-    expect(container.querySelectorAll(".animate-bounce").length).toBe(0)
+    expect(container.querySelectorAll(".animate-bounce").length).toBe(3)
   })
 
   it("shows 3 dots when isWorking=true with only user currentBlocks", () => {

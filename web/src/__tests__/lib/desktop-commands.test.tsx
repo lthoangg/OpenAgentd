@@ -6,14 +6,17 @@ import { useUIStore } from '@/stores/useUIStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 
 let listener: ((event: { payload: unknown }) => void) | null = null
+let notificationListener: ((event: { payload: unknown }) => void) | null = null
 let unlistenCalls = 0
 
 mock.module('@tauri-apps/api/event', () => ({
-  listen: async (_event: string, cb: (event: { payload: unknown }) => void) => {
-    listener = cb
+  listen: async (event: string, cb: (event: { payload: unknown }) => void) => {
+    if (event === 'desktop-command') listener = cb
+    else notificationListener = cb
     return () => {
       unlistenCalls += 1
-      listener = null
+      if (event === 'desktop-command') listener = null
+      else notificationListener = null
     }
   },
 }))
@@ -36,6 +39,7 @@ function resetUIStore(): void {
     paletteOpen: false,
   })
   listener = null
+  notificationListener = null
   unlistenCalls = 0
 }
 
@@ -155,7 +159,8 @@ describe('useDesktopCommands', () => {
 
     view.unmount()
 
-    expect(unlistenCalls).toBe(1)
+    expect(unlistenCalls).toBe(2)
     expect(listener).toBeNull()
+    expect(notificationListener).toBeNull()
   })
 })

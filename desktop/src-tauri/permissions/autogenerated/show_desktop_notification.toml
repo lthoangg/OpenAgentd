@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-show-desktop-notification"
+description = "Enables the show_desktop_notification command without any pre-configured scope."
+commands.allow = ["show_desktop_notification"]
+
+[[permission]]
+identifier = "deny-show-desktop-notification"
+description = "Denies the show_desktop_notification command without any pre-configured scope."
+commands.deny = ["show_desktop_notification"]

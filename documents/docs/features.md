@@ -77,11 +77,13 @@ run from the terminal.
   distribution channel. Earlier iterations: `[v1.18.0]`, `[v1.20.0]`, `[v1.21.0]`.
 - **Native app notifications** `[v1.19.0]` — finished assistant turns and
   scheduled reminders in the desktop app, plus local native
-  notifications in the remote-backend mobile shell `[v1.34.0]`. Per-session
-  context (coding workspace name when available). Settings → Notifications to
-  toggle or send a test. Notification sounds are handled by the operating
-  system; OpenAgentd does not play an extra in-app sound. Background-process
-  completion alerts are deprecated and no longer emitted by app clients.
+  notifications in the remote-backend mobile shell `[v1.34.0]`. Clicking a
+  desktop completion or reminder notification restores OpenAgentd and opens
+  its linked Cockpit or Coding session `[v1.113.4]`. Per-session context
+  (coding workspace name when available). Settings → Notifications to toggle
+  or send a test. Notification sounds are handled by the operating system;
+  OpenAgentd does not play an extra in-app sound. Background-process completion
+  alerts are deprecated and no longer emitted by app clients.
 - **Command palette** `[since v1.0, v1.61.0]` — `⌘P`/`Ctrl+P`. Search
   sessions, agents, files, slash commands, settings. Cleaner, faster with a
   tighter animation and a curated command set that drops low-value entries.

@@ -97,7 +97,12 @@ export async function handleGlobalEvent(
     if (!id || (kind !== 'assistant_done' && kind !== 'reminder_fired')) return false
     if (!rememberNotification(id)) return true
     if (typeof event.title !== 'string' || typeof event.body !== 'string') return false
-    await sendDesktopNotification({ kind, title: event.title, body: event.body })
+    const sessionId = typeof event.session_id === 'string' ? event.session_id : undefined
+    const mode = event.metadata && typeof event.metadata === 'object'
+      && (event.metadata as Record<string, unknown>).mode === 'coding'
+      ? 'coding'
+      : 'normal'
+    await sendDesktopNotification({ kind, sessionId, mode, title: event.title, body: event.body })
     return true
   }
 

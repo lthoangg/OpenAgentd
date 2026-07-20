@@ -33,6 +33,7 @@
     "core:resources:default",
     "dialog:default",
     "notification:default",
+    "allow-show-desktop-notification",
     "opener:default",
     "log:default",
     "updater:default",

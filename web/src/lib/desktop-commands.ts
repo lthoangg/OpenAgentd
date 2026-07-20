@@ -10,6 +10,12 @@ import { useUIStore } from '@/stores/useUIStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { getPlatform } from '@/hooks/use-platform'
 import { dispatchShortcutKey } from '@/lib/keyboard-shortcut'
+import { router } from '@/router'
+
+interface NotificationClickPayload {
+  sessionId?: unknown
+  mode?: unknown
+}
 
 function runDesktopCommand(command: unknown): void {
   switch (command) {
@@ -31,6 +37,14 @@ function runDesktopCommand(command: unknown): void {
   }
 }
 
+export function openNotificationSession(payload: unknown): void {
+  if (!payload || typeof payload !== 'object') return
+  const notification = payload as NotificationClickPayload
+  if (typeof notification.sessionId !== 'string') return
+  const to = notification.mode === 'coding' ? '/coding/$sessionId' : '/cockpit/$sessionId'
+  void router.navigate({ to, params: { sessionId: notification.sessionId } })
+}
+
 let lastCommand: { command: unknown; timestamp: number } | null = null
 
 export function useDesktopCommands(): void {
@@ -47,11 +61,18 @@ export function useDesktopCommands(): void {
           lastCommand = { command: event.payload, timestamp: now }
           runDesktopCommand(event.payload)
         })
+        const unlistenNotification = await listen<NotificationClickPayload>('desktop-notification-clicked', (event) => {
+          openNotificationSession(event.payload)
+        })
         if (cancelled) {
           unlisten()
+          unlistenNotification()
           return
         }
-        cleanup = unlisten
+        cleanup = () => {
+          unlisten()
+          unlistenNotification()
+        }
       } catch {
         // Browser build: no Tauri event bus.
       }

@@ -561,6 +561,7 @@ fn main() {
         .on_menu_event(|app, event| handle_desktop_menu(app, event.id().as_ref()))
         .invoke_handler(tauri::generate_handler![
             commands::request_voice_permissions,
+            commands::show_desktop_notification,
             commands::secure_get_access_key,
             commands::secure_set_access_key,
             commands::secure_delete_access_key,

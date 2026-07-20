@@ -5,6 +5,8 @@ export type DesktopNotificationStatus = 'sent' | 'disabled' | 'unsupported' | 'p
 
 export interface DesktopNotificationPayload {
   kind: DesktopNotificationKind
+  sessionId?: string
+  mode?: 'normal' | 'coding'
   title: string
   body: string
 }
@@ -92,11 +94,13 @@ export async function sendDesktopNotification(
       return { status: 'permission-denied', message: 'OS notification permission was not granted.' }
     }
     const { invoke } = await import('@tauri-apps/api/core')
-    await invoke('plugin:notification|notify', {
-      options: {
+    await invoke('show_desktop_notification', {
+      payload: {
+        kind: payload.kind,
+        ...(payload.sessionId ? { sessionId: payload.sessionId } : {}),
+        ...(payload.mode ? { mode: payload.mode } : {}),
         title: payload.title,
         body: payload.body,
-        group: `openagentd-${payload.kind}`,
       },
     })
     return { status: 'sent', message: 'Native notification sent.' }

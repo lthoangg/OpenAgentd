@@ -11,11 +11,72 @@ use crate::config::{
     load_app_backend_config, save_app_backend_config, remove_app_backend_server,
     normalize_external_base_url, normalize_server_name, AppBackendStatus
 };
-use crate::window::{create_app_window, frontend_init_script, MAIN_WINDOW};
+use crate::window::{create_app_window, frontend_init_script, show_main_window, MAIN_WINDOW};
 use crate::menu::update_tray_status;
 use crate::shutdown_sidecar_now;
 
 const ACCESS_KEY_SERVICE: &str = "openagentd.backend-access-key";
+
+#[cfg(target_os = "macos")]
+fn notification_application_identifier<'a>(dev: bool, identifier: &'a str) -> &'a str {
+    if dev {
+        // Development builds are not bundled applications, so macOS only
+        // delivers their notifications when attributed to Terminal.
+        "com.apple.Terminal"
+    } else {
+        identifier
+    }
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopNotificationPayload {
+    kind: String,
+    session_id: Option<String>,
+    mode: Option<String>,
+    title: String,
+    body: String,
+}
+
+#[tauri::command]
+pub fn show_desktop_notification(
+    app: AppHandle,
+    payload: DesktopNotificationPayload,
+) -> Result<(), String> {
+    std::thread::spawn(move || {
+        #[cfg(target_os = "macos")]
+        {
+            let identifier = notification_application_identifier(
+                tauri::is_dev(),
+                &app.config().identifier,
+            );
+            if let Err(error) = notify_rust::set_application(identifier) {
+                log::warn!("desktop_notification_application_failed error={error:#}");
+            }
+        }
+        let mut notification = notify_rust::Notification::new();
+        notification
+            .summary(&payload.title)
+            .body(&payload.body)
+            .action("default", "Open");
+
+        match notification.show() {
+            Ok(handle) => handle.wait_for_action(move |action| {
+                if action != "default" {
+                    return;
+                }
+                show_main_window(&app);
+                if payload.session_id.is_some() {
+                    if let Err(error) = app.emit_to(MAIN_WINDOW, "desktop-notification-clicked", payload) {
+                        log::warn!("desktop_notification_click_emit_failed error={error:#}");
+                    }
+                }
+            }),
+            Err(error) => log::warn!("desktop_notification_failed error={error:#}"),
+        }
+    });
+    Ok(())
+}
 
 fn access_key_entry(origin: &str) -> Result<keyring::Entry, String> {
     let parsed = url::Url::parse(origin).map_err(|_| "invalid backend origin".to_string())?;
@@ -499,6 +560,21 @@ pub async fn wait_for_health(base: &str, attempts: u32, delay: Duration) -> Resu
 #[cfg(test)]
 mod credential_tests {
     use super::access_key_entry;
+    #[cfg(target_os = "macos")]
+    use super::notification_application_identifier;
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn dev_notifications_use_terminal_as_the_registered_application() {
+        assert_eq!(
+            notification_application_identifier(true, "com.openagentd.desktop.dev"),
+            "com.apple.Terminal"
+        );
+        assert_eq!(
+            notification_application_identifier(false, "com.openagentd.desktop"),
+            "com.openagentd.desktop"
+        );
+    }
 
     #[test]
     fn access_key_origin_must_be_a_canonical_http_origin() {

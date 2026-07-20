@@ -36,6 +36,8 @@ import { sendDesktopNotification } from '../../lib/desktop-notifications'
 
 const payload = {
   kind: 'assistant_done' as const,
+  sessionId: 'session-123',
+  mode: 'coding' as const,
   title: 'Session completed - openagentd',
   body: 'Fix notification wording',
 }
@@ -60,11 +62,13 @@ describe('desktop notification worker', () => {
     const result = await sendDesktopNotification(payload)
 
     expect(result.status).toBe('sent')
-    expect(mockNotify).toHaveBeenCalledWith('plugin:notification|notify', {
-      options: {
+    expect(mockNotify).toHaveBeenCalledWith('show_desktop_notification', {
+      payload: {
+        kind: 'assistant_done',
+        sessionId: 'session-123',
+        mode: 'coding',
         title: 'Session completed - openagentd',
         body: 'Fix notification wording',
-        group: 'openagentd-assistant_done',
       },
     })
     expect(mockPlay).not.toHaveBeenCalled()

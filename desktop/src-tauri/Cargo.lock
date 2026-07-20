@@ -2577,6 +2577,7 @@ dependencies = [
  "keyring",
  "log",
  "nix",
+ "notify-rust",
  "objc2",
  "objc2-av-foundation",
  "objc2-speech",

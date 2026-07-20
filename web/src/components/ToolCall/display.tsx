@@ -38,11 +38,11 @@ function trunc(s: string, maxLen = 60): string {
   return s.length > maxLen ? s.slice(0, maxLen) + '…' : s
 }
 
-function patchFileCount(patchText: string): number {
+function patchPaths(patchText: string): string[] {
   const paths = parsePatchText(patchText).flatMap((diff) => (
     diff.moveTo ? [diff.path, diff.moveTo] : [diff.path]
   ))
-  return new Set(paths).size
+  return [...new Set(paths)]
 }
 
 function actionList(parsed: Record<string, unknown>): Record<string, unknown>[] {
@@ -438,11 +438,13 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     }
   }
 
-  // ── patch: all touched paths in header, full envelope as args ─────
+  // ── patch: touched file name/count in header, full envelope as args ─
   if (name === 'patch') {
     const patchText = str(parsed, 'patch_text')
-    const fileCount = patchText ? patchFileCount(patchText) : 0
-    const summary = fileCount > 0 ? `${fileCount} file${fileCount === 1 ? '' : 's'}` : null
+    const paths = patchText ? patchPaths(patchText) : []
+    const summary = paths.length === 1
+      ? pathBasename(paths[0])
+      : paths.length > 1 ? `${paths.length} files` : null
     return {
       header: summary ? <Arg>{summary}</Arg> : 'patch',
       headerTitle: summary ?? 'patch',

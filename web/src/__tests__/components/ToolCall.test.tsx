@@ -1564,7 +1564,7 @@ describe("ToolCall with incomplete JSON args (streaming)", () => {
     const user = userEvent.setup()
     const partialArgs = '{"patch_text": "*** Begin Patch\\n*** Update File: src/components/ToolResult.tsx\\n@@ -1,1 +1,2 @@\\n hello\\n+world'
     render(<ToolCall name="patch" args={partialArgs} done={false} />)
-    expect(getHeader("Patch: 1 file")).toBeTruthy()
+    expect(getHeader("Patch: ToolResult.tsx")).toBeTruthy()
     await user.click(screen.getByRole("button"))
     expect(screen.getAllByText("src/components/ToolResult.tsx").length).toBeGreaterThan(0)
   })

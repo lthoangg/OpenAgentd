@@ -337,4 +337,4 @@ def cmd_serve(args: argparse.Namespace) -> None:
         await serve_task
 
     # Run in this thread; KeyboardInterrupt / SIGTERM propagate naturally.
-    asyncio.run(_serve_and_handshake())
+    asyncio.run(_serve_and_handshake(), loop_factory=config.get_loop_factory())

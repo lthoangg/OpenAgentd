@@ -41,6 +41,12 @@ dependencies = [
     "pyyaml>=6.0.3",
     "fastapi>=0.135.2",
     "uvicorn>=0.42.0",
+    # Prefer Uvicorn's native HTTP parser on CPython. Uvicorn falls back to
+    # h11 on other Python implementations.
+    "httptools>=0.8.0; platform_python_implementation == 'CPython'",
+    # uvloop does not support Windows; Uvicorn's auto loop retains asyncio
+    # there and on non-CPython implementations.
+    "uvloop>=0.22.1; sys_platform != 'win32' and platform_python_implementation == 'CPython'",
     # WebSocket protocol support for uvicorn (terminal PTY streaming).
     # uvicorn is installed bare (no [standard] extra) and picks up the
     # ws implementation only if importable — declare it explicitly so

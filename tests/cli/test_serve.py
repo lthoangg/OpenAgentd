@@ -64,6 +64,30 @@ class TestParserWiring:
 
 
 class TestServerPort:
+    def test_desktop_server_uses_uvicorn_loop_factory(self, monkeypatch):
+        monkeypatch.setenv("OPENAGENTD_DESKTOP_TOKEN", "test-token")
+        args = SimpleNamespace(
+            host="127.0.0.1",
+            port=0,
+            handshake=False,
+            generate_token=False,
+            parent_pid=None,
+        )
+        loop_factory = object()
+        config = SimpleNamespace(get_loop_factory=lambda: loop_factory)
+        server = SimpleNamespace()
+
+        def capture_run(coro, **kwargs):
+            coro.close()
+            assert kwargs["loop_factory"] is loop_factory
+
+        with (
+            patch("uvicorn.Config", return_value=config),
+            patch("uvicorn.Server", return_value=server),
+            patch("app.cli.commands.serve.asyncio.run", side_effect=capture_run),
+        ):
+            cmd_serve(args)
+
     def test_reads_uvicorn_bound_port(self):
         sock = SimpleNamespace(getsockname=lambda: ("127.0.0.1", 54321))
         uvicorn_server = SimpleNamespace(servers=[SimpleNamespace(sockets=[sock])])

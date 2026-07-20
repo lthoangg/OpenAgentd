@@ -64,4 +64,5 @@ uv run ruff check app/ tests/ && uv run ruff format --check app/ tests/ && uv ru
 - Backend conventions: source modules, adjacent tests, and Make targets are authoritative.
 - Architecture: follow the package layout above and trace runtime behavior through the source.
 - Server binding/auth invariant: `documents/adrs/0002-require-authentication-for-non-loopback-bindings.md`.
+- ASGI performance backends: `documents/adrs/0008-use-native-uvicorn-performance-backends.md`.
 - Feature catalogue: `documents/docs/features.md`.

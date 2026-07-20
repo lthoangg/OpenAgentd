@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, render, fireEvent } from '@testing-library/react'
+import { cleanup, render, fireEvent, screen } from '@testing-library/react'
 import { forwardRef, useImperativeHandle } from 'react'
+import type React from 'react'
 import { TeamChatView } from '@/components/TeamChatView'
 
 const setValueMock = mock(() => {})
@@ -55,11 +56,26 @@ mock.module('@/lib/tray', () => ({ setTraySession: () => {} }))
 mock.module('@/components/AgentView', () => ({ AgentView: () => null }))
 mock.module('@/components/WorkspaceInfoCard', () => ({ WorkspaceInfoCard: () => null }))
 mock.module('@/components/CodingSidebar', () => ({ CodingSidebar: () => null }))
-mock.module('@/components/CodingWorkspacePanel', () => ({ CodingWorkspacePanel: () => null }))
+mock.module('@/components/CodingWorkspacePanel', () => ({
+  CodingWorkspacePanel: ({ onClose }: { onClose: () => void }) => (
+    <aside data-testid="coding-workspace-panel">
+      <button type="button" onClick={onClose}>Close workspace panel</button>
+    </aside>
+  ),
+}))
+mock.module('framer-motion', () => ({
+  AnimatePresence: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="presence-boundary">{children}</div>
+  ),
+}))
 mock.module('@/components/CodingFileViewerPanel', () => ({ CodingFileViewerPanel: () => null }))
 mock.module('@/components/Sidebar', () => ({ Sidebar: () => null }))
 mock.module('@/components/TeamChatView/SplitGrid', () => ({ SplitGrid: () => null }))
-mock.module('@/components/TeamChatView/TeamChatHeader', () => ({ TeamChatHeader: () => null }))
+mock.module('@/components/TeamChatView/TeamChatHeader', () => ({
+  TeamChatHeader: ({ onWorkspaceFiles }: { onWorkspaceFiles: () => void }) => (
+    <button type="button" onClick={onWorkspaceFiles}>Toggle workspace panel</button>
+  ),
+}))
 mock.module('@/components/TeamChatView/TeamChatPanels', () => ({ TeamChatPanels: () => null }))
 mock.module('@/components/TeamChatView/AgentTabs', () => ({ AgentTabs: () => null }))
 mock.module('@/components/TeamChatView/useTeamCommands', () => ({ useTeamCommands: () => [] }))
@@ -120,6 +136,17 @@ beforeEach(() => {
   setValueMock.mockClear()
   setFilesMock.mockClear()
   addFilesMock.mockClear()
+})
+
+describe('TeamChatView coding workspace panel', () => {
+  it('renders the panel inside an exit-animation boundary', () => {
+    render(<TeamChatView sessionId="test-session" mode="coding" workspace="/repo/project" />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle workspace panel' }))
+
+    const panel = screen.getByTestId('coding-workspace-panel')
+    expect(panel.closest('[data-testid="presence-boundary"]')).not.toBeNull()
+  })
 })
 
 describe('TeamChatView drag-and-drop files', () => {

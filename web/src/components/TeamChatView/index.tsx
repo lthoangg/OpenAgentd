@@ -20,6 +20,7 @@
  * that returning a freshly-built object on every render would trigger.
  */
 import { useMemo, useRef, useState } from 'react'
+import { AnimatePresence } from 'framer-motion'
 import { useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { AgentView } from '../AgentView'
@@ -639,25 +640,27 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             }}
           />
         )}
-        {mode === 'coding' && workspace && codingPanel !== null && (
-          <CodingWorkspacePanel
-            workspace={workspace}
-            open
-            initialTab={codingPanel}
-            mobile={isMobile}
-            mobileDragOffset={codingPanelDragOffset}
-            selectedFilePath={codingFileViewer?.path ?? null}
-            selectedFileOpenKey={codingFileOpenKey}
-            terminalOpenKey={terminalOpenKey}
-            onFileSelect={handleCodingFileSelect}
-            onAddComment={handleAddFileComment}
-            onOpenPalette={handleTogglePalette}
-            onClose={() => {
-              setCodingPanel(null)
-              setCodingFileViewerDetached(false)
-            }}
-          />
-        )}
+        <AnimatePresence initial={false}>
+          {mode === 'coding' && workspace && codingPanel !== null && (
+            <CodingWorkspacePanel
+              workspace={workspace}
+              open
+              initialTab={codingPanel}
+              mobile={isMobile}
+              mobileDragOffset={codingPanelDragOffset}
+              selectedFilePath={codingFileViewer?.path ?? null}
+              selectedFileOpenKey={codingFileOpenKey}
+              terminalOpenKey={terminalOpenKey}
+              onFileSelect={handleCodingFileSelect}
+              onAddComment={handleAddFileComment}
+              onOpenPalette={handleTogglePalette}
+              onClose={() => {
+                setCodingPanel(null)
+                setCodingFileViewerDetached(false)
+              }}
+            />
+          )}
+        </AnimatePresence>
       </div>
 
       <TeamChatPanels

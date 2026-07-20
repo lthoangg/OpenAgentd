@@ -16,8 +16,7 @@ def _load_module():
 
 
 def _write_repo(tmp_path: Path) -> list[Path]:
-    (tmp_path / "documents" / "adrs").mkdir(parents=True)
-    (tmp_path / "documents" / "docs").mkdir()
+    (tmp_path / "documents" / "docs").mkdir(parents=True)
     (tmp_path / "docs").mkdir()
     (tmp_path / "Makefile").write_text("test:\n\t@true\n\n.PHONY: test\n")
     (tmp_path / "AGENTS.md").write_text("See `docs/AGENTS.md`.\n")
@@ -28,11 +27,6 @@ def _write_repo(tmp_path: Path) -> list[Path]:
         "[Mail](mailto:docs@example.test) ![Logo](logo.png) `make test`\n"
     )
     (tmp_path / "README.md").write_text("# Home\n")
-    (tmp_path / "documents" / "adrs" / "README.md").write_text(
-        "| ADR | Title | Status | Date |\n| --- | --- | --- | --- |\n"
-        "| [0001](0001-example.md) | Example | Accepted | 2026-07-14 |\n"
-    )
-    (tmp_path / "documents" / "adrs" / "0001-example.md").write_text("# ADR\n")
     return sorted(tmp_path.rglob("*.md"))
 
 
@@ -65,13 +59,6 @@ def test_validate_repository_reports_each_documentation_contract_violation(tmp_p
         "[Missing](missing.md) `make missing`\n"
     )
     (tmp_path / "AGENTS.md").write_text("See `docs/missing/AGENTS.md`.\n")
-    (tmp_path / "documents" / "adrs" / "README.md").write_text(
-        "| ADR | Title | Status | Date |\n| --- | --- | --- | --- |\n"
-        "| [0001](0001-example.md) | Example | Accepted | 2026-07-14 |\n"
-        "| [0002](0002-missing.md) | Missing | Accepted | 2026-07-14 |\n"
-    )
-    (tmp_path / "documents" / "adrs" / "0003-orphan.md").write_text("# Orphan\n")
-
     errors = module.validate_repository(tmp_path, tracked)
 
     assert errors == sorted(
@@ -80,9 +67,6 @@ def test_validate_repository_reports_each_documentation_contract_violation(tmp_p
             "documents/docs/guide.md: missing frontmatter field: description",
             "documents/docs/guide.md: local link target does not exist: missing.md",
             "documents/docs/guide.md: documented Make target does not exist: missing",
-            "documents/adrs/README.md: ADR entry target does not exist: 0002-missing.md",
-            "documents/adrs/README.md: local link target does not exist: 0002-missing.md",
-            "documents/adrs/0003-orphan.md: ADR file is missing from index",
         ]
     )
 

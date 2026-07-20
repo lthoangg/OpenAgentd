@@ -75,9 +75,8 @@ openagentd/
 ├── seed/                   # Default config copied on first init
 │   ├── agents/             # Default global/coding agent descriptors
 │   └── mcp.json            # Empty default MCP server config
-├── documents/              # Feature catalogue, decision records, and assets
-│   ├── docs/               # Version-cited shipped features
-│   └── adrs/               # Significant architecture/security decisions
+├── documents/              # Feature catalogue and assets
+│   └── docs/               # Version-cited shipped features
 └── .github/                # Issue templates, PR template, CI workflows
 ```
 

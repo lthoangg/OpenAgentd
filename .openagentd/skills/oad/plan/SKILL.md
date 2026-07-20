@@ -29,8 +29,8 @@ like `git log`, `git diff`, test runs for baseline) only.
   file paths from external input, MCP config), data/schema migrations,
   breaking API changes, cross-cutting refactors.
 - Identify open decisions (library choice, data shape, API shape) — if one
-  is expensive to reverse, flag it as an ADR candidate rather than quietly
-  picking one.
+  is expensive to reverse, ask the user rather than quietly picking one and
+  keep the resulting rationale beside the implementation and in the commit.
 - Note what test/verification path already exists for the touched area
   (unit tests, manual scenario scripts, lint/type-check commands).
 

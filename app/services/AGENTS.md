@@ -20,8 +20,8 @@ provider_usage.py        Per-provider usage dispatch + connected-provider usage-
 ```
 
 The LSP subsystem (`lsp/client.py`, `lsp/manager.py`) is driven by
-`app/agent/hooks/lsp.py`. Managed language-server provisioning and its trust boundary are defined by
-[`ADR-0004`](../../documents/adrs/0004-managed-lsp-toolchain.md).
+`app/agent/hooks/lsp.py`; managed language-server provisioning lives in
+`lsp/managed.py`.
 
 ## Common feature checks
 

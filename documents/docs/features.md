@@ -264,8 +264,8 @@ run from the terminal.
   now reconciles missed history and replaces potentially frozen chat streams;
   remembered-server launches prefetch and reuse native credentials.
 - **LAN access key for external clients** `[v1.43.0, v1.103.0]` — `openagentd start --lan --key`
-  stores the CLI server's bind address, port, and bearer key in `server.yaml`, separate from the desktop builtin sidecar's ephemeral token while agents, providers, sessions, and other settings remain shared. Restart and upgrade preserve that key without exposing it in process arguments. OpenAgentd-managed launchers refuse non-loopback binds without a configured key `[v1.101.0]`. See [ADR-0002](../adrs/0002-require-authentication-for-non-loopback-bindings.md).
-- **Desktop server connection manager** `[v1.43.4, v1.99.8, v1.104.0]` — the desktop **Server connection** dialog switches the current window between the builtin sidecar and saved external servers, normalizes pasted `/api` URLs, and preserves other open windows' backend choices. Typed servers now require a successful health and access-key test before they can be named, saved, and connected. Saved LAN access keys are scoped per backend origin and stored in the native OS credential store on installed desktop/mobile shells; browser development keeps the per-origin localStorage fallback. Remembered external servers reconnect on app launch with sidecar fallback, while the desktop window opens immediately as backend startup continues asynchronously `[v1.57.1]`. See [ADR-0001](../adrs/0001-native-backend-access-key-storage.md).
+  stores the CLI server's bind address, port, and bearer key in `server.yaml`, separate from the desktop builtin sidecar's ephemeral token while agents, providers, sessions, and other settings remain shared. Restart and upgrade preserve that key without exposing it in process arguments. OpenAgentd-managed launchers refuse non-loopback binds without a configured key `[v1.101.0]`.
+- **Desktop server connection manager** `[v1.43.4, v1.99.8, v1.104.0]` — the desktop **Server connection** dialog switches the current window between the builtin sidecar and saved external servers, normalizes pasted `/api` URLs, and preserves other open windows' backend choices. Typed servers now require a successful health and access-key test before they can be named, saved, and connected. Saved LAN access keys are scoped per backend origin and stored in the native OS credential store on installed desktop/mobile shells; browser development keeps the per-origin localStorage fallback. Remembered external servers reconnect on app launch with sidecar fallback, while the desktop window opens immediately as backend startup continues asynchronously `[v1.57.1]`.
   - **Reload after switching backend servers** `[v1.98.1]` — after connecting a desktop window to a different saved or typed external server, the webview reloads so stale frontend state is discarded and the window comes back against the newly selected backend cleanly. Reconnecting to the already active backend does not reload.
 
 ---
@@ -511,8 +511,8 @@ agnostic by design.
 - **AWS Bedrock Mantle-only routing** `[v1.110.0]` — Bedrock models use Mantle's
   Anthropic- or OpenAI-compatible route metadata and bearer-token auth; native
   Converse and the access-key/secret-key Settings path were removed. This is an
-  explicit user-approved hard conversion, so it does not follow the normal
-  feature deprecation period; see [ADR-0006](../adrs/0006-bedrock-mantle-only-routing.md).
+  explicit user-approved hard conversion, so it did not follow the normal
+  feature deprecation period.
 - **Anthropic-compatible custom endpoints** `[v1.16.0]` — providers needing
   custom headers or alternate message endpoints are supported.
 - **Anthropic prompt caching + full input accounting** `[v1.66.0]` — Claude
@@ -839,7 +839,7 @@ When you cut a release:
 4. Close the GitHub issue that tracked the feature, or create one if the shipped
    work did not have an issue yet.
 5. If the change is technical / architectural, keep its non-obvious rationale
-   beside the implementation or record a significant decision as an ADR.
+   beside the implementation; git history preserves the historical decision.
 6. Bump the `updated:` field in the frontmatter to the release date.
 7. If you remove a feature, mark it *(deprecated)* in place for at least one
    release before deleting the entry.

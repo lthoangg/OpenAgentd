@@ -6,7 +6,6 @@ Product documentation is intentionally small.
 
 ```
 docs/     Version-cited feature catalogue and its minimal entry point
-adrs/     Immutable records of significant architecture and security decisions
 assets/   Brand, README, and screenshot assets
 ```
 
@@ -16,7 +15,7 @@ assets/   Brand, README, and screenshot assets
 - Keep behavior, implementation detail, configuration, and operational guidance in code, tests, CLI help, and the UI rather than duplicating them here.
 - Add an inline source comment only when it explains a non-obvious invariant or decision; do not restate ordinary control flow.
 - Keep user-facing installation and product overview in `../README.md`.
-- ADRs are immutable historical rationale. Record a new ADR only for a significant, expensive-to-reverse decision.
+- Keep non-obvious rationale beside the implementation; rely on git history for historical decisions.
 - Assets remain referenced from the README or app source; do not remove an asset without checking its incoming references.
 
 ## Checks

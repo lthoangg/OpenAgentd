@@ -36,7 +36,7 @@ Choose checks appropriate to the files and risk involved. Use the Make targets a
 make verify          # portable backend + web + docs + version contract
 make verify-backend  # Python lint, format, types, and tests
 make verify-web      # frontend lint, types, and tests
-make verify-docs     # links, frontmatter, ADR index, and documented targets
+make verify-docs     # links, frontmatter, and documented targets
 make verify-native   # desktop + mobile Rust checks; native dependencies required
 ```
 
@@ -115,7 +115,7 @@ When using team-spawning tools (e.g. `coder`, `explorer` blueprints) to parallel
 
 ## Documentation
 
-Product documentation is intentionally small. [`documents/docs/features.md`](documents/docs/features.md) is the canonical catalogue of shipped user-visible capabilities; [`README.md`](README.md) is the user-facing product and installation entry point. Code, tests, CLI help, and the UI are authoritative for implementation and operation. Significant, expensive-to-reverse decisions are recorded as ADRs in [`documents/adrs/`](documents/adrs/) (use the `adr-writing` skill; keep the index `README.md` in sync).
+Product documentation is intentionally small. [`documents/docs/features.md`](documents/docs/features.md) is the canonical catalogue of shipped user-visible capabilities; [`README.md`](README.md) is the user-facing product and installation entry point. Code, tests, CLI help, and the UI are authoritative for implementation and operation; git history preserves why those implementations changed.
 
 ## When shipping a feature
 

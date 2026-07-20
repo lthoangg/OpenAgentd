@@ -91,24 +91,6 @@ def _make_targets(makefile: Path) -> set[str]:
     }
 
 
-def _validate_adr_index(root: Path, errors: list[str]) -> None:
-    adr_dir = root / "documents" / "adrs"
-    index = adr_dir / "README.md"
-    if not index.is_file():
-        return
-    indexed = set(
-        re.findall(r"\]\((\d{4}-[^)]+\.md)\)", index.read_text(encoding="utf-8"))
-    )
-    for filename in sorted(indexed):
-        if not (adr_dir / filename).is_file():
-            errors.append(
-                f"documents/adrs/README.md: ADR entry target does not exist: {filename}"
-            )
-    for path in sorted(adr_dir.glob("[0-9][0-9][0-9][0-9]-*.md")):
-        if path.name not in indexed:
-            errors.append(f"{_relative(root, path)}: ADR file is missing from index")
-
-
 def validate_repository(root: Path, markdown_files: list[Path]) -> list[str]:
     """Return deterministic contract violations for the supplied tracked Markdown files."""
     root = root.resolve()
@@ -149,7 +131,6 @@ def validate_repository(root: Path, markdown_files: list[Path]) -> list[str]:
                 errors.append(
                     f"AGENTS.md: referenced AGENTS path does not exist: {referenced}"
                 )
-    _validate_adr_index(root, errors)
     return sorted(errors)
 
 

@@ -17,7 +17,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
-time = "=0.3.53"
+time = "=0.3.54"
 tauri-plugin-opener = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-haptics = "2"

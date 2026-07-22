@@ -13,7 +13,9 @@ rust-version = "1.77"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["protocol-asset", "tray-icon"] }
+tauri = { version = "2", features = ["image-png", "protocol-asset", "tray-icon"] }
+# Tauri's image-png feature permits newer image releases whose MSRV exceeds ours.
+image = { version = "=0.25.6", default-features = false }
 time = "=0.3.54"
 tauri-plugin-log = "2"
 tauri-plugin-opener = "2"

@@ -362,8 +362,13 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
             }
         })
         .tooltip("OpenAgentd");
+    #[cfg(target_os = "macos")]
+    {
+        tray = tray.icon(macos_tray_icon()?).icon_as_template(true);
+    }
+    #[cfg(not(target_os = "macos"))]
     if let Some(icon) = app.default_window_icon() {
-        tray = tray.icon(icon.clone()).icon_as_template(true);
+        tray = tray.icon(icon.clone());
     }
     let tray_icon = tray.build(app)?;
 
@@ -377,6 +382,11 @@ pub fn install_desktop_menus(app: &tauri::App) -> Result<()> {
         state.tray_icon.lock().await.replace(tray_icon);
     });
     Ok(())
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn macos_tray_icon() -> tauri::Result<tauri::image::Image<'static>> {
+    tauri::image::Image::from_bytes(include_bytes!("../icons/tray-icon.png"))
 }
 
 pub fn update_tray_status(app: &AppHandle, text: &str) {
@@ -789,7 +799,23 @@ pub async fn run_usage_poll_loop(app: AppHandle) {
 
 #[cfg(test)]
 mod tests {
-    use super::external_usage_access_key;
+    use super::{external_usage_access_key, macos_tray_icon};
+
+    #[test]
+    fn macos_tray_template_icon_preserves_transparent_background() {
+        let icon = macos_tray_icon().expect("decode embedded macOS tray icon");
+        let mut alpha = icon.rgba().chunks_exact(4).map(|pixel| pixel[3]);
+
+        assert_eq!((icon.width(), icon.height()), (64, 64));
+        assert!(
+            alpha.clone().any(|value| value == 0),
+            "a macOS template icon needs transparent background pixels"
+        );
+        assert!(
+            alpha.any(|value| value > 0),
+            "a macOS template icon needs visible foreground pixels"
+        );
+    }
 
     #[test]
     fn external_usage_access_key_loads_the_key_for_the_current_backend() {

@@ -26,17 +26,19 @@ MASTER_ICON = os.path.join(ROOT_DIR, "documents/assets/brand/openagentd-app-icon
 # We use the web copy as a reference to check if the master icon has changed
 REF_COPY = os.path.join(ROOT_DIR, "web/public/brand-assets/openagentd-app-icon.png")
 
-WEB_COPIES = [
+TRANSPARENT_COPIES = [
     REF_COPY,
     os.path.join(ROOT_DIR, "web/src/assets/brand/openagentd-app-icon.png"),
 ]
+
+TRAY_ICON = os.path.join(ROOT_DIR, "desktop/src-tauri/icons/tray-icon.png")
 
 APP_COPIES = [
     os.path.join(ROOT_DIR, "desktop/src-tauri/icons/icon.png"),
     os.path.join(ROOT_DIR, "mobile/src-tauri/icons/icon.png"),
 ]
 
-TARGET_COPIES = WEB_COPIES + APP_COPIES
+TARGET_COPIES = TRANSPARENT_COPIES + [TRAY_ICON] + APP_COPIES
 
 # Brand background color for desktop/mobile app icons (#FAF6EC matching OpenAgentd warm light theme)
 BRAND_BG_COLOR = (250, 246, 236, 255)
@@ -131,7 +133,7 @@ def main():
     print(f"Found master icon: {MASTER_ICON}")
 
     # Copy master transparent icon to web targets
-    for target in WEB_COPIES:
+    for target in TRANSPARENT_COPIES:
         target_dir = os.path.dirname(target)
         os.makedirs(target_dir, exist_ok=True)
         print(
@@ -139,11 +141,14 @@ def main():
         )
         shutil.copy2(MASTER_ICON, target)
 
-    # Composite master icon over brand background for desktop/mobile app icons
-    # Desktop (macOS/Windows/Linux) and mobile OS icon generators expect a solid canvas tile.
-    # Without a solid background, macOS Dock detects transparent margins and draws a fallback gray tile.
+    # Keep the macOS template icon transparent, while platform app icons use
+    # a solid canvas so the Dock does not draw a fallback gray tile.
     with Image.open(MASTER_ICON) as master_img:
         master_img = master_img.convert("RGBA")
+        print(
+            f"Generating transparent tray icon: {os.path.relpath(TRAY_ICON, ROOT_DIR)}"
+        )
+        master_img.resize((64, 64), Image.Resampling.LANCZOS).save(TRAY_ICON, "PNG")
         bg_img = Image.new("RGBA", master_img.size, BRAND_BG_COLOR)
         app_icon_img = Image.alpha_composite(bg_img, master_img)
         for target in APP_COPIES:

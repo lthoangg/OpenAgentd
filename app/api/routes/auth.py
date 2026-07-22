@@ -33,9 +33,9 @@ import asyncio
 import importlib
 import json
 from collections.abc import AsyncGenerator
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, StringConstraints
 from fastapi import APIRouter, HTTPException, Request
 from loguru import logger
 from sse_starlette.sse import EventSourceResponse
@@ -48,7 +48,9 @@ router = APIRouter()
 class OAuthCallbackBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    code: str
+    code: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=8192)
+    ]
 
 
 class AuthCheckResponse(BaseModel):

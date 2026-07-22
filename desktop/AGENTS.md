@@ -4,7 +4,7 @@ Tauri v2 desktop shell that supervises the Python sidecar, opens the embedded we
 
 ## Tech stack
 
-- Rust 2021, minimum Rust 1.77.
+- Rust 2021, minimum Rust 1.77.2.
 - Tauri 2 with updater, opener, dialog, notification, process, log, and single-instance plugins.
 - Python sidecar bundle is API-only; the React Web UI is packaged by Tauri from `web/dist`.
 

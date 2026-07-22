@@ -1,9 +1,11 @@
 import { useEffect } from 'react'
 import { useRouter } from '@tanstack/react-router'
+import { getCurrent, onOpenUrl } from '@tauri-apps/plugin-deep-link'
 import { queryClient } from '@/lib/query-client'
 import { queryKeys } from '@/queries/keys'
 import { apiBaseUrl } from '@/api/base-url'
 import { withTokenParam } from '@/api/auth'
+import { useToastStore } from '@/stores/useToastStore'
 
 export type DeepLinkParsed =
   | { kind: 'auth_callback'; provider: string; code: string }
@@ -13,15 +15,18 @@ export type DeepLinkParsed =
 export function parseDeepLinkUrl(urlStr: string): DeepLinkParsed {
   try {
     const url = new URL(urlStr)
-    if (url.protocol !== 'openagentd:') return { kind: 'unknown' }
+    if (url.protocol !== 'openagentd:' && url.protocol !== 'openagentd-dev:') {
+      return { kind: 'unknown' }
+    }
 
     const host = url.host
     const pathname = url.pathname.replace(/^\/+/, '')
-    const fullPath = host ? `${host}/${pathname}`.replace(/\/+$/, '') : pathname.replace(/\/+$/, '')
 
-    if (fullPath.startsWith('auth/callback') || fullPath.startsWith('auth-callback')) {
-      const provider = url.searchParams.get('provider') || 'codex'
-      const rawCode = url.searchParams.get('code') || ''
+    if (host === 'auth' && url.pathname === '/callback') {
+      const provider = url.searchParams.get('provider')?.trim()
+      const rawCode = url.searchParams.get('code')
+      if (!provider || !rawCode?.trim()) return { kind: 'unknown' }
+
       const state = url.searchParams.get('state')
       const code = state && !rawCode.includes('#') ? `${rawCode}#${state}` : rawCode
       return { kind: 'auth_callback', provider, code }
@@ -55,39 +60,50 @@ export function useDeepLinkRouter(): void {
   const router = useRouter()
 
   useEffect(() => {
+    const handledOAuthCallbacks = new Set<string>()
     const handleUrl = async (urlStr: string) => {
       const parsed = parseDeepLinkUrl(urlStr)
       if (parsed.kind === 'auth_callback') {
+        const callbackKey = JSON.stringify([parsed.provider, parsed.code])
+        if (handledOAuthCallbacks.has(callbackKey)) return
+        handledOAuthCallbacks.add(callbackKey)
         const ok = await processOAuthCallback(parsed.provider, parsed.code)
         if (ok) {
           void queryClient.invalidateQueries({ queryKey: queryKeys.settings.providers() })
+          useToastStore.getState().push({ tone: 'success', title: 'Authentication connected' })
+        } else {
+          handledOAuthCallbacks.delete(callbackKey)
+          useToastStore.getState().push({ tone: 'error', title: 'Authentication failed' })
         }
       } else if (parsed.kind === 'navigate') {
         void router.navigate({ href: parsed.path })
       }
     }
 
-    const customListener = (e: Event) => {
-      const detail = (e as CustomEvent).detail
-      if (typeof detail === 'string') {
-        void handleUrl(detail)
-      }
-    }
-    window.addEventListener('openagentd-deep-link', customListener)
-
     let unlisten: (() => void) | undefined
-    if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
-      import('@tauri-apps/api/event').then(({ listen }) => {
-        listen<string>('deep-link', (event) => {
-          if (event.payload) {
-            void handleUrl(event.payload)
-          }
-        }).then((fn) => { unlisten = fn }).catch(() => {})
-      }).catch(() => {})
+    let disposed = false
+    const handleUrls = async (urls: string[]) => {
+      await Promise.all(urls.map(handleUrl))
     }
+
+    void (async () => {
+      try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window')
+        if (getCurrentWindow().label !== 'main') return
+        const stopListening = await onOpenUrl((urls) => { void handleUrls(urls) })
+        if (disposed) {
+          stopListening()
+          return
+        }
+        unlisten = stopListening
+        await handleUrls((await getCurrent()) ?? [])
+      } catch {
+        // The plugin is unavailable when the app runs in a regular browser.
+      }
+    })()
 
     return () => {
-      window.removeEventListener('openagentd-deep-link', customListener)
+      disposed = true
       if (unlisten) unlisten()
     }
   }, [router])

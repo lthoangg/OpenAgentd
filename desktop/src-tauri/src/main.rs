@@ -544,6 +544,11 @@ fn main() {
         .build();
 
     tauri::Builder::default()
+        // This must be first: on Windows/Linux it passes a second process's
+        // deep-link argv to the deep-link plugin before showing the window.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            show_main_window(app);
+        }))
         .plugin(log_plugin)
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
@@ -555,14 +560,6 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_deep_link::init())
-        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
-            show_main_window(app);
-            for arg in args {
-                if arg.starts_with("openagentd://") {
-                    let _ = app.emit("deep-link", arg);
-                }
-            }
-        }))
         .manage(state)
         .on_menu_event(|app, event| handle_desktop_menu(app, event.id().as_ref()))
         .invoke_handler(tauri::generate_handler![

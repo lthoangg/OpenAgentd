@@ -120,6 +120,11 @@
     }
   },
   "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["openagentd"]
+      }
+    },
     "updater": {
       "endpoints": [
         "https://github.com/lthoangg/openagentd/releases/download/latest-desktop/latest.json"

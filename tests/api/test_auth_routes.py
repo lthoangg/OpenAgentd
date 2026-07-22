@@ -265,6 +265,16 @@ def test_plugin_oauth_callback_returns_success_payload(
     assert response.json() == {"ok": True, "suggested_model": "plugin-oauth:model-a"}
 
 
+@pytest.mark.parametrize("code", ["", "   ", "x" * 8193])
+def test_oauth_callback_rejects_invalid_code(code: str) -> None:
+    response = TestClient(_make_app()).post(
+        "/api/auth/plugin-oauth/callback",
+        json={"code": code},
+    )
+
+    assert response.status_code == 422
+
+
 def test_builtin_oauth_callback_returns_success_payload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

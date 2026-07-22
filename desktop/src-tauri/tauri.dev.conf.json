@@ -3,6 +3,13 @@
   "productName": "OpenAgentd (dev)",
   "mainBinaryName": "OpenAgentd-dev",
   "identifier": "com.openagentd.desktop.dev",
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["openagentd-dev"]
+      }
+    }
+  },
   "bundle": {
     "resources": null,
     "macOS": {

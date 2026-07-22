@@ -6,7 +6,7 @@ IOS_TEAM := $(shell test -f $(IOS_TEAM_FILE) && tr -d '[:space:]' < $(IOS_TEAM_F
 IOS_TEAM_CONFIG = $(if $(IOS_TEAM),--config '{"bundle":{"iOS":{"developmentTeam":"$(IOS_TEAM)"}}}')
 IOS_DEV_IDENTIFIER ?= com.dev.openagentd.mobile
 IOS_DEV_PRODUCT_NAME ?= OpenAgentd Dev
-IOS_DEV_APP_CONFIG = --config '{"identifier":"$(IOS_DEV_IDENTIFIER)","productName":"$(IOS_DEV_PRODUCT_NAME)"}'
+IOS_DEV_APP_CONFIG = --config '{"identifier":"$(IOS_DEV_IDENTIFIER)","productName":"$(IOS_DEV_PRODUCT_NAME)","plugins":{"deep-link":{"mobile":[{"scheme":["openagentd-dev"],"appLink":false}]}}}'
 IOS_APPICONSET = src-tauri/gen/apple/Assets.xcassets/AppIcon.appiconset
 IOS_ICON_STAMP = $(IOS_APPICONSET)/.openagentd-icons.stamp
 

@@ -14,16 +14,5 @@
     <string>OpenAgentd needs access to your Downloads folder to import files into your workspace.</string>
     <key>NSDesktopFolderUsageDescription</key>
     <string>OpenAgentd needs access to your Desktop folder to manage workspace files.</string>
-    <key>CFBundleURLTypes</key>
-    <array>
-        <dict>
-            <key>CFBundleURLName</key>
-            <string>com.openagentd.desktop</string>
-            <key>CFBundleURLSchemes</key>
-            <array>
-                <string>openagentd</string>
-            </array>
-        </dict>
-    </array>
 </dict>
 </plist>

@@ -6,7 +6,7 @@ The mobile-first cockpit for local AI agents — a Tauri 2 mobile + desktop shel
 
 - **Backend:** Python `>=3.14`, FastAPI, SQLModel, Pydantic v2, SQLite (WAL), SSE, loguru.
 - **Frontend:** React 19, TypeScript 5.9, Vite 7, Bun, Tailwind v4, Zustand + Immer, TanStack Query.
-- **Mobile/Desktop:** Tauri v2 shell with a Python sidecar; Rust 2021 / minimum Rust 1.77.
+- **Mobile/Desktop:** Tauri v2 shell with a Python sidecar; Rust 2021 / minimum Rust 1.77.2.
 - **Agent config:** `.md` files with YAML frontmatter in `{OPENAGENTD_CONFIG_DIR}/agents/`.
 
 ## Layout

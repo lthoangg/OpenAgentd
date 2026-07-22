@@ -36,6 +36,7 @@
     "allow-show-desktop-notification",
     "opener:default",
     "log:default",
+    "deep-link:default",
     "updater:default",
     "allow-secure-get-access-key",
     "allow-secure-set-access-key",

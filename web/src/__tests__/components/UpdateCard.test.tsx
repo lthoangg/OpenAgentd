@@ -153,14 +153,71 @@ describe('UpdateCard — platform lifecycle', () => {
     expect(invokeCalls).toHaveLength(0)
   })
 
-  it('checks again when the desktop app returns to the foreground', async () => {
-    render(<UpdateCard />)
+  it('waits six hours after Later before showing the automatic update reminder again', async () => {
+    const view = render(<UpdateCard />)
     await waitFor(() => expect(capturedStatusListener).not.toBeNull())
+    act(() => emitStatus({ status: 'available', version: '1.71.0', current_version: '1.70.0' }))
+    const laterButton = await screen.findByRole('button', { name: /later/i })
+
+    const realDateNow = Date.now
+    const realSetTimeout = globalThis.setTimeout
+    const realClearTimeout = globalThis.clearTimeout
+    const clickedAt = 1_000_000
+    const sixHoursMs = 6 * 60 * 60 * 1000
+    let now = clickedAt
+    let reminderCallback: (() => void) | undefined
+
+    Date.now = () => now
+    globalThis.setTimeout = ((callback: TimerHandler, delay?: number) => {
+      if (delay === sixHoursMs) reminderCallback = callback as () => void
+      return 99 as unknown as ReturnType<typeof setTimeout>
+    }) as unknown as typeof setTimeout
+    globalThis.clearTimeout = (() => {}) as unknown as typeof clearTimeout
+
+    try {
+      invokeCalls.length = 0
+      fireEvent.click(laterButton)
+
+      expect(window.localStorage.getItem('openagentd.updater.dismissedUntil')).toBeNull()
+      expect(reminderCallback).toBeDefined()
+      expect(screen.queryByRole('button', { name: /later/i })).not.toBeInTheDocument()
+
+      act(() => document.dispatchEvent(new Event('visibilitychange')))
+      await act(async () => { await Promise.resolve() })
+      expect(invokeCalls.some((call) => call.command === 'updater_check')).toBe(false)
+
+      now += sixHoursMs
+      await act(async () => {
+        reminderCallback?.()
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+
+      expect(invokeCalls.filter((call) => call.command === 'updater_check')).toHaveLength(1)
+      expect(screen.getByRole('button', { name: /later/i })).toBeInTheDocument()
+    } finally {
+      view.unmount()
+      Date.now = realDateNow
+      globalThis.setTimeout = realSetTimeout
+      globalThis.clearTimeout = realClearTimeout
+    }
+  })
+
+  it('checks on startup after the app is relaunched during a prior Later cooldown', async () => {
+    const firstRun = render(<UpdateCard />)
+    await waitFor(() => expect(capturedStatusListener).not.toBeNull())
+    act(() => emitStatus({ status: 'available', version: '1.71.0', current_version: '1.70.0' }))
+    await userEvent.click(await screen.findByRole('button', { name: /later/i }))
+
     invokeCalls.length = 0
+    firstRun.unmount()
+    capturedStatusListener = null
 
-    act(() => document.dispatchEvent(new Event('visibilitychange')))
+    render(<UpdateCard />)
 
-    await waitFor(() => expect(invokeCalls.some((call) => call.command === 'updater_check')).toBe(true))
+    await waitFor(() => {
+      expect(invokeCalls.filter((call) => call.command === 'updater_check')).toHaveLength(1)
+    })
   })
 })
 
@@ -430,6 +487,7 @@ describe('UpdateCard — listener lifecycle', () => {
       expect(events).toContain('updater-status')
       expect(events).toContain('updater-check-requested')
     })
+    await screen.findByRole('button', { name: /later/i })
   })
 
   it('unlistens both listeners on unmount', async () => {

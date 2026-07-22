@@ -70,11 +70,14 @@ run from the terminal.
 - **In-app crash recovery** `[v1.113.0]` — an unexpected UI render failure opens
   a recovery screen with Reload and copyable error details instead of leaving a
   dead webview that must be force-quit.
-- **In-app auto-updater** `[v1.22.0, v1.99.8]` — bottom-right update card + Settings → About
+- **In-app auto-updater** `[v1.22.0, v1.99.8, v1.115.1]` — bottom-right update card + Settings → About
   → Updates, cached downloads, install-and-restart, signed minisign payloads,
-  GitHub release notes rendered inline. Desktop checks at startup, every 6 hours,
-  and after returning to the foreground; mobile leaves updates to its platform
-  distribution channel. Earlier iterations: `[v1.18.0]`, `[v1.20.0]`, `[v1.21.0]`.
+  GitHub release notes rendered inline. Desktop checks at startup and every 6
+  hours, including on a foreground return once that interval is due; choosing
+  Later suppresses the automatic reminder for the full 6-hour interval in the
+  current app run; relaunching performs the normal startup check `[v1.115.1]`.
+  Mobile leaves updates to its platform distribution channel.
+  Earlier iterations: `[v1.18.0]`, `[v1.20.0]`, `[v1.21.0]`.
 - **Native app notifications** `[v1.19.0]` — finished assistant turns and
   scheduled reminders in the desktop app, plus local native
   notifications in the remote-backend mobile shell `[v1.34.0]`. Clicking a

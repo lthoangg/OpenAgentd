@@ -7,26 +7,43 @@ import { LazyMarkdownBlock } from '@/utils/LazyMarkdownBlock'
 import { getPlatform } from '@/hooks/use-platform'
 
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000
-const DISMISSED_UNTIL_KEY = 'openagentd.updater.dismissedUntil'
 
 export function UpdateCard() {
   const [status, setStatus] = useState<UpdateStatus>({ status: 'idle' })
   const [tauriReady, setTauriReady] = useState(false)
-  const dismissedUntilNextCheckRef = useRef(isDismissedUntilNextInterval())
+  const [initialAutomaticCheckAt] = useState(() => Date.now())
+  const dismissedUntilNextCheckRef = useRef(false)
+  const nextAutomaticCheckAtRef = useRef(initialAutomaticCheckAt)
+  const [nextAutomaticCheckAt, setNextAutomaticCheckAt] = useState(initialAutomaticCheckAt)
   const restartTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+
+  const scheduleNextAutomaticCheck = useCallback((timestamp: number) => {
+    nextAutomaticCheckAtRef.current = timestamp
+    setNextAutomaticCheckAt(timestamp)
+  }, [])
 
   const checkForUpdates = useCallback(async (silent = false) => {
     setTauriReady(true)
-    if (!silent) setStatus({ status: 'checking' })
+    if (!silent) {
+      dismissedUntilNextCheckRef.current = false
+      scheduleNextAutomaticCheck(Date.now() + CHECK_INTERVAL_MS)
+      setStatus({ status: 'checking' })
+    }
     try {
       const next = await invokeCheckForUpdates(silent)
-      clearDismissedUntilNextInterval()
-      dismissedUntilNextCheckRef.current = false
       if (!silent || next.status !== 'up_to_date') setStatus(next)
     } catch (error) {
       if (!silent) setStatus({ status: 'error', message: String(error) })
     }
-  }, [])
+  }, [scheduleNextAutomaticCheck])
+
+  const runAutomaticUpdateCheck = useCallback(() => {
+    const now = Date.now()
+    if (now < nextAutomaticCheckAtRef.current) return
+    dismissedUntilNextCheckRef.current = false
+    scheduleNextAutomaticCheck(now + CHECK_INTERVAL_MS)
+    void checkForUpdates(true)
+  }, [checkForUpdates, scheduleNextAutomaticCheck])
 
   const downloadUpdate = useCallback(async () => {
     try {
@@ -75,7 +92,6 @@ export function UpdateCard() {
     }
 
     let cleanup: (() => void) | undefined
-    let interval: number | undefined
     let cancelled = false
 
     async function start() {
@@ -94,12 +110,11 @@ export function UpdateCard() {
           void unlistenStatus()
           void unlistenCheck()
         }
-        if (!dismissedUntilNextCheckRef.current) void checkForUpdates(true)
-        interval = window.setInterval(() => {
-          void checkForUpdates(true)
-        }, CHECK_INTERVAL_MS)
         const handleForeground = () => {
-          if (document.visibilityState === 'visible') void checkForUpdates(true)
+          if (
+            document.visibilityState === 'visible'
+            && Date.now() >= nextAutomaticCheckAtRef.current
+          ) runAutomaticUpdateCheck()
         }
         document.addEventListener('visibilitychange', handleForeground)
         window.addEventListener('pageshow', handleForeground)
@@ -120,9 +135,15 @@ export function UpdateCard() {
       if (restartTimeoutRef.current) clearTimeout(restartTimeoutRef.current)
       restartTimeoutRef.current = undefined
       cleanup?.()
-      if (interval) window.clearInterval(interval)
     }
-  }, [checkForUpdates])
+  }, [checkForUpdates, runAutomaticUpdateCheck])
+
+  useEffect(() => {
+    if (!tauriReady) return
+    const delay = Math.max(0, nextAutomaticCheckAt - Date.now())
+    const timeout = window.setTimeout(runAutomaticUpdateCheck, delay)
+    return () => window.clearTimeout(timeout)
+  }, [nextAutomaticCheckAt, runAutomaticUpdateCheck, tauriReady])
 
   const progress = useMemo(() => {
     if (status.status !== 'downloading' || !status.downloaded_bytes || !status.total_bytes) return null
@@ -144,8 +165,9 @@ export function UpdateCard() {
           variant="ghost"
           size="xs"
           onClick={() => {
+            const dismissedUntil = Date.now() + CHECK_INTERVAL_MS
             dismissedUntilNextCheckRef.current = true
-            persistDismissedUntilNextInterval()
+            scheduleNextAutomaticCheck(dismissedUntil)
             setStatus({ status: 'idle' })
           }}
         >
@@ -240,23 +262,6 @@ function ReleaseNotesButton({ fallbackNotes, version }: { fallbackNotes?: string
       </Dialog>
     </>
   )
-}
-
-function isDismissedUntilNextInterval(): boolean {
-  const dismissedUntil = Number(window.localStorage.getItem(DISMISSED_UNTIL_KEY) ?? 0)
-  if (!Number.isFinite(dismissedUntil) || dismissedUntil <= Date.now()) {
-    clearDismissedUntilNextInterval()
-    return false
-  }
-  return true
-}
-
-function persistDismissedUntilNextInterval() {
-  window.localStorage.setItem(DISMISSED_UNTIL_KEY, String(Date.now() + CHECK_INTERVAL_MS))
-}
-
-function clearDismissedUntilNextInterval() {
-  window.localStorage.removeItem(DISMISSED_UNTIL_KEY)
 }
 
 function titleForStatus(status: UpdateStatus): string {

@@ -33,10 +33,7 @@ from app.api.schemas.settings import (
     ProviderUsageSummaryBody,
     ProviderUsageSummaryItem,
 )
-from app.core.runtime_settings import (
-    provider_is_disconnected,
-    provider_visible_models,
-)
+from app.core import runtime_settings
 from app.services.provider_connection import provider_is_configured
 
 if TYPE_CHECKING:
@@ -124,7 +121,9 @@ async def get_provider_usage(provider_id: str) -> ProviderUsageResponse:
     raise ProviderUsageUnsupportedError(provider_id)
 
 
-def _usage_capable_connected_providers() -> list[tuple[str, str]]:
+def _usage_capable_connected_providers(
+    settings_snapshot: runtime_settings.RuntimeSettings,
+) -> list[tuple[str, str]]:
     """Return (provider_id, label) for every *connected* usage-capable provider.
 
     "Usage-capable" = builtin OAuth providers with a hand-written usage
@@ -134,12 +133,19 @@ def _usage_capable_connected_providers() -> list[tuple[str, str]]:
     authenticated — and additionally respects the user's explicit Settings →
     Providers "Disconnect" toggle (``is_disconnected``), which hides a
     provider without deleting its credentials.
+
+    The caller passes one settings snapshot so every provider sees a
+    consistent configuration without reparsing ``settings.yaml`` per row.
     """
     from app.agent.providers.catalog import find as find_catalog_entry
 
+    def _is_disconnected(provider_id: str) -> bool:
+        provider_settings = settings_snapshot.providers.get(provider_id)
+        return bool(provider_settings and provider_settings.is_disconnected)
+
     candidates: list[tuple[str, str]] = []
     for provider_id, fallback_label in _BUILTIN_USAGE_PROVIDERS.items():
-        if provider_is_disconnected(provider_id):
+        if _is_disconnected(provider_id):
             continue
         entry = find_catalog_entry(provider_id) or cast(
             "ProviderEntry",
@@ -152,7 +158,7 @@ def _usage_capable_connected_providers() -> list[tuple[str, str]]:
     for provider_id, plugin in provider_plugins().items():
         if plugin.get_usage is None:
             continue
-        if provider_is_disconnected(provider_id):
+        if _is_disconnected(provider_id):
             continue
         entry = find_catalog_entry(provider_id) or cast(
             "ProviderEntry",
@@ -192,7 +198,8 @@ def _limit_matches_visible_models(
 
 
 def _filter_usage_to_visible_models(
-    provider_id: str, usage: ProviderUsageResponse
+    usage: ProviderUsageResponse,
+    visible_models: list[str],
 ) -> ProviderUsageResponse:
     """Drop per-model limit rows for models the user hasn't made visible.
 
@@ -207,11 +214,12 @@ def _filter_usage_to_visible_models(
       ``five_hour``/``seven_day``) — filtering those against model names
       would blank the provider.
     """
-    visible = provider_visible_models(provider_id)
-    if not visible or not usage.limits:
+    if not visible_models or not usage.limits:
         return usage
     visible_normalized = [
-        norm for norm in (_normalize_model_token(m) for m in visible) if norm
+        norm
+        for norm in (_normalize_model_token(model) for model in visible_models)
+        if norm
     ]
     if not visible_normalized:
         return usage
@@ -244,7 +252,11 @@ def _last_good_fallback(
     return item.model_copy(update={"stale": True, "error": error})
 
 
-async def _fetch_summary_item(provider_id: str, label: str) -> ProviderUsageSummaryItem:
+async def _fetch_summary_item(
+    provider_id: str,
+    label: str,
+    visible_models: list[str],
+) -> ProviderUsageSummaryItem:
     try:
         usage = await asyncio.wait_for(
             get_provider_usage(provider_id), timeout=_SUMMARY_PROVIDER_TIMEOUT_S
@@ -278,7 +290,7 @@ async def _fetch_summary_item(provider_id: str, label: str) -> ProviderUsageSumm
         provider=provider_id,
         label=label,
         status="ok",
-        usage=_filter_usage_to_visible_models(provider_id, usage),
+        usage=_filter_usage_to_visible_models(usage, visible_models),
     )
     _last_good_items[provider_id] = (time.monotonic(), item)
     return item
@@ -286,10 +298,22 @@ async def _fetch_summary_item(provider_id: str, label: str) -> ProviderUsageSumm
 
 async def _fetch_fresh_snapshot() -> ProviderUsageSummaryBody:
     """Fan out to every connected, usage-capable provider concurrently."""
-    candidates = _usage_capable_connected_providers()
+    settings_snapshot = runtime_settings.load_runtime_settings()
+    candidates = _usage_capable_connected_providers(settings_snapshot)
     items = list(
         await asyncio.gather(
-            *(_fetch_summary_item(pid, label) for pid, label in candidates)
+            *(
+                _fetch_summary_item(
+                    pid,
+                    label,
+                    visible_models=(
+                        settings_snapshot.providers[pid].visible_models
+                        if pid in settings_snapshot.providers
+                        else []
+                    ),
+                )
+                for pid, label in candidates
+            )
         )
     )
     return ProviderUsageSummaryBody(items=items, checked_at=int(time.time()))

@@ -13,14 +13,20 @@ import pytest
 
 from app.agent.providers.plugin_api import ProviderPlugin
 from app.api.schemas.settings import ProviderUsageLimit, ProviderUsageResponse
+from app.core import runtime_settings
 from app.services import provider_usage
+
+_load_runtime_settings = runtime_settings.load_runtime_settings
 
 
 @pytest.fixture(autouse=True)
 def _no_disconnect_no_visible_filter(monkeypatch):
     """Default: no provider is user-disconnected, no visible-model curation."""
-    monkeypatch.setattr(provider_usage, "provider_is_disconnected", lambda _pid: False)
-    monkeypatch.setattr(provider_usage, "provider_visible_models", lambda _pid: [])
+    monkeypatch.setattr(
+        runtime_settings,
+        "load_runtime_settings",
+        lambda: runtime_settings.RuntimeSettings(),
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -371,7 +377,13 @@ async def test_user_disconnected_provider_is_excluded(monkeypatch):
         lambda entry: entry["id"] in {"codex", "copilot"},
     )
     monkeypatch.setattr(
-        provider_usage, "provider_is_disconnected", lambda pid: pid == "codex"
+        runtime_settings,
+        "load_runtime_settings",
+        lambda: runtime_settings.RuntimeSettings(
+            providers={
+                "codex": runtime_settings.ProviderUiSettings(is_disconnected=True)
+            }
+        ),
     )
 
     async def _fake_get_usage(provider_id: str) -> ProviderUsageResponse:
@@ -382,6 +394,48 @@ async def test_user_disconnected_provider_is_excluded(monkeypatch):
     body = await provider_usage.get_connected_provider_usage_summary()
 
     assert [item.provider for item in body.items] == ["copilot"]
+
+
+async def test_fresh_summary_loads_runtime_settings_once(monkeypatch, tmp_path):
+    """One aggregation uses one consistent disconnect/visibility snapshot."""
+    settings_path = tmp_path / "settings.yaml"
+    runtime_settings.save_runtime_settings(
+        runtime_settings.RuntimeSettings(
+            providers={
+                "codex": runtime_settings.ProviderUiSettings(
+                    visible_models=["model-a"]
+                ),
+                "copilot": runtime_settings.ProviderUiSettings(is_disconnected=True),
+            }
+        ),
+        settings_path,
+    )
+    real_load = _load_runtime_settings
+    load_calls = 0
+
+    def _counted_load():
+        nonlocal load_calls
+        load_calls += 1
+        return real_load(settings_path)
+
+    monkeypatch.setattr(runtime_settings, "load_runtime_settings", _counted_load)
+    monkeypatch.setattr("app.agent.providers.catalog.find", _catalog_entries({}))
+    monkeypatch.setattr(provider_usage, "provider_plugins", lambda: {})
+    monkeypatch.setattr(provider_usage, "provider_is_configured", lambda entry: True)
+
+    async def _fake_get_usage(provider_id: str) -> ProviderUsageResponse:
+        return ProviderUsageResponse(
+            provider=provider_id,
+            limits=[_model_limit("model-a"), _model_limit("model-b")],
+        )
+
+    monkeypatch.setattr(provider_usage, "get_provider_usage", _fake_get_usage)
+
+    body = await provider_usage.get_connected_provider_usage_summary()
+
+    assert load_calls == 1
+    assert [item.provider for item in body.items] == ["codex", "grok"]
+    assert [limit.limit_id for limit in body.items[0].usage.limits] == ["model-a"]
 
 
 def _model_limit(limit_id: str) -> ProviderUsageLimit:
@@ -413,9 +467,15 @@ async def test_per_model_limits_are_filtered_to_visible_models(monkeypatch):
     )
     # Model picker id has a provider prefix the usage endpoint id lacks.
     monkeypatch.setattr(
-        provider_usage,
-        "provider_visible_models",
-        lambda pid: ["antigravity-gemini-3.5-flash-low"] if pid == "agy" else [],
+        runtime_settings,
+        "load_runtime_settings",
+        lambda: runtime_settings.RuntimeSettings(
+            providers={
+                "agy": runtime_settings.ProviderUiSettings(
+                    visible_models=["antigravity-gemini-3.5-flash-low"]
+                )
+            }
+        ),
     )
 
     async def _fake_get_usage(provider_id: str) -> ProviderUsageResponse:
@@ -447,7 +507,15 @@ async def test_non_model_limits_survive_visible_model_filtering(monkeypatch):
         provider_usage, "provider_is_configured", lambda entry: entry["id"] == "codex"
     )
     monkeypatch.setattr(
-        provider_usage, "provider_visible_models", lambda _pid: ["gpt-5.5-codex"]
+        runtime_settings,
+        "load_runtime_settings",
+        lambda: runtime_settings.RuntimeSettings(
+            providers={
+                "codex": runtime_settings.ProviderUiSettings(
+                    visible_models=["gpt-5.5-codex"]
+                )
+            }
+        ),
     )
 
     async def _fake_get_usage(provider_id: str) -> ProviderUsageResponse:

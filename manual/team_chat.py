@@ -12,6 +12,7 @@ import time
 import httpx
 
 from manual._common import DEFAULT_BASE
+
 BASE = DEFAULT_BASE
 DEFAULT_WAIT = 180  # seconds
 
@@ -58,7 +59,8 @@ def print_history(base: str, sid: str):
     data = r.json()
 
     lead = data["lead"]
-    _print_agent(lead["agent_name"], lead["messages"], is_lead=True)
+    lead_name = lead.get("agent_name") or lead.get("name") or "lead"
+    _print_agent(lead_name, lead["messages"], is_lead=True)
 
     for mb in data.get("members", []):
         _print_agent(mb["name"], mb["messages"])

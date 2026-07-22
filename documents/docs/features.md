@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 16 providers. Your keys.
 
-**Latest release:** v1.115.2 · July 22, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.115.2)
+**Latest release:** v1.116.0 · July 22, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.116.0)
 
 ---
 
@@ -531,7 +531,7 @@ agnostic by design.
   effort levels now surface standard `none/low/medium/high` thinking choices in
   Settings, with Anthropic runtime mapping those levels to proportional token
   budgets.
-- **`openagentd://` deep links and OAuth callback handoff** `[v1.115.3]` — system protocol registration for desktop and mobile apps, with cold- and warm-start routing. Navigation links (`openagentd://cockpit/...`, `openagentd://coding/...`) open the requested session. OAuth providers that implement a callback exchange can use `openagentd://auth/callback?provider=...&code=...`; OpenAgentd validates the link shape and forwards the opaque callback payload to the active backend, while the provider remains responsible for state and PKCE verification. Isolated desktop development bundles and physical-device iOS development builds use `openagentd-dev://` so they do not claim the production protocol.
+- **`openagentd://` deep links and OAuth callback handoff** `[v1.116.0]` — system protocol registration for desktop and mobile apps, with cold- and warm-start routing. Navigation links (`openagentd://cockpit/...`, `openagentd://coding/...`) open the requested session. OAuth providers that implement a callback exchange can use `openagentd://auth/callback?provider=...&code=...`; OpenAgentd validates the link shape and forwards the opaque callback payload to the active backend, while the provider remains responsible for state and PKCE verification. Isolated desktop development bundles and physical-device iOS development builds use `openagentd-dev://` so they do not claim the production protocol.
 - **OAuth subscription support** `[v1.8.0]` — Copilot, Codex, others via the
   built-in OAuth helper.
 - **Grok Build subscription provider** `[v1.112.0]` — `grok:` uses xAI's

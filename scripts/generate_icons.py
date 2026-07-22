@@ -10,12 +10,14 @@ from dirtying the git index, this script only regenerates icons if:
 2. Any required platform icon is missing.
 3. The script is run with the --force flag.
 """
+
 import os
 import shutil
 import subprocess
 import sys
 import hashlib
 import argparse
+from PIL import Image
 
 # Define paths relative to the repository root
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -24,12 +26,20 @@ MASTER_ICON = os.path.join(ROOT_DIR, "documents/assets/brand/openagentd-app-icon
 # We use the web copy as a reference to check if the master icon has changed
 REF_COPY = os.path.join(ROOT_DIR, "web/public/brand-assets/openagentd-app-icon.png")
 
-TARGET_COPIES = [
+WEB_COPIES = [
     REF_COPY,
     os.path.join(ROOT_DIR, "web/src/assets/brand/openagentd-app-icon.png"),
+]
+
+APP_COPIES = [
     os.path.join(ROOT_DIR, "desktop/src-tauri/icons/icon.png"),
     os.path.join(ROOT_DIR, "mobile/src-tauri/icons/icon.png"),
 ]
+
+TARGET_COPIES = WEB_COPIES + APP_COPIES
+
+# Brand background color for desktop/mobile app icons (#FAF6EC matching OpenAgentd warm light theme)
+BRAND_BG_COLOR = (250, 246, 236, 255)
 
 REQUIRED_GENERATED_FILES = [
     # Desktop
@@ -46,6 +56,7 @@ REQUIRED_GENERATED_FILES = [
     os.path.join(ROOT_DIR, "mobile/src-tauri/icons/128x128@2x.png"),
 ]
 
+
 def get_md5(path):
     if not os.path.exists(path):
         return None
@@ -55,9 +66,17 @@ def get_md5(path):
             hasher.update(chunk)
     return hasher.hexdigest()
 
+
 def main():
-    parser = argparse.ArgumentParser(description="Centralized icon generator and synchronizer.")
-    parser.add_argument("-f", "--force", action="store_true", help="Force regeneration of all icons even if unchanged.")
+    parser = argparse.ArgumentParser(
+        description="Centralized icon generator and synchronizer."
+    )
+    parser.add_argument(
+        "-f",
+        "--force",
+        action="store_true",
+        help="Force regeneration of all icons even if unchanged.",
+    )
     args = parser.parse_args()
 
     if not os.path.exists(MASTER_ICON):
@@ -90,33 +109,58 @@ def main():
     for copy_path in TARGET_COPIES:
         if not os.path.exists(copy_path):
             needs_run = True
-            reasons.append(f"target copy is missing: {os.path.relpath(copy_path, ROOT_DIR)}")
+            reasons.append(
+                f"target copy is missing: {os.path.relpath(copy_path, ROOT_DIR)}"
+            )
             break
 
     if missing_files:
         needs_run = True
-        reasons.append(f"required generated files are missing: {', '.join(os.path.relpath(f, ROOT_DIR) for f in missing_files[:3])}...")
+        reasons.append(
+            f"required generated files are missing: {', '.join(os.path.relpath(f, ROOT_DIR) for f in missing_files[:3])}..."
+        )
 
     if not needs_run:
-        print("Icons are already centralized, up-to-date, and fully synchronized. Skipping regeneration.")
+        print(
+            "Icons are already centralized, up-to-date, and fully synchronized. Skipping regeneration."
+        )
         print("Use --force or -f to force regeneration.")
         sys.exit(0)
 
     print(f"Regenerating icons because: {', '.join(reasons)}")
     print(f"Found master icon: {MASTER_ICON}")
 
-    # Copy master icon to all targets
-    for target in TARGET_COPIES:
+    # Copy master transparent icon to web targets
+    for target in WEB_COPIES:
         target_dir = os.path.dirname(target)
         os.makedirs(target_dir, exist_ok=True)
-        print(f"Copying master icon to: {os.path.relpath(target, ROOT_DIR)}")
+        print(
+            f"Copying master transparent icon to web: {os.path.relpath(target, ROOT_DIR)}"
+        )
         shutil.copy2(MASTER_ICON, target)
+
+    # Composite master icon over brand background for desktop/mobile app icons
+    # Desktop (macOS/Windows/Linux) and mobile OS icon generators expect a solid canvas tile.
+    # Without a solid background, macOS Dock detects transparent margins and draws a fallback gray tile.
+    with Image.open(MASTER_ICON) as master_img:
+        master_img = master_img.convert("RGBA")
+        bg_img = Image.new("RGBA", master_img.size, BRAND_BG_COLOR)
+        app_icon_img = Image.alpha_composite(bg_img, master_img)
+        for target in APP_COPIES:
+            target_dir = os.path.dirname(target)
+            os.makedirs(target_dir, exist_ok=True)
+            print(
+                f"Compositing app icon with brand background for: {os.path.relpath(target, ROOT_DIR)}"
+            )
+            app_icon_img.save(target, "PNG")
 
     # Check for tauri cli
     tauri_cmd = None
     if shutil.which("cargo"):
         try:
-            res = subprocess.run(["cargo", "tauri", "--version"], capture_output=True, text=True)
+            res = subprocess.run(
+                ["cargo", "tauri", "--version"], capture_output=True, text=True
+            )
             if res.returncode == 0:
                 tauri_cmd = ["cargo", "tauri"]
         except Exception:
@@ -141,7 +185,14 @@ def main():
     desktop_tauri_dir = os.path.join(ROOT_DIR, "desktop/src-tauri")
     if os.path.exists(desktop_tauri_dir):
         print("Generating desktop platform icons...")
-        for f in ["32x32.png", "64x64.png", "128x128.png", "128x128@2x.png", "icon.icns", "icon.ico"]:
+        for f in [
+            "32x32.png",
+            "64x64.png",
+            "128x128.png",
+            "128x128@2x.png",
+            "icon.icns",
+            "icon.ico",
+        ]:
             path = os.path.join(desktop_tauri_dir, "icons", f)
             if os.path.exists(path):
                 try:
@@ -153,7 +204,7 @@ def main():
             subprocess.run(
                 [*tauri_cmd, "icon", "icons/icon.png"],
                 cwd=desktop_tauri_dir,
-                check=True
+                check=True,
             )
             print("Desktop platform icons generated successfully.")
         except subprocess.CalledProcessError as e:
@@ -164,7 +215,14 @@ def main():
     mobile_tauri_dir = os.path.join(ROOT_DIR, "mobile/src-tauri")
     if os.path.exists(mobile_tauri_dir):
         print("Generating mobile platform icons...")
-        for f in ["32x32.png", "64x64.png", "128x128.png", "128x128@2x.png", "icon.icns", "icon.ico"]:
+        for f in [
+            "32x32.png",
+            "64x64.png",
+            "128x128.png",
+            "128x128@2x.png",
+            "icon.icns",
+            "icon.ico",
+        ]:
             path = os.path.join(mobile_tauri_dir, "icons", f)
             if os.path.exists(path):
                 try:
@@ -176,12 +234,13 @@ def main():
             subprocess.run(
                 [*tauri_cmd, "icon", "icons/icon.png", "--ios-color", "transparent"],
                 cwd=mobile_tauri_dir,
-                check=True
+                check=True,
             )
             print("Mobile platform icons generated successfully.")
         except subprocess.CalledProcessError as e:
             print(f"Error generating mobile icons: {e}")
             sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

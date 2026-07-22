@@ -531,6 +531,7 @@ agnostic by design.
   effort levels now surface standard `none/low/medium/high` thinking choices in
   Settings, with Anthropic runtime mapping those levels to proportional token
   budgets.
+- **`openagentd://` deep links and seamless OAuth callbacks** `[v1.115.3]` — system protocol scheme registration for desktop shell and mobile apps. External URL triggers (`openagentd://auth/callback?provider=...&code=...`) focus OpenAgentd and route OAuth codes directly to the active backend server (`POST /api/auth/{provider}/callback`), eliminating manual code copying during browser authentication. Direct navigation deep links (`openagentd://cockpit/...`, `openagentd://coding/...`) route instantly via in-app navigation.
 - **OAuth subscription support** `[v1.8.0]` — Copilot, Codex, others via the
   built-in OAuth helper.
 - **Grok Build subscription provider** `[v1.112.0]` — `grok:` uses xAI's

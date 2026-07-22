@@ -177,8 +177,19 @@ async def oauth_callback(
 ) -> OAuthCallbackResponse:
     from app.agent.providers.plugin_registry import find_provider_plugin
 
+    callback_fn = None
     plugin = find_provider_plugin(provider_id)
-    if plugin is None or plugin.oauth_callback is None:
+    if plugin is not None and plugin.oauth_callback is not None:
+        callback_fn = plugin.oauth_callback
+    else:
+        entry = _PROVIDERS.get(provider_id)
+        if entry is not None:
+            mod = importlib.import_module(entry[0])
+            fn = getattr(mod, "callback", None) or getattr(mod, "oauth_callback", None)
+            if callable(fn):
+                callback_fn = fn
+
+    if callback_fn is None:
         raise HTTPException(
             status_code=404, detail=f"OAuth callback unsupported for '{provider_id}'"
         )
@@ -189,7 +200,7 @@ async def oauth_callback(
         events.append((event, data))
 
     try:
-        plugin.oauth_callback(body.code, _sink)
+        callback_fn(body.code, _sink)
     except Exception as exc:  # noqa: BLE001 - return plugin auth failures to UI
         logger.warning("oauth_callback_failed provider={} error={}", provider_id, exc)
         raise HTTPException(status_code=400, detail=str(exc)) from exc

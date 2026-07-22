@@ -265,6 +265,37 @@ def test_plugin_oauth_callback_returns_success_payload(
     assert response.json() == {"ok": True, "suggested_model": "plugin-oauth:model-a"}
 
 
+def test_builtin_oauth_callback_returns_success_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Callback route delegates code exchange to built-in provider module if callback() exists."""
+    fake_module = type("M", (), {})()
+    seen_codes: list[str] = []
+
+    def callback(code: str, event_sink: Any = None) -> None:
+        seen_codes.append(code)
+        assert event_sink is not None
+        event_sink("success", {"message": "builtin logged in"})
+
+    fake_module.callback = callback
+
+    import app.api.routes.auth as auth_route
+
+    monkeypatch.setattr(auth_route, "_PROVIDERS", {"codex": ("fake_codex", "fake")})
+    monkeypatch.setattr(
+        auth_route.importlib, "import_module", lambda _name: fake_module
+    )
+
+    response = TestClient(_make_app()).post(
+        "/api/auth/codex/callback",
+        json={"code": "valid_code_123"},
+    )
+
+    assert response.status_code == 200
+    assert seen_codes == ["valid_code_123"]
+    assert response.json() == {"ok": True, "message": "builtin logged in"}
+
+
 def test_plugin_oauth_callback_failure_returns_400(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

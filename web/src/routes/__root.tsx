@@ -19,6 +19,7 @@ import { isPrimaryShortcut } from '@/lib/keyboard-shortcut'
 import { useContainerSelectAll } from '@/hooks/useContainerSelectAll'
 import { usePreventBackspaceNavigation } from '@/hooks/usePreventBackspaceNavigation'
 import { useHistoryBackForwardShortcuts } from '@/hooks/useHistoryBackForwardShortcuts'
+import { useDeepLinkRouter } from '@/hooks/useDeepLinkRouter'
 import { GlobalEventStream } from '@/hooks/use-global-event-stream'
 import { LspInstallPrompt } from '@/components/LspInstallPrompt'
 
@@ -28,6 +29,7 @@ export function Root() {
   useContainerSelectAll()
   usePreventBackspaceNavigation()
   useHistoryBackForwardShortcuts()
+  useDeepLinkRouter()
 
   // Global ⌘, / Ctrl+, shortcut — opens/toggles the Settings modal from any page.
   const openSettings = useSettingsStore((s) => s.openSettings)

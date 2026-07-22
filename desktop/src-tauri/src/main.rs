@@ -554,8 +554,14 @@ fn main() {
         // is staged.
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             show_main_window(app);
+            for arg in args {
+                if arg.starts_with("openagentd://") {
+                    let _ = app.emit("deep-link", arg);
+                }
+            }
         }))
         .manage(state)
         .on_menu_event(|app, event| handle_desktop_menu(app, event.id().as_ref()))

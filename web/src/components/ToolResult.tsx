@@ -339,8 +339,8 @@ interface BackgroundProcess {
 }
 
 function statusColor(status: string): string {
-  if (status === 'running') return 'text-(--color-success)'
-  if (status.startsWith('exited') || status.startsWith('stopped')) return 'text-(--color-text-muted)'
+  if (status === 'running' || status.includes('running')) return 'text-(--color-success)'
+  if (status.startsWith('exited') || status.startsWith('stopped') || status.startsWith('no output')) return 'text-(--color-text-muted)'
   return 'text-(--color-error)'
 }
 
@@ -445,6 +445,35 @@ function BackgroundProcessResult({ result, headerAction, onCollapse }: { result:
     )
   }
 
+  const waitedStatusMatch = result.match(
+    /^Waited on background process (\d+)(?: for ([\d.]+) seconds)?\.\n(?:\n)?Process ([^\n]+)(?:\n([\s\S]*))?$/,
+  )
+  if (waitedStatusMatch) {
+    const [, pid, seconds, rawStatus, body] = waitedStatusMatch
+    const cleanStatus = rawStatus.endsWith('.') ? rawStatus.slice(0, -1) : rawStatus
+    const statusPart = cleanStatus.match(/^(still running)(?: after (.*))?$/)
+    const status = statusPart ? statusPart[1] : cleanStatus
+    const detail = statusPart?.[2] ? `after ${statusPart[2]}` : (seconds ? `waited ${seconds} seconds` : undefined)
+
+    return (
+      <div className="min-w-0 overflow-hidden">
+        <div className="flex min-h-8 min-w-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-sidebar) py-0 pr-2 pl-3 font-mono text-[10px]">
+          <button type="button" onClick={onCollapse} className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 text-left transition-colors hover:text-(--color-text)">
+            <span className="text-(--color-text)">PID {pid}</span>
+            <span className={statusColor(status)}>{status}</span>
+            {detail && <span className="text-(--color-text-muted)">{detail}</span>}
+          </button>
+          {headerAction}
+        </div>
+        {body && (
+          <p className="px-3 py-2.5 font-mono text-[11px] leading-relaxed text-(--color-text-2)">
+            {body}
+          </p>
+        )}
+      </div>
+    )
+  }
+
   const outputMatch = result.match(/^PID (\d+) output:\n([\s\S]*)$/)
   const finalOutputMatch = result.match(/^PID (\d+): ([^\n]+)\nFinal output:\n([\s\S]*)$/)
   const output = outputMatch ?? finalOutputMatch
@@ -456,7 +485,7 @@ function BackgroundProcessResult({ result, headerAction, onCollapse }: { result:
   }
 
   const statusMatch = result.match(/^PID (\d+): ([^\n]+)(?:\nCommand: ([^\n]+))?(?:\nBuffered lines: (\d+))?$/)
-  if (statusMatch) {
+  if (statusMatch && (statusMatch[3] || statusMatch[4])) {
     const [, pid, status, command, bufferedLines] = statusMatch
     return (
       <div className="min-w-0 overflow-hidden">
@@ -473,6 +502,58 @@ function BackgroundProcessResult({ result, headerAction, onCollapse }: { result:
             {command}
           </code>
         )}
+      </div>
+    )
+  }
+
+  const pidStatusMatch = result.match(/^PID (\d+): ([^\n]+)(?:\n([\s\S]*))?$/)
+  if (pidStatusMatch) {
+    const [, pid, rawStatus, body] = pidStatusMatch
+    const cleanStatus = rawStatus.endsWith('.') ? rawStatus.slice(0, -1) : rawStatus
+    const statusPart = cleanStatus.match(/^(still running)(?: after (.*))?$/)
+    const status = statusPart ? statusPart[1] : cleanStatus
+    const detail = statusPart?.[2] ? `after ${statusPart[2]}` : undefined
+
+    return (
+      <div className="min-w-0 overflow-hidden">
+        <div className="flex min-h-8 min-w-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-sidebar) py-0 pr-2 pl-3 font-mono text-[10px]">
+          <button type="button" onClick={onCollapse} className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 text-left transition-colors hover:text-(--color-text)">
+            <span className="text-(--color-text)">PID {pid}</span>
+            <span className={statusColor(status)}>{status}</span>
+            {detail && <span className="text-(--color-text-muted)">{detail}</span>}
+          </button>
+          {headerAction}
+        </div>
+        {body && (
+          <p className="px-3 py-2.5 font-mono text-[11px] leading-relaxed text-(--color-text-2)">
+            {body}
+          </p>
+        )}
+      </div>
+    )
+  }
+
+  const errorMatch = result.match(/^Error:\s*([\s\S]+)$/)
+  if (errorMatch) {
+    const body = errorMatch[1]
+    const pidMatch = body.match(/PID (\d+)/)
+    const pid = pidMatch ? pidMatch[1] : null
+    const knownMatch = body.match(/Known PIDs: ([^\n.]+)/)
+    const known = knownMatch ? `Known PIDs: ${knownMatch[1]}` : undefined
+
+    return (
+      <div className="min-w-0 overflow-hidden">
+        <div className="flex min-h-8 min-w-0 items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-sidebar) py-0 pr-2 pl-3 font-mono text-[10px]">
+          <button type="button" onClick={onCollapse} className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 text-left transition-colors hover:text-(--color-text)">
+            <span className="text-(--color-text)">{pid ? `PID ${pid}` : 'error'}</span>
+            <span className="text-(--color-error)">{pid ? 'not found' : 'error'}</span>
+            {known && <span className="text-(--color-text-muted)">{known}</span>}
+          </button>
+          {headerAction}
+        </div>
+        <p className="px-3 py-2.5 font-mono text-[11px] leading-relaxed text-(--color-error)">
+          {body}
+        </p>
       </div>
     )
   }

@@ -261,6 +261,36 @@ describe("ToolResult - bg", () => {
     expect(container.querySelector("pre")?.className).toContain("overflow-y-auto")
   })
 
+  it("renders background tool wait timeout with structured process header and guidance message", () => {
+    render(
+      <ToolResult
+        toolName="bg"
+        result={"PID 13601: still running after 120 seconds.\nUse status or output to inspect it, wait again, or stop it."}
+      />,
+    )
+
+    expect(screen.getByText("PID 13601")).toBeTruthy()
+    expect(screen.getByText("still running")).toBeTruthy()
+    expect(screen.getByText("after 120 seconds")).toBeTruthy()
+    expect(screen.getByText("Use status or output to inspect it, wait again, or stop it.")).toBeTruthy()
+    expect(document.querySelector("pre")).toBeNull()
+  })
+
+  it("renders background tool error with structured PID header, 'not found' status, and error message", () => {
+    render(
+      <ToolResult
+        toolName="bg"
+        result="Error: No tracked background process with PID 33315. Known PIDs: none."
+      />,
+    )
+
+    expect(screen.getByText("PID 33315")).toBeTruthy()
+    expect(screen.getByText("not found")).toBeTruthy()
+    expect(screen.getByText("Known PIDs: none")).toBeTruthy()
+    expect(screen.getByText("No tracked background process with PID 33315. Known PIDs: none.")).toBeTruthy()
+    expect(document.querySelector("pre")).toBeNull()
+  })
+
   it("renders an empty process list as a concise empty state", () => {
     render(<ToolResult toolName="bg" result="No background processes running." />)
 

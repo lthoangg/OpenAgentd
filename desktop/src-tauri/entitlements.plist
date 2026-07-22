@@ -21,17 +21,9 @@
     <key>com.apple.security.network.server</key>
     <true/>
 
-    <!-- Required for user-chosen workspace directories and persistent security bookmarks. -->
+    <!-- Required for user-chosen workspace directories. -->
     <key>com.apple.security.files.user-selected.read-write</key>
     <true/>
-    <key>com.apple.security.files.bookmarks.app-scope</key>
-    <true/>
-
-    <!-- Keychain Access Groups: preserves Keychain access permissions across version updates. -->
-    <key>keychain-access-groups</key>
-    <array>
-        <string>$(AppIdentifierPrefix)com.openagentd.desktop</string>
-    </array>
 
     <!-- Microphone input for client-side speech recognition. -->
     <key>com.apple.security.device.audio-input</key>

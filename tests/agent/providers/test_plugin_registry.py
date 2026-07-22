@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 
+import app.agent.providers.plugin_registry as plugin_registry
 from app.agent.providers.base import LLMProviderBase
 from app.agent.providers.catalog import all_providers, find
 from app.agent.providers.factory import build_provider
@@ -217,6 +218,56 @@ def test_provider_plugins_returns_empty_when_plugin_dir_is_missing(
 
     assert provider_plugins() == {}
     assert all_providers()  # builtin catalog still loads
+
+
+def test_credential_stores_share_unchanged_saved_env_parse(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    (config_dir / ".env").write_text("SAMPLE_KEY=saved\n", encoding="utf-8")
+    monkeypatch.setattr(settings, "OPENAGENTD_CONFIG_DIR", str(config_dir))
+    monkeypatch.delenv("SAMPLE_KEY", raising=False)
+    parse_count = 0
+    original_dotenv_values = plugin_registry.dotenv_values
+
+    def count_parses(*args, **kwargs):
+        nonlocal parse_count
+        parse_count += 1
+        return original_dotenv_values(*args, **kwargs)
+
+    monkeypatch.setattr(plugin_registry, "dotenv_values", count_parses)
+
+    assert ProviderCredentialStore("one").get("SAMPLE_KEY") == "saved"
+    assert ProviderCredentialStore("two").get("SAMPLE_KEY") == "saved"
+    assert parse_count == 1
+
+
+def test_credential_stores_refresh_when_saved_env_changes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    env_file = config_dir / ".env"
+    monkeypatch.setattr(settings, "OPENAGENTD_CONFIG_DIR", str(config_dir))
+    monkeypatch.delenv("SAMPLE_KEY", raising=False)
+
+    assert ProviderCredentialStore("missing").get("SAMPLE_KEY", "missing") == "missing"
+
+    env_file.write_text("SAMPLE_KEY=original\n", encoding="utf-8")
+    store = ProviderCredentialStore("one")
+    assert store.get("SAMPLE_KEY") == "original"
+
+    env_file.write_text("SAMPLE_KEY=edited\n", encoding="utf-8")
+    assert store.get("SAMPLE_KEY") == "edited"
+
+    replacement = config_dir / ".env.replacement"
+    replacement.write_text("SAMPLE_KEY=replaced\n", encoding="utf-8")
+    replacement.replace(env_file)
+    assert ProviderCredentialStore("two").get("SAMPLE_KEY") == "replaced"
+
+    env_file.unlink()
+    assert ProviderCredentialStore("three").get("SAMPLE_KEY", "missing") == "missing"
 
 
 def test_credential_store_token_path_is_provider_scoped(

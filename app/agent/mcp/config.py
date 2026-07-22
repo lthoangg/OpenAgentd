@@ -33,6 +33,7 @@ import json
 import os
 import re
 import tempfile
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -91,18 +92,36 @@ class HttpServerConfig(BaseModel):
     enabled: bool = True
 
 
-def resolve_secret_refs(value: str) -> str:
+def _requires_dotenv(values: Iterable[str]) -> bool:
+    return any(
+        (match.group(1) or match.group(2)) not in os.environ
+        for value in values
+        for match in _ENV_REF_RE.finditer(value)
+    )
+
+
+def resolve_secret_refs(
+    value: str, *, _dotenv_snapshot: Mapping[str, str | None] | None = None
+) -> str:
     """Expand $VAR / ${VAR} using process env or the config .env file."""
+    if not _ENV_REF_RE.search(value):
+        return value
+
+    dotenv_snapshot = _dotenv_snapshot
+    if dotenv_snapshot is None:
+        if _requires_dotenv((value,)):
+            env_file = Path(settings.OPENAGENTD_CONFIG_DIR) / ".env"
+            dotenv_snapshot = dotenv_values(env_file) if env_file.is_file() else {}
+        else:
+            dotenv_snapshot = {}
 
     def replace(match: re.Match[str]) -> str:
         name = match.group(1) or match.group(2)
         if name in os.environ:
             return os.environ[name]
-        env_file = Path(settings.OPENAGENTD_CONFIG_DIR) / ".env"
-        if env_file.is_file():
-            env_value = dotenv_values(env_file).get(name)
-            if env_value is not None:
-                return env_value
+        env_value = dotenv_snapshot.get(name)
+        if env_value is not None:
+            return env_value
         return match.group(0)
 
     return _ENV_REF_RE.sub(replace, value)
@@ -110,8 +129,18 @@ def resolve_secret_refs(value: str) -> str:
 
 def resolve_headers(headers: dict[str, str]) -> dict[str, str]:
     """Resolve env-var references in HTTP MCP headers at connection time."""
+    if not any(_ENV_REF_RE.search(value) for value in headers.values()):
+        return dict(headers)
 
-    return {key: resolve_secret_refs(value) for key, value in headers.items()}
+    if _requires_dotenv(headers.values()):
+        env_file = Path(settings.OPENAGENTD_CONFIG_DIR) / ".env"
+        dotenv_snapshot = dotenv_values(env_file) if env_file.is_file() else {}
+    else:
+        dotenv_snapshot = {}
+    return {
+        key: resolve_secret_refs(value, _dotenv_snapshot=dotenv_snapshot)
+        for key, value in headers.items()
+    }
 
 
 MCPServerConfig = StdioServerConfig | HttpServerConfig

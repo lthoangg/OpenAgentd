@@ -14,6 +14,7 @@ from app.agent.mcp.config import (
     StdioServerConfig,
     load_config,
     resolve_headers,
+    resolve_secret_refs,
     save_config,
     validate_server_name,
 )
@@ -297,6 +298,54 @@ class TestResolveHeaders:
         assert resolve_headers({"Authorization": "Bearer ${SLACK_MCP_TOKEN}"}) == {
             "Authorization": "Bearer xoxp-secret"
         }
+
+    def test_resolve_headers_loads_dotenv_once_per_batch(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A batch shares one .env snapshot while retaining precedence rules."""
+        from app.agent.mcp import config
+
+        dotenv = tmp_path / ".env"
+        dotenv.write_text("FROM_FILE=file-value\nSECOND_FILE=second-value\n")
+        monkeypatch.setattr(config.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path))
+        monkeypatch.setenv("FROM_FILE", "process-value")
+        monkeypatch.delenv("SECOND_FILE", raising=False)
+        monkeypatch.delenv("MISSING_VALUE", raising=False)
+
+        calls = 0
+        original_dotenv_values = config.dotenv_values
+
+        def count_dotenv_values(path: Path):
+            nonlocal calls
+            calls += 1
+            return original_dotenv_values(path)
+
+        monkeypatch.setattr(config, "dotenv_values", count_dotenv_values)
+
+        assert resolve_headers(
+            {
+                "Authorization": "Bearer ${FROM_FILE}",
+                "Second": "$SECOND_FILE",
+                "Combined": "${SECOND_FILE}:$MISSING_VALUE",
+            }
+        ) == {
+            "Authorization": "Bearer process-value",
+            "Second": "second-value",
+            "Combined": "second-value:$MISSING_VALUE",
+        }
+        assert calls == 1
+        # A standalone value also shares one snapshot across its references.
+        assert (
+            resolve_secret_refs("$SECOND_FILE:${SECOND_FILE}:$MISSING_VALUE")
+            == "second-value:second-value:$MISSING_VALUE"
+        )
+        assert calls == 2
+
+        monkeypatch.setenv("PROCESS_ONLY", "process-only")
+        assert resolve_headers({"Process": "$PROCESS_ONLY"}) == {
+            "Process": "process-only"
+        }
+        assert calls == 2
 
     def test_resolve_headers_keeps_missing_refs(
         self, monkeypatch: pytest.MonkeyPatch

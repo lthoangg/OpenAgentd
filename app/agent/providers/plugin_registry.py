@@ -3,11 +3,62 @@ from __future__ import annotations
 import importlib.util
 import os
 from pathlib import Path
+from stat import S_ISREG
 
 from dotenv import dotenv_values
 from loguru import logger
 
 from app.agent.providers.plugin_api import ProviderPlugin
+
+
+type EnvStatSignature = tuple[int, int, int, int]
+type SavedEnvCache = tuple[Path, EnvStatSignature | None, dict[str, str]]
+
+
+_SAVED_ENV_CACHE: SavedEnvCache | None = None
+
+
+def _saved_env_values(path: Path) -> SavedEnvCache:
+    global _SAVED_ENV_CACHE
+
+    try:
+        resolved_path = path.resolve()
+    except OSError:
+        _SAVED_ENV_CACHE = None
+        return path, None, {}
+
+    try:
+        file_stat = resolved_path.stat()
+    except FileNotFoundError:
+        signature = None
+    except OSError:
+        _SAVED_ENV_CACHE = None
+        return resolved_path, None, {}
+    else:
+        signature = (
+            file_stat.st_mtime_ns,
+            file_stat.st_ctime_ns,
+            file_stat.st_size,
+            file_stat.st_ino,
+        )
+        if not S_ISREG(file_stat.st_mode):
+            signature = None
+
+    if (
+        _SAVED_ENV_CACHE is not None
+        and _SAVED_ENV_CACHE[0] == resolved_path
+        and _SAVED_ENV_CACHE[1] == signature
+    ):
+        return _SAVED_ENV_CACHE
+
+    raw = dotenv_values(resolved_path) if signature is not None else {}
+    cache_entry: SavedEnvCache = (
+        resolved_path,
+        signature,
+        {k: v for k, v in raw.items() if k and v},
+    )
+    _SAVED_ENV_CACHE = cache_entry
+    return cache_entry
 
 
 def _settings():
@@ -23,12 +74,20 @@ class ProviderCredentialStore:
         self.provider_id = provider_id
         self.overrides = overrides or {}
         self._env_file = Path(_settings().OPENAGENTD_CONFIG_DIR) / ".env"
+        self._env_cache_path: Path | None = None
+        self._env_signature: EnvStatSignature | None = None
         self._env_values: dict[str, str] | None = None
 
     def _saved_env(self) -> dict[str, str]:
-        if self._env_values is None:
-            raw = dotenv_values(self._env_file) if self._env_file.is_file() else {}
-            self._env_values = {k: v for k, v in raw.items() if k and v}
+        path, signature, values = _saved_env_values(self._env_file)
+        if (
+            self._env_values is None
+            or self._env_cache_path != path
+            or self._env_signature != signature
+        ):
+            self._env_cache_path = path
+            self._env_signature = signature
+            self._env_values = dict(values)
         return self._env_values
 
     def get(self, name: str, default: str = "") -> str:

@@ -33,5 +33,16 @@
   <array>
     <string>UIInterfaceOrientationPortrait</string>
   </array>
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLName</key>
+      <string>com.openagentd.mobile</string>
+      <key>CFBundleURLSchemes</key>
+      <array>
+        <string>openagentd</string>
+      </array>
+    </dict>
+  </array>
 </dict>
 </plist>

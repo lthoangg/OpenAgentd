@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useRouter } from '@tanstack/react-router'
-import { useQueryClient } from '@tanstack/react-query'
+import { queryClient } from '@/lib/query-client'
 import { queryKeys } from '@/queries/keys'
 import { apiBaseUrl } from '@/api/base-url'
 import { withTokenParam } from '@/api/auth'
@@ -53,7 +53,6 @@ export async function processOAuthCallback(provider: string, code: string): Prom
 
 export function useDeepLinkRouter(): void {
   const router = useRouter()
-  const queryClient = useQueryClient()
 
   useEffect(() => {
     const handleUrl = async (urlStr: string) => {
@@ -91,5 +90,5 @@ export function useDeepLinkRouter(): void {
       window.removeEventListener('openagentd-deep-link', customListener)
       if (unlisten) unlisten()
     }
-  }, [router, queryClient])
+  }, [router])
 }

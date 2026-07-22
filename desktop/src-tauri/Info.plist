@@ -8,5 +8,11 @@
     <string>OpenAgentd uses the microphone for voice input.</string>
     <key>NSSpeechRecognitionUsageDescription</key>
     <string>OpenAgentd uses speech recognition to convert your voice input into text.</string>
+    <key>NSDocumentsFolderUsageDescription</key>
+    <string>OpenAgentd needs access to your Documents folder to read and edit project workspace files.</string>
+    <key>NSDownloadsFolderUsageDescription</key>
+    <string>OpenAgentd needs access to your Downloads folder to import files into your workspace.</string>
+    <key>NSDesktopFolderUsageDescription</key>
+    <string>OpenAgentd needs access to your Desktop folder to manage workspace files.</string>
 </dict>
 </plist>

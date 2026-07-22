@@ -8,26 +8,6 @@ from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
-from app.agent.providers.codex.usage import (
-    CodexUsageCredentialsError,
-    CodexUsageUnavailableError,
-    get_usage as get_codex_usage,
-)
-from app.agent.providers.copilot.usage import (
-    CopilotUsageCredentialsError,
-    CopilotUsageUnavailableError,
-    get_usage as get_copilot_usage,
-)
-from app.agent.providers.grok.usage import (
-    GrokUsageCredentialsError,
-    GrokUsageUnavailableError,
-    get_usage as get_grok_usage,
-)
-from app.agent.providers.plugin_registry import (
-    ProviderCredentialStore,
-    find_provider_plugin,
-    provider_plugins,
-)
 from app.api.schemas.settings import (
     ProviderUsageResponse,
     ProviderUsageSummaryBody,
@@ -38,6 +18,8 @@ from app.services.provider_connection import provider_is_configured
 
 if TYPE_CHECKING:
     from app.agent.providers.catalog import ProviderEntry
+    from app.agent.providers.plugin_api import ProviderPlugin
+    from app.agent.providers.plugin_registry import ProviderCredentialStore
 
 # Builtin (non-plugin) providers that expose a usage endpoint. Kept as an
 # id -> label map so the summary reads sensibly even if the catalog entry
@@ -89,31 +71,86 @@ class ProviderUsageUnavailableError(RuntimeError):
     """Raised when the upstream usage endpoint cannot be reached or parsed."""
 
 
+def find_provider_plugin(provider_id: str) -> ProviderPlugin | None:
+    from app.agent.providers.plugin_registry import find_provider_plugin as find
+
+    return find(provider_id)
+
+
+def provider_plugins() -> dict[str, ProviderPlugin]:
+    from app.agent.providers.plugin_registry import provider_plugins as load_plugins
+
+    return load_plugins()
+
+
+def _provider_credential_store(provider_id: str) -> ProviderCredentialStore:
+    from app.agent.providers.plugin_registry import ProviderCredentialStore
+
+    return ProviderCredentialStore(provider_id)
+
+
+async def get_codex_usage() -> ProviderUsageResponse:
+    from app.agent.providers.codex.usage import get_usage
+
+    return await get_usage()
+
+
+async def get_copilot_usage() -> ProviderUsageResponse:
+    from app.agent.providers.copilot.usage import get_usage
+
+    return await get_usage()
+
+
+async def get_grok_usage() -> ProviderUsageResponse:
+    from app.agent.providers.grok.usage import get_usage
+
+    return await get_usage()
+
+
 async def get_provider_usage(provider_id: str) -> ProviderUsageResponse:
-    try:
-        if provider_id == "codex":
+    if provider_id == "codex":
+        from app.agent.providers.codex.usage import (
+            CodexUsageCredentialsError,
+            CodexUsageUnavailableError,
+        )
+
+        try:
             return await get_codex_usage()
-        if provider_id == "copilot":
+        except CodexUsageCredentialsError as exc:
+            raise ProviderUsageCredentialsError(str(exc)) from exc
+        except CodexUsageUnavailableError as exc:
+            raise ProviderUsageUnavailableError(str(exc)) from exc
+
+    if provider_id == "copilot":
+        from app.agent.providers.copilot.usage import (
+            CopilotUsageCredentialsError,
+            CopilotUsageUnavailableError,
+        )
+
+        try:
             return await get_copilot_usage()
-        if provider_id == "grok":
+        except CopilotUsageCredentialsError as exc:
+            raise ProviderUsageCredentialsError(str(exc)) from exc
+        except CopilotUsageUnavailableError as exc:
+            raise ProviderUsageUnavailableError(str(exc)) from exc
+
+    if provider_id == "grok":
+        from app.agent.providers.grok.usage import (
+            GrokUsageCredentialsError,
+            GrokUsageUnavailableError,
+        )
+
+        try:
             return await get_grok_usage()
-    except (
-        CodexUsageCredentialsError,
-        CopilotUsageCredentialsError,
-        GrokUsageCredentialsError,
-    ) as exc:
-        raise ProviderUsageCredentialsError(str(exc)) from exc
-    except (
-        CodexUsageUnavailableError,
-        CopilotUsageUnavailableError,
-        GrokUsageUnavailableError,
-    ) as exc:
-        raise ProviderUsageUnavailableError(str(exc)) from exc
+        except GrokUsageCredentialsError as exc:
+            raise ProviderUsageCredentialsError(str(exc)) from exc
+        except GrokUsageUnavailableError as exc:
+            raise ProviderUsageUnavailableError(str(exc)) from exc
 
     plugin = find_provider_plugin(provider_id)
     if plugin is not None and plugin.get_usage is not None:
         try:
-            return await plugin.get_usage(ProviderCredentialStore(provider_id))
+            return await plugin.get_usage(_provider_credential_store(provider_id))
         except ValueError as exc:
             raise ProviderUsageCredentialsError(str(exc)) from exc
         except Exception as exc:

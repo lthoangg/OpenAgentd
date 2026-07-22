@@ -1,9 +1,33 @@
 from __future__ import annotations
 
+import importlib
+import subprocess
+import sys
+
 import pytest
 
 from app.agent.providers.plugin_api import ProviderPlugin
 from app.services import provider_usage
+
+
+def test_provider_usage_import_defers_provider_implementations() -> None:
+    code = (
+        "import sys; import app.services.provider_usage; "
+        "eager = sorted(name for name in sys.modules "
+        "if name in {'app.agent.providers.codex.usage', "
+        "'app.agent.providers.copilot.usage', 'app.agent.providers.grok.usage', "
+        "'app.agent.providers.plugin_registry'}); "
+        "assert not eager, f'eager builtin usage imports: {eager}'"
+    )
+
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
 
 
 async def _plugin_usage(credentials):
@@ -53,6 +77,56 @@ async def test_get_provider_usage_plugin_value_error_is_credentials_error(monkey
 
     with pytest.raises(provider_usage.ProviderUsageCredentialsError):
         await provider_usage.get_provider_usage("plugin-oauth")
+
+
+@pytest.mark.parametrize(
+    ("provider_id", "error_name"),
+    [
+        ("codex", "CodexUsageCredentialsError"),
+        ("copilot", "CopilotUsageCredentialsError"),
+        ("grok", "GrokUsageCredentialsError"),
+    ],
+)
+async def test_builtin_credentials_errors_are_mapped(
+    monkeypatch, provider_id: str, error_name: str
+):
+    module = importlib.import_module(f"app.agent.providers.{provider_id}.usage")
+    error_type = getattr(module, error_name)
+
+    async def _raise_credentials_error():
+        raise error_type("credentials missing")
+
+    monkeypatch.setattr(
+        provider_usage, f"get_{provider_id}_usage", _raise_credentials_error
+    )
+
+    with pytest.raises(provider_usage.ProviderUsageCredentialsError):
+        await provider_usage.get_provider_usage(provider_id)
+
+
+@pytest.mark.parametrize(
+    ("provider_id", "error_name"),
+    [
+        ("codex", "CodexUsageUnavailableError"),
+        ("copilot", "CopilotUsageUnavailableError"),
+        ("grok", "GrokUsageUnavailableError"),
+    ],
+)
+async def test_builtin_unavailable_errors_are_mapped(
+    monkeypatch, provider_id: str, error_name: str
+):
+    module = importlib.import_module(f"app.agent.providers.{provider_id}.usage")
+    error_type = getattr(module, error_name)
+
+    async def _raise_unavailable_error():
+        raise error_type("upstream unavailable")
+
+    monkeypatch.setattr(
+        provider_usage, f"get_{provider_id}_usage", _raise_unavailable_error
+    )
+
+    with pytest.raises(provider_usage.ProviderUsageUnavailableError):
+        await provider_usage.get_provider_usage(provider_id)
 
 
 @pytest.mark.asyncio

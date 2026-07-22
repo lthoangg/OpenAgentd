@@ -25,7 +25,7 @@
  * Todos / files / capabilities / scheduler / palette are shared surfaces
  * that must not stack on *either* platform, so those run unconditionally.
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { listCodingWorkspaceFiles } from '@/api/client'
@@ -59,6 +59,7 @@ export interface UseOverlayStateResult {
   codingFileOpenKey: number
   setCodingFileOpenKey: Dispatch<SetStateAction<number>>
   terminalOpenKey: number
+  handledTerminalOpenKeyRef: React.RefObject<number>
   codingSidebarCollapsed: boolean
   setCodingSidebarCollapsed: Dispatch<SetStateAction<boolean>>
   openWorkspaceDialogKey: number
@@ -107,6 +108,7 @@ export function useOverlayState({
   const [codingFileOpenKey, setCodingFileOpenKey] = useState(0)
   // Terminal is coding-mode only for now — cockpit mode has no terminal UI.
   const [terminalOpenKey, setTerminalOpenKey] = useState(0)
+  const handledTerminalOpenKeyRef = useRef(0)
   const [codingSidebarCollapsed, setCodingSidebarCollapsed] = useState(true)
   const [openWorkspaceDialogKey, setOpenWorkspaceDialogKey] = useState(0)
   const [showTodos, setShowTodos] = useState(false)
@@ -358,6 +360,7 @@ export function useOverlayState({
     codingFileOpenKey,
     setCodingFileOpenKey,
     terminalOpenKey,
+    handledTerminalOpenKeyRef,
     codingSidebarCollapsed,
     setCodingSidebarCollapsed,
     openWorkspaceDialogKey,

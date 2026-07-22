@@ -114,6 +114,58 @@ describe('CodingWorkspacePanel terminal tabs', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Close Terminal 1' })).toBeTruthy())
   })
 
+  it('closing a terminal tab and reopening panel keeps terminal closed', async () => {
+    const handledRef = { current: 0 }
+    const { CodingWorkspacePanel } = await import('@/components/CodingWorkspacePanel')
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
+    // Open terminal via terminalOpenKey bump = 1
+    let view: ReturnType<typeof render>
+    await act(async () => {
+      view = render(
+        <QueryClientProvider client={queryClient}>
+          <CodingWorkspacePanel
+            workspace={WORKSPACE}
+            open
+            terminalOpenKey={1}
+            handledTerminalOpenKeyRef={handledRef}
+            onClose={() => {}}
+          />
+        </QueryClientProvider>,
+      )
+    })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Close Terminal 1' })).toBeTruthy())
+
+    // Close the terminal tab
+    await act(async () => {
+      screen.getByRole('button', { name: 'Close Terminal 1' }).click()
+    })
+    expect(screen.queryByRole('button', { name: 'Close Terminal 1' })).toBeNull()
+    expect(useTerminalStore.getState().sessionsForContext(WORKSPACE)).toHaveLength(0)
+
+    // Close panel (unmount)
+    view!.unmount()
+
+    // Reopen panel (terminalOpenKey remains 1 in parent state)
+    await act(async () => {
+      render(
+        <QueryClientProvider client={queryClient}>
+          <CodingWorkspacePanel
+            workspace={WORKSPACE}
+            open
+            terminalOpenKey={1}
+            handledTerminalOpenKeyRef={handledRef}
+            onClose={() => {}}
+          />
+        </QueryClientProvider>,
+      )
+    })
+
+    // Terminal tab should NOT reopen
+    expect(screen.queryByRole('button', { name: /Close Terminal/ })).toBeNull()
+    expect(useTerminalStore.getState().sessionsForContext(WORKSPACE)).toHaveLength(0)
+  })
+
   it('sessions from other contexts are not adopted', async () => {
     useTerminalStore.getState().open({ sessionId: 'sid-1' }, 'session:sid-1')
     await renderPanel(0)

@@ -274,6 +274,7 @@ export function CodingWorkspacePanel({
   selectedFilePath = null,
   selectedFileOpenKey = 0,
   terminalOpenKey = 0,
+  handledTerminalOpenKeyRef: parentHandledTerminalOpenKeyRef,
   onFileSelect,
   onAddComment,
   onOpenPalette,
@@ -296,6 +297,7 @@ export function CodingWorkspacePanel({
   /** Bump to open (or focus) the Terminal tab — ⌘⇧` / palette. Key 0 is
    *  the mount default and is ignored; only increments act. */
   terminalOpenKey?: number
+  handledTerminalOpenKeyRef?: React.RefObject<number | null>
   onFileSelect?: (file: WorkspaceFileInfo | null) => void
   onAddComment?: (path: string, startLine: number, endLine: number) => void
   onOpenPalette?: () => void
@@ -539,13 +541,24 @@ export function CodingWorkspacePanel({
   // Parent-driven open requests (⌘⇧` shortcut, command palette). Same
   // bump-key pattern as selectedFileOpenKey: only a fresh increment acts,
   // so background re-renders never re-open a tab the user closed.
-  const handledTerminalOpenKeyRef = useRef(0)
+  const fallbackHandledTerminalOpenKeyRef = useRef(0)
+  const handledTerminalOpenKeyRef = parentHandledTerminalOpenKeyRef ?? fallbackHandledTerminalOpenKeyRef
   useEffect(() => {
+    if (handledTerminalOpenKeyRef.current === null) {
+      handledTerminalOpenKeyRef.current = 0
+    }
     if (terminalOpenKey > handledTerminalOpenKeyRef.current) {
       handledTerminalOpenKeyRef.current = terminalOpenKey
       focusOrOpenTerminal()
     }
-  }, [terminalOpenKey, focusOrOpenTerminal])
+  }, [terminalOpenKey, focusOrOpenTerminal, handledTerminalOpenKeyRef])
+
+  // Reset active tab to review if active tab was closed (e.g. terminal tab closed directly via store).
+  useEffect(() => {
+    if (activeTabId !== 'review' && !tabs.some((tab) => tab.id === activeTabId)) {
+      setActiveTabId('review')
+    }
+  }, [tabs, activeTabId])
   const closeTab = (id: string) => {
     if (id === 'review') return
     const terminalTab = tabs.find(

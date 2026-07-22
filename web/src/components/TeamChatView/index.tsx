@@ -196,6 +196,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     codingFileOpenKey,
     setCodingFileOpenKey,
     terminalOpenKey,
+    handledTerminalOpenKeyRef,
     codingSidebarCollapsed,
     setCodingSidebarCollapsed,
     openWorkspaceDialogKey,
@@ -651,6 +652,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
               selectedFilePath={codingFileViewer?.path ?? null}
               selectedFileOpenKey={codingFileOpenKey}
               terminalOpenKey={terminalOpenKey}
+              handledTerminalOpenKeyRef={handledTerminalOpenKeyRef}
               onFileSelect={handleCodingFileSelect}
               onAddComment={handleAddFileComment}
               onOpenPalette={handleTogglePalette}

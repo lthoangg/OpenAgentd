@@ -57,24 +57,19 @@ export function SessionModelSettings({
   }, [sessionModel, sessionThinkingLevel, sessionFastMode, defaultModel])
 
   const modelOptions = useMemo(() => registry.data?.models ?? [], [registry.data?.models])
-  // Keep the saved/draft model visible in the list even if it isn't (yet) in
-  // the registry — mirrors the Settings/Agents combobox so a previously saved
-  // model id never silently disappears from the picker.
+  const savedModel = sessionModel ?? defaultModel ?? ''
+  // Keep a previously saved model visible even if it isn't (yet) in the
+  // registry, but never turn an in-progress search query into an option.
   const currentModelOptions = useMemo(() => {
     const filtered = modelOptions.filter((m) => !m.output_image && !m.output_video)
-    const id = draftModel.trim()
-    // Only inject a synthetic entry for a fully-qualified "provider:model" id
-    // that isn't in the registry yet (previously-saved model). Partial input
-    // that lacks the colon separator is mid-typing and must never appear as a
-    // list item — the first dropdown item must always be a real registry entry.
-    if (!id || !id.includes(':')) return filtered
+    const id = savedModel.trim()
+    if (!id) return filtered
     if (filtered.some((model) => model.id === id)) return filtered
     const colonIdx = id.indexOf(':')
-    const provider = id.slice(0, colonIdx)
-    const model = id.slice(colonIdx + 1)
+    const provider = colonIdx >= 0 ? id.slice(0, colonIdx) : id
+    const model = colonIdx >= 0 ? id.slice(colonIdx + 1) : id
     return [...filtered, { id, provider, model, vision: false }]
-  }, [draftModel, modelOptions])
-  const savedModel = sessionModel ?? defaultModel ?? ''
+  }, [modelOptions, savedModel])
   const savedThinkingLevel = sessionThinkingLevel ?? ''
   const savedFastMode = sessionFastMode
   const dirty =
@@ -143,7 +138,18 @@ export function SessionModelSettings({
   const selectedThinkingLabel = thinkingLevelOptions.find((level) => level.value === draftThinkingLevel)?.label ?? 'Default'
 
   return (
-    <section className="shrink-0 border-b border-(--color-border) bg-(--bg-page) px-3 py-3 sm:px-5 sm:py-4">
+    <form
+      className="shrink-0 border-b border-(--color-border) bg-(--bg-page) px-3 py-3 sm:px-5 sm:py-4"
+      onSubmit={(event) => {
+        event.preventDefault()
+        if (!dirty || !modelValid) return
+        onChange(
+          trimmedDraftModel && trimmedDraftModel !== defaultModel ? trimmedDraftModel : null,
+          draftThinkingLevel || null,
+          fastModeAvailable && draftFastMode,
+        )
+      }}
+    >
       <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold text-(--color-text)">Current session</h3>
@@ -167,19 +173,12 @@ export function SessionModelSettings({
             Cancel
           </Button>
           <Button
-            type="button"
+            type="submit"
             size="xs"
             className="h-8 px-2 text-[10.5px]"
             disabled={!dirty || !modelValid}
-            onClick={() => {
-              onChange(
-                trimmedDraftModel && trimmedDraftModel !== defaultModel ? trimmedDraftModel : null,
-                draftThinkingLevel || null,
-                fastModeAvailable && draftFastMode,
-              )
-            }}
           >
-            Save
+            Apply
           </Button>
         </div>
       </div>
@@ -256,6 +255,6 @@ export function SessionModelSettings({
           </div>
         </label>
       </div>
-    </section>
+    </form>
   )
 }

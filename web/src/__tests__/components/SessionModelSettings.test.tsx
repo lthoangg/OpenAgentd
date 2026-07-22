@@ -208,9 +208,9 @@ describe('SessionModelSettings', () => {
 
     await waitFor(() => expect(thinkingButton.textContent).toBe('Default'))
 
-    const saveButton = await screen.findByRole('button', { name: 'Save' })
-    expect((saveButton as HTMLButtonElement).disabled).toBe(false)
-    fireEvent.click(saveButton)
+    const applyButton = await screen.findByRole('button', { name: 'Apply' })
+    expect((applyButton as HTMLButtonElement).disabled).toBe(false)
+    fireEvent.click(applyButton)
 
     expect(onChange).toHaveBeenCalledWith('openai:gpt-4o', null, false)
   })
@@ -236,8 +236,8 @@ describe('SessionModelSettings — Fast mode', () => {
     expect(screen.getByLabelText('About Fast mode')).toBeTruthy()
   })
 
-  it('toggling the checkbox enables fast mode on save', async () => {
-    // The model must resolve in the registry for Save to be enabled
+  it('toggling the checkbox enables fast mode on apply', async () => {
+    // The model must resolve in the registry for Apply to be enabled
     // (modelValid gate), so serve a matching codex model.
     globalThis.fetch = mock(async () =>
       new Response(JSON.stringify({
@@ -251,10 +251,10 @@ describe('SessionModelSettings — Fast mode', () => {
     const onChange = mock(() => undefined)
     renderPanel({ sessionModel: 'codex:gpt-5', sessionFastMode: false, onChange })
 
-    const save = await screen.findByRole('button', { name: 'Save' })
+    const apply = await screen.findByRole('button', { name: 'Apply' })
     fireEvent.click(screen.getByRole('checkbox', { name: 'Fast mode' }))
-    await waitFor(() => expect((save as HTMLButtonElement).disabled).toBe(false))
-    fireEvent.click(save)
+    await waitFor(() => expect((apply as HTMLButtonElement).disabled).toBe(false))
+    fireEvent.click(apply)
 
     expect(onChange).toHaveBeenCalledWith('codex:gpt-5', null, true)
   })
@@ -394,6 +394,43 @@ describe('SessionModelSettings — model combobox injection guard', () => {
     const options = Array.from(listbox!.querySelectorAll('[role="option"]'))
     // No real options match, so the typed value must not be injected either
     expect(options.map((o) => o.textContent?.trim())).not.toContain('zzznomatch')
+  })
+
+  it('fuzzy fully-qualified text only shows matching registry models', async () => {
+    const user = userEvent.setup()
+    stubRegistry()
+    renderPanel()
+
+    const input = await screen.findByRole('combobox', { name: 'Search session model' })
+    await waitFor(() => expect((globalThis.fetch as ReturnType<typeof mock>).mock.calls.length).toBeGreaterThan(0))
+    await user.click(input)
+    await user.clear(input)
+    await user.type(input, 'opnai:gpt4o')
+
+    const listbox = document.querySelector('[role="listbox"]')
+    expect(listbox).toBeTruthy()
+    const options = Array.from(listbox!.querySelectorAll('[role="option"]'))
+    expect(options.map((o) => o.textContent?.trim())).toEqual(['openai:gpt-4o'])
+  })
+
+  it('selects a fuzzy result on Enter and applies it on the next Enter', async () => {
+    const user = userEvent.setup()
+    const onChange = mock(() => undefined)
+    stubRegistry()
+    renderPanel({ onChange })
+
+    const input = await screen.findByRole('combobox', { name: 'Search session model' })
+    await waitFor(() => expect((globalThis.fetch as ReturnType<typeof mock>).mock.calls.length).toBeGreaterThan(0))
+    await user.click(input)
+    await user.clear(input)
+    await user.type(input, 'opnai:gpt4o')
+
+    await user.keyboard('{Enter}')
+    expect((input as HTMLInputElement).value).toBe('openai:gpt-4o')
+    expect(onChange).not.toHaveBeenCalled()
+
+    await user.keyboard('{Enter}')
+    expect(onChange).toHaveBeenCalledWith('openai:gpt-4o', null, false)
   })
 
   // ── Preserved behaviour: previously-saved model kept in the list ──────────

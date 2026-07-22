@@ -10,7 +10,7 @@ that contract: validation + rollback semantics, but no live team swap.
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 from fastapi import FastAPI
@@ -255,6 +255,138 @@ async def test_registry_returns_catalog(
 
 
 @pytest.mark.asyncio
+async def test_model_cache_warmup_skips_unreachable_daemon_provider(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.api.routes import agents as agents_routes
+    from app.api.routes import settings as settings_routes
+    from app.core import runtime_settings
+
+    monkeypatch.setattr(
+        agents_routes,
+        "all_providers",
+        lambda: [{"id": "ollama", "kind": "local", "label": "Ollama"}],
+    )
+    monkeypatch.setattr(agents_routes, "_provider_is_configured", lambda _entry: True)
+    monkeypatch.setattr(
+        agents_routes,
+        "load_runtime_settings",
+        lambda: runtime_settings.RuntimeSettings(),
+    )
+    reachable = AsyncMock(return_value=False)
+    discover = AsyncMock(return_value=["model-that-must-not-load"])
+    monkeypatch.setattr(settings_routes, "_provider_is_reachable", reachable)
+    monkeypatch.setattr(
+        "app.agent.providers.model_discovery.discover_provider_models", discover
+    )
+
+    await agents_routes._warm_provider_model_cache()
+
+    reachable.assert_awaited_once()
+    discover.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_registry_reloads_settings_after_warming_provider_models_once(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Warmup saves are included in the registry's one refreshed UI snapshot."""
+    from app.api.routes import agents as agents_routes
+    from app.core import runtime_settings
+
+    snapshot = runtime_settings.RuntimeSettings(
+        providers={"openai": runtime_settings.ProviderUiSettings()}
+    )
+    load_settings = Mock(return_value=snapshot)
+    monkeypatch.setattr(agents_routes, "load_runtime_settings", load_settings)
+    monkeypatch.setattr(
+        agents_routes,
+        "all_providers",
+        lambda: [{"id": "openai", "kind": "api_key", "label": "OpenAI"}],
+    )
+    monkeypatch.setattr(agents_routes, "_provider_is_configured", lambda _entry: True)
+    monkeypatch.setattr(
+        "app.agent.providers.model_discovery.discover_provider_models",
+        AsyncMock(return_value=["gpt-5"]),
+    )
+
+    def _save_warmed_models(provider_id: str, models: list[str]) -> None:
+        snapshot.providers[provider_id] = runtime_settings.ProviderUiSettings(
+            cached_models=models
+        )
+
+    monkeypatch.setattr(
+        agents_routes, "set_provider_cached_models", _save_warmed_models
+    )
+    monkeypatch.setattr("app.agent.loader._default_tool_registry", lambda: {})
+    monkeypatch.setattr(agents_routes, "discover_skills", lambda: {})
+    monkeypatch.setattr(
+        "app.agent.providers.model_registry.load_model_registry", lambda: {}
+    )
+
+    registry = await agents_routes.get_registry()
+
+    assert [model.id for model in registry.models] == ["openai:gpt-5"]
+    assert load_settings.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_registry_filters_cached_models_using_refreshed_visible_models(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.api.routes import agents as agents_routes
+    from app.core.runtime_settings import ProviderUiSettings, RuntimeSettings
+
+    load_settings = Mock(
+        return_value=RuntimeSettings(
+            providers={
+                "openai": ProviderUiSettings(
+                    cached_models=["shown-model", "hidden-model"],
+                    visible_models=["shown-model"],
+                )
+            }
+        )
+    )
+    monkeypatch.setattr(agents_routes, "load_runtime_settings", load_settings)
+    monkeypatch.setattr(
+        agents_routes,
+        "all_providers",
+        lambda: [{"id": "openai", "kind": "api_key", "label": "OpenAI"}],
+    )
+    monkeypatch.setattr(agents_routes, "_provider_is_configured", lambda _entry: False)
+    monkeypatch.setattr(agents_routes, "is_agent_model_id", lambda _model_id: True)
+
+    registry = await agents_routes.get_registry()
+
+    model_ids = {model.id for model in registry.models}
+    assert "openai:shown-model" in model_ids
+    assert "openai:hidden-model" not in model_ids
+    assert load_settings.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_is_registered_model_reads_provider_ui_state_from_one_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.api.routes import agents as agents_routes
+    from app.core import runtime_settings
+
+    load_settings = Mock(
+        return_value=runtime_settings.RuntimeSettings(
+            providers={
+                "openai": runtime_settings.ProviderUiSettings(
+                    cached_models=["gpt-5"], visible_models=["gpt-5"]
+                )
+            }
+        )
+    )
+    monkeypatch.setattr(agents_routes, "load_runtime_settings", load_settings)
+
+    assert await agents_routes.is_registered_model_id("openai:gpt-5") is True
+    assert load_settings.call_count == 1
+
+
+@pytest.mark.asyncio
 async def test_registry_model_fast_mode_matches_provider_support(
     client: AsyncClient, monkeypatch: pytest.MonkeyPatch
 ):
@@ -265,18 +397,21 @@ async def test_registry_model_fast_mode_matches_provider_support(
     fast_provider = next(e for e in _CATALOG if e.get("supports_fast_mode"))
     slow_provider = next(e for e in _CATALOG if not e.get("supports_fast_mode"))
 
+    from app.api.routes import agents as agents_routes
+    from app.core.runtime_settings import ProviderUiSettings, RuntimeSettings
+
     monkeypatch.setattr(
-        "app.api.routes.agents.provider_is_disconnected", lambda pid: False
-    )
-    monkeypatch.setattr("app.api.routes.agents.provider_visible_models", lambda pid: [])
-    monkeypatch.setattr(
-        "app.api.routes.agents.provider_cached_models",
-        lambda pid: (
-            ["test-fast-model"]
-            if pid == fast_provider["id"]
-            else ["test-slow-model"]
-            if pid == slow_provider["id"]
-            else []
+        agents_routes,
+        "load_runtime_settings",
+        lambda: RuntimeSettings(
+            providers={
+                fast_provider["id"]: ProviderUiSettings(
+                    cached_models=["test-fast-model"]
+                ),
+                slow_provider["id"]: ProviderUiSettings(
+                    cached_models=["test-slow-model"]
+                ),
+            }
         ),
     )
     monkeypatch.setattr("app.api.routes.agents.is_agent_model_id", lambda mid: True)
@@ -316,13 +451,17 @@ async def test_registry_plugin_provider_fast_mode_stamped(
         "app.agent.providers.plugin_registry.provider_plugins",
         lambda: {"myfastplugin": fast_plugin},
     )
+    from app.api.routes import agents as agents_routes
+    from app.core.runtime_settings import ProviderUiSettings, RuntimeSettings
+
     monkeypatch.setattr(
-        "app.api.routes.agents.provider_is_disconnected", lambda pid: False
-    )
-    monkeypatch.setattr("app.api.routes.agents.provider_visible_models", lambda pid: [])
-    monkeypatch.setattr(
-        "app.api.routes.agents.provider_cached_models",
-        lambda pid: ["plugin-model"] if pid == "myfastplugin" else [],
+        agents_routes,
+        "load_runtime_settings",
+        lambda: RuntimeSettings(
+            providers={
+                "myfastplugin": ProviderUiSettings(cached_models=["plugin-model"])
+            }
+        ),
     )
     monkeypatch.setattr("app.api.routes.agents.is_agent_model_id", lambda mid: True)
 

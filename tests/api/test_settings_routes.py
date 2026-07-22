@@ -192,6 +192,57 @@ def test_list_providers_returns_catalog(monkeypatch: pytest.MonkeyPatch) -> None
     assert data["has_any_configured"] is False
 
 
+def test_list_providers_reads_provider_ui_state_from_one_settings_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One catalog response uses a consistent, single settings.yaml snapshot."""
+    from app.core import runtime_settings
+
+    snapshot = runtime_settings.RuntimeSettings(
+        providers={
+            "googlegenai": runtime_settings.ProviderUiSettings(
+                cached_models=["gemini-cached"],
+                visible_models=["gemini-visible"],
+                is_disconnected=True,
+            )
+        }
+    )
+    refreshed_snapshot = runtime_settings.RuntimeSettings(
+        providers={
+            "googlegenai": runtime_settings.ProviderUiSettings(
+                cached_models=["gemini-refreshed"],
+                visible_models=["gemini-refreshed"],
+            )
+        }
+    )
+    load_settings = Mock(side_effect=[snapshot, refreshed_snapshot])
+    monkeypatch.setattr(runtime_settings, "load_runtime_settings", load_settings)
+
+    client = TestClient(_make_app())
+    response = client.get("/api/settings/providers")
+
+    assert response.status_code == 200
+    google = next(
+        provider
+        for provider in response.json()["providers"]
+        if provider["id"] == "googlegenai"
+    )
+    assert google["cached_models"] == ["gemini-cached"]
+    assert google["visible_models"] == ["gemini-visible"]
+    assert google["is_disconnected"] is True
+
+    refreshed = client.get("/api/settings/providers")
+    refreshed_google = next(
+        provider
+        for provider in refreshed.json()["providers"]
+        if provider["id"] == "googlegenai"
+    )
+    assert refreshed_google["cached_models"] == ["gemini-refreshed"]
+    assert refreshed_google["visible_models"] == ["gemini-refreshed"]
+    assert refreshed_google["is_disconnected"] is False
+    assert load_settings.call_count == 2
+
+
 def test_list_providers_marks_configured_when_env_var_set(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

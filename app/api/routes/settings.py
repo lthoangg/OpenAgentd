@@ -23,7 +23,6 @@ from app.agent.sandbox_config import SandboxFileConfig, load_config, save_config
 from app.core.config import settings
 from app.core.runtime_settings import (
     clear_provider_cached_models,
-    provider_cached_models,
     provider_is_disconnected,
     provider_visible_models,
     set_provider_cached_models,
@@ -383,8 +382,10 @@ async def list_providers() -> ProvidersListBody:
     isn't running.
     """
     from app.agent.providers.catalog import all_providers
+    from app.core.runtime_settings import ProviderUiSettings, load_runtime_settings
 
     entries = all_providers()
+    provider_ui_settings = load_runtime_settings().providers
     saved_states = [_provider_is_configured(entry) for entry in entries]
     reachability = await asyncio.gather(
         *(_provider_is_reachable(entry) for entry in entries),
@@ -394,6 +395,7 @@ async def list_providers() -> ProvidersListBody:
     for entry, is_saved, is_configured in zip(
         entries, saved_states, reachability, strict=True
     ):
+        provider_ui = provider_ui_settings.get(entry["id"], ProviderUiSettings())
         out.append(
             ProviderInfo(
                 id=entry["id"],
@@ -409,9 +411,9 @@ async def list_providers() -> ProvidersListBody:
                 is_configured=is_configured,
                 is_saved=is_saved,
                 is_reachable=is_configured if is_saved else None,
-                cached_models=provider_cached_models(entry["id"]),
-                visible_models=provider_visible_models(entry["id"]),
-                is_disconnected=provider_is_disconnected(entry["id"]),
+                cached_models=provider_ui.cached_models,
+                visible_models=provider_ui.visible_models,
+                is_disconnected=provider_ui.is_disconnected,
                 supports_fast_mode=entry.get("supports_fast_mode", False),
             )
         )

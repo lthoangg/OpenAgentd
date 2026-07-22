@@ -18,16 +18,15 @@ from pydantic import ValidationError
 from app.agent.loader import AgentConfig
 from app.agent.hooks.summarization import resolve_prompt_token_threshold
 from app.agent.providers.capabilities import get_capabilities
-from app.agent.providers.catalog import all_providers
+from app.agent.providers.catalog import ProviderEntry, all_providers
 from app.agent.providers.model_metadata import get_model_thinking_levels
 from app.agent.providers.model_discovery import (
     filter_agent_model_ids,
     is_agent_model_id,
 )
 from app.core.runtime_settings import (
-    provider_cached_models,
-    provider_is_disconnected,
-    provider_visible_models,
+    ProviderUiSettings,
+    load_runtime_settings,
     set_provider_cached_models,
 )
 from app.agent.tools.builtin.skill import discover_skills
@@ -222,12 +221,36 @@ async def _warm_provider_model_cache() -> None:
     from app.agent.providers.model_discovery import discover_provider_models
 
     provider_entries = list(all_providers())
+    provider_ui_settings = load_runtime_settings().providers
+    candidates = []
+    for entry in provider_entries:
+        provider_ui = provider_ui_settings.get(entry["id"], ProviderUiSettings())
+        if (
+            _provider_is_configured(entry)
+            and not provider_ui.is_disconnected
+            and not provider_ui.cached_models
+        ):
+            candidates.append(entry)
+    if not candidates:
+        return
+
+    # Static configuration treats local daemons optimistically. Probe them
+    # before model discovery so a stopped Ollama/router cannot hold the registry
+    # request in the provider discovery retry path.
+    from app.api.routes.settings import _DAEMON_PROVIDER_IDS, _provider_is_reachable
+
+    async def _candidate_is_reachable(entry: ProviderEntry) -> bool:
+        if entry["id"] not in _DAEMON_PROVIDER_IDS:
+            return True
+        return await _provider_is_reachable(entry)
+
+    reachable = await asyncio.gather(
+        *(_candidate_is_reachable(entry) for entry in candidates)
+    )
     configured = [
         entry
-        for entry in provider_entries
-        if _provider_is_configured(entry)
-        and not provider_is_disconnected(entry["id"])
-        and not provider_cached_models(entry["id"])
+        for entry, is_reachable in zip(candidates, reachable, strict=True)
+        if is_reachable
     ]
     if not configured:
         return
@@ -279,16 +302,19 @@ async def list_agents() -> AgentListResponse:
 async def get_registry() -> RegistryResponse:
     """Dropdown catalog: tools, skills, providers, known models."""
     from app.agent.loader import _default_tool_registry
-    from app.core.runtime_settings import load_runtime_settings
 
     await _warm_provider_model_cache()
 
     try:
+        runtime_settings = load_runtime_settings()
         _custom_threshold: int | None = (
-            load_runtime_settings().summarization.prompt_token_threshold
+            runtime_settings.summarization.prompt_token_threshold
         )
     except Exception:
+        # Preserve the previous route behavior: threshold parsing failures were
+        # ignored here, but provider UI reads still surfaced settings errors.
         _custom_threshold = None
+        runtime_settings = load_runtime_settings()
 
     def _effective_summary_trigger(mid: str) -> int:
         return resolve_prompt_token_threshold(mid, _custom_threshold)
@@ -354,15 +380,14 @@ async def get_registry() -> RegistryResponse:
 
     static_registry = load_model_registry()
 
-    visible_by_provider: dict[str, set[str]] = {}
+    provider_ui_settings = runtime_settings.providers
     for provider in providers:
-        if provider_is_disconnected(provider):
+        provider_ui = provider_ui_settings.get(provider, ProviderUiSettings())
+        if provider_ui.is_disconnected:
             continue
-        visible = visible_by_provider.setdefault(
-            provider, set(provider_visible_models(provider))
-        )
+        visible = set(provider_ui.visible_models)
         # 1. Add cached/discovered agent models
-        for model in provider_cached_models(provider):
+        for model in provider_ui.cached_models:
             model_id = f"{provider}:{model}"
             if is_agent_model_id(model_id):
                 if not visible or model in visible:
@@ -396,13 +421,14 @@ async def is_registered_model_id(model_id: str) -> bool:
     if not provider or not model:
         return False
 
-    if provider_is_disconnected(provider):
+    provider_ui = load_runtime_settings().providers.get(provider, ProviderUiSettings())
+    if provider_ui.is_disconnected:
         return False
 
-    visible = set(provider_visible_models(provider))
+    visible = set(provider_ui.visible_models)
     if visible and model not in visible:
         return False
-    return model in set(filter_agent_model_ids(provider_cached_models(provider)))
+    return model in set(filter_agent_model_ids(provider_ui.cached_models))
 
 
 @router.get("/{name}")

@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
+import yaml
 
 from app.agent.sandbox_config import (
     DEFAULT_DENIED_PATTERNS,
@@ -21,12 +23,112 @@ def test_load_missing_file_returns_seed_defaults(tmp_path: Path) -> None:
     assert not (tmp_path / "absent.yaml").exists()
 
 
+def test_load_config_reuses_unchanged_content_without_reparsing(tmp_path: Path) -> None:
+    target = tmp_path / "sandbox.yaml"
+    target.write_text("denied_patterns: ['**/secrets/**']\n", encoding="utf-8")
+
+    with patch("app.agent.sandbox_config.yaml.safe_load", wraps=yaml.safe_load) as load:
+        assert load_config(target).denied_patterns == ["**/secrets/**"]
+        assert load_config(target).denied_patterns == ["**/secrets/**"]
+
+    assert load.call_count == 1
+
+
+def test_load_config_does_not_cache_oversized_content(tmp_path: Path) -> None:
+    target = tmp_path / "sandbox.yaml"
+    target.write_text(
+        "denied_patterns: ['**/secrets/**']\n# " + ("x" * 200_000),
+        encoding="utf-8",
+    )
+
+    with patch("app.agent.sandbox_config.yaml.safe_load", wraps=yaml.safe_load) as load:
+        assert load_config(target).denied_patterns == ["**/secrets/**"]
+        assert load_config(target).denied_patterns == ["**/secrets/**"]
+
+    assert load.call_count == 2
+
+
+def test_load_config_returns_fresh_mutable_config_from_cached_content(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "sandbox.yaml"
+    target.write_text("denied_patterns: ['**/secrets/**']\n", encoding="utf-8")
+
+    first = load_config(target)
+    first.denied_patterns.append("**/mutated/**")
+
+    assert load_config(target).denied_patterns == ["**/secrets/**"]
+
+
+def test_load_config_sees_direct_same_size_content_edit(tmp_path: Path) -> None:
+    target = tmp_path / "sandbox.yaml"
+    target.write_text("denied_patterns: ['**/alpha/**']\n", encoding="utf-8")
+    assert load_config(target).denied_patterns == ["**/alpha/**"]
+
+    # Deliberately same byte length: metadata-only keys can miss this edit.
+    target.write_text("denied_patterns: ['**/bravo/**']\n", encoding="utf-8")
+
+    assert load_config(target).denied_patterns == ["**/bravo/**"]
+
+
+def test_save_config_invalidates_cached_content(tmp_path: Path) -> None:
+    target = tmp_path / "sandbox.yaml"
+    target.write_text("denied_patterns: ['**/before/**']\n", encoding="utf-8")
+
+    with patch("app.agent.sandbox_config.yaml.safe_load", wraps=yaml.safe_load) as load:
+        assert load_config(target).denied_patterns == ["**/before/**"]
+        # Identical content would otherwise match the content key, so this
+        # proves save_config invalidates rather than merely relying on a miss.
+        save_config(SandboxFileConfig(denied_patterns=["**/before/**"]), target)
+        assert load_config(target).denied_patterns == ["**/before/**"]
+
+    assert load.call_count == 2
+
+
+def test_load_config_does_not_cache_malformed_errors(tmp_path: Path) -> None:
+    target = tmp_path / "sandbox.yaml"
+    target.write_text("not: valid: yaml: [\n", encoding="utf-8")
+
+    with patch("app.agent.sandbox_config.yaml.safe_load", wraps=yaml.safe_load) as load:
+        for _ in range(2):
+            with pytest.raises(ValueError, match="Invalid YAML"):
+                load_config(target)
+
+    assert load.call_count == 2
+
+
+def test_load_config_recovers_after_malformed_file_is_fixed(tmp_path: Path) -> None:
+    target = tmp_path / "sandbox.yaml"
+    target.write_text("not: valid: yaml: [\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="Invalid YAML"):
+        load_config(target)
+
+    target.write_text("denied_patterns: ['**/recovered/**']\n", encoding="utf-8")
+
+    assert load_config(target).denied_patterns == ["**/recovered/**"]
+
+
 def test_save_then_load_roundtrip(tmp_path: Path) -> None:
     target = tmp_path / "sandbox.yaml"
     save_config(SandboxFileConfig(denied_patterns=["**/foo", "bar/*"]), target)
 
     cfg = load_config(target)
     assert cfg.denied_patterns == ["**/foo", "bar/*"]
+
+
+def test_cached_patterns_preserve_sandbox_denial_behavior(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.agent.sandbox import SandboxConfig
+
+    target = tmp_path / "sandbox.yaml"
+    target.write_text("denied_patterns: ['**/secrets/**']\n", encoding="utf-8")
+    monkeypatch.setattr("app.agent.sandbox_config.config_path", lambda: target)
+
+    sandbox = SandboxConfig(workspace=str(tmp_path / "workspace"), denied_roots=[])
+
+    with pytest.raises(PermissionError):
+        sandbox.validate_path(tmp_path / "workspace" / "secrets" / "token.txt")
 
 
 def test_load_drops_blank_patterns(tmp_path: Path) -> None:

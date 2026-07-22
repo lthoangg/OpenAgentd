@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+from functools import lru_cache
 from pathlib import Path
 
 import yaml
@@ -27,6 +28,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.core.config import settings
 
 _CONFIG_FILENAME = "sandbox.yaml"
+_PARSED_CONFIG_CACHE_MAX_SIZE = 64
+_MAX_CACHED_CONFIG_CHARS = 128 * 1024
 
 #: Patterns seeded into a freshly-created ``sandbox.yaml``.  Chosen to
 #: cover the most common "sensitive file" case without being noisy.
@@ -52,6 +55,25 @@ def config_path() -> Path:
     return Path(settings.OPENAGENTD_CONFIG_DIR) / _CONFIG_FILENAME
 
 
+def _parse_config_text(path: Path, text: str) -> tuple[str, ...]:
+    try:
+        raw = yaml.safe_load(text) or {}
+    except yaml.YAMLError as exc:
+        raise ValueError(f"Invalid YAML in {path}: {exc}") from exc
+
+    if not isinstance(raw, dict):
+        raise ValueError(f"{path}: expected a YAML mapping at top level")
+
+    cfg = SandboxFileConfig.model_validate(raw)
+    return tuple(pattern for pattern in cfg.denied_patterns if pattern.strip())
+
+
+@lru_cache(maxsize=_PARSED_CONFIG_CACHE_MAX_SIZE)
+def _parse_config(path: Path, text: str) -> tuple[str, ...]:
+    """Parse successful config content into immutable cached patterns."""
+    return _parse_config_text(path, text)
+
+
 def load_config(path: Path | None = None) -> SandboxFileConfig:
     """Load ``sandbox.yaml`` from disk.
 
@@ -66,17 +88,12 @@ def load_config(path: Path | None = None) -> SandboxFileConfig:
     if not resolved.exists():
         return SandboxFileConfig()
 
-    try:
-        raw = yaml.safe_load(resolved.read_text(encoding="utf-8")) or {}
-    except yaml.YAMLError as exc:
-        raise ValueError(f"Invalid YAML in {resolved}: {exc}") from exc
-
-    if not isinstance(raw, dict):
-        raise ValueError(f"{resolved}: expected a YAML mapping at top level")
-
-    cfg = SandboxFileConfig.model_validate(raw)
-    cfg.denied_patterns = [p for p in cfg.denied_patterns if p.strip()]
-    return cfg
+    text = resolved.read_text(encoding="utf-8")
+    parser = (
+        _parse_config if len(text) <= _MAX_CACHED_CONFIG_CHARS else _parse_config_text
+    )
+    patterns = parser(resolved.absolute(), text)
+    return SandboxFileConfig(denied_patterns=list(patterns))
 
 
 def save_config(cfg: SandboxFileConfig, path: Path | None = None) -> Path:
@@ -107,4 +124,5 @@ def save_config(cfg: SandboxFileConfig, path: Path | None = None) -> Path:
         resolved,
         len(cfg.denied_patterns),
     )
+    _parse_config.cache_clear()
     return resolved

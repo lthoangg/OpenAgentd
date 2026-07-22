@@ -22,15 +22,20 @@ from app.agent.providers.model_registry import load_model_registry
 class ModelLimits:
     """Token limits for one model.
 
-    ``None`` means unknown, not unlimited.
+    ``context_length`` is the total input-plus-output window;
+    ``max_input_tokens`` and ``max_completion_tokens`` are the directional
+    limits when the provider publishes them. ``None`` means unknown, not
+    unlimited.
     """
 
     context_length: int | None = None
+    max_input_tokens: int | None = None
     max_completion_tokens: int | None = None
 
     def to_dict(self) -> dict[str, int | None]:
         return {
             "context_length": self.context_length,
+            "max_input_tokens": self.max_input_tokens,
             "max_completion_tokens": self.max_completion_tokens,
         }
 
@@ -201,6 +206,9 @@ def _merge_metadata(spec: dict[str, Any]) -> ModelMetadata:
         limits=ModelLimits(
             context_length=_positive_int(
                 limits_spec.get("context_length"), "limits.context_length"
+            ),
+            max_input_tokens=_positive_int(
+                limits_spec.get("max_input_tokens"), "limits.max_input_tokens"
             ),
             max_completion_tokens=_positive_int(
                 limits_spec.get("max_completion_tokens"),

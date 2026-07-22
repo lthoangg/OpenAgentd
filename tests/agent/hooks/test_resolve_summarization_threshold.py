@@ -75,6 +75,26 @@ def test_resolve_returns_auto_for_unknown_model_when_custom_exceeds_default():
     )
 
 
+def test_prompt_threshold_uses_input_limit_when_lower_than_context(monkeypatch):
+    """Reserve headroom against the model's prompt cap, not total context."""
+    from types import SimpleNamespace
+
+    import app.agent.hooks.summarization as summ_mod
+
+    monkeypatch.setattr(
+        summ_mod,
+        "get_model_limits",
+        lambda mid: SimpleNamespace(
+            context_length=400_000,
+            max_input_tokens=272_000,
+        ),
+    )
+
+    assert prompt_token_threshold_for_model("codex:gpt-5.4-mini") == int(
+        272_000 * PROMPT_TOKEN_THRESHOLD_CONTEXT_RATIO
+    )
+
+
 def test_resolve_large_context_model_no_cap(monkeypatch):
     """Large-context models get the full 80% — there is no artificial upper cap."""
     import app.agent.hooks.summarization as summ_mod

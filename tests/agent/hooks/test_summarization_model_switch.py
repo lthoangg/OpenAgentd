@@ -22,12 +22,16 @@ from app.agent.hooks.summarization import (
 
 
 def test_model_a_threshold():
-    """codex:gpt-5.5 has ~1M context → threshold = 80% of that."""
+    """codex:gpt-5.5 threshold is 80% of its lower prompt-capacity limit."""
     from app.agent.providers.model_metadata import get_model_limits
 
-    context = get_model_limits("codex:gpt-5.5").context_length
-    assert context is not None, "codex:gpt-5.5 must have a known context length"
-    expected = int(context * PROMPT_TOKEN_THRESHOLD_CONTEXT_RATIO)
+    limits = get_model_limits("codex:gpt-5.5")
+    assert limits.context_length is not None
+    assert limits.max_input_tokens is not None
+    expected = int(
+        min(limits.context_length, limits.max_input_tokens)
+        * PROMPT_TOKEN_THRESHOLD_CONTEXT_RATIO
+    )
     assert prompt_token_threshold_for_model("codex:gpt-5.5") == expected
     # Sanity: should be substantially more than the fallback default
     assert expected > 500_000
@@ -53,7 +57,7 @@ def test_threshold_changes_when_session_switches_model():
     The threshold returned by resolve_prompt_token_threshold must reflect
     the *currently active* model at each turn, not the original agent config model.
     """
-    model_a = "codex:gpt-5.5"  # ~1M context → ~840k threshold
+    model_a = "codex:gpt-5.5"  # 922k prompt cap → ~737.6k threshold
     model_b = "openai:gpt-realtime-2"  # 32K context → ~25.6k threshold
 
     threshold_a = prompt_token_threshold_for_model(model_a)
@@ -113,9 +117,9 @@ def test_custom_setting_respected_on_model_switch(
 ):
     """A user-set custom threshold is applied relative to each model's auto value.
 
-    If model A auto=840k and model B auto=160k, and the user sets custom=200k:
-    - model A: custom(200k) < auto(840k) → use 200k
-    - model B: custom(200k) >= auto(160k) → use auto (160k)
+    If model A auto≈737.6k and model B auto=25.6k, with custom=200k:
+    - model A: custom(200k) < auto(737.6k) → use 200k
+    - model B: custom(200k) >= auto(25.6k) → use auto (25.6k)
     """
     import app.core.runtime_settings as rs_module
     from app.core.runtime_settings import RuntimeSettings, save_runtime_settings
@@ -128,7 +132,7 @@ def test_custom_setting_respected_on_model_switch(
     save_runtime_settings(cfg, settings_file)
 
     provider = MagicMock()
-    model_a = "codex:gpt-5.5"  # auto ~840k → custom 200k wins (200k < 840k)
+    model_a = "codex:gpt-5.5"  # auto ~737.6k → custom 200k wins
     model_b = "openai:gpt-realtime-2"  # auto ~25.6k → auto wins (200k >= 25.6k)
 
     hook_a = build_summarization_hook(provider, model_id=model_a)

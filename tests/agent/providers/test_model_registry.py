@@ -65,7 +65,11 @@ def test_models_dev_metadata_is_normalized(
                     "gpt-live": {
                         "id": "gpt-live",
                         "modalities": {"input": ["text", "image"], "output": ["text"]},
-                        "limit": {"context": 123000, "output": 4567},
+                        "limit": {
+                            "context": 123000,
+                            "input": 100000,
+                            "output": 4567,
+                        },
                         "cost": {
                             "input": 1.25,
                             "output": 10.0,
@@ -94,6 +98,7 @@ def test_models_dev_metadata_is_normalized(
     assert get_capabilities("openai:gpt-live").input.vision is True
     limits = get_model_limits("openai:gpt-live")
     assert limits.context_length == 123000
+    assert limits.max_input_tokens == 100000
     assert limits.max_completion_tokens == 4567
     cost = get_model_cost("openai:gpt-live")
     assert cost.input == 1.25

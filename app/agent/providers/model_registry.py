@@ -233,9 +233,16 @@ def _limits_from_model(model: dict[str, Any]) -> dict[str, int]:
 
     result: dict[str, int] = {}
     context = limit.get("context")
+    input_tokens = limit.get("input")
     output = limit.get("output")
     if isinstance(context, int) and not isinstance(context, bool) and context > 0:
         result["context_length"] = context
+    if (
+        isinstance(input_tokens, int)
+        and not isinstance(input_tokens, bool)
+        and input_tokens > 0
+    ):
+        result["max_input_tokens"] = input_tokens
     if isinstance(output, int) and not isinstance(output, bool) and output > 0:
         result["max_completion_tokens"] = output
     return result

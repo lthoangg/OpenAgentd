@@ -313,15 +313,23 @@ def _skill_tool_pair_ids(messages: list) -> set[int]:
 def prompt_token_threshold_for_model(model_id: str | None) -> int:
     """Return the auto-computed summarisation threshold for *model_id*.
 
-    Formula: ``context_length * PROMPT_TOKEN_THRESHOLD_CONTEXT_RATIO``.
-    Falls back to :data:`DEFAULT_PROMPT_TOKEN_THRESHOLD` for unknown models.
-    There is no upper cap — a 10M-context model correctly gets a 8M threshold.
-    This value is the **ceiling** used by :func:`resolve_prompt_token_threshold`.
+    Formula: ``prompt_capacity * PROMPT_TOKEN_THRESHOLD_CONTEXT_RATIO``.
+    ``prompt_capacity`` is the lower of the model's total context and explicit
+    input limit when both are known. Falls back to
+    :data:`DEFAULT_PROMPT_TOKEN_THRESHOLD` for unknown models. There is no
+    artificial upper cap — a 10M prompt capacity correctly gets an 8M
+    threshold. This value is the **ceiling** used by
+    :func:`resolve_prompt_token_threshold`.
     """
-    context_length = get_model_limits(model_id).context_length
-    if context_length is None:
+    limits = get_model_limits(model_id)
+    known_prompt_limits = tuple(
+        value
+        for value in (limits.context_length, limits.max_input_tokens)
+        if value is not None
+    )
+    if not known_prompt_limits:
         return DEFAULT_PROMPT_TOKEN_THRESHOLD
-    return int(context_length * PROMPT_TOKEN_THRESHOLD_CONTEXT_RATIO)
+    return int(min(known_prompt_limits) * PROMPT_TOKEN_THRESHOLD_CONTEXT_RATIO)
 
 
 def resolve_prompt_token_threshold(

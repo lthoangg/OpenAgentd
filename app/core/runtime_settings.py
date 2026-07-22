@@ -13,8 +13,8 @@ PROVIDER_MODEL_PLACEHOLDER = "__PROVIDER_MODEL__"
 class SummarizationSettings(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
-    # User-supplied token threshold.  ``None`` means "use the auto-computed
-    # value (ratio * context_length)".
+    # User-supplied token threshold. ``None`` uses the model-aware automatic
+    # value (ratio * the lower of total context and explicit input limit).
     # When set and below the auto value, it triggers summarisation earlier.
     # Values >= auto are silently treated as auto.
     prompt_token_threshold: int | None = None

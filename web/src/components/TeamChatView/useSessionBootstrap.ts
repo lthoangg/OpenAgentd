@@ -126,6 +126,28 @@ export function useSessionBootstrap({
         await loadSession(sessionId, agentWorkspace)
       }
       if (cancelled) return
+      const store = useTeamStore.getState()
+      const leadStream = store.leadName ? store.agentStreams[store.leadName] : undefined
+      const hasDraft = Boolean(draftBySessionRef.current[sessionId]?.value?.trim())
+      if (
+        leadStream &&
+        (leadStream.revertedCount ?? 0) > 0 &&
+        leadStream.revertedMessages &&
+        leadStream.revertedMessages.length > 0 &&
+        inputRef.current &&
+        !hasDraft
+      ) {
+        const undoneMsg = leadStream.revertedMessages.find((m) => m.role === 'user')
+        if (undoneMsg?.content || (undoneMsg?.attachments && undoneMsg.attachments.length > 0)) {
+          inputRef.current.setValue(undoneMsg.content ?? '')
+          if (undoneMsg.attachments && undoneMsg.attachments.length > 0) {
+            void Promise.all(undoneMsg.attachments.map((att) => attachmentToFile(att)))
+              .then((files) => {
+                inputRef.current?.setFiles(files.filter((f): f is File => f !== null))
+              })
+          }
+        }
+      }
       const controller = connectStream()
       if (controller) abortRef.current = controller
     })()

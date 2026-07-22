@@ -228,7 +228,10 @@ export const createStreamSlice: StateCreator<
         set((draft) => {
           draft._leadRevertTime = boundaryTime
           Object.values(draft.agentStreams).forEach((stream) => {
-            applyRevertBoundary(stream, boundaryTime)
+            applyRevertBoundary(stream, boundaryTime, {
+              boundaryId: response.message?.id ?? null,
+              boundaryContent: response.message?.content ?? null,
+            })
           })
         })
         if (response.changed_paths === undefined) {

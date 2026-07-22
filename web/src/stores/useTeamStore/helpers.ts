@@ -138,6 +138,7 @@ export function applyRevertBoundary(
     .map((b) => ({
       role: 'user',
       content: b.type === 'compaction' ? 'Session compacted' : (b.content ?? ''),
+      attachments: b.type === 'user' ? b.attachments : undefined,
     }))
-    .filter((m) => m.content.trim().length > 0)
+    .filter((m) => m.content.trim().length > 0 || (m.attachments && m.attachments.length > 0))
 }

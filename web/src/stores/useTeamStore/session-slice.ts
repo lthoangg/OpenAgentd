@@ -23,6 +23,13 @@ function messagesBeforeTime(messages: MessageResponse[], boundaryTime: number | 
 }
 
 function messagesBeforeRevert(session: { revert?: { message_id?: string } | null; messages: MessageResponse[] }): MessageResponse[] {
+  const boundaryId = session.revert?.message_id
+  if (boundaryId) {
+    const idx = session.messages.findIndex((msg) => msg.id === boundaryId)
+    if (idx >= 0) {
+      return session.messages.slice(0, idx)
+    }
+  }
   return messagesBeforeTime(session.messages, revertBoundaryTime(session))
 }
 
@@ -289,6 +296,8 @@ export const createSessionSlice: StateCreator<
         const allNames = leadName ? [leadName, ...memberNames] : memberNames
         draft.agentNames = allNames
         const leadRevertTime = revertBoundaryTime(history.lead)
+        const boundaryId = history.lead.revert?.message_id
+        const boundaryMsg = boundaryId ? history.lead.messages.find((msg) => msg.id === boundaryId) : undefined
 
         if (leadName) {
           if (!draft.agentStreams[leadName]) {
@@ -298,7 +307,10 @@ export const createSessionSlice: StateCreator<
           const leadStream = draft.agentStreams[leadName]
           leadStream.blocks = parseTeamBlocks(history.lead.messages)
           leadStream._revertedSuffix = []
-          applyRevertBoundary(leadStream, leadRevertTime)
+          applyRevertBoundary(leadStream, leadRevertTime, {
+            boundaryId,
+            boundaryContent: boundaryMsg?.content,
+          })
           leadStream.currentBlocks = []
           leadStream.currentText = ''
           leadStream.currentThinking = ''
@@ -327,7 +339,10 @@ export const createSessionSlice: StateCreator<
           const memberStream = draft.agentStreams[member.name]
           memberStream.blocks = parseTeamBlocks(member.messages)
           memberStream._revertedSuffix = []
-          applyRevertBoundary(memberStream, leadRevertTime)
+          applyRevertBoundary(memberStream, leadRevertTime, {
+            boundaryId,
+            boundaryContent: boundaryMsg?.content,
+          })
           memberStream.currentBlocks = []
           memberStream.currentText = ''
           memberStream.currentThinking = ''

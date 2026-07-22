@@ -1071,6 +1071,64 @@ describe("loadSession — parses all messages and populates _revertedSuffix", ()
     expect(stream.revertedCount).toBe(1)
   })
 
+  it("handles timestamp collision between previous assistant answer and target boundary on loadSession", async () => {
+    // When a1 and u2 (boundary target) share the same millisecond timestamp,
+    // passing boundaryId ensures a1 stays visible and u2 is reverted.
+    const collisionTime = "2024-01-01T00:00:02.000Z"
+    mockTeamHistory.mockImplementation(() =>
+      Promise.resolve({
+        lead: {
+          id: "lead-sess",
+          agent_name: "lead",
+          title: null,
+          created_at: null,
+          updated_at: null,
+          sub_sessions: [],
+          revert: { message_id: "u2" },
+          messages: [
+            makeMessageResponse({
+              id: "u1",
+              role: "user",
+              content: "first",
+              created_at: "2024-01-01T00:00:00.000Z",
+            }),
+            makeMessageResponse({
+              id: "a1",
+              role: "assistant",
+              content: "answer one",
+              created_at: collisionTime,
+            }),
+            makeMessageResponse({
+              id: "u2",
+              role: "user",
+              content: "second",
+              created_at: collisionTime,
+            }),
+            makeMessageResponse({
+              id: "a2",
+              role: "assistant",
+              content: "answer two",
+              created_at: "2024-01-01T00:00:03.000Z",
+            }),
+          ],
+        },
+        members: [],
+        has_more: false,
+        next_cursor: null,
+      }),
+    )
+
+    await useTeamStore.getState().loadSession("sess-1")
+    const stream = useTeamStore.getState().agentStreams.lead
+
+    expect(stream.blocks.map((b) => b.content)).toEqual(["first", "answer one"])
+    expect(stream._revertedSuffix?.map((b) => b.content)).toEqual([
+      "second",
+      "answer two",
+    ])
+    expect(stream.revertedCount).toBe(1)
+  })
+
   it("clears _revertedSuffix when loading a non-reverted session", async () => {
     useTeamStore.setState({
       agentStreams: {

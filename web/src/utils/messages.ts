@@ -28,13 +28,14 @@ function shellDisplayContent(msg: MessageResponse): string {
 }
 
 function sortMessages(msgs: MessageResponse[]): MessageResponse[] {
-  return [...msgs].sort((a, b) => {
-    const ta = a.created_at ? new Date(a.created_at).getTime() : 0
-    const tb = b.created_at ? new Date(b.created_at).getTime() : 0
+  const indexed = msgs.map((m, i) => ({ m, i }))
+  indexed.sort((a, b) => {
+    const ta = a.m.created_at ? new Date(a.m.created_at).getTime() : 0
+    const tb = b.m.created_at ? new Date(b.m.created_at).getTime() : 0
     if (ta !== tb) return ta - tb
-    const roleOrder: Record<string, number> = { user: 0, assistant: 1, tool: 2, system: 3 }
-    return (roleOrder[a.role] ?? 9) - (roleOrder[b.role] ?? 9)
+    return a.i - b.i
   })
+  return indexed.map((x) => x.m)
 }
 
 // Me extract ContentBlock[] from one assistant MessageResponse

@@ -39,7 +39,7 @@ export interface AgentStream {
   model: string | null
   lastError: string | null
   revertedCount?: number
-  revertedMessages?: Array<{ role: string; content: string }>
+  revertedMessages?: Array<{ role: string; content: string; attachments?: MessageAttachment[] }>
   _revertedSuffix?: ContentBlock[]
 }
 

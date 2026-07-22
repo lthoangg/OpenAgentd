@@ -1635,6 +1635,51 @@ async def test_server_didclose_publish_does_not_corrupt_next_cycle(tmp_path):
         await client.stop()
 
 
+async def test_concurrent_same_document_diagnostics_are_serialized(tmp_path):
+    """Concurrent checks must not replace each other's URI event state."""
+    stdout = MockStreamReader()
+
+    def on_write(data):
+        message = json.loads(data.split(b"\r\n\r\n", 1)[1])
+        if message.get("method") == "initialize":
+            stdout.feed_message({"jsonrpc": "2.0", "id": message["id"], "result": {}})
+        elif message.get("method") in {
+            "textDocument/didOpen",
+            "textDocument/didChange",
+        }:
+            document = message["params"]["textDocument"]
+            stdout.feed_message(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "textDocument/publishDiagnostics",
+                    "params": {
+                        "uri": document["uri"],
+                        "diagnostics": [{"message": "diagnostic"}],
+                    },
+                }
+            )
+
+    proc = MockProcess(stdout, MockStreamWriter(on_write=on_write))
+    with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
+        mock_exec.return_value = proc
+        client = LspClient(["mock-lsp"], tmp_path)
+        await client.start()
+
+        manager = LspManager()
+        uri = (tmp_path / "test.py").resolve().as_uri()
+        first, second = await asyncio.wait_for(
+            asyncio.gather(
+                manager._diagnostics_from(client, uri, "python", "x = 1\n"),
+                manager._diagnostics_from(client, uri, "python", "x = 2\n"),
+            ),
+            timeout=0.2,
+        )
+
+        assert first == [{"message": "diagnostic"}]
+        assert second == [{"message": "diagnostic"}]
+        await client.stop()
+
+
 @pytest.mark.asyncio
 async def test_lsp_react_language_mapping(tmp_path):
     """Verify that .tsx and .jsx map to the correct react language IDs and find project roots."""

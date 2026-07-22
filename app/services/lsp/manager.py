@@ -651,6 +651,17 @@ class LspManager:
         self, client: LspClient, uri: str, lang_id: str, content: str
     ) -> list[dict]:
         """Open the document on one server, settle, and return its diagnostics."""
+        # reset_diagnostics replaces the URI's Event, so overlapping cycles
+        # for one document would make the earlier waiter miss its response.
+        # Keep this lock narrowly per client/URI: files and complementary
+        # Python servers still run concurrently.
+        async with client.diagnostics_lock(uri):
+            return await self._diagnostics_from_locked(client, uri, lang_id, content)
+
+    async def _diagnostics_from_locked(
+        self, client: LspClient, uri: str, lang_id: str, content: str
+    ) -> list[dict]:
+        """Run one serialized diagnostics cycle for an open document."""
         # Register an event for this URI BEFORE opening so we never miss a
         # publish that arrives between didOpen and our first wait.
         event = client.reset_diagnostics(uri)

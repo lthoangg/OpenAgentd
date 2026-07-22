@@ -27,6 +27,10 @@ class LspClient:
         # the first (often empty) publish a server emits on didOpen.
         self._latest_diagnostics: dict[str, list[dict]] = {}
         self._diagnostics_events: dict[str, asyncio.Event] = {}
+        # A diagnostic cycle resets per-URI state, so concurrent checks for the
+        # same document must run one at a time. Different documents remain
+        # fully concurrent.
+        self._diagnostics_locks: dict[str, asyncio.Lock] = {}
         self._read_task: asyncio.Task | None = None
         self.last_used_at = 0.0
         # Track open document URIs -> last version sent, so re-checking a file
@@ -108,6 +112,10 @@ class LspClient:
     def get_diagnostics(self, uri: str) -> list[dict]:
         """Return the most recent diagnostics seen for *uri* (empty if none)."""
         return self._latest_diagnostics.get(uri, [])
+
+    def diagnostics_lock(self, uri: str) -> asyncio.Lock:
+        """Return the lock protecting a complete diagnostics cycle for *uri*."""
+        return self._diagnostics_locks.setdefault(uri, asyncio.Lock())
 
     async def open_or_update_document(
         self, uri: str, language_id: str, text: str
@@ -307,3 +315,4 @@ class LspClient:
                 fut.set_exception(RuntimeError("LSP server stopped"))
         for event in list(self._diagnostics_events.values()):
             event.set()
+        self._diagnostics_locks.clear()

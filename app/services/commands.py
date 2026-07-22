@@ -31,6 +31,7 @@ from __future__ import annotations
 import re
 import shlex
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 
 import yaml
@@ -91,6 +92,8 @@ def _candidate_roots(workspace: Path | None = None) -> list[tuple[Path, str]]:
 # ── Parsing ─────────────────────────────────────────────────────────────────
 
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n(.*)$", re.DOTALL)
+_MAX_CACHED_COMMAND_PARSES = 256
+_MAX_CACHED_COMMAND_BYTES = 128 * 1024
 
 
 def _parse_frontmatter(text: str) -> tuple[dict, str]:
@@ -107,6 +110,44 @@ def _parse_frontmatter(text: str) -> tuple[dict, str]:
     if not isinstance(meta, dict):
         meta = {}
     return meta, match.group(2).strip()
+
+
+def _read_command_file(path: Path) -> tuple[str, str]:
+    text = path.read_text(encoding="utf-8")
+    meta, body = _parse_frontmatter(text)
+    description = meta.get("description", "")
+    if not isinstance(description, str):
+        description = ""
+    return description.strip(), body
+
+
+@lru_cache(maxsize=_MAX_CACHED_COMMAND_PARSES)
+def _parse_command_file(
+    path: Path, _signature: tuple[int, int, int, int, int]
+) -> tuple[str, str]:
+    """Read and parse a command file identified by its stat signature."""
+    return _read_command_file(path)
+
+
+def _cached_command_content(path: Path) -> tuple[str, str] | None:
+    """Return parsed command content, reusing an unchanged file's result."""
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    try:
+        if stat.st_size > _MAX_CACHED_COMMAND_BYTES:
+            return _read_command_file(path)
+        signature = (
+            stat.st_mtime_ns,
+            stat.st_ctime_ns,
+            stat.st_size,
+            stat.st_mode,
+            stat.st_ino,
+        )
+        return _parse_command_file(path, signature)
+    except OSError:
+        return None
 
 
 def _iter_md(root: Path):
@@ -277,17 +318,13 @@ def discover_commands(workspace: Path | None = None) -> dict[str, Command]:
         for path, name in _iter_md(root):
             if name in commands:
                 continue  # earlier source wins
-            try:
-                text = path.read_text(encoding="utf-8")
-            except OSError:
+            content = _cached_command_content(path)
+            if content is None:
                 continue
-            meta, body = _parse_frontmatter(text)
-            description = meta.get("description", "")
-            if not isinstance(description, str):
-                description = ""
+            description, body = content
             commands[name] = Command(
                 name=name,
-                description=description.strip(),
+                description=description,
                 body=body,
                 path=path,
                 source=source,

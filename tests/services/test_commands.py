@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -149,6 +150,170 @@ def test_non_dict_frontmatter_is_ignored_gracefully(roots):
 
     assert result["weird"].description == ""
     assert result["weird"].body == "body"
+
+
+def test_discover_reuses_unchanged_command_parse(roots, monkeypatch):
+    """An unchanged discovered file is not read and parsed again."""
+    cwd, proj_oad, *_ = roots
+    command_path = proj_oad / "commit.md"
+    _write(command_path, VALID)
+
+    reads = 0
+    parses = 0
+    original_read_text = Path.read_text
+    from app.services import commands as commands_module
+
+    original_parse = commands_module._parse_frontmatter
+
+    def count_read_text(path: Path, *args, **kwargs) -> str:
+        nonlocal reads
+        if path == command_path:
+            reads += 1
+        return original_read_text(path, *args, **kwargs)
+
+    def count_parse(text: str) -> tuple[dict, str]:
+        nonlocal parses
+        parses += 1
+        return original_parse(text)
+
+    monkeypatch.setattr(Path, "read_text", count_read_text)
+    monkeypatch.setattr(commands_module, "_parse_frontmatter", count_parse)
+
+    first = discover_commands(workspace=cwd)
+    second = discover_commands(workspace=cwd)
+
+    assert first == second
+    assert reads == 1
+    assert parses == 1
+
+
+def test_discover_does_not_cache_oversized_command(roots, monkeypatch):
+    cwd, proj_oad, *_ = roots
+    command_path = proj_oad / "large.md"
+    _write(
+        command_path,
+        "---\ndescription: Large command.\n---\n" + ("x" * 200_000),
+    )
+    reads = 0
+    original_read_text = Path.read_text
+
+    def count_read_text(path: Path, *args, **kwargs) -> str:
+        nonlocal reads
+        if path == command_path:
+            reads += 1
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", count_read_text)
+
+    assert "large" in discover_commands(workspace=cwd)
+    assert "large" in discover_commands(workspace=cwd)
+    assert reads == 2
+
+
+def test_discover_invalidates_same_size_edit_with_new_mtime(roots):
+    cwd, proj_oad, *_ = roots
+    command_path = proj_oad / "commit.md"
+    original = "---\ndescription: first!\n---\nfirst!\n"
+    updated = "---\ndescription: later!\n---\nlater!\n"
+    assert len(original) == len(updated)
+    _write(command_path, original)
+
+    assert discover_commands(workspace=cwd)["commit"].description == "first!"
+    command_path.write_text(updated, encoding="utf-8")
+    stat = command_path.stat()
+    os.utime(command_path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1))
+
+    assert discover_commands(workspace=cwd)["commit"].description == "later!"
+
+
+def test_discover_invalidates_atomic_replacement_with_matching_mtime(
+    roots, monkeypatch
+):
+    cwd, proj_oad, *_ = roots
+    command_path = proj_oad / "commit.md"
+    _write(command_path, VALID)
+    reads = 0
+    original_read_text = Path.read_text
+
+    def count_read_text(path: Path, *args, **kwargs) -> str:
+        nonlocal reads
+        if path == command_path:
+            reads += 1
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", count_read_text)
+
+    discover_commands(workspace=cwd)
+    original_stat = command_path.stat()
+    replacement = command_path.with_suffix(".replacement")
+    _write(replacement, VALID)
+    os.utime(
+        replacement,
+        ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns),
+    )
+    replacement.replace(command_path)
+    discover_commands(workspace=cwd)
+
+    assert reads == 2
+
+
+def test_discover_reflects_create_delete_rename_and_precedence(roots):
+    cwd, proj_oad, _, global_oad, _ = roots
+    global_command = global_oad / "commit.md"
+    project_command = proj_oad / "commit.md"
+    _write(global_command, "---\ndescription: global\n---\nglobal\n")
+
+    assert discover_commands(workspace=cwd)["commit"].source == "global-openagentd"
+    _write(project_command, "---\ndescription: project\n---\nproject\n")
+    assert discover_commands(workspace=cwd)["commit"].source == "project-openagentd"
+    project_command.rename(proj_oad / "renamed.md")
+    discovered = discover_commands(workspace=cwd)
+    assert discovered["commit"].source == "global-openagentd"
+    assert discovered["renamed"].source == "project-openagentd"
+    global_command.unlink()
+    assert set(discover_commands(workspace=cwd)) == {"renamed"}
+
+
+def test_discover_does_not_cache_transient_parse_failures(roots, monkeypatch):
+    cwd, proj_oad, *_ = roots
+    _write(proj_oad / "commit.md", VALID)
+    from app.services import commands as commands_module
+
+    original_parse = commands_module._parse_frontmatter
+    failed = False
+
+    def fail_once(text: str) -> tuple[dict, str]:
+        nonlocal failed
+        if not failed:
+            failed = True
+            raise ValueError("temporary parser failure")
+        return original_parse(text)
+
+    monkeypatch.setattr(commands_module, "_parse_frontmatter", fail_once)
+    with pytest.raises(ValueError, match="temporary parser failure"):
+        discover_commands(workspace=cwd)
+
+    assert discover_commands(workspace=cwd)["commit"].description == "Make a commit."
+
+
+def test_discover_does_not_cache_transient_read_failures(roots, monkeypatch):
+    cwd, proj_oad, *_ = roots
+    command_path = proj_oad / "commit.md"
+    _write(command_path, VALID)
+    original_read_text = Path.read_text
+    failed = False
+
+    def fail_once(path: Path, *args, **kwargs) -> str:
+        nonlocal failed
+        if path == command_path and not failed:
+            failed = True
+            raise OSError("temporary read failure")
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", fail_once)
+
+    assert discover_commands(workspace=cwd) == {}
+    assert discover_commands(workspace=cwd)["commit"].description == "Make a commit."
 
 
 # ── render_command ──────────────────────────────────────────────────────────

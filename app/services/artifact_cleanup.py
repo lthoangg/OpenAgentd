@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shutil
 from collections.abc import Iterable, Sequence
+from stat import S_ISREG
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -63,11 +64,12 @@ def _dir_size(path: Path) -> int:
         return path.stat().st_size
     total = 0
     for child in path.rglob("*"):
-        if child.is_file():
-            try:
-                total += child.stat().st_size
-            except OSError:
-                continue
+        try:
+            child_stat = child.stat()
+        except OSError:
+            continue
+        if S_ISREG(child_stat.st_mode):
+            total += child_stat.st_size
     return total
 
 

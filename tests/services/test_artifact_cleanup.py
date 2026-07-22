@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 import os
+from pathlib import Path
 import uuid
 
 import pytest
@@ -9,9 +10,50 @@ from sqlalchemy.exc import OperationalError
 from sqlmodel import select
 
 from app.models.chat import ChatSession, SessionMessage
-from app.services.artifact_cleanup import cleanup_generated_artifacts
+from app.services.artifact_cleanup import _dir_size, cleanup_generated_artifacts
 
 pytestmark = pytest.mark.usefixtures("setup_db")
+
+
+def test_dir_size_uses_one_stat_per_descendant_and_preserves_symlink_sizes(
+    tmp_path, monkeypatch
+):
+    regular = tmp_path / "regular.txt"
+    regular.write_bytes(b"abc")
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    (nested / "inside.txt").write_bytes(b"12345")
+    (tmp_path / "file-link").symlink_to(regular)
+    linked_directory = tmp_path.parent / "linked-directory"
+    linked_directory.mkdir()
+    (linked_directory / "outside.txt").write_bytes(b"not counted")
+    (tmp_path / "directory-link").symlink_to(linked_directory, target_is_directory=True)
+    disappearing = tmp_path / "disappearing.txt"
+    disappearing.write_bytes(b"ignored")
+
+    original_stat = Path.stat
+    original_is_file = Path.is_file
+    stat_calls = 0
+    is_file_calls = 0
+
+    def count_stat(path, *args, **kwargs):
+        nonlocal stat_calls
+        stat_calls += 1
+        if path == disappearing:
+            raise OSError("file disappeared during traversal")
+        return original_stat(path, *args, **kwargs)
+
+    def count_is_file(path, *args, **kwargs):
+        nonlocal is_file_calls
+        is_file_calls += 1
+        return original_is_file(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", count_stat)
+    monkeypatch.setattr(Path, "is_file", count_is_file)
+
+    assert _dir_size(tmp_path) == 11
+    assert is_file_calls == 1
+    assert stat_calls == 6
 
 
 @pytest.mark.asyncio

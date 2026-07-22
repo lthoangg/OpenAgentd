@@ -8,6 +8,7 @@ skills are edited/deleted in place; bundled skills remain read-only.
 from __future__ import annotations
 
 import tempfile
+from functools import lru_cache
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -29,6 +30,8 @@ from app.services.agent_fs import (
 )
 
 router = APIRouter()
+_SKILL_PARSE_CACHE_LIMIT = 256
+_MAX_CACHED_SKILL_BYTES = 128 * 1024
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
@@ -172,6 +175,48 @@ def _parse_skill(name: str, content: str) -> tuple[str, str | None]:
     return desc.strip(), None
 
 
+def _read_skill_list_metadata(name: str, resolved_path: str) -> tuple[str, str | None]:
+    return _parse_skill(name, Path(resolved_path).read_text(encoding="utf-8"))
+
+
+@lru_cache(maxsize=_SKILL_PARSE_CACHE_LIMIT)
+def _cached_skill_list_metadata(
+    name: str,
+    resolved_path: str,
+    signature: tuple[int, int, int, int, int],
+) -> tuple[str, str | None]:
+    """Read and strictly parse unchanged list metadata.
+
+    Every stat field is part of the cache key. Exceptions deliberately
+    propagate so transient read/parse failures are never cached.
+    """
+    return _read_skill_list_metadata(name, resolved_path)
+
+
+def _read_parsed_skill(name: str, path: Path) -> tuple[str, str | None]:
+    """Read and strictly parse one skill, reusing unchanged route metadata.
+
+    Read/stat failures intentionally never enter the cache: a transient
+    filesystem error must be retried by the next listing request.
+    """
+    stat = path.stat()
+    resolved_path = str(path.resolve())
+    if stat.st_size > _MAX_CACHED_SKILL_BYTES:
+        return _read_skill_list_metadata(name, resolved_path)
+    signature = (
+        stat.st_mtime_ns,
+        stat.st_size,
+        stat.st_ctime_ns,
+        stat.st_mode,
+        stat.st_ino,
+    )
+    return _cached_skill_list_metadata(name, resolved_path, signature)
+
+
+def _invalidate_skill_parse_cache() -> None:
+    _cached_skill_list_metadata.cache_clear()
+
+
 # ── Routes ──────────────────────────────────────────────────────────────────
 
 
@@ -182,7 +227,7 @@ async def list_skills() -> SkillListResponse:
         path = Path(str(info.get("dir", ""))) / "SKILL.md"
         source = _skill_source(path)
         try:
-            text = path.read_text(encoding="utf-8")
+            desc, err = _read_parsed_skill(name, path)
         except Exception as exc:
             rows.append(
                 SkillSummary(
@@ -195,7 +240,6 @@ async def list_skills() -> SkillListResponse:
                 )
             )
             continue
-        desc, err = _parse_skill(name, text)
         rows.append(
             SkillSummary(
                 name=name,
@@ -250,6 +294,7 @@ async def create_skill(body: SkillWriteRequest) -> SkillDetail:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     team_manager.invalidate_skill_cache()
+    _invalidate_skill_parse_cache()
     return SkillDetail(
         name=record.name,
         path=record.path,
@@ -286,6 +331,7 @@ async def update_skill(name: str, body: SkillWriteRequest) -> SkillDetail:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     team_manager.invalidate_skill_cache()
+    _invalidate_skill_parse_cache()
     source = _skill_source(existing_path)
     return SkillDetail(
         name=name,
@@ -318,4 +364,5 @@ async def delete_skill(name: str) -> SkillDeleteResponse:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     team_manager.invalidate_skill_cache()
+    _invalidate_skill_parse_cache()
     return SkillDeleteResponse(name=name)

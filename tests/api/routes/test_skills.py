@@ -32,6 +32,7 @@ def fs_dirs(tmp_path: Path, monkeypatch):
 
     monkeypatch.setattr(skill_module, "_iter_skill_roots", lambda: [skills])
     skill_module._discover_skills_cached.cache_clear()
+    skills_routes._cached_skill_list_metadata.cache_clear()
     return agents, skills
 
 
@@ -141,6 +142,152 @@ async def test_list_skills_empty(client):
     resp = await client.get("/api/skills")
     assert resp.status_code == 200
     assert resp.json() == {"skills": []}
+
+
+@pytest.mark.asyncio
+async def test_list_skills_reuses_unchanged_read_and_strict_parse(
+    client, fs_dirs, monkeypatch
+):
+    """Metadata changes invalidate route parsing while unchanged files reuse it."""
+    _, skills_dir = fs_dirs
+    skill_file = skills_dir / "research" / "SKILL.md"
+    skill_file.parent.mkdir()
+    skill_file.write_text(VALID_SKILL)
+    reads = 0
+    parses = 0
+    original_read_text = Path.read_text
+    original_parse = skills_routes._parse_skill
+
+    def count_read(path: Path, *args, **kwargs):
+        nonlocal reads
+        if path == skill_file:
+            reads += 1
+        return original_read_text(path, *args, **kwargs)
+
+    def count_parse(name: str, content: str):
+        nonlocal parses
+        parses += 1
+        return original_parse(name, content)
+
+    monkeypatch.setattr(Path, "read_text", count_read)
+    monkeypatch.setattr(skills_routes, "_parse_skill", count_parse)
+
+    assert (await client.get("/api/skills")).status_code == 200
+    first_counts = (reads, parses)
+    assert (await client.get("/api/skills")).status_code == 200
+    assert (reads, parses) == first_counts
+
+    skill_file.write_text(VALID_SKILL.replace("A research skill.", "Updated."))
+    response = await client.get("/api/skills")
+    assert response.json()["skills"][0]["description"] == "Updated."
+    assert (reads, parses) == (first_counts[0] + 2, first_counts[1] + 1)
+
+
+@pytest.mark.asyncio
+async def test_list_skills_keeps_malformed_files_visible_from_cache(
+    client, fs_dirs, monkeypatch
+):
+    _, skills_dir = fs_dirs
+    skill_file = skills_dir / "broken" / "SKILL.md"
+    skill_file.parent.mkdir()
+    skill_file.write_text(INVALID_YAML_SKILL.replace("research", "broken"))
+    parses = 0
+    original_parse = skills_routes._parse_skill
+
+    def count_parse(name: str, content: str):
+        nonlocal parses
+        parses += 1
+        return original_parse(name, content)
+
+    monkeypatch.setattr(skills_routes, "_parse_skill", count_parse)
+    first = await client.get("/api/skills")
+    second = await client.get("/api/skills")
+
+    assert first.json()["skills"][0]["valid"] is False
+    assert "Invalid frontmatter" in first.json()["skills"][0]["error"]
+    assert second.json()["skills"] == first.json()["skills"]
+    assert parses == 1
+
+
+@pytest.mark.asyncio
+async def test_list_skills_retries_transient_read_failures(
+    client, fs_dirs, monkeypatch
+):
+    _, skills_dir = fs_dirs
+    skill_file = skills_dir / "research" / "SKILL.md"
+    skill_file.parent.mkdir()
+    skill_file.write_text(VALID_SKILL)
+    assert (await client.get("/api/skills")).status_code == 200
+    skills_routes._invalidate_skill_parse_cache()
+    original_read_text = Path.read_text
+    failures = 0
+
+    def transient_read(path: Path, *args, **kwargs):
+        nonlocal failures
+        if path == skill_file and failures == 0:
+            failures += 1
+            raise OSError("temporary read failure")
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", transient_read)
+    failed = await client.get("/api/skills")
+    retried = await client.get("/api/skills")
+
+    assert failed.json()["skills"][0]["valid"] is False
+    assert "temporary read failure" in failed.json()["skills"][0]["error"]
+    assert retried.json()["skills"][0]["valid"] is True
+    assert failures == 1
+
+
+def test_skill_parse_cache_is_bounded(tmp_path):
+    skills_routes._cached_skill_list_metadata.cache_clear()
+    for index in range(skills_routes._SKILL_PARSE_CACHE_LIMIT + 1):
+        skill_file = tmp_path / str(index) / "SKILL.md"
+        skill_file.parent.mkdir()
+        skill_file.write_text(VALID_SKILL)
+        assert skills_routes._read_parsed_skill("research", skill_file) is not None
+    assert (
+        skills_routes._cached_skill_list_metadata.cache_info().currsize
+        == skills_routes._SKILL_PARSE_CACHE_LIMIT
+    )
+
+
+def test_skill_parse_cache_does_not_retain_oversized_file(tmp_path):
+    skill_file = tmp_path / "large" / "SKILL.md"
+    skill_file.parent.mkdir()
+    skill_file.write_text(
+        "---\nname: research\ndescription: " + ("x" * 200_000) + "\n---\nBody.\n",
+        encoding="utf-8",
+    )
+    skills_routes._cached_skill_list_metadata.cache_clear()
+
+    assert skills_routes._read_parsed_skill("research", skill_file)[0]
+    assert skills_routes._read_parsed_skill("research", skill_file)[0]
+    assert skills_routes._cached_skill_list_metadata.cache_info().currsize == 0
+
+
+@pytest.mark.asyncio
+async def test_list_skills_rename_reparses_new_path(client, fs_dirs, monkeypatch):
+    _, skills_dir = fs_dirs
+    original_dir = skills_dir / "research"
+    skill_file = original_dir / "SKILL.md"
+    original_dir.mkdir()
+    skill_file.write_text(VALID_SKILL)
+    parses = 0
+    original_parse = skills_routes._parse_skill
+
+    def count_parse(name: str, content: str):
+        nonlocal parses
+        parses += 1
+        return original_parse(name, content)
+
+    monkeypatch.setattr(skills_routes, "_parse_skill", count_parse)
+    await client.get("/api/skills")
+    original_dir.rename(skills_dir / "renamed")
+    response = await client.get("/api/skills")
+
+    assert response.json()["skills"][0]["name"] == "research"
+    assert parses == 2
 
 
 @pytest.mark.asyncio

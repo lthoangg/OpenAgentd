@@ -48,6 +48,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -58,6 +59,7 @@ from app.agent.loader import load_team_from_dir
 from app.core.config import settings
 
 if TYPE_CHECKING:
+    from app.agent.loader import AgentConfig
     from app.agent.mode.team.team import AgentTeam
 
 
@@ -95,6 +97,10 @@ _coding_team_last_used: dict[tuple[str, str], float] = {}
 _DEFAULT_TEAM_IDLE_SECONDS = 60 * 60
 _CODING_TEAM_IDLE_SECONDS = 30 * 60
 _lock = asyncio.Lock()
+_BLUEPRINT_CONFIG_CACHE_LIMIT = 256
+_blueprint_config_cache: OrderedDict[
+    Path, tuple[tuple[int, int, int, int], AgentConfig]
+] = OrderedDict()
 
 
 def _resolve_agents_dir() -> Path:
@@ -641,15 +647,45 @@ def refresh_blueprints(team: "AgentTeam") -> None:
         return
 
     md_files = sorted(agents_dir.glob("*.md"))
+    resolved_agents_dir = agents_dir.absolute()
+    active_paths = {path.absolute() for path in md_files}
+    for cached_path in tuple(_blueprint_config_cache):
+        if (
+            cached_path.parent == resolved_agents_dir
+            and cached_path not in active_paths
+        ):
+            del _blueprint_config_cache[cached_path]
+
     seen: set[str] = set()
     for md_path in md_files:
+        resolved_path = md_path.absolute()
         try:
-            cfg = parse_agent_md(md_path)
+            stat = md_path.stat()
         except Exception as exc:
             logger.warning(
                 "blueprint_refresh_parse_failed path={} error={}", md_path.name, exc
             )
             continue
+        signature = (stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
+        cached = _blueprint_config_cache.get(resolved_path)
+        if cached is not None and cached[0] == signature:
+            result = cached[1]
+            _blueprint_config_cache.move_to_end(resolved_path)
+        else:
+            try:
+                result = parse_agent_md(md_path)
+            except Exception as exc:
+                logger.warning(
+                    "blueprint_refresh_parse_failed path={} error={}",
+                    md_path.name,
+                    exc,
+                )
+                continue
+            _blueprint_config_cache[resolved_path] = (signature, result)
+            _blueprint_config_cache.move_to_end(resolved_path)
+            while len(_blueprint_config_cache) > _BLUEPRINT_CONFIG_CACHE_LIMIT:
+                _blueprint_config_cache.popitem(last=False)
+        cfg = result
         # Skip the lead — its file lives in the same directory but is owned
         # by :func:`reload`, not by this hot-path discovery.
         if cfg.role != "member" or not member_model_is_configured(cfg.model):

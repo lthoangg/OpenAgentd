@@ -16,6 +16,7 @@ Requirements validated:
 from __future__ import annotations
 
 import uuid
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -228,6 +229,40 @@ class TestWorkspaceFilesListing:
         assert ".openagentd/skills/SKILL.md" in paths
         assert ".openagentd/data/runtime.db" not in paths
 
+    def test_regular_files_are_not_resolved_individually(self, tmp_path, monkeypatch):
+        """The listing resolves each walked directory, not every regular file."""
+        from app.api.routes.team import files as team_routes
+
+        root = tmp_path / "ws"
+        nested = root / "nested"
+        nested.mkdir(parents=True)
+        file_count = 12
+        for index in range(file_count):
+            parent = root if index % 2 == 0 else nested
+            (parent / f"file-{index}.txt").write_text("x")
+
+        resolve_calls: list[Path] = []
+        lstat_calls: list[Path] = []
+        original_resolve = Path.resolve
+        original_lstat = Path.lstat
+
+        def count_resolve(path: Path, *, strict: bool = False) -> Path:
+            resolve_calls.append(path)
+            return original_resolve(path, strict=strict)
+
+        def count_lstat(path: Path):
+            lstat_calls.append(path)
+            return original_lstat(path)
+
+        monkeypatch.setattr(Path, "resolve", count_resolve)
+        monkeypatch.setattr(Path, "lstat", count_lstat)
+
+        listing = team_routes._list_workspace_files(root, "session")
+
+        assert len(listing.files) == file_count
+        assert len(resolve_calls) == 2  # root plus its one walked subdirectory
+        assert sum(path.parent in (root, nested) for path in lstat_calls) == file_count
+
     def test_symlink_escaping_root_is_skipped(
         self, client, session_id, tmp_path, monkeypatch
     ):
@@ -241,9 +276,12 @@ class TestWorkspaceFilesListing:
         fake_root = tmp_path / "ws"
         fake_root.mkdir()
         (fake_root / "visible.txt").write_text("ok")
-        # Create symlink inside workspace → outside.  On platforms that
-        # don't allow symlinks (rare), skip cleanly.
+        internal = fake_root / "internal.txt"
+        internal.write_text("safe")
+        # Create symlinks inside the workspace. On platforms that don't allow
+        # symlinks (rare), skip cleanly.
         try:
+            (fake_root / "inside-link.txt").symlink_to(internal)
             (fake_root / "escape.txt").symlink_to(secret)
         except (OSError, NotImplementedError):
             pytest.skip("symlink creation not supported on this platform")
@@ -255,6 +293,7 @@ class TestWorkspaceFilesListing:
         resp = client.get(f"/api/team/{session_id}/files")
         paths = [f["path"] for f in resp.json()["files"]]
         assert "escape.txt" not in paths
+        assert "inside-link.txt" in paths
         assert "visible.txt" in paths
 
     def test_truncation_when_over_cap(self, client, session_id, tmp_path, monkeypatch):

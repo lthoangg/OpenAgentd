@@ -88,6 +88,37 @@ async def test_track_returns_tree_hash(state_dir: Path, workspace: Path) -> None
 
 
 @pytest.mark.asyncio
+async def test_track_reuses_successful_hash_without_staging_or_writing_tree(
+    state_dir: Path, workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An unchanged workspace must avoid both index writes and tree creation."""
+    tracked = workspace / "tracked.txt"
+    tracked.write_text("v1")
+    first = await snapshot_service.track("sess-cache", workspace)
+    assert first is not None
+
+    calls: list[tuple[str, ...]] = []
+    original_git = snapshot_service._git
+
+    async def record_git(*args: str, **kwargs: object) -> tuple[int, bytes, bytes]:
+        calls.append(args)
+        return await original_git(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(snapshot_service, "_git", record_git)
+
+    assert await snapshot_service.track("sess-cache", workspace) == first
+    assert not any("add" in args for args in calls)
+    assert not any("write-tree" in args for args in calls)
+
+    tracked.write_text("v2")
+    changed = await snapshot_service.track("sess-cache", workspace)
+    assert changed is not None
+    assert changed != first
+    assert any("add" in args for args in calls)
+    assert any("write-tree" in args for args in calls)
+
+
+@pytest.mark.asyncio
 async def test_track_empty_workspace_returns_hash(
     state_dir: Path, workspace: Path
 ) -> None:

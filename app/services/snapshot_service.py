@@ -45,6 +45,7 @@ _CORE_FLAGS: tuple[str, ...] = (
 )
 
 _locks: dict[str, asyncio.Lock] = {}
+_last_hashes: dict[tuple[str, Path], str] = {}
 
 
 def _lock(session_id: str) -> asyncio.Lock:
@@ -222,6 +223,7 @@ async def track(session_id: str, workspace: Path) -> str | None:
         return None
 
     gitdir = snapshot_dir(session_id)
+    cache_key = (session_id, workspace.resolve())
     async with _lock(session_id):
         if not await _init_repo(gitdir, workspace):
             return None
@@ -229,6 +231,8 @@ async def track(session_id: str, workspace: Path) -> str | None:
         paths = await _list_candidate_paths(gitdir, workspace)
         if paths:
             await _stage(gitdir, workspace, paths)
+        elif snapshot_hash := _last_hashes.get(cache_key):
+            return snapshot_hash
 
         code, out, err = await _git(
             *_CORE_FLAGS,
@@ -246,6 +250,7 @@ async def track(session_id: str, workspace: Path) -> str | None:
         snapshot_hash = out.decode().strip()
         if not snapshot_hash:
             return None
+        _last_hashes[cache_key] = snapshot_hash
         logger.debug(
             "snapshot_tracked session_id={} hash={}",
             session_id,
@@ -442,8 +447,12 @@ async def remove(session_id: str) -> None:
     missing directories and surface-level OS errors.
     """
     gitdir = snapshot_dir(session_id)
-    try:
-        if gitdir.exists():
-            await asyncio.to_thread(shutil.rmtree, gitdir, ignore_errors=True)
-    finally:
-        _locks.pop(session_id, None)
+    async with _lock(session_id):
+        try:
+            if gitdir.exists():
+                await asyncio.to_thread(shutil.rmtree, gitdir, ignore_errors=True)
+        finally:
+            for cache_key in tuple(_last_hashes):
+                if cache_key[0] == session_id:
+                    del _last_hashes[cache_key]
+    _locks.pop(session_id, None)

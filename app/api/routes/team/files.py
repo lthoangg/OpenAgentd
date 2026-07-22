@@ -22,6 +22,7 @@ import difflib
 import mimetypes
 import os
 import re
+import stat
 import subprocess
 import uuid
 from pathlib import Path
@@ -259,6 +260,17 @@ def _list_workspace_files(root: Path, session_id: str) -> WorkspaceFilesResponse
     #     though ``.openagentd/*`` is ignored).
     for dirpath, dirnames, filenames in os.walk(root):
         current = Path(dirpath)
+        try:
+            # os.walk does not follow directory symlinks, so checking each
+            # walked directory once establishes containment for its regular
+            # entries without resolving every file path.
+            current_resolved = (
+                root_resolved if current == root else current.resolve(strict=False)
+            )
+            current_resolved.relative_to(root_resolved)
+        except (OSError, ValueError):
+            dirnames.clear()
+            continue
         dirnames[:] = sorted(
             name
             for name in dirnames
@@ -280,23 +292,27 @@ def _list_workspace_files(root: Path, session_id: str) -> WorkspaceFilesResponse
             if _is_gitignored(rel, is_dir=False, rules=gitignore_rules):
                 continue
             try:
-                resolved = entry.resolve(strict=False)
-                resolved.relative_to(root_resolved)
+                entry_stat = entry.lstat()
             except (OSError, ValueError):
                 continue
-            if not entry.is_file():
-                continue
-            try:
-                stat = entry.stat()
-            except OSError:
+            if stat.S_ISLNK(entry_stat.st_mode):
+                try:
+                    resolved = entry.resolve(strict=False)
+                    resolved.relative_to(root_resolved)
+                    if not resolved.is_file():
+                        continue
+                    entry_stat = resolved.stat()
+                except (OSError, ValueError):
+                    continue
+            elif not stat.S_ISREG(entry_stat.st_mode):
                 continue
             mime, _ = mimetypes.guess_type(str(entry))
             files.append(
                 WorkspaceFileInfo(
                     path=rel,
                     name=entry.name,
-                    size=stat.st_size,
-                    mtime=stat.st_mtime,
+                    size=entry_stat.st_size,
+                    mtime=entry_stat.st_mtime,
                     mime=mime or "application/octet-stream",
                 )
             )

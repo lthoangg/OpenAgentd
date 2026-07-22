@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -30,6 +31,95 @@ async def test_workspace_instructions_hook_injects_agents_md(tmp_path):
 
     assert "Base prompt" in seen["prompt"]
     assert "Follow project rules." in seen["prompt"]
+
+
+@pytest.mark.asyncio
+async def test_workspace_instructions_hook_caches_unchanged_agents_md(
+    tmp_path, monkeypatch
+):
+    agents_md = tmp_path / "AGENTS.md"
+    agents_md.write_text("Follow project rules.", encoding="utf-8")
+    hook = WorkspaceInstructionsHook(str(tmp_path))
+    read_count = 0
+    original_read_text = Path.read_text
+
+    def count_reads(path, *args, **kwargs):
+        nonlocal read_count
+        if path == agents_md:
+            read_count += 1
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", count_reads)
+
+    class Request:
+        system_prompt = "Base prompt"
+
+        def override(self, **kwargs):
+            return SimpleNamespace(**kwargs)
+
+    async def handler(request):
+        return SimpleNamespace(content="ok")
+
+    await hook.wrap_model_call(None, None, Request(), handler)  # type: ignore[arg-type]
+    await hook.wrap_model_call(None, None, Request(), handler)  # type: ignore[arg-type]
+
+    assert read_count == 1
+
+
+@pytest.mark.asyncio
+async def test_workspace_instructions_hook_refreshes_changed_agents_md(tmp_path):
+    agents_md = tmp_path / "AGENTS.md"
+    agents_md.write_text("Follow original rules.", encoding="utf-8")
+    hook = WorkspaceInstructionsHook(str(tmp_path))
+    prompts: list[str] = []
+
+    class Request:
+        system_prompt = "Base prompt"
+
+        def override(self, **kwargs):
+            return SimpleNamespace(**kwargs)
+
+    async def handler(request):
+        prompts.append(request.system_prompt)
+        return SimpleNamespace(content="ok")
+
+    await hook.wrap_model_call(None, None, Request(), handler)  # type: ignore[arg-type]
+    agents_md.write_text("Follow revised rules.", encoding="utf-8")
+    await hook.wrap_model_call(None, None, Request(), handler)  # type: ignore[arg-type]
+
+    assert "Follow original rules." in prompts[0]
+    assert "Follow revised rules." in prompts[1]
+    assert "Follow original rules." not in prompts[1]
+
+
+@pytest.mark.asyncio
+async def test_workspace_instructions_hook_handles_agents_md_creation_and_removal(
+    tmp_path,
+):
+    agents_md = tmp_path / "AGENTS.md"
+    (tmp_path / "CLAUDE.md").write_text("Follow Claude rules.", encoding="utf-8")
+    hook = WorkspaceInstructionsHook(str(tmp_path))
+    prompts: list[str] = []
+
+    class Request:
+        system_prompt = "Base prompt"
+
+        def override(self, **kwargs):
+            return SimpleNamespace(**kwargs)
+
+    async def handler(request):
+        prompts.append(request.system_prompt)
+        return SimpleNamespace(content="ok")
+
+    await hook.wrap_model_call(None, None, Request(), handler)  # type: ignore[arg-type]
+    agents_md.write_text("Follow AGENTS rules.", encoding="utf-8")
+    await hook.wrap_model_call(None, None, Request(), handler)  # type: ignore[arg-type]
+    agents_md.unlink()
+    await hook.wrap_model_call(None, None, Request(), handler)  # type: ignore[arg-type]
+
+    assert "Follow Claude rules." in prompts[0]
+    assert "Follow AGENTS rules." in prompts[1]
+    assert "Follow Claude rules." in prompts[2]
 
 
 @pytest.mark.asyncio

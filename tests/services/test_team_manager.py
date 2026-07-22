@@ -474,6 +474,55 @@ def test_refresh_blueprints_adds_new_member_file(tmp_path, monkeypatch):
     assert team.blueprints["executor"].description == "executor agent"
 
 
+def test_refresh_blueprints_reuses_unchanged_parsed_configs_and_invalidates_changes(
+    tmp_path, monkeypatch
+):
+    """Unchanged files are parsed once; file mutations still refresh discovery."""
+    from app.agent import loader
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "AGENTS_DIR", str(tmp_path))
+    team = _make_real_team()
+    member = tmp_path / "executor.md"
+    _write_member_md(member, "executor")
+    parse_calls = 0
+    original_parse = loader.parse_agent_md
+
+    def count_parse(path: Path):
+        nonlocal parse_calls
+        parse_calls += 1
+        return original_parse(path)
+
+    monkeypatch.setattr(loader, "parse_agent_md", count_parse)
+
+    team_manager.refresh_blueprints(team)
+    team_manager.refresh_blueprints(team)
+    assert parse_calls == 1
+
+    member.write_text(
+        member.read_text(encoding="utf-8").replace("executor agent", "updated agent"),
+        encoding="utf-8",
+    )
+    team_manager.refresh_blueprints(team)
+    assert parse_calls == 2
+    assert "executor" in team.blueprints  # existing edited blueprints stay stable
+
+    renamed = tmp_path / "renamed.md"
+    member.rename(renamed)
+    team_manager.refresh_blueprints(team)
+    assert parse_calls == 3
+    assert team.blueprints["executor"].source_path == renamed
+
+    renamed.unlink()
+    team_manager.refresh_blueprints(team)
+    assert "executor" not in team.blueprints
+
+    _write_member_md(tmp_path / "new.md", "new")
+    team_manager.refresh_blueprints(team)
+    assert parse_calls == 4
+    assert "new" in team.blueprints
+
+
 def test_refresh_blueprints_removes_blueprint_when_file_deleted(tmp_path, monkeypatch):
     from app.core.config import settings
 

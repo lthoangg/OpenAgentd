@@ -78,9 +78,20 @@ function UsageRow({
   const color = barColor(percent)
 
   return (
-    <div className="px-4 py-3 space-y-1.5">
-      <p className="text-[13px] font-semibold leading-none text-(--color-text)">{label}</p>
-      <div className="relative h-1.5 rounded-full bg-(--bg-key)">
+    <div className="px-3 py-1.5 space-y-1">
+      <div className="flex items-center justify-between text-xs gap-2 min-w-0">
+        <span className="font-medium truncate text-(--color-text)">{label}</span>
+        <div className="flex items-center gap-1.5 shrink-0 text-[11px] text-(--color-text-muted) tabular-nums">
+          <span>{Math.round(percent)}% used</span>
+          {reset && (
+            <>
+              <span className="text-(--color-text-subtle)">·</span>
+              <span>{reset}</span>
+            </>
+          )}
+        </div>
+      </div>
+      <div className="relative h-1 rounded-full bg-(--bg-key)">
         {percent > 0 && (
           <>
             <div
@@ -88,7 +99,7 @@ function UsageRow({
               style={{ width: `${percent}%` }}
             />
             <div
-              className={cn('absolute top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full', color)}
+              className={cn('absolute top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full', color)}
               style={{ left: `${percent}%` }}
             />
           </>
@@ -101,10 +112,6 @@ function UsageRow({
           aria-valuemax={100}
           aria-label={label}
         />
-      </div>
-      <div className="flex items-center justify-between text-[11px] text-(--color-text-muted)">
-        <span className="tabular-nums">{Math.round(percent)}% used</span>
-        {reset && <span className="tabular-nums">{reset}</span>}
       </div>
     </div>
   )
@@ -123,13 +130,20 @@ function CreditsRow({
       ? 'Credits available'
       : 'No usage credits left'
   return (
-    <div className="px-4 py-3 space-y-1.5">
-      <p className="text-[13px] font-semibold leading-none text-(--color-text)">{label}</p>
-      <div className="h-1.5 rounded-full bg-(--bg-key)" />
-      <div className="flex items-center justify-between text-[11px] text-(--color-text-muted)">
-        <span>{text}</span>
-        {credits.balance && <span className="tabular-nums">{credits.balance}</span>}
+    <div className="px-3 py-1.5 space-y-1">
+      <div className="flex items-center justify-between text-xs gap-2 min-w-0">
+        <span className="font-medium truncate text-(--color-text)">{label}</span>
+        <div className="flex items-center gap-1.5 shrink-0 text-[11px] text-(--color-text-muted) tabular-nums">
+          <span>{text}</span>
+          {credits.balance && (
+            <>
+              <span className="text-(--color-text-subtle)">·</span>
+              <span>{credits.balance}</span>
+            </>
+          )}
+        </div>
       </div>
+      <div className="h-1 rounded-full bg-(--bg-key)" />
     </div>
   )
 }
@@ -137,13 +151,20 @@ function CreditsRow({
 function PeriodRow({ label, periodEndAt }: { label: string; periodEndAt?: number | null }) {
   const periodEnd = formatPeriodEndIn(periodEndAt)
   return (
-    <div className="px-4 py-3 space-y-1.5">
-      <p className="text-[13px] font-semibold leading-none text-(--color-text)">{label}</p>
-      <div className="h-1.5 rounded-full bg-(--bg-key)" />
-      <div className="flex items-center justify-between text-[11px] text-(--color-text-muted)">
-        <span>Usage period available</span>
-        {periodEnd && <span className="tabular-nums">{periodEnd}</span>}
+    <div className="px-3 py-1.5 space-y-1">
+      <div className="flex items-center justify-between text-xs gap-2 min-w-0">
+        <span className="font-medium truncate text-(--color-text)">{label}</span>
+        <div className="flex items-center gap-1.5 shrink-0 text-[11px] text-(--color-text-muted) tabular-nums">
+          <span>Usage period available</span>
+          {periodEnd && (
+            <>
+              <span className="text-(--color-text-subtle)">·</span>
+              <span>{periodEnd}</span>
+            </>
+          )}
+        </div>
       </div>
+      <div className="h-1 rounded-full bg-(--bg-key)" />
     </div>
   )
 }
@@ -175,12 +196,17 @@ export function UsagePanel({ limits, updatedAt }: { limits: ProviderUsageLimit[]
   const updated = formatUpdatedAgo(updatedAt)
 
   return (
-    <div className="overflow-hidden rounded border border-(--color-border) bg-(--bg-card)">
+    <div className="overflow-hidden rounded-md border border-(--color-border) bg-(--bg-card)">
       {/* Header strip */}
-      <div className="flex items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-key)/30 px-4 py-2.5">
-        <div className="min-w-0">
-          <p className="text-[13px] font-semibold leading-none text-(--color-text)">Usage</p>
-          {updated && <p className="mt-1 text-[10.5px] text-(--color-text-subtle)">{updated}</p>}
+      <div className="flex items-center justify-between gap-2 border-b border-(--color-border) bg-(--bg-key)/30 px-3 py-1.5">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <p className="text-xs font-semibold leading-none text-(--color-text)">Usage</p>
+          {updated && (
+            <>
+              <span className="text-[11px] text-(--color-text-subtle)">·</span>
+              <span className="text-[11px] text-(--color-text-subtle)">{updated}</span>
+            </>
+          )}
         </div>
         {primary?.plan_type && (
           <span className="shrink-0 text-[11px] font-medium text-(--color-text-muted)">{primary.plan_type}</span>
@@ -196,7 +222,7 @@ export function UsagePanel({ limits, updatedAt }: { limits: ProviderUsageLimit[]
 
       {/* Rate-limit warning */}
       {primary?.rate_limit_reached_type && (
-        <div className="border-t border-(--color-error)/20 bg-(--color-error-subtle) px-4 py-2.5">
+        <div className="border-t border-(--color-error)/20 bg-(--color-error-subtle) px-3 py-1.5">
           <p className="text-[11px] font-medium text-(--color-error)">
             Limit reached · {primary.rate_limit_reached_type.replaceAll('_', ' ')}
           </p>

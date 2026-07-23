@@ -45,7 +45,13 @@ Run on simulator/device:
 make ios-dev
 ```
 
-Install a production build with bundled Web UI on a physical iPhone:
+Install a bundled debug build for faster iteration on a physical iPhone:
+
+```bash
+make ios-install-device-fast <device-name>
+```
+
+The fast target preserves Cargo and Xcode incremental build state and skips the Web build when `web/dist` is newer than its inputs. Before shipping, install a production build:
 
 ```bash
 make ios-install-device <device-name>

@@ -1,4 +1,4 @@
-.PHONY: dev ios-init ios-icons ios-icons-force ios-dev ios-dev-device ios-install-device ios-build ios-clean build clean
+.PHONY: dev ios-init ios-icons ios-icons-force ios-web ios-dev ios-dev-device ios-install-device ios-install-device-fast ios-build ios-clean build clean
 
 IOS_DEVICE ?= $(word 2,$(MAKECMDGOALS))
 IOS_TEAM_FILE ?= ios-team.txt
@@ -9,6 +9,9 @@ IOS_DEV_PRODUCT_NAME ?= OpenAgentd Dev
 IOS_DEV_APP_CONFIG = --config '{"identifier":"$(IOS_DEV_IDENTIFIER)","productName":"$(IOS_DEV_PRODUCT_NAME)","plugins":{"deep-link":{"mobile":[{"scheme":["openagentd-dev"],"appLink":false}]}}}'
 IOS_APPICONSET = src-tauri/gen/apple/Assets.xcassets/AppIcon.appiconset
 IOS_ICON_STAMP = $(IOS_APPICONSET)/.openagentd-icons.stamp
+WEB_DIR = ../web
+WEB_DIST_INDEX = $(WEB_DIR)/dist/index.html
+WEB_BUILD_INPUTS = $(WEB_DIR)/index.html $(WEB_DIR)/package.json $(WEB_DIR)/bun.lock $(WEB_DIR)/tsconfig.json $(WEB_DIR)/tsconfig.app.json $(WEB_DIR)/tsconfig.node.json $(WEB_DIR)/vite.config.ts
 
 dev: ## Run the mobile shell against the web Vite dev server
 	cd src-tauri && cargo tauri dev
@@ -39,6 +42,23 @@ ios-icons-force: ## Force-regenerate iOS AppIcon assets from the shared OpenAgen
 		touch $(IOS_ICON_STAMP); \
 	fi
 
+ios-web: ## Build bundled Web assets only when their inputs changed
+	@needs_build=0; \
+	if [ ! -f "$(WEB_DIST_INDEX)" ]; then \
+		needs_build=1; \
+	elif find $(WEB_DIR)/src $(WEB_DIR)/public -type f -newer "$(WEB_DIST_INDEX)" -print -quit | grep -q .; then \
+		needs_build=1; \
+	else \
+		for input in $(WEB_BUILD_INPUTS); do \
+			if [ "$$input" -nt "$(WEB_DIST_INDEX)" ]; then needs_build=1; break; fi; \
+		done; \
+	fi; \
+	if [ "$$needs_build" -eq 1 ]; then \
+		cd $(WEB_DIR) && bun install --frozen-lockfile && bun run build; \
+	else \
+		echo "Web bundle is current; skipping build"; \
+	fi
+
 ios-dev: ## Run on an iOS simulator/device
 	cd src-tauri && cargo tauri ios dev --host
 
@@ -56,6 +76,15 @@ ios-install-device: ## Build and install the production iOS app on a device
 	fi
 	$(MAKE) ios-icons
 	cd src-tauri && cargo tauri ios build --archive-only $(IOS_TEAM_CONFIG)
+	xcrun devicectl device install app --device "$(IOS_DEVICE)" src-tauri/gen/apple/build/openagentd-mobile_iOS.xcarchive/Products/Applications/OpenAgentd.app
+
+ios-install-device-fast: ## Build and install a bundled debug iOS app on a device
+	@if [ -z "$(IOS_DEVICE)" ]; then \
+		echo "Usage: make ios-install-device-fast <device-name>"; \
+		exit 2; \
+	fi
+	$(MAKE) ios-icons
+	cd src-tauri && cargo tauri ios build --debug --archive-only $(IOS_TEAM_CONFIG)
 	xcrun devicectl device install app --device "$(IOS_DEVICE)" src-tauri/gen/apple/build/openagentd-mobile_iOS.xcarchive/Products/Applications/OpenAgentd.app
 
 %:

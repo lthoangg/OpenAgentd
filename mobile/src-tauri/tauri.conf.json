@@ -8,7 +8,7 @@
     "devUrl": "http://localhost:5173",
     "beforeBuildCommand": {
       "cwd": "../..",
-      "script": "cd web && bun install --frozen-lockfile && bun run build"
+      "script": "make -C mobile ios-web"
     },
     "frontendDist": "../../web/dist"
   },

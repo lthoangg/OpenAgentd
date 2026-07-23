@@ -117,11 +117,24 @@ class ResponsesHandler:
                 # into `input`). Without this, stateless (store=false)
                 # multi-turn tool calls lose reasoning continuity.
                 if msg.reasoning_encrypted_content:
+                    # Me: upstream Codex CLI stores the `summary` field
+                    # verbatim from `response.output_item.done` and replays
+                    # it unmodified on the next turn (codex-rs protocol
+                    # `ResponseItem::Reasoning.summary` has no
+                    # `skip_serializing_if` — it's always sent as received).
+                    # We only keep the joined display text, not the original
+                    # per-part list, so replay it as a single summary_text
+                    # entry rather than dropping it as an empty list.
+                    summary = (
+                        [{"type": "summary_text", "text": msg.reasoning_content}]
+                        if msg.reasoning_content
+                        else []
+                    )
                     input_items.append(
                         {
                             "type": "reasoning",
                             "id": msg.reasoning_item_id,
-                            "summary": [],
+                            "summary": summary,
                             "encrypted_content": msg.reasoning_encrypted_content,
                         }
                     )

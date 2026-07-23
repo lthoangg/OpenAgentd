@@ -174,6 +174,34 @@ class TestResponsesHandler:
             "encrypted_content": "cipher123",
         }
 
+    def test_convert_messages_replays_reasoning_summary_text(self, handler):
+        """When the assistant message carries reasoning_content (the readable
+        summary text streamed to the user), it must be replayed as a
+        summary_text entry alongside encrypted_content — matching upstream
+        Codex CLI, which stores and replays `ResponseItem::Reasoning.summary`
+        verbatim (no `skip_serializing_if`) rather than dropping it."""
+        messages = [
+            AssistantMessage(
+                content="Calling a tool.",
+                reasoning_content="**Thinking about it**",
+                reasoning_item_id="rs_1",
+                reasoning_encrypted_content="cipher123",
+                tool_calls=[
+                    ToolCall(
+                        id="call_123",
+                        function=FunctionCall(name="get_weather", arguments="{}"),
+                    ),
+                ],
+            )
+        ]
+        result = handler.convert_messages(messages)
+        assert result[0] == {
+            "type": "reasoning",
+            "id": "rs_1",
+            "summary": [{"type": "summary_text", "text": "**Thinking about it**"}],
+            "encrypted_content": "cipher123",
+        }
+
     def test_convert_messages_no_reasoning_item_without_encrypted_content(
         self, handler
     ):

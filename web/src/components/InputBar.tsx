@@ -63,7 +63,7 @@ export interface SnippetCommand {
   category?: string
 }
 
-interface InputBarProps {
+export interface InputBarProps {
   onSubmit: (message: string, files?: File[], mentionedFiles?: string[]) => void
   onStop?: () => void
   onSlashCommand?: (id: string) => void
@@ -269,6 +269,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   //     promoting widens the textarea (so the same content fits on
   //     one line again) which would otherwise demote → re-promote.
   const [isMultiLine, setIsMultiLine] = useState(false)
+  const promoteLengthRef = useRef(0)
   const lineHeightRef = useRef<number | null>(null)
   const resizeFrameRef = useRef<number | null>(null)
   const resize = useCallback(() => {
@@ -285,7 +286,28 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       lineHeightRef.current = lineHeight
     }
     const wrapped = scrollHeight > lineHeight * 1.4
-    setIsMultiLine(wrapped)
+    const currentLen = el.value.length
+    const hasNewline = el.value.includes('\n')
+
+    setIsMultiLine((prev) => {
+      if (!prev && wrapped) {
+        // Promote: remember the length so we know when it's safe to
+        // demote later.
+        promoteLengthRef.current = currentLen
+        return true
+      }
+      if (prev && !wrapped && !hasNewline) {
+        // Demote candidate. Only commit if length has dropped clearly
+        // below the promote-length (80% threshold) — guards against
+        // the wrap-promote-rewrap loop in the boundary band.
+        const demoteThreshold = Math.floor(promoteLengthRef.current * 0.8)
+        if (currentLen <= demoteThreshold) {
+          promoteLengthRef.current = 0
+          return false
+        }
+      }
+      return prev
+    })
   }, [])
 
   const {
@@ -498,6 +520,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     // will compute the correct height from the actual content.
     if (!textareaRef.current?.value) {
       setIsMultiLine(false)
+      promoteLengthRef.current = 0
     }
     // Double-rAF: outer frame lets Framer's spring start its expand
     // animation; inner frame fires after the browser's subsequent
@@ -559,6 +582,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     const el = textareaRef.current
     if (el) el.style.height = 'auto'
     setIsMultiLine(false)
+    promoteLengthRef.current = 0
     requestAnimationFrame(resize)
   }, [disabled, value, files, isStreaming, shellMode, onSubmit, mentions, resize, setFiles, setMentionMenuIndex, setMentionRange, setSlashMenuIndex, setSnippetMenuIndex, setSnippetRange])
 

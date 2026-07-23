@@ -224,18 +224,24 @@ PLIST
   fi
   info "Entitlements: ${entitlements_file}"
 
+  bundle_id="com.openagentd.desktop"
+  info "Bundle Identifier: ${bundle_id}"
+
   # ── 4. Ad-hoc sign the whole bundle ─────────────────────────────────────────
   # ``--deep`` is deprecated for production signing but is exactly
   # the right hammer for ad-hoc: we have no signing identity to
   # protect, and every nested Mach-O (~hundreds of .so/.dylib in the
   # Python sidecar) needs *some* signature for Gatekeeper to allow
-  # exec.
+  # exec. Passing an explicit Designated Requirement (designated =>
+  # identifier "$bundle_id") prevents macOS TCC from resetting folder
+  # permissions on every update.
   info "Ad-hoc signing the bundle (this can take a few seconds)…"
   if ! codesign \
       --force \
       --deep \
       --sign - \
       --options runtime \
+      -r="designated => identifier \"$bundle_id\"" \
       --entitlements "$entitlements_file" \
       --timestamp=none \
       "$BUNDLE" 2>&1 | sed 's/^/  /'; then
@@ -276,6 +282,8 @@ PLIST
     # filesystem can perturb xattrs — re-sign at destination to be
     # safe. Failure here is non-fatal.
     codesign --force --deep --sign - \
+      --options runtime \
+      -r="designated => identifier \"$bundle_id\"" \
       --entitlements "$entitlements_file" \
       "$dest" >/dev/null 2>&1 || true
     ok "Installed to $dest"

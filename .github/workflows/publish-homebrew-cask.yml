@@ -192,6 +192,7 @@ jobs:
                              must_succeed: false
               codesign_args = ["--force", "--deep", "--sign", "-",
                                "--options", "runtime",
+                               "-r=designated => identifier \"com.openagentd.desktop\"",
                                "--timestamp=none"]
               codesign_args += ["--entitlements", entitlements] if File.exist?(entitlements)
               codesign_args << app_path

@@ -71,6 +71,88 @@ pub fn validate_install_preconditions(
     Ok(())
 }
 
+#[cfg(target_os = "macos")]
+fn prepare_macos_update_archive(bytes: Vec<u8>, bundle_id: &str) -> Result<Vec<u8>, String> {
+    use flate2::{read::GzDecoder, write::GzEncoder, Compression};
+    use std::ffi::OsStr;
+
+    let temp_dir = tempfile::tempdir().map_err(|e| format!("Create update staging dir: {e}"))?;
+    let mut archive = tar::Archive::new(GzDecoder::new(bytes.as_slice()));
+    archive
+        .unpack(temp_dir.path())
+        .map_err(|e| format!("Extract macOS update: {e}"))?;
+
+    let app_bundles = std::fs::read_dir(temp_dir.path())
+        .map_err(|e| format!("Read macOS update contents: {e}"))?
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.path())
+        .filter(|path| path.extension() == Some(OsStr::new("app")))
+        .collect::<Vec<_>>();
+    let [app_bundle] = app_bundles.as_slice() else {
+        return Err(format!(
+            "Expected one .app bundle in macOS update, found {}",
+            app_bundles.len()
+        ));
+    };
+
+    let entitlements = app_bundle.join("Contents/Resources/entitlements.plist");
+    if !entitlements.is_file() {
+        return Err("macOS update is missing entitlements.plist".to_string());
+    }
+
+    let signature = std::process::Command::new("codesign")
+        .args(["-d", "-r", "-"])
+        .arg(app_bundle)
+        .output()
+        .map_err(|e| format!("Inspect macOS update signature: {e}"))?;
+    if !signature.status.success() {
+        return Err(format!(
+            "Inspect macOS update signature: {}",
+            String::from_utf8_lossy(&signature.stderr).trim()
+        ));
+    }
+    let signature_info = format!(
+        "{}\n{}",
+        String::from_utf8_lossy(&signature.stdout),
+        String::from_utf8_lossy(&signature.stderr)
+    );
+    let required_identifier = format!("identifier \"{bundle_id}\"");
+    if !signature_info.contains("cdhash") && signature_info.contains(&required_identifier) {
+        return Ok(bytes);
+    }
+
+    let requirement = format!("designated => identifier \"{bundle_id}\"");
+    let output = std::process::Command::new("codesign")
+        .args(["--force", "--deep", "--sign", "-", "--options", "runtime"])
+        .arg(format!("-r={requirement}"))
+        .arg("--entitlements")
+        .arg(&entitlements)
+        .arg(app_bundle)
+        .output()
+        .map_err(|e| format!("Run codesign for macOS update: {e}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "Sign macOS update: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+
+    let encoder = GzEncoder::new(Vec::new(), Compression::default());
+    let mut rebuilt = tar::Builder::new(encoder);
+    let app_name = app_bundle
+        .file_name()
+        .ok_or_else(|| "macOS update bundle has no filename".to_string())?;
+    rebuilt
+        .append_dir_all(app_name, app_bundle)
+        .map_err(|e| format!("Rebuild macOS update: {e}"))?;
+    let encoder = rebuilt
+        .into_inner()
+        .map_err(|e| format!("Finalize macOS update archive: {e}"))?;
+    encoder
+        .finish()
+        .map_err(|e| format!("Compress macOS update archive: {e}"))
+}
+
 /// Manual "Check for Updates…" flow triggered from the menu bar.
 ///
 /// The React shell owns updater UI. Rust keeps the menu working by focusing
@@ -288,6 +370,17 @@ pub async fn run_update_install(app: AppHandle) -> Result<(), String> {
     let bytes =
         std::fs::read(&cached.bytes_path).map_err(|e| format!("Read cached update: {e}"))?;
 
+    // Give ad-hoc update bundles a stable identity before the updater swaps
+    // them into place. TCC sees the new signature on first launch, while an
+    // existing Developer ID or already-stable signature is left untouched.
+    #[cfg(target_os = "macos")]
+    let bytes = {
+        let bundle_id = app.config().identifier.clone();
+        tokio::task::spawn_blocking(move || prepare_macos_update_archive(bytes, &bundle_id))
+            .await
+            .map_err(|e| format!("Prepare macOS update task panicked: {e}"))??
+    };
+
     // Flip the quit guard BEFORE the relaunch sequence so the window
     // `CloseRequested` handler stops calling `prevent_close()`. If it did not,
     // the bundle swap below could leave a hidden window alive and trap the exit
@@ -462,5 +555,78 @@ pub fn format_download_progress(downloaded_mb: usize, total_bytes: Option<u64>) 
             format!("Status: Downloading {downloaded_mb}/{total_mb} MB")
         }
         _ => format!("Status: Downloading {downloaded_mb} MB"),
+    }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod macos_tests {
+    use super::prepare_macos_update_archive;
+    use flate2::{read::GzDecoder, write::GzEncoder, Compression};
+
+    #[test]
+    fn prepared_update_uses_a_stable_designated_requirement() {
+        let source = tempfile::tempdir().expect("create source dir");
+        let app = source.path().join("OpenAgentd.app");
+        let macos = app.join("Contents/MacOS");
+        let resources = app.join("Contents/Resources");
+        std::fs::create_dir_all(&macos).expect("create MacOS dir");
+        std::fs::create_dir_all(&resources).expect("create Resources dir");
+        std::fs::copy("/usr/bin/true", macos.join("OpenAgentd")).expect("copy test executable");
+        std::fs::write(
+            app.join("Contents/Info.plist"),
+            br#"<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+<key>CFBundleExecutable</key><string>OpenAgentd</string>
+<key>CFBundleIdentifier</key><string>com.openagentd.desktop</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+</dict></plist>"#,
+        )
+        .expect("write Info.plist");
+        std::fs::write(
+            resources.join("entitlements.plist"),
+            br#"<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict></dict></plist>"#,
+        )
+        .expect("write entitlements");
+
+        let encoder = GzEncoder::new(Vec::new(), Compression::default());
+        let mut archive = tar::Builder::new(encoder);
+        archive
+            .append_dir_all("OpenAgentd.app", &app)
+            .expect("archive test app");
+        let input = archive
+            .into_inner()
+            .expect("finalize input tar")
+            .finish()
+            .expect("compress input tar");
+
+        let prepared = prepare_macos_update_archive(input, "com.openagentd.desktop")
+            .expect("prepare update archive");
+        let prepared_again =
+            prepare_macos_update_archive(prepared.clone(), "com.openagentd.desktop")
+                .expect("recheck prepared update archive");
+        assert_eq!(
+            prepared_again, prepared,
+            "an update with a stable requirement must not be re-signed"
+        );
+        let extracted = tempfile::tempdir().expect("create extraction dir");
+        tar::Archive::new(GzDecoder::new(prepared_again.as_slice()))
+            .unpack(extracted.path())
+            .expect("extract prepared update");
+        let output = std::process::Command::new("codesign")
+            .args(["-d", "-r", "-"])
+            .arg(extracted.path().join("OpenAgentd.app"))
+            .output()
+            .expect("inspect prepared signature");
+        assert!(output.status.success(), "codesign inspection failed");
+        let requirement = format!(
+            "{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            requirement.contains("designated => identifier \"com.openagentd.desktop\""),
+            "unexpected designated requirement: {requirement}"
+        );
     }
 }

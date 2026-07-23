@@ -2633,6 +2633,7 @@ version = "1.116.0"
 dependencies = [
  "anyhow",
  "block2",
+ "flate2",
  "image",
  "keyring",
  "log",
@@ -2645,6 +2646,7 @@ dependencies = [
  "reqwest 0.12.28",
  "serde",
  "serde_json",
+ "tar",
  "tauri",
  "tauri-build",
  "tauri-plugin-deep-link",
@@ -2655,6 +2657,7 @@ dependencies = [
  "tauri-plugin-process",
  "tauri-plugin-single-instance",
  "tauri-plugin-updater",
+ "tempfile",
  "time",
  "tokio",
  "url",

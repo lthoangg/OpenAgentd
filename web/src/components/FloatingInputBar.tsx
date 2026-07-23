@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react'
+import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react'
 import { motion, useDragControls } from 'framer-motion'
 import { GripHorizontal } from 'lucide-react'
 import { InputBar, type FileRef, type InputBarHandle, type SlashCommand, type SnippetCommand } from './InputBar'
@@ -118,8 +118,9 @@ interface FloatingInputBarProps {
  * explicit grip handle so it doesn't conflict with textarea text selection.
  * Position persists in `localStorage` and is clamped on resize.
  */
-export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps>(
-  function FloatingInputBar({ boundsRef, ...inputProps }, ref) {
+export const FloatingInputBar = memo(
+  forwardRef<InputBarHandle, FloatingInputBarProps>(
+    function FloatingInputBar({ boundsRef, ...inputProps }, ref) {
     const isMobile = useIsMobile()
     const dragControls = useDragControls()
     const panelRef = useRef<HTMLDivElement>(null)
@@ -561,4 +562,4 @@ export const FloatingInputBar = forwardRef<InputBarHandle, FloatingInputBarProps
       </motion.div>
     )
   },
-)
+))

@@ -7,7 +7,7 @@
  * view. Each view passes its own `renderBlock` so the per-view block visuals
  * (e.g. compact vs roomy `UserBubble`) stay independent.
  */
-import { useCallback, useMemo, useState, type ReactNode } from 'react'
+import { memo, useCallback, useMemo, useState, type ReactNode } from 'react'
 import { Copy, Check, Play } from 'lucide-react'
 import { formatTime, lastTurnText } from '@/utils/format'
 import type { ContentBlock } from '@/api/types'
@@ -36,7 +36,7 @@ function shortModelName(modelId: string | null | undefined): string | null {
   return modelId.split(':').at(-1)?.split('/').at(-1) || modelId
 }
 
-export function AssistantTurnFooter({ turnBlocks, size = 'compact', onContinue }: AssistantTurnFooterProps) {
+export const AssistantTurnFooter = memo(function AssistantTurnFooter({ turnBlocks, size = 'compact', onContinue }: AssistantTurnFooterProps) {
   const [copied, setCopied] = useState(false)
   const footerData = useMemo(() => {
     // Me lastTurnText walks back to the previous user block; pass the turn directly
@@ -116,7 +116,7 @@ export function AssistantTurnFooter({ turnBlocks, size = 'compact', onContinue }
       )}
     </div>
   )
-}
+})
 
 export interface AssistantTurnProps {
   /** Blocks belonging to this turn (no user blocks inside). */
@@ -142,7 +142,7 @@ export interface AssistantTurnProps {
   onContinue?: () => void
 }
 
-export function AssistantTurn({
+export const AssistantTurn = memo(function AssistantTurn({
   blocks,
   startIndex,
   finalizedCount,
@@ -174,4 +174,4 @@ export function AssistantTurn({
       {!turnIsStreaming && <AssistantTurnFooter turnBlocks={blocks} size={size} onContinue={canContinue} />}
     </div>
   )
-}
+})

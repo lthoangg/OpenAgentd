@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { memo, useMemo, useState } from 'react'
 import { ChevronDown, ChevronUp, Paperclip, X } from 'lucide-react'
 import { useTeamStore } from '@/stores/useTeamStore'
 import type { MessageAttachment } from '@/api/types'
@@ -59,10 +59,13 @@ function QueuedMessageContent({ content, attachments }: { content: string; attac
   )
 }
 
-export function PendingMessageQueue() {
+export const PendingMessageQueue = memo(function PendingMessageQueue() {
   const allMessages = useTeamStore((s) => s._pendingMessages)
   const sessionId = useTeamStore((s) => s.sessionId)
-  const messages = allMessages.filter((msg) => (msg.sessionId ?? null) === sessionId)
+  const messages = useMemo(
+    () => allMessages.filter((msg) => (msg.sessionId ?? null) === sessionId),
+    [allMessages, sessionId],
+  )
   const removePendingMessage = useTeamStore((s) => s.removePendingMessage)
 
   if (messages.length === 0) return null
@@ -102,4 +105,4 @@ export function PendingMessageQueue() {
       ))}
     </div>
   )
-}
+})

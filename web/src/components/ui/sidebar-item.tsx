@@ -15,7 +15,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
 import { getPlatform } from '@/hooks/use-platform'
 import { formatShortcut } from '@/lib/keyboard-shortcut'
-import type { ComponentType, MouseEventHandler, ReactNode } from 'react'
+import { memo, type ComponentType, type MouseEventHandler, type ReactNode } from 'react'
 
 /**
  * Convert the shorthand ``"^N"`` (caret = primary modifier) into the
@@ -42,7 +42,7 @@ export interface SidebarItemProps {
   className?: string
 }
 
-export function SidebarItem({
+export const SidebarItem = memo(function SidebarItem({
   Icon,
   label,
   kbd,
@@ -93,4 +93,4 @@ export function SidebarItem({
         ) : null)}
     </button>
   )
-}
+})

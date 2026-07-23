@@ -38,6 +38,11 @@ import { useUIStore } from '@/stores/useUIStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useTeamAgentsQuery } from '@/queries/useAgentsQuery'
 import { useRegistryQuery } from '@/queries/useAgentFilesQuery'
+import type { ContentBlock, MessageAttachment } from '@/api/types'
+
+type RevertedMessage = { role: string; content: string; attachments?: MessageAttachment[] }
+const EMPTY_BLOCKS: ContentBlock[] = []
+const EMPTY_REVERTED_MESSAGES: RevertedMessage[] = []
 import { useFileRefsQuery } from '@/queries/useFileRefsQuery'
 import { AlertCircle, FolderCode, X, FileUp } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -107,7 +112,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         dismissSetupRequired: s.dismissSetupRequired,
 
         activeAgent: s.activeAgent,
-        agentStreams: s.agentStreams,
         agentNames: s.agentNames,
         isTeamWorking: s.isTeamWorking,
         isContinuing: s.isContinuing,
@@ -118,9 +122,13 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         sessionFastMode: s.sessionFastMode,
         leadName: s.leadName,
 
-        activeBlocks: activeStream?.blocks,
-        activeCurrentBlocks: activeStream?.currentBlocks,
-        activeStatus: activeStream?.status,
+        activeBlocks: activeStream?.blocks ?? EMPTY_BLOCKS,
+        activeCurrentBlocks: activeStream?.currentBlocks ?? EMPTY_BLOCKS,
+        activeStatus: activeStream?.status ?? 'idle',
+        activeLastError: activeStream?.lastError ?? null,
+
+        leadRevertedCount: leadStream?.revertedCount ?? 0,
+        leadRevertedMessages: leadStream?.revertedMessages ?? EMPTY_REVERTED_MESSAGES,
 
         leadPromptTokens: leadStream?.usage.promptTokens ?? 0,
         leadCompletionTokens: leadStream?.usage.completionTokens ?? 0,
@@ -148,7 +156,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     dismissSetupRequired,
 
     activeAgent,
-    agentStreams,
     agentNames,
     isTeamWorking,
     isContinuing,
@@ -162,6 +169,10 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     activeBlocks,
     activeCurrentBlocks,
     activeStatus,
+    activeLastError,
+
+    leadRevertedCount,
+    leadRevertedMessages,
 
     leadPromptTokens,
     leadCompletionTokens,
@@ -234,15 +245,18 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   // team). Used everywhere agents are listed for switching — split grid,
   // the agent tabs bar, and the mobile agent switcher — so dismissed
   // members disappear from pickers instead of lingering as dead tabs.
-  const splitAgentNames = agentNames.filter((name) => agentStreams[name]?.status !== 'offline')
+  const splitAgentNames = useMemo(
+    () => agentNames.filter((name) => useTeamStore.getState().agentStreams[name]?.status !== 'offline'),
+    [agentNames],
+  )
   const historyPrompts = useMemo(() => {
-    const blocks = leadName ? agentStreams[leadName]?.blocks : undefined
+    const blocks = leadName ? useTeamStore.getState().agentStreams[leadName]?.blocks : undefined
     if (!blocks) return []
     return [...blocks]
       .reverse()
       .filter((block) => block.type === 'user' && block.content.trim())
       .map((block) => block.content)
-  }, [agentStreams, leadName])
+  }, [leadName])
 
   const { data: todosData } = useTodosQuery(sessionIdState)
   const todos = todosData?.todos ?? []
@@ -406,7 +420,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         setShowMobileActions={handleSetShowMobileActions}
         mobileActionsDragOffset={actionsDragOffset}
         agentNames={splitAgentNames}
-        agentStreams={agentStreams}
         onSelectAgent={setActiveAgent}
         onToggleScheduler={handleToggleScheduler}
         onCloseMobileActionsMenu={closeMobileActionsMenu}
@@ -507,7 +520,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             <SplitGrid
               agentNames={splitAgentNames}
               leadName={leadName}
-              agentStreams={agentStreams}
               isContinuing={isContinuing}
               onContinue={continueTeam}
             />
@@ -539,22 +551,21 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
               </Button>
             }
           />
-        ) : activeAgent && agentStreams[activeAgent] ? (
+        ) : activeAgent ? (
           <div className="flex flex-1 flex-col min-h-0">
             {effectiveViewMode === 'agent' && splitAgentNames.length > 1 && (
               <AgentTabs
                 activeAgent={activeAgent}
                 agents={splitAgentNames}
-                streams={agentStreams}
                 onSelect={setActiveAgent}
               />
             )}
             <AgentView
-              blocks={activeBlocks ?? agentStreams[activeAgent].blocks}
-              currentBlocks={activeCurrentBlocks ?? agentStreams[activeAgent].currentBlocks}
-              isWorking={(activeStatus ?? agentStreams[activeAgent].status) === 'working'}
-              isError={(activeStatus ?? agentStreams[activeAgent].status) === 'error'}
-              lastError={agentStreams[activeAgent].lastError}
+              blocks={activeBlocks}
+              currentBlocks={activeCurrentBlocks}
+              isWorking={activeStatus === 'working'}
+              isError={activeStatus === 'error'}
+              lastError={activeLastError}
               isContinuing={isContinuing && activeAgent === leadName}
               onContinue={activeAgent === leadName ? continueTeam : undefined}
               onMentionFileOpen={mode === 'coding' ? handleMentionFileOpen : undefined}
@@ -613,8 +624,8 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             capabilities={leadCapabilities}
             voiceEnabled={voiceEnabled}
             voiceUnavailableReason={voiceUnavailableReason}
-            revertedCount={leadName ? agentStreams[leadName]?.revertedCount ?? 0 : 0}
-            revertedMessages={leadName ? agentStreams[leadName]?.revertedMessages ?? [] : []}
+            revertedCount={leadRevertedCount}
+            revertedMessages={leadRevertedMessages}
             onRedo={() => { void handleSlashCommand('redo') }}
           />
         )}

@@ -16,7 +16,7 @@
  * this module owns only the chrome (collapse, copy, motion).
  */
 
-import { useEffect, useRef, useState, useMemo } from 'react'
+import { useEffect, useRef, useState, useMemo, memo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ChevronRight, Copy, Check } from 'lucide-react'
 import hljs from 'highlight.js/lib/core'
@@ -144,7 +144,7 @@ function ShellCommand({ command }: { command: string }) {
   return <code className="hljs" dangerouslySetInnerHTML={{ __html: highlighted }} />
 }
 
-export function ToolCall({ name, args, done, liveOutput, result, durationMs, startedAt }: ToolCallProps) {
+export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, result, durationMs, startedAt }: ToolCallProps) {
   // Hooks must be called unconditionally — before any early returns
   const [manualExpanded, setManualExpanded] = useState<boolean | null>(null)
   const [copiedArgs, setCopiedArgs] = useState(false)
@@ -438,4 +438,4 @@ export function ToolCall({ name, args, done, liveOutput, result, durationMs, sta
       </AnimatePresence>
     </div>
   )
-}
+})

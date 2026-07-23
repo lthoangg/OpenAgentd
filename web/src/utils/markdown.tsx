@@ -478,6 +478,6 @@ export const MarkdownBlock = memo(function MarkdownBlock({
 // shallow-compares plugins to decide whether to rebuild its processor.
 const _REMARK_PLUGINS = [remarkGfm, remarkMath]
 const _REHYPE_PLUGINS: React.ComponentProps<typeof ReactMarkdown>['rehypePlugins'] = [
-  [rehypeHighlight, { detect: true }],
+  [rehypeHighlight, { detect: false }],
   rehypeKatex,
 ]

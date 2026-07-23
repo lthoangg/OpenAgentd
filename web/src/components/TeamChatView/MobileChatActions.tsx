@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { CalendarClock, Check, MoreHorizontal, X } from 'lucide-react'
-import type { AgentStream } from '@/stores/useTeamStore'
+import { useTeamStore, type AgentStream } from '@/stores/useTeamStore'
 import { workspaceLabel } from '@/utils/workspace'
 import { dotClassFor } from './agentDots'
 
@@ -13,7 +13,7 @@ export interface MobileChatActionsProps {
   workspace: string | null
   activeAgent: string | null
   agents: string[]
-  streams: Record<string, AgentStream>
+  streams?: Record<string, AgentStream>
   onSelectAgent: (agent: string) => void
   onScheduler: () => void
 }
@@ -26,10 +26,12 @@ export function MobileChatActions({
   workspace,
   activeAgent,
   agents,
-  streams,
+  streams: streamsProp,
   onSelectAgent,
   onScheduler,
 }: MobileChatActionsProps) {
+  const storeStreams = useTeamStore((s) => s.agentStreams)
+  const streams = streamsProp ?? storeStreams
   return (
     <>
       <button

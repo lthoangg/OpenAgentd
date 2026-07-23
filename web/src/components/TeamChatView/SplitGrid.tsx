@@ -21,12 +21,12 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { AgentPane } from '../AgentPane'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
-import type { AgentStream } from '@/stores/useTeamStore'
+import { useTeamStore, type AgentStream } from '@/stores/useTeamStore'
 
 interface SplitGridProps {
   agentNames: string[]
   leadName: string | null
-  agentStreams: Record<string, AgentStream>
+  agentStreams?: Record<string, AgentStream>
   isContinuing?: boolean
   onContinue?: () => void
 }
@@ -39,8 +39,10 @@ const MOTION_BASE_S = 0.24 // matches --motion-base (240ms)
 const MOTION_FAST_S = 0.15 // matches --motion-fast (150ms)
 
 export function SplitGrid({
-  agentNames, leadName, agentStreams, isContinuing = false, onContinue,
+  agentNames, leadName, agentStreams: streamsProp, isContinuing = false, onContinue,
 }: SplitGridProps) {
+  const storeStreams = useTeamStore((s) => s.agentStreams)
+  const agentStreams = streamsProp ?? storeStreams
   const prefersReducedMotion = useReducedMotion()
 
   const visibleAgentNames = agentNames.filter((name) => {

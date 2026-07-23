@@ -1,4 +1,4 @@
-import type { Dispatch, HTMLAttributes, SetStateAction } from 'react'
+import { memo, type Dispatch, type HTMLAttributes, type SetStateAction } from 'react'
 import { Home, FolderOpen, ListTodo, Menu, SlidersHorizontal } from 'lucide-react'
 import type { NavigateFn } from '@tanstack/react-router'
 
@@ -43,7 +43,7 @@ interface TeamChatHeaderProps {
   setShowMobileActions: Dispatch<SetStateAction<boolean>>
   mobileActionsDragOffset?: number | null
   agentNames: string[]
-  agentStreams: Record<string, AgentStream>
+  agentStreams?: Record<string, AgentStream>
   onSelectAgent: (agent: string) => void
   onToggleScheduler: () => void
   onCloseMobileActionsMenu: () => void
@@ -51,7 +51,7 @@ interface TeamChatHeaderProps {
   onViewModeChange: (mode: ViewMode) => void
 }
 
-export function TeamChatHeader({
+export const TeamChatHeader = memo(function TeamChatHeader({
   dragHandlers,
   isMacOverlay,
   isMobile,
@@ -275,4 +275,4 @@ export function TeamChatHeader({
         </div>
     </header>
   )
-}
+})

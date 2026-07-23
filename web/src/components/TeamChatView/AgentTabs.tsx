@@ -1,19 +1,21 @@
-import type { AgentStream } from '@/stores/useTeamStore'
+import { useTeamStore, type AgentStream } from '@/stores/useTeamStore'
 import { dotClassFor } from './agentDots'
 
 export interface AgentTabsProps {
   activeAgent: string
   agents: string[]
-  streams: Record<string, AgentStream>
+  streams?: Record<string, AgentStream>
   onSelect: (agent: string) => void
 }
 
 export function AgentTabs({
   activeAgent,
   agents,
-  streams,
+  streams: streamsProp,
   onSelect,
 }: AgentTabsProps) {
+  const storeStreams = useTeamStore((s) => s.agentStreams)
+  const streams = streamsProp ?? storeStreams
   return (
     <div className="scrollbar-none flex shrink-0 items-center gap-1 border-b border-(--color-border) bg-(--bg-sidebar) px-3 py-1.5 overflow-x-auto">
       {agents.map((name) => {

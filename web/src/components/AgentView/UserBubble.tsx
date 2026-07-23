@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, memo } from 'react'
 import { Check, ChevronDown, ChevronUp, Copy, Terminal, Undo2 } from 'lucide-react'
 
 import { FileLightbox, type FileLightboxItem, type FileLightboxItemType } from '../FileLightbox'
@@ -185,7 +185,7 @@ function AttachmentThumb({ item, onOpen }: { item: FileLightboxItem; onOpen: () 
   )
 }
 
-export function UserBubble({ content, timestamp, attachments, onRevert, modelId, shell, onMentionFileOpen, mentions }: { content: string; timestamp?: Date; attachments?: MessageAttachment[]; onRevert?: () => void; modelId?: string | null; shell?: boolean; onMentionFileOpen?: (path: string) => void; mentions?: string[] }) {
+export const UserBubble = memo(function UserBubble({ content, timestamp, attachments, onRevert, modelId, shell, onMentionFileOpen, mentions }: { content: string; timestamp?: Date; attachments?: MessageAttachment[]; onRevert?: () => void; modelId?: string | null; shell?: boolean; onMentionFileOpen?: (path: string) => void; mentions?: string[] }) {
   const [showTime, setShowTime] = useState(false)
   const [copied, setCopied] = useState(false)
   const [expanded, setExpanded] = useState(false)
@@ -297,4 +297,4 @@ export function UserBubble({ content, timestamp, attachments, onRevert, modelId,
       </div>
     </div>
   )
-}
+})

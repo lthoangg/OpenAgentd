@@ -112,7 +112,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         dismissSetupRequired: s.dismissSetupRequired,
 
         activeAgent: s.activeAgent,
-        agentNames: s.agentNames,
         isTeamWorking: s.isTeamWorking,
         isContinuing: s.isContinuing,
         sessionId: s.sessionId,
@@ -156,7 +155,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     dismissSetupRequired,
 
     activeAgent,
-    agentNames,
     isTeamWorking,
     isContinuing,
     sessionId: sessionIdState,
@@ -245,18 +243,18 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   // team). Used everywhere agents are listed for switching — split grid,
   // the agent tabs bar, and the mobile agent switcher — so dismissed
   // members disappear from pickers instead of lingering as dead tabs.
-  const splitAgentNames = useMemo(
-    () => agentNames.filter((name) => useTeamStore.getState().agentStreams[name]?.status !== 'offline'),
-    [agentNames],
+  const splitAgentNames = useTeamStore(
+    useShallow((s) => s.agentNames.filter((name) => s.agentStreams[name]?.status !== 'offline')),
   )
-  const historyPrompts = useMemo(() => {
-    const blocks = leadName ? useTeamStore.getState().agentStreams[leadName]?.blocks : undefined
-    if (!blocks) return []
-    return [...blocks]
+  const leadBlocks = useTeamStore((s) => (
+    s.leadName ? s.agentStreams[s.leadName]?.blocks ?? EMPTY_BLOCKS : EMPTY_BLOCKS
+  ))
+  const historyPrompts = useMemo(() => (
+    [...leadBlocks]
       .reverse()
       .filter((block) => block.type === 'user' && block.content.trim())
       .map((block) => block.content)
-  }, [leadName])
+  ), [leadBlocks])
 
   const { data: todosData } = useTodosQuery(sessionIdState)
   const todos = todosData?.todos ?? []

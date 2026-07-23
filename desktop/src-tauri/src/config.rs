@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -76,6 +77,51 @@ pub fn app_config_file(app: &AppHandle, name: &str) -> Result<PathBuf> {
 
 pub fn app_backend_config_path(app: &AppHandle) -> Result<PathBuf> {
     app_config_file(app, "desktop-backend.json")
+}
+
+pub fn app_access_keys_path(app: &AppHandle) -> Result<PathBuf> {
+    app_config_file(app, "access-keys.json")
+}
+
+pub fn load_access_keys_from(path: &Path) -> Result<BTreeMap<String, String>> {
+    if !path.exists() {
+        return Ok(BTreeMap::new());
+    }
+    let bytes = std::fs::read(path).with_context(|| format!("read {}", path.display()))?;
+    let map: BTreeMap<String, String> =
+        serde_json::from_slice(&bytes).with_context(|| format!("parse {}", path.display()))?;
+    Ok(map)
+}
+
+pub fn save_access_keys_to(path: &Path, map: &BTreeMap<String, String>) -> Result<()> {
+    if map.is_empty() {
+        if path.exists() {
+            let _ = std::fs::remove_file(path);
+        }
+        return Ok(());
+    }
+    let bytes = serde_json::to_vec_pretty(map).context("serialize access keys")?;
+    std::fs::write(path, &bytes).with_context(|| format!("write {}", path.display()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(metadata) = std::fs::metadata(path) {
+            let mut perms = metadata.permissions();
+            perms.set_mode(0o600);
+            let _ = std::fs::set_permissions(path, perms);
+        }
+    }
+    Ok(())
+}
+
+pub fn load_access_keys(app: &AppHandle) -> Result<BTreeMap<String, String>> {
+    let path = app_access_keys_path(app)?;
+    load_access_keys_from(&path)
+}
+
+pub fn save_access_keys(app: &AppHandle, map: &BTreeMap<String, String>) -> Result<()> {
+    let path = app_access_keys_path(app)?;
+    save_access_keys_to(&path, map)
 }
 
 pub fn window_state_path(app: &AppHandle) -> Result<PathBuf> {
@@ -317,5 +363,29 @@ mod tests {
 
         assert_eq!(config.servers.len(), 1);
         assert_eq!(config.servers[0].name.as_deref(), Some("New name"));
+    }
+
+    #[test]
+    fn access_keys_save_and_load_with_restricted_permissions() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("access-keys.json");
+        let mut keys = BTreeMap::new();
+        keys.insert("https://example.com".to_string(), "secret-123".to_string());
+
+        save_access_keys_to(&path, &keys).unwrap();
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let metadata = std::fs::metadata(&path).unwrap();
+            assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
+        }
+
+        let loaded = load_access_keys_from(&path).unwrap();
+        assert_eq!(loaded.get("https://example.com").map(String::as_str), Some("secret-123"));
+
+        keys.clear();
+        save_access_keys_to(&path, &keys).unwrap();
+        assert!(!path.exists());
     }
 }

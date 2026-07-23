@@ -553,7 +553,7 @@ async fn resolve_backend_endpoint(app: &AppHandle) -> Option<(String, Option<Str
         .get(crate::window::MAIN_WINDOW)
         .cloned()
     {
-        let access_key = external_usage_access_key(&base, crate::commands::secure_get_access_key);
+        let access_key = external_usage_access_key(&base, |origin| crate::commands::secure_get_access_key(app.clone(), origin));
         return Some((base, access_key));
     }
     let base = state.backend_base_url.lock().await.clone()?;

@@ -47,6 +47,6 @@ custom-protocol = ["tauri/custom-protocol"]
 # unit enable cross-crate inlining; strip drops debug symbols from the
 # shipped executable (crash traces still come from the webview/backend logs).
 [profile.release]
-lto = true
-codegen-units = 1
+lto = "thin"
+codegen-units = 16
 strip = true

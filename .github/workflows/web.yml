@@ -61,10 +61,10 @@ jobs:
         run: bun run lint
 
       - name: Type check (app)
-        run: bunx tsc -b --noEmit
+        run: bun run typecheck
 
       - name: Type check (tests)
-        run: bunx tsc -p tsconfig.test.json --noEmit
+        run: bun exec tsc -p tsconfig.test.json --noEmit
 
       - name: Tests
         run: bun run test

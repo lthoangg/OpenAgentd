@@ -483,7 +483,26 @@ export function CodingWorkspacePanel({
     if (!commitDiff.data?.diff) return new Map<string, DiffFileSection>()
     return collectDiffSections({ workspace, is_git_repo: true, diff: commitDiff.data.diff })
   }, [commitDiff.data?.diff, workspace])
-  const activeTab = tabs.find((item) => item.id === activeTabId) ?? tabs[0]
+  const terminalSessions = useTerminalStore((s) => s.sessions)
+  const terminalMetas = useMemo(
+    () =>
+      Object.values(terminalSessions)
+        .filter((meta) => meta.contextKey === workspace)
+        .sort((a, b) => a.order - b.order),
+    [terminalSessions, workspace],
+  )
+  const activeTab = useMemo(() => {
+    const found = tabs.find((item) => item.id === activeTabId)
+    if (found) return found
+    if (activeTabId.startsWith('terminal:')) {
+      const termId = activeTabId.slice(9)
+      const meta = terminalMetas.find((m) => m.id === termId)
+      if (meta) {
+        return { id: activeTabId, type: 'terminal' as const, title: meta.title, termId: meta.id }
+      }
+    }
+    return tabs[0]
+  }, [tabs, activeTabId, terminalMetas])
   const openFileTab = useCallback((file: WorkspaceFileInfo) => {
     const id = `file:${file.path}`
     setTabs((current) => {
@@ -497,17 +516,6 @@ export function CodingWorkspacePanel({
     onFileSelect?.(file)
   }, [onFileSelect])
   // ── Terminal tabs — sessions owned by useTerminalStore ─────────────
-  // The store outlives this component: closing/reopening the panel (or the
-  // whole coding view) re-adopts live sessions as tabs, and running shells
-  // keep running while detached (idle-reaped after 15 min without input).
-  const terminalSessions = useTerminalStore((s) => s.sessions)
-  const terminalMetas = useMemo(
-    () =>
-      Object.values(terminalSessions)
-        .filter((meta) => meta.contextKey === workspace)
-        .sort((a, b) => a.order - b.order),
-    [terminalSessions, workspace],
-  )
   // Sync tabs to store sessions: adopt new/live ones, drop closed ones.
   useEffect(() => {
     setTabs((current) => {
@@ -528,7 +536,15 @@ export function CodingWorkspacePanel({
   }, [terminalMetas])
   const openTerminal = useCallback(() => {
     const id = useTerminalStore.getState().open({ workspace }, workspace)
-    setActiveTabId(`terminal:${id}`)
+    const tabId = `terminal:${id}`
+    const metas = useTerminalStore.getState().sessionsForContext(workspace)
+    const meta = metas.find((m) => m.id === id)
+    const title = meta?.title ?? `Terminal ${id}`
+    setTabs((current) => {
+      if (current.some((tab) => tab.id === tabId)) return current
+      return [...current, { id: tabId, type: 'terminal' as const, title, termId: id }]
+    })
+    setActiveTabId(tabId)
   }, [workspace])
   const focusOrOpenTerminal = useCallback(() => {
     // ⌘⇧` / palette: focus the most recent terminal, or open the first one
@@ -555,10 +571,17 @@ export function CodingWorkspacePanel({
 
   // Reset active tab to review if active tab was closed (e.g. terminal tab closed directly via store).
   useEffect(() => {
-    if (activeTabId !== 'review' && !tabs.some((tab) => tab.id === activeTabId)) {
+    if (activeTabId === 'review') return
+    if (activeTabId.startsWith('terminal:')) {
+      const termId = activeTabId.slice(9)
+      const isLiveInStore = terminalMetas.some((m) => m.id === termId)
+      if (!isLiveInStore && !tabs.some((tab) => tab.id === activeTabId)) {
+        setActiveTabId('review')
+      }
+    } else if (!tabs.some((tab) => tab.id === activeTabId)) {
       setActiveTabId('review')
     }
-  }, [tabs, activeTabId])
+  }, [tabs, activeTabId, terminalMetas])
   const closeTab = (id: string) => {
     if (id === 'review') return
     const terminalTab = tabs.find(

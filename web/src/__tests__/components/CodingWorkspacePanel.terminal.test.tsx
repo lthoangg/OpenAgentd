@@ -75,6 +75,9 @@ describe('CodingWorkspacePanel terminal tabs', () => {
   it('terminalOpenKey bump opens a store-backed session and tab', async () => {
     await renderPanel(1)
     await waitFor(() => expect(screen.getByRole('button', { name: 'Close Terminal 1' })).toBeTruthy())
+    const termBtn = screen.getByRole('button', { name: 'Terminal 1' })
+    const termTabContainer = termBtn.closest('div')
+    expect(termTabContainer?.className).toContain('border-(--color-border-strong)')
     expect(useTerminalStore.getState().sessionsForContext(WORKSPACE)).toHaveLength(1)
   })
 

@@ -130,7 +130,7 @@ jobs:
           targets: ${{ matrix.rust_target }}
 
       - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.8
+        uses: mozilla-actions/sccache-action@v0.0.10
 
       - name: Configure sccache & compiler env
         shell: bash

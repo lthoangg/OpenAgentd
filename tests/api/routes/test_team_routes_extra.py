@@ -637,6 +637,59 @@ class TestTeamAgentsRouteExtra:
         assert body["commits_ahead"] == 2
         assert body["commits_behind"] == 1
 
+    def test_workspace_status_git_repo_no_upstream_fallback(
+        self, app_without_team, tmp_path, monkeypatch
+    ):
+        (tmp_path / ".git").mkdir()
+
+        def fake_run(cmd, *args, **kwargs):
+            git_args = cmd[3:] if len(cmd) > 3 else []
+            args_str = " ".join(git_args)
+            if args_str.startswith("status"):
+                return SimpleNamespace(
+                    returncode=0, stdout="# branch.head branch-A\n", stderr=""
+                )
+            if args_str.startswith("log"):
+                return SimpleNamespace(
+                    returncode=0,
+                    stdout="def456\x00new branch feature\x001700000000\n",
+                    stderr="",
+                )
+            if "^@{u}" in args_str:
+                return SimpleNamespace(
+                    returncode=128, stdout="", stderr="fatal: no upstream configured"
+                )
+            if "origin/branch-A" in args_str:
+                return SimpleNamespace(
+                    returncode=128, stdout="", stderr="fatal: needed a single revision"
+                )
+            if "rev-parse" in args_str and "origin/HEAD" in args_str:
+                return SimpleNamespace(returncode=0, stdout="123456\n", stderr="")
+            if "rev-list" in args_str and "^origin/HEAD" in args_str:
+                return SimpleNamespace(returncode=0, stdout="3\n", stderr="")
+            if (
+                "rev-list" in args_str
+                and "origin/HEAD" in args_str
+                and "^HEAD" in args_str
+            ):
+                return SimpleNamespace(returncode=0, stdout="0\n", stderr="")
+            return SimpleNamespace(returncode=1, stdout="", stderr="error")
+
+        monkeypatch.setattr("app.api.routes.team.files.subprocess.run", fake_run)
+
+        client = TestClient(app_without_team)
+        resp = client.get(
+            "/api/team/workspace/status", params={"workspace": str(tmp_path)}
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["is_git_repo"] is True
+        assert body["branch"] == "branch-A"
+        assert body["commits_ahead"] == 3
+        assert body["commits_behind"] == 0
+        assert body["upstream"] == "origin/HEAD"
+
 
 # ---------------------------------------------------------------------------
 # GET /team/sessions (lines 163-215)

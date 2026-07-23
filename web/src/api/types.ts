@@ -101,10 +101,12 @@ export interface WorkspaceStatusResponse {
   branch?: string | null
   dirty?: { staged: number; unstaged: number; untracked: number }
   head?: { sha: string; subject: string; timestamp: number } | null
-  /** Local commits not yet pushed to the tracking remote. null when no upstream. */
+  /** Local commits not yet pushed to the tracking remote or origin. null when no upstream/origin. */
   commits_ahead?: number | null
-  /** Remote commits not yet pulled locally. null when no upstream. */
+  /** Remote commits not yet pulled locally. null when no upstream/origin. */
   commits_behind?: number | null
+  /** Origin/upstream branch used for commit counts (e.g. origin/main or origin/branch-A). */
+  upstream?: string | null
 }
 
 export interface GitCommit {

@@ -130,15 +130,18 @@ interface CommitDetailProps {
 function CommitSyncBadge({
   count,
   direction,
+  upstream,
 }: {
   count: number
   direction: 'ahead' | 'behind'
+  upstream?: string | null
 }) {
   const isAhead = direction === 'ahead'
   const noun = count === 1 ? 'commit' : 'commits'
+  const target = upstream || 'origin'
   return (
     <span
-      title={`${count} ${isAhead ? `local ${noun} ahead of origin` : `${noun} behind origin`}`}
+      title={`${count} ${isAhead ? `local ${noun} ahead of ${target}` : `${noun} behind ${target}`}`}
       className={cn(
         'rounded border border-(--color-border-subtle) bg-(--bg-card) px-1 py-0.5 font-mono text-[9px] font-semibold leading-none',
         isAhead ? 'text-(--color-diff-add-text)' : 'text-(--color-diff-del-text)',
@@ -399,6 +402,7 @@ export function CodingWorkspacePanel({
 
   const commitsAhead = workspaceStatus.data?.commits_ahead ?? null
   const commitsBehind = workspaceStatus.data?.commits_behind ?? null
+  const upstream = workspaceStatus.data?.upstream ?? null
 
   const parsedGraphLines = useMemo<ParsedGraphLine[]>(() => {
     if (!graph) return []
@@ -852,10 +856,10 @@ export function CodingWorkspacePanel({
                             ? <span className="inline-flex items-center gap-1">
                                 Commits
                                 {commitsAhead != null && commitsAhead > 0 && (
-                                  <CommitSyncBadge count={commitsAhead} direction="ahead" />
+                                  <CommitSyncBadge count={commitsAhead} direction="ahead" upstream={upstream} />
                                 )}
                                 {commitsBehind != null && commitsBehind > 0 && (
-                                  <CommitSyncBadge count={commitsBehind} direction="behind" />
+                                  <CommitSyncBadge count={commitsBehind} direction="behind" upstream={upstream} />
                                 )}
                               </span>
                             : 'Tree'}
@@ -869,10 +873,10 @@ export function CodingWorkspacePanel({
                         <span className="inline-flex items-center gap-1.5">
                           Commits
                           {commitsAhead != null && commitsAhead > 0 && (
-                            <CommitSyncBadge count={commitsAhead} direction="ahead" />
+                            <CommitSyncBadge count={commitsAhead} direction="ahead" upstream={upstream} />
                           )}
                           {commitsBehind != null && commitsBehind > 0 && (
-                            <CommitSyncBadge count={commitsBehind} direction="behind" />
+                            <CommitSyncBadge count={commitsBehind} direction="behind" upstream={upstream} />
                           )}
                         </span>
                       </DropdownItem>
@@ -907,10 +911,10 @@ export function CodingWorkspacePanel({
                         <span className="inline-flex items-center justify-center gap-1">
                           Commits
                           {commitsAhead != null && commitsAhead > 0 && (
-                            <CommitSyncBadge count={commitsAhead} direction="ahead" />
+                            <CommitSyncBadge count={commitsAhead} direction="ahead" upstream={upstream} />
                           )}
                           {commitsBehind != null && commitsBehind > 0 && (
-                            <CommitSyncBadge count={commitsBehind} direction="behind" />
+                            <CommitSyncBadge count={commitsBehind} direction="behind" upstream={upstream} />
                           )}
                         </span>
                       </button>

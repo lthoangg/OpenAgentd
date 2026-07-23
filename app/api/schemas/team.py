@@ -165,9 +165,11 @@ class CodingWorkspaceStatusResponse(BaseModel):
     dirty: CodingWorkspaceStatusDirty | None = None
     head: CodingWorkspaceStatusHead | None = None
     commits_ahead: int | None = None
-    """Local commits not yet pushed to the tracking remote. None when no upstream."""
+    """Local commits not yet pushed to origin/upstream."""
     commits_behind: int | None = None
-    """Remote commits not yet pulled locally. None when no upstream."""
+    """Remote commits not yet pulled locally."""
+    upstream: str | None = None
+    """Origin or upstream reference used for commit counts (e.g. origin/main or origin/branch-A)."""
 
 
 class DiscardWorkspaceFileRequest(BaseModel):

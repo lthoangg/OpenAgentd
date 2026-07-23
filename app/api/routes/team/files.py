@@ -601,22 +601,57 @@ async def get_coding_workspace_status(
     dirty_model = CodingWorkspaceStatusDirty(**counts) if counts else None
     head_model = CodingWorkspaceStatusHead(**head) if head else None
 
-    # Count local/remote divergence from the tracking branch.
-    # These ``rev-list`` calls fail (non-zero) when no upstream is configured,
-    # in which case we return None so the UI omits the badges.
+    # Count local/remote divergence from tracking branch (@{u}) or fallback origin branch.
     commits_ahead: int | None = None
-    ahead_out = await _run_git(resolved, "rev-list", "--count", "HEAD", "^@{u}")
-    if ahead_out is not None:
+    commits_behind: int | None = None
+    upstream: str | None = None
+
+    upstream_ref: str | None = "@{u}"
+    ahead_out = await _run_git(
+        resolved, "rev-list", "--count", "HEAD", f"^{upstream_ref}"
+    )
+
+    if ahead_out is None:
+        # @{u} failed (e.g. no tracking branch configured for a newly created branch like branch-A).
+        # Fallback to candidate origin references: origin/<branch>, origin/HEAD, origin/main, origin/master, main, master.
+        candidates: list[str] = []
+        if branch:
+            candidates.append(f"origin/{branch}")
+        candidates.extend(
+            ["origin/HEAD", "origin/main", "origin/master", "main", "master"]
+        )
+
+        upstream_ref = None
+        for candidate in candidates:
+            # Skip comparing local branch against itself when no remote origin exists
+            if branch and candidate == branch:
+                continue
+            if await _run_git(resolved, "rev-parse", "--verify", candidate) is not None:
+                upstream_ref = candidate
+                ahead_out = await _run_git(
+                    resolved, "rev-list", "--count", "HEAD", f"^{upstream_ref}"
+                )
+                if ahead_out is not None:
+                    break
+
+    if upstream_ref and ahead_out is not None:
         stripped = ahead_out.strip()
         if stripped.isdigit():
             commits_ahead = int(stripped)
 
-    commits_behind: int | None = None
-    behind_out = await _run_git(resolved, "rev-list", "--count", "@{u}", "^HEAD")
-    if behind_out is not None:
-        stripped = behind_out.strip()
-        if stripped.isdigit():
-            commits_behind = int(stripped)
+        behind_out = await _run_git(
+            resolved, "rev-list", "--count", upstream_ref, "^HEAD"
+        )
+        if behind_out is not None:
+            behind_stripped = behind_out.strip()
+            if behind_stripped.isdigit():
+                commits_behind = int(behind_stripped)
+
+        if upstream_ref == "@{u}":
+            abbrev = await _run_git(resolved, "rev-parse", "--abbrev-ref", "@{u}")
+            upstream = abbrev.strip() if abbrev else "@{u}"
+        else:
+            upstream = upstream_ref
 
     return CodingWorkspaceStatusResponse(
         workspace=resolved,
@@ -627,6 +662,7 @@ async def get_coding_workspace_status(
         head=head_model,
         commits_ahead=commits_ahead,
         commits_behind=commits_behind,
+        upstream=upstream,
     )
 
 

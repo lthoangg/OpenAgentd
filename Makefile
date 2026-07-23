@@ -41,7 +41,7 @@ dev-lan: kill-dev-ports ## Start backend (:8000 + reload) and frontend (Vite :51
 	wait
 
 test: ## Run tests
-	uv run pytest -n auto -q
+	uv run pytest -n 4 -q
 
 coverage: ## Run tests with coverage report (terminal + htmlcov/)
 	uv run pytest --cov=app --cov-report=term-missing:skip-covered --cov-report=html tests/
@@ -52,7 +52,7 @@ verify-backend: ## Lint, format-check, type-check, and test the Python backend
 	uv run ruff check app/ tests/
 	uv run ruff format --check app/ tests/
 	uv run ty check app/
-	uv run pytest -n auto -q
+	uv run pytest -n 4 -q
 
 verify-web: ## Lint, type-check, and test the web frontend
 	cd web && bun run lint

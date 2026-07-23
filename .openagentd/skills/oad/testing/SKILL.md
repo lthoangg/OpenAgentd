@@ -23,7 +23,7 @@ description: >
 ## Run commands
 
 ```bash
-uv run pytest -n auto -q                          # full suite, fast
+uv run pytest -n 4 -q                             # full suite, fast and low CPU
 uv run pytest tests/path/to/test_file.py -q       # single file
 uv run pytest tests/path/to/test_file.py::test_x  # single test
 ```

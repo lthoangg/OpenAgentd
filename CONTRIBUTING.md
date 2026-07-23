@@ -111,7 +111,7 @@ uv run ruff check app/ tests/ --fix      # auto-fix
 uv run ruff format app/ tests/           # format
 uv run ty check app/                     # type check
 
-uv run pytest -n auto -q                 # fast tests (default: no coverage)
+uv run pytest -n 4 -q                    # fast tests (default: no coverage)
 make coverage                            # full run with coverage (htmlcov/)
 ```
 
@@ -185,7 +185,7 @@ quality goal, **not a CI-enforced merge gate**. Add focused regression coverage
 for changed behavior where practical.
 
 ```bash
-uv run pytest -n auto -q                 # quick pass/fail
+uv run pytest -n 4 -q                    # quick pass/fail
 make coverage                            # full with HTML coverage report
 open htmlcov/index.html
 ```

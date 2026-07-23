@@ -48,29 +48,25 @@ function MentionOverlayComponent({
   mentions,
 }: MentionOverlayProps) {
   const mirrorRef = useRef<HTMLDivElement>(null)
-  // Build the token-resolution sets once per ``fileRefs`` change. Without this
-  // memo, ``findCommittedMentions`` would rebuild two Sets from the entire
-  // (potentially thousands-long) file list on every keystroke — the main
-  // source of input lag on mobile.
-  const mentionLookup = useMemo(() => buildMentionLookup(fileRefs), [fileRefs])
-  const ranges = findCommittedMentions(value, activeRange, mentionLookup, mentions)
-
-  // Build a token → kind lookup so each committed mention can pick its
-  // color (file = blue, directory = orange). Same key shape used by
-  // ``findCommittedMentions`` for resolution: ``@<path>`` for files,
-  // and either ``@<path>`` or ``@<path>/`` for directories.
-  const kindByToken = useMemo(() => {
-    const map = new Map<string, 'file' | 'directory'>()
+  // Build the token-resolution sets and token-kind maps once per ``fileRefs`` change.
+  const { mentionLookup, kindByToken } = useMemo(() => {
+    const lookup = buildMentionLookup(fileRefs)
+    const kindMap = new Map<string, 'file' | 'directory'>()
     for (const ref of fileRefs) {
       if (ref.type === 'directory') {
-        map.set(`@${ref.path}`, 'directory')
-        map.set(`@${ref.path}/`, 'directory')
+        kindMap.set(`@${ref.path}`, 'directory')
+        kindMap.set(`@${ref.path}/`, 'directory')
       } else {
-        map.set(`@${ref.path}`, 'file')
+        kindMap.set(`@${ref.path}`, 'file')
       }
     }
-    return map
+    return { mentionLookup: lookup, kindByToken: kindMap }
   }, [fileRefs])
+
+  const ranges = useMemo(
+    () => findCommittedMentions(value, activeRange, mentionLookup, mentions),
+    [value, activeRange, mentionLookup, mentions],
+  )
 
   // Keep the mirror's scroll position in lock-step with the textarea so
   // the colored text stays aligned when the message overflows the bar's

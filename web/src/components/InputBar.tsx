@@ -269,15 +269,14 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   //     promoting widens the textarea (so the same content fits on
   //     one line again) which would otherwise demote → re-promote.
   const [isMultiLine, setIsMultiLine] = useState(false)
-  const promoteLengthRef = useRef(0)
   const lineHeightRef = useRef<number | null>(null)
   const resizeFrameRef = useRef<number | null>(null)
   const resize = useCallback(() => {
     const el = textareaRef.current
     if (!el) return
     el.style.height = 'auto'
-    // max 5 rows ≈ 120px
-    el.style.height = `${Math.min(el.scrollHeight, 120)}px`
+    const scrollHeight = el.scrollHeight
+    el.style.height = `${Math.min(scrollHeight, 120)}px`
     let lineHeight = lineHeightRef.current
     if (lineHeight == null) {
       const computed = window.getComputedStyle(el)
@@ -285,29 +284,8 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         parseFloat(computed.fontSize) * 1.5
       lineHeightRef.current = lineHeight
     }
-    const wrapped = el.scrollHeight > lineHeight * 1.4
-    const currentLen = el.value.length
-    const hasNewline = el.value.includes('\n')
-
-    setIsMultiLine((prev) => {
-      if (!prev && wrapped) {
-        // Promote: remember the length so we know when it's safe to
-        // demote later.
-        promoteLengthRef.current = currentLen
-        return true
-      }
-      if (prev && !wrapped && !hasNewline) {
-        // Demote candidate. Only commit if length has dropped clearly
-        // below the promote-length (80% threshold) — guards against
-        // the wrap-promote-rewrap loop in the boundary band.
-        const demoteThreshold = Math.floor(promoteLengthRef.current * 0.8)
-        if (currentLen <= demoteThreshold) {
-          promoteLengthRef.current = 0
-          return false
-        }
-      }
-      return prev
-    })
+    const wrapped = scrollHeight > lineHeight * 1.4
+    setIsMultiLine(wrapped)
   }, [])
 
   const {
@@ -520,7 +498,6 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     // will compute the correct height from the actual content.
     if (!textareaRef.current?.value) {
       setIsMultiLine(false)
-      promoteLengthRef.current = 0
     }
     // Double-rAF: outer frame lets Framer's spring start its expand
     // animation; inner frame fires after the browser's subsequent
@@ -582,7 +559,6 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     const el = textareaRef.current
     if (el) el.style.height = 'auto'
     setIsMultiLine(false)
-    promoteLengthRef.current = 0
     requestAnimationFrame(resize)
   }, [disabled, value, files, isStreaming, shellMode, onSubmit, mentions, resize, setFiles, setMentionMenuIndex, setMentionRange, setSlashMenuIndex, setSnippetMenuIndex, setSnippetRange])
 
@@ -615,17 +591,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     }
   }, [extractPastedFiles, resize, shellMode, value, setFiles, setMentionRange, setSnippetRange])
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // IME composition guard: when a user is mid-composition (CJK, etc.) the
-    // browser fires ``keydown`` with ``isComposing`` true for keys that drive
-    // the IME (Enter commits the candidate, Arrow keys navigate it). We must
-    // not hijack those — let the IME consume them. ``keyCode === 229`` is the
-    // legacy fallback for browsers that don't surface ``isComposing`` on the
-    // React synthetic event.
-    if (e.nativeEvent.isComposing || e.keyCode === 229) return
-
-    // Custom word-by-word navigation (Option+Arrow on macOS, Ctrl+Arrow on Windows/Linux)
-    // to treat periods, hyphens, slashes, etc. as word boundaries.
+  const handleWordJumpKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>): boolean => {
     const isMac = platform.os === 'macos' || platform.os === 'ios'
     const isWordJump = isMac ? e.altKey : e.ctrlKey
     const isArrow = e.key === 'ArrowLeft' || e.key === 'ArrowRight'
@@ -634,80 +600,74 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       const direction = e.key === 'ArrowLeft' ? 'left' : 'right'
       handleWordNavigation(e.currentTarget, direction, e.shiftKey)
       syncMention()
-      return
+      return true
     }
+    return false
+  }, [platform.os, syncMention])
 
-    // Atomic mention deletion: if the user presses Backspace or Delete on an
-    // explicit mention, delete the entire mention instead of a single character.
-    if (e.key === 'Backspace' || e.key === 'Delete') {
-      const el = textareaRef.current
-      if (el && el.selectionStart === el.selectionEnd) {
-        const caret = el.selectionStart
-        const targetIdx = e.key === 'Backspace' ? caret - 1 : caret
-        const ranges = getExplicitMentionRanges(value, mentions)
-        const hit = ranges.find((r) => targetIdx >= r.start && targetIdx < r.end)
-        if (hit) {
-          e.preventDefault()
-          const before = value.slice(0, hit.start)
-          const after = value.slice(hit.end)
-          const next = before + after
-          setValue(next)
+  const handleAtomicMentionDeletion = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>): boolean => {
+    if (e.key !== 'Backspace' && e.key !== 'Delete') return false
+    const el = textareaRef.current
+    if (!el || el.selectionStart !== el.selectionEnd) return false
+    const caret = el.selectionStart
+    const targetIdx = e.key === 'Backspace' ? caret - 1 : caret
+    const ranges = getExplicitMentionRanges(value, mentions)
+    const hit = ranges.find((r) => targetIdx >= r.start && targetIdx < r.end)
+    if (!hit) return false
 
-          requestAnimationFrame(() => {
-            el.focus()
-            el.setSelectionRange(hit.start, hit.start)
-            resize()
-          })
-          return
-        }
-      }
-    }
+    e.preventDefault()
+    const before = value.slice(0, hit.start)
+    const after = value.slice(hit.end)
+    const next = before + after
+    setValue(next)
 
+    requestAnimationFrame(() => {
+      el.focus()
+      el.setSelectionRange(hit.start, hit.start)
+      resize()
+    })
+    return true
+  }, [mentions, resize, value])
+
+  const handleShellKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>): boolean => {
     if (e.key === '!' && !shellMode && value.length === 0) {
       e.preventDefault()
       setShellMode(true)
       setMentionRange(null)
       setSnippetRange(null)
-      return
+      return true
     }
-
     if (shellMode) {
-      if (e.key === 'Backspace' && value.length === 0) {
+      if ((e.key === 'Backspace' && value.length === 0) || e.key === 'Escape') {
         e.preventDefault()
         setShellMode(false)
-        return
-      }
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        setShellMode(false)
-        return
+        return true
       }
     }
+    return false
+  }, [setMentionRange, setShellMode, setSnippetRange, shellMode, value.length])
 
-    // Mention menu navigation takes priority over slash navigation: a
-    // composed message can contain both `/cmd` (only valid at start) and
-    // `@foo` (anywhere), and the mention is the active one whenever the
-    // caret is sitting inside an `@`-token.
+  const handlePickerMenuKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>): boolean => {
     if (mentionMenuOpen && filteredMentions.length > 0) {
       if (e.key === 'ArrowDown') {
         e.preventDefault()
         setMentionMenuIndex((i) => (i + 1) % filteredMentions.length)
-        return
+        return true
       }
       if (e.key === 'ArrowUp') {
         e.preventDefault()
         setMentionMenuIndex((i) => (i - 1 + filteredMentions.length) % filteredMentions.length)
-        return
+        return true
       }
       if (e.key === 'Enter' || e.key === 'Tab') {
         e.preventDefault()
         insertMention(filteredMentions[clampedMentionIndex])
-        return
+        return true
       }
       if (e.key === 'Escape') {
         e.preventDefault()
         setMentionRange(null)
-        return
+        return true
       }
     }
 
@@ -715,57 +675,71 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       if (e.key === 'ArrowDown') {
         e.preventDefault()
         setSnippetMenuIndex((i) => (i + 1) % filteredSnippetCommands.length)
-        return
+        return true
       }
       if (e.key === 'ArrowUp') {
         e.preventDefault()
         setSnippetMenuIndex((i) => (i - 1 + filteredSnippetCommands.length) % filteredSnippetCommands.length)
-        return
+        return true
       }
       if (e.key === 'Enter' || e.key === 'Tab') {
         e.preventDefault()
         void insertSnippet(filteredSnippetCommands[clampedSnippetIndex])
-        return
+        return true
       }
       if (e.key === 'Escape') {
         e.preventDefault()
         setSnippetRange(null)
-        return
+        return true
       }
     }
 
-    // Slash menu navigation
     if (slashMenuOpen && selectableSlashCommands.length > 0) {
       if (e.key === 'ArrowDown') {
         e.preventDefault()
         setSlashMenuIndex((i) => (i + 1) % selectableSlashCommands.length)
-        return
+        return true
       }
       if (e.key === 'ArrowUp') {
         e.preventDefault()
         setSlashMenuIndex((i) => (i - 1 + selectableSlashCommands.length) % selectableSlashCommands.length)
-        return
+        return true
       }
       if (e.key === 'Enter' || e.key === 'Tab') {
         e.preventDefault()
         executeSlashCommand(selectableSlashCommands[clampedIndex])
-        return
+        return true
       }
       if (e.key === 'Escape') {
         e.preventDefault()
         setValue('')
-        return
+        return true
       }
     }
 
+    return false
+  }, [clampedIndex, clampedMentionIndex, clampedSnippetIndex, executeSlashCommand, filteredMentions, filteredSnippetCommands, insertMention, insertSnippet, mentionMenuOpen, selectableSlashCommands, setMentionMenuIndex, setMentionRange, setSlashMenuIndex, setSnippetMenuIndex, setSnippetRange, setValue, slashMenuOpen, snippetMenuOpen])
+
+  const handleHistoryKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>): boolean => {
     if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && history.length > 0) {
-      if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return
+      if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return false
       const handled = navigateHistory(e.key === 'ArrowUp' ? 'up' : 'down')
       if (handled) {
         e.preventDefault()
-        return
+        return true
       }
     }
+    return false
+  }, [history.length, navigateHistory])
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return
+
+    if (handleWordJumpKeyDown(e)) return
+    if (handleAtomicMentionDeletion(e)) return
+    if (handleShellKeyDown(e)) return
+    if (handlePickerMenuKeyDown(e)) return
+    if (handleHistoryKeyDown(e)) return
 
     if (e.key === 'Enter' && !e.shiftKey && !isMobile) {
       e.preventDefault()

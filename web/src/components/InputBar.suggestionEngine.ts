@@ -38,6 +38,22 @@ export interface UseInputBarSuggestionEngineOptions {
   onSuggestionsMenuChange?: (open: boolean) => void
 }
 
+/** Helper hook for option button refs & auto-scrolling highlighted option into view. */
+function useScrollOptionIntoView(open: boolean, index: number, count: number) {
+  const refs = useRef<(HTMLButtonElement | null)[]>([])
+  useEffect(() => {
+    refs.current.length = count
+    if (!open) return
+    refs.current[index]?.scrollIntoView({ block: 'nearest' })
+  }, [open, index, count])
+  return refs
+}
+
+/** Helper to safely clamp menu selection index. */
+function clampIndex(index: number, count: number): number {
+  return count > 0 ? index % count : 0
+}
+
 export function useInputBarSuggestionEngine({
   value,
   setValue,
@@ -59,9 +75,6 @@ export function useInputBarSuggestionEngine({
   const [snippetMenuIndex, setSnippetMenuIndex] = useState(0)
   const [mentionMenuIndex, setMentionMenuIndex] = useState(0)
   const [snippetRange, setSnippetRange] = useState<SuggestionRange>(null)
-  // The active @-mention window (positions in ``value``) — null when no
-  // mention is being edited at the caret. Recomputed on every keystroke
-  // and on caret-only moves (arrow keys, clicks) via ``syncMention``.
   const [mentionRange, setMentionRange] = useState<SuggestionRange>(null)
 
   const slashFilter = !shellMode && value.startsWith('/') && !value.includes(' ')
@@ -72,9 +85,6 @@ export function useInputBarSuggestionEngine({
     if (cmd.isSeparator) return
     setShellMode(false)
     if (cmd.keepInputOpen) {
-      // Insert ``/<id> `` and keep the textarea focused so the user can
-      // append arguments. Submission is what triggers the action — the
-      // parent's onSubmit handler inspects the raw text.
       const next = `/${cmd.insertText ?? cmd.displayName ?? cmd.id} `
       setValue(next)
       const el = textareaRef.current
@@ -92,25 +102,13 @@ export function useInputBarSuggestionEngine({
     onSlashCommand?.(cmd.id)
   }, [onSlashCommand, resize, setShellMode, setValue, textareaRef])
 
-  // ── Slash command filtering ────────────────────────────────────────────────
+  // ── Slash command filtering & state ────────────────────────────────────────
 
-  /**
-   * ``filteredSlashCommands`` — the visible list shown in the popover.
-   *
-   * When a filter string is present, separator rows are only kept when at
-   * least one actionable entry in their group matches (so we never render a
-   * dangling header with nothing beneath it). With an empty filter string
-   * (the user just typed ``/``) every entry is shown.
-   *
-   * Separator rows are excluded from keyboard-navigation indexing; only
-   * actionable entries count as "selectable" positions.
-   */
   const filteredSlashCommands = useMemo(
     () => filterSlashCommands(slashCommands, slashFilter),
     [slashCommands, slashFilter],
   )
 
-  /** Actionable entries only — used for keyboard index arithmetic. */
   const selectableSlashCommands = useMemo(
     () => filteredSlashCommands.filter((cmd) => !cmd.isSeparator),
     [filteredSlashCommands],
@@ -118,44 +116,20 @@ export function useInputBarSuggestionEngine({
 
   const slashMenuOpen = slashFilter !== null && filteredSlashCommands.length > 0
   const slashMenuId = 'inputbar-slash-menu'
-  const mentionMenuId = 'inputbar-mention-menu'
-  const snippetMenuId = 'inputbar-snippet-menu'
+  const clampedIndex = clampIndex(slashMenuIndex, selectableSlashCommands.length)
+  const slashOptionRefs = useScrollOptionIntoView(slashMenuOpen, clampedIndex, selectableSlashCommands.length)
 
+  // ── Snippet command filtering & state ──────────────────────────────────────
+
+  const snippetMenuId = 'inputbar-snippet-menu'
   const filteredSnippetCommands = useMemo(
     () => filterSnippetCommands(snippetCommands, snippetRange),
     [snippetCommands, snippetRange],
   )
 
   const snippetMenuOpen = snippetRange !== null && filteredSnippetCommands.length > 0
-  const clampedSnippetIndex = filteredSnippetCommands.length > 0
-    ? snippetMenuIndex % filteredSnippetCommands.length
-    : 0
-
-  const snippetOptionRefs = useRef<(HTMLButtonElement | null)[]>([])
-  useEffect(() => {
-    snippetOptionRefs.current.length = filteredSnippetCommands.length
-    if (!snippetMenuOpen) return
-    snippetOptionRefs.current[clampedSnippetIndex]?.scrollIntoView({ block: 'nearest' })
-  }, [clampedSnippetIndex, filteredSnippetCommands, snippetMenuOpen])
-
-  // Clamp index to valid range (handles filter changes reducing the list).
-  // The index tracks position within ``selectableSlashCommands``, not the full
-  // ``filteredSlashCommands`` list, so separator rows are never "focused".
-  const clampedIndex = selectableSlashCommands.length > 0
-    ? slashMenuIndex % selectableSlashCommands.length
-    : 0
-
-  // Refs for slash option buttons so the highlighted row stays visible when
-  // the list overflows ``max-h-64``. Same pattern as the mention picker —
-  // truncate to the current option count inside the effect, not during
-  // render, so unmounted-but-still-recorded nulls don't accumulate.
-  const slashOptionRefs = useRef<(HTMLButtonElement | null)[]>([])
-  useEffect(() => {
-    slashOptionRefs.current.length = selectableSlashCommands.length
-    if (!slashMenuOpen) return
-    const el = slashOptionRefs.current[clampedIndex]
-    el?.scrollIntoView({ block: 'nearest' })
-  }, [clampedIndex, slashMenuOpen, selectableSlashCommands])
+  const clampedSnippetIndex = clampIndex(snippetMenuIndex, filteredSnippetCommands.length)
+  const snippetOptionRefs = useScrollOptionIntoView(snippetMenuOpen, clampedSnippetIndex, filteredSnippetCommands.length)
 
   const insertSnippet = useCallback(async (cmd: SnippetCommand) => {
     if (!snippetRange) return
@@ -163,11 +137,6 @@ export function useInputBarSuggestionEngine({
     if (rendered == null) return
     const before = value.slice(0, snippetRange.start)
     const after = value.slice(snippetRange.end)
-    // A snippet body starting with "!" (e.g. `.openagentd/snippets/*.md`
-    // authored as a shell command) should drop the user straight into
-    // shell mode, matching what typing "!" as the first character does —
-    // otherwise the bang is inserted as literal text and the composer
-    // stays in normal chat mode, submitting the wrong content.
     const isShellSnippet = before.length === 0 && after.length === 0 && rendered.startsWith('!')
     const body = isShellSnippet ? rendered.slice(1) : rendered
     const spacerBefore = before && !/\s$/.test(before) && body ? ' ' : ''
@@ -188,34 +157,18 @@ export function useInputBarSuggestionEngine({
     }
   }, [onSnippetCommand, resize, setShellMode, setValue, snippetRange, textareaRef, value])
 
-  // ── @-mention filtering ────────────────────────────────────────────────────
+  // ── @-mention filtering & state ────────────────────────────────────────────
 
+  const mentionMenuId = 'inputbar-mention-menu'
   const filteredMentions = useMemo(
     () => filterMentions(fileRefs, mentionRange),
     [fileRefs, mentionRange],
   )
 
   const mentionMenuOpen = mentionRange !== null && filteredMentions.length > 0
-  const clampedMentionIndex = filteredMentions.length > 0
-    ? mentionMenuIndex % filteredMentions.length
-    : 0
+  const clampedMentionIndex = clampIndex(mentionMenuIndex, filteredMentions.length)
+  const mentionOptionRefs = useScrollOptionIntoView(mentionMenuOpen, clampedMentionIndex, filteredMentions.length)
 
-  // Refs for each rendered option so the highlighted one can be scrolled
-  // into view when the user arrow-keys past the visible window. The array is
-  // truncated to the current option count inside the effect (not during
-  // render) so unmounted-but-still-recorded nulls don't accumulate.
-  const mentionOptionRefs = useRef<(HTMLButtonElement | null)[]>([])
-  useEffect(() => {
-    mentionOptionRefs.current.length = filteredMentions.length
-    if (!mentionMenuOpen) return
-    const el = mentionOptionRefs.current[clampedMentionIndex]
-    // ``block: 'nearest'`` only scrolls when the item is actually outside the
-    // viewport, so it's a no-op for items already visible — no jitter on the
-    // initial render or when the user arrows within the visible band.
-    el?.scrollIntoView({ block: 'nearest' })
-  }, [clampedMentionIndex, mentionMenuOpen, filteredMentions])
-
-  /** Replace the active @-token with the selected reference plus a trailing space. */
   const insertMention = useCallback((ref: FileRef) => {
     if (!mentionRange) return
     const el = textareaRef.current
@@ -230,8 +183,6 @@ export function useInputBarSuggestionEngine({
     setMentionRange(null)
     setSnippetRange(null)
     setMentionMenuIndex(0)
-    // Move the caret to just after the inserted token + trailing space. The
-    // textarea state lags by one render so we defer with rAF.
     if (el) {
       const caret = before.length + insertion.length
       requestAnimationFrame(() => {
@@ -248,16 +199,12 @@ export function useInputBarSuggestionEngine({
   }, [suggestionsOpen, onSuggestionsMenuChange])
 
   return {
-    // Range state — read/write. ``syncMention``/``handleChange`` in
-    // InputBar.tsx recompute these directly from caret position.
     mentionRange,
     setMentionRange,
     snippetRange,
     setSnippetRange,
     mentions,
 
-    // Menu-index state — InputBar.tsx's handleKeyDown/handleChange drive
-    // these directly for arrow-key navigation and index resets.
     slashMenuIndex,
     setSlashMenuIndex,
     snippetMenuIndex,
@@ -265,7 +212,6 @@ export function useInputBarSuggestionEngine({
     mentionMenuIndex,
     setMentionMenuIndex,
 
-    // Slash
     slashMenuId,
     filteredSlashCommands,
     selectableSlashCommands,
@@ -274,7 +220,6 @@ export function useInputBarSuggestionEngine({
     slashOptionRefs,
     executeSlashCommand,
 
-    // Snippet
     snippetMenuId,
     filteredSnippetCommands,
     snippetMenuOpen,
@@ -282,7 +227,6 @@ export function useInputBarSuggestionEngine({
     snippetOptionRefs,
     insertSnippet,
 
-    // Mention
     mentionMenuId,
     filteredMentions,
     mentionMenuOpen,

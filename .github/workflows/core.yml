@@ -40,13 +40,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install uv
+      - name: Install uv & Python 3.14
         uses: astral-sh/setup-uv@v8.3.2
         with:
+          python-version: "3.14"
           enable-cache: true
-
-      - name: Set up Python 3.14
-        run: uv python install 3.14
 
       - name: Install dependencies
         run: uv sync --frozen
@@ -66,19 +64,17 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install uv
+      - name: Install uv & Python 3.14
         uses: astral-sh/setup-uv@v8.3.2
         with:
+          python-version: "3.14"
           enable-cache: true
-
-      - name: Set up Python 3.14
-        run: uv python install 3.14
 
       - name: Install dependencies
         run: uv sync --frozen
 
       - name: Run pytest
-        run: uv run pytest -n auto -q
+        run: uv run pytest -n 4 -q
 
   windows-smoke:
     name: Windows sidecar smoke
@@ -86,13 +82,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install uv
+      - name: Install uv & Python 3.14
         uses: astral-sh/setup-uv@v8.3.2
         with:
+          python-version: "3.14"
           enable-cache: true
-
-      - name: Set up Python 3.14
-        run: uv python install 3.14
 
       - name: Install dependencies
         run: uv sync --frozen

@@ -43,10 +43,10 @@ tempfile = "3"
 [features]
 custom-protocol = ["tauri/custom-protocol"]
 
-# Smaller, faster-loading release binary. Whole-crate LTO + single codegen
-# unit enable cross-crate inlining; strip drops debug symbols from the
-# shipped executable (crash traces still come from the webview/backend logs).
+# Thin LTO preserves cross-crate optimization while allowing parallel codegen;
+# strip drops debug symbols from the shipped executable (crash traces still
+# come from the webview/backend logs).
 [profile.release]
-lto = true
-codegen-units = 1
+lto = "thin"
+codegen-units = 16
 strip = true

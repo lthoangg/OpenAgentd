@@ -129,6 +129,18 @@ jobs:
         with:
           targets: ${{ matrix.rust_target }}
 
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.10
+
+      - name: Configure sccache & compiler env
+        shell: bash
+        run: |
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
+          if [ "${{ matrix.platform }}" = "windows" ]; then
+            echo "RUSTFLAGS=-C link-arg=/FASTLINK" >> "$GITHUB_ENV"
+          fi
+
       # ``Swatinem/rust-cache`` cleans the target/ tree (drops examples,
       # tests, incremental artifacts) before saving, so the cached blob
       # stays small (~200 MB instead of >1 GB). It also keys on
@@ -194,10 +206,8 @@ jobs:
         # ``no such command: tauri``.
         run: cargo binstall --no-confirm --force --version 2.11.1 tauri-cli
 
-      - name: Generate platform icons
-        run: uv run python scripts/generate_icons.py
-
-
+      # Platform icon assets are generated and committed under
+      # desktop/src-tauri/icons; release runners consume them directly.
       - name: Build Python sidecar bundle
         shell: bash
         run: |

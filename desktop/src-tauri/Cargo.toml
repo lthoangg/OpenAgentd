@@ -39,6 +39,7 @@ url = "2"
 [dev-dependencies]
 # Enables `tauri::test::mock_app()` used by the native unit-test suite.
 tauri = { version = "2", features = ["test"] }
+tempfile = "3"
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 block2 = "0.6"

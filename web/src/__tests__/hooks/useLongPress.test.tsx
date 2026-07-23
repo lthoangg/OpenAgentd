@@ -19,18 +19,54 @@ function pressOpts(extra?: Record<string, unknown>) {
   return { pointerType: 'touch', clientX: 50, clientY: 50, ...extra }
 }
 
+function useFakeTimers() {
+  const realSetTimeout = globalThis.setTimeout
+  const realClearTimeout = globalThis.clearTimeout
+  let now = 0
+  let sequence = 0
+  const timers = new Map<number, { callback: () => void; due: number }>()
+
+  globalThis.setTimeout = ((callback: TimerHandler, delay?: number) => {
+    const id = ++sequence
+    timers.set(id, { callback: callback as () => void, due: now + (delay ?? 0) })
+    return id as unknown as ReturnType<typeof setTimeout>
+  }) as unknown as typeof setTimeout
+  globalThis.clearTimeout = ((id: number) => { timers.delete(id) }) as typeof clearTimeout
+
+  return {
+    tick(ms: number) {
+      now += ms
+      for (const [id, timer] of [...timers]) {
+        if (timer.due <= now) {
+          timers.delete(id)
+          timer.callback()
+        }
+      }
+    },
+    restore() {
+      globalThis.setTimeout = realSetTimeout
+      globalThis.clearTimeout = realClearTimeout
+    },
+  }
+}
+
 describe('useLongPress (shared core)', () => {
-  it('reports pressing=true on pointer down and pressing=false on long-press fire', async () => {
-    const pressStates: boolean[] = []
-    const onLongPress = mock(() => {})
-    render(
-      <Surface enabled onLongPress={onLongPress} onPressChange={(p) => pressStates.push(p)} />,
-    )
-    fireEvent.pointerDown(screen.getByTestId('surface'), pressOpts())
-    expect(pressStates).toEqual([true])
-    await new Promise((r) => setTimeout(r, 600))
-    expect(onLongPress).toHaveBeenCalledTimes(1)
-    expect(pressStates).toEqual([true, false])
+  it('reports pressing=true on pointer down and pressing=false on long-press fire', () => {
+    const fakeTimers = useFakeTimers()
+    try {
+      const pressStates: boolean[] = []
+      const onLongPress = mock(() => {})
+      render(
+        <Surface enabled onLongPress={onLongPress} onPressChange={(p) => pressStates.push(p)} />,
+      )
+      fireEvent.pointerDown(screen.getByTestId('surface'), pressOpts())
+      expect(pressStates).toEqual([true])
+      fakeTimers.tick(600)
+      expect(onLongPress).toHaveBeenCalledTimes(1)
+      expect(pressStates).toEqual([true, false])
+    } finally {
+      fakeTimers.restore()
+    }
   })
 
   it('reports pressing=false when cancelled by pointer-up before threshold', () => {
@@ -44,11 +80,16 @@ describe('useLongPress (shared core)', () => {
     expect(pressStates).toEqual([true, false])
   })
 
-  it('works with no onPressChange callback supplied (optional)', async () => {
-    const onLongPress = mock(() => {})
-    render(<Surface enabled onLongPress={onLongPress} />)
-    fireEvent.pointerDown(screen.getByTestId('surface'), pressOpts())
-    await new Promise((r) => setTimeout(r, 600))
-    expect(onLongPress).toHaveBeenCalledTimes(1)
+  it('works with no onPressChange callback supplied (optional)', () => {
+    const fakeTimers = useFakeTimers()
+    try {
+      const onLongPress = mock(() => {})
+      render(<Surface enabled onLongPress={onLongPress} />)
+      fireEvent.pointerDown(screen.getByTestId('surface'), pressOpts())
+      fakeTimers.tick(600)
+      expect(onLongPress).toHaveBeenCalledTimes(1)
+    } finally {
+      fakeTimers.restore()
+    }
   })
 })

@@ -1,4 +1,5 @@
 // Global test setup — registers Happy DOM so React components can render.
+import React from "react";
 import { mock, afterEach } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
@@ -17,6 +18,49 @@ for (const name of SVG_ICONS) {
     default: `stub:${name}.svg`,
   }))
 }
+
+// Stub framer-motion globally to eliminate animation loops and gesture overhead.
+const motionCache = new Map<string, unknown>()
+mock.module('framer-motion', () => ({
+  AnimatePresence: ({ children }: { children?: React.ReactNode }) => React.createElement(React.Fragment, null, children),
+  LayoutGroup: ({ children }: { children?: React.ReactNode }) => React.createElement(React.Fragment, null, children),
+  motion: new Proxy(
+    {},
+    {
+      get: (_target, prop: string) => {
+        if (!motionCache.has(prop)) {
+          const Component = ({ children, ...props }: { children?: React.ReactNode; [key: string]: unknown }) => {
+            const cleanProps: Record<string, unknown> = {}
+            for (const [key, val] of Object.entries(props)) {
+              if (
+                !key.startsWith('while') &&
+                !key.startsWith('animate') &&
+                !key.startsWith('initial') &&
+                !key.startsWith('exit') &&
+                !key.startsWith('transition') &&
+                !key.startsWith('variants') &&
+                !key.startsWith('layout') &&
+                !key.startsWith('drag') &&
+                !key.startsWith('onDrag')
+              ) {
+                cleanProps[key] = val
+              }
+            }
+            return React.createElement(prop, cleanProps, children)
+          }
+          motionCache.set(prop, Component)
+        }
+        return motionCache.get(prop)
+      },
+    },
+  ),
+  useDragControls: () => ({ start: () => {}, subscribe: () => () => {} }),
+  useAnimation: () => ({ start: () => Promise.resolve(), stop: () => {}, set: () => {} }),
+  useMotionValue: (v: unknown) => ({ get: () => v, set: () => {}, onChange: () => () => {} }),
+  useTransform: () => 0,
+  useSpring: (v: unknown) => ({ get: () => v, set: () => {} }),
+  useReducedMotion: () => false,
+}))
 
 // Stub TerminalView globally: it renders xterm DOM owned by the terminal
 // store. Tests that need terminal behaviour use TerminalKeyBar directly,

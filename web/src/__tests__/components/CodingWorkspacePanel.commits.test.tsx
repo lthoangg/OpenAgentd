@@ -266,9 +266,18 @@ describe('CodingWorkspacePanel – commit actions (undo/revert)', () => {
 
     // Simulate touch pointer events for long press
     fireEvent.pointerDown(commitButton, { pointerType: 'touch', clientX: 10, clientY: 10 })
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 600))
-    })
+    const origSetTimeout = globalThis.setTimeout
+    try {
+      let callback: (() => void) | null = null
+      globalThis.setTimeout = ((cb: () => void) => {
+        callback = cb
+        return 1 as unknown as ReturnType<typeof setTimeout>
+      }) as unknown as typeof setTimeout
+      fireEvent.pointerDown(commitButton, { pointerType: 'touch', clientX: 10, clientY: 10 })
+      if (callback) act(() => { (callback as () => void)() })
+    } finally {
+      globalThis.setTimeout = origSetTimeout
+    }
 
     // Verify dialog is open and shows "Undo commit" and "Revert commit"
     await waitFor(() => {

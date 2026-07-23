@@ -11,49 +11,105 @@ function pressOpts(extra?: Record<string, unknown>) {
   return { pointerType: 'touch', clientX: 50, clientY: 50, ...extra }
 }
 
+function useFakeTimers() {
+  const realSetTimeout = globalThis.setTimeout
+  const realClearTimeout = globalThis.clearTimeout
+  let now = 0
+  let sequence = 0
+  const timers = new Map<number, { callback: () => void; due: number }>()
+
+  globalThis.setTimeout = ((callback: TimerHandler, delay?: number) => {
+    const id = ++sequence
+    timers.set(id, { callback: callback as () => void, due: now + (delay ?? 0) })
+    return id as unknown as ReturnType<typeof setTimeout>
+  }) as unknown as typeof setTimeout
+  globalThis.clearTimeout = ((id: number) => { timers.delete(id) }) as typeof clearTimeout
+
+  return {
+    tick(ms: number) {
+      now += ms
+      for (const [id, timer] of [...timers]) {
+        if (timer.due <= now) {
+          timers.delete(id)
+          timer.callback()
+        }
+      }
+    },
+    restore() {
+      globalThis.setTimeout = realSetTimeout
+      globalThis.clearTimeout = realClearTimeout
+    },
+  }
+}
+
 describe('useLongPressSurface', () => {
-  it('fires onLongPress after the hold threshold', async () => {
-    const onLongPress = mock(() => {})
-    render(<Surface enabled onLongPress={onLongPress} />)
-    fireEvent.pointerDown(screen.getByTestId('surface'), pressOpts())
-    await new Promise((r) => setTimeout(r, 600))
-    expect(onLongPress).toHaveBeenCalledTimes(1)
+  it('fires onLongPress after the hold threshold', () => {
+    const fakeTimers = useFakeTimers()
+    try {
+      const onLongPress = mock(() => {})
+      render(<Surface enabled onLongPress={onLongPress} />)
+      fireEvent.pointerDown(screen.getByTestId('surface'), pressOpts())
+      fakeTimers.tick(600)
+      expect(onLongPress).toHaveBeenCalledTimes(1)
+    } finally {
+      fakeTimers.restore()
+    }
   })
 
-  it('does not fire for mouse pointers', async () => {
-    const onLongPress = mock(() => {})
-    render(<Surface enabled onLongPress={onLongPress} />)
-    fireEvent.pointerDown(screen.getByTestId('surface'), pressOpts({ pointerType: 'mouse' }))
-    await new Promise((r) => setTimeout(r, 600))
-    expect(onLongPress).not.toHaveBeenCalled()
+  it('does not fire for mouse pointers', () => {
+    const fakeTimers = useFakeTimers()
+    try {
+      const onLongPress = mock(() => {})
+      render(<Surface enabled onLongPress={onLongPress} />)
+      fireEvent.pointerDown(screen.getByTestId('surface'), pressOpts({ pointerType: 'mouse' }))
+      fakeTimers.tick(600)
+      expect(onLongPress).not.toHaveBeenCalled()
+    } finally {
+      fakeTimers.restore()
+    }
   })
 
-  it('does not fire when disabled', async () => {
-    const onLongPress = mock(() => {})
-    render(<Surface enabled={false} onLongPress={onLongPress} />)
-    fireEvent.pointerDown(screen.getByTestId('surface'), pressOpts())
-    await new Promise((r) => setTimeout(r, 600))
-    expect(onLongPress).not.toHaveBeenCalled()
+  it('does not fire when disabled', () => {
+    const fakeTimers = useFakeTimers()
+    try {
+      const onLongPress = mock(() => {})
+      render(<Surface enabled={false} onLongPress={onLongPress} />)
+      fireEvent.pointerDown(screen.getByTestId('surface'), pressOpts())
+      fakeTimers.tick(600)
+      expect(onLongPress).not.toHaveBeenCalled()
+    } finally {
+      fakeTimers.restore()
+    }
   })
 
-  it('cancels when the pointer moves beyond tolerance', async () => {
-    const onLongPress = mock(() => {})
-    render(<Surface enabled onLongPress={onLongPress} />)
-    const surface = screen.getByTestId('surface')
-    fireEvent.pointerDown(surface, pressOpts())
-    fireEvent.pointerMove(surface, pressOpts({ clientY: 80 }))
-    await new Promise((r) => setTimeout(r, 600))
-    expect(onLongPress).not.toHaveBeenCalled()
+  it('cancels when the pointer moves beyond tolerance', () => {
+    const fakeTimers = useFakeTimers()
+    try {
+      const onLongPress = mock(() => {})
+      render(<Surface enabled onLongPress={onLongPress} />)
+      const surface = screen.getByTestId('surface')
+      fireEvent.pointerDown(surface, pressOpts())
+      fireEvent.pointerMove(surface, pressOpts({ clientY: 80 }))
+      fakeTimers.tick(600)
+      expect(onLongPress).not.toHaveBeenCalled()
+    } finally {
+      fakeTimers.restore()
+    }
   })
 
-  it('cancels on pointer up before the threshold', async () => {
-    const onLongPress = mock(() => {})
-    render(<Surface enabled onLongPress={onLongPress} />)
-    const surface = screen.getByTestId('surface')
-    fireEvent.pointerDown(surface, pressOpts())
-    fireEvent.pointerUp(surface, pressOpts())
-    await new Promise((r) => setTimeout(r, 600))
-    expect(onLongPress).not.toHaveBeenCalled()
+  it('cancels on pointer up before the threshold', () => {
+    const fakeTimers = useFakeTimers()
+    try {
+      const onLongPress = mock(() => {})
+      render(<Surface enabled onLongPress={onLongPress} />)
+      const surface = screen.getByTestId('surface')
+      fireEvent.pointerDown(surface, pressOpts())
+      fireEvent.pointerUp(surface, pressOpts())
+      fakeTimers.tick(600)
+      expect(onLongPress).not.toHaveBeenCalled()
+    } finally {
+      fakeTimers.restore()
+    }
   })
 
   it('suppresses the native context menu only when enabled', () => {

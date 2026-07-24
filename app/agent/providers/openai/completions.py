@@ -127,10 +127,15 @@ class CompletionsHandler:
                         )
                         for tc in msg.tool_calls
                     ]
+                content = msg.content
+                if not content and not openai_tool_calls:
+                    content = msg.reasoning_content or "..."
+                elif content is None and openai_tool_calls:
+                    content = ""
                 result.append(
                     OpenAIMessage(
                         role="assistant",
-                        content=msg.content or "",
+                        content=content,
                         tool_calls=openai_tool_calls,
                     )
                 )

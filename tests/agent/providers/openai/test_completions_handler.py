@@ -53,6 +53,22 @@ class TestCompletionsHandler:
         assert result[0].role == "system"
         assert result[0].content == "You are a helpful assistant."
 
+    def test_convert_messages_empty_assistant_message_fallback(self, handler):
+        """Empty AssistantMessage without tool calls or content falls back to reasoning content or placeholder."""
+        messages = [
+            AssistantMessage(
+                content=None, tool_calls=None, reasoning_content="thinking..."
+            )
+        ]
+        result = handler.convert_messages(messages)
+        assert len(result) == 1
+        assert result[0].role == "assistant"
+        assert result[0].content == "thinking..."
+
+        messages_no_reasoning = [AssistantMessage(content=None, tool_calls=None)]
+        result_no_reasoning = handler.convert_messages(messages_no_reasoning)
+        assert result_no_reasoning[0].content == "..."
+
     def test_convert_messages_human_message_text_only(self, handler):
         """Convert HumanMessage with plain text."""
         messages = [HumanMessage(content="Hello, world!")]

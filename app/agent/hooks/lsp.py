@@ -42,12 +42,31 @@ class LspHook(BaseAgentHook):
         if tool_name not in ("write", "edit", "patch"):
             return result
 
+        # A tool call truncated by the model's output-token cap can arrive with
+        # empty or half-written JSON arguments.  There is no file to diagnose in
+        # that case, and the tool itself already reported the failure — so pass
+        # the result through instead of raising into the handler below (which
+        # would log a misleading "Error in LspHook: Expecting value ...").
+        raw_args = tool_call.function.arguments
+        if not raw_args:
+            return result
+        try:
+            args = json.loads(raw_args)
+        except (json.JSONDecodeError, ValueError):
+            logger.debug(
+                "lsp_hook_skipped_unparseable_args tool={} chars={}",
+                tool_name,
+                len(raw_args),
+            )
+            return result
+        if not isinstance(args, dict):
+            return result
+
         try:
             from app.agent.sandbox import get_sandbox
             from app.services.lsp.manager import check_lsp_diagnostics
 
             sandbox = get_sandbox()
-            args = json.loads(tool_call.function.arguments)
 
             # Identify which files were modified/added
             files_to_check = []

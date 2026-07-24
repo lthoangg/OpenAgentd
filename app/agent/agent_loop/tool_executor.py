@@ -80,6 +80,25 @@ def make_tool_executor(
             if tc.function.name not in run_tools:
                 raise ToolNotFoundError(f"Tool '{tc.function.name}' not found.")
 
+            # Empty ``arguments`` is a valid no-arg call (``bg``, ``date``), but
+            # for a tool with required parameters it means the model's output was
+            # cut off before it emitted any argument text — usually a large
+            # ``write``/``patch``.  Pydantic would report "Field required", which
+            # misleads the model into re-sending the same oversized call.  Name
+            # the real cause so it splits the work instead.
+            if not tc.function.arguments:
+                required = (
+                    run_tools[tc.function.name]
+                    .definition["function"]["parameters"]
+                    .get("required")
+                    or []
+                )
+                if required:
+                    raise ToolArgumentError(
+                        f"No arguments received for '{tc.function.name}' (requires "
+                        f"{', '.join(sorted(required))}). Retry with a smaller payload."
+                    )
+
             # Surface team routing context as first-class injected args so
             # tools (e.g. schedule_task) don't have to fish through
             # ``state.metadata`` themselves.  Falls back to defaults when the

@@ -7,6 +7,7 @@
  * (clipboard → PTY input). Fed pure callbacks so it has no xterm import
  * and can be unit-tested without the terminal renderer.
  */
+import { CheckSquare, ClipboardPaste, Copy } from 'lucide-react'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 
@@ -32,22 +33,25 @@ export function TerminalActionSheet({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Terminal</DialogTitle>
-          <DialogDescription>Choose an action.</DialogDescription>
+          <DialogDescription>Choose an action for the terminal surface.</DialogDescription>
         </DialogHeader>
         <DialogFooter className="flex-col items-stretch gap-2 p-3 sm:flex-col">
-          <Button type="button" variant="ghost" className="justify-start" onClick={onSelectAll}>
+          <Button type="button" variant="ghost" className="justify-start gap-2 min-h-11 md:min-h-0" onClick={onSelectAll}>
+            <CheckSquare size={14} aria-hidden="true" />
             Select All
           </Button>
           <Button
             type="button"
             variant="ghost"
-            className="justify-start"
+            className="justify-start gap-2 min-h-11 md:min-h-0"
             onClick={onCopy}
             disabled={!hasSelection}
           >
+            <Copy size={14} aria-hidden="true" />
             Copy
           </Button>
-          <Button type="button" variant="ghost" className="justify-start" onClick={onPaste}>
+          <Button type="button" variant="ghost" className="justify-start gap-2 min-h-11 md:min-h-0" onClick={onPaste}>
+            <ClipboardPaste size={14} aria-hidden="true" />
             Paste
           </Button>
         </DialogFooter>

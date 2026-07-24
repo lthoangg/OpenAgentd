@@ -13,7 +13,7 @@
  * `Paste` reads the clipboard and forwards it as input.
  */
 
-import { useCallback } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import {
   ArrowDown,
   ArrowLeft,
@@ -40,6 +40,13 @@ const ARROW_KEYS = [
   { label: 'right', seq: '\x1b[C', Icon: ArrowRight },
 ] as const
 
+const QUICK_SYMBOLS = [
+  { label: '/', seq: '/' },
+  { label: '-', seq: '-' },
+  { label: '~', seq: '~' },
+  { label: '|', seq: '|' },
+] as const
+
 // Signals with no soft-keyboard equivalent — the three a mobile shell user
 // reaches for constantly (kill a hung foreground process, close a REPL/
 // send EOF, clear a scrolled-up screen).
@@ -48,6 +55,71 @@ const SIGNAL_KEYS = [
   { label: '^D', seq: '\x04', title: 'Send Ctrl+D (EOF)' },
   { label: '^L', seq: '\x0c', title: 'Send Ctrl+L (clear screen)' },
 ] as const
+
+interface RepeatableKeyButtonProps {
+  label: string
+  seq: string
+  Icon: React.ComponentType<{ className?: string }>
+  onSend: (seq: string) => void
+  keyClass: string
+}
+
+function RepeatableKeyButton({ label, seq, Icon, onSend, keyClass }: RepeatableKeyButtonProps) {
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const pointerFiredRef = useRef(false)
+
+  const stopRepeat = useCallback(() => {
+    if (timerRef.current !== null) {
+      clearTimeout(timerRef.current)
+      timerRef.current = null
+    }
+    if (intervalRef.current !== null) {
+      clearInterval(intervalRef.current)
+      intervalRef.current = null
+    }
+  }, [])
+
+  const startRepeat = useCallback(() => {
+    stopRepeat()
+    pointerFiredRef.current = true
+    onSend(seq)
+    timerRef.current = setTimeout(() => {
+      intervalRef.current = setInterval(() => {
+        onSend(seq)
+      }, 70)
+    }, 300)
+  }, [seq, onSend, stopRepeat])
+
+  useEffect(() => {
+    return () => stopRepeat()
+  }, [stopRepeat])
+
+  return (
+    <button
+      type="button"
+      aria-label={`Arrow ${label}`}
+      className={keyClass}
+      onPointerDown={(e) => {
+        e.preventDefault()
+        startRepeat()
+      }}
+      onPointerUp={() => {
+        stopRepeat()
+        setTimeout(() => { pointerFiredRef.current = false }, 50)
+      }}
+      onPointerLeave={stopRepeat}
+      onPointerCancel={stopRepeat}
+      onClick={() => {
+        if (!pointerFiredRef.current) {
+          onSend(seq)
+        }
+      }}
+    >
+      <Icon className="h-3.5 w-3.5" />
+    </button>
+  )
+}
 
 export function TerminalKeyBar({ onKey, ctrlArmed, onCtrlToggle }: TerminalKeyBarProps) {
   const send = useCallback(
@@ -74,6 +146,12 @@ export function TerminalKeyBar({ onKey, ctrlArmed, onCtrlToggle }: TerminalKeyBa
     'active:bg-(--bg-key) select-none',
   )
 
+  const preventFocusLoss = (e: React.PointerEvent) => {
+    // Prevent default pointerdown behavior so xterm's hidden textarea retains input focus
+    // and the soft keyboard stays open smoothly without flashing.
+    e.preventDefault()
+  }
+
   return (
     <div
       className="flex items-center gap-1.5 overflow-x-auto px-1 py-1.5"
@@ -81,10 +159,20 @@ export function TerminalKeyBar({ onKey, ctrlArmed, onCtrlToggle }: TerminalKeyBa
       role="toolbar"
       aria-label="Terminal keys"
     >
-      <button type="button" className={keyClass} onClick={() => send('\x1b')}>
+      <button
+        type="button"
+        className={keyClass}
+        onPointerDown={preventFocusLoss}
+        onClick={() => send('\x1b')}
+      >
         Esc
       </button>
-      <button type="button" className={keyClass} onClick={() => send('\t')}>
+      <button
+        type="button"
+        className={keyClass}
+        onPointerDown={preventFocusLoss}
+        onClick={() => send('\t')}
+      >
         Tab
       </button>
       <button
@@ -94,6 +182,7 @@ export function TerminalKeyBar({ onKey, ctrlArmed, onCtrlToggle }: TerminalKeyBa
           keyClass,
           ctrlArmed && 'bg-(--color-accent) text-(--color-accent-foreground)',
         )}
+        onPointerDown={preventFocusLoss}
         onClick={() => {
           haptic('tick')
           onCtrlToggle()
@@ -101,18 +190,35 @@ export function TerminalKeyBar({ onKey, ctrlArmed, onCtrlToggle }: TerminalKeyBa
       >
         Ctrl
       </button>
+
       {ARROW_KEYS.map(({ label, seq, Icon }) => (
+        <RepeatableKeyButton
+          key={label}
+          label={label}
+          seq={seq}
+          Icon={Icon}
+          onSend={send}
+          keyClass={keyClass}
+        />
+      ))}
+
+      <div className="mx-0.5 h-5 w-px shrink-0 bg-(--color-border)" aria-hidden="true" />
+
+      {QUICK_SYMBOLS.map(({ label, seq }) => (
         <button
           key={label}
           type="button"
-          aria-label={`Arrow ${label}`}
-          className={keyClass}
+          aria-label={`Symbol ${label}`}
+          className={cn(keyClass, 'font-mono')}
+          onPointerDown={preventFocusLoss}
           onClick={() => send(seq)}
         >
-          <Icon className="h-3.5 w-3.5" />
+          {label}
         </button>
       ))}
+
       <div className="mx-0.5 h-5 w-px shrink-0 bg-(--color-border)" aria-hidden="true" />
+
       {SIGNAL_KEYS.map(({ label, seq, title }) => (
         <button
           key={label}
@@ -120,6 +226,7 @@ export function TerminalKeyBar({ onKey, ctrlArmed, onCtrlToggle }: TerminalKeyBa
           aria-label={title}
           title={title}
           className={cn(keyClass, 'font-mono')}
+          onPointerDown={preventFocusLoss}
           onClick={() => send(seq)}
         >
           {label}
@@ -129,6 +236,7 @@ export function TerminalKeyBar({ onKey, ctrlArmed, onCtrlToggle }: TerminalKeyBa
         type="button"
         aria-label="Paste"
         className={keyClass}
+        onPointerDown={preventFocusLoss}
         onClick={paste}
       >
         <ClipboardPaste className="h-3.5 w-3.5" />

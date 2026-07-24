@@ -31,7 +31,12 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useThemePreference } from '@/hooks/useThemePreference'
 import { mediumHapticFeedback } from '@/lib/haptics'
-import { onTerminalFontChange, readStoredTerminalFont } from '@/lib/terminal-font'
+import {
+  onTerminalFontChange,
+  onTerminalFontSizeChange,
+  readStoredTerminalFont,
+  readStoredTerminalFontSize,
+} from '@/lib/terminal-font'
 import { getTerminalRuntime, useTerminalStore } from '@/stores/useTerminalStore'
 import { TerminalActionSheet } from './TerminalActionSheet'
 import { TerminalKeyBar } from './TerminalKeyBar'
@@ -64,25 +69,40 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
     useTerminalStore.getState().syncTheme(resolved)
   }, [resolved])
 
-  // Keep every live terminal's font in sync with the user's Settings →
-  // Terminal preference — both on mount (in case it changed while this
-  // view wasn't rendered) and live while it's open.
+  // Keep every live terminal's font and size in sync with Settings → Terminal
   useEffect(() => {
     useTerminalStore.getState().syncFont(readStoredTerminalFont())
-    return onTerminalFontChange(() => {
+    useTerminalStore.getState().syncFontSize(readStoredTerminalFontSize())
+    const unbindFont = onTerminalFontChange(() => {
       useTerminalStore.getState().syncFont(readStoredTerminalFont())
     })
+    const unbindSize = onTerminalFontSizeChange(() => {
+      useTerminalStore.getState().syncFontSize(readStoredTerminalFontSize())
+    })
+    return () => {
+      unbindFont()
+      unbindSize()
+    }
   }, [])
 
-  // Sticky-Ctrl transform: single a–z letter → control code (0x01–0x1a).
+  // Sticky-Ctrl transform: single character → control code.
+  // Handles a–z (0x01–0x1a), plus [, \, ], ^, _, ?, @.
   // Registered on the store so it applies to keystrokes from xterm's own
   // onData wiring, not just the mobile key bar.
   useEffect(() => {
     useTerminalStore.getState().setInputTransform(sessionId, (data: string): string => {
       if (!ctrlArmedRef.current || data.length !== 1) return data
       setCtrl(false)
-      const code = data.toLowerCase().charCodeAt(0)
+      const ch = data.toLowerCase()
+      const code = ch.charCodeAt(0)
       if (code >= 97 && code <= 122) return String.fromCharCode(code - 96)
+      if (ch === '[') return '\x1b'
+      if (ch === '\\') return '\x1c'
+      if (ch === ']') return '\x1d'
+      if (ch === '^') return '\x1e'
+      if (ch === '_') return '\x1f'
+      if (ch === '?') return '\x7f'
+      if (ch === '@' || ch === '0') return '\x00'
       return data
     })
     return () => {
@@ -106,10 +126,22 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
     }
     useTerminalStore.getState().setAttached(sessionId, true)
 
+    let resizeTimer: ReturnType<typeof setTimeout> | null = null
+
     const refit = () => {
       try {
         fit.fit()
-        useTerminalStore.getState().sendResize(sessionId, term.rows, term.cols)
+        // Debounce sending the WebSocket SIGWINCH resize event slightly so continuous
+        // dragging or window resizing doesn't flood the backend PTY.
+        if (resizeTimer !== null) clearTimeout(resizeTimer)
+        resizeTimer = setTimeout(() => {
+          resizeTimer = null
+          try {
+            useTerminalStore.getState().sendResize(sessionId, term.rows, term.cols)
+          } catch {
+            // session mid-teardown
+          }
+        }, 60)
       } catch {
         // container mid-unmount — ignore
       }
@@ -127,6 +159,7 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
     visualViewport?.addEventListener('resize', refit)
 
     return () => {
+      if (resizeTimer !== null) clearTimeout(resizeTimer)
       visualViewport?.removeEventListener('resize', refit)
       resizeObserver.disconnect()
       useTerminalStore.getState().setAttached(sessionId, false)

@@ -25,6 +25,7 @@ import { formatShortcut } from '@/lib/keyboard-shortcut'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { useGitPanelStore, DEFAULT_WORKSPACE_STATE } from '@/stores/useGitPanelStore'
 import { useTerminalStore } from '@/stores/useTerminalStore'
+import { useShallow } from 'zustand/react/shallow'
 import { useToastStore } from '@/stores/useToastStore'
 import type { WorkspaceFileInfo, WorkspaceGitDiffResponse } from '@/api/types'
 
@@ -487,13 +488,12 @@ export function CodingWorkspacePanel({
     if (!commitDiff.data?.diff) return new Map<string, DiffFileSection>()
     return collectDiffSections({ workspace, is_git_repo: true, diff: commitDiff.data.diff })
   }, [commitDiff.data?.diff, workspace])
-  const terminalSessions = useTerminalStore((s) => s.sessions)
-  const terminalMetas = useMemo(
-    () =>
-      Object.values(terminalSessions)
+  const terminalMetas = useTerminalStore(
+    useShallow((s) =>
+      Object.values(s.sessions)
         .filter((meta) => meta.contextKey === workspace)
         .sort((a, b) => a.order - b.order),
-    [terminalSessions, workspace],
+    ),
   )
   const activeTab = useMemo(() => {
     const found = tabs.find((item) => item.id === activeTabId)

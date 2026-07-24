@@ -29,6 +29,7 @@ import { useResizableWidth } from '@/hooks/use-resizable-width'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import {
   ChevronRight,
+  Copy,
   Folder,
   GitBranch,
   HelpCircle,
@@ -197,8 +198,8 @@ export function CodingSidebar({
   const [worktreeEditLoading, setWorktreeEditLoading] = useState(false)
   const worktreeEditInputRef = useRef<HTMLInputElement>(null)
   const [deleteTarget, setDeleteTarget] = useState<SessionResponse | null>(null)
-  const [mobileSessionActions, setMobileSessionActions] = useState<SessionResponse | null>(null)
-  const [desktopSessionActions, setDesktopSessionActions] = useState<{ session: SessionResponse; x: number; y: number } | null>(null)
+  const [mobileSessionActions, setMobileSessionActions] = useState<{ session: SessionResponse; workspacePath: string } | null>(null)
+  const [desktopSessionActions, setDesktopSessionActions] = useState<{ session: SessionResponse; workspacePath: string; x: number; y: number } | null>(null)
   const [desktopWorkspaceActions, setDesktopWorkspaceActions] = useState<{ path: string; kind: 'main' | 'worktree'; source?: string; worktree?: WorktreeInfo; x: number; y: number } | null>(null)
   const [mobileWorkspaceActions, setMobileWorkspaceActions] = useState<{ path: string; kind: 'main' | 'worktree'; source?: string; worktree?: WorktreeInfo } | null>(null)
   // Workspace pending removal — null when no confirmation is open. The
@@ -742,9 +743,9 @@ export function CodingSidebar({
                     onSessionSelect={handleSessionSelect}
                     onSessionDelete={handleSessionDelete}
                     onSessionEdit={handleSessionEdit}
-                    onSessionLongPress={setMobileSessionActions}
+                    onSessionLongPress={(session) => setMobileSessionActions({ session, workspacePath: path })}
                     onSessionContextActions={(session, event) => {
-                      setDesktopSessionActions({ session, x: event.clientX, y: event.clientY })
+                      setDesktopSessionActions({ session, workspacePath: path, x: event.clientX, y: event.clientY })
                     }}
                   />
                   {nestedWorktrees.map((item) => {
@@ -826,9 +827,9 @@ export function CodingSidebar({
                             onSessionSelect={handleSessionSelect}
                             onSessionDelete={handleSessionDelete}
                             onSessionEdit={handleSessionEdit}
-                            onSessionLongPress={setMobileSessionActions}
+                            onSessionLongPress={(session) => setMobileSessionActions({ session, workspacePath: directory })}
                             onSessionContextActions={(session, event) => {
-                              setDesktopSessionActions({ session, x: event.clientX, y: event.clientY })
+                              setDesktopSessionActions({ session, workspacePath: directory, x: event.clientX, y: event.clientY })
                             }}
                           />
                         )}
@@ -1305,6 +1306,22 @@ export function CodingSidebar({
             <button
               type="button"
               role="menuitem"
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+              onClick={() => {
+                const { session, workspacePath } = desktopSessionActions
+                setDesktopSessionActions(null)
+                const repoPath = session.workspace || workspacePath
+                if (repoPath) {
+                  void navigator.clipboard.writeText(repoPath)
+                }
+              }}
+            >
+              <Copy size={14} aria-hidden="true" />
+              Copy repo absolute path
+            </button>
+            <button
+              type="button"
+              role="menuitem"
               className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none"
               onClick={() => {
                 const { session } = desktopSessionActions
@@ -1325,7 +1342,7 @@ export function CodingSidebar({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{mobileSessionActions?.title || 'Untitled'}</DialogTitle>
+            <DialogTitle>{mobileSessionActions?.session.title || 'Untitled'}</DialogTitle>
             <DialogDescription>Choose a session action.</DialogDescription>
           </DialogHeader>
           <DialogFooter className="flex-col items-stretch gap-2 p-3 sm:flex-col">
@@ -1334,9 +1351,9 @@ export function CodingSidebar({
               variant="ghost"
               className="justify-start"
               onClick={() => {
-                const session = mobileSessionActions
+                const action = mobileSessionActions
                 setMobileSessionActions(null)
-                if (session) handleSessionEdit(session)
+                if (action?.session) handleSessionEdit(action.session)
               }}
             >
               <Pencil size={14} aria-hidden="true" />
@@ -1344,12 +1361,28 @@ export function CodingSidebar({
             </Button>
             <Button
               type="button"
+              variant="ghost"
+              className="justify-start"
+              onClick={() => {
+                const action = mobileSessionActions
+                setMobileSessionActions(null)
+                const repoPath = action?.session.workspace || action?.workspacePath
+                if (repoPath) {
+                  void navigator.clipboard.writeText(repoPath)
+                }
+              }}
+            >
+              <Copy size={14} aria-hidden="true" />
+              Copy repo absolute path
+            </Button>
+            <Button
+              type="button"
               variant="danger-subtle"
               className="justify-start"
               onClick={() => {
-                const session = mobileSessionActions
+                const action = mobileSessionActions
                 setMobileSessionActions(null)
-                if (session) setDeleteTarget(session)
+                if (action?.session) setDeleteTarget(action.session)
               }}
             >
               <Trash2 size={14} aria-hidden="true" />

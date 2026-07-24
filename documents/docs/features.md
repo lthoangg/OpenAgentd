@@ -400,7 +400,7 @@ team against it.
       omitted.
 - **Compact coding sidebar** `[v1.61.0]` — single-line session entries with
   status dots and tooltip dates; flattened repository/worktree/session hierarchy
-  without nested group labels; scroll-triggered pagination replaces the Load
+  without nested group labels; context menu / action sheet options include editing title, copying repo absolute path, and deleting session `[v1.117.0]`; scroll-triggered pagination replaces the Load
   more button.
 - **Changed-file highlights in the workspace tree** `[v1.30.0]` — modified and
   untracked files are marked directly in the Files tab, parent folders show a

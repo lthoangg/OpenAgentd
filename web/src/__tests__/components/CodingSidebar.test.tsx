@@ -1467,4 +1467,34 @@ describe('CodingSidebar workspace trust flow', () => {
     expect(deleteSessionMutate).toHaveBeenCalledWith('session-1')
     expect(navigate).toHaveBeenCalledWith({ to: '/coding', replace: true })
   })
+
+  it('copies repo absolute path from coding session context menu', async () => {
+    const user = userEvent.setup()
+    const writeText = mock(async () => {})
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+
+    sessionsData = [
+      {
+        id: 'session-1',
+        title: 'Feature session',
+        agent_name: 'lead',
+        created_at: '2026-05-13T00:00:00Z',
+        updated_at: '2026-05-13T00:00:00Z',
+        mode: 'coding',
+        workspace: '/repo/project',
+      },
+    ]
+    workspaceSessionsData = sessionsData
+
+    await renderCodingSidebarForSessions('session-1')
+
+    const sessionItem = screen.getByTitle(/Feature session/i)
+    fireEvent.contextMenu(sessionItem)
+
+    const copyOption = screen.getByRole('menuitem', { name: /copy repo absolute path/i })
+    expect(copyOption).toBeTruthy()
+
+    await user.click(copyOption)
+    expect(writeText).toHaveBeenCalledWith('/repo/project')
+  })
 })

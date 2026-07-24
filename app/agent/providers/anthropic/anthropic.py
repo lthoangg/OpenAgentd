@@ -42,9 +42,11 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import AsyncIterator
+from functools import lru_cache
 from typing import Any
 
 import httpx
+from loguru import logger
 from pydantic.types import SecretStr
 
 from app.agent.providers.base import LLMProviderBase
@@ -354,6 +356,7 @@ def _uses_adaptive_thinking(model: str) -> bool:
             "claude-opus-4-6",
             "claude-opus-4-7",
             "claude-opus-4-8",
+            "claude-opus-5",
             "claude-sonnet-4-6",
             "claude-sonnet-5",
             "claude-fable-5",
@@ -411,14 +414,37 @@ def _stream_chunk(
     )
 
 
+#: Output-token cap used when the model registry has no entry for a model.
+#: Anthropic IDs arrive from live ``/v1/models`` discovery, so a new model can
+#: be selectable before the curated registry knows it.  The historical fallback
+#: here was 4096 (a Claude 2-era limit), which silently truncated large
+#: ``write``/``patch`` tool calls mid-JSON.  Every supported Anthropic model
+#: publishes at least 64000, so this stays comfortably inside real limits while
+#: being large enough for whole-file writes.
+_DEFAULT_MAX_OUTPUT_TOKENS = 32000
+
+
+@lru_cache(maxsize=None)
 def _max_output_tokens_for_model(model: str) -> int:
+    """Return the output-token cap for *model*.
+
+    Cached so the unknown-model warning is emitted once per model rather than
+    on every request.
+    """
     from app.agent.providers.model_metadata import get_model_limits
 
-    limits = get_model_limits(f"anthropic:{model}")
+    limits = get_model_limits(f"anthropic:{_anthropic_model_name(model)}")
     if limits.max_completion_tokens is not None:
         return limits.max_completion_tokens
 
-    return 4096
+    # Cached, so this fires once per unknown model per process — not per request.
+    logger.warning(
+        "anthropic_model_limits_unknown model={} max_tokens={} (set limits in "
+        "model_registry.yaml)",
+        model,
+        _DEFAULT_MAX_OUTPUT_TOKENS,
+    )
+    return _DEFAULT_MAX_OUTPUT_TOKENS
 
 
 class AnthropicProvider(LLMProviderBase):
@@ -463,7 +489,7 @@ class AnthropicProvider(LLMProviderBase):
         from app.agent.providers.model_metadata import get_model_limits
 
         limits = get_model_limits(f"anthropic:{self.model}")
-        default_max = limits.max_completion_tokens or 4096
+        default_max = _max_output_tokens_for_model(self.model)
 
         requested_max = kwargs.pop("max_tokens", None)
         if requested_max is not None:

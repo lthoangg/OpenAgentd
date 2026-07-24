@@ -351,9 +351,9 @@ class TestMacosBranch:
             pytest.skip("macOS-specific branch")
         proc = _run([str(fake_bundle)])
         out = proc.stdout + proc.stderr
-        # Even if codesign fails, the "Ad-hoc signing the bundle" log
+        # Even if codesign fails, the "Signing the bundle" log
         # line must appear (it's logged before the codesign call).
-        assert "Ad-hoc signing the bundle" in out
+        assert "Signing the bundle" in out
 
 
 class TestNoSignatureClobberGuard:

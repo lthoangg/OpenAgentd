@@ -72,6 +72,96 @@ pub fn validate_install_preconditions(
 }
 
 #[cfg(target_os = "macos")]
+fn resolve_macos_signing_identity() -> String {
+    let local_cert_name = "OpenAgentd Local Signer";
+
+    if let Ok(output) = std::process::Command::new("security")
+        .args(["find-identity", "-v", "-p", "codesigning"])
+        .output()
+    {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        if stdout.contains(local_cert_name) {
+            return local_cert_name.to_string();
+        }
+        for line in stdout.lines() {
+            if line.contains("Apple Development:") {
+                if let Some(start) = line.find('"') {
+                    if let Some(end) = line[start + 1..].find('"') {
+                        return line[start + 1..start + 1 + end].to_string();
+                    }
+                }
+            }
+        }
+    }
+
+    if let Ok(tmp_dir) = tempfile::tempdir() {
+        let cert_cnf = tmp_dir.path().join("cert.cnf");
+        let key_file = tmp_dir.path().join("oad.key");
+        let crt_file = tmp_dir.path().join("oad.crt");
+        let p12_file = tmp_dir.path().join("oad.p12");
+
+        let cnf_content = "[req]\ndistinguished_name = req_distinguished_name\nprompt = no\n\n[req_distinguished_name]\nCN = OpenAgentd Local Signer\nO = OpenAgentd Local\n\n[v3_req]\nbasicConstraints = CA:FALSE\nkeyUsage = digitalSignature\nextendedKeyUsage = codeSigning\n";
+        if std::fs::write(&cert_cnf, cnf_content).is_ok() {
+            let req_ok = std::process::Command::new("openssl")
+                .args([
+                    "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "3650",
+                    "-config", cert_cnf.to_str().unwrap(),
+                    "-extensions", "v3_req",
+                    "-keyout", key_file.to_str().unwrap(),
+                    "-out", crt_file.to_str().unwrap(),
+                ])
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false);
+
+            if req_ok {
+                let p12_ok = std::process::Command::new("openssl")
+                    .args([
+                        "pkcs12", "-export", "-legacy",
+                        "-inkey", key_file.to_str().unwrap(),
+                        "-in", crt_file.to_str().unwrap(),
+                        "-name", local_cert_name,
+                        "-out", p12_file.to_str().unwrap(),
+                        "-passout", "pass:oadsecret",
+                    ])
+                    .output()
+                    .map(|o| o.status.success())
+                    .unwrap_or(false);
+
+                if p12_ok {
+                    let home = std::env::var("HOME").unwrap_or_default();
+                    let keychain = format!("{home}/Library/Keychains/login.keychain-db");
+                    let import_ok = std::process::Command::new("security")
+                        .args([
+                            "import", p12_file.to_str().unwrap(),
+                            "-k", &keychain,
+                            "-P", "oadsecret",
+                            "-T", "/usr/bin/codesign",
+                        ])
+                        .output()
+                        .map(|o| o.status.success())
+                        .unwrap_or(false);
+
+                    if import_ok {
+                        let _ = std::process::Command::new("security")
+                            .args([
+                                "add-trusted-cert", "-d", "-r", "trustRoot",
+                                "-p", "codeSign",
+                                "-k", &keychain,
+                                crt_file.to_str().unwrap(),
+                            ])
+                            .output();
+                        return local_cert_name.to_string();
+                    }
+                }
+            }
+        }
+    }
+
+    "-".to_string()
+}
+
+#[cfg(target_os = "macos")]
 fn prepare_macos_update_archive(bytes: Vec<u8>, bundle_id: &str) -> Result<Vec<u8>, String> {
     use flate2::{read::GzDecoder, write::GzEncoder, Compression};
     use std::ffi::OsStr;
@@ -121,15 +211,25 @@ fn prepare_macos_update_archive(bytes: Vec<u8>, bundle_id: &str) -> Result<Vec<u
         return Ok(bytes);
     }
 
-    let requirement = format!("designated => identifier \"{bundle_id}\"");
-    let output = std::process::Command::new("codesign")
-        .args(["--force", "--deep", "--sign", "-", "--options", "runtime"])
-        .arg(format!("-r={requirement}"))
-        .arg("--entitlements")
-        .arg(&entitlements)
-        .arg(app_bundle)
-        .output()
-        .map_err(|e| format!("Run codesign for macOS update: {e}"))?;
+    let identity = resolve_macos_signing_identity();
+    let output = if identity != "-" {
+        std::process::Command::new("codesign")
+            .args(["--force", "--deep", "--sign", &identity, "--options", "runtime"])
+            .arg("--entitlements")
+            .arg(&entitlements)
+            .arg(app_bundle)
+            .output()
+    } else {
+        let requirement = format!("designated => identifier \"{bundle_id}\"");
+        std::process::Command::new("codesign")
+            .args(["--force", "--deep", "--sign", "-", "--options", "runtime"])
+            .arg(format!("-r={requirement}"))
+            .arg("--entitlements")
+            .arg(&entitlements)
+            .arg(app_bundle)
+            .output()
+    }
+    .map_err(|e| format!("Run codesign for macOS update: {e}"))?;
     if !output.status.success() {
         return Err(format!(
             "Sign macOS update: {}",

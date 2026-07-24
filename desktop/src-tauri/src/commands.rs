@@ -8,8 +8,8 @@ use tauri_plugin_dialog::DialogExt;
 use crate::{AppState, BackendMode, BackendStartGuard};
 use crate::sidecar::Sidecar;
 use crate::config::{
-    load_access_keys, load_app_backend_config, normalize_external_base_url, normalize_server_name,
-    remove_app_backend_server, save_access_keys, save_app_backend_config, AppBackendStatus,
+    load_app_backend_config, normalize_external_base_url, normalize_server_name,
+    remove_app_backend_server, save_app_backend_config, AppBackendStatus,
 };
 use crate::window::{create_app_window, frontend_init_script, show_main_window, MAIN_WINDOW};
 use crate::menu::update_tray_status;
@@ -78,72 +78,42 @@ pub fn show_desktop_notification(
     Ok(())
 }
 
-fn validate_access_key_origin(origin: &str) -> Result<(), String> {
+fn access_key_entry(origin: &str) -> Result<keyring::Entry, String> {
     let parsed = url::Url::parse(origin).map_err(|_| "invalid backend origin".to_string())?;
     if !matches!(parsed.scheme(), "http" | "https")
         || parsed.origin().ascii_serialization() != origin
     {
         return Err("invalid backend origin".to_string());
     }
-    Ok(())
-}
-
-fn legacy_keyring_entry(origin: &str) -> Option<keyring::Entry> {
-    keyring::Entry::new(ACCESS_KEY_SERVICE, origin).ok()
+    keyring::Entry::new(ACCESS_KEY_SERVICE, origin)
+        .map_err(|_| "credential store unavailable".to_string())
 }
 
 #[tauri::command]
-pub fn secure_get_access_key(app: AppHandle, origin: String) -> Result<Option<String>, String> {
-    validate_access_key_origin(&origin)?;
-    let mut keys = load_access_keys(&app).map_err(|e| format!("{e:#}"))?;
-    if let Some(key) = keys.get(&origin) {
-        return Ok(Some(key.clone()));
+pub fn secure_get_access_key(origin: String) -> Result<Option<String>, String> {
+    match access_key_entry(&origin)?.get_password() {
+        Ok(key) => Ok(Some(key)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(_) => Err("credential store unavailable".to_string()),
     }
-
-    // Migration path for keys created in legacy OS Keychain before switching to restricted file storage
-    if let Some(entry) = legacy_keyring_entry(&origin) {
-        if let Ok(legacy_key) = entry.get_password() {
-            keys.insert(origin.clone(), legacy_key.clone());
-            let _ = save_access_keys(&app, &keys);
-            let _ = entry.delete_credential();
-            return Ok(Some(legacy_key));
-        }
-    }
-
-    Ok(None)
 }
 
 #[tauri::command]
-pub fn secure_set_access_key(app: AppHandle, origin: String, key: String) -> Result<(), String> {
-    validate_access_key_origin(&origin)?;
+pub fn secure_set_access_key(origin: String, key: String) -> Result<(), String> {
     if key.trim().is_empty() {
         return Err("access key is required".to_string());
     }
-    let mut keys = load_access_keys(&app).map_err(|e| format!("{e:#}"))?;
-    keys.insert(origin.clone(), key.trim().to_string());
-    save_access_keys(&app, &keys).map_err(|e| format!("{e:#}"))?;
-
-    // Best-effort cleanup of legacy OS Keychain entry
-    if let Some(entry) = legacy_keyring_entry(&origin) {
-        let _ = entry.delete_credential();
-    }
-
-    Ok(())
+    access_key_entry(&origin)?
+        .set_password(key.trim())
+        .map_err(|_| "credential store unavailable".to_string())
 }
 
 #[tauri::command]
-pub fn secure_delete_access_key(app: AppHandle, origin: String) -> Result<(), String> {
-    validate_access_key_origin(&origin)?;
-    let mut keys = load_access_keys(&app).map_err(|e| format!("{e:#}"))?;
-    keys.remove(&origin);
-    save_access_keys(&app, &keys).map_err(|e| format!("{e:#}"))?;
-
-    // Best-effort cleanup of legacy OS Keychain entry
-    if let Some(entry) = legacy_keyring_entry(&origin) {
-        let _ = entry.delete_credential();
+pub fn secure_delete_access_key(origin: String) -> Result<(), String> {
+    match access_key_entry(&origin)?.delete_credential() {
+        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Err(_) => Err("credential store unavailable".to_string()),
     }
-
-    Ok(())
 }
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]
@@ -589,7 +559,7 @@ pub async fn wait_for_health(base: &str, attempts: u32, delay: Duration) -> Resu
 
 #[cfg(test)]
 mod credential_tests {
-    use super::validate_access_key_origin;
+    use super::access_key_entry;
     #[cfg(target_os = "macos")]
     use super::notification_application_identifier;
 
@@ -608,9 +578,9 @@ mod credential_tests {
 
     #[test]
     fn access_key_origin_must_be_a_canonical_http_origin() {
-        assert!(validate_access_key_origin("https://example.com").is_ok());
-        assert!(validate_access_key_origin("https://example.com/api").is_err());
-        assert!(validate_access_key_origin("ftp://example.com").is_err());
-        assert!(validate_access_key_origin("https://example.com/").is_err());
+        assert!(access_key_entry("https://example.com").is_ok());
+        assert!(access_key_entry("https://example.com/api").is_err());
+        assert!(access_key_entry("ftp://example.com").is_err());
+        assert!(access_key_entry("https://example.com/").is_err());
     }
 }

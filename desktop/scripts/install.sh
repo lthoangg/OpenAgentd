@@ -227,28 +227,75 @@ PLIST
   bundle_id="com.openagentd.desktop"
   info "Bundle Identifier: ${bundle_id}"
 
-  # ── 4. Ad-hoc sign the whole bundle ─────────────────────────────────────────
-  # ``--deep`` is deprecated for production signing but is exactly
-  # the right hammer for ad-hoc: we have no signing identity to
-  # protect, and every nested Mach-O (~hundreds of .so/.dylib in the
-  # Python sidecar) needs *some* signature for Gatekeeper to allow
-  # exec. Passing an explicit Designated Requirement (designated =>
-  # identifier "$bundle_id") prevents macOS TCC from resetting folder
-  # permissions on every update.
-  info "Ad-hoc signing the bundle (this can take a few seconds)…"
-  if ! codesign \
-      --force \
-      --deep \
-      --sign - \
-      --options runtime \
-      -r="designated => identifier \"$bundle_id\"" \
-      --entitlements "$entitlements_file" \
-      --timestamp=none \
-      "$BUNDLE" 2>&1 | sed 's/^/  /'; then
-    fail "codesign failed."
-    exit 2
+  # ── 4. Sign the bundle with a persistent local identity ─────────────────────
+  # Using a persistent code-signing identity ("OpenAgentd Local Signer") ensures
+  # macOS TCC (Desktop folder) and Keychain permissions persist across updates.
+  signing_identity="-"
+  local_cert_name="OpenAgentd Local Signer"
+
+  if security find-identity -v -p codesigning 2>/dev/null | grep -q "\"$local_cert_name\""; then
+    signing_identity="$local_cert_name"
+  elif security find-identity -v -p codesigning 2>/dev/null | grep -q 'Apple Development:'; then
+    signing_identity="$(security find-identity -v -p codesigning 2>/dev/null | awk -F'"' '/Apple Development:/ {print $2; exit}')"
+  else
+    info "Generating persistent local signing certificate…"
+    tmp_cert_dir="$(mktemp -d)"
+    cert_cnf="$tmp_cert_dir/cert.cnf"
+    cat > "$cert_cnf" <<'EOF'
+[req]
+distinguished_name = req_distinguished_name
+prompt = no
+
+[req_distinguished_name]
+CN = OpenAgentd Local Signer
+O = OpenAgentd Local
+
+[v3_req]
+basicConstraints = CA:FALSE
+keyUsage = digitalSignature
+extendedKeyUsage = codeSigning
+EOF
+    if openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
+        -config "$cert_cnf" -extensions v3_req \
+        -keyout "$tmp_cert_dir/oad.key" -out "$tmp_cert_dir/oad.crt" &>/dev/null \
+      && openssl pkcs12 -export -legacy -inkey "$tmp_cert_dir/oad.key" -in "$tmp_cert_dir/oad.crt" \
+        -name "$local_cert_name" -out "$tmp_cert_dir/oad.p12" -passout pass:oadsecret &>/dev/null \
+      && security import "$tmp_cert_dir/oad.p12" -k ~/Library/Keychains/login.keychain-db -P "oadsecret" -T /usr/bin/codesign &>/dev/null \
+      && security add-trusted-cert -d -r trustRoot -p codeSign -k ~/Library/Keychains/login.keychain-db "$tmp_cert_dir/oad.crt" &>/dev/null; then
+      signing_identity="$local_cert_name"
+      ok "Created persistent signing certificate: $local_cert_name"
+    fi
+    rm -rf "$tmp_cert_dir"
   fi
-  ok "Ad-hoc signature applied"
+
+  info "Signing identity: ${signing_identity}"
+  info "Signing the bundle (this can take a few seconds)…"
+  if [ "$signing_identity" != "-" ]; then
+    if ! codesign \
+        --force \
+        --deep \
+        --sign "$signing_identity" \
+        --options runtime \
+        --entitlements "$entitlements_file" \
+        "$BUNDLE" 2>&1 | sed 's/^/  /'; then
+      fail "codesign failed."
+      exit 2
+    fi
+  else
+    if ! codesign \
+        --force \
+        --deep \
+        --sign - \
+        --options runtime \
+        -r="designated => identifier \"$bundle_id\"" \
+        --entitlements "$entitlements_file" \
+        --timestamp=none \
+        "$BUNDLE" 2>&1 | sed 's/^/  /'; then
+      fail "codesign failed."
+      exit 2
+    fi
+  fi
+  ok "Signature applied"
 
   # ── 5. Verify ───────────────────────────────────────────────────────────────
   info "Verifying signature…"
@@ -281,11 +328,18 @@ PLIST
     # ``ditto`` preserves signatures across volumes, but a different
     # filesystem can perturb xattrs — re-sign at destination to be
     # safe. Failure here is non-fatal.
-    codesign --force --deep --sign - \
-      --options runtime \
-      -r="designated => identifier \"$bundle_id\"" \
-      --entitlements "$entitlements_file" \
-      "$dest" >/dev/null 2>&1 || true
+    if [ "$signing_identity" != "-" ]; then
+      codesign --force --deep --sign "$signing_identity" \
+        --options runtime \
+        --entitlements "$entitlements_file" \
+        "$dest" >/dev/null 2>&1 || true
+    else
+      codesign --force --deep --sign - \
+        --options runtime \
+        -r="designated => identifier \"$bundle_id\"" \
+        --entitlements "$entitlements_file" \
+        "$dest" >/dev/null 2>&1 || true
+    fi
     ok "Installed to $dest"
   fi
 

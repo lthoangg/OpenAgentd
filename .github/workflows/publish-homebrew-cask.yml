@@ -190,10 +190,44 @@ jobs:
               system_command "/usr/bin/xattr",
                              args: ["-dr", "com.apple.quarantine", app_path],
                              must_succeed: false
-              codesign_args = ["--force", "--deep", "--sign", "-",
-                               "--options", "runtime",
-                               "-r=designated => identifier \"com.openagentd.desktop\"",
-                               "--timestamp=none"]
+
+              cert_name = "OpenAgentd Local Signer"
+              identities = system_command("/usr/bin/security", args: ["find-identity", "-v", "-p", "codesigning"], must_succeed: false).stdout.to_s
+              signing_id = "-"
+
+              if identities.include?(cert_name)
+                signing_id = cert_name
+              elsif identities.include?("Apple Development:")
+                signing_id = identities.lines.find { |l| l.include?("Apple Development:") }&.split('"')&.at(1) || "-"
+              else
+                require "tmpdir"
+                require "fileutils"
+                tmp_dir = Dir.mktempdir
+                cnf_path = "#{tmp_dir}/cert.cnf"
+                key_path = "#{tmp_dir}/oad.key"
+                crt_path = "#{tmp_dir}/oad.crt"
+                p12_path = "#{tmp_dir}/oad.p12"
+
+                cnf_content = "[req]\ndistinguished_name = req_distinguished_name\nprompt = no\n\n[req_distinguished_name]\nCN = OpenAgentd Local Signer\nO = OpenAgentd Local\n\n[v3_req]\nbasicConstraints = CA:FALSE\nkeyUsage = digitalSignature\nextendedKeyUsage = codeSigning\n"
+                File.write(cnf_path, cnf_content)
+
+                req_ok = system_command("/usr/bin/openssl", args: ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "3650", "-config", cnf_path, "-extensions", "v3_req", "-keyout", key_path, "-out", crt_path], must_succeed: false).success?
+                p12_ok = req_ok && system_command("/usr/bin/openssl", args: ["pkcs12", "-export", "-legacy", "-inkey", key_path, "-in", crt_path, "-name", cert_name, "-out", p12_path, "-passout", "pass:oadsecret"], must_succeed: false).success?
+
+                if p12_ok
+                  keychain = "#{Dir.home}/Library/Keychains/login.keychain-db"
+                  imp_ok = system_command("/usr/bin/security", args: ["import", p12_path, "-k", keychain, "-P", "oadsecret", "-T", "/usr/bin/codesign"], must_succeed: false).success?
+                  if imp_ok
+                    system_command("/usr/bin/security", args: ["add-trusted-cert", "-d", "-r", "trustRoot", "-p", "codeSign", "-k", keychain, crt_path], must_succeed: false)
+                    signing_id = cert_name
+                  end
+                end
+                FileUtils.rm_rf(tmp_dir)
+              end
+
+              codesign_args = ["--force", "--deep", "--sign", signing_id, "--options", "runtime"]
+              codesign_args += ["-r=designated => identifier \"com.openagentd.desktop\""] if signing_id == "-"
+              codesign_args += ["--timestamp=none"] if signing_id == "-"
               codesign_args += ["--entitlements", entitlements] if File.exist?(entitlements)
               codesign_args << app_path
               system_command "/usr/bin/codesign",

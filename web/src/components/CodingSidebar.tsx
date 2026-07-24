@@ -1009,6 +1009,19 @@ export function CodingSidebar({
               <Plus size={14} aria-hidden="true" />
               New session
             </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="justify-start"
+              onClick={() => {
+                const action = mobileWorkspaceActions
+                setMobileWorkspaceActions(null)
+                if (action) void navigator.clipboard.writeText(action.path)
+              }}
+            >
+              <Copy size={14} aria-hidden="true" />
+              Copy repo absolute path
+            </Button>
             {mobileWorkspaceActions?.kind === 'main' ? (
               <>
                 <Button
@@ -1209,6 +1222,19 @@ export function CodingSidebar({
               <Plus size={14} aria-hidden="true" />
               New session
             </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
+              onClick={() => {
+                const action = desktopWorkspaceActions
+                setDesktopWorkspaceActions(null)
+                void navigator.clipboard.writeText(action.path)
+              }}
+            >
+              <Copy size={14} aria-hidden="true" />
+              Copy repo absolute path
+            </button>
             {desktopWorkspaceActions.kind === 'main' ? (
               <>
                 <button
@@ -1306,22 +1332,6 @@ export function CodingSidebar({
             <button
               type="button"
               role="menuitem"
-              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-(--bg-key) focus-visible:bg-(--bg-key) focus-visible:outline-none"
-              onClick={() => {
-                const { session, workspacePath } = desktopSessionActions
-                setDesktopSessionActions(null)
-                const repoPath = session.workspace || workspacePath
-                if (repoPath) {
-                  void navigator.clipboard.writeText(repoPath)
-                }
-              }}
-            >
-              <Copy size={14} aria-hidden="true" />
-              Copy repo absolute path
-            </button>
-            <button
-              type="button"
-              role="menuitem"
               className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-(--color-error) hover:bg-(--color-error-subtle) focus-visible:bg-(--color-error-subtle) focus-visible:outline-none"
               onClick={() => {
                 const { session } = desktopSessionActions
@@ -1358,22 +1368,6 @@ export function CodingSidebar({
             >
               <Pencil size={14} aria-hidden="true" />
               Edit title
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              className="justify-start"
-              onClick={() => {
-                const action = mobileSessionActions
-                setMobileSessionActions(null)
-                const repoPath = action?.session.workspace || action?.workspacePath
-                if (repoPath) {
-                  void navigator.clipboard.writeText(repoPath)
-                }
-              }}
-            >
-              <Copy size={14} aria-hidden="true" />
-              Copy repo absolute path
             </Button>
             <Button
               type="button"

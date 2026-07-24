@@ -1468,7 +1468,7 @@ describe('CodingSidebar workspace trust flow', () => {
     expect(navigate).toHaveBeenCalledWith({ to: '/coding', replace: true })
   })
 
-  it('copies repo absolute path from coding session context menu', async () => {
+  it('copies repo absolute path from the workspace actions menu', async () => {
     const user = userEvent.setup()
     const writeText = mock(async () => {})
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
@@ -1488,9 +1488,7 @@ describe('CodingSidebar workspace trust flow', () => {
 
     await renderCodingSidebarForSessions('session-1')
 
-    const sessionItem = screen.getByTitle(/Feature session/i)
-    fireEvent.contextMenu(sessionItem)
-
+    await user.click(screen.getByLabelText('Actions for project'))
     const copyOption = screen.getByRole('menuitem', { name: /copy repo absolute path/i })
     expect(copyOption).toBeTruthy()
 

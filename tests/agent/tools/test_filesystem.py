@@ -397,9 +397,14 @@ class TestGrepFiles:
         with pytest.raises(ToolArgumentError):
             await grep_files.arun(pattern="[invalid", directory=".")
 
-    async def test_grep_not_a_directory(self, workspace):
+    async def test_grep_target_single_file(self, workspace):
+        (workspace / "single.py").write_text("def my_func():\n    pass\n")
+        result = await grep_files.arun(pattern="my_func", directory="single.py")
+        assert "single.py:1: def my_func():" in result
+
+    async def test_grep_nonexistent_target(self, workspace):
         with pytest.raises(ToolExecutionError):
-            await grep_files.arun(pattern="test", directory="hello.py")
+            await grep_files.arun(pattern="test", directory="nonexistent.py")
 
     async def test_grep_max_results(self, workspace):
         result = await grep_files.arun(pattern=".", directory=".", max_results=2)

@@ -192,7 +192,7 @@ def sanitize_tool_message_pairs(
                 result.append(msg)
             else:
                 row = rows_by_id.get(msg.db_id)
-                logger.warning(
+                logger.debug(
                     "deserialize_strip_incomplete_assistant_tool_calls session_id={} message_id={} missing_ids=[{}]",
                     row.session_id if row else None,
                     msg.db_id,
@@ -202,7 +202,7 @@ def sanitize_tool_message_pairs(
                 if stripped.content:
                     result.append(stripped)
                 else:
-                    logger.warning(
+                    logger.debug(
                         "deserialize_drop_empty_assistant_after_tool_strip session_id={} message_id={}",
                         row.session_id if row else None,
                         msg.db_id,
@@ -215,7 +215,7 @@ def sanitize_tool_message_pairs(
                 expected_tool_ids.remove(msg.tool_call_id)
             else:
                 row = rows_by_id.get(msg.db_id)
-                logger.warning(
+                logger.debug(
                     "deserialize_drop_orphan_tool_message session_id={} message_id={} tool_call_id={}",
                     row.session_id if row else None,
                     msg.db_id,

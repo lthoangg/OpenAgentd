@@ -454,7 +454,7 @@ def _build_agent(
         for server_name in cfg.mcp:
             server_tools = mcp_manager.get_tools_for_server(server_name)
             if server_tools is None:
-                logger.warning(
+                logger.debug(
                     "agent_unknown_mcp_server agent={} server={} configured={}",
                     cfg.name,
                     server_name,

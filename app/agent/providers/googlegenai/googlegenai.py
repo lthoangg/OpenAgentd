@@ -220,13 +220,16 @@ class GeminiProviderBase(LLMProviderBase):
                 contents.append(Content(role="user", parts=tool_parts))
 
         # Merge consecutive messages with the same role
-        merged_contents = []
+        merged_contents: list[Content] = []
         for content in contents:
             if not merged_contents:
                 merged_contents.append(content)
                 continue
             if content.role == merged_contents[-1].role:
-                merged_contents[-1].parts.extend(content.parts)
+                merged_contents[-1] = Content(
+                    role=content.role,
+                    parts=list(merged_contents[-1].parts) + list(content.parts),
+                )
             else:
                 merged_contents.append(content)
 

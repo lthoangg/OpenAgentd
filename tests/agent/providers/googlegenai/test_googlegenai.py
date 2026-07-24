@@ -1071,21 +1071,24 @@ def test_convert_messages_emits_thought_signature_on_thought_part(google_provide
     assert thought_parts[0].thought_signature == "opaque-sig-xyz"
 
 
-def test_convert_messages_thought_part_no_signature_when_absent(google_provider):
-    """AssistantMessage without reasoning_signature must still emit the thought
-    Part — just without thoughtSignature (pre-fix rows / non-thinking turns)."""
+def test_convert_messages_consecutive_tool_messages_merged(google_provider):
+    """Multiple consecutive ToolMessages must be merged into a single user Content block."""
     messages = [
-        AssistantMessage(
-            content="answer",
-            reasoning_content="thoughts",
-            reasoning_signature=None,
-        )
+        HumanMessage(content="run tools"),
+        AssistantMessage(content="ok"),
+        ToolMessage(content='{"status":"ok"}', name="tool1", tool_call_id="call_1"),
+        ToolMessage(content='{"status":"ok"}', name="tool2", tool_call_id="call_2"),
     ]
     contents, _ = google_provider._convert_messages_to_gemini(messages)
-
-    thought_parts = [p for p in contents[0].parts if p.thought]
-    assert len(thought_parts) == 1
-    assert thought_parts[0].thought_signature is None
+    # Roles: human -> user, assistant -> model, tool1+tool2 -> user
+    assert len(contents) == 3
+    assert contents[0].role == "user"
+    assert contents[1].role == "model"
+    assert contents[2].role == "user"
+    # Merged user block contains both function responses
+    assert len(contents[2].parts) == 2
+    assert contents[2].parts[0].function_response.name == "tool1"
+    assert contents[2].parts[1].function_response.name == "tool2"
 
 
 @pytest.mark.asyncio

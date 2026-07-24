@@ -66,11 +66,12 @@ async def _grep_files(
     """Search file contents by regex within the workspace."""
     sandbox = get_sandbox()
     resolved = sandbox.validate_path(directory)
-    if not resolved.is_dir():
-        raise NotADirectoryError(f"Not a directory: {sandbox.display_path(resolved)}")
-    gitignore_rules = load_gitignore_rules(resolved)
+    if not resolved.exists():
+        raise FileNotFoundError(
+            f"File or directory not found: {sandbox.display_path(resolved)}"
+        )
 
-    # Me reject patterns that are too long — prevents crafted ReDoS payloads
+    # Reject patterns that are too long — prevents crafted ReDoS payloads
     if len(pattern) > _MAX_PATTERN_LEN:
         raise ValueError(
             f"Pattern too long ({len(pattern)} chars, max {_MAX_PATTERN_LEN})"
@@ -80,6 +81,29 @@ async def _grep_files(
         compiled = re.compile(pattern)
     except re.error as exc:
         raise ValueError(f"Invalid regex: {exc}") from exc
+
+    if resolved.is_file():
+
+        def _scan_single_file() -> list[str]:
+            try:
+                text = resolved.read_text(encoding="utf-8")
+            except (UnicodeDecodeError, OSError):
+                return []
+            display_path = sandbox.display_path(resolved)
+            hits: list[str] = []
+            for lineno, line in enumerate(text.splitlines(), start=1):
+                if compiled.search(line):
+                    hits.append(f"{display_path}:{lineno}: {line[:200]}")
+                    if len(hits) >= max_results:
+                        return hits
+            return hits
+
+        matches = _scan_single_file()
+        if not matches:
+            return f"No matches for pattern '{pattern}' in {sandbox.display_path(resolved)} (include={include})"
+        return "\n".join(matches)
+
+    gitignore_rules = load_gitignore_rules(resolved)
 
     def _scan() -> list[str]:
         hits: list[str] = []

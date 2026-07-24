@@ -1009,7 +1009,7 @@ def test_load_team_discovers_all_agents(tmp_path):
 def test_load_team_skips_unconfigured_members(tmp_path):
     """Seed placeholders and blank models should not become spawnable members."""
     from app.agent.loader import load_team_from_dir
-    from app.cli.seed import PROVIDER_MODEL_TOKEN
+    from app.core.config import PROVIDER_MODEL_TOKEN
 
     d = _make_agents_dir(
         tmp_path,

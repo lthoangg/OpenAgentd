@@ -30,6 +30,19 @@ from loguru import logger
 from app.core.config import settings
 
 _CONFIG_FILENAME = "multimodal.yaml"
+_DEFAULT_CONFIG: dict[str, Any] = {
+    "image": {
+        "model": "googlegenai:gemini-3.1-flash-image-preview",
+        "aspect_ratio": "1:1",
+        "image_size": "1K",
+    },
+    "video": {
+        "model": "googlegenai:veo-3.1-generate-preview",
+        "aspect_ratio": "16:9",
+        "resolution": "720p",
+        "duration_seconds": "8",
+    },
+}
 
 
 @dataclass(frozen=True)
@@ -92,6 +105,14 @@ def save_raw_config(config: dict[str, Any]) -> None:
     path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
     global _cache
     _cache = None
+
+
+def ensure_default_config() -> bool:
+    """Write the editable multimodal defaults when no config exists."""
+    if _config_path().exists():
+        return False
+    save_raw_config(_DEFAULT_CONFIG)
+    return True
 
 
 def get_section(kind: str) -> MediaSectionConfig | None:

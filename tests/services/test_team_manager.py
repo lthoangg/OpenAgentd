@@ -583,7 +583,7 @@ def test_refresh_blueprints_skips_lead_file(tmp_path, monkeypatch):
 
 
 def test_refresh_blueprints_skips_unconfigured_members(tmp_path, monkeypatch):
-    from app.cli.seed import PROVIDER_MODEL_TOKEN
+    from app.core.config import PROVIDER_MODEL_TOKEN
     from app.core.config import settings
 
     monkeypatch.setattr(settings, "AGENTS_DIR", str(tmp_path))

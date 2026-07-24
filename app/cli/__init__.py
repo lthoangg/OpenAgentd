@@ -3,7 +3,6 @@
 Usage
 -----
   openagentd               Start server + web UI in the background
-  openagentd init          First-time setup: write .env and seed config files
   openagentd migrate       Import agent config from another local agent tool
   openagentd auth          Authenticate with an OAuth-based provider (e.g. copilot)
   openagentd stop          Stop the background server and web UI
@@ -50,7 +49,6 @@ _LAZY_EXPORTS: dict[str, str] = {
     "cmd_cleanup": "app.cli.main",
     "cmd_doctor": "app.cli.main",
     "cmd_health": "app.cli.main",
-    "cmd_init": "app.cli.main",
     "cmd_logs": "app.cli.main",
     "cmd_migrate": "app.cli.main",
     "cmd_restart": "app.cli.main",

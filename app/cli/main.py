@@ -38,7 +38,6 @@ cmd_doctor = _lazy_cmd("app.cli.commands.doctor", "cmd_doctor")
 cmd_export = _lazy_cmd("app.cli.commands.export", "cmd_export")
 cmd_health = _lazy_cmd("app.cli.commands.health", "cmd_health")
 cmd_import = _lazy_cmd("app.cli.commands.importcmd", "cmd_import")
-cmd_init = _lazy_cmd("app.cli.commands.init", "cmd_init")
 cmd_logs = _lazy_cmd("app.cli.commands.logs", "cmd_logs")
 cmd_lsp = _lazy_cmd("app.cli.commands.lsp", "cmd_lsp")
 cmd_migrate = _lazy_cmd("app.cli.commands.migrate", "cmd_migrate")
@@ -64,7 +63,6 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"
-            "  openagentd init           # first-time setup (provider, API key, config)\n"
             "  openagentd migrate openclaw --from ~/.openclaw/workspace --model openai:gpt-5.5\n"
             "  openagentd migrate hermes --from ~/.hermes --model openai:gpt-5.5\n"
             "  openagentd auth copilot   # authenticate with an OAuth provider\n"
@@ -107,13 +105,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.set_defaults(func=cmd_start)
 
     sub = parser.add_subparsers(dest="command", metavar="command")
-
-    # ── init ──────────────────────────────────────────────────────────────────
-    p_init = sub.add_parser(
-        "init",
-        help="First-time setup: write .env and seed config files",
-    )
-    p_init.set_defaults(func=cmd_init)
 
     # ── migrate ───────────────────────────────────────────────────────────────
     p_migrate = sub.add_parser(

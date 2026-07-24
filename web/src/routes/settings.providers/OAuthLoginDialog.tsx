@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Check, CheckCircle2, Copy, Loader2, TerminalSquare } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 
-import { installSeed, oauthLoginStream, submitOAuthCallback, type OAuthLoginEvent, type ProviderInfo } from '@/api/client'
+import { configureDefaultModel, oauthLoginStream, submitOAuthCallback, type OAuthLoginEvent, type ProviderInfo } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -67,18 +67,18 @@ export function OAuthLoginDialog({
             void queryClient.invalidateQueries({ queryKey: queryKeys.agentFiles.registry() })
             const model = event.suggested_model
             if (model) {
-              void installSeed(model)
+              void configureDefaultModel(model)
                 .then(() => {
                   useToastStore.getState().push({
                     tone: 'success',
                     title: 'Provider connected',
-                    description: 'Default agents and skills are ready.',
+                    description: 'Default agents are ready.',
                   })
                 })
                 .catch((err: unknown) => {
                   useToastStore.getState().push({
                     tone: 'error',
-                    title: 'Seed install failed',
+                    title: 'Default model setup failed',
                     description: err instanceof Error ? err.message : String(err),
                   })
                 })

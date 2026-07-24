@@ -11,7 +11,6 @@ from urllib.parse import unquote
 
 FRONTMATTER_REQUIREMENTS: tuple[tuple[str, frozenset[str]], ...] = (
     ("documents/docs/", frozenset({"title", "description", "status", "updated"})),
-    ("seed/agents/", frozenset({"name", "role", "model", "thinking_level"})),
     (".github/ISSUE_TEMPLATE/", frozenset({"name", "about", "labels"})),
 )
 IMAGE_SUFFIXES = frozenset(

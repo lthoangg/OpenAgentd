@@ -21,7 +21,7 @@ sandbox*.py            Shell/filesystem sandbox behavior
 
 ## Common feature checks
 
-- Agent config/frontmatter change: update `loader.py`, seed agents if needed, and focused tests.
+- Agent config/frontmatter change: update `loader.py`, built-in profiles if needed, and focused tests.
 - Tool change: check `tools/registry.py`, the tool implementation, permission/sandbox behavior, and UI rendering if the result shape changes.
 - Team behavior change: check `mode/team/`, `services/team_manager.py`, API routes, and SSE event consumers in `web/src/stores/`.
 - Provider change: add/adjust tests under `tests/agent/providers/` and avoid leaking provider-specific shapes into generic schemas.

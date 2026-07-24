@@ -1,9 +1,8 @@
 """Placeholder provider used when an agent has no real model configured.
 
-Agents seeded by ``install_seed`` carry the literal token
-``__PROVIDER_MODEL__`` in their ``model:`` frontmatter until the user
-picks a provider via the UI (or runs ``openagentd init``). Before the
-substitution, ``build_provider`` cannot resolve the token to a real
+Generated agents carry the literal token ``__PROVIDER_MODEL__`` in their
+``model:`` frontmatter until the user picks a provider and model in the UI.
+Before that selection, ``build_provider`` cannot resolve the token to a real
 backend — historically this raised ``ValueError`` at load time and
 crashed the whole team manager.
 
@@ -14,7 +13,7 @@ catches that specific error type and emits a typed SSE
 :class:`AgentNotConfiguredEvent` so the UI can render a "configure a
 provider" banner instead of a generic stack trace.
 
-See ``app.cli.seed.PROVIDER_MODEL_TOKEN`` for the canonical sentinel.
+See ``app.core.config.PROVIDER_MODEL_TOKEN`` for the canonical sentinel.
 """
 
 from __future__ import annotations
@@ -43,8 +42,7 @@ class UnconfiguredProviderError(ValueError):
             message
             or (
                 f"Agent '{agent_name or '?'}' has no model configured. "
-                f"Open Settings → Providers in the UI to add a provider, "
-                f"or run `openagentd init` in a terminal."
+                f"Open Settings → Providers in the UI to add a provider and select a model."
             )
         )
 

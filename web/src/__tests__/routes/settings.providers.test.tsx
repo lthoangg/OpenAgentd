@@ -210,11 +210,8 @@ describe('ProvidersSettingsPage', () => {
         }),
         { headers: { 'Content-Type': 'text/event-stream' } },
       )),
-      http.post('http://localhost/api/settings/seed', () => HttpResponse.json({
-        agents_written: [],
-        skills_written: [],
-        configs_written: [],
-        source: 'test',
+      http.post('http://localhost/api/settings/default-model', () => HttpResponse.json({
+        agents_updated: [],
       })),
     )
 

@@ -14,7 +14,9 @@ OpenAgentd migration is focused on reusable setup: agent identity, standing inst
 | API keys | `~/.config/openagentd/.env` or **Settings → Providers** |
 | OAuth providers | `openagentd auth <provider>` or **Settings → Providers** |
 
-Run `openagentd init` first if this is a fresh OpenAgentd install. It creates the config directory and seeds the default agents/skills without overwriting existing files.
+No separate initialization step is required. Application startup creates the
+configuration directory and missing built-in agents without overwriting existing
+files.
 
 ## From OpenClaw
 

@@ -60,11 +60,12 @@ Install the backend when you want to run it from a terminal, use a browser clien
 
 ```bash
 uv tool install openagentd
-openagentd init
 openagentd
 ```
 
-The server prints its local address when it starts. For a phone or another computer on your network:
+The server creates its default agents and configuration on first start. Open the
+printed local address and add a provider in Settings. For a phone or another
+computer on your network:
 
 ```bash
 openagentd start --lan --key

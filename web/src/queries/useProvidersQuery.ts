@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import {
   disconnectProvider,
-  installSeed,
   getProviderUsage,
   listProviderModels,
   listProviders,
@@ -115,8 +114,4 @@ export function useDisconnectProviderMutation() {
       void client.invalidateQueries({ queryKey: queryKeys.agentFiles.registry() })
     },
   })
-}
-
-export function useInstallSeedMutation() {
-  return useMutation({ mutationFn: installSeed })
 }

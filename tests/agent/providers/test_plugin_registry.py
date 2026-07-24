@@ -208,7 +208,7 @@ def test_provider_plugins_returns_empty_when_plugin_dir_is_missing(
 ) -> None:
     """A never-created (or since-deleted) plugins dir must not raise.
 
-    ``openagentd init`` creates ``{config}/plugins/`` lazily; users who
+    Application startup creates ``{config}/plugins/`` lazily; users who
     never installed a plugin (or deleted the directory) should see an
     empty plugin set everywhere that consumes it — including the tray's
     usage-summary aggregator — rather than an exception on the next

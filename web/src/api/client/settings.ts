@@ -198,7 +198,6 @@ export type ProviderUsageResponse = {
 
 export type ProviderSaveResponse = {
   saved: boolean
-  is_first_provider: boolean
 }
 
 export type ProviderVisibleModelsResponse = {
@@ -212,11 +211,8 @@ export type ProviderTestResponse = {
   error?: string | null
 }
 
-export type SeedInstallResponse = {
-  agents_written: string[]
-  skills_written: string[]
-  configs_written: string[]
-  source: string
+export type DefaultModelResponse = {
+  agents_updated: string[]
 }
 
 export type OAuthLoginEvent = {
@@ -315,13 +311,13 @@ export async function disconnectProvider(
   return res.json()
 }
 
-export async function installSeed(providerModel: string): Promise<SeedInstallResponse> {
-  const res = await fetch(`${apiBaseUrl()}/settings/seed`, {
+export async function configureDefaultModel(providerModel: string): Promise<DefaultModelResponse> {
+  const res = await fetch(`${apiBaseUrl()}/settings/default-model`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ provider_model: providerModel }),
   })
-  if (!res.ok) await parseDetailOrThrow(res, 'POST /settings/seed')
+  if (!res.ok) await parseDetailOrThrow(res, 'POST /settings/default-model')
   return res.json()
 }
 

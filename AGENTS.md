@@ -15,7 +15,6 @@ The mobile-first cockpit for local AI agents — a Tauri 2 mobile + desktop shel
 app/         FastAPI backend (agent/, api/, core/, models/, services/, cli/)
 web/         React frontend
 desktop/     Tauri v2 shell
-seed/        Default agents and empty mcp.json (installed by `openagentd init`)
 tests/       pytest suite (mirrors app/)
 documents/   Developer docs (see documents/docs/index.md)
 ```
@@ -26,7 +25,7 @@ Several directories carry their own `AGENTS.md` with local conventions and
 `app/services/AGENTS.md`, `web/AGENTS.md`, `web/src/AGENTS.md`,
 `desktop/AGENTS.md`, `desktop/src-tauri/AGENTS.md`, `manual/AGENTS.md`,
 `tests/AGENTS.md`, `tests/manual/AGENTS.md`, `scripts/AGENTS.md`,
-`seed/AGENTS.md`, `documents/AGENTS.md`, and `documents/docs/AGENTS.md`.
+`documents/AGENTS.md`, and `documents/docs/AGENTS.md`.
 
 ## Validation
 

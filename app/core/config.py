@@ -122,8 +122,7 @@ class Settings(BaseSettings):
     # Values: "production" | "development"
     # Defaults to "development" so source-checkout runs are always safe
     # (writes to .openagentd/dev/, not ~/.local/share/openagentd).
-    # The CLI (openagentd start / serve) injects APP_ENV=production explicitly,
-    # and openagentd init writes APP_ENV=production into the user's .env.
+    # The CLI (openagentd start / serve) injects APP_ENV=production explicitly.
     APP_ENV: str = "development"
 
     # API Server
@@ -255,10 +254,7 @@ class Settings(BaseSettings):
 
 settings = Settings()  # pyright: ignore[reportCallIssue]
 
-#: Token used as the ``model:`` value in seed agent files.  Replaced at
-#: install time with the provider/model the user picked in ``openagentd init``.
-#: Lives in ``app.core`` (not ``app.cli.seed``, its historical home) so the
-#: agent loader/provider factory can read it without importing the CLI
-#: package — that import edge was part of a 24-module cycle through
-#: ``app.agent`` (see scripts/codehealth).
+#: Token used as the ``model:`` value in generated agent files until the user
+#: selects a provider model. The loader, provider factory, and settings API
+#: share this canonical sentinel without importing one another.
 PROVIDER_MODEL_TOKEN = "__PROVIDER_MODEL__"

@@ -7,7 +7,6 @@ import getpass
 import os
 import subprocess
 
-from app.cli.firstrun import ensure_initialised
 from app.cli.net import require_loopback_or_auth, server_addresses
 from app.cli.paths import _ROOT, _server_log
 from app.cli.pids import _find_pids, _write_pids
@@ -72,10 +71,6 @@ def cmd_start(args: argparse.Namespace) -> None:
     if _find_pids():
         print(f"  {_yellow('already running')}  (run {_bold('openagentd stop')} first)")
         return
-
-    # First-run guard: if .env or agents are missing, run init interactively
-    # before going any further. Headline UX is `openagentd` → working server.
-    ensure_initialised()
 
     server_settings = load_server_settings()
     _apply_server_overrides(args, server_settings)

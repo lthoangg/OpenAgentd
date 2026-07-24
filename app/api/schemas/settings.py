@@ -251,10 +251,6 @@ class ProviderSaveResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     saved: bool
-    # Convenience: whether this save call resulted in the first
-    # configured provider (frontend uses this to decide whether to
-    # trigger the seed installer afterward).
-    is_first_provider: bool = False
 
 
 class ProviderVisibleModelsRequest(BaseModel):
@@ -283,34 +279,23 @@ class ProviderDisconnectResponse(BaseModel):
     is_disconnected: bool
 
 
-class SeedInstallRequest(BaseModel):
-    """``POST /api/settings/seed`` request body."""
+class DefaultModelRequest(BaseModel):
+    """Assign a model to generated agents that are not configured yet."""
 
     model_config = ConfigDict(extra="forbid")
 
-    # Optional ``provider:model`` string that substitutes for
-    # ``__PROVIDER_MODEL__`` in every seeded agent .md. Empty/null means the
-    # seed keeps its internal placeholder until the user configures a model.
-    provider_model: str | None = None
+    provider_model: str
 
     @field_validator("provider_model")
     @classmethod
-    def _validate_provider_model(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
+    def _validate_provider_model(cls, value: str) -> str:
         value = value.strip()
-        if not value:
-            return None
         if ":" not in value:
             raise ValueError("provider_model must use '<provider>:<model>' format")
         return value
 
 
-class SeedInstallResponse(BaseModel):
+class DefaultModelResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    agents_written: list[str] = Field(default_factory=list)
-    skills_written: list[str] = Field(default_factory=list)
-    configs_written: list[str] = Field(default_factory=list)
-    agents_removed: list[str] = Field(default_factory=list)
-    source: str  # "local", "tag:v0.x.y", or "branch:main"
+    agents_updated: list[str] = Field(default_factory=list)

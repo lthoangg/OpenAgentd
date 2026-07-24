@@ -20,7 +20,7 @@ from app.agent.providers.unconfigured import (
     UnconfiguredProvider,
     UnconfiguredProviderError,
 )
-from app.cli.seed import PROVIDER_MODEL_TOKEN
+from app.core.config import PROVIDER_MODEL_TOKEN
 
 
 def test_unconfigured_error_is_value_error() -> None:

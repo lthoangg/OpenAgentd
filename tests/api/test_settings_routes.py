@@ -11,7 +11,6 @@ from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
 from app.agent.sandbox_config import DEFAULT_DENIED_PATTERNS
-from app.cli.seed import SeedDownloadError, SeedResult
 from app.api.routes import settings as settings_routes
 from app.api.routes.settings import router
 from app.agent.providers.codex.oauth import CodexOAuth
@@ -403,10 +402,10 @@ def test_save_provider_writes_env_and_mutates_environ(
     assert response.status_code == 200
     body = response.json()
     assert body["saved"] is True
-    assert body["is_first_provider"] is True
 
     # .env should now contain the key.
     env_text = (tmp_path / ".env").read_text(encoding="utf-8")
+    assert "APP_ENV=production" in env_text
     assert "GOOGLE_API_KEY=fresh-key-123" in env_text
 
     # os.environ should be mutated so the next build_provider call works
@@ -415,15 +414,12 @@ def test_save_provider_writes_env_and_mutates_environ(
 
     assert os.environ.get("GOOGLE_API_KEY") == "fresh-key-123"
 
-    # A second save flips is_first_provider to False — the user is past
-    # the initial setup so the frontend shouldn't trigger seed install
-    # again.
     response2 = client.put(
         "/api/settings/providers/googlegenai",
         json={"api_key": "another-key"},
     )
     assert response2.status_code == 200
-    assert response2.json()["is_first_provider"] is False
+    assert response2.json() == {"saved": True}
 
 
 def test_save_provider_persists_base_url_extra(
@@ -554,96 +550,67 @@ def test_save_provider_404_for_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
     assert response.status_code == 404
 
 
-def test_install_seed_defaults_calls_seed_installer(
+def test_configure_default_model_updates_unconfigured_agents(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
         settings_routes.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path)
     )
-    install_seed = Mock(
-        return_value=SeedResult(
-            agents_written=["openagentd.md"],
-            skills_written=["self-healing"],
-            configs_written=["mcp.json"],
-            agents_removed=["consultant.md"],
-            source="local",
-        )
+    agents = tmp_path / "agents"
+    agents.mkdir()
+    (agents / "openagentd.md").write_text(
+        "---\nname: openagentd\nrole: lead\nmodel: __PROVIDER_MODEL__\n---\n",
+        encoding="utf-8",
     )
-    monkeypatch.setattr("app.cli.seed.install_seed", install_seed)
 
     app = _make_app()
     client = TestClient(app)
     response = client.post(
-        "/api/settings/seed",
+        "/api/settings/default-model",
         json={"provider_model": "googlegenai:gemini-3-flash-preview"},
     )
 
     assert response.status_code == 200
-    assert response.json() == {
-        "agents_written": ["openagentd.md"],
-        "skills_written": ["self-healing"],
-        "configs_written": ["mcp.json"],
-        "agents_removed": ["consultant.md"],
-        "source": "local",
-    }
-    install_seed.assert_called_once_with(
-        tmp_path, provider_model="googlegenai:gemini-3-flash-preview"
-    )
+    assert response.json() == {"agents_updated": ["openagentd.md"]}
+    assert "model: googlegenai:gemini-3-flash-preview" in (
+        agents / "openagentd.md"
+    ).read_text(encoding="utf-8")
 
 
-def test_install_seed_defaults_reports_download_failure(
+def test_configure_default_model_preserves_configured_agents(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
         settings_routes.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path)
     )
-
-    def _fail(*_args: object, **_kwargs: object) -> None:
-        raise SeedDownloadError("offline")
-
-    monkeypatch.setattr("app.cli.seed.install_seed", _fail)
+    agents = tmp_path / "agents"
+    agents.mkdir()
+    configured = agents / "openagentd.md"
+    configured.write_text(
+        "---\nname: openagentd\nrole: lead\nmodel: openai:gpt-5\n---\n\n"
+        "Keep the literal __PROVIDER_MODEL__ in this custom prompt.\n",
+        encoding="utf-8",
+    )
 
     app = _make_app()
     client = TestClient(app)
     response = client.post(
-        "/api/settings/seed",
+        "/api/settings/default-model",
         json={"provider_model": "googlegenai:gemini-3-flash-preview"},
     )
 
-    assert response.status_code == 502
-    assert response.json()["detail"] == "offline"
-
-
-@pytest.mark.parametrize("body", [{}, {"provider_model": None}, {"provider_model": ""}])
-def test_install_seed_defaults_accepts_empty_model(
-    body: dict[str, str | None], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(
-        settings_routes.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path)
-    )
-    install_seed = Mock(
-        return_value=SeedResult(
-            agents_written=[],
-            skills_written=[],
-            configs_written=[],
-            agents_removed=[],
-            source="local",
-        )
-    )
-    monkeypatch.setattr("app.cli.seed.install_seed", install_seed)
-
-    app = _make_app()
-    client = TestClient(app)
-    response = client.post("/api/settings/seed", json=body)
-
     assert response.status_code == 200
-    install_seed.assert_called_once_with(tmp_path, provider_model="__PROVIDER_MODEL__")
+    assert response.json() == {"agents_updated": []}
+    assert "model: openai:gpt-5" in configured.read_text(encoding="utf-8")
+    assert "literal __PROVIDER_MODEL__" in configured.read_text(encoding="utf-8")
 
 
-def test_install_seed_defaults_rejects_invalid_model() -> None:
+def test_configure_default_model_rejects_invalid_model() -> None:
     app = _make_app()
     client = TestClient(app)
-    response = client.post("/api/settings/seed", json={"provider_model": "gpt-5"})
+    response = client.post(
+        "/api/settings/default-model", json={"provider_model": "gpt-5"}
+    )
 
     assert response.status_code == 422
 

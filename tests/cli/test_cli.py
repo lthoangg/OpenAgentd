@@ -137,6 +137,13 @@ def test_lsp_cli_parses_status_and_typescript_install() -> None:
     assert install.component == "typescript"
 
 
+def test_cli_has_no_init_command() -> None:
+    parser = build_parser()
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["init"])
+
+
 def test_lsp_cli_sanitizes_unexpected_install_errors() -> None:
     from app.cli.commands.lsp import cmd_lsp
 
@@ -288,7 +295,6 @@ class TestBindAuthPolicy:
         )
         with (
             patch("app.cli.commands.start._find_pids", return_value=[]),
-            patch("app.cli.commands.start.ensure_initialised"),
             patch("app.cli.commands.start._save_server_overrides"),
             patch("app.cli.commands.start.load_server_settings") as server_settings,
             patch("app.cli.commands.start.subprocess.Popen") as popen,
@@ -311,7 +317,6 @@ class TestBindAuthPolicy:
         settings = ServerSettings(host="127.0.0.1", port=4082, access_key=None)
         with (
             patch("app.cli.commands.start._find_pids", return_value=[]),
-            patch("app.cli.commands.start.ensure_initialised"),
             patch("app.cli.commands.start.load_server_settings", return_value=settings),
             patch("app.cli.commands.start.save_server_settings") as save_settings,
             patch("app.cli.commands.start.subprocess.Popen") as popen,
@@ -337,7 +342,6 @@ class TestBindAuthPolicy:
         )
         with (
             patch("app.cli.commands.start._find_pids", return_value=[]),
-            patch("app.cli.commands.start.ensure_initialised"),
             patch("app.cli.commands.start.load_server_settings", return_value=server),
             patch(
                 "app.cli.commands.start._server_log", return_value=tmp_path / "app.log"

@@ -10,7 +10,7 @@ from app.core.config import settings
 
 
 def ensure_workspace_initialized() -> None:
-    """Create expected local roots and seed editable defaults if missing."""
+    """Create expected local roots and editable defaults if missing."""
     for path in (
         settings.OPENAGENTD_DATA_DIR,
         settings.OPENAGENTD_CONFIG_DIR,
@@ -25,25 +25,22 @@ def ensure_workspace_initialized() -> None:
     for plugin_dir in settings.plugin_dirs():
         plugin_dir.mkdir(parents=True, exist_ok=True)
 
-    agents_dir = Path(settings.AGENTS_DIR)
-    result = None
-    if not any(agents_dir.glob("*.md")):
-        from app.cli.seed import SeedDownloadError, install_seed
-        from app.core.config import PROVIDER_MODEL_TOKEN
+    from app.agent.tools.multimodalities._config import ensure_default_config
+    from app.core.config import PROVIDER_MODEL_TOKEN
+    from app.core.runtime_settings import ensure_runtime_settings
 
-        try:
-            result = install_seed(
-                Path(settings.OPENAGENTD_CONFIG_DIR),
-                provider_model=PROVIDER_MODEL_TOKEN,
-            )
-        except SeedDownloadError as exc:
-            logger.warning("workspace_seed_install_failed error={}", exc)
+    config_dir = Path(settings.OPENAGENTD_CONFIG_DIR)
+    ensure_runtime_settings(
+        config_dir / "settings.yaml", provider_model=PROVIDER_MODEL_TOKEN
+    )
+    ensure_default_config()
 
     from app.agent.loader import (
         ensure_builtin_agent_blueprints,
         ensure_builtin_openagentd_lead,
     )
 
+    agents_dir = Path(settings.AGENTS_DIR)
     default_written = ensure_builtin_agent_blueprints(agents_dir, mode="normal")
     if ensure_builtin_openagentd_lead(agents_dir, mode="normal"):
         default_written.append("openagentd.md")
@@ -52,20 +49,8 @@ def ensure_workspace_initialized() -> None:
     if ensure_builtin_openagentd_lead(coding_agents_dir, mode="coding"):
         coding_written.append("openagentd.md")
 
-    if result is None:
-        logger.info(
-            "workspace_builtin_agents_installed agents={} coding_agents={}",
-            len(default_written),
-            len(coding_written),
-        )
-        return
-
     logger.info(
-        "workspace_seed_installed agents={} skills={} configs={} source={} builtin_agents={} builtin_coding_agents={}",
-        len(result.agents_written),
-        len(result.skills_written),
-        len(result.configs_written),
-        result.source,
+        "workspace_builtin_agents_installed agents={} coding_agents={}",
         len(default_written),
         len(coding_written),
     )

@@ -46,17 +46,14 @@ cd openagentd
 uv sync
 bun install --cwd web
 
-# 3. First-time setup (provider, API key, config files)
-openagentd init
-
-# 4. Start the backend
+# 3. Start the backend (creates local config and built-in agents)
 make run
 
-# 5. (Optional) Start the web UI in a separate terminal
+# 4. (Optional) Start the web UI in a separate terminal
 cd web && bun dev
 ```
 
-Use `openagentd init`, Settings, and `openagentd --help` for the current setup and configuration surface.
+Use Settings to configure providers and `openagentd --help` for the current CLI surface.
 
 ---
 
@@ -72,15 +69,14 @@ openagentd/
 │   └── services/           # Business logic, stream_store
 ├── web/                    # React 19 frontend (Vite + Bun)
 ├── tests/                  # pytest test suite
-├── seed/                   # Default config copied on first init
-│   ├── agents/             # Default global/coding agent descriptors
-│   └── mcp.json            # Empty default MCP server config
 ├── documents/              # Feature catalogue and assets
 │   └── docs/               # Version-cited shipped features
 └── .github/                # Issue templates, PR template, CI workflows
 ```
 
-Skills and agents at runtime live in `{OPENAGENTD_CONFIG_DIR}/agents/` and `{OPENAGENTD_CONFIG_DIR}/skills/` (populated from `seed/` on first `openagentd init`).
+Skills and agents at runtime live in `{OPENAGENTD_CONFIG_DIR}/agents/` and
+`{OPENAGENTD_CONFIG_DIR}/skills/`. Application startup materializes missing
+first-party agents from code without overwriting user-owned files.
 
 Key design rules:
 

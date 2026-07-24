@@ -188,8 +188,7 @@ def _atomic_write_text(path: Path, content: str) -> None:
 def ensure_builtin_agent_blueprints(agents_dir: Path, *, mode: str) -> list[str]:
     """Materialise missing first-party member ``.md`` files for *mode*.
 
-    Built-in prompt/tool definitions live in code, so this does not depend on
-    the source ``seed/`` tree being bundled in production. User-owned files win:
+    Built-in prompt/tool definitions live in code. User-owned files win:
     existing ``.md`` files are never overwritten.
     """
     from app.agent.builtin_prompts import BUILTIN_AGENT_BLUEPRINTS
@@ -263,6 +262,31 @@ def ensure_builtin_openagentd_lead(agents_dir: Path, *, mode: str) -> bool:
     )
     logger.info("builtin_openagentd_lead_materialized mode={} path={}", mode, target)
     return True
+
+
+def configure_unconfigured_agent_models(
+    agents_dir: Path, provider_model: str
+) -> list[str]:
+    """Assign *provider_model* to agent files that still use the placeholder."""
+    from app.core.config import PROVIDER_MODEL_TOKEN
+
+    updated: list[str] = []
+    for path in sorted(agents_dir.rglob("*.md")):
+        text = path.read_text(encoding="utf-8")
+        try:
+            cfg = parse_agent_md(path)
+        except Exception:
+            continue
+        if cfg.model != PROVIDER_MODEL_TOKEN:
+            continue
+        match = _FRONTMATTER_RE.match(text)
+        if match is None:
+            continue
+        start, end = match.span(1)
+        frontmatter = text[start:end].replace(PROVIDER_MODEL_TOKEN, provider_model, 1)
+        path.write_text(f"{text[:start]}{frontmatter}{text[end:]}", encoding="utf-8")
+        updated.append(str(path.relative_to(agents_dir)))
+    return updated
 
 
 def _lead_model_for_dir(agents_dir: Path) -> str | None:

@@ -14,15 +14,13 @@ import socket
 import sys
 from pathlib import Path
 
-from app.cli.commands.init import _PROVIDER_KEY_VAR
+from app.agent.providers.catalog import PROVIDER_KEY_VAR
 from app.cli.paths import _config_dir, _data_dir
 from app.cli.ui import _bold, _cyan, _dim, _green, _red, _yellow
 
-#: All provider env vars we recognise. Sourced from the canonical map in
-#: ``init.py`` plus extras (``NINJA``, ``VERTEXAI``) that ``init`` doesn't
-#: prompt for but the runtime accepts. Single source of truth: ``init``.
+#: All provider env vars we recognise, plus runtime-only extras.
 _LLM_API_KEY_VARS: tuple[str, ...] = (
-    *_PROVIDER_KEY_VAR.values(),
+    *PROVIDER_KEY_VAR.values(),
     "NINJA_API_KEY",
     "VERTEXAI_API_KEY",
 )
@@ -86,7 +84,7 @@ def cmd_doctor(_args: argparse.Namespace) -> None:
         _warn("No agents configured — cannot verify provider credentials")
     else:
         _fail("No LLM provider API key configured")
-        _dim_hint = _dim(f"  Set one of: {', '.join(_PROVIDER_KEY_VAR.values())}")
+        _dim_hint = _dim(f"  Set one of: {', '.join(PROVIDER_KEY_VAR.values())}")
         print(f"     {_dim_hint}")
 
     # ── 3. Configured provider has matching key ─────────────────────────────
@@ -97,7 +95,7 @@ def cmd_doctor(_args: argparse.Namespace) -> None:
         if uses_oauth:
             _ok(f"Provider '{configured_provider}' authenticated via OAuth")
         else:
-            expected_key = _PROVIDER_KEY_VAR.get(configured_provider)
+            expected_key = PROVIDER_KEY_VAR.get(configured_provider)
             if expected_key is None:
                 # Unknown provider — could be a custom integration; warn.
                 _warn(f"Lead agent uses unknown provider: {configured_provider}")
@@ -152,7 +150,9 @@ def cmd_doctor(_args: argparse.Namespace) -> None:
     if agents_dir.is_dir() and any(agents_dir.glob("*.md")):
         _ok(f"Agents: {display_agents}")
     else:
-        _fail(f"Agents not found: {display_agents}  (run: openagentd init)")
+        _fail(
+            f"Agents not found: {display_agents}  (restart OpenAgentd to restore defaults)"
+        )
 
     # ── Summary ─────────────────────────────────────────────────────────────
     print()

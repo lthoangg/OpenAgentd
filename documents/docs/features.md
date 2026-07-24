@@ -346,15 +346,15 @@ spawns specialist members on demand.
   compact team (`coding/openagentd`, `coding/coder`, `coding/explorer`) tuned for
   workspace-aware sessions; the coding explorer focuses on inspecting the current
   codebase before implementation.
-- **Built-in first-party agent profiles** `[v1.23.0]` — the default `openagentd`
+- **Built-in first-party agent profiles** `[v1.23.0, v1.118.0]` — the default `openagentd`
   lead and shipped member blueprints keep their core prompts, tools, and
-  descriptions versioned in code for normal and coding modes; seed/user `.md`
-  files remain lightweight extension points for model knobs, extra capabilities,
-  and extra prompt text. Seed install also removes obsolete untouched first-party
-  files from older curated sets while preserving custom files.
-- **Automatic first-party member materialization** `[v1.37.0]` — missing shipped
-  member blueprints are restored from code when a team loads, so production builds
-  do not depend on bundling the source `seed/` tree.
+  descriptions versioned in code for normal and coding modes; generated/user
+  `.md` files remain lightweight extension points for model knobs, extra
+  capabilities, and extra prompt text.
+- **Automatic first-run materialization** `[v1.37.0, v1.118.0]` — application
+  startup creates missing first-party agent profiles and editable runtime
+  configuration directly from code. No separate initialization command or
+  downloaded template bundle is required, and existing user files are preserved.
 
 ---
 

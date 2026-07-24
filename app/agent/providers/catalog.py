@@ -1,7 +1,7 @@
 """Single source of truth for the LLM provider catalog.
 
-Both ``openagentd init`` (the CLI) and ``/api/settings/providers`` (the
-desktop/web UI) consume this catalog. Adding a new provider means one
+The provider settings API and desktop/web UI consume this catalog. Adding a
+new provider means one
 entry here plus a new ``case`` branch in
 :func:`app.agent.providers.factory.build_provider`.
 
@@ -297,8 +297,7 @@ def find(provider_id: str) -> ProviderEntry | None:
     return None
 
 
-# Exported so the CLI and the seed installer can use the same set of
-# env-var names without duplicating the mapping.
+# Exported so provider configuration surfaces share the same env-var mapping.
 PROVIDER_KEY_VAR: dict[str, str] = {
     entry["id"]: entry["env_var"] for entry in _CATALOG if entry.get("env_var")
 }

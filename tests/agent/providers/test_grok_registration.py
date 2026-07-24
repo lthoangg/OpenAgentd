@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from app.agent.providers.catalog import find
 from app.cli.commands.auth import _PROVIDERS
-from app.cli.commands.init import _PROVIDER_MODELS
 from app.services.provider_connection import provider_is_configured
 
 
@@ -16,9 +15,8 @@ def test_grok_build_is_registered_as_a_distinct_oauth_provider() -> None:
     assert entry["metadata_source_provider"] == "xai"
 
 
-def test_grok_build_auth_and_init_use_the_grok_provider_prefix() -> None:
+def test_grok_build_auth_uses_the_grok_provider_prefix() -> None:
     assert _PROVIDERS["grok"][0] == "app.agent.providers.grok.oauth"
-    assert _PROVIDER_MODELS["grok"] == ["grok-4.5"]
 
 
 def test_grok_build_is_configured_when_its_oauth_token_exists(

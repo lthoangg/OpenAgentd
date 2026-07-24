@@ -678,6 +678,9 @@ Four orthogonal ways to add capability.
 - **Plugins** `[v1.6.0]` — Python files dropped into `OPENAGENTD_PLUGINS_DIRS`.
   Register `@plugin` functions or `Plugin(BaseAgentHook)` classes with
   `tool.before` / `tool.after` / agent lifecycle hooks. Per `(agent, role)` filter.
+  - **RTK shell rewriting** `[v1.118.0]` — optional `plugins/rtk_rewrite.py`
+    plugin routes foreground `shell` commands through an installed `rtk` CLI to
+    reduce tool-output token usage, with pass-through on missing or failed rewrites.
 - **Slash commands** `[since v1.0]` — `.md` files with optional frontmatter,
   available globally or scoped to a coding workspace (`[v1.17.0]`). One nested
   namespace level is supported and displayed in the composer as colon syntax

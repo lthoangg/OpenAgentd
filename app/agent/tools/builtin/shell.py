@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -207,7 +208,7 @@ class _BgProcess:
             if len(raw) > _BG_OUTPUT_MAX_LINE_BYTES:
                 raw = raw[-_BG_OUTPUT_MAX_LINE_BYTES:]
                 was_cut = True
-            decoded = raw.rstrip(b"\r").decode("utf-8", errors="replace")
+            decoded = _strip_ansi(raw.rstrip(b"\r").decode("utf-8", errors="replace"))
             if was_cut:
                 decoded = _LIVE_OUTPUT_TRUNCATED.rstrip("\n") + decoded
             self.output.append(decoded)
@@ -417,6 +418,29 @@ def _subprocess_platform_kwargs() -> dict[str, Any]:
     return {"start_new_session": True}
 
 
+# Terminal escape sequences that survive into captured output when a program
+# force-enables color despite the missing TTY (e.g. tools honoring
+# FORCE_COLOR, or CI-styled loggers).  Covers CSI (colors, cursor movement,
+# erase), OSC (hyperlinks/titles — BEL- or ST-terminated), and lone two-byte
+# ESC sequences.  The LLM and the UI both receive plain text.
+_ANSI_ESCAPE_RE = re.compile(
+    r"""
+    \x1b
+    (?:
+        \[ [0-?]* [ -/]* [@-~]            # CSI ... final byte
+      | \] .*? (?: \x07 | \x1b \\ )       # OSC ... BEL or ST
+      | [@-Z\\-_]                         # two-byte Fe escapes
+    )
+    """,
+    re.VERBOSE | re.DOTALL,
+)
+
+
+def _strip_ansi(text: str) -> str:
+    """Remove ANSI/VT escape sequences from *text*, keeping printable content."""
+    return _ANSI_ESCAPE_RE.sub("", text)
+
+
 def _tail_text(text: str, max_lines: int, max_bytes: int) -> tuple[str, bool]:
     """Return first and last lines that fit within *max_lines* and *max_bytes*.
 
@@ -482,7 +506,12 @@ async def _emit_tool_output(
     callback: Callable[[str], Awaitable[None]] | None,
     text: str,
 ) -> None:
-    if callback is None or not text:
+    if callback is None:
+        return
+    # Strip escape sequences before pushing to the live-output UI; the
+    # frontend renders plain text, not a terminal emulator.
+    text = _strip_ansi(text)
+    if not text:
         return
     if len(text) > _LIVE_OUTPUT_MAX_CHARS:
         tail_chars = _LIVE_OUTPUT_MAX_CHARS - len(_LIVE_OUTPUT_TRUNCATED)
@@ -691,7 +720,7 @@ async def _shell(
             await proc.wait()
 
         raw_bytes = b"".join(chunks)
-        text = raw_bytes.decode("utf-8", errors="replace")
+        text = _strip_ansi(raw_bytes.decode("utf-8", errors="replace"))
         exit_code = proc.returncode or 0
 
         logger.info(

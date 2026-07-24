@@ -29,6 +29,7 @@ from app.agent.tools.builtin.shell import (
     _bg_processes,
     _scrubbed_env,
     _shell,
+    _strip_ansi,
     _tail_text,
     background_process,
     shell_tool,
@@ -115,6 +116,47 @@ def test_tail_text_caps_a_single_oversized_line():
     assert cut is True
     assert len(tail.encode()) <= 1024
     assert tail.endswith("x" * 100)
+
+
+# ---------------------------------------------------------------------------
+# _strip_ansi — remove terminal escape sequences from captured output
+# ---------------------------------------------------------------------------
+
+
+def test_strip_ansi_removes_sgr_color_codes():
+    """CSI SGR sequences (colors) must be stripped, keeping the text."""
+    colored = '\x1b[36m<div\x1b[39m \x1b[33mclass\x1b[39m=\x1b[32m"grid"\x1b[39m>'
+    assert _strip_ansi(colored) == '<div class="grid">'
+
+
+def test_strip_ansi_removes_cursor_and_erase_sequences():
+    """Non-SGR CSI sequences (cursor movement, erase line) must be stripped."""
+    text = "progress\x1b[2K\x1b[1Gdone\x1b[0m"
+    assert _strip_ansi(text) == "progressdone"
+
+
+def test_strip_ansi_removes_osc_hyperlinks():
+    """OSC sequences (e.g. terminal hyperlinks, title set) must be stripped."""
+    # OSC 8 hyperlink terminated by BEL and by ST (ESC \)
+    bel = "\x1b]8;;https://example.com\x07label\x1b]8;;\x07"
+    st = "\x1b]0;window title\x1b\\body"
+    assert _strip_ansi(bel) == "label"
+    assert _strip_ansi(st) == "body"
+
+
+def test_strip_ansi_preserves_plain_text_and_newlines():
+    plain = "line1\nline2\n\ttabbed"
+    assert _strip_ansi(plain) == plain
+
+
+@pytest.mark.asyncio
+async def test_shell_output_has_ansi_codes_stripped(sandbox_workspace):
+    """End-to-end: a command emitting color codes returns clean text."""
+    result = await _shell("printf '\\033[32mgreen\\033[0m plain\\n'")
+
+    assert "[Succeeded]" in result
+    assert "green plain" in result
+    assert "\x1b[" not in result
 
 
 # ---------------------------------------------------------------------------

@@ -194,7 +194,13 @@ run from the terminal.
   scroll regions on mobile and desktop `[v1.113.0]`. Raw ANSI/CSI/OSC escape
   sequences (colors, cursor movement, hyperlinks) from color-forcing CLIs are
   stripped from foreground results, live streamed output, and background
-  process buffers before reaching the LLM or the UI `[v1.120.0]`.
+  process buffers before reaching the LLM or the UI `[v1.120.0]`. Background
+  starts return as soon as the process exits or its first output settles
+  (previously a fixed 3-second wait); exited background processes stay
+  inspectable via `bg` for ~10 minutes after `wait`/`stop`; every `bg` action
+  and session interrupt stays bounded even when an orphaned child still holds
+  the output pipe; foreground output memory is bounded, with oversized output
+  streamed incrementally to a session spill file `[v1.121.0]`.
 - **Drag-and-drop files into chat** `[since v1.0, v1.82.0]` — drag files (images, PDFs, text, etc.) anywhere onto the chat area (both cockpit and coding views) to show a drop overlay and attach them to the composer. Supports multi-file drops, file-type filtering, and cancellation.
 - **Composer history navigation** `[v1.32.0]` — when the input is empty, `↑` / `↓`
   walks previous user prompts from the current chat plus local submissions.

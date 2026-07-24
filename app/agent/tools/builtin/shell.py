@@ -5,10 +5,12 @@ Design parity with opencode's bash.ts:
 - On POSIX, runs via ``$SHELL`` → zsh → bash → sh and rejects incompatible
   shells such as fish/nu. On Windows, uses PowerShell 7 → Windows PowerShell →
   cmd.exe.
-- Streaming output: bytes are read incrementally and spilled to a temp file
-  in the workspace when they exceed ``max_output_bytes``.  The LLM receives
-  the first and last output lines inline, with the spill path advertised so
-  it can ``read`` the full output if needed.
+- Streaming output: bytes are read incrementally into a bounded head+tail
+  buffer; once they exceed ``max_output_bytes`` every byte is streamed to a
+  spill file in the XDG session artifact directory, so memory stays bounded
+  no matter how much a command prints.  The LLM receives the first and last
+  output lines inline, with the spill path advertised so it can ``read`` the
+  full output if needed.
 - ``workdir`` parameter (optional): run the command in a specific directory.
   Relative paths resolve inside the sandbox workspace. Absolute paths are
   allowed when the caller intentionally needs to run outside the workspace.
@@ -42,14 +44,13 @@ import asyncio
 import os
 import re
 import signal
-import subprocess
 import sys
 import time
 import uuid
 from collections import deque
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, BinaryIO, Literal
 
 from loguru import logger
 from pydantic import BaseModel, Field, model_validator
@@ -82,7 +83,9 @@ _SHELL_DESCRIPTION = (
 _BG_DESCRIPTION = (
     "Manage background processes started with shell(background=true). "
     "Actions: list, status, output, stop, wait. Wait is bounded and returns "
-    "control if the process is still running."
+    "control if the process is still running. Exited processes stay "
+    "inspectable for ~10 minutes, so output/status keep working after "
+    "wait or stop."
 )
 
 
@@ -130,6 +133,7 @@ class BgArgs(BaseModel):
     last_n_lines: int | None = Field(
         default=None,
         ge=1,
+        le=200,
         description="Lines to return for output/wait (maximum 200); omit for all retained lines.",
     )
     timeout_seconds: int = Field(
@@ -154,8 +158,20 @@ _DEFAULT_TIMEOUT_SECONDS = (
 )
 _BG_OUTPUT_MAX_LINES = 200  # ring-buffer per background process
 _BG_OUTPUT_MAX_LINE_BYTES = 24_000
+_BG_OUTPUT_MAX_BYTES = 262_144  # total byte budget across buffered lines (256 KB)
 _BG_COMPLETED_TTL_SECONDS = 10 * 60
 _BG_MAX_COMPLETED_PROCESSES = 100
+# Background startup observation: poll up to POLLS × INTERVAL (~3 s), returning
+# early when the process exits or its initial output has settled.
+_BG_WARMUP_POLLS = 30
+_BG_WARMUP_POLL_SECONDS = 0.1
+_BG_WARMUP_SETTLED_POLLS = 3
+# Bound on awaiting the stdout reader task: stdout EOF can lag process exit
+# indefinitely when a child inherited the pipe and outlived the tracked shell.
+_READER_DRAIN_TIMEOUT_SECONDS = 2.0
+# Bound on reaping after SIGKILL — a D-state (uninterruptible I/O) process can
+# survive it; log instead of hanging the tool call.
+_POST_KILL_WAIT_SECONDS = 5.0
 
 # Maximum lines and bytes to include inline in the result
 _OUTPUT_MAX_LINES = 300
@@ -182,6 +198,7 @@ class _BgProcess:
         "session_id",
         "output",
         "completed_at",
+        "_output_bytes",
         "_reader_task",
     )
 
@@ -196,6 +213,7 @@ class _BgProcess:
         self.session_id = session_id
         self.output: deque[str] = deque(maxlen=_BG_OUTPUT_MAX_LINES)
         self.completed_at: float | None = None
+        self._output_bytes = 0
         self._reader_task = asyncio.create_task(self._drain())
 
     async def _drain(self) -> None:
@@ -211,7 +229,14 @@ class _BgProcess:
             decoded = _strip_ansi(raw.rstrip(b"\r").decode("utf-8", errors="replace"))
             if was_cut:
                 decoded = _LIVE_OUTPUT_TRUNCATED.rstrip("\n") + decoded
+            if len(self.output) == self.output.maxlen:
+                self._output_bytes -= len(self.output[0])
             self.output.append(decoded)
+            self._output_bytes += len(decoded)
+            # Line-count cap alone admits ~4.8 MB (200 × 24 KB); enforce a
+            # total byte budget so hot loggers stay cheap to retain.
+            while self._output_bytes > _BG_OUTPUT_MAX_BYTES and len(self.output) > 1:
+                self._output_bytes -= len(self.output.popleft())
 
         try:
             while True:
@@ -250,20 +275,58 @@ class _BgProcess:
             lines = lines[-last_n:]
         return "\n".join(lines)
 
+    async def drain(self, timeout: float | None = None) -> bool:
+        """Await the stdout reader with a bound; True when fully drained.
+
+        stdout EOF can lag process exit indefinitely when a child inherited
+        the pipe (``cmd &``), so callers must never await the reader task
+        unbounded.  ``shield`` keeps the reader capturing on timeout.
+        """
+        if timeout is None:
+            timeout = _READER_DRAIN_TIMEOUT_SECONDS
+        if self._reader_task.done():
+            return True
+        try:
+            await asyncio.wait_for(asyncio.shield(self._reader_task), timeout)
+            return True
+        except asyncio.TimeoutError:
+            return False
+        except asyncio.CancelledError:
+            if self._reader_task.cancelled():
+                return True  # reader was closed underneath us, not our caller
+            raise
+
+    def close(self) -> None:
+        """Release the reader task; call when the record leaves the registry."""
+        if not self._reader_task.done():
+            self._reader_task.cancel()
+        if self.completed_at is None and not self.alive:
+            self.completed_at = time.monotonic()
+
     async def stop(self) -> int | None:
         if self.alive:
-            _kill_process_group(self.proc, signal.SIGTERM)
+            await _kill_process_group(self.proc, signal.SIGTERM)
             try:
-                await asyncio.wait_for(self.proc.wait(), timeout=5)
+                await _wait_exit(self.proc, 5)
             except asyncio.TimeoutError:
-                _kill_process_group(self.proc, _FORCE_KILL_SIGNAL)
-                await self.proc.wait()
-        await self._reader_task
+                await _kill_process_group(self.proc, _FORCE_KILL_SIGNAL)
+                await _wait_after_kill(self.proc)
+        elif not self._reader_task.done() and os.name != "nt":
+            # The leader already exited but stdout is still open: a child
+            # inherited the pipe (``cmd &``).  The group id (== leader pid,
+            # from start_new_session) survives while members live — kill it.
+            _signal_posix_group(self.pid, _FORCE_KILL_SIGNAL)
+        if not await self.drain():
+            self.close()  # pipe still held by an unkillable process — stop reading
+        if self.completed_at is None:
+            self.completed_at = time.monotonic()
         return self.proc.returncode
 
     async def wait(self, timeout_seconds: float) -> int | None:
-        await asyncio.wait_for(self.proc.wait(), timeout=timeout_seconds)
-        await self._reader_task
+        await _wait_exit(self.proc, timeout_seconds)
+        await self.drain()
+        if self.completed_at is None:
+            self.completed_at = time.monotonic()
         return self.proc.returncode
 
 
@@ -297,14 +360,15 @@ def _prune_completed_bg_processes(
         completed.append((pid, bg))
 
     for pid in expired:
-        del _bg_processes[pid]
+        _bg_processes.pop(pid).close()
 
     overflow = len(completed) - _BG_MAX_COMPLETED_PROCESSES
     if overflow > 0:
-        for pid, _ in sorted(completed, key=lambda item: item[1].completed_at)[
+        for pid, record in sorted(completed, key=lambda item: item[1].completed_at)[
             :overflow
         ]:
             del _bg_processes[pid]
+            record.close()
 
 
 def _session_bg_processes() -> dict[int, _BgProcess]:
@@ -375,36 +439,98 @@ def _scrubbed_env() -> dict[str, str]:
     return {k: v for k, v in os.environ.items() if k not in _PYTHON_ENV_LEAK_KEYS}
 
 
-def _kill_process_group(proc: asyncio.subprocess.Process, sig: signal.Signals) -> None:
+def _signal_posix_group(pid: int, sig: signal.Signals) -> bool:
+    """Signal the process group *pid* leads; True when a group was signalled."""
+    try:
+        os.killpg(os.getpgid(pid), sig)
+        return True
+    except (ProcessLookupError, PermissionError, OSError):
+        pass
+    # The leader may already be reaped while the group it led (pgid == pid,
+    # thanks to start_new_session=True) still has live members — e.g. a child
+    # started with ``cmd &``.  Signal the group id directly.
+    try:
+        os.killpg(pid, sig)
+        return True
+    except (ProcessLookupError, PermissionError, OSError):
+        return False
+
+
+async def _taskkill_tree(pid: int) -> bool:
+    """Kill a Windows process tree without blocking the event loop."""
+    try:
+        killer = await asyncio.create_subprocess_exec(
+            "taskkill",
+            "/PID",
+            str(pid),
+            "/T",
+            "/F",
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+    except OSError:
+        return False
+    try:
+        return await asyncio.wait_for(killer.wait(), timeout=5) == 0
+    except asyncio.TimeoutError:
+        killer.kill()
+        return False
+
+
+async def _kill_process_group(
+    proc: asyncio.subprocess.Process, sig: signal.Signals
+) -> None:
     """Send *sig* to the process group led by *proc*, falling back to direct kill."""
     pid = proc.pid
     if pid is None:
         return
     if os.name == "nt":
-        try:
-            result = subprocess.run(
-                ["taskkill", "/PID", str(pid), "/T", "/F"],
-                check=False,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                timeout=5,
-            )
-            if result.returncode == 0:
-                return
-        except (OSError, subprocess.TimeoutExpired):
-            pass
+        if await _taskkill_tree(pid):
+            return
         try:
             proc.kill()
         except (ProcessLookupError, OSError):
             pass
         return
+    if _signal_posix_group(pid, sig):
+        return
     try:
-        os.killpg(os.getpgid(pid), sig)
-    except (ProcessLookupError, PermissionError, OSError):
-        try:
-            proc.send_signal(sig)
-        except (ProcessLookupError, OSError):
-            pass
+        proc.send_signal(sig)
+    except (ProcessLookupError, OSError):
+        pass
+
+
+async def _wait_exit(proc: asyncio.subprocess.Process, timeout: float) -> int:
+    """Wait for *proc* to exit, bounded by *timeout*; returns the exit code.
+
+    ``Process.wait()`` only resolves once every transport pipe has
+    disconnected — a child that inherited stdout (``cmd &``) delays it long
+    past the tracked process's actual exit.  ``returncode`` is populated the
+    moment the exit is reaped, so poll it (with backoff) instead.
+
+    Raises:
+        asyncio.TimeoutError: when the process is still running at deadline.
+    """
+    if proc.returncode is not None:
+        return proc.returncode
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    delay = 0.005
+    while proc.returncode is None:
+        remaining = deadline - loop.time()
+        if remaining <= 0:
+            raise asyncio.TimeoutError
+        await asyncio.sleep(min(delay, remaining))
+        delay = min(delay * 2, 0.2)
+    return proc.returncode
+
+
+async def _wait_after_kill(proc: asyncio.subprocess.Process) -> None:
+    """Reap *proc* after a force-kill without risking an unbounded hang."""
+    try:
+        await _wait_exit(proc, _POST_KILL_WAIT_SECONDS)
+    except asyncio.TimeoutError:
+        logger.warning("shell_process_survived_kill pid={}", proc.pid)
 
 
 def _subprocess_platform_kwargs() -> dict[str, Any]:
@@ -436,35 +562,42 @@ _ANSI_ESCAPE_RE = re.compile(
 )
 
 
+_ANSI_ESCAPE_BYTES_RE = re.compile(
+    _ANSI_ESCAPE_RE.pattern.encode(), re.VERBOSE | re.DOTALL
+)
+
+
 def _strip_ansi(text: str) -> str:
     """Remove ANSI/VT escape sequences from *text*, keeping printable content."""
     return _ANSI_ESCAPE_RE.sub("", text)
+
+
+def _strip_ansi_bytes(data: bytes) -> bytes:
+    """Byte-level :func:`_strip_ansi` for spill writes (no decode round-trip)."""
+    return _ANSI_ESCAPE_BYTES_RE.sub(b"", data)
 
 
 def _tail_text(text: str, max_lines: int, max_bytes: int) -> tuple[str, bool]:
     """Return first and last lines that fit within *max_lines* and *max_bytes*.
 
     Returns ``(tail_text, was_cut)`` where ``was_cut`` is True when not all
-    output is included.
+    output is included.  The head always starts at the first byte and the
+    tail always ends at the last byte, so both ends stay deterministic.
     """
     lines = text.split("\n")
     if len(lines) <= max_lines and len(text.encode()) <= max_bytes:
         return text, False
 
-    head_limit = max_lines // 2
-    tail_limit = max_lines - head_limit
-    out = lines[:head_limit] + ["...output truncated..."] + lines[-tail_limit:]
+    if len(lines) > max_lines:
+        head_limit = max_lines // 2
+        tail_limit = max_lines - head_limit
+        text = "\n".join(
+            lines[:head_limit] + ["...output truncated..."] + lines[-tail_limit:]
+        )
 
-    while len("\n".join(out).encode()) > max_bytes and len(out) > 1:
-        if len(out) % 2 == 0:
-            del out[-2]
-        else:
-            del out[0]
-
-    limited = "\n".join(out)
-    encoded = limited.encode()
+    encoded = text.encode()
     if len(encoded) <= max_bytes:
-        return limited, True
+        return text, True
 
     marker = b"\n...output truncated...\n"
     if max_bytes <= len(marker):
@@ -477,29 +610,132 @@ def _tail_text(text: str, max_lines: int, max_bytes: int) -> tuple[str, bool]:
     return head + marker.decode() + tail, True
 
 
-def _spill_output(content: str, workspace: Path, call_id: str) -> Path:
-    """Write *content* to the current sandbox shell output directory."""
+def _spill_dest() -> Path:
+    """Return a fresh spill file path in the session shell-output directory."""
     spill_dir = shell_output_dir()
     spill_dir.mkdir(parents=True, exist_ok=True)
-    dest = spill_dir / f"{call_id}.txt"
-    dest.write_text(content, encoding="utf-8")
-    return dest
+    return spill_dir / f"{str(uuid.uuid4())[:8]}.txt"
+
+
+class _ForegroundOutput:
+    """Bounded head+tail buffer with incremental spill for foreground output.
+
+    Keeps the first and last ``_OUTPUT_MAX_BYTES`` in memory.  The moment
+    output overflows the head budget, every byte (head included) is streamed
+    to a spill file, so RAM stays bounded regardless of how much the command
+    prints.  Spilled bytes are ANSI-stripped per chunk — an escape sequence
+    split exactly across a chunk boundary may survive, which is acceptable
+    for a plain-text artifact.
+    """
+
+    def __init__(self) -> None:
+        self.total_bytes = 0
+        self.spill_path: Path | None = None
+        self._head: list[bytes] = []
+        self._head_bytes = 0
+        self._tail: deque[bytes] = deque()
+        self._tail_bytes = 0
+        self._file: BinaryIO | None = None
+        self._spill_failed = False
+
+    def add(self, chunk: bytes) -> None:
+        self.total_bytes += len(chunk)
+        rest = chunk
+        if self._head_bytes < _OUTPUT_MAX_BYTES:
+            take = min(len(chunk), _OUTPUT_MAX_BYTES - self._head_bytes)
+            self._head.append(chunk[:take])
+            self._head_bytes += take
+            rest = chunk[take:]
+        if not rest:
+            return
+        if self._file is None and not self._spill_failed:
+            self._open_spill()
+        if self._file is not None:
+            try:
+                self._file.write(_strip_ansi_bytes(rest))
+            except OSError as exc:
+                logger.warning("shell_spill_write_failed error={!r}", exc)
+                self.close()
+                self._spill_failed = True
+        self._tail.append(rest)
+        self._tail_bytes += len(rest)
+        while self._tail_bytes > _OUTPUT_MAX_BYTES and len(self._tail) > 1:
+            self._tail_bytes -= len(self._tail.popleft())
+
+    def _open_spill(self) -> None:
+        """Open the spill file and backfill the buffered head bytes."""
+        try:
+            dest = _spill_dest()
+            self._file = dest.open("wb")
+            self._file.write(_strip_ansi_bytes(b"".join(self._head)))
+            self.spill_path = dest
+        except OSError as exc:
+            logger.warning("shell_spill_open_failed error={!r}", exc)
+            self.close()
+            self.spill_path = None
+            self._spill_failed = True
+
+    def close(self) -> None:
+        """Close the spill file handle (idempotent)."""
+        if self._file is not None:
+            try:
+                self._file.close()
+            except OSError:
+                pass
+            self._file = None
+
+    def finalize(self) -> tuple[str, bool]:
+        """Close the spill file and return ``(inline_text, was_cut)``.
+
+        When output was cut only by the line limit (no byte overflow, so no
+        streaming spill happened), the buffered output — complete in that
+        case — is persisted so the full text remains readable.
+        """
+        self.close()
+        inline, was_cut = self._inline_text()
+        if was_cut and self.spill_path is None and not self._spill_failed:
+            try:
+                dest = _spill_dest()
+                dest.write_bytes(
+                    _strip_ansi_bytes(b"".join(self._head) + b"".join(self._tail))
+                )
+                self.spill_path = dest
+            except OSError as exc:
+                logger.warning("shell_spill_write_failed error={!r}", exc)
+        return inline, was_cut
+
+    def _inline_text(self) -> tuple[str, bool]:
+        dropped = self.total_bytes - self._head_bytes - self._tail_bytes
+        if dropped <= 0:
+            # Head (+ tail) hold the complete output — decode as one buffer
+            # so no replacement char appears at the head/tail seam.
+            text = _strip_ansi(
+                (b"".join(self._head) + b"".join(self._tail)).decode(
+                    "utf-8", errors="replace"
+                )
+            )
+            return _tail_text(text, _OUTPUT_MAX_LINES, _OUTPUT_MAX_BYTES)
+        head_text = _strip_ansi(b"".join(self._head).decode("utf-8", errors="replace"))
+        tail_text = _strip_ansi(b"".join(self._tail).decode("utf-8", errors="replace"))
+        combined = head_text + "\n...output truncated...\n" + tail_text
+        inline, _ = _tail_text(combined, _OUTPUT_MAX_LINES, _OUTPUT_MAX_BYTES)
+        return inline, True
 
 
 def _resolve_workdir(workdir: str | None) -> Path:
-    """Resolve *workdir* to an absolute path anchored at the sandbox workspace.
+    """Resolve *workdir* against the sandbox workspace and deny rules.
 
-    When *workdir* is None or a relative path, it resolves against the sandbox
-    workspace root — keeping the agent confined to its session workspace.
-    Absolute paths are passed through unchanged.
+    Relative paths resolve against the workspace root; absolute paths are
+    allowed by design (the caller may intentionally run outside the
+    workspace) but must not point inside a denied sandbox root.
+
+    Raises:
+        PermissionError: when the resolved path falls under a denied root.
     """
-    workspace = get_sandbox().workspace_root
+    sandbox = get_sandbox()
     if workdir is None:
-        return workspace
-    p = Path(workdir)
-    if p.is_absolute():
-        return p
-    return (workspace / p).resolve()
+        return sandbox.workspace_root
+    return sandbox.validate_path(os.path.expanduser(workdir))
 
 
 async def _emit_tool_output(
@@ -604,28 +840,50 @@ async def _shell(
         # ── Background mode ───────────────────────────────────────────
         if background:
             _prune_completed_bg_processes()
+            # The OS recycles PIDs; a retained completed record with this
+            # PID belongs to a dead process — evict it instead of silently
+            # shadowing it (it may belong to another session).
+            stale = _bg_processes.pop(proc.pid, None)
+            if stale is not None:
+                stale.close()
+                logger.info(
+                    "background_shell_pid_recycled pid={} previous_session={}",
+                    proc.pid,
+                    stale.session_id,
+                )
             bg = _BgProcess(proc, command, sandbox.session_id)
             _bg_processes[bg.pid] = bg
 
-            # Wait up to 3s to capture initial output and detect instant crashes
-            warmup_secs = min(max(3, timeout_seconds or 3), 5)
+            # Observe startup: return as soon as the process exits or its
+            # initial output has settled, up to ~3s for silent starters.
             try:
-                await asyncio.sleep(warmup_secs)
+                settled = 0
+                for _ in range(_BG_WARMUP_POLLS):
+                    await asyncio.sleep(_BG_WARMUP_POLL_SECONDS)
+                    if not bg.alive:
+                        break
+                    if bg.output:
+                        settled += 1
+                        if settled >= _BG_WARMUP_SETTLED_POLLS:
+                            break
             except asyncio.CancelledError:
-                _kill_process_group(proc, _FORCE_KILL_SIGNAL)
-                await proc.wait()
-                bg._reader_task.cancel()
-                try:
-                    await bg._reader_task
-                except asyncio.CancelledError:
-                    pass
+                await _kill_process_group(proc, _FORCE_KILL_SIGNAL)
+                await _wait_after_kill(proc)
+                bg.close()
                 _bg_processes.pop(bg.pid, None)
                 raise
 
             if not bg.alive:
-                del _bg_processes[bg.pid]
-                exit_code = proc.returncode or 1
+                await bg.drain(1)  # capture trailing output from the fast exit
+                bg.close()
+                _bg_processes.pop(bg.pid, None)
+                exit_code = proc.returncode if proc.returncode is not None else 1
                 initial = bg.read_output()
+                if exit_code == 0:
+                    return (
+                        "[Succeeded]\n\nBackground command completed during "
+                        f"startup:\n{initial}"
+                    )
                 status = f"[Failed — exit code {exit_code}]"
                 return f"{status}\n\nProcess exited immediately:\n{initial}"
 
@@ -646,31 +904,46 @@ async def _shell(
             return "\n".join(lines)
 
         # ── Foreground mode — streaming read ──────────────────────────
-        # Read incrementally so we are not blocked on a huge buffer.
+        # Read incrementally into a bounded head+tail collector; overflow
+        # streams to a spill file so memory stays flat for huge outputs.
         assert proc.stdout is not None
 
-        chunks: list[bytes] = []
-        total_bytes = 0
+        collector = _ForegroundOutput()
         aborted = False
 
-        pending_output: list[str] = []
-        pending_lock = asyncio.Lock()
+        # Single event loop, and join+clear happens with no await between
+        # them, so no lock is needed around this buffer.
+        pending: list[str] = []
+        pending_chars = 0
+
+        async def flush_pending() -> None:
+            nonlocal pending_chars
+            if not pending:
+                return
+            to_emit = "".join(pending)
+            pending.clear()
+            pending_chars = 0
+            await _emit_tool_output(_tool_output, to_emit)
 
         async def flusher() -> None:
             try:
                 while True:
                     await asyncio.sleep(_OUTPUT_STREAM_INTERVAL_SECONDS)
-                    async with pending_lock:
-                        if pending_output:
-                            to_emit = "".join(pending_output)
-                            pending_output.clear()
-                            await _emit_tool_output(_tool_output, to_emit)
+                    await flush_pending()
             except asyncio.CancelledError:
-                async with pending_lock:
-                    if pending_output:
-                        to_emit = "".join(pending_output)
-                        pending_output.clear()
-                        await _emit_tool_output(_tool_output, to_emit)
+                await flush_pending()
+                raise
+
+        def buffer_live(chunk: bytes) -> None:
+            nonlocal pending_chars
+            pending.append(chunk.decode("utf-8", errors="replace"))
+            pending_chars += len(pending[-1])
+            # The UI only ever renders the trailing _LIVE_OUTPUT_MAX_CHARS;
+            # compact torrential output between flushes instead of hoarding it.
+            if pending_chars > 2 * _LIVE_OUTPUT_MAX_CHARS:
+                kept = "".join(pending)[-_LIVE_OUTPUT_MAX_CHARS:]
+                pending[:] = [_LIVE_OUTPUT_TRUNCATED, kept]
+                pending_chars = len(_LIVE_OUTPUT_TRUNCATED) + len(kept)
 
         flusher_task = asyncio.create_task(flusher())
 
@@ -680,33 +953,32 @@ async def _shell(
                     chunk = await proc.stdout.read(8192)
                     if not chunk:
                         break
-                    chunks.append(chunk)
-                    total_bytes += len(chunk)
-                    decoded = chunk.decode("utf-8", errors="replace")
-                    async with pending_lock:
-                        pending_output.append(decoded)
+                    collector.add(chunk)
+                    buffer_live(chunk)
+                # Keep waiting for the exit code under the same deadline: a
+                # command can close stdout (EOF) and keep running.
+                await proc.wait()
 
         except asyncio.TimeoutError:
-            _kill_process_group(proc, _FORCE_KILL_SIGNAL)
+            await _kill_process_group(proc, _FORCE_KILL_SIGNAL)
             # Drain any remaining output after kill
             try:
                 async with asyncio.timeout(2):
                     remaining = await proc.stdout.read()
                     if remaining:
-                        chunks.append(remaining)
-                        decoded = remaining.decode("utf-8", errors="replace")
-                        async with pending_lock:
-                            pending_output.append(decoded)
+                        collector.add(remaining)
+                        buffer_live(remaining)
             except Exception as exc:
                 # Post-kill drain is best-effort; the process is already dead.
                 logger.debug("shell_postkill_drain_failed error={!r}", exc)
-            await proc.wait()
+            await _wait_after_kill(proc)
             aborted = True
         except asyncio.CancelledError:
-            _kill_process_group(proc, _FORCE_KILL_SIGNAL)
-            await proc.wait()
+            await _kill_process_group(proc, _FORCE_KILL_SIGNAL)
+            await _wait_after_kill(proc)
             raise
         finally:
+            collector.close()
             flusher_task.cancel()
             try:
                 await flusher_task
@@ -715,18 +987,12 @@ async def _shell(
             except Exception as exc:
                 logger.debug("shell_flusher_task_failed error={!r}", exc)
 
-        # Wait for exit code
-        if not aborted:
-            await proc.wait()
-
-        raw_bytes = b"".join(chunks)
-        text = _strip_ansi(raw_bytes.decode("utf-8", errors="replace"))
-        exit_code = proc.returncode or 0
+        exit_code = proc.returncode if proc.returncode is not None else 0
 
         logger.info(
             "shell_execute_complete exit_code={} output_bytes={}{}",
             exit_code,
-            total_bytes,
+            collector.total_bytes,
             desc_tag,
         )
 
@@ -740,22 +1006,19 @@ async def _shell(
             )
         )
 
-        # Spill to file if output is large
-        tail, was_cut = _tail_text(text, _OUTPUT_MAX_LINES, _OUTPUT_MAX_BYTES)
+        inline, was_cut = collector.finalize()
 
         if was_cut:
-            call_id = str(uuid.uuid4())[:8]
-            try:
-                spill_path = _spill_output(text, sandbox.workspace_root, call_id)
-                rel = str(spill_path)
+            if collector.spill_path is not None:
                 header = (
-                    f"{status}\n\n...output truncated — full output saved to {rel}\n\n"
+                    f"{status}\n\n...output truncated — full output saved to "
+                    f"{collector.spill_path}\n\n"
                 )
-            except Exception:
+            else:
                 header = f"{status}\n\n...output truncated\n\n"
-            result = header + tail
+            result = header + inline
         else:
-            result = f"{status}\n\n{text}"
+            result = f"{status}\n\n{inline}"
 
         if aborted:
             result += (
@@ -827,12 +1090,14 @@ async def _background_process(
 
     if action == "output":
         if not bg.alive:
-            await bg._reader_task
+            await bg.drain()  # bounded: a child may still hold the pipe open
         text = bg.read_output(last_n=last_n_lines)
         if not text:
             return f"PID {pid}: no output captured yet."
         return f"PID {pid} output:\n{_limited_bg_output(text)}"
 
+    # Exited records stay registered after wait/stop so follow-up
+    # output/status calls keep working; TTL pruning collects them.
     if action == "wait":
         try:
             exit_code = await bg.wait(timeout_seconds)
@@ -842,14 +1107,12 @@ async def _background_process(
                 "Use status or output to inspect it, wait again, or stop it."
             )
         text = bg.read_output(last_n=last_n_lines)
-        _bg_processes.pop(pid, None)
         if not text:
             return f"PID {pid}: exited (code {exit_code})\nNo output captured."
         return f"PID {pid}: exited (code {exit_code})\nFinal output:\n{_limited_bg_output(text)}"
 
     # action == "stop"
     exit_code = await bg.stop()
-    _bg_processes.pop(pid, None)
     text = bg.read_output(last_n=last_n_lines)
     if not text:
         return f"PID {pid}: stopped (exit code {exit_code})\nNo output captured."

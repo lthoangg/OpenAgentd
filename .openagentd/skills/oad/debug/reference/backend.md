@@ -62,5 +62,5 @@ tests/                 pytest coverage — match test to the layer you changed
 uv run pytest tests/ -x -q                      # full suite, stop on first fail
 uv run pytest tests/path/to/test.py -x -v       # focused
 uv run ruff check app/ && uv run ruff format --check app/
-uv run mypy app/
+uv run ty check app/
 ```

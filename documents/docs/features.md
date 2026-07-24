@@ -449,11 +449,13 @@ team against it.
   Changes/Commits/file tabs. Coding-mode only — there is no cockpit-mode
   terminal. The session survives tab switches (detached PTYs idle-close
   after 15 minutes of no input; the backend reaper is the 30-minute
-  backstop). Terminal font defaults to a best-guess Nerd Font stack
+  backstop). Includes PTY output backpressure, GPU-accelerated WebGL rendering `[v1.118.0]`,
+  debounced SIGWINCH resizing, and mobile key bar ergonomics (touch-and-hold arrow repeat,
+  soft-keyboard focus preservation, quick symbol row).
+  Terminal font defaults to a best-guess Nerd Font stack
   (MesloLGS NF and similar) for correct Powerlevel10k/Starship glyph
-  rendering; Settings → Terminal lets you type the exact name of any
-  Nerd Font already installed on your machine (browsers can't enumerate
-  installed fonts) and verifies it resolves via the Font Loading API
+  rendering; Settings → Terminal lets you type the exact name and font size (9–24px) `[v1.118.0]`
+  of any font installed on your machine and verifies it resolves via the Font Loading API
   before applying it live to every open terminal.
 - **Workspace status card** `[v1.18.0]` — empty coding sessions show the
   workspace path, branch, dirty state, last commit instead of the old

@@ -79,6 +79,8 @@ def _reaper_tick_seconds() -> float:
 
 
 _READ_CHUNK = 65536
+_READ_QUEUE_MAXSIZE = 64
+_READ_QUEUE_RESUME_WATERMARK = 32
 
 #: Outer-terminal identity vars that must not leak into the spawned shell.
 #: The backend process itself may be running inside a real terminal (a
@@ -123,9 +125,12 @@ class TerminalSession:
         self._proc = proc
         self._closed = False
         self._eof = False
+        self._reader_paused = False
         self.last_activity = time.monotonic()
         loop = asyncio.get_running_loop()
-        self._read_queue: asyncio.Queue[bytes | None] = asyncio.Queue()
+        self._read_queue: asyncio.Queue[bytes | None] = asyncio.Queue(
+            maxsize=_READ_QUEUE_MAXSIZE
+        )
         # Reader: fd-readable callback pushes chunks onto the queue. Using
         # add_reader (not a thread) keeps everything on the event loop.
         loop.add_reader(master_fd, self._on_readable)
@@ -140,6 +145,12 @@ class TerminalSession:
         if data:
             self.last_activity = time.monotonic()
             self._read_queue.put_nowait(data)
+            if self._read_queue.full() and not self._reader_paused:
+                self._reader_paused = True
+                try:
+                    asyncio.get_running_loop().remove_reader(self._master_fd)
+                except (ValueError, OSError):
+                    pass
         else:
             # EOF — shell exited or fd closed.
             self._eof = True
@@ -154,6 +165,19 @@ class TerminalSession:
         if self._closed and self._read_queue.empty():
             return None
         chunk = await self._read_queue.get()
+        if (
+            self._reader_paused
+            and not self._closed
+            and not self._eof
+            and self._read_queue.qsize() <= _READ_QUEUE_RESUME_WATERMARK
+        ):
+            self._reader_paused = False
+            try:
+                asyncio.get_running_loop().add_reader(
+                    self._master_fd, self._on_readable
+                )
+            except (ValueError, OSError):
+                pass
         return chunk
 
     # ── Writing / resize ─────────────────────────────────────────────

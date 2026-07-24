@@ -17,28 +17,37 @@ import { Input } from '@/components/ui/input'
 import { SettingsField } from '@/components/settings/SettingsField'
 import { SettingsSection } from '@/components/settings/SettingsSection'
 import {
+  DEFAULT_TERMINAL_FONT_SIZE,
+  MAX_TERMINAL_FONT_SIZE,
+  MIN_TERMINAL_FONT_SIZE,
   isFontAvailable,
   readStoredTerminalFont,
+  readStoredTerminalFontSize,
   setStoredTerminalFont,
+  setStoredTerminalFontSize,
 } from '@/lib/terminal-font'
 import { useTerminalStore } from '@/stores/useTerminalStore'
 
 export function TerminalSettingsPage() {
   const [draft, setDraft] = useState(() => readStoredTerminalFont() ?? '')
+  const [fontSizeDraft, setFontSizeDraft] = useState(() => readStoredTerminalFontSize())
   const [saved, setSaved] = useState(false)
   const trimmed = draft.trim()
 
   // Reset the "Saved" confirmation whenever the user edits again.
   useEffect(() => {
     setSaved(false)
-  }, [draft])
+  }, [draft, fontSizeDraft])
 
   const availability = trimmed ? isFontAvailable(trimmed) : null
 
   const handleSave = () => {
-    const next = trimmed || null
-    setStoredTerminalFont(next)
-    useTerminalStore.getState().syncFont(next)
+    const nextFont = trimmed || null
+    setStoredTerminalFont(nextFont)
+    useTerminalStore.getState().syncFont(nextFont)
+
+    setStoredTerminalFontSize(fontSizeDraft)
+    useTerminalStore.getState().syncFontSize(fontSizeDraft)
     setSaved(true)
   }
 
@@ -86,6 +95,36 @@ export function TerminalSettingsPage() {
                       {availability ? 'Available' : 'Not found on this device'}
                     </span>
                   )}
+                </div>
+              </SettingsField>
+
+              <SettingsField
+                label="Font size (px)"
+                hint="Terminal text size in pixels (default 13px, range 9–24px)."
+              >
+                <div className="flex items-center gap-3">
+                  <Input
+                    type="number"
+                    min={MIN_TERMINAL_FONT_SIZE}
+                    max={MAX_TERMINAL_FONT_SIZE}
+                    value={fontSizeDraft}
+                    onChange={(e) => {
+                      const val = Number.parseInt(e.target.value, 10)
+                      if (!Number.isNaN(val)) {
+                        setFontSizeDraft(Math.max(MIN_TERMINAL_FONT_SIZE, Math.min(val, MAX_TERMINAL_FONT_SIZE)))
+                      }
+                    }}
+                    aria-label="Terminal font size"
+                    className="min-h-11 max-w-24 font-mono md:min-h-9"
+                  />
+                  <span className="text-xs text-(--color-text-muted)">px</span>
+                  <button
+                    type="button"
+                    onClick={() => setFontSizeDraft(DEFAULT_TERMINAL_FONT_SIZE)}
+                    className="text-xs text-(--color-accent) hover:underline"
+                  >
+                    Reset default ({DEFAULT_TERMINAL_FONT_SIZE}px)
+                  </button>
                 </div>
               </SettingsField>
 

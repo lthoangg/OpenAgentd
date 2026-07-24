@@ -127,6 +127,42 @@ export function onTerminalFontChange(handler: () => void): () => void {
   return () => window.removeEventListener(FONT_CHANGE_EVENT, handler)
 }
 
+export const DEFAULT_TERMINAL_FONT_SIZE = 13
+export const MIN_TERMINAL_FONT_SIZE = 9
+export const MAX_TERMINAL_FONT_SIZE = 24
+
+const STORAGE_KEY_FONT_SIZE = 'oa-terminal-font-size'
+const FONT_SIZE_CHANGE_EVENT = 'oa-terminal-font-size-change'
+
+export function readStoredTerminalFontSize(): number {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_FONT_SIZE)
+    if (!raw) return DEFAULT_TERMINAL_FONT_SIZE
+    const val = Number.parseInt(raw, 10)
+    if (Number.isNaN(val)) return DEFAULT_TERMINAL_FONT_SIZE
+    return Math.max(MIN_TERMINAL_FONT_SIZE, Math.min(val, MAX_TERMINAL_FONT_SIZE))
+  } catch {
+    return DEFAULT_TERMINAL_FONT_SIZE
+  }
+}
+
+export function setStoredTerminalFontSize(size: number): void {
+  const clamped = Math.max(MIN_TERMINAL_FONT_SIZE, Math.min(size, MAX_TERMINAL_FONT_SIZE))
+  try {
+    localStorage.setItem(STORAGE_KEY_FONT_SIZE, String(clamped))
+  } catch {
+    // best-effort — still notify listeners below
+  }
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(FONT_SIZE_CHANGE_EVENT))
+  }
+}
+
+export function onTerminalFontSizeChange(handler: () => void): () => void {
+  window.addEventListener(FONT_SIZE_CHANGE_EVENT, handler)
+  return () => window.removeEventListener(FONT_SIZE_CHANGE_EVENT, handler)
+}
+
 /**
  * Check whether *fontName* actually resolves to an installed font in this
  * browser/webview, using the Font Loading API. Returns:

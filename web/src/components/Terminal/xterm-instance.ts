@@ -12,6 +12,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
 import { WebLinksAddon } from '@xterm/addon-web-links'
+import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
 
 import { TERMINAL_THEMES, type TerminalResolvedTheme } from './terminal-themes'
@@ -53,5 +54,16 @@ export function createXterm(options: {
   // and the prompt visually smears / misaligns on redraw.
   term.loadAddon(new Unicode11Addon())
   term.unicode.activeVersion = '11'
+
+  try {
+    const webgl = new WebglAddon()
+    webgl.onContextLoss(() => {
+      webgl.dispose()
+    })
+    term.loadAddon(webgl)
+  } catch {
+    // Falls back gracefully to standard DOM renderer if WebGL is unavailable
+  }
+
   return { term, fit }
 }

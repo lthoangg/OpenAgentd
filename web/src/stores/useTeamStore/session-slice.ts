@@ -58,6 +58,23 @@ function hasVisibleBlocks(stream: AgentStream | undefined): boolean {
   return [...stream.blocks, ...stream.currentBlocks].some((block) => block.type !== 'compaction')
 }
 
+// A `loadSession()` fetch reflects a DB snapshot taken when it started. If a
+// new turn is optimistically appended (sendMessage) or streamed in (SSE
+// deltas) to `currentBlocks` *while the fetch is in flight* — e.g. a
+// background reconciliation from the global `session_turn_completed` event,
+// a foreground-resume resync, or a stale coding-workspace re-render — that
+// content postdates the snapshot and will not appear in `history` yet.
+// Unconditionally clearing `currentBlocks` on resolve would then discard it
+// permanently (nothing replays it back unless the caller also reconnects
+// the stream), producing a visible "reload" flash where the just-sent
+// message and/or in-progress streamed text vanish even though the turn is
+// still running. Detect that case so the caller can preserve the newer
+// local state instead of clobbering it with the stale fetch.
+function hasLiveContentSince(stream: AgentStream | undefined, sinceMs: number): boolean {
+  if (!stream) return false
+  return stream.currentBlocks.some((block) => (block.timestamp?.getTime() ?? 0) >= sinceMs)
+}
+
 export function resetSessionState(
   state: TeamStore,
   options: {
@@ -264,6 +281,7 @@ export const createSessionSlice: StateCreator<
 
   loadSession: async (sessionId: string, workspace?: string | null) => {
     const gen = get()._sessionGeneration
+    const fetchStartedAt = Date.now()
     set((draft) => {
       draft.isTeamWorking = false
       draft.isContinuing = false
@@ -280,8 +298,6 @@ export const createSessionSlice: StateCreator<
         draft.sessionModel = history.lead.model ?? null
         draft.sessionThinkingLevel = history.lead.thinking_level ?? null
         draft.sessionFastMode = fastModeFromMessages(history.lead.messages)
-        draft.isTeamWorking = history.lead.running === true
-        draft.isContinuing = false
         draft.error = null
         Object.values(draft.agentStreams).forEach((stream) => {
           stream.revertedCount = 0
@@ -299,23 +315,35 @@ export const createSessionSlice: StateCreator<
         const boundaryId = history.lead.revert?.message_id
         const boundaryMsg = boundaryId ? history.lead.messages.find((msg) => msg.id === boundaryId) : undefined
 
+        // Computed against the stream identified by the *resolved* leadName,
+        // before anything below overwrites it — see hasLiveContentSince.
+        const leadHadNewerActivity = leadName
+          ? hasLiveContentSince(draft.agentStreams[leadName], fetchStartedAt)
+          : false
+        if (!leadHadNewerActivity) {
+          draft.isTeamWorking = history.lead.running === true
+          draft.isContinuing = false
+        }
+
         if (leadName) {
           if (!draft.agentStreams[leadName]) {
             draft.agentStreams[leadName] = createDefaultAgentStream()
           }
-          revokeBlobUrlsFromBlocks(draft.agentStreams[leadName].currentBlocks)
           const leadStream = draft.agentStreams[leadName]
+          if (!leadHadNewerActivity) revokeBlobUrlsFromBlocks(leadStream.currentBlocks)
           leadStream.blocks = parseTeamBlocks(history.lead.messages)
           leadStream._revertedSuffix = []
           applyRevertBoundary(leadStream, leadRevertTime, {
             boundaryId,
             boundaryContent: boundaryMsg?.content,
           })
-          leadStream.currentBlocks = []
-          leadStream.currentText = ''
-          leadStream.currentThinking = ''
-          leadStream.status = history.lead.running === true ? 'working' : 'idle'
-          leadStream._turnStartedAt = history.lead.running === true ? Date.now() : null
+          if (!leadHadNewerActivity) {
+            leadStream.currentBlocks = []
+            leadStream.currentText = ''
+            leadStream.currentThinking = ''
+            leadStream.status = history.lead.running === true ? 'working' : 'idle'
+            leadStream._turnStartedAt = history.lead.running === true ? Date.now() : null
+          }
           const leadVisibleMsgs = messagesBeforeRevert(history.lead)
           const leadUsage = sumUsageFromMessages(leadVisibleMsgs)
           leadStream.usage = leadUsage
@@ -335,22 +363,25 @@ export const createSessionSlice: StateCreator<
           if (!draft.agentStreams[member.name]) {
             draft.agentStreams[member.name] = createDefaultAgentStream()
           }
-          revokeBlobUrlsFromBlocks(draft.agentStreams[member.name].currentBlocks)
           const memberStream = draft.agentStreams[member.name]
+          const memberHadNewerActivity = hasLiveContentSince(memberStream, fetchStartedAt)
+          if (!memberHadNewerActivity) revokeBlobUrlsFromBlocks(memberStream.currentBlocks)
           memberStream.blocks = parseTeamBlocks(member.messages)
           memberStream._revertedSuffix = []
           applyRevertBoundary(memberStream, leadRevertTime, {
             boundaryId,
             boundaryContent: boundaryMsg?.content,
           })
-          memberStream.currentBlocks = []
-          memberStream.currentText = ''
-          memberStream.currentThinking = ''
-          memberStream.status =
-            !isLiveMember
-              ? 'offline'
-              : existingStatus === 'offline' || existingStatus === 'error' ? existingStatus : 'idle'
-          memberStream._turnStartedAt = null
+          if (!memberHadNewerActivity) {
+            memberStream.currentBlocks = []
+            memberStream.currentText = ''
+            memberStream.currentThinking = ''
+            memberStream.status =
+              !isLiveMember
+                ? 'offline'
+                : existingStatus === 'offline' || existingStatus === 'error' ? existingStatus : 'idle'
+            memberStream._turnStartedAt = null
+          }
           const memberVisibleMsgs = messagesBeforeTime(member.messages, leadRevertTime)
           const memberUsage = sumUsageFromMessages(memberVisibleMsgs)
           memberStream.usage = memberUsage

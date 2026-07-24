@@ -2131,6 +2131,61 @@ describe("loadSession", () => {
     // Stale load did not commit — leadName unchanged from newSession() reset
     expect(useTeamStore.getState().leadName).toBeNull()
   })
+
+  it("preserves a same-session optimistic user bubble from a concurrent send when loadSession resolves without it yet (regression: background reconciliation race)", async () => {
+    // Reproduces the "message disappears mid-session, refresh fixes it" bug:
+    // a background reconciliation (global 'session_turn_completed' event,
+    // foreground resume, etc.) calls loadSession() for the *same* session
+    // while the user concurrently sends a new message. If the fetch's
+    // snapshot predates that new message, loadSession must not wipe the
+    // freshly pushed optimistic user bubble out of currentBlocks — nothing
+    // else will ever put it back until a manual refresh.
+    useTeamStore.setState({
+      sessionId: "sess-1",
+      leadName: "lead",
+      agentNames: ["lead"],
+      agentStreams: { lead: makeStream() },
+    })
+
+    let resolveHistory!: (v: unknown) => void
+    mockTeamHistory.mockImplementation(
+      () => new Promise((res) => { resolveHistory = res })
+    )
+    // Never resolves within this test — only sendMessage's synchronous
+    // optimistic push matters here, not its network round trip.
+    mockPostTeamChat.mockImplementation(() => new Promise(() => {}))
+
+    const loadPromise = useTeamStore.getState().loadSession("sess-1")
+
+    // A new message is sent *while the background fetch above is in flight*.
+    void useTeamStore.getState().sendMessage("second message")
+    expect(
+      useTeamStore.getState().agentStreams["lead"].currentBlocks.some(
+        (b) => b.type === "user" && b.content === "second message",
+      ),
+    ).toBe(true)
+
+    // The stale fetch resolves with a snapshot that predates "second message".
+    resolveHistory({
+      lead: {
+        id: "lead-sess",
+        agent_name: "lead",
+        title: null,
+        created_at: null,
+        updated_at: null,
+        sub_sessions: [],
+        messages: [makeMessageResponse({ id: "m-1", role: "user", content: "first message" })],
+      },
+      members: [],
+      has_more: false,
+      next_cursor: null,
+    })
+    await loadPromise
+
+    const stream = useTeamStore.getState().agentStreams["lead"]
+    const allBlocks = [...stream.blocks, ...stream.currentBlocks]
+    expect(allBlocks.some((b) => b.type === "user" && b.content === "second message")).toBe(true)
+  })
 })
 
 // ── loadOlderMessages ─────────────────────────────────────────────────────────

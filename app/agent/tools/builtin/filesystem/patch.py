@@ -161,8 +161,11 @@ def _parse_patch(patch_text: str) -> list[FilePatch]:
         if current.kind == "add":
             if line.startswith("+"):
                 current.contents.append(line[1:])
-            elif line == "":
-                current.contents.append("")
+            elif line.startswith("*"):
+                raise ValueError(
+                    "Unexpected '*'-prefixed line inside an Add File section "
+                    f"(malformed header?): {line!r}. Prefix content lines with '+'."
+                )
             else:
                 current.contents.append(line)
             continue
@@ -203,78 +206,66 @@ def _apply_chunks(content: str, chunks: list[Chunk], path: str) -> str:
     return _apply_chunks_with_meta(content, chunks, path)[0]
 
 
-def _find_line_trimmed_match(
-    content: str, old_lines: list[str]
-) -> tuple[str | None, int]:
-    """Find matching block in content where lines match when rstrip()-ed."""
+def _find_line_matches(
+    content_lines: list[str], old_lines: list[str], *, trimmed: bool
+) -> list[int]:
+    """Return start line indices where old_lines match a window of content_lines.
+
+    With trimmed=True, lines are compared after rstrip() to tolerate trailing
+    whitespace differences.
+    """
     if not old_lines:
-        return None, 0
-    content_lines = content.split("\n")
-    if content_lines and content_lines[-1] == "":
-        content_lines.pop()
-
-    target_trimmed = [line.rstrip() for line in old_lines]
-    matches: list[str] = []
-
+        return []
+    target = [line.rstrip() for line in old_lines] if trimmed else old_lines
+    matches: list[int] = []
     for i in range(len(content_lines) - len(old_lines) + 1):
         window = content_lines[i : i + len(old_lines)]
-        if [line.rstrip() for line in window] == target_trimmed:
-            matches.append("\n".join(window) + "\n")
-
-    if len(matches) == 1:
-        return matches[0], 1
-    return None, len(matches)
+        if trimmed:
+            window = [line.rstrip() for line in window]
+        if window == target:
+            matches.append(i)
+    return matches
 
 
 def _apply_chunks_with_meta(
     content: str, chunks: list[Chunk], path: str
 ) -> tuple[str, list[dict[str, int]]]:
+    uses_crlf = "\r\n" in content
     normalized_content = content.replace("\r\n", "\n").replace("\r", "\n")
     has_trailing_newline = normalized_content.endswith("\n") or normalized_content == ""
 
-    if normalized_content and not has_trailing_newline:
-        working_content = normalized_content + "\n"
-    else:
-        working_content = normalized_content
+    content_lines = normalized_content.split("\n")
+    if has_trailing_newline and content_lines and content_lines[-1] == "":
+        content_lines.pop()
 
-    next_content = working_content
     line_delta = 0
     hunks: list[dict[str, int]] = []
 
     for chunk in chunks:
-        old = _lines_to_text(chunk.old)
-        new = _lines_to_text(chunk.new)
-        if old == new:
+        if chunk.old == chunk.new:
             continue
 
-        matched_old = old
-        count = next_content.count(old)
+        starts = _find_line_matches(content_lines, chunk.old, trimmed=False)
+        if not starts:
+            starts = _find_line_matches(content_lines, chunk.old, trimmed=True)
 
-        if count == 0:
-            trimmed_match, trimmed_count = _find_line_trimmed_match(
-                next_content, chunk.old
-            )
-            if trimmed_count == 1 and trimmed_match:
-                matched_old = trimmed_match
-                count = 1
-            elif trimmed_count > 1:
-                raise ValueError(f"Patch context is ambiguous in {path}.")
-
-        if count == 0:
+        if not starts:
             raise ValueError(f"Could not find patch context in {path}.")
-        if count > 1:
+        if len(starts) > 1:
             raise ValueError(f"Patch context is ambiguous in {path}.")
 
-        idx = next_content.find(matched_old)
-        new_start = next_content.count("\n", 0, idx) + 1
+        start = starts[0]
+        new_start = start + 1
         old_start = new_start - line_delta
         hunks.append({"old_start": old_start, "new_start": new_start})
         line_delta += len(chunk.new) - len(chunk.old)
-        next_content = next_content.replace(matched_old, new, 1)
+        content_lines[start : start + len(chunk.old)] = chunk.new
 
-    if not has_trailing_newline and next_content.endswith("\n"):
-        next_content = next_content[:-1]
-
+    next_content = "\n".join(content_lines)
+    if has_trailing_newline and content_lines:
+        next_content += "\n"
+    if uses_crlf:
+        next_content = next_content.replace("\n", "\r\n")
     return next_content, hunks
 
 
@@ -319,7 +310,7 @@ async def _patch_file(patch_text: str) -> str:
             raise IsADirectoryError(
                 f"Path is a directory: {sandbox.display_path(resolved)}"
             )
-        content = resolved.read_text(encoding="utf-8")
+        content = resolved.read_bytes().decode("utf-8")
         new_content, hunks = _apply_chunks_with_meta(content, patch.chunks, patch.path)
         planned.append(
             (

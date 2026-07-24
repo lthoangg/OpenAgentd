@@ -250,6 +250,115 @@ async def test_patch_handles_trimmed_line_context_matching(sandbox_workspace):
 
 
 @pytest.mark.asyncio
+async def test_patch_fuzzy_match_replaces_matched_line_not_earlier_substring(
+    sandbox_workspace,
+):
+    """The fuzzy-matched window must be spliced at its own line, not at an
+    earlier mid-line occurrence of the reconstructed text."""
+    (sandbox_workspace / "tricky.txt").write_bytes(b"xb \nb \n")
+    result = await patch_file.arun(
+        patch_text="""*** Begin Patch
+*** Update File: tricky.txt
+@@
+-b
++REPLACED
+*** End Patch"""
+    )
+    assert "Patch applied successfully" in result
+    assert '"old_start":2' in result
+    assert (sandbox_workspace / "tricky.txt").read_text(
+        encoding="utf-8"
+    ) == "xb \nREPLACED\n"
+
+
+@pytest.mark.asyncio
+async def test_patch_exact_context_must_match_whole_lines(sandbox_workspace):
+    """Context matching must be line-aligned — a mid-line substring occurrence
+    earlier in the file must not be corrupted."""
+    (sandbox_workspace / "code.txt").write_text(
+        "prefix return 42\nreturn 42 \nend\n", encoding="utf-8"
+    )
+    result = await patch_file.arun(
+        patch_text="""*** Begin Patch
+*** Update File: code.txt
+@@
+-return 42
++return 100
+*** End Patch"""
+    )
+    assert "Patch applied successfully" in result
+    assert (sandbox_workspace / "code.txt").read_text(
+        encoding="utf-8"
+    ) == "prefix return 42\nreturn 100\nend\n"
+
+
+@pytest.mark.asyncio
+async def test_patch_preserves_crlf_line_endings(sandbox_workspace):
+    """Patching one line of a CRLF file must not rewrite every line ending."""
+    (sandbox_workspace / "crlf.txt").write_bytes(b"line1\r\nline2\r\nline3\r\n")
+    result = await patch_file.arun(
+        patch_text="""*** Begin Patch
+*** Update File: crlf.txt
+@@
+-line2
++changed
+*** End Patch"""
+    )
+    assert "Patch applied successfully" in result
+    assert (sandbox_workspace / "crlf.txt").read_bytes() == (
+        b"line1\r\nchanged\r\nline3\r\n"
+    )
+
+
+@pytest.mark.asyncio
+async def test_patch_add_file_accepts_unprefixed_lines(sandbox_workspace):
+    result = await patch_file.arun(
+        patch_text="""*** Begin Patch
+*** Add File: loose.txt
++prefixed line
+unprefixed line
+
++last line
+*** End Patch"""
+    )
+    assert "Patch applied successfully" in result
+    assert (sandbox_workspace / "loose.txt").read_text(encoding="utf-8") == (
+        "prefixed line\nunprefixed line\n\nlast line\n"
+    )
+
+
+def test_parse_patch_rejects_star_line_in_add_section():
+    """A typo'd header inside an Add File section must raise, not be silently
+    swallowed as file content."""
+    with pytest.raises(ValueError, match="Add File"):
+        _parse_patch(
+            "*** Begin Patch\n"
+            "*** Add File: foo.txt\n"
+            "+ok\n"
+            "** Update File: bar.txt\n"
+            "*** End Patch"
+        )
+
+
+@pytest.mark.asyncio
+async def test_patch_rejects_ambiguous_fuzzy_context(sandbox_workspace):
+    target = sandbox_workspace / "fuzzy_repeat.txt"
+    target.write_bytes(b"same \nsame  \n")
+
+    with pytest.raises(ToolExecutionError):
+        await patch_file.arun(
+            patch_text="""*** Begin Patch
+*** Update File: fuzzy_repeat.txt
+@@
+-same
++changed
+*** End Patch"""
+        )
+
+    assert target.read_bytes() == b"same \nsame  \n"
+
+
+@pytest.mark.asyncio
 async def test_patch_args_supports_parameter_aliases(sandbox_workspace):
     result = await patch_file.arun(
         patch="""*** Begin Patch

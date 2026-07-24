@@ -70,8 +70,9 @@ function hasVisibleBlocks(stream: AgentStream | undefined): boolean {
 // message and/or in-progress streamed text vanish even though the turn is
 // still running. Detect that case so the caller can preserve the newer
 // local state instead of clobbering it with the stale fetch.
-function hasLiveContentSince(stream: AgentStream | undefined, sinceMs: number): boolean {
+function hasLiveContent(stream: AgentStream | undefined, isWorking: boolean, sinceMs: number): boolean {
   if (!stream) return false
+  if (isWorking && stream.currentBlocks.length > 0) return true
   return stream.currentBlocks.some((block) => (block.timestamp?.getTime() ?? 0) >= sinceMs)
 }
 
@@ -194,6 +195,23 @@ export const createSessionSlice: StateCreator<
   },
 
   beginResolvedSession: (sessionId, options) => {
+    const isWorkingOrHasBlocks =
+      get().isTeamWorking ||
+      Boolean(
+        get().leadName &&
+          get().agentStreams[get().leadName!]?.currentBlocks.length > 0,
+      )
+    if (isWorkingOrHasBlocks) {
+      set((state) => {
+        if (sessionId) state.sessionId = sessionId
+        state.sessionModel = options?.model ?? state.sessionModel
+        state.sessionThinkingLevel = options?.thinkingLevel ?? state.sessionThinkingLevel
+        if (options?.fastMode !== undefined) state.sessionFastMode = options.fastMode
+        if (options?.mode === 'coding') state._workspace = options.workspace ?? null
+        if (options?.skipInitialRestore && sessionId) state._resolvedSessionReadyId = sessionId
+      })
+      return
+    }
     get()._abortController?.abort()
     set((state) => {
       resetSessionState(state, {
@@ -220,8 +238,7 @@ export const createSessionSlice: StateCreator<
     if (
       state.sessionId !== sessionId ||
       state._resolvedSessionReadyId !== sessionId ||
-      state._workspace !== expectedWorkspace ||
-      !state.isEmptyIdleSession()
+      state._workspace !== expectedWorkspace
     ) {
       return false
     }
@@ -283,8 +300,10 @@ export const createSessionSlice: StateCreator<
     const gen = get()._sessionGeneration
     const fetchStartedAt = Date.now()
     set((draft) => {
-      draft.isTeamWorking = false
-      draft.isContinuing = false
+      if (draft.sessionId !== sessionId) {
+        draft.isTeamWorking = false
+        draft.isContinuing = false
+      }
     })
     try {
       const liveNames = get().liveAgentNames
@@ -316,9 +335,9 @@ export const createSessionSlice: StateCreator<
         const boundaryMsg = boundaryId ? history.lead.messages.find((msg) => msg.id === boundaryId) : undefined
 
         // Computed against the stream identified by the *resolved* leadName,
-        // before anything below overwrites it — see hasLiveContentSince.
+        // before anything below overwrites it — see hasLiveContent.
         const leadHadNewerActivity = leadName
-          ? hasLiveContentSince(draft.agentStreams[leadName], fetchStartedAt)
+          ? hasLiveContent(draft.agentStreams[leadName], draft.isTeamWorking, fetchStartedAt)
           : false
         if (!leadHadNewerActivity) {
           draft.isTeamWorking = history.lead.running === true
@@ -364,7 +383,7 @@ export const createSessionSlice: StateCreator<
             draft.agentStreams[member.name] = createDefaultAgentStream()
           }
           const memberStream = draft.agentStreams[member.name]
-          const memberHadNewerActivity = hasLiveContentSince(memberStream, fetchStartedAt)
+          const memberHadNewerActivity = hasLiveContent(memberStream, draft.isTeamWorking, fetchStartedAt)
           if (!memberHadNewerActivity) revokeBlobUrlsFromBlocks(memberStream.currentBlocks)
           memberStream.blocks = parseTeamBlocks(member.messages)
           memberStream._revertedSuffix = []

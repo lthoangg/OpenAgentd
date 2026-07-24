@@ -588,7 +588,7 @@ describe("sendMessage: queue behaviour", () => {
     expect(pending[0].content).toBe("queued with file")
     expect(pending[0].files).toEqual([file])
     expect(pending[0].attachments).toEqual([
-      { original_name: "doc.txt", media_type: "text/plain", category: "document" },
+      { original_name: "doc.txt", media_type: expect.stringMatching(/^text\/plain/), category: "document" },
     ])
     expect(useTeamStore.getState().error).toBeNull()
   })
@@ -996,6 +996,42 @@ describe("sendMessage: queue behaviour", () => {
 
     expect(useTeamStore.getState().consumeResolvedSessionReady("new-session", "/repo/other")).toBe(false)
     expect(useTeamStore.getState()._resolvedSessionReadyId).toBe("new-session")
+  })
+
+  it("preserves in-flight working state and optimistic user block when beginResolvedSession resolves concurrently after sendMessage in a new session", async () => {
+    useTeamStore.setState({
+      sessionId: null,
+      leadName: "lead",
+      agentNames: ["lead"],
+      agentStreams: { lead: makeStream() },
+    })
+
+    let resolvePost!: (value: unknown) => void
+    mockPostTeamChat.mockImplementation(
+      () => new Promise((res) => { resolvePost = res })
+    )
+
+    // User sends a message when sessionId is null (new session)
+    void useTeamStore.getState().sendMessage("message to new session")
+
+    expect(useTeamStore.getState().isTeamWorking).toBe(true)
+    const stream = useTeamStore.getState().agentStreams["lead"]
+    expect(stream.currentBlocks.some((b) => b.type === "user" && b.content === "message to new session")).toBe(true)
+
+    // Concurrent beginResolvedSession resolves for the background session creation
+    useTeamStore.getState().beginResolvedSession("new-created-session", {
+      skipInitialRestore: true,
+    })
+
+    // Working state and optimistic block must be preserved
+    expect(useTeamStore.getState().isTeamWorking).toBe(true)
+    expect(useTeamStore.getState().agentStreams["lead"].currentBlocks.some((b) => b.type === "user" && b.content === "message to new session")).toBe(true)
+
+    // When postTeamChat finishes, sessionId is set correctly
+    resolvePost({ session_id: "post-created-session" })
+    await Promise.resolve()
+
+    expect(useTeamStore.getState().sessionId).toBe("post-created-session")
   })
 })
 

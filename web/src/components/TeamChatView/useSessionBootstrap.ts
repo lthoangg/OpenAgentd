@@ -100,7 +100,7 @@ export function useSessionBootstrap({
     if (isCodingSessionLoading) return
     if (!sessionId) return
     const store = useTeamStore.getState()
-    if (store.sessionId === sessionId && store.isConnected) return
+    if (store.sessionId === sessionId && (store.isConnected || store.isTeamWorking)) return
 
     useTeamStore.setState({ sessionId })
 

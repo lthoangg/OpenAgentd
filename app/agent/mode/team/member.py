@@ -598,17 +598,22 @@ class TeamMemberBase(abc.ABC):
         except Exception as exc:
             from app.agent.errors import (
                 ProviderAuthenticationError,
+                ProviderConnectionError,
                 ProviderRateLimitError,
+                ProviderRequestError,
             )
 
-            if isinstance(exc, ProviderRateLimitError):
-                logger.warning(
-                    "team_member_provider_rate_limit name={} error={}", self.name, exc
-                )
-            elif isinstance(exc, ProviderAuthenticationError):
-                logger.warning(
-                    "team_member_provider_auth_failed name={} error={}", self.name, exc
-                )
+            if isinstance(
+                exc,
+                (
+                    ProviderRateLimitError,
+                    ProviderAuthenticationError,
+                    ProviderRequestError,
+                    ProviderConnectionError,
+                    RuntimeError,
+                ),
+            ):
+                logger.warning("team_member_error name={} error={}", self.name, exc)
             else:
                 logger.exception("team_member_error name={} error={}", self.name, exc)
             await self._on_turn_error(exc)

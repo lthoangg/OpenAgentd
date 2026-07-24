@@ -601,7 +601,7 @@ class LspManager:
                     self._clients[key] = client
                     clients.append(client)
                 except Exception as e:
-                    logger.error(
+                    logger.warning(
                         "Failed to start LSP client {} for {}: {}", cmd, lang_id, e
                     )
 

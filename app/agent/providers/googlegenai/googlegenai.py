@@ -445,7 +445,7 @@ class GeminiProviderBase(LLMProviderBase):
             ) as response:
                 if response.status_code >= 400:
                     body = await response.aread()
-                    logger.error(
+                    logger.warning(
                         "gemini_api_error status={} model={} body={}",
                         response.status_code,
                         self.model,

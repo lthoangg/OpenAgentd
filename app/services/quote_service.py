@@ -97,7 +97,7 @@ async def get_quote_of_the_day() -> Quote:
     # 2. Need API key
     api_key = settings.NINJA_API_KEY
     if api_key is None:
-        logger.warning("quote_of_the_day no_api_key, using fallback")
+        logger.debug("quote_of_the_day no_api_key, using fallback")
         return _FALLBACK
 
     # 3. Fetch from API Ninjas

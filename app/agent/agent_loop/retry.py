@@ -320,7 +320,7 @@ async def stream_with_retry(
                     body = exc.response.text[:500]
                 except Exception:
                     body = "<unreadable>"
-                logger.error(
+                logger.warning(
                     "llm_provider_error model={} status={} body={}",
                     primary_label,
                     exc.response.status_code,

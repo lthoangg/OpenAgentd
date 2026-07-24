@@ -319,7 +319,7 @@ class CompletionsHandler:
                 headers = prepare(body)
             response = await client.post(url, headers=headers, json=body, timeout=120.0)
             if response.status_code >= 400:
-                logger.error(
+                logger.warning(
                     "openai_chat_error status={} body={}",
                     response.status_code,
                     response.text[:500],
@@ -346,7 +346,7 @@ class CompletionsHandler:
             ) as response:
                 if response.status_code >= 400:
                     err_body = await response.aread()
-                    logger.error(
+                    logger.warning(
                         "openai_stream_error status={} body={}",
                         response.status_code,
                         err_body[:500],

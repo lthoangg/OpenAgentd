@@ -55,8 +55,7 @@ class LspClient:
         try:
             await self._initialize()
         except Exception as e:
-            logger.error("Failed to initialize LSP server {}: {}", self.command, e)
-            await self.stop()
+            logger.warning("Failed to initialize LSP server {}: {}", self.command, e)
             raise
 
     async def _initialize(self):

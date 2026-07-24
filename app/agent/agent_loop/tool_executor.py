@@ -154,7 +154,7 @@ def make_tool_executor(
                 msg = f"Tool '{tc.function.name}' timed out after {TOOL_TIMEOUT_SECONDS}s."
             result = f"Error: {msg}"
             tool_elapsed = time.monotonic() - tool_start
-            logger.error(
+            logger.warning(
                 "tool_timeout agent={} tool={} elapsed={:.2f}s error={}",
                 agent_name,
                 tc.function.name,
@@ -164,7 +164,7 @@ def make_tool_executor(
         except Exception as e:
             result = f"Error: {sanitize_error(str(e))}"
             tool_elapsed = time.monotonic() - tool_start
-            logger.error(
+            logger.warning(
                 "tool_error agent={} tool={} elapsed={:.2f}s error={}",
                 agent_name,
                 tc.function.name,

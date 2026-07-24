@@ -272,6 +272,130 @@ async def test_web_fetch_body_over_limit_without_content_length_is_rejected(
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_web_fetch_late_multibyte_plain_text_without_charset():
+    """A multi-byte char after the first 4 KB must not fail with an ascii codec error.
+
+    MarkItDown sniffs the charset from the first 4 KB only. When that prefix is
+    pure ASCII it decodes the whole body as ascii and raises UnicodeDecodeError.
+    """
+    url = "https://example.com/long.txt"
+    body = ("a" * 5000 + " em dash \u2014 tail").encode("utf-8")
+    respx.get(url).mock(
+        return_value=httpx.Response(
+            200,
+            content=body,
+            headers={"content-type": "text/plain"},
+        )
+    )
+
+    result = await web_fetch(url)
+
+    assert "ascii" not in result
+    assert "Error fetching or converting" not in result
+    assert "em dash \u2014 tail" in result
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_web_fetch_late_multibyte_html_without_charset():
+    """HTML with a late multi-byte char converts without a decode error."""
+    url = "https://example.com/long.html"
+    body = (
+        "<html><body><p>" + "a" * 5000 + " caf\u00e9 \u2014 done</p></body></html>"
+    ).encode("utf-8")
+    respx.get(url).mock(
+        return_value=httpx.Response(
+            200,
+            content=body,
+            headers={"content-type": "text/html"},
+        )
+    )
+
+    result = await web_fetch(url)
+
+    assert "Error fetching or converting" not in result
+    assert "caf\u00e9 \u2014 done" in result
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_web_fetch_declared_charset_is_passed_to_markitdown():
+    """The charset from the content-type header is forwarded to MarkItDown."""
+    url = "https://example.com/latin.txt"
+    respx.get(url).mock(
+        return_value=httpx.Response(
+            200,
+            content="caf\u00e9".encode("latin-1"),
+            headers={"content-type": "text/plain; charset=latin-1"},
+        )
+    )
+
+    result = await web_fetch(url)
+
+    assert result == "caf\u00e9"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_web_fetch_native_markdown_late_multibyte():
+    """Native markdown responses decode multi-byte content without mangling."""
+    url = "https://example.com/readme.md"
+    respx.get(url).mock(
+        return_value=httpx.Response(
+            200,
+            content=("# " + "a" * 5000 + " \u2014 end").encode("utf-8"),
+            headers={"content-type": "text/markdown"},
+        )
+    )
+
+    result = await web_fetch(url)
+
+    assert result.endswith("\u2014 end")
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_web_fetch_binary_conversion_failure_still_reports_error():
+    """Non-text conversion failures keep returning the error string."""
+    url = "https://example.com/broken.pdf"
+    respx.get(url).mock(
+        return_value=httpx.Response(
+            200,
+            content=b"%PDF-1.4 broken",
+            headers={"content-type": "application/pdf"},
+        )
+    )
+
+    with patch("markitdown.MarkItDown") as mock_mid_class:
+        mock_mid_class.return_value.convert_stream.side_effect = Exception("bad pdf")
+
+        result = await web_fetch(url)
+
+    assert "Error fetching or converting" in result
+    assert "bad pdf" in result
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_web_fetch_text_falls_back_when_conversion_raises_decode_error():
+    """A wrong declared charset still yields readable text via the fallback decode."""
+    url = "https://example.com/mislabelled.txt"
+    respx.get(url).mock(
+        return_value=httpx.Response(
+            200,
+            content="caf\u00e9 \u2014 ok".encode("utf-8"),
+            headers={"content-type": "text/plain; charset=ascii"},
+        )
+    )
+
+    result = await web_fetch(url)
+
+    assert "Error fetching or converting" not in result
+    assert "caf\u00e9 \u2014 ok" in result
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_web_fetch_timeout_capped_at_120():
     """timeout > 120 is capped to 120 seconds."""
     url = "https://example.com"

@@ -27,6 +27,56 @@ _USER_AGENT = (
 )
 
 
+_TEXTUAL_MIMES = frozenset(
+    {
+        "application/json",
+        "application/xml",
+        "application/xhtml+xml",
+        "application/markdown",
+        "application/javascript",
+    }
+)
+
+
+def _is_textual(mime: str | None) -> bool:
+    """Whether ``mime`` denotes text that can be decoded directly."""
+    if mime is None:
+        return False
+    return mime.startswith("text/") or mime in _TEXTUAL_MIMES
+
+
+def _resolve_charset(content_bytes: bytes, declared: str | None) -> str | None:
+    """Return an encoding that decodes *all* of ``content_bytes``, else ``None``.
+
+    MarkItDown sniffs only the first 4 KB, so an ASCII-looking prefix makes it
+    decode the whole body as ASCII and raise ``UnicodeDecodeError`` on the first
+    multi-byte character later in the stream. Validating against the full payload
+    here avoids that mislabelling, and rejects a wrongly declared charset.
+    """
+
+    def _decodes(name: str | None) -> bool:
+        if not name:
+            return False
+        try:
+            content_bytes.decode(name)
+        except (UnicodeDecodeError, LookupError):
+            return False
+        return True
+
+    # Trust the declared charset only if it decodes the whole body; utf-8 covers
+    # the overwhelming majority of the rest, so only sniff when both fail.
+    if _decodes(declared):
+        return declared
+    if _decodes("utf-8"):
+        return "utf-8"
+
+    from charset_normalizer import from_bytes
+
+    best = from_bytes(content_bytes).best()
+    detected = None if best is None else best.encoding
+    return detected if _decodes(detected) else None
+
+
 class WebSearchArgs(BaseModel):
     """Arguments for the web_search tool."""
 
@@ -187,12 +237,17 @@ async def web_fetch(
                 )
 
             content_type = response.headers.get("content-type", "")
+            declared_charset = response.charset_encoding
 
         mime = content_type.split(";")[0].strip().lower() or None
+        textual = _is_textual(mime)
+        # Resolve the charset against the whole body; MarkItDown only samples 4 KB.
+        charset = _resolve_charset(content_bytes, declared_charset) if textual else None
 
         # If the response is already markdown, return it as-is
         if mime in ("text/markdown", "text/x-markdown"):
-            return content_bytes.decode("utf-8", errors="replace")
+            # ``errors="replace"`` only bites when nothing decoded cleanly.
+            return content_bytes.decode(charset or "utf-8", errors="replace")
 
         # For all other types (html, text, pdf, etc.) let MarkItDown convert.
         # ``markitdown`` is imported lazily because it pulls native libraries
@@ -206,12 +261,23 @@ async def web_fetch(
             md = MarkItDown()
             result = md.convert_stream(
                 BytesIO(content_bytes),
-                stream_info=StreamInfo(url=url, mimetype=mime),
+                stream_info=StreamInfo(url=url, mimetype=mime, charset=charset),
             )
             return result.markdown
 
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, _convert)
+        try:
+            return await loop.run_in_executor(None, _convert)
+        except Exception as e:
+            # Text payloads are still useful even when conversion fails (for
+            # example a mislabelled charset), so fall back to a lenient decode
+            # rather than losing the whole response.
+            if textual:
+                logger.debug(
+                    "web_fetch_conversion_fallback url={} error={}", url, str(e)
+                )
+                return content_bytes.decode(charset or "utf-8", errors="replace")
+            raise
 
     except Exception as e:
         return f"Error fetching or converting: {str(e)}"

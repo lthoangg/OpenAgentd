@@ -438,13 +438,12 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     }
   }
 
-  // ── patch: touched file name/count in header, full envelope as args ─
+  // ── patch: touched file names in header, full envelope as args ─────
   if (name === 'patch') {
     const patchText = str(parsed, 'patch_text')
     const paths = patchText ? patchPaths(patchText) : []
-    const summary = paths.length === 1
-      ? pathBasename(paths[0])
-      : paths.length > 1 ? `${paths.length} files` : null
+    const names = [...new Set(paths.map(pathBasename))]
+    const summary = names.length > 0 ? trunc(names.join(', ')) : null
     return {
       header: summary ? <Arg>{summary}</Arg> : 'patch',
       headerTitle: summary ?? 'patch',

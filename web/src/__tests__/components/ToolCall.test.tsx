@@ -841,16 +841,44 @@ describe("ToolCall — schedule_task display", () => {
 })
 
 describe("ToolCall — concise tool labels", () => {
-  it("summarizes patch arguments by their file count", () => {
+  it("summarizes patch arguments with comma-separated file names", () => {
     const args = JSON.stringify({
       patch_text: "*** Begin Patch\n*** Update File: src/a.ts\n@@\n-old\n+new\n*** Add File: src/b.ts\n+hello\n*** End Patch",
     })
 
     render(<ToolCall name="patch" args={args} done={false} />)
 
-    expect(getHeader("Patch: 2 files")).toBeTruthy()
+    expect(getHeader("Patch: a.ts, b.ts")).toBeTruthy()
     expect(screen.queryByText("src/a.ts")).toBeNull()
     expect(screen.queryByText("src/b.ts")).toBeNull()
+  })
+
+  it("deduplicates repeated basenames in the patch header", () => {
+    const args = JSON.stringify({
+      patch_text: "*** Begin Patch\n*** Update File: src/a.ts\n@@\n-old\n+new\n*** Update File: lib/a.ts\n@@\n-x\n+y\n*** End Patch",
+    })
+
+    render(<ToolCall name="patch" args={args} done={false} />)
+
+    expect(getHeader("Patch: a.ts")).toBeTruthy()
+  })
+
+  it("truncates a long patch file list in the header", () => {
+    const sections = Array.from({ length: 12 }, (_, i) => (
+      `*** Update File: src/some-longer-file-name-${i}.ts\n@@\n-old\n+new`
+    )).join("\n")
+    const args = JSON.stringify({
+      patch_text: `*** Begin Patch\n${sections}\n*** End Patch`,
+    })
+
+    render(<ToolCall name="patch" args={args} done={false} />)
+
+    const title = Array.from(document.querySelectorAll("[title]"))
+      .map((node) => node.getAttribute("title"))
+      .find((t) => t?.startsWith("Patch: "))
+    expect(title).toBeTruthy()
+    expect(title!.endsWith("…")).toBe(true)
+    expect(title!.length).toBeLessThan(80)
   })
 
   it("uses Remove rather than the rm command name", () => {

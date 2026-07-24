@@ -47,9 +47,18 @@ mock.module('@/components/TeamChatView/AgentTabs', () => ({
   },
 }))
 mock.module('@/components/TeamChatView/TeamChatHeader', () => ({
-  TeamChatHeader: ({ agentNames }: { agentNames: string[] }) => {
-    return <div data-testid="header-agents">{agentNames.join(',')}</div>
-  },
+  TeamChatHeader: ({
+    agentNames,
+    headerTokens,
+  }: {
+    agentNames: string[]
+    headerTokens?: { sessionCostUsd?: number }
+  }) => (
+    <>
+      <div data-testid="header-agents">{agentNames.join(',')}</div>
+      {headerTokens && <div data-testid="session-cost">{headerTokens.sessionCostUsd}</div>}
+    </>
+  ),
 }))
 mock.module('@/components/FloatingInputBar', () => ({
   FloatingInputBar: forwardRef<
@@ -196,5 +205,38 @@ describe('TeamChatView reactive derived state', () => {
 
     expect(screen.queryByTestId('agent-tabs')).toBeNull()
     expect(screen.getByTestId('header-agents').textContent).toBe('lead')
+  })
+
+  it('sums current session costs exactly and excludes stale agent streams', () => {
+    useTeamStore.setState((state) => {
+      state.agentStreams.lead.usage = {
+        promptTokens: 10,
+        completionTokens: 5,
+        totalTokens: 15,
+        cachedTokens: 0,
+        estimatedCostUsd: 0.0012,
+      }
+      state.agentStreams['worker#1'].usage = {
+        promptTokens: 20,
+        completionTokens: 8,
+        totalTokens: 28,
+        cachedTokens: 0,
+        estimatedCostUsd: 0.0023,
+      }
+      state.agentStreams['stale#1'] = {
+        ...state.agentStreams.lead,
+        usage: {
+          promptTokens: 100,
+          completionTokens: 100,
+          totalTokens: 200,
+          cachedTokens: 0,
+          estimatedCostUsd: 1,
+        },
+      }
+    })
+
+    render(<TeamChatView sessionId="session-1" />)
+
+    expect(screen.getByTestId('session-cost').textContent).toBe('0.0035')
   })
 })

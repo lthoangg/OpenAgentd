@@ -25,15 +25,15 @@ describe('TokenMeter', () => {
     expect(screen.getByText('30')).toBeTruthy()
   })
 
-  it('shows estimated session cost when available', async () => {
+  it('shows estimated session costs to four decimal places', async () => {
     const user = userEvent.setup()
 
-    render(<TokenMeter input={1500} output={200} sessionCostUsd={1.2} />)
+    render(<TokenMeter input={1500} output={200} sessionCostUsd={0.00135} />)
 
     await user.hover(screen.getByRole('button'))
 
     expect(screen.getByText('cost')).toBeTruthy()
-    expect(screen.getByText('$1.2000')).toBeTruthy()
+    expect(screen.getByText('$0.0014')).toBeTruthy()
   })
 
   it('closes after hover when the pointer leaves', async () => {

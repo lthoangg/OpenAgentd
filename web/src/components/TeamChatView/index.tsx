@@ -133,10 +133,10 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         leadCompletionTokens: leadStream?.usage.completionTokens ?? 0,
         leadCachedTokens: leadStream?.usage.cachedTokens ?? 0,
         leadTotalTokens: leadStream?.usage.totalTokens ?? 0,
-        sessionCostUsd: Object.values(s.agentStreams).reduce(
-          (total, stream) => total + (stream.usage.estimatedCostUsd ?? 0),
+        sessionCostUsd: Math.round(s.agentNames.reduce(
+          (total, name) => total + (s.agentStreams[name]?.usage.estimatedCostUsd ?? 0),
           0,
-        ),
+        ) * 1e8) / 1e8,
       }
     })
   )

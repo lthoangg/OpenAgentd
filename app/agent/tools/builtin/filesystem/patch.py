@@ -8,12 +8,11 @@ from pathlib import Path
 from typing import Literal
 
 from loguru import logger
-from pydantic import BaseModel, Field, field_validator
+from pydantic import AliasChoices, BaseModel, Field, field_validator
 
 from app.agent.sandbox import get_sandbox
 from app.agent.tools.builtin.filesystem._config_watch import notify_fs_change
 from app.agent.tools.registry import Tool
-
 
 PatchKind = Literal["add", "update", "delete"]
 
@@ -54,11 +53,16 @@ Example:
 class PatchArgs(BaseModel):
     """Arguments for the patch tool."""
 
-    patch_text: str = Field(description=_PATCH_TEXT_DESCRIPTION)
+    patch_text: str = Field(
+        description=_PATCH_TEXT_DESCRIPTION,
+        validation_alias=AliasChoices("patch_text", "patch", "text", "content", "diff"),
+    )
 
-    @field_validator("patch_text")
+    @field_validator("patch_text", mode="before")
     @classmethod
-    def validate_patch_text(cls, v: str) -> str:
+    def validate_patch_text(cls, v: object) -> str:
+        if not isinstance(v, str):
+            raise ValueError("patch_text must be a string.")
         _parse_patch(v)
         return v
 
@@ -78,11 +82,37 @@ class FilePatch:
     chunks: list[Chunk] = field(default_factory=list)
 
 
+def _clean_patch_text(patch_text: str) -> str:
+    """Clean markdown code fences, leading/trailing whitespace, and extract patch envelope."""
+    text = patch_text.strip()
+    if text.startswith("```"):
+        lines = text.split("\n")
+        if lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip().startswith("```"):
+            lines = lines[:-1]
+        text = "\n".join(lines).strip()
+
+    begin_marker = "*** Begin Patch"
+    end_marker = "*** End Patch"
+    begin_idx = text.find(begin_marker)
+    end_idx = text.rfind(end_marker)
+    if begin_idx != -1 and end_idx != -1 and end_idx >= begin_idx:
+        text = text[begin_idx : end_idx + len(end_marker)]
+
+    return text
+
+
 def _parse_patch(patch_text: str) -> list[FilePatch]:
-    lines = patch_text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    cleaned = _clean_patch_text(patch_text)
+    lines = cleaned.replace("\r\n", "\n").replace("\r", "\n").split("\n")
     if lines and lines[-1] == "":
         lines.pop()
-    if not lines or lines[0] != "*** Begin Patch" or lines[-1] != "*** End Patch":
+    if (
+        not lines
+        or lines[0].strip() != "*** Begin Patch"
+        or lines[-1].strip() != "*** End Patch"
+    ):
         raise ValueError(
             "Patch must start with '*** Begin Patch' and end with '*** End Patch'."
         )
@@ -129,9 +159,12 @@ def _parse_patch(patch_text: str) -> list[FilePatch]:
             chunk = Chunk()
             continue
         if current.kind == "add":
-            if not line.startswith("+"):
-                raise ValueError("Add file contents must be prefixed with '+'.")
-            current.contents.append(line[1:])
+            if line.startswith("+"):
+                current.contents.append(line[1:])
+            elif line == "":
+                current.contents.append("")
+            else:
+                current.contents.append(line)
             continue
         if current.kind == "delete":
             raise ValueError("Delete file operations must not include content.")
@@ -170,28 +203,78 @@ def _apply_chunks(content: str, chunks: list[Chunk], path: str) -> str:
     return _apply_chunks_with_meta(content, chunks, path)[0]
 
 
+def _find_line_trimmed_match(
+    content: str, old_lines: list[str]
+) -> tuple[str | None, int]:
+    """Find matching block in content where lines match when rstrip()-ed."""
+    if not old_lines:
+        return None, 0
+    content_lines = content.split("\n")
+    if content_lines and content_lines[-1] == "":
+        content_lines.pop()
+
+    target_trimmed = [line.rstrip() for line in old_lines]
+    matches: list[str] = []
+
+    for i in range(len(content_lines) - len(old_lines) + 1):
+        window = content_lines[i : i + len(old_lines)]
+        if [line.rstrip() for line in window] == target_trimmed:
+            matches.append("\n".join(window) + "\n")
+
+    if len(matches) == 1:
+        return matches[0], 1
+    return None, len(matches)
+
+
 def _apply_chunks_with_meta(
     content: str, chunks: list[Chunk], path: str
 ) -> tuple[str, list[dict[str, int]]]:
-    next_content = content
+    normalized_content = content.replace("\r\n", "\n").replace("\r", "\n")
+    has_trailing_newline = normalized_content.endswith("\n") or normalized_content == ""
+
+    if normalized_content and not has_trailing_newline:
+        working_content = normalized_content + "\n"
+    else:
+        working_content = normalized_content
+
+    next_content = working_content
     line_delta = 0
     hunks: list[dict[str, int]] = []
+
     for chunk in chunks:
         old = _lines_to_text(chunk.old)
         new = _lines_to_text(chunk.new)
         if old == new:
             continue
+
+        matched_old = old
         count = next_content.count(old)
+
+        if count == 0:
+            trimmed_match, trimmed_count = _find_line_trimmed_match(
+                next_content, chunk.old
+            )
+            if trimmed_count == 1 and trimmed_match:
+                matched_old = trimmed_match
+                count = 1
+            elif trimmed_count > 1:
+                raise ValueError(f"Patch context is ambiguous in {path}.")
+
         if count == 0:
             raise ValueError(f"Could not find patch context in {path}.")
         if count > 1:
             raise ValueError(f"Patch context is ambiguous in {path}.")
-        idx = next_content.find(old)
+
+        idx = next_content.find(matched_old)
         new_start = next_content.count("\n", 0, idx) + 1
         old_start = new_start - line_delta
         hunks.append({"old_start": old_start, "new_start": new_start})
         line_delta += len(chunk.new) - len(chunk.old)
-        next_content = next_content.replace(old, new, 1)
+        next_content = next_content.replace(matched_old, new, 1)
+
+    if not has_trailing_newline and next_content.endswith("\n"):
+        next_content = next_content[:-1]
+
     return next_content, hunks
 
 
@@ -255,14 +338,14 @@ async def _patch_file(patch_text: str) -> str:
             changed.append(resolved)
         elif patch.kind == "add":
             resolved.parent.mkdir(parents=True, exist_ok=True)
-            resolved.write_bytes(data or b"")
+            resolved.write_bytes(data if data is not None else b"")
             changed.append(resolved)
         else:
             write_path = target or resolved
             write_path.parent.mkdir(parents=True, exist_ok=True)
-            write_path.write_bytes(data or b"")
+            write_path.write_bytes(data if data is not None else b"")
             changed.append(write_path)
-            if target is not None:
+            if target is not None and resolved != write_path and resolved.exists():
                 resolved.unlink()
                 changed.append(resolved)
 

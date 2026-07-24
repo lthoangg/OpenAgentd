@@ -180,3 +180,84 @@ def test_parse_patch_rejects_unknown_star_header():
     """'*** Add <path>' without 'File:' must raise — not silently skip."""
     with pytest.raises(ValueError, match="file operation header"):
         _parse_patch("*** Begin Patch\n*** Add foo.txt\n+hello\n*** End Patch")
+
+
+@pytest.mark.asyncio
+async def test_patch_handles_markdown_code_fences(sandbox_workspace):
+    patch_text = """```patch
+*** Begin Patch
+*** Add File: fenced.txt
++content in fence
+*** End Patch
+```"""
+    result = await patch_file.arun(patch_text=patch_text)
+    assert "Patch applied successfully" in result
+    assert (sandbox_workspace / "fenced.txt").read_text(
+        encoding="utf-8"
+    ) == "content in fence\n"
+
+
+@pytest.mark.asyncio
+async def test_patch_handles_embedded_envelope_with_surrounding_text(sandbox_workspace):
+    patch_text = """Here is the patch you requested:
+
+*** Begin Patch
+*** Add File: embedded.txt
++hello
+*** End Patch
+
+Hope this helps!"""
+    result = await patch_file.arun(patch_text=patch_text)
+    assert "Patch applied successfully" in result
+    assert (sandbox_workspace / "embedded.txt").read_text(encoding="utf-8") == "hello\n"
+
+
+@pytest.mark.asyncio
+async def test_patch_handles_file_without_trailing_newline(sandbox_workspace):
+    (sandbox_workspace / "no_newline.txt").write_bytes(b"line1\nline2")
+    result = await patch_file.arun(
+        patch_text="""*** Begin Patch
+*** Update File: no_newline.txt
+@@
+-line2
++line2_updated
+*** End Patch"""
+    )
+    assert "Patch applied successfully" in result
+    assert (sandbox_workspace / "no_newline.txt").read_text(
+        encoding="utf-8"
+    ) == "line1\nline2_updated"
+
+
+@pytest.mark.asyncio
+async def test_patch_handles_trimmed_line_context_matching(sandbox_workspace):
+    (sandbox_workspace / "spaces.txt").write_text(
+        "def fn():   \n    return 42   \n", encoding="utf-8"
+    )
+    result = await patch_file.arun(
+        patch_text="""*** Begin Patch
+*** Update File: spaces.txt
+@@
+ def fn():
+-    return 42
++    return 100
+*** End Patch"""
+    )
+    assert "Patch applied successfully" in result
+    assert (sandbox_workspace / "spaces.txt").read_text(
+        encoding="utf-8"
+    ) == "def fn():\n    return 100\n"
+
+
+@pytest.mark.asyncio
+async def test_patch_args_supports_parameter_aliases(sandbox_workspace):
+    result = await patch_file.arun(
+        patch="""*** Begin Patch
+*** Add File: alias.txt
++alias content
+*** End Patch"""
+    )
+    assert "Patch applied successfully" in result
+    assert (sandbox_workspace / "alias.txt").read_text(
+        encoding="utf-8"
+    ) == "alias content\n"

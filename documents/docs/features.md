@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 16 providers. Your keys.
 
-**Latest release:** v1.120.0 · July 24, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.120.0)
+**Latest release:** v1.120.1 · July 24, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.120.1)
 
 ---
 
@@ -200,7 +200,7 @@ run from the terminal.
   inspectable via `bg` for ~10 minutes after `wait`/`stop`; every `bg` action
   and session interrupt stays bounded even when an orphaned child still holds
   the output pipe; foreground output memory is bounded, with oversized output
-  streamed incrementally to a session spill file `[v1.121.0]`.
+  streamed incrementally to a session spill file `[v1.120.1]`.
 - **Drag-and-drop files into chat** `[since v1.0, v1.82.0]` — drag files (images, PDFs, text, etc.) anywhere onto the chat area (both cockpit and coding views) to show a drop overlay and attach them to the composer. Supports multi-file drops, file-type filtering, and cancellation.
 - **Composer history navigation** `[v1.32.0]` — when the input is empty, `↑` / `↓`
   walks previous user prompts from the current chat plus local submissions.

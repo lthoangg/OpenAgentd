@@ -1,9 +1,8 @@
 """Retry streaming for LLM provider calls.
 
-Wraps a provider's ``stream()`` so transient errors (429, 5xx,
-connection errors) that surface mid-stream are retried from the
-beginning.  Non-retryable HTTP errors (4xx except 429) are raised
-immediately.
+Wraps a provider's ``stream()`` so transient errors (429, 5xx, connection,
+and read errors) that surface mid-stream are retried from the beginning.
+Non-retryable HTTP errors (4xx except 429) are raised immediately.
 
 Lives outside the :class:`~app.agent.agent_loop.Agent` class because
 none of this depends on instance state — only the provider and a label
@@ -411,7 +410,12 @@ async def stream_with_retry(
             )
             if await _sleep_or_interrupted(delay, interrupt_event):
                 return
-        except (httpx.ConnectError, httpx.ReadTimeout, TimeoutError) as exc:
+        except (
+            httpx.ConnectError,
+            httpx.ReadError,
+            httpx.ReadTimeout,
+            TimeoutError,
+        ) as exc:
             last_exc = exc
             # Skip sleep on the last attempt.
             if attempt + 1 >= MAX_RETRIES:

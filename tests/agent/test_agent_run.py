@@ -1249,6 +1249,40 @@ async def test_stream_with_retry_on_connect_error():
     assert chunks[0].choices[0].delta.content == "reconnected"
 
 
+async def test_stream_with_retry_on_read_error():
+    """ReadError mid-stream is retried with backoff."""
+    import httpx
+    from unittest.mock import patch
+
+    call_count = 0
+
+    async def mock_stream(
+        messages: list[ChatMessage],
+        tools: list[dict] | None = None,
+        **kwargs,
+    ):
+        nonlocal call_count
+        call_count += 1
+        if call_count < 2:
+            raise httpx.ReadError("connection reset by peer")
+        yield make_text_chunk("reconnected")
+
+    provider = MockProvider([[]])
+    provider.stream = mock_stream  # type: ignore[method-assign]
+    agent = Agent(name="bot", llm_provider=provider)
+
+    with patch("app.agent.agent_loop.retry.asyncio.sleep", new_callable=AsyncMock):
+        chunks = [
+            c
+            async for c in stream_with_retry(
+                **retry_args(agent), messages=[], tools=None
+            )
+        ]
+
+    assert call_count == 2
+    assert chunks[0].choices[0].delta.content == "reconnected"
+
+
 async def test_stream_with_retry_exhausted_raises():
     """After MAX_RETRIES, the last exception is re-raised."""
     import httpx

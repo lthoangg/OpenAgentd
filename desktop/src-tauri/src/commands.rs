@@ -18,7 +18,7 @@ use crate::shutdown_sidecar_now;
 const ACCESS_KEY_SERVICE: &str = "openagentd.backend-access-key";
 
 #[cfg(target_os = "macos")]
-fn notification_application_identifier<'a>(dev: bool, identifier: &'a str) -> &'a str {
+fn notification_application_identifier(dev: bool, identifier: &str) -> &str {
     if dev {
         // Development builds are not bundled applications, so macOS only
         // delivers their notifications when attributed to Terminal.

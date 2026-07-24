@@ -270,12 +270,18 @@ EOF
 
   info "Signing identity: ${signing_identity}"
   info "Signing the bundle (this can take a few seconds)…"
+  # The explicit identifier-only designated requirement (-r=) is applied on
+  # every signing path. Without it codesign derives a default requirement
+  # that pins the signing certificate; local self-signed certs are not
+  # stable across regenerations, so macOS keychain "Always Allow" and TCC
+  # grants would be invalidated on the next update.
   if [ "$signing_identity" != "-" ]; then
     if ! codesign \
         --force \
         --deep \
         --sign "$signing_identity" \
         --options runtime \
+        -r="designated => identifier \"$bundle_id\"" \
         --entitlements "$entitlements_file" \
         "$BUNDLE" 2>&1 | sed 's/^/  /'; then
       fail "codesign failed."

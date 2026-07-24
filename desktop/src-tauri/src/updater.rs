@@ -206,30 +206,39 @@ fn prepare_macos_update_archive(bytes: Vec<u8>, bundle_id: &str) -> Result<Vec<u
         String::from_utf8_lossy(&signature.stdout),
         String::from_utf8_lossy(&signature.stderr)
     );
+    let stable_requirement = format!("designated => identifier \"{bundle_id}\"");
+    let designated = signature_info
+        .lines()
+        .find(|line| line.trim_start().starts_with("designated =>"))
+        .map(str::trim)
+        .unwrap_or("");
+    // Leave the signature untouched only when its designated requirement is
+    // already stable across updates: an Apple-anchored chain (Developer ID)
+    // or the exact identifier-only requirement we apply below. Anything else
+    // — ad-hoc ``cdhash H"…"`` or a local-cert ``certificate root = H"…"`` —
+    // changes between builds or cert regenerations, which invalidates the
+    // keychain "Always Allow" ACL and re-prompts the user after every update.
     let required_identifier = format!("identifier \"{bundle_id}\"");
-    if !signature_info.contains("cdhash") && signature_info.contains(&required_identifier) {
+    if designated == stable_requirement
+        || (designated.contains(&required_identifier) && designated.contains("anchor apple"))
+    {
         return Ok(bytes);
     }
 
+    // Pass the explicit identifier-only requirement for *every* local signing
+    // identity (persistent local cert, Apple Development, ad-hoc). Without
+    // ``-r=`` codesign derives a default requirement that pins the signing
+    // certificate, and self-signed local certs are not stable across machines
+    // or regenerations.
     let identity = resolve_macos_signing_identity();
-    let output = if identity != "-" {
-        std::process::Command::new("codesign")
-            .args(["--force", "--deep", "--sign", &identity, "--options", "runtime"])
-            .arg("--entitlements")
-            .arg(&entitlements)
-            .arg(app_bundle)
-            .output()
-    } else {
-        let requirement = format!("designated => identifier \"{bundle_id}\"");
-        std::process::Command::new("codesign")
-            .args(["--force", "--deep", "--sign", "-", "--options", "runtime"])
-            .arg(format!("-r={requirement}"))
-            .arg("--entitlements")
-            .arg(&entitlements)
-            .arg(app_bundle)
-            .output()
-    }
-    .map_err(|e| format!("Run codesign for macOS update: {e}"))?;
+    let output = std::process::Command::new("codesign")
+        .args(["--force", "--deep", "--sign", &identity, "--options", "runtime"])
+        .arg(format!("-r={stable_requirement}"))
+        .arg("--entitlements")
+        .arg(&entitlements)
+        .arg(app_bundle)
+        .output()
+        .map_err(|e| format!("Run codesign for macOS update: {e}"))?;
     if !output.status.success() {
         return Err(format!(
             "Sign macOS update: {}",
@@ -724,9 +733,19 @@ mod macos_tests {
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         );
-        assert!(
-            requirement.contains("designated => identifier \"com.openagentd.desktop\""),
-            "unexpected designated requirement: {requirement}"
+        let designated = requirement
+            .lines()
+            .find(|line| line.trim_start().starts_with("designated =>"))
+            .unwrap_or("")
+            .trim();
+        // The requirement must be *exactly* identifier-only. Any extra
+        // clause (``cdhash H"…"``, ``certificate root = H"…"``) pins the
+        // binary or the local signing certificate — both change across
+        // updates, invalidating the keychain "Always Allow" ACL and
+        // re-prompting the user after every update.
+        assert_eq!(
+            designated, "designated => identifier \"com.openagentd.desktop\"",
+            "designated requirement must be identifier-only and stable: {requirement}"
         );
     }
 }

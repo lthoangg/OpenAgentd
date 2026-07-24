@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 16 providers. Your keys.
 
-**Latest release:** v1.119.0 · July 24, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.119.0)
+**Latest release:** v1.120.0 · July 24, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.120.0)
 
 ---
 
@@ -191,7 +191,10 @@ run from the terminal.
   default (300 seconds maximum), returning a still-running result without
   terminating the process `[v1.105.0]`. Background process lists, status, wait
   metadata, and final output render as compact structured cards with bounded
-  scroll regions on mobile and desktop `[v1.113.0]`.
+  scroll regions on mobile and desktop `[v1.113.0]`. Raw ANSI/CSI/OSC escape
+  sequences (colors, cursor movement, hyperlinks) from color-forcing CLIs are
+  stripped from foreground results, live streamed output, and background
+  process buffers before reaching the LLM or the UI `[v1.120.0]`.
 - **Drag-and-drop files into chat** `[since v1.0, v1.82.0]` — drag files (images, PDFs, text, etc.) anywhere onto the chat area (both cockpit and coding views) to show a drop overlay and attach them to the composer. Supports multi-file drops, file-type filtering, and cancellation.
 - **Composer history navigation** `[v1.32.0]` — when the input is empty, `↑` / `↓`
   walks previous user prompts from the current chat plus local submissions.
@@ -442,7 +445,14 @@ team against it.
   tool accepts a `*** Begin Patch` / `*** End Patch` envelope with
   `*** Add File:`, `*** Update File:`, `*** Delete File:`, and `*** Move to:`
   operations; the full format spec is embedded in the tool's schema so the
-  LLM always has it in context.
+  LLM always has it in context. Hardened against LLM formatting variance:
+  accepts alternate parameter names, extracts envelopes embedded in markdown
+  code blocks or surrounding commentary, and falls back to line-aligned fuzzy
+  context matching when whitespace doesn't match exactly, without
+  mis-patching an earlier occurrence of the same text or rewriting file line
+  endings `[v1.120.0]`. The activity header lists the comma-separated,
+  deduplicated basenames of every touched file instead of collapsing
+  multi-file patches into a bare count `[v1.120.0]`.
 - **Interactive terminal tab** `[v1.98.1]` — a real PTY shell (backend
   `subprocess.Popen` + `pty.openpty()`, streamed over WebSocket to an
   xterm.js instance) attached to the coding workspace panel, alongside

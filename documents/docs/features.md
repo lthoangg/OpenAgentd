@@ -681,6 +681,9 @@ Four orthogonal ways to add capability.
   - **RTK shell rewriting** `[v1.118.0]` — optional `plugins/rtk_rewrite.py`
     plugin routes foreground `shell` commands through an installed `rtk` CLI to
     reduce tool-output token usage, with pass-through on missing or failed rewrites.
+  - **Secret scrubbing** `[v1.118.0]` — optional `plugins/secret_scrubber.py`
+    plugin redacts common credential formats and sensitive environment values from
+    tool results before they enter model context.
 - **Slash commands** `[since v1.0]` — `.md` files with optional frontmatter,
   available globally or scoped to a coding workspace (`[v1.17.0]`). One nested
   namespace level is supported and displayed in the composer as colon syntax

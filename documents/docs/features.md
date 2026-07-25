@@ -639,6 +639,12 @@ MCP.
   on both streaming and non-streaming paths.
 - **Cross-tool `tool_output_delta` streaming** `[since v1.0]` — long-running
   tools (shell, web search) stream output to the inspector as they run.
+  - **Live output trimmed to the rendered window** `[v1.120.3]` — each delta now
+    carries only the trailing lines the inspector actually paints instead of up
+    to 24 KB per flush. A noisy command (`bun test`, builds) previously streamed
+    ~87% bytes that the client discarded on arrival, costing SSE bandwidth plus
+    an immer transaction and React re-render per frame on desktop and mobile.
+    Full output still reaches the model and the user in the final tool result.
 - **Rich inline ToolCall rendering & scroll guardrails** `[since v1.0, v1.72.0]` — compact tool summaries and status lines, sticky headers for diffs, and automatic scroll/truncation boundaries for extremely large outputs.
   - **Tool arguments max-height and recursive JSON formatting** `[v1.72.0]` — tool arguments now respect a compact 10-line max-height scrollable container and recursively parse stringified JSON properties into pretty-printed formatting for optimal readability.
 - **Tool result offload** `[since v1.0]` — bulky tool outputs (large file

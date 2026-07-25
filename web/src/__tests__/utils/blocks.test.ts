@@ -8,6 +8,7 @@ import {
   addTool,
   completeTool,
   appendToolOutput,
+  LIVE_OUTPUT_MAX_LINES,
   startCompaction,
   appendCompactionContent,
   endCompaction,
@@ -332,35 +333,35 @@ describe("appendToolOutput", () => {
     const output = result[0].toolOutput || "";
     expect(output).toContain("... [truncated live output] ...");
     const outputLines = output.split("\n");
-    // Should be 1 header line + 40 lines of output
-    expect(outputLines.length).toBe(41);
-    expect(outputLines[1]).toBe("line 100");
-    expect(outputLines[40]).toBe("line 139");
+    // Should be 1 header line + LIVE_OUTPUT_MAX_LINES lines of output
+    expect(outputLines.length).toBe(LIVE_OUTPUT_MAX_LINES + 1);
+    expect(outputLines[1]).toBe(`line ${140 - LIVE_OUTPUT_MAX_LINES}`);
+    expect(outputLines[LIVE_OUTPUT_MAX_LINES]).toBe("line 139");
   });
 
-  it("does not truncate when exactly at the 40-line boundary", () => {
+  it("does not truncate when exactly at the retained-line boundary", () => {
     const blocks: ContentBlock[] = [
       { id: "t1", type: "tool", content: "", toolName: "shell", toolDone: false, toolCallId: "tc1", toolOutput: "" },
     ];
-    // 40 lines (39 newlines) — must NOT trigger truncation (lines.length > 40 is false).
-    const lines = Array.from({ length: 40 }, (_, i) => `line ${i}`).join("\n");
+    // N lines (N-1 newlines) — must NOT trigger truncation.
+    const lines = Array.from({ length: LIVE_OUTPUT_MAX_LINES }, (_, i) => `line ${i}`).join("\n");
     const result = appendToolOutput(blocks, "shell", "tc1", lines);
     expect(result[0].toolOutput).toBe(lines);
     expect(result[0].toolOutput).not.toContain("truncated");
   });
 
-  it("truncates at exactly 41 lines (one over the boundary)", () => {
+  it("truncates at one line over the boundary", () => {
     const blocks: ContentBlock[] = [
       { id: "t1", type: "tool", content: "", toolName: "shell", toolDone: false, toolCallId: "tc1", toolOutput: "" },
     ];
-    const lines = Array.from({ length: 41 }, (_, i) => `line ${i}`).join("\n");
+    const lines = Array.from({ length: LIVE_OUTPUT_MAX_LINES + 1 }, (_, i) => `line ${i}`).join("\n");
     const result = appendToolOutput(blocks, "shell", "tc1", lines);
     const output = result[0].toolOutput || "";
     expect(output).toContain("... [truncated live output] ...");
     const outputLines = output.split("\n");
-    expect(outputLines.length).toBe(41); // header + 40 retained lines
+    expect(outputLines.length).toBe(LIVE_OUTPUT_MAX_LINES + 1); // header + retained lines
     expect(outputLines[1]).toBe("line 1");
-    expect(outputLines[40]).toBe("line 40");
+    expect(outputLines[LIVE_OUTPUT_MAX_LINES]).toBe(`line ${LIVE_OUTPUT_MAX_LINES}`);
   });
 
   it("handles output with no newlines at all", () => {

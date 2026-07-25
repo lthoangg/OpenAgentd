@@ -1468,6 +1468,71 @@ class TestSandboxCommandScan:
         assert max(map(len, emitted_chunks)) <= 24_100
         assert "line-19999" in emitted_chunks[-1]
 
+    def test_live_output_window_trims_to_rendered_tail(self):
+        """The live-output window keeps the tail and reports whether it cut."""
+        window = shell_module._live_output_window
+        max_lines = shell_module._LIVE_OUTPUT_MAX_LINES
+
+        # Under the cap — returned untouched, not marked as cut.
+        small = "".join(f"line {i}\n" for i in range(max_lines))
+        assert window(small) == (small, False)
+
+        # Over the cap — only the trailing lines survive.
+        big = "".join(f"line {i}\n" for i in range(max_lines * 5))
+        trimmed, cut = window(big)
+        assert cut is True
+        assert trimmed.count("\n") <= max_lines
+        assert trimmed.endswith(f"line {max_lines * 5 - 1}\n")
+        assert "line 0\n" not in trimmed
+
+        # A single pathologically long line has no newline to cut on, so the
+        # char cap must still bound it.
+        long_line = "x" * (shell_module._LIVE_OUTPUT_MAX_CHARS + 5_000)
+        trimmed, cut = window(long_line)
+        assert cut is True
+        assert len(trimmed) == shell_module._LIVE_OUTPUT_MAX_CHARS
+
+        # Empty input must not be reported as truncated.
+        assert window("") == ("", False)
+
+    @pytest.mark.asyncio
+    async def test_shell_streaming_payload_matches_rendered_window(
+        self, sandbox_workspace, monkeypatch
+    ):
+        """A noisy command must not ship output the UI immediately discards.
+
+        The chat UI only ever renders the trailing
+        ``_LIVE_OUTPUT_MAX_LINES`` lines of live tool output, so streaming a
+        24 KB / ~290-line payload per flush burns SSE bandwidth, an immer
+        transaction, and a React re-render on ~87% of bytes that are dropped
+        on arrival. Cap each delta to the window the client actually paints.
+        """
+        monkeypatch.setattr(
+            "app.agent.tools.builtin.shell._shell_mod.acceptable", lambda: "/bin/sh"
+        )
+        emitted_chunks: list[str] = []
+
+        async def capture(text: str) -> None:
+            emitted_chunks.append(text)
+
+        result = await _shell(
+            command="i=0; while [ $i -lt 20000 ]; do echo line-$i; i=$((i+1)); done",
+            timeout_seconds=10,
+            _tool_output=capture,
+        )
+
+        assert "[Succeeded]" in result
+        assert emitted_chunks
+        # The last line must always survive — the tail is what users watch.
+        assert "line-19999" in emitted_chunks[-1]
+        # No delta may exceed the rendered line window (plus the truncation
+        # marker), so the payload matches what the client keeps.
+        for chunk in emitted_chunks:
+            assert chunk.count("\n") <= shell_module._LIVE_OUTPUT_MAX_LINES + 1, (
+                f"delta carried {chunk.count(chr(10))} lines, "
+                f"UI renders only {shell_module._LIVE_OUTPUT_MAX_LINES}"
+            )
+
     @pytest.mark.asyncio
     async def test_shell_streaming_immediate_flush_on_completion(
         self, sandbox_workspace, monkeypatch

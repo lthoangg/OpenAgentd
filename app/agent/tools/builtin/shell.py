@@ -180,6 +180,19 @@ _OUTPUT_MAX_BYTES = 131_072  # 128 KB (matches opencode Truncate.MAX_BYTES)
 # Limit live-output UI churn for noisy commands while keeping progress responsive.
 _OUTPUT_STREAM_INTERVAL_SECONDS = 0.25
 _LIVE_OUTPUT_MAX_CHARS = 24_000
+# The chat UI keeps only the trailing N lines of live tool output (see
+# ``LIVE_OUTPUT_MAX_LINES`` in ``web/src/utils/blocks.ts``). Streaming more
+# than that spends SSE bandwidth, an immer transaction, and a React
+# re-render on bytes the client drops on arrival — a ``bun test`` run emits
+# ~290 lines per flush.
+#
+# 10 lines is deliberate: the live-output ``<pre>`` is capped at ``max-h-40``
+# (~7 lines) on mobile and ``sm:max-h-64`` (~12 lines) on desktop, so this
+# fills the visible box without paying for invisible scrollback. The
+# complete output still reaches the user in the final ``tool_end`` result
+# (300 lines / 128 KB inline, plus the spill file for anything larger).
+# Keep this in sync with the frontend constant.
+_LIVE_OUTPUT_MAX_LINES = 10
 _LIVE_OUTPUT_TRUNCATED = "... [truncated live output] ...\n"
 _WINDOWS_CREATE_NEW_PROCESS_GROUP = 0x0000_0200
 _WINDOWS_CREATE_NO_WINDOW = 0x0800_0000
@@ -738,6 +751,32 @@ def _resolve_workdir(workdir: str | None) -> Path:
     return sandbox.validate_path(os.path.expanduser(workdir))
 
 
+def _live_output_window(text: str) -> tuple[str, bool]:
+    """Trim *text* to the trailing window the chat UI actually renders.
+
+    Returns ``(text, was_cut)``. The tail is preserved because that is what
+    a user watching a running command reads; the head is what the client
+    would discard on arrival anyway.
+    """
+    cut = False
+    # Line cap first — it is the binding constraint for line-oriented output
+    # (test runners, build logs) and is far cheaper than slicing 24 KB.
+    if text.count("\n") > _LIVE_OUTPUT_MAX_LINES:
+        index = len(text)
+        for _ in range(_LIVE_OUTPUT_MAX_LINES):
+            index = text.rfind("\n", 0, index)
+            if index == -1:
+                break
+        if index != -1:
+            text = text[index + 1 :]
+            cut = True
+    # Char cap still applies: a single line can be arbitrarily long.
+    if len(text) > _LIVE_OUTPUT_MAX_CHARS:
+        text = text[-_LIVE_OUTPUT_MAX_CHARS:]
+        cut = True
+    return text, cut
+
+
 async def _emit_tool_output(
     callback: Callable[[str], Awaitable[None]] | None,
     text: str,
@@ -749,9 +788,9 @@ async def _emit_tool_output(
     text = _strip_ansi(text)
     if not text:
         return
-    if len(text) > _LIVE_OUTPUT_MAX_CHARS:
-        tail_chars = _LIVE_OUTPUT_MAX_CHARS - len(_LIVE_OUTPUT_TRUNCATED)
-        text = _LIVE_OUTPUT_TRUNCATED + text[-tail_chars:]
+    text, cut = _live_output_window(text)
+    if cut:
+        text = _LIVE_OUTPUT_TRUNCATED + text
     try:
         await callback(text)
     except Exception as exc:
@@ -938,10 +977,10 @@ async def _shell(
             nonlocal pending_chars
             pending.append(chunk.decode("utf-8", errors="replace"))
             pending_chars += len(pending[-1])
-            # The UI only ever renders the trailing _LIVE_OUTPUT_MAX_CHARS;
+            # The UI only ever renders the trailing _LIVE_OUTPUT_MAX_LINES;
             # compact torrential output between flushes instead of hoarding it.
             if pending_chars > 2 * _LIVE_OUTPUT_MAX_CHARS:
-                kept = "".join(pending)[-_LIVE_OUTPUT_MAX_CHARS:]
+                kept, _ = _live_output_window("".join(pending))
                 pending[:] = [_LIVE_OUTPUT_TRUNCATED, kept]
                 pending_chars = len(_LIVE_OUTPUT_TRUNCATED) + len(kept)
 

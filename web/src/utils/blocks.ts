@@ -219,6 +219,18 @@ export function completeTool(
   return result
 }
 
+/** Trailing lines of live tool output retained for display. The live-output
+ *  `<pre>` is capped at `max-h-40` (~7 lines) on mobile and `sm:max-h-64`
+ *  (~12 lines) on desktop, so keeping more only buys invisible scrollback at
+ *  the cost of a larger string to diff and repaint on every streamed delta.
+ *  The full output arrives in `toolResult` when the tool completes.
+ *  Mirrors `_LIVE_OUTPUT_MAX_LINES` in `app/agent/tools/builtin/shell.py`. */
+export const LIVE_OUTPUT_MAX_LINES = 10
+
+/** Max chars of live output retained — guards a single pathologically long
+ *  line, which the line cap alone cannot bound. */
+const LIVE_OUTPUT_MAX_CHARS = 24_000
+
 /** Count newlines in `s`, stopping as soon as `limit` is reached. Used to
  *  cheaply answer "does this have more than N lines?" without allocating a
  *  full `split('\n')` array of the (potentially many-KB) live-output
@@ -263,12 +275,13 @@ export function appendToolOutput(
         (!toolCallId && block.toolName === name && !block.toolDone))
     ) {
       let newOutput = `${block.toolOutput ?? ''}${text}`
-      // lines.length > 40  <=>  newlines_count + 1 > 40  <=>  >= 40 newlines
-      if (countNewlinesAtLeast(newOutput, 40) >= 40) {
-        newOutput = '... [truncated live output] ...\n' + lastNLines(newOutput, 40)
+      // lines.length > N  <=>  newlines_count + 1 > N  <=>  >= N newlines
+      if (countNewlinesAtLeast(newOutput, LIVE_OUTPUT_MAX_LINES) >= LIVE_OUTPUT_MAX_LINES) {
+        newOutput =
+          '... [truncated live output] ...\n' + lastNLines(newOutput, LIVE_OUTPUT_MAX_LINES)
       }
-      if (newOutput.length > 24_000) {
-        newOutput = `... [truncated live output] ...\n${newOutput.slice(-24_000)}`
+      if (newOutput.length > LIVE_OUTPUT_MAX_CHARS) {
+        newOutput = `... [truncated live output] ...\n${newOutput.slice(-LIVE_OUTPUT_MAX_CHARS)}`
       }
       result[i] = { ...block, toolOutput: newOutput }
       return result

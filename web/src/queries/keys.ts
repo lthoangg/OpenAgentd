@@ -12,7 +12,11 @@ export const queryKeys = {
         ['team', 'sessions', 'list', offset, limit] as const,
       detail: (id: string) => ['team', 'sessions', id] as const,
     },
-    // Workspace-files listing per session — powers the Artifacts panel.
+    // Workspace-files listing per session — powers the Artifacts panel *and*
+    // the InputBar @-mention picker. Both go through the shared query options
+    // in ``queries/workspace-files.ts``; do not add a second key for the same
+    // endpoint, or the ``workspace_files`` invalidation will only reach one of
+    // them and the expensive directory walk will run twice.
     files: (sessionId: string) => ['team', 'files', sessionId] as const,
   },
   // Coding-mode workspace sidebar — keyed by the absolute workspace path
@@ -33,12 +37,6 @@ export const queryKeys = {
       ['coding-workspace-history', workspace, limit, allBranches] as const,
     commitDiff: (workspace: string, sha: string) =>
       ['coding-workspace-commit-diff', workspace, sha] as const,
-  },
-  // Normal-session file references for the input bar's @-mention picker.
-  // Coding-mode references use coding.files(workspace), shared with all other
-  // workspace file consumers.
-  fileRefs: {
-    session: (sessionId: string) => ['file-refs', 'session', sessionId] as const,
   },
   quote: () => ['quote'] as const,
   agentFiles: {

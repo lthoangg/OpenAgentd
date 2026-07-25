@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
-import { getCodingWorkspaceGitDiff, getCodingWorkspaceStatus, listCodingWorkspaceFiles, getCodingWorkspaceGitHistory, getCodingWorkspaceCommitDiff, discardCodingWorkspaceFile, undoCodingWorkspaceLastCommit, revertCodingWorkspaceCommit } from '@/api/client'
+import { getCodingWorkspaceGitDiff, getCodingWorkspaceStatus, getCodingWorkspaceGitHistory, getCodingWorkspaceCommitDiff, discardCodingWorkspaceFile, undoCodingWorkspaceLastCommit, revertCodingWorkspaceCommit } from '@/api/client'
 import { CodingFilePreviewContent, DiffPreview, CopyButton } from './CodingFileViewerPanel'
 import { TerminalView } from './Terminal/TerminalView'
 import { TerminalTabButton } from './Terminal/TerminalTabButton'
@@ -17,6 +17,10 @@ import { softHapticFeedback } from '@/lib/haptics'
 import { downloadCodingWorkspaceFile } from '@/lib/coding-workspace-download'
 import { cn } from '@/lib/utils'
 import { queryKeys } from '@/queries'
+import {
+  WORKSPACE_TREE_STALE_MS,
+  codingWorkspaceFilesQueryOptions,
+} from '@/queries/workspace-files'
 
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { useResizableWidth } from '@/hooks/use-resizable-width'
@@ -330,10 +334,11 @@ export function CodingWorkspacePanel({
   // very first request (key 0) is still honored.
   const handledFileOpenKeyRef = useRef(-1)
   const files = useQuery({
-    queryKey: queryKeys.coding.files(workspace),
-    queryFn: () => listCodingWorkspaceFiles(workspace),
+    // Shared cache entry with the @-mention picker and command palette —
+    // same endpoint, same payload. See ``workspace-files.ts``.
+    ...codingWorkspaceFilesQueryOptions(workspace),
     enabled: open,
-    staleTime: 5_000,
+    staleTime: WORKSPACE_TREE_STALE_MS,
   })
   const diff = useQuery({
     queryKey: queryKeys.coding.diff(workspace),

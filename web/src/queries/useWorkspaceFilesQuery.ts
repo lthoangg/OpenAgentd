@@ -6,16 +6,16 @@
  * panel reflects changes as soon as a turn finishes producing them.
  */
 import { useQuery } from '@tanstack/react-query'
-import { listWorkspaceFiles } from '@/api/client'
-import { queryKeys } from './keys'
+import { WORKSPACE_TREE_STALE_MS, workspaceFilesQueryOptions } from './workspace-files'
 
 export function useWorkspaceFilesQuery(sessionId: string | null | undefined) {
   return useQuery({
-    queryKey: queryKeys.team.files(sessionId ?? ''),
-    queryFn: () => listWorkspaceFiles(sessionId as string),
+    // Shared cache entry with the InputBar @-mention picker — same endpoint,
+    // same payload. See ``workspace-files.ts``.
+    ...workspaceFilesQueryOptions(sessionId ?? ''),
     enabled: !!sessionId,
     // Short stale time — the panel is visible only on demand and we also
     // invalidate explicitly from the team store, so a small window is fine.
-    staleTime: 5_000,
+    staleTime: WORKSPACE_TREE_STALE_MS,
   })
 }

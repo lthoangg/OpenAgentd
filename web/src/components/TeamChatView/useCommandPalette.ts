@@ -12,8 +12,10 @@ import { useCallback } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import type { useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import { listCodingWorkspaceFiles } from '@/api/client'
-import { queryKeys } from '@/queries/keys'
+import {
+  WORKSPACE_FILES_STALE_MS,
+  codingWorkspaceFilesQueryOptions,
+} from '@/queries/workspace-files'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import type { WorkspaceFileInfo } from '@/api/types'
@@ -100,14 +102,12 @@ export function useCommandPalette({
   // only). We reuse the same query key as the @-mention picker so the two
   // share a cache entry — no extra network request when both are warm.
   const isCodingPaletteOpen = mode === 'coding' && Boolean(workspace) && paletteOpen
-  const { data: paletteFilesData } = useQuery<{ files: WorkspaceFileInfo[] }>({
-    queryKey: queryKeys.coding.files(workspace ?? ''),
-    queryFn: async () => {
-      const res = await listCodingWorkspaceFiles(workspace as string)
-      return { files: res.files }
-    },
+  const { data: paletteFilesData } = useQuery({
+    // Must cache the *full* response, not a narrowed { files } object — the
+    // coding file tree reads the same entry. See ``workspace-files.ts``.
+    ...codingWorkspaceFilesQueryOptions(workspace ?? ''),
     enabled: isCodingPaletteOpen,
-    staleTime: 30_000,
+    staleTime: WORKSPACE_FILES_STALE_MS,
   })
 
   const paletteWorkspaceFiles = isCodingPaletteOpen ? (paletteFilesData?.files ?? []) : []

@@ -9,20 +9,34 @@
  * are derived client-side from the path prefixes so the user can also reference
  * directories with `@some/dir/`.
  *
+ * The query shares its cache entry with the workspace file trees in both modes
+ * (see ``queries/workspace-files.ts``) — the listing is an expensive recursive
+ * walk, so the picker must never fetch its own copy, and sharing the key is
+ * what makes the ``workspace_files`` / ``coding_workspace`` invalidations
+ * refresh the picker after the agent writes files.
+ *
  * The query is gated on input-bar activation (``enabled``) so we don't walk the
  * workspace on every chat-view mount — the picker only fetches when the user
  * actually opens the composer or types ``@``.
  */
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { listCodingWorkspaceFiles, listWorkspaceFiles } from '@/api/client'
 import type { WorkspaceFileInfo } from '@/api/types'
 import type { FileRef } from '@/components/InputBar.mentions'
-import { queryKeys } from './keys'
-
-// Both endpoints share the same row shape but differ on the envelope. We only
-// care about ``files`` here, so normalise to that.
-interface FileListing { files: WorkspaceFileInfo[] }
+/**
+ * The picker only reads ``files``, and the two endpoints' responses differ in
+ * their other fields. Typing the reader against this common supertype lets one
+ * ``useQuery`` call serve both modes; the value written to the cache is still
+ * the full, unmodified response object (see ``workspace-files.ts``).
+ */
+interface WorkspaceFileListing {
+  files: WorkspaceFileInfo[]
+}
+import {
+  WORKSPACE_FILES_STALE_MS,
+  codingWorkspaceFilesQueryOptions,
+  workspaceFilesQueryOptions,
+} from './workspace-files'
 
 interface UseFileRefsQueryArgs {
   mode: 'normal' | 'coding'
@@ -60,27 +74,25 @@ export function useFileRefsQuery({
   const isCoding = mode === 'coding'
   const hasWorkspace = isCoding ? Boolean(workspace) : Boolean(sessionId)
 
-  const query = useQuery<FileListing>({
-    queryKey: isCoding
-      ? queryKeys.coding.files(workspace ?? '')
-      : queryKeys.fileRefs.session(sessionId ?? ''),
-    queryFn: async (): Promise<FileListing> => {
-      const res = isCoding
-        ? await listCodingWorkspaceFiles(workspace as string)
-        : await listWorkspaceFiles(sessionId as string)
-      return { files: res.files }
-    },
+  const options = isCoding
+    ? codingWorkspaceFilesQueryOptions(workspace ?? '')
+    : workspaceFilesQueryOptions(sessionId ?? '')
+
+  const query = useQuery<WorkspaceFileListing, Error, WorkspaceFileListing, readonly unknown[]>({
+    queryKey: options.queryKey,
+    queryFn: options.queryFn,
     enabled: enabled && hasWorkspace,
-    // Files change frequently while an agent writes them. 30s is a comfortable
-    // window for casual @-mention use; users can re-fetch by closing/reopening
-    // the menu (refetchOnMount runs when the query is re-enabled).
-    staleTime: 30_000,
+    // Files change frequently while an agent writes them, but the cache-
+    // invalidation bridge refreshes this entry on every file-mutating tool_end
+    // and after /undo + /redo, so time-based staleness only has to cover
+    // out-of-band edits (the user's own editor).
+    staleTime: WORKSPACE_FILES_STALE_MS,
   })
 
   // Build the combined files+dirs list once per query response. Files appear
   // first so the most common case (referencing a file) is at the top.
   const refs = useMemo<FileRef[]>(() => {
-    const files = query.data?.files ?? []
+    const files: WorkspaceFileInfo[] = query.data?.files ?? []
     const fileRefs: FileRef[] = files.map((f) => ({
       path: f.path,
       name: f.name,

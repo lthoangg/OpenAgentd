@@ -2222,6 +2222,62 @@ describe("loadSession", () => {
     const allBlocks = [...stream.blocks, ...stream.currentBlocks]
     expect(allBlocks.some((b) => b.type === "user" && b.content === "second message")).toBe(true)
   })
+
+  it("reconciles an optimistic user bubble already present in history without duplicating it during streaming", async () => {
+    useTeamStore.setState({
+      sessionId: "sess-1",
+      leadName: "lead",
+      agentNames: ["lead"],
+      agentStreams: { lead: makeStream() },
+    })
+    mockPostTeamChat.mockImplementation(() =>
+      Promise.resolve({ status: "accepted", session_id: "sess-1" }),
+    )
+
+    await useTeamStore.getState().sendMessage("only show me once")
+    useTeamStore.getState()._handleSSEEvent("message", {
+      agent: "lead",
+      text: "partial response",
+    })
+
+    const optimisticUser = useTeamStore.getState().agentStreams.lead.currentBlocks.find(
+      (block) => block.type === "user",
+    )
+    expect(optimisticUser?.timestamp).toBeDefined()
+
+    mockTeamHistory.mockImplementation(() =>
+      Promise.resolve({
+        lead: {
+          id: "lead-sess",
+          agent_name: "lead",
+          title: null,
+          created_at: null,
+          updated_at: null,
+          sub_sessions: [],
+          running: true,
+          messages: [
+            makeMessageResponse({
+              id: "persisted-user-message",
+              content: "only show me once",
+              created_at: new Date(optimisticUser!.timestamp!.getTime() + 1).toISOString(),
+            }),
+          ],
+        },
+        members: [],
+        has_more: false,
+        next_cursor: null,
+      }),
+    )
+
+    await useTeamStore.getState().loadSession("sess-1")
+
+    const stream = useTeamStore.getState().agentStreams.lead
+    const visibleUserBlocks = [...stream.blocks, ...stream.currentBlocks].filter(
+      (block) => block.type === "user" && !block.extra?.from_agent,
+    )
+    expect(visibleUserBlocks).toHaveLength(1)
+    expect(stream.currentBlocks.some((block) => block.type === "text" && block.content === "partial response")).toBe(true)
+  })
 })
 
 // ── loadOlderMessages ─────────────────────────────────────────────────────────

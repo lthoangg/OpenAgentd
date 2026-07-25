@@ -76,6 +76,24 @@ function hasLiveContent(stream: AgentStream | undefined, isWorking: boolean, sin
   return stream.currentBlocks.some((block) => (block.timestamp?.getTime() ?? 0) >= sinceMs)
 }
 
+function removePersistedOptimisticUserBlocks(stream: AgentStream) {
+  const persistedUsers = stream.blocks.filter(
+    (block) => block.type === 'user' && !block.extra?.from_agent,
+  )
+  if (persistedUsers.length === 0) return
+
+  stream.currentBlocks = stream.currentBlocks.filter((block) => {
+    if (block.type !== 'user' || block.extra?.from_agent) return true
+    const optimisticTime = block.timestamp?.getTime()
+    if (optimisticTime === undefined) return true
+    return !persistedUsers.some(
+      (persisted) =>
+        persisted.content === block.content &&
+        (persisted.timestamp?.getTime() ?? 0) >= optimisticTime,
+    )
+  })
+}
+
 export function resetSessionState(
   state: TeamStore,
   options: {
@@ -356,6 +374,7 @@ export const createSessionSlice: StateCreator<
             boundaryId,
             boundaryContent: boundaryMsg?.content,
           })
+          if (leadHadNewerActivity) removePersistedOptimisticUserBlocks(leadStream)
           if (!leadHadNewerActivity) {
             leadStream.currentBlocks = []
             leadStream.currentText = ''

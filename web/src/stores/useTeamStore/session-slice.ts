@@ -290,9 +290,10 @@ export const createSessionSlice: StateCreator<
             if (!draft.agentStreams[agent.name]) {
               draft.agentStreams[agent.name] = createDefaultAgentStream()
             }
-            if (agent.state === 'working') {
-              draft.agentStreams[agent.name]._turnStartedAt ??= Date.now()
-            }
+            // No run state is set from here: /team/agents (which this is a
+            // projection of) carries no per-agent state, so every agent arrives
+            // as 'idle'. Live working/idle transitions come from the SSE
+            // ``agent_status`` events, which are the authoritative source.
             draft.agentStreams[agent.name].model = agent.model
           })
           historicalNames.forEach((name) => {

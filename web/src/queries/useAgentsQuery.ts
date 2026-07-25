@@ -1,13 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
-import { listTeamAgents } from '@/api/client'
-import { queryKeys } from './keys'
+import { TEAM_AGENTS_STALE_MS, teamAgentsQueryOptions } from './team-agents'
 
 /** Team mode — GET /team/agents */
 export function useTeamAgentsQuery(workspace?: string | null, enabled = true) {
   return useQuery({
-    queryKey: queryKeys.teamAgents(workspace),
-    queryFn: () => listTeamAgents(workspace),
+    // Shared cache entry with useTeamStatusQuery. See ``team-agents.ts``.
+    ...teamAgentsQueryOptions(workspace),
     enabled,
-    staleTime: 30_000,
+    staleTime: TEAM_AGENTS_STALE_MS,
   })
 }

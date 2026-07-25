@@ -410,14 +410,14 @@ describe('patchSessionTitle', () => {
     seedInfinite(client, [[makeSession('s1', 'Old')]])
     client.setQueryData(queryKeys.team.sessions.detail('s1'), makeSession('s1', 'Detail'))
     client.setQueryData(queryKeys.team.files('s1'), ['file-a.txt'])
-    client.setQueryData(queryKeys.team.status(), { lead: 'x' })
+    client.setQueryData(queryKeys.teamAgents(), { lead: 'x' })
 
     patchSessionTitle(client, 's1', 'New')
 
     expect(readInfinite(client)!.pages[0].data[0].title).toBe('New')
     expect(client.getQueryData(queryKeys.team.sessions.detail('s1'))).toEqual(makeSession('s1', 'New'))
     expect(client.getQueryData(queryKeys.team.files('s1'))).toEqual(['file-a.txt'])
-    expect(client.getQueryData(queryKeys.team.status())).toEqual({ lead: 'x' })
+    expect(client.getQueryData(queryKeys.teamAgents())).toEqual({ lead: 'x' })
   })
 })
 

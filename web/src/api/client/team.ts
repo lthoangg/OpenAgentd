@@ -145,13 +145,40 @@ export function teamStream(sessionId: string, callbacks: SSECallbacks, signal?: 
     .catch((err) => { if (err.name !== 'AbortError') callbacks.onError?.(err) })
 }
 
-export async function listTeamAgents(workspace?: string | null): Promise<TeamAgentsResponse> {
+async function fetchTeamAgents(workspace?: string | null): Promise<TeamAgentsResponse> {
   const params = new URLSearchParams()
   if (workspace) params.set('workspace', workspace)
   const query = params.toString()
   const res = await fetch(`${apiBaseUrl()}/team/agents${query ? `?${query}` : ''}`)
   if (!res.ok) await parseDetailOrThrow(res, 'listTeamAgents')
   return res.json()
+}
+
+/**
+ * In-flight requests per workspace, so concurrent callers share one round trip.
+ *
+ * `GET /team/agents` re-globs and re-parses every agent `.md` on the server for
+ * each request, and it has two independent callers that fire in the same window
+ * when a session opens: the team store's `loadTeamStatus()` (which cannot use
+ * TanStack — the store holds no TanStack imports) and the header's
+ * `useTeamAgentsQuery`. TanStack dedupes its own observers but knows nothing
+ * about the store's direct call, so the coalescing has to live here.
+ *
+ * Entries are removed as soon as the request settles: this is request
+ * coalescing, not a response cache, so it never serves stale data.
+ */
+const inFlightTeamAgents = new Map<string, Promise<TeamAgentsResponse>>()
+
+export function listTeamAgents(workspace?: string | null): Promise<TeamAgentsResponse> {
+  const key = workspace ?? ''
+  const existing = inFlightTeamAgents.get(key)
+  if (existing) return existing
+
+  const request = fetchTeamAgents(workspace).finally(() => {
+    inFlightTeamAgents.delete(key)
+  })
+  inFlightTeamAgents.set(key, request)
+  return request
 }
 
 export async function validateWorkspace(workspace: string): Promise<WorkspaceValidationResponse> {

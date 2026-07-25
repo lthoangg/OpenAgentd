@@ -85,8 +85,10 @@ export function useRegistryQuery() {
 function invalidateTeam(client: ReturnType<typeof useQueryClient>) {
   client.invalidateQueries({ queryKey: queryKeys.agentFiles.all() })
   client.invalidateQueries({ queryKey: queryKeys.agentFiles.registry() })
+  // ``agents()`` is a prefix of ``teamAgents(workspace)``, which is the single
+  // shared /team/agents entry (home-page probe + chat header) — no separate
+  // status key to invalidate.
   client.invalidateQueries({ queryKey: queryKeys.agents() })
-  client.invalidateQueries({ queryKey: queryKeys.team.status() })
 }
 
 export function useCreateAgentMutation() {

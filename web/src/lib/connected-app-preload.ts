@@ -1,14 +1,16 @@
 import type { QueryClient } from '@tanstack/react-query'
-import { getCodingWorkspaceTree, listProviders, listTeamSessions, teamStatus } from '@/api/client'
+import { getCodingWorkspaceTree, listProviders, listTeamSessions } from '@/api/client'
 import { queryKeys } from '@/queries/keys'
+import { teamAgentsQueryOptions } from '@/queries/team-agents'
 
 const SESSION_PAGE_SIZE = 20
 
 /** Warm the data shared by the Cockpit and Coding entry surfaces. */
 export function preloadConnectedApp(client: QueryClient): void {
+  // Warms the single /team/agents entry read by both the home-page team probe
+  // and the chat header. See ``queries/team-agents.ts``.
   void client.prefetchQuery({
-    queryKey: queryKeys.team.status(),
-    queryFn: () => teamStatus(),
+    ...teamAgentsQueryOptions(),
     staleTime: Infinity,
   })
   void client.prefetchQuery({

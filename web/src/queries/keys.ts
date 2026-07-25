@@ -3,7 +3,10 @@ export const queryKeys = {
   agents: () => ['agents'] as const,
   teamAgents: (workspace?: string | null) => workspace ? ['agents', 'team', workspace] as const : ['agents', 'team'] as const,
   team: {
-    status: () => ['team', 'status'] as const,
+    // NOTE: there is no separate team-status key. The home-page "is team mode
+    // available" probe projects the shared ``teamAgents`` entry with `select`
+    // (see queries/useTeamStatusQuery.ts) so both surfaces share one request to
+    // the agent-globbing /team/agents endpoint.
     sessions: {
       all: () => ['team', 'sessions'] as const,
       infinite: () => ['team', 'sessions', 'infinite'] as const,

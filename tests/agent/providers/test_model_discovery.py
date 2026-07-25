@@ -4,7 +4,11 @@ import pytest
 import respx
 from httpx import Response
 
-from app.agent.providers.model_discovery import _bedrock_models, _copilot_models
+from app.agent.providers.model_discovery import (
+    _bedrock_models,
+    _codex_models,
+    _copilot_models,
+)
 
 
 @respx.mock
@@ -154,3 +158,20 @@ async def test_copilot_models_keep_plan_restricted_models_when_plan_unknown(
     )
 
     assert await _copilot_models() == ["gpt-4.1", "gpt-4o-mini", "gpt-5.4-mini"]
+
+
+async def test_codex_models_use_the_shared_live_catalog_cache(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "app.agent.providers.codex.catalog.load_codex_catalog",
+        lambda: {
+            "models": [
+                {"slug": "gpt-5.6-sol", "context_window": 272_000},
+                {"slug": "gpt-5.6-terra", "context_window": 272_000},
+                {"context_window": 272_000},
+            ]
+        },
+    )
+
+    assert await _codex_models() == ["gpt-5.6-sol", "gpt-5.6-terra"]

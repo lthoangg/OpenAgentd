@@ -104,6 +104,31 @@ def test_builds_hook_with_model_threshold(mock_provider):
     )
 
 
+def test_build_logs_resolved_model_limits_and_threshold(mock_provider, monkeypatch):
+    import app.agent.hooks.summarization as mod
+    import app.core.runtime_settings as runtime_settings
+
+    settings = MagicMock()
+    settings.summarization.prompt_token_threshold = 20_000
+    monkeypatch.setattr(runtime_settings, "load_runtime_settings", lambda: settings)
+    log = MagicMock()
+    monkeypatch.setattr(mod, "logger", log)
+
+    result = build_summarization_hook(mock_provider, model_id="openai:gpt-realtime-2")
+
+    assert result is not None
+    log.info.assert_called_once_with(
+        "summarization_config model={} context_length={} max_input_tokens={} "
+        "auto_threshold={} custom_threshold={} effective_threshold={}",
+        "openai:gpt-realtime-2",
+        32_000,
+        None,
+        25_600,
+        20_000,
+        20_000,
+    )
+
+
 def test_zero_threshold_returns_none(mock_provider, monkeypatch):
     """The module-level threshold acts as the only kill switch."""
     import app.agent.hooks.summarization as mod

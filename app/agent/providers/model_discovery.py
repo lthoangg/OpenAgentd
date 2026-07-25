@@ -171,35 +171,10 @@ async def _copilot_models() -> list[str]:
 
 
 async def _codex_models() -> list[str]:
-    from app.agent.providers.codex.oauth import CodexOAuth
+    from app.agent.providers.codex.catalog import load_codex_catalog, model_ids
 
-    oauth = CodexOAuth.load()
-    if oauth is None:
-        return []
-    if oauth.is_expired():
-        oauth = oauth.refresh()
-    headers = {
-        "Authorization": f"Bearer {oauth.access_token.get_secret_value()}",
-        "Content-Type": "application/json",
-        "User-Agent": "openagentd/1.0.0",
-        "originator": "openagentd",
-    }
-    if oauth.account_id:
-        headers["ChatGPT-Account-Id"] = oauth.account_id
-    async with httpx.AsyncClient(timeout=TIMEOUT_S) as client:
-        response = await client.get(
-            "https://chatgpt.com/backend-api/codex/models",
-            params={"client_version": "1.0.0"},
-            headers=headers,
-        )
-        response.raise_for_status()
-    data = response.json()
-    items = data.get("models", []) if isinstance(data, dict) else []
-    return sorted(
-        str(item["slug"])
-        for item in items
-        if isinstance(item, dict) and isinstance(item.get("slug"), str)
-    )
+    data = await asyncio.to_thread(load_codex_catalog)
+    return model_ids(data)
 
 
 async def _grok_models() -> list[str]:

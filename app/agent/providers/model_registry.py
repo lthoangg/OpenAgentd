@@ -3,7 +3,8 @@
 Registry precedence is:
 
 1. cached/refreshed ``https://models.dev/api.json`` metadata;
-2. local ``{OPENAGENTD_CONFIG_DIR}/model_registry.yaml`` overrides.
+2. provider-owned runtime metadata overlays;
+3. local ``{OPENAGENTD_CONFIG_DIR}/model_registry.yaml`` overrides.
 
 Public resolver APIs stay in ``capabilities.py`` and ``model_metadata.py``; this
 module owns source loading, normalization, and merge order.
@@ -390,8 +391,11 @@ def _load_user_overlay() -> ModelRegistry:
 @lru_cache(maxsize=1)
 def load_model_registry() -> ModelRegistry:
     """Load cached/refreshed models.dev and user model metadata."""
+    from app.agent.providers.catalog import runtime_model_metadata_overlay
+
     registry: ModelRegistry = {}
     models_dev = _normalize_models_dev(_load_models_dev_data())
+    provider_overlay = runtime_model_metadata_overlay()
     overlay = _load_user_overlay()
 
     for source in (models_dev, overlay):
@@ -402,9 +406,17 @@ def load_model_registry() -> ModelRegistry:
             for key, value in source.items():
                 registry[key] = _deep_merge(registry.get(key, {}), value)
 
+    # Provider-owned runtime metadata overrides cross-provider aliases, while
+    # explicit user entries remain the final authority.
+    for key, value in provider_overlay.items():
+        registry[key] = _deep_merge(registry.get(key, {}), value)
+    for key, value in overlay.items():
+        registry[key] = _deep_merge(registry.get(key, {}), value)
+
     logger.debug(
-        "model registry loaded models_dev={} overlay={} final={}",
+        "model registry loaded models_dev={} provider_overlay={} overlay={} final={}",
         len(models_dev),
+        len(provider_overlay),
         len(overlay),
         len(registry),
     )
@@ -422,8 +434,11 @@ def clear_model_registry_caches() -> None:
 
 def refresh_model_registry(*, force: bool = True) -> None:
     """Refresh the models.dev cache and clear memory caches."""
+    from app.agent.providers.catalog import refresh_runtime_model_metadata
+
     try:
         _load_models_dev_data(force=force)
+        refresh_runtime_model_metadata(force=force)
     except Exception as exc:
         logger.warning("failed to refresh model registry ({})", exc)
     finally:

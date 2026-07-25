@@ -12,7 +12,7 @@ frontend consumes it as JSON.
 
 from __future__ import annotations
 
-from typing import Literal, TypedDict
+from typing import Any, Literal, TypedDict
 
 from app.agent.providers.plugin_api import credential_map
 
@@ -295,6 +295,23 @@ def find(provider_id: str) -> ProviderEntry | None:
         if entry["id"] == provider_id:
             return entry
     return None
+
+
+def runtime_model_metadata_overlay() -> dict[str, dict[str, Any]]:
+    """Return provider-owned metadata that overrides shared catalog aliases."""
+    from app.agent.providers.codex.catalog import (
+        cached_codex_catalog,
+        model_registry_overlay,
+    )
+
+    return model_registry_overlay(cached_codex_catalog())
+
+
+def refresh_runtime_model_metadata(*, force: bool = True) -> None:
+    """Refresh provider-owned runtime model metadata."""
+    from app.agent.providers.codex.catalog import load_codex_catalog
+
+    load_codex_catalog(force=force)
 
 
 # Exported so provider configuration surfaces share the same env-var mapping.

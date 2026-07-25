@@ -401,13 +401,24 @@ def build_summarization_hook(
     if limits.max_completion_tokens is not None:
         max_token_length = min(DEFAULT_MAX_TOKEN_LENGTH, limits.max_completion_tokens)
 
+    auto_threshold = prompt_token_threshold_for_model(model_id)
+    effective_threshold = resolve_prompt_token_threshold(model_id, custom_threshold)
+    logger.info(
+        "summarization_config model={} context_length={} max_input_tokens={} "
+        "auto_threshold={} custom_threshold={} effective_threshold={}",
+        model_id,
+        limits.context_length,
+        limits.max_input_tokens,
+        auto_threshold,
+        custom_threshold,
+        effective_threshold,
+    )
+
     return SummarizationHook(
         default_provider,
         summary_prompt=prompt_for_mode(mode),
         model_id=model_id,
-        prompt_token_threshold=resolve_prompt_token_threshold(
-            model_id, custom_threshold
-        ),
+        prompt_token_threshold=effective_threshold,
         keep_last_assistants=keep_last_for_mode(mode),
         max_token_length=max_token_length,
         support_interrupt=support_interrupt,

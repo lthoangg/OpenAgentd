@@ -395,6 +395,57 @@ def test_provider_owned_model_registry_aliases(
     assert get_model_limits("runtime:renamed-live").context_length == 666000
 
 
+def test_codex_catalog_limits_override_openai_metadata_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        model_registry.settings, "OPENAGENTD_CACHE_DIR", str(tmp_path / "cache")
+    )
+    monkeypatch.setattr(
+        model_registry.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path / "config")
+    )
+    monkeypatch.setattr(
+        model_registry.settings, "OPENAGENTD_MODEL_REGISTRY_REFRESH", True
+    )
+    monkeypatch.setattr(
+        model_registry,
+        "_fetch_models_dev",
+        lambda: {
+            "openai": {
+                "id": "openai",
+                "models": {
+                    "gpt-live": {
+                        "id": "gpt-live",
+                        "limit": {
+                            "context": 1_050_000,
+                            "input": 922_000,
+                            "output": 128_000,
+                        },
+                    }
+                },
+            }
+        },
+    )
+    monkeypatch.setattr(
+        "app.agent.providers.codex.catalog.cached_codex_catalog",
+        lambda: {
+            "models": [
+                {
+                    "slug": "gpt-live",
+                    "context_window": 272_000,
+                    "max_context_window": 272_000,
+                    "effective_context_window_percent": 95,
+                }
+            ]
+        },
+    )
+
+    limits = get_model_limits("codex:gpt-live")
+    assert limits.context_length == 272_000
+    assert limits.max_input_tokens == 258_400
+    assert limits.max_completion_tokens == 128_000
+
+
 def test_provider_aliases_are_ignored_when_plugins_are_excluded(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

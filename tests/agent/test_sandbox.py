@@ -154,6 +154,71 @@ def test_state_error_logs_under_denied_root_allowed(tmp_path):
     assert sandbox.validate_path(str(log_path)) == log_path
 
 
+def test_state_otel_spans_under_denied_root_allowed(tmp_path):
+    """OTEL span rollups are the agent's own telemetry — readable.
+
+    The ``oad/debug-prod`` skill instructs the agent to query
+    ``{STATE_DIR}/otel/spans/*.jsonl`` directly, so the carve-out has to
+    cover telemetry as well as logs.
+    """
+    sandbox = SandboxConfig(
+        workspace=str(tmp_path / "ws"),
+        denied_roots=[Path(settings.OPENAGENTD_STATE_DIR).resolve()],
+        denied_patterns=[],
+    )
+    span_path = (
+        Path(settings.OPENAGENTD_STATE_DIR) / "otel" / "spans" / "2026-07-25-04.jsonl"
+    ).resolve()
+
+    assert sandbox.validate_path(str(span_path)) == span_path
+
+
+def test_state_otel_metrics_under_denied_root_allowed(tmp_path):
+    sandbox = SandboxConfig(
+        workspace=str(tmp_path / "ws"),
+        denied_roots=[Path(settings.OPENAGENTD_STATE_DIR).resolve()],
+        denied_patterns=[],
+    )
+    metrics_path = (
+        Path(settings.OPENAGENTD_STATE_DIR) / "otel" / "metrics" / "2026-07-25.jsonl"
+    ).resolve()
+
+    assert sandbox.validate_path(str(metrics_path)) == metrics_path
+
+
+def test_state_telemetry_under_denied_root_allowed(tmp_path):
+    """Per-turn context dumps are self-diagnostics — readable.
+
+    ``TelemetryHook`` writes ``{STATE_DIR}/telemetry/<sid>/<msg_id>.jsonl``
+    precisely so context-window / summarization behaviour can be inspected.
+    """
+    sandbox = SandboxConfig(
+        workspace=str(tmp_path / "ws"),
+        denied_roots=[Path(settings.OPENAGENTD_STATE_DIR).resolve()],
+        denied_patterns=[],
+    )
+    dump_path = (
+        Path(settings.OPENAGENTD_STATE_DIR) / "telemetry" / "sid" / "msg.jsonl"
+    ).resolve()
+
+    assert sandbox.validate_path(str(dump_path)) == dump_path
+
+
+def test_state_snapshot_still_rejected(tmp_path):
+    """Undo/redo snapshot repos stay denied — writes there corrupt history."""
+    sandbox = SandboxConfig(
+        workspace=str(tmp_path / "ws"),
+        denied_roots=[Path(settings.OPENAGENTD_STATE_DIR).resolve()],
+        denied_patterns=[],
+    )
+
+    snapshot_path = (
+        Path(settings.OPENAGENTD_STATE_DIR) / "snapshot" / "some-session"
+    ).resolve()
+    with pytest.raises(PermissionError, match="denied sandbox root"):
+        sandbox.validate_path(str(snapshot_path))
+
+
 def test_state_non_log_paths_still_rejected(tmp_path):
     sandbox = SandboxConfig(
         workspace=str(tmp_path / "ws"),

@@ -207,20 +207,50 @@ def test_no_patterns_means_no_match(tmp_path: Path) -> None:
     assert sandbox.check_command("cat /etc/passwd") is None
 
 
+# NOTE: denied roots must be passed **resolved**, exactly as
+# ``SandboxConfig.__init__`` builds its defaults. ``OPENAGENTD_STATE_DIR`` is a
+# *relative* path under pytest (see pytest.ini), and ``_path_is_under`` compares
+# via ``Path.relative_to`` — a relative denied root can never match the absolute
+# path being scanned, so passing it unresolved makes these assertions vacuous.
 def test_state_logs_are_exempt_from_denied_roots(tmp_path: Path) -> None:
-    logs_root = Path(settings.OPENAGENTD_STATE_DIR).resolve() / "logs"
-    log_path = logs_root / "app" / "app.log"
-    sandbox = _make(tmp_path, denied_roots=[Path(settings.OPENAGENTD_STATE_DIR)])
+    state_root = Path(settings.OPENAGENTD_STATE_DIR).resolve()
+    log_path = state_root / "logs" / "app" / "app.log"
+    sandbox = _make(tmp_path, denied_roots=[state_root])
 
     assert sandbox.check_command(f"tail -n 220 {log_path}") is None
 
 
 def test_state_error_logs_are_exempt_from_denied_roots(tmp_path: Path) -> None:
-    logs_root = Path(settings.OPENAGENTD_STATE_DIR).resolve() / "logs"
-    log_path = logs_root / "app" / "app-error.log"
-    sandbox = _make(tmp_path, denied_roots=[Path(settings.OPENAGENTD_STATE_DIR)])
+    state_root = Path(settings.OPENAGENTD_STATE_DIR).resolve()
+    log_path = state_root / "logs" / "app" / "app-error.log"
+    sandbox = _make(tmp_path, denied_roots=[state_root])
 
     assert sandbox.check_command(f"tail -n 220 {log_path}") is None
+
+
+def test_state_otel_is_exempt_from_denied_roots(tmp_path: Path) -> None:
+    """``query_otel.py``-style commands against the telemetry dir must pass."""
+    state_root = Path(settings.OPENAGENTD_STATE_DIR).resolve()
+    spans_dir = state_root / "otel" / "spans"
+    sandbox = _make(tmp_path, denied_roots=[state_root])
+
+    assert sandbox.check_command(f"ls -la {spans_dir}") is None
+
+
+def test_state_telemetry_is_exempt_from_denied_roots(tmp_path: Path) -> None:
+    state_root = Path(settings.OPENAGENTD_STATE_DIR).resolve()
+    dump_path = state_root / "telemetry" / "sid" / "msg.jsonl"
+    sandbox = _make(tmp_path, denied_roots=[state_root])
+
+    assert sandbox.check_command(f"cat {dump_path}") is None
+
+
+def test_state_snapshot_remains_denied(tmp_path: Path) -> None:
+    state_root = Path(settings.OPENAGENTD_STATE_DIR).resolve()
+    sandbox = _make(tmp_path, denied_roots=[state_root])
+
+    hit = sandbox.check_command(f"rm -rf {state_root / 'snapshot' / 'sid'}")
+    assert hit is not None
 
 
 def test_other_state_paths_remain_denied(tmp_path: Path) -> None:

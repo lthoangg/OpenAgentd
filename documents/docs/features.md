@@ -729,6 +729,13 @@ Single-user trust model. The host is trusted. The operator is the user.
   in `sandbox.yaml`. User-defined sandbox globs are enforced inside the active
   workspace too, not only outside it `[v1.74.0]`. Symlinks are rejected only
   when targeting a denied root. Tilde paths are always rejected.
+- **Self-diagnostic carve-outs** `[v1.120.4]` — agents can read their own
+  runtime diagnostics inside the denied state root: `{STATE_DIR}/logs`,
+  `{STATE_DIR}/otel` (span/metric rollups), and `{STATE_DIR}/telemetry`
+  (per-turn context-window dumps), plus the current session's own artifact dir.
+  Credentials (`OPENAGENTD_CACHE_DIR`), the SQLite DB, undo/redo snapshots, and
+  other sessions' artifacts stay denied. This is what makes the
+  `oad/debug-prod` log/telemetry workflow usable without disabling the sandbox.
 - **Permission system: allow / deny / ask** `[since v1.0]` — wildcard rule
   matching per tool. Auto-allow, blocking on user reply, or persistent rules.
 - **Shell command pre-scan** `[since v1.0]` — best-effort path-token scan

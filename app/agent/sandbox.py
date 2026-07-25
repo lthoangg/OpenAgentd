@@ -8,6 +8,15 @@ By default the denied roots are:
 - ``OPENAGENTD_STATE_DIR``   — logs, telemetry, OTEL rollups
 - ``OPENAGENTD_CACHE_DIR``   — regeneratable cache including OAuth tokens
 
+Self-diagnostic carve-outs
+--------------------------
+A few subtrees of those roots are re-allowed so an agent can inspect its
+own runtime (logs, OTEL rollups, context-window dumps, and this session's
+artifacts) — see :func:`_allowed_internal_roots` for the exact list and the
+rationale for what stays denied.  Credentials (``CACHE_DIR``), the SQLite
+DB, undo/redo snapshots, and other sessions' artifacts are **not** in that
+carve-out.
+
 User uploads live *inside* the per-session workspace
 (``{workspace}/<sid>/uploads/``) and are therefore reachable by the
 agent's fs tools as the relative path ``uploads/<filename>``.
@@ -133,7 +142,13 @@ class SandboxConfig:
     # ── Path validation ───────────────────────────────────────────────────
 
     def _is_denied(self, resolved: Path) -> Path | str | None:
-        """Return the denied root or glob pattern that matched, or None."""
+        """Return the denied root or glob pattern that matched, or None.
+
+        Precedence: an allowed root (workspace + the self-diagnostic
+        carve-outs) beats a denied *root*, but **user deny-patterns always
+        win** — a pattern like ``**/*.log`` intentionally shadows the log
+        carve-out, because patterns are hand-authored user config.
+        """
         allowed = [self.workspace_root, *_allowed_internal_roots(self.session_id)]
         for denied in self.denied_roots:
             if any(
@@ -148,8 +163,6 @@ class SandboxConfig:
         for pattern in self.denied_patterns:
             if fnmatch.fnmatchcase(resolved_str, pattern):
                 return pattern
-        if any(_path_is_under(resolved, root) for root in allowed):
-            return None
         return None
 
     def validate_path(self, path: str | Path) -> Path:
@@ -264,9 +277,40 @@ def _path_is_under(child: Path, parent: Path) -> bool:
 
 
 def _allowed_internal_roots(session_id: str | None) -> list[Path]:
-    """Return internal OpenAgentd paths agents may inspect."""
-    logs_root = Path(settings.OPENAGENTD_STATE_DIR).resolve() / "logs"
-    roots = [logs_root, logs_root / "app"]
+    """Return internal OpenAgentd paths agents may inspect.
+
+    Narrow carve-outs from the denied roots so an agent can diagnose its
+    *own* runtime (the ``oad/debug-prod`` workflow) without opening up the
+    rest of the state/data dirs:
+
+    - ``{STATE_DIR}/logs`` — loguru app + per-session logs
+    - ``{STATE_DIR}/otel`` — OTEL span / metric rollups
+    - ``{STATE_DIR}/telemetry`` — per-turn context-window dumps
+    - ``{DATA_DIR}/sessions/{session_id}`` — this session's own artifacts
+
+    Containment is tested with :func:`_path_is_under`, so naming a root
+    covers every descendant; subdirectories need no entry of their own.
+
+    Deliberately still denied — these are operational state or secrets, not
+    diagnostics:
+
+    - ``{STATE_DIR}/snapshot`` — undo/redo repos; a stray write corrupts
+      session history
+    - ``CACHE_DIR`` — regeneratable cache *including OAuth tokens*
+    - ``DATA_DIR`` — the SQLite DB, plus every *other* session's artifacts
+
+    Note the asymmetry: the ``{STATE_DIR}`` carve-outs span *all* sessions
+    (a log/telemetry dump is keyed by session id underneath them), while the
+    ``DATA_DIR`` carve-out is scoped to the running session alone.  That
+    matches the pre-existing treatment of ``logs/sessions/<sid>/`` and keeps
+    the DB and cross-session artifacts out of reach.
+    """
+    state_root = Path(settings.OPENAGENTD_STATE_DIR).resolve()
+    roots = [
+        state_root / "logs",
+        state_root / "otel",
+        state_root / "telemetry",
+    ]
     if session_id:
         roots.append(session_artifacts_dir(session_id).resolve())
     return roots

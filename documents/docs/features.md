@@ -767,6 +767,13 @@ Everything stays local. No third-party telemetry SaaS.
 - **Persistent reply/tool timing in UI** `[v1.21.0]` — assistant footers show
   full user-turn wall-clock duration; tool rows show individual execution time.
   Durations stay after a reload.
+- **Delta turn reconciliation** `[v1.120.4]` — a completed turn transfers only
+  the messages it produced (`GET /team/{id}/history?since=`) instead of
+  re-downloading the whole visible page, which reaches ~1.7 MB on an active
+  session and duplicates what the SSE stream just delivered. Falls back to a
+  full page when the client has fallen too far behind. Session-list `running`
+  badges, auto-generated titles, and the workspace file tree likewise update by
+  in-place cache patching rather than refetching every loaded page.
 
 ---
 

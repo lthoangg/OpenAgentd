@@ -440,6 +440,26 @@ export async function teamHistory(sessionId: string, before?: string): Promise<T
 }
 
 /**
+ * Messages persisted after ``since`` only — the post-turn reconciliation path.
+ *
+ * A full page carries up to 100 lead messages plus 100 per member with complete
+ * tool output (over a megabyte on an active session), nearly all of which the
+ * client just received over SSE. ``truncated`` on the response means the caller
+ * has fallen too far behind and must do a full ``teamHistory`` instead.
+ */
+export async function teamHistorySince(
+  sessionId: string,
+  since: string,
+): Promise<TeamHistoryResponse> {
+  const params = new URLSearchParams({ since })
+  const res = await fetch(
+    `${apiBaseUrl()}/team/${encodeURIComponent(sessionId)}/history?${params}`,
+  )
+  if (!res.ok) await parseDetailOrThrow(res, 'teamHistorySince')
+  return res.json()
+}
+
+/**
  * List every file under the session's agent workspace (``.openagentd/team/{sid}``).
  *
  * Returns an empty list for fresh sessions where the workspace hasn't been

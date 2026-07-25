@@ -47,6 +47,14 @@ export interface AgentStream {
   revertedCount?: number
   revertedMessages?: Array<{ role: string; content: string; attachments?: MessageAttachment[] }>
   _revertedSuffix?: ContentBlock[]
+  /**
+   * Ids of blocks committed from the live stream that the server has not yet
+   * confirmed. ``reconcileTurnTail`` drops exactly these and re-appends the
+   * canonical rows from the delta, so the splice needs no index or timestamp
+   * arithmetic (both of which break under ``loadOlderMessages`` prepends and
+   * client/server clock skew respectively).
+   */
+  _unsyncedBlockIds?: string[]
 }
 
 export interface TeamStoreState {
@@ -71,6 +79,12 @@ export interface TeamStoreState {
   hasMore: boolean
   nextCursor: string | null
   _leadRevertTime: number | null
+  /**
+   * ISO ``created_at`` of the newest message the server has confirmed across the
+   * lead and every member session. Cursor for ``reconcileTurnTail``; ``null``
+   * means "no confirmed baseline", which forces a full reload.
+   */
+  _syncedThrough: string | null
   _workspace: string | null
   _loadingOlder: boolean
   _resolvedSessionReadyId: string | null
@@ -91,6 +105,12 @@ export interface TeamStoreActions {
   connectStream: () => AbortController
   loadTeamStatus: (workspace?: string | null, expectedGeneration?: number) => Promise<void>
   loadSession: (sessionId: string, workspace?: string | null) => Promise<void>
+  /**
+   * Cheap post-turn reconciliation: adopt canonical rows for just the tail the
+   * live stream produced, instead of re-downloading the whole visible page.
+   * Falls back to ``loadSession`` whenever a delta cannot be applied safely.
+   */
+  reconcileTurnTail: (sessionId: string, workspace?: string | null) => Promise<void>
   beginResolvedSession: (sessionId: string | null, options?: { mode?: string; workspace?: string | null; model?: string | null; thinkingLevel?: string | null; fastMode?: boolean; skipInitialRestore?: boolean }) => void
   loadOlderMessages: () => Promise<void>
   setActiveAgent: (name: string) => void

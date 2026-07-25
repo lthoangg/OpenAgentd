@@ -93,7 +93,10 @@ export async function handleGlobalEvent(
 
     const before = useTeamStore.getState()
     if (before.sessionId !== sessionId) return true
-    await before.loadSession(sessionId, before._workspace)
+    // The live stream already delivered this turn; reconcile only the tail it
+    // produced rather than re-downloading the whole page (over a megabyte on an
+    // active session). Falls back to a full load when a delta cannot be applied.
+    await before.reconcileTurnTail(sessionId, before._workspace)
     return true
   }
 

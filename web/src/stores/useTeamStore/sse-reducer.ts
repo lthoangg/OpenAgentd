@@ -441,6 +441,12 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
                 ? stamped
                 : stamped.filter((b) => (b.timestamp?.getTime() ?? 0) < revertTime)
               stream.blocks = [...stream.blocks, ...toCommit]
+              // These blocks came from the live stream, not from the server.
+              // ``reconcileTurnTail`` swaps exactly these for the canonical rows.
+              stream._unsyncedBlockIds = [
+                ...(stream._unsyncedBlockIds ?? []),
+                ...toCommit.map((b) => b.id),
+              ]
               stream.currentBlocks = []
             }
             stream._completionBase = stream.usage.completionTokens

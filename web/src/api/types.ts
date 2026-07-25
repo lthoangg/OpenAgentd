@@ -231,6 +231,12 @@ export interface TeamHistoryResponse {
   }>
   has_more: boolean
   next_cursor: string | null
+  /**
+   * Delta responses (`?since=`) only: the delta hit the server row cap, so the
+   * caller must fall back to a full page rather than stitching an incomplete
+   * tail onto local state. Always `false`/absent for full pages.
+   */
+  truncated?: boolean
 }
 
 // SSE Event Types

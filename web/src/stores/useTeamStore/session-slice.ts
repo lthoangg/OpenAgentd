@@ -1,5 +1,5 @@
 import type { StateCreator } from 'zustand'
-import { teamStatus, teamHistory } from '@/api/client'
+import { teamStatus, teamHistory, teamHistorySince } from '@/api/client'
 import { parseTeamBlocks, sumUsageFromMessages } from '@/utils/messages'
 import { createDefaultAgentStream } from './defaults'
 import { applyRevertBoundary, revokeBlobUrlsFromBlocks } from './helpers'
@@ -43,6 +43,29 @@ function queuedMessagesFromHistory(sessionId: string, messages: MessageResponse[
       submittedAt: msg.created_at ? new Date(msg.created_at).getTime() : undefined,
       attachments: msg.attachments ?? undefined,
     }))
+}
+
+/**
+ * Newest ``created_at`` across the lead and every member session.
+ *
+ * Valid "we hold everything before this" watermark because a full page returns
+ * the *newest* rows of each session: if a member had a message after this
+ * instant, that message would itself be the maximum.
+ */
+function newestMessageAt(history: {
+  lead: { messages: MessageResponse[] }
+  members: Array<{ messages: MessageResponse[] }>
+}): string | null {
+  let newest: string | null = null
+  const consider = (msgs: MessageResponse[]) => {
+    for (const msg of msgs) {
+      if (!msg.created_at) continue
+      if (newest === null || msg.created_at > newest) newest = msg.created_at
+    }
+  }
+  consider(history.lead.messages)
+  for (const member of history.members) consider(member.messages)
+  return newest
 }
 
 function fastModeFromMessages(messages: MessageResponse[]): boolean {
@@ -125,6 +148,7 @@ export function resetSessionState(
   state.hasMore = false
   state.nextCursor = null
   state._leadRevertTime = null
+  state._syncedThrough = null
   state._workspace = options.mode === 'coding' ? (options.workspace ?? null) : null
   state._loadingOlder = false
   state._resolvedSessionReadyId = null
@@ -147,9 +171,10 @@ export function resetSessionState(
     state.agentStreams[name]._completionBase = 0
     state.agentStreams[name]._completionEstimated = 0
     state.agentStreams[name]._turnStartedAt = null
-    state.agentStreams[name].revertedCount = 0
-    state.agentStreams[name].revertedMessages = []
-    state.agentStreams[name]._revertedSuffix = []
+      state.agentStreams[name].revertedCount = 0
+      state.agentStreams[name].revertedMessages = []
+      state.agentStreams[name]._revertedSuffix = []
+      state.agentStreams[name]._unsyncedBlockIds = []
   })
 }
 
@@ -167,6 +192,7 @@ export type SessionSlice = Pick<
   | 'hasMore'
   | 'nextCursor'
   | '_leadRevertTime'
+  | '_syncedThrough'
   | '_workspace'
   | '_loadingOlder'
   | '_resolvedSessionReadyId'
@@ -178,6 +204,7 @@ export type SessionSlice = Pick<
   | 'setSessionModelSettings'
   | 'loadTeamStatus'
   | 'loadSession'
+  | 'reconcileTurnTail'
   | 'loadOlderMessages'
   | 'setActiveAgent'
 >
@@ -200,6 +227,7 @@ export const createSessionSlice: StateCreator<
   hasMore: false,
   nextCursor: null,
   _leadRevertTime: null,
+  _syncedThrough: null,
   _workspace: null,
   _loadingOlder: false,
   _resolvedSessionReadyId: null,
@@ -434,6 +462,12 @@ export const createSessionSlice: StateCreator<
         draft.hasMore = history.has_more
         draft.nextCursor = history.next_cursor
         draft._leadRevertTime = revertBoundaryTime(history.lead)
+        // Everything in this response is server-confirmed, so nothing is
+        // pending reconciliation and the watermark advances to its newest row.
+        draft._syncedThrough = newestMessageAt(history)
+        Object.values(draft.agentStreams).forEach((stream) => {
+          stream._unsyncedBlockIds = []
+        })
         draft._workspace = workspace ?? null
         draft._loadingOlder = false
         draft._resolvedSessionReadyId = null
@@ -449,6 +483,101 @@ export const createSessionSlice: StateCreator<
         draft.isContinuing = false
       })
     }
+  },
+
+  reconcileTurnTail: async (sessionId: string, workspace?: string | null) => {
+    const state = get()
+    const since = state._syncedThrough
+
+    // No confirmed baseline, or a turn is still producing content: a delta
+    // cannot be spliced safely, so take the full page.
+    if (state.sessionId !== sessionId || since === null || state.isTeamWorking) {
+      await get().loadSession(sessionId, workspace)
+      return
+    }
+
+    const gen = state._sessionGeneration
+    let delta: Awaited<ReturnType<typeof teamHistorySince>>
+    try {
+      delta = await teamHistorySince(sessionId, since)
+    } catch {
+      // Never leave the tail unreconciled — fall back to the full page.
+      await get().loadSession(sessionId, workspace)
+      return
+    }
+
+    if (get()._sessionGeneration !== gen || get().sessionId !== sessionId) return
+
+    // Too far behind to stitch, or a new turn started while the delta was in
+    // flight (its blocks postdate this snapshot).
+    if (delta.truncated || get().isTeamWorking) {
+      await get().loadSession(sessionId, workspace)
+      return
+    }
+
+    set((draft) => {
+      // Metadata the delta carries authoritatively.
+      draft.sessionTitle = delta.lead.title ?? draft.sessionTitle
+      draft.sessionModel = delta.lead.model ?? draft.sessionModel
+      draft.sessionThinkingLevel = delta.lead.thinking_level ?? draft.sessionThinkingLevel
+      draft.isTeamWorking = delta.lead.running === true
+      draft.error = null
+
+      const revertTime = draft._leadRevertTime
+      // A concurrent /undo may have moved the boundary while the delta was in
+      // flight; keep reverted rows from resurfacing.
+      const visible = (blocks: ReturnType<typeof parseTeamBlocks>) =>
+        revertTime === null
+          ? blocks
+          : blocks.filter((b) => (b.timestamp?.getTime() ?? 0) < revertTime)
+
+      const swapTail = (name: string, messages: MessageResponse[]) => {
+        const stream = draft.agentStreams[name]
+        if (!stream) return
+        const unsynced = new Set(stream._unsyncedBlockIds ?? [])
+        const confirmed = unsynced.size > 0
+          ? stream.blocks.filter((block) => !unsynced.has(block.id))
+          : stream.blocks
+        stream.blocks = [...confirmed, ...visible(parseTeamBlocks(messages))]
+        stream._unsyncedBlockIds = []
+      }
+
+      const leadName = delta.lead.agent_name ?? draft.leadName
+      if (leadName) {
+        if (!draft.agentStreams[leadName]) {
+          draft.agentStreams[leadName] = createDefaultAgentStream()
+        }
+        swapTail(leadName, delta.lead.messages)
+      }
+
+      delta.members.forEach((member: { name: string; messages: MessageResponse[] }) => {
+        if (!draft.agentStreams[member.name]) {
+          draft.agentStreams[member.name] = createDefaultAgentStream()
+          if (!draft.agentNames.includes(member.name)) draft.agentNames.push(member.name)
+        }
+        swapTail(member.name, member.messages)
+      })
+
+      // Adopt any queued rows the delta revealed, matching loadSession.
+      const queued = queuedMessagesFromHistory(sessionId, delta.lead.messages)
+      if (queued.length > 0) {
+        draft._pendingMessages = [
+          ...draft._pendingMessages,
+          ...queued.filter((msg) => !draft._pendingMessages.some((e) => e.id === msg.id)),
+        ]
+      }
+
+      // Deliberately untouched here — a delta carries no information about them:
+      //  * usage: maintained live by SSE `usage` events; recomputing from a
+      //    partial message set would undercount. Re-derived on the next full load.
+      //  * hasMore / nextCursor: describe *older* history, which a delta never sees.
+      //  * _leadRevertTime: its boundary message is usually outside the delta,
+      //    so recomputing would clear the boundary and resurrect reverted blocks.
+      const newest = newestMessageAt(delta)
+      if (newest !== null && (draft._syncedThrough === null || newest > draft._syncedThrough)) {
+        draft._syncedThrough = newest
+      }
+    })
   },
 
   loadOlderMessages: async () => {

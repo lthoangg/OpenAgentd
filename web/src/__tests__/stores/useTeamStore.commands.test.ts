@@ -12,6 +12,7 @@ mock.module('@/api/client', () => ({
   postTeamChat: mock(async () => ({ status: 'accepted', session_id: 'session-1' })),
   postTeamCommand,
   teamHistory: mock(async () => { throw new Error('not used') }),
+  teamHistorySince: mock(async () => { throw new Error('not used') }),
   teamStatus: mock(async () => { throw new Error('not used') }),
   teamStream: mock(() => {}),
 }))

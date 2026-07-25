@@ -115,6 +115,36 @@ describe('handleGlobalEvent', () => {
     expect(connectStream).not.toHaveBeenCalled()
   })
 
+  it('reconciles only the turn tail on session_turn_completed', async () => {
+    const client = new QueryClient()
+    const reconcileTurnTail = mock(async () => {})
+    const loadSession = mock(async () => {})
+    // The shared harness beforeEach resets *state*, not actions — restore the
+    // real action so the fallback-path tests below still exercise it.
+    const realReconcile = useTeamStore.getState().reconcileTurnTail
+    useTeamStore.setState({
+      sessionId: 'current',
+      _workspace: '/workspace',
+      reconcileTurnTail,
+      loadSession,
+    })
+
+    try {
+      await handleGlobalEvent(client, 'session_turn_completed', {
+        session_id: 'current', status: 'completed',
+      }, 1, () => 1)
+
+      // The live stream already delivered this turn; re-downloading the whole
+      // page (over a megabyte on an active session) is what this avoids.
+      expect(reconcileTurnTail).toHaveBeenCalledWith('current', '/workspace')
+      expect(loadSession).not.toHaveBeenCalled()
+    } finally {
+      useTeamStore.setState({ reconcileTurnTail: realReconcile })
+    }
+  })
+
+  // ``reconcileTurnTail`` falls back to a full ``loadSession`` when it has no
+  // synced baseline, which is the case in these two legacy tests.
   it('invalidates sessions and reloads the current session on session_turn_completed', async () => {
     const client = new QueryClient()
     client.setQueryData(queryKeys.team.sessions.infinite(), { pages: [], pageParams: [] })

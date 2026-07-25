@@ -194,9 +194,18 @@ function TeamLayoutBase({ forcedMode }: { forcedMode?: 'normal' | 'coding' }) {
 
       // When title_update arrives, patch the cached team session list
       // in-place — no re-fetch. See ``patchSessionTitle``.
+      //
+      // Do NOT add an invalidateQueries call here. ``patchSessionTitle``
+      // uses ``setQueriesData`` with the ``sessions.all()`` prefix, so it
+      // already covers the infinite list *and* every workspace-scoped list
+      // across all loaded pages. Invalidating afterwards refetches exactly
+      // what was just patched — and because the list is an infinite query,
+      // TanStack refetches every loaded page *sequentially*, so a single
+      // auto-generated title costs N round trips. Titles are the only field
+      // that changes here and list order is by ``created_at``, so no
+      // re-sort is possible either.
       if (state.sessionTitle && state.sessionTitle !== prev.sessionTitle && state.sessionId) {
         patchSessionTitle(queryClient, state.sessionId, state.sessionTitle)
-        void queryClient.invalidateQueries({ queryKey: queryKeys.team.sessions.infinite() })
       }
 
       // Cache-invalidation bridge: the SSE reducer enqueues domain

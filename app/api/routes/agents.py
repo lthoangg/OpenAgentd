@@ -11,7 +11,7 @@ import asyncio
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from loguru import logger
 from pydantic import ValidationError
 
@@ -299,9 +299,13 @@ async def list_agents() -> AgentListResponse:
 
 
 @router.get("/registry")
-async def get_registry() -> RegistryResponse:
+async def get_registry(request: Request) -> RegistryResponse:
     """Dropdown catalog: tools, skills, providers, known models."""
     from app.agent.loader import _default_tool_registry
+
+    refresh_task = getattr(request.app.state, "model_registry_refresh_task", None)
+    if refresh_task is not None:
+        await asyncio.shield(refresh_task)
 
     await _warm_provider_model_cache()
 

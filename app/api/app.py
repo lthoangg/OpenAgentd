@@ -54,10 +54,15 @@ async def lifespan(app: FastAPI):
 
     ensure_workspace_initialized()
 
-    # Trigger model registry refresh in a background thread so it does not block startup
+    # Refresh in the background so network latency does not delay startup. The
+    # registry route awaits this shared task before returning metadata, avoiding
+    # a stale response that the frontend would cache for the lifetime of the app.
     from app.agent.providers.model_registry import refresh_model_registry
 
-    asyncio.create_task(asyncio.to_thread(refresh_model_registry, force=False))
+    model_registry_refresh_task = asyncio.create_task(
+        asyncio.to_thread(refresh_model_registry, force=True)
+    )
+    app.state.model_registry_refresh_task = model_registry_refresh_task
 
     from app.services.lsp import lsp_manager
 
@@ -104,6 +109,8 @@ async def lifespan(app: FastAPI):
         logger.info("scheduler_no_enabled_tasks")
 
     yield
+
+    await model_registry_refresh_task
 
     from app.services import terminal_service
 

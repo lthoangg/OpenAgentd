@@ -91,3 +91,30 @@ async def test_lifespan_starts_configured_services(
     assert slim_lifespan.mock_calls[0] == call(
         "server_starting version={} app_env={}", app_module.VERSION, "test"
     )
+
+
+@pytest.mark.asyncio
+async def test_lifespan_starts_model_registry_refresh_without_blocking_startup(
+    monkeypatch: pytest.MonkeyPatch, slim_lifespan: Mock
+) -> None:
+    events: list[tuple[str, bool] | str] = []
+
+    def refresh_model_registry(*, force: bool) -> None:
+        events.append(("refresh", force))
+
+    def load_mcp_config() -> SimpleNamespace:
+        events.append("load_mcp")
+        return SimpleNamespace(servers={})
+
+    monkeypatch.setattr(
+        "app.agent.providers.model_registry.refresh_model_registry",
+        refresh_model_registry,
+    )
+    monkeypatch.setattr(app_module, "load_mcp_config", load_mcp_config)
+    monkeypatch.setattr(
+        app_module.task_scheduler, "has_enabled_tasks", AsyncMock(return_value=False)
+    )
+
+    await _run_lifespan()
+
+    assert events[:2] == ["load_mcp", ("refresh", True)]

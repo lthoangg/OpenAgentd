@@ -10,6 +10,7 @@ that contract: validation + rollback semantics, but no live team swap.
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
@@ -324,8 +325,16 @@ async def test_registry_reloads_settings_after_warming_provider_models_once(
         "app.agent.providers.model_registry.load_model_registry", lambda: {}
     )
 
-    registry = await agents_routes.get_registry()
+    refresh_task = AsyncMock()
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(model_registry_refresh_task=refresh_task())
+        )
+    )
 
+    registry = await agents_routes.get_registry(request)
+
+    refresh_task.assert_awaited_once()
     assert [model.id for model in registry.models] == ["openai:gpt-5"]
     assert load_settings.call_count == 2
 
@@ -356,7 +365,8 @@ async def test_registry_filters_cached_models_using_refreshed_visible_models(
     monkeypatch.setattr(agents_routes, "_provider_is_configured", lambda _entry: False)
     monkeypatch.setattr(agents_routes, "is_agent_model_id", lambda _model_id: True)
 
-    registry = await agents_routes.get_registry()
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace()))
+    registry = await agents_routes.get_registry(request)
 
     model_ids = {model.id for model in registry.models}
     assert "openai:shown-model" in model_ids

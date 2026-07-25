@@ -92,8 +92,16 @@ def _restore_os_environ():
 
 @pytest.fixture(autouse=True)
 def _disable_desktop_token_auth(monkeypatch: pytest.MonkeyPatch):
-    """Keep API tests independent from a desktop launcher token in the shell."""
+    """Keep API tests independent from a desktop launcher token in the shell.
+
+    Both env vars must be cleared: ``configured_access_token()`` falls back
+    from ``OPENAGENTD_DESKTOP_TOKEN`` to ``OPENAGENTD_ACCESS_KEY``, so a
+    developer with an access key exported (the normal state after running a
+    LAN-exposed server) otherwise gets ``401`` where tests assert ``404``,
+    making ``tests/api/`` fail locally but pass in CI.
+    """
     monkeypatch.delenv("OPENAGENTD_DESKTOP_TOKEN", raising=False)
+    monkeypatch.delenv("OPENAGENTD_ACCESS_KEY", raising=False)
 
 
 def set_openagentd_dirs(monkeypatch: pytest.MonkeyPatch, root: Path) -> None:

@@ -712,6 +712,136 @@ async def _fetch_member_pages(
     return members
 
 
+class TeamHistoryDelta(NamedTuple):
+    """Messages persisted *after* a client-supplied cursor.
+
+    Returned by :func:`get_team_history_since`.  ``truncated`` means the delta
+    hit ``limit`` and the caller should fall back to a full page instead of
+    stitching an incomplete tail onto its local state.
+    """
+
+    lead_session: ChatSession
+    lead_messages: list[SessionMessage]
+    members: list[TeamHistoryMemberData]
+    truncated: bool
+
+
+async def _fetch_member_delta(
+    db: AsyncSession,
+    sub_sessions: Sequence[ChatSession],
+    *,
+    since: datetime,
+    limit: int,
+) -> list[TeamHistoryMemberData]:
+    """Newest-after-``since`` messages for every sub-session in one query.
+
+    Mirrors :func:`_fetch_member_pages` (single batched ``IN`` query with a
+    per-session ``ROW_NUMBER()`` cap so one chatty member cannot pull unbounded
+    rows) but scans *forward* from the cursor and returns chronological order.
+    """
+    if not sub_sessions:
+        return []
+
+    session_ids = [s.id for s in sub_sessions]
+    rank = (
+        sa.func.row_number()
+        .over(
+            partition_by=col(SessionMessage.session_id),
+            order_by=(
+                col(SessionMessage.created_at).asc(),
+                col(SessionMessage.id).asc(),
+            ),
+        )
+        .label("rank")
+    )
+    inner = select(SessionMessage, rank).where(
+        col(SessionMessage.session_id).in_(session_ids),
+        col(SessionMessage.created_at) > since,
+    )
+    ranked = inner.subquery()
+    msg_alias = aliased(SessionMessage, ranked)
+    stmt = (
+        select(msg_alias)
+        .where(ranked.c.rank <= limit + 1)
+        .order_by(ranked.c.created_at.asc(), ranked.c.id.asc())
+    )
+    rows = (await db.exec(stmt)).all()
+
+    by_session: dict[UUID, list[SessionMessage]] = {sid: [] for sid in session_ids}
+    for msg in rows:
+        bucket = by_session.get(msg.session_id)
+        if bucket is not None:
+            bucket.append(msg)
+
+    members: list[TeamHistoryMemberData] = []
+    for sub in sub_sessions:
+        visible = [
+            msg for msg in by_session.get(sub.id, []) if not _is_hidden_from_user(msg)
+        ]
+        members.append(TeamHistoryMemberData(session=sub, messages=visible[:limit]))
+    return members
+
+
+async def get_team_history_since(
+    db: AsyncSession,
+    lead_session_id: UUID,
+    *,
+    since: datetime,
+    limit: int = _HISTORY_PAGE_SIZE,
+) -> TeamHistoryDelta | None:
+    """Fetch only the messages persisted after ``since``.
+
+    Exists so the frontend's turn-completion reconciliation can adopt canonical
+    message ids/timestamps without re-downloading the whole visible page — that
+    page reaches well over a megabyte on an active session, and the client
+    already received the same content over SSE.
+
+    ``since`` is exclusive: the cursor row is already on the client. Ordering is
+    chronological (ascending), matching :func:`get_team_history`, so callers can
+    reuse the same block parser.
+
+    Returns ``None`` when the lead session does not exist.
+    """
+    lead_session = await db.get(ChatSession, lead_session_id)
+    if lead_session is None:
+        return None
+
+    hidden_from_user = col(SessionMessage.extra)["hidden_from_user"].as_boolean()
+    stmt = (
+        select(SessionMessage)
+        .where(col(SessionMessage.session_id) == lead_session_id)
+        .where(col(SessionMessage.created_at) > since)
+        .where(sa.or_(hidden_from_user.is_(None), hidden_from_user.is_(False)))
+        .order_by(
+            col(SessionMessage.created_at).asc(),
+            col(SessionMessage.id).asc(),
+        )
+        .limit(limit + 1)
+    )
+    rows = list((await db.exec(stmt)).all())
+    visible = [msg for msg in rows if not _is_hidden_from_user(msg)]
+    truncated = len(visible) > limit
+    lead_messages = visible[:limit]
+
+    sub_sessions = (
+        await db.exec(
+            select(ChatSession)
+            .where(col(ChatSession.parent_session_id) == lead_session_id)
+            .order_by(col(ChatSession.created_at).asc())
+        )
+    ).all()
+    members = await _fetch_member_delta(db, sub_sessions, since=since, limit=limit)
+    if any(len(member.messages) >= limit for member in members):
+        truncated = True
+
+    return TeamHistoryDelta(
+        lead_session=lead_session,
+        lead_messages=lead_messages,
+        members=members,
+        truncated=truncated,
+    )
+
+
 async def get_team_history(
     db: AsyncSession,
     lead_session_id: UUID,

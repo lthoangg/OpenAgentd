@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import AsyncGenerator, Literal
 from uuid import UUID
@@ -76,6 +77,7 @@ from app.services.chat_service import (
     cleanup_reverted_tail,
     delete_session,
     get_team_history,
+    get_team_history_since,
     get_latest_top_level_session,
     list_sessions_page,
     save_message,
@@ -835,28 +837,59 @@ async def delete_team_session(session_id: UUID, db: DbSession) -> None:
         raise HTTPException(status_code=404, detail="Session not found.")
 
 
+def _parse_cursor(raw: str, field: str) -> datetime:
+    """Parse an ISO 8601 history cursor, rejecting malformed input with 422.
+
+    Naive values are assumed UTC: the ``created_at`` column is a ``TZDateTime``
+    that raises on a tz-naive value, so a cursor without an offset would
+    otherwise surface to the client as a 500 rather than a validation error.
+    Cursors echoed back from a previous response always carry an offset; this
+    only guards hand-built requests.
+    """
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422, detail=f"Invalid {field} cursor: {raw}"
+        ) from exc
+    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
+
+
 @router.get("/{session_id}/history")
 async def team_history(
     db: DbSession,
     team: TeamDep,
     session_id: UUID,
     before: str | None = Query(default=None),
+    since: str | None = Query(
+        default=None,
+        description="ISO 8601 created_at cursor — return only messages newer than this.",
+    ),
 ) -> TeamHistoryResponse:
-    """Return the latest page of turn history (cursor-based, newest-first page).
+    """Return a page of turn history (cursor-based, newest-first page).
 
     Pass ``before`` (ISO 8601 ``created_at`` of the oldest message from the
     previous response) to load an older page.
-    """
-    from datetime import datetime
 
-    before_dt: datetime | None = None
-    if before is not None:
-        try:
-            before_dt = datetime.fromisoformat(before)
-        except ValueError as exc:
-            raise HTTPException(
-                status_code=422, detail=f"Invalid before cursor: {before}"
-            ) from exc
+    Pass ``since`` (``created_at`` of the newest message the caller already
+    holds) to fetch only what was persisted after it.  That is how the frontend
+    adopts canonical message ids after a turn completes without re-downloading
+    the whole visible page, which exceeds a megabyte on an active session and
+    duplicates content the client already received over SSE.  A delta reports
+    ``has_more=False``/``next_cursor=None`` — it says nothing about older
+    history, so the caller keeps the pagination cursor it already has.
+    """
+    if before is not None and since is not None:
+        raise HTTPException(
+            status_code=422, detail="Pass either 'before' or 'since', not both."
+        )
+
+    if since is not None:
+        return await _team_history_delta(
+            db, team, session_id, _parse_cursor(since, "since")
+        )
+
+    before_dt = _parse_cursor(before, "before") if before is not None else None
 
     history = await get_team_history(db, session_id, before=before_dt)
     if history is None:
@@ -897,4 +930,54 @@ async def team_history(
         members=member_histories,
         has_more=history.has_more,
         next_cursor=next_cursor,
+    )
+
+
+async def _team_history_delta(
+    db: DbSession,
+    team: TeamDep,
+    session_id: UUID,
+    since: datetime,
+) -> TeamHistoryResponse:
+    """Serve ``GET /{sid}/history?since=`` — messages newer than the cursor.
+
+    Shares the team-readiness handling of the full-page branch so a coding
+    session still gets its team started, keeping the two paths interchangeable
+    from the caller's point of view.
+    """
+    delta = await get_team_history_since(db, session_id, since=since)
+    if delta is None:
+        raise HTTPException(status_code=404, detail="Lead session not found.")
+    if delta.lead_session.mode == "coding" and delta.lead_session.workspace:
+        try:
+            await team_manager.get_or_start_coding_team(
+                delta.lead_session.workspace, str(delta.lead_session.id)
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    else:
+        _require_team(team)
+
+    lead_resp = SessionResponse.model_validate(delta.lead_session).model_copy(
+        update={
+            "running": str(delta.lead_session.id) in stream_store.running_session_ids()
+        }
+    )
+    return TeamHistoryResponse(
+        lead=SessionDetailResponse(
+            **lead_resp.model_dump(),
+            messages=[_message_response(m) for m in delta.lead_messages],
+        ),
+        members=[
+            TeamHistoryMember(
+                name=member.session.agent_name or str(member.session.id),
+                session_id=str(member.session.id),
+                messages=[_message_response(m) for m in member.messages],
+            )
+            for member in delta.members
+        ],
+        # A delta carries no information about older history.
+        has_more=False,
+        next_cursor=None,
+        truncated=delta.truncated,
     )

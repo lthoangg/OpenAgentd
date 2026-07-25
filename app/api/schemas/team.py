@@ -24,6 +24,10 @@ class TeamHistoryResponse(BaseModel):
     members: list[TeamHistoryMember]
     has_more: bool = False
     next_cursor: str | None = None
+    #: Delta responses (``?since=``) only: the delta hit the row cap, so the
+    #: caller must fall back to a full page instead of stitching an incomplete
+    #: tail onto its local state.  Always ``False`` for full pages.
+    truncated: bool = False
 
 
 # ── Workspace files ──────────────────────────────────────────────────────────

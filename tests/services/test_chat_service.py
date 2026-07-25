@@ -2191,3 +2191,112 @@ async def test_get_team_history_member_fetch_is_bounded(session):
         f"fetched {fetched_message_rows} message rows; member history fetch "
         "is unbounded"
     )
+
+
+# ---------------------------------------------------------------------------
+# get_team_history_since — delta reconciliation for turn completion
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_team_history_since_returns_only_newer_messages(session):
+    """The turn-completion reconcile must not re-download the whole page."""
+    from app.services.chat_service import get_team_history, get_team_history_since
+
+    lead = await create_chat_session(session, title="lead")
+    for i in range(5):
+        await save_message(session, lead.id, HumanMessage(content=f"old-{i}"))
+
+    full = await get_team_history(session, lead.id)
+    assert full is not None
+    cursor = full.lead_messages[-1].created_at
+
+    await save_message(session, lead.id, HumanMessage(content="new-1"))
+    await save_message(session, lead.id, HumanMessage(content="new-2"))
+
+    delta = await get_team_history_since(session, lead.id, since=cursor)
+
+    assert delta is not None
+    assert [m.content for m in delta.lead_messages] == ["new-1", "new-2"]
+    assert delta.truncated is False
+
+
+@pytest.mark.asyncio
+async def test_get_team_history_since_is_chronological_and_excludes_cursor(session):
+    from app.services.chat_service import get_team_history_since
+
+    lead = await create_chat_session(session, title="lead")
+    first = await save_message(session, lead.id, HumanMessage(content="a"))
+    await save_message(session, lead.id, HumanMessage(content="b"))
+
+    delta = await get_team_history_since(session, lead.id, since=first.created_at)
+
+    # The cursor row itself is already on the client — strictly newer only.
+    assert [m.content for m in delta.lead_messages] == ["b"]
+
+
+@pytest.mark.asyncio
+async def test_get_team_history_since_hides_hidden_rows(session):
+    """Undone rows stay hidden in a delta exactly as in a full page."""
+    from app.services.chat_service import get_team_history_since
+
+    lead = await create_chat_session(session, title="lead")
+    anchor = await save_message(session, lead.id, HumanMessage(content="anchor"))
+    await save_message(session, lead.id, HumanMessage(content="visible"))
+    await save_message(
+        session,
+        lead.id,
+        HumanMessage(content="hidden"),
+        extra={"hidden_from_user": True},
+    )
+
+    delta = await get_team_history_since(session, lead.id, since=anchor.created_at)
+
+    assert [m.content for m in delta.lead_messages] == ["visible"]
+
+
+@pytest.mark.asyncio
+async def test_get_team_history_since_includes_member_sessions(session):
+    from app.services.chat_service import get_team_history_since
+
+    lead = await create_chat_session(session, title="lead")
+    member = await create_chat_session(
+        session, title="member", parent_session_id=lead.id, agent_name="explorer#1"
+    )
+    anchor = await save_message(session, lead.id, HumanMessage(content="anchor"))
+    await save_message(session, member.id, HumanMessage(content="member-new"))
+
+    delta = await get_team_history_since(session, lead.id, since=anchor.created_at)
+
+    assert len(delta.members) == 1
+    assert delta.members[0].session.agent_name == "explorer#1"
+    assert [m.content for m in delta.members[0].messages] == ["member-new"]
+
+
+@pytest.mark.asyncio
+async def test_get_team_history_since_flags_oversized_delta(session):
+    """A delta larger than the cap tells the caller to do a full reload."""
+    from app.services.chat_service import get_team_history_since
+
+    lead = await create_chat_session(session, title="lead")
+    anchor = await save_message(session, lead.id, HumanMessage(content="anchor"))
+    for i in range(6):
+        await save_message(session, lead.id, HumanMessage(content=f"m-{i}"))
+
+    delta = await get_team_history_since(
+        session, lead.id, since=anchor.created_at, limit=3
+    )
+
+    assert delta.truncated is True
+
+
+@pytest.mark.asyncio
+async def test_get_team_history_since_missing_session_returns_none(session):
+    from datetime import UTC, datetime
+    from uuid import uuid4
+
+    from app.services.chat_service import get_team_history_since
+
+    assert (
+        await get_team_history_since(session, uuid4(), since=datetime.now(UTC)) is None
+    )

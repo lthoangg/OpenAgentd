@@ -1005,3 +1005,132 @@ class TestListTeamSessionsCursorPagination:
         top_level_ids = {s["id"] for s in data["data"]}
         assert str(lead_id) in top_level_ids
         assert str(member_id) not in top_level_ids
+
+
+# ---------------------------------------------------------------------------
+# GET /team/{sid}/history?since= — delta reconciliation
+# ---------------------------------------------------------------------------
+
+
+class TestTeamHistorySinceCursor:
+    """The turn-completion reconcile fetches only what it does not have.
+
+    A full page carries up to 100 lead messages plus 100 per member with
+    complete tool output (measured over a megabyte on real sessions), all of
+    which the client already received over SSE.
+    """
+
+    @pytest.mark.asyncio
+    async def test_since_returns_only_newer_messages(self, app_with_team):
+        import app.core.db as _db
+
+        lead_id = uuid.uuid7()
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                await _create_team_session(db, lead_id)
+                await _add_message(db, lead_id, content="old")
+
+        client = TestClient(app_with_team)
+        full = client.get(f"/api/team/{lead_id}/history")
+        assert full.status_code == 200
+        cursor = full.json()["lead"]["messages"][-1]["created_at"]
+
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                await _add_message(db, lead_id, content="brand new")
+
+        resp = client.get(f"/api/team/{lead_id}/history", params={"since": cursor})
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert [m["content"] for m in body["lead"]["messages"]] == ["brand new"]
+        assert body["truncated"] is False
+        # A delta has no older page to walk — the client must keep the
+        # pagination cursor it already holds.
+        assert body["has_more"] is False
+        assert body["next_cursor"] is None
+
+    @pytest.mark.asyncio
+    async def test_since_and_before_together_rejected(self, app_with_team):
+        import app.core.db as _db
+
+        lead_id = uuid.uuid7()
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                await _create_team_session(db, lead_id)
+
+        client = TestClient(app_with_team)
+        resp = client.get(
+            f"/api/team/{lead_id}/history",
+            params={"since": "2026-01-01T00:00:00", "before": "2026-01-02T00:00:00"},
+        )
+
+        assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_since_rejects_malformed_cursor(self, app_with_team):
+        import app.core.db as _db
+
+        lead_id = uuid.uuid7()
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                await _create_team_session(db, lead_id)
+
+        client = TestClient(app_with_team)
+        resp = client.get(
+            f"/api/team/{lead_id}/history", params={"since": "not-a-date"}
+        )
+
+        assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_since_missing_session_returns_404(self, app_with_team):
+        client = TestClient(app_with_team)
+
+        resp = client.get(
+            f"/api/team/{uuid.uuid7()}/history",
+            params={"since": "2026-01-01T00:00:00"},
+        )
+
+        assert resp.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_since_preserves_session_metadata(self, app_with_team):
+        """The delta still carries lead metadata the store reads on reconcile."""
+        import app.core.db as _db
+
+        lead_id = uuid.uuid7()
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                await _create_team_session(db, lead_id, title="Kept Title")
+
+        client = TestClient(app_with_team)
+        resp = client.get(
+            f"/api/team/{lead_id}/history",
+            params={"since": "2020-01-01T00:00:00"},
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["lead"]["title"] == "Kept Title"
+
+    @pytest.mark.asyncio
+    async def test_naive_before_cursor_does_not_500(self, app_with_team):
+        """Regression: created_at is a TZDateTime that rejects naive values.
+
+        A cursor without a UTC offset used to reach the query layer and surface
+        as a 500 instead of being handled at the boundary.
+        """
+        import app.core.db as _db
+
+        lead_id = uuid.uuid7()
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                await _create_team_session(db, lead_id)
+                await _add_message(db, lead_id, content="only")
+
+        client = TestClient(app_with_team)
+        resp = client.get(
+            f"/api/team/{lead_id}/history", params={"before": "2030-01-01T00:00:00"}
+        )
+
+        assert resp.status_code == 200

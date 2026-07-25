@@ -362,6 +362,7 @@ describe("useTeamStore — scheduler invalidation", () => {
   // ── Interaction with other SSE events ────────────────────────────────────
 
   it("scheduler event is queued after agent_status changes", () => {
+    useTeamStore.setState({ sessionId: "sid-19" })
     primeBlock("claude", "schedule_task", "tc-19", { task: "test" })
     useTeamStore.getState()._handleSSEEvent("agent_status", {
       agent: "claude",
@@ -374,12 +375,13 @@ describe("useTeamStore — scheduler invalidation", () => {
       result: "ok",
     })
     expect(useTeamStore.getState().cacheInvalidations).toEqual([
-      { kind: "team_sessions" },
+      { kind: "session_running", sessionId: "sid-19", running: true },
       { kind: "scheduler" },
     ])
   })
 
   it("scheduler event is queued before done event (and survives the done)", () => {
+    useTeamStore.setState({ sessionId: "sid-20" })
     primeBlock("claude", "schedule_task", "tc-20", { task: "test" })
     useTeamStore.getState()._handleSSEEvent("tool_end", {
       name: "schedule_task",
@@ -390,10 +392,10 @@ describe("useTeamStore — scheduler invalidation", () => {
     useTeamStore.getState()._handleSSEEvent("done", {})
     // Event was queued during tool_end; done() does not clear the queue
     // (only newSession() and the bridge drain do). done also queues a
-    // session-list invalidation so running indicators clear.
+    // running-flag patch so running indicators clear.
     expect(useTeamStore.getState().cacheInvalidations).toEqual([
       { kind: "scheduler" },
-      { kind: "team_sessions" },
+      { kind: "session_running", sessionId: "sid-20", running: false },
     ])
   })
 })

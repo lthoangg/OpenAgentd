@@ -6,7 +6,7 @@ import { queryKeys } from '@/queries'
 
 type BridgeQueryClient = Pick<
   QueryClient,
-  'invalidateQueries' | 'getQueryData' | 'setQueryData'
+  'invalidateQueries' | 'getQueryData' | 'setQueryData' | 'setQueriesData'
 >
 
 export function applyCacheInvalidations(
@@ -43,6 +43,13 @@ export function applyCacheInvalidations(
         break
       case 'team_sessions':
         queryClient.invalidateQueries({ queryKey: queryKeys.team.sessions.all() })
+        break
+      case 'session_running':
+        // Patch in place; only fall back to a refetch when the session is not
+        // in any cached page yet (nothing to patch).
+        if (!patchSessionRunning(queryClient, event.sessionId, event.running)) {
+          queryClient.invalidateQueries({ queryKey: queryKeys.team.sessions.all() })
+        }
         break
     }
   }
@@ -130,6 +137,58 @@ function isInfiniteSessionData(value: unknown): value is InfiniteData<SessionPag
     'pages' in value &&
     Array.isArray(value.pages),
   )
+}
+
+/**
+ * Flip the ``running`` flag of one session row in place.
+ *
+ * ``running`` is the *only* turn-dependent field on a session row (the backend
+ * derives it from ``stream_store.running_session_ids()``), so a turn starting or
+ * finishing does not need a list refetch — and must not trigger one: the list is
+ * an infinite query, and TanStack refetches every loaded page **sequentially**,
+ * so flipping one boolean cost N serial round trips per turn.
+ *
+ * Returns ``true`` when the session was found in a cached page, so callers can
+ * fall back to invalidation for a session that is not in the list yet (e.g. one
+ * a scheduled task just created).
+ */
+export function patchSessionRunning(
+  queryClient: Pick<QueryClient, 'setQueriesData' | 'setQueryData'>,
+  sessionId: string,
+  running: boolean,
+): boolean {
+  let found = false
+
+  queryClient.setQueriesData<InfiniteData<SessionPageResponse>>(
+    { queryKey: queryKeys.team.sessions.all() },
+    (old) => {
+      if (!isInfiniteSessionData(old)) return old
+      let changed = false
+      const pages = old.pages.map((page) => {
+        let pageChanged = false
+        const data = page.data.map((session) => {
+          if (session.id !== sessionId) return session
+          found = true
+          if (session.running === running) return session
+          pageChanged = true
+          return { ...session, running }
+        })
+        if (!pageChanged) return page
+        changed = true
+        return { ...page, data }
+      })
+      // Return the original reference when nothing moved so subscribers of an
+      // already-correct list are not re-rendered.
+      return changed ? { ...old, pages } : old
+    },
+  )
+
+  queryClient.setQueryData<SessionResponse>(
+    queryKeys.team.sessions.detail(sessionId),
+    (old) => (old && old.running !== running ? { ...old, running } : old),
+  )
+
+  return found
 }
 
 export function patchSessionTitle(

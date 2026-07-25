@@ -153,6 +153,47 @@ describe('handleGlobalEvent', () => {
     expect(loadSession).toHaveBeenCalledWith('current', '/workspace')
   })
 
+  // A turn ending only flips the row's ``running`` flag. Invalidating instead
+  // refetched every loaded page of the infinite session list sequentially, on
+  // every single turn.
+  it('patches running in place on session_turn_completed without refetching the list', async () => {
+    const client = new QueryClient()
+    client.setQueryData(queryKeys.team.sessions.infinite(), {
+      pages: [{
+        data: [{ id: 'current', title: 'T', agent_name: 'lead', created_at: null, updated_at: null, running: true }],
+        next_cursor: null,
+        has_more: false,
+      }],
+      pageParams: [null],
+    })
+    useTeamStore.setState({ sessionId: 'current', _workspace: null, loadSession: mock(async () => {}) })
+
+    await handleGlobalEvent(client, 'session_turn_completed', {
+      session_id: 'current', status: 'completed',
+    }, 1, () => 1)
+
+    expect(client.getQueryState(queryKeys.team.sessions.infinite())?.isInvalidated).toBe(false)
+    const data = client.getQueryData(queryKeys.team.sessions.infinite()) as {
+      pages: { data: { running?: boolean }[] }[]
+    }
+    expect(data.pages[0].data[0].running).toBe(false)
+  })
+
+  // Interactive turns vastly outnumber scheduled ones, and a turn that really
+  // touched the scheduler already enqueues its own `scheduler` invalidation
+  // from the tool_end reducer.
+  it('does not invalidate the scheduler list on session_turn_completed', async () => {
+    const client = new QueryClient()
+    client.setQueryData(queryKeys.scheduler.list(), [])
+    useTeamStore.setState({ sessionId: 'other', loadSession: mock(async () => {}) })
+
+    await handleGlobalEvent(client, 'session_turn_completed', {
+      session_id: 'current', status: 'completed',
+    }, 1, () => 1)
+
+    expect(client.getQueryState(queryKeys.scheduler.list())?.isInvalidated).toBe(false)
+  })
+
   it('reconciles the active session on resume and attaches its stream only when REST reports it working', async () => {
     const loadSession = mock(async () => { useTeamStore.setState({ isTeamWorking: true }) })
     const connectStream = mock(() => new AbortController())

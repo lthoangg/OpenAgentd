@@ -388,7 +388,17 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
             draft.agentStreams[agent]._completionEstimated = 0
             draft.isTeamWorking = true
             if (draft.liveAgentNames && !draft.liveAgentNames.includes(agent)) draft.liveAgentNames.push(agent)
-            draft.cacheInvalidations.push({ kind: 'team_sessions' })
+            // Only the sidebar's ``running`` badge depends on this. Patch that
+            // one field rather than invalidating the whole list — a team turn
+            // emits one agent_status per member, so invalidating here used to
+            // cost (members × loaded pages) sequential refetches per turn.
+            if (draft.sessionId) {
+              draft.cacheInvalidations.push({
+                kind: 'session_running',
+                sessionId: draft.sessionId,
+                running: true,
+              })
+            }
           } else if (status === 'idle') {
             draft.agentStreams[agent].status = 'idle'
             if (draft.liveAgentNames && !draft.liveAgentNames.includes(agent)) draft.liveAgentNames.push(agent)
@@ -440,7 +450,13 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
               stream.status = 'idle'
             }
           })
-          draft.cacheInvalidations.push({ kind: 'team_sessions' })
+          if (draft.sessionId) {
+            draft.cacheInvalidations.push({
+              kind: 'session_running',
+              sessionId: draft.sessionId,
+              running: false,
+            })
+          }
         })
         break
       }

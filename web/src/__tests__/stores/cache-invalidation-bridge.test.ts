@@ -11,7 +11,7 @@
  */
 import { describe, it, expect, mock } from 'bun:test'
 import { QueryClient, type InfiniteData } from '@tanstack/react-query'
-import { applyCacheInvalidations, patchSessionTitle, prependSession, prependWorkspaceSession } from '@/stores/cache-invalidation-bridge'
+import { applyCacheInvalidations, patchSessionRunning, patchSessionTitle, prependSession, prependWorkspaceSession } from '@/stores/cache-invalidation-bridge'
 import { queryKeys } from '@/queries'
 import type { CacheInvalidation } from '@/stores/useTeamStore'
 import type { SessionPageResponse, SessionResponse } from '@/api/types'
@@ -25,6 +25,7 @@ function makeMockClient() {
     // type without observing behaviour.
     getQueryData: mock(() => undefined),
     setQueryData: mock(() => undefined),
+    setQueriesData: mock(() => []),
   }
 }
 
@@ -482,5 +483,111 @@ describe('prependSession', () => {
       's4',
       's5',
     ])
+  })
+})
+
+// ─── patchSessionRunning ──────────────────────────────────────────────────
+//
+// ``running`` is the only turn-dependent field on a session row, so a turn
+// starting/finishing patches it in place. Invalidating instead would refetch
+// every loaded page of the infinite session list *sequentially* — N round
+// trips to flip one boolean, on every turn.
+
+describe('patchSessionRunning', () => {
+  it('patches the flag across pages and reports the session as found', () => {
+    const client = new QueryClient()
+    seedInfinite(client, [
+      [makeSession('s1', 'A'), makeSession('s2', 'B')],
+      [makeSession('s3', 'C')],
+    ])
+
+    expect(patchSessionRunning(client, 's3', true)).toBe(true)
+
+    const after = readInfinite(client)!
+    expect(after.pages[1].data[0].running).toBe(true)
+    // Untouched rows keep their identity — no needless re-render.
+    expect(after.pages[0].data[0].running).toBeUndefined()
+  })
+
+  it('reports not-found when the session is absent, so callers can refetch', () => {
+    const client = new QueryClient()
+    seedInfinite(client, [[makeSession('s1', 'A')]])
+
+    expect(patchSessionRunning(client, 'missing', true)).toBe(false)
+  })
+
+  it('returns the identical cache object when the flag already matches', () => {
+    const client = new QueryClient()
+    seedInfinite(client, [[makeSession('s1', 'A')]])
+    patchSessionRunning(client, 's1', true)
+    const first = readInfinite(client)
+
+    // Same value again: must not produce a new object, or every subscriber
+    // re-renders on each duplicate agent_status event.
+    expect(patchSessionRunning(client, 's1', true)).toBe(true)
+    expect(readInfinite(client)).toBe(first)
+  })
+
+  it('also patches the session detail entry', () => {
+    const client = new QueryClient()
+    client.setQueryData(queryKeys.team.sessions.detail('s1'), makeSession('s1', 'A'))
+
+    patchSessionRunning(client, 's1', true)
+
+    expect(client.getQueryData<SessionResponse>(queryKeys.team.sessions.detail('s1'))?.running).toBe(true)
+  })
+
+  it('patches workspace-scoped session lists too (sessions.all prefix)', () => {
+    const client = new QueryClient()
+    seedInfinite(client, [[makeSession('s1', 'A')]], queryKeys.team.sessions.workspace('/ws'))
+
+    expect(patchSessionRunning(client, 's1', true)).toBe(true)
+
+    const after = client.getQueryData<InfiniteData<SessionPageResponse>>(
+      queryKeys.team.sessions.workspace('/ws'),
+    )!
+    expect(after.pages[0].data[0].running).toBe(true)
+  })
+})
+
+/**
+ * Real cache for the patch (so containment is genuinely exercised) with a spy
+ * on ``invalidateQueries`` to prove whether the fallback fired.
+ */
+function makeSpiedBridgeClient(client: QueryClient) {
+  const invalidateQueries = mock(() => Promise.resolve())
+  return {
+    invalidateQueries,
+    bridge: {
+      invalidateQueries,
+      getQueryData: client.getQueryData.bind(client),
+      setQueryData: client.setQueryData.bind(client),
+      setQueriesData: client.setQueriesData.bind(client),
+    },
+  }
+}
+
+describe('applyCacheInvalidations — session_running', () => {
+  it('patches in place without invalidating when the session is cached', () => {
+    const client = new QueryClient()
+    seedInfinite(client, [[makeSession('s1', 'A')]])
+    const { invalidateQueries, bridge } = makeSpiedBridgeClient(client)
+
+    applyCacheInvalidations(bridge, [{ kind: 'session_running', sessionId: 's1', running: true }])
+
+    expect(invalidateQueries).not.toHaveBeenCalled()
+    expect(readInfinite(client)!.pages[0].data[0].running).toBe(true)
+  })
+
+  it('falls back to invalidation for a session not in any cached page', () => {
+    const client = new QueryClient()
+    seedInfinite(client, [[makeSession('s1', 'A')]])
+    const { invalidateQueries, bridge } = makeSpiedBridgeClient(client)
+
+    applyCacheInvalidations(bridge, [{ kind: 'session_running', sessionId: 'new-sid', running: true }])
+
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.team.sessions.all(),
+    })
   })
 })

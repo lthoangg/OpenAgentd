@@ -5,7 +5,7 @@ import { globalEventStream } from '@/api/global-events'
 import { onApiBaseUrlChange } from '@/api/base-url'
 import { sendDesktopNotification } from '@/lib/desktop-notifications'
 import { queryKeys } from '@/queries'
-import { patchSessionTitle } from '@/stores/cache-invalidation-bridge'
+import { patchSessionRunning, patchSessionTitle } from '@/stores/cache-invalidation-bridge'
 import { useTeamStore } from '@/stores/useTeamStore'
 import { useLspInstallStore } from '@/stores/useLspInstallStore'
 
@@ -23,9 +23,29 @@ function rememberNotification(id: string): boolean {
   return true
 }
 
+/**
+ * Full resync after a (re)connect, where arbitrary events may have been missed.
+ * Turn events must NOT use this — see ``markSessionRunning``.
+ */
 export function invalidateGlobalEventQueries(queryClient: QueryClient): void {
   queryClient.invalidateQueries({ queryKey: queryKeys.team.sessions.all() })
   queryClient.invalidateQueries({ queryKey: queryKeys.scheduler.list() })
+}
+
+/**
+ * A turn started/finished somewhere — possibly in another window or a scheduled
+ * task. ``running`` is the only turn-dependent field on a session row, so patch
+ * it in place; only fall back to a list refetch when the session is not in any
+ * cached page yet (a scheduled task may have just created it).
+ */
+function markSessionRunning(
+  queryClient: QueryClient,
+  sessionId: string,
+  running: boolean,
+): void {
+  if (!patchSessionRunning(queryClient, sessionId, running)) {
+    queryClient.invalidateQueries({ queryKey: queryKeys.team.sessions.all() })
+  }
 }
 
 export async function handleGlobalEvent(
@@ -40,8 +60,14 @@ export async function handleGlobalEvent(
 
   if (type === 'session_turn_started') {
     const sessionId = typeof event.session_id === 'string' ? event.session_id : null
-    invalidateGlobalEventQueries(queryClient)
-    if (!sessionId) return false
+    // Only the scheduler publishes this event, so its task bookkeeping
+    // (last_run_at / next_run_at) is worth refreshing here.
+    queryClient.invalidateQueries({ queryKey: queryKeys.scheduler.list() })
+    if (!sessionId) {
+      queryClient.invalidateQueries({ queryKey: queryKeys.team.sessions.all() })
+      return false
+    }
+    markSessionRunning(queryClient, sessionId, true)
 
     const before = useTeamStore.getState()
     if (before.sessionId !== sessionId) return true
@@ -56,8 +82,14 @@ export async function handleGlobalEvent(
 
   if (type === 'session_turn_completed') {
     const sessionId = typeof event.session_id === 'string' ? event.session_id : null
-    invalidateGlobalEventQueries(queryClient)
-    if (!sessionId) return false
+    if (!sessionId) {
+      queryClient.invalidateQueries({ queryKey: queryKeys.team.sessions.all() })
+      return false
+    }
+    // No scheduler invalidation here: this fires on *every* interactive turn,
+    // and a turn that actually touched the scheduler already enqueues a
+    // `scheduler` invalidation from the tool_end reducer.
+    markSessionRunning(queryClient, sessionId, false)
 
     const before = useTeamStore.getState()
     if (before.sessionId !== sessionId) return true

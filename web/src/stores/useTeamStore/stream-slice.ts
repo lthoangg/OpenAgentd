@@ -402,7 +402,14 @@ export const createStreamSlice: StateCreator<
           }
           set((draft) => {
             draft.isConnected = false
-            draft.cacheInvalidations.push({ kind: 'team_sessions' })
+            // Stream closed with the session idle — the row is no longer
+            // running. Patch that flag rather than refetching every loaded
+            // page of the session list.
+            draft.cacheInvalidations.push({
+              kind: 'session_running',
+              sessionId,
+              running: false,
+            })
           })
         },
       },

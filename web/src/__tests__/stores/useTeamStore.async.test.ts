@@ -1318,7 +1318,7 @@ describe("connectStream", () => {
     expect(useTeamStore.getState().isTeamWorking).toBe(true)
   })
 
-  it("onDone sets isConnected=false and invalidates sessions", () => {
+  it("onDone sets isConnected=false and patches the session running flag", () => {
     mockTeamStream.mockImplementation(
       (_sid: string, cbs: { onDone?: () => void }) => {
         cbs.onDone?.()
@@ -1328,7 +1328,13 @@ describe("connectStream", () => {
     useTeamStore.getState().connectStream()
 
     expect(useTeamStore.getState().isConnected).toBe(false)
-    expect(useTeamStore.getState().cacheInvalidations).toContainEqual({ kind: "team_sessions" })
+    // Patched in place rather than invalidating the (infinite, sequentially
+    // refetched) session list just to clear a running badge.
+    expect(useTeamStore.getState().cacheInvalidations).toContainEqual({
+      kind: "session_running",
+      sessionId: "stream-sid",
+      running: false,
+    })
   })
 
   it("onDone reopens the stream immediately when the session is still working", () => {

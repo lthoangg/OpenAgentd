@@ -19,6 +19,12 @@ export type CacheInvalidation =
   | { kind: 'todos'; sessionId: string }
   | { kind: 'team_agents' }
   | { kind: 'team_sessions' }
+  /**
+   * A turn started or finished for ``sessionId``. Patches that row's
+   * ``running`` flag in place instead of refetching the whole (infinite,
+   * sequentially-refetched) session list. See ``patchSessionRunning``.
+   */
+  | { kind: 'session_running'; sessionId: string; running: boolean }
 
 export interface SetupRequiredNotice {
   agent: string

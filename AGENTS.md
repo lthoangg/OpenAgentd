@@ -72,6 +72,11 @@ Re-run `mention_scenarios.py` after any change to `build_mention_context_blocks`
 
 ## Design principle: mobile-first, multi-platform
 
+[`DESIGN.md`](DESIGN.md) is the canonical design system — colour tokens, type
+scale, spacing, radii, elevation, motion, platform shell geometry, and the
+do's/don'ts. Consult it before adding or restyling any UI, and keep new surfaces
+inside its existing tokens instead of inventing values.
+
 OpenAgentd is **one codebase that must feel native on every surface** —
 touch phones (Tauri iOS/Android), desktop apps (Tauri macOS/Windows/Linux),
 and the browser. Build mobile-first, then progressively enhance for larger

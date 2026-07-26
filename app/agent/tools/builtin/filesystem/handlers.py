@@ -3,8 +3,9 @@
 Detects file type by extension and dispatches to the appropriate handler:
 
 - **Image** (.png, .jpg, .jpeg, .gif, .webp, .bmp, .svg): base64-encode → ImageDataBlock
-- **Document** (.pdf, .docx, .html): markitdown conversion → TextBlock
-- **Text** (everything else): read as UTF-8/Latin-1 text (existing behaviour)
+- **Document** (.pdf, .docx): markitdown conversion → TextBlock
+- **Text** (everything else, including .html/.htm markup): read as UTF-8/Latin-1
+  text verbatim (existing behaviour)
 
 Each handler returns a :class:`~app.agent.schemas.chat.ToolResult` whose
 ``parts`` list is set directly on ``ToolMessage.parts``.
@@ -44,12 +45,14 @@ _IMAGE_EXTENSIONS: frozenset[str] = frozenset(
     }
 )
 
+# Binary/packaged formats only. Markup such as .html/.htm is source code, not a
+# document: markitdown conversion throws away the tags, attributes, and
+# structure an agent needs in order to edit the file, so markup falls through to
+# the verbatim text path (which also keeps offset/limit pagination).
 _DOCUMENT_EXTENSIONS: frozenset[str] = frozenset(
     {
         ".pdf",
         ".docx",
-        ".html",
-        ".htm",
     }
 )
 

@@ -9,9 +9,16 @@ from app.agent.tools.builtin.web import web_search
 
 
 def test_read_description_only_claims_supported_document_formats():
-    assert "PDF, DOCX, HTML" in read_file.description
+    assert "PDF, DOCX" in read_file.description
     assert "PPTX" not in read_file.description
     assert "XLSX" not in read_file.description
+
+
+def test_read_description_says_html_comes_back_verbatim():
+    # HTML is source, not a converted document — the model must know it gets
+    # the raw markup so it can edit tags instead of expecting markdown.
+    assert "HTML" in read_file.description
+    assert "verbatim" in read_file.description
 
 
 def test_shell_timeout_description_matches_runtime_default():

@@ -96,11 +96,16 @@ class TestClassifyFile:
         assert classify_file(Path("f.JPG")) == "image"
 
     def test_classify_document_extensions(self):
-        for ext in (".pdf", ".docx", ".html", ".htm"):
+        for ext in (".pdf", ".docx"):
             assert classify_file(Path(f"f{ext}")) == "document", ext
 
     def test_classify_text_extensions(self):
         for ext in (".py", ".txt", ".md", ".json", ".yaml"):
+            assert classify_file(Path(f"f{ext}")) == "text", ext
+
+    def test_classify_markup_extensions_as_text(self):
+        """Markup source files are read verbatim, not converted to markdown."""
+        for ext in (".html", ".htm", ".HTML"):
             assert classify_file(Path(f"f{ext}")) == "text", ext
 
     def test_classify_unknown(self):
@@ -317,6 +322,41 @@ class TestReadFileVision:
             )
 
         assert isinstance(result, ToolResult)
+
+    @pytest.mark.asyncio
+    async def test_html_returns_raw_source(self, workspace):
+        """.html is source, not a document — return it verbatim (no markitdown)."""
+        source = "<html><body><h1>Title</h1><p>Body</p></body></html>"
+        (workspace / "page.html").write_text(source)
+
+        with patch(
+            "app.agent.tools.builtin.filesystem.handlers._convert_with_markitdown"
+        ) as convert:
+            result = await read_file.arun(
+                _injected={"_state": _make_state(vision=True)}, path="page.html"
+            )
+
+        convert.assert_not_called()
+        assert result == source
+
+    @pytest.mark.asyncio
+    async def test_htm_supports_pagination(self, workspace):
+        """Markup read as text keeps offset/limit pagination."""
+        (workspace / "page.htm").write_text(
+            "\n".join(f"<p>line{i}</p>" for i in range(1, 11))
+        )
+
+        result = await read_file.arun(
+            _injected={"_state": _make_state(vision=True)},
+            path="page.htm",
+            offset=2,
+            limit=3,
+        )
+
+        assert isinstance(result, str)
+        assert result.startswith("[2-4/10]")
+        assert "<p>line2</p>" in result
+        assert "<p>line5</p>" not in result
 
     @pytest.mark.asyncio
     async def test_text_pagination(self, workspace):

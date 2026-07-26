@@ -890,6 +890,20 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
   color: var(--color-text);
 }
 
+.oa-prose .oa-mermaid-diagram {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0.75rem;
+}
+
+.oa-prose .oa-mermaid-diagram svg {
+  display: block;
+  height: auto;
+  max-width: 100%;
+  margin-inline: auto;
+}
+
 .oa-prose .katex-display,
 .oa-prose .katex,
 .oa-prose .katex-html,

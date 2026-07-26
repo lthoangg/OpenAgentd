@@ -44,6 +44,7 @@
     "katex": "^0.17.0",
     "lucide-react": "^1.24.0",
     "material-icon-theme": "^5.36.1",
+    "mermaid": "^11.16.0",
     "nuqs": "^2.9.0",
     "pdfjs-dist": "6.1.200",
     "react": "^19.2.7",

@@ -17,7 +17,7 @@ export function LazyMarkdownBlock({ content, sessionId, isStreaming = false }: L
 
   return (
     <Suspense fallback={<div className="oa-prose text-sm whitespace-pre-wrap">{displayContent}</div>}>
-      <MarkdownBlockImpl content={displayContent} sessionId={sessionId} />
+      <MarkdownBlockImpl content={displayContent} sessionId={sessionId} isStreaming={isStreaming} />
     </Suspense>
   )
 }

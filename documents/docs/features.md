@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-07-25
+updated: 2026-07-26
 ---
 
 # Features
@@ -207,6 +207,9 @@ run from the terminal.
 - **Clickable URLs in user message bubbles** `[v1.77.0]` — plain-text URLs typed
   or pasted into a user message are rendered as tappable links; style matches
   agent response links.
+- **Mermaid diagrams in agent responses** `[v1.121.0]` — completed `mermaid`
+  code fences render as responsive diagrams with Diagram and Code views, while
+  streaming and invalid diagrams retain their readable source.
 - **Stream auto-stick restored after scroll-to-bottom on mobile** `[v1.77.0]` —
   tapping the scroll-to-bottom button no longer detaches the stream
   auto-follow; direction-based detach logic removed from `onScroll` (was

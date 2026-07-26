@@ -13,11 +13,13 @@ import remarkMath from 'remark-math'
 import rehypeHighlight from 'rehype-highlight'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
-import { Copy, Check, ImageOff, FileVideo } from 'lucide-react'
+import { ImageOff, FileVideo } from 'lucide-react'
 import { resolveApiUrl } from '@/api/client'
 import { apiUrl } from '@/api/base-url'
 import { withTokenParam } from '@/api/auth'
 import { ImageLightbox } from '@/components/ImageLightbox'
+import { CodeBlock } from '@/components/CodeBlock'
+import { MermaidBlock } from '@/utils/MermaidBlock'
 import { isVideoSrc } from '@/utils/workspace'
 
 // ── fixNestedFences ───────────────────────────────────────────────────────────
@@ -115,63 +117,6 @@ export function extractText(node: unknown): string {
     return extractText(el.props.children)
   }
   return ''
-}
-
-// ── CodeBlock ─────────────────────────────────────────────────────────────────
-
-export function CodeBlock({
-  children,
-  language,
-  rawText,
-}: {
-  children: React.ReactNode
-  language?: string
-  rawText: string
-}) {
-  const [copied, setCopied] = useState(false)
-
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(rawText)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    } catch {
-      // ignore
-    }
-  }
-
-  const copyButton = (
-    <button
-      onClick={handleCopy}
-      className="flex h-8 w-8 items-center justify-center rounded-md text-(--color-text-muted) opacity-100 transition-all hover:bg-(--bg-key) hover:text-(--color-text-2) md:h-6 md:w-6 md:opacity-0 md:group-hover:opacity-100"
-      aria-label="Copy code"
-      title="Copy"
-    >
-      {copied ? (
-        <Check size={13} className="text-(--color-success)" />
-      ) : (
-        <Copy size={13} />
-      )}
-    </button>
-  )
-
-  return (
-    <div className="surface-raised group relative my-1.5 overflow-hidden rounded-md border border-(--color-border) bg-(--bg-card)">
-      {language ? (
-        <div className="flex items-center justify-between gap-3 border-b border-(--color-border) bg-(--bg-key) py-0.5 pr-1.5 pl-3">
-          <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted)">
-            {language}
-          </span>
-          {copyButton}
-        </div>
-      ) : (
-        <div className="absolute top-1.5 right-1.5 z-10">{copyButton}</div>
-      )}
-      <pre className="overflow-auto px-3 py-2.5 font-mono text-[13px] leading-relaxed text-(--color-text)">
-        <code>{children}</code>
-      </pre>
-    </div>
-  )
 }
 
 // ── resolveImageSrc ───────────────────────────────────────────────────────────
@@ -404,9 +349,11 @@ function renderCellWithBr(children: React.ReactNode): React.ReactNode {
 export const MarkdownBlock = memo(function MarkdownBlock({
   content,
   sessionId,
+  isStreaming = false,
 }: {
   content: string
   sessionId?: string
+  isStreaming?: boolean
 }) {
   // Me: the ``components`` map MUST be referentially stable across renders.
   // If we rebuild it inline every render, ReactMarkdown treats each call
@@ -425,6 +372,9 @@ export const MarkdownBlock = memo(function MarkdownBlock({
         }>
         const codeText = extractText(codeEl?.props?.children)
         const language = codeEl?.props?.className?.match(/(?:^|\s)language-([^\s]+)/)?.[1]
+        if (language?.toLowerCase() === 'mermaid' && !isStreaming) {
+          return <MermaidBlock source={codeText} highlightedCode={codeEl?.props?.children as React.ReactNode} />
+        }
         return (
           <CodeBlock language={language} rawText={codeText}>
             {codeEl?.props?.children as React.ReactNode}
@@ -453,7 +403,7 @@ export const MarkdownBlock = memo(function MarkdownBlock({
         />
       ),
     }),
-    [sessionId],
+    [isStreaming, sessionId],
   )
 
   // Me: fixNestedFences is pure; memoize so we don't re-walk the whole

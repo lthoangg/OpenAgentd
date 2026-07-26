@@ -18,6 +18,11 @@ type RenderState =
 const svgCache = new Map<string, string>()
 const MAX_CACHE_SIZE = 100
 
+// eslint-disable-next-line react-refresh/only-export-components
+export function clearSvgCache(): void {
+  svgCache.clear()
+}
+
 function getCacheKey(source: string, theme: string): string {
   return `${theme}:${source}`
 }

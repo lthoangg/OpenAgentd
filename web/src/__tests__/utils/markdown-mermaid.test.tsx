@@ -18,6 +18,7 @@ mock.module('mermaid', () => ({
 }))
 
 import { MarkdownBlock } from '@/utils/markdown'
+import { clearSvgCache } from '@/utils/MermaidBlock'
 
 const source = ['flowchart LR', '  A --> B'].join('\n')
 const diagram = ['```mermaid', source, '```'].join('\n')
@@ -26,6 +27,7 @@ afterEach(cleanup)
 
 beforeEach(() => {
   renderError = undefined
+  clearSvgCache()
   initializeMermaid.mockClear()
   renderMermaid.mockClear()
   renderMermaid.mockImplementation(async (...args: unknown[]) => ({
@@ -44,7 +46,8 @@ describe('MarkdownBlock Mermaid fences', () => {
     expect(initializeMermaid).toHaveBeenCalledWith({
       startOnLoad: false,
       securityLevel: 'strict',
-      theme: 'default',
+      theme: 'base',
+      themeVariables: expect.any(Object),
     })
     expect(renderMermaid.mock.calls[0]?.[1]).toBe(`${source}\n`)
   })
@@ -59,7 +62,7 @@ describe('MarkdownBlock Mermaid fences', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: 'Code' }))
 
-    const code = screen.getByText(/flowchart LR/).closest('code')
+    const code = document.querySelector('code')
     expect(code?.textContent).toBe(`${source}\n`)
     fireEvent.click(screen.getByRole('button', { name: 'Copy code' }))
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(`${source}\n`))

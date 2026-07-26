@@ -5,9 +5,10 @@ interface CodeBlockProps {
   children: React.ReactNode
   language?: string
   rawText: string
+  noHeader?: boolean
 }
 
-export function CodeBlock({ children, language, rawText }: CodeBlockProps) {
+export function CodeBlock({ children, language, rawText, noHeader = false }: CodeBlockProps) {
   const [copied, setCopied] = useState(false)
 
   const handleCopy = async () => {
@@ -35,6 +36,14 @@ export function CodeBlock({ children, language, rawText }: CodeBlockProps) {
       )}
     </button>
   )
+
+  if (noHeader) {
+    return (
+      <pre className="overflow-auto px-3 py-2.5 font-mono text-[13px] leading-relaxed text-(--color-text)">
+        <code>{children}</code>
+      </pre>
+    )
+  }
 
   return (
     <div className="surface-raised group relative my-1.5 overflow-hidden rounded-md border border-(--color-border) bg-(--bg-card)">

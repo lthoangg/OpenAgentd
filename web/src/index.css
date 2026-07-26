@@ -894,13 +894,42 @@ html[data-mobile-shell][data-vp-anim] .settings-modal-shell {
   max-width: 100%;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
-  padding: 0.75rem;
+  padding: 1rem 0.75rem;
+  display: flex;
+  justify-content: center;
 }
 
 .oa-prose .oa-mermaid-diagram svg {
   display: block;
   height: auto;
   max-width: 100%;
+  margin-inline: auto;
+  font-family: 'Inter Variable', system-ui, -apple-system, sans-serif !important;
+}
+
+.oa-mermaid-diagram .node rect,
+.oa-mermaid-diagram .node circle,
+.oa-mermaid-diagram .node polygon {
+  rx: 4px;
+  ry: 4px;
+}
+
+.oa-mermaid-diagram text,
+.oa-mermaid-diagram .label {
+  font-family: 'Inter Variable', system-ui, -apple-system, sans-serif !important;
+}
+
+.oa-mermaid-lightbox-content {
+  touch-action: pan-x pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
+.oa-mermaid-lightbox-content svg {
+  max-width: 100% !important;
+  max-height: 100% !important;
+  width: auto !important;
+  height: auto !important;
+  display: block;
   margin-inline: auto;
 }
 

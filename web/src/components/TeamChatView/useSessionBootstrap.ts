@@ -102,7 +102,18 @@ export function useSessionBootstrap({
     const store = useTeamStore.getState()
     if (store.sessionId === sessionId && (store.isConnected || store.isTeamWorking)) return
 
-    useTeamStore.setState({ sessionId })
+    if (store.sessionId !== sessionId) {
+      // Switching chats: reset through the store (aborts the old SSE, bumps
+      // the session generation, clears the live turn) instead of patching the
+      // id in place. Patching alone left the departing session's streaming
+      // blocks, `isTeamWorking`, and agent status attached to the new id —
+      // and because `loadSession` reads them as newer-than-the-fetch local
+      // content, the previous chat's stream kept rendering here even after
+      // this session's history arrived.
+      beginResolvedSession(sessionId, { mode, workspace: agentWorkspace })
+    } else {
+      useTeamStore.setState({ sessionId })
+    }
 
     const draft = draftBySessionRef.current[sessionId]
     inputRef.current?.setValue(draft?.value ?? '')

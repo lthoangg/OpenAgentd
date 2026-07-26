@@ -118,6 +118,59 @@ describe("beginResolvedSession", () => {
     expect(s.isConnected).toBe(false);
   });
 
+  it("drops the previous session's live stream when switching to another session", () => {
+    const abort = new AbortController();
+    useTeamStore.setState({
+      sessionId: "session-a",
+      sessionTitle: "Session A",
+      leadName: "lead",
+      agentNames: ["lead"],
+      activeAgent: "lead",
+      isTeamWorking: true,
+      isConnected: true,
+      _abortController: abort,
+      agentStreams: {
+        lead: makeStream({
+          status: "working",
+          currentText: "streaming in A",
+          currentBlocks: [{ id: "b1", type: "text" as const, content: "streaming in A" }],
+        }),
+      },
+    });
+
+    useTeamStore.getState().beginResolvedSession("session-b", { mode: "normal" });
+
+    const s = useTeamStore.getState();
+    expect(s.sessionId).toBe("session-b");
+    expect(s.isTeamWorking).toBe(false);
+    expect(s.sessionTitle).toBeNull();
+    expect(s.agentStreams.lead.currentBlocks).toHaveLength(0);
+    expect(s.agentStreams.lead.currentText).toBe("");
+    expect(s.agentStreams.lead.status).toBe("idle");
+    expect(abort.signal.aborted).toBe(true);
+  });
+
+  it("keeps in-flight state when the resolved id matches the active session", () => {
+    useTeamStore.setState({
+      sessionId: "session-a",
+      leadName: "lead",
+      agentNames: ["lead"],
+      isTeamWorking: true,
+      agentStreams: {
+        lead: makeStream({
+          status: "working",
+          currentBlocks: [{ id: "b1", type: "text" as const, content: "streaming in A" }],
+        }),
+      },
+    });
+
+    useTeamStore.getState().beginResolvedSession("session-a", { mode: "normal" });
+
+    const s = useTeamStore.getState();
+    expect(s.isTeamWorking).toBe(true);
+    expect(s.agentStreams.lead.currentBlocks).toHaveLength(1);
+  });
+
   it("stores coding workspace and resets streams to the lead", () => {
     useTeamStore.setState({
       leadName: "lead",

@@ -241,13 +241,23 @@ export const createSessionSlice: StateCreator<
   },
 
   beginResolvedSession: (sessionId, options) => {
+    // Preserving the live turn is only correct while we stay on the *same*
+    // logical session: a background resolve that hands us the id of the
+    // session the optimistic message was just sent to (sessionId still null,
+    // or already this id) must not wipe that in-flight turn. Adopting a
+    // *different* persisted session is a switch — the previous session's
+    // streaming blocks and working flag belong to a chat we are leaving, so
+    // they must be dropped or they keep rendering (and `loadSession` then
+    // treats them as newer local content) under the new session id.
+    const staysOnSameSession =
+      get().sessionId === null || get().sessionId === sessionId
     const isWorkingOrHasBlocks =
       get().isTeamWorking ||
       Boolean(
         get().leadName &&
           get().agentStreams[get().leadName!]?.currentBlocks.length > 0,
       )
-    if (isWorkingOrHasBlocks) {
+    if (staysOnSameSession && isWorkingOrHasBlocks) {
       set((state) => {
         if (sessionId) state.sessionId = sessionId
         state.sessionModel = options?.model ?? state.sessionModel

@@ -64,8 +64,8 @@ dependencies = [
     # Python diagnostics are part of the runtime product, not dev-only checks.
     # Their native console binaries are discovered in uv-tool and desktop
     # sidecar layouts by app.services.lsp.managed.
-    "ruff==0.15.22",
-    "ty==0.0.61",
+    "ruff==0.16.0",
+    "ty==0.0.63",
 ]
 
 [project.urls]

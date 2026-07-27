@@ -1126,3 +1126,27 @@ class TestWaitUntilReady:
         assert launch.command == "/detected/bin/npx"
         assert launch.env == {"PATH": "/detected/bin", "FOO": "bar"}
         assert "OPENAI_API_KEY" not in launch.env
+
+    @pytest.mark.asyncio
+    async def test_resolve_stdio_launch_expands_secret_refs(self, monkeypatch) -> None:
+        import app.agent.mcp.manager as mcp_manager_mod
+        import shutil
+
+        monkeypatch.setenv("SECRET_KEY", "unsecret_value")
+
+        async def mock_get_user_path(*, force_refresh=False):
+            return "/detected/bin"
+
+        def mock_which(cmd, path=None):
+            return "/detected/bin/npx"
+
+        monkeypatch.setattr(mcp_manager_mod, "_get_user_path", mock_get_user_path)
+        monkeypatch.setattr(shutil, "which", mock_which)
+
+        server_cfg = StdioServerConfig(
+            command="npx", env={"MY_SECRET": "${SECRET_KEY}"}
+        )
+
+        launch = await mcp_manager_mod._resolve_stdio_launch(server_cfg)
+
+        assert launch.env["MY_SECRET"] == "unsecret_value"

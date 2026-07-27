@@ -13,6 +13,7 @@ from app.agent.mcp.config import (
     OAuthConfig,
     StdioServerConfig,
     load_config,
+    resolve_env_dict,
     resolve_headers,
     resolve_secret_refs,
     save_config,
@@ -355,3 +356,9 @@ class TestResolveHeaders:
         assert resolve_headers({"Authorization": "Bearer $MISSING_MCP_TOKEN"}) == {
             "Authorization": "Bearer $MISSING_MCP_TOKEN"
         }
+
+    def test_resolve_env_dict_expands_env_vars(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("MY_VAR", "my_value")
+        assert resolve_env_dict({"KEY": "${MY_VAR}"}) == {"KEY": "my_value"}

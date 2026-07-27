@@ -18,11 +18,13 @@ Public API:
 from __future__ import annotations
 
 from app.agent.mcp.config import (
+    HttpServerConfig,
     MCPConfig,
     MCPServerConfig,
     StdioServerConfig,
-    HttpServerConfig,
     load_config,
+    resolve_env_dict,
+    resolve_secret_refs,
     save_config,
 )
 from app.agent.mcp.manager import MCPManager, MCPServerStatus, mcp_manager
@@ -36,5 +38,7 @@ __all__ = [
     "MCPServerStatus",
     "load_config",
     "save_config",
+    "resolve_env_dict",
+    "resolve_secret_refs",
     "mcp_manager",
 ]

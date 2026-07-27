@@ -127,20 +127,25 @@ def resolve_secret_refs(
     return _ENV_REF_RE.sub(replace, value)
 
 
-def resolve_headers(headers: dict[str, str]) -> dict[str, str]:
-    """Resolve env-var references in HTTP MCP headers at connection time."""
-    if not any(_ENV_REF_RE.search(value) for value in headers.values()):
-        return dict(headers)
+def resolve_env_dict(env: dict[str, str]) -> dict[str, str]:
+    """Resolve env-var references ($VAR / ${VAR}) in an environment dict at connection time."""
+    if not any(_ENV_REF_RE.search(value) for value in env.values()):
+        return dict(env)
 
-    if _requires_dotenv(headers.values()):
+    if _requires_dotenv(env.values()):
         env_file = Path(settings.OPENAGENTD_CONFIG_DIR) / ".env"
         dotenv_snapshot = dotenv_values(env_file) if env_file.is_file() else {}
     else:
         dotenv_snapshot = {}
     return {
         key: resolve_secret_refs(value, _dotenv_snapshot=dotenv_snapshot)
-        for key, value in headers.items()
+        for key, value in env.items()
     }
+
+
+def resolve_headers(headers: dict[str, str]) -> dict[str, str]:
+    """Resolve env-var references in HTTP MCP headers at connection time."""
+    return resolve_env_dict(headers)
 
 
 MCPServerConfig = StdioServerConfig | HttpServerConfig

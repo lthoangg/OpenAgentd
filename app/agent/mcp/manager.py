@@ -44,6 +44,7 @@ from app.agent.mcp.config import (
     HttpServerConfig,
     StdioServerConfig,
     load_config,
+    resolve_env_dict,
     resolve_headers,
 )
 from app.agent.mcp.oauth import (
@@ -161,7 +162,7 @@ async def _resolve_stdio_launch(server_cfg: StdioServerConfig) -> _StdioLaunch:
     env: dict[str, str] = {}
     if effective_path:
         env["PATH"] = effective_path
-    env.update(server_cfg.env)
+    env.update(resolve_env_dict(server_cfg.env))
 
     return _StdioLaunch(
         command=resolved_command or server_cfg.command,

@@ -217,6 +217,8 @@ Tests use Bun test + Happy DOM. Test store logic and pure utils directly; avoid 
 
 ## Issues and roadmap
 
+Use [Discord](https://discord.gg/cz6GQHQUMg) or the [Facebook Group](https://www.facebook.com/groups/1256361676707935) for community chat, questions, and general discussion.
+
 Use GitHub issues for bugs, known issues, feature requests, and roadmap discussion.
 The templates follow the same pattern used by large open-source projects: ask
 for reproducible facts, link/remind about conduct and private security reporting,

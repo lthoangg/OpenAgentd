@@ -16,6 +16,9 @@ import {
   Bell,
   TerminalSquare,
   ChevronRight,
+  ExternalLink,
+  MessageSquare,
+  Users,
 } from 'lucide-react'
 
 import { AppBackendDialog } from '@/components/AppBackendDialog'
@@ -284,6 +287,48 @@ export function SettingsHubPage() {
             <Button type="button" size="sm" variant="default" onClick={() => setBackendDialogOpen(true)}>
               Configure
             </Button>
+          </div>
+        </SettingsSection>
+
+        <SettingsSection title="Community & Support">
+          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => void openExternalUrl('https://discord.gg/cz6GQHQUMg')}
+              className="flex items-start gap-3 rounded-md border border-(--color-border) bg-(--bg-card) p-3 text-left transition-colors hover:bg-(--bg-key)/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
+            >
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-[#5865F2]/10 text-[#5865F2]" aria-hidden="true">
+                <MessageSquare size={16} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1 text-xs font-semibold text-(--color-text)">
+                  <span>Discord Server</span>
+                  <ExternalLink size={11} className="text-(--color-text-subtle)" />
+                </div>
+                <p className="mt-0.5 text-[11px] text-(--color-text-muted)">
+                  Join the chat, ask questions, and get help from the community.
+                </p>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => void openExternalUrl('https://www.facebook.com/groups/1256361676707935')}
+              className="flex items-start gap-3 rounded-md border border-(--color-border) bg-(--bg-card) p-3 text-left transition-colors hover:bg-(--bg-key)/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)"
+            >
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-[#1877F2]/10 text-[#1877F2]" aria-hidden="true">
+                <Users size={16} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1 text-xs font-semibold text-(--color-text)">
+                  <span>Facebook Group</span>
+                  <ExternalLink size={11} className="text-(--color-text-subtle)" />
+                </div>
+                <p className="mt-0.5 text-[11px] text-(--color-text-muted)">
+                  Connect with other OpenAgentd users and maintainers on Facebook.
+                </p>
+              </div>
+            </button>
           </div>
         </SettingsSection>
 

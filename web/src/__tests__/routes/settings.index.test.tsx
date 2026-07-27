@@ -104,3 +104,15 @@ describe('SettingsHubPage — mobile preferences', () => {
     expect(screen.getByText(/terminal settings/i)).toBeInTheDocument()
   })
 })
+
+// ── Community & Support ───────────────────────────────────────────────────
+
+describe('SettingsHubPage — community links', () => {
+  it('renders Discord Server and Facebook Group community buttons', () => {
+    renderHub({ status: 'ok', version: '1.2.3' })
+
+    expect(screen.getByText(/community & support/i)).toBeInTheDocument()
+    expect(screen.getByText(/discord server/i)).toBeInTheDocument()
+    expect(screen.getByText(/facebook group/i)).toBeInTheDocument()
+  })
+})

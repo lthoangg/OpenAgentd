@@ -8,6 +8,7 @@
   <a href="https://github.com/lthoangg/openagentd/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="Apache 2.0"></a>
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.14-blue.svg" alt="Python 3.14"></a>
   <a href="https://react.dev/"><img src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white" alt="React 19"></a>
+  <a href="https://discord.gg/cz6GQHQUMg"><img src="https://img.shields.io/badge/Discord-Join%20Chat-5865F2?logo=discord&logoColor=white" alt="Discord"></a>
 </p>
 
 <p align="center"><strong>A local-first cockpit for AI agents.</strong><br>
@@ -16,6 +17,8 @@ Run an agent team on your machine, see every tool call and diff, and keep your m
 <p align="center">
   <a href="#get-started">Get started</a> ·
   <a href="documents/docs/features.md">Features</a> ·
+  <a href="https://discord.gg/cz6GQHQUMg">Discord</a> ·
+  <a href="https://www.facebook.com/groups/1256361676707935">Facebook Group</a> ·
   <a href="https://github.com/lthoangg/OpenAgentd/issues">Issues</a> ·
   <a href="CONTRIBUTING.md">Contribute</a>
 </p>
@@ -113,6 +116,8 @@ cd web && bun dev
 
 - [Features](documents/docs/features.md) — shipped, version-cited capabilities.
 - [Releases](https://github.com/lthoangg/openagentd/releases) — download builds and read release notes.
+- [Discord](https://discord.gg/cz6GQHQUMg) — join the community server to chat and ask questions.
+- [Facebook Group](https://www.facebook.com/groups/1256361676707935) — join the community group to connect and share.
 - [Issues](https://github.com/lthoangg/OpenAgentd/issues) — feature requests, bugs, roadmap discussion, and known issues.
 - [Security policy](SECURITY.md) — report vulnerabilities privately.
 - [Contributing](CONTRIBUTING.md) — set up a development checkout and submit changes.

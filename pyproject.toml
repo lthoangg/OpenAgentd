@@ -71,6 +71,8 @@ dependencies = [
 [project.urls]
 Repository = "https://github.com/lthoangg/openagentd"
 "Bug Tracker" = "https://github.com/lthoangg/openagentd/issues"
+Discord = "https://discord.gg/cz6GQHQUMg"
+"Facebook Group" = "https://www.facebook.com/groups/1256361676707935"
 
 [project.scripts]
 openagentd = "app.cli:main"

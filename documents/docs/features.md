@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-07-26
+updated: 2026-07-27
 ---
 
 # Features
@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 16 providers. Your keys.
 
-**Latest release:** v1.121.0 · July 26, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.121.0)
+**Latest release:** v1.122.0 · July 27, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.122.0)
 
 ---
 
@@ -665,6 +665,10 @@ Four orthogonal ways to add capability.
 - **MCP servers** `[since v1.0]` — any Model Context Protocol server, hot-reloaded
   via `POST /api/mcp/apply`. Per-agent scoping. OAuth-backed setup. Session Settings
   can enable/disable scoped MCP servers and connect OAuth-backed servers in place `[v1.52.2]`.
+  - **`$VAR` / `${VAR}` expansion in stdio server env** `[v1.122.0]` — stdio MCP
+    server `env` entries in `mcp.json` now resolve environment/`.env`-style
+    references the same way header values already did, so secrets can be
+    referenced instead of written in plain text.
   - **Markdown-rendered tool descriptions in Session Settings** `[v1.96.0]` —
     tool descriptions in the Session Settings tools panel now render as structured
     markdown (bullet lists, inline code, bold/italic, paragraph breaks) instead of

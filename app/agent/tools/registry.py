@@ -83,6 +83,7 @@ from app.agent.errors import (
     ToolExecutionError,
     format_validation_error,
 )
+from app.agent.tools.schema import sanitize_tool_schema
 
 
 class InjectedArg:
@@ -378,11 +379,13 @@ class Tool:
             "function": {
                 "name": self.name,
                 "description": description,
-                "parameters": {
-                    "type": "object",
-                    "properties": properties,
-                    "required": required,
-                },
+                "parameters": sanitize_tool_schema(
+                    {
+                        "type": "object",
+                        "properties": properties,
+                        "required": required,
+                    }
+                ),
             },
         }
 

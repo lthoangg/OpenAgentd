@@ -20,6 +20,7 @@ from pydantic import AnyUrl, BaseModel
 from app.agent.errors import ToolExecutionError
 from app.agent.schemas.chat import TextBlock, ToolResult
 from app.agent.tools.registry import Tool
+from app.agent.tools.schema import sanitize_tool_schema as _sanitize_schema
 
 if TYPE_CHECKING:
     from mcp import ClientSession
@@ -27,26 +28,6 @@ if TYPE_CHECKING:
 
 
 MCP_APP_MIME_TYPE = "text/html;profile=mcp-app"
-
-
-def _sanitize_schema(schema: dict[str, Any] | None) -> dict[str, Any]:
-    """Coerce an MCP tool ``inputSchema`` into the OpenAI function-call shape.
-
-    MCP servers return JSON Schema; OpenAI tool schemas are JSON Schema with
-    a ``type: "object"`` wrapper. Most servers already return that shape.
-    """
-    if not schema or not isinstance(schema, dict):
-        return {"type": "object", "properties": {}, "required": []}
-
-    result = dict(schema)
-    result.setdefault("type", "object")
-    result.setdefault("properties", {})
-    # ``required`` is optional in JSON Schema but expected by some providers.
-    result.setdefault("required", [])
-    # Drop $schema / $id metadata that some servers include — providers reject it.
-    result.pop("$schema", None)
-    result.pop("$id", None)
-    return result
 
 
 class _NoopParameters(BaseModel):

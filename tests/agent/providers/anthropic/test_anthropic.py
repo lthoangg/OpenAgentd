@@ -639,7 +639,7 @@ def test_anthropic_payload_service_tier_official_url() -> None:
 
 def test_anthropic_payload_service_tier_custom_url() -> None:
     provider = AnthropicProvider(
-        api_key="sk-ant-test",
+        api_key="[REDACTED]",
         model="claude-sonnet-4-6",
         base_url="https://some-proxy.com",
         model_kwargs={"service_tier": "fast"},

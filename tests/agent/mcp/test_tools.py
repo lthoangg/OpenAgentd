@@ -83,6 +83,76 @@ class TestSanitizeSchema:
         assert result["properties"] == {"name": {"type": "string"}}
         assert result["required"] == ["name"]
 
+    def test_sanitize_schema_flattens_top_level_oneof(self) -> None:
+        """_sanitize_schema flattens top-level oneOf combinator."""
+        schema = {
+            "oneOf": [
+                {
+                    "type": "object",
+                    "properties": {"repo": {"type": "string"}},
+                    "required": ["repo"],
+                },
+                {
+                    "type": "object",
+                    "properties": {"url": {"type": "string"}},
+                    "required": ["url"],
+                },
+            ]
+        }
+        result = _sanitize_schema(schema)
+        assert "oneOf" not in result
+        assert result["type"] == "object"
+        assert result["properties"] == {
+            "repo": {"type": "string"},
+            "url": {"type": "string"},
+        }
+        assert result["required"] == []
+
+    def test_sanitize_schema_flattens_top_level_allof(self) -> None:
+        """_sanitize_schema flattens top-level allOf combinator."""
+        schema = {
+            "type": "object",
+            "allOf": [
+                {
+                    "properties": {"foo": {"type": "string"}},
+                    "required": ["foo"],
+                },
+                {
+                    "properties": {"bar": {"type": "number"}},
+                    "required": ["bar"],
+                },
+            ],
+        }
+        result = _sanitize_schema(schema)
+        assert "allOf" not in result
+        assert result["type"] == "object"
+        assert result["properties"] == {
+            "foo": {"type": "string"},
+            "bar": {"type": "number"},
+        }
+        assert result["required"] == ["bar", "foo"]
+
+    def test_sanitize_schema_flattens_top_level_anyof(self) -> None:
+        """_sanitize_schema flattens top-level anyOf combinator."""
+        schema = {
+            "type": "object",
+            "properties": {"action": {"type": "string"}},
+            "required": ["action"],
+            "anyOf": [
+                {"properties": {"param1": {"type": "string"}}, "required": ["param1"]},
+                {"properties": {"param2": {"type": "boolean"}}},
+            ],
+        }
+        result = _sanitize_schema(schema)
+        assert "anyOf" not in result
+        assert result["type"] == "object"
+        assert result["properties"] == {
+            "action": {"type": "string"},
+            "param1": {"type": "string"},
+            "param2": {"type": "boolean"},
+        }
+        assert result["required"] == ["action"]
+
 
 class TestExtractText:
     """Test _extract_text function."""

@@ -593,8 +593,9 @@ class Agent(Generic[TContext]):
 
         On success, resets ``bk.provider_resume_attempts`` and returns the
         assistant message.  On a retryable ``httpx.ConnectError`` /
-        ``httpx.ReadTimeout`` / ``TimeoutError`` that the provider (and any
-        fallback) already exhausted its own retry budget on, this backs off
+        ``httpx.ReadTimeout`` / ``httpx.RemoteProtocolError`` / ``TimeoutError``
+        that the provider (and any fallback) already exhausted its own retry
+        budget on, this backs off
         and signals the caller to retry the same iteration — up to
         ``MAX_PROVIDER_RESUME_ATTEMPTS`` times — after which it raises
         :class:`~app.agent.errors.ProviderConnectionError`.
@@ -624,7 +625,12 @@ class Agent(Generic[TContext]):
 
         try:
             assistant_msg = await model_chain(model_request)
-        except (httpx.ConnectError, httpx.ReadTimeout, TimeoutError) as exc:
+        except (
+            httpx.ConnectError,
+            httpx.ReadTimeout,
+            httpx.RemoteProtocolError,
+            TimeoutError,
+        ) as exc:
             # The provider (and any fallback) exhausted its retry budget on
             # a transient connectivity failure.  Rather than letting this
             # kill the whole turn mid-task — abandoning the tool work

@@ -441,6 +441,53 @@ async def test_agent_run_resumes_after_provider_timeout_mid_task():
     assert last.content == "Recovered answer."
 
 
+async def test_agent_run_resumes_after_remote_protocol_error_mid_task():
+    """A RemoteProtocolError (peer closed connection mid-stream) that
+    exhausts the provider's own retry budget after a tool call must not kill
+    the turn. The loop resumes the same turn and finishes, same as a
+    ReadTimeout."""
+    import httpx
+    from unittest.mock import patch
+
+    call_count = 0
+
+    def lookup() -> str:
+        """Returns the value."""
+        return "value"
+
+    async def flaky_stream(
+        messages: list[ChatMessage],
+        tools: list[dict] | None = None,
+        **kwargs,
+    ):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            yield make_tool_chunk("lookup", "call_1", "{}")
+        elif call_count == 2:
+            # Provider exhausts its own retries on the post-tool model call.
+            raise httpx.RemoteProtocolError(
+                "peer closed connection without sending complete message "
+                "body (incomplete chunked read)"
+            )
+        else:
+            yield make_text_chunk("Recovered answer.")
+
+    provider = MockProvider([[]])
+    provider.stream = flaky_stream  # type: ignore[method-assign]
+    agent = Agent(name="bot", llm_provider=provider, tools=[Tool(lookup)])
+
+    with (
+        patch("app.agent.agent_loop.retry.asyncio.sleep", new_callable=AsyncMock),
+        patch("app.agent.agent_loop.core.asyncio.sleep", new_callable=AsyncMock),
+    ):
+        msgs = await agent.run([HumanMessage(content="lookup")])
+
+    last = last_assistant(msgs)
+    assert last is not None
+    assert last.content == "Recovered answer."
+
+
 async def test_agent_run_provider_resume_budget_exhausted_raises():
     """Persistent timeouts eventually give up rather than spinning forever.
 
@@ -1265,6 +1312,44 @@ async def test_stream_with_retry_on_read_error():
         call_count += 1
         if call_count < 2:
             raise httpx.ReadError("connection reset by peer")
+        yield make_text_chunk("reconnected")
+
+    provider = MockProvider([[]])
+    provider.stream = mock_stream  # type: ignore[method-assign]
+    agent = Agent(name="bot", llm_provider=provider)
+
+    with patch("app.agent.agent_loop.retry.asyncio.sleep", new_callable=AsyncMock):
+        chunks = [
+            c
+            async for c in stream_with_retry(
+                **retry_args(agent), messages=[], tools=None
+            )
+        ]
+
+    assert call_count == 2
+    assert chunks[0].choices[0].delta.content == "reconnected"
+
+
+async def test_stream_with_retry_on_remote_protocol_error():
+    """RemoteProtocolError (peer closed connection mid-stream, e.g. an
+    incomplete chunked read) is retried with backoff just like ReadError."""
+    import httpx
+    from unittest.mock import patch
+
+    call_count = 0
+
+    async def mock_stream(
+        messages: list[ChatMessage],
+        tools: list[dict] | None = None,
+        **kwargs,
+    ):
+        nonlocal call_count
+        call_count += 1
+        if call_count < 2:
+            raise httpx.RemoteProtocolError(
+                "peer closed connection without sending complete message "
+                "body (incomplete chunked read)"
+            )
         yield make_text_chunk("reconnected")
 
     provider = MockProvider([[]])

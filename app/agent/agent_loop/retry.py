@@ -414,6 +414,7 @@ async def stream_with_retry(
             httpx.ConnectError,
             httpx.ReadError,
             httpx.ReadTimeout,
+            httpx.RemoteProtocolError,
             TimeoutError,
         ) as exc:
             last_exc = exc

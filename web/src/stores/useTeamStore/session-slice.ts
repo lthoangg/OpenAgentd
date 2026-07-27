@@ -99,6 +99,29 @@ function hasLiveContent(stream: AgentStream | undefined, isWorking: boolean, sin
   return stream.currentBlocks.some((block) => (block.timestamp?.getTime() ?? 0) >= sinceMs)
 }
 
+/**
+ * Drop live blocks the server's snapshot already covers, keeping only those
+ * appended while the fetch was in flight.
+ *
+ * Only called once the server reports the turn finished: everything persisted
+ * by then is in the canonical rows we just installed, so the sole live blocks
+ * still worth keeping are the ones that arrived afterwards. Without this the
+ * preserve branch is all-or-nothing — one genuinely new block would keep the
+ * whole stale tail and let `done` commit it a second time.
+ *
+ * Positional rather than timestamp-based because streamed assistant blocks
+ * carry no timestamp until `done` stamps them, so a time filter would discard
+ * exactly the new content it is meant to protect. `currentBlocks` only ever
+ * grows within a turn (text appends mutate the last entry in place), and if it
+ * was drained mid-fetch the slice simply yields nothing.
+ */
+function dropSnapshotCoveredBlocks(stream: AgentStream, countAtFetchStart: number) {
+  const covered = stream.currentBlocks.slice(0, countAtFetchStart)
+  // These are leaving the store for good; the canonical rows carry server URLs.
+  revokeBlobUrlsFromBlocks(covered)
+  stream.currentBlocks = stream.currentBlocks.slice(countAtFetchStart)
+}
+
 function removePersistedOptimisticUserBlocks(stream: AgentStream) {
   const persistedUsers = stream.blocks.filter(
     (block) => block.type === 'user' && !block.extra?.from_agent,
@@ -356,6 +379,11 @@ export const createSessionSlice: StateCreator<
   loadSession: async (sessionId: string, workspace?: string | null) => {
     const gen = get()._sessionGeneration
     const fetchStartedAt = Date.now()
+    // How much live content each stream held before the request went out, so
+    // the resolve path can tell it apart from anything appended since.
+    const liveCountsAtFetch = new Map(
+      Object.entries(get().agentStreams).map(([name, s]) => [name, s.currentBlocks.length]),
+    )
     set((draft) => {
       if (draft.sessionId !== sessionId) {
         draft.isTeamWorking = false
@@ -390,6 +418,21 @@ export const createSessionSlice: StateCreator<
         const leadRevertTime = revertBoundaryTime(history.lead)
         const boundaryId = history.lead.revert?.message_id
         const boundaryMsg = boundaryId ? history.lead.messages.find((msg) => msg.id === boundaryId) : undefined
+
+        // The client's `isTeamWorking` lags the server: after a /stop the
+        // backend keeps unwinding for seconds before its trailing `done` clears
+        // the flag, and `session_turn_completed` can arrive over the global
+        // stream ahead of that `done` too. When the server says the turn is
+        // over it had already persisted it in full, so every live block from
+        // before this fetch is now duplicated by the canonical rows below —
+        // preserving them is what let the belated `done` append the turn twice.
+        // Drop them up front; everything downstream then sees only genuinely
+        // newer content and needs no special casing.
+        if (history.lead.running !== true) {
+          Object.entries(draft.agentStreams).forEach(([name, stream]) => {
+            dropSnapshotCoveredBlocks(stream, liveCountsAtFetch.get(name) ?? 0)
+          })
+        }
 
         // Computed against the stream identified by the *resolved* leadName,
         // before anything below overwrites it — see hasLiveContent.

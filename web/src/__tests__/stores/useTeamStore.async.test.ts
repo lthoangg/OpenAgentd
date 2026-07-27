@@ -1038,18 +1038,135 @@ describe("sendMessage: queue behaviour", () => {
 // ── stopTeam ─────────────────────────────────────────────────────────────────
 
 describe("stopTeam", () => {
-  it("reloads the session after interrupt so released queued messages become history", async () => {
+  it("reloads immediately after the interrupt without waiting for the trailing done", async () => {
     useTeamStore.setState({
       sessionId: "session-a",
       isTeamWorking: true,
       _workspace: "/repo/a",
     })
 
+    // The reload no longer waits on a timer for the turn to "settle": a
+    // belated `done` can no longer duplicate the turn (it recognises that a
+    // canonical reload already absorbed it), so Stop stays responsive.
     await useTeamStore.getState().stopTeam()
 
     expect(mockPostTeamChat).toHaveBeenCalledWith(null, "session-a", true)
     expect(mockTeamHistory).toHaveBeenCalledWith("session-a")
     expect(useTeamStore.getState()._workspace).toBe("/repo/a")
+  })
+
+  it("does not duplicate message A + the agent's turn when Stop is clicked mid-stream", async () => {
+    // Reproduces: user sends a message, the agent streams thinking/tool/
+    // message blocks, the user clicks Stop. The interrupt POST only *signals*
+    // cancellation — the backend keeps running briefly before it actually
+    // unwinds, persists the interrupted turn, and emits the trailing `done`
+    // SSE event. The post-stop reload must not race that trailing `done`.
+    // Live blocks are always stamped from the *client* clock (see the
+    // `new Date()` sites in sse-reducer/pending-slice), so they predate the
+    // reload's own client-clock `fetchStartedAt`. Server/client skew cannot
+    // apply here — it only affects comparisons against persisted server rows.
+    const streamedAt = new Date(Date.now() - 1000)
+    useTeamStore.setState({
+      sessionId: "sess-1",
+      isTeamWorking: true,
+      leadName: "lead",
+      agentNames: ["lead"],
+      agentStreams: {
+        lead: makeStream({
+          status: "working",
+          currentBlocks: [
+            { id: "u1", type: "user", content: "message A", timestamp: streamedAt },
+            { id: "b1", type: "thinking", content: "thinking...", timestamp: streamedAt },
+            { id: "b2", type: "tool", content: "tool call", timestamp: streamedAt },
+            { id: "b3", type: "text", content: "final answer", timestamp: streamedAt },
+          ],
+        }),
+      },
+    })
+
+    mockTeamHistory.mockImplementation(() => Promise.resolve({
+      lead: {
+        id: "lead-sess",
+        agent_name: "lead",
+        title: null,
+        created_at: null,
+        updated_at: null,
+        sub_sessions: [],
+        messages: [
+          makeMessageResponse({ id: "m1", role: "user", content: "message A", created_at: "2024-01-01T00:00:00Z" }),
+          makeMessageResponse({ id: "m2", role: "assistant", content: "final answer", created_at: "2024-01-01T00:00:03Z" }),
+        ],
+      },
+      members: [],
+      has_more: false,
+      next_cursor: null,
+    }))
+
+    // The reload runs while the turn is still live client-side, so it
+    // replaces `blocks` with the server's canonical (already-persisted) turn
+    // while preserving the live `currentBlocks`.
+    await useTeamStore.getState().stopTeam()
+
+    // The backend finally finishes cancelling and the trailing `done` event
+    // lands — long after the reload. Because the reload already absorbed this
+    // exact turn, `done` must drop the now-redundant live blocks rather than
+    // append them a second time. No timing window is involved.
+    useTeamStore.getState()._handleSSEEvent("done", {})
+
+    const finalBlocks = useTeamStore.getState().agentStreams.lead.blocks
+    const userBlocks = finalBlocks.filter((b) => b.type === "user" && b.content === "message A")
+    const answerBlocks = finalBlocks.filter((b) => b.content === "final answer")
+    expect(userBlocks).toHaveLength(1)
+    expect(answerBlocks).toHaveLength(1)
+    expect(useTeamStore.getState().agentStreams.lead.currentBlocks).toHaveLength(0)
+  })
+
+  it("still commits a brand-new turn that starts while the post-stop reload is in flight", async () => {
+    // Guard against over-absorbing: if a *new* turn begins after the history
+    // snapshot was taken, its blocks are genuinely absent from that snapshot
+    // and `done` must still commit them.
+    useTeamStore.setState({
+      sessionId: "sess-1",
+      isTeamWorking: true,
+      leadName: "lead",
+      agentNames: ["lead"],
+      _pendingMessages: [{ id: "pm-b", sessionId: "sess-1", content: "message B" }],
+      agentStreams: {
+        lead: makeStream({
+          status: "working",
+          currentBlocks: [
+            { id: "b3", type: "text", content: "final answer", timestamp: new Date(Date.now() - 1000) },
+          ],
+        }),
+      },
+    })
+
+    mockTeamHistory.mockImplementation(async () => {
+      // A queued message is released into a new turn while the fetch is in
+      // flight — this content postdates the snapshot below.
+      useTeamStore.getState()._handleSSEEvent("queued_turn_start", {
+        agent: "lead", message_ids: ["pm-b"],
+      })
+      useTeamStore.getState()._handleSSEEvent("message", { agent: "lead", text: "answer B" })
+      return {
+        lead: {
+          id: "lead-sess", agent_name: "lead", title: null, created_at: null,
+          updated_at: null, sub_sessions: [],
+          messages: [
+            makeMessageResponse({ id: "m2", role: "assistant", content: "final answer", created_at: "2024-01-01T00:00:03Z" }),
+          ],
+        },
+        members: [], has_more: false, next_cursor: null,
+      }
+    })
+
+    await useTeamStore.getState().stopTeam()
+    useTeamStore.getState()._handleSSEEvent("done", {})
+
+    const finalBlocks = useTeamStore.getState().agentStreams.lead.blocks
+    expect(finalBlocks.filter((b) => b.content === "final answer")).toHaveLength(1)
+    expect(finalBlocks.filter((b) => b.content === "message B")).toHaveLength(1)
+    expect(finalBlocks.filter((b) => b.content === "answer B")).toHaveLength(1)
   })
 })
 

@@ -1,6 +1,41 @@
 import type { ContentBlock } from '@/api/types'
 import type { AgentStream } from './types'
 
+/**
+ * Append locally-produced blocks to ``stream.blocks`` and tag them unsynced so
+ * ``reconcileTurnTail`` swaps exactly these for the server's canonical rows
+ * instead of appending them a second time.
+ */
+export function appendLocalBlocks(stream: AgentStream, blocks: ContentBlock[]) {
+  if (blocks.length === 0) return
+  stream.blocks = [...stream.blocks, ...blocks]
+  stream._unsyncedBlockIds = [...(stream._unsyncedBlockIds ?? []), ...blocks.map((b) => b.id)]
+}
+
+/**
+ * Apply an append-only transform to ``stream.blocks``, tagging whatever it
+ * added as unsynced.
+ *
+ * The new blocks are identified by length delta, which holds only because
+ * every caller (``startCompaction`` / ``endCompaction``) either appends or
+ * edits in place — never removes or reorders. Keep that contract if you touch
+ * those helpers.
+ */
+export function applyLocalBlockTransform(
+  stream: AgentStream,
+  transform: (blocks: ContentBlock[]) => ContentBlock[],
+) {
+  const before = stream.blocks.length
+  const next = transform(stream.blocks)
+  stream.blocks = next
+  if (next.length > before) {
+    stream._unsyncedBlockIds = [
+      ...(stream._unsyncedBlockIds ?? []),
+      ...next.slice(before).map((b) => b.id),
+    ]
+  }
+}
+
 export const FS_MUTATING_TOOLS = new Set([
   'write',
   'edit',

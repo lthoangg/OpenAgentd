@@ -15,6 +15,8 @@ import {
   FS_MUTATING_TOOLS,
   SCHEDULER_MUTATING_TOOLS,
   TODO_MUTATING_TOOLS,
+  appendLocalBlocks,
+  applyLocalBlockTransform,
   extractToolPaths,
 } from './helpers'
 import type { CacheInvalidation, TeamStore } from './types'
@@ -440,13 +442,7 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
               const toCommit = revertTime === null
                 ? stamped
                 : stamped.filter((b) => (b.timestamp?.getTime() ?? 0) < revertTime)
-              stream.blocks = [...stream.blocks, ...toCommit]
-              // These blocks came from the live stream, not from the server.
-              // ``reconcileTurnTail`` swaps exactly these for the canonical rows.
-              stream._unsyncedBlockIds = [
-                ...(stream._unsyncedBlockIds ?? []),
-                ...toCommit.map((b) => b.id),
-              ]
+              appendLocalBlocks(stream, toCommit)
               stream.currentBlocks = []
             }
             stream._completionBase = stream.usage.completionTokens
@@ -482,12 +478,16 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         set((draft) => {
           ensureAgent(draft, agent)
           const stream = draft.agentStreams[agent]
-          // Auto-compaction can start between model iterations, after this
-          // turn has already streamed text/tools into currentBlocks. Seal
-          // those blocks first so the divider lands at the actual trigger
-          // point; subsequent deltas then remain after it.
-          stream.blocks = startCompaction([...stream.blocks, ...stream.currentBlocks])
+          // Auto-compaction can start between model iterations, after this turn
+          // has already streamed text/tools into currentBlocks. Seal those
+          // blocks first so the divider lands at the actual trigger point;
+          // subsequent deltas then remain after it. Everything sealed (plus a
+          // newly created "compacting" divider) is local-only, exactly like a
+          // `done` flush, so `applyLocalBlockTransform` tags it unsynced the
+          // same way.
+          const sealed = stream.currentBlocks
           stream.currentBlocks = []
+          applyLocalBlockTransform(stream, (blocks) => startCompaction([...blocks, ...sealed]))
         })
         break
       }
@@ -513,7 +513,12 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         set((draft) => {
           ensureAgent(draft, agent)
           const stream = draft.agentStreams[agent]
-          stream.blocks = endCompaction(stream.blocks, summary, error)
+          // Usually edits the in-flight divider in place (nothing new to tag).
+          // Defensive path: no in-flight "compacting" block existed (e.g.
+          // events arrived out of order), so `endCompaction` synthesized a
+          // fresh completed one — tag it as unsynced like every other
+          // locally-created block.
+          applyLocalBlockTransform(stream, (blocks) => endCompaction(blocks, summary, error))
         })
         break
       }

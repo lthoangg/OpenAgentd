@@ -93,6 +93,13 @@ export async function handleGlobalEvent(
 
     const before = useTeamStore.getState()
     if (before.sessionId !== sessionId) return true
+    // This notification travels over a *separate* global SSE connection from
+    // the session's own team stream, so it carries no ordering guarantee
+    // against that stream's trailing `done` event — it can arrive first. That
+    // is safe: while the turn still looks live locally, reconcileTurnTail
+    // delegates to loadSession, which now takes the server's run state over the
+    // stale client flag and adopts the finished turn without duplicating it.
+    //
     // The live stream already delivered this turn; reconcile only the tail it
     // produced rather than re-downloading the whole page (over a megabyte on an
     // active session). Falls back to a full load when a delta cannot be applied.

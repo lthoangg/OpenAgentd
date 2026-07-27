@@ -251,6 +251,104 @@ describe('reconcileTurnTail', () => {
     expect(state.agentStreams['explorer#1'].blocks.map((b) => b.content)).toEqual(['member says'])
   })
 
+  it('does not duplicate pre-compaction content when a turn spans a summarization boundary', async () => {
+    // Reproduces: auto-compaction can fire mid-turn ("between model
+    // iterations"), sealing whatever text/tools had already streamed into
+    // `currentBlocks` plus a divider into `blocks` directly. Unlike `done`,
+    // that flush never tagged the sealed blocks as unsynced, so a later
+    // reconcile (e.g. after /stop, or a periodic session_turn_completed
+    // tail-swap) kept them as "confirmed" and appended the server's
+    // canonical parse of that same content right after — duplicating the
+    // pre-compaction reply (and doubling the compaction divider).
+    await seedLoadedSession()
+
+    useTeamStore.setState((state) => {
+      state.agentStreams.lead.currentBlocks = [
+        { id: 'local-user', type: 'user', content: 'message A', timestamp: new Date('2026-07-01T00:00:02Z') },
+      ]
+      state.isTeamWorking = true
+      return state
+    })
+    useTeamStore.getState()._handleSSEEvent('message', { agent: 'lead', text: 'pre-compaction reply' })
+    useTeamStore.getState()._handleSSEEvent('summarization_start', { agent: 'lead' })
+    useTeamStore.getState()._handleSSEEvent('summarization_content', { agent: 'lead', text: 'summary text' })
+    useTeamStore.getState()._handleSSEEvent('summarization_end', { agent: 'lead', summary: 'summary text' })
+    useTeamStore.getState()._handleSSEEvent('message', { agent: 'lead', text: 'post-compaction reply' })
+    useTeamStore.getState()._handleSSEEvent('done', {})
+
+    // The server persisted the whole turn — pre-compaction reply, the
+    // is_summary row, and the post-compaction reply — as canonical rows.
+    mockTeamHistorySince.mockImplementation(() => Promise.resolve(deltaHistory({
+      lead: leadSession({
+        messages: [
+          { id: 'ua', role: 'user', content: 'message A', created_at: '2026-07-01T00:00:02Z' },
+          { id: 'a1', role: 'assistant', content: 'pre-compaction reply', created_at: '2026-07-01T00:00:02.500Z' },
+          { id: 's1', role: 'assistant', content: 'summary text', is_summary: true, created_at: '2026-07-01T00:00:03Z' },
+          { id: 'a2', role: 'assistant', content: 'post-compaction reply', created_at: '2026-07-01T00:00:04Z' },
+        ],
+      }),
+    })))
+
+    await useTeamStore.getState().reconcileTurnTail('lead-sess')
+
+    const contents = useTeamStore.getState().agentStreams.lead.blocks.map((b) => b.content)
+    expect(contents.filter((c) => c === 'message A')).toHaveLength(1)
+    expect(contents.filter((c) => c === 'pre-compaction reply')).toHaveLength(1)
+    expect(contents.filter((c) => c === 'post-compaction reply')).toHaveLength(1)
+    const compactionCount = useTeamStore.getState().agentStreams.lead.blocks.filter((b) => b.type === 'compaction').length
+    expect(compactionCount).toBe(1)
+  })
+
+  it('does not duplicate the turn when the trailing done lands after the reconcile', async () => {
+    // `session_turn_completed` arrives over the *global* SSE connection, which
+    // has no ordering guarantee against the session's own stream — so it can be
+    // handled while the turn still looks live locally (`isTeamWorking` true,
+    // because the trailing `done` has not landed). reconcileTurnTail therefore
+    // delegates to loadSession, which must adopt the server's finished turn
+    // rather than preserve the live copy and let `done` append it again.
+    await seedLoadedSession()
+    useTeamStore.setState({ isTeamWorking: true })
+    useTeamStore.setState((state) => {
+      state.agentStreams.lead.currentBlocks = [
+        // Streamed in a moment ago, i.e. before this reconcile's fetch started.
+        { id: 'live-1', type: 'text', content: 'hi', timestamp: new Date(Date.now() - 1000) },
+      ]
+      state.agentStreams.lead.status = 'working'
+      return state
+    })
+
+    await useTeamStore.getState().reconcileTurnTail('lead-sess')
+    // The session's own stream finally catches up.
+    useTeamStore.getState()._handleSSEEvent('done', {})
+
+    const contents = useTeamStore.getState().agentStreams.lead.blocks.map((b) => b.content)
+    expect(contents.filter((c) => c === 'hi')).toHaveLength(1)
+    expect(useTeamStore.getState().agentStreams.lead.currentBlocks).toHaveLength(0)
+  })
+
+  it('keeps live content that postdates the fetch snapshot', async () => {
+    // The mirror case: content streamed in *while the fetch was in flight*
+    // cannot be in that snapshot, so it must survive the reload and still be
+    // committed by `done`.
+    await seedLoadedSession()
+    useTeamStore.setState({ isTeamWorking: true })
+    mockTeamHistory.mockImplementation(async () => {
+      useTeamStore.setState((state) => {
+        state.agentStreams.lead.currentBlocks.push({
+          id: 'live-2', type: 'text', content: 'arrived later', timestamp: new Date(Date.now() + 1000),
+        })
+        return state
+      })
+      return fullHistory()
+    })
+
+    await useTeamStore.getState().reconcileTurnTail('lead-sess')
+    useTeamStore.getState()._handleSSEEvent('done', {})
+
+    const contents = useTeamStore.getState().agentStreams.lead.blocks.map((b) => b.content)
+    expect(contents.filter((c) => c === 'arrived later')).toHaveLength(1)
+  })
+
   it('leaves usage alone — SSE owns it and a delta would undercount', async () => {
     await seedLoadedSession()
     useTeamStore.setState((state) => {

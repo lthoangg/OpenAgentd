@@ -285,6 +285,11 @@ export const createStreamSlice: StateCreator<
 
     try {
       await postTeamChat(null, sessionId, true)
+      // Reloads immediately. The interrupt POST only *signals* cancellation, so
+      // the trailing `done` can still be seconds away (a cancelled shell tool
+      // alone can spend 2s draining stdout plus 5s reaping) — but the reload no
+      // longer trusts the stale client-side `isTeamWorking`, so it adopts the
+      // server's finished turn cleanly instead of racing that `done`.
       await get().loadSession(sessionId, get()._workspace)
     } catch (err) {
       console.warn('stopTeam failed', err)

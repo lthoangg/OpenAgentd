@@ -26,6 +26,11 @@ const INITIAL = {
   _workspace: null as string | null,
   _sessionGeneration: 0,
   isConnected: false,
+  // Settled by default — most tests exercise the non-racing completion path
+  // where the local stream's `done` has already landed before the global
+  // `session_turn_completed` notification does.
+  isTeamWorking: false,
+  agentStreams: {} as import('@/stores/useTeamStore').TeamStore['agentStreams'],
 }
 
 beforeEach(() => {
@@ -138,6 +143,37 @@ describe('handleGlobalEvent', () => {
       // page (over a megabyte on an active session) is what this avoids.
       expect(reconcileTurnTail).toHaveBeenCalledWith('current', '/workspace')
       expect(loadSession).not.toHaveBeenCalled()
+    } finally {
+      useTeamStore.setState({ reconcileTurnTail: realReconcile })
+    }
+  })
+
+  it('reconciles immediately when session_turn_completed races ahead of the local done event', async () => {
+    // session_turn_completed travels over the separate global SSE connection
+    // and carries no ordering guarantee against the session's own team stream —
+    // it can be processed before that stream's trailing `done` flushes the live
+    // blocks. That no longer needs to be waited out: the reconcile marks those
+    // live blocks absorbed, so a later `done` drops them instead of duplicating
+    // the turn (proven in useTeamStore.reconcile.test.ts). Reconciling straight
+    // away keeps the transcript fresh without a timing window.
+    const client = new QueryClient()
+    const reconcileTurnTail = mock(async () => {})
+    const loadSession = mock(async () => {})
+    const realReconcile = useTeamStore.getState().reconcileTurnTail
+    useTeamStore.setState({
+      sessionId: 'current',
+      _workspace: '/workspace',
+      isTeamWorking: true, // local `done` hasn't landed yet
+      reconcileTurnTail,
+      loadSession,
+    })
+
+    try {
+      await handleGlobalEvent(client, 'session_turn_completed', {
+        session_id: 'current', status: 'completed',
+      }, 1, () => 1)
+
+      expect(reconcileTurnTail).toHaveBeenCalledWith('current', '/workspace')
     } finally {
       useTeamStore.setState({ reconcileTurnTail: realReconcile })
     }

@@ -81,6 +81,7 @@ jobs:
         run: |
           echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
           echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
+          echo "SCCACHE_DIRECT=true" >> "$GITHUB_ENV"
 
       - name: Cache cargo registry + target
         uses: Swatinem/rust-cache@v2
@@ -120,6 +121,7 @@ jobs:
         run: |
           echo "RUSTC_WRAPPER=sccache" >> $env:GITHUB_ENV
           echo "SCCACHE_GHA_ENABLED=true" >> $env:GITHUB_ENV
+          echo "SCCACHE_DIRECT=true" >> $env:GITHUB_ENV
           echo "RUSTFLAGS=-C link-arg=/FASTLINK" >> $env:GITHUB_ENV
 
       - name: Cache cargo registry + target
@@ -166,6 +168,7 @@ jobs:
         run: |
           echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
           echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
+          echo "SCCACHE_DIRECT=true" >> "$GITHUB_ENV"
 
       - name: Cache cargo registry + target
         uses: Swatinem/rust-cache@v2

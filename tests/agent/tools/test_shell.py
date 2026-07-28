@@ -1445,6 +1445,30 @@ class TestSandboxCommandScan:
         assert len(emitted_chunks) <= 2
 
     @pytest.mark.asyncio
+    async def test_shell_streaming_limits_long_running_render_cadence(
+        self, sandbox_workspace, monkeypatch
+    ):
+        """Long-running output should not force the chat to repaint four times a second."""
+        monkeypatch.setattr(
+            "app.agent.tools.builtin.shell._shell_mod.acceptable", lambda: "/bin/sh"
+        )
+        emitted_chunks: list[str] = []
+
+        async def capture(text: str) -> None:
+            emitted_chunks.append(text)
+
+        result = await _shell(
+            command=("for i in 1 2 3 4 5 6 7 8; do echo cadence-$i; sleep 0.15; done"),
+            timeout_seconds=3,
+            _tool_output=capture,
+        )
+
+        assert "[Succeeded]" in result
+        assert "cadence-1" in "".join(emitted_chunks)
+        assert "cadence-8" in "".join(emitted_chunks)
+        assert len(emitted_chunks) <= 3
+
+    @pytest.mark.asyncio
     async def test_shell_streaming_caps_each_live_payload(
         self, sandbox_workspace, monkeypatch
     ):

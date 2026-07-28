@@ -208,9 +208,13 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   }, [done, startedAt])
 
   useEffect(() => {
+    // Shell output is already a bounded trailing window and is bottom-anchored
+    // with CSS below. Avoid a synchronous scrollHeight read + scrollTop write
+    // on every shell delta; the outer chat ResizeObserver owns auto-follow.
+    if (isShellTerminal) return
     const el = liveOutputRef.current
     if (el) el.scrollTop = el.scrollHeight
-  }, [shownLiveOutput])
+  }, [isShellTerminal, shownLiveOutput])
 
   const handleCopyArgs = async (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -368,10 +372,9 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
                       {isShellTerminal ? (
                         <div className="flex flex-col gap-1 bg-(--bg-input) p-2.5">
                           <pre
-                            ref={shownLiveOutput ? liveOutputRef : undefined}
-                            className="max-h-40 overflow-auto sm:max-h-64 whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-(--color-text)"
+                            className={`max-h-40 sm:max-h-64 whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-(--color-text) ${shownLiveOutput ? 'flex flex-col justify-end overflow-hidden' : 'overflow-auto'}`}
                           >
-                            <span className="select-none text-(--color-text-muted)">$ </span><ShellCommand command={formattedArgs} />{shellOutput ? `\n${shellOutput}` : ''}
+                            <span className="block"><span className="select-none text-(--color-text-muted)">$ </span><ShellCommand command={formattedArgs} />{shellOutput ? `\n${shellOutput}` : ''}</span>
                           </pre>
                           {shellResult?.statusLine && (
                             <span

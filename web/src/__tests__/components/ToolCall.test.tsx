@@ -182,6 +182,27 @@ describe("ToolCall — shell display", () => {
 
     expect(screen.getAllByRole("button")[0].getAttribute("aria-expanded")).toBe("false")
   })
+
+  it("renders the latest live shell tail without forcing an inner scroll on each update", () => {
+    const args = JSON.stringify({ command: "printf live" })
+    const { rerender } = render(
+      <ToolCall name="shell" args={args} done={false} liveOutput={"line-1\n"} />,
+    )
+    const pre = document.querySelector("pre") as HTMLPreElement
+    let scrollWrites = 0
+    Object.defineProperty(pre, "scrollTop", {
+      configurable: true,
+      get: () => 0,
+      set: () => { scrollWrites += 1 },
+    })
+
+    rerender(
+      <ToolCall name="shell" args={args} done={false} liveOutput={"line-1\nline-2\n"} />,
+    )
+
+    expect(pre.textContent).toContain("line-2")
+    expect(scrollWrites).toBe(0)
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -1165,7 +1186,7 @@ describe("ToolCall — shell terminal label and formatting", () => {
     const pre = document.querySelector("pre")
     expect(pre).toBeTruthy()
     expect(pre!.textContent).toContain("ls")
-    const dollarSpan = pre!.querySelector("span")
+    const dollarSpan = pre!.querySelector("span.select-none")
     expect(dollarSpan).toBeTruthy()
     expect(dollarSpan!.textContent).toBe("$ ")
   })

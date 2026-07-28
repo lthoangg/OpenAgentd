@@ -178,7 +178,9 @@ _OUTPUT_MAX_LINES = 300
 # Bytes kept inline; output beyond this spills to a temp file
 _OUTPUT_MAX_BYTES = 131_072  # 128 KB (matches opencode Truncate.MAX_BYTES)
 # Limit live-output UI churn for noisy commands while keeping progress responsive.
-_OUTPUT_STREAM_INTERVAL_SECONDS = 0.25
+# Two updates per second keeps progress readable without forcing the chat transcript,
+# terminal row, and auto-follow observers through four layout cycles per second.
+_OUTPUT_STREAM_INTERVAL_SECONDS = 0.5
 _LIVE_OUTPUT_MAX_CHARS = 24_000
 # The chat UI keeps only the trailing N lines of live tool output (see
 # ``LIVE_OUTPUT_MAX_LINES`` in ``web/src/utils/blocks.ts``). Streaming more

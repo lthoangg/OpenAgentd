@@ -137,6 +137,7 @@ jobs:
         run: |
           echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
           echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
+          echo "SCCACHE_DIRECT=true" >> "$GITHUB_ENV"
           if [ "${{ matrix.platform }}" = "windows" ]; then
             echo "RUSTFLAGS=-C link-arg=/FASTLINK" >> "$GITHUB_ENV"
           fi

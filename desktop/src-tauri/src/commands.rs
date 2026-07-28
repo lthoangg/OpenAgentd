@@ -5,7 +5,9 @@ use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_dialog::DialogExt;
 
-use crate::{AppState, BackendMode, BackendStartGuard};
+use crate::{
+    backend_log_path, AppState, BackendMode, BackendStartGuard, SIDECAR_HANDSHAKE_TIMEOUT,
+};
 use crate::sidecar::Sidecar;
 use crate::config::{
     load_app_backend_config, normalize_external_base_url, normalize_server_name,
@@ -227,12 +229,10 @@ pub async fn backend_health(state: tauri::State<'_, AppState>) -> Result<bool, S
 }
 
 #[tauri::command]
-pub async fn backend_logs_path(state: tauri::State<'_, AppState>) -> Result<String, String> {
-    let guard = state.sidecar.lock().await;
-    match guard.as_ref() {
-        Some(s) => Ok(s.log_path().to_string_lossy().into_owned()),
-        None => Err("backend not started".into()),
-    }
+pub fn backend_logs_path(app: AppHandle) -> Result<String, String> {
+    backend_log_path(&app)
+        .map(|path| path.to_string_lossy().into_owned())
+        .map_err(|e| format!("backend log path unavailable: {e}"))
 }
 
 #[tauri::command]
@@ -294,6 +294,10 @@ pub async fn app_backend_status_for_window(
         backend_starting: state
             .backend_starting
             .load(std::sync::atomic::Ordering::SeqCst),
+        backend_failed: mode == BackendMode::Bundled
+            && state
+                .backend_failed
+                .load(std::sync::atomic::Ordering::SeqCst),
         external: mode == BackendMode::External,
         supports_bundled: true,
         servers,
@@ -439,6 +443,9 @@ pub async fn app_use_bundled_backend(
     }
 
     let backend_ready = if sidecar_alive {
+        state
+            .backend_failed
+            .store(false, std::sync::atomic::Ordering::SeqCst);
         let base = state
             .backend_base_url
             .lock()
@@ -453,14 +460,17 @@ pub async fn app_use_bundled_backend(
             sidecar_running: true,
         }
     } else {
-        let _start_guard = BackendStartGuard::try_acquire(state.backend_starting.clone())
-            .ok_or_else(|| "bundled backend is already starting".to_string())?;
+        let mut start_guard = BackendStartGuard::try_acquire(
+            state.backend_starting.clone(),
+            state.backend_failed.clone(),
+        )
+        .ok_or_else(|| "bundled backend is already starting".to_string())?;
         let mut sidecar = if let Some(token) = existing_token.as_deref() {
             Sidecar::spawn_with_desktop_token(&app, Some(token)).map_err(|e| format!("{e:#}"))?
         } else {
             Sidecar::spawn(&app).map_err(|e| format!("{e:#}"))?
         };
-        let handshake = match sidecar.read_handshake(Duration::from_secs(30)).await {
+        let handshake = match sidecar.read_handshake(SIDECAR_HANDSHAKE_TIMEOUT).await {
             Ok(handshake) => handshake,
             Err(e) => {
                 sidecar
@@ -482,6 +492,7 @@ pub async fn app_use_bundled_backend(
         let _ = state.desktop_token.lock().await.replace(token.clone());
         let _ = state.backend_base_url.lock().await.replace(base.clone());
         update_tray_status(&app, "Status: Running");
+        start_guard.complete();
 
         BackendReady {
             port: handshake.port,

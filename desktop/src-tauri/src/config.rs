@@ -28,6 +28,7 @@ pub struct AppBackendStatus {
     pub mode: String,
     pub sidecar_running: bool,
     pub backend_starting: bool,
+    pub backend_failed: bool,
     pub external: bool,
     pub supports_bundled: bool,
     pub servers: Vec<SavedAppServer>,

@@ -504,23 +504,14 @@ pub fn reveal_desktop_log(app: &AppHandle) {
 }
 
 pub fn reveal_backend_log(app: &AppHandle) {
-    let state: tauri::State<'_, AppState> = app.state();
-    let sidecar = state.sidecar.clone();
-    let app_for_open = app.clone();
-    tauri::async_runtime::spawn(async move {
-        let path = sidecar
-            .lock()
-            .await
-            .as_ref()
-            .map(|s| s.log_path().to_path_buf());
-        let Some(path) = path else {
-            log::warn!("backend log path unavailable; sidecar not started");
-            return;
-        };
-        if let Err(e) = app_for_open.opener().reveal_item_in_dir(&path) {
-            log::warn!("failed to reveal backend log {}: {e}", path.display());
+    match crate::backend_log_path(app) {
+        Ok(path) => {
+            if let Err(e) = app.opener().reveal_item_in_dir(&path) {
+                log::warn!("failed to reveal backend log {}: {e}", path.display());
+            }
         }
-    });
+        Err(e) => log::warn!("backend log path unavailable: {e:#}"),
+    }
 }
 
 /// Load the saved access key for an external backend without exposing it in

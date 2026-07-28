@@ -4,7 +4,7 @@ import App from '@/App'
 
 const TEST_BACKEND_URL = 'http://10.0.2.2:8000'
 
-let statusPayload: { base_url: string; token?: string | null; external?: boolean; sidecar_running?: boolean; supports_bundled?: boolean; backend_starting?: boolean } | null = { base_url: TEST_BACKEND_URL }
+let statusPayload: { base_url: string; token?: string | null; external?: boolean; sidecar_running?: boolean; supports_bundled?: boolean; backend_starting?: boolean; backend_failed?: boolean } | null = { base_url: TEST_BACKEND_URL }
 let resolveBundledRestart: (() => void) | null = null
 interface BackendReadyEvent {
   payload: { base_url: string; token?: string | null }
@@ -18,6 +18,10 @@ let backendErrorListener: ((event: BackendErrorEvent) => void) | null = null
 let resolveSecureKey: (() => void) | null = null
 let routerMounted = false
 const preloadConnectedAppMock = mock(() => {})
+let clipboardError: Error | null = null
+const writeClipboardMock = mock(async () => {
+  if (clipboardError) throw clipboardError
+})
 
 function useFakeTimers() {
   const realSetTimeout = globalThis.setTimeout
@@ -64,6 +68,7 @@ const invokeMock = mock(async (...args: unknown[]) => {
     await new Promise<void>((resolve) => { resolveBundledRestart = resolve })
     return null
   }
+  if (command === 'backend_logs_path') return '/tmp/openagentd/backend.log'
   throw new Error(`unexpected command: ${command}`)
 })
 
@@ -136,6 +141,12 @@ beforeEach(() => {
   resolveBundledRestart = null
   routerMounted = false
   preloadConnectedAppMock.mockClear()
+  clipboardError = null
+  writeClipboardMock.mockClear()
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: { writeText: writeClipboardMock },
+  })
   invokeMock.mockClear()
 })
 
@@ -270,11 +281,29 @@ describe('App backend bootstrap', () => {
       backendErrorListener?.({ payload: { message: 'Sidecar handshake failed' } })
     })
 
-    expect(screen.getByText('OpenAgentd is taking longer than usual to start.')).toBeTruthy()
+    expect(screen.getByText('OpenAgentd could not start its local backend.')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
   })
 
-  it('offers recovery after the bundled sidecar exceeds the eager splash timeout', async () => {
+  it('recovers when startup failed before the webview error listener attached', async () => {
+    statusPayload = {
+      base_url: '',
+      sidecar_running: false,
+      backend_starting: false,
+      backend_failed: true,
+      external: false,
+      supports_bundled: true,
+    }
+
+    render(<App />)
+
+    await waitFor(() => {
+      expect(screen.getByText('OpenAgentd could not start its local backend.')).toBeTruthy()
+    })
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
+  })
+
+  it('keeps waiting through a slow first-run sidecar startup before offering recovery', async () => {
     const timers = useFakeTimers()
     statusPayload = { base_url: TEST_BACKEND_URL, sidecar_running: false, external: false }
 
@@ -283,10 +312,40 @@ describe('App backend bootstrap', () => {
     expect(invokeMock).toHaveBeenCalled()
     await act(async () => { timers.tick(15_000) })
 
+    expect(screen.queryByText('OpenAgentd is taking longer than usual to start.')).toBeNull()
+
+    await act(async () => { timers.tick(45_000) })
+
     expect(screen.getByText('OpenAgentd is taking longer than usual to start.')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Choose Server' })).toBeTruthy()
     timers.restore()
+  })
+
+  it('copies the backend log path while the sidecar is still unavailable', async () => {
+    statusPayload = { base_url: '', sidecar_running: false, external: false, backend_starting: true }
+    render(<App />)
+    await waitFor(() => expect(backendErrorListener).not.toBeNull())
+    await act(async () => {
+      backendErrorListener?.({ payload: { message: 'Sidecar handshake failed' } })
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Copy Backend Log Path' }))
+
+    await waitFor(() => expect(writeClipboardMock).toHaveBeenCalledWith('/tmp/openagentd/backend.log'))
+    expect(screen.getByRole('button', { name: 'Backend Log Path Copied' })).toBeTruthy()
+  })
+
+  it('shows the backend log path when clipboard access fails', async () => {
+    clipboardError = new Error('clipboard denied')
+    statusPayload = { base_url: '', sidecar_running: false, external: false, backend_failed: true }
+    render(<App />)
+    await waitFor(() => expect(screen.getByText('OpenAgentd could not start its local backend.')).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Copy Backend Log Path' }))
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Copy Failed' })).toBeTruthy())
+    expect(screen.getByText('/tmp/openagentd/backend.log')).toBeTruthy()
   })
 
   it('does not start a duplicate bundled sidecar while startup is in progress', async () => {
@@ -300,7 +359,7 @@ describe('App backend bootstrap', () => {
     }
     render(<App />)
     await act(async () => { await Promise.resolve() })
-    await act(async () => { timers.tick(15_000) })
+    await act(async () => { timers.tick(60_000) })
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
     await act(async () => { await Promise.resolve(); await Promise.resolve() })
@@ -318,7 +377,7 @@ describe('App backend bootstrap', () => {
     }
     render(<App />)
     await act(async () => { await Promise.resolve() })
-    await act(async () => { timers.tick(15_000) })
+    await act(async () => { timers.tick(60_000) })
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
     await act(async () => { await Promise.resolve() })
@@ -337,7 +396,7 @@ describe('App backend bootstrap', () => {
     render(<App />)
     await act(async () => { await Promise.resolve() })
     expect(invokeMock).toHaveBeenCalled()
-    await act(async () => { timers.tick(15_000) })
+    await act(async () => { timers.tick(60_000) })
 
     fireEvent.click(screen.getByRole('button', { name: 'Choose Server' }))
     expect(screen.getByRole('dialog').textContent).toBe('Server chooser')

@@ -449,10 +449,6 @@ impl Sidecar {
         }
     }
 
-    pub fn log_path(&self) -> &Path {
-        &self.log_path
-    }
-
     pub async fn shutdown(&mut self) {
         self.shutdown_with_grace(SHUTDOWN_GRACE).await;
     }

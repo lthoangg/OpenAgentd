@@ -11,12 +11,13 @@ import { queryClient } from '@/lib/query-client'
 import { useLspInstallStore } from '@/stores/useLspInstallStore'
 
 const DESKTOP_BOOTSTRAP_POLL_MS = 300
-const DESKTOP_BOOTSTRAP_TIMEOUT_MS = 15_000
+const DESKTOP_BOOTSTRAP_TIMEOUT_MS = 60_000
 const ACTIVE_BACKEND_URL_STORAGE = 'openagentd.activeBackendUrl'
 
 export interface AppBackendBootstrap {
   ready: boolean
   unavailable: boolean
+  failed: boolean
   retrying: boolean
   retry: () => void
 }
@@ -49,6 +50,7 @@ export function useAppBackendBootstrap(): AppBackendBootstrap {
   const [ready, setReady] = useState(false)
   const [retryKey, setRetryKey] = useState(0)
   const [unavailable, setUnavailable] = useState(false)
+  const [failed, setFailed] = useState(false)
   const [retrying, setRetrying] = useState(false)
   const retry = useCallback(() => {
     if (retrying) return
@@ -65,6 +67,7 @@ export function useAppBackendBootstrap(): AppBackendBootstrap {
       .catch(() => {})
       .finally(() => {
         setRetrying(false)
+        setFailed(false)
         setUnavailable(false)
         setRetryKey((key) => key + 1)
       })
@@ -88,6 +91,7 @@ export function useAppBackendBootstrap(): AppBackendBootstrap {
 
     const finishReady = () => {
       if (cancelled) return
+      setFailed(false)
       setUnavailable(false)
       setReady(true)
     }
@@ -98,6 +102,7 @@ export function useAppBackendBootstrap(): AppBackendBootstrap {
         return
       }
       if (Date.now() >= deadline) {
+        setFailed(false)
         setUnavailable(true)
         return
       }
@@ -110,6 +115,11 @@ export function useAppBackendBootstrap(): AppBackendBootstrap {
       try {
         const status = await getAppBackendStatus()
         if (cancelled) return
+        if (status?.backend_failed) {
+          setFailed(true)
+          setUnavailable(true)
+          return
+        }
         if (isBootstrapReady(status, isTauri)) {
           if (status?.base_url) {
             if (status.external) {
@@ -154,10 +164,13 @@ export function useAppBackendBootstrap(): AppBackendBootstrap {
         }).catch(() => {})
       void currentWindow
         .listen<{ message: string }>('backend-error', () => {
-          // Do not wait out the generic 15 s timeout when native startup has
+          // Do not wait out the generic startup timeout when native startup has
           // already failed. The shell's detailed error remains in its log;
           // the recovery UI intentionally exposes only safe generic copy.
-          if (!cancelled) setUnavailable(true)
+          if (!cancelled) {
+            setFailed(true)
+            setUnavailable(true)
+          }
         }).then((unlisten) => {
           if (cancelled) unlisten()
           else unlistenBackendError = unlisten
@@ -179,5 +192,5 @@ export function useAppBackendBootstrap(): AppBackendBootstrap {
     }
   }, [retryKey])
 
-  return { ready, unavailable, retrying, retry }
+  return { ready, unavailable, failed, retrying, retry }
 }

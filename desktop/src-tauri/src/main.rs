@@ -20,7 +20,7 @@ use std::sync::{
 use std::time::Duration;
 use tauri::{
     menu::MenuItem,
-    AppHandle, Emitter, Manager, RunEvent, WindowEvent, Wry,
+    AppHandle, Emitter, Manager, RunEvent, Runtime, WindowEvent, Wry,
 };
 use tauri_plugin_log::{Target, TargetKind};
 use tokio::sync::Mutex;
@@ -48,6 +48,10 @@ pub struct AppState {
     /// in progress. Shared with the retry command to prevent two Python
     /// backends from being launched concurrently after a slow cold start.
     pub backend_starting: Arc<AtomicBool>,
+    /// Remains true after a bundled-sidecar startup attempt fails so a
+    /// webview that attached after the one-shot backend-error event can still
+    /// show recovery immediately from app_backend_status.
+    pub backend_failed: Arc<AtomicBool>,
     pub window_backend_base_urls: Arc<Mutex<HashMap<String, String>>>,
     pub force_reloading: Arc<AtomicBool>,
     pub quitting: Arc<AtomicBool>,
@@ -107,18 +111,35 @@ impl BackendMode {
 /// flag in Drop covers every `?`/error return without hand-maintained resets.
 pub struct BackendStartGuard {
     flag: Arc<AtomicBool>,
+    failed: Arc<AtomicBool>,
+    completed: bool,
 }
 
 impl BackendStartGuard {
-    pub fn try_acquire(flag: Arc<AtomicBool>) -> Option<Self> {
+    pub fn try_acquire(flag: Arc<AtomicBool>, failed: Arc<AtomicBool>) -> Option<Self> {
         flag.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
             .ok()
-            .map(|_| Self { flag })
+            .map(|_| {
+                failed.store(false, Ordering::SeqCst);
+                Self {
+                    flag,
+                    failed,
+                    completed: false,
+                }
+            })
+    }
+
+    pub fn complete(&mut self) {
+        self.completed = true;
+        self.failed.store(false, Ordering::SeqCst);
     }
 }
 
 impl Drop for BackendStartGuard {
     fn drop(&mut self) {
+        if !self.completed {
+            self.failed.store(true, Ordering::SeqCst);
+        }
         self.flag.store(false, Ordering::SeqCst);
     }
 }
@@ -144,11 +165,18 @@ pub struct CachedUpdateState {
 }
 
 pub const NORMAL_SHUTDOWN_GRACE: Duration = Duration::from_secs(5);
+/// First execution of the freshly installed 400+ MB sidecar can spend tens
+/// of seconds in OS security scanning before Python emits any stdout.
+pub const SIDECAR_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(60);
 #[cfg(not(target_os = "macos"))]
 pub const RELOAD_SHUTDOWN_GRACE: Duration = Duration::from_millis(750);
 
 pub fn desktop_log_path(app: &AppHandle) -> Result<PathBuf> {
     Ok(app.path().app_log_dir()?.join("desktop.log"))
+}
+
+pub fn backend_log_path<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf> {
+    Ok(app.path().app_log_dir()?.join("backend.log"))
 }
 
 pub fn persist_active_window_state(app: &AppHandle) {
@@ -259,7 +287,7 @@ async fn restart_sidecar_and_reload_window(app: &AppHandle) -> Result<()> {
         Sidecar::spawn(app).context("spawn sidecar")?
     };
     let handshake = sidecar
-        .read_handshake(Duration::from_secs(30))
+        .read_handshake(SIDECAR_HANDSHAKE_TIMEOUT)
         .await
         .context("read sidecar handshake")?;
     let token = handshake.token.clone();
@@ -309,6 +337,7 @@ async fn restart_sidecar_and_reload_window(app: &AppHandle) -> Result<()> {
         .replace(format!("http://127.0.0.1:{}", handshake.port));
     *state.backend_mode.lock().await = BackendMode::Bundled;
     let _ = state.sidecar.lock().await.replace(sidecar);
+    state.backend_failed.store(false, Ordering::SeqCst);
     // Only notify windows that are actually on the bundled backend. A plain
     // `app.emit(...)` broadcasts to every window's JS listener, which would
     // live-redirect windows connected to an external server back onto this
@@ -408,12 +437,15 @@ async fn start_backend_and_window(app: AppHandle) -> Result<()> {
         }
     }
 
-    let _start_guard = BackendStartGuard::try_acquire(state.backend_starting.clone())
-        .ok_or_else(|| anyhow::anyhow!("bundled backend is already starting"))?;
+    let mut start_guard = BackendStartGuard::try_acquire(
+        state.backend_starting.clone(),
+        state.backend_failed.clone(),
+    )
+    .ok_or_else(|| anyhow::anyhow!("bundled backend is already starting"))?;
     match Sidecar::spawn(&app) {
         Ok(mut sidecar) => {
             let handshake_result = sidecar
-                .read_handshake(Duration::from_secs(30))
+                .read_handshake(SIDECAR_HANDSHAKE_TIMEOUT)
                 .await
                 .context("read sidecar handshake");
             match handshake_result {
@@ -452,6 +484,7 @@ async fn start_backend_and_window(app: AppHandle) -> Result<()> {
                         let _ = state.desktop_token.lock().await.replace(handshake.token);
                         let _ = state.backend_base_url.lock().await.replace(base.clone());
                         *state.backend_mode.lock().await = BackendMode::Bundled;
+                        start_guard.complete();
 
                         if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
                             window
@@ -512,6 +545,7 @@ fn main() {
         backend_base_url: Arc::new(Mutex::new(None)),
         backend_mode: Arc::new(Mutex::new(BackendMode::Bundled)),
         backend_starting: Arc::new(AtomicBool::new(false)),
+        backend_failed: Arc::new(AtomicBool::new(false)),
         window_backend_base_urls: Arc::new(Mutex::new(HashMap::new())),
         force_reloading: Arc::new(AtomicBool::new(false)),
         quitting: Arc::new(AtomicBool::new(false)),
@@ -701,6 +735,7 @@ fn main() {
 mod tests {
     use super::*;
     use std::collections::HashMap as StdHashMap;
+    use std::path::Path;
     use tauri_plugin_dialog::MessageDialogResult;
     use crate::window::{frontend_init_script, inherited_external_base_url, new_window_init_script};
     use crate::updater::{dialog_result_is_accept, format_update_prompt, format_download_progress, validate_install_preconditions};
@@ -709,13 +744,31 @@ mod tests {
     #[test]
     fn backend_start_guard_prevents_concurrent_start_and_resets_on_drop() {
         let flag = Arc::new(AtomicBool::new(false));
-        let guard = BackendStartGuard::try_acquire(flag.clone()).expect("first startup guard");
+        let failed = Arc::new(AtomicBool::new(false));
+        let guard = BackendStartGuard::try_acquire(flag.clone(), failed.clone())
+            .expect("first startup guard");
         assert!(flag.load(Ordering::SeqCst));
-        assert!(BackendStartGuard::try_acquire(flag.clone()).is_none());
+        assert!(BackendStartGuard::try_acquire(flag.clone(), failed.clone()).is_none());
 
         drop(guard);
         assert!(!flag.load(Ordering::SeqCst));
-        assert!(BackendStartGuard::try_acquire(flag).is_some());
+        assert!(failed.load(Ordering::SeqCst));
+        assert!(BackendStartGuard::try_acquire(flag, failed).is_some());
+    }
+
+    #[test]
+    fn completed_backend_start_does_not_leave_failure_state() {
+        let flag = Arc::new(AtomicBool::new(false));
+        let failed = Arc::new(AtomicBool::new(true));
+        let mut guard = BackendStartGuard::try_acquire(flag.clone(), failed.clone())
+            .expect("startup guard");
+
+        assert!(!failed.load(Ordering::SeqCst));
+        guard.complete();
+        drop(guard);
+
+        assert!(!flag.load(Ordering::SeqCst));
+        assert!(!failed.load(Ordering::SeqCst));
     }
 
     #[test]
@@ -877,6 +930,24 @@ mod tests {
         let app = tauri::test::mock_app();
 
         assert!(app.app_handle().webview_windows().is_empty());
+    }
+
+    #[test]
+    fn backend_log_path_is_available_before_sidecar_state() {
+        let app = tauri::test::mock_app();
+
+        let path = backend_log_path(app.app_handle())
+            .expect("backend log path before sidecar startup");
+
+        assert_eq!(
+            Path::new(&path).file_name().and_then(|name| name.to_str()),
+            Some("backend.log")
+        );
+    }
+
+    #[test]
+    fn first_run_sidecar_handshake_allows_cold_security_scans() {
+        assert_eq!(SIDECAR_HANDSHAKE_TIMEOUT, Duration::from_secs(60));
     }
 
     #[cfg(not(target_os = "macos"))]

@@ -10,6 +10,8 @@ export interface AppBackendStatus {
   sidecar_running: boolean
   /** Desktop bundled-sidecar spawn/handshake is already in progress. */
   backend_starting?: boolean
+  /** The last bundled-sidecar startup attempt failed. */
+  backend_failed?: boolean
   external: boolean
   supports_bundled: boolean
   servers: SavedAppServer[]

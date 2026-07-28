@@ -11,37 +11,47 @@ import { queryClient } from '@/lib/query-client'
 import { preloadConnectedApp } from '@/lib/connected-app-preload'
 
 function App() {
-  const { ready, unavailable, retrying, retry } = useAppBackendBootstrap()
+  const { ready, unavailable, failed, retrying, retry } = useAppBackendBootstrap()
   const [backendDialogOpen, setBackendDialogOpen] = useState(false)
 
   useEffect(() => {
     if (ready) preloadConnectedApp(queryClient)
   }, [ready])
 
-  if (!ready) return <AppLoadingScreen unavailable={unavailable} retrying={retrying} onRetry={retry} onChooseServer={() => setBackendDialogOpen(true)} backendDialogOpen={backendDialogOpen} onBackendDialogOpenChange={setBackendDialogOpen} />
+  if (!ready) return <AppLoadingScreen unavailable={unavailable} failed={failed} retrying={retrying} onRetry={retry} onChooseServer={() => setBackendDialogOpen(true)} backendDialogOpen={backendDialogOpen} onBackendDialogOpenChange={setBackendDialogOpen} />
 
   return (
-    <Suspense fallback={<AppLoadingScreen unavailable={false} retrying={false} onRetry={() => {}} onChooseServer={() => {}} backendDialogOpen={false} onBackendDialogOpenChange={() => {}} />}>
+    <Suspense fallback={<AppLoadingScreen unavailable={false} failed={false} retrying={false} onRetry={() => {}} onChooseServer={() => {}} backendDialogOpen={false} onBackendDialogOpenChange={() => {}} />}>
       <RouterProvider router={router} />
       <UpdateCard />
     </Suspense>
   )
 }
 
-function AppLoadingScreen({ unavailable, retrying, onRetry, onChooseServer, backendDialogOpen, onBackendDialogOpenChange }: {
+function AppLoadingScreen({ unavailable, failed, retrying, onRetry, onChooseServer, backendDialogOpen, onBackendDialogOpenChange }: {
   unavailable: boolean
+  failed: boolean
   retrying: boolean
   onRetry: () => void
   onChooseServer: () => void
   backendDialogOpen: boolean
   onBackendDialogOpenChange: (open: boolean) => void
 }) {
-  const [logCopied, setLogCopied] = useState(false)
+  const [logCopyState, setLogCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
+  const [backendLogPath, setBackendLogPath] = useState<string | null>(null)
   const copyBackendLogPath = async () => {
     const path = await getBundledBackendLogPath()
-    if (!path) return
-    await navigator.clipboard.writeText(path)
-    setLogCopied(true)
+    setBackendLogPath(path)
+    if (!path) {
+      setLogCopyState('failed')
+      return
+    }
+    try {
+      await navigator.clipboard.writeText(path)
+      setLogCopyState('copied')
+    } catch {
+      setLogCopyState('failed')
+    }
   }
 
   return (
@@ -49,12 +59,13 @@ function AppLoadingScreen({ unavailable, retrying, onRetry, onChooseServer, back
       <div className="flex max-w-sm flex-col items-center gap-5 px-6 text-center">
         <img src={OPENAGENTD_APP_ICON} width={88} height={88} alt="" aria-hidden="true" className="rounded-2xl" />
         {unavailable && <>
-          <p className="text-sm text-(--color-text-muted)">OpenAgentd is taking longer than usual to start.</p>
+          <p className="text-sm text-(--color-text-muted)">{failed ? 'OpenAgentd could not start its local backend.' : 'OpenAgentd is taking longer than usual to start.'}</p>
           <div className="flex flex-wrap justify-center gap-2">
             <Button onClick={onRetry} disabled={retrying}>{retrying ? 'Restarting…' : 'Retry'}</Button>
             <Button variant="subtle" onClick={onChooseServer}>Choose Server</Button>
-            <Button variant="ghost" onClick={() => { void copyBackendLogPath() }}>{logCopied ? 'Backend Log Path Copied' : 'Copy Backend Log Path'}</Button>
+            <Button variant="ghost" onClick={() => { void copyBackendLogPath() }}>{logCopyState === 'copied' ? 'Backend Log Path Copied' : logCopyState === 'failed' ? 'Copy Failed' : 'Copy Backend Log Path'}</Button>
           </div>
+          {logCopyState === 'failed' && backendLogPath && <code className="max-w-full select-text break-all text-xs text-(--color-text-muted)">{backendLogPath}</code>}
         </>}
       </div>
       <AppBackendDialog open={backendDialogOpen} onOpenChange={onBackendDialogOpenChange} />

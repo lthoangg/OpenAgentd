@@ -202,7 +202,7 @@ jobs:
               else
                 require "tmpdir"
                 require "fileutils"
-                tmp_dir = Dir.mktempdir
+                tmp_dir = Dir.mktmpdir
                 cnf_path = "#{tmp_dir}/cert.cnf"
                 key_path = "#{tmp_dir}/oad.key"
                 crt_path = "#{tmp_dir}/oad.crt"

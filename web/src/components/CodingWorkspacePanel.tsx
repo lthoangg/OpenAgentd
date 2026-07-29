@@ -70,8 +70,14 @@ function collectChangedFiles(diff?: WorkspaceGitDiffResponse): ChangedFileInfo[]
   if (!diff?.is_git_repo) return []
 
   let current: ChangedFileInfo | null = null
+  // Same header/content split as DiffPreview: `new file mode` etc. only occur
+  // in the per-file header (before the first `@@` hunk), and once content
+  // starts every `+`/`-` line counts — including ones whose own content
+  // begins with `--`/`++` (removed `---` frontmatter renders as `----`).
+  let inFileHeader = true
   for (const line of diff.diff.split('\n')) {
     if (line.startsWith('diff --git ')) {
+      inFileHeader = true
       const match = /^diff --git a\/(.*?) b\/(.*)$/.exec(line)
       if (!match?.[1] || !match[2]) {
         current = null
@@ -83,10 +89,17 @@ function collectChangedFiles(diff?: WorkspaceGitDiffResponse): ChangedFileInfo[]
       continue
     }
     if (!current) continue
-    if (line.startsWith('new file mode')) current.status = 'A'
-    else if (line.startsWith('deleted file mode')) current.status = 'D'
-    else if (line.startsWith('+') && !line.startsWith('+++')) current.additions += 1
-    else if (line.startsWith('-') && !line.startsWith('---')) current.deletions += 1
+    if (line.startsWith('@@')) {
+      inFileHeader = false
+      continue
+    }
+    if (inFileHeader) {
+      if (line.startsWith('new file mode')) current.status = 'A'
+      else if (line.startsWith('deleted file mode')) current.status = 'D'
+      continue
+    }
+    if (line.startsWith('+')) current.additions += 1
+    else if (line.startsWith('-')) current.deletions += 1
   }
 
   for (const path of diff.untracked ?? []) {

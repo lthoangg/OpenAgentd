@@ -501,6 +501,7 @@ export function DiffPreview({ diff }: { diff: string }) {
   // map so the counters run in a single sequential pass.
   type ParsedLine =
     | { kind: 'meta' }
+    | { kind: 'note'; text: string }
     | { kind: 'hunk'; skipped: number }
     | { kind: 'add' | 'del' | 'ctx'; lineNo: number; text: string; isFirstChange: boolean }
 
@@ -510,15 +511,25 @@ export function DiffPreview({ diff }: { diff: string }) {
     let newLine = 0
     let prevHunkOldEnd = 0
     let firstChangeSeen = false
+    // Whether we are inside a per-file header (from `diff --git` until the
+    // first `@@` hunk). Header-only lines (`index`, `---`/`+++` file names,
+    // `rename from/to`, mode changes, …) must never be treated as metadata
+    // once hunk content starts: a removed `---` frontmatter delimiter renders
+    // as `----` and an added `++i;` as `+++i;`, and the old prefix checks
+    // silently dropped those content lines and desynced every following
+    // line number.
+    let inFileHeader = true
 
     for (const line of diff.split('\n')) {
-      const isMeta = line.startsWith('diff --git') || line.startsWith('index ') ||
-        line.startsWith('new file mode') || line.startsWith('deleted file mode') ||
-        line.startsWith('---') || line.startsWith('+++') || line.startsWith('\\ ')
-      if (isMeta) { result.push({ kind: 'meta' }); continue }
+      if (line.startsWith('diff --git ')) {
+        inFileHeader = true
+        result.push({ kind: 'meta' })
+        continue
+      }
 
       const hunk = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,\d+)? @@/.exec(line)
       if (hunk) {
+        inFileHeader = false
         const nextOldStart = Number(hunk[1])
         const hunkOldCount = hunk[2] !== undefined ? Number(hunk[2]) : 1
         const skipped = prevHunkOldEnd > 0 ? nextOldStart - prevHunkOldEnd : nextOldStart - 1
@@ -529,8 +540,20 @@ export function DiffPreview({ diff }: { diff: string }) {
         continue
       }
 
-      const isAdded   = line.startsWith('+') && !line.startsWith('+++')
-      const isRemoved = line.startsWith('-') && !line.startsWith('---')
+      if (inFileHeader) {
+        // Header lines carry no file content. Keep human-readable notices
+        // ("Binary files … differ", the backend's synthetic "Binary or large
+        // file not shown: …") visible; hide the rest.
+        if (line.startsWith('Binary')) result.push({ kind: 'note', text: line })
+        else result.push({ kind: 'meta' })
+        continue
+      }
+
+      // "\ No newline at end of file"
+      if (line.startsWith('\\')) { result.push({ kind: 'meta' }); continue }
+
+      const isAdded   = line.startsWith('+')
+      const isRemoved = line.startsWith('-')
       const isFirstChange = !firstChangeSeen && (isAdded || isRemoved)
       if (isFirstChange) firstChangeSeen = true
       const lineNo = isRemoved ? oldLine : newLine
@@ -539,7 +562,9 @@ export function DiffPreview({ diff }: { diff: string }) {
       result.push({
         kind: isAdded ? 'add' : isRemoved ? 'del' : 'ctx',
         lineNo,
-        text: line.replace(/^[+-]/, '') || ' ',
+        // Strip exactly the one-column diff marker ('+', '-', or the context
+        // space) so context lines align with add/del lines.
+        text: line.slice(1) || ' ',
         isFirstChange,
       })
     }
@@ -551,6 +576,22 @@ export function DiffPreview({ diff }: { diff: string }) {
       <div className="min-w-0">
         {parsed.map((p, index) => {
           if (p.kind === 'meta') return null
+
+          if (p.kind === 'note') {
+            return (
+              <div
+                key={index}
+                className="flex min-w-0 items-center select-none border-y border-(--color-border)/20 bg-(--bg-page)"
+              >
+                <div className="sticky left-0 z-[1] shrink-0 border-r border-(--color-border)/40 bg-inherit">
+                  <span className="block w-9 py-0.5" />
+                </div>
+                <span className="px-3 py-0.5 text-[10px] italic text-(--color-text-subtle)/50">
+                  {p.text}
+                </span>
+              </div>
+            )
+          }
 
           if (p.kind === 'hunk') {
             return (

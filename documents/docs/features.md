@@ -110,7 +110,7 @@ run from the terminal.
 - **Type-to-focus composer** `[v1.40.0]` — in cockpit and coding chat, start
   typing on the chat surface to expand/focus the composer and capture the first
   character without pressing `⌘I`/`Ctrl+I` first.
-- **Developer-friendly word navigation in composer** `[v1.86.0]` — `Option + Arrow` (macOS) and `Ctrl + Arrow` (Windows/Linux) stop at programming separators like `.`, `-`, `_`, `/`, and `@` for precise navigation and text selection (`Shift` modified).
+- **Developer-friendly word navigation in composer** `[v1.86.0]` *(deprecated — replaced by native browser word navigation; the custom interceptor that stopped at programming separators like `.`, `-`, `_` was removed so `Option + Arrow`/`Ctrl + Arrow` now follow each platform's standard word-jump semantics)*.
 - **Native menu/tray shortcuts** `[v1.39.0, v1.93.1]` — menubar shortcuts for Home,
   Cockpit, Coding, Command Palette, Scheduled Tasks, Session Settings,
   key settings pages, updates, reload, config folder, and backend log; compact

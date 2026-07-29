@@ -1,69 +1,36 @@
 import { useRef, useState, useEffect, useCallback, type CSSProperties, type MutableRefObject } from 'react'
 import { File, Folder } from 'lucide-react'
-import type { SlashCommand, SnippetCommand } from './InputBar'
-import type { FileRef } from './InputBar.mentions'
+import type { SlashCommand } from './InputBar'
+import type { SuggestionMenu, SuggestionRow } from './InputBar.suggestionEngine'
 import { useIsMobile } from '@/hooks/use-mobile'
 
+/**
+ * Render half of the InputBar suggestion system. The engine
+ * (`InputBar.suggestionEngine.ts`) decides *which* menu is open and what it
+ * contains; this component owns positioning (fixed on mobile so the menu
+ * escapes `overflow: hidden` ancestors, absolute on desktop) and paints the
+ * single open listbox.
+ */
 export function InputBarSuggestions({
   minimized,
-  slashMenuOpen,
-  filteredSlashCommands,
-  slashMenuId,
-  selectableSlashCommands,
-  slashOptionRefs,
-  clampedIndex,
-  onSlashSelect,
-  snippetMenuOpen,
-  filteredSnippetCommands,
-  snippetMenuId,
-  snippetOptionRefs,
-  clampedSnippetIndex,
-  onSnippetSelect,
-  mentionMenuOpen,
-  filteredMentions,
-  mentionMenuId,
-  mentionOptionRefs,
-  clampedMentionIndex,
-  onMentionSelect,
+  menu,
+  activeIndex,
+  optionRefs,
+  onSelect,
   suggestionsBelow,
 }: {
   minimized: boolean
-  slashMenuOpen: boolean
-  filteredSlashCommands: SlashCommand[]
-  slashMenuId: string
-  selectableSlashCommands: SlashCommand[]
-  slashOptionRefs: MutableRefObject<(HTMLButtonElement | null)[]>
-  clampedIndex: number
-  onSlashSelect: (cmd: SlashCommand) => void
-  snippetMenuOpen: boolean
-  filteredSnippetCommands: SnippetCommand[]
-  snippetMenuId: string
-  snippetOptionRefs: MutableRefObject<(HTMLButtonElement | null)[]>
-  clampedSnippetIndex: number
-  onSnippetSelect: (cmd: SnippetCommand) => void
-  mentionMenuOpen: boolean
-  filteredMentions: FileRef[]
-  mentionMenuId: string
-  mentionOptionRefs: MutableRefObject<(HTMLButtonElement | null)[]>
-  clampedMentionIndex: number
-  onMentionSelect: (ref: FileRef) => void
+  menu: SuggestionMenu | null
+  activeIndex: number
+  optionRefs: MutableRefObject<(HTMLButtonElement | null)[]>
+  onSelect: (row: SuggestionRow) => void
   suggestionsBelow: boolean
 }) {
   const isMobile = useIsMobile()
   const containerRef = useRef<HTMLDivElement>(null)
-  const slashMenuRef = useRef<HTMLDivElement>(null)
-  const mentionMenuRef = useRef<HTMLDivElement>(null)
-  const snippetMenuRef = useRef<HTMLDivElement>(null)
-  // Points to whichever menu is currently open. Stored in a ref so
-  // ``updatePosition`` (a stable useCallback) always reads the current
-  // active menu without needing the open-state booleans as deps.
-  const activeMenuRef = useRef<HTMLDivElement | null>(null)
-  activeMenuRef.current = slashMenuOpen
-    ? slashMenuRef.current
-    : mentionMenuOpen
-      ? mentionMenuRef.current
-      : snippetMenuRef.current
+  const menuRef = useRef<HTMLDivElement>(null)
   const lastDesktopDirectionRef = useRef<boolean | null>(null)
+  const menuOpen = menu !== null
   const [position, setPosition] = useState<{
     top: number | undefined
     bottom: number | undefined
@@ -105,7 +72,7 @@ export function InputBarSuggestions({
       // 12px padding from the screen edge
       const maxHeight = Math.max(80, Math.min(256, availableSpace - 12))
 
-      const menuHeight = Math.min(activeMenuRef.current?.scrollHeight ?? maxHeight, maxHeight)
+      const menuHeight = Math.min(menuRef.current?.scrollHeight ?? maxHeight, maxHeight)
       const canFlip = !showBelow && spaceBelow > spaceAbove && spaceBelow >= menuHeight + 12
       const resolvedShowBelow = showBelow || canFlip
       const resolvedAvailableSpace = resolvedShowBelow ? spaceBelow : spaceAbove
@@ -130,7 +97,7 @@ export function InputBarSuggestions({
 
     const spaceAbove = rect.top
     const spaceBelow = window.innerHeight - rect.bottom
-    const desiredHeight = Math.min(activeMenuRef.current?.scrollHeight ?? 256, 256)
+    const desiredHeight = Math.min(menuRef.current?.scrollHeight ?? 256, 256)
     const fitsBelow = spaceBelow >= desiredHeight + 12
     const fitsAbove = spaceAbove >= desiredHeight + 12
     const previous = lastDesktopDirectionRef.current
@@ -164,8 +131,7 @@ export function InputBarSuggestions({
   }, [isMobile, suggestionsBelow])
 
   useEffect(() => {
-    const isOpen = slashMenuOpen || mentionMenuOpen || snippetMenuOpen
-    if (!isOpen) return
+    if (!menuOpen) return
 
     updatePosition()
 
@@ -184,7 +150,7 @@ export function InputBarSuggestions({
         updatePosition()
       })
       resizeObserver.observe(parentEl)
-      if (activeMenuRef.current) resizeObserver.observe(activeMenuRef.current)
+      if (menuRef.current) resizeObserver.observe(menuRef.current)
     }
 
     return () => {
@@ -195,9 +161,9 @@ export function InputBarSuggestions({
       }
       resizeObserver?.disconnect()
     }
-  }, [slashMenuOpen, mentionMenuOpen, snippetMenuOpen, updatePosition, isMobile])
+  }, [menuOpen, updatePosition, isMobile])
 
-  if (minimized) return null
+  if (minimized || !menu) return null
 
   const slashDisplayParts = (cmd: SlashCommand) => {
     const displayName = cmd.displayName ?? cmd.id
@@ -229,114 +195,113 @@ export function InputBarSuggestions({
         zIndex: 50,
       }
 
-  const menuClassName = 'overflow-y-auto overscroll-contain rounded-sm border border-(--color-border) bg-(--bg-card) p-1 shadow-md'
+  const menuAriaLabel =
+    menu.kind === 'slash' ? 'Slash commands' : menu.kind === 'snippet' ? 'Snippets' : 'Reference workspace file'
+
+  const optionClass = (active: boolean) =>
+    `flex w-full items-center rounded-xs px-2 py-1.5 text-left text-xs transition-colors ${
+      active ? 'bg-(--bg-key) text-(--color-text)' : 'text-(--color-text-muted) hover:bg-(--bg-key)/60 hover:text-(--color-text-2)'
+    }`
+
+  const categoryBadge = (category?: string) =>
+    category ? (
+      <span className="shrink-0 rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 font-mono text-[10px] text-(--color-text-muted)">
+        {category}
+      </span>
+    ) : null
 
   return (
     <div ref={containerRef} className="contents">
-      {slashMenuOpen && filteredSlashCommands.length > 0 && (
-        <div
-          ref={slashMenuRef}
-          id={slashMenuId}
-          role="listbox"
-          aria-label="Slash commands"
-          className={menuClassName}
-          style={menuStyle}
-        >
-          {filteredSlashCommands.map((cmd) => {
-            if ('isSeparator' in cmd && cmd.isSeparator) {
-              return (
-                <div key={cmd.id} className="px-2 pt-2.5 pb-1 text-[10px] font-semibold uppercase tracking-wide text-(--color-text-muted)">{cmd.label}</div>
-              )
-            }
-            const idx = selectableSlashCommands.findIndex((item) => item.id === cmd.id)
-            const active = idx === clampedIndex
-            const { prefix, suffix } = slashDisplayParts(cmd)
+      <div
+        ref={menuRef}
+        id={menu.id}
+        role="listbox"
+        aria-label={menuAriaLabel}
+        className="overflow-y-auto overscroll-contain rounded-sm border border-(--color-border) bg-(--bg-card) p-1 shadow-md"
+        style={menuStyle}
+      >
+        {menu.kind === 'slash' && menu.rows.map((cmd) => {
+          if (cmd.isSeparator) {
             return (
-              <button
-                key={cmd.id}
-                id={`${slashMenuId}-option-${idx}`}
-                ref={(el) => { if (idx >= 0) slashOptionRefs.current[idx] = el }}
-                type="button"
-                role="option"
-                aria-selected={active}
-                onMouseDown={(e) => { e.preventDefault(); onSlashSelect(cmd) }}
-                className={`flex w-full items-center gap-3 rounded-xs px-2 py-1.5 text-left text-xs transition-colors ${active ? 'bg-(--bg-key) text-(--color-text)' : 'text-(--color-text-muted) hover:bg-(--bg-key)/60 hover:text-(--color-text-2)'}`}
-              >
-                <span className="shrink-0 font-mono text-xs text-(--color-accent)">
-                  /
-                  {prefix && <span className="text-(--color-text-muted)">{prefix}</span>}
-                  <span>{suffix}</span>
-                </span>
-                <span className="min-w-0 flex-1 truncate text-(--color-text-2)">
-                  {cmd.description}
-                </span>
-                {cmd.category && (
-                  <span className="shrink-0 rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 font-mono text-[10px] text-(--color-text-muted)">
-                    {cmd.category}
-                  </span>
-                )}
-              </button>
+              <div key={cmd.id} className="px-2 pt-2.5 pb-1 text-[10px] font-semibold uppercase tracking-wide text-(--color-text-muted)">{cmd.label}</div>
             )
-          })}
-        </div>
-      )}
-      {mentionMenuOpen && filteredMentions.length > 0 && (
-        <div
-          ref={mentionMenuRef}
-          id={mentionMenuId}
-          role="listbox"
-          aria-label="Reference workspace file"
-          className={menuClassName}
-          style={menuStyle}
-        >
-          {filteredMentions.map((ref, index) => {
-            const active = index === clampedMentionIndex
-            const isDir = ref.type === 'directory'
-            const slash = ref.path.lastIndexOf('/')
-            const parent = slash === -1 ? '' : ref.path.slice(0, slash + 1)
-            const basename = slash === -1 ? ref.path : ref.path.slice(slash + 1)
-            return (
-              <button key={`${ref.type}:${ref.path}`} id={`${mentionMenuId}-option-${index}`} ref={(el) => { mentionOptionRefs.current[index] = el }} type="button" role="option" aria-selected={active} onMouseDown={(e) => { e.preventDefault(); onMentionSelect(ref) }} className={`flex w-full items-center gap-2.5 rounded-xs px-2 py-1.5 text-left text-xs transition-colors ${active ? 'bg-(--bg-key) text-(--color-text)' : 'text-(--color-text-muted) hover:bg-(--bg-key)/60 hover:text-(--color-text-2)'}`}>
-                {isDir ? (
-                  <Folder className="size-4 shrink-0 text-(--color-accent)" aria-hidden />
-                ) : (
-                  <File className="size-4 shrink-0 text-(--color-text-subtle)" aria-hidden />
-                )}
-                <span className="min-w-0 flex-1 truncate font-mono text-xs">
-                  {parent && <span className="text-(--color-text-subtle)">{parent}</span>}
-                  <span className="text-(--color-text)">{basename}</span>
-                  {isDir && <span className="text-(--color-text-subtle)">/</span>}
-                </span>
-              </button>
-            )
-          })}
-        </div>
-      )}
-      {snippetMenuOpen && filteredSnippetCommands.length > 0 && (
-        <div
-          ref={snippetMenuRef}
-          id={snippetMenuId}
-          role="listbox"
-          aria-label="Snippets"
-          className={menuClassName}
-          style={menuStyle}
-        >
-          {filteredSnippetCommands.map((cmd, index) => {
-            const active = index === clampedSnippetIndex
-            return (
-              <button key={cmd.id} id={`${snippetMenuId}-option-${index}`} ref={(el) => { snippetOptionRefs.current[index] = el }} type="button" role="option" aria-selected={active} onMouseDown={(e) => { e.preventDefault(); onSnippetSelect(cmd) }} className={`flex w-full items-center gap-3 rounded-xs px-2 py-1.5 text-left text-xs transition-colors ${active ? 'bg-(--bg-key) text-(--color-text)' : 'text-(--color-text-muted) hover:bg-(--bg-key)/60 hover:text-(--color-text-2)'}`}>
-                <span className="shrink-0 font-mono text-xs text-(--color-accent)">#{cmd.label}</span>
-                <span className="min-w-0 flex-1 truncate text-(--color-text-2)">{cmd.description}</span>
-                {cmd.category && (
-                  <span className="shrink-0 rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 py-0.5 font-mono text-[10px] text-(--color-text-muted)">
-                    {cmd.category}
-                  </span>
-                )}
-              </button>
-            )
-          })}
-        </div>
-      )}
+          }
+          const idx = menu.selectable.findIndex((item) => item.id === cmd.id)
+          const active = idx === activeIndex
+          const { prefix, suffix } = slashDisplayParts(cmd)
+          return (
+            <button
+              key={cmd.id}
+              id={`${menu.id}-option-${idx}`}
+              ref={(el) => { if (idx >= 0) optionRefs.current[idx] = el }}
+              type="button"
+              role="option"
+              aria-selected={active}
+              onMouseDown={(e) => { e.preventDefault(); onSelect(cmd) }}
+              className={`${optionClass(active)} gap-3`}
+            >
+              <span className="shrink-0 font-mono text-xs text-(--color-accent)">
+                /
+                {prefix && <span className="text-(--color-text-muted)">{prefix}</span>}
+                <span>{suffix}</span>
+              </span>
+              <span className="min-w-0 flex-1 truncate text-(--color-text-2)">
+                {cmd.description}
+              </span>
+              {categoryBadge(cmd.category)}
+            </button>
+          )
+        })}
+        {menu.kind === 'mention' && menu.rows.map((ref, index) => {
+          const active = index === activeIndex
+          const isDir = ref.type === 'directory'
+          const slash = ref.path.lastIndexOf('/')
+          const parent = slash === -1 ? '' : ref.path.slice(0, slash + 1)
+          const basename = slash === -1 ? ref.path : ref.path.slice(slash + 1)
+          return (
+            <button
+              key={`${ref.type}:${ref.path}`}
+              id={`${menu.id}-option-${index}`}
+              ref={(el) => { optionRefs.current[index] = el }}
+              type="button"
+              role="option"
+              aria-selected={active}
+              onMouseDown={(e) => { e.preventDefault(); onSelect(ref) }}
+              className={`${optionClass(active)} gap-2.5`}
+            >
+              {isDir ? (
+                <Folder className="size-4 shrink-0 text-(--color-accent)" aria-hidden />
+              ) : (
+                <File className="size-4 shrink-0 text-(--color-text-subtle)" aria-hidden />
+              )}
+              <span className="min-w-0 flex-1 truncate font-mono text-xs">
+                {parent && <span className="text-(--color-text-subtle)">{parent}</span>}
+                <span className="text-(--color-text)">{basename}</span>
+                {isDir && <span className="text-(--color-text-subtle)">/</span>}
+              </span>
+            </button>
+          )
+        })}
+        {menu.kind === 'snippet' && menu.rows.map((cmd, index) => {
+          const active = index === activeIndex
+          return (
+            <button
+              key={cmd.id}
+              id={`${menu.id}-option-${index}`}
+              ref={(el) => { optionRefs.current[index] = el }}
+              type="button"
+              role="option"
+              aria-selected={active}
+              onMouseDown={(e) => { e.preventDefault(); onSelect(cmd) }}
+              className={`${optionClass(active)} gap-3`}
+            >
+              <span className="shrink-0 font-mono text-xs text-(--color-accent)">#{cmd.label}</span>
+              <span className="min-w-0 flex-1 truncate text-(--color-text-2)">{cmd.description}</span>
+              {categoryBadge(cmd.category)}
+            </button>
+          )
+        })}
+      </div>
     </div>
   )
 }

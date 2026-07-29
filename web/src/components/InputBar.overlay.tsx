@@ -19,6 +19,7 @@
 import { memo, useEffect, useMemo, useRef } from 'react'
 
 import { buildMentionLookup, findCommittedMentions, type FileRef } from './InputBar.mentions'
+import { MAX_TEXTAREA_HEIGHT } from './InputBar.autosize'
 
 interface MentionOverlayProps {
   /** Current textarea value. */
@@ -138,7 +139,8 @@ function MentionOverlayComponent({
       // normal foreground; the per-span color override above paints
       // mention tokens in blue (files) or orange (folders).
       className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words text-sm leading-relaxed text-(--color-text)"
-      style={{ maxHeight: '120px' }}
+      // Mirrors the textarea's height cap (MAX_TEXTAREA_HEIGHT).
+      style={{ maxHeight: `${MAX_TEXTAREA_HEIGHT}px` }}
     >
       {segments}
     </div>

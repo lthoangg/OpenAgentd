@@ -3,6 +3,13 @@
  * commit actions for all three picker menus (slash commands, `@`-mentions,
  * `#`-snippets).
  *
+ * Only one menu can ever be open at a time (mention > snippet > slash
+ * precedence — the ranges are mutually exclusive by construction in
+ * InputBar's handleChange/syncMention), so the engine models the open menu
+ * as a single discriminated union (`SuggestionMenu`) plus one
+ * highlighted-index state, instead of three parallel copies of the
+ * index/refs/open/commit machinery.
+ *
  * Split out of InputBar.tsx (not `.tsx` itself — react-refresh forbids
  * non-component runtime exports from `.tsx` files) so the component only
  * has to wire this hook's output into `<InputBarSuggestions>` (the render
@@ -20,6 +27,18 @@ import {
 
 export type SuggestionRange = { start: number; end: number; query: string } | null
 
+/**
+ * The currently open picker menu. ``rows`` is what gets rendered (for slash
+ * menus this includes non-interactive separator rows); ``selectable`` is what
+ * keyboard navigation cycles through (rows minus separators).
+ */
+export type SuggestionMenu =
+  | { kind: 'slash'; id: string; rows: SlashCommand[]; selectable: SlashCommand[] }
+  | { kind: 'snippet'; id: string; rows: SnippetCommand[]; selectable: SnippetCommand[] }
+  | { kind: 'mention'; id: string; rows: FileRef[]; selectable: FileRef[] }
+
+export type SuggestionRow = SlashCommand | SnippetCommand | FileRef
+
 export interface UseInputBarSuggestionEngineOptions {
   value: string
   setValue: Dispatch<SetStateAction<string>>
@@ -32,7 +51,6 @@ export interface UseInputBarSuggestionEngineOptions {
   fileRefs: FileRef[]
   onSnippetCommand?: (id: string) => Promise<string | null> | string | null
   onSlashCommand?: (id: string) => void
-  mentions: string[]
   setMentions: Dispatch<SetStateAction<string[]>>
   minimized: boolean
   onSuggestionsMenuChange?: (open: boolean) => void
@@ -49,11 +67,6 @@ function useScrollOptionIntoView(open: boolean, index: number, count: number) {
   return refs
 }
 
-/** Helper to safely clamp menu selection index. */
-function clampIndex(index: number, count: number): number {
-  return count > 0 ? index % count : 0
-}
-
 export function useInputBarSuggestionEngine({
   value,
   setValue,
@@ -66,20 +79,68 @@ export function useInputBarSuggestionEngine({
   fileRefs,
   onSnippetCommand,
   onSlashCommand,
-  mentions,
   setMentions,
   minimized,
   onSuggestionsMenuChange,
 }: UseInputBarSuggestionEngineOptions) {
-  const [slashMenuIndex, setSlashMenuIndex] = useState(0)
-  const [snippetMenuIndex, setSnippetMenuIndex] = useState(0)
-  const [mentionMenuIndex, setMentionMenuIndex] = useState(0)
+  const [menuIndex, setMenuIndex] = useState(0)
   const [snippetRange, setSnippetRange] = useState<SuggestionRange>(null)
   const [mentionRange, setMentionRange] = useState<SuggestionRange>(null)
 
   const slashFilter = !shellMode && value.startsWith('/') && !value.includes(' ')
     ? value.slice(1).toLowerCase()
     : null
+
+  // ── Filtering ──────────────────────────────────────────────────────────────
+
+  const filteredSlashCommands = useMemo(
+    () => filterSlashCommands(slashCommands, slashFilter),
+    [slashCommands, slashFilter],
+  )
+
+  const selectableSlashCommands = useMemo(
+    () => filteredSlashCommands.filter((cmd) => !cmd.isSeparator),
+    [filteredSlashCommands],
+  )
+
+  const filteredSnippetCommands = useMemo(
+    () => filterSnippetCommands(snippetCommands, snippetRange),
+    [snippetCommands, snippetRange],
+  )
+
+  const filteredMentions = useMemo(
+    () => filterMentions(fileRefs, mentionRange),
+    [fileRefs, mentionRange],
+  )
+
+  // ── The single open menu ───────────────────────────────────────────────────
+
+  const menu: SuggestionMenu | null = useMemo(() => {
+    if (mentionRange !== null && filteredMentions.length > 0) {
+      return { kind: 'mention', id: 'inputbar-mention-menu', rows: filteredMentions, selectable: filteredMentions }
+    }
+    if (snippetRange !== null && filteredSnippetCommands.length > 0) {
+      return { kind: 'snippet', id: 'inputbar-snippet-menu', rows: filteredSnippetCommands, selectable: filteredSnippetCommands }
+    }
+    if (slashFilter !== null && filteredSlashCommands.length > 0) {
+      return { kind: 'slash', id: 'inputbar-slash-menu', rows: filteredSlashCommands, selectable: selectableSlashCommands }
+    }
+    return null
+  }, [mentionRange, filteredMentions, snippetRange, filteredSnippetCommands, slashFilter, filteredSlashCommands, selectableSlashCommands])
+
+  const selectableCount = menu?.selectable.length ?? 0
+  const activeIndex = selectableCount > 0 ? menuIndex % selectableCount : 0
+  const optionRefs = useScrollOptionIntoView(menu !== null, activeIndex, selectableCount)
+
+  // Reset the highlight when the menu switches kind — e.g. a caret-only move
+  // from inside a `#snippet` token into an `@mention` token swaps menus
+  // without a value change (which is what normally resets the index).
+  const menuKind = menu?.kind
+  useEffect(() => {
+    setMenuIndex(0)
+  }, [menuKind])
+
+  // ── Commit actions ─────────────────────────────────────────────────────────
 
   const executeSlashCommand = useCallback((cmd: SlashCommand) => {
     if (cmd.isSeparator) return
@@ -102,35 +163,6 @@ export function useInputBarSuggestionEngine({
     onSlashCommand?.(cmd.id)
   }, [onSlashCommand, resize, setShellMode, setValue, textareaRef])
 
-  // ── Slash command filtering & state ────────────────────────────────────────
-
-  const filteredSlashCommands = useMemo(
-    () => filterSlashCommands(slashCommands, slashFilter),
-    [slashCommands, slashFilter],
-  )
-
-  const selectableSlashCommands = useMemo(
-    () => filteredSlashCommands.filter((cmd) => !cmd.isSeparator),
-    [filteredSlashCommands],
-  )
-
-  const slashMenuOpen = slashFilter !== null && filteredSlashCommands.length > 0
-  const slashMenuId = 'inputbar-slash-menu'
-  const clampedIndex = clampIndex(slashMenuIndex, selectableSlashCommands.length)
-  const slashOptionRefs = useScrollOptionIntoView(slashMenuOpen, clampedIndex, selectableSlashCommands.length)
-
-  // ── Snippet command filtering & state ──────────────────────────────────────
-
-  const snippetMenuId = 'inputbar-snippet-menu'
-  const filteredSnippetCommands = useMemo(
-    () => filterSnippetCommands(snippetCommands, snippetRange),
-    [snippetCommands, snippetRange],
-  )
-
-  const snippetMenuOpen = snippetRange !== null && filteredSnippetCommands.length > 0
-  const clampedSnippetIndex = clampIndex(snippetMenuIndex, filteredSnippetCommands.length)
-  const snippetOptionRefs = useScrollOptionIntoView(snippetMenuOpen, clampedSnippetIndex, filteredSnippetCommands.length)
-
   const insertSnippet = useCallback(async (cmd: SnippetCommand) => {
     if (!snippetRange) return
     const rendered = await onSnippetCommand?.(cmd.id)
@@ -145,7 +177,7 @@ export function useInputBarSuggestionEngine({
     setValue(next)
     setShellMode(isShellSnippet)
     setSnippetRange(null)
-    setSnippetMenuIndex(0)
+    setMenuIndex(0)
     const el = textareaRef.current
     if (el) {
       const caret = before.length + spacerBefore.length + body.length
@@ -156,18 +188,6 @@ export function useInputBarSuggestionEngine({
       })
     }
   }, [onSnippetCommand, resize, setShellMode, setValue, snippetRange, textareaRef, value])
-
-  // ── @-mention filtering & state ────────────────────────────────────────────
-
-  const mentionMenuId = 'inputbar-mention-menu'
-  const filteredMentions = useMemo(
-    () => filterMentions(fileRefs, mentionRange),
-    [fileRefs, mentionRange],
-  )
-
-  const mentionMenuOpen = mentionRange !== null && filteredMentions.length > 0
-  const clampedMentionIndex = clampIndex(mentionMenuIndex, filteredMentions.length)
-  const mentionOptionRefs = useScrollOptionIntoView(mentionMenuOpen, clampedMentionIndex, filteredMentions.length)
 
   const insertMention = useCallback((ref: FileRef) => {
     if (!mentionRange) return
@@ -182,7 +202,7 @@ export function useInputBarSuggestionEngine({
     setShellMode(false)
     setMentionRange(null)
     setSnippetRange(null)
-    setMentionMenuIndex(0)
+    setMenuIndex(0)
     if (el) {
       const caret = before.length + insertion.length
       requestAnimationFrame(() => {
@@ -193,7 +213,29 @@ export function useInputBarSuggestionEngine({
     }
   }, [mentionRange, resize, setMentions, setShellMode, setValue, textareaRef, value])
 
-  const suggestionsOpen = !minimized && (slashMenuOpen || snippetMenuOpen || mentionMenuOpen)
+  /** Commit a row from the currently open menu (mouse click or Enter/Tab). */
+  const commit = useCallback((row: SuggestionRow) => {
+    if (!menu) return
+    if (menu.kind === 'slash') executeSlashCommand(row as SlashCommand)
+    else if (menu.kind === 'snippet') void insertSnippet(row as SnippetCommand)
+    else insertMention(row as FileRef)
+  }, [menu, executeSlashCommand, insertSnippet, insertMention])
+
+  /** Commit the currently highlighted row. */
+  const commitActive = useCallback(() => {
+    if (!menu || menu.selectable.length === 0) return
+    commit(menu.selectable[activeIndex])
+  }, [menu, activeIndex, commit])
+
+  /** Close the open menu (Escape). Slash keeps its legacy clear-the-draft behaviour. */
+  const dismiss = useCallback(() => {
+    if (!menu) return
+    if (menu.kind === 'slash') setValue('')
+    else if (menu.kind === 'snippet') setSnippetRange(null)
+    else setMentionRange(null)
+  }, [menu, setValue])
+
+  const suggestionsOpen = !minimized && menu !== null
   useEffect(() => {
     onSuggestionsMenuChange?.(suggestionsOpen)
   }, [suggestionsOpen, onSuggestionsMenuChange])
@@ -201,38 +243,16 @@ export function useInputBarSuggestionEngine({
   return {
     mentionRange,
     setMentionRange,
-    snippetRange,
     setSnippetRange,
-    mentions,
 
-    slashMenuIndex,
-    setSlashMenuIndex,
-    snippetMenuIndex,
-    setSnippetMenuIndex,
-    mentionMenuIndex,
-    setMentionMenuIndex,
+    menu,
+    activeIndex,
+    setMenuIndex,
+    optionRefs,
 
-    slashMenuId,
-    filteredSlashCommands,
-    selectableSlashCommands,
-    slashMenuOpen,
-    clampedIndex,
-    slashOptionRefs,
-    executeSlashCommand,
-
-    snippetMenuId,
-    filteredSnippetCommands,
-    snippetMenuOpen,
-    clampedSnippetIndex,
-    snippetOptionRefs,
-    insertSnippet,
-
-    mentionMenuId,
-    filteredMentions,
-    mentionMenuOpen,
-    clampedMentionIndex,
-    mentionOptionRefs,
-    insertMention,
+    commit,
+    commitActive,
+    dismiss,
 
     suggestionsOpen,
   }

@@ -5,15 +5,15 @@ import { FilePreviewStrip } from './FilePreviewStrip'
 import { VoiceMicButton } from './VoiceMicButton'
 import { findActiveMention, getExplicitMentionRanges, type FileRef } from './InputBar.mentions'
 import { MentionOverlay } from './InputBar.overlay'
-import { CHAR_WARN_THRESHOLD, findActiveSnippet, handleWordNavigation } from './InputBar.helpers'
+import { CHAR_WARN_THRESHOLD, findActiveSnippet } from './InputBar.helpers'
 import { InputBarSuggestions } from './InputBar.suggestions'
 import { useInputBarSuggestionEngine } from './InputBar.suggestionEngine'
+import { MAX_TEXTAREA_HEIGHT, useTextareaAutosize } from './InputBar.autosize'
 import type { AgentCapabilities } from '@/api/types'
 import { buildAcceptString } from './InputBar.files'
 import { useInputBarAttachments } from './InputBar.attachments'
 import { buildHistoryEntries } from './InputBar.menus'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { usePlatform } from '@/hooks/use-platform'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 
 // Re-export the public type so callers can import ``FileRef`` from this module
@@ -208,46 +208,28 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   const [shellMode, setShellMode] = useState(false)
   const [mentions, setMentions] = useState<string[]>([])
 
-  // Synchronise mentions with the actual textarea value.
-  // If the user manually edits or deletes a mention from the text,
-  // it will no longer match the "@path" or "@path/" pattern, so we remove it.
-  // Uses the same after-boundary check as getExplicitMentionRanges: "@src" must
-  // not be counted as present just because "@src/api.ts" appears in the value.
+  // Single source of truth for where committed ``@mention`` tokens live in
+  // the current value. Memoized once per (value, mentions) change and shared
+  // by atomic selection (syncMention), atomic deletion, and mention pruning —
+  // previously each of those re-scanned the text with its own copy of the
+  // boundary rules on every keystroke/caret move.
+  const mentionRanges = useMemo(
+    () => getExplicitMentionRanges(value, mentions),
+    [value, mentions],
+  )
+
+  // Synchronise mentions with the actual textarea value: a mention survives
+  // only while its ``@path`` / ``@path/`` token still resolves to a range in
+  // the text (i.e. the user hasn't typed over or deleted it).
   useEffect(() => {
     setMentions((prev) => {
-      const next = prev.filter((path) => {
-        const dirToken = `@${path}/`
-        const fileToken = `@${path}`
-        // Check @path/ — any occurrence with a valid before-boundary is fine
-        let idx = value.indexOf(dirToken)
-        while (idx !== -1) {
-          const before = idx > 0 ? value.charAt(idx - 1) : ''
-          if (idx === 0 || /\s|["'([{,]/.test(before)) return true
-          idx = value.indexOf(dirToken, idx + 1)
-        }
-        // Check @path — additionally require that the char after the token is
-        // not a path-continuing character, so "@src" doesn't survive when only
-        // "@src/api.ts" is in the text.
-        idx = value.indexOf(fileToken)
-        while (idx !== -1) {
-          const before = idx > 0 ? value.charAt(idx - 1) : ''
-          const charAfter = value.charAt(idx + fileToken.length)
-          const validBefore = idx === 0 || /\s|["'([{,]/.test(before)
-          const validAfter = charAfter === '' || /[\s#"')\]},]/.test(charAfter)
-          if (validBefore && validAfter) return true
-          idx = value.indexOf(fileToken, idx + 1)
-        }
-        return false
-      })
-      if (next.length !== prev.length) {
-        return next
-      }
-      return prev
+      const present = new Set(mentionRanges.map((r) => r.path))
+      const next = prev.filter((path) => present.has(path))
+      return next.length !== prev.length ? next : prev
     })
-  }, [value])
+  }, [mentionRanges])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const isMobile = useIsMobile()
-  const platform = usePlatform()
   const prefersReducedMotion = useReducedMotion()
 
   const history = useMemo(
@@ -255,87 +237,28 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     [localHistory, historyPrompts],
   )
 
-  // ``isMultiLine`` is updated as a side-effect of ``resize`` rather
-  // than a separate effect, so the DOM measurement and the React
-  // state stay in lock-step (one render cycle, no cascade).
-  //
-  // Hysteresis on the promote/demote decision:
-  //   - Promote (false → true): textarea's scrollHeight exceeds one
-  //     line height. Record the value length at the moment of
-  //     promotion in ``promoteLengthRef``.
-  //   - Demote (true → false): only when the value has no newlines
-  //     AND its length is now ≤ 80% of the recorded promote-length.
-  //     The 20% guard band absorbs the layout feedback loop where
-  //     promoting widens the textarea (so the same content fits on
-  //     one line again) which would otherwise demote → re-promote.
-  const [isMultiLine, setIsMultiLine] = useState(false)
-  const promoteLengthRef = useRef(0)
-  const lineHeightRef = useRef<number | null>(null)
-  const resizeFrameRef = useRef<number | null>(null)
-  const resize = useCallback(() => {
-    const el = textareaRef.current
-    if (!el) return
-    el.style.height = 'auto'
-    const scrollHeight = el.scrollHeight
-    el.style.height = `${Math.min(scrollHeight, 120)}px`
-    let lineHeight = lineHeightRef.current
-    if (lineHeight == null) {
-      const computed = window.getComputedStyle(el)
-      lineHeight = parseFloat(computed.lineHeight) ||
-        parseFloat(computed.fontSize) * 1.5
-      lineHeightRef.current = lineHeight
-    }
-    const wrapped = scrollHeight > lineHeight * 1.4
-    const currentLen = el.value.length
-    const hasNewline = el.value.includes('\n')
-
-    setIsMultiLine((prev) => {
-      if (!prev && wrapped) {
-        // Promote: remember the length so we know when it's safe to
-        // demote later.
-        promoteLengthRef.current = currentLen
-        return true
-      }
-      if (prev && !wrapped && !hasNewline) {
-        // Demote candidate. Only commit if length has dropped clearly
-        // below the promote-length (80% threshold) — guards against
-        // the wrap-promote-rewrap loop in the boundary band.
-        const demoteThreshold = Math.floor(promoteLengthRef.current * 0.8)
-        if (currentLen <= demoteThreshold) {
-          promoteLengthRef.current = 0
-          return false
-        }
-      }
-      return prev
-    })
-  }, [])
+  // Height-to-content resizing + the single/multi-line layout flag. See
+  // InputBar.autosize.ts for the promote/demote hysteresis rationale.
+  const {
+    isMultiLine,
+    resize,
+    scheduleResize,
+    resizeAfterLayout,
+    resetHeightNow,
+    resetMultiLine,
+  } = useTextareaAutosize(textareaRef)
 
   const {
     mentionRange,
     setMentionRange,
     setSnippetRange,
-    setSlashMenuIndex,
-    setSnippetMenuIndex,
-    setMentionMenuIndex,
-    slashMenuId,
-    filteredSlashCommands,
-    selectableSlashCommands,
-    slashMenuOpen,
-    clampedIndex,
-    slashOptionRefs,
-    executeSlashCommand,
-    snippetMenuId,
-    filteredSnippetCommands,
-    snippetMenuOpen,
-    clampedSnippetIndex,
-    snippetOptionRefs,
-    insertSnippet,
-    mentionMenuId,
-    filteredMentions,
-    mentionMenuOpen,
-    clampedMentionIndex,
-    mentionOptionRefs,
-    insertMention,
+    menu,
+    activeIndex,
+    setMenuIndex,
+    optionRefs,
+    commit,
+    commitActive,
+    dismiss,
   } = useInputBarSuggestionEngine({
     value,
     setValue,
@@ -348,7 +271,6 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     fileRefs,
     onSnippetCommand,
     onSlashCommand,
-    mentions,
     setMentions,
     minimized,
     onSuggestionsMenuChange,
@@ -366,7 +288,12 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     // Atomic mention selection: if the cursor is placed inside an explicit mention,
     // select the entire mention so that any edit/delete action applies to it as a whole.
     if (caret === selectionEnd) {
-      const ranges = getExplicitMentionRanges(el.value, mentions)
+      // ``onSelect`` also fires mid-typing, before React re-renders — in that
+      // window ``el.value`` is ahead of the ``value`` state the memoized
+      // ranges were computed from, so fall back to a fresh scan.
+      const ranges = el.value === value
+        ? mentionRanges
+        : getExplicitMentionRanges(el.value, mentions)
       const hit = ranges.find((r) => caret > r.start && caret < r.end)
       if (hit) {
         requestAnimationFrame(() => {
@@ -388,7 +315,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       ) return prev
       return next
     })
-  }, [shellMode, mentions, setMentionRange, setSnippetRange])
+  }, [shellMode, value, mentionRanges, mentions, setMentionRange, setSnippetRange])
 
   const navigateHistory = useCallback((dir: 'up' | 'down') => {
     if (history.length === 0) return false
@@ -426,26 +353,24 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     return false
   }, [history, value, historyIndex, resize, setMentionRange, setSnippetRange])
 
+  // Shared bookkeeping for every programmatic draft mutation: leave history
+  // navigation and close any open picker — a value replacement invalidates
+  // the pickers' ``start``/``end`` indices, which refer to the old text.
+  const resetDraftState = useCallback(() => {
+    setHistoryIndex(-1)
+    setMentionRange(null)
+    setSnippetRange(null)
+  }, [setMentionRange, setSnippetRange])
+
   useImperativeHandle(ref, () => ({
     focus: () => textareaRef.current?.focus(),
     setValue: (text: string) => {
       setValue(text)
       setShellMode(false)
-      setHistoryIndex(-1)
-      // Programmatic value replacement invalidates any open mention picker —
-      // its ``start``/``end`` indices refer to the old text.
-      setMentionRange(null)
-      setSnippetRange(null)
-      // Trigger height recalculation after injecting text programmatically.
-      // Double-rAF: the outer frame fires after React's paint; the inner frame
-      // fires after the browser's subsequent layout pass, by which point any
-      // parent expand animation (e.g. FloatingInputBar minimized→expanded
-      // Framer spring) has had a frame to reach its final width. Measuring
-      // scrollHeight at the correct full width prevents a wrong height being
-      // locked in before the textarea is properly sized.
-      requestAnimationFrame(() => {
-        requestAnimationFrame(resize)
-      })
+      resetDraftState()
+      // Recalculate height after injecting text programmatically — see
+      // ``resizeAfterLayout`` for why this must wait two frames.
+      resizeAfterLayout()
     },
     appendValue: (text: string) => {
       // Mirrors the textarea's own paste handling: appending "!command" to
@@ -461,19 +386,8 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         return `${prev}${spacer}${text}`
       })
       setShellMode(shouldEnterShellMode)
-      setHistoryIndex(-1)
-      setMentionRange(null)
-      setSnippetRange(null)
-      // Double-rAF mirrors the pattern used in ``setValue``: the outer frame
-      // fires after React's paint; the inner fires after the browser's next
-      // layout pass, by which time any parent expand animation (e.g. the
-      // FloatingInputBar Framer spring from minimized→expanded) has had a
-      // frame to reach its final width. Without this, pasting multi-line
-      // text while the bar is collapsed measures scrollHeight at the wrong
-      // narrow width and locks the textarea at 1-line height.
-      requestAnimationFrame(() => {
-        requestAnimationFrame(resize)
-      })
+      resetDraftState()
+      resizeAfterLayout()
     },
     insertText: (text: string) => {
       const el = textareaRef.current
@@ -486,6 +400,8 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
           return ''
         }
         const next = prev.slice(0, start) + text + prev.slice(end)
+        // Single rAF (not ``resizeAfterLayout``): this path forwards live
+        // keystrokes, so the caret must land as soon as React has painted.
         requestAnimationFrame(() => {
           el?.setSelectionRange(start + text.length, start + text.length)
           resize()
@@ -493,9 +409,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         return next
       })
       setShellMode(shouldEnterShellMode)
-      setHistoryIndex(-1)
-      setMentionRange(null)
-      setSnippetRange(null)
+      resetDraftState()
     },
     setFiles: (nextFiles: File[]) => {
       setFiles(nextFiles)
@@ -519,25 +433,12 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     // isMultiLine/promoteLengthRef here because the setValue rAF
     // will compute the correct height from the actual content.
     if (!textareaRef.current?.value) {
-      setIsMultiLine(false)
-      promoteLengthRef.current = 0
+      resetMultiLine()
     }
-    // Double-rAF: outer frame lets Framer's spring start its expand
-    // animation; inner frame fires after the browser's subsequent
-    // layout pass when the bar has reached (or is very close to) its
-    // final width, so the scrollHeight measurement is accurate.
-    let innerId = 0
-    const outerId = requestAnimationFrame(() => {
-      innerId = requestAnimationFrame(() => {
-        resize()
-        textareaRef.current?.focus()
-      })
-    })
-    return () => {
-      cancelAnimationFrame(outerId)
-      cancelAnimationFrame(innerId)
-    }
-  }, [minimized, resize])
+    // ``resizeAfterLayout``'s double-rAF lets Framer's spring reach (or get
+    // very close to) the bar's final width before scrollHeight is measured.
+    return resizeAfterLayout(() => textareaRef.current?.focus())
+  }, [minimized, resizeAfterLayout, resetMultiLine])
 
   // Plain ref now — no auto-focus-on-mount magic needed since the
   // textarea never unmounts.
@@ -560,31 +461,17 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     setLocalHistory((prev) =>
       prev[0] === submitted ? prev : [submitted, ...prev].slice(0, 100),
     )
-    setHistoryIndex(-1)
     setValue('')
     setFiles([])
     setMentions([])
     setShellMode(false)
-    setMentionRange(null)
-    setSnippetRange(null)
-    setMentionMenuIndex(0)
-    setSlashMenuIndex(0)
-    setSnippetMenuIndex(0)
+    resetDraftState()
+    setMenuIndex(0)
 
-    // Reset the visible height synchronously. On mobile, the send button keeps
-    // the composer mounted, so waiting for the next animation frame leaves the
-    // now-empty textarea at its old multiline height for a frame (and can look
-    // stuck if a pending input resize measures first).
-    if (resizeFrameRef.current != null) {
-      cancelAnimationFrame(resizeFrameRef.current)
-      resizeFrameRef.current = null
-    }
-    const el = textareaRef.current
-    if (el) el.style.height = 'auto'
-    setIsMultiLine(false)
-    promoteLengthRef.current = 0
-    requestAnimationFrame(resize)
-  }, [disabled, value, files, isStreaming, shellMode, onSubmit, mentions, resize, setFiles, setMentionMenuIndex, setMentionRange, setSlashMenuIndex, setSnippetMenuIndex, setSnippetRange])
+    // Reset the visible height synchronously — see ``resetHeightNow`` for
+    // why this can't wait for the next animation frame.
+    resetHeightNow()
+  }, [disabled, value, files, isStreaming, shellMode, onSubmit, mentions, resetDraftState, resetHeightNow, setFiles, setMenuIndex])
 
   const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const items = e.clipboardData?.items
@@ -604,30 +491,14 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       const command = text.slice(1)
       setValue(command)
       setShellMode(true)
-      setHistoryIndex(-1)
-      setMentionRange(null)
-      setSnippetRange(null)
+      resetDraftState()
       requestAnimationFrame(() => {
         el.focus()
         el.setSelectionRange(command.length, command.length)
         resize()
       })
     }
-  }, [extractPastedFiles, resize, shellMode, value, setFiles, setMentionRange, setSnippetRange])
-
-  const handleWordJumpKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>): boolean => {
-    const isMac = platform.os === 'macos' || platform.os === 'ios'
-    const isWordJump = isMac ? e.altKey : e.ctrlKey
-    const isArrow = e.key === 'ArrowLeft' || e.key === 'ArrowRight'
-    if (isWordJump && isArrow) {
-      e.preventDefault()
-      const direction = e.key === 'ArrowLeft' ? 'left' : 'right'
-      handleWordNavigation(e.currentTarget, direction, e.shiftKey)
-      syncMention()
-      return true
-    }
-    return false
-  }, [platform.os, syncMention])
+  }, [extractPastedFiles, resetDraftState, resize, shellMode, value, setFiles])
 
   const handleAtomicMentionDeletion = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>): boolean => {
     if (e.key !== 'Backspace' && e.key !== 'Delete') return false
@@ -635,8 +506,9 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     if (!el || el.selectionStart !== el.selectionEnd) return false
     const caret = el.selectionStart
     const targetIdx = e.key === 'Backspace' ? caret - 1 : caret
-    const ranges = getExplicitMentionRanges(value, mentions)
-    const hit = ranges.find((r) => targetIdx >= r.start && targetIdx < r.end)
+    // Keydown fires before the value changes, so the memoized ranges are
+    // guaranteed fresh here.
+    const hit = mentionRanges.find((r) => targetIdx >= r.start && targetIdx < r.end)
     if (!hit) return false
 
     e.preventDefault()
@@ -651,7 +523,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
       resize()
     })
     return true
-  }, [mentions, resize, value])
+  }, [mentionRanges, resize, value])
 
   const handleShellKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>): boolean => {
     if (e.key === '!' && !shellMode && value.length === 0) {
@@ -672,77 +544,30 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   }, [setMentionRange, setShellMode, setSnippetRange, shellMode, value.length])
 
   const handlePickerMenuKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>): boolean => {
-    if (mentionMenuOpen && filteredMentions.length > 0) {
-      if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        setMentionMenuIndex((i) => (i + 1) % filteredMentions.length)
-        return true
-      }
-      if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        setMentionMenuIndex((i) => (i - 1 + filteredMentions.length) % filteredMentions.length)
-        return true
-      }
-      if (e.key === 'Enter' || e.key === 'Tab') {
-        e.preventDefault()
-        insertMention(filteredMentions[clampedMentionIndex])
-        return true
-      }
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        setMentionRange(null)
-        return true
-      }
+    if (!menu || menu.selectable.length === 0) return false
+    const count = menu.selectable.length
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setMenuIndex((i) => (i + 1) % count)
+      return true
     }
-
-    if (snippetMenuOpen && filteredSnippetCommands.length > 0) {
-      if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        setSnippetMenuIndex((i) => (i + 1) % filteredSnippetCommands.length)
-        return true
-      }
-      if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        setSnippetMenuIndex((i) => (i - 1 + filteredSnippetCommands.length) % filteredSnippetCommands.length)
-        return true
-      }
-      if (e.key === 'Enter' || e.key === 'Tab') {
-        e.preventDefault()
-        void insertSnippet(filteredSnippetCommands[clampedSnippetIndex])
-        return true
-      }
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        setSnippetRange(null)
-        return true
-      }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setMenuIndex((i) => (i - 1 + count) % count)
+      return true
     }
-
-    if (slashMenuOpen && selectableSlashCommands.length > 0) {
-      if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        setSlashMenuIndex((i) => (i + 1) % selectableSlashCommands.length)
-        return true
-      }
-      if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        setSlashMenuIndex((i) => (i - 1 + selectableSlashCommands.length) % selectableSlashCommands.length)
-        return true
-      }
-      if (e.key === 'Enter' || e.key === 'Tab') {
-        e.preventDefault()
-        executeSlashCommand(selectableSlashCommands[clampedIndex])
-        return true
-      }
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        setValue('')
-        return true
-      }
+    if (e.key === 'Enter' || e.key === 'Tab') {
+      e.preventDefault()
+      commitActive()
+      return true
     }
-
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      dismiss()
+      return true
+    }
     return false
-  }, [clampedIndex, clampedMentionIndex, clampedSnippetIndex, executeSlashCommand, filteredMentions, filteredSnippetCommands, insertMention, insertSnippet, mentionMenuOpen, selectableSlashCommands, setMentionMenuIndex, setMentionRange, setSlashMenuIndex, setSnippetMenuIndex, setSnippetRange, setValue, slashMenuOpen, snippetMenuOpen])
+  }, [menu, setMenuIndex, commitActive, dismiss])
 
   const handleHistoryKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>): boolean => {
     if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && history.length > 0) {
@@ -759,7 +584,8 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.nativeEvent.isComposing || e.keyCode === 229) return
 
-    if (handleWordJumpKeyDown(e)) return
+    // Word-by-word caret movement (Alt/Ctrl+Arrow) is native textarea
+    // behaviour; `onSelect` keeps the mention picker in sync afterwards.
     if (handleAtomicMentionDeletion(e)) return
     if (handleShellKeyDown(e)) return
     if (handlePickerMenuKeyDown(e)) return
@@ -773,45 +599,25 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
 
   const handleBeforeInput = (e: React.FormEvent<HTMLTextAreaElement>) => {
     if ((e.nativeEvent as InputEvent).inputType !== 'insertLineBreak') return
-    if (!slashMenuOpen || selectableSlashCommands.length === 0) return
+    if (menu?.kind !== 'slash') return
 
     e.preventDefault()
-    executeSlashCommand(selectableSlashCommands[clampedIndex])
+    commitActive()
   }
-
-  const scheduleResize = useCallback(() => {
-    if (resizeFrameRef.current != null) return
-    resizeFrameRef.current = requestAnimationFrame(() => {
-      resizeFrameRef.current = null
-      resize()
-    })
-  }, [resize])
-
-  useEffect(() => {
-    return () => {
-      if (resizeFrameRef.current != null) cancelAnimationFrame(resizeFrameRef.current)
-    }
-  }, [])
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const nextValue = e.target.value
     if (!shellMode && nextValue === '!') {
       setShellMode(true)
       setValue('')
-      setHistoryIndex(-1)
-      setSlashMenuIndex(0)
-      setSnippetMenuIndex(0)
-      setMentionMenuIndex(0)
-      setMentionRange(null)
-      setSnippetRange(null)
+      resetDraftState()
+      setMenuIndex(0)
       scheduleResize()
       return
     }
     setValue(nextValue)
     setHistoryIndex(-1)
-    setSlashMenuIndex(0)
-    setSnippetMenuIndex(0)
-    setMentionMenuIndex(0)
+    setMenuIndex(0)
     // ``selectionStart`` is already at the post-change caret position by the
     // time React fires onChange.
     const caret = e.target.selectionStart ?? nextValue.length
@@ -961,14 +767,8 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         ? 'Queue a follow-up or /stop…'
         : placeholder
 
-  const activePopupId = mentionMenuOpen ? mentionMenuId : snippetMenuOpen ? snippetMenuId : slashMenuOpen ? slashMenuId : undefined
-  const activeOptionId = mentionMenuOpen
-    ? `${mentionMenuId}-option-${clampedMentionIndex}`
-    : snippetMenuOpen
-      ? `${snippetMenuId}-option-${clampedSnippetIndex}`
-      : slashMenuOpen
-        ? `${slashMenuId}-option-${clampedIndex}`
-        : undefined
+  const activePopupId = menu?.id
+  const activeOptionId = menu ? `${menu.id}-option-${activeIndex}` : undefined
 
 
 
@@ -1086,9 +886,9 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         // further with every scroll. The wrapper around the overlay handles
         // overflow via the overlay's ``overflow-hidden`` + scroll sync.
         className="block w-full resize-none scrollbar-none overscroll-contain bg-transparent p-0 align-middle text-sm leading-relaxed break-words text-transparent caret-(--color-text) placeholder-(--color-text-subtle) selection:bg-(--color-accent)/30 selection:text-(--color-text) focus:outline-none disabled:opacity-50"
-        // Cap matches the ``resize()`` ceiling above so the JS-driven height
-        // and the CSS limit stay in lockstep.
-        style={{ maxHeight: '120px' }}
+        // Cap matches the ``resize()`` ceiling in InputBar.autosize.ts so the
+        // JS-driven height and the CSS limit stay in lockstep.
+        style={{ maxHeight: `${MAX_TEXTAREA_HEIGHT}px` }}
         // Spellcheck disabled: the squiggle is painted by the browser under
         // the textarea's own glyphs, but the visible text comes from the
         // overlay mirror. Even with identical font/wrap/scroll the two
@@ -1096,7 +896,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         // off. Same call Discord/Slack/ChatGPT make for the same reason.
         spellCheck={false}
         aria-label={shellMode ? 'Shell command input' : 'Message input'}
-        aria-expanded={mentionMenuOpen || snippetMenuOpen || slashMenuOpen}
+        aria-expanded={menu !== null}
         aria-controls={activePopupId}
         aria-activedescendant={activeOptionId}
       />
@@ -1195,25 +995,10 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
 
         <InputBarSuggestions
           minimized={minimized}
-          slashMenuOpen={!minimized && slashMenuOpen}
-          filteredSlashCommands={filteredSlashCommands}
-          slashMenuId={slashMenuId}
-          selectableSlashCommands={selectableSlashCommands}
-          slashOptionRefs={slashOptionRefs}
-          clampedIndex={clampedIndex}
-          onSlashSelect={executeSlashCommand}
-          snippetMenuOpen={!minimized && snippetMenuOpen}
-          filteredSnippetCommands={filteredSnippetCommands}
-          snippetMenuId={snippetMenuId}
-          snippetOptionRefs={snippetOptionRefs}
-          clampedSnippetIndex={clampedSnippetIndex}
-          onSnippetSelect={(cmd) => { void insertSnippet(cmd) }}
-          mentionMenuOpen={!minimized && mentionMenuOpen}
-          filteredMentions={filteredMentions}
-          mentionMenuId={mentionMenuId}
-          mentionOptionRefs={mentionOptionRefs}
-          clampedMentionIndex={clampedMentionIndex}
-          onMentionSelect={insertMention}
+          menu={menu}
+          activeIndex={activeIndex}
+          optionRefs={optionRefs}
+          onSelect={commit}
           suggestionsBelow={suggestionsBelow ?? filesBelow}
         />
 

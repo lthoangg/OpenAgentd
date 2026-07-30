@@ -103,8 +103,20 @@ replace_exact_line documents/docs/features.md \
     "**Latest release:** v$version · $release_date_human · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v$version)"
 
 uv sync
-cargo generate-lockfile --manifest-path desktop/src-tauri/Cargo.toml
-cargo generate-lockfile --manifest-path mobile/src-tauri/Cargo.toml
+
+# ``cargo update --workspace`` refreshes only the workspace member's own entry
+# in Cargo.lock, which is all a version bump needs. ``cargo generate-lockfile``
+# used to be here and re-resolved the whole graph ("Locking 511 packages to
+# latest compatible versions"), which:
+#
+#   1. shipped Rust dependency versions no PR ever tested, and
+#   2. changed the Cargo.lock/Cargo.toml hash that Swatinem/rust-cache keys on,
+#      so every release commit missed the primary cache key and fell back to a
+#      stale entry, re-downloading and recompiling dependencies.
+#
+# Dependency updates belong in their own PR, where CI can test them.
+cargo update --workspace --manifest-path desktop/src-tauri/Cargo.toml
+cargo update --workspace --manifest-path mobile/src-tauri/Cargo.toml
 
 scripts/check_version_consistency.sh
 

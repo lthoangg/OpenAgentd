@@ -20,6 +20,7 @@ import {
   extractToolPaths,
 } from './helpers'
 import type { CacheInvalidation, TeamStore } from './types'
+import type { ContentBlock } from '@/api/types'
 
 type Setter = (fn: (draft: TeamStore) => void) => void
 type Getter = () => TeamStore
@@ -96,6 +97,23 @@ function appendStreamingText(
   }
 }
 
+/**
+ * True when the agent's confirmed ``blocks`` hold a still-running card for
+ * this tool call. Happens when a mid-turn ``loadSession`` reconciles the
+ * persisted assistant row (saved *before* its tools finish executing) while
+ * the tool is still live — later tool events must reach that card instead of
+ * targeting ``currentBlocks`` and silently vanishing, which left the card
+ * stuck "running" until a full reload. Matched strictly by ``toolCallId``;
+ * the name-based fallback stays live-only so orphaned incomplete cards in
+ * history are never completed by an unrelated event.
+ */
+function findConfirmedTool(draft: TeamStore, agent: string, toolCallId: string | undefined): ContentBlock | undefined {
+  if (!toolCallId) return undefined
+  return draft.agentStreams[agent].blocks.find(
+    (b) => b.type === 'tool' && b.toolCallId === toolCallId,
+  )
+}
+
 function applyBufferedSSEDelta(draft: TeamStore, event: BufferedSSEDelta) {
   const d = event.data
   if (event.type === 'message' || event.type === 'thinking') {
@@ -113,13 +131,22 @@ function applyBufferedSSEDelta(draft: TeamStore, event: BufferedSSEDelta) {
 
   if (TODO_MUTATING_TOOLS.has(d.name as string)) return
   const agent = d.agent as string
+  const toolCallId = d.tool_call_id as string | undefined
   ensureAgent(draft, agent)
-  draft.agentStreams[agent].currentBlocks = appendToolOutput(
-    draft.agentStreams[agent].currentBlocks,
-    d.name as string,
-    d.tool_call_id as string | undefined,
-    d.text as string,
-  )
+  const stream = draft.agentStreams[agent]
+  const next = appendToolOutput(stream.currentBlocks, d.name as string, toolCallId, d.text as string)
+  if (next !== stream.currentBlocks) {
+    stream.currentBlocks = next
+    return
+  }
+  // No live card — the tool may already sit in the confirmed rows (a mid-turn
+  // loadSession reconciles the assistant row before its tools finish). Route
+  // the delta there instead of dropping it; matched strictly by id so
+  // orphaned history cards are never touched.
+  const confirmed = findConfirmedTool(draft, agent, toolCallId)
+  if (confirmed && !confirmed.toolDone) {
+    stream.blocks = appendToolOutput(stream.blocks, d.name as string, toolCallId, d.text as string)
+  }
 }
 
 /** Apply a group of high-frequency text/tool-output deltas in one immer
@@ -152,6 +179,9 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         const agent = d.agent as string
         set((draft) => {
           markTurnStarted(draft, agent)
+          // Replay after a mid-turn reconcile: the card already lives in the
+          // confirmed rows — recreating it live would render a duplicate.
+          if (findConfirmedTool(draft, agent, d.tool_call_id as string | undefined)) return
           draft.agentStreams[agent].currentBlocks = initTool(
             draft.agentStreams[agent].currentBlocks,
             d.name as string,
@@ -167,11 +197,23 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         const agent = d.agent as string
         set((draft) => {
           markTurnStarted(draft, agent)
+          const toolCallId = d.tool_call_id as string | undefined
+          // Mirrors addTool's own match condition.
+          const hasLive = draft.agentStreams[agent].currentBlocks.some(
+            (b) =>
+              b.type === 'tool' &&
+              (toolCallId
+                ? b.toolCallId === toolCallId
+                : b.toolName === (d.name as string) && b.toolArgs === undefined),
+          )
+          // Confirmed card already carries its args (persisted with the
+          // assistant row) — don't let addTool's fallback spawn a duplicate.
+          if (!hasLive && findConfirmedTool(draft, agent, toolCallId)) return
           draft.agentStreams[agent].currentBlocks = addTool(
             draft.agentStreams[agent].currentBlocks,
             d.name as string,
             d.arguments as string | undefined,
-            d.tool_call_id as string | undefined,
+            toolCallId,
             typeof d.duration_ms === 'number' ? d.duration_ms : undefined,
           )
         })
@@ -198,8 +240,31 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         if (!TODO_MUTATING_TOOLS.has(toolName)) {
           set((draft) => {
             ensureAgent(draft, agent)
-            draft.agentStreams[agent].currentBlocks = completeTool(
-              draft.agentStreams[agent].currentBlocks,
+            const stream = draft.agentStreams[agent]
+            // Mirrors completeTool's own matching: exact id, else incomplete
+            // card of the same name.
+            const hasLive = stream.currentBlocks.some(
+              (b) =>
+                b.type === 'tool' &&
+                ((toolCallId && b.toolCallId === toolCallId) ||
+                  (b.toolName === toolName && !b.toolDone)),
+            )
+            const confirmed = hasLive ? undefined : findConfirmedTool(draft, agent, toolCallId)
+            if (confirmed && !confirmed.toolDone) {
+              // Card was reconciled into the confirmed rows mid-turn — finish
+              // it there or it stays "running" until a full reload.
+              stream.blocks = completeTool(
+                stream.blocks,
+                toolName,
+                toolCallId,
+                result,
+                serverDurationMs,
+                mcpApp ? { mcp_app: mcpApp } : undefined,
+              )
+              return
+            }
+            stream.currentBlocks = completeTool(
+              stream.currentBlocks,
               toolName,
               toolCallId,
               result,
@@ -213,11 +278,11 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
           const workspace = get()._workspace
           if (workspace) {
             const stream = get().agentStreams[agent]
-            const block = stream?.currentBlocks.find(
-              (b) =>
-                b.type === 'tool' &&
-                (toolCallId ? b.toolCallId === toolCallId : b.toolName === toolName),
-            )
+            const matchesEndedTool = (b: (typeof stream.currentBlocks)[number]) =>
+              b.type === 'tool' &&
+              (toolCallId ? b.toolCallId === toolCallId : b.toolName === toolName)
+            const block =
+              stream?.currentBlocks.find(matchesEndedTool) ?? stream?.blocks.find(matchesEndedTool)
             const paths = extractToolPaths(toolName, block?.toolArgs)
             if (paths && paths.length > 0) {
               events.push({

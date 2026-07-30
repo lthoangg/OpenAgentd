@@ -321,6 +321,69 @@ describe("_handleSSEEvent: tool lifecycle", () => {
     expect(block.toolResult).toBe("results");
   });
 
+  // A mid-turn loadSession can reconcile a still-executing tool card into the
+  // confirmed `blocks` (the assistant row with tool_calls persists before the
+  // tool finishes). Later live events must reach that card instead of
+  // vanishing — otherwise it renders as "running" forever until a reload.
+  describe("events for a card already reconciled into confirmed blocks", () => {
+    const seedConfirmedRunningTool = () => {
+      useTeamStore.setState({
+        leadName: "lead",
+        agentNames: ["lead"],
+        agentStreams: {
+          lead: makeStream({
+            status: "working",
+            blocks: [{
+              id: "persisted-tool",
+              type: "tool" as const,
+              content: "",
+              toolName: "shell",
+              toolArgs: '{"command":"ls"}',
+              toolCallId: "tc-1",
+              toolDone: false,
+            }],
+          }),
+        },
+      });
+    };
+
+    it("tool_end completes the confirmed card instead of dropping the event", () => {
+      seedConfirmedRunningTool();
+      useTeamStore.getState()._handleSSEEvent("tool_end", { agent: "lead", name: "shell", tool_call_id: "tc-1", result: "ok" });
+      const stream = useTeamStore.getState().agentStreams.lead;
+      expect(stream.blocks[0].toolDone).toBe(true);
+      expect(stream.blocks[0].toolResult).toBe("ok");
+      expect(stream.currentBlocks).toHaveLength(0);
+    });
+
+    it("tool_output_delta streams onto the confirmed card", () => {
+      seedConfirmedRunningTool();
+      useTeamStore.getState()._handleSSEEvent("tool_output_delta", { agent: "lead", name: "shell", tool_call_id: "tc-1", text: "file.txt\n" });
+      const stream = useTeamStore.getState().agentStreams.lead;
+      expect(stream.blocks[0].toolOutput).toBe("file.txt\n");
+      expect(stream.currentBlocks).toHaveLength(0);
+    });
+
+    it("replayed tool_call / tool_start do not spawn a duplicate live card", () => {
+      seedConfirmedRunningTool();
+      useTeamStore.getState()._handleSSEEvent("tool_call", { agent: "lead", name: "shell", tool_call_id: "tc-1" });
+      useTeamStore.getState()._handleSSEEvent("tool_start", { agent: "lead", name: "shell", tool_call_id: "tc-1", arguments: '{"command":"ls"}' });
+      expect(useTeamStore.getState().agentStreams.lead.currentBlocks).toHaveLength(0);
+    });
+
+    it("tool_end without an id match in blocks still uses the live name fallback", () => {
+      // Regression guard: the blocks fall-through must not complete orphaned
+      // incomplete cards in history by name.
+      seedConfirmedRunningTool();
+      useTeamStore.getState()._handleSSEEvent("tool_call", { agent: "lead", name: "shell", tool_call_id: "tc-2" });
+      useTeamStore.getState()._handleSSEEvent("tool_end", { agent: "lead", name: "shell", tool_call_id: "tc-2", result: "second" });
+      const stream = useTeamStore.getState().agentStreams.lead;
+      expect(stream.blocks[0].toolDone).toBe(false);
+      expect(stream.currentBlocks[0].toolDone).toBe(true);
+      expect(stream.currentBlocks[0].toolResult).toBe("second");
+    });
+  });
+
   it("team_manage tool_end invalidates the team agents cache", () => {
     useTeamStore.getState()._handleSSEEvent("tool_end", {
       agent: "lead",

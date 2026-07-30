@@ -2,11 +2,15 @@ import type { QueryClient } from '@tanstack/react-query'
 import { getCodingWorkspaceTree, listProviders, listTeamSessions } from '@/api/client'
 import { queryKeys } from '@/queries/keys'
 import { teamAgentsQueryOptions } from '@/queries/team-agents'
+import { preloadHeavyRenderers } from '@/lib/optimistic-preload'
 
 const SESSION_PAGE_SIZE = 20
 
 /** Warm the data shared by the Cockpit and Coding entry surfaces. */
 export function preloadConnectedApp(client: QueryClient): void {
+  // Optimistically preload heavy rendering modules in the background
+  void preloadHeavyRenderers()
+
   // Warms the single /team/agents entry read by both the home-page team probe
   // and the chat header. See ``queries/team-agents.ts``.
   void client.prefetchQuery({

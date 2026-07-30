@@ -176,13 +176,27 @@ const DARK_THEME_VARS = {
   pieStrokeWidth: '2px',
 }
 
+let mermaidPreloadPromise: Promise<typeof import('mermaid')> | null = null
+
+/** Optimistically preloads the heavy mermaid diagram chunk in the background. */
+// eslint-disable-next-line react-refresh/only-export-components
+export function preloadMermaid(): Promise<typeof import('mermaid')> {
+  if (!mermaidPreloadPromise) {
+    mermaidPreloadPromise = import('mermaid').catch((err) => {
+      mermaidPreloadPromise = null
+      throw err
+    })
+  }
+  return mermaidPreloadPromise
+}
+
 let renderQueue = Promise.resolve()
 let renderSequence = 0
 
 async function renderDiagram(id: string, source: string, theme: 'light' | 'dark'): Promise<string> {
   let svg = ''
   const task = renderQueue.then(async () => {
-    const { default: mermaid } = await import('mermaid')
+    const { default: mermaid } = await preloadMermaid()
     mermaid.initialize({
       startOnLoad: false,
       securityLevel: 'strict',

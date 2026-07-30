@@ -14,10 +14,15 @@ export function loadPdfjs(): Promise<typeof import('pdfjs-dist')> {
     pdfjsPromise = Promise.all([
       import('pdfjs-dist'),
       import('pdfjs-dist/build/pdf.worker.min.mjs?url'),
-    ]).then(([pdfjs, workerUrl]) => {
-      pdfjs.GlobalWorkerOptions.workerSrc = workerUrl.default
-      return pdfjs
-    })
+    ])
+      .then(([pdfjs, workerUrl]) => {
+        pdfjs.GlobalWorkerOptions.workerSrc = workerUrl.default
+        return pdfjs
+      })
+      .catch((err) => {
+        pdfjsPromise = null
+        throw err
+      })
   }
   return pdfjsPromise
 }

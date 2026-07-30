@@ -1,8 +1,22 @@
 import { lazy, Suspense } from 'react'
 import { useSmoothStream } from '@/hooks/useSmoothStream'
 
+let markdownPreloadPromise: Promise<typeof import('@/utils/markdown')> | null = null
+
+/** Optimistically preloads the heavy markdown rendering chunk in the background. */
+// eslint-disable-next-line react-refresh/only-export-components
+export function preloadMarkdownRenderer(): Promise<typeof import('@/utils/markdown')> {
+  if (!markdownPreloadPromise) {
+    markdownPreloadPromise = import('@/utils/markdown').catch((err) => {
+      markdownPreloadPromise = null
+      throw err
+    })
+  }
+  return markdownPreloadPromise
+}
+
 const MarkdownBlockImpl = lazy(() =>
-  import('@/utils/markdown').then((m) => ({ default: m.MarkdownBlock })),
+  preloadMarkdownRenderer().then((m) => ({ default: m.MarkdownBlock })),
 )
 
 interface LazyMarkdownBlockProps {

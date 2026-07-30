@@ -331,7 +331,6 @@ export function CodingWorkspacePanel({
   const [mobileCommitActions, setMobileCommitActions] = useState<{ sha: string; shortSha: string; subject: string } | null>(null)
   const [desktopCommitActions, setDesktopCommitActions] = useState<{ sha: string; shortSha: string; subject: string; x: number; y: number } | null>(null)
   const [desktopFileActions, setDesktopFileActions] = useState<{ file: ChangedFileInfo; x: number; y: number } | null>(null)
-  const [copiedSha, setCopiedSha] = useState<string | null>(null)
   const [discardTarget, setDiscardTarget] = useState<ChangedFileInfo | null>(null)
   const [discarding, setDiscarding] = useState(false)
   const [gitActionPending, setGitActionPending] = useState(false)
@@ -1088,15 +1087,7 @@ export function CodingWorkspacePanel({
                   ) : commits.length === 0 ? (
                     <p className="px-2 py-4 text-xs text-(--color-text-subtle)">No commits found</p>
                   ) : (
-                    <>
-                      {copiedSha && (
-                        <div className="mb-2 flex items-center gap-1.5 rounded border border-(--color-border) bg-(--bg-card) px-2 py-1.5 text-[11px] text-(--color-text-2)">
-                          <Copy size={10} className="shrink-0 text-(--color-accent)" aria-hidden="true" />
-                          <span className="font-mono">{copiedSha.length > 10 ? copiedSha.substring(0, 10) + '…' : copiedSha}</span>
-                          <span className="text-(--color-text-muted)">copied</span>
-                        </div>
-                      )}
-                      <div className="space-y-2">
+                    <div className="space-y-2">
                         {commits.map((commit) => {
                           const isExpanded = expandedCommitSha === commit.sha
                           return (
@@ -1194,7 +1185,6 @@ export function CodingWorkspacePanel({
                       )}
                       <div ref={sentinelRef} className="h-1" />
                     </div>
-                    </>
                   )
                 ) : (
                   gitHistory.isLoading ? (
@@ -1411,7 +1401,7 @@ export function CodingWorkspacePanel({
                 const c = mobileCommitActions; setMobileCommitActions(null)
                 if (!c) return
                 softHapticFeedback()
-                void navigator.clipboard.writeText(c.shortSha).then(() => { setCopiedSha(c.shortSha); setTimeout(() => setCopiedSha(null), 2000) })
+                void navigator.clipboard.writeText(c.shortSha)
               }}>
                 <Copy size={14} aria-hidden="true" />
                 Copy short SHA
@@ -1420,7 +1410,7 @@ export function CodingWorkspacePanel({
                 const c = mobileCommitActions; setMobileCommitActions(null)
                 if (!c) return
                 softHapticFeedback()
-                void navigator.clipboard.writeText(c.sha).then(() => { setCopiedSha(c.sha); setTimeout(() => setCopiedSha(null), 2000) })
+                void navigator.clipboard.writeText(c.sha)
               }}>
                 <Copy size={14} aria-hidden="true" />
                 Copy full SHA
@@ -1537,10 +1527,7 @@ export function CodingWorkspacePanel({
                 const c = desktopCommitActions
                 setDesktopCommitActions(null)
                 softHapticFeedback()
-                void navigator.clipboard.writeText(c.shortSha).then(() => {
-                  setCopiedSha(c.shortSha)
-                  setTimeout(() => setCopiedSha(null), 2000)
-                })
+                void navigator.clipboard.writeText(c.shortSha)
               }}
             >
               <Copy size={12} aria-hidden="true" />
@@ -1554,10 +1541,7 @@ export function CodingWorkspacePanel({
                 const c = desktopCommitActions
                 setDesktopCommitActions(null)
                 softHapticFeedback()
-                void navigator.clipboard.writeText(c.sha).then(() => {
-                  setCopiedSha(c.sha)
-                  setTimeout(() => setCopiedSha(null), 2000)
-                })
+                void navigator.clipboard.writeText(c.sha)
               }}
             >
               <Copy size={12} aria-hidden="true" />

@@ -1,9 +1,11 @@
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { AlertCircle, Check, Copy, Maximize2, X } from 'lucide-react'
 import { CodeBlock } from '@/components/CodeBlock'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useThemePreference } from '@/hooks/useThemePreference'
+import { usePanZoom } from '@/hooks/use-pan-zoom'
+import { usePlatform } from '@/hooks/use-platform'
 
 interface MermaidBlockProps {
   source: string
@@ -201,8 +203,35 @@ interface MermaidLightboxProps {
   source: string
 }
 
+function LightboxButton({
+  label,
+  title,
+  icon,
+  onClick,
+}: {
+  label: string
+  title: string
+  icon: ReactNode
+  onClick: (event: React.MouseEvent<HTMLButtonElement>) => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={title}
+      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-white/10 text-white/80 transition-colors hover:bg-white/20 hover:text-white focus-visible:ring-2 focus-visible:ring-white focus-visible:outline-none sm:h-9 sm:w-9"
+    >
+      {icon}
+    </button>
+  )
+}
+
 export function MermaidLightbox({ onClose, svg, source }: MermaidLightboxProps) {
   const [copied, setCopied] = useState(false)
+  const diagramRef = useRef<HTMLDivElement>(null)
+  const { isMacOverlay } = usePlatform()
+  const { zoomIn, zoomOut, reset, bind } = usePanZoom(diagramRef, { wheelSensitivity: 0.001 })
 
   const handleCopy = async (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -217,9 +246,10 @@ export function MermaidLightbox({ onClose, svg, source }: MermaidLightboxProps) 
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onClose()
-      }
+      if (e.key === 'Escape') onClose()
+      else if (e.key === '+' || e.key === '=') { e.preventDefault(); zoomIn() }
+      else if (e.key === '-') { e.preventDefault(); zoomOut() }
+      else if (e.key === '0') { e.preventDefault(); reset() }
     }
 
     document.addEventListener('keydown', handleKeyDown)
@@ -230,53 +260,45 @@ export function MermaidLightbox({ onClose, svg, source }: MermaidLightboxProps) 
       document.removeEventListener('keydown', handleKeyDown)
       document.body.style.overflow = originalOverflow
     }
-  }, [onClose])
+  }, [onClose, reset, zoomIn, zoomOut])
 
   return createPortal(
     <div
-      className="mobile-safe-overlay fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/80 p-2 sm:p-6 backdrop-blur-xs transition-opacity duration-150"
+      className="mobile-safe-overlay fixed inset-0 z-50 flex select-none flex-col items-center justify-center bg-black/80 p-2 transition-opacity duration-150 backdrop-blur-xs sm:p-6"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-label="Mermaid diagram full screen"
       data-swipe-ignore
     >
-      <div
-        className="fixed top-0 left-0 right-0 z-20 flex items-center justify-between gap-2 px-[max(1rem,env(safe-area-inset-right,0px))] pt-[max(0.75rem,env(safe-area-inset-top,0px))] pb-2 pl-[max(1rem,env(safe-area-inset-left,0px))] bg-gradient-to-b from-black/90 via-black/60 to-transparent [[data-mobile-shell='ios']_&]:pt-[max(3rem,calc(env(safe-area-inset-top)+0.5rem))]"
+      <header
+        className={`mobile-safe-header fixed inset-x-0 z-20 flex h-(--spacing-app-header) items-center justify-between gap-2 bg-gradient-to-b from-black/90 via-black/60 to-transparent pr-[max(0.5rem,env(safe-area-inset-right,0px))] ${isMacOverlay ? 'top-(--spacing-app-header) pl-2' : 'top-0 pl-[max(0.5rem,env(safe-area-inset-left,0px))]'}`}
         onClick={(e) => e.stopPropagation()}
       >
-        <span className="font-mono text-xs font-semibold uppercase tracking-wider text-white/80 shrink-0">
+        <span className="shrink-0 font-mono text-xs font-semibold uppercase tracking-wider text-white/80">
           Mermaid Diagram
         </span>
 
-        <div className="flex items-center gap-1.5 sm:gap-2">
-          <button
-            type="button"
-            onClick={handleCopy}
-            className="flex h-9 w-9 sm:h-8 sm:w-8 items-center justify-center rounded-md bg-white/10 text-white/80 transition-colors hover:bg-white/20 hover:text-white"
-            aria-label="Copy code"
+        <div className="ml-auto flex items-center gap-1 sm:gap-2">
+          <LightboxButton
+            label="Copy code"
             title="Copy source"
-          >
-            {copied ? <Check size={15} className="text-emerald-400" /> : <Copy size={15} />}
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-9 w-9 sm:h-8 sm:w-8 items-center justify-center rounded-md bg-white/10 text-white/80 transition-colors hover:bg-white/20 hover:text-white"
-            aria-label="Close full screen"
-            title="Close (Esc)"
-          >
-            <X size={16} />
-          </button>
+            icon={copied ? <Check size={16} className="text-emerald-400" /> : <Copy size={16} />}
+            onClick={handleCopy}
+          />
+          <LightboxButton label="Close full screen" title="Close (Esc)" icon={<X size={17} />} onClick={onClose} />
         </div>
-      </div>
+      </header>
 
       <div
-        className="surface-raised relative mt-12 sm:mt-10 flex h-[82vh] sm:h-[85vh] w-[96vw] sm:w-[95vw] max-w-[1400px] items-center justify-center overflow-auto rounded-lg border border-(--color-border) bg-(--bg-card) p-3 sm:p-6 shadow-2xl oa-mermaid-lightbox-content"
+        className="surface-raised relative mt-12 sm:mt-10 flex h-[82vh] sm:h-[85vh] w-[96vw] sm:w-[95vw] max-w-[1400px] items-center justify-center overflow-hidden rounded-lg border border-(--color-border) bg-(--bg-card) p-3 sm:p-6 shadow-2xl oa-mermaid-lightbox-content"
         onClick={(e) => e.stopPropagation()}
+        data-swipe-ignore
       >
         <div
-          className="flex h-full w-full items-center justify-center"
+          ref={diagramRef}
+          {...bind}
+          className="flex h-full w-full touch-none items-center justify-center"
           dangerouslySetInnerHTML={{ __html: svg }}
         />
       </div>

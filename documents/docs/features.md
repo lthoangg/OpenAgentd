@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-07-28
+updated: 2026-07-30
 ---
 
 # Features
@@ -207,9 +207,13 @@ run from the terminal.
 - **Clickable URLs in user message bubbles** `[v1.77.0]` — plain-text URLs typed
   or pasted into a user message are rendered as tappable links; style matches
   agent response links.
-- **Mermaid diagrams in agent responses** `[v1.121.0]` — completed `mermaid`
-  code fences render as responsive diagrams with Diagram and Code views, while
-  streaming and invalid diagrams retain their readable source.
+- **Mermaid diagrams in agent responses** `[v1.121.0, v1.123.0]` — completed
+  `mermaid` code fences render as responsive diagrams with Diagram and Code
+  views. A fence now renders as soon as it closes while later response content
+  is still streaming; unfinished and invalid diagrams retain readable source.
+  Full-screen diagrams keep the chrome minimal while supporting keyboard,
+  wheel/trackpad and pinch zoom, double-click/double-tap, and drag-to-pan;
+  diagram text selection is disabled so gestures stay responsive.
 - **Stream auto-stick restored after scroll-to-bottom on mobile** `[v1.77.0]` —
   tapping the scroll-to-bottom button no longer detaches the stream
   auto-follow; direction-based detach logic removed from `onScroll` (was
@@ -240,12 +244,15 @@ run from the terminal.
   clicked file mentions in sent user messages open that file in the workspace
   files sidebar. Caps at 20 mentions / 20 MB / ~32k chars per turn. Persists
   on queued messages.
-- **Multi-type file lightbox** `[since v1.0, v1.92.0, v1.99.8]` — click any generated or
-  attached file to open `FileLightbox`, a full-screen gallery covering images,
-  video, audio, PDFs, text, and generic file types in one modal, with pinch-zoom
-  and swipe-to-close for images and video, keyboard/swipe navigation between
-  attachments, and `AttachmentStrip` unifying the previous separate image/file
-  card render paths. PDF documents render the first two pages immediately, then
+- **Multi-type file lightbox** `[since v1.0, v1.92.0, v1.99.8, v1.123.0]` — click any
+  generated or attached file to open `FileLightbox`, a full-screen gallery
+  covering images, video, audio, PDFs, text, and generic file types in one modal.
+  Images support 50%-400% zoom through keyboard, wheel/trackpad, pinch, and
+  double-click/double-tap gestures, plus drag-to-pan and swipe-to-close without persistent
+  zoom chrome or selectable overlay text; keyboard/swipe navigation moves
+  between attachments, and
+  `AttachmentStrip` unifies the previous separate image/file card render paths.
+  PDF documents render the first two pages immediately, then
   rasterize later pages near the viewport with stable page geometry and bounded
   device-pixel ratio. Multi-file paste into the composer now attaches every
   pasted file instead of only the last one `[v1.92.0]`.

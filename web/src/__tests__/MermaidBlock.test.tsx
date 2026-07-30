@@ -1,6 +1,10 @@
 import { describe, it, expect, mock, beforeEach } from 'bun:test'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import { MermaidBlock } from '@/utils/MermaidBlock'
+
+let isMacOverlay = false
+mock.module('@/hooks/use-platform', () => ({
+  usePlatform: () => ({ isTauri: isMacOverlay, os: isMacOverlay ? 'macos' : 'ios', isMacOverlay }),
+}))
 
 // Mock useThemePreference
 mock.module('@/hooks/useThemePreference', () => ({
@@ -19,9 +23,12 @@ mock.module('mermaid', () => ({
   },
 }))
 
+import { MermaidBlock } from '@/utils/MermaidBlock'
+
 describe('MermaidBlock', () => {
   beforeEach(() => {
     renderCallCount = 0
+    isMacOverlay = false
     // Mock navigator.clipboard
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
@@ -101,6 +108,59 @@ describe('MermaidBlock', () => {
     fireEvent.click(copyButton)
 
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(source)
+  })
+
+  it('keeps the full screen lightbox gesture-first without zoom chrome or text selection', async () => {
+    const source = 'graph TD; ZoomA-->ZoomB;'
+    render(<MermaidBlock source={source} highlightedCode={<span>{source}</span>} />)
+    await waitFor(() => expect(screen.getByTestId('mermaid-svg')).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: /full screen/i }))
+    expect(screen.queryByRole('button', { name: 'Zoom in' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Zoom out' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Reset zoom' })).toBeNull()
+    expect(screen.queryByRole('status', { name: 'Zoom level' })).toBeNull()
+    expect(screen.getByRole('dialog', { name: /mermaid diagram full screen/i }).className).toContain('select-none')
+  })
+
+  it('keeps the full screen header below the iOS safe area', async () => {
+    const source = 'graph TD; SafeAreaA-->SafeAreaB;'
+    render(<MermaidBlock source={source} highlightedCode={<span>{source}</span>} />)
+    await waitFor(() => expect(screen.getByTestId('mermaid-svg')).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: /full screen/i }))
+    const header = screen.getByRole('banner')
+
+    expect(header.className).toContain('mobile-safe-header')
+    expect(header.className).not.toContain('pl-(--spacing-mac-traffic-inset)')
+  })
+
+  it('positions the full screen header below the macOS overlay title bar', async () => {
+    isMacOverlay = true
+    const source = 'graph TD; TrafficA-->TrafficB;'
+    render(<MermaidBlock source={source} highlightedCode={<span>{source}</span>} />)
+    await waitFor(() => expect(screen.getByTestId('mermaid-svg')).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: /full screen/i }))
+    const header = screen.getByRole('banner')
+
+    expect(header.className).toContain('top-(--spacing-app-header)')
+    expect(header.className).not.toContain('pl-(--spacing-mac-traffic-inset)')
+  })
+
+  it('uses fine-grained wheel zoom in the full screen lightbox', async () => {
+    const source = 'graph TD; WheelA-->WheelB;'
+    render(<MermaidBlock source={source} highlightedCode={<span>{source}</span>} />)
+    await waitFor(() => expect(screen.getByTestId('mermaid-svg')).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: /full screen/i }))
+    const diagram = document.querySelector('.oa-mermaid-lightbox-content > div') as HTMLElement
+    diagram.getBoundingClientRect = () => ({
+      x: 0, y: 0, top: 0, left: 0, right: 200, bottom: 200, width: 200, height: 200, toJSON: () => ({}),
+    })
+    fireEvent.wheel(diagram, { deltaY: -100, clientX: 100, clientY: 100 })
+
+    expect(diagram.style.transform).toContain('scale(1.1)')
   })
 
   it('opens full screen lightbox popup when full screen button is clicked', async () => {

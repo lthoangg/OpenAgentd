@@ -16,7 +16,7 @@ The MCP SDK uses ``anyio`` task groups internally and requires that a
 ``ClientSession`` is entered and exited from the **same task**. We therefore
 spawn one long-running ``asyncio.Task`` per server that:
 
-1. Enters the transport context (``stdio_client`` or ``streamablehttp_client``).
+1. Enters the transport context (``stdio_client`` or ``streamable_http_client``).
 2. Enters the ``ClientSession`` context.
 3. Calls ``session.initialize()`` and ``session.list_tools()``.
 4. Awaits a shutdown ``Event``.
@@ -36,8 +36,12 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+import httpx2
 from loguru import logger
+from mcp import ClientSession, StdioServerParameters
 from mcp.client.auth import OAuthRegistrationError
+from mcp.client.stdio import stdio_client
+from mcp.client.streamable_http import streamable_http_client
 from mcp.types import CallToolResult
 
 from app.agent.mcp.config import (
@@ -543,13 +547,6 @@ class MCPManager:
         runner: _ServerRunner,
     ) -> None:
         """Long-lived task: open the session, list tools, await shutdown."""
-        # Imports here so the module is importable without the SDK installed.
-        # All three are required for the file to do anything useful, so they
-        # share the same prelude rather than scattering one inside an `else`.
-        from mcp import ClientSession, StdioServerParameters
-        from mcp.client.stdio import stdio_client
-        from mcp.client.streamable_http import streamablehttp_client
-
         try:
             async with AsyncExitStack() as stack:
                 if isinstance(server_cfg, StdioServerConfig):
@@ -583,15 +580,26 @@ class MCPManager:
                         raise OAuthRequiredError(
                             _oauth_credentials_required_message(name)
                         )
-                    transport = await stack.enter_async_context(
-                        streamablehttp_client(
-                            server_cfg.url,
+                    # v2 moved headers/auth/timeout off the transport and onto a
+                    # caller-supplied client. Both defaults v1 applied internally
+                    # must be restated here:
+                    #   - follow_redirects: some servers 308 from / to /mcp
+                    #     (mcp.excalidraw.com does), which fails without it.
+                    #   - Timeout(30, read=300): a bare client would use httpx2's
+                    #     flat 5s, far too short for the long-lived GET stream.
+                    http_client = await stack.enter_async_context(
+                        httpx2.AsyncClient(
                             headers=resolve_headers(server_cfg.headers) or None,
                             auth=build_oauth_provider(name, server_cfg),
+                            timeout=httpx2.Timeout(30, read=300),
+                            follow_redirects=True,
                         )
                     )
-                    # streamablehttp_client yields (read, write, get_session_id).
-                    read, write = transport[0], transport[1]
+                    # streamable_http_client yields (read, write) in v2 — the
+                    # get_session_id callback was dropped.
+                    read, write = await stack.enter_async_context(
+                        streamable_http_client(server_cfg.url, http_client=http_client)
+                    )
                     session = await stack.enter_async_context(
                         ClientSession(read, write)
                     )

@@ -15,7 +15,7 @@ import base64
 from typing import TYPE_CHECKING, Any
 
 from loguru import logger
-from pydantic import AnyUrl, BaseModel
+from pydantic import BaseModel
 
 from app.agent.errors import ToolExecutionError
 from app.agent.schemas.chat import TextBlock, ToolResult
@@ -86,11 +86,7 @@ class MCPTool(Tool):
         model (``arun`` is fully overridden, so it is never used) alongside the
         server-sourced definition and an empty injected-param set.
         """
-        parameters = _sanitize_schema(
-            self._mcp_tool.inputSchema
-            if hasattr(self._mcp_tool, "inputSchema")
-            else None
-        )
+        parameters = _sanitize_schema(getattr(self._mcp_tool, "input_schema", None))
         definition: dict[str, Any] = {
             "type": "function",
             "function": {
@@ -130,7 +126,7 @@ class MCPTool(Tool):
                 f"MCP tool '{self.name}' failed: {type(exc).__name__}: {exc}"
             ) from exc
 
-        if getattr(result, "isError", False):
+        if getattr(result, "is_error", False):
             text = _extract_text(result.content)
             raise ToolExecutionError(
                 f"MCP tool '{self.name}' returned error: {text or '(no message)'}"
@@ -143,7 +139,7 @@ class MCPTool(Tool):
 
         if resource_uri:
             try:
-                resource = await session.read_resource(AnyUrl(resource_uri))
+                resource = await session.read_resource(resource_uri)
                 app_resource = _extract_app_resource(resource, resource_uri)
 
                 if app_resource is not None:
@@ -233,7 +229,7 @@ def _extract_app_resource(
         return None
 
     for content in contents:
-        mime_type = getattr(content, "mimeType", None)
+        mime_type = getattr(content, "mime_type", None)
         if mime_type != MCP_APP_MIME_TYPE:
             continue
         html = getattr(content, "text", None)
@@ -275,7 +271,7 @@ def _extract_text(content: Any) -> str:
         if block_type == "text":
             parts.append(getattr(block, "text", "") or "")
         elif block_type == "image":
-            mime = getattr(block, "mimeType", "image/*")
+            mime = getattr(block, "mime_type", "image/*")
             parts.append(f"[image: {mime}]")
         elif block_type == "resource":
             uri = getattr(getattr(block, "resource", None), "uri", "?")

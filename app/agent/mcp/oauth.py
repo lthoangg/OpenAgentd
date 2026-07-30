@@ -13,7 +13,12 @@ from typing import Any
 import httpx
 from loguru import logger
 from mcp.client.auth import OAuthClientProvider
-from mcp.shared.auth import OAuthClientInformationFull, OAuthClientMetadata, OAuthToken
+from mcp.shared.auth import (
+    AuthorizationCodeResult,
+    OAuthClientInformationFull,
+    OAuthClientMetadata,
+    OAuthToken,
+)
 
 from app.agent.mcp.config import HttpServerConfig, resolve_secret_refs
 from app.core.config import settings
@@ -134,6 +139,11 @@ class LoopbackCallback:
                 state = (qs.get("state") or [""])[0]
                 callback.result["code"] = code
                 callback.result["state"] = state
+                # RFC 9207: the SDK compares this against the AS issuer and
+                # rejects a missing value when the server advertised
+                # `authorization_response_iss_parameter_supported`.
+                if iss := (qs.get("iss") or [""])[0]:
+                    callback.result["iss"] = iss
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html")
                 self.end_headers()
@@ -146,7 +156,7 @@ class LoopbackCallback:
         self.server = HTTPServer(("127.0.0.1", 0), Handler)
         self.redirect_uri = f"http://localhost:{self.server.server_port}{self.PATH}"
 
-    async def wait(self) -> tuple[str, str | None]:
+    async def wait(self) -> AuthorizationCodeResult:
         thread = Thread(target=self.server.serve_forever, daemon=True)
         thread.start()
         try:
@@ -155,7 +165,11 @@ class LoopbackCallback:
                 raise TimeoutError("Timed out waiting for OAuth callback.")
             if error := self.result.get("error"):
                 raise RuntimeError(f"OAuth failed: {error}")
-            return self.result.get("code", ""), self.result.get("state") or None
+            return AuthorizationCodeResult(
+                code=self.result.get("code", ""),
+                state=self.result.get("state") or None,
+                iss=self.result.get("iss") or None,
+            )
         finally:
             self.server.shutdown()
             self.server.server_close()
@@ -242,7 +256,7 @@ def build_oauth_provider(
         except Exception as exc:
             logger.warning("mcp_oauth_browser_open_failed name={} error={}", name, exc)
 
-    async def callback_handler() -> tuple[str, str | None]:
+    async def callback_handler() -> AuthorizationCodeResult:
         return await callback.wait()
 
     return OAuthClientProvider(

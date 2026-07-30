@@ -57,7 +57,14 @@ dependencies = [
     "opentelemetry-sdk>=1.28.0",
     "python-multipart>=0.0.24",
     "croniter>=6.2.2",
-    "mcp>=1.0.0",
+    # Pin the major: v1 -> v2 removed `streamablehttp_client` and renamed protocol
+    # fields to snake_case, so an unpinned floor lets a fresh resolve silently
+    # break the MCP client (the desktop sidecar builds from pyproject, not the lock).
+    "mcp>=2.0.0,<3",
+    # MCP v2 dropped httpx/httpx-sse for httpx2. Anything handed to the SDK
+    # (`http_client=`, `auth=`) must be an httpx2 type. Plain `httpx` stays a
+    # direct dependency above for the ~27 non-MCP modules that use it.
+    "httpx2>=2.5.0",
     "aws-bedrock-token-generator>=1.1.0",
     "botocore[crt]>=1.43.1",
     "duckdb>=1.1.0",

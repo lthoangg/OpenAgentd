@@ -62,6 +62,12 @@ interface Size {
  * The panel's default position is bottom-centered with a 16px gap. Offsets
  * are measured relative to that docked position (x: horizontal drift,
  * y: upward drift is negative).
+ *
+ * Results are rounded to whole pixels. The offset is applied as a
+ * ``transform`` translation, which is *not* pixel-snapped by the compositor,
+ * so a fractional value (drag deltas and the halved clamp ranges below both
+ * produce them) leaves every glyph in the composer rasterised half a pixel
+ * off the device grid and visibly softer than the chat column beside it.
  */
 function clampOffset(offset: StoredOffset, panel: Size, bounds: Size): StoredOffset {
   const GAP = 16
@@ -76,8 +82,8 @@ function clampOffset(offset: StoredOffset, panel: Size, bounds: Size): StoredOff
   //   maxY = 0 → at default docked position
   const minY = -Math.max(0, bounds.height - panel.height - GAP - DRAG_HANDLE_CLEARANCE)
   return {
-    x: Math.min(maxX, Math.max(-maxX, offset.x)),
-    y: Math.min(0, Math.max(minY, offset.y)),
+    x: Math.round(Math.min(maxX, Math.max(-maxX, offset.x))),
+    y: Math.round(Math.min(0, Math.max(minY, offset.y))),
   }
 }
 
@@ -514,21 +520,33 @@ export const FloatingInputBar = memo(
 
     // ── Desktop: draggable floating panel ────────────────────────────────────
     return (
-      <motion.div
-        ref={panelRef}
-        drag
-        dragListener={false}
-        dragControls={dragControls}
-        dragMomentum={false}
-        dragElastic={0}
-        onDragEnd={handleDragEnd}
-        animate={{ x: offset.x, y: offset.y }}
-        transition={{ type: 'spring', stiffness: 380, damping: 32 }}
-        className={`pointer-events-auto absolute bottom-4 left-1/2 z-20 -translate-x-1/2 ${
+      // Centering is done by the layout engine (``inset-x-0`` + ``mx-auto``),
+      // not by ``-translate-x-1/2``. A percentage transform resolves against
+      // the panel's own width, so any odd width (``w-fit`` in the collapsed
+      // state, or ``max-w-md`` against an odd-width pane) centres the bar on a
+      // half pixel and softens all of its text. Margin-auto centring is
+      // pixel-snapped. It also keeps ``transform`` exclusively framer's, per
+      // the house rule in ``web/src/AGENTS.md``: stacking a static Tailwind
+      // translate on the node framer animates ``x`` on means the two fight
+      // over the same property.
+      <div
+        className={`pointer-events-auto absolute inset-x-0 bottom-4 z-20 mx-auto ${
           effectiveMinimized ? 'w-fit' : 'w-full max-w-md'
         }`}
-        style={{ touchAction: 'none' }}
       >
+        <motion.div
+          ref={panelRef}
+          drag
+          dragListener={false}
+          dragControls={dragControls}
+          dragMomentum={false}
+          dragElastic={0}
+          onDragEnd={handleDragEnd}
+          animate={{ x: offset.x, y: offset.y }}
+          transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+          className="w-full"
+          style={{ touchAction: 'none' }}
+        >
         <RevertNotice count={inputProps.revertedCount ?? 0} messages={inputProps.revertedMessages ?? []} onRedo={inputProps.onRedo} />
         <div className={effectiveMinimized ? '' : 'px-3'}>
           <InputBar
@@ -559,7 +577,8 @@ export const FloatingInputBar = memo(
             onSubmit={handleSubmit}
           />
         </div>
-      </motion.div>
+        </motion.div>
+      </div>
     )
   },
 ))

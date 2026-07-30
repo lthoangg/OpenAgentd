@@ -39,10 +39,24 @@ class ToolIdResolver:
         return True
 
     def resolve_start(self, fn_name: str, internal_id: str) -> str:
-        """Pop front of FIFO for tool_start, stash mapping for tool_end."""
+        """Pop the delta id paired with this dispatch, stash mapping for tool_end.
+
+        Exact match first: the assembled ``ToolCall.id`` comes from the deltas
+        of the *successful* stream attempt, so when it is present in the queue
+        it is the id the frontend's tool card was created with.  A mid-stream
+        provider retry leaves the aborted attempt's ids queued ahead of it —
+        blind FIFO would pop one of those and emit ``tool_start``/``tool_end``
+        under a dead id, leaving the real card stuck "running" until reload.
+        FIFO remains the fallback for providers that omit delta ids (their
+        synthetic ids never equal the assembled internal id).
+        """
         queue = self._queues.get(fn_name, [])
-        # Me pop front — each parallel call gets its own id
-        tc_id = queue.pop(0) if queue else internal_id
+        if internal_id in queue:
+            queue.remove(internal_id)
+            tc_id = internal_id
+        else:
+            # Me pop front — each parallel call gets its own id
+            tc_id = queue.pop(0) if queue else internal_id
         if not queue:
             self._queues.pop(fn_name, None)
         self._resolved[internal_id] = tc_id

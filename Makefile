@@ -113,7 +113,11 @@ revision: ## Create a new Alembic revision (usage: make revision MSG="message")
 	uv run alembic -c app/alembic.ini revision --autogenerate -m "$(MSG)"
 
 build-web: ## Build web UI into web/dist/ for desktop packaging
-	cd web && bun install && bun run build
+	# --frozen-lockfile: install exactly what bun.lock pins instead of
+	# re-resolving. Matches tauri.conf.json's beforeBuildCommand, web.yml CI,
+	# and mobile/Makefile so a local packaging build cannot ship different
+	# dependency versions than the ones that were tested.
+	cd web && bun install --frozen-lockfile && bun run build
 
 icons: ## Centralize and generate all app & platform icons from the master brand icon
 	python3 scripts/generate_icons.py

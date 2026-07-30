@@ -246,7 +246,7 @@ class TestMCPManagerWithMockedServer:
             mcp_tool = SimpleNamespace(
                 name="list_files",
                 description="A test tool",
-                inputSchema={"type": "object"},
+                input_schema={"type": "object"},
             )
             runner.tools = [
                 MCPTool(
@@ -457,7 +457,7 @@ class TestMCPManagerOAuth:
             mock_load.return_value = cfg
 
             with patch(
-                "mcp.client.streamable_http.streamablehttp_client",
+                "app.agent.mcp.manager.streamable_http_client",
                 return_value=FailingStreamableHttpClient(),
             ):
                 await manager.start()
@@ -502,7 +502,7 @@ class TestMCPManagerOAuth:
                     return_value=True,
                 ),
                 patch(
-                    "mcp.client.streamable_http.streamablehttp_client",
+                    "app.agent.mcp.manager.streamable_http_client",
                     return_value=FailingStreamableHttpClient(),
                 ),
             ):
@@ -549,7 +549,7 @@ class TestMCPManagerOAuth:
                     return_value=True,
                 ),
                 patch(
-                    "mcp.client.streamable_http.streamablehttp_client",
+                    "app.agent.mcp.manager.streamable_http_client",
                     return_value=FailingStreamableHttpClient(),
                 ),
             ):

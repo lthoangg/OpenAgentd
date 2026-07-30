@@ -107,3 +107,60 @@ def test_python_home_matches_posix_bin_runtime_layout(tmp_path):
     python_bin = tmp_path / "bundle" / "python" / "bin" / "python3.14"
 
     assert module._python_home_for(python_bin) == python_bin.parent.parent
+
+
+def test_install_packages_installs_from_lock_not_a_fresh_resolve(tmp_path, monkeypatch):
+    """Deps must come from uv.lock so the bundle matches what CI tested.
+
+    Regression guard: the sidecar previously ran ``uv pip install .``, which
+    re-resolves at build time. That shipped ``mcp`` 2.0.0 while the lock pinned
+    1.28.1, and v2's removal of ``streamablehttp_client`` broke every MCP
+    server in a release build that had passed CI.
+    """
+    module = _load_module()
+    calls: list[list[str]] = []
+    monkeypatch.setattr(module, "run", lambda cmd, cwd=None: calls.append(list(cmd)))
+
+    module.install_packages(
+        python_bin=tmp_path / "python" / "bin" / "python3",
+        project_root=tmp_path,
+        site_packages=tmp_path / "site-packages",
+        extras=[],
+    )
+
+    export, deps, project = calls
+
+    # 1. Export the locked set, failing loudly if uv.lock is stale.
+    assert export[:2] == ["uv", "export"]
+    assert "--frozen" in export
+    assert "--no-emit-project" in export
+
+    # 2. Dependencies install from that export, never from a bare ".".
+    assert deps[:3] == ["uv", "pip", "install"]
+    assert "--requirements" in deps
+    assert "." not in deps
+
+    # 3. The project installs without re-resolving its dependencies.
+    assert project[:3] == ["uv", "pip", "install"]
+    assert "--no-deps" in project
+    assert project[-1] == "."
+
+
+def test_install_packages_forwards_extras_to_export_and_project(tmp_path, monkeypatch):
+    """Extras must reach both the locked export and the project install."""
+    module = _load_module()
+    calls: list[list[str]] = []
+    monkeypatch.setattr(module, "run", lambda cmd, cwd=None: calls.append(list(cmd)))
+
+    module.install_packages(
+        python_bin=tmp_path / "python" / "bin" / "python3",
+        project_root=tmp_path,
+        site_packages=tmp_path / "site-packages",
+        extras=["audio", "azure-doc-intel"],
+    )
+
+    export, _deps, project = calls
+
+    assert export.count("--extra") == 2
+    assert "audio" in export and "azure-doc-intel" in export
+    assert project[-1] == ".[audio,azure-doc-intel]"

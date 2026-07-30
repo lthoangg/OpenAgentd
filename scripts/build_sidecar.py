@@ -24,8 +24,10 @@ copied into ``Contents/Resources/``. Instead we:
 
 1. Fetch a python-build-standalone tarball for the target triple via
    ``uv python install --install-dir …``.
-2. ``uv pip install --target <site-packages> --python <python-bin>``
-   the local project + chosen extras.
+2. ``uv export --frozen`` the locked dependency set, install it with
+   ``uv pip install --target <site-packages> --python <python-bin>``,
+   then install the project itself with ``--no-deps``. Dependencies come
+   from ``uv.lock`` so the bundle matches what CI tested.
 3. Strip the ``site-packages/`` of caches, tests, docs.
 4. Smoke-test the bundle by invoking ``serve --port 0 --handshake``.
 
@@ -49,6 +51,7 @@ import platform
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 # Patterns to strip from site-packages to shrink the bundle. Anything
@@ -208,12 +211,59 @@ def normalise_python_dir(install_root: Path, target: Path, python_bin: Path) -> 
 def install_packages(
     python_bin: Path, project_root: Path, site_packages: Path, extras: list[str]
 ) -> None:
-    """Install the local openagentd project + extras into ``site_packages``."""
+    """Install the local openagentd project + extras into ``site_packages``.
+
+    Dependencies come from ``uv.lock``, not a fresh resolve of
+    ``pyproject.toml``. Installing ``.`` directly re-resolves every constraint
+    at build time, so the shipped bundle could differ from the versions the test
+    suite ran against. That is exactly how the sidecar once shipped ``mcp``
+    2.0.0 while the lock — and therefore CI — pinned 1.28.1: v2 removed
+    ``streamablehttp_client``, so every MCP server failed at runtime in a
+    release build that passed CI.
+
+    ``--frozen`` makes the build fail loudly when ``uv.lock`` is stale instead
+    of silently drifting.
+    """
     site_packages.mkdir(parents=True, exist_ok=True)
-    spec = "."
-    if extras:
-        spec = f".[{','.join(extras)}]"
-    # uv pip install --target: PEP 668-safe, no virtualenv needed.
+
+    # 1. Export the locked dependency set. ``--no-emit-project`` omits
+    #    openagentd itself, which is installed from source in step 3.
+    export_cmd = [
+        "uv",
+        "export",
+        "--frozen",
+        "--no-dev",
+        "--no-emit-project",
+        "--format",
+        "requirements-txt",
+    ]
+    for extra in extras:
+        export_cmd += ["--extra", extra]
+
+    with tempfile.TemporaryDirectory() as tmp:
+        requirements = Path(tmp) / "requirements.txt"
+        run([*export_cmd, "--output-file", str(requirements)], cwd=project_root)
+
+        # 2. Install exactly those pinned versions (the export carries hashes).
+        #    uv pip install --target: PEP 668-safe, no virtualenv needed.
+        run(
+            [
+                "uv",
+                "pip",
+                "install",
+                "--python",
+                str(python_bin),
+                "--target",
+                str(site_packages),
+                "--requirements",
+                str(requirements),
+            ],
+            cwd=project_root,
+        )
+
+    # 3. Install the project itself. ``--no-deps`` keeps uv from re-resolving
+    #    the dependencies already installed at locked versions in step 2.
+    spec = f".[{','.join(extras)}]" if extras else "."
     run(
         [
             "uv",
@@ -223,6 +273,7 @@ def install_packages(
             str(python_bin),
             "--target",
             str(site_packages),
+            "--no-deps",
             spec,
         ],
         cwd=project_root,

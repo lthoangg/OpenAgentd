@@ -7,7 +7,6 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-from pydantic import AnyUrl
 
 from app.agent.errors import ToolExecutionError
 from app.agent.mcp.tools import (
@@ -182,7 +181,7 @@ class TestExtractText:
 
     def test_extract_text_image_block(self) -> None:
         """_extract_text renders image blocks as [image: mime]."""
-        block = SimpleNamespace(type="image", mimeType="image/png")
+        block = SimpleNamespace(type="image", mime_type="image/png")
         result = _extract_text([block])
         assert result == "[image: image/png]"
 
@@ -203,7 +202,7 @@ class TestExtractText:
         """_extract_text handles mixed content types."""
         blocks = [
             SimpleNamespace(type="text", text="Text content"),
-            SimpleNamespace(type="image", mimeType="image/jpeg"),
+            SimpleNamespace(type="image", mime_type="image/jpeg"),
             SimpleNamespace(type="text", text="More text"),
         ]
         result = _extract_text(blocks)
@@ -231,7 +230,7 @@ class TestMCPToolDefinition:
         mcp_tool = SimpleNamespace(
             name="list_files",
             description="List files in a directory",
-            inputSchema={"type": "object", "properties": {}},
+            input_schema={"type": "object", "properties": {}},
         )
         tool = MCPTool(
             server_name="filesystem",
@@ -246,7 +245,7 @@ class TestMCPToolDefinition:
         mcp_tool = SimpleNamespace(
             name="search",
             description="Search the web",
-            inputSchema={"type": "object"},
+            input_schema={"type": "object"},
         )
         tool = MCPTool(
             server_name="web",
@@ -260,7 +259,7 @@ class TestMCPToolDefinition:
         mcp_tool = SimpleNamespace(
             name="mytool",
             description=None,
-            inputSchema={"type": "object"},
+            input_schema={"type": "object"},
         )
         tool = MCPTool(
             server_name="myserver",
@@ -275,7 +274,7 @@ class TestMCPToolDefinition:
         mcp_tool = SimpleNamespace(
             name="search",
             description="Search",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "query": {"type": "string"},
@@ -319,7 +318,7 @@ class TestMCPToolArun:
         """arun() returns extracted text on success."""
         session = AsyncMock()
         result = SimpleNamespace(
-            isError=False,
+            is_error=False,
             content=[SimpleNamespace(type="text", text="Success!")],
         )
         session.call_tool.return_value = result
@@ -327,7 +326,7 @@ class TestMCPToolArun:
         mcp_tool = SimpleNamespace(
             name="mytool",
             description="Test tool",
-            inputSchema={"type": "object"},
+            input_schema={"type": "object"},
         )
         tool = MCPTool(
             server_name="test",
@@ -343,7 +342,7 @@ class TestMCPToolArun:
     async def test_arun_with_mcp_app_resource_uri_and_html_blob(self) -> None:
         session = AsyncMock()
         session.call_tool.return_value = SimpleNamespace(
-            isError=False,
+            is_error=False,
             content=[SimpleNamespace(type="text", text="Draw a diagram")],
         )
         html = "<html><head></head><body>mcp app</body></html>"
@@ -351,7 +350,7 @@ class TestMCPToolArun:
             contents=[
                 SimpleNamespace(
                     uri="ui://excalidraw/mcp-app.html",
-                    mimeType="text/html;profile=mcp-app",
+                    mime_type="text/html;profile=mcp-app",
                     blob=b64encode(html.encode()).decode(),
                     _meta={
                         "ui": {
@@ -366,7 +365,7 @@ class TestMCPToolArun:
         mcp_tool = SimpleNamespace(
             name="excalidraw",
             description="Excalidraw",
-            inputSchema={"type": "object"},
+            input_schema={"type": "object"},
             _meta={"ui": {"resourceUri": "ui://excalidraw/mcp-app.html"}},
         )
         tool = MCPTool(
@@ -382,9 +381,10 @@ class TestMCPToolArun:
         assert result.mcp_app["resourceMeta"] == {
             "ui": {"prefersBorder": True, "permissions": {"clipboardWrite": True}}
         }
+        # MCP v2 takes resource URIs as plain `str` (v1 required `AnyUrl`).
         read_resource_arg = session.read_resource.call_args.args[0]
-        assert isinstance(read_resource_arg, AnyUrl)
-        assert str(read_resource_arg) == "ui://excalidraw/mcp-app.html"
+        assert isinstance(read_resource_arg, str)
+        assert read_resource_arg == "ui://excalidraw/mcp-app.html"
 
     @pytest.mark.asyncio
     async def test_arun_uses_listing_resource_meta_when_read_resource_omits_meta(
@@ -392,14 +392,14 @@ class TestMCPToolArun:
     ) -> None:
         session = AsyncMock()
         session.call_tool.return_value = SimpleNamespace(
-            isError=False,
+            is_error=False,
             content=[SimpleNamespace(type="text", text="Draw a diagram")],
         )
         session.read_resource.return_value = SimpleNamespace(
             contents=[
                 SimpleNamespace(
                     uri="ui://excalidraw/mcp-app.html",
-                    mimeType="text/html;profile=mcp-app",
+                    mime_type="text/html;profile=mcp-app",
                     text="<html><body>mcp app</body></html>",
                 )
             ]
@@ -423,7 +423,7 @@ class TestMCPToolArun:
         mcp_tool = SimpleNamespace(
             name="excalidraw",
             description="Excalidraw",
-            inputSchema={"type": "object"},
+            input_schema={"type": "object"},
             _meta={"ui": {"resourceUri": "ui://excalidraw/mcp-app.html"}},
         )
         tool = MCPTool(
@@ -448,7 +448,7 @@ class TestMCPToolArun:
             contents=[
                 SimpleNamespace(
                     uri="ui://excalidraw/mcp-app.html",
-                    mimeType="text/html;profile=mcp-app",
+                    mime_type="text/html;profile=mcp-app",
                     text="<html><body>mcp app</body></html>",
                 )
             ]
@@ -464,7 +464,7 @@ class TestMCPToolArun:
         mcp_tool = SimpleNamespace(
             name="mytool",
             description="Test tool",
-            inputSchema={"type": "object"},
+            input_schema={"type": "object"},
         )
         tool = MCPTool(
             server_name="test",
@@ -480,7 +480,7 @@ class TestMCPToolArun:
         """arun() raises ToolExecutionError when result.isError is True."""
         session = AsyncMock()
         result = SimpleNamespace(
-            isError=True,
+            is_error=True,
             content=[SimpleNamespace(type="text", text="Error message")],
         )
         session.call_tool.return_value = result
@@ -488,7 +488,7 @@ class TestMCPToolArun:
         mcp_tool = SimpleNamespace(
             name="mytool",
             description="Test tool",
-            inputSchema={"type": "object"},
+            input_schema={"type": "object"},
         )
         tool = MCPTool(
             server_name="test",
@@ -508,7 +508,7 @@ class TestMCPToolArun:
         mcp_tool = SimpleNamespace(
             name="mytool",
             description="Test tool",
-            inputSchema={"type": "object"},
+            input_schema={"type": "object"},
         )
         tool = MCPTool(
             server_name="test",
@@ -524,7 +524,7 @@ class TestMCPToolArun:
         """arun() accepts _injected but ignores it."""
         session = AsyncMock()
         result = SimpleNamespace(
-            isError=False,
+            is_error=False,
             content=[SimpleNamespace(type="text", text="OK")],
         )
         session.call_tool.return_value = result
@@ -532,7 +532,7 @@ class TestMCPToolArun:
         mcp_tool = SimpleNamespace(
             name="mytool",
             description="Test tool",
-            inputSchema={"type": "object"},
+            input_schema={"type": "object"},
         )
         tool = MCPTool(
             server_name="test",
@@ -550,7 +550,7 @@ class TestMCPToolArun:
         """arun() handles error result with no content."""
         session = AsyncMock()
         result = SimpleNamespace(
-            isError=True,
+            is_error=True,
             content=[],
         )
         session.call_tool.return_value = result
@@ -558,7 +558,7 @@ class TestMCPToolArun:
         mcp_tool = SimpleNamespace(
             name="mytool",
             description="Test tool",
-            inputSchema={"type": "object"},
+            input_schema={"type": "object"},
         )
         tool = MCPTool(
             server_name="test",
@@ -568,3 +568,105 @@ class TestMCPToolArun:
 
         with pytest.raises(ToolExecutionError, match="no message"):
             await tool.arun()
+
+
+class TestRealSDKModels:
+    """Contract tests against real MCP SDK models, not hand-rolled doubles.
+
+    The rest of this module uses ``SimpleNamespace`` doubles. Those cannot catch
+    a field rename in the SDK: when v2 renamed ``inputSchema`` -> ``input_schema``
+    and ``isError`` -> ``is_error``, every double kept using camelCase, so the
+    suite stayed green while the real client silently dropped every tool's
+    parameters and stopped detecting tool errors. These tests bind the adapter to
+    the actual model classes so that class of drift fails loudly.
+    """
+
+    def test_definition_reads_input_schema_from_real_tool_model(self) -> None:
+        """Parameters come from a real ``mcp.types.Tool``, not an empty fallback."""
+        from mcp.types import Tool as MCPToolDef
+
+        schema = {
+            "type": "object",
+            "properties": {"path": {"type": "string"}},
+            "required": ["path"],
+        }
+        # Construct by wire alias to prove alias->field mapping still holds.
+        mcp_tool = MCPToolDef.model_validate(
+            {"name": "read_file", "description": "Read a file", "inputSchema": schema}
+        )
+
+        tool = MCPTool(
+            server_name="fs",
+            mcp_tool=mcp_tool,
+            session_provider=lambda: None,
+        )
+
+        params = tool.definition["function"]["parameters"]
+        assert params["properties"] == {"path": {"type": "string"}}
+        assert params["required"] == ["path"]
+
+    @pytest.mark.asyncio
+    async def test_arun_detects_error_on_real_call_tool_result(self) -> None:
+        """A real ``CallToolResult`` with is_error=True must raise."""
+        from mcp.types import CallToolResult, TextContent
+        from mcp.types import Tool as MCPToolDef
+
+        session = AsyncMock()
+        session.call_tool.return_value = CallToolResult(
+            content=[TextContent(type="text", text="boom")],
+            isError=True,
+        )
+
+        mcp_tool = MCPToolDef.model_validate(
+            {"name": "explode", "inputSchema": {"type": "object"}}
+        )
+        tool = MCPTool(
+            server_name="fs", mcp_tool=mcp_tool, session_provider=lambda: session
+        )
+
+        with pytest.raises(ToolExecutionError, match="boom"):
+            await tool.arun()
+
+    @pytest.mark.asyncio
+    async def test_arun_returns_text_on_real_success_result(self) -> None:
+        """A real successful ``CallToolResult`` is flattened to its text."""
+        from mcp.types import CallToolResult, TextContent
+        from mcp.types import Tool as MCPToolDef
+
+        session = AsyncMock()
+        session.call_tool.return_value = CallToolResult(
+            content=[TextContent(type="text", text="file contents")],
+        )
+
+        mcp_tool = MCPToolDef.model_validate(
+            {"name": "read", "inputSchema": {"type": "object"}}
+        )
+        tool = MCPTool(
+            server_name="fs", mcp_tool=mcp_tool, session_provider=lambda: session
+        )
+
+        assert await tool.arun() == "file contents"
+
+    def test_extract_app_resource_reads_real_resource_contents(self) -> None:
+        """``_extract_app_resource`` reads ``mime_type`` off a real model."""
+        from mcp.types import ReadResourceResult, TextResourceContents
+
+        from app.agent.mcp.tools import MCP_APP_MIME_TYPE
+
+        result = ReadResourceResult(
+            contents=[
+                TextResourceContents.model_validate(
+                    {
+                        "uri": "ui://app/index.html",
+                        "mimeType": MCP_APP_MIME_TYPE,
+                        "text": "<h1>hi</h1>",
+                    }
+                )
+            ]
+        )
+
+        extracted = _extract_app_resource(result, "ui://app/index.html")
+        assert extracted is not None
+        assert extracted["html"] == "<h1>hi</h1>"
+        # Our outward-facing payload keeps camelCase for the frontend contract.
+        assert extracted["mimeType"] == MCP_APP_MIME_TYPE

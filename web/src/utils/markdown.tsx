@@ -105,6 +105,41 @@ export function fixNestedFences(content: string): string {
   return result.join('\n')
 }
 
+const STREAMING_MERMAID_LANGUAGE = 'mermaid-complete'
+
+/**
+ * Mark only closed Mermaid fences during a stream so completed diagrams do not
+ * wait for the whole response. This follows fixNestedFences' equal-length,
+ * bare-closer convention, leaving an unfinished fence on the CodeBlock path.
+ */
+function markClosedStreamingMermaidFences(content: string): string {
+  if (!content.includes('```mermaid')) return content
+
+  const lines = content.split('\n')
+  for (let i = 0; i < lines.length; i++) {
+    const openMatch = lines[i].match(/^(`{3,})mermaid\s*$/i)
+    if (!openMatch) continue
+
+    const fenceLength = openMatch[1].length
+    let depth = 1
+    for (let j = i + 1; j < lines.length; j++) {
+      const fenceMatch = lines[j].match(/^(`{3,})\s*(\w*).*$/)
+      if (!fenceMatch || fenceMatch[1].length !== fenceLength) continue
+      if (fenceMatch[2] === '') {
+        depth--
+        if (depth === 0) {
+          lines[i] = `${openMatch[1]}${STREAMING_MERMAID_LANGUAGE}`
+          break
+        }
+      } else {
+        depth++
+      }
+    }
+  }
+
+  return lines.join('\n')
+}
+
 // ── extractText ───────────────────────────────────────────────────────────────
 
 // Me rehype-highlight wraps code in spans — recursively collect text nodes
@@ -372,7 +407,10 @@ export const MarkdownBlock = memo(function MarkdownBlock({
         }>
         const codeText = extractText(codeEl?.props?.children)
         const language = codeEl?.props?.className?.match(/(?:^|\s)language-([^\s]+)/)?.[1]
-        if (language?.toLowerCase() === 'mermaid' && !isStreaming) {
+        const normalizedLanguage = language?.toLowerCase()
+        const isMermaid = normalizedLanguage === 'mermaid'
+          || normalizedLanguage === STREAMING_MERMAID_LANGUAGE
+        if (isMermaid && (!isStreaming || normalizedLanguage === STREAMING_MERMAID_LANGUAGE)) {
           return <MermaidBlock source={codeText} highlightedCode={codeEl?.props?.children as React.ReactNode} />
         }
         return (
@@ -409,6 +447,10 @@ export const MarkdownBlock = memo(function MarkdownBlock({
   // Me: fixNestedFences is pure; memoize so we don't re-walk the whole
   // string on scroll-triggered parent re-renders either.
   const fixedContent = useMemo(() => fixNestedFences(content), [content])
+  const renderedContent = useMemo(
+    () => isStreaming ? markClosedStreamingMermaidFences(fixedContent) : fixedContent,
+    [fixedContent, isStreaming],
+  )
 
   return (
     <div className="oa-prose text-sm">
@@ -417,7 +459,7 @@ export const MarkdownBlock = memo(function MarkdownBlock({
         rehypePlugins={_REHYPE_PLUGINS}
         components={components}
       >
-        {fixedContent}
+        {renderedContent}
       </ReactMarkdown>
     </div>
   )

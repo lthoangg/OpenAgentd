@@ -74,19 +74,15 @@ jobs:
         with:
           components: clippy
 
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.10
-
-      - name: Configure sccache env
-        run: |
-          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
-          echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
-          echo "SCCACHE_DIRECT=true" >> "$GITHUB_ENV"
-
       - name: Cache cargo registry + target
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: desktop/src-tauri
+          # Only ``main`` writes cache entries. These blobs are ~0.5-1.5 GB
+          # each and the repo-wide GitHub cache budget is a hard 10 GB, so
+          # letting every PR run save would evict the warm ``main`` entries
+          # that PRs restore from. PR runs still read ``main``'s cache.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Cargo check
         run: TAURI_CONFIG="$(cat tauri.dev.conf.json)" cargo check --locked
@@ -114,14 +110,9 @@ jobs:
         with:
           components: clippy
 
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.10
-
-      - name: Configure sccache & compiler env
+      # /FASTLINK speeds up MSVC linking; unrelated to any compiler cache.
+      - name: Configure compiler env
         run: |
-          echo "RUSTC_WRAPPER=sccache" >> $env:GITHUB_ENV
-          echo "SCCACHE_GHA_ENABLED=true" >> $env:GITHUB_ENV
-          echo "SCCACHE_DIRECT=true" >> $env:GITHUB_ENV
           echo "RUSTFLAGS=-C link-arg=/FASTLINK" >> $env:GITHUB_ENV
 
       - name: Cache cargo registry + target
@@ -129,6 +120,8 @@ jobs:
         with:
           workspaces: desktop/src-tauri
           key: windows-x86_64
+          # See the desktop job: main-only saves protect the 10 GB budget.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Cargo check
         run: $env:TAURI_CONFIG = Get-Content tauri.dev.conf.json -Raw; cargo check --locked
@@ -161,19 +154,12 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.10
-
-      - name: Configure sccache env
-        run: |
-          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
-          echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
-          echo "SCCACHE_DIRECT=true" >> "$GITHUB_ENV"
-
       - name: Cache cargo registry + target
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: mobile/src-tauri
+          # See the desktop job: main-only saves protect the 10 GB budget.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Cargo check
         run: TAURI_CONFIG='{"bundle":{"icon":["icons/icon.png"]}}' cargo check --locked

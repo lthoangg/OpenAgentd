@@ -129,24 +129,24 @@ jobs:
         with:
           targets: ${{ matrix.rust_target }}
 
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.10
-
-      - name: Configure sccache & compiler env
+      # /FASTLINK speeds up MSVC linking; unrelated to any compiler cache.
+      - name: Configure compiler env
         shell: bash
         run: |
-          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
-          echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
-          echo "SCCACHE_DIRECT=true" >> "$GITHUB_ENV"
           if [ "${{ matrix.platform }}" = "windows" ]; then
             echo "RUSTFLAGS=-C link-arg=/FASTLINK" >> "$GITHUB_ENV"
           fi
 
       # ``Swatinem/rust-cache`` cleans the target/ tree (drops examples,
-      # tests, incremental artifacts) before saving, so the cached blob
-      # stays small (~200 MB instead of >1 GB). It also keys on
+      # tests, incremental artifacts) before saving, then keys on
       # ``rustc -Vv``, ``Cargo.lock``, and target triple so a Rust
       # toolchain bump or dependency change invalidates correctly.
+      #
+      # These blobs still measure ~0.5-1.5 GB each. The repo-wide GitHub
+      # cache budget is a hard 10 GB shared by every workflow, so keep an
+      # eye on ``gh api /repos/{owner}/{repo}/actions/cache/usage`` when
+      # adding cached paths — at the cap, GitHub evicts by LRU and every
+      # cache silently degrades to partial restores.
       - name: Cache cargo registry + target
         uses: Swatinem/rust-cache@v2
         with:

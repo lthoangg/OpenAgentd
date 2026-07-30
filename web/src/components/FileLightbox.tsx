@@ -20,11 +20,12 @@
 
 import {
   useCallback, useEffect, useLayoutEffect, useRef, useState,
-  type ReactNode, type TouchEvent, type Touch as ReactTouch,
+  type ReactNode,
 } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronLeft, ChevronRight, Download, ExternalLink, File, X } from 'lucide-react'
 import { haptic } from '@/lib/haptics'
+import { usePanZoom } from '@/hooks/use-pan-zoom'
 import { resolveApiUrl } from '@/api/client'
 import { tauriDownload } from '@/lib/tauri-download'
 import { PdfDocumentViewer } from './PdfDocumentViewer'
@@ -34,10 +35,6 @@ import { PdfDocumentViewer } from './PdfDocumentViewer'
 function extOf(name: string): string {
   const i = name.lastIndexOf('.')
   return i >= 0 ? name.slice(i + 1).toLowerCase() : ''
-}
-
-function touchDistance(a: Touch | ReactTouch, b: Touch | ReactTouch): number {
-  return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)
 }
 
 // ─── Public types ──────────────────────────────────────────────────────────────
@@ -145,29 +142,16 @@ function IconButton({
 interface ImageProps {
   item: FileLightboxItem
   imgRef: React.RefObject<HTMLImageElement | null>
-  onDoubleClick: () => void
-  onClick: () => void
-  onMouseDown: (e: React.MouseEvent<HTMLDivElement>) => void
-  onMouseMove: (e: React.MouseEvent<HTMLDivElement>) => void
-  onMouseUp: () => void
-  onMouseLeave: () => void
+  panZoom: ReturnType<typeof usePanZoom<HTMLImageElement>>
 }
 
-export function FileLightboxImage({
-  item, imgRef,
-  onDoubleClick, onClick,
-  onMouseDown, onMouseMove, onMouseUp, onMouseLeave,
-}: ImageProps) {
+export function FileLightboxImage({ item, imgRef, panZoom }: ImageProps) {
   const [error, setError] = useState(false)
 
   return (
     <div
       className="flex h-full w-full max-h-full max-w-full select-none items-center justify-center"
-      onDoubleClick={onDoubleClick}
-      onMouseDown={onMouseDown}
-      onMouseMove={onMouseMove}
-      onMouseUp={onMouseUp}
-      onMouseLeave={onMouseLeave}
+      {...panZoom.bind}
     >
       {error
         ? (
@@ -191,10 +175,7 @@ export function FileLightboxImage({
             onError={() => setError(true)}
             className="block h-auto w-auto max-h-full max-w-full rounded-sm object-contain cursor-zoom-in transition-[cursor] duration-100"
             style={{ willChange: 'transform' }}
-            onClick={(e) => {
-              e.stopPropagation()
-              onClick()
-            }}
+            onClick={(e) => e.stopPropagation()}
           />
         )}
     </div>
@@ -412,23 +393,18 @@ export function FileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'f
   // Stores the pending rAF id for the slide animation so rapid navigation doesn't queue stale frames.
   const slideRafRef   = useRef<number>(0)
 
-  // ── Image gesture state (all refs — zero renders during drag) ─────────────
-  const touchStartXRef  = useRef(0)
-  const touchStartYRef  = useRef(0)
-  const axisRef         = useRef<'horizontal' | 'vertical' | null>(null)
-  const pinchStartRef   = useRef<number | null>(null)
-  const pinchScaleRef   = useRef(1)     // current pinch scale accumulator
-  const scaleRef        = useRef(1)     // committed scale (after gesture ends)
-  const lastTapRef      = useRef(0)
-  // Live drag offsets — written by touchmove, read by touchend
-  const dragXRef        = useRef(0)
-  const dragYRef        = useRef(0)
+  // ── Gallery gesture state (image pan/zoom is owned by usePanZoom) ───────
+  const touchStartXRef = useRef(0)
+  const touchStartYRef = useRef(0)
+  const axisRef = useRef<'horizontal' | 'vertical' | null>(null)
+  const dragXRef = useRef(0)
+  const dragYRef = useRef(0)
 
-  const isMouseDownRef  = useRef(false)
-  const panXRef         = useRef(0)
-  const panYRef         = useRef(0)
-  const panXStartRef    = useRef(0)
-  const panYStartRef    = useRef(0)
+  const panZoom = usePanZoom(imgRef)
+  const { zoomPercent, zoomIn, zoomOut, reset: resetZoom } = panZoom
+  const applySlideTransform = useCallback((dx: number, dy: number) => {
+    if (slideRef.current) slideRef.current.style.transform = `translate3d(${dx}px, ${dy}px, 0)`
+  }, [])
 
   // Tracks the last rendered current value to check if we actually changed current index.
   const lastCurrentRef  = useRef<number | null>(null)
@@ -482,16 +458,10 @@ export function FileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'f
   useEffect(() => {
     if (isOpen) {
       setCurrent(Math.max(0, Math.min(index, items.length - 1)))
-      if (imgRef.current) {
-        imgRef.current.style.transform = ''
-        imgRef.current.style.cursor = 'zoom-in'
-      }
-      scaleRef.current = 1
-      panXRef.current = 0
-      panYRef.current = 0
+      resetZoom()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, index])
+  }, [isOpen, index, resetZoom])
 
   // ── Navigation ────────────────────────────────────────────────────────────
   const goTo = useCallback((next: number) => {
@@ -505,17 +475,11 @@ export function FileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'f
       return target
     })
     // Reset image transform immediately on nav.
-    if (imgRef.current) {
-      imgRef.current.style.transform = ''
-      imgRef.current.style.cursor = 'zoom-in'
-    }
-    scaleRef.current = 1
+    resetZoom()
     dragXRef.current = 0
     dragYRef.current = 0
-    panXRef.current = 0
-    panYRef.current = 0
     axisRef.current = null
-  }, [items.length])
+  }, [items.length, resetZoom])
 
   const goPrev = useCallback(() => goTo(current - 1), [current, goTo])
   const goNext = useCallback(() => goTo(current + 1), [current, goTo])
@@ -527,6 +491,9 @@ export function FileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'f
       if (e.key === 'Escape') onClose()
       else if (hasMultiple && e.key === 'ArrowLeft')  { e.preventDefault(); goPrev() }
       else if (hasMultiple && e.key === 'ArrowRight') { e.preventDefault(); goNext() }
+      else if (activeTypeRef.current === 'image' && (e.key === '+' || e.key === '=')) { e.preventDefault(); zoomIn() }
+      else if (activeTypeRef.current === 'image' && e.key === '-') { e.preventDefault(); zoomOut() }
+      else if (activeTypeRef.current === 'image' && e.key === '0') { e.preventDefault(); resetZoom() }
     }
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
@@ -535,103 +502,37 @@ export function FileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'f
       document.removeEventListener('keydown', handle)
       document.body.style.overflow = prev
     }
-  }, [isOpen, onClose, hasMultiple, goPrev, goNext])
+  }, [isOpen, onClose, hasMultiple, goPrev, goNext, zoomIn, zoomOut, resetZoom])
 
   // ── Close ──────────────────────────────────────────────────────────────────
   const closeLightbox = useCallback(() => {
-    if (imgRef.current) {
-      imgRef.current.style.transform = ''
-      imgRef.current.style.cursor = 'zoom-in'
-    }
-    scaleRef.current = 1
-    pinchStartRef.current = null
+    resetZoom()
     dragXRef.current = 0
     dragYRef.current = 0
-    panXRef.current = 0
-    panYRef.current = 0
     axisRef.current = null
-    isMouseDownRef.current = false
     onClose()
-  }, [onClose])
+  }, [onClose, resetZoom])
 
-  // ── Image touch/mouse handlers (zero React renders during gesture) ───────────
-  // All mutations go straight to imgRef.current.style — no setState.
+  // ── Gallery touch handlers at fit ───────────────────────────────────────
+  // Once zoomed, usePanZoom owns the gesture. At fit, retain the existing
+  // horizontal navigation and downward-close behaviour for image galleries.
+  const handleTouchStart = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    if (activeTypeRef.current === 'pdf' || e.touches.length !== 1 || zoomPercent !== 100) return
+    const touch = e.touches[0]
+    if (!touch) return
+    touchStartXRef.current = touch.clientX
+    touchStartYRef.current = touch.clientY
+    dragXRef.current = 0
+    dragYRef.current = 0
+    axisRef.current = null
+  }, [zoomPercent])
 
-  const applyImgTransform = useCallback((dx: number, dy: number, sc: number) => {
-    if (!imgRef.current) return
-    imgRef.current.style.transform = `translate3d(${dx}px, ${dy}px, 0) scale(${sc})`
-  }, [])
-
-  const applySlideTransform = useCallback((dx: number, dy: number) => {
-    if (!slideRef.current) return
-    slideRef.current.style.transform = `translate3d(${dx}px, ${dy}px, 0)`
-  }, [])
-
-  const handleTouchStart = useCallback((e: TouchEvent<HTMLDivElement>) => {
-    // PDF pages scroll natively inside their own container — the gallery's
-    // swipe-to-navigate/swipe-to-close gestures would otherwise fight with
-    // that scroll (this is what previously made small swipes over a PDF
-    // close the lightbox). Closing a PDF preview goes through the X button,
-    // arrow buttons, or Escape instead.
-    if (activeTypeRef.current === 'pdf') return
-    if (e.touches.length === 1) {
-      touchStartXRef.current = e.touches[0]?.clientX ?? 0
-      touchStartYRef.current = e.touches[0]?.clientY ?? 0
-      panXStartRef.current = panXRef.current
-      panYStartRef.current = panYRef.current
-      dragXRef.current = 0
-      dragYRef.current = 0
-      axisRef.current = null
-      pinchStartRef.current = null
-
-      if (scaleRef.current > 1.05 && imgRef.current) {
-        imgRef.current.style.cursor = 'grabbing'
-      }
-    } else if (e.touches.length === 2) {
-      pinchStartRef.current = touchDistance(e.touches[0], e.touches[1])
-      pinchScaleRef.current = scaleRef.current
-    }
-  }, [])
-
-  const handleTouchMove = useCallback((e: TouchEvent<HTMLDivElement>) => {
-    if (activeTypeRef.current === 'pdf') return
-    if (e.touches.length === 2 && pinchStartRef.current !== null) {
-      const next = touchDistance(e.touches[0], e.touches[1])
-      const newScale = Math.min(4, Math.max(1, pinchScaleRef.current * (next / pinchStartRef.current)))
-      applyImgTransform(panXRef.current, panYRef.current, newScale)
-      scaleRef.current = newScale
-      return
-    }
-
-    if (e.touches.length !== 1) return
-
-    if (scaleRef.current > 1.05) {
-      const dx = (e.touches[0]?.clientX ?? 0) - touchStartXRef.current
-      const dy = (e.touches[0]?.clientY ?? 0) - touchStartYRef.current
-      let nextPanX = panXStartRef.current + dx
-      let nextPanY = panYStartRef.current + dy
-
-      if (imgRef.current) {
-        const w = imgRef.current.clientWidth
-        const h = imgRef.current.clientHeight
-        const maxPanX = Math.max(0, (w * (scaleRef.current - 1)) / 2)
-        const maxPanY = Math.max(0, (h * (scaleRef.current - 1)) / 2)
-
-        if (nextPanX > maxPanX) nextPanX = maxPanX + (nextPanX - maxPanX) * 0.3
-        else if (nextPanX < -maxPanX) nextPanX = -maxPanX + (nextPanX + maxPanX) * 0.3
-
-        if (nextPanY > maxPanY) nextPanY = maxPanY + (nextPanY - maxPanY) * 0.3
-        else if (nextPanY < -maxPanY) nextPanY = -maxPanY + (nextPanY + maxPanY) * 0.3
-      }
-
-      dragXRef.current = nextPanX
-      dragYRef.current = nextPanY
-      applyImgTransform(nextPanX, nextPanY, scaleRef.current)
-      return
-    }
-
-    const dx = (e.touches[0]?.clientX ?? 0) - touchStartXRef.current
-    const dy = (e.touches[0]?.clientY ?? 0) - touchStartYRef.current
+  const handleTouchMove = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    if (activeTypeRef.current === 'pdf' || e.touches.length !== 1 || zoomPercent !== 100) return
+    const touch = e.touches[0]
+    if (!touch) return
+    const dx = touch.clientX - touchStartXRef.current
+    const dy = touch.clientY - touchStartYRef.current
     if (axisRef.current === null && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
       axisRef.current = Math.abs(dx) > Math.abs(dy) ? 'horizontal' : 'vertical'
     }
@@ -639,199 +540,31 @@ export function FileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'f
       dragXRef.current = dx
       applySlideTransform(dx, 0)
     } else if (axisRef.current === 'vertical' && dy > 0) {
-      const clampedY = Math.min(160, dy)
-      dragYRef.current = clampedY
-      applySlideTransform(0, clampedY)
+      dragYRef.current = Math.min(160, dy)
+      applySlideTransform(0, dragYRef.current)
     }
-  }, [hasMultiple, applyImgTransform, applySlideTransform])
+  }, [hasMultiple, zoomPercent, applySlideTransform])
 
   const handleTouchEnd = useCallback(() => {
-    if (activeTypeRef.current === 'pdf') return
-    if (pinchStartRef.current !== null) {
-      // After a pinch gesture, clamp the current pan position (held in panXRef)
-      let clampedX = dragXRef.current || panXRef.current
-      let clampedY = dragYRef.current || panYRef.current
-      if (imgRef.current) {
-        const w = imgRef.current.clientWidth
-        const h = imgRef.current.clientHeight
-        const maxPanX = Math.max(0, (w * (scaleRef.current - 1)) / 2)
-        const maxPanY = Math.max(0, (h * (scaleRef.current - 1)) / 2)
-        clampedX = Math.min(maxPanX, Math.max(-maxPanX, clampedX))
-        clampedY = Math.min(maxPanY, Math.max(-maxPanY, clampedY))
-      }
-      panXRef.current = clampedX
-      panYRef.current = clampedY
-      if (imgRef.current) {
-        imgRef.current.style.transition = `transform 150ms ${SLIDE_EASE}`
-        imgRef.current.style.transform = `translate3d(${clampedX}px, ${clampedY}px, 0) scale(${scaleRef.current})`
-        imgRef.current.style.cursor = scaleRef.current > 1.05 ? 'grab' : 'zoom-in'
-        imgRef.current.addEventListener('transitionend', () => {
-          if (imgRef.current) imgRef.current.style.transition = ''
-        }, { once: true })
-      }
-      pinchStartRef.current = null
-      axisRef.current = null
-      dragXRef.current = 0
-      dragYRef.current = 0
-      return
-    }
-
-    const dx = dragXRef.current
-    const dy = dragYRef.current
-
-    if (scaleRef.current > 1.05) {
-      let clampedX = dx
-      let clampedY = dy
-      if (imgRef.current) {
-        const w = imgRef.current.clientWidth
-        const h = imgRef.current.clientHeight
-        const maxPanX = Math.max(0, (w * (scaleRef.current - 1)) / 2)
-        const maxPanY = Math.max(0, (h * (scaleRef.current - 1)) / 2)
-        clampedX = Math.min(maxPanX, Math.max(-maxPanX, dx))
-        clampedY = Math.min(maxPanY, Math.max(-maxPanY, dy))
-      }
-      panXRef.current = clampedX
-      panYRef.current = clampedY
-      if (imgRef.current) {
-        imgRef.current.style.transition = `transform 150ms ${SLIDE_EASE}`
-        imgRef.current.style.transform = `translate3d(${clampedX}px, ${clampedY}px, 0) scale(${scaleRef.current})`
-        imgRef.current.style.cursor = scaleRef.current > 1.05 ? 'grab' : 'zoom-in'
-        imgRef.current.addEventListener('transitionend', () => {
-          if (imgRef.current) imgRef.current.style.transition = ''
-        }, { once: true })
-      }
-      dragXRef.current = 0
-      dragYRef.current = 0
-      axisRef.current = null
-      return
-    }
-
+    if (activeTypeRef.current === 'pdf' || zoomPercent !== 100) return
     if (axisRef.current === 'horizontal' && hasMultiple) {
-      if (dx < -SWIPE_NAV_THRESHOLD) {
-        goNext()
-      } else if (dx > SWIPE_NAV_THRESHOLD) {
-        goPrev()
-      } else {
-        if (slideRef.current) {
-          slideRef.current.style.transition = `transform 200ms ${SLIDE_EASE}`
-          slideRef.current.style.transform  = 'translate3d(0,0,0)'
-          slideRef.current.addEventListener('transitionend', () => {
-            if (slideRef.current) slideRef.current.style.transition = ''
-          }, { once: true })
-        }
-      }
-    } else if (axisRef.current === 'vertical' && dy > SWIPE_CLOSE_THRESHOLD) {
+      if (dragXRef.current < -SWIPE_NAV_THRESHOLD) goNext()
+      else if (dragXRef.current > SWIPE_NAV_THRESHOLD) goPrev()
+    } else if (axisRef.current === 'vertical' && dragYRef.current > SWIPE_CLOSE_THRESHOLD) {
       closeLightbox()
       return
-    } else {
-      if (slideRef.current) {
-        slideRef.current.style.transition = `transform 200ms ${SLIDE_EASE}`
-        slideRef.current.style.transform  = 'translate3d(0,0,0)'
-        slideRef.current.addEventListener('transitionend', () => {
-          if (slideRef.current) slideRef.current.style.transition = ''
-        }, { once: true })
-      }
     }
-
+    if (slideRef.current) {
+      slideRef.current.style.transition = `transform 200ms ${SLIDE_EASE}`
+      slideRef.current.style.transform = 'translate3d(0,0,0)'
+      slideRef.current.addEventListener('transitionend', () => {
+        if (slideRef.current) slideRef.current.style.transition = ''
+      }, { once: true })
+    }
     dragXRef.current = 0
     dragYRef.current = 0
     axisRef.current = null
-    pinchStartRef.current = null
-  }, [hasMultiple, goNext, goPrev, closeLightbox])
-
-  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.button !== 0 || scaleRef.current <= 1.05) return
-    isMouseDownRef.current = true
-    touchStartXRef.current = e.clientX
-    touchStartYRef.current = e.clientY
-    panXStartRef.current = panXRef.current
-    panYStartRef.current = panYRef.current
-    dragXRef.current = 0
-    dragYRef.current = 0
-    if (imgRef.current) {
-      imgRef.current.style.cursor = 'grabbing'
-    }
-    e.preventDefault()
-  }, [])
-
-  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (!isMouseDownRef.current || scaleRef.current <= 1.05) return
-    const dx = e.clientX - touchStartXRef.current
-    const dy = e.clientY - touchStartYRef.current
-    let nextPanX = panXStartRef.current + dx
-    let nextPanY = panYStartRef.current + dy
-
-    if (imgRef.current) {
-      const w = imgRef.current.clientWidth
-      const h = imgRef.current.clientHeight
-      const maxPanX = Math.max(0, (w * (scaleRef.current - 1)) / 2)
-      const maxPanY = Math.max(0, (h * (scaleRef.current - 1)) / 2)
-
-      if (nextPanX > maxPanX) nextPanX = maxPanX + (nextPanX - maxPanX) * 0.3
-      else if (nextPanX < -maxPanX) nextPanX = -maxPanX + (nextPanX + maxPanX) * 0.3
-
-      if (nextPanY > maxPanY) nextPanY = maxPanY + (nextPanY - maxPanY) * 0.3
-      else if (nextPanY < -maxPanY) nextPanY = -maxPanY + (nextPanY + maxPanY) * 0.3
-    }
-
-    dragXRef.current = nextPanX
-    dragYRef.current = nextPanY
-    applyImgTransform(nextPanX, nextPanY, scaleRef.current)
-  }, [applyImgTransform])
-
-  const handleMouseUpOrLeave = useCallback(() => {
-    if (!isMouseDownRef.current) return
-    isMouseDownRef.current = false
-    const dx = dragXRef.current
-    const dy = dragYRef.current
-
-    let clampedX = dx
-    let clampedY = dy
-    if (imgRef.current) {
-      const w = imgRef.current.clientWidth
-      const h = imgRef.current.clientHeight
-      const maxPanX = Math.max(0, (w * (scaleRef.current - 1)) / 2)
-      const maxPanY = Math.max(0, (h * (scaleRef.current - 1)) / 2)
-      clampedX = Math.min(maxPanX, Math.max(-maxPanX, dx))
-      clampedY = Math.min(maxPanY, Math.max(-maxPanY, dy))
-    }
-
-    panXRef.current = clampedX
-    panYRef.current = clampedY
-
-    if (imgRef.current) {
-      imgRef.current.style.transition = `transform 150ms ${SLIDE_EASE}`
-      imgRef.current.style.transform = `translate3d(${clampedX}px, ${clampedY}px, 0) scale(${scaleRef.current})`
-      imgRef.current.style.cursor = scaleRef.current > 1.05 ? 'grab' : 'zoom-in'
-      imgRef.current.addEventListener('transitionend', () => {
-        if (imgRef.current) imgRef.current.style.transition = ''
-      }, { once: true })
-    }
-
-    dragXRef.current = 0
-    dragYRef.current = 0
-  }, [])
-
-  const handleDoubleClick = useCallback(() => {
-    const next = scaleRef.current > 1 ? 1 : 2
-    scaleRef.current = next
-    panXRef.current = 0
-    panYRef.current = 0
-    if (imgRef.current) {
-      imgRef.current.style.transition = `transform 200ms ${SLIDE_EASE}`
-      imgRef.current.style.transform  = `translate3d(0,0,0) scale(${next})`
-      imgRef.current.style.cursor = next > 1.05 ? 'grab' : 'zoom-in'
-      imgRef.current.addEventListener('transitionend', () => {
-        if (imgRef.current) imgRef.current.style.transition = ''
-      }, { once: true })
-    }
-  }, [])
-
-  const handleImageClick = useCallback(() => {
-    const now = Date.now()
-    if (now - lastTapRef.current < 300) handleDoubleClick()
-    lastTapRef.current = now
-  }, [handleDoubleClick])
+  }, [closeLightbox, goNext, goPrev, hasMultiple, zoomPercent])
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -840,7 +573,7 @@ export function FileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'f
   return createPortal(
     <div
       ref={overlayRef}
-      className="mobile-safe-overlay fixed inset-0 z-50 flex flex-col bg-black/80"
+      className="mobile-safe-overlay fixed inset-0 z-50 flex select-none flex-col bg-black/80"
       // opacity starts at 0, useLayoutEffect rAF sets it to 1 — CSS transition fires
       style={{ opacity: 0, transition: 'opacity 150ms ease-out' }}
       onClick={closeLightbox}
@@ -920,12 +653,7 @@ export function FileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'f
                 key={active.src}
                 item={active}
                 imgRef={imgRef}
-                onDoubleClick={handleDoubleClick}
-                onClick={handleImageClick}
-                onMouseDown={handleMouseDown}
-                onMouseMove={handleMouseMove}
-                onMouseUp={handleMouseUpOrLeave}
-                onMouseLeave={handleMouseUpOrLeave}
+                panZoom={panZoom}
               />
             )}
             {active.type === 'video'  && <FileLightboxVideo   key={active.src} item={active} />}
@@ -938,7 +666,7 @@ export function FileLightbox({ items, index = 0, isOpen, onClose, labelMode = 'f
           {/* Filename right below the active preview card */}
           {active.name && (
             <p
-              className="max-w-[80vw] shrink-0 break-words text-center text-sm text-(--color-text-muted) select-text"
+              className="max-w-[80vw] shrink-0 break-words text-center text-sm text-(--color-text-muted)"
               onClick={(e) => e.stopPropagation()}
             >
               {active.name}

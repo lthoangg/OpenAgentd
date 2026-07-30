@@ -132,6 +132,22 @@ describe("ImageLightbox", () => {
     const target = img.parentElement as HTMLElement
     fireEvent.touchStart(target, { touches: [{ clientX: 0, clientY: 0 }, { clientX: 50, clientY: 0 }] })
     fireEvent.touchMove(target, { touches: [{ clientX: 0, clientY: 0 }, { clientX: 100, clientY: 0 }] })
+    fireEvent.touchEnd(target)
+
+    expect(img.style.transform).toContain("scale(2)")
+  })
+
+  it("zooms image on a mobile double tap", () => {
+    render(
+      <ImageLightbox src="https://example.com/image.jpg" alt="Test" isOpen={true} onClose={mock(() => {})} />
+    )
+
+    const img = screen.getByRole("img", { name: "Test" }) as HTMLImageElement
+    const target = img.parentElement as HTMLElement
+    fireEvent.touchStart(target, { touches: [{ clientX: 20, clientY: 20 }] })
+    fireEvent.touchEnd(target)
+    fireEvent.touchStart(target, { touches: [{ clientX: 20, clientY: 20 }] })
+    fireEvent.touchEnd(target)
 
     expect(img.style.transform).toContain("scale(2)")
   })

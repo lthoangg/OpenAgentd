@@ -60,6 +60,16 @@ describe("FileLightbox", () => {
     expect(screen.getByRole("dialog").getAttribute("data-swipe-ignore")).not.toBeNull()
   })
 
+  it("keeps image zoom gesture-first without zoom chrome or text selection", () => {
+    render(<FileLightbox items={[items[0]!]} index={0} isOpen={true} onClose={() => {}} />)
+
+    expect(screen.queryByRole("button", { name: "Zoom in" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Zoom out" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Reset zoom" })).toBeNull()
+    expect(screen.queryByRole("status", { name: "Zoom level" })).toBeNull()
+    expect(screen.getByRole("dialog").className).toContain("select-none")
+  })
+
   it("triggers onClose when clicking close button", () => {
     let closed = false
     render(<FileLightbox items={items} index={0} isOpen={true} onClose={() => { closed = true }} />)

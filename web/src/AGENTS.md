@@ -152,8 +152,9 @@ browsers treat table layout specially and it breaks column alignment.
 | User sends a message (new `user` block) | → `true` |
 | Click chevron-down button | → `true`, smooth scroll with instant fallback (see below) |
 | Session id changes (`useTeamStore.sessionId`) | → `true`, instant scroll to bottom — a detach belongs to one conversation and must not leak into the next |
-| Scroll event reaches `dist ≤ 40px` from bottom | → `true` |
+| Scroll event reaches `dist ≤ 40px` from bottom | → `true` — unless a wheel/touch scroll-up gesture fired within the last 250ms (`userScrollIntentUntilRef`), so small trackpad deltas can escape the auto-follow snap |
 | Scroll event with `dist > 40px` AND no `data-keyboard-open` | → `false` (only if scroll direction is UP), show button |
+| `wheel` with `deltaY < 0`, or `touchmove` with the finger moving down (content scrollable) | → `false` immediately, show button. Required: during heavy stream growth the ResizeObserver rewrites `scrollTop` to the bottom *before* the scroll listener runs, so scroll events never observe the upward movement — input events are the only reliable detach signal |
 | Virtual keyboard opens (`data-keyboard-open` on `<html>`) | scroll event ignored — viewport shrink is not user scroll |
 
 When `attachedRef.current === true`, a **`ResizeObserver`** on the content

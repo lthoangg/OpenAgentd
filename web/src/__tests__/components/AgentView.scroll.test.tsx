@@ -579,3 +579,120 @@ describe("AgentView — bounce dots indicator", () => {
     expect(container.querySelectorAll(".animate-bounce").length).toBe(3)
   })
 })
+
+// ── user scroll intent (wheel / touch) during stream growth ───────────────
+//
+// Regression: during heavy stream growth (e.g. a shell tool result flushing a
+// large output block) the auto-follow ResizeObserver rewrites scrollTop back
+// to the bottom BEFORE the scroll listener runs. The listener reads
+// el.scrollTop live at dispatch time, so it never observes the user's upward
+// movement and never detaches — the user cannot scroll up until the stream
+// pauses. The wheel/touch events are the only reliable signal of user intent.
+
+async function fireWheel(el: HTMLDivElement, deltaY: number) {
+  await act(async () => {
+    const ev = new Event("wheel", { bubbles: true })
+    Object.defineProperty(ev, "deltaY", { value: deltaY })
+    el.dispatchEvent(ev)
+  })
+  await waitFrame()
+}
+
+async function fireTouch(el: HTMLDivElement, type: "touchstart" | "touchmove", clientY: number) {
+  await act(async () => {
+    const ev = new Event(type, { bubbles: true })
+    Object.defineProperty(ev, "touches", { value: [{ clientY }] })
+    el.dispatchEvent(ev)
+  })
+  await waitFrame()
+}
+
+describe("attach-to-stream — wheel/touch detach during stream growth", () => {
+  it("AgentView detaches on wheel-up even when scroll events never observe an upward scrollTop", async () => {
+    const { container } = renderStream({ blocks: [makeTextBlock("b1", "Hi")], isWorking: true })
+    const el = container.querySelector(".overflow-y-auto") as HTMLDivElement
+    await fireScroll(el, 0) // establish scrollable metrics, at bottom, attached
+
+    // The RO snaps scrollTop back to bottom before any scroll event is seen —
+    // the wheel event is the only observable signal of the user's gesture.
+    await fireWheel(el, -50)
+    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
+  })
+
+  it("does not re-attach at the bottom while the wheel gesture is still in flight", async () => {
+    const { container } = renderStream({ blocks: [makeTextBlock("b1", "Hi")], isWorking: true })
+    const el = container.querySelector(".overflow-y-auto") as HTMLDivElement
+    await fireScroll(el, 0)
+
+    await fireWheel(el, -50)
+    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
+
+    // A small trackpad delta leaves the view within SCROLL_THRESHOLD of the
+    // bottom (or the RO already snapped it back): the resulting scroll event
+    // must NOT re-attach while the user's upward gesture is recent.
+    await fireScroll(el, 0)
+    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
+  })
+
+  it("re-attaches at the bottom once the gesture window has passed", async () => {
+    const { container } = renderStream({ blocks: [makeTextBlock("b1", "Hi")], isWorking: true })
+    const el = container.querySelector(".overflow-y-auto") as HTMLDivElement
+    await fireScroll(el, 0)
+
+    await fireWheel(el, -50)
+    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
+
+    await act(async () => { await new Promise((r) => setTimeout(r, 400)) })
+    await fireScroll(el, 0) // user scrolled back to the bottom, gesture over
+    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
+  })
+
+  it("does not detach on wheel-down", async () => {
+    const { container } = renderStream({ blocks: [makeTextBlock("b1", "Hi")], isWorking: true })
+    const el = container.querySelector(".overflow-y-auto") as HTMLDivElement
+    await fireScroll(el, 0)
+
+    await fireWheel(el, 50)
+    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
+  })
+
+  it("does not detach on wheel-up when the pane cannot scroll", async () => {
+    const { container } = renderStream({ blocks: [makeTextBlock("b1", "Hi")], isWorking: true })
+    const el = container.querySelector(".overflow-y-auto") as HTMLDivElement
+    // default happy-dom metrics: scrollHeight = clientHeight = 0 → not scrollable
+
+    await fireWheel(el, -50)
+    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
+  })
+
+  it("detaches when a touch drag moves the finger downward (scrolling up)", async () => {
+    const { container } = renderStream({ blocks: [makeTextBlock("b1", "Hi")], isWorking: true })
+    const el = container.querySelector(".overflow-y-auto") as HTMLDivElement
+    await fireScroll(el, 0)
+
+    await fireTouch(el, "touchstart", 200)
+    await fireTouch(el, "touchmove", 260)
+    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
+  })
+
+  it("does not detach when a touch drag moves the finger upward (scrolling down)", async () => {
+    const { container } = renderStream({ blocks: [makeTextBlock("b1", "Hi")], isWorking: true })
+    const el = container.querySelector(".overflow-y-auto") as HTMLDivElement
+    await fireScroll(el, 0)
+
+    await fireTouch(el, "touchstart", 260)
+    await fireTouch(el, "touchmove", 200)
+    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeNull()
+  })
+
+  it("AgentPane detaches on wheel-up even when scroll events never observe an upward scrollTop", async () => {
+    const { container } = render(
+      <AgentPane name="researcher" stream={makeAgentStream([makeTextBlock("b1", "Hi")])} isLead={false} />,
+    )
+    const el = container.querySelector(".overflow-y-auto") as HTMLDivElement
+    await fireScroll(el, 0)
+
+    await fireWheel(el, -50)
+    expect(container.querySelector('button[aria-label="Scroll to bottom"]')).toBeTruthy()
+  })
+})

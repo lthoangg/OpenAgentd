@@ -36,6 +36,11 @@ import { openExternalUrl } from '@/lib/open-external'
 import type { ContentBlock, MessageAttachment } from '@/api/types'
 
 const SCROLL_THRESHOLD = 40
+// How long a wheel-up / touch-drag gesture keeps the view detached from the
+// stream. During heavy stream growth the auto-follow ResizeObserver rewrites
+// scrollTop to the bottom before the scroll listener runs, so scroll events
+// alone cannot see the user's upward movement — input events carry the intent.
+const USER_SCROLL_INTENT_MS = 250
 
 interface AgentPaneProps {
   name: string
@@ -391,6 +396,10 @@ export function AgentPane({
   const attachedRef = useRef(true)
   const isProgrammaticScrollRef = useRef(false)
   const lastScrollTopRef = useRef(0)
+  // Timestamp (ms) until which a user scroll-up gesture (wheel / touch) is
+  // considered "in flight" — suppresses the at-bottom re-attach so small
+  // trackpad deltas can escape the auto-follow snap during streaming.
+  const userScrollIntentUntilRef = useRef(0)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
@@ -398,6 +407,7 @@ export function AgentPane({
     if (!el) return
     const bottom = Math.max(0, el.scrollHeight - el.clientHeight)
     attachedRef.current = true
+    userScrollIntentUntilRef.current = 0 // explicit attach cancels any gesture
     setShowScrollBtn(false)
     if (behavior === 'smooth' && typeof el.scrollTo === 'function') {
       isProgrammaticScrollRef.current = true
@@ -442,8 +452,14 @@ export function AgentPane({
       const atBottom = dist <= SCROLL_THRESHOLD
 
       if (atBottom) {
-        attachedRef.current = true
-        setShowScrollBtn(false)
+        // Don't re-attach while a user scroll-up gesture is in flight — small
+        // wheel/trackpad deltas land within SCROLL_THRESHOLD (or the
+        // auto-follow already snapped the view back) and re-attaching here
+        // would let the ResizeObserver eat the gesture.
+        if (Date.now() >= userScrollIntentUntilRef.current) {
+          attachedRef.current = true
+          setShowScrollBtn(false)
+        }
       } else if (attachedRef.current) {
         if (document.documentElement.hasAttribute('data-keyboard-open')) return
 
@@ -457,8 +473,43 @@ export function AgentPane({
         }
       }
     }
+    // Detach on direct user input. During heavy stream growth (e.g. a shell
+    // tool result flushing a large block) the auto-follow ResizeObserver
+    // rewrites scrollTop to the bottom before the scroll listener runs, so
+    // onScroll never observes the upward movement — wheel/touch events are
+    // the only reliable signal of the user's intent to scroll up.
+    const detachForUserScrollUp = () => {
+      userScrollIntentUntilRef.current = Date.now() + USER_SCROLL_INTENT_MS
+      if (!attachedRef.current) return
+      if (el.scrollHeight - el.clientHeight <= 1) return // nothing to scroll
+      attachedRef.current = false
+      setShowScrollBtn(true)
+    }
+    const onWheel = (e: WheelEvent) => {
+      if (e.deltaY < 0) detachForUserScrollUp()
+    }
+    let lastTouchY: number | null = null
+    const onTouchStart = (e: TouchEvent) => {
+      lastTouchY = e.touches[0]?.clientY ?? null
+    }
+    const onTouchMove = (e: TouchEvent) => {
+      const y = e.touches[0]?.clientY
+      if (y === undefined) return
+      // Finger moving down the screen scrolls the content up.
+      if (lastTouchY !== null && y > lastTouchY) detachForUserScrollUp()
+      lastTouchY = y
+    }
+
     el.addEventListener('scroll', onScroll, { passive: true })
-    return () => { el.removeEventListener('scroll', onScroll) }
+    el.addEventListener('wheel', onWheel, { passive: true })
+    el.addEventListener('touchstart', onTouchStart, { passive: true })
+    el.addEventListener('touchmove', onTouchMove, { passive: true })
+    return () => {
+      el.removeEventListener('scroll', onScroll)
+      el.removeEventListener('wheel', onWheel)
+      el.removeEventListener('touchstart', onTouchStart)
+      el.removeEventListener('touchmove', onTouchMove)
+    }
   }, [])
 
   const allBlocks = useMemo(

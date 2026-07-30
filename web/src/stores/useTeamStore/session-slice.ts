@@ -5,7 +5,7 @@ import { createDefaultAgentStream } from './defaults'
 import { applyRevertBoundary, revokeBlobUrlsFromBlocks } from './helpers'
 import { clearReconnectTimer } from './stream-slice'
 import type { AgentStream, TeamStore } from './types'
-import type { MessageResponse } from '@/api/types'
+import type { ContentBlock, MessageResponse } from '@/api/types'
 
 function revertBoundaryTime(session: { revert?: { message_id?: string } | null; messages: MessageResponse[] }): number | null {
   const boundaryId = session.revert?.message_id
@@ -122,6 +122,125 @@ function dropSnapshotCoveredBlocks(stream: AgentStream, countAtFetchStart: numbe
   stream.currentBlocks = stream.currentBlocks.slice(countAtFetchStart)
 }
 
+/** Same block from two sources: the live SSE copy and the server's parse. */
+function isSameBlock(live: ContentBlock, persisted: ContentBlock): boolean {
+  if (live.type !== persisted.type) return false
+
+  // If both blocks have timestamps, prevent matching live blocks against
+  // persisted blocks from an older turn (older than 5s clock skew window).
+  const liveTime = live.timestamp?.getTime()
+  const persistedTime = persisted.timestamp?.getTime()
+  if (liveTime !== undefined && persistedTime !== undefined && persistedTime < liveTime - 5_000) {
+    return false
+  }
+
+  // Tool calls carry a server-issued id, so match on it and ignore content
+  // (live output is streamed incrementally and may lag the persisted result).
+  if (live.toolCallId || persisted.toolCallId) return live.toolCallId === persisted.toolCallId
+  return live.content === persisted.content
+}
+
+/**
+ * Drop the leading live blocks a *still-running* turn's snapshot already
+ * covers.
+ *
+ * While the turn runs, the snapshot holds only the model iterations the server
+ * has already persisted — the in-flight tail is not there yet, so the
+ * positional drop used for finished turns would erase live content and blank
+ * out mid-stream text. Align on content within the active turn: in `stream.blocks`,
+ * the active turn begins with the last user message. If the active turn's
+ * persisted rows match a prefix of `currentBlocks`, that prefix is already
+ * rendered in `blocks` and should be dropped from `currentBlocks`.
+ *
+ * `limit` bounds the scan to blocks that existed when the fetch started —
+ * anything appended since postdates the snapshot and can never be covered.
+ */
+/** Live-only or lossy block types that may lack a persisted counterpart:
+ *  provider notices never persist, and reasoning is often summarized,
+ *  redacted, or dropped entirely by the provider. */
+function isEphemeralLive(block: ContentBlock): boolean {
+  return block.type === 'thinking' || block.type === 'provider_status'
+}
+
+function dropSnapshotAlignedPrefix(stream: AgentStream, limit: number) {
+  if (stream.currentBlocks.length === 0 || stream.blocks.length === 0 || limit <= 0) return
+
+  // The active turn starts at the last real user message. Member sessions
+  // only ever receive agent-routed (`from_agent`) rows, so fall back to
+  // those to anchor their turns too.
+  let lastUserIdx = -1
+  let lastRoutedUserIdx = -1
+  for (let idx = stream.blocks.length - 1; idx >= 0; idx--) {
+    const b = stream.blocks[idx]
+    if (b.type !== 'user') continue
+    if (!b.extra?.from_agent) {
+      lastUserIdx = idx
+      break
+    }
+    if (lastRoutedUserIdx === -1) lastRoutedUserIdx = idx
+  }
+  if (lastUserIdx === -1) lastUserIdx = lastRoutedUserIdx
+  if (lastUserIdx === -1) return
+
+  const currentTurnPersisted = stream.blocks.slice(lastUserIdx)
+
+  // Anchor on the first live block that must have a persisted counterpart.
+  let anchorIdx = 0
+  while (anchorIdx < limit && anchorIdx < stream.currentBlocks.length && isEphemeralLive(stream.currentBlocks[anchorIdx])) {
+    anchorIdx++
+  }
+  if (anchorIdx >= limit || anchorIdx >= stream.currentBlocks.length) return
+  const anchorLive = stream.currentBlocks[anchorIdx]
+
+  let startIdx = -1
+  if (anchorLive.type === 'user' && !anchorLive.extra?.from_agent) {
+    // An optimistic user bubble may only align with the turn *start* —
+    // matching deeper would let an older identical send swallow a re-send.
+    if (isSameBlock(anchorLive, currentTurnPersisted[0])) {
+      startIdx = 0
+    }
+  } else {
+    for (let j = 0; j < currentTurnPersisted.length; j++) {
+      if (isSameBlock(anchorLive, currentTurnPersisted[j])) {
+        startIdx = j
+        break
+      }
+    }
+  }
+
+  if (startIdx === -1) return
+
+  // Two-pointer walk: a mismatch on an ephemeral block skips it rather than
+  // aborting the scan. `matchCount` only advances on real matches, so
+  // trailing live reasoning that is still streaming survives the drop.
+  let li = 0
+  let pi = startIdx
+  let matchCount = 0
+  while (li < limit && li < stream.currentBlocks.length && pi < currentTurnPersisted.length) {
+    if (isSameBlock(stream.currentBlocks[li], currentTurnPersisted[pi])) {
+      li++
+      pi++
+      matchCount = li
+      continue
+    }
+    if (isEphemeralLive(stream.currentBlocks[li])) {
+      li++
+      continue
+    }
+    if (currentTurnPersisted[pi].type === 'thinking') {
+      pi++
+      continue
+    }
+    break
+  }
+
+  if (matchCount > 0) {
+    const covered = stream.currentBlocks.slice(0, matchCount)
+    revokeBlobUrlsFromBlocks(covered)
+    stream.currentBlocks = stream.currentBlocks.slice(matchCount)
+  }
+}
+
 function removePersistedOptimisticUserBlocks(stream: AgentStream) {
   const persistedUsers = stream.blocks.filter(
     (block) => block.type === 'user' && !block.extra?.from_agent,
@@ -132,11 +251,26 @@ function removePersistedOptimisticUserBlocks(stream: AgentStream) {
     if (block.type !== 'user' || block.extra?.from_agent) return true
     const optimisticTime = block.timestamp?.getTime()
     if (optimisticTime === undefined) return true
-    return !persistedUsers.some(
-      (persisted) =>
-        persisted.content === block.content &&
-        (persisted.timestamp?.getTime() ?? 0) >= optimisticTime,
-    )
+
+    return !persistedUsers.some((persisted) => {
+      if (persisted.content !== block.content) return false
+      const persistedTime = persisted.timestamp?.getTime() ?? 0
+      // Server row cannot predate optimistic bubble by more than 5s clock skew
+      if (persistedTime < optimisticTime - 5_000) return false
+
+      // Check if this persisted user block is followed in `blocks` by an assistant block
+      // that pre-dates the optimistic bubble (meaning it belongs to a completed older turn).
+      const persistedIdx = stream.blocks.indexOf(persisted)
+      if (persistedIdx !== -1) {
+        const nextBlock = stream.blocks[persistedIdx + 1]
+        if (nextBlock && nextBlock.type !== 'user') {
+          const nextTime = nextBlock.timestamp?.getTime() ?? 0
+          if (nextTime < optimisticTime) return false
+        }
+      }
+
+      return true
+    })
   })
 }
 
@@ -428,7 +562,8 @@ export const createSessionSlice: StateCreator<
         // preserving them is what let the belated `done` append the turn twice.
         // Drop them up front; everything downstream then sees only genuinely
         // newer content and needs no special casing.
-        if (history.lead.running !== true) {
+        const turnStillRunning = history.lead.running === true
+        if (!turnStillRunning) {
           Object.entries(draft.agentStreams).forEach(([name, stream]) => {
             dropSnapshotCoveredBlocks(stream, liveCountsAtFetch.get(name) ?? 0)
           })
@@ -456,7 +591,15 @@ export const createSessionSlice: StateCreator<
             boundaryId,
             boundaryContent: boundaryMsg?.content,
           })
-          if (leadHadNewerActivity) removePersistedOptimisticUserBlocks(leadStream)
+          if (leadHadNewerActivity) {
+            // A running turn keeps its live tail (the in-flight part is not in
+            // the snapshot yet), so strip whatever the snapshot already covers
+            // instead of rendering both copies.
+            if (turnStillRunning) {
+              dropSnapshotAlignedPrefix(leadStream, liveCountsAtFetch.get(leadName) ?? 0)
+            }
+            removePersistedOptimisticUserBlocks(leadStream)
+          }
           if (!leadHadNewerActivity) {
             leadStream.currentBlocks = []
             leadStream.currentText = ''
@@ -492,6 +635,9 @@ export const createSessionSlice: StateCreator<
             boundaryId,
             boundaryContent: boundaryMsg?.content,
           })
+          if (memberHadNewerActivity && turnStillRunning) {
+            dropSnapshotAlignedPrefix(memberStream, liveCountsAtFetch.get(member.name) ?? 0)
+          }
           if (!memberHadNewerActivity) {
             memberStream.currentBlocks = []
             memberStream.currentText = ''

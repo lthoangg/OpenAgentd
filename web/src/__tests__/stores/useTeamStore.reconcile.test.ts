@@ -363,3 +363,261 @@ describe('reconcileTurnTail', () => {
     expect(useTeamStore.getState().agentStreams.lead.usage.totalTokens).toBe(750)
   })
 })
+
+describe('mid-turn loadSession reconciliation', () => {
+  /** What the chat area actually renders for an agent: confirmed rows + live tail. */
+  const rendered = (agent = 'lead') => {
+    const stream = useTeamStore.getState().agentStreams[agent]
+    return [...stream.blocks, ...stream.currentBlocks].map((b) => b.content)
+  }
+
+  it('does not duplicate the optimistic user message when the server row predates it', async () => {
+    // Reproduces the "duplicate user bubble right after send" report.
+    //
+    // `sendMessage` stamps its optimistic bubble with the *browser* clock,
+    // while the persisted row carries the *server* clock. The dedup match
+    // required `persisted.timestamp >= optimisticTime`, so whenever the
+    // client ran even slightly ahead of the server the match failed and both
+    // copies rendered — display-only, because a refresh starts from empty
+    // `currentBlocks`. Intermittent by nature: it tracks clock skew, which is
+    // why it shows up "sometimes".
+    await seedLoadedSession()
+
+    useTeamStore.setState((state) => {
+      state.isTeamWorking = true
+      state.agentStreams.lead.status = 'working'
+      state.agentStreams.lead.currentBlocks = [
+        {
+          id: 'user-optimistic',
+          type: 'user',
+          content: 'message A',
+          // Browser clock: 500ms ahead of the server that persisted the row.
+          timestamp: new Date('2026-07-01T00:00:10.500Z'),
+        },
+      ]
+      return state
+    })
+
+    mockTeamHistory.mockImplementation(() => Promise.resolve(fullHistory({
+      lead: leadSession({
+        running: true,
+        messages: [
+          { id: 'ua', role: 'user', content: 'message A', created_at: '2026-07-01T00:00:10.000Z' },
+        ],
+      }),
+    })))
+
+    await useTeamStore.getState().loadSession('lead-sess')
+
+    expect(rendered().filter((c) => c === 'message A')).toHaveLength(1)
+  })
+
+  it('does not duplicate turn content the running snapshot already covers', async () => {
+    // Reproduces the "duplicate user message + reply + tools mid-stream"
+    // report. The positional `dropSnapshotCoveredBlocks` guard only ran once
+    // the server reported the turn finished, so while `running === true` the
+    // whole live tail was preserved verbatim and appended to a snapshot that
+    // already contained those same rows — the agent loop persists each model
+    // iteration as it completes, long before the turn ends.
+    await seedLoadedSession()
+
+    useTeamStore.setState((state) => {
+      state.isTeamWorking = true
+      state.agentStreams.lead.status = 'working'
+      state.agentStreams.lead.currentBlocks = [
+        { id: 'user-optimistic', type: 'user', content: 'message A', timestamp: new Date('2026-07-01T00:00:10.000Z') },
+      ]
+      return state
+    })
+    // First model iteration streams a reply, which the server then persists
+    // while the turn keeps running.
+    useTeamStore.getState()._handleSSEEvent('message', { agent: 'lead', text: 'step one reply' })
+
+    mockTeamHistory.mockImplementation(() => Promise.resolve(fullHistory({
+      lead: leadSession({
+        running: true,
+        messages: [
+          { id: 'ua', role: 'user', content: 'message A', created_at: '2026-07-01T00:00:10.000Z' },
+          { id: 'a1', role: 'assistant', content: 'step one reply', created_at: '2026-07-01T00:00:11.000Z' },
+        ],
+      }),
+    })))
+
+    await useTeamStore.getState().loadSession('lead-sess')
+
+    expect(rendered().filter((c) => c === 'message A')).toHaveLength(1)
+    expect(rendered().filter((c) => c === 'step one reply')).toHaveLength(1)
+  })
+
+  it('keeps the in-flight tail the running snapshot does not cover yet', async () => {
+    // The failure mode the dedup must not cause: the snapshot only covers the
+    // committed part of the turn, so text still streaming has to survive the
+    // reconcile. Dropping it would blank out the reply mid-stream.
+    await seedLoadedSession()
+
+    useTeamStore.setState((state) => {
+      state.isTeamWorking = true
+      state.agentStreams.lead.status = 'working'
+      state.agentStreams.lead.currentBlocks = [
+        { id: 'user-optimistic', type: 'user', content: 'message A', timestamp: new Date('2026-07-01T00:00:10.000Z') },
+        { id: 'live-1', type: 'text', content: 'step one reply', timestamp: new Date('2026-07-01T00:00:11.000Z') },
+        { id: 'live-2', type: 'text', content: 'partial step two', timestamp: new Date('2026-07-01T00:00:12.000Z') },
+      ]
+      return state
+    })
+
+    // Server has committed the user row and step one; step two is still live.
+    mockTeamHistory.mockImplementation(() => Promise.resolve(fullHistory({
+      lead: leadSession({
+        running: true,
+        messages: [
+          { id: 'ua', role: 'user', content: 'message A', created_at: '2026-07-01T00:00:10.000Z' },
+          { id: 'a1', role: 'assistant', content: 'step one reply', created_at: '2026-07-01T00:00:11.000Z' },
+        ],
+      }),
+    })))
+
+    await useTeamStore.getState().loadSession('lead-sess')
+
+    expect(rendered().filter((c) => c === 'message A')).toHaveLength(1)
+    expect(rendered().filter((c) => c === 'step one reply')).toHaveLength(1)
+    expect(rendered().filter((c) => c === 'partial step two')).toHaveLength(1)
+  })
+
+  it('still drops covered content when live reasoning was not persisted', async () => {
+    // Providers routinely summarize, redact, or drop reasoning, so the live
+    // thinking block often has no persisted counterpart. A strict positional
+    // scan would stop at that mismatch and leave the reply + tools duplicated.
+    await seedLoadedSession()
+
+    useTeamStore.setState((state) => {
+      state.isTeamWorking = true
+      state.agentStreams.lead.status = 'working'
+      state.agentStreams.lead.currentBlocks = [
+        { id: 'user-optimistic', type: 'user', content: 'message A', timestamp: new Date('2026-07-01T00:00:10.000Z') },
+        { id: 'live-think', type: 'thinking', content: 'let me think', timestamp: new Date('2026-07-01T00:00:10.500Z') },
+        { id: 'live-text', type: 'text', content: 'step one reply', timestamp: new Date('2026-07-01T00:00:11.000Z') },
+      ]
+      return state
+    })
+
+    // Persisted rows carry no reasoning_content — only user + reply.
+    mockTeamHistory.mockImplementation(() => Promise.resolve(fullHistory({
+      lead: leadSession({
+        running: true,
+        messages: [
+          { id: 'ua', role: 'user', content: 'message A', created_at: '2026-07-01T00:00:10.000Z' },
+          { id: 'a1', role: 'assistant', content: 'step one reply', created_at: '2026-07-01T00:00:11.000Z' },
+        ],
+      }),
+    })))
+
+    await useTeamStore.getState().loadSession('lead-sess')
+
+    expect(rendered().filter((c) => c === 'message A')).toHaveLength(1)
+    expect(rendered().filter((c) => c === 'step one reply')).toHaveLength(1)
+  })
+
+  it('keeps reasoning that is still streaming past the persisted rows', async () => {
+    // Trailing live thinking has no persisted counterpart *yet* — dropping it
+    // would blank out the reasoning mid-stream and lose the accumulated text.
+    await seedLoadedSession()
+
+    useTeamStore.setState((state) => {
+      state.isTeamWorking = true
+      state.agentStreams.lead.status = 'working'
+      state.agentStreams.lead.currentBlocks = [
+        { id: 'user-optimistic', type: 'user', content: 'message A', timestamp: new Date('2026-07-01T00:00:10.000Z') },
+        { id: 'live-text', type: 'text', content: 'step one reply', timestamp: new Date('2026-07-01T00:00:11.000Z') },
+        { id: 'live-think', type: 'thinking', content: 'now for step two', timestamp: new Date('2026-07-01T00:00:12.000Z') },
+      ]
+      return state
+    })
+
+    mockTeamHistory.mockImplementation(() => Promise.resolve(fullHistory({
+      lead: leadSession({
+        running: true,
+        messages: [
+          { id: 'ua', role: 'user', content: 'message A', created_at: '2026-07-01T00:00:10.000Z' },
+          { id: 'a1', role: 'assistant', content: 'step one reply', created_at: '2026-07-01T00:00:11.000Z' },
+        ],
+      }),
+    })))
+
+    await useTeamStore.getState().loadSession('lead-sess')
+
+    expect(rendered().filter((c) => c === 'now for step two')).toHaveLength(1)
+    expect(rendered().filter((c) => c === 'step one reply')).toHaveLength(1)
+  })
+
+  it('deduplicates a member stream against a running snapshot', async () => {
+    // Member turns are anchored by agent-routed (`from_agent`) user rows —
+    // members never receive a plain user message, so the lead-only anchor
+    // would skip them entirely and leave their tabs duplicated mid-turn.
+    await seedLoadedSession()
+
+    useTeamStore.setState((state) => {
+      state.isTeamWorking = true
+      state.agentStreams.worker = {
+        ...state.agentStreams.lead,
+        blocks: [],
+        status: 'working',
+        currentBlocks: [
+          { id: 'inbox-1', type: 'user', content: 'do the thing', extra: { from_agent: 'lead' }, timestamp: new Date('2026-07-01T00:00:10.000Z') },
+          { id: 'live-1', type: 'text', content: 'working on it', timestamp: new Date('2026-07-01T00:00:11.000Z') },
+        ],
+      }
+      return state
+    })
+
+    mockTeamHistory.mockImplementation(() => Promise.resolve(fullHistory({
+      lead: leadSession({ running: true }),
+      members: [{
+        name: 'worker',
+        messages: [
+          { id: 'wu', role: 'user', content: 'do the thing', extra: { from_agent: 'lead' }, created_at: '2026-07-01T00:00:10.000Z' },
+          { id: 'wa', role: 'assistant', content: 'working on it', created_at: '2026-07-01T00:00:11.000Z' },
+        ],
+      }],
+    })))
+
+    await useTeamStore.getState().loadSession('lead-sess')
+
+    expect(rendered('worker').filter((c) => c === 'do the thing')).toHaveLength(1)
+    expect(rendered('worker').filter((c) => c === 'working on it')).toHaveLength(1)
+  })
+
+  it('does not swallow a re-sent identical message', async () => {
+    // The mirror risk of content matching: sending the same text twice must
+    // not let the *previous* turn's persisted row cancel the new optimistic
+    // bubble. Suffix anchoring covers this — the older row is followed by its
+    // own reply, so it cannot align with the head of the live tail.
+    await seedLoadedSession()
+
+    useTeamStore.setState((state) => {
+      state.isTeamWorking = true
+      state.agentStreams.lead.status = 'working'
+      state.agentStreams.lead.currentBlocks = [
+        { id: 'user-optimistic', type: 'user', content: 'yes', timestamp: new Date('2026-07-01T00:00:20.000Z') },
+      ]
+      return state
+    })
+
+    // History still ends with the *first* "yes" turn; the re-send is not
+    // persisted yet.
+    mockTeamHistory.mockImplementation(() => Promise.resolve(fullHistory({
+      lead: leadSession({
+        running: true,
+        messages: [
+          { id: 'u1', role: 'user', content: 'yes', created_at: '2026-07-01T00:00:10.000Z' },
+          { id: 'a1', role: 'assistant', content: 'first answer', created_at: '2026-07-01T00:00:11.000Z' },
+        ],
+      }),
+    })))
+
+    await useTeamStore.getState().loadSession('lead-sess')
+
+    // Both the persisted original and the pending re-send stay visible.
+    expect(rendered().filter((c) => c === 'yes')).toHaveLength(2)
+  })
+})

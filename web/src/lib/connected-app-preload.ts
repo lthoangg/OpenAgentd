@@ -8,8 +8,8 @@ const SESSION_PAGE_SIZE = 20
 
 /** Warm the data shared by the Cockpit and Coding entry surfaces. */
 export function preloadConnectedApp(client: QueryClient): void {
-  // Optimistically preload heavy rendering modules in the background
-  void preloadHeavyRenderers()
+  // Warm heavy rendering chunks (markdown, mermaid, pdfjs) during idle time.
+  preloadHeavyRenderers()
 
   // Warms the single /team/agents entry read by both the home-page team probe
   // and the chat header. See ``queries/team-agents.ts``.

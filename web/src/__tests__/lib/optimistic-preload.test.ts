@@ -1,54 +1,59 @@
-import { beforeEach, describe, expect, it } from 'bun:test'
-import {
-  preloadHeavyRenderers,
-  resetPreloadStateForTest,
-} from '@/lib/optimistic-preload'
-import { preloadMarkdownRenderer } from '@/utils/LazyMarkdownBlock'
-import { preloadMermaid } from '@/utils/MermaidBlock'
-import { loadPdfjs } from '@/lib/pdfjs-loader'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
 
-describe('optimistic-preload', () => {
+// mock.module() MUST appear before the import of the module under test so the
+// dynamic imports inside it resolve to these stubs instead of the real heavy
+// chunks (markdown pulls KaTeX CSS, mermaid is ~1 MB). Run with --parallel so
+// these registry patches stay scoped to this file's worker.
+const loadPdfjsMock = mock(() => Promise.resolve({}))
+mock.module('@/lib/pdfjs-loader', () => ({ loadPdfjs: loadPdfjsMock }))
+mock.module('@/utils/markdown', () => ({ MarkdownBlock: () => null }))
+mock.module('mermaid', () => ({ default: { initialize: () => {}, render: () => Promise.resolve({ svg: '' }) } }))
+
+import { preloadHeavyRenderers, resetPreloadStateForTest } from '@/lib/optimistic-preload'
+
+describe('preloadHeavyRenderers', () => {
   beforeEach(() => {
     resetPreloadStateForTest()
+    loadPdfjsMock.mockClear()
+    // Deterministic idle scheduling: run the callback synchronously.
+    ;(window as unknown as Record<string, unknown>).requestIdleCallback = (cb: IdleRequestCallback) => {
+      cb({ didTimeout: false, timeRemaining: () => 50 } as IdleDeadline)
+      return 1
+    }
   })
 
-  it('triggers background preloads for markdown, mermaid, and pdfjs when called immediately', async () => {
-    const markdownSpy = preloadMarkdownRenderer()
-    const mermaidSpy = preloadMermaid()
-    const pdfjsSpy = loadPdfjs()
+  it('kicks off the heavy-renderer warm-up during idle time', () => {
+    preloadHeavyRenderers()
 
-    await preloadHeavyRenderers({ immediate: true })
-
-    expect(markdownSpy).toBeInstanceOf(Promise)
-    expect(mermaidSpy).toBeInstanceOf(Promise)
-    expect(pdfjsSpy).toBeInstanceOf(Promise)
+    expect(loadPdfjsMock).toHaveBeenCalledTimes(1)
   })
 
-  it('is idempotent and does not repeat preloads on subsequent calls', async () => {
-    let callCount = 0
+  it('schedules the warm-up only once across repeated calls', () => {
+    preloadHeavyRenderers()
+    preloadHeavyRenderers()
+    preloadHeavyRenderers()
 
-    await preloadHeavyRenderers({ immediate: true })
-    callCount++
-    const initialCallCount = callCount
-
-    // Second call should return immediately without executing preloader again
-    await preloadHeavyRenderers({ immediate: true })
-    expect(callCount).toBe(initialCallCount)
+    expect(loadPdfjsMock).toHaveBeenCalledTimes(1)
   })
 
-  it('caches the promise for preloadMarkdownRenderer across multiple invocations', async () => {
-    const p1 = preloadMarkdownRenderer()
-    const p2 = preloadMarkdownRenderer()
+  it('falls back to a timer when requestIdleCallback is unavailable', () => {
+    delete (window as unknown as Record<string, unknown>).requestIdleCallback
 
-    expect(p1).toBe(p2)
-    const mod = await p1
-    expect(mod.MarkdownBlock).toBeDefined()
-  })
-
-  it('caches the promise for preloadMermaid across multiple invocations', async () => {
-    const p1 = preloadMermaid()
-    const p2 = preloadMermaid()
-
-    expect(p1).toBe(p2)
+    // Capture the deferred callback instead of sleeping through the 500ms timer.
+    const realSetTimeout = globalThis.setTimeout
+    let deferred: (() => void) | undefined
+    globalThis.setTimeout = ((fn: () => void) => {
+      deferred = fn
+      return 0
+    }) as unknown as typeof setTimeout
+    try {
+      preloadHeavyRenderers()
+      expect(loadPdfjsMock).not.toHaveBeenCalled()
+      expect(deferred).toBeDefined()
+      deferred!()
+      expect(loadPdfjsMock).toHaveBeenCalledTimes(1)
+    } finally {
+      globalThis.setTimeout = realSetTimeout
+    }
   })
 })

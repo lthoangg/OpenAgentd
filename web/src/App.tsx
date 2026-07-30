@@ -9,16 +9,10 @@ import { useAppBackendBootstrap } from './hooks/use-app-backend-bootstrap'
 import { router } from './router'
 import { queryClient } from '@/lib/query-client'
 import { preloadConnectedApp } from '@/lib/connected-app-preload'
-import { preloadHeavyRenderers } from '@/lib/optimistic-preload'
 
 function App() {
   const { ready, unavailable, failed, retrying, retry } = useAppBackendBootstrap()
   const [backendDialogOpen, setBackendDialogOpen] = useState(false)
-
-  useEffect(() => {
-    // Optimistically preload heavy assets (markdown, mermaid, pdfjs) in background on app start
-    void preloadHeavyRenderers()
-  }, [])
 
   useEffect(() => {
     if (ready) preloadConnectedApp(queryClient)

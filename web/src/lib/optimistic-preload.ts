@@ -1,52 +1,42 @@
-import { preloadMarkdownRenderer } from '@/utils/LazyMarkdownBlock'
-import { preloadMermaid } from '@/utils/MermaidBlock'
 import { loadPdfjs } from '@/lib/pdfjs-loader'
 
-let isPreloaded = false
-
-export interface PreloadOptions {
-  /** Force immediate execution without waiting for requestIdleCallback. Defaults to false. */
-  immediate?: boolean
-}
+let scheduled = false
 
 /**
- * Optimistically preloads heavy dynamic import chunks (Markdown renderer,
- * Mermaid diagram engine, PDF.js preview engine) in the background.
+ * Warm the heavy dynamic-import chunks (Markdown renderer with KaTeX and
+ * highlight.js, the Mermaid diagram engine, and the PDF.js viewer) in the
+ * background so their first real render is instant.
  *
- * Starts in the background during browser idle time (or via timer) so that
- * whenever the user opens the app (even on the home page), heavy rendering
- * dependencies are loaded, parsed, and cached before they are needed.
+ * Dynamic ``import()`` is memoized by the module registry, so kicking these
+ * off here means the later ``React.lazy`` / on-demand imports resolve from
+ * the already-loaded modules. Imports stay dynamic on purpose: a static
+ * import in this eagerly-loaded module would hoist the renderers into the
+ * startup bundle.
+ *
+ * Work is deferred to browser idle time (``timeout: 3000`` bounds the wait
+ * so the warm-up still happens on a busy main thread), with a plain timer
+ * fallback for WebViews lacking ``requestIdleCallback``.
  */
-export function preloadHeavyRenderers(options?: PreloadOptions): Promise<void> {
-  if (isPreloaded) return Promise.resolve()
-  isPreloaded = true
+export function preloadHeavyRenderers(): void {
+  if (scheduled) return
+  scheduled = true
 
-  const executePreload = () => {
-    return Promise.allSettled([
-      preloadMarkdownRenderer(),
-      preloadMermaid(),
+  const run = () => {
+    void Promise.allSettled([
+      import('@/utils/markdown'),
+      import('mermaid'),
       loadPdfjs(),
-    ]).then(() => undefined)
+    ])
   }
 
-  if (options?.immediate) {
-    return executePreload()
+  if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+    window.requestIdleCallback(run, { timeout: 3000 })
+  } else {
+    setTimeout(run, 500)
   }
-
-  return new Promise((resolve) => {
-    const run = () => {
-      void executePreload().then(resolve)
-    }
-
-    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
-      window.requestIdleCallback(run, { timeout: 3000 })
-    } else {
-      setTimeout(run, 500)
-    }
-  })
 }
 
-/** Reset internal preload tracking state for test isolation. */
+/** Reset scheduling state for test isolation. */
 export function resetPreloadStateForTest(): void {
-  isPreloaded = false
+  scheduled = false
 }

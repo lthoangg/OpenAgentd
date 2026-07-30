@@ -152,6 +152,14 @@ jobs:
         with:
           workspaces: desktop/src-tauri
           key: ${{ matrix.platform }}-${{ matrix.arch }}
+          # Keep every downloaded ``.crate`` archive, not just the crates that
+          # are dependencies of the current lockfile. The default (``false``)
+          # prunes "anything that is not a dependency", so build-dependencies
+          # and proc-macro crates (tauri-build, tauri-codegen, tauri-macros,
+          # thiserror-impl, windows-interface, …) get re-downloaded whenever a
+          # lock change shifts the dependency set. Costs cache size; saves the
+          # ``Downloading crates ...`` phase of ``cargo build``.
+          cache-all-crates: true
           # Save on every run including PR re-pushes — without this,
           # only the default branch warms the cache.
           save-if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}

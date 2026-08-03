@@ -189,10 +189,11 @@ class AssistantMessage(BaseMessage):
     # "thinking, then text, then all tool calls" order (as the legacy
     # reasoning_content/redacted_thinking_blocks fields above do) reorders
     # multi-thinking-block turns and breaks the contract. When captured, this
-    # holds the ordered raw block list; entries are either verbatim
-    # thinking/redacted_thinking dicts or ``{"type": "text_ref"}`` /
-    # ``{"type": "tool_use_ref", "id": ...}`` placeholders resolved against
-    # ``content`` / ``tool_calls`` at send time (see ``_split_messages``).
+    # holds the ordered raw block list, verbatim: thinking/redacted_thinking/
+    # text dicts as returned, plus a ``{"type": "tool_use_ref", "id": ...}``
+    # placeholder resolved against ``tool_calls`` at send time — reusing the
+    # already-validated tool call list instead of re-parsing streamed JSON
+    # (see ``_split_messages`` / ``_blocks_from_raw_content``).
     raw_content_blocks: list[dict] | None = Field(default=None, exclude=True)
     # Me: OpenAI Responses API reasoning item id + encrypted_content — required
     # to replay the reasoning item ahead of its function_call on the next turn

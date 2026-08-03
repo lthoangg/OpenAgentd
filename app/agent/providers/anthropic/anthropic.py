@@ -48,10 +48,14 @@ thinking block followed by all tool calls, which reorders the turn and
 triggers ``HTTP 400: thinking or redacted_thinking blocks ... cannot be
 modified``.
 
-``AssistantMessage.raw_content_blocks`` fixes this by capturing the *exact*
-ordered block list — verbatim ``thinking``/``redacted_thinking`` dicts plus
-``{"type": "text_ref"}`` / ``{"type": "tool_use_ref", "id": ...}``
-placeholders — and is persisted the same way, in
+``AssistantMessage.raw_content_blocks`` fixes this per Anthropic's own
+guidance for this exact error ("echo the assistant turn back verbatim ...
+rebuilding the message ... triggers a 400 error") by capturing the *exact*
+ordered block list Anthropic returned — verbatim ``thinking``/
+``redacted_thinking``/``text`` dicts, plus a ``{"type": "tool_use_ref",
+"id": ...}`` placeholder resolved against the already-validated
+``tool_calls`` list (so interrupted/malformed tool calls stay dropped,
+matching existing behaviour) — and is persisted the same way, in
 ``SessionMessage.extra["raw_content_blocks"]``. ``_split_messages`` prefers
 it over the legacy fields when present (see ``_blocks_from_raw_content``);
 older rows without it keep using the single-thinking-block reconstruction.
@@ -128,7 +132,6 @@ def _blocks_from_raw_content(
     """
     blocks: list[dict[str, Any]] = []
     tool_by_id = {tc.id: tc for tc in (message.tool_calls or []) if tc.id}
-    text_emitted = False
     for raw in message.raw_content_blocks or []:
         raw_type = raw.get("type")
         if raw_type == "thinking":
@@ -146,10 +149,11 @@ def _blocks_from_raw_content(
                 )
         elif raw_type == "redacted_thinking":
             blocks.append({"type": "redacted_thinking", "data": raw.get("data", "")})
-        elif raw_type == "text_ref":
-            if not text_emitted and message.content:
-                blocks.append({"type": "text", "text": message.content})
-                text_emitted = True
+        elif raw_type == "text":
+            # Verbatim — accumulated directly from the wire during streaming
+            # (or copied from the non-streaming response), same as thinking.
+            if raw.get("text"):
+                blocks.append({"type": "text", "text": raw["text"]})
         elif raw_type == "tool_use_ref":
             tool_call = tool_by_id.get(raw.get("id"))
             if tool_call is None or tool_call.id not in valid_tool_result_ids:
@@ -699,7 +703,9 @@ class AnthropicProvider(LLMProviderBase):
                     {"type": "redacted_thinking", "data": block.get("data", "")}
                 )
             elif block_type == "text":
-                raw_content_blocks.append({"type": "text_ref"})
+                raw_content_blocks.append(
+                    {"type": "text", "text": block.get("text", "")}
+                )
             elif block_type == "tool_use":
                 raw_content_blocks.append(
                     {"type": "tool_use_ref", "id": str(block.get("id", ""))}
@@ -800,7 +806,7 @@ class AnthropicProvider(LLMProviderBase):
                             raw_block_order.append(block_index)
                             continue
                         if block_type == "text":
-                            raw_blocks[block_index] = {"type": "text_ref"}
+                            raw_blocks[block_index] = {"type": "text", "text": ""}
                             raw_block_order.append(block_index)
                             continue
                         if block_type != "tool_use":
@@ -888,6 +894,9 @@ class AnthropicProvider(LLMProviderBase):
                                 ),
                             )
                         elif isinstance(delta.get("text"), str):
+                            block = raw_blocks.get(block_index)
+                            if block is not None and block.get("type") == "text":
+                                block["text"] += delta["text"]
                             yield _stream_chunk(
                                 chunk_id=chunk_id,
                                 model=self.model,

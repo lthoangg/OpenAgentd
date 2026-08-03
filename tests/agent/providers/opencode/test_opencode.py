@@ -12,7 +12,13 @@ from app.agent.providers.factory import SUPPORTED_PROVIDERS, build_provider
 from app.agent.providers.model_discovery import discover_provider_models
 from app.agent.providers.model_metadata import ModelCost, ModelTransport
 from app.agent.providers.opencode.opencode import OpenCodeProvider
-from app.agent.schemas.chat import HumanMessage
+from app.agent.schemas.chat import (
+    AssistantMessage,
+    FunctionCall,
+    HumanMessage,
+    ToolCall,
+    ToolMessage,
+)
 
 
 @pytest.mark.parametrize(
@@ -153,7 +159,7 @@ def test_opencode_go_requires_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
         (
             "deepseek-v4-flash",
             "chat_completions",
-            "ChatCompletionsOnlyProvider",
+            "OpenCodeDeepSeekProvider",
             "https://opencode.ai/zen/v1/chat/completions",
         ),
     ],
@@ -186,6 +192,40 @@ def test_opencode_provider_uses_each_models_documented_api_family(
         assert delegate._auth_headers()["x-goog-api-key"] == "opencode-key"
     else:
         assert f"{delegate.base_url}/chat/completions" == expected_url
+
+
+def test_opencode_deepseek_replays_reasoning_content_for_tool_calls() -> None:
+    provider = OpenCodeProvider(
+        api_key="opencode-key",
+        model="deepseek-v4-flash-free",
+        provider_id="opencode",
+        base_url="https://opencode.ai/zen/v1",
+    )
+    tool_call = ToolCall(
+        id="call-1", function=FunctionCall(name="read", arguments='{"path":"a.py"}')
+    )
+    messages = [
+        HumanMessage(content="Read the file"),
+        AssistantMessage(
+            reasoning_content="I need to inspect the file.",
+            tool_calls=[tool_call],
+        ),
+        ToolMessage(content="contents", tool_call_id="call-1"),
+    ]
+
+    with patch(
+        "app.agent.providers.opencode.opencode.get_model_transport",
+        return_value=ModelTransport(
+            endpoint_variant="default", api_family="chat_completions"
+        ),
+    ):
+        delegate = provider._delegate()
+
+    body = delegate._completions.build_request(
+        messages, None, False, delegate._merged_kwargs()
+    )
+
+    assert body["messages"][1]["reasoning_content"] == "I need to inspect the file."
 
 
 def test_opencode_responses_provider_preserves_stateless_reasoning() -> None:

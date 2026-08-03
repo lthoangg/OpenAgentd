@@ -15,6 +15,7 @@ from pydantic import SecretStr
 
 from app.agent.providers.anthropic import AnthropicProvider
 from app.agent.providers.base import LLMProviderBase
+from app.agent.providers.deepseek.deepseek import _DeepSeekCompletionsHandler
 from app.agent.providers.googlegenai import GoogleGenAIProvider
 from app.agent.providers.model_metadata import get_model_limits, get_model_transport
 from app.agent.providers.openai import ChatCompletionsOnlyProvider, OpenAIProvider
@@ -46,6 +47,15 @@ class OpenCodeResponsesProvider(OpenAIProvider):
             headers,
             preserve_stateless_reasoning=True,
         )
+
+
+class OpenCodeDeepSeekProvider(ChatCompletionsOnlyProvider):
+    """OpenCode chat-completions delegate preserving DeepSeek reasoning."""
+
+    def _make_completions_handler(
+        self, model: str, base_url: str, headers: dict[str, str]
+    ) -> _DeepSeekCompletionsHandler:
+        return _DeepSeekCompletionsHandler(model, base_url, headers)
 
 
 class OpenCodeProvider(LLMProviderBase):
@@ -127,7 +137,12 @@ class OpenCodeProvider(LLMProviderBase):
                 max_tokens=self.max_tokens,
                 model_kwargs=self.model_kwargs,
             )
-        return ChatCompletionsOnlyProvider(
+        provider_type = (
+            OpenCodeDeepSeekProvider
+            if self.model.startswith("deepseek-")
+            else ChatCompletionsOnlyProvider
+        )
+        return provider_type(
             api_key=self.api_key,
             model=self.model,
             base_url=self.base_url,

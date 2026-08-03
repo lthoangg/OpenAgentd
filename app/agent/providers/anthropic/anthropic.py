@@ -92,6 +92,7 @@ from app.agent.schemas.chat import (
     ToolMessage,
     Usage,
 )
+from app.agent.usage import usage_to_dict
 
 ANTHROPIC_API_BASE = "https://api.anthropic.com"
 ANTHROPIC_API_VERSION = "2023-06-01"
@@ -478,6 +479,23 @@ def _finish_reason(stop_reason: str | None) -> str | None:
     return "tool_calls" if stop_reason == "tool_use" else stop_reason
 
 
+def _prompt_usage_from_raw(raw_usage: dict[str, Any]) -> tuple[int, int | None]:
+    """Collapse Anthropic's three prompt buckets into one total.
+
+    ``input_tokens`` counts *only* uncached tokens — cache reads and cache
+    creations are reported separately and are not included in it. They are
+    summed here to restore the ``cached_tokens <= prompt_tokens`` invariant
+    that cost estimation depends on (see ``app.agent.usage._estimate_cost``,
+    which derives billable input by subtracting the cached count).
+
+    Shared by the streaming and non-streaming paths so the two cannot drift.
+    """
+    non_cached = int(raw_usage.get("input_tokens") or 0)
+    cache_read = int(raw_usage.get("cache_read_input_tokens") or 0)
+    cache_write = int(raw_usage.get("cache_creation_input_tokens") or 0)
+    return non_cached + cache_read + cache_write, cache_read or None
+
+
 def _stream_chunk(
     *,
     chunk_id: str,
@@ -712,6 +730,20 @@ class AnthropicProvider(LLMProviderBase):
                 )
         if raw_content_blocks:
             msg.raw_content_blocks = raw_content_blocks
+        # Non-streaming callers (title generation, connectivity probes) read
+        # usage off `extra` exactly like the streamed path does, so omitting it
+        # here made those calls invisible to cost/token telemetry.
+        raw_usage = data.get("usage")
+        if isinstance(raw_usage, dict):
+            prompt_tokens, cached_tokens = _prompt_usage_from_raw(raw_usage)
+            completion_tokens = int(raw_usage.get("output_tokens") or 0)
+            usage = Usage(
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                total_tokens=prompt_tokens + completion_tokens,
+                cached_tokens=cached_tokens,
+            )
+            msg.extra = {**(msg.extra or {}), "usage": usage_to_dict(usage, self.model)}
         return msg
 
     async def stream(
@@ -758,15 +790,10 @@ class AnthropicProvider(LLMProviderBase):
                     if event_type == "message_start":
                         raw_usage = event.get("message", {}).get("usage", {})
                         if isinstance(raw_usage, dict):
-                            non_cached = int(raw_usage.get("input_tokens") or 0)
-                            cache_read = int(
-                                raw_usage.get("cache_read_input_tokens") or 0
-                            )
-                            cache_write = int(
-                                raw_usage.get("cache_creation_input_tokens") or 0
-                            )
-                            usage.prompt_tokens = non_cached + cache_read + cache_write
-                            usage.cached_tokens = cache_read or None
+                            (
+                                usage.prompt_tokens,
+                                usage.cached_tokens,
+                            ) = _prompt_usage_from_raw(raw_usage)
                     elif event_type == "content_block_start":
                         content_block = event.get("content_block", {})
                         if not isinstance(content_block, dict):

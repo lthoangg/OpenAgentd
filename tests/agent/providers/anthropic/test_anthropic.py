@@ -697,3 +697,48 @@ def test_anthropic_payload_service_tier_custom_url() -> None:
         provider._merged_kwargs(),
     )
     assert "service_tier" not in payload
+
+
+def test_parse_response_attaches_usage_with_cache_buckets() -> None:
+    """Non-streaming responses must report usage like the streaming path.
+
+    Anthropic returns three *disjoint* prompt buckets — `input_tokens` excludes
+    both cache buckets — so they are summed into a single `prompt_tokens` to
+    restore the `cached_tokens ⊆ prompt_tokens` invariant that cost estimation
+    depends on. `_parse_response` previously ignored `usage` entirely, so every
+    `provider.chat()` call (title generation, connectivity probes) recorded no
+    tokens at all.
+    """
+    provider = AnthropicProvider(
+        api_key="[REDACTED]",
+        model="claude-sonnet-4-6",
+    )
+
+    msg = provider._parse_response(
+        {
+            "content": [{"type": "text", "text": "A title"}],
+            "usage": {
+                "input_tokens": 100,
+                "cache_read_input_tokens": 1_000,
+                "cache_creation_input_tokens": 200,
+                "output_tokens": 50,
+            },
+        }
+    )
+
+    usage = (msg.extra or {}).get("usage")
+    assert usage is not None, "non-streaming response dropped usage"
+    assert usage["input"] == 1_300  # 100 fresh + 1000 cache read + 200 cache write
+    assert usage["cache"] == 1_000
+    assert usage["output"] == 50
+
+
+def test_parse_response_without_usage_omits_it() -> None:
+    provider = AnthropicProvider(
+        api_key="[REDACTED]",
+        model="claude-sonnet-4-6",
+    )
+
+    msg = provider._parse_response({"content": [{"type": "text", "text": "hi"}]})
+
+    assert (msg.extra or {}).get("usage") is None

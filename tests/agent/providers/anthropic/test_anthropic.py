@@ -514,6 +514,7 @@ def test_split_messages_echoes_thinking_block_plain_assistant() -> None:
                 reasoning_signature="sig-xyz",
                 tool_calls=None,
             ),
+            HumanMessage(content="follow up"),
         ]
     )
 
@@ -742,3 +743,104 @@ def test_parse_response_without_usage_omits_it() -> None:
     msg = provider._parse_response({"content": [{"type": "text", "text": "hi"}]})
 
     assert (msg.extra or {}).get("usage") is None
+
+
+def test_split_messages_strips_thinking_blocks_from_trailing_assistant_prefill() -> (
+    None
+):
+    """Anthropic API rejects thinking/redacted_thinking blocks in the latest
+    assistant message (prefill). _split_messages must strip them from trailing
+    assistant turns."""
+    assistant_with_text = AssistantMessage(
+        content="Prefilled text",
+        reasoning_content="Thinking before answering",
+        reasoning_signature="sig-prefill",
+    )
+    _, out = _split_messages(
+        [
+            HumanMessage(content="Question"),
+            assistant_with_text,
+        ]
+    )
+
+    assert len(out) == 2
+    assert out[1]["role"] == "assistant"
+    assert len(out[1]["content"]) == 1
+    assert out[1]["content"][0]["type"] == "text"
+    assert out[1]["content"][0]["text"] == "Prefilled text"
+
+    assistant_thinking_only = AssistantMessage(
+        content=None,
+        reasoning_content="Interrupted thinking",
+        reasoning_signature="sig-prefill2",
+    )
+    _, out2 = _split_messages(
+        [
+            HumanMessage(content="Question"),
+            assistant_thinking_only,
+        ]
+    )
+
+    assert len(out2) == 1
+    assert out2[0]["role"] == "user"
+
+
+def test_blocks_from_raw_content_keeps_empty_thinking_string_with_signature() -> None:
+    """Thinking block with empty string thinking text must be preserved if signature is present."""
+    assistant = AssistantMessage(
+        content="ans",
+    )
+    assistant.raw_content_blocks = [
+        {"type": "thinking", "thinking": "", "signature": "sig-empty"},
+        {"type": "text", "text": "ans"},
+    ]
+    _, out = _split_messages(
+        [
+            HumanMessage(content="hi"),
+            assistant,
+            HumanMessage(content="next"),
+        ]
+    )
+
+    assistant_turn = out[1]
+    assert assistant_turn["content"][0]["type"] == "thinking"
+    assert assistant_turn["content"][0]["signature"] == "sig-empty"
+
+
+def test_anthropic_auth_plugin_reprefixes_assistant_tool_calls() -> None:
+    """The anthropic_auth plugin un-prefixes tool call names for execution,
+    but must re-prefix them back to mcp_ToolName when sending message history
+    to Anthropic to prevent 400 'thinking or redacted_thinking blocks in the latest assistant message cannot be modified'."""
+    import importlib.util
+    from pathlib import Path
+
+    auth_path = (
+        Path(__file__).parents[3]
+        / ".openagentd"
+        / "dev"
+        / "config"
+        / "plugins"
+        / "anthropic_auth.py"
+    )
+    if not auth_path.is_file():
+        pytest.skip("anthropic_auth.py dev plugin not present")
+
+    spec = importlib.util.spec_from_file_location(
+        "anthropic_auth_test_module", auth_path
+    )
+    assert spec is not None and spec.loader is not None
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    assistant = AssistantMessage(
+        content="calling tool",
+        tool_calls=[
+            ToolCall(
+                id="t1",
+                function=FunctionCall(name="bash", arguments='{"command":"ls"}'),
+            )
+        ],
+    )
+    rewritten = mod._rewrite_messages([HumanMessage(content="hi"), assistant])
+    rewritten_assistant = rewritten[2]
+    assert rewritten_assistant.tool_calls[0].function.name == "mcp_Bash"

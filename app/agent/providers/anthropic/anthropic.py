@@ -140,7 +140,7 @@ def _blocks_from_raw_content(
             signature = raw.get("signature") or ""
             # Pre-fix rows / edge cases without a signature are omitted — the
             # API accepts tool-use-only turns (see module docstring).
-            if thinking_text and signature:
+            if thinking_text is not None and signature:
                 blocks.append(
                     {
                         "type": "thinking",
@@ -167,6 +167,22 @@ def _blocks_from_raw_content(
                     "input": json.loads(tool_call.function.arguments or "{}"),
                 }
             )
+        elif raw_type == "tool_use":
+            tool_id = str(raw.get("id") or "")
+            if not tool_id or tool_id not in valid_tool_result_ids:
+                continue
+            tool_call = tool_by_id.get(tool_id)
+            if tool_call is not None:
+                blocks.append(
+                    {
+                        "type": "tool_use",
+                        "id": tool_call.id,
+                        "name": tool_call.function.name,
+                        "input": json.loads(tool_call.function.arguments or "{}"),
+                    }
+                )
+            else:
+                blocks.append(raw)
     return blocks
 
 
@@ -386,6 +402,23 @@ def _split_messages(
         if system_text
         else None
     )
+    if out and messages and isinstance(messages[-1], AssistantMessage):
+        last = out[-1]
+        content = last.get("content")
+        if last.get("role") == "assistant" and isinstance(content, list):
+            # Anthropic Messages API prohibits thinking / redacted_thinking blocks in
+            # the latest assistant message (prefill). Strip them if present; if no
+            # content blocks remain, drop the empty trailing assistant turn.
+            sanitized = [
+                b
+                for b in content
+                if isinstance(b, dict)
+                and b.get("type") not in {"thinking", "redacted_thinking"}
+            ]
+            if sanitized:
+                last["content"] = sanitized
+            else:
+                out.pop()
     if out:
         last = out[-1]
         content = last.get("content")

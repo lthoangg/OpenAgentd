@@ -19,7 +19,6 @@ from app.api.routes.events import router as events_router
 from app.api.routes.health import router as health_router
 from app.api.routes.mcp import router as mcp_router
 from app.api.routes.observability import router as observability_router
-from app.api.routes.quote import router as quote_router
 from app.api.routes.scheduler import router as scheduler_router
 from app.api.routes.settings import router as settings_router
 from app.api.routes.skills import router as skills_router
@@ -175,7 +174,6 @@ def create_app() -> FastAPI:
     app.include_router(health_router, prefix="/api/health", tags=["health"])
     app.include_router(events_router, prefix="/api/events", tags=["events"])
     app.include_router(team_router, prefix="/api/team", tags=["team"])
-    app.include_router(quote_router, prefix="/api/quote", tags=["quote"])
     app.include_router(agents_router, prefix="/api/agents", tags=["agents"])
     app.include_router(skills_router, prefix="/api/skills", tags=["skills"])
     app.include_router(commands_router, prefix="/api/commands", tags=["commands"])

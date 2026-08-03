@@ -21,7 +21,6 @@ from app.cli.ui import _bold, _cyan, _dim, _green, _red, _yellow
 #: All provider env vars we recognise, plus runtime-only extras.
 _LLM_API_KEY_VARS: tuple[str, ...] = (
     *PROVIDER_KEY_VAR.values(),
-    "NINJA_API_KEY",
     "VERTEXAI_API_KEY",
 )
 

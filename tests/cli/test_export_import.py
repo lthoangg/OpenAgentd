@@ -519,7 +519,6 @@ class TestRedactEnv:
             "NVIDIA_API_KEY=nv-secret",
             "XAI_API_KEY=xai-secret",
             "DEEPSEEK_API_KEY=ds-secret",
-            "NINJA_API_KEY=ninja-secret",
             "ROUTER9_API_KEY=r9-secret",
             "CLIPROXY_API_KEY=cp-secret",
             "OLLAMA_API_KEY=ol-secret",

@@ -1,5 +1,5 @@
 /**
- * OpenAgentd API client — misc endpoints: health, team status, quote, URL helpers.
+ * OpenAgentd API client — misc endpoints: health, team status, URL helpers.
  */
 
 import { apiBaseUrl } from '../base-url'
@@ -46,12 +46,4 @@ export async function teamStatus(workspace?: string | null): Promise<TeamStatusR
     // Soft failure: callers treat null as "team mode unavailable".
     return null
   }
-}
-
-// ── /quote ───────────────────────────────────────────────────────────────────
-
-export async function getQuoteOfTheDay(): Promise<{ quote: string; author: string }> {
-  const res = await fetch(`${apiBaseUrl()}/quote`)
-  if (!res.ok) await parseDetailOrThrow(res, 'getQuoteOfTheDay')
-  return res.json()
 }

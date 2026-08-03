@@ -6,7 +6,6 @@ export {
   useDeleteTeamSessionMutation,
   useUpdateTeamSessionTitleMutation,
 } from './useSessionsQuery'
-export { useQuoteQuery } from './useQuoteQuery'
 export { useWorkspaceFilesQuery } from './useWorkspaceFilesQuery'
 export {
   useAgentFilesQuery,

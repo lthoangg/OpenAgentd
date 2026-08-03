@@ -78,7 +78,6 @@ class Settings(BaseSettings):
     NVIDIA_API_KEY: SecretStr | None = None
     XAI_API_KEY: SecretStr | None = None
     DEEPSEEK_API_KEY: SecretStr | None = None
-    NINJA_API_KEY: SecretStr | None = None
 
     # AWS Bedrock Mantle — direct bearer token or optional named profile.
     # AWS_BEDROCK_REGION: override the region for Bedrock API calls.

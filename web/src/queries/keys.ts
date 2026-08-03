@@ -41,7 +41,6 @@ export const queryKeys = {
     commitDiff: (workspace: string, sha: string) =>
       ['coding-workspace-commit-diff', workspace, sha] as const,
   },
-  quote: () => ['quote'] as const,
   agentFiles: {
     all: () => ['agentFiles'] as const,
     list: () => ['agentFiles', 'list'] as const,

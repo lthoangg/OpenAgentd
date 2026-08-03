@@ -14,6 +14,18 @@ from __future__ import annotations
 
 from typing import Any, Literal, TypedDict
 
+from app.agent.providers.opencode.constants import (
+    GO_API_KEY_ENV,
+    GO_DESCRIPTION,
+    GO_DOCS_URL,
+    GO_LABEL,
+    GO_PROVIDER_ID,
+    ZEN_API_KEY_ENV,
+    ZEN_DESCRIPTION,
+    ZEN_DOCS_URL,
+    ZEN_LABEL,
+    ZEN_PROVIDER_ID,
+)
 from app.agent.providers.plugin_api import credential_map
 
 ProviderKind = Literal["api_key", "oauth", "local", "cloud_creds"]
@@ -49,6 +61,7 @@ class ProviderEntry(TypedDict, total=False):
     model_registry_aliases: dict[str, str]  # target model -> source provider:model
     supports_fast_mode: bool  # whether the provider honours service_tier="fast"
     supports_prompt_cache_key: bool  # whether the provider honours prompt_cache_key
+    public_access: bool  # whether some models can be used without saved credentials
 
 
 _CATALOG: list[ProviderEntry] = [
@@ -96,6 +109,25 @@ _CATALOG: list[ProviderEntry] = [
         "env_var": "OPENAI_API_KEY",
         "supports_fast_mode": True,
         "docs_url": "https://platform.openai.com/api-keys",
+    },
+    {
+        "id": ZEN_PROVIDER_ID,
+        "label": ZEN_LABEL,
+        "description": ZEN_DESCRIPTION,
+        "kind": "api_key",
+        "env_var": ZEN_API_KEY_ENV,
+        "models_dev_provider_id": ZEN_PROVIDER_ID,
+        "public_access": True,
+        "docs_url": ZEN_DOCS_URL,
+    },
+    {
+        "id": GO_PROVIDER_ID,
+        "label": GO_LABEL,
+        "description": GO_DESCRIPTION,
+        "kind": "api_key",
+        "env_var": GO_API_KEY_ENV,
+        "models_dev_provider_id": GO_PROVIDER_ID,
+        "docs_url": GO_DOCS_URL,
     },
     {
         "id": "openrouter",

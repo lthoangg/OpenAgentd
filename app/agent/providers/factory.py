@@ -30,6 +30,11 @@ from app.agent.providers.deepseek import DeepSeekProvider
 from app.agent.providers.googlegenai import GoogleGenAIProvider
 from app.agent.providers.grok import GrokBuildProvider
 from app.agent.providers.ollama import OllamaProvider
+from app.agent.providers.opencode.opencode import OpenCodeProvider
+from app.agent.providers.opencode.constants import (
+    PROVIDER_IDS as OPENCODE_PROVIDER_IDS,
+    ZEN_PROVIDER_ID,
+)
 from app.agent.providers.openai import ChatCompletionsOnlyProvider, OpenAIProvider
 from app.agent.providers.openai.compatible import OPENAI_COMPATIBLE_PROVIDER_SPECS
 from app.agent.providers.router9 import Router9Provider
@@ -51,6 +56,7 @@ SUPPORTED_PROVIDERS: tuple[str, ...] = (
     "nvidia",
     "ollama",
     "openai",
+    *OPENCODE_PROVIDER_IDS,
     "openrouter",
     "router9",
     "vertexai",
@@ -153,7 +159,12 @@ def build_provider(
             spec = OPENAI_COMPATIBLE_PROVIDER_SPECS[name]
             configured_key = getattr(s, spec.env_var, None)
             api_key = configured_key
-            if not spec.default_api_key:
+            if name == ZEN_PROVIDER_ID:
+                try:
+                    api_key = require_api_key(configured_key, spec.env_var, spec.label)
+                except ValueError:
+                    api_key = spec.default_api_key
+            elif not spec.default_api_key:
                 api_key = require_api_key(configured_key, spec.env_var, spec.label)
             typed_api_key = cast(str | SecretStr | None, api_key)
             base_url = spec.base_url
@@ -162,6 +173,17 @@ def build_provider(
                     os.getenv(spec.base_url_env_var)
                     or getattr(s, spec.base_url_env_var, "")
                     or spec.base_url
+                )
+            if name in OPENCODE_PROVIDER_IDS:
+                return _with_provider_name(
+                    OpenCodeProvider(
+                        api_key=cast(str | SecretStr, typed_api_key),
+                        model=model,
+                        provider_id=name,
+                        base_url=base_url,
+                        model_kwargs=kwargs,
+                    ),
+                    name,
                 )
             if name == "deepseek":
                 return _with_provider_name(

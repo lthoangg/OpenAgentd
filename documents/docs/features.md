@@ -514,7 +514,7 @@ OpenAgentd carries context across sessions via rolling-window summarization.
 Switch providers with one line in your agent config. The product is provider-
 agnostic by design.
 
-**16 first-class providers:**
+**18 first-class providers:**
 
 | Provider | Config syntax | Auth |
 |---|---|---|
@@ -522,6 +522,8 @@ agnostic by design.
 | Google Gemini | `googlegenai:gemini-3.1-flash` | `GOOGLE_API_KEY` |
 | Google Vertex AI | `vertexai:gemini-3-flash-preview` | `VERTEXAI_API_KEY` or GCP creds |
 | OpenAI | `openai:gpt-5.5` | `OPENAI_API_KEY` |
+| OpenCode Zen | `opencode:deepseek-v4-flash-free` | none for free models; `OPENCODE_ZEN_API_KEY` for paid models `[v1.123.2]` |
+| OpenCode Go | `opencode-go:deepseek-v4-flash` | `OPENCODE_GO_API_KEY` `[v1.123.2]` |
 | OpenRouter | `openrouter:qwen/qwen3.6-plus:free` | `OPENROUTER_API_KEY` |
 | ZAI / GLM | `zai:glm-5-turbo` | `ZAI_API_KEY` |
 | xAI Grok | `xai:grok-4.20` | `XAI_API_KEY` |

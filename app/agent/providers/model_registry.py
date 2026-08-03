@@ -23,6 +23,8 @@ import httpx
 import yaml
 from loguru import logger
 
+from app.agent.providers.opencode.constants import PROVIDER_IDS as OPENCODE_PROVIDER_IDS
+from app.agent.providers.opencode.metadata import model_transport as opencode_transport
 from app.core.config import settings
 
 
@@ -359,6 +361,10 @@ def _normalize_models_dev(data: Any, *, include_plugins: bool = True) -> ModelRe
             transport = None
             if source_provider_id == "amazon-bedrock":
                 transport = _mantle_transport(model.get("provider"))
+            elif source_provider_id in OPENCODE_PROVIDER_IDS:
+                transport = opencode_transport(
+                    source_provider_id, model_id, provider, model.get("provider")
+                )
             if capabilities:
                 entry["capabilities"] = capabilities
             if limits:

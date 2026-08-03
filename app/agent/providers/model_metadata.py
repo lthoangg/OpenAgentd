@@ -177,7 +177,12 @@ def _transport(value: Any) -> ModelTransport | None:
         raise TypeError("`transport` must be a mapping")
     endpoint_variant = value.get("endpoint_variant")
     api_family = value.get("api_family")
-    if endpoint_variant not in {"default", "openai"} or api_family != "responses":
+    if endpoint_variant not in {"default", "openai"} or api_family not in {
+        "chat_completions",
+        "generate_content",
+        "messages",
+        "responses",
+    }:
         raise ValueError(
             "`transport` must contain a known endpoint variant and API family"
         )

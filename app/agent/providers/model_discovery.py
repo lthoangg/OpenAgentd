@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
 import os
 from collections.abc import Mapping
 
@@ -9,6 +10,8 @@ from botocore.credentials import CredentialProvider, Credentials
 from loguru import logger
 
 from app.agent.providers.catalog import ProviderEntry
+from app.agent.providers.opencode.access import filter_opencode_models_for_access
+from app.agent.providers.opencode.constants import PUBLIC_API_KEY, ZEN_PROVIDER_ID
 from app.agent.providers.openai.compatible import OPENAI_COMPATIBLE_PROVIDER_SPECS
 from app.core.config import settings
 
@@ -266,11 +269,20 @@ async def discover_provider_models(
                 base_url = spec.base_url
                 if spec.base_url_env_var:
                     base_url = _resolve(overrides, spec.base_url_env_var, spec.base_url)
+                api_key = _resolve(overrides, spec.env_var) or spec.default_api_key
                 models = await _openai_compatible_models(
                     provider_id=provider_id,
                     base_url=base_url,
-                    api_key=_resolve(overrides, spec.env_var) or spec.default_api_key,
+                    api_key=api_key,
                 )
+                if provider_id == ZEN_PROVIDER_ID and hmac.compare_digest(
+                    api_key, PUBLIC_API_KEY
+                ):
+                    models = filter_opencode_models_for_access(
+                        provider_id,
+                        models,
+                        has_credentials=False,
+                    )
             case "zai":
                 models = await _openai_compatible_models(
                     provider_id=provider_id,

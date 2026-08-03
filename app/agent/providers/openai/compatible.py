@@ -2,6 +2,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app.agent.providers.opencode.constants import (
+    GO_API_KEY_ENV,
+    GO_BASE_URL,
+    GO_LABEL,
+    GO_PROVIDER_ID,
+    PUBLIC_API_KEY,
+    ZEN_API_KEY_ENV,
+    ZEN_BASE_URL,
+    ZEN_LABEL,
+    ZEN_PROVIDER_ID,
+)
+
 
 @dataclass(frozen=True)
 class OpenAICompatibleProviderSpec:
@@ -14,6 +26,19 @@ class OpenAICompatibleProviderSpec:
 
 
 OPENAI_COMPATIBLE_PROVIDER_SPECS: dict[str, OpenAICompatibleProviderSpec] = {
+    ZEN_PROVIDER_ID: OpenAICompatibleProviderSpec(
+        provider_id=ZEN_PROVIDER_ID,
+        label=ZEN_LABEL,
+        env_var=ZEN_API_KEY_ENV,
+        base_url=ZEN_BASE_URL,
+        default_api_key=PUBLIC_API_KEY,
+    ),
+    GO_PROVIDER_ID: OpenAICompatibleProviderSpec(
+        provider_id=GO_PROVIDER_ID,
+        label=GO_LABEL,
+        env_var=GO_API_KEY_ENV,
+        base_url=GO_BASE_URL,
+    ),
     "openrouter": OpenAICompatibleProviderSpec(
         provider_id="openrouter",
         label="OpenRouter",

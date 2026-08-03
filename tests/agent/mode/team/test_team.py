@@ -197,12 +197,13 @@ class TestAgentTeamUserMessage:
             await team.stop()
 
     async def test_handle_user_message_returns_session_id(self, basic_team):
-        """handle_user_message() returns the session_id for stream subscription."""
+        """handle_user_message() returns (session_id, message_id) for stream subscription."""
         team = basic_team
         await team.start()
         session_id = str(uuid.uuid7())
-        returned = await team.handle_user_message("Hello", session_id=session_id)
-        assert returned == session_id
+        returned_session_id, message_id = await team.handle_user_message("Hello", session_id=session_id)
+        assert returned_session_id == session_id
+        assert message_id
         await asyncio.sleep(0.1)
         await team.stop()
 

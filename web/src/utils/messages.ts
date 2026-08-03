@@ -1,5 +1,4 @@
 import type { AgentUsage, ChatMessage, ContentBlock, MessageResponse } from '@/api/types'
-import { generateBlockId } from './blocks'
 
 // Me sort messages by timestamp asc, assistant before tool on ties
 
@@ -47,7 +46,7 @@ function assistantBlocks(
   const blocks: ContentBlock[] = []
 
   if (msg.reasoning_content && !msg.extra?.is_continuation) {
-    blocks.push({ id: generateBlockId(), type: 'thinking', content: msg.reasoning_content, timestamp })
+    blocks.push({ id: `${msg.id}:thinking`, type: 'thinking', content: msg.reasoning_content, timestamp })
   }
 
   const extra = msg.extra as { duration_ms?: number; model?: unknown } | null
@@ -57,7 +56,7 @@ function assistantBlocks(
   // Me text before tools — LLM emits content first, then tool_calls
   if (msg.content) {
     blocks.push({
-      id: generateBlockId(),
+      id: `${msg.id}:text`,
       type: 'text',
       content: msg.content,
       timestamp,
@@ -76,7 +75,12 @@ function assistantBlocks(
       args = tool.function?.arguments ?? undefined
     }
     const block: ContentBlock = {
-      id: generateBlockId(),
+      // The tool call's own id is already the stable toolCallId every other
+      // reconciliation path (initTool/addTool/completeTool, findConfirmedTool,
+      // isSameBlock) matches on — reuse it as the block id too instead of a
+      // random one, and fall back to a message-derived id for the rare case
+      // a tool call has none.
+      id: tool.id || `${msg.id}:tool:${name}`,
       type: 'tool',
       content: '',
       toolName: name,
@@ -113,7 +117,7 @@ export function parseApiMessages(msgs: MessageResponse[]): ChatMessage[] {
         role: 'assistant',
         content: '',
         blocks: [{
-          id: generateBlockId(),
+          id: `${msg.id}:compaction`,
           type: 'compaction',
           content: stripCompactionPrefix(msg.content || ''),
           extra: { state: 'compacted' },

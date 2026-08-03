@@ -40,6 +40,47 @@ describe("mergeBlocks", () => {
     expect(result).not.toBe(currentBlocks);
     expect(result).toEqual([...blocks, ...currentBlocks]);
   });
+
+  it("drops a live block whose id already exists in the confirmed set instead of rendering it twice", () => {
+    // Defensive net at the one place that actually renders: block ids are
+    // now stable identifiers (server message id for user blocks; message-
+    // or toolCall-derived for assistant sub-blocks — see parseTeamBlocks),
+    // so an id collision here can only mean "same message, appears in both
+    // arrays" — never a coincidence. Confirmed wins; the live duplicate is
+    // dropped rather than trusting every upstream reconciliation path to
+    // have already removed it.
+    const blocks: ContentBlock[] = [{ id: "shared", type: "user", content: "hi" }];
+    const currentBlocks: ContentBlock[] = [
+      { id: "shared", type: "user", content: "hi" },
+      { id: "c1", type: "text", content: "live" },
+    ];
+    const result = mergeBlocks(blocks, currentBlocks);
+    expect(result).toEqual([
+      { id: "shared", type: "user", content: "hi" },
+      { id: "c1", type: "text", content: "live" },
+    ]);
+  });
+
+  it("returns confirmed blocks by reference when every live block is already covered by id", () => {
+    const blocks: ContentBlock[] = [{ id: "shared", type: "user", content: "hi" }];
+    const currentBlocks: ContentBlock[] = [{ id: "shared", type: "user", content: "hi" }];
+    const result = mergeBlocks(blocks, currentBlocks);
+    expect(result).toBe(blocks);
+  });
+
+  it("dedupes a tool card that is live-in-progress in currentBlocks and already reconciled into blocks", () => {
+    // End-to-end of the initTool -> mergeBlocks loop: a live tool block's id
+    // is its toolCallId (initTool), and parseTeamBlocks gives the same
+    // toolCallId to the persisted tool block once confirmed — so the same
+    // in-flight tool card never renders twice across that transition.
+    const live = initTool([], "web_search", "tc-42");
+    const confirmed: ContentBlock[] = [
+      { id: "tc-42", type: "tool", content: "", toolName: "web_search", toolDone: true, toolCallId: "tc-42" },
+    ];
+    const result = mergeBlocks(confirmed, live);
+    expect(result).toHaveLength(1);
+    expect(result[0].toolDone).toBe(true); // the confirmed (finished) copy wins
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -106,6 +147,24 @@ describe("appendThinking", () => {
     expect(result[1].type).toBe("thinking");
   });
 
+  it("replaces instead of doubling when a reconnect replays the full accumulated thinking (reconnect replay dedup)", () => {
+    // The backend resends the *entire* accumulated turn text as one chunk
+    // when a client (re)attaches mid-stream (see memory_stream_store.attach).
+    // A live delta is a short new fragment; a replay chunk already contains
+    // everything rendered so far as a prefix.
+    const blocks: ContentBlock[] = [{ id: "t1", type: "thinking", content: "Let me check" }];
+    const result = appendThinking(blocks, "Let me check the docs first");
+    expect(result).toHaveLength(1);
+    expect(result[0].content).toBe("Let me check the docs first");
+  });
+
+  it("does not double an exact-equal replay when a reconnect lands with no new tokens since disconnect", () => {
+    const blocks: ContentBlock[] = [{ id: "t1", type: "thinking", content: "Checking the docs" }];
+    const result = appendThinking(blocks, "Checking the docs");
+    expect(result).toHaveLength(1);
+    expect(result[0].content).toBe("Checking the docs");
+  });
+
   it("preserves existing blocks", () => {
     const blocks: ContentBlock[] = [
       { id: "t1", type: "text", content: "first" },
@@ -149,6 +208,34 @@ describe("appendText", () => {
     expect(result).toHaveLength(2);
     expect(result[1].type).toBe("text");
   });
+
+  it("replaces instead of doubling when a reconnect replays the full accumulated text (reconnect replay dedup)", () => {
+    // Same protocol behavior as the thinking accumulator: a reconnect mid-turn
+    // resends the whole text so far as one MessageEvent. Blindly appending it
+    // (as a live delta would) doubles everything already rendered — this is
+    // the "duplicate messages during streaming, fixed by reload" report.
+    const blocks: ContentBlock[] = [{ id: "t1", type: "text", content: "The answer is" }];
+    const result = appendText(blocks, "The answer is 42.");
+    expect(result).toHaveLength(1);
+    expect(result[0].content).toBe("The answer is 42.");
+  });
+
+  it("still appends a short live delta that happens to not extend the last block", () => {
+    const blocks: ContentBlock[] = [{ id: "t1", type: "text", content: "Hello" }];
+    const result = appendText(blocks, " world");
+    expect(result[0].content).toBe("Hello world");
+  });
+
+  it("does not double an exact-equal replay when a reconnect lands with no new tokens since disconnect", () => {
+    // A fast reconnect blip can land before the model emits its next token —
+    // the replayed snapshot is then byte-for-byte identical to what the
+    // client already rendered, not longer. A strict length > check still
+    // doubles this case; the fix must treat equal-and-matching as a replay too.
+    const blocks: ContentBlock[] = [{ id: "t1", type: "text", content: "Hello there" }];
+    const result = appendText(blocks, "Hello there");
+    expect(result).toHaveLength(1);
+    expect(result[0].content).toBe("Hello there");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -168,6 +255,16 @@ describe("initTool", () => {
     expect(result[0].toolArgs).toBeUndefined();
     expect(result[0].startedAt).toBeGreaterThanOrEqual(before);
     expect(result[0].startedAt).toBeLessThanOrEqual(after);
+    // Block id reuses the toolCallId directly — parseTeamBlocks gives the
+    // eventual persisted tool block the same id, so mergeBlocks' render-
+    // boundary dedup can actually catch a live/confirmed duplicate for tools.
+    expect(result[0].id).toBe("tc1");
+  });
+
+  it("falls back to a generated id when no toolCallId is provided", () => {
+    const result = initTool([], "read_file");
+    expect(result[0].id).toBeTruthy();
+    expect(result[0].toolCallId).toBeUndefined();
   });
 
   it("appends to existing blocks", () => {

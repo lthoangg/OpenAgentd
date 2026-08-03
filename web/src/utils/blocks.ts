@@ -10,7 +10,17 @@ export function mergeBlocks(
 ): ContentBlock[] {
   if (currentBlocks.length === 0) return blocks
   if (blocks.length === 0) return currentBlocks
-  return [...blocks, ...currentBlocks]
+  // Defensive net at the render boundary: ids are stable identifiers now
+  // (server message id for user blocks, message/toolCall-derived ids for
+  // assistant sub-blocks — see parseTeamBlocks), so an id already present in
+  // `blocks` can only mean the live copy is a stale duplicate of a row that
+  // has since been confirmed. Drop it instead of trusting every upstream
+  // reconciliation path (loadSession, reconcileTurnTail, the SSE reducer) to
+  // have already removed it — this is the one place that actually renders.
+  const confirmedIds = new Set(blocks.map((b) => b.id))
+  const liveTail = currentBlocks.filter((b) => !confirmedIds.has(b.id))
+  if (liveTail.length === 0) return blocks
+  return [...blocks, ...liveTail]
 }
 
 export function latestDirectUserBlockId(blocks: ContentBlock[]): string | undefined {
@@ -30,6 +40,22 @@ export function latestDirectUserBlockIdFromParts(
   return latestDirectUserBlockId(currentBlocks) ?? latestDirectUserBlockId(blocks)
 }
 
+/** True when `incoming` is a reconnect replay of everything already in
+ *  `existing` rather than the next live delta fragment. The backend resends
+ *  the *whole* accumulated turn text as one chunk whenever a client
+ *  (re)attaches mid-stream (memory_stream_store.attach) — a genuine live
+ *  delta is a short new fragment that does not itself start with everything
+ *  rendered so far. Blindly concatenating the replay (as a delta would)
+ *  doubles the visible text on every reconnect; this is the "duplicate
+ *  messages during streaming, fixed only by reload" failure mode.
+ *
+ *  Uses `>=`, not `>`: a reconnect with no new tokens generated since the
+ *  disconnect replays a snapshot that is *exactly* equal to what the client
+ *  already has, not longer — a strict `>` still doubles that case. */
+function isReplaySnapshot(existing: string, incoming: string): boolean {
+  return incoming.length >= existing.length && incoming.startsWith(existing)
+}
+
 export function appendThinking(
   blocks: ContentBlock[],
   text: string
@@ -37,12 +63,13 @@ export function appendThinking(
   const lastBlock = blocks[blocks.length - 1]
 
   if (lastBlock && lastBlock.type === 'thinking') {
-    // Append to existing thinking block
+    // Reconnect replay dedup — see isReplaySnapshot.
+    const content = isReplaySnapshot(lastBlock.content, text) ? text : lastBlock.content + text
     return [
       ...blocks.slice(0, -1),
       {
         ...lastBlock,
-        content: lastBlock.content + text,
+        content,
       },
     ]
   }
@@ -65,12 +92,13 @@ export function appendText(
   const lastBlock = blocks[blocks.length - 1]
 
   if (lastBlock && lastBlock.type === 'text') {
-    // Append to existing text block
+    // Reconnect replay dedup — see isReplaySnapshot.
+    const content = isReplaySnapshot(lastBlock.content, text) ? text : lastBlock.content + text
     return [
       ...blocks.slice(0, -1),
       {
         ...lastBlock,
-        content: lastBlock.content + text,
+        content,
       },
     ]
   }
@@ -101,7 +129,12 @@ export function initTool(
   return [
     ...blocks,
     {
-      id: generateBlockId(),
+      // Use the server-issued toolCallId as the block id when known — it's
+      // already the stable identifier every reconciliation path matches on,
+      // and parseTeamBlocks gives the eventual persisted tool block the same
+      // id, so a live/confirmed duplicate becomes a real id collision that
+      // mergeBlocks' render-boundary dedup can actually catch.
+      id: toolCallId ?? generateBlockId(),
       type: 'tool',
       content: '',
       toolName: name,
@@ -147,7 +180,7 @@ export function addTool(
   return [
     ...blocks,
     {
-      id: generateBlockId(),
+      id: toolCallId ?? generateBlockId(),
       type: 'tool',
       content: '',
       toolName: name,

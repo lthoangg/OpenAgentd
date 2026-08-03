@@ -414,6 +414,34 @@ describe("sendMessage", () => {
     expect(leadBlocks[0].extra?.model).toBe("openai:gpt-5.5")
   })
 
+  it("patches the optimistic user block's id to the server-issued message_id once the POST resolves", async () => {
+    // The backend now returns the persisted user message's id even on the
+    // immediate (non-queued) send path. Adopting it lets later reconciliation
+    // (removePersistedOptimisticUserBlocks) match by id instead of inferring
+    // "same message?" from content + a clock-skew time window.
+    useTeamStore.setState({ leadName: "lead", agentStreams: { lead: makeStream() } })
+    mockPostTeamChat.mockImplementation(() =>
+      Promise.resolve({ status: "ok", session_id: "team-sid", message_id: "server-msg-1" })
+    )
+
+    await useTeamStore.getState().sendMessage("hello team")
+
+    const block = useTeamStore.getState().agentStreams.lead.currentBlocks[0]
+    expect(block.id).toBe("server-msg-1")
+  })
+
+  it("keeps the optimistic user block's local id when the POST response carries no message_id", async () => {
+    useTeamStore.setState({ leadName: "lead", agentStreams: { lead: makeStream() } })
+    mockPostTeamChat.mockImplementation(() =>
+      Promise.resolve({ status: "ok", session_id: "team-sid" })
+    )
+
+    await useTeamStore.getState().sendMessage("hello team")
+
+    const block = useTeamStore.getState().agentStreams.lead.currentBlocks[0]
+    expect(block.id).toMatch(/^user-/)
+  })
+
   it("sets isTeamWorking=true before the POST resolves", async () => {
     useTeamStore.setState({ leadName: "lead", agentStreams: { lead: makeStream() } })
 
@@ -1475,6 +1503,32 @@ describe("connectStream", () => {
     expect(useTeamStore.getState().cacheInvalidations).not.toContainEqual({ kind: "team_sessions" })
   })
 
+  it("does not reopen a second time when a superseded connection's onDone fires after its own abort", () => {
+    // Reproduces "duplicate messages during streaming, fixed only by reload":
+    // connection A's underlying `reader.read()` can resolve with `done: true`
+    // (server closed the body) in the same tick that something else (e.g. the
+    // tab regaining focus) already called `connectStream()` again and aborted
+    // A in favor of a fresh connection B. `onError` already guards against
+    // this via `abort.signal.aborted`; `onDone` must too, or A's belated
+    // "reopen" spawns a second live connection racing B — both then apply
+    // every subsequent SSE event, doubling everything until a reload.
+    const callbacksByCall: Array<{ onDone?: () => void }> = []
+    mockTeamStream.mockImplementation((_sid: string, cbs: { onDone?: () => void }) => {
+      callbacksByCall.push(cbs)
+    })
+    useTeamStore.setState({ sessionId: "stream-sid", isTeamWorking: true })
+
+    useTeamStore.getState().connectStream() // connection A
+    const onDoneA = callbacksByCall[0].onDone!
+    useTeamStore.getState().connectStream() // something else reconnects — aborts A, opens B
+    expect(mockTeamStream).toHaveBeenCalledTimes(2)
+
+    onDoneA() // A's belated, already-superseded "done" fires
+
+    // Must still be exactly 2 (A, B) — not 3. A is aborted and must not reopen.
+    expect(mockTeamStream).toHaveBeenCalledTimes(2)
+  })
+
   it("onDone does not reopen the stream when the page is unloading", () => {
     mockTeamStream.mockImplementation(
       (_sid: string, cbs: { onDone?: () => void }) => {
@@ -1517,6 +1571,37 @@ describe("connectStream", () => {
 
     expect(mockTeamStream).toHaveBeenCalledTimes(1)
     expect(useTeamStore.getState().isConnected).toBe(false)
+  })
+
+  it("ignores a stray event delivered by a superseded connection within the same session", () => {
+    // Narrower cousin of the onDone race above: connection A's `reader.read()`
+    // can have *already resolved* with a chunk the instant before something
+    // else reconnects (abort A, open B) for the *same* session — no session
+    // or generation change, so that guard alone cannot catch it. B's own
+    // attach/replay independently delivers the same content correctly, so
+    // dropping A's stray leftover is safe and prevents double-applying it.
+    const callbacksByCall: Array<{ onEvent: (type: string, data: unknown) => void }> = []
+    mockTeamStream.mockImplementation(
+      (_sid: string, cbs: { onEvent: (type: string, data: unknown) => void }) => {
+        callbacksByCall.push(cbs)
+      }
+    )
+    useTeamStore.setState({
+      sessionId: "session-1",
+      leadName: "lead",
+      agentNames: ["lead"],
+      agentStreams: { lead: makeStream({ status: "working" as const }) },
+    })
+
+    useTeamStore.getState().connectStream() // connection A
+    const onEventA = callbacksByCall[0].onEvent
+    useTeamStore.getState().connectStream() // reconnect — aborts A, opens B (same session)
+
+    // tool_call (unlike message/thinking) applies synchronously with no
+    // coalescing timer, so this is observable without advancing fake timers.
+    onEventA("tool_call", { agent: "lead", name: "web_search", tool_call_id: "tc-a" })
+
+    expect(useTeamStore.getState().agentStreams.lead.currentBlocks).toHaveLength(0)
   })
 
   it("ignores stream events after newSession changes generation", () => {

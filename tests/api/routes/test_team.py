@@ -152,14 +152,14 @@ class TestTeamChatRoute:
         assert "No agent team" in response.json()["detail"]
 
     def test_team_chat_returns_202(self, app_with_team, test_team):
-        test_team.handle_user_message = AsyncMock(return_value=str(uuid.uuid7()))
+        test_team.handle_user_message = AsyncMock(return_value=(str(uuid.uuid7()), str(uuid.uuid7())))
         client = TestClient(app_with_team)
         response = client.post("/api/team/chat", data={"message": "Hello team"})
         assert response.status_code == 202
 
     def test_team_chat_returns_session_id(self, app_with_team, test_team):
         sid = str(uuid.uuid7())
-        test_team.handle_user_message = AsyncMock(return_value=sid)
+        test_team.handle_user_message = AsyncMock(return_value=(sid, str(uuid.uuid7())))
         client = TestClient(app_with_team)
         response = client.post("/api/team/chat", data={"message": "Hello"})
         data = response.json()
@@ -168,7 +168,7 @@ class TestTeamChatRoute:
 
     def test_team_chat_with_provided_session_id(self, app_with_team, test_team):
         session_id = str(uuid.uuid7())
-        test_team.handle_user_message = AsyncMock(return_value=session_id)
+        test_team.handle_user_message = AsyncMock(return_value=(session_id, str(uuid.uuid7())))
         client = TestClient(app_with_team)
         response = client.post(
             "/api/team/chat", data={"message": "Hello", "session_id": session_id}
@@ -187,7 +187,7 @@ class TestTeamChatRoute:
     def test_team_chat_generates_session_id_when_omitted(
         self, app_with_team, test_team
     ):
-        test_team.handle_user_message = AsyncMock(return_value=str(uuid.uuid7()))
+        test_team.handle_user_message = AsyncMock(return_value=(str(uuid.uuid7()), str(uuid.uuid7())))
         client = TestClient(app_with_team)
         response = client.post("/api/team/chat", data={"message": "Hello"})
         uuid.UUID(response.json()["session_id"])  # Should not raise
@@ -218,7 +218,7 @@ class TestTeamChatRoute:
         assert response.status_code == 422
 
     def test_team_chat_calls_handle_user_message(self, app_with_team, test_team):
-        test_team.handle_user_message = AsyncMock(return_value=str(uuid.uuid7()))
+        test_team.handle_user_message = AsyncMock(return_value=(str(uuid.uuid7()), str(uuid.uuid7())))
         client = TestClient(app_with_team)
         response = client.post("/api/team/chat", data={"message": "Hello team"})
         assert response.status_code == 202
@@ -244,7 +244,7 @@ class TestTeamChatRoute:
         assert dispatch_shell.call_args.kwargs["session_id"] == session_id
 
     def test_team_chat_passes_model_settings(self, app_with_team, test_team):
-        test_team.handle_user_message = AsyncMock(return_value=str(uuid.uuid7()))
+        test_team.handle_user_message = AsyncMock(return_value=(str(uuid.uuid7()), str(uuid.uuid7())))
         client = TestClient(app_with_team)
         with patch(
             "app.api.routes.team.chat.is_registered_model_id",
@@ -268,7 +268,7 @@ class TestTeamChatRoute:
     def test_team_chat_passes_fast_mode_per_request_for_codex(
         self, app_with_team, test_team
     ):
-        test_team.handle_user_message = AsyncMock(return_value=str(uuid.uuid7()))
+        test_team.handle_user_message = AsyncMock(return_value=(str(uuid.uuid7()), str(uuid.uuid7())))
         client = TestClient(app_with_team)
         with patch(
             "app.api.routes.team.chat.is_registered_model_id",
@@ -289,7 +289,7 @@ class TestTeamChatRoute:
     def test_team_chat_passes_fast_mode_for_non_codex_model(
         self, app_with_team, test_team
     ):
-        test_team.handle_user_message = AsyncMock(return_value=str(uuid.uuid7()))
+        test_team.handle_user_message = AsyncMock(return_value=(str(uuid.uuid7()), str(uuid.uuid7())))
         client = TestClient(app_with_team)
         with patch(
             "app.api.routes.team.chat.is_registered_model_id",
@@ -308,7 +308,7 @@ class TestTeamChatRoute:
         assert kwargs["service_tier"] == "fast"
 
     def test_team_chat_empty_model_settings_reset(self, app_with_team, test_team):
-        test_team.handle_user_message = AsyncMock(return_value=str(uuid.uuid7()))
+        test_team.handle_user_message = AsyncMock(return_value=(str(uuid.uuid7()), str(uuid.uuid7())))
         client = TestClient(app_with_team)
         response = client.post(
             "/api/team/chat",
@@ -366,7 +366,7 @@ class TestTeamChatRoute:
         test_team.lead.state = "idle"
         test_team._has_active_turn = True  # members from the prior lead turn still run
         test_team._activate_queued_user_messages = AsyncMock(return_value=True)
-        test_team.handle_user_message = AsyncMock(return_value=session_id)
+        test_team.handle_user_message = AsyncMock(return_value=(session_id, str(uuid.uuid7())))
 
         async def save_queue(_db, _session_id, _message, *, extra=None):
             queued = AsyncMock()

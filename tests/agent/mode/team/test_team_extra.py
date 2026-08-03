@@ -455,13 +455,14 @@ class TestHandleUserMessageAttachments:
             patch("app.services.memory_stream_store.push_event", new=AsyncMock()),
             patch("app.services.memory_stream_store.init_turn", new=AsyncMock()),
         ):
-            returned = await team.handle_user_message(
+            returned_session_id, message_id = await team.handle_user_message(
                 "check this file",
                 session_id=session_id,
                 attachment_metas=attachment_metas,
             )
 
-        assert returned == session_id
+        assert returned_session_id == session_id
+        assert message_id
         assert team._has_active_turn is True
 
 

@@ -527,11 +527,14 @@ class AgentTeam:
         thinking_level_provided: bool = False,
         service_tier: str | None = None,
         mentions: list[str] | None = None,
-    ) -> str:
-        """Deliver a user message to the team lead. Returns the session_id.
+    ) -> tuple[str, str]:
+        """Deliver a user message to the team lead. Returns ``(session_id, message_id)``.
 
         ``session_id`` controls which conversation the lead continues.
-        Passing a new UUID starts a fresh lead conversation.
+        Passing a new UUID starts a fresh lead conversation. ``message_id`` is
+        the id of the persisted user message row — callers use it to give the
+        frontend's optimistic bubble a stable id that matches the eventual
+        persisted row exactly, instead of reconciling by content/timestamp.
 
         If interrupt=True, all working agents are cancelled immediately and
         all non-completed tasks are reset so the lead can re-plan.
@@ -724,7 +727,7 @@ class AgentTeam:
             self._has_active_turn = False
             raise
 
-        return session_id
+        return session_id, str(saved_user_msg.id)
 
     async def handle_continue(self, session_id: str) -> str:
         """Continue the prior assistant turn on *session_id* — no new user message.

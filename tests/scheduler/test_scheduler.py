@@ -61,7 +61,7 @@ def mock_dispatch():
         return team
 
     async def _disp(*_a, **_kw):
-        return (sid, 0)
+        return (sid, 0, str(uuid4()))
 
     with (
         patch(
@@ -256,7 +256,7 @@ class TestUpdate:
         async def _block_dispatch(*_args, **_kwargs):
             dispatch_started.set()
             await release_dispatch.wait()
-            return (str(uuid4()), 0)
+            return (str(uuid4()), 0, str(uuid4()))
 
         with (
             patch("app.services.team_manager.get_or_start_team", side_effect=_get_team),
@@ -296,7 +296,7 @@ class TestUpdate:
         async def _block_dispatch(*_args, **_kwargs):
             dispatch_started.set()
             await release_dispatch.wait()
-            return (str(uuid4()), 0)
+            return (str(uuid4()), 0, str(uuid4()))
 
         with (
             patch("app.services.team_manager.get_or_start_team", side_effect=_get_team),
@@ -340,7 +340,7 @@ class TestUpdate:
             dispatch_count += 1
             first_dispatch_started.set()
             await release_dispatch.wait()
-            return (str(uuid4()), 0)
+            return (str(uuid4()), 0, str(uuid4()))
 
         with (
             patch("app.services.team_manager.get_or_start_team", side_effect=_get_team),
@@ -492,7 +492,7 @@ class TestPauseResume:
         async def _block_dispatch(*_args, **_kwargs):
             dispatch_started.set()
             await release_dispatch.wait()
-            return (str(uuid4()), 0)
+            return (str(uuid4()), 0, str(uuid4()))
 
         with (
             patch("app.services.team_manager.get_or_start_team", side_effect=_get_team),
@@ -527,7 +527,7 @@ class TestPauseResume:
         async def _block_dispatch(*_args, **_kwargs):
             dispatch_started.set()
             await release_dispatch.wait()
-            return (str(uuid4()), 0)
+            return (str(uuid4()), 0, str(uuid4()))
 
         with (
             patch("app.services.team_manager.get_or_start_team", side_effect=_get_team),
@@ -829,7 +829,7 @@ class TestTrigger:
         async def _block_dispatch(*_args, **_kwargs):
             dispatch_started.set()
             await release_dispatch.wait()
-            return (str(uuid4()), 0)
+            return (str(uuid4()), 0, str(uuid4()))
 
         with (
             patch("app.services.team_manager.get_or_start_team", side_effect=_get_team),
@@ -932,7 +932,7 @@ class TestFireTaskErrors:
             dispatch_count += 1
             dispatch_started.set()
             await release_dispatch.wait()
-            return (str(uuid4()), 0)
+            return (str(uuid4()), 0, str(uuid4()))
 
         with (
             patch("app.services.team_manager.get_or_start_team", side_effect=_get_team),
@@ -1164,7 +1164,7 @@ class TestSessionResolution:
 
         async def _capture(team, *, content, session_id, attachments=None, **_kw):
             captured["session_id"] = session_id
-            return (session_id, 0)
+            return (session_id, 0, str(uuid4()))
 
         async def _get_team():
             return MagicMock()
@@ -1198,7 +1198,7 @@ class TestSessionResolution:
 
         async def _capture(team, *, content, session_id, attachments=None, **_kw):
             captured["session_id"] = session_id
-            return (session_id, 0)
+            return (session_id, 0, str(uuid4()))
 
         async def _get_team():
             return MagicMock()
@@ -1224,7 +1224,7 @@ class TestSessionResolution:
 
         async def _capture(team, *, content, session_id, attachments=None, **_kw):
             captured["session_id"] = session_id
-            return (str(uuid4()), 0)
+            return (str(uuid4()), 0, str(uuid4()))
 
         async def _get_team():
             return MagicMock()

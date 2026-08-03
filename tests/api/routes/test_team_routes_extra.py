@@ -311,7 +311,7 @@ class TestTeamAgentsRouteExtra:
                 )
             )
         )
-        test_team.handle_user_message = AsyncMock(return_value=str(session_id))
+        test_team.handle_user_message = AsyncMock(return_value=(str(session_id), str(uuid.uuid7())))
 
         async def fake_get_or_start_coding_team(
             requested_workspace: str, requested_session_id: str

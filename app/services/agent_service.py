@@ -492,7 +492,7 @@ async def dispatch_user_message(
     thinking_level_provided: bool = False,
     service_tier: str | None = None,
     mentions: list[str] | None = None,
-) -> tuple[str, int]:
+) -> tuple[str, int, str]:
     """Send a user message through the team.
 
     Handles the full ingress path:
@@ -502,7 +502,9 @@ async def dispatch_user_message(
     3. Persist attachments to the app-managed session uploads directory.
     4. Initialise stream store and deliver to the team.
 
-    Returns ``(session_id, n_attachments)``.
+    Returns ``(session_id, n_attachments, message_id)`` — ``message_id`` is
+    the persisted user message's id, surfaced so the caller's HTTP response
+    can hand it back to the frontend for its optimistic bubble.
 
     Raises :class:`AttachmentError` on invalid attachments; callers translate
     ``AttachmentError.status`` to their transport's error shape.
@@ -515,7 +517,7 @@ async def dispatch_user_message(
     else:
         metas = []
 
-    await team.handle_user_message(
+    _, message_id = await team.handle_user_message(
         content=content,
         session_id=sid,
         interrupt=False,
@@ -537,7 +539,7 @@ async def dispatch_user_message(
         sid,
         len(metas),
     )
-    return sid, len(metas)
+    return sid, len(metas), message_id
 
 
 async def dispatch_user_shell_command(

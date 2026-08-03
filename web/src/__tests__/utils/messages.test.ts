@@ -179,6 +179,45 @@ describe("parseTeamBlocks", () => {
     expect(textBlock?.content).toBe("here is my answer");
   });
 
+  it("derives text/thinking/tool block ids from the message id instead of a random one, so re-parsing the same message is idempotent", () => {
+    // A random id per parse (generateBlockId()) meant the *same* persisted
+    // message produced a *different* block id on every loadSession()/
+    // reconcileTurnTail() call — no stable identity for React keys or for
+    // mergeBlocks' defensive id-based dedup to key off. Deriving from the
+    // message's own (stable, server-issued) id fixes that for free.
+    const msg = makeMsg({
+      id: "msg-fixed-1",
+      role: "assistant",
+      content: "the answer",
+      reasoning_content: "thinking it through",
+      tool_calls: [{ id: "tc-1", type: "function", function: { name: "web_search", arguments: "{}" } }],
+    });
+
+    const first = parseTeamBlocks([msg]);
+    const second = parseTeamBlocks([msg]);
+
+    expect(first.map((b) => b.id)).toEqual(second.map((b) => b.id));
+    // text/thinking ids trace back to the message; the tool id reuses the
+    // tool call's own (already stable) id rather than the message id.
+    const byType = (t: string) => first.find((b) => b.type === t);
+    expect(byType("text")?.id).toContain("msg-fixed-1");
+    expect(byType("thinking")?.id).toContain("msg-fixed-1");
+    expect(byType("tool")?.id).toBe("tc-1");
+    // thinking / text / tool blocks from the same message get distinct ids.
+    expect(new Set(first.map((b) => b.id)).size).toBe(first.length);
+  });
+
+  it("uses the tool call's own id as the tool block id (already the stable toolCallId used for matching elsewhere)", () => {
+    const msg = makeMsg({
+      role: "assistant",
+      content: null,
+      tool_calls: [{ id: "tc-abc", type: "function", function: { name: "web_search", arguments: "{}" } }],
+    });
+    const blocks = parseTeamBlocks([msg]);
+    const toolBlock = blocks.find((b) => b.type === "tool");
+    expect(toolBlock?.id).toBe("tc-abc");
+  });
+
   it("converts reasoning_content to thinking block", () => {
     const msgs = [makeMsg({ role: "assistant", reasoning_content: "let me think", content: null })];
     const blocks = parseTeamBlocks(msgs);

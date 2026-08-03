@@ -700,7 +700,7 @@ class TaskScheduler:
                 )
                 return
             dispatch_attempted = True
-            fired_sid, _ = await dispatch_user_message(
+            fired_sid, _, _ = await dispatch_user_message(
                 team,
                 content=f"[Scheduled Task: {task.name}]\n{task.prompt}",
                 session_id=resolved_sid,

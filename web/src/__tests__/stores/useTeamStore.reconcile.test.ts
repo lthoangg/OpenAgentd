@@ -412,6 +412,43 @@ describe('mid-turn loadSession reconciliation', () => {
     expect(rendered().filter((c) => c === 'message A')).toHaveLength(1)
   })
 
+  it('does not duplicate the optimistic user message when its id already matches the persisted row, regardless of clock skew', async () => {
+    // sendMessage patches the optimistic bubble's id to the server's
+    // message_id as soon as the POST resolves (pending-slice.ts). Once ids
+    // match, dedup no longer needs to infer "same message?" from content +
+    // a clock-skew time window — it must hold even far outside that window,
+    // where the content/time heuristic alone would have failed.
+    await seedLoadedSession()
+
+    useTeamStore.setState((state) => {
+      state.isTeamWorking = true
+      state.agentStreams.lead.status = 'working'
+      state.agentStreams.lead.currentBlocks = [
+        {
+          id: 'ua', // already patched to the real server id by sendMessage
+          type: 'user',
+          content: 'message A',
+          // 10s of clock skew — well outside the old heuristic's 5s window.
+          timestamp: new Date('2026-07-01T00:00:20.000Z'),
+        },
+      ]
+      return state
+    })
+
+    mockTeamHistory.mockImplementation(() => Promise.resolve(fullHistory({
+      lead: leadSession({
+        running: true,
+        messages: [
+          { id: 'ua', role: 'user', content: 'message A', created_at: '2026-07-01T00:00:10.000Z' },
+        ],
+      }),
+    })))
+
+    await useTeamStore.getState().loadSession('lead-sess')
+
+    expect(rendered().filter((c) => c === 'message A')).toHaveLength(1)
+  })
+
   it('does not duplicate turn content the running snapshot already covers', async () => {
     // Reproduces the "duplicate user message + reply + tools mid-stream"
     // report. The positional `dropSnapshotCoveredBlocks` guard only ran once

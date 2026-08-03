@@ -247,8 +247,18 @@ function removePersistedOptimisticUserBlocks(stream: AgentStream) {
   )
   if (persistedUsers.length === 0) return
 
+  // Fast path: sendMessage adopts the server's message_id for the optimistic
+  // bubble as soon as the POST resolves (see pending-slice.ts), so on the
+  // common path the id already matches the persisted row exactly — no need
+  // to infer "same message?" from content + a clock-skew time window at all.
+  // The heuristic below stays as a fallback for rows that predate that fix,
+  // shell-command messages (dispatched via a fire-and-forget task that does
+  // not yet return an id), and any other id-less edge case.
+  const persistedIds = new Set(persistedUsers.map((b) => b.id))
+
   stream.currentBlocks = stream.currentBlocks.filter((block) => {
     if (block.type !== 'user' || block.extra?.from_agent) return true
+    if (persistedIds.has(block.id)) return false
     const optimisticTime = block.timestamp?.getTime()
     if (optimisticTime === undefined) return true
 

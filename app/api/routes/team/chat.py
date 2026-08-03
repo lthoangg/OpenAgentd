@@ -325,7 +325,7 @@ async def team_chat(
             )
 
         try:
-            sid, n_attachments = await agent_service.dispatch_user_message(
+            sid, n_attachments, message_id = await agent_service.dispatch_user_message(
                 team_obj,
                 content=message,
                 session_id=session_id,
@@ -348,7 +348,7 @@ async def team_chat(
             sid,
             n_attachments,
         )
-        return TeamChatResponse(status="accepted", session_id=sid)
+        return TeamChatResponse(status="accepted", session_id=sid, message_id=message_id)
 
 
 @router.delete("/sessions/{session_id}/queued-messages/{message_id}", status_code=204)

@@ -86,6 +86,7 @@ export const createPendingSlice: StateCreator<
     }))
 
     const submittedAt = Date.now()
+    const optimisticId = `user-${submittedAt}`
     set((draft) => {
         draft.isTeamWorking = true
         draft.isContinuing = false
@@ -102,7 +103,7 @@ export const createPendingSlice: StateCreator<
         const effectiveModel = effectiveLeadModel(draft, leadName, options?.model)
         const effectiveThinkingLevel = options?.thinkingLevel ?? draft.sessionThinkingLevel
         draft.agentStreams[leadName].currentBlocks.push({
-          id: `user-${Date.now()}`,
+          id: optimisticId,
           type: 'user',
           content,
           timestamp: new Date(submittedAt),
@@ -141,6 +142,15 @@ export const createPendingSlice: StateCreator<
         })
         if (options?.workspace) {
           draft._workspace = options.workspace
+        }
+        // Adopt the server's id for the optimistic bubble the moment it's
+        // known, instead of leaving reconciliation to infer "is this the same
+        // message?" from content + a clock-skew time window later (see
+        // removePersistedOptimisticUserBlocks) — an id match can't ever be
+        // ambiguous.
+        if (result.message_id && leadName) {
+          const block = draft.agentStreams[leadName]?.currentBlocks.find((b) => b.id === optimisticId)
+          if (block) block.id = result.message_id
         }
       })
       get().connectStream()

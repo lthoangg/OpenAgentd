@@ -342,6 +342,13 @@ export const createStreamSlice: StateCreator<
       sessionId,
       {
         onEvent: (type, data) => {
+          // A read() already in flight can resolve with a chunk in the same
+          // tick this exact connection was superseded (aborted in favor of a
+          // fresh one) for the same session/generation, which the check below
+          // alone would not catch. The replacement connection's own attach
+          // independently redelivers the same content, so dropping this
+          // straggler is safe and avoids double-applying it.
+          if (abort.signal.aborted) return
           const current = get()
           if (current._unloading && type === 'error') return
           if (current.sessionId !== sessionId || current._sessionGeneration !== generation) return
@@ -397,6 +404,14 @@ export const createStreamSlice: StateCreator<
           abort.signal.removeEventListener('abort', flushBufferedDeltas)
           const current = get()
           if (current.sessionId !== sessionId || current._sessionGeneration !== generation) return
+          // The underlying `reader.read()` can resolve with `done: true` in
+          // the same tick another caller already superseded this connection
+          // (aborted it and opened a fresh one) — session/generation still
+          // match since a reconnect never bumps either. Without this check,
+          // this belated `done` would reopen *again*, leaving two live
+          // connections racing and double-applying every subsequent event
+          // until a reload. Mirrors the same guard on `onError` above.
+          if (abort.signal.aborted) return
           // If the backend closed the SSE channel while the session is
           // still running (e.g. server restart / idle keepalive timeout),
           // reopen the stream immediately so we don't miss events.

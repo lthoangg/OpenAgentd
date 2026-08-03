@@ -44,7 +44,7 @@ def _make_team(*, vision: bool = True, document_text: bool = True) -> MagicMock:
 
     team = MagicMock()
     team.lead = lead
-    team.handle_user_message = AsyncMock()
+    team.handle_user_message = AsyncMock(return_value=("stub-session-id", "stub-message-id"))
     return team
 
 
@@ -573,18 +573,20 @@ async def test_validate_and_persist_no_content_type_falls_back_to_extension(tmp_
 @pytest.mark.asyncio
 async def test_dispatch_generates_sid_when_none():
     team = _make_team()
-    sid, n = await dispatch_user_message(team, content="hello", session_id=None)
+    sid, n, message_id = await dispatch_user_message(team, content="hello", session_id=None)
     assert sid and len(sid) > 8
     assert n == 0
+    assert message_id == "stub-message-id"
     team.handle_user_message.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_dispatch_reuses_provided_sid():
     team = _make_team()
-    sid, n = await dispatch_user_message(team, content="hi", session_id="my-sid-123")
+    sid, n, message_id = await dispatch_user_message(team, content="hi", session_id="my-sid-123")
     assert sid == "my-sid-123"
     assert n == 0
+    assert message_id == "stub-message-id"
 
 
 @pytest.mark.asyncio
@@ -619,11 +621,12 @@ async def test_dispatch_with_attachments_uses_fresh_sid_when_session_id_none(tmp
     team = _make_team()
     att = RawAttachment(filename="f.txt", content_type="text/plain", data=b"content")
     with patch("app.services.agent_service._uploads_dir", return_value=tmp_path):
-        sid, n = await dispatch_user_message(
+        sid, n, message_id = await dispatch_user_message(
             team, content="hi", session_id=None, attachments=[att]
         )
     assert n == 1
     assert sid and len(sid) > 8
+    assert message_id == "stub-message-id"
 
 
 @pytest.mark.asyncio
@@ -631,11 +634,12 @@ async def test_dispatch_with_attachments_prefers_provided_session_id(tmp_path):
     team = _make_team()
     att = RawAttachment(filename="f.txt", content_type="text/plain", data=b"x")
     with patch("app.services.agent_service._uploads_dir", return_value=tmp_path):
-        sid, n = await dispatch_user_message(
+        sid, n, message_id = await dispatch_user_message(
             team, content="hi", session_id="existing-123", attachments=[att]
         )
     assert sid == "existing-123"
     assert n == 1
+    assert message_id == "stub-message-id"
 
 
 # ── interrupt_team ────────────────────────────────────────────────────────────

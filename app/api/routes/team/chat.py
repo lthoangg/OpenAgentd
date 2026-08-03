@@ -348,7 +348,9 @@ async def team_chat(
             sid,
             n_attachments,
         )
-        return TeamChatResponse(status="accepted", session_id=sid, message_id=message_id)
+        return TeamChatResponse(
+            status="accepted", session_id=sid, message_id=message_id
+        )
 
 
 @router.delete("/sessions/{session_id}/queued-messages/{message_id}", status_code=204)

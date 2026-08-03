@@ -589,6 +589,53 @@ def test_split_messages_drops_thinking_block_when_signature_missing_tool_calls()
     assert "tool_use" in block_types
 
 
+def test_split_messages_replays_interleaved_thinking_blocks_in_order() -> None:
+    """Adaptive/interleaved thinking (e.g. claude-sonnet-5) can emit multiple
+    thinking blocks in a single turn, each immediately preceding the tool_use
+    it justifies. Anthropic requires the exact original block order to be
+    replayed verbatim in history; collapsing to a single leading thinking
+    block (the legacy branch below) reorders/merges blocks and triggers
+    HTTP 400: 'thinking ... blocks ... cannot be modified'. When
+    raw_content_blocks was captured from the response, replay it as-is."""
+    assistant = AssistantMessage(
+        content=None,
+        tool_calls=[
+            ToolCall(id="t1", function=FunctionCall(name="read", arguments="{}")),
+            ToolCall(id="t2", function=FunctionCall(name="ls", arguments="{}")),
+        ],
+    )
+    assistant.raw_content_blocks = [
+        {"type": "thinking", "thinking": "check file first", "signature": "sig-1"},
+        {"type": "tool_use_ref", "id": "t1"},
+        {"type": "thinking", "thinking": "now list dir", "signature": "sig-2"},
+        {"type": "tool_use_ref", "id": "t2"},
+    ]
+
+    _, out = _split_messages(
+        [
+            HumanMessage(content="go"),
+            assistant,
+            ToolMessage(content="file contents", tool_call_id="t1", name="read"),
+            ToolMessage(content="dir listing", tool_call_id="t2", name="ls"),
+        ]
+    )
+
+    assistant_turn = next(m for m in out if m["role"] == "assistant")
+    blocks = assistant_turn["content"]
+    assert [b["type"] for b in blocks] == [
+        "thinking",
+        "tool_use",
+        "thinking",
+        "tool_use",
+    ]
+    assert blocks[0]["thinking"] == "check file first"
+    assert blocks[0]["signature"] == "sig-1"
+    assert blocks[1]["id"] == "t1"
+    assert blocks[2]["thinking"] == "now list dir"
+    assert blocks[2]["signature"] == "sig-2"
+    assert blocks[3]["id"] == "t2"
+
+
 def test_split_messages_drops_thinking_block_when_signature_missing_plain() -> None:
     """Same guard for plain (non-tool-call) assistant turns without a signature."""
     _, out = _split_messages(

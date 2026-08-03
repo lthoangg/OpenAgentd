@@ -201,7 +201,9 @@ class TestAgentTeamUserMessage:
         team = basic_team
         await team.start()
         session_id = str(uuid.uuid7())
-        returned_session_id, message_id = await team.handle_user_message("Hello", session_id=session_id)
+        returned_session_id, message_id = await team.handle_user_message(
+            "Hello", session_id=session_id
+        )
         assert returned_session_id == session_id
         assert message_id
         await asyncio.sleep(0.1)

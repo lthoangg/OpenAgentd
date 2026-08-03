@@ -260,3 +260,6 @@ settings = Settings()  # pyright: ignore[reportCallIssue]
 #: selects a provider model. The loader, provider factory, and settings API
 #: share this canonical sentinel without importing one another.
 PROVIDER_MODEL_TOKEN = "__PROVIDER_MODEL__"
+
+#: Keyless model assigned to agent files created on a user's first run.
+DEFAULT_NEW_USER_MODEL = "opencode:deepseek-v4-flash-free"

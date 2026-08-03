@@ -195,7 +195,7 @@ jobs:
 
       - name: Install cargo-binstall
         if: steps.cache-tauri-cli.outputs.cache-hit != 'true'
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@v2.85.5
         with:
           tool: cargo-binstall
 

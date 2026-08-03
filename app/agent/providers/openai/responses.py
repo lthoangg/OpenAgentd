@@ -163,11 +163,35 @@ class ResponsesHandler:
             elif isinstance(msg, ToolMessage):
                 # Only include if call_id is non-empty
                 if msg.tool_call_id:
+                    output: str | list[dict[str, Any]] = msg.content or ""
+                    if msg.parts:
+                        output = []
+                        for part in msg.parts:
+                            if isinstance(part, TextBlock):
+                                output.append({"type": "input_text", "text": part.text})
+                            elif isinstance(part, ImageUrlBlock):
+                                output.append(
+                                    {
+                                        "type": "input_image",
+                                        "image_url": part.url,
+                                        "detail": part.detail or "auto",
+                                    }
+                                )
+                            elif isinstance(part, ImageDataBlock):
+                                output.append(
+                                    {
+                                        "type": "input_image",
+                                        "image_url": (
+                                            f"data:{part.media_type};base64,{part.data}"
+                                        ),
+                                        "detail": "auto",
+                                    }
+                                )
                     input_items.append(
                         {
                             "type": "function_call_output",
                             "call_id": msg.tool_call_id,
-                            "output": msg.content or "",
+                            "output": output,
                         }
                     )
 

@@ -230,6 +230,20 @@ class TestCopilotHeaderHeuristics:
         assert is_agent is False
         assert is_vision is True
 
+    def test_responses_function_output_image_sets_vision(self):
+        is_agent, is_vision = _is_agent_initiated(
+            [
+                {
+                    "type": "function_call_output",
+                    "call_id": "call_1",
+                    "output": [{"type": "input_image", "image_url": "x"}],
+                }
+            ],
+            responses_api=True,
+        )
+        assert is_agent is True
+        assert is_vision is True
+
 
 # ---------------------------------------------------------------------------
 # _convert_messages

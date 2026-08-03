@@ -147,9 +147,10 @@ def _is_agent_initiated(
 
     if responses_api:
         is_vision = any(
-            _message_content_has_image(item.get("content"))
+            _message_content_has_image(item.get(key))
             for item in messages
             if isinstance(item, dict)
+            for key in ("content", "output")
         )
         last = messages[-1]
         is_agent = last.get("role") != "user"

@@ -267,18 +267,42 @@ class TestResponsesHandler:
         assert len(result) == 0
 
     def test_convert_messages_tool_message_with_parts(self, handler):
-        """Convert ToolMessage with multimodal parts (not used in Responses API)."""
+        """Convert multimodal tool output to Responses API content items."""
         messages = [
             ToolMessage(
                 tool_call_id="call_123",
                 name="read_file",
-                parts=[TextBlock(text="File contents")],
+                parts=[
+                    TextBlock(text="[Image: chart.png]"),
+                    ImageDataBlock(data="iVBORw0KGgo=", media_type="image/png"),
+                    ImageUrlBlock(
+                        url="https://example.com/reference.jpg", detail="high"
+                    ),
+                ],
             )
         ]
+
         result = handler.convert_messages(messages)
-        # Responses API doesn't use parts for tool messages, but should still work
-        assert len(result) == 1
-        assert result[0]["type"] == "function_call_output"
+
+        assert result == [
+            {
+                "type": "function_call_output",
+                "call_id": "call_123",
+                "output": [
+                    {"type": "input_text", "text": "[Image: chart.png]"},
+                    {
+                        "type": "input_image",
+                        "image_url": "data:image/png;base64,iVBORw0KGgo=",
+                        "detail": "auto",
+                    },
+                    {
+                        "type": "input_image",
+                        "image_url": "https://example.com/reference.jpg",
+                        "detail": "high",
+                    },
+                ],
+            }
+        ]
 
     def test_build_request_drops_orphan_tool_message(self, handler):
         """Responses request building drops invalid function_call_output items."""

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertCircle, CheckCircle2, ExternalLink, Loader2, ShieldCheck, WifiOff } from 'lucide-react'
 
-import { ApiValidationError, type ProviderInfo } from '@/api/client'
+import { ApiValidationError, type ProviderInfo, type ProvidersListBody } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { SectionCard, SectionCardHeader } from '@/components/ui/section-card'
@@ -69,10 +69,12 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
     provider.kind === 'oauth' && provider.is_configured,
   )
 
-  const models = useMemo<string[]>(
-    () => autoModelsQ.data?.models ?? provider.cached_models ?? [],
-    [autoModelsQ.data?.models, provider.cached_models],
-  )
+  const models = useMemo<string[]>(() => {
+    if (!provider.is_configured && !hasCandidateKey) {
+      return provider.cached_models ?? []
+    }
+    return autoModelsQ.data?.models ?? provider.cached_models ?? []
+  }, [autoModelsQ.data?.models, hasCandidateKey, provider.cached_models, provider.is_configured])
 
   const handleListModels = async () => {
     try {
@@ -82,6 +84,17 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
         extra: provider.kind === 'cloud_creds' ? cloudExtra : extraForRequest,
       })
       queryClient.setQueryData(queryKeys.settings.providerModels(provider.id), listed)
+      if (!hasCandidateKey && provider.public_access) {
+        queryClient.setQueryData<ProvidersListBody>(queryKeys.settings.providers(), (current) => {
+          if (!current) return current
+          return {
+            ...current,
+            providers: current.providers.map((item) =>
+              item.id === provider.id ? { ...item, cached_models: listed.models } : item,
+            ),
+          }
+        })
+      }
       const reachedProvider = listed.source === 'provider' && listed.models.length > 0
       setHasReachabilityFailure(!reachedProvider)
       if (reachedProvider) {
@@ -257,7 +270,7 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
               variant="default"
               className="h-10 w-full sm:h-8 sm:w-auto"
               onClick={handleListModels}
-              disabled={!hasCandidateKey || listing}
+              disabled={(!hasCandidateKey && !provider.public_access) || listing}
             >
               {listing && <Loader2 className="h-3 w-3 animate-spin mr-1.5" aria-hidden="true" />}
               List models
@@ -290,6 +303,11 @@ export function ProviderCard({ provider }: { provider: ProviderInfo }) {
           {hasCandidateKey && !hasVerifiedKey && (
             <p className="text-[10.5px] text-(--color-text-subtle) leading-normal">
               Click <span className="font-medium text-(--color-text)">List models</span> to verify this key before saving.
+            </p>
+          )}
+          {!hasCandidateKey && provider.public_access && !provider.is_configured && (
+            <p className="text-[10.5px] text-(--color-text-subtle) leading-normal">
+              Free models are available without an API key. Add a key to use paid models.
             </p>
           )}
           {!hasCandidateKey && provider.is_configured && (

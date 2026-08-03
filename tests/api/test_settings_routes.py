@@ -191,6 +191,68 @@ def test_list_providers_returns_catalog(monkeypatch: pytest.MonkeyPatch) -> None
     assert data["has_any_configured"] is False
 
 
+def test_list_providers_marks_only_zen_as_publicly_accessible(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("OPENCODE_ZEN_API_KEY", raising=False)
+    monkeypatch.delenv("OPENCODE_GO_API_KEY", raising=False)
+    monkeypatch.setattr(
+        settings_routes.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path)
+    )
+    client = TestClient(_make_app())
+
+    response = client.get("/api/settings/providers")
+
+    assert response.status_code == 200
+    providers = {provider["id"]: provider for provider in response.json()["providers"]}
+    assert providers["opencode"]["public_access"] is True
+    assert providers["opencode"]["env_var"] == "OPENCODE_ZEN_API_KEY"
+    assert providers["opencode"]["is_saved"] is False
+    assert providers["opencode"]["is_configured"] is False
+    assert providers["opencode-go"]["public_access"] is False
+    assert providers["opencode-go"]["env_var"] == "OPENCODE_GO_API_KEY"
+
+
+def test_list_providers_hides_cached_paid_models_without_opencode_keys(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.agent.providers.model_metadata import ModelCost
+    from app.core import runtime_settings
+
+    monkeypatch.delenv("OPENCODE_ZEN_API_KEY", raising=False)
+    monkeypatch.delenv("OPENCODE_GO_API_KEY", raising=False)
+    monkeypatch.setattr(
+        settings_routes.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path)
+    )
+    runtime_settings.save_runtime_settings(
+        runtime_settings.RuntimeSettings(
+            providers={
+                "opencode": runtime_settings.ProviderUiSettings(
+                    cached_models=["anonymous-model", "paid-model"]
+                ),
+                "opencode-go": runtime_settings.ProviderUiSettings(
+                    cached_models=["go-model"]
+                ),
+            }
+        )
+    )
+    costs = {
+        "opencode:anonymous-model": ModelCost(input=0),
+        "opencode:paid-model": ModelCost(input=1),
+    }
+
+    with patch(
+        "app.agent.providers.model_metadata.get_model_cost",
+        side_effect=lambda model_id: costs.get(model_id, ModelCost()),
+    ):
+        response = TestClient(_make_app()).get("/api/settings/providers")
+
+    assert response.status_code == 200
+    providers = {provider["id"]: provider for provider in response.json()["providers"]}
+    assert providers["opencode"]["cached_models"] == ["anonymous-model"]
+    assert providers["opencode-go"]["cached_models"] == []
+
+
 def test_list_providers_reads_provider_ui_state_from_one_settings_snapshot(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

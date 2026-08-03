@@ -70,7 +70,7 @@ describe('ProvidersSettingsPage', () => {
       id, label: id, description: id, kind: 'api_key', credentials: [],
       saved_credentials: {}, env_var: '', env_vars: [], oauth_command: '', docs_url: '',
       is_configured: true, is_saved: true, is_reachable: true, cached_models: [],
-      visible_models: [], is_disconnected: false, supports_fast_mode: false,
+      visible_models: [], is_disconnected: false, supports_fast_mode: false, public_access: false,
     })
     const originalInvalidate = queryClient.invalidateQueries.bind(queryClient)
     const invalidate = mock((...args: unknown[]) => originalInvalidate(...args as Parameters<typeof queryClient.invalidateQueries>)) as unknown as typeof queryClient.invalidateQueries
@@ -309,6 +309,106 @@ describe('ProvidersSettingsPage', () => {
     await waitFor(() => expect(screen.getByText(/1 models available/i)).toBeTruthy())
     fireEvent.click(screen.getByRole('button', { name: /1 models available/i }))
     expect(await screen.findByText('openai:new-model')).toBeTruthy()
+  })
+
+  it('lists public OpenCode Zen models without an API key', async () => {
+    let requestBody: unknown
+    server.use(
+      http.get('http://localhost/api/settings/providers', () => HttpResponse.json({
+        has_any_configured: false,
+        providers: [
+          {
+            id: 'opencode',
+            label: 'OpenCode Zen',
+            description: 'Curated coding models through the OpenCode Zen gateway.',
+            kind: 'api_key',
+            credentials: [],
+            saved_credentials: {},
+            env_var: 'OPENCODE_ZEN_API_KEY',
+            env_vars: [],
+            oauth_command: '',
+            docs_url: 'https://opencode.ai/docs/zen/',
+            public_access: true,
+            is_configured: false,
+            is_saved: false,
+            is_reachable: null,
+            cached_models: [],
+            visible_models: [],
+            is_disconnected: false,
+            supports_fast_mode: false,
+          },
+        ],
+      })),
+      http.post('http://localhost/api/settings/providers/opencode/models', async ({ request }) => {
+        requestBody = await request.json()
+        return HttpResponse.json({
+          provider: 'opencode',
+          models: ['big-pickle'],
+          source: 'provider',
+        })
+      }),
+    )
+
+    renderPage()
+
+    expect(await screen.findByText('OpenCode Zen')).toBeTruthy()
+    expect(screen.getByText(/Free models are available without an API key/i)).toBeTruthy()
+    const listModels = screen.getByRole('button', { name: 'List models' })
+    expect(listModels.getAttribute('disabled')).toBeNull()
+    fireEvent.click(listModels)
+
+    await waitFor(() => expect(requestBody).toEqual({ api_key: '' }))
+    expect(await screen.findByText('opencode:big-pickle')).toBeTruthy()
+  })
+
+  it('hides stale OpenCode Go models when no Go key is configured', async () => {
+    server.use(
+      http.get('http://localhost/api/settings/providers', () => HttpResponse.json({
+        has_any_configured: false,
+        providers: [
+          {
+            id: 'opencode-go',
+            label: 'OpenCode Go',
+            description: 'Open coding models through the OpenCode Go subscription.',
+            kind: 'api_key',
+            credentials: [],
+            saved_credentials: {},
+            env_var: 'OPENCODE_GO_API_KEY',
+            env_vars: [],
+            oauth_command: '',
+            docs_url: 'https://opencode.ai/docs/go/',
+            public_access: false,
+            is_configured: false,
+            is_saved: false,
+            is_reachable: null,
+            cached_models: [],
+            visible_models: [],
+            is_disconnected: false,
+            supports_fast_mode: false,
+          },
+        ],
+      })),
+    )
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    })
+    queryClient.setQueryData(queryKeys.settings.providerModels('opencode-go'), {
+      provider: 'opencode-go',
+      models: ['stale-go-model'],
+      source: 'provider',
+    })
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ProvidersSettingsPage />
+      </QueryClientProvider>,
+    )
+
+    expect(await screen.findByText('OpenCode Go')).toBeTruthy()
+    expect(screen.queryByText('1 models available')).toBeNull()
   })
 
   it('shows active usage for any connected OAuth provider', async () => {

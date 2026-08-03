@@ -103,6 +103,8 @@ class ProviderInfo(BaseModel):
     is_disconnected: bool = False
     # Whether this provider honours service_tier="fast" (fast/priority mode).
     supports_fast_mode: bool = False
+    # Whether the provider exposes a limited model set without saved credentials.
+    public_access: bool = False
 
 
 class ProvidersListBody(BaseModel):

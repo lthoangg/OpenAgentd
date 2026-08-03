@@ -340,6 +340,65 @@ async def test_registry_reloads_settings_after_warming_provider_models_once(
 
 
 @pytest.mark.asyncio
+async def test_registry_hides_cached_paid_models_without_opencode_keys(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.agent.providers.model_metadata import ModelCost
+    from app.api.routes import agents as agents_routes
+    from app.core.runtime_settings import ProviderUiSettings, RuntimeSettings
+
+    entries = [
+        {
+            "id": "opencode",
+            "kind": "api_key",
+            "label": "OpenCode Zen",
+            "public_access": True,
+        },
+        {
+            "id": "opencode-go",
+            "kind": "api_key",
+            "label": "OpenCode Go",
+        },
+    ]
+    monkeypatch.setattr(agents_routes, "all_providers", lambda: entries)
+    monkeypatch.setattr(agents_routes, "_provider_is_configured", lambda _entry: False)
+    monkeypatch.setattr(
+        agents_routes,
+        "load_runtime_settings",
+        lambda: RuntimeSettings(
+            providers={
+                "opencode": ProviderUiSettings(
+                    cached_models=["anonymous-model", "paid-model"]
+                ),
+                "opencode-go": ProviderUiSettings(cached_models=["go-model"]),
+            }
+        ),
+    )
+    monkeypatch.setattr(agents_routes, "discover_skills", lambda: {})
+    monkeypatch.setattr("app.agent.loader._default_tool_registry", lambda: {})
+    monkeypatch.setattr(
+        "app.agent.providers.model_registry.load_model_registry", lambda: {}
+    )
+    monkeypatch.setattr(agents_routes, "is_agent_model_id", lambda _model_id: True)
+    costs = {
+        "opencode:anonymous-model": ModelCost(input=0),
+        "opencode:paid-model": ModelCost(input=1),
+    }
+    monkeypatch.setattr(
+        "app.agent.providers.model_metadata.get_model_cost",
+        lambda model_id: costs.get(model_id, ModelCost()),
+    )
+
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace()))
+    registry = await agents_routes.get_registry(request)
+
+    assert [model.id for model in registry.models] == ["opencode:anonymous-model"]
+    assert await agents_routes.is_registered_model_id("opencode:anonymous-model")
+    assert not await agents_routes.is_registered_model_id("opencode:paid-model")
+    assert not await agents_routes.is_registered_model_id("opencode-go:go-model")
+
+
+@pytest.mark.asyncio
 async def test_registry_filters_cached_models_using_refreshed_visible_models(
     monkeypatch: pytest.MonkeyPatch,
 ):
@@ -405,7 +464,12 @@ async def test_registry_model_fast_mode_matches_provider_support(
 
     # Seed one model for a fast-mode provider and one for a non-fast-mode provider.
     fast_provider = next(e for e in _CATALOG if e.get("supports_fast_mode"))
-    slow_provider = next(e for e in _CATALOG if not e.get("supports_fast_mode"))
+    slow_provider = next(
+        e
+        for e in _CATALOG
+        if not e.get("supports_fast_mode")
+        and e["id"] not in {"opencode", "opencode-go"}
+    )
 
     from app.api.routes import agents as agents_routes
     from app.core.runtime_settings import ProviderUiSettings, RuntimeSettings

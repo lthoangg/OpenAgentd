@@ -388,6 +388,7 @@ async def list_providers() -> ProvidersListBody:
     isn't running.
     """
     from app.agent.providers.catalog import all_providers
+    from app.agent.providers.opencode.access import filter_opencode_models_for_access
     from app.core.runtime_settings import ProviderUiSettings, load_runtime_settings
 
     entries = all_providers()
@@ -417,10 +418,15 @@ async def list_providers() -> ProvidersListBody:
                 is_configured=is_configured,
                 is_saved=is_saved,
                 is_reachable=is_configured if is_saved else None,
-                cached_models=provider_ui.cached_models,
+                cached_models=filter_opencode_models_for_access(
+                    entry["id"],
+                    provider_ui.cached_models,
+                    has_credentials=is_saved,
+                ),
                 visible_models=provider_ui.visible_models,
                 is_disconnected=provider_ui.is_disconnected,
                 supports_fast_mode=entry.get("supports_fast_mode", False),
+                public_access=entry.get("public_access", False),
             )
         )
     has_any = any(p.is_configured for p in out)

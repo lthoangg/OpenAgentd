@@ -151,6 +151,7 @@ export type ProviderInfo = {
   visible_models: string[]
   is_disconnected: boolean
   supports_fast_mode: boolean
+  public_access: boolean
 }
 
 export type ProvidersListBody = {

@@ -78,6 +78,7 @@ describe('useRegistryQuery', () => {
           visible_models: ['claude-sonnet-4-6'],
           is_disconnected: false,
           supports_fast_mode: false,
+          public_access: false,
         },
       ],
     }
@@ -123,6 +124,7 @@ describe('useRegistryQuery', () => {
           visible_models: [],
           is_disconnected: false,
           supports_fast_mode: true,
+          public_access: false,
         },
       ],
     }
@@ -165,6 +167,7 @@ describe('useRegistryQuery', () => {
           visible_models: [],
           is_disconnected: false,
           supports_fast_mode: false,
+          public_access: false,
         },
       ],
     }

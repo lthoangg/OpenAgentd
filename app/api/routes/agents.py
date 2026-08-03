@@ -24,6 +24,8 @@ from app.agent.providers.model_discovery import (
     filter_agent_model_ids,
     is_agent_model_id,
 )
+from app.agent.providers.opencode.access import model_is_accessible
+from app.agent.providers.opencode.constants import PROVIDER_IDS as OPENCODE_PROVIDER_IDS
 from app.core.runtime_settings import (
     ProviderUiSettings,
     load_runtime_settings,
@@ -347,7 +349,8 @@ async def get_registry(request: Request) -> RegistryResponse:
     # Previously this was derived from the capability resolver's prefix
     # table; the resolver no longer has one (see capabilities.py).
     all_provider_entries = list(all_providers())
-    providers = sorted(entry["id"] for entry in all_provider_entries)
+    provider_entries = {entry["id"]: entry for entry in all_provider_entries}
+    providers = sorted(provider_entries)
 
     # Build a per-provider fast-mode support map so models can advertise it
     # without hard-coding a prefix list on the frontend.
@@ -386,12 +389,22 @@ async def get_registry(request: Request) -> RegistryResponse:
 
     provider_ui_settings = runtime_settings.providers
     for provider in providers:
+        entry = provider_entries[provider]
         provider_ui = provider_ui_settings.get(provider, ProviderUiSettings())
         if provider_ui.is_disconnected:
             continue
+        has_credentials = provider not in OPENCODE_PROVIDER_IDS or (
+            _provider_is_configured(entry)
+        )
         visible = set(provider_ui.visible_models)
         # 1. Add cached/discovered agent models
         for model in provider_ui.cached_models:
+            if not model_is_accessible(
+                provider,
+                model,
+                has_credentials=has_credentials,
+            ):
+                continue
             model_id = f"{provider}:{model}"
             if is_agent_model_id(model_id):
                 if not visible or model in visible:
@@ -402,10 +415,15 @@ async def get_registry(request: Request) -> RegistryResponse:
             if ":" not in model_key:
                 continue
             p, m = model_key.split(":", 1)
-            if p.lower() == provider.lower():
-                caps = get_capabilities(model_key)
-                if caps.output.image or caps.output.video:
-                    _append(p, m)
+            if p.lower() != provider.lower() or not model_is_accessible(
+                provider,
+                m,
+                has_credentials=has_credentials,
+            ):
+                continue
+            caps = get_capabilities(model_key)
+            if caps.output.image or caps.output.video:
+                _append(provider, m)
 
     models.sort(key=lambda item: (item.provider, item.model))
 
@@ -425,6 +443,12 @@ async def is_registered_model_id(model_id: str) -> bool:
     if not provider or not model:
         return False
 
+    entry = next(
+        (candidate for candidate in all_providers() if candidate["id"] == provider),
+        None,
+    )
+    if entry is None:
+        return False
     provider_ui = load_runtime_settings().providers.get(provider, ProviderUiSettings())
     if provider_ui.is_disconnected:
         return False
@@ -432,7 +456,16 @@ async def is_registered_model_id(model_id: str) -> bool:
     visible = set(provider_ui.visible_models)
     if visible and model not in visible:
         return False
-    return model in set(filter_agent_model_ids(provider_ui.cached_models))
+    has_credentials = provider not in OPENCODE_PROVIDER_IDS or (
+        _provider_is_configured(entry)
+    )
+    if not model_is_accessible(
+        provider,
+        model,
+        has_credentials=has_credentials,
+    ):
+        return False
+    return is_agent_model_id(model) and model in provider_ui.cached_models
 
 
 @router.get("/{name}")

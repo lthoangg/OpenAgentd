@@ -35,6 +35,26 @@ redacted_thinking blocks
 On load, ``chat_service_messages.deserialize_messages`` copies both values from
 ``extra`` back onto the ``AssistantMessage`` so ``_split_messages`` can replay
 them when rebuilding the API payload.
+
+Multi-thinking-block turns (adaptive/interleaved thinking)
+------------------------------------------------------------
+Newer models (e.g. claude-sonnet-5) can emit *more than one* ``thinking``
+block in a single turn, each immediately preceding the ``tool_use`` block it
+justifies (e.g. ``thinking, tool_use, thinking, tool_use``). The
+``reasoning_content``/``reasoning_signature``/``redacted_thinking_blocks``
+fields above only capture one concatenated thinking segment and cannot
+represent this interleaving; replaying them reconstructs a single leading
+thinking block followed by all tool calls, which reorders the turn and
+triggers ``HTTP 400: thinking or redacted_thinking blocks ... cannot be
+modified``.
+
+``AssistantMessage.raw_content_blocks`` fixes this by capturing the *exact*
+ordered block list — verbatim ``thinking``/``redacted_thinking`` dicts plus
+``{"type": "text_ref"}`` / ``{"type": "tool_use_ref", "id": ...}``
+placeholders — and is persisted the same way, in
+``SessionMessage.extra["raw_content_blocks"]``. ``_split_messages`` prefers
+it over the legacy fields when present (see ``_blocks_from_raw_content``);
+older rows without it keep using the single-thinking-block reconstruction.
 """
 
 from __future__ import annotations
@@ -91,6 +111,58 @@ def _headers(
     if use_api_key_header:
         headers["x-api-key"] = api_key
     return headers
+
+
+def _blocks_from_raw_content(
+    message: AssistantMessage, valid_tool_result_ids: set[str]
+) -> list[dict[str, Any]]:
+    """Rebuild the exact content-block order Anthropic originally returned.
+
+    Adaptive/interleaved thinking (e.g. claude-sonnet-5+) can emit multiple
+    thinking blocks in a single turn, each immediately preceding the tool_use
+    it justifies. The legacy branches in ``_split_messages`` reconstruct a
+    fixed "thinking, then text, then all tool calls" order from the
+    decomposed ``reasoning_content``/``redacted_thinking_blocks`` fields,
+    which only holds for a single thinking block per turn. When
+    ``raw_content_blocks`` was captured, replay it verbatim instead.
+    """
+    blocks: list[dict[str, Any]] = []
+    tool_by_id = {tc.id: tc for tc in (message.tool_calls or []) if tc.id}
+    text_emitted = False
+    for raw in message.raw_content_blocks or []:
+        raw_type = raw.get("type")
+        if raw_type == "thinking":
+            thinking_text = raw.get("thinking") or ""
+            signature = raw.get("signature") or ""
+            # Pre-fix rows / edge cases without a signature are omitted — the
+            # API accepts tool-use-only turns (see module docstring).
+            if thinking_text and signature:
+                blocks.append(
+                    {
+                        "type": "thinking",
+                        "thinking": thinking_text,
+                        "signature": signature,
+                    }
+                )
+        elif raw_type == "redacted_thinking":
+            blocks.append({"type": "redacted_thinking", "data": raw.get("data", "")})
+        elif raw_type == "text_ref":
+            if not text_emitted and message.content:
+                blocks.append({"type": "text", "text": message.content})
+                text_emitted = True
+        elif raw_type == "tool_use_ref":
+            tool_call = tool_by_id.get(raw.get("id"))
+            if tool_call is None or tool_call.id not in valid_tool_result_ids:
+                continue
+            blocks.append(
+                {
+                    "type": "tool_use",
+                    "id": tool_call.id,
+                    "name": tool_call.function.name,
+                    "input": json.loads(tool_call.function.arguments or "{}"),
+                }
+            )
+    return blocks
 
 
 def _split_messages(
@@ -150,6 +222,13 @@ def _split_messages(
                         "content": [{"type": "text", "text": content}],
                     }
                 )
+        elif isinstance(message, AssistantMessage) and message.raw_content_blocks:
+            # Exact block order was captured from the API response — replay
+            # it verbatim instead of reconstructing a canonical order (see
+            # _blocks_from_raw_content docstring for why that matters).
+            raw_blocks = _blocks_from_raw_content(message, valid_tool_result_ids)
+            if raw_blocks:
+                out.append({"role": "assistant", "content": raw_blocks})
         elif isinstance(message, AssistantMessage) and message.tool_calls:
             blocks: list[dict[str, Any]] = []
             # Re-emit the thinking block when we have a valid signature.
@@ -598,6 +677,35 @@ class AnthropicProvider(LLMProviderBase):
         )
         if redacted_thinking_blocks:
             msg.redacted_thinking_blocks = redacted_thinking_blocks
+        # Capture the exact block order too — needed to correctly replay
+        # turns with more than one thinking block (adaptive/interleaved
+        # thinking), which reasoning_content/redacted_thinking_blocks above
+        # cannot represent (see _blocks_from_raw_content).
+        raw_content_blocks: list[dict[str, Any]] = []
+        for block in content_blocks:
+            if not isinstance(block, dict):
+                continue
+            block_type = block.get("type")
+            if block_type == "thinking":
+                raw_content_blocks.append(
+                    {
+                        "type": "thinking",
+                        "thinking": block.get("thinking", ""),
+                        "signature": block.get("signature", ""),
+                    }
+                )
+            elif block_type == "redacted_thinking":
+                raw_content_blocks.append(
+                    {"type": "redacted_thinking", "data": block.get("data", "")}
+                )
+            elif block_type == "text":
+                raw_content_blocks.append({"type": "text_ref"})
+            elif block_type == "tool_use":
+                raw_content_blocks.append(
+                    {"type": "tool_use_ref", "id": str(block.get("id", ""))}
+                )
+        if raw_content_blocks:
+            msg.raw_content_blocks = raw_content_blocks
         return msg
 
     async def stream(
@@ -617,6 +725,11 @@ class AnthropicProvider(LLMProviderBase):
         )
         usage = Usage()
         tool_call_indexes: dict[int, int] = {}
+        # Track the exact order/content of every block Anthropic streams so
+        # multi-thinking-block turns (adaptive/interleaved thinking) can be
+        # replayed verbatim later — see AssistantMessage.raw_content_blocks.
+        raw_blocks: dict[int, dict[str, Any]] = {}
+        raw_block_order: list[int] = []
         async with self._http_client_context() as client:
             async with client.stream(
                 "POST",
@@ -653,11 +766,20 @@ class AnthropicProvider(LLMProviderBase):
                         if not isinstance(content_block, dict):
                             continue
                         block_type = content_block.get("type")
+                        raw_index = event.get("index")
+                        block_index = (
+                            int(raw_index) if isinstance(raw_index, int) else 0
+                        )
                         if block_type == "redacted_thinking":
                             # Anthropic delivers the entire redacted_thinking
                             # block in content_block_start (no deltas follow).
                             # Surface it so the streaming consumer can persist
                             # it and replay it verbatim in history.
+                            raw_blocks[block_index] = {
+                                "type": "redacted_thinking",
+                                "data": content_block.get("data", ""),
+                            }
+                            raw_block_order.append(block_index)
                             yield _stream_chunk(
                                 chunk_id=chunk_id,
                                 model=self.model,
@@ -669,12 +791,25 @@ class AnthropicProvider(LLMProviderBase):
                                 ),
                             )
                             continue
+                        if block_type == "thinking":
+                            raw_blocks[block_index] = {
+                                "type": "thinking",
+                                "thinking": "",
+                                "signature": "",
+                            }
+                            raw_block_order.append(block_index)
+                            continue
+                        if block_type == "text":
+                            raw_blocks[block_index] = {"type": "text_ref"}
+                            raw_block_order.append(block_index)
+                            continue
                         if block_type != "tool_use":
                             continue
-                        raw_index = event.get("index")
-                        block_index = (
-                            int(raw_index) if isinstance(raw_index, int) else 0
-                        )
+                        raw_blocks[block_index] = {
+                            "type": "tool_use_ref",
+                            "id": str(content_block.get("id") or ""),
+                        }
+                        raw_block_order.append(block_index)
                         tool_index = tool_call_indexes.setdefault(
                             block_index, len(tool_call_indexes)
                         )
@@ -721,7 +856,14 @@ class AnthropicProvider(LLMProviderBase):
                         if not isinstance(delta, dict):
                             continue
                         delta_type = delta.get("type")
+                        raw_index = event.get("index")
+                        block_index = (
+                            int(raw_index) if isinstance(raw_index, int) else 0
+                        )
                         if isinstance(delta.get("thinking"), str):
+                            block = raw_blocks.get(block_index)
+                            if block is not None and block.get("type") == "thinking":
+                                block["thinking"] += delta["thinking"]
                             yield _stream_chunk(
                                 chunk_id=chunk_id,
                                 model=self.model,
@@ -735,6 +877,9 @@ class AnthropicProvider(LLMProviderBase):
                             # Anthropic streams the thinking-block signature as a
                             # separate delta type.  Surface it so the caller can
                             # persist it and include it when re-sending history.
+                            block = raw_blocks.get(block_index)
+                            if block is not None and block.get("type") == "thinking":
+                                block["signature"] += delta["signature"]
                             yield _stream_chunk(
                                 chunk_id=chunk_id,
                                 model=self.model,
@@ -751,10 +896,6 @@ class AnthropicProvider(LLMProviderBase):
                         elif delta_type == "input_json_delta" and isinstance(
                             delta.get("partial_json"), str
                         ):
-                            raw_index = event.get("index")
-                            block_index = (
-                                int(raw_index) if isinstance(raw_index, int) else 0
-                            )
                             tool_index = tool_call_indexes.setdefault(
                                 block_index, len(tool_call_indexes)
                             )
@@ -772,3 +913,19 @@ class AnthropicProvider(LLMProviderBase):
                                     ]
                                 ),
                             )
+                if raw_block_order:
+                    # Surface the fully assembled, ordered block list once the
+                    # stream completes so the caller can persist it and replay
+                    # multi-thinking-block turns verbatim (see
+                    # AssistantMessage.raw_content_blocks).
+                    yield _stream_chunk(
+                        chunk_id=chunk_id,
+                        model=self.model,
+                        delta=ChatCompletionDelta(
+                            anthropic_raw_blocks=[
+                                raw_blocks[i]
+                                for i in raw_block_order
+                                if i in raw_blocks
+                            ]
+                        ),
+                    )

@@ -62,6 +62,9 @@ def deserialize_messages(
                 redacted = m.extra.get("redacted_thinking_blocks")
                 if isinstance(redacted, list) and redacted:
                     msg.redacted_thinking_blocks = redacted
+                raw_blocks = m.extra.get("raw_content_blocks")
+                if isinstance(raw_blocks, list) and raw_blocks:
+                    msg.raw_content_blocks = raw_blocks
                 encrypted = m.extra.get("reasoning_encrypted_content")
                 if isinstance(encrypted, str) and encrypted:
                     msg.reasoning_encrypted_content = encrypted

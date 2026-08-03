@@ -1,63 +1,91 @@
+/**
+ * SessionModelSettings — model and thinking level for this session.
+ *
+ * Applies instantly. There is no Apply button because the override only takes
+ * effect on the next message anyway, so a confirm step bought nothing while
+ * costing a draft state that had to be reconciled against props on every
+ * external change. The escape hatch is `Use agent default`, shown only while an
+ * override is active.
+ *
+ * Two cases are deliberately *not* committed, because the combobox pushes every
+ * keystroke upstream (it drives its own validation):
+ *   - a half-typed id, until it resolves to a real registry entry;
+ *   - an empty field, which means "I'm about to type", not "use the default".
+ *     Committing empty would re-derive the default and refill the input under
+ *     the user's cursor. Falling back to the default is the explicit job of the
+ *     `Use agent default` button.
+ *
+ * Everything else renders straight from props, the single source of truth.
+ */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Info } from 'lucide-react'
+import { Eye } from 'lucide-react'
 
 import { useRegistryQuery } from '@/queries'
-import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Dropdown, DropdownItem } from '@/components/ui/dropdown'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ModelCombobox } from '@/components/settings/AgentForm/ModelCombobox'
+import type { ModelCatalogEntry } from '@/api/types'
 
-const THINKING_LEVELS = [
-  { value: '', label: 'Default' },
-  { value: 'none', label: 'None' },
-  { value: 'low', label: 'Low' },
-  { value: 'medium', label: 'Medium' },
-  { value: 'high', label: 'High' },
-]
+const DEFAULT_LEVEL_LABEL = 'Default'
+const KNOWN_LEVEL_LABELS: Record<string, string> = {
+  none: 'None',
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+}
 
+/** Models with no declared levels still accept `none`. */
 const FALLBACK_THINKING_LEVEL_VALUES = ['none']
+
+function levelLabel(value: string): string {
+  return (
+    KNOWN_LEVEL_LABELS[value] ??
+    value.split('-').map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(' ')
+  )
+}
+
+/** Thinking levels a model actually supports. `__none__` is an internal
+ *  registry marker, never a user-selectable level. */
+function levelsFor(entry: ModelCatalogEntry | undefined): string[] {
+  const declared = entry?.thinking_levels ?? []
+  const allowed = declared.length > 0 ? declared : FALLBACK_THINKING_LEVEL_VALUES
+  return allowed.filter((value) => value !== '__none__')
+}
 
 export function SessionModelSettings({
   defaultModel,
   sessionModel,
   sessionThinkingLevel,
-  sessionFastMode,
   onChange,
+  modelInputRef,
 }: {
   defaultModel: string | null
   sessionModel: string | null
   sessionThinkingLevel: string | null
-  sessionFastMode: boolean
-  onChange: (model: string | null, thinkingLevel: string | null, fastMode: boolean) => void
+  onChange: (model: string | null, thinkingLevel: string | null) => void
+  /** Exposed so the panel can make this the overlay's initial focus. */
+  modelInputRef?: React.RefObject<HTMLInputElement | null>
 }) {
   const registry = useRegistryQuery()
-  const [draftModel, setDraftModel] = useState(sessionModel ?? defaultModel ?? '')
-  const [draftThinkingLevel, setDraftThinkingLevel] = useState(sessionThinkingLevel ?? '')
-  const [draftFastMode, setDraftFastMode] = useState(sessionFastMode)
-
-  // When the saved values change externally (e.g. after the user saves from
-  // this very panel, or after loadSession restores a different session model),
-  // sync the draft — but only if the draft hasn't diverged from the previous
-  // saved snapshot (i.e. the user hasn't started editing a new draft).
-  const prevSavedRef = useRef({ model: sessionModel, thinkingLevel: sessionThinkingLevel, fastMode: sessionFastMode })
-  useEffect(() => {
-    const prev = prevSavedRef.current
-    const modelChanged = sessionModel !== prev.model
-    const thinkingChanged = sessionThinkingLevel !== prev.thinkingLevel
-    const fastChanged = sessionFastMode !== prev.fastMode
-    if (!modelChanged && !thinkingChanged && !fastChanged) return
-
-    // Only reset a field if the draft is still tracking the old saved value
-    // (i.e. the user hasn't touched it since the last external update).
-    setDraftModel((d) => (d === (prev.model ?? defaultModel ?? '') ? (sessionModel ?? defaultModel ?? '') : d))
-    setDraftThinkingLevel((d) => (d === (prev.thinkingLevel ?? '') ? (sessionThinkingLevel ?? '') : d))
-    setDraftFastMode((d) => (d === prev.fastMode ? sessionFastMode : d))
-    prevSavedRef.current = { model: sessionModel, thinkingLevel: sessionThinkingLevel, fastMode: sessionFastMode }
-  }, [sessionModel, sessionThinkingLevel, sessionFastMode, defaultModel])
-
   const modelOptions = useMemo(() => registry.data?.models ?? [], [registry.data?.models])
+
+  // Fall back to a local ref when the parent doesn't need one: the reset
+  // handler below has to focus this input either way.
+  const localModelInputRef = useRef<HTMLInputElement | null>(null)
+  const inputRef = modelInputRef ?? localModelInputRef
+
   const savedModel = sessionModel ?? defaultModel ?? ''
+
+  // The combobox text is the only local state: it has to hold values that
+  // aren't committable yet (mid-typing). External changes are adopted with the
+  // derived-state pattern rather than an effect (React docs: "You might not
+  // need an effect").
+  const [modelText, setModelText] = useState(savedModel)
+  const [lastSavedModel, setLastSavedModel] = useState(savedModel)
+  if (savedModel !== lastSavedModel) {
+    setLastSavedModel(savedModel)
+    setModelText(savedModel)
+  }
+
   // Keep a previously saved model visible even if it isn't (yet) in the
   // registry, but never turn an in-progress search query into an option.
   const currentModelOptions = useMemo(() => {
@@ -70,191 +98,161 @@ export function SessionModelSettings({
     const model = colonIdx >= 0 ? id.slice(colonIdx + 1) : id
     return [...filtered, { id, provider, model, vision: false }]
   }, [modelOptions, savedModel])
-  const savedThinkingLevel = sessionThinkingLevel ?? ''
-  const savedFastMode = sessionFastMode
-  const dirty =
-    draftModel !== savedModel ||
-    draftThinkingLevel !== savedThinkingLevel ||
-    draftFastMode !== savedFastMode
-  const trimmedDraftModel = draftModel.trim()
-  const effectiveDraftModel = trimmedDraftModel || defaultModel || ''
-  const effectiveModelEntry = modelOptions.find((model) => model.id === effectiveDraftModel)
-  const thinkingLevelOptions = useMemo(() => {
-    const modelThinkingLevels = effectiveModelEntry?.thinking_levels ?? []
 
-    const toLabel = (value: string) =>
-      value.split('-').map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(' ')
-
-    const allowedLevels = modelThinkingLevels.length > 0 ? modelThinkingLevels : FALLBACK_THINKING_LEVEL_VALUES
-    const normalizedLevels = allowedLevels.filter((value) => value !== '__none__')
-
-    const fallbackByValue = new Map(THINKING_LEVELS.map((level) => [level.value, level.label]))
-    const options = [
-      THINKING_LEVELS[0],
-      ...normalizedLevels.map((value) => ({
-        value,
-        label: fallbackByValue.get(value) ?? toLabel(value),
-      })),
-    ]
-
-    if (draftThinkingLevel && !options.some((level) => level.value === draftThinkingLevel)) {
-      options.push({ value: draftThinkingLevel, label: toLabel(draftThinkingLevel) })
-    }
-    return options
-  }, [draftThinkingLevel, effectiveModelEntry])
-  const fastModeAvailable = effectiveModelEntry?.fast_mode ?? false
   const validModelIds = useMemo(
     () => new Set(modelOptions.map((model) => model.id)),
     [modelOptions],
   )
-  const modelValid =
-    trimmedDraftModel === '' ||
-    trimmedDraftModel === defaultModel ||
-    validModelIds.has(trimmedDraftModel)
+  /** A real model the session can be pinned to. Empty is not committable: see
+   *  the module docstring. */
+  const isCommittable = (id: string) => id !== '' && (id === defaultModel || validModelIds.has(id))
+  /** Empty is not an *error* either — it's just incomplete. */
+  const isAcceptable = (id: string) => id === '' || isCommittable(id)
 
-  // Validate and reset draft thinking level if it's not supported by the current effective model.
-  // We only run this validation when the model registry has loaded and the typed/selected model is valid,
-  // to avoid prematurely clearing levels during mid-typing of invalid/partial model names.
-  useEffect(() => {
-    if (!registry.data?.models || !modelValid) return
+  const trimmedModel = modelText.trim()
+  const modelValid = isAcceptable(trimmedModel)
+  const effectiveModel = trimmedModel || defaultModel || ''
+  const effectiveEntry = modelOptions.find((model) => model.id === effectiveModel)
 
-    const effectiveDraftModel = draftModel.trim() || defaultModel || ''
-    const entry = modelOptions.find((m) => m.id === effectiveDraftModel)
+  const thinkingLevel = sessionThinkingLevel ?? ''
+  const supportedLevels = levelsFor(effectiveEntry)
 
-    const allowedLevels = entry?.thinking_levels && entry.thinking_levels.length > 0
-      ? entry.thinking_levels
-      : FALLBACK_THINKING_LEVEL_VALUES
-    const normalizedLevels = allowedLevels.filter((value) => value !== '__none__')
-
-    if (draftThinkingLevel && !normalizedLevels.includes(draftThinkingLevel)) {
-      setDraftThinkingLevel('')
+  const thinkingOptions = useMemo(() => {
+    const options = [
+      { value: '', label: DEFAULT_LEVEL_LABEL },
+      ...supportedLevels.map((value) => ({ value, label: levelLabel(value) })),
+    ]
+    // A restored session may hold a level this model no longer lists; keep it
+    // visible so the dropdown doesn't silently misreport what is active.
+    if (thinkingLevel && !options.some((level) => level.value === thinkingLevel)) {
+      options.push({ value: thinkingLevel, label: levelLabel(thinkingLevel) })
     }
-  }, [draftModel, defaultModel, modelOptions, registry.data, draftThinkingLevel, modelValid])
+    return options
+  }, [supportedLevels, thinkingLevel])
 
-  const selectThinkingLevel = (level: string) => {
-    setDraftThinkingLevel(level)
+  /** Normalise and push upstream. An override equal to the agent default is
+   *  stored as `null` so the session doesn't pin a value it didn't choose. */
+  const commit = (model: string, level: string) => {
+    const id = model.trim()
+    onChange(id && id !== defaultModel ? id : null, level || null)
   }
 
-  const selectedThinkingLabel = thinkingLevelOptions.find((level) => level.value === draftThinkingLevel)?.label ?? 'Default'
+  const selectModel = (next: string) => {
+    setModelText(next)
+    const id = next.trim()
+    if (!isCommittable(id)) return
+    // Carry the thinking level across only if the incoming model supports it,
+    // in the same commit — otherwise the session would briefly hold a
+    // combination the model can't serve.
+    const nextEntry = modelOptions.find((m) => m.id === id)
+    const nextLevels = levelsFor(nextEntry)
+    commit(id, thinkingLevel && nextLevels.includes(thinkingLevel) ? thinkingLevel : '')
+  }
+
+  const resetToDefault = () => {
+    setModelText(defaultModel ?? '')
+    const defaultEntry = modelOptions.find((m) => m.id === (defaultModel ?? ''))
+    const defaultLevels = levelsFor(defaultEntry)
+    commit('', thinkingLevel && defaultLevels.includes(thinkingLevel) ? thinkingLevel : '')
+    // This button only renders while overridden, so committing unmounts it and
+    // focus would fall to <body>. Hand it to the field the button acts on.
+    inputRef.current?.focus()
+  }
+
+  // A session restored from disk can carry a level the current model doesn't
+  // support (the model changed underneath it). Drop it once the registry is
+  // loaded enough to judge. Committing null stops this from re-firing.
+  useEffect(() => {
+    if (!registry.data?.models || !modelValid) return
+    if (thinkingLevel && !supportedLevels.includes(thinkingLevel)) {
+      // Commit the *saved* model, not the draft text: the user may have the
+      // field cleared or half-typed, and this effect is only about the level.
+      commit(sessionModel ?? '', '')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [registry.data?.models, modelValid, thinkingLevel, supportedLevels])
+
+  const selectedThinkingLabel =
+    thinkingOptions.find((level) => level.value === thinkingLevel)?.label ?? DEFAULT_LEVEL_LABEL
 
   return (
-    <form
-      className="shrink-0 border-b border-(--color-border) bg-(--bg-page) px-3 py-3 sm:px-5 sm:py-4"
-      onSubmit={(event) => {
-        event.preventDefault()
-        if (!dirty || !modelValid) return
-        onChange(
-          trimmedDraftModel && trimmedDraftModel !== defaultModel ? trimmedDraftModel : null,
-          draftThinkingLevel || null,
-          fastModeAvailable && draftFastMode,
-        )
-      }}
-    >
-      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h3 className="text-sm font-semibold text-(--color-text)">Current session</h3>
-          <p className="mt-0.5 text-xs text-(--color-text-muted)">
-            Saved changes apply to the lead agent on the next message in this chat session.
-          </p>
-        </div>
-        <div className="flex shrink-0 gap-2">
-          <Button
-            type="button"
-            variant="default"
-            size="xs"
-            className="h-8 px-2 text-[10.5px]"
-            disabled={!dirty}
-            onClick={() => {
-              setDraftModel(savedModel)
-              setDraftThinkingLevel(savedThinkingLevel)
-              setDraftFastMode(savedFastMode)
-            }}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            size="xs"
-            className="h-8 px-2 text-[10.5px]"
-            disabled={!dirty || !modelValid}
-          >
-            Apply
-          </Button>
-        </div>
-      </div>
-      <div className="grid gap-3 sm:grid-cols-[minmax(0,2fr)_10rem_minmax(0,0.8fr)]">
-        <label className="min-w-0 text-xs text-(--color-text-muted)">
-          <span className="mb-1 block font-medium text-(--color-text-2)">Model</span>
+    <div className="shrink-0 px-3 py-3 sm:px-5 sm:py-4">
+      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_10rem]">
+        {/* Not a <label>: the caption is decorative (the combobox and dropdown
+            carry their own aria-labels) and wrapping a <button> in a <label>
+            makes the label's contents the button's accessible name. */}
+        <div className="min-w-0 text-xs text-(--color-text-muted)">
+          {/* Fixed-height caption row: the Vision chip is taller than bare
+              label text (border + padding), and letting it grow this row
+              pushes the input below the Thinking control next to it. */}
+          <span className="mb-1 flex h-4 items-center gap-1.5 font-medium leading-none text-(--color-text-2)">
+            Model
+            {effectiveEntry?.vision && (
+              <span
+                className="flex h-4 items-center gap-1 rounded-xs border border-(--color-border) bg-(--bg-key) px-1.5 text-[10px] font-normal leading-none text-(--color-text-muted)"
+                title="Accepts image input"
+              >
+                <Eye size={10} aria-hidden />
+                Vision
+              </span>
+            )}
+          </span>
           <ModelCombobox
-            value={draftModel}
+            value={modelText}
             options={currentModelOptions}
-            onChange={setDraftModel}
+            onChange={selectModel}
             invalid={!modelValid}
             placeholder="Search session model…"
             ariaLabel="Search session model"
+            inputRef={inputRef}
+            // This field takes focus when the panel opens; auto-opening the
+            // list would then hide the rest of the panel behind it.
+            openOnFocus={false}
           />
-          {!modelValid && (
+          {!modelValid ? (
             <span className="mt-1 block text-[11px] text-(--color-error)">
               Choose a model from the list.
             </span>
-          )}
-          {modelValid && !trimmedDraftModel && defaultModel && (
+          ) : sessionModel ? (
+            <button
+              type="button"
+              onClick={resetToDefault}
+              className="mt-1 rounded-xs text-[11px] text-(--color-text-muted) underline decoration-dotted transition-colors hover:text-(--color-text-2)"
+            >
+              Use agent default{defaultModel ? `: ${defaultModel}` : ''}
+            </button>
+          ) : defaultModel ? (
             <span className="mt-1 block text-[11px] text-(--color-text-muted)">
-              Using default: {defaultModel}
+              Agent default.
             </span>
-          )}
-        </label>
-        <label className="text-xs text-(--color-text-muted)">
-          <span className="mb-1 block font-medium text-(--color-text-2)">Thinking</span>
+          ) : null}
+        </div>
+
+        <div className="text-xs text-(--color-text-muted)">
+          {/* Same fixed height as the Model caption so both controls share a
+              top edge. */}
+          <span className="mb-1 flex h-4 items-center font-medium leading-none text-(--color-text-2)">
+            Thinking
+          </span>
           <Dropdown
-            value={draftThinkingLevel}
-            onValueChange={selectThinkingLevel}
+            value={thinkingLevel}
+            // The level applies to whatever model is saved; the draft text may
+            // be mid-edit, so never commit it from here.
+            onValueChange={(level) => commit(sessionModel ?? '', level)}
             trigger={selectedThinkingLabel}
-            className="min-h-10 w-full md:min-h-9"
+            // Matches ModelCombobox's input height (min-h-11 md:min-h-9) so the
+            // two controls are the same size, not just the same top edge.
+            className="min-h-11 w-full md:min-h-9"
             aria-label="Thinking level"
           >
-            {thinkingLevelOptions.map((level) => (
+            {thinkingOptions.map((level) => (
               <DropdownItem key={level.value} value={level.value}>
                 {level.label}
               </DropdownItem>
             ))}
           </Dropdown>
-        </label>
-        <label className="min-w-0 text-xs text-(--color-text-muted)">
-          <span className="mb-1 flex items-center gap-1 font-medium text-(--color-text-2)">
-            Fast mode
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <span className="inline-flex shrink-0 cursor-help text-(--color-text-muted) transition-colors hover:text-(--color-text-2)">
-                    <Info size={12} aria-label="About Fast mode" />
-                  </span>
-                }
-              />
-              <TooltipContent>
-                {fastModeAvailable
-                  ? 'Use Fast/Priority mode for messages in this session.'
-                  : 'Not available for this model. Fast mode requires a provider that supports service/latency tiers.'}
-              </TooltipContent>
-            </Tooltip>
-          </span>
-          <div
-            className={`flex min-h-10 w-full items-center gap-2 rounded-sm border border-(--color-border) bg-(--bg-input) px-2.5 py-1.5 transition-colors md:min-h-9 ${
-              fastModeAvailable ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'
-            }`}
-          >
-            <Checkbox
-              checked={fastModeAvailable && draftFastMode}
-              disabled={!fastModeAvailable}
-              onCheckedChange={setDraftFastMode}
-              aria-label="Fast mode"
-            />
-            <span className="truncate text-xs text-(--color-text-2)">
-              {fastModeAvailable && draftFastMode ? 'Enabled' : 'Off'}
-            </span>
-          </div>
-        </label>
+        </div>
       </div>
-    </form>
+    </div>
   )
 }

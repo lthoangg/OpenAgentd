@@ -16,9 +16,10 @@ afterEach(() => {
 })
 
 function renderPanel(overrides: Partial<{
+  defaultModel: string | null
   sessionModel: string | null
-  sessionFastMode: boolean
-  onChange: (model: string | null, thinkingLevel: string | null, fastMode: boolean) => void
+  sessionThinkingLevel: string | null
+  onChange: (model: string | null, thinkingLevel: string | null) => void
 }> = {}) {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -30,10 +31,9 @@ function renderPanel(overrides: Partial<{
   return render(
     <QueryClientProvider client={queryClient}>
       <SessionModelSettings
-        defaultModel={null}
+        defaultModel={overrides.defaultModel ?? null}
         sessionModel={overrides.sessionModel ?? null}
-        sessionThinkingLevel={null}
-        sessionFastMode={overrides.sessionFastMode ?? false}
+        sessionThinkingLevel={overrides.sessionThinkingLevel ?? null}
         onChange={overrides.onChange ?? (() => undefined)}
       />
     </QueryClientProvider>,
@@ -58,7 +58,9 @@ describe('SessionModelSettings', () => {
 
     const input = await screen.findByRole('combobox', { name: 'Search session model' })
     await waitFor(() => expect((globalThis.fetch as ReturnType<typeof mock>).mock.calls.length).toBeGreaterThan(0))
-    fireEvent.focus(input)
+    // Focus alone no longer opens the list (the panel focuses this field on
+    // entry and must not cover itself); a click or ArrowDown does.
+    fireEvent.click(input)
 
     expect(await screen.findByText('openai:gpt-5.5-mini')).toBeTruthy()
   })
@@ -79,7 +81,7 @@ describe('SessionModelSettings', () => {
     renderPanel()
 
     const input = await screen.findByRole('combobox', { name: 'Search session model' })
-    fireEvent.focus(input)
+    fireEvent.click(input)
 
     expect(await screen.findByText('openai:gpt-5')).toBeTruthy()
   })
@@ -188,7 +190,6 @@ describe('SessionModelSettings', () => {
           defaultModel={null}
           sessionModel="anthropic:claude-3-7-sonnet"
           sessionThinkingLevel="xhigh"
-          sessionFastMode={false}
           onChange={onChange}
         />
       </QueryClientProvider>,
@@ -206,103 +207,161 @@ describe('SessionModelSettings', () => {
     const option = await screen.findByText('openai:gpt-4o')
     fireEvent.click(option)
 
-    await waitFor(() => expect(thinkingButton.textContent).toBe('Default'))
-
-    const applyButton = await screen.findByRole('button', { name: 'Apply' })
-    expect((applyButton as HTMLButtonElement).disabled).toBe(false)
-    fireEvent.click(applyButton)
-
-    expect(onChange).toHaveBeenCalledWith('openai:gpt-4o', null, false)
+    // The dropdown label follows the committed session prop, which this test
+    // holds fixed, so assert on what the component reports upstream: the model
+    // and the cleared level arrive in a single commit, so the session never
+    // holds a level the new model can't serve.
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith('openai:gpt-4o', null))
   })
 })
 
-describe('SessionModelSettings — Fast mode', () => {
-  it('renders Fast mode as a checkbox (not a raw inline note)', () => {
-    renderPanel({ sessionModel: 'codex:gpt-5' })
+describe('SessionModelSettings — instant apply', () => {
+  afterEach(cleanup)
 
-    const checkbox = screen.getByRole('checkbox', { name: 'Fast mode' })
-    expect(checkbox).toBeTruthy()
-    expect((checkbox as HTMLInputElement).type).toBe('checkbox')
+  const REGISTRY = {
+    tools: [],
+    skills: [],
+    providers: ['openai'],
+    models: [
+      { id: 'openai:gpt-4o', provider: 'openai', model: 'gpt-4o', vision: true, output_image: false, output_video: false, thinking_levels: ['none', 'low', 'high'], summary_trigger_tokens: 0, fast_mode: false },
+      { id: 'openai:o3-mini', provider: 'openai', model: 'o3-mini', vision: false, output_image: false, output_video: false, thinking_levels: [], summary_trigger_tokens: 0, fast_mode: false },
+    ],
+  }
 
-    // The descriptive note now lives inside the (i) tooltip, so it must not
-    // be rendered inline in the row by default — keeps the control compact.
-    expect(
-      screen.queryByText('Use Fast/Priority mode for messages in this session.'),
-    ).toBeNull()
-  })
-
-  it('exposes an (i) info trigger for the Fast mode explanation', () => {
-    renderPanel({ sessionModel: 'codex:gpt-5' })
-    expect(screen.getByLabelText('About Fast mode')).toBeTruthy()
-  })
-
-  it('toggling the checkbox enables fast mode on apply', async () => {
-    // The model must resolve in the registry for Apply to be enabled
-    // (modelValid gate), so serve a matching codex model.
+  function stub() {
     globalThis.fetch = mock(async () =>
-      new Response(JSON.stringify({
-        tools: [],
-        skills: [],
-        providers: ['codex'],
-        models: [{ id: 'codex:gpt-5', provider: 'codex', model: 'gpt-5', vision: false, output_image: false, output_video: false, thinking_levels: [], summary_trigger_tokens: 0, fast_mode: true }],
-      }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      new Response(JSON.stringify(REGISTRY), { status: 200, headers: { 'Content-Type': 'application/json' } }),
     ) as typeof fetch
+  }
 
+  it('has no apply or cancel controls', async () => {
+    stub()
+    renderPanel({ sessionModel: 'openai:gpt-4o' })
+
+    await screen.findByRole('combobox', { name: 'Search session model' })
+    expect(screen.queryByRole('button', { name: 'Apply' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull()
+  })
+
+  it('does not commit a half-typed model id', async () => {
+    const user = userEvent.setup()
     const onChange = mock(() => undefined)
-    renderPanel({ sessionModel: 'codex:gpt-5', sessionFastMode: false, onChange })
+    stub()
+    renderPanel({ onChange })
 
-    const apply = await screen.findByRole('button', { name: 'Apply' })
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Fast mode' }))
-    await waitFor(() => expect((apply as HTMLButtonElement).disabled).toBe(false))
-    fireEvent.click(apply)
+    const input = await screen.findByRole('combobox', { name: 'Search session model' })
+    await waitFor(() => expect((globalThis.fetch as ReturnType<typeof mock>).mock.calls.length).toBeGreaterThan(0))
+    await user.click(input)
+    await user.type(input, 'openai:gpt-4')
 
-    expect(onChange).toHaveBeenCalledWith('codex:gpt-5', null, true)
+    expect(onChange).not.toHaveBeenCalled()
+    expect(screen.getByText(/choose a model from the list/i)).toBeTruthy()
   })
 
-  it('disables the checkbox when the session model is not supported', () => {
-    renderPanel({ sessionModel: 'deepseek:deepseek-v4-pro' })
-    const checkbox = screen.getByRole('checkbox', { name: 'Fast mode' }) as HTMLInputElement
-    expect(checkbox.disabled).toBe(true)
-  })
-
-  it('enables the checkbox for a plugin provider whose registry entry has fast_mode=true', async () => {
-    globalThis.fetch = mock(async () =>
-      new Response(JSON.stringify({
-        tools: [],
-        skills: [],
-        providers: ['myfastplugin'],
-        models: [{ id: 'myfastplugin:turbo', provider: 'myfastplugin', model: 'turbo', vision: false, output_image: false, output_video: false, thinking_levels: [], summary_trigger_tokens: 0, fast_mode: true }],
-      }), { status: 200, headers: { 'Content-Type': 'application/json' } })
-    ) as typeof fetch
-
-    renderPanel({ sessionModel: 'myfastplugin:turbo' })
+  it('commits a thinking level the moment it is picked', async () => {
+    const onChange = mock(() => undefined)
+    stub()
+    renderPanel({ sessionModel: 'openai:gpt-4o', onChange })
 
     await waitFor(() => expect((globalThis.fetch as ReturnType<typeof mock>).mock.calls.length).toBeGreaterThan(0))
+    fireEvent.click(await screen.findByRole('button', { name: 'Thinking level' }))
+    fireEvent.click(await screen.findByText('High'))
 
-    const checkbox = screen.getByRole('checkbox', { name: 'Fast mode' }) as HTMLInputElement
-    expect(checkbox.disabled).toBe(false)
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith('openai:gpt-4o', 'high'))
   })
 
-  it('disables the checkbox for a plugin provider whose registry entry has fast_mode=false', async () => {
-    globalThis.fetch = mock(async () =>
-      new Response(JSON.stringify({
-        tools: [],
-        skills: [],
-        providers: ['myslowplugin'],
-        models: [{ id: 'myslowplugin:base', provider: 'myslowplugin', model: 'base', vision: false, output_image: false, output_video: false, thinking_levels: [], summary_trigger_tokens: 0, fast_mode: false }],
-      }), { status: 200, headers: { 'Content-Type': 'application/json' } })
-    ) as typeof fetch
+  it('offers a reset back to the agent default only while overridden', async () => {
+    stub()
+    const { unmount } = renderPanel({ defaultModel: 'openai:o3-mini', sessionModel: 'openai:gpt-4o' })
+    expect(await screen.findByRole('button', { name: /use agent default/i })).toBeTruthy()
+    unmount()
 
-    renderPanel({ sessionModel: 'myslowplugin:base' })
+    renderPanel({ defaultModel: 'openai:o3-mini', sessionModel: null })
+    await screen.findByRole('combobox', { name: 'Search session model' })
+    expect(screen.queryByRole('button', { name: /use agent default/i })).toBeNull()
+  })
 
+  it('clears the override when the reset control is used', async () => {
+    const onChange = mock(() => undefined)
+    stub()
+    renderPanel({ defaultModel: 'openai:o3-mini', sessionModel: 'openai:gpt-4o', onChange })
+
+    fireEvent.click(await screen.findByRole('button', { name: /use agent default/i }))
+
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith(null, null))
+  })
+
+  it('moves focus to the model field when the reset control removes itself', async () => {
+    stub()
+    // The reset button only exists while overridden, so activating it unmounts
+    // the very element that has focus. Without a handoff, focus lands on
+    // <body> and a keyboard user loses their place.
+    renderPanel({ defaultModel: 'openai:o3-mini', sessionModel: 'openai:gpt-4o' })
+
+    const reset = await screen.findByRole('button', { name: /use agent default/i })
+    reset.focus()
+    fireEvent.click(reset)
+
+    await waitFor(() =>
+      expect(document.activeElement?.getAttribute('aria-label')).toBe('Search session model'),
+    )
+  })
+
+  it('leaves the field empty after clearing it, instead of refilling the default', async () => {
+    const onChange = mock(() => undefined)
+    stub()
+    renderPanel({ defaultModel: 'openai:o3-mini', sessionModel: 'openai:gpt-4o', onChange })
+
+    const input = await screen.findByRole('combobox', { name: 'Search session model' })
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'Clear model' }))
+
+    // An empty field is someone about to type, not a request to fall back to
+    // the agent default. Committing here would refill the input instantly.
+    expect((input as HTMLInputElement).value).toBe('')
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
+  it('commits the model typed after a clear', async () => {
+    const user = userEvent.setup()
+    const onChange = mock(() => undefined)
+    stub()
+    renderPanel({ defaultModel: 'openai:o3-mini', sessionModel: 'openai:gpt-4o', onChange })
+
+    const input = await screen.findByRole('combobox', { name: 'Search session model' })
     await waitFor(() => expect((globalThis.fetch as ReturnType<typeof mock>).mock.calls.length).toBeGreaterThan(0))
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'Clear model' }))
+    await user.type(input, 'openai:o3-mini')
 
-    const checkbox = screen.getByRole('checkbox', { name: 'Fast mode' }) as HTMLInputElement
-    expect(checkbox.disabled).toBe(true)
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith(null, null))
+  })
+
+  it('does not treat an emptied field as an error', async () => {
+    stub()
+    renderPanel({ defaultModel: 'openai:o3-mini', sessionModel: 'openai:gpt-4o' })
+
+    await screen.findByRole('combobox', { name: 'Search session model' })
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'Clear model' }))
+
+    expect(screen.queryByText(/choose a model from the list/i)).toBeNull()
+  })
+
+  it('flags the effective model as vision-capable', async () => {
+    stub()
+    renderPanel({ sessionModel: 'openai:gpt-4o' })
+
+    expect(await screen.findByText(/vision/i)).toBeTruthy()
+  })
+
+  it('does not claim vision for a model without it', async () => {
+    stub()
+    renderPanel({ sessionModel: 'openai:o3-mini' })
+
+    await screen.findByRole('combobox', { name: 'Search session model' })
+    await waitFor(() => expect((globalThis.fetch as ReturnType<typeof mock>).mock.calls.length).toBeGreaterThan(0))
+    expect(screen.queryByText(/vision/i)).toBeNull()
   })
 })
 
-// Registry stub with two known models used across the combobox injection tests.
 function stubRegistry(models = [
   { id: 'openai:gpt-4o', provider: 'openai', model: 'gpt-4o', vision: false, output_image: false, output_video: false, thinking_levels: [], summary_trigger_tokens: 0, fast_mode: false },
   { id: 'anthropic:claude-3-5-sonnet', provider: 'anthropic', model: 'claude-3-5-sonnet', vision: true, output_image: false, output_video: false, thinking_levels: [], summary_trigger_tokens: 0, fast_mode: false },
@@ -413,7 +472,7 @@ describe('SessionModelSettings — model combobox injection guard', () => {
     expect(options.map((o) => o.textContent?.trim())).toEqual(['openai:gpt-4o'])
   })
 
-  it('selects a fuzzy result on Enter and applies it on the next Enter', async () => {
+  it('applies a fuzzy result as soon as Enter selects it', async () => {
     const user = userEvent.setup()
     const onChange = mock(() => undefined)
     stubRegistry()
@@ -425,12 +484,12 @@ describe('SessionModelSettings — model combobox injection guard', () => {
     await user.clear(input)
     await user.type(input, 'opnai:gpt4o')
 
-    await user.keyboard('{Enter}')
-    expect((input as HTMLInputElement).value).toBe('openai:gpt-4o')
+    // Nothing is committed while the typed text is not a real model id.
     expect(onChange).not.toHaveBeenCalled()
 
     await user.keyboard('{Enter}')
-    expect(onChange).toHaveBeenCalledWith('openai:gpt-4o', null, false)
+    expect((input as HTMLInputElement).value).toBe('openai:gpt-4o')
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith('openai:gpt-4o', null))
   })
 
   // ── Preserved behaviour: previously-saved model kept in the list ──────────

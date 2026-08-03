@@ -216,7 +216,7 @@ export const TeamChatHeader = memo(function TeamChatHeader({
             />
             <MobileHeaderAction
               Icon={SlidersHorizontal}
-              label="Agent settings"
+              label="Session settings"
               onClick={onToggleAgentCapabilities}
               active={agentCapabilitiesOpen}
             />
@@ -266,8 +266,8 @@ export const TeamChatHeader = memo(function TeamChatHeader({
             agentsAction={{
               Icon: SlidersHorizontal,
               onClick: onToggleAgentCapabilities,
-              title: `Session model settings (${formatShortcut('A', os, { shift: true })})`,
-              ariaLabel: 'Session model settings',
+              title: `Session settings (${formatShortcut('A', os, { shift: true })})`,
+              ariaLabel: 'Session settings',
               className: agentCapabilitiesOpen ? 'mr-2 bg-(--bg-key) text-(--color-text)' : 'mr-2',
             }}
           />

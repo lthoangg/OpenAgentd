@@ -10,8 +10,7 @@ interface TeamChatPanelsProps {
   agentWorkspace: string | null
   sessionModel: string | null
   sessionThinkingLevel: string | null
-  sessionFastMode: boolean
-  onSessionModelSettingsChange: (model: string | null, thinkingLevel: string | null, fastMode: boolean) => void
+  onSessionModelSettingsChange: (model: string | null, thinkingLevel: string | null) => void
   onCloseAgentCapabilities: () => void
   mode: 'normal' | 'coding'
   isMobile: boolean
@@ -34,7 +33,6 @@ export function TeamChatPanels({
   agentWorkspace,
   sessionModel,
   sessionThinkingLevel,
-  sessionFastMode,
   onSessionModelSettingsChange,
   onCloseAgentCapabilities,
   mode,
@@ -59,7 +57,6 @@ export function TeamChatPanels({
         workspace={agentWorkspace}
         sessionModel={sessionModel}
         sessionThinkingLevel={sessionThinkingLevel}
-        sessionFastMode={sessionFastMode}
         onSessionModelSettingsChange={onSessionModelSettingsChange}
         onClose={onCloseAgentCapabilities}
       />

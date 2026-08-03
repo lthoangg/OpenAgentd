@@ -118,7 +118,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         sessionTitle: s.sessionTitle,
         sessionModel: s.sessionModel,
         sessionThinkingLevel: s.sessionThinkingLevel,
-        sessionFastMode: s.sessionFastMode,
         leadName: s.leadName,
 
         activeBlocks: activeStream?.blocks ?? EMPTY_BLOCKS,
@@ -161,7 +160,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     sessionTitle,
     sessionModel,
     sessionThinkingLevel,
-    sessionFastMode,
     leadName,
 
     activeBlocks,
@@ -679,7 +677,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         agentWorkspace={agentWorkspace}
         sessionModel={sessionModel}
         sessionThinkingLevel={sessionThinkingLevel}
-        sessionFastMode={sessionFastMode}
         onSessionModelSettingsChange={setSessionModelSettings}
         onCloseAgentCapabilities={closeAgentCapabilities}
         mode={mode}

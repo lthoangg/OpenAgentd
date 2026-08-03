@@ -183,6 +183,7 @@ async def stream_and_assemble(
     reasoning = ""
     reasoning_signature = ""
     redacted_thinking_blocks: list[dict] = []
+    raw_content_blocks: list[dict] | None = None
     reasoning_item_id: str | None = None
     reasoning_encrypted_content: str | None = None
     tool_calls_buffer: dict[int, dict] = {}
@@ -234,6 +235,7 @@ async def stream_and_assemble(
             reasoning = ""
             reasoning_signature = ""
             redacted_thinking_blocks = []
+            raw_content_blocks = None
             reasoning_item_id = None
             reasoning_encrypted_content = None
             tool_calls_buffer = {}
@@ -260,6 +262,10 @@ async def stream_and_assemble(
             reasoning_signature += delta.reasoning_signature
         if delta.redacted_thinking_block:
             redacted_thinking_blocks.append(delta.redacted_thinking_block)
+        if delta.anthropic_raw_blocks is not None:
+            # Me: yielded once, fully assembled, after the provider stream
+            # completes — assign rather than concatenate.
+            raw_content_blocks = delta.anthropic_raw_blocks
         if delta.reasoning_encrypted_content:
             # Me: delivered once, whole, when the reasoning item completes —
             # not incremental text like reasoning_content, so assign rather
@@ -392,6 +398,9 @@ async def stream_and_assemble(
     if redacted_thinking_blocks:
         extra = extra or {}
         extra["redacted_thinking_blocks"] = redacted_thinking_blocks
+    if raw_content_blocks:
+        extra = extra or {}
+        extra["raw_content_blocks"] = raw_content_blocks
     if reasoning_encrypted_content:
         extra = extra or {}
         extra["reasoning_item_id"] = reasoning_item_id
@@ -410,4 +419,6 @@ async def stream_and_assemble(
     )
     if redacted_thinking_blocks:
         msg.redacted_thinking_blocks = redacted_thinking_blocks
+    if raw_content_blocks:
+        msg.raw_content_blocks = raw_content_blocks
     return msg, last_usage

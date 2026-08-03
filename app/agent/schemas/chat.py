@@ -182,6 +182,19 @@ class AssistantMessage(BaseMessage):
     # Me: Anthropic redacted_thinking blocks must be echoed verbatim in history.
     # Each entry is the raw block dict: {"type": "redacted_thinking", "data": "..."}.
     redacted_thinking_blocks: list[dict] | None = Field(default=None, exclude=True)
+    # Me: Anthropic adaptive/interleaved thinking can emit multiple thinking
+    # blocks per turn, each immediately preceding the tool_use it justifies.
+    # The API requires the exact original content-block order to be replayed
+    # verbatim in history (HTTP 400 otherwise) — reconstructing a canonical
+    # "thinking, then text, then all tool calls" order (as the legacy
+    # reasoning_content/redacted_thinking_blocks fields above do) reorders
+    # multi-thinking-block turns and breaks the contract. When captured, this
+    # holds the ordered raw block list, verbatim: thinking/redacted_thinking/
+    # text dicts as returned, plus a ``{"type": "tool_use_ref", "id": ...}``
+    # placeholder resolved against ``tool_calls`` at send time — reusing the
+    # already-validated tool call list instead of re-parsing streamed JSON
+    # (see ``_split_messages`` / ``_blocks_from_raw_content``).
+    raw_content_blocks: list[dict] | None = Field(default=None, exclude=True)
     # Me: OpenAI Responses API reasoning item id + encrypted_content — required
     # to replay the reasoning item ahead of its function_call on the next turn
     # (see codex-rs client.rs: `include: ["reasoning.encrypted_content"]` is
@@ -230,6 +243,10 @@ class ChatCompletionDelta(BaseModel):
     # Me: Anthropic redacted_thinking block received during streaming — the full
     # block dict must be stored verbatim and replayed in history (HTTP 400 if modified).
     redacted_thinking_block: dict | None = None
+    # Me: Anthropic — the fully assembled, ordered raw content-block list for
+    # the turn (see AssistantMessage.raw_content_blocks). Anthropic-specific
+    # providers emit this once, after the stream completes.
+    anthropic_raw_blocks: list[dict] | None = None
     # Me: OpenAI Responses API reasoning item id + encrypted_content, delivered
     # once when the reasoning output item completes (not incremental text).
     reasoning_item_id: str | None = None

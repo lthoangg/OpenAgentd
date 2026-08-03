@@ -9,7 +9,10 @@ import {
   useUpdateMcpServerMutation,
   useDeleteMcpServerMutation,
   useRestartMcpServerMutation,
+  mcpPollInterval,
+  MCP_STARTING_POLL_MS,
 } from '@/queries/useMcpQuery'
+import type { ServerStatus } from '@/api/client'
 
 // ── Query client wrapper ─────────────────────────────────────────────────────
 
@@ -44,6 +47,39 @@ describe('useMcpServersQuery', () => {
   it('is configured with staleTime', () => {
     const { result } = renderHook(() => useMcpServersQuery(), { wrapper: createWrapper() })
     expect(result.current).toBeTruthy()
+  })
+})
+
+// ── mcpPollInterval ──────────────────────────────────────────────────────────
+
+describe('mcpPollInterval', () => {
+  const srv = (over: Partial<ServerStatus> & { name: string }): ServerStatus => ({
+    transport: 'stdio',
+    enabled: true,
+    state: 'ready',
+    error: null,
+    tool_names: [],
+    started_at: null,
+    config: null,
+    ...over,
+  })
+
+  it('polls while an enabled server is still starting', () => {
+    expect(mcpPollInterval([srv({ name: 'a', state: 'starting' })])).toBe(MCP_STARTING_POLL_MS)
+  })
+
+  it('stops polling once every server has settled', () => {
+    expect(
+      mcpPollInterval([srv({ name: 'a', state: 'ready' }), srv({ name: 'b', state: 'error' })]),
+    ).toBe(false)
+  })
+
+  it('does not poll for a disabled server stuck in starting', () => {
+    expect(mcpPollInterval([srv({ name: 'a', state: 'starting', enabled: false })])).toBe(false)
+  })
+
+  it('does not poll before any data has arrived', () => {
+    expect(mcpPollInterval(undefined)).toBe(false)
   })
 })
 

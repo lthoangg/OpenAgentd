@@ -9,14 +9,34 @@ import {
   restartMcpServer,
   connectMcpOAuth,
   type ServerBody,
+  type ServerStatus,
 } from '@/api/client'
 import { queryKeys } from './keys'
 
-export function useMcpServersQuery() {
+/** How often to re-poll while a server is mid-handshake. */
+export const MCP_STARTING_POLL_MS = 2_000
+
+/**
+ * Poll interval for the server list: keep refetching only while an enabled
+ * server is still coming up, so a freshly enabled server visibly settles into
+ * `ready` instead of sitting on `starting` until the panel is reopened. A
+ * disabled server never leaves `starting` on its own, so it must not keep the
+ * poll alive forever.
+ */
+export function mcpPollInterval(servers: ServerStatus[] | undefined): number | false {
+  const starting = servers?.some((s) => s.enabled && s.state === 'starting') ?? false
+  return starting ? MCP_STARTING_POLL_MS : false
+}
+
+export function useMcpServersQuery(options?: { pollWhileStarting?: boolean }) {
   return useQuery({
     queryKey: queryKeys.mcp.list(),
     queryFn: listMcpServers,
     staleTime: 10_000,
+    // Opt-in: only surfaces that show live state want the extra traffic.
+    refetchInterval: options?.pollWhileStarting
+      ? (query) => mcpPollInterval(query.state.data?.servers)
+      : undefined,
   })
 }
 

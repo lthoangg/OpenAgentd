@@ -674,6 +674,9 @@ Four orthogonal ways to add capability.
 - **MCP servers** `[since v1.0]` — any Model Context Protocol server, hot-reloaded
   via `POST /api/mcp/apply`. Per-agent scoping. OAuth-backed setup. Session Settings
   can enable/disable scoped MCP servers and connect OAuth-backed servers in place `[v1.52.2]`.
+  OAuth setup permits empty client ID and secret fields so servers that support
+  dynamic client registration can complete setup without app credentials; issuer
+  discovery also tolerates a sole trailing-slash difference at the origin root `[v1.123.2]`.
   - **`$VAR` / `${VAR}` expansion in stdio server env** `[v1.122.0]` — stdio MCP
     server `env` entries in `mcp.json` now resolve environment/`.env`-style
     references the same way header values already did, so secrets can be

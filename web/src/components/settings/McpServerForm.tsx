@@ -185,7 +185,7 @@ export function McpServerForm({
 
               {value.oauthEnabled && (
                 <div className="rounded-xs border border-dashed border-(--color-border) px-3 py-2.5 text-xs text-(--color-text-muted)">
-                  Leave blank only for servers that support dynamic OAuth registration, such as Notion.
+                  Client credentials are optional. Leave them blank to let the server register this OAuth client.
                 </div>
               )}
 

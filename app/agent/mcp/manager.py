@@ -57,7 +57,6 @@ from app.agent.mcp.oauth import (
     has_cached_oauth_tokens,
     has_resolved_client_id,
     interactive_oauth_allowed,
-    supports_dynamic_client_registration,
 )
 from app.agent.mcp.tools import MCPTool
 from app.agent.tools.registry import Tool
@@ -574,8 +573,8 @@ class MCPManager:
                     if (
                         server_cfg.oauth is not None
                         and interactive_oauth_allowed(name)
+                        and server_cfg.oauth.client_id
                         and not has_resolved_client_id(server_cfg)
-                        and not await supports_dynamic_client_registration(server_cfg)
                     ):
                         raise OAuthRequiredError(
                             _oauth_credentials_required_message(name)
@@ -677,6 +676,7 @@ class MCPManager:
             if _is_oauth_registration_failure(exc) or (
                 isinstance(server_cfg, HttpServerConfig)
                 and server_cfg.oauth is not None
+                and server_cfg.oauth.client_id
                 and not has_resolved_client_id(server_cfg)
             ):
                 message = _oauth_credentials_required_message(name)

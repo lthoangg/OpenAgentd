@@ -5,12 +5,13 @@ import json
 import os
 import urllib.parse
 import webbrowser
+from collections.abc import AsyncGenerator
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from threading import Event, Thread
 from typing import Any
 
-import httpx
+import httpx2
 from loguru import logger
 from mcp.client.auth import OAuthClientProvider
 from mcp.shared.auth import (
@@ -29,6 +30,78 @@ class OAuthRequiredError(RuntimeError):
 
 
 _interactive_oauth: set[str] = set()
+
+
+def _root_slash_variant(left: str, right: str) -> bool:
+    left_url = urllib.parse.urlsplit(left)
+    right_url = urllib.parse.urlsplit(right)
+    return (
+        left != right
+        and left_url.path in ("", "/")
+        and right_url.path in ("", "/")
+        and not left_url.query
+        and not left_url.fragment
+        and not right_url.query
+        and not right_url.fragment
+        and left_url._replace(path="") == right_url._replace(path="")
+    )
+
+
+class _CompatibleOAuthClientProvider(OAuthClientProvider):
+    """Keep strict issuer validation while tolerating an empty root-path mismatch."""
+
+    async def _normalize_root_issuer(
+        self, response: httpx2.Response
+    ) -> httpx2.Response:
+        expected = self.context.auth_server_url
+        request_path = response.request.url.path
+        if (
+            response.status_code != 200
+            or expected is None
+            or not (
+                "/.well-known/oauth-authorization-server" in request_path
+                or "/.well-known/openid-configuration" in request_path
+            )
+        ):
+            return response
+        try:
+            await response.aread()
+            metadata = response.json()
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return response
+        actual = metadata.get("issuer") if isinstance(metadata, dict) else None
+        if not isinstance(actual, str) or not _root_slash_variant(actual, expected):
+            return response
+
+        metadata["issuer"] = expected
+        headers = dict(response.headers)
+        headers.pop("content-length", None)
+        logger.debug(
+            "mcp_oauth_normalized_root_issuer actual={} expected={}", actual, expected
+        )
+        return httpx2.Response(
+            response.status_code,
+            headers=headers,
+            json=metadata,
+            request=response.request,
+            extensions=response.extensions,
+        )
+
+    async def async_auth_flow(
+        self, request: httpx2.Request
+    ) -> AsyncGenerator[httpx2.Request, httpx2.Response]:
+        flow = super().async_auth_flow(request)
+        try:
+            next_request = await anext(flow)
+            while True:
+                response = yield next_request
+                next_request = await flow.asend(
+                    await self._normalize_root_issuer(response)
+                )
+        except StopAsyncIteration:
+            return
+        finally:
+            await flow.aclose()
 
 
 def _unresolved_secret_ref(raw: str, resolved: str) -> bool:
@@ -80,27 +153,6 @@ def has_resolved_client_id(cfg: HttpServerConfig) -> bool:
         return False
     client_id = resolve_secret_refs(oauth.client_id)
     return bool(client_id and not _unresolved_secret_ref(oauth.client_id, client_id))
-
-
-async def supports_dynamic_client_registration(cfg: HttpServerConfig) -> bool:
-    origin = urllib.parse.urlunparse(
-        urllib.parse.urlparse(cfg.url)._replace(
-            path="", params="", query="", fragment=""
-        )
-    )
-    metadata_url = f"{origin.rstrip('/')}/.well-known/oauth-authorization-server"
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(metadata_url)
-        if response.status_code != 200:
-            return False
-        metadata = response.json()
-    except Exception:
-        return False
-    return bool(
-        metadata.get("registration_endpoint")
-        or metadata.get("client_id_metadata_document_supported")
-    )
 
 
 class LoopbackCallback:
@@ -259,7 +311,7 @@ def build_oauth_provider(
     async def callback_handler() -> AuthorizationCodeResult:
         return await callback.wait()
 
-    return OAuthClientProvider(
+    return _CompatibleOAuthClientProvider(
         server_url=cfg.url,
         client_metadata=OAuthClientMetadata.model_validate(
             {

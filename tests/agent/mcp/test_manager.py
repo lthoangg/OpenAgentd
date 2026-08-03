@@ -498,10 +498,6 @@ class TestMCPManagerOAuth:
                     "app.agent.mcp.manager.has_cached_oauth_tokens", return_value=True
                 ),
                 patch(
-                    "app.agent.mcp.manager.supports_dynamic_client_registration",
-                    return_value=True,
-                ),
-                patch(
                     "app.agent.mcp.manager.streamable_http_client",
                     return_value=FailingStreamableHttpClient(),
                 ),
@@ -545,10 +541,6 @@ class TestMCPManagerOAuth:
                     "app.agent.mcp.manager.has_cached_oauth_tokens", return_value=True
                 ),
                 patch(
-                    "app.agent.mcp.manager.supports_dynamic_client_registration",
-                    return_value=True,
-                ),
-                patch(
                     "app.agent.mcp.manager.streamable_http_client",
                     return_value=FailingStreamableHttpClient(),
                 ),
@@ -563,51 +555,49 @@ class TestMCPManagerOAuth:
             assert "client ID/secret" in (status.error or "")
 
     @pytest.mark.asyncio
-    async def test_oauth_without_dynamic_registration_requires_credentials(
-        self,
-    ) -> None:
+    async def test_oauth_without_client_credentials_attempts_connection(self) -> None:
         manager = MCPManager()
-        messages: list[str] = []
-        sink_id = logger.add(messages.append, level="WARNING", format="{message}")
-        try:
-            with patch("app.agent.mcp.manager.load_config") as mock_load:
-                cfg = MCPConfig(
-                    servers={
-                        "slack": HttpServerConfig(
-                            url="https://mcp.slack.com/mcp",
-                            oauth=OAuthConfig(),
-                        )
-                    }
-                )
-                mock_load.return_value = cfg
 
-                with (
-                    patch(
-                        "app.agent.mcp.manager.has_cached_oauth_tokens",
-                        return_value=False,
-                    ),
-                    patch(
-                        "app.agent.mcp.manager.interactive_oauth_allowed",
-                        return_value=True,
-                    ),
-                    patch(
-                        "app.agent.mcp.manager.supports_dynamic_client_registration",
-                        return_value=False,
-                    ),
-                ):
-                    await manager.start()
-                    runner = manager._runners["slack"]
-                    await asyncio.wait_for(runner.ready.wait(), timeout=1.0)
+        class FailingStreamableHttpClient:
+            async def __aenter__(self):
+                raise RuntimeError("OAuth connection attempted")
 
-                status = manager.get_status("slack")
-                assert status is not None
-                assert status.state == "auth_required"
-                assert "client ID/secret" in (status.error or "")
-                assert any(
-                    "mcp_server_auth_required name=slack" in msg for msg in messages
-                )
-        finally:
-            logger.remove(sink_id)
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+        with patch("app.agent.mcp.manager.load_config") as mock_load:
+            cfg = MCPConfig(
+                servers={
+                    "slack": HttpServerConfig(
+                        url="https://mcp.slack.com/mcp",
+                        oauth=OAuthConfig(),
+                    )
+                }
+            )
+            mock_load.return_value = cfg
+
+            with (
+                patch(
+                    "app.agent.mcp.manager.has_cached_oauth_tokens",
+                    return_value=False,
+                ),
+                patch(
+                    "app.agent.mcp.manager.interactive_oauth_allowed",
+                    return_value=True,
+                ),
+                patch(
+                    "app.agent.mcp.manager.streamable_http_client",
+                    return_value=FailingStreamableHttpClient(),
+                ),
+            ):
+                await manager.start()
+                runner = manager._runners["slack"]
+                await asyncio.wait_for(runner.ready.wait(), timeout=1.0)
+
+            status = manager.get_status("slack")
+            assert status is not None
+            assert status.state == "error"
+            assert status.error == "RuntimeError: OAuth connection attempted"
 
     @pytest.mark.asyncio
     async def test_oauth_with_unresolved_client_id_ref_requires_credentials(
@@ -636,10 +626,6 @@ class TestMCPManagerOAuth:
                     patch(
                         "app.agent.mcp.manager.interactive_oauth_allowed",
                         return_value=True,
-                    ),
-                    patch(
-                        "app.agent.mcp.manager.supports_dynamic_client_registration",
-                        return_value=False,
                     ),
                 ):
                     await manager.start()

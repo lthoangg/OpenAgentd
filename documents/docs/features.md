@@ -107,6 +107,13 @@ run from the terminal.
   for toast notifications now pauses while the pointer or keyboard focus is on
   the toast, resuming with the remaining time once it clears, so a toast can no
   longer disappear mid-read.
+- **Keyboard-operable overlays and dropdowns** `[v1.125.0]` — select/menu
+  dropdowns navigate with `ArrowUp`/`ArrowDown`/`Home`/`End` and commit with
+  `Enter`/`Space`, announcing the active option via `aria-activedescendant`
+  (focus stays on the trigger because the panel is portalled outside the modal
+  focus trap). `Escape` now closes the innermost layer first, so dismissing an
+  open list no longer closes the surrounding modal. Session Settings opens with
+  focus in the model field instead of the close button.
 - **Type-to-focus composer** `[v1.40.0]` — in cockpit and coding chat, start
   typing on the chat surface to expand/focus the composer and capture the first
   character without pressing `⌘I`/`Ctrl+I` first.
@@ -355,12 +362,14 @@ spawns specialist members on demand.
 - **Stop pauses queued follow-ups instead of dropping them** `[v1.17.0]` — Stop
   releases queued hidden user messages into visible history so you can
   `/undo`, edit, or append before resuming.
-- **Session-level model + thinking-level override** `[v1.16.0, v1.66.1, v1.79.0, v1.104.3]` — override the
+- **Session-level model + thinking-level override** `[v1.16.0, v1.66.1, v1.79.0, v1.104.3, v1.125.0]` — override the
   lead agent's model and thinking level for the current chat. The thinking
   picker uses each model's advertised reasoning levels when registry metadata is
   available, and history keeps the model used for each user turn. Codex keeps
   the configured thinking level across provider reconstruction and streams
   readable reasoning summaries on supported models.
+  Selections apply immediately (no Apply step) and `Use agent default` clears the
+  override; a half-typed or emptied model field is never committed `[v1.125.0]`.
 - **Coding team variant** `[since v1.0]` — `agents/coding/` ships a separate
   compact team (`coding/openagentd`, `coding/coder`, `coding/explorer`) tuned for
   workspace-aware sessions; the coding explorer focuses on inspecting the current
@@ -578,7 +587,7 @@ agnostic by design.
   zero values are not treated as unlimited.
 - **Codex usage monitor** `[v1.32.0]` — Settings → Providers shows live Codex
   OAuth usage windows, resets, credits, unlimited plans, and spend-cap/limit states.
-- **Priority / Fast mode** `[v1.90.0, v1.92.0]` — session settings can opt new messages into Fast/Priority mode. Supported on models and providers that implement service/latency tiers (Anthropic maps to `auto`, Google Gemini maps to `priority`, OpenAI maps to `auto`, and ChatGPT Codex maps to `priority`). Availability is driven by a `supports_fast_mode` registry flag instead of a hard-coded provider-prefix list, so plugin providers can opt in without frontend changes `[v1.92.0]`.
+- **Priority / Fast mode** `[v1.90.0, v1.92.0]` *(deprecated)* — opt new messages into Fast/Priority mode. Supported on models and providers that implement service/latency tiers (Anthropic maps to `auto`, Google Gemini maps to `priority`, OpenAI maps to `auto`, and ChatGPT Codex maps to `priority`). Availability is driven by a `supports_fast_mode` registry flag instead of a hard-coded provider-prefix list, so plugin providers can opt in without frontend changes `[v1.92.0]`. The web Session Settings control was removed in `v1.125.0`; the session field, API parameter, and provider mapping still work, so sessions that set it elsewhere (TUI, API) are unaffected.
 - **Disconnect a provider** `[v1.92.0]` — Settings → Providers lets you
   temporarily disconnect a configured provider; its models disappear from
   every picker and the warm-cache loop skips it, while saved credentials stay
@@ -677,6 +686,9 @@ Four orthogonal ways to add capability.
 - **MCP servers** `[since v1.0]` — any Model Context Protocol server, hot-reloaded
   via `POST /api/mcp/apply`. Per-agent scoping. OAuth-backed setup. Session Settings
   can enable/disable scoped MCP servers and connect OAuth-backed servers in place `[v1.52.2]`.
+  Each scoped server gets its own row showing connection state and tool count, with a
+  toggle and an OAuth connect/reconnect action; the list re-polls while a server is
+  starting so a freshly enabled server settles to ready in view `[v1.125.0]`.
   OAuth setup permits empty client ID and secret fields so servers that support
   dynamic client registration can complete setup without app credentials; issuer
   discovery also tolerates a sole trailing-slash difference at the origin root `[v1.124.0]`.
@@ -689,6 +701,9 @@ Four orthogonal ways to add capability.
     markdown (bullet lists, inline code, bold/italic, paragraph breaks) instead of
     a plain-text wall. MCP servers that include formatted descriptions in their tool
     schemas benefit automatically; plain-text descriptions render identically to before.
+    The tool inventory is grouped by origin (built-in, then one group per MCP server)
+    and collapsed by default so it no longer pushes the model and MCP controls out of
+    view; the name/description filter appears past eight tools `[v1.125.0]`.
 - **Sandboxed UI artifacts** `[v1.36.0]` *(beta)* — tool-produced HTML UI
   resources render as sandboxed sibling chat artifacts. The first producer is
   MCP Apps: MCP tools that declare `_meta.ui.resourceUri` can render `ui://`

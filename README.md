@@ -53,7 +53,7 @@ curl -fsSL https://raw.githubusercontent.com/lthoangg/openagentd/main/install.sh
 irm https://raw.githubusercontent.com/lthoangg/openagentd/main/install.ps1 | iex
 ```
 
-Open **OpenAgentd** from your applications folder or Start menu. The desktop app runs its bundled backend automatically; add a provider in Settings and start a conversation.
+Open **OpenAgentd** from your applications folder or Start menu. The desktop app runs its bundled backend automatically, and new installations can start a conversation immediately with the keyless OpenCode Zen default. Add another provider in Settings whenever you want to switch models.
 
 Release artifacts are available for macOS, Windows, and Linux on the [latest release page](https://github.com/lthoangg/openagentd/releases/latest). Unsigned desktop builds may require an explicit operating-system confirmation before first launch.
 

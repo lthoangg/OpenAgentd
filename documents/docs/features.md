@@ -2,7 +2,7 @@
 title: Features
 description: Canonical, version-cited catalogue of shipped user-visible OpenAgentd features.
 status: stable
-updated: 2026-07-30
+updated: 2026-08-03
 ---
 
 # Features
@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 16 providers. Your keys.
 
-**Latest release:** v1.123.2 · July 30, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.123.2)
+**Latest release:** v1.124.0 · August 3, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.124.0)
 
 ---
 
@@ -522,8 +522,8 @@ agnostic by design.
 | Google Gemini | `googlegenai:gemini-3.1-flash` | `GOOGLE_API_KEY` |
 | Google Vertex AI | `vertexai:gemini-3-flash-preview` | `VERTEXAI_API_KEY` or GCP creds |
 | OpenAI | `openai:gpt-5.5` | `OPENAI_API_KEY` |
-| OpenCode Zen | `opencode:deepseek-v4-flash-free` | none for free models; `OPENCODE_ZEN_API_KEY` for paid models `[v1.123.2]` |
-| OpenCode Go | `opencode-go:deepseek-v4-flash` | `OPENCODE_GO_API_KEY` `[v1.123.2]` |
+| OpenCode Zen | `opencode:deepseek-v4-flash-free` | none for free models; `OPENCODE_ZEN_API_KEY` for paid models `[v1.124.0]` |
+| OpenCode Go | `opencode-go:deepseek-v4-flash` | `OPENCODE_GO_API_KEY` `[v1.124.0]` |
 | OpenRouter | `openrouter:qwen/qwen3.6-plus:free` | `OPENROUTER_API_KEY` |
 | ZAI / GLM | `zai:glm-5-turbo` | `ZAI_API_KEY` |
 | xAI Grok | `xai:grok-4.20` | `XAI_API_KEY` |
@@ -537,6 +537,9 @@ agnostic by design.
 | CLIProxyAPI (local) | `cliproxy:gemini-2.5-pro` | `CLIPROXY_API_KEY` (optional) |
 | Ollama (local + cloud) | `ollama:llama3.2` · `ollama:kimi-k2.6-cloud` | none (cloud: `ollama signin`) |
 
+- **Keyless first-run model** `[v1.124.0]` — new installations start with
+  `opencode:deepseek-v4-flash-free` across the built-in agent team, while
+  existing agent model choices remain unchanged.
 - **Drop-in provider plugins** `[v1.6.0]` — Python files in the configured
   plugins directory register new providers at startup.
 - **Resilient provider construction** `[v1.17.0]` — missing/unavailable
@@ -676,7 +679,7 @@ Four orthogonal ways to add capability.
   can enable/disable scoped MCP servers and connect OAuth-backed servers in place `[v1.52.2]`.
   OAuth setup permits empty client ID and secret fields so servers that support
   dynamic client registration can complete setup without app credentials; issuer
-  discovery also tolerates a sole trailing-slash difference at the origin root `[v1.123.2]`.
+  discovery also tolerates a sole trailing-slash difference at the origin root `[v1.124.0]`.
   - **`$VAR` / `${VAR}` expansion in stdio server env** `[v1.122.0]` — stdio MCP
     server `env` entries in `mcp.json` now resolve environment/`.env`-style
     references the same way header values already did, so secrets can be

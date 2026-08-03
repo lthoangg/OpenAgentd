@@ -925,7 +925,14 @@ class SummarizationHook(BaseAgentHook):
         ) as span:
             t0 = time.monotonic()
             last_usage = None
-            model_id = getattr(self._llm_provider, "model", None) or self._model_id
+            # Prefer the configured, fully-qualified `provider:model` id: cost
+            # lookups resolve against the registry, and a provider's `.model`
+            # is the bare id it builds request URLs from (e.g. "gpt-5.6-sol"
+            # instead of "codex:gpt-5.6-sol"). A bare id misses the registry,
+            # so `usage_to_dict` silently omits cost and the span records
+            # tokens with no dollars. Fall back to `.model` only when no
+            # model_id was configured.
+            model_id = self._model_id or getattr(self._llm_provider, "model", None)
             provider_name = getattr(self._llm_provider, "provider_name", None)
             span.set_attribute("gen_ai.operation.name", "summarization")
             if provider_name:

@@ -70,6 +70,13 @@ interface AppOverlayProps {
 
   /** Extra class names forwarded to the panel element. */
   className?: string
+
+  /**
+   * Element to focus when the overlay opens. Defaults to the first focusable
+   * element, which is usually the close button — pass the primary control
+   * instead so keyboard users start where the work is.
+   */
+  initialFocus?: React.RefObject<HTMLElement | null>
 }
 
 // ─── Animation variants ───────────────────────────────────────────────────────
@@ -95,9 +102,10 @@ export function AppOverlay({
   variant = 'modal',
   maxWidth = '860px',
   className = '',
+  initialFocus,
 }: AppOverlayProps) {
   const reduced = useReducedMotion()
-  useModalFocus(open, onClose)
+  useModalFocus(open, onClose, initialFocus)
 
   const panelVariants = reduced ? MODAL_VARIANTS_REDUCED : MODAL_VARIANTS
 

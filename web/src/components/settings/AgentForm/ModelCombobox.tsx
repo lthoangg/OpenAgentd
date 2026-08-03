@@ -26,6 +26,11 @@ export interface ModelOption {
  *
  * Empty input commits an empty string, which the caller may interpret as
  * "unset".
+ *
+ * The list is portalled to `document.body`, which puts it outside any modal
+ * focus trap, so focus stays on the input and the highlighted row is published
+ * via `aria-activedescendant`. Escape is consumed while the list is open so
+ * dismissing the list never closes an enclosing modal.
  */
 export function ModelCombobox({
   value,
@@ -35,6 +40,8 @@ export function ModelCombobox({
   invalid,
   placeholder,
   ariaLabel,
+  inputRef: externalInputRef,
+  openOnFocus = true,
 }: {
   value: string
   onChange: (v: string) => void
@@ -44,6 +51,15 @@ export function ModelCombobox({
   placeholder?: string
   /** Accessible name for the input when no visible <label> is associated. */
   ariaLabel?: string
+  /** Exposes the input so a parent can focus it (e.g. modal initial focus). */
+  inputRef?: React.RefObject<HTMLInputElement | null>
+  /**
+   * Whether merely receiving focus opens the list. Turn this off where the
+   * input is focused programmatically on mount, otherwise the panel greets the
+   * user with a list covering everything below it. Clicking, typing and
+   * ArrowDown still open it.
+   */
+  openOnFocus?: boolean
 }) {
   const uid = useId()
   const listId = `model-combobox-list-${uid}`
@@ -145,6 +161,9 @@ export function ModelCombobox({
     } else if (e.key === 'Escape') {
       if (!open) return
       e.preventDefault()
+      // Without this, a modal listening for Escape on document would close at
+      // the same time as the list.
+      e.stopPropagation()
       setOpen(false)
     }
   }
@@ -153,12 +172,18 @@ export function ModelCombobox({
     <div ref={wrapperRef} className="relative">
       <div className="relative">
         <Input
-          ref={inputRef}
+          ref={(node) => {
+            inputRef.current = node
+            if (externalInputRef) externalInputRef.current = node
+          }}
           type="text"
           role="combobox"
           aria-expanded={open}
           aria-autocomplete="list"
           aria-controls={listId}
+          aria-activedescendant={
+            open && filtered.length > 0 ? `${listId}-option-${highlight}` : undefined
+          }
           aria-label={ariaLabel}
           value={query}
           onChange={(e) => {
@@ -170,7 +195,10 @@ export function ModelCombobox({
             // known entry. Empty query commits an empty value.
             onChange(e.target.value)
           }}
-          onFocus={() => setOpen(true)}
+          onFocus={() => { if (openOnFocus) setOpen(true) }}
+          // Pointer interaction always opens, independent of openOnFocus, so a
+          // click on the field behaves the way a click on a select does.
+          onClick={() => setOpen(true)}
           onKeyDown={handleKey}
           disabled={disabled}
           placeholder={placeholder ?? 'Type to search models…'}
@@ -231,8 +259,10 @@ export function ModelCombobox({
                   <li key={o.id}>
                     <button
                       type="button"
+                      id={`${listId}-option-${i}`}
                       role="option"
                       aria-selected={isSel}
+                      tabIndex={-1}
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => commit(o.id)}
                       onMouseEnter={() => setHighlight(i)}

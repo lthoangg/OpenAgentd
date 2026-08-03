@@ -1,12 +1,28 @@
 import { useEffect, useRef } from 'react'
 
-export function useModalFocus(open: boolean, onClose?: () => void) {
+/**
+ * Focus trap + Escape for modal surfaces.
+ *
+ * `initialFocus` overrides where focus lands on open. Without it, focus goes to
+ * the first focusable element in DOM order, which for a panel with a header is
+ * the close button — technically correct, practically useless, since the user
+ * then has to Tab past it to reach the content they opened the panel for.
+ */
+export function useModalFocus(
+  open: boolean,
+  onClose?: () => void,
+  initialFocus?: React.RefObject<HTMLElement | null>,
+) {
   // Keep a ref so the keydown handler always calls the latest onClose without
   // needing to be re-registered every time the parent re-renders with a new
   // callback reference. Without this, the listener briefly vanishes during
   // the teardown+re-add window, dropping any Escape press that lands there.
   const onCloseRef = useRef(onClose)
   useEffect(() => { onCloseRef.current = onClose })
+
+  // Same reasoning: read the target at focus time, not at registration time.
+  const initialFocusRef = useRef(initialFocus)
+  useEffect(() => { initialFocusRef.current = initialFocus })
 
   useEffect(() => {
     if (!open) return
@@ -19,6 +35,11 @@ export function useModalFocus(open: boolean, onClose?: () => void) {
     }
     const isVisible = (el: HTMLElement) => el.getClientRects().length > 0
     const focusFirst = () => {
+      const preferred = initialFocusRef.current?.current
+      if (preferred && preferred.isConnected && isVisible(preferred)) {
+        preferred.focus()
+        return
+      }
       const dialog = getDialog()
       const target = dialog?.querySelector<HTMLElement>(
         'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',

@@ -16,6 +16,21 @@
  *
  * The panel is portal-rendered and anchored below (flip to top if needed).
  * Panel min-width matches the trigger width via inline style.
+ *
+ * ## Keyboard
+ *
+ * Focus stays on the trigger the whole time and the active option is published
+ * via `aria-activedescendant`. That is deliberate: the panel is portalled to
+ * `document.body`, so it sits *outside* any modal focus trap (which scopes its
+ * query to the dialog element). Moving real focus into the panel would put it
+ * beyond the trap's reach and strand keyboard users with an open menu they
+ * cannot operate.
+ *
+ *   ArrowDown / ArrowUp  open, then move the active option (no wrap)
+ *   Home / End           jump to the first / last option
+ *   Enter / Space        open, or select the active option
+ *   Escape               close the menu only, without reaching outer layers
+ *   Tab                  close the menu and let focus move on
  */
 import {
   Children,
@@ -25,6 +40,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useId,
   useRef,
   useState,
   type ComponentPropsWithRef,
@@ -57,17 +73,32 @@ export interface DropdownItemProps extends ComponentPropsWithRef<'button'> {
   active?: boolean
   value?: string
   onSelect?: () => void
+  /** Set by Dropdown: this item is the keyboard's active option. */
+  highlighted?: boolean
 }
 
-function DropdownItem({ active, value: _value, onSelect, className, children, ...props }: DropdownItemProps) {
+function DropdownItem({
+  active,
+  value: _value,
+  onSelect,
+  highlighted,
+  className,
+  children,
+  ...props
+}: DropdownItemProps) {
   const { setOpen } = useDropdownCtx()
   return (
     <button
       type="button"
       role="menuitem"
+      // Focus never enters the panel (see the module docstring), so the active
+      // option is conveyed by attribute rather than by focus.
+      tabIndex={-1}
+      data-highlighted={highlighted || undefined}
       className={cn(
         'flex w-full cursor-pointer items-center gap-2 rounded px-2 py-1 text-left text-xs font-medium outline-none',
         'transition-colors hover:bg-(--bg-key) focus-visible:bg-(--bg-key)',
+        highlighted && 'bg-(--bg-key)',
         active ? 'text-(--color-text)' : 'text-(--color-text-2)',
         className,
       )}
@@ -115,6 +146,9 @@ function Dropdown({
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const panelRef = useRef<HTMLDivElement | null>(null)
   const [pos, setPos] = useState({ top: 0, left: 0, width: 0 })
+  const uid = useId()
+  /** Index of the keyboard's active option, or -1 for none. */
+  const [highlight, setHighlight] = useState(-1)
 
   const reposition = useCallback(() => {
     const t = triggerRef.current
@@ -162,22 +196,119 @@ function Dropdown({
     return () => document.removeEventListener('keydown', handler)
   }, [open])
 
+  // Drop the active option when the menu closes so a stale
+  // aria-activedescendant never points at a hidden node.
+  useEffect(() => {
+    if (!open) setHighlight(-1)
+  }, [open])
+
   // In select mode: derive display label + inject active+onSelect into items
   let displayLabel: ReactNode = trigger
+  /** Per-item keyboard metadata, rebuilt every render so the key handler below
+   *  always closes over the current children. */
+  const meta: { id: string; disabled: boolean; select: () => void }[] = []
+  let index = -1
   const items = Children.map(children, (child) => {
     if (!isValidElement<DropdownItemProps>(child)) return child
+    index += 1
+    const i = index
+    const id = `${uid}-item-${i}`
+    meta.push({
+      id,
+      disabled: !!child.props.disabled,
+      // Selection goes straight through the props rather than the injected
+      // onSelect below, so a keyboard select never fires onValueChange twice.
+      select: () => {
+        if (value !== undefined && child.props.value !== undefined) {
+          onValueChange?.(child.props.value)
+        }
+        child.props.onSelect?.()
+      },
+    })
+    const shared = { id, highlighted: i === highlight }
     if (value !== undefined) {
       if (child.props.value === value) displayLabel = child.props.children
       return cloneElement(child, {
+        ...shared,
         active: child.props.value === value,
         onSelect: () => {
           if (child.props.value !== undefined) onValueChange?.(child.props.value)
           child.props.onSelect?.()
         },
+        onMouseEnter: () => setHighlight(i),
       })
     }
-    return child
+    return cloneElement(child, { ...shared, onMouseEnter: () => setHighlight(i) })
   })
+
+  const navigable = meta.map((m, i) => (m.disabled ? -1 : i)).filter((i) => i >= 0)
+  /** Where the keyboard starts: the selected option if there is one. */
+  const initialIndex = () => {
+    const selected = Children.toArray(children).findIndex(
+      (child) => isValidElement<DropdownItemProps>(child) && child.props.value === value,
+    )
+    if (selected >= 0 && !meta[selected]?.disabled) return selected
+    return navigable[0] ?? -1
+  }
+  const step = (from: number, delta: number) => {
+    const at = navigable.indexOf(from)
+    if (at < 0) return navigable[0] ?? -1
+    // Clamped, not wrapping: arrowing past the end is nearly always a
+    // mis-press, and silently jumping to the other end hides it.
+    const next = Math.min(Math.max(at + delta, 0), navigable.length - 1)
+    return navigable[next] ?? from
+  }
+
+  const handleTriggerKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (disabled) return
+
+    if (e.key === 'Escape') {
+      if (!open) return // No menu of ours to close: let an outer layer have it.
+      e.preventDefault()
+      // Keeps an enclosing modal (which listens on document) from closing too.
+      e.stopPropagation()
+      setOpen(false)
+      return
+    }
+
+    if (e.key === 'Tab') {
+      if (open) setOpen(false)
+      return // Never preventDefault: focus must keep moving.
+    }
+
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault()
+      if (!open) {
+        setOpen(true)
+        reposition()
+        setHighlight(initialIndex())
+        return
+      }
+      setHighlight((h) => (h < 0 ? initialIndex() : step(h, e.key === 'ArrowDown' ? 1 : -1)))
+      return
+    }
+
+    if (open && (e.key === 'Home' || e.key === 'End')) {
+      e.preventDefault()
+      setHighlight(e.key === 'Home' ? navigable[0] ?? -1 : navigable[navigable.length - 1] ?? -1)
+      return
+    }
+
+    if (e.key === 'Enter' || e.key === ' ') {
+      // preventDefault suppresses the click the browser would synthesise for a
+      // focused button, which would otherwise re-toggle what we just set.
+      e.preventDefault()
+      if (!open) {
+        setOpen(true)
+        reposition()
+        setHighlight(initialIndex())
+        return
+      }
+      const target = meta[highlight]
+      if (target && !target.disabled) target.select()
+      setOpen(false)
+    }
+  }
 
   return (
     <DropdownContext.Provider value={{ open, setOpen, triggerRef }}>
@@ -190,6 +321,7 @@ function Dropdown({
         aria-invalid={ariaInvalid}
         aria-haspopup="menu"
         aria-expanded={open}
+        aria-activedescendant={open && highlight >= 0 ? meta[highlight]?.id : undefined}
         data-popup-open={open || undefined}
         className={cn(
           buttonVariants({ variant: 'default', size: 'trigger' }),
@@ -198,7 +330,14 @@ function Dropdown({
           'aria-invalid:border-(--color-error) aria-invalid:ring-2 aria-invalid:ring-(--color-error)/20',
           className,
         )}
-        onClick={() => { setOpen((v) => !v); reposition() }}
+        onKeyDown={handleTriggerKeyDown}
+        onClick={() => {
+          const next = !open
+          setOpen(next)
+          reposition()
+          // Seed the active option so arrow keys work after a mouse open.
+          if (next) setHighlight(initialIndex())
+        }}
       >
         <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate">{displayLabel}</span>
         <ChevronDown

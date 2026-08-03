@@ -132,3 +132,13 @@ exclude = ["tests", "**/__pycache__", ".venv"]
 
 [tool.ruff]
 target-version = "py313"
+
+[tool.ruff.lint]
+# Pin explicitly to ruff's pre-0.16 default rule set (E4, E7, E9, F). Ruff
+# 0.16 changed what an unconfigured project lints by default (adding ~350
+# rules from plugins like flake8-bugbear, pyupgrade, flake8-simplify,
+# tryceratops, pylint, etc.), which would otherwise turn a routine ruff
+# version bump into a ~1250-violation, whole-repo lint migration. Keep the
+# existing, deliberate rule set; opt into additional rule groups later as
+# their own reviewed change.
+select = ["E4", "E7", "E9", "F"]

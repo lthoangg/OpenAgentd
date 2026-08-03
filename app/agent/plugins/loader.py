@@ -240,7 +240,7 @@ async def _adapt_module(module: Any) -> BaseAgentHook | None:
             logger.warning(
                 "plugin_unknown_events plugin={} events={}",
                 plugin_id,
-                sorted(unknown),
+                sorted(unknown, key=str),
             )
         handlers: dict[str, Callable[..., Awaitable[None]]] = {
             name: fn for name, fn in result.items() if name in KNOWN_EVENTS

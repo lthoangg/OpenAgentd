@@ -18,7 +18,7 @@ import base64
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
-import httpx
+import httpx2
 import pytest
 
 from app.agent.sandbox import SandboxConfig, set_sandbox
@@ -68,18 +68,18 @@ def _write_config(config_dir: Path, body: str) -> None:
 
 def _install_mock_transport(
     monkeypatch: pytest.MonkeyPatch,
-    handler: "Callable[[httpx.Request], httpx.Response]",
+    handler: "Callable[[httpx2.Request], httpx2.Response]",
 ) -> None:
-    """Route all ``httpx.AsyncClient`` traffic in the openai backend to ``handler``."""
-    transport = httpx.MockTransport(handler)
-    real_async_client = httpx.AsyncClient
+    """Route all ``httpx2.AsyncClient`` traffic in the openai backend to ``handler``."""
+    transport = httpx2.MockTransport(handler)
+    real_async_client = httpx2.AsyncClient
 
-    def _mock_async_client(*args: object, **kwargs: object) -> httpx.AsyncClient:
+    def _mock_async_client(*args: object, **kwargs: object) -> httpx2.AsyncClient:
         kwargs["transport"] = transport
         return real_async_client(*args, **kwargs)
 
     monkeypatch.setattr(
-        "app.agent.tools.multimodalities.backends.openai.httpx.AsyncClient",
+        "app.agent.tools.multimodalities.backends.openai.httpx2.AsyncClient",
         _mock_async_client,
     )
 
@@ -149,7 +149,7 @@ async def test_success_writes_png_and_returns_markdown(
     fake_png = b"\x89PNG\r\n\x1a\nFAKEDATA"
     b64 = base64.b64encode(fake_png).decode("ascii")
 
-    def _handler(request: httpx.Request) -> httpx.Response:
+    def _handler(request: httpx2.Request) -> httpx2.Response:
         assert request.url.path == "/v1/images/generations"
         assert request.headers["Authorization"] == "Bearer sk-test"
         import json as _json
@@ -158,7 +158,7 @@ async def test_success_writes_png_and_returns_markdown(
         assert body["model"] == "gpt-image-2"
         assert body["prompt"] == "a red cube"
         assert body["size"] == "1024x1024"
-        return httpx.Response(200, json={"data": [{"b64_json": b64}]})
+        return httpx2.Response(200, json={"data": [{"b64_json": b64}]})
 
     _install_mock_transport(monkeypatch, _handler)
 
@@ -182,8 +182,8 @@ async def test_api_error_bubbled_to_agent(
     )
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
 
-    def _handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(401, text='{"error":"bad key"}')
+    def _handler(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(401, text='{"error":"bad key"}')
 
     _install_mock_transport(monkeypatch, _handler)
 
@@ -220,7 +220,7 @@ async def test_edit_posts_multipart_with_image_parts(
 
     captured: dict[str, object] = {}
 
-    def _handler(request: httpx.Request) -> httpx.Response:
+    def _handler(request: httpx2.Request) -> httpx2.Response:
         assert request.url.path == "/v1/images/edits"
         assert request.headers["Authorization"] == "Bearer sk-test"
         ctype = request.headers.get("content-type", "")
@@ -228,7 +228,7 @@ async def test_edit_posts_multipart_with_image_parts(
         body = request.content
         captured["body"] = body
         captured["content_type"] = ctype
-        return httpx.Response(200, json={"data": [{"b64_json": b64}]})
+        return httpx2.Response(200, json={"data": [{"b64_json": b64}]})
 
     _install_mock_transport(monkeypatch, _handler)
 
@@ -271,10 +271,10 @@ async def test_edit_rejects_missing_input_file(
 
     called = False
 
-    def _handler(request: httpx.Request) -> httpx.Response:  # pragma: no cover
+    def _handler(request: httpx2.Request) -> httpx2.Response:  # pragma: no cover
         nonlocal called
         called = True
-        return httpx.Response(200, json={"data": [{"b64_json": ""}]})
+        return httpx2.Response(200, json={"data": [{"b64_json": ""}]})
 
     _install_mock_transport(monkeypatch, _handler)
 
@@ -314,9 +314,9 @@ async def test_empty_images_list_falls_through_to_generate(
 
     paths_seen: list[str] = []
 
-    def _handler(request: httpx.Request) -> httpx.Response:
+    def _handler(request: httpx2.Request) -> httpx2.Response:
         paths_seen.append(request.url.path)
-        return httpx.Response(200, json={"data": [{"b64_json": b64}]})
+        return httpx2.Response(200, json={"data": [{"b64_json": b64}]})
 
     _install_mock_transport(monkeypatch, _handler)
 
@@ -339,8 +339,8 @@ async def test_edit_api_error_bubbled_to_agent(
     ws.mkdir(parents=True, exist_ok=True)
     (ws / "in.png").write_bytes(b"\x89PNG\r\n\x1a\nIN")
 
-    def _handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(400, text='{"error":"bad image"}')
+    def _handler(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(400, text='{"error":"bad image"}')
 
     _install_mock_transport(monkeypatch, _handler)
 
@@ -398,11 +398,11 @@ async def test_overrides_win_over_yaml_on_generate(
     fake_png = b"\x89PNG\r\n\x1a\nOVR"
     b64 = base64.b64encode(fake_png).decode("ascii")
 
-    def _handler(request: httpx.Request) -> httpx.Response:
+    def _handler(request: httpx2.Request) -> httpx2.Response:
         import json as _json
 
         captured["body"] = _json.loads(request.content)
-        return httpx.Response(200, json={"data": [{"b64_json": b64}]})
+        return httpx2.Response(200, json={"data": [{"b64_json": b64}]})
 
     _install_mock_transport(monkeypatch, _handler)
 
@@ -440,11 +440,11 @@ async def test_yaml_defaults_used_when_tool_params_omitted(
     fake = b"FAKE-JPEG"
     b64 = base64.b64encode(fake).decode("ascii")
 
-    def _handler(request: httpx.Request) -> httpx.Response:
+    def _handler(request: httpx2.Request) -> httpx2.Response:
         import json as _json
 
         captured["body"] = _json.loads(request.content)
-        return httpx.Response(200, json={"data": [{"b64_json": b64}]})
+        return httpx2.Response(200, json={"data": [{"b64_json": b64}]})
 
     _install_mock_transport(monkeypatch, _handler)
 
@@ -477,9 +477,9 @@ async def test_overrides_win_over_yaml_on_edit(
     fake = b"EDITED"
     b64 = base64.b64encode(fake).decode("ascii")
 
-    def _handler(request: httpx.Request) -> httpx.Response:
+    def _handler(request: httpx2.Request) -> httpx2.Response:
         captured["body"] = request.content
-        return httpx.Response(200, json={"data": [{"b64_json": b64}]})
+        return httpx2.Response(200, json={"data": [{"b64_json": b64}]})
 
     _install_mock_transport(monkeypatch, _handler)
 
@@ -510,10 +510,10 @@ async def test_invalid_size_rejected_before_http(
 
     called = False
 
-    def _handler(request: httpx.Request) -> httpx.Response:
+    def _handler(request: httpx2.Request) -> httpx2.Response:
         nonlocal called
         called = True
-        return httpx.Response(200, json={"data": [{"b64_json": ""}]})
+        return httpx2.Response(200, json={"data": [{"b64_json": ""}]})
 
     _install_mock_transport(monkeypatch, _handler)
 
@@ -534,10 +534,10 @@ async def test_invalid_output_format_rejected_before_http(
 
     called = False
 
-    def _handler(request: httpx.Request) -> httpx.Response:
+    def _handler(request: httpx2.Request) -> httpx2.Response:
         nonlocal called
         called = True
-        return httpx.Response(200, json={"data": [{"b64_json": ""}]})
+        return httpx2.Response(200, json={"data": [{"b64_json": ""}]})
 
     _install_mock_transport(monkeypatch, _handler)
 

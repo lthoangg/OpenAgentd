@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
-import httpx
+import httpx2
 import pytest
 from pydantic import SecretStr
 
@@ -210,14 +210,14 @@ class TestGetQuoteOfTheDay:
             with patch("app.services.quote_service.settings") as mock_settings:
                 mock_settings.NINJA_API_KEY = SecretStr("test_key")
 
-                # Mock httpx response - use Mock for json() since it's synchronous
+                # Mock httpx2 response - use Mock for json() since it's synchronous
                 mock_response = Mock()
                 mock_response.json.return_value = [
                     {"quote": "API quote", "author": "API Author"}
                 ]
                 mock_response.raise_for_status = Mock()
 
-                with patch("httpx.AsyncClient") as mock_client_class:
+                with patch("httpx2.AsyncClient") as mock_client_class:
                     mock_client = AsyncMock()
                     mock_client.__aenter__.return_value = mock_client
                     mock_client.__aexit__.return_value = None
@@ -243,14 +243,14 @@ class TestGetQuoteOfTheDay:
             with patch("app.services.quote_service.settings") as mock_settings:
                 mock_settings.NINJA_API_KEY = SecretStr("test_key")
 
-                # Mock httpx response - use Mock for json() since it's synchronous
+                # Mock httpx2 response - use Mock for json() since it's synchronous
                 mock_response = Mock()
                 mock_response.json.return_value = [
                     {"quote": "New quote", "author": "New Author"}
                 ]
                 mock_response.raise_for_status = Mock()
 
-                with patch("httpx.AsyncClient") as mock_client_class:
+                with patch("httpx2.AsyncClient") as mock_client_class:
                     mock_client = AsyncMock()
                     mock_client.__aenter__.return_value = mock_client
                     mock_client.__aexit__.return_value = None
@@ -276,7 +276,7 @@ class TestGetQuoteOfTheDay:
             with patch("app.services.quote_service.settings") as mock_settings:
                 mock_settings.NINJA_API_KEY = SecretStr("test_key")
 
-                # Mock httpx response - use Mock for json() since it's synchronous
+                # Mock httpx2 response - use Mock for json() since it's synchronous
                 mock_response = Mock()
                 # API returns a list with one item
                 mock_response.json.return_value = [
@@ -284,7 +284,7 @@ class TestGetQuoteOfTheDay:
                 ]
                 mock_response.raise_for_status = Mock()
 
-                with patch("httpx.AsyncClient") as mock_client_class:
+                with patch("httpx2.AsyncClient") as mock_client_class:
                     mock_client = AsyncMock()
                     mock_client.__aenter__.return_value = mock_client
                     mock_client.__aexit__.return_value = None
@@ -306,7 +306,7 @@ class TestGetQuoteOfTheDay:
             with patch("app.services.quote_service.settings") as mock_settings:
                 mock_settings.NINJA_API_KEY = SecretStr("test_key")
 
-                # Mock httpx response - use Mock for json() since it's synchronous
+                # Mock httpx2 response - use Mock for json() since it's synchronous
                 mock_response = Mock()
                 # API returns a dict directly (not a list)
                 mock_response.json.return_value = {
@@ -315,7 +315,7 @@ class TestGetQuoteOfTheDay:
                 }
                 mock_response.raise_for_status = Mock()
 
-                with patch("httpx.AsyncClient") as mock_client_class:
+                with patch("httpx2.AsyncClient") as mock_client_class:
                     mock_client = AsyncMock()
                     mock_client.__aenter__.return_value = mock_client
                     mock_client.__aexit__.return_value = None
@@ -337,12 +337,12 @@ class TestGetQuoteOfTheDay:
             with patch("app.services.quote_service.settings") as mock_settings:
                 mock_settings.NINJA_API_KEY = SecretStr("test_key")
 
-                # Mock httpx response - use Mock for json() since it's synchronous
+                # Mock httpx2 response - use Mock for json() since it's synchronous
                 mock_response = Mock()
                 mock_response.json.return_value = []  # Empty list
                 mock_response.raise_for_status = Mock()
 
-                with patch("httpx.AsyncClient") as mock_client_class:
+                with patch("httpx2.AsyncClient") as mock_client_class:
                     mock_client = AsyncMock()
                     mock_client.__aenter__.return_value = mock_client
                     mock_client.__aexit__.return_value = None
@@ -363,14 +363,14 @@ class TestGetQuoteOfTheDay:
             with patch("app.services.quote_service.settings") as mock_settings:
                 mock_settings.NINJA_API_KEY = SecretStr("test_key")
 
-                # Mock httpx response - use Mock for json() since it's synchronous
+                # Mock httpx2 response - use Mock for json() since it's synchronous
                 mock_response = Mock()
                 mock_response.json.return_value = [
                     {"quote": "", "author": "Some Author"}  # Empty quote
                 ]
                 mock_response.raise_for_status = Mock()
 
-                with patch("httpx.AsyncClient") as mock_client_class:
+                with patch("httpx2.AsyncClient") as mock_client_class:
                     mock_client = AsyncMock()
                     mock_client.__aenter__.return_value = mock_client
                     mock_client.__aexit__.return_value = None
@@ -391,14 +391,14 @@ class TestGetQuoteOfTheDay:
             with patch("app.services.quote_service.settings") as mock_settings:
                 mock_settings.NINJA_API_KEY = SecretStr("test_key")
 
-                # Mock httpx response - use Mock for json() since it's synchronous
+                # Mock httpx2 response - use Mock for json() since it's synchronous
                 mock_response = Mock()
                 mock_response.json.return_value = [
                     {"quote": "Some quote"}  # Missing author
                 ]
                 mock_response.raise_for_status = Mock()
 
-                with patch("httpx.AsyncClient") as mock_client_class:
+                with patch("httpx2.AsyncClient") as mock_client_class:
                     mock_client = AsyncMock()
                     mock_client.__aenter__.return_value = mock_client
                     mock_client.__aexit__.return_value = None
@@ -420,15 +420,15 @@ class TestGetQuoteOfTheDay:
             with patch("app.services.quote_service.settings") as mock_settings:
                 mock_settings.NINJA_API_KEY = SecretStr("test_key")
 
-                # Mock httpx response - use Mock for json() since it's synchronous
+                # Mock httpx2 response - use Mock for json() since it's synchronous
                 mock_response = Mock()
-                mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+                mock_response.raise_for_status.side_effect = httpx2.HTTPStatusError(
                     "500 Server Error",
                     request=Mock(),
                     response=Mock(),
                 )
 
-                with patch("httpx.AsyncClient") as mock_client_class:
+                with patch("httpx2.AsyncClient") as mock_client_class:
                     mock_client = AsyncMock()
                     mock_client.__aenter__.return_value = mock_client
                     mock_client.__aexit__.return_value = None
@@ -449,12 +449,12 @@ class TestGetQuoteOfTheDay:
             with patch("app.services.quote_service.settings") as mock_settings:
                 mock_settings.NINJA_API_KEY = SecretStr("test_key")
 
-                with patch("httpx.AsyncClient") as mock_client_class:
+                with patch("httpx2.AsyncClient") as mock_client_class:
                     mock_client = AsyncMock()
                     mock_client.__aenter__.return_value = mock_client
                     mock_client.__aexit__.return_value = None
                     mock_client.get = AsyncMock(
-                        side_effect=httpx.ConnectError("Connection failed")
+                        side_effect=httpx2.ConnectError("Connection failed")
                     )
                     mock_client_class.return_value = mock_client
 
@@ -472,14 +472,14 @@ class TestGetQuoteOfTheDay:
             with patch("app.services.quote_service.settings") as mock_settings:
                 mock_settings.NINJA_API_KEY = SecretStr("test_key")
 
-                # Mock httpx response - use Mock for json() since it's synchronous
+                # Mock httpx2 response - use Mock for json() since it's synchronous
                 mock_response = Mock()
                 mock_response.raise_for_status = Mock()
                 mock_response.json.side_effect = json.JSONDecodeError(
                     "Invalid JSON", "", 0
                 )
 
-                with patch("httpx.AsyncClient") as mock_client_class:
+                with patch("httpx2.AsyncClient") as mock_client_class:
                     mock_client = AsyncMock()
                     mock_client.__aenter__.return_value = mock_client
                     mock_client.__aexit__.return_value = None
@@ -497,7 +497,7 @@ class TestGetQuoteOfTheDay:
 @pytest.mark.asyncio
 async def test_quote_endpoint_returns_200(setup_db):
     """GET /quote returns 200 with quote and author."""
-    from httpx import ASGITransport, AsyncClient
+    from httpx2 import ASGITransport, AsyncClient
 
     with patch("app.api.routes.quote.get_quote_of_the_day") as mock_get:
         mock_get.return_value = Quote(quote="Test quote", author="Test Author")
@@ -519,7 +519,7 @@ async def test_quote_endpoint_returns_200(setup_db):
 @pytest.mark.asyncio
 async def test_quote_endpoint_returns_fallback_on_error(setup_db):
     """GET /quote returns fallback quote when service fails."""
-    from httpx import ASGITransport, AsyncClient
+    from httpx2 import ASGITransport, AsyncClient
 
     with patch("app.api.routes.quote.get_quote_of_the_day") as mock_get:
         mock_get.return_value = _FALLBACK
@@ -541,7 +541,7 @@ async def test_quote_endpoint_returns_fallback_on_error(setup_db):
 @pytest.mark.asyncio
 async def test_quote_endpoint_response_shape(setup_db):
     """GET /quote response has correct shape."""
-    from httpx import ASGITransport, AsyncClient
+    from httpx2 import ASGITransport, AsyncClient
 
     with patch("app.api.routes.quote.get_quote_of_the_day") as mock_get:
         mock_get.return_value = Quote(quote="Test quote", author="Test Author")

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import cast
 
-import httpx
+import httpx2
 from loguru import logger
 
 from app.api.schemas.settings import (
@@ -110,7 +110,7 @@ def _usage_headers() -> dict[str, str]:
 
 async def get_usage() -> ProviderUsageResponse:
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        async with httpx2.AsyncClient(timeout=5.0) as client:
             response = await client.get(
                 "https://chatgpt.com/backend-api/wham/usage",
                 headers=_usage_headers(),

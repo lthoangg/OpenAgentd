@@ -63,7 +63,12 @@ dependencies = [
     "mcp>=2.0.0,<3",
     # MCP v2 dropped httpx/httpx-sse for httpx2. Anything handed to the SDK
     # (`http_client=`, `auth=`) must be an httpx2 type. Plain `httpx` stays a
-    # direct dependency above for the ~27 non-MCP modules that use it.
+    # direct dependency above because the provider/agent-loop modules are still
+    # on it: their tests mock via `respx`, which is hard-bound to `httpx` and
+    # cannot intercept an `httpx2` client. `httpx2.alias_httpx()` would fix that
+    # but must run before any `import httpx`, which respx's own pytest plugin
+    # does first — so those modules migrate only when respx gains httpx2
+    # support (or the mocking layer is replaced).
     "httpx2>=2.5.0",
     "aws-bedrock-token-generator>=1.1.0",
     "botocore[crt]>=1.43.1",

@@ -70,7 +70,7 @@ async def test_get_usage_returns_only_premium_interactions(
             },
         },
     }
-    monkeypatch.setattr(usage.httpx, "Client", _FakeClient)
+    monkeypatch.setattr(usage.httpx2, "Client", _FakeClient)
 
     result = await usage.get_usage()
 
@@ -98,7 +98,7 @@ async def test_get_usage_missing_premium_snapshot_returns_empty_limits(
             "chat": {"quota_id": "chat", "percent_remaining": 10},
         },
     }
-    monkeypatch.setattr(usage.httpx, "Client", _FakeClient)
+    monkeypatch.setattr(usage.httpx2, "Client", _FakeClient)
 
     result = await usage.get_usage()
 
@@ -128,7 +128,7 @@ async def test_get_usage_rejects_invalid_payload(
         lambda: CopilotOAuth(github_token=SecretStr("github-token")),
     )
     _FakeClient.payload = ["not", "an", "object"]
-    monkeypatch.setattr(usage.httpx, "Client", _FakeClient)
+    monkeypatch.setattr(usage.httpx2, "Client", _FakeClient)
 
     with pytest.raises(usage.CopilotUsageUnavailableError):
         await usage.get_usage()
@@ -140,7 +140,7 @@ async def test_get_usage_does_not_block_the_event_loop(
 ) -> None:
     """A slow usage endpoint must not starve other coroutines.
 
-    The GitHub request runs over a sync httpx.Client with a 5s timeout;
+    The GitHub request runs over a sync httpx2.Client with a 5s timeout;
     if it executes directly on the event loop, every other coroutine
     (SSE streams, request handlers) freezes for the duration. Simulate a
     slow network with a sync sleep and assert a concurrent heartbeat
@@ -160,7 +160,7 @@ async def test_get_usage_does_not_block_the_event_loop(
             return super().get(_url, headers=headers)
 
     _SlowClient.payload = {"copilot_plan": "individual", "quota_snapshots": {}}
-    monkeypatch.setattr(usage.httpx, "Client", _SlowClient)
+    monkeypatch.setattr(usage.httpx2, "Client", _SlowClient)
 
     ticks = 0
 

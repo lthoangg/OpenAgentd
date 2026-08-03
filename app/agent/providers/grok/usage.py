@@ -6,7 +6,7 @@ import asyncio
 from datetime import datetime
 from typing import cast
 
-import httpx
+import httpx2
 from loguru import logger
 
 from app.agent.providers.grok.oauth import (
@@ -146,7 +146,7 @@ async def get_usage() -> ProviderUsageResponse:
     try:
         if oauth.is_expired():
             oauth = await asyncio.to_thread(oauth.refresh)
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        async with httpx2.AsyncClient(timeout=5.0) as client:
             response = await client.get(
                 f"{GROK_BUILD_API_BASE}/billing?format=credits",
                 headers=session_headers(oauth.access_token.get_secret_value()),

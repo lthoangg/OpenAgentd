@@ -29,7 +29,7 @@ import mimetypes
 import uuid
 from typing import Any
 
-import httpx
+import httpx2
 from loguru import logger
 
 from app.agent.providers.codex.oauth import CodexOAuth
@@ -180,7 +180,7 @@ def _build_request_body(
     }
 
 
-async def _read_error_body(resp: httpx.Response) -> str:
+async def _read_error_body(resp: httpx2.Response) -> str:
     """Best-effort body read for error reporting; tolerates streaming responses."""
     try:
         body = await resp.aread()
@@ -189,7 +189,7 @@ async def _read_error_body(resp: httpx.Response) -> str:
         return ""
 
 
-async def _parse_sse_image(resp: httpx.Response) -> bytes | str:
+async def _parse_sse_image(resp: httpx2.Response) -> bytes | str:
     """Parse the Codex SSE stream and return decoded image bytes.
 
     Looks for ``response.output_item.done`` events where the carried item is
@@ -234,7 +234,7 @@ async def _parse_sse_image(resp: httpx.Response) -> bytes | str:
                         "result"
                     ):
                         image_b64 = item["result"]
-    except httpx.HTTPError as exc:
+    except httpx2.HTTPError as exc:
         logger.warning("codex_image_stream_error err={}", exc)
         return f"Error: Codex stream interrupted: {exc}"
 
@@ -256,7 +256,7 @@ async def _post_and_parse(
 ) -> bytes | str:
     """POST + SSE parse, with shared error handling for both entry points."""
     try:
-        async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT_SECONDS) as client:
+        async with httpx2.AsyncClient(timeout=_REQUEST_TIMEOUT_SECONDS) as client:
             async with client.stream(
                 "POST", _CODEX_RESPONSES_URL, headers=headers, json=request_body
             ) as resp:
@@ -271,7 +271,7 @@ async def _post_and_parse(
                         f"Error: Codex Images API returned {resp.status_code}: {body}"
                     )
                 return await _parse_sse_image(resp)
-    except httpx.HTTPError as exc:
+    except httpx2.HTTPError as exc:
         logger.warning("codex_image_http_error err={}", exc)
         return f"Error: network failure calling Codex Images: {exc}"
 

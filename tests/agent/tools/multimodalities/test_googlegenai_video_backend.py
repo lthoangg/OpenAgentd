@@ -27,7 +27,7 @@ import asyncio
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
-import httpx
+import httpx2
 import pytest
 
 from app.agent.sandbox import SandboxConfig, set_sandbox
@@ -84,18 +84,18 @@ def _write_config(config_dir: Path, body: str) -> None:
 
 def _install_mock_transport(
     monkeypatch: pytest.MonkeyPatch,
-    handler: "Callable[[httpx.Request], httpx.Response]",
+    handler: "Callable[[httpx2.Request], httpx2.Response]",
 ) -> None:
-    """Route all Veo backend httpx traffic to ``handler``."""
-    transport = httpx.MockTransport(handler)
-    real_async_client = httpx.AsyncClient
+    """Route all Veo backend httpx2 traffic to ``handler``."""
+    transport = httpx2.MockTransport(handler)
+    real_async_client = httpx2.AsyncClient
 
-    def _mock_async_client(*args: object, **kwargs: object) -> httpx.AsyncClient:
+    def _mock_async_client(*args: object, **kwargs: object) -> httpx2.AsyncClient:
         kwargs["transport"] = transport
         return real_async_client(*args, **kwargs)
 
     monkeypatch.setattr(
-        "app.agent.tools.multimodalities.backends.googlegenai_video.httpx.AsyncClient",
+        "app.agent.tools.multimodalities.backends.googlegenai_video.httpx2.AsyncClient",
         _mock_async_client,
     )
 
@@ -129,10 +129,10 @@ async def test_missing_api_key_env_returns_error(
 
     called = False
 
-    def _handler(_: httpx.Request) -> httpx.Response:
+    def _handler(_: httpx2.Request) -> httpx2.Response:
         nonlocal called
         called = True
-        return httpx.Response(200)
+        return httpx2.Response(200)
 
     _install_mock_transport(monkeypatch, _handler)
 
@@ -166,7 +166,7 @@ async def test_text_to_video_success_writes_mp4_and_returns_markdown(
     # 4) download mp4.
     calls: list[str] = []
 
-    def _handler(request: httpx.Request) -> httpx.Response:
+    def _handler(request: httpx2.Request) -> httpx2.Response:
         url = str(request.url)
         calls.append(f"{request.method} {url}")
         assert request.headers["x-goog-api-key"] == "k-test"
@@ -181,20 +181,20 @@ async def test_text_to_video_success_writes_mp4_and_returns_markdown(
             assert body["instances"] == [{"prompt": "a lion"}]
             # No parameters block when nothing was overridden.
             assert "parameters" not in body
-            return httpx.Response(200, json={"name": "operations/abc123"})
+            return httpx2.Response(200, json={"name": "operations/abc123"})
 
         if request.method == "GET" and url.endswith("/operations/abc123"):
             # First poll returns pending, second returns done.
             poll_count = sum(1 for c in calls if "GET" in c)
             if poll_count == 1:
-                return httpx.Response(200, json={"done": False})
-            return httpx.Response(
+                return httpx2.Response(200, json={"done": False})
+            return httpx2.Response(
                 200,
                 json=_done_response("https://cdn.google.test/videos/abc123.mp4"),
             )
 
         if request.method == "GET" and "cdn.google.test" in url:
-            return httpx.Response(200, content=fake_mp4)
+            return httpx2.Response(200, content=fake_mp4)
 
         raise AssertionError(f"unexpected request {request.method} {url}")
 
@@ -234,7 +234,7 @@ async def test_overrides_forwarded_as_parameters(
 
     fake_mp4 = b"MP4"
 
-    def _handler(request: httpx.Request) -> httpx.Response:
+    def _handler(request: httpx2.Request) -> httpx2.Response:
         url = str(request.url)
         if request.method == "POST":
             import json as _json
@@ -248,12 +248,12 @@ async def test_overrides_forwarded_as_parameters(
                 "resolution": "1080p",
                 "durationSeconds": 8,
             }
-            return httpx.Response(200, json={"name": "operations/x"})
+            return httpx2.Response(200, json={"name": "operations/x"})
         if "operations/x" in url:
-            return httpx.Response(
+            return httpx2.Response(
                 200, json=_done_response("https://cdn.google.test/x.mp4")
             )
-        return httpx.Response(200, content=fake_mp4)
+        return httpx2.Response(200, content=fake_mp4)
 
     _install_mock_transport(monkeypatch, _handler)
 
@@ -286,7 +286,7 @@ async def test_yaml_duration_as_int_forwarded_as_int(
     )
     monkeypatch.setenv("GOOGLE_API_KEY", "k-test")
 
-    def _handler(request: httpx.Request) -> httpx.Response:
+    def _handler(request: httpx2.Request) -> httpx2.Response:
         url = str(request.url)
         if request.method == "POST":
             import json as _json
@@ -297,12 +297,12 @@ async def test_yaml_duration_as_int_forwarded_as_int(
             # And they are not strings on the wire.
             assert not isinstance(body["parameters"]["durationSeconds"], str)
             assert not isinstance(body["parameters"]["seed"], str)
-            return httpx.Response(200, json={"name": "operations/x"})
+            return httpx2.Response(200, json={"name": "operations/x"})
         if "operations/x" in url:
-            return httpx.Response(
+            return httpx2.Response(
                 200, json=_done_response("https://cdn.google.test/x.mp4")
             )
-        return httpx.Response(200, content=b"MP4")
+        return httpx2.Response(200, content=b"MP4")
 
     _install_mock_transport(monkeypatch, _handler)
 
@@ -332,7 +332,7 @@ async def test_image_to_video_inlines_first_frame(
     first_png = b"\x89PNG\r\n\x1a\nFIRST"
     (workspace / "first.png").write_bytes(first_png)
 
-    def _handler(request: httpx.Request) -> httpx.Response:
+    def _handler(request: httpx2.Request) -> httpx2.Response:
         url = str(request.url)
         if request.method == "POST":
             import base64 as _b64
@@ -347,12 +347,12 @@ async def test_image_to_video_inlines_first_frame(
             img = instance["image"]
             assert img["mimeType"] == "image/png"
             assert _b64.b64decode(img["bytesBase64Encoded"]) == first_png
-            return httpx.Response(200, json={"name": "operations/x"})
+            return httpx2.Response(200, json={"name": "operations/x"})
         if "operations/x" in url:
-            return httpx.Response(
+            return httpx2.Response(
                 200, json=_done_response("https://cdn.google.test/x.mp4")
             )
-        return httpx.Response(200, content=b"MP4")
+        return httpx2.Response(200, content=b"MP4")
 
     _install_mock_transport(monkeypatch, _handler)
 
@@ -381,7 +381,7 @@ async def test_first_and_last_frame_interpolation(
     (workspace / "a.png").write_bytes(first_png)
     (workspace / "b.jpg").write_bytes(last_jpg)
 
-    def _handler(request: httpx.Request) -> httpx.Response:
+    def _handler(request: httpx2.Request) -> httpx2.Response:
         url = str(request.url)
         if request.method == "POST":
             import base64 as _b64
@@ -396,12 +396,12 @@ async def test_first_and_last_frame_interpolation(
             assert (
                 _b64.b64decode(instance["lastFrame"]["bytesBase64Encoded"]) == last_jpg
             )
-            return httpx.Response(200, json={"name": "operations/x"})
+            return httpx2.Response(200, json={"name": "operations/x"})
         if "operations/x" in url:
-            return httpx.Response(
+            return httpx2.Response(
                 200, json=_done_response("https://cdn.google.test/x.mp4")
             )
-        return httpx.Response(200, content=b"MP4")
+        return httpx2.Response(200, content=b"MP4")
 
     _install_mock_transport(monkeypatch, _handler)
 
@@ -432,7 +432,7 @@ async def test_reference_images_forwarded_with_asset_type(
     (workspace / "r1.png").write_bytes(r1)
     (workspace / "r2.png").write_bytes(r2)
 
-    def _handler(request: httpx.Request) -> httpx.Response:
+    def _handler(request: httpx2.Request) -> httpx2.Response:
         url = str(request.url)
         if request.method == "POST":
             import base64 as _b64
@@ -446,12 +446,12 @@ async def test_reference_images_forwarded_with_asset_type(
                 assert ref["referenceType"] == "asset"
                 # Veo's wire format: flat bytesBase64Encoded + mimeType (not inlineData).
                 assert _b64.b64decode(ref["image"]["bytesBase64Encoded"]) == expected
-            return httpx.Response(200, json={"name": "operations/x"})
+            return httpx2.Response(200, json={"name": "operations/x"})
         if "operations/x" in url:
-            return httpx.Response(
+            return httpx2.Response(
                 200, json=_done_response("https://cdn.google.test/x.mp4")
             )
-        return httpx.Response(200, content=b"MP4")
+        return httpx2.Response(200, content=b"MP4")
 
     _install_mock_transport(monkeypatch, _handler)
 
@@ -479,8 +479,8 @@ async def test_start_api_error_bubbled(
     )
     monkeypatch.setenv("GOOGLE_API_KEY", "k-test")
 
-    def _handler(_: httpx.Request) -> httpx.Response:
-        return httpx.Response(429, text='{"error":"rate limited"}')
+    def _handler(_: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(429, text='{"error":"rate limited"}')
 
     _install_mock_transport(monkeypatch, _handler)
 
@@ -500,10 +500,10 @@ async def test_poll_api_error_bubbled(
     )
     monkeypatch.setenv("GOOGLE_API_KEY", "k-test")
 
-    def _handler(request: httpx.Request) -> httpx.Response:
+    def _handler(request: httpx2.Request) -> httpx2.Response:
         if request.method == "POST":
-            return httpx.Response(200, json={"name": "operations/x"})
-        return httpx.Response(500, text="boom")
+            return httpx2.Response(200, json={"name": "operations/x"})
+        return httpx2.Response(500, text="boom")
 
     _install_mock_transport(monkeypatch, _handler)
 
@@ -523,10 +523,10 @@ async def test_operation_error_on_done_bubbled(
     )
     monkeypatch.setenv("GOOGLE_API_KEY", "k-test")
 
-    def _handler(request: httpx.Request) -> httpx.Response:
+    def _handler(request: httpx2.Request) -> httpx2.Response:
         if request.method == "POST":
-            return httpx.Response(200, json={"name": "operations/x"})
-        return httpx.Response(
+            return httpx2.Response(200, json={"name": "operations/x"})
+        return httpx2.Response(
             200,
             json={
                 "done": True,
@@ -553,11 +553,11 @@ async def test_done_without_video_uri_returns_framed_error(
     )
     monkeypatch.setenv("GOOGLE_API_KEY", "k-test")
 
-    def _handler(request: httpx.Request) -> httpx.Response:
+    def _handler(request: httpx2.Request) -> httpx2.Response:
         if request.method == "POST":
-            return httpx.Response(200, json={"name": "operations/x"})
+            return httpx2.Response(200, json={"name": "operations/x"})
         # done but missing generatedSamples
-        return httpx.Response(
+        return httpx2.Response(
             200, json={"done": True, "response": {"generateVideoResponse": {}}}
         )
 
@@ -583,11 +583,11 @@ async def test_polling_times_out(
     # Collapse the deadline so the second poll tips over it.
     monkeypatch.setattr(ggv, "_MAX_WAIT_SECONDS", 0.0)
 
-    def _handler(request: httpx.Request) -> httpx.Response:
+    def _handler(request: httpx2.Request) -> httpx2.Response:
         if request.method == "POST":
-            return httpx.Response(200, json={"name": "operations/x"})
+            return httpx2.Response(200, json={"name": "operations/x"})
         # Perpetually pending.
-        return httpx.Response(200, json={"done": False})
+        return httpx2.Response(200, json={"done": False})
 
     _install_mock_transport(monkeypatch, _handler)
 
@@ -601,13 +601,13 @@ async def test_polling_times_out(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _trap_handler() -> tuple[Callable[[httpx.Request], httpx.Response], list[bool]]:
+def _trap_handler() -> tuple[Callable[[httpx2.Request], httpx2.Response], list[bool]]:
     """Return a handler that flags any call and the flag list to inspect."""
     flagged: list[bool] = []
 
-    def _handler(_: httpx.Request) -> httpx.Response:
+    def _handler(_: httpx2.Request) -> httpx2.Response:
         flagged.append(True)
-        return httpx.Response(200)
+        return httpx2.Response(200)
 
     return _handler, flagged
 
@@ -1194,11 +1194,11 @@ async def test_operation_response_missing_done_field(
     )
     monkeypatch.setenv("GOOGLE_API_KEY", "k-test")
 
-    def _handler(request: httpx.Request) -> httpx.Response:
+    def _handler(request: httpx2.Request) -> httpx2.Response:
         if request.method == "POST":
-            return httpx.Response(200, json={"name": "operations/x"})
+            return httpx2.Response(200, json={"name": "operations/x"})
         # Missing 'done' field — should be treated as pending.
-        return httpx.Response(200, json={"response": {}})
+        return httpx2.Response(200, json={"response": {}})
 
     _install_mock_transport(monkeypatch, _handler)
 
@@ -1223,11 +1223,11 @@ async def test_operation_response_missing_response_field(
     )
     monkeypatch.setenv("GOOGLE_API_KEY", "k-test")
 
-    def _handler(request: httpx.Request) -> httpx.Response:
+    def _handler(request: httpx2.Request) -> httpx2.Response:
         if request.method == "POST":
-            return httpx.Response(200, json={"name": "operations/x"})
+            return httpx2.Response(200, json={"name": "operations/x"})
         # done=true but no response field.
-        return httpx.Response(200, json={"done": True})
+        return httpx2.Response(200, json={"done": True})
 
     _install_mock_transport(monkeypatch, _handler)
 
@@ -1249,11 +1249,11 @@ async def test_operation_response_empty_generated_samples(
     )
     monkeypatch.setenv("GOOGLE_API_KEY", "k-test")
 
-    def _handler(request: httpx.Request) -> httpx.Response:
+    def _handler(request: httpx2.Request) -> httpx2.Response:
         if request.method == "POST":
-            return httpx.Response(200, json={"name": "operations/x"})
+            return httpx2.Response(200, json={"name": "operations/x"})
         # Empty generatedSamples.
-        return httpx.Response(
+        return httpx2.Response(
             200,
             json={
                 "done": True,
@@ -1281,16 +1281,16 @@ async def test_download_returns_zero_bytes(
     )
     monkeypatch.setenv("GOOGLE_API_KEY", "k-test")
 
-    def _handler(request: httpx.Request) -> httpx.Response:
+    def _handler(request: httpx2.Request) -> httpx2.Response:
         url = str(request.url)
         if request.method == "POST":
-            return httpx.Response(200, json={"name": "operations/x"})
+            return httpx2.Response(200, json={"name": "operations/x"})
         if "operations/x" in url:
-            return httpx.Response(
+            return httpx2.Response(
                 200, json=_done_response("https://cdn.google.test/x.mp4")
             )
         # Download returns empty content.
-        return httpx.Response(200, content=b"")
+        return httpx2.Response(200, content=b"")
 
     _install_mock_transport(monkeypatch, _handler)
 
@@ -1317,16 +1317,16 @@ async def test_download_returns_non_200_status(
     )
     monkeypatch.setenv("GOOGLE_API_KEY", "k-test")
 
-    def _handler(request: httpx.Request) -> httpx.Response:
+    def _handler(request: httpx2.Request) -> httpx2.Response:
         url = str(request.url)
         if request.method == "POST":
-            return httpx.Response(200, json={"name": "operations/x"})
+            return httpx2.Response(200, json={"name": "operations/x"})
         if "operations/x" in url:
-            return httpx.Response(
+            return httpx2.Response(
                 200, json=_done_response("https://cdn.google.test/x.mp4")
             )
         # Download fails.
-        return httpx.Response(403, text="Forbidden")
+        return httpx2.Response(403, text="Forbidden")
 
     _install_mock_transport(monkeypatch, _handler)
 
@@ -1348,8 +1348,8 @@ async def test_http_429_on_start_call(
     )
     monkeypatch.setenv("GOOGLE_API_KEY", "k-test")
 
-    def _handler(_: httpx.Request) -> httpx.Response:
-        return httpx.Response(429, text='{"error":"rate limited"}')
+    def _handler(_: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(429, text='{"error":"rate limited"}')
 
     _install_mock_transport(monkeypatch, _handler)
 
@@ -1370,8 +1370,8 @@ async def test_http_500_on_start_call(
     )
     monkeypatch.setenv("GOOGLE_API_KEY", "k-test")
 
-    def _handler(_: httpx.Request) -> httpx.Response:
-        return httpx.Response(500, text="Internal Server Error")
+    def _handler(_: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(500, text="Internal Server Error")
 
     _install_mock_transport(monkeypatch, _handler)
 
@@ -1392,11 +1392,11 @@ async def test_poll_returns_error_field_on_done(
     )
     monkeypatch.setenv("GOOGLE_API_KEY", "k-test")
 
-    def _handler(request: httpx.Request) -> httpx.Response:
+    def _handler(request: httpx2.Request) -> httpx2.Response:
         if request.method == "POST":
-            return httpx.Response(200, json={"name": "operations/x"})
+            return httpx2.Response(200, json={"name": "operations/x"})
         # Operation fails with error field.
-        return httpx.Response(
+        return httpx2.Response(
             200,
             json={
                 "done": True,

@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import httpx
+import httpx2
 from fastapi import APIRouter, HTTPException
 from loguru import logger
 
@@ -338,7 +338,7 @@ async def _local_provider_reachable(entry: "ProviderEntry") -> bool:
     reachable = False
     if base_url:
         try:
-            async with httpx.AsyncClient(timeout=_LOCAL_REACHABLE_TIMEOUT_S) as client:
+            async with httpx2.AsyncClient(timeout=_LOCAL_REACHABLE_TIMEOUT_S) as client:
                 response = await client.get(f"{base_url.rstrip('/')}/models")
                 reachable = response.status_code < 500
         except Exception as exc:

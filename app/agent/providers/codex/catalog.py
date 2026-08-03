@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-import httpx
+import httpx2
 from loguru import logger
 
 from app.agent.providers.codex.oauth import CODEX_ORIGINATOR, CodexOAuth
@@ -54,7 +54,7 @@ def _fetch_catalog() -> Any | None:
         }
         if oauth.account_id:
             headers["ChatGPT-Account-Id"] = oauth.account_id
-        response = httpx.get(
+        response = httpx2.get(
             CODEX_MODELS_URL,
             params={"client_version": "1.0.0"},
             headers=headers,

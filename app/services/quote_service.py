@@ -14,7 +14,7 @@ import datetime
 import json
 from pathlib import Path
 
-import httpx
+import httpx2
 from loguru import logger
 from pydantic import BaseModel
 
@@ -102,7 +102,7 @@ async def get_quote_of_the_day() -> Quote:
 
     # 3. Fetch from API Ninjas
     try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        async with httpx2.AsyncClient(timeout=_TIMEOUT) as client:
             resp = await client.get(
                 _API_URL,
                 headers={"X-Api-Key": api_key.get_secret_value()},

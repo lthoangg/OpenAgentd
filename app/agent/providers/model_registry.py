@@ -19,7 +19,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-import httpx
+import httpx2
 import yaml
 from loguru import logger
 
@@ -159,10 +159,10 @@ def _read_json_file(path: Path) -> Any | None:
 
 def _fetch_models_dev() -> Any | None:
     try:
-        response = httpx.get(MODELS_DEV_URL, timeout=5.0)
+        response = httpx2.get(MODELS_DEV_URL, timeout=5.0)
         response.raise_for_status()
         return response.json()
-    except (httpx.HTTPError, json.JSONDecodeError, ValueError) as exc:
+    except (httpx2.HTTPError, json.JSONDecodeError, ValueError) as exc:
         logger.warning("failed to fetch models.dev registry ({})", exc)
         return None
 

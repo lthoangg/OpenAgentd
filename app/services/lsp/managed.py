@@ -14,7 +14,7 @@ from pathlib import Path
 from time import monotonic
 from typing import Literal
 
-import httpx
+import httpx2
 from loguru import logger
 
 from app.core.config import settings
@@ -265,7 +265,7 @@ class ManagedLspTools:
 
     async def _download(self, url: str) -> bytes:
         payload = bytearray()
-        async with httpx.AsyncClient(follow_redirects=True, timeout=120.0) as client:
+        async with httpx2.AsyncClient(follow_redirects=True, timeout=120.0) as client:
             async with client.stream("GET", url) as response:
                 response.raise_for_status()
                 if response.url.scheme != "https":

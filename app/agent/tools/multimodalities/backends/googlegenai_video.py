@@ -12,7 +12,7 @@ Flow:
    until ``done=true`` or ``_MAX_WAIT_SECONDS`` elapses.
 3. Extract ``response.generateVideoResponse.generatedSamples[0].video.uri``
    and download the mp4 bytes (with ``x-goog-api-key`` header; ``-L`` to
-   follow redirects — ``httpx`` does this via ``follow_redirects=True``).
+   follow redirects — ``httpx2`` does this via ``follow_redirects=True``).
 
 Auth: reads ``settings.GOOGLE_API_KEY`` (loaded from ``.env``) and falls back
 to ``os.getenv("GOOGLE_API_KEY")`` for runtime overrides. Mirrors the image
@@ -53,7 +53,7 @@ import mimetypes
 import os
 from typing import Any
 
-import httpx
+import httpx2
 from loguru import logger
 
 from app.agent.tools.multimodalities._config import MediaSectionConfig
@@ -265,7 +265,7 @@ def _extract_video_uri(status_response: dict[str, Any]) -> str | None:
 
 
 async def _poll_until_done(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     operation_name: str,
     api_key: str,
 ) -> dict[str, Any] | str:
@@ -281,7 +281,7 @@ async def _poll_until_done(
         attempt += 1
         try:
             resp = await client.get(_operation_url(operation_name), headers=headers)
-        except httpx.HTTPError as exc:
+        except httpx2.HTTPError as exc:
             logger.warning("veo_poll_http_error attempt={} err={}", attempt, exc)
             return f"Error: network failure polling Veo operation: {exc}"
 
@@ -321,7 +321,7 @@ async def _poll_until_done(
 
 
 async def _download_video(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     uri: str,
     api_key: str,
 ) -> bytes | str:
@@ -329,7 +329,7 @@ async def _download_video(
     headers = {"x-goog-api-key": api_key}
     try:
         resp = await client.get(uri, headers=headers, follow_redirects=True)
-    except httpx.HTTPError as exc:
+    except httpx2.HTTPError as exc:
         logger.warning("veo_download_http_error err={}", exc)
         return f"Error: network failure downloading Veo video: {exc}"
 
@@ -395,13 +395,13 @@ async def generate(
     }
 
     try:
-        async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT_SECONDS) as client:
+        async with httpx2.AsyncClient(timeout=_REQUEST_TIMEOUT_SECONDS) as client:
             # 1. Kick off the operation.
             try:
                 resp = await client.post(
                     _predict_url(cfg.model), headers=headers, json=payload
                 )
-            except httpx.HTTPError as exc:
+            except httpx2.HTTPError as exc:
                 logger.warning("veo_start_http_error err={}", exc)
                 return f"Error: network failure calling Veo: {exc}"
 
@@ -440,12 +440,12 @@ async def generate(
             logger.info("veo_operation_complete operation={}", operation_name)
 
         # 3. Download — fresh client with a longer timeout for the mp4 payload.
-        async with httpx.AsyncClient(timeout=_DOWNLOAD_TIMEOUT_SECONDS) as dl_client:
+        async with httpx2.AsyncClient(timeout=_DOWNLOAD_TIMEOUT_SECONDS) as dl_client:
             mp4 = await _download_video(dl_client, uri, api_key)
             if isinstance(mp4, str):
                 return mp4  # Error string
             return mp4, uri
-    except httpx.HTTPError as exc:
+    except httpx2.HTTPError as exc:
         # Belt-and-braces for client creation / context failures.
         logger.warning("veo_unexpected_http_error err={}", exc)
         return f"Error: unexpected network failure during Veo call: {exc}"

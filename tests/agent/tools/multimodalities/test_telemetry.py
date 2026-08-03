@@ -14,7 +14,7 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import base64
-import httpx
+import httpx2
 import pytest
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
@@ -107,17 +107,17 @@ def _write_config(config_dir: Path, body: str) -> None:
 
 def _install_openai_mock(
     monkeypatch: pytest.MonkeyPatch,
-    handler: Callable[[httpx.Request], httpx.Response],
+    handler: Callable[[httpx2.Request], httpx2.Response],
 ) -> None:
-    transport = httpx.MockTransport(handler)
-    real_async_client = httpx.AsyncClient
+    transport = httpx2.MockTransport(handler)
+    real_async_client = httpx2.AsyncClient
 
-    def _mock_async_client(*args: object, **kwargs: object) -> httpx.AsyncClient:
+    def _mock_async_client(*args: object, **kwargs: object) -> httpx2.AsyncClient:
         kwargs["transport"] = transport
         return real_async_client(*args, **kwargs)
 
     monkeypatch.setattr(
-        "app.agent.tools.multimodalities.backends.openai.httpx.AsyncClient",
+        "app.agent.tools.multimodalities.backends.openai.httpx2.AsyncClient",
         _mock_async_client,
     )
 
@@ -182,8 +182,8 @@ async def test_generate_span_and_metrics_on_success(
     fake_png = b"\x89PNG\r\n\x1a\nFAKEDATA"
     b64 = base64.b64encode(fake_png).decode("ascii")
 
-    def _handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json={"data": [{"b64_json": b64}]})
+    def _handler(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(200, json={"data": [{"b64_json": b64}]})
 
     _install_openai_mock(monkeypatch, _handler)
 
@@ -262,9 +262,9 @@ async def test_edit_span_sets_input_count(
     fake_png = b"\x89PNG\r\n\x1a\nEDITED"
     b64 = base64.b64encode(fake_png).decode("ascii")
 
-    def _handler(request: httpx.Request) -> httpx.Response:
+    def _handler(request: httpx2.Request) -> httpx2.Response:
         assert request.url.path == "/v1/images/edits"
-        return httpx.Response(200, json={"data": [{"b64_json": b64}]})
+        return httpx2.Response(200, json={"data": [{"b64_json": b64}]})
 
     _install_openai_mock(monkeypatch, _handler)
 
@@ -344,8 +344,8 @@ async def test_backend_error_marks_span_and_metric(
     _write_config(config_dir, "image:\n  model: openai:gpt-image-2\n")
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
 
-    def _handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(401, json={"error": {"message": "bad key"}})
+    def _handler(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(401, json={"error": {"message": "bad key"}})
 
     _install_openai_mock(monkeypatch, _handler)
 

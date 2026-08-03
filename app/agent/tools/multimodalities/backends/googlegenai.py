@@ -25,7 +25,7 @@ import mimetypes
 import os
 from typing import Any
 
-import httpx
+import httpx2
 from loguru import logger
 
 from app.agent.tools.multimodalities._config import MediaSectionConfig
@@ -91,7 +91,7 @@ def _build_generation_config(
     return gen_cfg
 
 
-def _decode_image_response(resp: httpx.Response) -> bytes | str:
+def _decode_image_response(resp: httpx2.Response) -> bytes | str:
     """Shared response handler — scans parts for the first image ``inline_data``."""
     if resp.status_code != 200:
         body = resp.text[:400]
@@ -162,11 +162,11 @@ async def generate(
     }
 
     try:
-        async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT_SECONDS) as client:
+        async with httpx2.AsyncClient(timeout=_REQUEST_TIMEOUT_SECONDS) as client:
             resp = await client.post(
                 _build_url(cfg.model), headers=headers, json=payload
             )
-    except httpx.HTTPError as exc:
+    except httpx2.HTTPError as exc:
         logger.warning("gemini_generate_http_error err={}", exc)
         return f"Error: network failure calling Gemini Images: {exc}"
 
@@ -219,11 +219,11 @@ async def edit(
     }
 
     try:
-        async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT_SECONDS) as client:
+        async with httpx2.AsyncClient(timeout=_REQUEST_TIMEOUT_SECONDS) as client:
             resp = await client.post(
                 _build_url(cfg.model), headers=headers, json=payload
             )
-    except httpx.HTTPError as exc:
+    except httpx2.HTTPError as exc:
         logger.warning("gemini_edit_http_error err={}", exc)
         return f"Error: network failure calling Gemini Images edit: {exc}"
 

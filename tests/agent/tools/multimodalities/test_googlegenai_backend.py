@@ -20,7 +20,7 @@ import base64
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
-import httpx
+import httpx2
 import pytest
 
 from app.agent.sandbox import SandboxConfig, set_sandbox
@@ -62,18 +62,18 @@ def _write_config(config_dir: Path, body: str) -> None:
 
 def _install_mock_transport(
     monkeypatch: pytest.MonkeyPatch,
-    handler: "Callable[[httpx.Request], httpx.Response]",
+    handler: "Callable[[httpx2.Request], httpx2.Response]",
 ) -> None:
-    """Route all Gemini backend httpx traffic to ``handler``."""
-    transport = httpx.MockTransport(handler)
-    real_async_client = httpx.AsyncClient
+    """Route all Gemini backend httpx2 traffic to ``handler``."""
+    transport = httpx2.MockTransport(handler)
+    real_async_client = httpx2.AsyncClient
 
-    def _mock_async_client(*args: object, **kwargs: object) -> httpx.AsyncClient:
+    def _mock_async_client(*args: object, **kwargs: object) -> httpx2.AsyncClient:
         kwargs["transport"] = transport
         return real_async_client(*args, **kwargs)
 
     monkeypatch.setattr(
-        "app.agent.tools.multimodalities.backends.googlegenai.httpx.AsyncClient",
+        "app.agent.tools.multimodalities.backends.googlegenai.httpx2.AsyncClient",
         _mock_async_client,
     )
 
@@ -117,10 +117,10 @@ async def test_missing_api_key_env_returns_error(
 
     called = False
 
-    def _handler(_: httpx.Request) -> httpx.Response:
+    def _handler(_: httpx2.Request) -> httpx2.Response:
         nonlocal called
         called = True
-        return httpx.Response(200)
+        return httpx2.Response(200)
 
     _install_mock_transport(monkeypatch, _handler)
 
@@ -152,7 +152,7 @@ async def test_generate_success_writes_png_and_returns_markdown(
 
     fake_png = b"\x89PNG\r\n\x1a\nFAKEGEMINI"
 
-    def _handler(request: httpx.Request) -> httpx.Response:
+    def _handler(request: httpx2.Request) -> httpx2.Response:
         assert request.url.path.endswith(
             "/models/gemini-3.1-flash-image-preview:generateContent"
         )
@@ -168,7 +168,7 @@ async def test_generate_success_writes_png_and_returns_markdown(
         gen_cfg = body["generationConfig"]
         assert gen_cfg["responseModalities"] == ["TEXT", "IMAGE"]
         assert gen_cfg["imageConfig"] == {"aspectRatio": "1:1", "imageSize": "1K"}
-        return httpx.Response(200, json=_gemini_response(fake_png))
+        return httpx2.Response(200, json=_gemini_response(fake_png))
 
     _install_mock_transport(monkeypatch, _handler)
 
@@ -192,8 +192,8 @@ async def test_generate_api_error_bubbled_to_agent(
     )
     monkeypatch.setenv("GOOGLE_API_KEY", "k-test")
 
-    def _handler(_: httpx.Request) -> httpx.Response:
-        return httpx.Response(429, text='{"error":"rate limited"}')
+    def _handler(_: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(429, text='{"error":"rate limited"}')
 
     _install_mock_transport(monkeypatch, _handler)
 
@@ -213,9 +213,9 @@ async def test_generate_response_missing_image_part(
     )
     monkeypatch.setenv("GOOGLE_API_KEY", "k-test")
 
-    def _handler(_: httpx.Request) -> httpx.Response:
+    def _handler(_: httpx2.Request) -> httpx2.Response:
         # Only a text part — no inline_data.
-        return httpx.Response(
+        return httpx2.Response(
             200,
             json={
                 "candidates": [
@@ -258,7 +258,7 @@ async def test_edit_success_sends_inline_data_parts(
 
     fake_png = b"\x89PNG\r\n\x1a\nOUT"
 
-    def _handler(request: httpx.Request) -> httpx.Response:
+    def _handler(request: httpx2.Request) -> httpx2.Response:
         import json as _json
 
         body = _json.loads(request.content)
@@ -269,7 +269,7 @@ async def test_edit_success_sends_inline_data_parts(
         assert base64.b64decode(parts[1]["inline_data"]["data"]) == img1
         assert parts[2]["inline_data"]["mime_type"] == "image/jpeg"
         assert base64.b64decode(parts[2]["inline_data"]["data"]) == img2
-        return httpx.Response(200, json=_gemini_response(fake_png))
+        return httpx2.Response(200, json=_gemini_response(fake_png))
 
     _install_mock_transport(monkeypatch, _handler)
 
@@ -304,10 +304,10 @@ async def test_edit_over_14_images_rejected_before_http(
 
     called = False
 
-    def _handler(_: httpx.Request) -> httpx.Response:
+    def _handler(_: httpx2.Request) -> httpx2.Response:
         nonlocal called
         called = True
-        return httpx.Response(200)
+        return httpx2.Response(200)
 
     _install_mock_transport(monkeypatch, _handler)
 
@@ -339,14 +339,14 @@ async def test_overrides_win_over_yaml(
 
     fake_png = b"\x89PNG\r\n\x1a\nX"
 
-    def _handler(request: httpx.Request) -> httpx.Response:
+    def _handler(request: httpx2.Request) -> httpx2.Response:
         import json as _json
 
         body = _json.loads(request.content)
         img_cfg = body["generationConfig"]["imageConfig"]
         # Caller-supplied values win.
         assert img_cfg == {"aspectRatio": "16:9", "imageSize": "2K"}
-        return httpx.Response(200, json=_gemini_response(fake_png))
+        return httpx2.Response(200, json=_gemini_response(fake_png))
 
     _install_mock_transport(monkeypatch, _handler)
 
@@ -372,7 +372,7 @@ async def test_openai_only_params_silently_ignored_by_gemini(
 
     fake_png = b"\x89PNG\r\n\x1a\nX"
 
-    def _handler(request: httpx.Request) -> httpx.Response:
+    def _handler(request: httpx2.Request) -> httpx2.Response:
         import json as _json
 
         body = _json.loads(request.content)
@@ -383,7 +383,7 @@ async def test_openai_only_params_silently_ignored_by_gemini(
         assert "output_format" not in img_cfg
         # imageConfig should be empty since nothing Gemini-shaped was provided.
         assert img_cfg == {}
-        return httpx.Response(200, json=_gemini_response(fake_png))
+        return httpx2.Response(200, json=_gemini_response(fake_png))
 
     _install_mock_transport(monkeypatch, _handler)
 
@@ -414,10 +414,10 @@ async def test_invalid_aspect_ratio_rejected_before_http(
 
     called = False
 
-    def _handler(_: httpx.Request) -> httpx.Response:
+    def _handler(_: httpx2.Request) -> httpx2.Response:
         nonlocal called
         called = True
-        return httpx.Response(200)
+        return httpx2.Response(200)
 
     _install_mock_transport(monkeypatch, _handler)
 
@@ -443,10 +443,10 @@ async def test_invalid_image_size_rejected_before_http(
 
     called = False
 
-    def _handler(_: httpx.Request) -> httpx.Response:
+    def _handler(_: httpx2.Request) -> httpx2.Response:
         nonlocal called
         called = True
-        return httpx.Response(200)
+        return httpx2.Response(200)
 
     _install_mock_transport(monkeypatch, _handler)
 

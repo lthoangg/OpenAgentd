@@ -64,7 +64,7 @@ async def test_get_usage_preserves_unmetered_weekly_period_without_inventing_quo
             "prepaidBalance": {"val": 0},
         }
     }
-    monkeypatch.setattr(usage.httpx, "AsyncClient", _FakeClient)
+    monkeypatch.setattr(usage.httpx2, "AsyncClient", _FakeClient)
 
     result = await usage.get_usage()
 
@@ -97,7 +97,7 @@ async def test_get_usage_maps_reported_credit_and_on_demand_percentages(
             "prepaidBalance": {"val": 30},
         }
     }
-    monkeypatch.setattr(usage.httpx, "AsyncClient", _FakeClient)
+    monkeypatch.setattr(usage.httpx2, "AsyncClient", _FakeClient)
 
     result = await usage.get_usage()
 
@@ -137,7 +137,7 @@ async def test_get_usage_rejects_invalid_payload(
 ) -> None:
     monkeypatch.setattr("app.agent.providers.grok.oauth.GrokOAuth.load", _oauth)
     _FakeClient.payload = ["not", "an", "object"]
-    monkeypatch.setattr(usage.httpx, "AsyncClient", _FakeClient)
+    monkeypatch.setattr(usage.httpx2, "AsyncClient", _FakeClient)
 
     with pytest.raises(usage.GrokUsageUnavailableError):
         await usage.get_usage()

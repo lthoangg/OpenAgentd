@@ -798,7 +798,7 @@ def test_local_provider_reachable_uses_cache(monkeypatch: pytest.MonkeyPatch) ->
             call_count += 1
             return _FakeResponse()
 
-    monkeypatch.setattr(settings_routes.httpx, "AsyncClient", _FakeClient)
+    monkeypatch.setattr(settings_routes.httpx2, "AsyncClient", _FakeClient)
     monkeypatch.setattr(settings_routes.settings, "OLLAMA_BASE_URL", "http://x:1")
 
     first = asyncio.get_event_loop().run_until_complete(
@@ -818,7 +818,7 @@ def test_local_provider_reachable_swallows_errors(
     """Connection refused / timeout → False (no exception bubbles up)."""
     import asyncio
 
-    import httpx
+    import httpx2
 
     from app.agent.providers.catalog import find
 
@@ -836,9 +836,9 @@ def test_local_provider_reachable_swallows_errors(
             return None
 
         async def get(self, _url):
-            raise httpx.ConnectError("daemon down")
+            raise httpx2.ConnectError("daemon down")
 
-    monkeypatch.setattr(settings_routes.httpx, "AsyncClient", _BoomClient)
+    monkeypatch.setattr(settings_routes.httpx2, "AsyncClient", _BoomClient)
     monkeypatch.setattr(settings_routes.settings, "OLLAMA_BASE_URL", "http://x:1")
 
     result = asyncio.get_event_loop().run_until_complete(
@@ -1057,7 +1057,7 @@ def test_get_codex_provider_usage_returns_active_limits(
             captured["headers"] = headers
             return _FakeResponse()
 
-    monkeypatch.setattr(codex_usage.httpx, "AsyncClient", _FakeClient)
+    monkeypatch.setattr(codex_usage.httpx2, "AsyncClient", _FakeClient)
 
     client = TestClient(_make_app())
     response = client.get("/api/settings/providers/codex/usage")
@@ -1137,7 +1137,7 @@ def test_get_codex_provider_usage_returns_unlimited_credits(
         async def get(self, _url, *, headers):  # type: ignore[no-untyped-def]
             return _FakeResponse()
 
-    monkeypatch.setattr(codex_usage.httpx, "AsyncClient", _FakeClient)
+    monkeypatch.setattr(codex_usage.httpx2, "AsyncClient", _FakeClient)
 
     client = TestClient(_make_app())
     response = client.get("/api/settings/providers/codex/usage")
@@ -1219,7 +1219,7 @@ def test_get_copilot_provider_usage_returns_premium_quota_snapshot(
             captured["headers"] = headers
             return _FakeResponse()
 
-    monkeypatch.setattr(copilot_usage.httpx, "Client", _FakeClient)
+    monkeypatch.setattr(copilot_usage.httpx2, "Client", _FakeClient)
 
     client = TestClient(_make_app())
     response = client.get("/api/settings/providers/copilot/usage")

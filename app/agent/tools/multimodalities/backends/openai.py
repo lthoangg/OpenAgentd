@@ -22,7 +22,7 @@ import mimetypes
 import os
 from typing import Any
 
-import httpx
+import httpx2
 from loguru import logger
 
 from app.agent.tools.multimodalities._config import MediaSectionConfig
@@ -51,7 +51,7 @@ def _missing_key_error() -> str:
     )
 
 
-def _decode_image_response(resp: httpx.Response) -> bytes | str:
+def _decode_image_response(resp: httpx2.Response) -> bytes | str:
     """Shared response handler for both generate and edit endpoints."""
     if resp.status_code != 200:
         # Me surface API error text to the agent (truncated) so the model can adapt.
@@ -110,11 +110,11 @@ async def generate(
     headers = {"Authorization": f"Bearer {api_key}"}
 
     try:
-        async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT_SECONDS) as client:
+        async with httpx2.AsyncClient(timeout=_REQUEST_TIMEOUT_SECONDS) as client:
             resp = await client.post(
                 _OPENAI_GENERATE_URL, headers=headers, json=payload
             )
-    except httpx.HTTPError as exc:
+    except httpx2.HTTPError as exc:
         logger.warning("openai_generate_http_error err={}", exc)
         return f"Error: network failure calling OpenAI Images: {exc}"
 
@@ -156,11 +156,11 @@ async def edit(
     headers = {"Authorization": f"Bearer {api_key}"}
 
     try:
-        async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT_SECONDS) as client:
+        async with httpx2.AsyncClient(timeout=_REQUEST_TIMEOUT_SECONDS) as client:
             resp = await client.post(
                 _OPENAI_EDIT_URL, headers=headers, data=data, files=files
             )
-    except httpx.HTTPError as exc:
+    except httpx2.HTTPError as exc:
         logger.warning("openai_edit_http_error err={}", exc)
         return f"Error: network failure calling OpenAI Images edit: {exc}"
 

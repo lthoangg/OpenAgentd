@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from datetime import datetime
 from typing import Any, cast
 
-import httpx
+import httpx2
 from loguru import logger
 
 from app.api.schemas.settings import (
@@ -115,7 +115,7 @@ def _extract_plan_type(payload: Mapping[str, Any]) -> str | None:
 
 def _usage_payload() -> Mapping[str, Any]:
     try:
-        with httpx.Client(timeout=5.0) as client:
+        with httpx2.Client(timeout=5.0) as client:
             response = client.get(
                 "https://api.github.com/copilot_internal/user",
                 headers=_usage_headers(),
@@ -178,7 +178,7 @@ def _usage_limit(
 
 
 async def get_usage() -> ProviderUsageResponse:
-    # ``_usage_payload`` blocks on a sync httpx call (up to 5s timeout).
+    # ``_usage_payload`` blocks on a sync httpx2 call (up to 5s timeout).
     # Run it off-loop — this coroutine is awaited from request handlers on
     # the single-worker event loop, where a blocking call stalls every
     # in-flight SSE stream and request.

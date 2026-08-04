@@ -67,6 +67,15 @@ run from the terminal.
   Coding data in the background so the first mode switch can render from cache.
   Packaged desktop launches also canonicalise the `index.html` entrypoint to Home
   instead of showing the client-side 404 screen.
+- **Grouped settings navigation with one save contract** `[v1.128.0]` — the
+  settings sidebar is grouped into **Agents & tools**, **Models**, **System**,
+  and **About** instead of one flat list. **Title generation**, **Summarization**
+  and **Multimodal** are consolidated into a single **Automation** section whose
+  three groups can be collapsed independently and save independently, so a
+  validation error in one never blocks another. Every section now saves the same
+  way: a sticky bar appears only when there are unsaved edits, with Reset, Save,
+  and a `Cmd/Ctrl+S` binding. Notifications no longer writes on toggle, and
+  reopening Settings returns to the section you left.
 - **In-app crash recovery** `[v1.113.0]` — an unexpected UI render failure opens
   a recovery screen with Reload and copyable error details instead of leaving a
   dead webview that must be force-quit.

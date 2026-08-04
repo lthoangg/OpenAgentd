@@ -3,8 +3,14 @@
  *
  * Navigation is self-contained: section + optional selectedName covers
  * all views (list, new-form, editor). No URL changes happen.
+ *
+ * The last visited section is persisted, so reopening settings returns you
+ * where you left off instead of resetting to About every time. Drill-down
+ * views are collapsed to their parent list on rehydrate, because the item they
+ * pointed at (an agent, a skill, an MCP server) may since have been deleted.
  */
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { useUIStore, _registerCloseSettings } from './useUIStore'
 
@@ -34,7 +40,11 @@ export type SettingsSection =
  */
 const DRILL_DOWN_FAMILIES = ['agents', 'skills', 'mcp'] as const
 
-/** Collapses a drill-down section to the list it belongs to. */
+/**
+ * Collapses a drill-down section to the list it belongs to. Used for restoring
+ * persisted state (`agents-edit` without a valid `selectedName` would render an
+ * empty pane) and for sidebar highlighting.
+ */
 export function parentSection(section: SettingsSection): SettingsSection {
   return DRILL_DOWN_FAMILIES.find((f) => section.startsWith(f)) ?? section
 }
@@ -44,38 +54,54 @@ interface SettingsStore {
   section: SettingsSection
   /** Name param for editor views (agents-edit, skills-edit, mcp-edit). */
   selectedName: string | null
+  /**
+   * Opens the modal. Omit `section` to resume the last visited one; pass it
+   * explicitly to jump somewhere specific (e.g. `openSettings('providers')`
+   * from the missing-credentials prompt).
+   */
   openSettings: (section?: SettingsSection, name?: string | null) => void
   setSection: (section: SettingsSection, name?: string | null) => void
   closeSettings: () => void
 }
 
 export const useSettingsStore = create<SettingsStore>()(
-  immer((set) => {
-    // Register closeSettings with UIStore so its toggle actions can close
-    // the settings modal without creating a circular import.
-    _registerCloseSettings(() => useSettingsStore.getState().closeSettings())
+  persist(
+    immer((set) => {
+      // Register closeSettings with UIStore so its toggle actions can close
+      // the settings modal without creating a circular import.
+      _registerCloseSettings(() => useSettingsStore.getState().closeSettings())
 
-    return {
-    open: false,
-    section: 'about',
-    selectedName: null,
-    openSettings: (section = 'about', name = null) => {
-      useUIStore.getState().closeAll()
-      set((state) => {
-        state.open = true
-        state.section = section
-        state.selectedName = name ?? null
-      })
+      return {
+        open: false,
+        section: 'about',
+        selectedName: null,
+        openSettings: (section, name = null) => {
+          useUIStore.getState().closeAll()
+          set((state) => {
+            state.open = true
+            // `undefined` means "resume where the user left off".
+            if (section !== undefined) {
+              state.section = section
+              state.selectedName = name ?? null
+            }
+          })
+        },
+        setSection: (section, name = null) =>
+          set((state) => {
+            state.section = section
+            state.selectedName = name ?? null
+          }),
+        closeSettings: () =>
+          set((state) => {
+            state.open = false
+          }),
+      }
+    }),
+    {
+      name: 'oa.settingsStore',
+      // `open` is deliberately excluded: the modal should never reappear on
+      // its own after a reload.
+      partialize: (state) => ({ section: parentSection(state.section) }),
     },
-    setSection: (section, name = null) =>
-      set((state) => {
-        state.section = section
-        state.selectedName = name ?? null
-      }),
-    closeSettings: () =>
-      set((state) => {
-        state.open = false
-      }),
-    }
-  }),
+  ),
 )

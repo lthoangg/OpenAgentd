@@ -145,7 +145,7 @@ class TestProtocolInjection:
         prompt = await _get_injected_prompt(hook, state.system_prompt)
 
         assert "Communication protocol" in prompt
-        assert "ONLY tool calls" in prompt or "<sleep>" in prompt
+        assert "end_turn=true" in prompt
 
     @pytest.mark.asyncio
     async def test_lead_gets_communication_rules(self):
@@ -231,15 +231,18 @@ class TestProtocolInjection:
         assert "one brief progress note after delegation" in LEAD_COMMUNICATION_RULES
         assert "small, quick, self-contained tasks" in LEAD_COMMUNICATION_RULES
         assert "Do not assume default member names exist" in LEAD_COMMUNICATION_RULES
+        # Board-driven delegation: assignment wakes the assignee — no
+        # separate kickoff message, no result relaying through the lead.
+        assert "wakes the assignee" in LEAD_COMMUNICATION_RULES
         assert LEAD_PROTOCOL.index("Discover before guessing") < LEAD_PROTOCOL.index(
             "Spawn before assigning"
         )
         assert LEAD_PROTOCOL.index("Spawn before assigning") < LEAD_PROTOCOL.index(
             "create or update the todo plan"
         )
-        assert LEAD_PROTOCOL.index("create or update the todo plan") < (
-            LEAD_PROTOCOL.index("Send instructions only after")
-        )
+        assert "instructions" in LEAD_PROTOCOL
+        assert "Completion propagates automatically" in LEAD_PROTOCOL
+        assert "Do not relay results" in LEAD_PROTOCOL
         assert "skill-installer" in LEAD_PROTOCOL
         assert "Briefly tell the user" in LEAD_PROTOCOL
         assert "Verify material claims" in LEAD_PROTOCOL
@@ -247,19 +250,20 @@ class TestProtocolInjection:
             "Do not use plain text output for responses/results"
             in MEMBER_COMMUNICATION_RULES
         )
-        # Idle / waiting / done -> the only response is the sleep token.
-        assert "exactly `<sleep>`" in MEMBER_COMMUNICATION_RULES
+        # Idle / waiting / done -> structured turn-end, not a magic token.
+        assert "end_turn=true" in MEMBER_COMMUNICATION_RULES
+        assert "<sleep>" not in MEMBER_COMMUNICATION_RULES
         # Members address team_message to anyone on the team, not lead-only.
         assert "anyone on the team" in MEMBER_COMMUNICATION_RULES
-        assert (
-            "return exactly `<sleep>` directly when waiting or idle" in MEMBER_PROTOCOL
-        )
+        assert "end_turn=true" in MEMBER_PROTOCOL
+        assert "<sleep>" not in MEMBER_PROTOCOL
         assert MEMBER_PROTOCOL.index("claim") < MEMBER_PROTOCOL.index(
             "mark it completed"
         )
-        assert MEMBER_PROTOCOL.index("mark it completed") < MEMBER_PROTOCOL.index(
-            "final, complete result"
-        )
+        # Completion carries the deliverable: result recorded on the task,
+        # notifications fan out automatically.
+        assert "`result`" in MEMBER_PROTOCOL
+        assert "notified automatically" in MEMBER_PROTOCOL
         assert "partial (more coming) or final" in MEMBER_PROTOCOL
         assert "directly to that peer" in MEMBER_PROTOCOL
 
@@ -438,7 +442,9 @@ class TestProtocolConstants:
     def test_lead_protocol_has_workflow(self):
         assert "Lead workflow" in LEAD_PROTOCOL
         assert "delegate" in LEAD_PROTOCOL.lower()
-        assert "directly to the dependent owner" in LEAD_PROTOCOL
+        # Handoff between owners rides on the board: completed results reach
+        # unblocked assignees automatically instead of being relayed.
+        assert "wakes you and any assignees it unblocks" in LEAD_PROTOCOL
         assert "not as a message bus" in LEAD_PROTOCOL
         assert "Do not duplicate delegated work" in LEAD_PROTOCOL
         assert "Reclaim or cancel" in LEAD_PROTOCOL
@@ -457,7 +463,7 @@ class TestProtocolConstants:
 
     def test_member_protocol_has_workflow(self):
         assert "Member workflow" in MEMBER_PROTOCOL
-        assert "<sleep>" in MEMBER_PROTOCOL
+        assert "end_turn=true" in MEMBER_PROTOCOL
         assert "todo_manage" in MEMBER_PROTOCOL
         assert "claim" in MEMBER_PROTOCOL
 

@@ -6,7 +6,7 @@ Covers:
 - Delete actions
 - Read actions
 - Error handling for unknown task_ids
-- State metadata caching within a turn
+- Cross-run consistency (no per-run cache; concurrent writes are not clobbered)
 - Counter persistence across operations
 """
 
@@ -27,8 +27,10 @@ from app.agent.tools.builtin.todo import (
     ClearAction,
     CreateAction,
     DeleteAction,
+    MemberUpdateAction,
     ReadAction,
     TODOS_FILENAME,
+    _apply_actions,
     TodoArgs,
     TodoMemberArgs,
     UpdateAction,
@@ -883,88 +885,193 @@ async def test_counter_does_not_rewind_after_delete(
 
 
 @pytest.mark.asyncio
-async def test_state_metadata_cache_within_turn(
+async def test_create_with_instructions_persists(
     tmp_sandbox: SandboxConfig, todos_file: Path
 ) -> None:
-    """Test second call within same turn reads from cache, not disk."""
-    # First call: create a task
-    state = MockState(metadata={})
+    """The delegation brief rides on the task itself."""
     await _todo_manage(
         actions=[
             CreateAction(
                 action="create",
-                content="Task 1",
+                content="Build the parser",
                 status="pending",
                 priority="high",
+                assigned_to="executor#1",
+                instructions="Use the existing tokenizer in src/lex.py; no new deps.",
             )
         ],
-        _state=state,
+        _state=None,
     )
 
-    # Verify cache was populated
-    assert "_todos" in state.metadata
-    cached_store = state.metadata["_todos"]
-    assert cached_store["counter"] == 1
-
-    # Delete the file to verify second call uses cache, not disk
-    todos_file.unlink()
-
-    # Second call: should use cached store
-    result = await _todo_manage(
-        actions=[ReadAction(action="read")],
-        _state=state,
-    )
-
-    # Verify task is still there (from cache)
-    assert "task_1" in result
-    assert "Task 1" in result
-
-    # Verify file was recreated with cached data
-    assert todos_file.exists()
     store = json.loads(todos_file.read_text())
-    assert store["counter"] == 1
-    assert len(store["items"]) == 1
+    task_1 = store["items"][0]
+    assert task_1["instructions"] == (
+        "Use the existing tokenizer in src/lex.py; no new deps."
+    )
+    assert task_1["result"] is None
 
 
 @pytest.mark.asyncio
-async def test_state_metadata_cache_updated_after_operations(
+async def test_member_completion_records_result(
     tmp_sandbox: SandboxConfig, todos_file: Path
 ) -> None:
-    """Test cache is updated after each operation."""
-    state = MockState(metadata={})
-
-    # First call: create
+    """A member completing a claimed task stores the deliverable on the task."""
     await _todo_manage(
         actions=[
             CreateAction(
                 action="create",
-                content="Task 1",
+                content="Investigate flaky test",
                 status="pending",
                 priority="high",
+                assigned_to="executor#1",
             )
         ],
+        _state=None,
+    )
+    state = MockState(metadata={"agent_name": "executor#1"})
+    await _todo_manage(
+        actions=[ClaimAction(action="claim", task_id="task_1")],
         _state=state,
     )
 
-    cached_store_1 = state.metadata["_todos"]
-    assert cached_store_1["counter"] == 1
+    result = await _apply_actions(
+        [
+            MemberUpdateAction(
+                action="update",
+                task_id="task_1",
+                status="completed",
+                result="Root cause: unawaited fixture teardown. Fixed in commit abc123.",
+            )
+        ],
+        _state=state,
+        role="member",
+    )
 
-    # Second call: create another
+    store = json.loads(todos_file.read_text())
+    task_1 = store["items"][0]
+    assert task_1["status"] == "completed"
+    assert task_1["result"].startswith("Root cause:")
+    assert "task_1" in result
+
+
+@pytest.mark.asyncio
+async def test_read_shows_instructions_and_result(
+    tmp_sandbox: SandboxConfig, todos_file: Path
+) -> None:
     await _todo_manage(
         actions=[
             CreateAction(
                 action="create",
-                content="Task 2",
+                content="Write docs",
+                status="pending",
+                priority="low",
+                instructions="Cover the new API only.",
+            ),
+            UpdateAction(
+                action="update",
+                task_id="task_1",
+                status="completed",
+                result="Docs written in docs/api.md.",
+            ),
+            ReadAction(action="read"),
+        ],
+        _state=None,
+    )
+
+    result = await _todo_manage(actions=[ReadAction(action="read")], _state=None)
+    assert "Cover the new API only." in result
+    assert "Docs written in docs/api.md." in result
+
+
+@pytest.mark.asyncio
+async def test_concurrent_agent_writes_are_not_clobbered(
+    tmp_sandbox: SandboxConfig, todos_file: Path
+) -> None:
+    """A member's claim must survive a later write from the lead's run.
+
+    Regression test for the per-run ``state.metadata["_todos"]`` cache: the
+    lead's second call used its stale cached snapshot (taken before the
+    member's claim) and wrote the whole store back, silently reverting the
+    claim. The store must always be re-read from disk.
+    """
+    lead_state = MockState(metadata={"agent_name": "openagentd"})
+    member_state = MockState(metadata={"agent_name": "executor#1"})
+
+    # Lead creates two tasks (populates the lead run's view of the store).
+    await _todo_manage(
+        actions=[
+            CreateAction(
+                action="create",
+                content="Member task",
+                status="pending",
+                priority="high",
+                assigned_to="executor#1",
+            ),
+            CreateAction(
+                action="create",
+                content="Other task",
+                status="pending",
+                priority="medium",
+            ),
+        ],
+        _state=lead_state,
+    )
+
+    # Member claims task_1 in its own concurrent run (separate state).
+    await _todo_manage(
+        actions=[ClaimAction(action="claim", task_id="task_1")],
+        _state=member_state,
+    )
+
+    # Lead touches an unrelated task from its own run.
+    await _todo_manage(
+        actions=[
+            UpdateAction(action="update", task_id="task_2", priority="low"),
+        ],
+        _state=lead_state,
+    )
+
+    # The member's claim survives the lead's write.
+    store = json.loads(todos_file.read_text())
+    task_1 = next(i for i in store["items"] if i["task_id"] == "task_1")
+    assert task_1["claimed_by"] == "executor#1"
+    assert task_1["status"] == "in_progress"
+
+
+@pytest.mark.asyncio
+async def test_claim_mutual_exclusion_across_runs(
+    tmp_sandbox: SandboxConfig, todos_file: Path
+) -> None:
+    """Two members claiming the same task in separate runs: second is rejected."""
+    lead_state = MockState(metadata={"agent_name": "openagentd"})
+    await _todo_manage(
+        actions=[
+            CreateAction(
+                action="create",
+                content="Contested task",
                 status="pending",
                 priority="high",
             )
         ],
-        _state=state,
+        _state=lead_state,
     )
 
-    cached_store_2 = state.metadata["_todos"]
-    assert cached_store_2["counter"] == 2
-    assert len(cached_store_2["items"]) == 2
+    first = MockState(metadata={"agent_name": "executor#1"})
+    second = MockState(metadata={"agent_name": "executor#2"})
+
+    await _todo_manage(
+        actions=[ClaimAction(action="claim", task_id="task_1")],
+        _state=first,
+    )
+    result = await _todo_manage(
+        actions=[ClaimAction(action="claim", task_id="task_1")],
+        _state=second,
+    )
+
+    store = json.loads(todos_file.read_text())
+    task_1 = next(i for i in store["items"] if i["task_id"] == "task_1")
+    assert task_1["claimed_by"] == "executor#1"
+    assert "executor#2" not in (result or "")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

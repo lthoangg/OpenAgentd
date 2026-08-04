@@ -1094,6 +1094,56 @@ class AgentTeam:
         except Exception as exc:
             logger.warning("team_restore_members_failed error={}", exc)
 
+        await self._rewake_members_with_open_tasks(lead_session_id)
+
+    async def _rewake_members_with_open_tasks(self, lead_session_id: str) -> None:
+        """Re-wake surviving members whose board tasks outlived the mailbox.
+
+        The todo store persists across restarts; in-flight mailbox messages
+        (including assignment wakes) do not.  After realigning the roster,
+        any live member holding a claimed in-progress task or an assigned,
+        unblocked pending task gets a system wake so the work resumes without
+        the lead having to notice and re-delegate.
+        """
+        if not self.members:
+            return
+        try:
+            import json as _json
+
+            from app.agent.artifacts import todos_path
+            from app.agent.mode.team.board import (
+                format_resume_message,
+                resumable_tasks,
+            )
+
+            path = todos_path(lead_session_id)
+            if not path.exists():
+                return
+            store = _json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(store, dict):
+                return
+
+            for handle in list(self.members.keys()):
+                tasks = resumable_tasks(store, handle)
+                if not tasks:
+                    continue
+                logger.info(
+                    "team_restore_rewake handle={} tasks={}",
+                    handle,
+                    [t.get("task_id") for t in tasks],
+                )
+                await self.mailbox.send(
+                    to=handle,
+                    message=Message(
+                        from_agent="system",
+                        to_agent=handle,
+                        content=format_resume_message(tasks),
+                    ),
+                )
+        except Exception as exc:
+            # Best-effort: a failed re-wake must never block session restore.
+            logger.warning("team_restore_rewake_failed error={}", exc)
+
     # ------------------------------------------------------------------
     # Spawn / dismiss
     # ------------------------------------------------------------------
@@ -1459,18 +1509,19 @@ class AgentTeam:
     def get_injected_tools(self, agent_name: str) -> list[Tool]:
         """Return runtime tools to inject into agent.run() for the given agent.
 
-        Everyone gets ``team_message`` and ``todo_manage`` so members can claim
-        assigned tasks. The lead additionally gets ``team_manage`` (roster
-        spawn/dismiss).
+        Everyone gets ``team_message`` and a board-aware ``todo_manage``
+        (mutations dispatch activation events — see
+        :mod:`app.agent.mode.team.board`). The lead additionally gets
+        ``team_manage`` (roster spawn/dismiss).
         """
-        from app.agent.tools.builtin.todo import make_todo_manage_tool
+        from app.agent.mode.team.board import make_team_todo_tool
 
         role = "lead" if agent_name == self.lead.name else "member"
         tools: list[Tool] = [
             make_team_message_tool(
                 self.mailbox, agent_name=agent_name, role=role, team=self
             ),
-            make_todo_manage_tool(role),
+            make_team_todo_tool(self, agent_name=agent_name, role=role),
         ]
 
         if agent_name == self.lead.name:

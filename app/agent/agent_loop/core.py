@@ -499,13 +499,18 @@ class Agent(Generic[TContext]):
             # Me sync after tool execution — captures tool results
             await self._sync(checkpointer, ctx, state)
 
-            # Me sleep + tool calls: tools executed, now exit without another LLM call
+            # Structured end-turn: a tool in this batch (e.g. team_message
+            # with end_turn=true) asked to finish the turn — tools executed,
+            # now exit without another LLM call.  ``pop`` makes it one-shot.
+            # The legacy ``<sleep>`` text sentinel is kept for back-compat.
+            end_turn = bool(state.metadata.pop("end_turn", False))
             is_sleep = (assistant_msg.content or "").strip() in ("<sleep>", "[sleep]")
-            if is_sleep:
+            if end_turn or is_sleep:
                 logger.info(
-                    "agent_iteration_done agent={} iteration={} action=sleep_after_tools",
+                    "agent_iteration_done agent={} iteration={} action={}",
                     self.name,
                     bk.iteration,
+                    "end_turn_after_tools" if end_turn else "sleep_after_tools",
                 )
                 break
 

@@ -439,6 +439,8 @@ class TestGetTodos:
         assert "dependencies" in item
         assert "assigned_to" in item
         assert "claimed_by" in item
+        assert "instructions" in item
+        assert "result" in item
         # Verify no extra fields (strict schema)
         assert set(item.keys()) == {
             "task_id",
@@ -448,6 +450,8 @@ class TestGetTodos:
             "dependencies",
             "assigned_to",
             "claimed_by",
+            "instructions",
+            "result",
         }
 
     def test_todos_file_with_extra_fields_in_items(
@@ -487,6 +491,8 @@ class TestGetTodos:
             "dependencies",
             "assigned_to",
             "claimed_by",
+            "instructions",
+            "result",
         }
         assert item["task_id"] == "task-001"
         assert item["dependencies"] == ["task-000"]

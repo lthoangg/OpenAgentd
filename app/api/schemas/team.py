@@ -70,6 +70,8 @@ class TodoItemResponse(BaseModel):
     dependencies: list[str] = Field(default_factory=list)
     assigned_to: str | None = None
     claimed_by: str | None = None
+    instructions: str | None = None
+    result: str | None = None
 
 
 class TodosResponse(BaseModel):

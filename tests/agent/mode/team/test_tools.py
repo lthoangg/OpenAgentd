@@ -251,3 +251,77 @@ class TestSelfSend:
 
         assert "cannot message yourself" in result
         assert mb.inbox_empty("alice")
+
+
+# ---------------------------------------------------------------------------
+# end_turn — structured turn-end signal (members only)
+# ---------------------------------------------------------------------------
+
+
+class _RunState:
+    """Minimal AgentState stand-in for injected-state tests."""
+
+    def __init__(self):
+        self.metadata: dict = {}
+
+
+class TestEndTurn:
+    """Member team_message can end the turn after this tool batch."""
+
+    async def test_member_end_turn_sets_state_flag_and_delivers(self):
+        mb = _make_mailbox("lead", "executor#1")
+        tool = make_team_message_tool(mb, agent_name="executor#1", role="member")
+        state = _RunState()
+
+        result = await tool.arun(
+            _injected={"_state": state},
+            to=["lead"],
+            content="Final report.",
+            end_turn=True,
+        )
+
+        assert "Message sent" in result
+        msg = await mb.receive("lead")
+        assert msg.content == "[executor#1]: Final report."
+        assert state.metadata.get("end_turn") is True
+
+    async def test_member_default_does_not_end_turn(self):
+        mb = _make_mailbox("lead", "executor#1")
+        tool = make_team_message_tool(mb, agent_name="executor#1", role="member")
+        state = _RunState()
+
+        await tool.arun(
+            _injected={"_state": state},
+            to=["lead"],
+            content="Partial update, more coming.",
+        )
+
+        assert "end_turn" not in state.metadata
+
+    async def test_member_schema_exposes_end_turn(self):
+        mb = _make_mailbox("lead", "executor#1")
+        tool = make_team_message_tool(mb, agent_name="executor#1", role="member")
+        props = tool.definition["function"]["parameters"]["properties"]
+        assert "end_turn" in props
+
+    async def test_lead_schema_has_no_end_turn(self):
+        """The lead's final answer is plain text — no end_turn escape hatch."""
+        mb = _make_mailbox("lead", "executor#1")
+        tool = make_team_message_tool(mb, agent_name="lead", role="lead")
+        props = tool.definition["function"]["parameters"]["properties"]
+        assert "end_turn" not in props
+
+    async def test_failed_delivery_does_not_end_turn(self):
+        """No recipients resolved → the turn must keep going."""
+        mb = _make_mailbox("lead", "executor#1")
+        tool = make_team_message_tool(mb, agent_name="executor#1", role="member")
+        state = _RunState()
+
+        await tool.arun(
+            _injected={"_state": state},
+            to=["ghost#9"],
+            content="hello?",
+            end_turn=True,
+        )
+
+        assert "end_turn" not in state.metadata

@@ -13,7 +13,7 @@ providers/             LLM provider implementations and routing
 schemas/               Chat/event/provider wire types
 tools/                 Built-in tool registry and implementations
 mcp/                   MCP config, manager, installer/runtime integration
-mode/team/             Multi-agent teams, roster, mailbox, todo flow
+mode/team/             Multi-agent teams, roster, mailbox, board-driven todo flow
 plugins/               User plugin loading and role context
 permission.py          Tool permission decisions
 sandbox*.py            Shell/filesystem sandbox behavior
@@ -38,6 +38,8 @@ uv run ty check app/
 
 - First-party profile frontmatter is additive on top of code-owned defaults.
 - `team_message` and `todo_manage` are injected; do not ask users to list them manually.
+- Team sessions get the board-aware `todo_manage` from `mode/team/board.py` (mutations wake assignees/lead via the mailbox); the plain builtin in `tools/builtin/todo.py` stays passive and is what non-team constructor wiring uses.
+- Members end turns with `end_turn=true` on `team_message`/`todo_manage`; the `<sleep>`/`[sleep]` sentinel is legacy back-compat only (loop + frontend still strip it).
 - Keep prompt bodies tool-agnostic because runtime capabilities can change.
 - Streaming loops must catch provider/tool chunk errors and emit recoverable events where possible.
 - `SummarizationHook` respects `provider.support_interrupt`: when `False`, summarisation only fires at the user-turn boundary (last visible message is a real `HumanMessage` from the user), never mid-loop. `build_summarization_hook` in `member.py` reads this flag automatically.

@@ -24,8 +24,8 @@ Items are written to the current sandbox metadata directory:
 ``counter`` is monotonically increasing; new items get ``task_{counter + 1}``
 and the counter is incremented atomically with the write.
 
-Within a turn the store is also cached in ``state.metadata["_todos"]`` to
-avoid redundant disk reads.
+The store is shared across concurrently running agents (lead + members), so
+every call re-reads the file; there is deliberately no per-run cache.
 """
 
 from __future__ import annotations
@@ -68,6 +68,13 @@ class CreateAction(BaseModel):
         pattern=r"^[^#,/\s]+#\d+$",
         description="Agent handle assigned to this task, if any.",
     )
+    instructions: str | None = Field(
+        default=None,
+        description=(
+            "Delegation brief for the assignee: goal, constraints, and how to "
+            "verify. The assignee reads this when picking up the task."
+        ),
+    )
 
     @field_validator("content")
     @classmethod
@@ -103,6 +110,17 @@ class UpdateAction(BaseModel):
         pattern=r"^[^#,/\s]+#\d+$",
         description="Replacement agent handle assigned to this task.",
     )
+    instructions: str | None = Field(
+        default=None,
+        description="Replacement delegation brief (omit to keep unchanged).",
+    )
+    result: str | None = Field(
+        default=None,
+        description=(
+            "Outcome/deliverable summary, set when completing the task "
+            "(omit to keep unchanged)."
+        ),
+    )
 
     @field_validator("content")
     @classmethod
@@ -127,6 +145,13 @@ class MemberUpdateAction(BaseModel):
     )
     status: Literal["pending", "in_progress", "completed", "cancelled"] | None = Field(
         default=None, description="New status (omit to keep unchanged)."
+    )
+    result: str | None = Field(
+        default=None,
+        description=(
+            "Outcome/deliverable summary, set when completing the task: what "
+            "was done, where, and how it was verified."
+        ),
     )
 
     @field_validator("content")
@@ -260,7 +285,10 @@ def _load_store() -> dict:
 def _save_store(store: dict) -> None:
     path = _todos_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(store, indent=2, ensure_ascii=False), encoding="utf-8")
+    # Atomic replace — a crash mid-write must never corrupt the store.
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(store, indent=2, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(path)
 
 
 def release_in_progress_for_actor(
@@ -337,6 +365,12 @@ def _format_items(items: list[dict]) -> str:
         lines.append(
             f"[{item['task_id']}] [{item['status']}] ({item['priority']}){dependency_text}{assignee_text}{claim_text} {item['content']}"
         )
+        instructions = item.get("instructions")
+        if instructions:
+            lines.append(f"    instructions: {instructions}")
+        result = item.get("result")
+        if result:
+            lines.append(f"    result: {result}")
     return "\n".join(lines)
 
 
@@ -350,6 +384,8 @@ def _normalize_store(store: dict) -> dict:
             )
             item.setdefault("assigned_to", None)
             item.setdefault("claimed_by", None)
+            item.setdefault("instructions", None)
+            item.setdefault("result", None)
     return store
 
 
@@ -431,6 +467,8 @@ Rules
   (`clear`), so the list reflects current work instead of accumulating
   stale done/cancelled entries.
 - Assign member work with assigned_to and model ordering with dependencies.
+  Put the delegation brief in `instructions` — an assigned, unblocked task
+  wakes its assignee automatically; no separate kickoff message is needed.
 - Assigned member tasks remain pending until the member claims them; the lead
   should not move another agent's task to in_progress.
 - Only ONE task per agent should be in_progress at a time.
@@ -455,9 +493,12 @@ read    — Return the full task list with task_ids.
 Rules
 -----
 - Claim a task before starting work.
-- If claim reports blocked dependencies, do not start; respond `<sleep>` and wait.
+- If claim reports blocked dependencies, do not start; end your turn
+  (end_turn=true) — you are woken automatically when they complete.
 - Only update tasks assigned to or claimed by you.
-- Mark the task completed before sending the final result to the lead or peer.\
+- When completing a task, record the outcome in `result` (what was done,
+  where, how it was verified) — the lead and unblocked teammates are
+  notified automatically.\
 """
 
 
@@ -493,9 +534,11 @@ async def _apply_actions(
     _state: Any,
     role: Literal["lead", "member"],
 ) -> str:
+    # Always re-read from disk: the store is shared across concurrently
+    # running agents (lead + members), so a per-run cached snapshot would
+    # clobber other agents' writes on save (e.g. silently reverting a claim).
+    # Load-mutate-save below is atomic within the event loop (no awaits).
     store = _normalize_store(_load_store())
-    if _state is not None and "_todos" in _state.metadata:
-        store = _normalize_store(_state.metadata["_todos"])
     actor = _actor_name(_state)
 
     log_parts: list[str] = []
@@ -537,6 +580,8 @@ async def _apply_actions(
                     "dependencies": dependencies,
                     "assigned_to": act.assigned_to,
                     "claimed_by": actor if status == "in_progress" else None,
+                    "instructions": act.instructions,
+                    "result": None,
                 }
             )
             log_parts.append(f"created {new_id}")
@@ -561,6 +606,10 @@ async def _apply_actions(
                         item["dependencies"] = dependencies
                     if isinstance(act, UpdateAction) and act.assigned_to is not None:
                         item["assigned_to"] = act.assigned_to
+                    if isinstance(act, UpdateAction) and act.instructions is not None:
+                        item["instructions"] = act.instructions
+                    if act.result is not None:
+                        item["result"] = act.result
                     if act.content is not None:
                         item["content"] = act.content
                     if act.status is not None:
@@ -654,8 +703,6 @@ async def _apply_actions(
             log_parts.append(f"cleared {removed} {'/'.join(sorted(drop))}")
 
     _save_store(store)
-    if _state is not None:
-        _state.metadata["_todos"] = store
 
     logger.info(
         "todo_manage actions=[{}]", ", ".join(log_parts) if log_parts else "read"

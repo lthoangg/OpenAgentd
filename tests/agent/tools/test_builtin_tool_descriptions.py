@@ -37,9 +37,11 @@ def test_todo_descriptions_explain_assignment_claim_handoff():
     assert "Assigned member tasks remain pending until the member claims them" in (
         todo_manage.description
     )
-    assert "completed before sending the final result" in (
-        todo_manage_member.description
-    )
+    # Assignment is delegation: the brief rides on the task itself.
+    assert "wakes its assignee automatically" in todo_manage.description
+    # Completion carries the deliverable; notifications fan out on their own.
+    assert "record the outcome in `result`" in todo_manage_member.description
+    assert "notified automatically" in todo_manage_member.description
 
 
 def test_simple_tools_do_not_repeat_examples_or_unstable_result_shapes():

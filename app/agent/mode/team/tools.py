@@ -17,11 +17,11 @@ Recipient resolution:
 from __future__ import annotations
 
 import re
-from typing import Any, TYPE_CHECKING, Literal
+from typing import Annotated, Any, TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.agent.tools.registry import Tool
+from app.agent.tools.registry import InjectedArg, Tool
 
 if TYPE_CHECKING:
     from app.agent.mode.team.mailbox import TeamMailbox
@@ -92,6 +92,20 @@ class TeamMessageArgs(BaseModel):
         return v
 
 
+class TeamMessageMemberArgs(TeamMessageArgs):
+    """Member variant — adds the structured turn-end signal."""
+
+    end_turn: bool = Field(
+        default=False,
+        description=(
+            "Set true when this message is your last action for the turn "
+            "(final report sent, or waiting on someone): the turn ends after "
+            "delivery with no further model call. Leave false when you will "
+            "keep working."
+        ),
+    )
+
+
 def make_team_message_tool(
     mailbox: "TeamMailbox",
     agent_name: str,
@@ -107,7 +121,12 @@ def make_team_message_tool(
     hand.
     """
 
-    async def team_message(to: list[str], content: str) -> str:
+    async def team_message(
+        to: list[str],
+        content: str,
+        end_turn: bool = False,
+        _state: Annotated[Any, InjectedArg()] = None,
+    ) -> str:
         """Send a message to one or more teammates."""
         from app.agent.mode.team.mailbox import Message
 
@@ -142,6 +161,11 @@ def make_team_message_tool(
             )
             await mailbox.send(to=recipient, message=msg)
 
+        # Structured turn-end: only after successful delivery (a failed send
+        # must keep the turn alive so the sender can correct the recipient).
+        if end_turn and role == "member" and _state is not None:
+            _state.metadata["end_turn"] = True
+
         return f"Message sent to {', '.join(resolved)}."
 
     description = _LEAD_DESCRIPTION if role == "lead" else _MEMBER_DESCRIPTION
@@ -149,7 +173,7 @@ def make_team_message_tool(
         team_message,
         name="team_message",
         description=description,
-        args_schema=TeamMessageArgs,
+        args_schema=TeamMessageArgs if role == "lead" else TeamMessageMemberArgs,
     )
 
 

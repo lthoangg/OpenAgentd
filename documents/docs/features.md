@@ -313,9 +313,19 @@ spawns specialist members on demand.
   such as `executor#1`, `explorer#1`, or `coder#1` on demand. Dismissing only
   removes the live instance; the blueprint stays. Re-spawning restores the same
   instance's history within the current lead session.
-- **`team_message` peer delegation** `[since v1.0]` — async mailbox between
-  agents. Lead delegates with `team_message`; the recipient's next turn drains
-  its inbox.
+- **`team_message` peer messaging** `[since v1.0]` — async mailbox between
+  agents for conversation: questions, scope changes, partial handoffs. The
+  recipient's next turn drains its inbox. Members can end their turn
+  structurally with `end_turn=true` on their final `team_message` or
+  `todo_manage` call `[v1.127.0]` (replaces the legacy `<sleep>` text
+  sentinel, which is still accepted for old histories).
+- **Board-driven delegation** `[v1.127.0]` — the todo board is the team's
+  coordination backbone. Assigning an unblocked task (with its delegation
+  brief in `instructions`) automatically wakes the assignee; completing a
+  task records the deliverable in `result` and automatically notifies the
+  lead plus any assignees the completion unblocks (dependency results ride
+  along as the handoff). After a restart or session restore, members holding
+  open assigned or in-progress tasks are re-woken automatically.
 - **Split-pane live view** `[since v1.0]` — each active agent gets its own pane,
   streamed independently. See live whose turn is current, who's idle.
 - **Unified team view** `[since v1.0]` — single chronological transcript across

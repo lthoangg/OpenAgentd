@@ -151,11 +151,8 @@ async def test_create_single_item(tmp_sandbox: SandboxConfig, todos_file: Path) 
 
     result = await _todo_manage(actions=actions, _state=None)
 
-    # Verify output contains the task
-    assert "task_1" in result
-    assert "Buy groceries" in result
-    assert "pending" in result
-    assert "high" in result
+    # Mutations return a compact ack, not the board
+    assert "created task_1" in result
 
     # Verify file was written
     assert todos_file.exists()
@@ -199,13 +196,10 @@ async def test_create_multiple_items_sequential_ids(
 
     result = await _todo_manage(actions=actions, _state=None)
 
-    # Verify all tasks in output
-    assert "task_1" in result
-    assert "task_2" in result
-    assert "task_3" in result
-    assert "Task 1" in result
-    assert "Task 2" in result
-    assert "Task 3" in result
+    # Verify per-action acks
+    assert "created task_1" in result
+    assert "created task_2" in result
+    assert "created task_3" in result
 
     # Verify file state
     store = json.loads(todos_file.read_text())
@@ -283,11 +277,8 @@ async def test_update_full_item(tmp_sandbox: SandboxConfig, todos_file: Path) ->
     ]
     result = await _todo_manage(actions=update_actions, _state=None)
 
-    # Verify output
-    assert "task_1" in result
-    assert "Updated content" in result
-    assert "in_progress" in result
-    assert "high" in result
+    # Verify ack (mutations do not echo the board)
+    assert "updated task_1" in result
     assert "Original content" not in result
 
     # Verify file state
@@ -324,10 +315,8 @@ async def test_update_partial_status_only(
     ]
     result = await _todo_manage(actions=update_actions, _state=None)
 
-    # Verify output
-    assert "completed" in result
-    assert "Task content" in result
-    assert "medium" in result
+    # Verify ack
+    assert "updated task_1" in result
 
     # Verify file state
     store = json.loads(todos_file.read_text())
@@ -397,10 +386,8 @@ async def test_update_unknown_task_id_returns_error(
     ]
     result = await _todo_manage(actions=update_actions, _state=None)
 
-    # Verify error is logged (the tool returns the list, but logs the error)
-    # The result should still show the original task
-    assert "task_1" in result
-    assert "Task 1" in result
+    # The failure is reported in the response
+    assert "not_found task_999" in result
 
     # Verify file state unchanged
     store = json.loads(todos_file.read_text())
@@ -474,7 +461,8 @@ async def test_claim_blocked_task_keeps_pending(
     store = json.loads(todos_file.read_text())
     assert store["items"][1]["status"] == "pending"
     assert store["items"][1]["claimed_by"] is None
-    assert "[task_2] [pending]" in result
+    assert "blocked task_2" in result
+    assert "task_1" in result  # names the unmet dependency
 
 
 @pytest.mark.asyncio
@@ -570,7 +558,7 @@ async def test_lead_cannot_claim_member_assigned_task_by_starting_it(
     store = json.loads(todos_file.read_text())
     assert store["items"][0]["status"] == "pending"
     assert store["items"][0]["claimed_by"] is None
-    assert "[task_1] [pending]" in result
+    assert "not_assigned task_1" in result
 
 
 def test_multi_assignee_is_rejected() -> None:
@@ -681,10 +669,8 @@ async def test_delete_existing_task(
     delete_actions: list[AnyAction] = [DeleteAction(action="delete", task_id="task_1")]
     result = await _todo_manage(actions=delete_actions, _state=None)
 
-    # Verify output: task_1 gone, task_2 remains
-    assert "task_1" not in result
-    assert "task_2" in result
-    assert "Task 2" in result
+    # Verify ack
+    assert "deleted task_1" in result
 
     # Verify file state
     store = json.loads(todos_file.read_text())
@@ -714,9 +700,8 @@ async def test_delete_unknown_task_id_returns_error(
     ]
     result = await _todo_manage(actions=delete_actions, _state=None)
 
-    # Verify original task still there
-    assert "task_1" in result
-    assert "Task 1" in result
+    # The failure is reported in the response
+    assert "not_found task_999" in result
 
     # Verify file state unchanged
     store = json.loads(todos_file.read_text())
@@ -882,6 +867,122 @@ async def test_counter_does_not_rewind_after_delete(
 # ─────────────────────────────────────────────────────────────────────────────
 # Test: State Metadata Caching
 # ─────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_mutations_return_compact_ack_not_full_board(
+    tmp_sandbox: SandboxConfig, todos_file: Path
+) -> None:
+    """The agent wrote the mutation — echoing the whole board back (other
+    tasks' full instructions/results included) is token waste. Mutations
+    return per-action outcomes instead."""
+    await _todo_manage(
+        actions=[
+            CreateAction(
+                action="create",
+                content="Existing task",
+                status="pending",
+                priority="high",
+                instructions="A very long delegation brief that must not be re-echoed.",
+            )
+        ],
+        _state=None,
+    )
+
+    result = await _todo_manage(
+        actions=[
+            CreateAction(
+                action="create",
+                content="New task",
+                status="pending",
+                priority="low",
+            )
+        ],
+        _state=None,
+    )
+
+    assert "created task_2" in result
+    # The unrelated task's brief is not echoed back on a mutation.
+    assert "A very long delegation brief" not in result
+    assert "Existing task" not in result
+
+
+@pytest.mark.asyncio
+async def test_mutation_failures_are_reported_in_the_response(
+    tmp_sandbox: SandboxConfig, todos_file: Path
+) -> None:
+    """Validation outcomes must reach the agent, not just the server log."""
+    result = await _todo_manage(
+        actions=[
+            UpdateAction(action="update", task_id="task_99", priority="low"),
+        ],
+        _state=None,
+    )
+    assert "not_found task_99" in result
+
+
+@pytest.mark.asyncio
+async def test_claim_echoes_the_task_line_with_instructions(
+    tmp_sandbox: SandboxConfig, todos_file: Path
+) -> None:
+    """The member did not write the task — a successful claim returns the
+    task line and its delegation brief."""
+    await _todo_manage(
+        actions=[
+            CreateAction(
+                action="create",
+                content="Do the thing",
+                status="pending",
+                priority="high",
+                assigned_to="executor#1",
+                instructions="Follow the house style.",
+            )
+        ],
+        _state=None,
+    )
+
+    result = await _todo_manage(
+        actions=[ClaimAction(action="claim", task_id="task_1")],
+        _state=MockState(metadata={"agent_name": "executor#1"}),
+    )
+
+    assert "claimed task_1" in result
+    assert "[task_1] [in_progress]" in result
+    assert "Follow the house style." in result
+
+
+@pytest.mark.asyncio
+async def test_batch_with_read_returns_full_board(
+    tmp_sandbox: SandboxConfig, todos_file: Path
+) -> None:
+    """An explicit read in the batch keeps the full listing."""
+    await _todo_manage(
+        actions=[
+            CreateAction(
+                action="create",
+                content="First task",
+                status="pending",
+                priority="high",
+            )
+        ],
+        _state=None,
+    )
+
+    result = await _todo_manage(
+        actions=[
+            CreateAction(
+                action="create",
+                content="Second task",
+                status="pending",
+                priority="low",
+            ),
+            ReadAction(action="read"),
+        ],
+        _state=None,
+    )
+
+    assert "First task" in result
+    assert "Second task" in result
 
 
 @pytest.mark.asyncio
@@ -1134,7 +1235,7 @@ async def test_create_with_special_characters_in_content(
 
     result = await _todo_manage(actions=actions, _state=None)
 
-    assert "Buy 🍎 & 🍊 (fruits) — café" in result
+    assert "created task_1" in result
 
     # Verify file preserves unicode
     store = json.loads(todos_file.read_text())
@@ -1256,8 +1357,7 @@ async def test_todo_manage_arun_with_stringified_actions(
             '"status": "pending", "priority": "high"}]'
         ),
     )
-    assert "task_1" in result
-    assert "From string" in result
+    assert "created task_1" in result
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1284,7 +1384,9 @@ async def test_clear_finished_removes_completed_and_cancelled(
         _state=None,
     )
 
-    result = await _todo_manage(actions=[ClearAction(action="clear")], _state=None)
+    result = await _todo_manage(
+        actions=[ClearAction(action="clear"), ReadAction(action="read")], _state=None
+    )
 
     assert "active" in result
     assert "done" not in result
@@ -1310,7 +1412,11 @@ async def test_clear_specific_status_keeps_the_other(
     )
 
     result = await _todo_manage(
-        actions=[ClearAction(action="clear", status="completed")], _state=None
+        actions=[
+            ClearAction(action="clear", status="completed"),
+            ReadAction(action="read"),
+        ],
+        _state=None,
     )
 
     assert "done" not in result
@@ -1336,7 +1442,9 @@ async def test_clear_preserves_in_progress(
         _state=None,
     )
 
-    result = await _todo_manage(actions=[ClearAction(action="clear")], _state=None)
+    result = await _todo_manage(
+        actions=[ClearAction(action="clear"), ReadAction(action="read")], _state=None
+    )
 
     assert "working" in result
     assert "done" not in result

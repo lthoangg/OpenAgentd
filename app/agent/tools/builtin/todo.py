@@ -477,7 +477,10 @@ Rules
   dependencies cannot be moved to in_progress; keep it pending until
   prerequisites are complete.
 - Use status=cancelled for tasks that are no longer needed instead of deleting.
-- Skip this tool for single, trivial tasks.\
+- Skip this tool for single, trivial tasks.
+- Mutations return per-action outcomes (created/updated/blocked/not_found…),
+  not the board; include a read action in the same call when you need the
+  resulting task list.\
 """
 
 _MEMBER_DESCRIPTION = """\
@@ -498,7 +501,10 @@ Rules
 - Only update tasks assigned to or claimed by you.
 - When completing a task, record the outcome in `result` (what was done,
   where, how it was verified) — the lead and unblocked teammates are
-  notified automatically.\
+  notified automatically.
+- Updates return per-action outcomes; a successful claim echoes the task
+  line with its instructions. Include a read action when you need the full
+  list.\
 """
 
 
@@ -542,6 +548,9 @@ async def _apply_actions(
     actor = _actor_name(_state)
 
     log_parts: list[str] = []
+    # Successful claims echo the claimed task line + its delegation brief —
+    # the claimer did not author the task, so this is new information.
+    claimed_ids: list[str] = []
 
     for act in actions:
         if isinstance(act, ReadAction):
@@ -683,6 +692,7 @@ async def _apply_actions(
             item["claimed_by"] = actor
             item["status"] = "in_progress"
             log_parts.append(f"claimed {act.task_id}")
+            claimed_ids.append(act.task_id)
 
         elif isinstance(act, DeleteAction):
             before = len(store["items"])
@@ -707,7 +717,24 @@ async def _apply_actions(
     logger.info(
         "todo_manage actions=[{}]", ", ".join(log_parts) if log_parts else "read"
     )
-    return _format_items(store["items"])
+
+    # Mutation-only batches return a compact per-action ack: the agent
+    # authored the change, so re-echoing the whole board (every other task's
+    # full instructions/results) is token waste — and this surfaces
+    # validation outcomes (blocked/not_found/…) that previously only reached
+    # the log. An explicit `read` in the batch keeps the full listing.
+    has_read = any(isinstance(act, ReadAction) for act in actions)
+    if has_read or not actions:
+        return _format_items(store["items"])
+
+    lines = list(log_parts)
+    if claimed_ids:
+        claimed_items = [
+            item for item in store["items"] if item.get("task_id") in claimed_ids
+        ]
+        if claimed_items:
+            lines.append(_format_items(claimed_items))
+    return "\n".join(lines) if lines else _format_items(store["items"])
 
 
 todo_manage = Tool(

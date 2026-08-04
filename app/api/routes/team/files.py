@@ -708,7 +708,9 @@ async def get_coding_workspace_git_history(
         ]
     )
     if all_branches:
-        log_args.append("--all")
+        # ``--all`` walks every ref under refs/, which includes refs/stash —
+        # exclude it so stash entries never show up as commits.
+        log_args.extend(["--exclude=refs/stash", "--all"])
 
     commits_out = await _run_git(resolved, *log_args)
     commits = []
@@ -761,7 +763,7 @@ async def get_coding_workspace_git_history(
         str(limit),
     ]
     if all_branches:
-        graph_args.append("--all")
+        graph_args.extend(["--exclude=refs/stash", "--all"])
 
     graph_out = await _run_git(resolved, *graph_args)
     graph = graph_out if graph_out else ""

@@ -388,6 +388,47 @@ class TestCodingWorkspaceGit:
         assert commit["timestamp"] > 0
         assert "Initial commit" in body["graph"]
 
+    def test_workspace_git_history_all_branches_excludes_stash(
+        self, client, tmp_path, monkeypatch
+    ):
+        """``all=true`` must not surface stash entries as commits."""
+        import subprocess
+
+        fake_root = tmp_path / "git-stash-repo"
+        fake_root.mkdir()
+
+        def git(*args):
+            subprocess.run(
+                ["git", *args], cwd=fake_root, check=True, capture_output=True
+            )
+
+        git("init")
+        git("config", "user.name", "Test User")
+        git("config", "user.email", "test@example.com")
+        file_path = fake_root / "hello.txt"
+        file_path.write_text("hello world\n")
+        git("add", "hello.txt")
+        git("commit", "-m", "Initial commit")
+        # Create a stash entry (refs/stash) — reachable via ``git log --all``.
+        file_path.write_text("dirty\n")
+        git("stash")
+
+        from app.services import team_manager
+
+        monkeypatch.setattr(
+            team_manager, "validate_workspace", lambda w: str(fake_root)
+        )
+
+        resp = client.get(
+            f"/api/team/workspace/git/history?workspace={fake_root}&all=true"
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        subjects = [c["subject"] for c in body["commits"]]
+        assert subjects == ["Initial commit"]
+        assert "WIP on" not in body["graph"]
+        assert "index on" not in body["graph"]
+
     def test_workspace_git_commit_diff_invalid_sha(self, client, tmp_path, monkeypatch):
         fake_root = tmp_path / "git-repo"
         fake_root.mkdir()

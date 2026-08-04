@@ -204,17 +204,17 @@ class TestProtocolInjection:
         """Lead sees [user]: content; member only sees [name]: content."""
         team = _mock_team()
 
-        # Me lead gets LEAD_MESSAGE_FORMAT — includes [user]: content
+        # Me lead gets LEAD_MESSAGE_FORMAT — includes [user]:
         lead_hook = AgentTeamProtocolHook(team=team, agent_name="team-lead")
         lead_prompt = await _get_injected_prompt(lead_hook, "Base.")
-        assert "[name]: content" in lead_prompt
-        assert "[user]: content" in lead_prompt
+        assert "[name]:" in lead_prompt
+        assert "[user]:" in lead_prompt
 
-        # Me member gets MEMBER_MESSAGE_FORMAT — no [user]: content
+        # Me member gets MEMBER_MESSAGE_FORMAT — no [user]:
         member_hook = AgentTeamProtocolHook(team=team, agent_name="researcher")
         member_prompt = await _get_injected_prompt(member_hook, "Base.")
-        assert "[name]: content" in member_prompt
-        assert "[user]: content" not in member_prompt
+        assert "[name]:" in member_prompt
+        assert "[user]:" not in member_prompt
 
     @pytest.mark.asyncio
     async def test_lead_has_team_message_in_protocol(self):
@@ -230,42 +230,53 @@ class TestProtocolInjection:
         """Prompt constants should preserve the team routing contract."""
         assert "one brief progress note after delegation" in LEAD_COMMUNICATION_RULES
         assert "small, quick, self-contained tasks" in LEAD_COMMUNICATION_RULES
-        assert "Do not assume default member names exist" in LEAD_COMMUNICATION_RULES
-        # Board-driven delegation: assignment wakes the assignee — no
-        # separate kickoff message, no result relaying through the lead.
-        assert "wakes the assignee" in LEAD_COMMUNICATION_RULES
+        # Dynamic roster: never guess handles, members are spawned on demand.
+        assert "never guess handles" in LEAD_COMMUNICATION_RULES
+        assert "assignment is delegation" in LEAD_COMMUNICATION_RULES
         assert LEAD_PROTOCOL.index("Discover before guessing") < LEAD_PROTOCOL.index(
             "Spawn before assigning"
         )
-        assert LEAD_PROTOCOL.index("Spawn before assigning") < LEAD_PROTOCOL.index(
-            "create or update the todo plan"
-        )
+        # Planning happens only once concrete handles exist; the brief rides
+        # on the task's instructions.
+        assert "concrete handles" in LEAD_PROTOCOL
         assert "instructions" in LEAD_PROTOCOL
         assert "Completion propagates automatically" in LEAD_PROTOCOL
         assert "Do not relay results" in LEAD_PROTOCOL
-        assert "skill-installer" in LEAD_PROTOCOL
-        assert "Briefly tell the user" in LEAD_PROTOCOL
-        assert "Verify material claims" in LEAD_PROTOCOL
-        assert (
-            "Do not use plain text output for responses/results"
-            in MEMBER_COMMUNICATION_RULES
-        )
+        assert "material claims" in LEAD_PROTOCOL
+        assert "Plain text output is discarded" in MEMBER_COMMUNICATION_RULES
         # Idle / waiting / done -> structured turn-end, not a magic token.
         assert "end_turn=true" in MEMBER_COMMUNICATION_RULES
         assert "<sleep>" not in MEMBER_COMMUNICATION_RULES
         # Members address team_message to anyone on the team, not lead-only.
-        assert "anyone on the team" in MEMBER_COMMUNICATION_RULES
-        assert "end_turn=true" in MEMBER_PROTOCOL
+        assert "peer or lead" in MEMBER_COMMUNICATION_RULES
         assert "<sleep>" not in MEMBER_PROTOCOL
-        assert MEMBER_PROTOCOL.index("claim") < MEMBER_PROTOCOL.index(
-            "mark it completed"
-        )
-        # Completion carries the deliverable: result recorded on the task,
-        # notifications fan out automatically.
+        assert MEMBER_PROTOCOL.index("Claim") < MEMBER_PROTOCOL.index("completed")
+        # Completion carries the deliverable: result recorded on the task.
         assert "`result`" in MEMBER_PROTOCOL
-        assert "notified automatically" in MEMBER_PROTOCOL
-        assert "partial (more coming) or final" in MEMBER_PROTOCOL
+        assert "partial or final" in MEMBER_PROTOCOL
         assert "directly to that peer" in MEMBER_PROTOCOL
+
+    def test_protocol_does_not_duplicate_tool_descriptions(self):
+        """Mechanics live in tool descriptions; the system prompt keeps policy.
+
+        todo_manage owns assignment/claim/result mechanics, team_message owns
+        end_turn/content etiquette, team_manage owns spawn/dismiss mechanics —
+        the protocol blocks must not restate them.
+        """
+        lead_blocks = f"{LEAD_COMMUNICATION_RULES}\n{LEAD_PROTOCOL}"
+        member_blocks = f"{MEMBER_COMMUNICATION_RULES}\n{MEMBER_PROTOCOL}"
+        # todo_manage lead description: assigned_to/dependencies/auto-wake.
+        assert "assigned_to" not in lead_blocks
+        assert "dependencies" not in lead_blocks
+        assert "wakes the assignee" not in lead_blocks
+        assert "no kickoff message" not in lead_blocks
+        # todo_manage member description: blocked-claim + auto-notification.
+        assert "notified automatically" not in member_blocks
+        assert "woken automatically" not in member_blocks
+        # team_message content description: greetings/acknowledgements rule.
+        assert "greetings" not in member_blocks
+        # end_turn semantics are defined once, on the tool argument.
+        assert member_blocks.count("end_turn=true") == 1
 
     @pytest.mark.asyncio
     async def test_member_gets_exact_runtime_handle_guidance(self):
@@ -421,13 +432,10 @@ class TestProtocolConstants:
     def test_member_communication_rules_enforce_team_message_to_anyone(self):
         """All member output routes via team_message — to any teammate, not lead-only."""
         assert "team_message" in MEMBER_COMMUNICATION_RULES
-        assert (
-            "Do not use plain text output for responses/results"
-            in MEMBER_COMMUNICATION_RULES
-        )
+        assert "Plain text output is discarded" in MEMBER_COMMUNICATION_RULES
         # Cross-member: members are not restricted to messaging the lead.
         assert "Talk to peers directly" in MEMBER_COMMUNICATION_RULES
-        assert "anyone on the team who needs it" in MEMBER_COMMUNICATION_RULES
+        assert "whoever needs it" in MEMBER_COMMUNICATION_RULES
 
     def test_lead_message_format_has_user_prefix(self):
         """Lead message format includes [user]: prefix — members do not."""
@@ -444,12 +452,10 @@ class TestProtocolConstants:
         assert "delegate" in LEAD_PROTOCOL.lower()
         # Handoff between owners rides on the board: completed results reach
         # unblocked assignees automatically instead of being relayed.
-        assert "wakes you and any assignees it unblocks" in LEAD_PROTOCOL
-        assert "not as a message bus" in LEAD_PROTOCOL
+        assert "wakes you and unblocked assignees" in LEAD_PROTOCOL
+        assert "not a message bus" in LEAD_PROTOCOL
         assert "Do not duplicate delegated work" in LEAD_PROTOCOL
-        assert "Reclaim or cancel" in LEAD_PROTOCOL
-        assert "dependencies" in LEAD_PROTOCOL
-        assert "assigned_to" in LEAD_PROTOCOL
+        assert "reclaim or cancel" in LEAD_PROTOCOL
         assert "explorer#1" not in LEAD_PROTOCOL
         assert "consultant#1" not in LEAD_PROTOCOL
         assert "executor#1" not in LEAD_PROTOCOL
@@ -463,9 +469,8 @@ class TestProtocolConstants:
 
     def test_member_protocol_has_workflow(self):
         assert "Member workflow" in MEMBER_PROTOCOL
-        assert "end_turn=true" in MEMBER_PROTOCOL
         assert "todo_manage" in MEMBER_PROTOCOL
-        assert "claim" in MEMBER_PROTOCOL
+        assert "Claim" in MEMBER_PROTOCOL
 
     def test_member_protocol_no_old_tool_names(self):
         """Member protocol does not reference removed tools."""

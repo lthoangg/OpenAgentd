@@ -38,7 +38,7 @@ mock.module('@/stores/useTerminalStore', () => ({
   useTerminalStore: { getState: () => ({ syncFont, syncFontSize }) },
 }))
 
-import { TerminalSettingsPage } from '@/routes/settings.terminal'
+import { TerminalSettingsPage } from '@/components/settings/pages/settings.terminal'
 
 beforeEach(() => {
   storedFont = null

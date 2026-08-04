@@ -11,7 +11,7 @@ import {
   installTypeScriptLsp,
   updateSandboxSettings,
 } from '@/api/client'
-import { SandboxSettingsPage } from '@/routes/settings.sandbox'
+import { SandboxSettingsPage } from '@/components/settings/pages/settings.sandbox'
 
 // ── API client ──────────────────────────────────────────────────────────────
 

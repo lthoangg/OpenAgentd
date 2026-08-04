@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'bun:test'
 import { cleanup, render, screen } from '@testing-library/react'
 
 import type { ProviderUsageLimit } from '@/api/client'
-import { UsagePanel } from '@/routes/settings.providers/UsagePanel'
+import { UsagePanel } from '@/components/settings/pages/settings.providers/UsagePanel'
 
 afterEach(cleanup)
 

@@ -9,12 +9,6 @@ import {
   Server,
   Download,
   Info,
-  Shield,
-  Image,
-  AlignLeft,
-  Type,
-  Bell,
-  TerminalSquare,
   ChevronRight,
   ExternalLink,
   MessageSquare,
@@ -23,6 +17,8 @@ import {
 
 import { AppBackendDialog } from '@/components/AppBackendDialog'
 import { SettingsSection } from '@/components/settings/SettingsSection'
+import { SETTINGS_SECTIONS } from '@/components/settings/sections'
+import { ICON_SIZE } from '@/components/settings/tokens'
 import { Button } from '@/components/ui/button'
 import { checkForUpdates, downloadUpdate, fetchReleaseNotes, installUpdate, type ReleaseNotes, type UpdateStatus } from '@/lib/updater'
 import { openExternalUrl } from '@/lib/open-external'
@@ -200,76 +196,31 @@ export function SettingsHubPage() {
           </div>
         </header>
 
-        {/* Preferences section for options missing in the bottom tab bar on mobile */}
+        {/*
+          Sections that have no slot in the five-item mobile tab bar are
+          reached from here. Derived from the registry, so a new section shows
+          up automatically instead of needing another hand-written button.
+        */}
         <div className="md:hidden">
           <SettingsSection title="Preferences">
             <div className="divide-y divide-(--color-border)">
-              <button
-                type="button"
-                onClick={() => setSection('sandbox')}
-                className="flex w-full items-center justify-between py-2.5 text-left text-xs text-(--color-text) hover:bg-(--bg-key)/20 focus:outline-none"
-              >
-                <div className="flex items-center gap-2.5">
-                  <Shield size={14} className="text-(--color-text-muted)" />
-                  <span>Sandbox Settings</span>
-                </div>
-                <ChevronRight size={14} className="text-(--color-text-subtle)" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setSection('multimodal')}
-                className="flex w-full items-center justify-between py-2.5 text-left text-xs text-(--color-text) hover:bg-(--bg-key)/20 focus:outline-none"
-              >
-                <div className="flex items-center gap-2.5">
-                  <Image size={14} className="text-(--color-text-muted)" />
-                  <span>Multimodal Settings</span>
-                </div>
-                <ChevronRight size={14} className="text-(--color-text-subtle)" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setSection('summarization')}
-                className="flex w-full items-center justify-between py-2.5 text-left text-xs text-(--color-text) hover:bg-(--bg-key)/20 focus:outline-none"
-              >
-                <div className="flex items-center gap-2.5">
-                  <AlignLeft size={14} className="text-(--color-text-muted)" />
-                  <span>Summarization Settings</span>
-                </div>
-                <ChevronRight size={14} className="text-(--color-text-subtle)" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setSection('title-generation')}
-                className="flex w-full items-center justify-between py-2.5 text-left text-xs text-(--color-text) hover:bg-(--bg-key)/20 focus:outline-none"
-              >
-                <div className="flex items-center gap-2.5">
-                  <Type size={14} className="text-(--color-text-muted)" />
-                  <span>Title Generation Settings</span>
-                </div>
-                <ChevronRight size={14} className="text-(--color-text-subtle)" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setSection('notifications')}
-                className="flex w-full items-center justify-between py-2.5 text-left text-xs text-(--color-text) hover:bg-(--bg-key)/20 focus:outline-none"
-              >
-                <div className="flex items-center gap-2.5">
-                  <Bell size={14} className="text-(--color-text-muted)" />
-                  <span>Notification Settings</span>
-                </div>
-                <ChevronRight size={14} className="text-(--color-text-subtle)" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setSection('terminal')}
-                className="flex w-full items-center justify-between py-2.5 text-left text-xs text-(--color-text) hover:bg-(--bg-key)/20 focus:outline-none"
-              >
-                <div className="flex items-center gap-2.5">
-                  <TerminalSquare size={14} className="text-(--color-text-muted)" />
-                  <span>Terminal Settings</span>
-                </div>
-                <ChevronRight size={14} className="text-(--color-text-subtle)" />
-              </button>
+              {SETTINGS_SECTIONS.filter((s) => !s.mobileTab).map((item) => {
+                const Icon = item.icon
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setSection(item.id)}
+                    className="flex min-h-11 w-full items-center justify-between py-2.5 text-left text-xs text-(--color-text) hover:bg-(--bg-key)/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--focus-ring)/40"
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <Icon size={ICON_SIZE} className="text-(--color-text-muted)" aria-hidden="true" />
+                      <span>{item.label}</span>
+                    </span>
+                    <ChevronRight size={ICON_SIZE} className="text-(--color-text-subtle)" aria-hidden="true" />
+                  </button>
+                )
+              })}
             </div>
           </SettingsSection>
         </div>

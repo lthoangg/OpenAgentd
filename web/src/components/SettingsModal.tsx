@@ -1,28 +1,17 @@
 /**
- * SettingsModal — VS Code–style clean settings overlay.
+ * SettingsModal — VS Code–style settings overlay.
  *
  * All navigation is internal: sidebar buttons + editor back/onCreated
  * callbacks update `useSettingsStore` without touching the URL.
  * No /settings/* routes are needed.
+ *
+ * Section metadata (labels, icons, grouping, mobile nav) lives in
+ * `settings/sections.ts`. Only the content switch is here, because each
+ * section takes different props.
  */
 import { useEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import {
-  AlignLeft,
-  ArrowLeft,
-  Bell,
-  Image,
-  Info,
-  KeyRound,
-  Plug,
-  Shield,
-  Sparkles,
-  TerminalSquare,
-  Type,
-  Wrench,
-  X,
-  type LucideIcon,
-} from 'lucide-react'
+import { ArrowLeft, X, type LucideIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -33,58 +22,47 @@ import {
   useSandboxSettingsQuery,
   useSkillFilesQuery,
 } from '@/queries'
+import {
+  SETTINGS_GROUPS,
+  isDrillDown,
+  mobileBackSection,
+  parentSection,
+  SETTINGS_SECTIONS,
+  type SettingsSectionDef,
+  type TopLevelSection,
+} from '@/components/settings/sections'
+import { ICON_SIZE_INLINE } from '@/components/settings/tokens'
 
-import { SettingsHubPage } from '@/routes/settings.index'
-import { AgentsListPage } from '@/routes/settings.agents'
-import { NewAgentPage } from '@/routes/settings.agents.new'
-import { AgentEditorPage } from '@/routes/settings.agents.$name'
-import { SkillsListPage } from '@/routes/settings.skills'
-import { NewSkillPage } from '@/routes/settings.skills.new'
-import { SkillEditorPage } from '@/routes/settings.skills.$name'
-import { McpListPage } from '@/routes/settings.mcp'
-import { NewMcpServerPage } from '@/routes/settings.mcp.new'
-import { McpServerDetailPage } from '@/routes/settings.mcp.$name'
-import { ProvidersSettingsPage } from '@/routes/settings.providers'
-import { SandboxSettingsPage } from '@/routes/settings.sandbox'
-import { MultimodalSettingsPage } from '@/routes/settings.multimodal'
-import { SummarizationSettingsPage } from '@/routes/settings.summarization'
-import { TitleGenerationSettingsPage } from '@/routes/settings.title-generation'
-import { NotificationSettingsPage } from '@/routes/settings.notifications'
-import { TerminalSettingsPage } from '@/routes/settings.terminal'
+import { SettingsHubPage } from '@/components/settings/pages/settings.index'
+import { AgentsListPage } from '@/components/settings/pages/settings.agents'
+import { NewAgentPage } from '@/components/settings/pages/settings.agents.new'
+import { AgentEditorPage } from '@/components/settings/pages/settings.agents.$name'
+import { SkillsListPage } from '@/components/settings/pages/settings.skills'
+import { NewSkillPage } from '@/components/settings/pages/settings.skills.new'
+import { SkillEditorPage } from '@/components/settings/pages/settings.skills.$name'
+import { McpListPage } from '@/components/settings/pages/settings.mcp'
+import { NewMcpServerPage } from '@/components/settings/pages/settings.mcp.new'
+import { McpServerDetailPage } from '@/components/settings/pages/settings.mcp.$name'
+import { ProvidersSettingsPage } from '@/components/settings/pages/settings.providers'
+import { SandboxSettingsPage } from '@/components/settings/pages/settings.sandbox'
+import { AutomationSettingsPage } from '@/components/settings/pages/settings.automation'
+import { NotificationSettingsPage } from '@/components/settings/pages/settings.notifications'
+import { TerminalSettingsPage } from '@/components/settings/pages/settings.terminal'
 
 // ── Sidebar ───────────────────────────────────────────────────────────────
 
-/** Sections that map directly to a top-level sidebar entry. */
-type TopLevelSection = Extract<
-  SettingsSection,
-  'agents' | 'skills' | 'mcp' | 'providers' | 'sandbox' | 'multimodal' | 'summarization' | 'title-generation' | 'notifications' | 'terminal' | 'about'
->
-
-interface SidebarItem {
-  section: TopLevelSection
-  label: string
-  icon: LucideIcon
-  count?: number | null
-}
-
-/** Which top-level section a given section belongs to (for sidebar highlight). */
-function parentSection(section: SettingsSection): TopLevelSection {
-  if (section.startsWith('agents')) return 'agents'
-  if (section.startsWith('skills')) return 'skills'
-  if (section.startsWith('mcp')) return 'mcp'
-  return section as TopLevelSection
-}
-
 function SidebarRow({
   item,
+  count,
   active,
   onClick,
 }: {
-  item: SidebarItem
+  item: SettingsSectionDef
+  count?: number | null
   active: boolean
   onClick: () => void
 }) {
-  const Icon = item.icon
+  const Icon: LucideIcon = item.icon
   return (
     <button
       type="button"
@@ -104,16 +82,22 @@ function SidebarRow({
           aria-hidden="true"
         />
       )}
-      <Icon size={13} className={cn('shrink-0', active ? 'text-(--color-text)' : 'text-(--color-text-muted)')} aria-hidden="true" />
+      <Icon
+        size={ICON_SIZE_INLINE}
+        className={cn('shrink-0', active ? 'text-(--color-text)' : 'text-(--color-text-muted)')}
+        aria-hidden="true"
+      />
       <span className="min-w-0 flex-1 truncate">{item.label}</span>
-      {item.count !== undefined && item.count !== null && (
-        <span className={cn(
-          'shrink-0 font-mono text-[9px] tabular-nums px-1.5 py-0.5 rounded border transition-colors',
-          active
-            ? 'font-semibold text-(--color-text) bg-(--bg-page) border-(--color-border-strong)'
-            : 'text-(--color-text-muted) bg-(--bg-key)/50 border-(--color-border)',
-        )}>
-          {item.count}
+      {count !== undefined && count !== null && (
+        <span
+          className={cn(
+            'shrink-0 font-mono text-[10px] tabular-nums px-1.5 py-0.5 rounded border transition-colors',
+            active
+              ? 'font-semibold text-(--color-text) bg-(--bg-page) border-(--color-border-strong)'
+              : 'text-(--color-text-muted) bg-(--bg-key)/50 border-(--color-border)',
+          )}
+        >
+          {count}
         </span>
       )}
     </button>
@@ -122,94 +106,102 @@ function SidebarRow({
 
 function GroupLabel({ children }: { children: string }) {
   return (
-    <p className="px-4 pt-3 pb-1 font-mono text-[9px] font-bold tracking-wider text-(--color-text-subtle)/85 uppercase select-none">
+    <p className="px-4 pt-3 pb-1 font-mono text-[10px] font-bold tracking-wider text-(--color-text-subtle)/85 uppercase select-none">
       {children}
     </p>
   )
 }
 
-function ModalSidebar({ section, onSelect }: { section: SettingsSection; onSelect: (s: TopLevelSection) => void }) {
+function ModalSidebar({
+  section,
+  onSelect,
+}: {
+  section: SettingsSection
+  onSelect: (s: TopLevelSection) => void
+}) {
   const agentsQ = useAgentFilesQuery()
   const skillsQ = useSkillFilesQuery()
   const mcpQ = useMcpServersQuery()
   const sandboxQ = useSandboxSettingsQuery()
   const active = parentSection(section)
 
-  const configItems: SidebarItem[] = [
-    { section: 'agents',           label: 'Agents',          icon: Wrench,   count: agentsQ.data?.agents.length ?? null },
-    { section: 'skills',           label: 'Skills',           icon: Sparkles, count: skillsQ.data?.skills.length ?? null },
-    { section: 'mcp',              label: 'MCP servers',      icon: Plug,     count: mcpQ.data?.servers.length ?? null },
-    { section: 'providers',        label: 'Providers',        icon: KeyRound },
-    { section: 'sandbox',          label: 'Sandbox',          icon: Shield,   count: sandboxQ.data?.denied_patterns.length ?? null },
-    { section: 'multimodal',       label: 'Multimodal',       icon: Image },
-    { section: 'summarization',    label: 'Summarization',    icon: AlignLeft },
-    { section: 'title-generation', label: 'Title generation', icon: Type },
-    { section: 'notifications',    label: 'Notifications',    icon: Bell },
-    { section: 'terminal',         label: 'Terminal',         icon: TerminalSquare },
-  ]
-
-  const aboutItems: SidebarItem[] = [
-    { section: 'about', label: 'About openagentd', icon: Info },
-  ]
+  const counts: Partial<Record<TopLevelSection, number | null>> = {
+    agents: agentsQ.data?.agents.length ?? null,
+    skills: skillsQ.data?.skills.length ?? null,
+    mcp: mcpQ.data?.servers.length ?? null,
+    sandbox: sandboxQ.data?.denied_patterns.length ?? null,
+  }
 
   return (
-    <nav aria-label="Settings categories" className="hidden h-full w-52 shrink-0 flex-col overflow-y-auto border-r border-(--color-border) bg-(--bg-sidebar) select-none md:flex">
-      <GroupLabel>Configuration</GroupLabel>
-      <div className="flex flex-col">
-        {configItems.map((item) => (
-          <SidebarRow key={item.section} item={item} active={active === item.section} onClick={() => onSelect(item.section)} />
-        ))}
-      </div>
-      <div className="mx-4 my-2.5 h-px bg-(--color-border)" role="separator" aria-hidden="true" />
-      <GroupLabel>About</GroupLabel>
-      <div className="flex flex-col">
-        {aboutItems.map((item) => (
-          <SidebarRow key={item.section} item={item} active={active === item.section} onClick={() => onSelect(item.section)} />
-        ))}
-      </div>
+    <nav
+      aria-label="Settings categories"
+      className="hidden h-full w-52 shrink-0 flex-col overflow-y-auto border-r border-(--color-border) bg-(--bg-sidebar) select-none md:flex"
+    >
+      {SETTINGS_GROUPS.map((group, idx) => {
+        const items = SETTINGS_SECTIONS.filter((s) => s.group === group.id)
+        if (items.length === 0) return null
+        return (
+          <div key={group.id}>
+            {idx > 0 && (
+              <div
+                className="mx-4 my-2.5 h-px bg-(--color-border)"
+                role="separator"
+                aria-hidden="true"
+              />
+            )}
+            <GroupLabel>{group.label}</GroupLabel>
+            <div className="flex flex-col">
+              {items.map((item) => (
+                <SidebarRow
+                  key={item.id}
+                  item={item}
+                  count={counts[item.id]}
+                  active={active === item.id}
+                  onClick={() => onSelect(item.id)}
+                />
+              ))}
+            </div>
+          </div>
+        )
+      })}
     </nav>
   )
 }
 
-
-function MobileTabBar({ section, onSelect }: { section: SettingsSection; onSelect: (s: TopLevelSection) => void }) {
-  const baseActive = parentSection(section)
-  const active = (
-    baseActive === 'sandbox' ||
-    baseActive === 'multimodal' ||
-    baseActive === 'summarization' ||
-    baseActive === 'title-generation' ||
-    baseActive === 'notifications' ||
-    baseActive === 'terminal'
-  ) ? 'about' : baseActive
-  const items: SidebarItem[] = [
-    { section: 'agents', label: 'Agents', icon: Wrench },
-    { section: 'skills', label: 'Skills', icon: Sparkles },
-    { section: 'mcp', label: 'MCP', icon: Plug },
-    { section: 'providers', label: 'Providers', icon: KeyRound },
-    { section: 'about', label: 'About', icon: Info },
-  ]
+function MobileTabBar({
+  section,
+  onSelect,
+}: {
+  section: SettingsSection
+  onSelect: (s: TopLevelSection) => void
+}) {
+  // Sections without their own tab are reached through About, so highlight it.
+  const active = mobileBackSection(section)
+  const items = SETTINGS_SECTIONS.filter((s) => s.mobileTab)
 
   return (
-    <nav aria-label="Settings sections" className="grid h-14 shrink-0 grid-cols-5 border-t border-(--color-border) bg-(--bg-sidebar) md:hidden">
+    <nav
+      aria-label="Settings sections"
+      className="grid h-14 shrink-0 grid-cols-5 border-t border-(--color-border) bg-(--bg-sidebar) md:hidden"
+    >
       {items.map((item) => {
         const Icon = item.icon
-        const isActive = active === item.section
+        const isActive = active === item.id
         return (
           <button
-            key={item.section}
+            key={item.id}
             type="button"
-            onClick={() => onSelect(item.section)}
+            onClick={() => onSelect(item.id)}
             aria-current={isActive ? 'page' : undefined}
             className={cn(
-              'flex min-w-0 flex-col items-center justify-center gap-0.5 px-1 text-[9px] font-medium transition-colors',
+              'flex min-w-0 flex-col items-center justify-center gap-0.5 px-1 text-[10px] font-medium transition-colors',
               'text-(--color-text-muted) hover:bg-(--bg-key)/40 hover:text-(--color-text)',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--focus-ring)/40',
               isActive && 'bg-(--bg-key)/55 text-(--color-text)',
             )}
           >
-            <Icon size={14} aria-hidden="true" />
-            <span className="truncate">{item.label}</span>
+            <Icon size={ICON_SIZE_INLINE} aria-hidden="true" />
+            <span className="truncate">{item.id === 'about' ? 'About' : item.label}</span>
           </button>
         )
       })}
@@ -219,7 +211,17 @@ function MobileTabBar({ section, onSelect }: { section: SettingsSection; onSelec
 
 // ── Section content ───────────────────────────────────────────────────────
 
-function SectionContent({ section, selectedName, setSection }: {
+/**
+ * Kept as an explicit switch rather than folded into the registry: each
+ * section takes a different prop shape (list pages need selection callbacks,
+ * editors need a name and a back handler), and a union type covering all of
+ * them would be harder to read than this.
+ */
+function SectionContent({
+  section,
+  selectedName,
+  setSection,
+}: {
   section: SettingsSection
   selectedName: string | null
   setSection: (s: SettingsSection, name?: string) => void
@@ -283,48 +285,14 @@ function SectionContent({ section, selectedName, setSection }: {
       return selectedName ? (
         <McpServerDetailPage name={selectedName} onBack={() => setSection('mcp')} />
       ) : null
-    case 'providers':        return <ProvidersSettingsPage />
-    case 'sandbox':          return <SandboxSettingsPage />
-    case 'multimodal':       return <MultimodalSettingsPage />
-    case 'summarization':    return <SummarizationSettingsPage />
-    case 'title-generation': return <TitleGenerationSettingsPage />
-    case 'notifications':    return <NotificationSettingsPage />
-    case 'terminal':         return <TerminalSettingsPage />
+    case 'providers':    return <ProvidersSettingsPage />
+    case 'sandbox':      return <SandboxSettingsPage />
+    case 'automation':   return <AutomationSettingsPage />
+    case 'notifications': return <NotificationSettingsPage />
+    case 'terminal':     return <TerminalSettingsPage />
     case 'about':
-    default:                 return <SettingsHubPage />
+    default:             return <SettingsHubPage />
   }
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────
-
-function getBreadcrumbs(section: SettingsSection, selectedName: string | null): string[] {
-  const parts = ['Preferences', 'Settings']
-  if (section.startsWith('agents')) {
-    parts.push('Agents')
-    if (section === 'agents-new') parts.push('New')
-    if (section === 'agents-edit' && selectedName) parts.push(selectedName.replace(/^coding\//, ''))
-  } else if (section.startsWith('skills')) {
-    parts.push('Skills')
-    if (section === 'skills-new') parts.push('New')
-    if (section === 'skills-edit' && selectedName) parts.push(selectedName)
-  } else if (section.startsWith('mcp')) {
-    parts.push('MCP Servers')
-    if (section === 'mcp-new') parts.push('New')
-    if (section === 'mcp-edit' && selectedName) parts.push(selectedName)
-  } else {
-    const mapping: Record<string, string> = {
-      providers: 'Providers',
-      sandbox: 'Sandbox',
-      multimodal: 'Multimodal',
-      summarization: 'Summarization',
-      'title-generation': 'Title Generation',
-      notifications: 'Notifications',
-      terminal: 'Terminal',
-      about: 'About',
-    }
-    parts.push(mapping[section] || section)
-  }
-  return parts
 }
 
 // ── Modal ─────────────────────────────────────────────────────────────────
@@ -343,26 +311,6 @@ export function SettingsModal() {
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [open, closeSettings])
-
-  const breadcrumbs = getBreadcrumbs(section, selectedName)
-  const isDrillDown =
-    section !== parentSection(section) ||
-    section === 'sandbox' ||
-    section === 'multimodal' ||
-    section === 'summarization' ||
-    section === 'title-generation' ||
-    section === 'notifications' ||
-    section === 'terminal'
-
-  const mobileBackSection =
-    section === 'sandbox' ||
-    section === 'multimodal' ||
-    section === 'summarization' ||
-    section === 'title-generation' ||
-    section === 'notifications' ||
-    section === 'terminal'
-      ? 'about'
-      : parentSection(section)
 
   return (
     <AnimatePresence>
@@ -400,22 +348,21 @@ export function SettingsModal() {
             {/* Header / Title Bar */}
             <div className="flex h-11 shrink-0 items-center justify-between border-b border-(--color-border) bg-(--bg-sidebar) px-2 select-none sm:px-4">
               <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-                {isDrillDown && (
+                {isDrillDown(section) && (
                   <Button
                     type="button"
                     size="icon-sm"
                     variant="ghost"
                     className="md:hidden"
-                    onClick={() => setSection(mobileBackSection)}
+                    onClick={() => setSection(mobileBackSection(section))}
                     aria-label="Back to list"
                   >
-                    <ArrowLeft size={14} aria-hidden="true" />
+                    <ArrowLeft size={ICON_SIZE_INLINE} aria-hidden="true" />
                   </Button>
                 )}
                 <span className="text-base font-semibold text-(--color-text)">Settings</span>
               </div>
 
-              {/* Simple Close Button */}
               <button
                 type="button"
                 onClick={closeSettings}
@@ -423,29 +370,15 @@ export function SettingsModal() {
                 aria-label="Close settings"
                 title="Close (Esc)"
               >
-                <X size={14} aria-hidden="true" />
+                <X size={ICON_SIZE_INLINE} aria-hidden="true" />
               </button>
             </div>
 
             {/* Body */}
             <div className="flex min-h-0 flex-1 overflow-hidden">
-              {/* Left Sidebar categories panel */}
               <ModalSidebar section={section} onSelect={(s) => setSection(s)} />
 
-              {/* Right content panel */}
               <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-(--bg-page)">
-                {/* Breadcrumbs Bar */}
-                <div className="hidden h-8.5 shrink-0 items-center gap-1.5 border-b border-(--color-border) bg-(--bg-page) px-6 font-mono text-[10px] text-(--color-text-muted) select-none md:flex">
-                  {breadcrumbs.map((crumb, idx) => (
-                    <div key={idx} className="flex items-center gap-1.5">
-                      {idx > 0 && <span className="text-(--color-text-subtle)/50">/</span>}
-                      <span className={cn(idx === breadcrumbs.length - 1 ? 'text-(--color-text) font-semibold' : 'text-(--color-text-subtle)')}>
-                        {crumb}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-
                 <div className="min-h-0 flex-1 overflow-hidden flex flex-col">
                   <SectionContent
                     key={`${section}:${selectedName ?? ''}`}

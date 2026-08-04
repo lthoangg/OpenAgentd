@@ -20,7 +20,7 @@ mock.module('@/lib/desktop-notifications', () => ({
   sendDesktopNotification: mockSendDesktopNotification,
 }))
 
-import { NotificationSettingsPage } from '@/routes/settings.notifications'
+import { NotificationSettingsPage } from '@/components/settings/pages/settings.notifications'
 
 beforeEach(() => {
   enabled = true
@@ -41,10 +41,22 @@ describe('NotificationSettingsPage', () => {
     expect(testButton.className).toContain('md:min-h-0')
   })
 
-  it('toggles app notifications', async () => {
+  // Notifications used to write straight through on toggle. It now follows the
+  // same explicit-save contract as every other settings page.
+  it('does not persist the toggle until Save is pressed', async () => {
     render(<NotificationSettingsPage />)
 
     await userEvent.click(screen.getByRole('switch', { name: /enabled/i }))
+
+    expect(enabled).toBe(true)
+    expect(screen.getByText('Unsaved changes')).toBeTruthy()
+  })
+
+  it('persists the toggle on Save and disables the test button', async () => {
+    render(<NotificationSettingsPage />)
+
+    await userEvent.click(screen.getByRole('switch', { name: /enabled/i }))
+    await userEvent.click(screen.getByRole('button', { name: /^save$/i }))
 
     expect(enabled).toBe(false)
     expect(screen.getByRole('button', { name: /send test notification/i }).hasAttribute('disabled')).toBe(true)

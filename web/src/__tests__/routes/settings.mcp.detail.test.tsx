@@ -13,7 +13,7 @@ mock.module('@tanstack/react-router', () => ({
   useNavigate: () => mock(() => undefined),
 }))
 
-import { McpServerDetailPage } from '@/routes/settings.mcp.$name'
+import { McpServerDetailPage } from '@/components/settings/pages/settings.mcp.$name'
 
 const server = setupServer()
 let originalFetch: typeof fetch | undefined

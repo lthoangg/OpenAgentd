@@ -17,7 +17,8 @@ mock.module('@tanstack/react-router', () => ({
   useNavigate: () => () => {},
 }))
 
-import { SettingsHubPage } from '@/routes/settings.index'
+import { SettingsHubPage } from '@/components/settings/pages/settings.index'
+import { SETTINGS_SECTIONS } from '@/components/settings/sections'
 
 function renderHub(health?: { status: string; version: string }) {
   const queryClient = new QueryClient({
@@ -93,15 +94,21 @@ describe('SettingsHubPage — header', () => {
 // ── Mobile Preferences ─────────────────────────────────────────────────────
 
 describe('SettingsHubPage — mobile preferences', () => {
-  it('renders preferences links for sandbox, multimodal, summarization, title-generation, notifications, and terminal', () => {
+  // The list is derived from the section registry, covering exactly the
+  // sections that have no slot in the five-item mobile tab bar. Multimodal,
+  // summarization and title generation are now groups inside Automation.
+  it('renders a preferences link for every section without a mobile tab', () => {
     renderHub({ status: 'ok', version: '1.2.3' })
 
-    expect(screen.getByText(/sandbox settings/i)).toBeInTheDocument()
-    expect(screen.getByText(/multimodal settings/i)).toBeInTheDocument()
-    expect(screen.getByText(/summarization settings/i)).toBeInTheDocument()
-    expect(screen.getByText(/title generation settings/i)).toBeInTheDocument()
-    expect(screen.getByText(/notification settings/i)).toBeInTheDocument()
-    expect(screen.getByText(/terminal settings/i)).toBeInTheDocument()
+    for (const section of SETTINGS_SECTIONS.filter((s) => !s.mobileTab)) {
+      expect(screen.getByText(section.label)).toBeInTheDocument()
+    }
+  })
+
+  it('does not link to sections that already have a mobile tab', () => {
+    renderHub({ status: 'ok', version: '1.2.3' })
+
+    expect(screen.queryByText('Providers')).toBeNull()
   })
 })
 

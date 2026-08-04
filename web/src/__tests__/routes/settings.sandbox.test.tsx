@@ -16,7 +16,7 @@ mock.module('@/hooks/use-mobile', () => ({
   useIsMobile: () => false,
 }))
 
-import { SandboxSettingsPage } from '@/routes/settings.sandbox'
+import { SandboxSettingsPage } from '@/components/settings/pages/settings.sandbox'
 
 const server = setupServer()
 let originalFetch: typeof fetch | undefined
@@ -70,8 +70,13 @@ describe('SandboxSettingsPage', () => {
 
     renderPage()
 
-    expect(await screen.findByDisplayValue('**/.env')).toBeTruthy()
-    expect(screen.getByRole('button', { name: /Save/i }).className).toContain('min-h-11')
+    const pattern = await screen.findByDisplayValue('**/.env')
+    expect(pattern).toBeTruthy()
+
+    // The save bar only mounts once there are unsaved edits.
+    expect(screen.queryByRole('button', { name: /^Save$/i })).toBeNull()
+    fireEvent.change(pattern, { target: { value: '**/.env.local' } })
+    expect((await screen.findByRole('button', { name: /^Save$/i })).className).toContain('min-h-11')
 
     const remove = screen.getByRole('button', { name: /Remove pattern 1/i })
     expect(remove.className).toContain('h-9')

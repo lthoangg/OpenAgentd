@@ -17,7 +17,7 @@ import { setupServer } from 'msw/node'
 
 import { cleanup } from '@testing-library/react'
 import { ToastStack } from '@/components/ToastStack'
-import { ProvidersSettingsPage } from '@/routes/settings.providers'
+import { ProvidersSettingsPage } from '@/components/settings/pages/settings.providers'
 import { useToastStore } from '@/stores/useToastStore'
 
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))

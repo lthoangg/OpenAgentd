@@ -21,11 +21,23 @@ export type SettingsSection =
   | 'mcp-edit'
   | 'providers'
   | 'sandbox'
-  | 'multimodal'
-  | 'summarization'
-  | 'title-generation'
+  // Replaced the former 'multimodal' | 'summarization' | 'title-generation'
+  // sections, which are now collapsible groups on one Automation page.
+  | 'automation'
   | 'notifications'
   | 'terminal'
+
+/**
+ * Sections that are lists with `-new` / `-edit` drill-down views. Declared here
+ * next to the union it describes, so the store and the section registry share
+ * one definition instead of both hardcoding the same three prefixes.
+ */
+const DRILL_DOWN_FAMILIES = ['agents', 'skills', 'mcp'] as const
+
+/** Collapses a drill-down section to the list it belongs to. */
+export function parentSection(section: SettingsSection): SettingsSection {
+  return DRILL_DOWN_FAMILIES.find((f) => section.startsWith(f)) ?? section
+}
 
 interface SettingsStore {
   open: boolean

@@ -158,14 +158,16 @@ def _builtin_agent_md(
     role: str,
     description: str,
     model: str | None,
-    thinking_level: str,
 ) -> str:
+    # ``thinking_level`` is intentionally omitted: default agents use the
+    # model's default thinking. Forcing a level injects ``reasoning_effort``
+    # into Chat Completions requests, which some models reject alongside
+    # function tools (HTTP 400 on /v1/chat/completions).
     frontmatter = {
         "name": name,
         "role": role,
         "description": description,
         "model": model,
-        "thinking_level": thinking_level,
     }
     return f"---\n{yaml.safe_dump(frontmatter, sort_keys=False)}---\n\n"
 
@@ -208,7 +210,6 @@ def ensure_builtin_agent_blueprints(agents_dir: Path, *, mode: str) -> list[str]
                 role=blueprint["role"],
                 description=blueprint["description"],
                 model=model,
-                thinking_level=blueprint["thinking_level"],
             ),
         )
         written.append(target.name)
@@ -257,7 +258,6 @@ def ensure_builtin_openagentd_lead(agents_dir: Path, *, mode: str) -> bool:
                 else NORMAL_OPENAGENTD_DESCRIPTION
             ),
             model=PROVIDER_MODEL_TOKEN,
-            thinking_level="low",
         ),
     )
     logger.info("builtin_openagentd_lead_materialized mode={} path={}", mode, target)

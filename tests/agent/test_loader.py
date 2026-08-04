@@ -698,6 +698,35 @@ def test_builtin_member_profiles_are_curated_to_default_agents():
     assert set(BUILTIN_MEMBER_PROFILES["coding"]) == {"coder", "explorer"}
 
 
+def test_builtin_agent_blueprints_use_default_thinking(tmp_path):
+    """Materialized default members omit thinking_level → model default applies.
+
+    Forcing an explicit level (e.g. "low") injects reasoning_effort into
+    Chat Completions requests, which some models reject alongside function
+    tools (HTTP 400 on /v1/chat/completions).
+    """
+    from app.agent.loader import ensure_builtin_agent_blueprints
+
+    agents_dir = tmp_path / "agents"
+    written = ensure_builtin_agent_blueprints(agents_dir, mode="normal")
+    assert written  # sanity: files were materialized
+
+    for name in written:
+        cfg = parse_agent_md(agents_dir / name)
+        assert cfg.thinking_level is None, name
+
+
+def test_builtin_openagentd_lead_uses_default_thinking(tmp_path):
+    from app.agent.loader import ensure_builtin_openagentd_lead
+
+    agents_dir = tmp_path / "agents"
+    agents_dir.mkdir()
+    assert ensure_builtin_openagentd_lead(agents_dir, mode="normal")
+
+    cfg = parse_agent_md(agents_dir / "openagentd.md")
+    assert cfg.thinking_level is None
+
+
 def test_builtin_member_user_description_overrides_code_default(tmp_path):
     from app.agent.loader import rebuild_agent_from_disk
 

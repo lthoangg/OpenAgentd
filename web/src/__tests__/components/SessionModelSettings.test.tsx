@@ -270,10 +270,11 @@ describe('SessionModelSettings — instant apply', () => {
     await waitFor(() => expect(onChange).toHaveBeenCalledWith('openai:gpt-4o', 'high'))
   })
 
-  it('offers a reset back to the agent default only while overridden', async () => {
+  it('never renders a reset-to-default control, overridden or not', async () => {
     stub()
     const { unmount } = renderPanel({ defaultModel: 'openai:o3-mini', sessionModel: 'openai:gpt-4o' })
-    expect(await screen.findByRole('button', { name: /use agent default/i })).toBeTruthy()
+    await screen.findByRole('combobox', { name: 'Search session model' })
+    expect(screen.queryByRole('button', { name: /use agent default/i })).toBeNull()
     unmount()
 
     renderPanel({ defaultModel: 'openai:o3-mini', sessionModel: null })
@@ -281,30 +282,16 @@ describe('SessionModelSettings — instant apply', () => {
     expect(screen.queryByRole('button', { name: /use agent default/i })).toBeNull()
   })
 
-  it('clears the override when the reset control is used', async () => {
+  it('falls back to the agent default when the default model is picked from the list', async () => {
     const onChange = mock(() => undefined)
     stub()
     renderPanel({ defaultModel: 'openai:o3-mini', sessionModel: 'openai:gpt-4o', onChange })
 
-    fireEvent.click(await screen.findByRole('button', { name: /use agent default/i }))
+    const input = await screen.findByRole('combobox', { name: 'Search session model' })
+    await waitFor(() => expect((globalThis.fetch as ReturnType<typeof mock>).mock.calls.length).toBeGreaterThan(0))
+    fireEvent.change(input, { target: { value: 'openai:o3-mini' } })
 
     await waitFor(() => expect(onChange).toHaveBeenCalledWith(null, null))
-  })
-
-  it('moves focus to the model field when the reset control removes itself', async () => {
-    stub()
-    // The reset button only exists while overridden, so activating it unmounts
-    // the very element that has focus. Without a handoff, focus lands on
-    // <body> and a keyboard user loses their place.
-    renderPanel({ defaultModel: 'openai:o3-mini', sessionModel: 'openai:gpt-4o' })
-
-    const reset = await screen.findByRole('button', { name: /use agent default/i })
-    reset.focus()
-    fireEvent.click(reset)
-
-    await waitFor(() =>
-      expect(document.activeElement?.getAttribute('aria-label')).toBe('Search session model'),
-    )
   })
 
   it('leaves the field empty after clearing it, instead of refilling the default', async () => {

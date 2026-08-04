@@ -4,16 +4,15 @@
  * Applies instantly. There is no Apply button because the override only takes
  * effect on the next message anyway, so a confirm step bought nothing while
  * costing a draft state that had to be reconciled against props on every
- * external change. The escape hatch is `Use agent default`, shown only while an
- * override is active.
+ * external change.
  *
  * Two cases are deliberately *not* committed, because the combobox pushes every
  * keystroke upstream (it drives its own validation):
  *   - a half-typed id, until it resolves to a real registry entry;
  *   - an empty field, which means "I'm about to type", not "use the default".
  *     Committing empty would re-derive the default and refill the input under
- *     the user's cursor. Falling back to the default is the explicit job of the
- *     `Use agent default` button.
+ *     the user's cursor. To fall back to the default, pick it from the list
+ *     like any other model.
  *
  * Everything else renders straight from props, the single source of truth.
  */
@@ -68,8 +67,7 @@ export function SessionModelSettings({
   const registry = useRegistryQuery()
   const modelOptions = useMemo(() => registry.data?.models ?? [], [registry.data?.models])
 
-  // Fall back to a local ref when the parent doesn't need one: the reset
-  // handler below has to focus this input either way.
+  // Fall back to a local ref when the parent doesn't need one.
   const localModelInputRef = useRef<HTMLInputElement | null>(null)
   const inputRef = modelInputRef ?? localModelInputRef
 
@@ -149,16 +147,6 @@ export function SessionModelSettings({
     commit(id, thinkingLevel && nextLevels.includes(thinkingLevel) ? thinkingLevel : '')
   }
 
-  const resetToDefault = () => {
-    setModelText(defaultModel ?? '')
-    const defaultEntry = modelOptions.find((m) => m.id === (defaultModel ?? ''))
-    const defaultLevels = levelsFor(defaultEntry)
-    commit('', thinkingLevel && defaultLevels.includes(thinkingLevel) ? thinkingLevel : '')
-    // This button only renders while overridden, so committing unmounts it and
-    // focus would fall to <body>. Hand it to the field the button acts on.
-    inputRef.current?.focus()
-  }
-
   // A session restored from disk can carry a level the current model doesn't
   // support (the model changed underneath it). Drop it once the registry is
   // loaded enough to judge. Committing null stops this from re-firing.
@@ -209,23 +197,11 @@ export function SessionModelSettings({
             // list would then hide the rest of the panel behind it.
             openOnFocus={false}
           />
-          {!modelValid ? (
+          {!modelValid && (
             <span className="mt-1 block text-[11px] text-(--color-error)">
               Choose a model from the list.
             </span>
-          ) : sessionModel ? (
-            <button
-              type="button"
-              onClick={resetToDefault}
-              className="mt-1 rounded-xs text-[11px] text-(--color-text-muted) underline decoration-dotted transition-colors hover:text-(--color-text-2)"
-            >
-              Use agent default{defaultModel ? `: ${defaultModel}` : ''}
-            </button>
-          ) : defaultModel ? (
-            <span className="mt-1 block text-[11px] text-(--color-text-muted)">
-              Agent default.
-            </span>
-          ) : null}
+          )}
         </div>
 
         <div className="text-xs text-(--color-text-muted)">

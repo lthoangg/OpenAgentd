@@ -252,6 +252,12 @@ class AgentTeam:
         # turn instead of racing in as adjacent normal user rows.
         self._user_message_lock = asyncio.Lock()
 
+        # Restore re-wake dedupe — ``lead_session:task_id`` keys already
+        # re-woken this process.  The restore path runs on every lead-session
+        # switch, not just restarts; without this a user toggling between
+        # sessions would re-wake the same open task (one LLM call each time).
+        self._restore_rewakes: set[str] = set()
+
     @property
     def user_message_lock(self) -> asyncio.Lock:
         """Lock that serialises route-level user message dispatch decisions."""
@@ -1124,9 +1130,17 @@ class AgentTeam:
                 return
 
             for handle in list(self.members.keys()):
-                tasks = resumable_tasks(store, handle)
+                tasks = [
+                    task
+                    for task in resumable_tasks(store, handle)
+                    if f"{lead_session_id}:{task.get('task_id')}"
+                    not in self._restore_rewakes
+                ]
                 if not tasks:
                     continue
+                self._restore_rewakes.update(
+                    f"{lead_session_id}:{task.get('task_id')}" for task in tasks
+                )
                 logger.info(
                     "team_restore_rewake handle={} tasks={}",
                     handle,

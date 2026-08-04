@@ -601,3 +601,8 @@ class TestRestoreRewake:
         assert "Interrupted work" in msg.content
         assert team.mailbox.inbox_empty("executor#2")
         assert team.mailbox.inbox_empty("lead")
+
+        # Session switches re-run the restore path; the same open task must
+        # not re-wake the member on every switch (each wake is an LLM call).
+        await team._restore_or_drop_members_for_lead(str(lead_uuid))
+        assert team.mailbox.inbox_empty("executor#1")

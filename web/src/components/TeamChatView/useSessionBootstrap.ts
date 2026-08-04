@@ -239,11 +239,16 @@ export function useSessionBootstrap({
           ...sessionOptions,
           create: true,
         })
+        // Re-read live state: the user may have changed the session model or
+        // thinking level (via Session Settings) while this request was in
+        // flight. Falling back to the props captured when "New session" was
+        // clicked would silently discard that choice.
+        const latest = useTeamStore.getState()
         beginResolvedSession(session.id, {
           mode,
           workspace: session.workspace ?? workspace,
-          model: session.model ?? sessionModel,
-          thinkingLevel: session.thinking_level ?? sessionThinkingLevel,
+          model: session.model ?? latest.sessionModel,
+          thinkingLevel: session.thinking_level ?? latest.sessionThinkingLevel,
           skipInitialRestore: session.created,
         })
         if (session.created) {

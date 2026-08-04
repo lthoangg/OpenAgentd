@@ -67,11 +67,16 @@ function TeamLayoutBase({ forcedMode }: { forcedMode?: 'normal' | 'coding' }) {
             thinkingLevel: current.sessionThinkingLevel,
           })
           if (cancelled || sessionIdRef.current) return
-          current.beginResolvedSession(session.id, {
+          // Re-read live state: the user may have changed the session model
+          // or thinking level (via Session Settings) while this request was
+          // in flight. Falling back to the pre-request snapshot (`current`)
+          // here would silently clobber that choice the moment it resolves.
+          const latest = useTeamStore.getState()
+          latest.beginResolvedSession(session.id, {
             mode: 'coding',
             workspace: session.workspace ?? lastWorkspace.path,
-            model: session.model ?? current.sessionModel,
-            thinkingLevel: session.thinking_level ?? current.sessionThinkingLevel,
+            model: session.model ?? latest.sessionModel,
+            thinkingLevel: session.thinking_level ?? latest.sessionThinkingLevel,
           })
           void queryClient.invalidateQueries({ queryKey: queryKeys.team.sessions.all() })
           navigate({
@@ -136,11 +141,16 @@ function TeamLayoutBase({ forcedMode }: { forcedMode?: 'normal' | 'coding' }) {
           thinkingLevel,
         })
         if (cancelled || sessionIdRef.current) return
-        useTeamStore.getState().beginResolvedSession(session.id, {
+        // Re-read live state: the resolve request above may have been in
+        // flight while the user changed the session model or thinking level
+        // via Session Settings. Using the pre-request snapshot here would
+        // overwrite that choice the instant the resolve completes.
+        const latest = useTeamStore.getState()
+        latest.beginResolvedSession(session.id, {
           mode,
           workspace: session.workspace ?? workspace,
-          model: session.model ?? model,
-          thinkingLevel: session.thinking_level ?? thinkingLevel,
+          model: session.model ?? latest.sessionModel,
+          thinkingLevel: session.thinking_level ?? latest.sessionThinkingLevel,
         })
         void queryClient.invalidateQueries({ queryKey: queryKeys.team.sessions.all() })
         if (mode === 'coding') {

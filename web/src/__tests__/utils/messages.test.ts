@@ -626,68 +626,69 @@ describe("parseApiMessages", () => {
     expect(blocks[1].type).toBe("text");
   });
 
-  it("filters out todo_manage tool calls from blocks", () => {
+  it("includes todo_manage tool calls in blocks (board mutations are visible)", () => {
     const msgs = [makeMsg({
       role: "assistant",
       content: null,
       tool_calls: [
         { id: "tc1", type: "function", function: { name: "todo_manage", arguments: '{"action":"create"}' } },
-      ],
-    })];
-    const result = parseApiMessages(msgs);
-    expect(result[0].blocks).toHaveLength(0);
-  });
-
-  it("includes non-todo tool calls while filtering todo_manage", () => {
-    const msgs = [makeMsg({
-      role: "assistant",
-      content: null,
-      tool_calls: [
-        { id: "tc1", type: "function", function: { name: "todo_manage", arguments: '{"action":"create"}' } },
-        { id: "tc2", type: "function", function: { name: "web_search", arguments: '{"q":"test"}' } },
       ],
     })];
     const result = parseApiMessages(msgs);
     expect(result[0].blocks).toHaveLength(1);
-    expect(result[0].blocks[0].toolName).toBe("web_search");
-    expect(result[0].blocks[0].toolCallId).toBe("tc2");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// parseTeamBlocks — todo_manage filtering
-// ---------------------------------------------------------------------------
-
-describe("parseTeamBlocks — todo_manage filtering", () => {
-  it("filters out todo_manage tool calls from blocks", () => {
-    const msgs = [makeMsg({
-      role: "assistant",
-      content: null,
-      tool_calls: [
-        { id: "tc1", type: "function", function: { name: "todo_manage", arguments: '{"action":"create"}' } },
-      ],
-    })];
-    const blocks = parseTeamBlocks(msgs);
-    expect(blocks).toHaveLength(0);
+    expect(result[0].blocks[0].toolName).toBe("todo_manage");
+    expect(result[0].blocks[0].toolCallId).toBe("tc1");
   });
 
-  it("includes non-todo tool calls while filtering todo_manage", () => {
+  it("includes todo_manage alongside other tool calls", () => {
     const msgs = [makeMsg({
       role: "assistant",
       content: null,
       tool_calls: [
         { id: "tc1", type: "function", function: { name: "todo_manage", arguments: '{"action":"create"}' } },
         { id: "tc2", type: "function", function: { name: "web_search", arguments: '{"q":"test"}' } },
+      ],
+    })];
+    const result = parseApiMessages(msgs);
+    expect(result[0].blocks).toHaveLength(2);
+    expect(result[0].blocks.map((b) => b.toolName)).toEqual(["todo_manage", "web_search"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseTeamBlocks — todo_manage rendering
+// ---------------------------------------------------------------------------
+
+describe("parseTeamBlocks — todo_manage rendering", () => {
+  it("includes todo_manage tool calls in blocks (board mutations are visible)", () => {
+    const msgs = [makeMsg({
+      role: "assistant",
+      content: null,
+      tool_calls: [
+        { id: "tc1", type: "function", function: { name: "todo_manage", arguments: '{"action":"create"}' } },
       ],
     })];
     const blocks = parseTeamBlocks(msgs);
     expect(blocks).toHaveLength(1);
     expect(blocks[0].type).toBe("tool");
-    expect(blocks[0].toolName).toBe("web_search");
-    expect(blocks[0].toolCallId).toBe("tc2");
+    expect(blocks[0].toolName).toBe("todo_manage");
   });
 
-  it("preserves tool result linking when todo_manage is filtered", () => {
+  it("includes todo_manage alongside other tool calls", () => {
+    const msgs = [makeMsg({
+      role: "assistant",
+      content: null,
+      tool_calls: [
+        { id: "tc1", type: "function", function: { name: "todo_manage", arguments: '{"action":"create"}' } },
+        { id: "tc2", type: "function", function: { name: "web_search", arguments: '{"q":"test"}' } },
+      ],
+    })];
+    const blocks = parseTeamBlocks(msgs);
+    expect(blocks).toHaveLength(2);
+    expect(blocks.map((b) => b.toolName)).toEqual(["todo_manage", "web_search"]);
+  });
+
+  it("links the board-state result onto the todo_manage block", () => {
     const t = new Date().toISOString();
     const msgs = [
       makeMsg({
@@ -695,20 +696,19 @@ describe("parseTeamBlocks — todo_manage filtering", () => {
         content: null,
         tool_calls: [
           { id: "tc1", type: "function", function: { name: "todo_manage", arguments: '{}' } },
-          { id: "tc2", type: "function", function: { name: "web_search", arguments: '{}' } },
         ],
         created_at: t,
       }),
       makeMsg({
         role: "tool",
-        content: "search result",
-        tool_call_id: "tc2",
+        content: "[task_1] [completed] (high) claimed=executor#1 Do the thing",
+        tool_call_id: "tc1",
         created_at: t,
       }),
     ];
     const blocks = parseTeamBlocks(msgs);
     expect(blocks).toHaveLength(1);
     expect(blocks[0].toolDone).toBe(true);
-    expect(blocks[0].toolResult).toBe("search result");
+    expect(blocks[0].toolResult).toBe("[task_1] [completed] (high) claimed=executor#1 Do the thing");
   });
 });

@@ -65,7 +65,7 @@ function assistantBlocks(
     })
   }
 
-  for (const tool of (msg.tool_calls ?? []).filter((t) => t.function?.name !== 'todo_manage')) {
+  for (const tool of msg.tool_calls ?? []) {
     const name = tool.function?.name ?? tool.id
     let args: string | undefined
     try {

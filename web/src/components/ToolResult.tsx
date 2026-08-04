@@ -12,7 +12,8 @@
  * rather than an overlay. Theme-aware, no hard-coded rgba.
  */
 
-import { ExternalLink, FileText, Globe } from 'lucide-react'
+import { Check, Circle, ExternalLink, FileText, Globe, Loader2, Minus } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { truncateForDisplay } from './ToolCall/displayText'
 
@@ -648,6 +649,135 @@ function ScheduleTaskListResult({ result }: { result: string }) {
 }
 
 // ---------------------------------------------------------------------------
+// todo_manage renderer — structured board-state view
+// ---------------------------------------------------------------------------
+
+interface TodoResultTask {
+  taskId: string
+  status: string
+  priority: string
+  deps: string | null
+  assignedTo: string | null
+  claimedBy: string | null
+  content: string
+  instructions: string | null
+  result: string | null
+}
+
+const TODO_STATUS_ICON: Record<string, LucideIcon> = {
+  completed: Check,
+  cancelled: Minus,
+  in_progress: Loader2,
+  pending: Circle,
+}
+
+const TODO_STATUS_COLOR: Record<string, string> = {
+  completed: 'text-(--color-success)',
+  cancelled: 'text-(--color-text-subtle)',
+  in_progress: 'text-(--color-info)',
+  pending: 'text-(--color-text-muted)',
+}
+
+// Matches the backend's `_format_items` line shape:
+// `[task_1] [status] (priority) deps=[…] assigned=X claimed=Y content`
+const TODO_LINE_RE =
+  /^\[([^\]]+)\] \[([^\]]+)\] \(([^)]+)\)(?: deps=\[([^\]]*)\])?(?: assigned=(\S+))?(?: claimed=(\S+))? (.+)$/
+
+/** Parse the todo_manage board-state text into tasks; null when nothing matches. */
+function parseTodoList(result: string): TodoResultTask[] | null {
+  const tasks: TodoResultTask[] = []
+  // 'instructions' / 'result' sub-lines can span multiple lines; unmatched
+  // lines append to whichever field is currently open.
+  let openField: 'instructions' | 'result' | null = null
+
+  for (const line of result.split('\n')) {
+    const m = line.match(TODO_LINE_RE)
+    if (m) {
+      tasks.push({
+        taskId: m[1],
+        status: m[2],
+        priority: m[3],
+        deps: m[4] ?? null,
+        assignedTo: m[5] ?? null,
+        claimedBy: m[6] ?? null,
+        content: m[7],
+        instructions: null,
+        result: null,
+      })
+      openField = null
+      continue
+    }
+    const last = tasks[tasks.length - 1]
+    if (!last) return null // leading junk — not a board listing
+    const sub = line.match(/^ {4}(instructions|result): (.*)$/)
+    if (sub) {
+      openField = sub[1] as 'instructions' | 'result'
+      last[openField] = sub[2]
+      continue
+    }
+    if (openField) {
+      last[openField] = `${last[openField]}\n${line}`
+      continue
+    }
+    return null // unrecognised line — fall back to generic text
+  }
+  return tasks.length > 0 ? tasks : null
+}
+
+function TodoListResult({ result }: { result: string }) {
+  if (result.trim() === 'No todos.') {
+    return <div className="text-[11px] text-(--color-text-muted)">No todos.</div>
+  }
+  const tasks = parseTodoList(result)
+  if (!tasks) return <GenericResult result={result} />
+
+  return (
+    <ul className="space-y-2">
+      {tasks.map((task) => {
+        const Icon = TODO_STATUS_ICON[task.status] ?? Circle
+        const iconColor = TODO_STATUS_COLOR[task.status] ?? 'text-(--color-text-muted)'
+        const isFinished = task.status === 'completed' || task.status === 'cancelled'
+        const agent = task.claimedBy ?? task.assignedTo
+        return (
+          <li key={task.taskId} className="flex items-start gap-2">
+            <Icon
+              size={13}
+              className={`mt-0.5 shrink-0 ${iconColor} ${task.status === 'in_progress' ? 'animate-spin' : ''}`}
+              aria-hidden
+            />
+            <div className="min-w-0 flex-1">
+              <div
+                className={`text-xs leading-relaxed break-words ${
+                  isFinished ? 'text-(--color-text-muted)' : 'text-(--color-text)'
+                }`}
+              >
+                {task.content}
+              </div>
+              <div className="mt-0.5 flex flex-wrap items-center gap-x-2 font-mono text-[10px] text-(--color-text-muted)">
+                <span>{task.taskId}</span>
+                <span>{task.status}</span>
+                {agent && <span>{agent}</span>}
+                {task.deps && <span>deps: {task.deps}</span>}
+              </div>
+              {task.instructions && (
+                <div className="mt-1 text-[11px] leading-relaxed whitespace-pre-wrap break-words text-(--color-text-muted)">
+                  <span className="font-semibold">instructions:</span> {task.instructions}
+                </div>
+              )}
+              {task.result && (
+                <div className="mt-1 text-[11px] leading-relaxed whitespace-pre-wrap break-words text-(--color-text-2)">
+                  <span className="font-semibold">result:</span> {task.result}
+                </div>
+              )}
+            </div>
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Generic fallback renderer
 // ---------------------------------------------------------------------------
 
@@ -802,6 +932,9 @@ function ToolResultInner({ toolName, result, headerAction, onCollapse }: { toolN
   }
   if (toolName === 'team_manage') {
     return <TeamManageResult result={result} />
+  }
+  if (toolName === 'todo_manage') {
+    return <TodoListResult result={result} />
   }
   // web_fetch, date, math, skill, etc.
   return <GenericResult result={result} />

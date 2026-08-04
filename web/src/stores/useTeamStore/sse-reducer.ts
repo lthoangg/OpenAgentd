@@ -129,7 +129,6 @@ function applyBufferedSSEDelta(draft: TeamStore, event: BufferedSSEDelta) {
     return
   }
 
-  if (TODO_MUTATING_TOOLS.has(d.name as string)) return
   const agent = d.agent as string
   const toolCallId = d.tool_call_id as string | undefined
   ensureAgent(draft, agent)
@@ -175,7 +174,6 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
       }
 
       case 'tool_call': {
-        if (TODO_MUTATING_TOOLS.has(d.name as string)) break
         const agent = d.agent as string
         set((draft) => {
           markTurnStarted(draft, agent)
@@ -193,7 +191,6 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
       }
 
       case 'tool_start': {
-        if (TODO_MUTATING_TOOLS.has(d.name as string)) break
         const agent = d.agent as string
         set((draft) => {
           markTurnStarted(draft, agent)
@@ -237,42 +234,40 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
             ? metadata.duration_ms
             : undefined
         const mcpApp = metadata?.mcp_app as Record<string, unknown> | undefined
-        if (!TODO_MUTATING_TOOLS.has(toolName)) {
-          set((draft) => {
-            ensureAgent(draft, agent)
-            const stream = draft.agentStreams[agent]
-            // Mirrors completeTool's own matching: exact id, else incomplete
-            // card of the same name.
-            const hasLive = stream.currentBlocks.some(
-              (b) =>
-                b.type === 'tool' &&
-                ((toolCallId && b.toolCallId === toolCallId) ||
-                  (b.toolName === toolName && !b.toolDone)),
-            )
-            const confirmed = hasLive ? undefined : findConfirmedTool(draft, agent, toolCallId)
-            if (confirmed && !confirmed.toolDone) {
-              // Card was reconciled into the confirmed rows mid-turn — finish
-              // it there or it stays "running" until a full reload.
-              stream.blocks = completeTool(
-                stream.blocks,
-                toolName,
-                toolCallId,
-                result,
-                serverDurationMs,
-                mcpApp ? { mcp_app: mcpApp } : undefined,
-              )
-              return
-            }
-            stream.currentBlocks = completeTool(
-              stream.currentBlocks,
+        set((draft) => {
+          ensureAgent(draft, agent)
+          const stream = draft.agentStreams[agent]
+          // Mirrors completeTool's own matching: exact id, else incomplete
+          // card of the same name.
+          const hasLive = stream.currentBlocks.some(
+            (b) =>
+              b.type === 'tool' &&
+              ((toolCallId && b.toolCallId === toolCallId) ||
+                (b.toolName === toolName && !b.toolDone)),
+          )
+          const confirmed = hasLive ? undefined : findConfirmedTool(draft, agent, toolCallId)
+          if (confirmed && !confirmed.toolDone) {
+            // Card was reconciled into the confirmed rows mid-turn — finish
+            // it there or it stays "running" until a full reload.
+            stream.blocks = completeTool(
+              stream.blocks,
               toolName,
               toolCallId,
               result,
               serverDurationMs,
               mcpApp ? { mcp_app: mcpApp } : undefined,
             )
-          })
-        }
+            return
+          }
+          stream.currentBlocks = completeTool(
+            stream.currentBlocks,
+            toolName,
+            toolCallId,
+            result,
+            serverDurationMs,
+            mcpApp ? { mcp_app: mcpApp } : undefined,
+          )
+        })
         const events: CacheInvalidation[] = []
         if (FS_MUTATING_TOOLS.has(toolName)) {
           const workspace = get()._workspace

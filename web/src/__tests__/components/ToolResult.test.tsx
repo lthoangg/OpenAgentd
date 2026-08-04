@@ -412,3 +412,53 @@ describe("ToolResult — LSP Diagnostics", () => {
     expect(screen.queryByText("WARN")).toBeNull()
   })
 })
+
+// ---------------------------------------------------------------------------
+// todo_manage renderer — structured board-state view
+// ---------------------------------------------------------------------------
+
+describe("ToolResult — todo_manage", () => {
+  const boardResult = [
+    "[task_1] [completed] (high) assigned=executor#1 claimed=executor#1 Write a concurrency haiku",
+    "    instructions: Create haiku.txt and verify it exists.",
+    "    result: Created haiku.txt. Exact text:",
+    "Threads weave in tandem",
+    "[task_2] [pending] (medium) deps=[task_1] assigned=executor#2 Reverse the haiku",
+    "[task_3] [in_progress] (low) claimed=executor#3 Unrelated work",
+  ].join("\n")
+
+  it("renders one row per task with its content", () => {
+    render(<ToolResult toolName="todo_manage" result={boardResult} />)
+    expect(screen.getByText(/Write a concurrency haiku/)).toBeTruthy()
+    expect(screen.getByText(/Reverse the haiku/)).toBeTruthy()
+    expect(screen.getByText(/Unrelated work/)).toBeTruthy()
+  })
+
+  it("shows task ids and status metadata", () => {
+    render(<ToolResult toolName="todo_manage" result={boardResult} />)
+    expect(screen.getByText("task_1")).toBeTruthy()
+    expect(screen.getByText("task_2")).toBeTruthy()
+    expect(screen.getByText(/executor#2/)).toBeTruthy()
+  })
+
+  it("shows dependency metadata", () => {
+    render(<ToolResult toolName="todo_manage" result={boardResult} />)
+    expect(screen.getByText(/deps: task_1/)).toBeTruthy()
+  })
+
+  it("renders instructions and result sub-lines including continuations", () => {
+    render(<ToolResult toolName="todo_manage" result={boardResult} />)
+    expect(screen.getByText(/Create haiku\.txt and verify it exists\./)).toBeTruthy()
+    expect(screen.getByText(/Threads weave in tandem/)).toBeTruthy()
+  })
+
+  it("renders the empty board message", () => {
+    render(<ToolResult toolName="todo_manage" result="No todos." />)
+    expect(screen.getByText("No todos.")).toBeTruthy()
+  })
+
+  it("falls back to generic text for unparseable results", () => {
+    render(<ToolResult toolName="todo_manage" result="something unexpected" />)
+    expect(screen.getByText("something unexpected")).toBeTruthy()
+  })
+})

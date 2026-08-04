@@ -566,6 +566,8 @@ export interface TodoItem {
   dependencies?: string[]
   assigned_to?: string | null
   claimed_by?: string | null
+  instructions?: string | null
+  result?: string | null
 }
 
 export interface TodosResponse {

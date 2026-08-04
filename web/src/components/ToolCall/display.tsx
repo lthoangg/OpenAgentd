@@ -365,9 +365,13 @@ function getToolDisplayInternal(name: string, parsed: Record<string, unknown>): 
     }
     if (actions.length === 1 && firstAction === 'update') {
       const taskId = str(first, 'task_id')
+      // Completion is the board's key transition (records the result and
+      // wakes the lead + unblocked teammates) — label it precisely.
+      const isCompleting = str(first, 'status') === 'completed'
+      const verb = isCompleting ? 'Completing' : 'Updating'
       return {
-        header: taskId ? <>Updating todo <Arg>{taskId}</Arg></> : 'Updating todo…',
-        headerTitle: taskId ? `Updating todo ${taskId}` : 'Updating todo…',
+        header: taskId ? <>{verb} todo <Arg>{taskId}</Arg></> : `${verb} todo…`,
+        headerTitle: taskId ? `${verb} todo ${taskId}` : `${verb} todo…`,
         formattedArgs: formatTodoAction(first),
       }
     }

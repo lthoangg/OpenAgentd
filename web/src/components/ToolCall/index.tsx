@@ -164,7 +164,7 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
         : 'success'
 
   // Me: getToolDisplay/getDiffStats are pure functions of (name, args,
-  // result) — memoize them so ToolCall's own 100ms elapsed-timer tick
+  // result) — memoize them so ToolCall's own 1s elapsed-timer tick
   // (`now`, below) doesn't re-run a full JSON.parse and, for edit/patch/
   // write, an O(oldLines*newLines) diff on every tick for the entire
   // lifetime of a running tool call just to redraw the duration label.

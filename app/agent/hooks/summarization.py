@@ -208,9 +208,19 @@ _MERGE_REQUEST = (
 def _find_assistant_cutoff(msgs: list, keep_last: int) -> int:
     """Return the index of the Nth-from-last assistant message in *msgs*.
 
-    Messages at or after this index are protected from summarisation.
-    Returns 0 if there are fewer than *keep_last* assistant messages
-    (nothing to summarise).
+    Messages at or after this index are protected from summarisation; the
+    caller summarises ``msgs[:cutoff]``.
+
+    Two boundary values are **not** slice offsets and the caller special-cases
+    both to mean "summarise everything":
+
+    * ``len(msgs)`` — ``keep_last <= 0``, so nothing is protected.
+    * ``0`` — fewer than *keep_last* assistant turns exist, so no valid keep
+      window can be built. The caller deliberately compacts the whole visible
+      history in this case (see
+      ``test_summarise_all_messages_when_not_enough_assistant_turns``): the
+      token threshold has already been exceeded, and protecting everything
+      would leave the context permanently un-compactable.
     """
     if keep_last <= 0:
         return len(msgs)
@@ -693,6 +703,10 @@ class SummarizationHook(BaseAgentHook):
             span.set_status(StatusCode.OK)
             return
 
+        # ``0`` means no valid keep window exists (fewer assistant turns than
+        # ``keep_last_assistants``). Compact everything rather than skip: the
+        # threshold has already been exceeded, so skipping would let the
+        # context keep growing with no way to ever shrink it.
         cutoff_idx = _find_assistant_cutoff(eligible, self._keep_last_assistants)
         if cutoff_idx > 0:
             to_summarise = eligible[:cutoff_idx]

@@ -621,7 +621,6 @@ async def interrupt_team(team: "AgentTeam", session_id: str | None) -> list[str]
     from app.agent.tools.builtin.shell import stop_background_processes_for_session
     from app.agent.tools.builtin.todo import release_in_progress_for_actor
     from app.core.db import resolve_db_factory
-    from app.core.paths import session_workspace_dir
     from app.services.chat_service import release_queued_user_messages, save_message
 
     effective_session_id = session_id or getattr(team.lead, "session_id", None)
@@ -708,13 +707,7 @@ async def interrupt_team(team: "AgentTeam", session_id: str | None) -> list[str]
             if id(member) not in working_ids:
                 continue
             sid = effective_session_id
-            released = (
-                release_in_progress_for_actor(
-                    session_workspace_dir(sid, team.workspace), member.name, sid
-                )
-                if sid
-                else []
-            )
+            released = release_in_progress_for_actor(member.name, sid) if sid else []
             suffix = (
                 f" In-progress todos reset to pending: {', '.join(released)}."
                 if released

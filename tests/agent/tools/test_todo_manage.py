@@ -119,7 +119,7 @@ def test_release_in_progress_for_actor_resets_claimed_tasks(
         encoding="utf-8",
     )
 
-    released = release_in_progress_for_actor(tmp_path, "worker#1", "session-1")
+    released = release_in_progress_for_actor("worker#1", "session-1")
 
     assert released == ["task_1", "task_2"]
     data = json.loads(todos.read_text(encoding="utf-8"))

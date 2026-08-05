@@ -32,13 +32,13 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
-from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from loguru import logger
 from pydantic import BaseModel, Field, field_validator
 
-from app.agent.artifacts import TODOS_FILENAME, todos_path
+from app.agent.artifacts import TODOS_FILENAME as TODOS_FILENAME  # re-exported
+from app.agent.artifacts import todos_path
 from app.agent.tools.registry import InjectedArg, Tool
 
 # ---------------------------------------------------------------------------
@@ -282,8 +282,8 @@ def _load_store() -> dict:
     return {"counter": 0, "items": []}
 
 
-def _save_store(store: dict) -> None:
-    path = _todos_path()
+def _save_store(store: dict, *, path: Any | None = None) -> None:
+    path = path if path is not None else _todos_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     # Atomic replace — a crash mid-write must never corrupt the store.
     tmp = path.with_suffix(path.suffix + ".tmp")
@@ -292,14 +292,18 @@ def _save_store(store: dict) -> None:
 
 
 def release_in_progress_for_actor(
-    workspace_root: Path, actor: str, session_id: str | None = None
+    actor: str, session_id: str | None = None
 ) -> list[str]:
-    """Release an actor's unfinished todos for reassignment."""
-    path = (
-        todos_path(session_id)
-        if session_id
-        else workspace_root / ".openagentd" / TODOS_FILENAME
-    )
+    """Release an actor's unfinished todos for reassignment.
+
+    Resolves the store through :func:`todos_path`, the same helper
+    ``_load_store``/``_save_store`` use, so a release is always visible to the
+    ``todo_manage`` tool. An earlier signature took a ``workspace_root`` and
+    fell back to ``workspace_root/.openagentd/`` when *session_id* was absent —
+    a location nothing ever reads, since session artifacts live under the XDG
+    data dir. Both call sites always had a session id, so the branch was dead.
+    """
+    path = todos_path(session_id)
     if not path.exists():
         return []
     try:
@@ -323,10 +327,9 @@ def release_in_progress_for_actor(
         if isinstance(item.get("task_id"), str):
             released.append(item["task_id"])
     if released:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
-            json.dumps(store, indent=2, ensure_ascii=False), encoding="utf-8"
-        )
+        # Reuse the atomic tmp-file + replace writer rather than a bare
+        # write_text, so an interrupted release cannot truncate the store.
+        _save_store(store, path=path)
     return released
 
 

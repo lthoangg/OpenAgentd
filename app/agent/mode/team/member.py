@@ -1199,13 +1199,8 @@ class TeamMember(TeamMemberBase):
         assert self._mailbox is not None
 
         from app.agent.tools.builtin.todo import release_in_progress_for_actor
-        from app.core.paths import session_workspace_dir
 
-        released = release_in_progress_for_actor(
-            session_workspace_dir(self._team.lead.session_id, self._team.workspace),
-            self.name,
-            self._team.lead.session_id,
-        )
+        released = release_in_progress_for_actor(self.name, self._team.lead.session_id)
         suffix = (
             f" In-progress todos reset to pending: {', '.join(released)}."
             if released

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import shutil
 from collections.abc import Iterable, Sequence
 from stat import S_ISREG
@@ -166,7 +167,9 @@ async def cleanup_generated_artifacts(
         ):
             candidates.append(
                 CleanupCandidate(
-                    child, "expired normal session workspace", _dir_size(child)
+                    child,
+                    "expired normal session workspace",
+                    await asyncio.to_thread(_dir_size, child),
                 )
             )
         elif (
@@ -176,7 +179,9 @@ async def cleanup_generated_artifacts(
         ):
             candidates.append(
                 CleanupCandidate(
-                    child, "orphaned normal session workspace", _dir_size(child)
+                    child,
+                    "orphaned normal session workspace",
+                    await asyncio.to_thread(_dir_size, child),
                 )
             )
 
@@ -189,7 +194,11 @@ async def cleanup_generated_artifacts(
         root = state_root / rel
         for child in _safe_child_dirs(root):
             if _is_old_enough(child, cutoff):
-                candidates.append(CleanupCandidate(child, reason, _dir_size(child)))
+                candidates.append(
+                    CleanupCandidate(
+                        child, reason, await asyncio.to_thread(_dir_size, child)
+                    )
+                )
 
     sessions_root = Path(settings.OPENAGENTD_DATA_DIR) / SESSIONS_DIR
     for child in _safe_child_dirs(sessions_root):
@@ -199,14 +208,22 @@ async def cleanup_generated_artifacts(
                 if child.name in coding_session_ids
                 else "expired session artifacts"
             )
-            candidates.append(CleanupCandidate(child, reason, _dir_size(child)))
+            candidates.append(
+                CleanupCandidate(
+                    child, reason, await asyncio.to_thread(_dir_size, child)
+                )
+            )
         elif (
             child.name not in live_ids
             and _is_uuid(child.name)
             and _is_old_enough(child, cutoff)
         ):
             candidates.append(
-                CleanupCandidate(child, "orphaned session artifacts", _dir_size(child))
+                CleanupCandidate(
+                    child,
+                    "orphaned session artifacts",
+                    await asyncio.to_thread(_dir_size, child),
+                )
             )
 
     snapshot_root = Path(settings.OPENAGENTD_STATE_DIR) / "snapshot"
@@ -217,14 +234,22 @@ async def cleanup_generated_artifacts(
                 if child.name in coding_session_ids
                 else "expired session snapshots"
             )
-            candidates.append(CleanupCandidate(child, reason, _dir_size(child)))
+            candidates.append(
+                CleanupCandidate(
+                    child, reason, await asyncio.to_thread(_dir_size, child)
+                )
+            )
         elif (
             child.name not in live_ids
             and _is_uuid(child.name)
             and _is_old_enough(child, cutoff)
         ):
             candidates.append(
-                CleanupCandidate(child, "old session snapshots", _dir_size(child))
+                CleanupCandidate(
+                    child,
+                    "old session snapshots",
+                    await asyncio.to_thread(_dir_size, child),
+                )
             )
 
     worktrees_root = Path(settings.OPENAGENTD_DATA_DIR) / "worktrees"
@@ -238,7 +263,9 @@ async def cleanup_generated_artifacts(
             ):
                 candidates.append(
                     CleanupCandidate(
-                        child, "old managed git worktrees", _dir_size(child)
+                        child,
+                        "old managed git worktrees",
+                        await asyncio.to_thread(_dir_size, child),
                     )
                 )
 
@@ -266,7 +293,7 @@ async def cleanup_generated_artifacts(
             )
             await db.commit()
         for candidate in candidates:
-            shutil.rmtree(candidate.path, ignore_errors=True)
+            await asyncio.to_thread(shutil.rmtree, candidate.path, ignore_errors=True)
             deleted.append(candidate.path)
             if candidate.reason in {
                 "old session snapshots",

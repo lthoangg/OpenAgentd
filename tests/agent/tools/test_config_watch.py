@@ -23,6 +23,7 @@ from unittest.mock import patch
 import pytest
 
 from app.agent.sandbox import SandboxConfig, _sandbox_ctx, set_sandbox
+from app.core.config import settings
 from app.agent.tools.builtin.filesystem._config_watch import (
     _skills_roots,
     notify_fs_change,
@@ -391,3 +392,61 @@ class TestEndToEnd:
         second = discover_skills()
         assert "research" in second
         assert second["research"]["description"] == "Research workflow."
+
+
+# ---------------------------------------------------------------------------
+# _skills_roots — degraded resolution must not be silent
+#
+# Both root-resolution blocks are guarded by ``except Exception`` so that an
+# optional cache-invalidation path can never fail a write/edit/rm tool call.
+# The breadth is deliberate (settings construction and path resolution can
+# fail in several unrelated ways), but swallowing without a trace meant a
+# genuinely broken skills root silently stopped being watched — the cache then
+# only self-heals on mtime granularity, which is the exact failure this module
+# exists to avoid.
+# ---------------------------------------------------------------------------
+
+
+class TestSkillsRootsDegradedResolution:
+    @pytest.fixture
+    def caplog_loguru(self, caplog):
+        from loguru import logger
+
+        handler_id = logger.add(caplog.handler, format="{message}", level="DEBUG")
+        yield caplog
+        logger.remove(handler_id)
+
+    def test_global_root_failure_is_logged_and_degrades_gracefully(
+        self, sandbox, monkeypatch, caplog_loguru
+    ):
+        """A broken SKILLS_DIR still yields the project roots, and is logged."""
+        broken = property(lambda self: (_ for _ in ()).throw(OSError("bad mount")))
+        monkeypatch.setattr(type(settings), "SKILLS_DIR", broken, raising=False)
+
+        roots = _skills_roots()
+
+        # Project-local roots still resolved — graceful degradation preserved.
+        assert (sandbox / ".openagentd" / "skills").resolve() in roots
+        assert any(
+            "config_watch_global_skills_root_failed" in m
+            for m in caplog_loguru.messages
+        ), f"global-root failure was swallowed silently: {caplog_loguru.messages}"
+
+    def test_project_root_failure_is_logged_and_degrades_gracefully(
+        self, tmp_path, monkeypatch, caplog_loguru
+    ):
+        """A failing sandbox lookup still yields the global root, and is logged."""
+        global_dir = tmp_path / "global" / "skills"
+        monkeypatch.setattr("app.core.config.settings.SKILLS_DIR", str(global_dir))
+        monkeypatch.setattr(
+            "app.agent.sandbox.get_sandbox",
+            lambda: (_ for _ in ()).throw(RuntimeError("sandbox exploded")),
+        )
+
+        roots = _skills_roots()
+
+        assert global_dir.resolve() in roots
+        assert any(
+            "config_watch_project_skills_roots_failed" in m
+            for m in caplog_loguru.messages
+        ), f"project-root failure was swallowed silently: {caplog_loguru.messages}"

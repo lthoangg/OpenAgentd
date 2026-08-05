@@ -40,22 +40,34 @@ def _skills_roots() -> list[Path]:
     roots: list[Path] = []
 
     # Global skills dir from settings.
+    #
+    # The two guards below stay deliberately broad: resolving an *optional*
+    # cache-invalidation root must never fail the write/edit/rm call that
+    # triggered it, and both settings construction and path resolution can
+    # fail in unrelated ways (missing settings in some test contexts, an
+    # unreadable mount, a non-string SKILLS_DIR).  They are logged rather
+    # than silent, though — a root that quietly stops being watched leaves
+    # the discover cache self-healing only on filesystem mtime granularity,
+    # which is the precise failure this module exists to prevent.  DEBUG is
+    # enough: this runs once per successful filesystem mutation, not per read.
     try:
         from app.core.config import settings
 
         roots.append(Path(settings.SKILLS_DIR).resolve())
-    except Exception:  # noqa: BLE001 — settings missing in some test contexts
-        pass
+    except Exception as exc:  # noqa: BLE001 — see note above
+        logger.debug("config_watch_global_skills_root_failed error={!r}", exc)
 
     # Project-local roots — derived from the active sandbox workspace.
+    # ``get_sandbox()`` itself falls back to a default rather than raising, so
+    # a failure here means the import or path resolution broke.
     try:
         from app.agent.sandbox import get_sandbox
 
         workspace = get_sandbox().workspace_root.resolve()
         roots.append((workspace / ".openagentd" / "skills").resolve())
         roots.append((workspace / ".opencode" / "skills").resolve())
-    except Exception:  # noqa: BLE001 — no sandbox in some test contexts
-        pass
+    except Exception as exc:  # noqa: BLE001 — see note above
+        logger.debug("config_watch_project_skills_roots_failed error={!r}", exc)
 
     return roots
 

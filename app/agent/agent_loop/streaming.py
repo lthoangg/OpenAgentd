@@ -107,7 +107,11 @@ async def _interruptible_stream(
         waiter.cancel()
         try:
             await waiter
-        except (asyncio.CancelledError, BaseException):
+        except asyncio.CancelledError:
+            # We just cancelled it, so this is the expected outcome and the
+            # only thing ``Event.wait()`` can raise.  Deliberately *not*
+            # ``BaseException``: a ``SystemExit``/``KeyboardInterrupt``
+            # arriving during teardown must keep unwinding.
             pass
         # Best-effort: close the upstream generator so the provider's
         # ``async with httpx.AsyncClient`` exits and the socket is
@@ -116,8 +120,14 @@ async def _interruptible_stream(
         if aclose is not None:
             try:
                 await aclose()
-            except (asyncio.CancelledError, BaseException):
-                pass
+            except (asyncio.CancelledError, Exception) as exc:
+                # Provider cleanup can fail in many ordinary ways (httpx
+                # errors, "generator already running", a cancelled close).
+                # None of them may mask whatever is already propagating
+                # through this ``finally`` — but shutdown signals still must
+                # not be caught, hence ``Exception`` rather than
+                # ``BaseException``.
+                logger.debug("interruptible_stream_aclose_failed error={!r}", exc)
 
 
 def _merge_consecutive_user_messages(

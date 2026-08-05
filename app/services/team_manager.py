@@ -102,6 +102,61 @@ _blueprint_config_cache: OrderedDict[
     Path, tuple[tuple[int, int, int, int], AgentConfig]
 ] = OrderedDict()
 
+# ``validate_agents_dir`` result cache, keyed by resolved agents dir.  Stores
+# ``(signature, result)`` where *signature* is a cheap stat fingerprint of the
+# directory's top-level ``*.md`` files.  ``/health/ready`` polls this on every
+# request; without the cache each poll re-globbed and re-parsed every agent
+# file.  Only definitive answers are cached — parse failures are not, so a
+# broken config keeps surfacing instead of being masked.
+_AgentsDirSignature = tuple[tuple[str, int, int], ...] | None
+_agents_dir_validation: dict[Path, tuple[_AgentsDirSignature, bool]] = {}
+
+
+class _UnstableSignature:
+    """Marker for "the directory changed while being fingerprinted".
+
+    It must not be a plain value like ``()``: an empty tuple is the legitimate
+    signature of an *existing but empty* agents dir, so reusing it would let a
+    result captured mid-race be served later for a genuinely empty directory.
+    Results computed under this marker are never cached.
+    """
+
+
+_UNSTABLE = _UnstableSignature()
+
+
+def _agents_dir_signature(agents_dir: Path) -> _AgentsDirSignature | _UnstableSignature:
+    """Return a stat fingerprint of the agent ``.md`` files, or None if absent.
+
+    Mirrors exactly what :func:`~app.agent.loader.load_team_from_dir` reads:
+    the non-recursive ``*.md`` glob of *agents_dir*.  Name, mtime and size
+    together detect edits, additions, removals and renames without opening a
+    single file.  ``None`` means the directory does not exist, which is itself
+    a cacheable state.
+    """
+    if not agents_dir.is_dir():
+        return None
+    entries: list[tuple[str, int, int]] = []
+    for path in sorted(agents_dir.glob("*.md")):
+        try:
+            st = path.stat()
+        except OSError:
+            # Racing deletion — the directory is mid-change, so refuse to
+            # fingerprint it at all rather than emit a value that could later
+            # collide with a stable state.
+            return _UNSTABLE
+        entries.append((path.name, st.st_mtime_ns, st.st_size))
+    return tuple(entries)
+
+
+def reset_agents_dir_validation_cache() -> None:
+    """Drop all cached ``validate_agents_dir`` results.
+
+    Exposed for tests: the cache is module-level state and the suite runs in
+    random order across parallel workers.
+    """
+    _agents_dir_validation.clear()
+
 
 def _resolve_agents_dir() -> Path:
     path = Path(settings.AGENTS_DIR)
@@ -304,18 +359,44 @@ def validate_agents_dir() -> bool:
     Returns ``True`` when the directory contains a valid lead, ``False``
     when it is empty or missing.  Re-raises ``ValueError`` from the loader
     on parse errors.
+
+    ``/health/ready`` calls this on every poll, so the result is memoised
+    against a stat fingerprint of the agents directory (see
+    :func:`_agents_dir_signature`).  An unchanged config costs one glob plus a
+    stat per file instead of a full YAML parse of every agent; any real edit
+    changes the fingerprint and forces a re-parse on the next call.
     """
     agents_dir = _resolve_agents_dir()
+    raw_signature = _agents_dir_signature(agents_dir)
+    # ``None`` here means "do not cache this round" — distinct from a signature
+    # of ``None``, which legitimately means "directory does not exist".
+    signature = (
+        None if isinstance(raw_signature, _UnstableSignature) else (raw_signature,)
+    )
+    cached = _agents_dir_validation.get(agents_dir)
+    if signature is not None and cached is not None and cached[0] == signature[0]:
+        return cached[1]
+
     try:
         team = load_team_from_dir(agents_dir)
     except ValueError:
+        # Never cache a failure: the operator needs it to keep surfacing until
+        # the config is actually fixed.
+        _agents_dir_validation.pop(agents_dir, None)
         raise
     if team is None:
+        if signature is not None:
+            _agents_dir_validation[agents_dir] = (signature[0], False)
         logger.warning("team_manager_agents_dir_empty path={}", agents_dir)
         return False
-    logger.info(
+    # Success on a readiness probe is not newsworthy — the failure paths
+    # (``_agents_dir_empty`` above, and the ``ValueError`` the caller logs)
+    # are what an operator needs to see.
+    logger.debug(
         "team_manager_agents_dir_validated path={} lead={}", agents_dir, team.lead.name
     )
+    if signature is not None:
+        _agents_dir_validation[agents_dir] = (signature[0], True)
     return True
 
 

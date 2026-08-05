@@ -37,9 +37,16 @@ def _make_team(name: str = "lead") -> MagicMock:
 
 @pytest.fixture(autouse=True)
 async def reset_team_manager():
-    """Ensure team_manager._team is None before and after each test."""
+    """Ensure team_manager._team is None before and after each test.
+
+    Also clears the ``validate_agents_dir`` signature cache — it is
+    module-level state, and tests run in random order across parallel
+    workers, so a cached result must never leak between them.
+    """
     await team_manager.stop()
+    team_manager.reset_agents_dir_validation_cache()
     yield
+    team_manager.reset_agents_dir_validation_cache()
     await team_manager.stop()
 
 
@@ -699,3 +706,185 @@ def test_validate_workspace_expands_home_tilde(tmp_path):
     result = team_manager.validate_workspace("~")
     assert Path(result).is_absolute()
     assert Path(result).is_dir()
+
+
+# ── validate_agents_dir() caching ─────────────────────────────────────────────
+#
+# ``/health/ready`` calls validate_agents_dir() on every poll, and each call ran
+# a full load_team_from_dir() — directory glob + YAML parse of every agent .md.
+# In production that was ~3,346 full config parses per 2 days (~1/min) and about
+# 25% of all log volume. The result is cached against a cheap stat signature of
+# the agents dir so an unchanged config costs stats instead of parses, while any
+# real config edit is still picked up immediately.
+
+
+def _write_agents_dir(tmp_path, *, body: str = "role: lead\n") -> Path:
+    agents = tmp_path / "agents"
+    agents.mkdir()
+    (agents / "lead.md").write_text(f"---\nname: lead\n{body}---\n")
+    return agents
+
+
+def _count_loads(monkeypatch, result):
+    """Patch load_team_from_dir with a call counter; return the counter list."""
+    calls: list[Path] = []
+
+    def fake_load(path, **kwargs):
+        calls.append(path)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    monkeypatch.setattr("app.services.team_manager.load_team_from_dir", fake_load)
+    return calls
+
+
+async def test_validate_agents_dir_parses_once_when_config_unchanged(
+    tmp_path, monkeypatch
+):
+    """The hot path: repeated polls with an untouched config parse only once."""
+    from app.core.config import settings
+
+    agents = _write_agents_dir(tmp_path)
+    monkeypatch.setattr(settings, "AGENTS_DIR", str(agents))
+    calls = _count_loads(monkeypatch, _make_team())
+
+    assert team_manager.validate_agents_dir() is True
+    assert team_manager.validate_agents_dir() is True
+    assert team_manager.validate_agents_dir() is True
+    assert len(calls) == 1, "unchanged config must not be re-parsed"
+
+
+async def test_validate_agents_dir_reparses_when_file_edited(tmp_path, monkeypatch):
+    """A content edit must invalidate the cache immediately."""
+    import os
+
+    from app.core.config import settings
+
+    agents = _write_agents_dir(tmp_path)
+    monkeypatch.setattr(settings, "AGENTS_DIR", str(agents))
+    calls = _count_loads(monkeypatch, _make_team())
+
+    assert team_manager.validate_agents_dir() is True
+    lead = agents / "lead.md"
+    lead.write_text("---\nname: lead\nrole: lead\ndescription: changed\n---\n")
+    os.utime(lead, (1_000_000, 1_000_000))  # deterministic mtime change
+
+    assert team_manager.validate_agents_dir() is True
+    assert len(calls) == 2, "an edited agent file must trigger a re-parse"
+
+
+async def test_validate_agents_dir_reparses_when_file_added(tmp_path, monkeypatch):
+    """A newly added agent file must invalidate the cache."""
+    from app.core.config import settings
+
+    agents = _write_agents_dir(tmp_path)
+    monkeypatch.setattr(settings, "AGENTS_DIR", str(agents))
+    calls = _count_loads(monkeypatch, _make_team())
+
+    assert team_manager.validate_agents_dir() is True
+    (agents / "member.md").write_text("---\nname: member\nrole: member\n---\n")
+
+    assert team_manager.validate_agents_dir() is True
+    assert len(calls) == 2, "a new agent file must trigger a re-parse"
+
+
+async def test_validate_agents_dir_does_not_cache_parse_errors(tmp_path, monkeypatch):
+    """A broken config must keep raising, not be masked by a cached result."""
+    from app.core.config import settings
+
+    agents = _write_agents_dir(tmp_path)
+    monkeypatch.setattr(settings, "AGENTS_DIR", str(agents))
+    calls = _count_loads(monkeypatch, ValueError("bad config"))
+
+    for _ in range(3):
+        with pytest.raises(ValueError):
+            team_manager.validate_agents_dir()
+    assert len(calls) == 3, "parse failures must not be cached"
+
+
+async def test_validate_agents_dir_caches_false_result(tmp_path, monkeypatch):
+    """A missing/empty agents dir is a stable answer and is also cached."""
+    from app.core.config import settings
+
+    agents = _write_agents_dir(tmp_path)
+    monkeypatch.setattr(settings, "AGENTS_DIR", str(agents))
+    calls = _count_loads(monkeypatch, None)
+
+    assert team_manager.validate_agents_dir() is False
+    assert team_manager.validate_agents_dir() is False
+    assert len(calls) == 1
+
+
+async def test_validate_agents_dir_cache_converges_when_loader_creates_files(
+    tmp_path, monkeypatch
+):
+    """load_team_from_dir() writes builtin blueprints on first run.
+
+    That mutates the directory *after* the fingerprint was taken, so the next
+    call legitimately misses.  What must not happen is permanent thrashing —
+    creation is idempotent, so the cache has to settle.
+    """
+    from app.core.config import settings
+
+    agents = _write_agents_dir(tmp_path)
+    monkeypatch.setattr(settings, "AGENTS_DIR", str(agents))
+
+    calls: list[Path] = []
+    team = _make_team()
+
+    def fake_load(path, **kwargs):
+        calls.append(path)
+        # Mimic ensure_builtin_agent_blueprints(): idempotent file creation.
+        created = agents / "builtin.md"
+        if not created.exists():
+            created.write_text("---\nname: builtin\nrole: member\n---\n")
+        return team
+
+    monkeypatch.setattr("app.services.team_manager.load_team_from_dir", fake_load)
+
+    assert team_manager.validate_agents_dir() is True  # parses, creates file
+    assert team_manager.validate_agents_dir() is True  # fingerprint moved once
+    assert team_manager.validate_agents_dir() is True  # must be a cache hit now
+    assert team_manager.validate_agents_dir() is True
+    assert len(calls) == 2, f"cache must settle after creation, got {len(calls)} parses"
+
+
+async def test_validate_agents_dir_does_not_cache_unstable_fingerprint(
+    tmp_path, monkeypatch
+):
+    """A file vanishing mid-fingerprint must not produce a cacheable signature.
+
+    An empty agents dir legitimately fingerprints as ``()``.  If a racing
+    deletion also produced ``()``, the result captured during the race would
+    later be served for a genuinely empty directory — reporting the config
+    loadable when it is not.  Such rounds must simply not be cached.
+    """
+    from pathlib import Path as _Path
+
+    from app.core.config import settings
+
+    agents = _write_agents_dir(tmp_path)
+    monkeypatch.setattr(settings, "AGENTS_DIR", str(agents))
+    calls = _count_loads(monkeypatch, _make_team())
+
+    real_stat = _Path.stat
+    boom = {"n": 2}
+
+    def flaky_stat(self, *a, **kw):
+        if self.suffix == ".md" and boom["n"] > 0:
+            boom["n"] -= 1
+            raise OSError("vanished mid-scan")
+        return real_stat(self, *a, **kw)
+
+    monkeypatch.setattr(_Path, "stat", flaky_stat)
+
+    # Two racing rounds — neither may be cached.
+    assert team_manager.validate_agents_dir() is True
+    assert team_manager.validate_agents_dir() is True
+    assert len(calls) == 2, "unstable fingerprints must never be cached"
+
+    # Directory settles: one more parse, then the cache engages normally.
+    assert team_manager.validate_agents_dir() is True
+    assert team_manager.validate_agents_dir() is True
+    assert len(calls) == 3, "cache must engage once the fingerprint is stable"

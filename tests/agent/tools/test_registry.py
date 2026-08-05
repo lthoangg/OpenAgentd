@@ -952,3 +952,96 @@ async def test_error_message_field_validator():
     assert "searcher" in msg
     assert "query must not be blank" in msg
     assert "pydantic.dev" not in msg
+
+
+# ---------------------------------------------------------------------------
+# LLM-emitted malformed numeric strings
+#
+# Regression guard for a production failure: models emit a trailing comma
+# *inside* the JSON string value for numeric args, e.g.
+#   {"path": "app/agent/permission.py", "offset": "180, ", "limit": 120}
+# Pydantic coerces "300" happily but rejects "180, ", so a whole turn was
+# burned on `Invalid arguments for tool 'read': offset: Input should be a
+# valid integer`. Numeric fields must tolerate surrounding whitespace and
+# trailing commas without weakening real type validation.
+# ---------------------------------------------------------------------------
+
+
+async def test_int_arg_accepts_numeric_string_with_trailing_comma():
+    """The exact production payload: offset="180, " coerces to 180."""
+
+    @tool
+    def read_at(
+        path: Annotated[str, Field(description="Path.")],
+        offset: Annotated[int, Field(description="Start line.")] = 1,
+    ) -> tuple[str, int]:
+        """Read at an offset."""
+        return path, offset
+
+    assert await read_at.arun(path="a.py", offset="180, ") == ("a.py", 180)
+
+
+async def test_int_arg_accepts_numeric_string_with_trailing_whitespace():
+    """Surrounding whitespace alone is also tolerated."""
+
+    @tool
+    def offset_only(
+        offset: Annotated[int, Field(description="Start line.")] = 1,
+    ) -> int:
+        """Take an offset."""
+        return offset
+
+    assert await offset_only.arun(offset="  405 ") == 405
+
+
+async def test_float_arg_accepts_numeric_string_with_trailing_comma():
+    """Coercion is not int-only — floats get the same treatment."""
+
+    @tool
+    def scale(
+        factor: Annotated[float, Field(description="Factor.")] = 1.0,
+    ) -> float:
+        """Scale."""
+        return factor
+
+    assert await scale.arun(factor="1.5, ") == 1.5
+
+
+async def test_plain_numeric_string_still_coerces():
+    """Regression guard: ordinary numeric strings keep working."""
+
+    @tool
+    def limited(
+        limit: Annotated[int, Field(description="Limit.")] = 10,
+    ) -> int:
+        """Limit."""
+        return limit
+
+    assert await limited.arun(limit="300") == 300
+
+
+async def test_non_numeric_string_still_raises_tool_argument_error():
+    """Sanitising must not swallow genuinely invalid values."""
+
+    @tool
+    def strict(
+        x: Annotated[int, Field(description="An integer.")],
+    ) -> int:
+        """Strict."""
+        return x
+
+    with pytest.raises(ToolArgumentError):
+        await strict.arun(x="not_a_number, ")
+
+
+async def test_string_arg_with_trailing_comma_is_left_untouched():
+    """Only numeric fields are sanitised — string values stay verbatim."""
+
+    @tool
+    def echo(
+        text: Annotated[str, Field(description="Text.")],
+    ) -> str:
+        """Echo."""
+        return text
+
+    assert await echo.arun(text="180, ") == "180, "

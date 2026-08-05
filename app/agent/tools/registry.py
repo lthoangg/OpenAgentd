@@ -85,6 +85,51 @@ from app.agent.errors import (
 )
 from app.agent.tools.schema import sanitize_tool_schema
 
+# Pydantic error codes for "this string is not a number".  Only fields that
+# failed with one of these are candidates for numeric repair.
+_NUMERIC_PARSING_ERRORS = frozenset({"int_parsing", "float_parsing"})
+
+
+def _repair_numeric_strings(
+    llm_kwargs: dict[str, Any], exc: ValidationError
+) -> dict[str, Any] | None:
+    """Return ``llm_kwargs`` with malformed numeric strings cleaned, or None.
+
+    Models routinely emit a trailing comma *inside* the JSON string value of a
+    numeric argument (observed in production: ``{"offset": "180, "}``).
+    Pydantic coerces ``"300"`` but rejects ``"180, "``, which burns a whole
+    agent turn on a re-ask.
+
+    This runs **only** on the validation-failure path, and only rewrites
+    top-level fields Pydantic itself flagged as ``int_parsing`` /
+    ``float_parsing``.  String fields and otherwise-valid arguments are never
+    touched, so a genuinely non-numeric value (``"abc, "``) still fails.
+
+    Returns ``None`` when there is nothing worth retrying, so the caller can
+    raise the original error without a second validation pass.
+    """
+    repaired = dict(llm_kwargs)
+    changed = False
+    for error in exc.errors(include_url=False):
+        if error.get("type") not in _NUMERIC_PARSING_ERRORS:
+            continue
+        loc: tuple[Any, ...] = tuple(error.get("loc") or ())
+        # Only simple top-level scalar fields — nested / sequence coercion is
+        # ambiguous and not something we have seen models get wrong.
+        if len(loc) != 1:
+            continue
+        field = loc[0]
+        if not isinstance(field, str):
+            continue
+        value = repaired.get(field)
+        if not isinstance(value, str):
+            continue
+        cleaned = value.strip().rstrip(",").strip()
+        if cleaned and cleaned != value:
+            repaired[field] = cleaned
+            changed = True
+    return repaired if changed else None
+
 
 class InjectedArg:
     """Marker: annotate a tool parameter with this to hide it from the LLM schema
@@ -263,9 +308,24 @@ class Tool:
         try:
             validated_model = self._model(**llm_kwargs)
         except ValidationError as exc:
-            raise ToolArgumentError(
-                f"Invalid arguments for tool '{self.name}': {format_validation_error(exc)}"
-            ) from exc
+            repaired = _repair_numeric_strings(llm_kwargs, exc)
+            if repaired is None:
+                raise ToolArgumentError(
+                    f"Invalid arguments for tool '{self.name}': {format_validation_error(exc)}"
+                ) from exc
+            try:
+                validated_model = self._model(**repaired)
+            except ValidationError:
+                # The repair did not help — report the *original* error so the
+                # message describes what the LLM actually sent.
+                raise ToolArgumentError(
+                    f"Invalid arguments for tool '{self.name}': {format_validation_error(exc)}"
+                ) from exc
+            logger.debug(
+                "tool_arun_repaired_numeric_args tool={} fields={}",
+                self.name,
+                [k for k, v in repaired.items() if llm_kwargs.get(k) != v],
+            )
         if self._model_param is not None:
             # The function wants the validated model as a single argument.
             validated: dict[str, Any] = {self._model_param: validated_model}

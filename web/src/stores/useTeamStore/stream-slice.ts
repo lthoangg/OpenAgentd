@@ -306,7 +306,18 @@ export const createStreamSlice: StateCreator<
       clearReconnectTimer(draft)
     })
     const abort = new AbortController()
-    set((draft) => { draft.isConnected = true; draft._abortController = abort })
+    set((draft) => {
+      draft.isConnected = true
+      draft._abortController = abort
+      // Every attach replays the accumulated turn text as one snapshot chunk
+      // per kind before live events resume, so re-arm the replay guard for all
+      // known streams. Without this a reconnect mid-turn doubles the visible
+      // text; with it armed *only* here, ordinary deltas that happen to repeat
+      // their prefix are no longer mistaken for replays and dropped.
+      for (const stream of Object.values(draft.agentStreams)) {
+        stream._replayPending = { message: true, thinking: true }
+      }
+    })
 
     // Providers can emit dozens of text/tool-output deltas per second. Applying
     // each in its own immer transaction forces the full chat selector/render

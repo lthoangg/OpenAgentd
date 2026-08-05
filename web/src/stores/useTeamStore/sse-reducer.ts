@@ -78,10 +78,20 @@ function appendStreamingText(
   ensureAgent(draft, agent)
   const stream = draft.agentStreams[agent]
   if (stream._turnStartedAt === undefined || stream._turnStartedAt === null) stream._turnStartedAt = Date.now()
+  // Only the first chunk of each kind after an attach can be a replay
+  // snapshot; consume the flag so later deltas concatenate unconditionally
+  // (see `_replayPending` in types.ts and `isReplaySnapshot` in blocks.ts).
+  //
+  // Absent flag (a stream built outside `createDefaultAgentStream`, e.g. by a
+  // test fixture) defaults to *not* deduping: the worst case is then visibly
+  // doubled text that a reload clears, rather than silently swallowed tokens.
+  if (!stream._replayPending) stream._replayPending = { message: false, thinking: false }
+  const replayPossible = stream._replayPending[kind]
+  if (replayPossible) stream._replayPending[kind] = false
   if (kind === 'thinking') {
-    stream.currentBlocks = appendThinking(stream.currentBlocks, text)
+    stream.currentBlocks = appendThinking(stream.currentBlocks, text, replayPossible)
   } else {
-    stream.currentBlocks = appendText(stream.currentBlocks, text)
+    stream.currentBlocks = appendText(stream.currentBlocks, text, replayPossible)
     const last = stream.currentBlocks[stream.currentBlocks.length - 1]
     if (last?.type === 'text') {
       if (!last.startedAt) last.startedAt = Date.now()

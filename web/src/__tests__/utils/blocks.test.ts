@@ -151,18 +151,25 @@ describe("appendThinking", () => {
     // The backend resends the *entire* accumulated turn text as one chunk
     // when a client (re)attaches mid-stream (see memory_stream_store.attach).
     // A live delta is a short new fragment; a replay chunk already contains
-    // everything rendered so far as a prefix.
+    // everything rendered so far as a prefix. The caller signals that an
+    // attach just happened via the third argument.
     const blocks: ContentBlock[] = [{ id: "t1", type: "thinking", content: "Let me check" }];
-    const result = appendThinking(blocks, "Let me check the docs first");
+    const result = appendThinking(blocks, "Let me check the docs first", true);
     expect(result).toHaveLength(1);
     expect(result[0].content).toBe("Let me check the docs first");
   });
 
   it("does not double an exact-equal replay when a reconnect lands with no new tokens since disconnect", () => {
     const blocks: ContentBlock[] = [{ id: "t1", type: "thinking", content: "Checking the docs" }];
-    const result = appendThinking(blocks, "Checking the docs");
+    const result = appendThinking(blocks, "Checking the docs", true);
     expect(result).toHaveLength(1);
     expect(result[0].content).toBe("Checking the docs");
+  });
+
+  it("appends a genuine delta that repeats the accumulated thinking when no attach is pending", () => {
+    const blocks: ContentBlock[] = [{ id: "t1", type: "thinking", content: "Hmm" }];
+    const result = appendThinking(blocks, "Hmm");
+    expect(result[0].content).toBe("HmmHmm");
   });
 
   it("preserves existing blocks", () => {
@@ -215,7 +222,7 @@ describe("appendText", () => {
     // (as a live delta would) doubles everything already rendered — this is
     // the "duplicate messages during streaming, fixed by reload" report.
     const blocks: ContentBlock[] = [{ id: "t1", type: "text", content: "The answer is" }];
-    const result = appendText(blocks, "The answer is 42.");
+    const result = appendText(blocks, "The answer is 42.", true);
     expect(result).toHaveLength(1);
     expect(result[0].content).toBe("The answer is 42.");
   });
@@ -232,9 +239,35 @@ describe("appendText", () => {
     // client already rendered, not longer. A strict length > check still
     // doubles this case; the fix must treat equal-and-matching as a replay too.
     const blocks: ContentBlock[] = [{ id: "t1", type: "text", content: "Hello there" }];
-    const result = appendText(blocks, "Hello there");
+    const result = appendText(blocks, "Hello there", true);
     expect(result).toHaveLength(1);
     expect(result[0].content).toBe("Hello there");
+  });
+
+  // A prefix match is ambiguous: it means "replay" only when an attach just
+  // happened. Outside that window these are genuine deltas, and treating them
+  // as replays silently swallowed real tokens — a `---` rule streamed as three
+  // `-` chunks rendered as `-`, and `**bold**` lost a marker.
+  it("appends genuine deltas that repeat the accumulated text when no attach is pending", () => {
+    const cases: Array<[string, string, string]> = [
+      ["*", "*", "**"],
+      ["\n", "\n", "\n\n"],
+      ["  ", "  ", "    "],
+      ["ha", "ha", "haha"],
+      ["-", "- ", "-- "],
+      ["a", "ab", "aab"],
+    ];
+    for (const [existing, delta, expected] of cases) {
+      const blocks: ContentBlock[] = [{ id: "t1", type: "text", content: existing }];
+      expect(appendText(blocks, delta)[0].content).toBe(expected);
+    }
+  });
+
+  it("builds a markdown horizontal rule from three single-dash deltas", () => {
+    let blocks = appendText([], "-");
+    blocks = appendText(blocks, "-");
+    blocks = appendText(blocks, "-");
+    expect(blocks[0].content).toBe("---");
   });
 });
 

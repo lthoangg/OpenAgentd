@@ -40,78 +40,97 @@ export function latestDirectUserBlockIdFromParts(
   return latestDirectUserBlockId(currentBlocks) ?? latestDirectUserBlockId(blocks)
 }
 
-/** True when `incoming` is a reconnect replay of everything already in
- *  `existing` rather than the next live delta fragment. The backend resends
- *  the *whole* accumulated turn text as one chunk whenever a client
- *  (re)attaches mid-stream (memory_stream_store.attach) — a genuine live
- *  delta is a short new fragment that does not itself start with everything
- *  rendered so far. Blindly concatenating the replay (as a delta would)
- *  doubles the visible text on every reconnect; this is the "duplicate
- *  messages during streaming, fixed only by reload" failure mode.
+/**
+ * True when `incoming` is a reconnect replay of everything already in
+ * `existing` rather than the next live delta fragment.
  *
- *  Uses `>=`, not `>`: a reconnect with no new tokens generated since the
- *  disconnect replays a snapshot that is *exactly* equal to what the client
- *  already has, not longer — a strict `>` still doubles that case. */
+ * The backend resends the *whole* accumulated turn text as one chunk when a
+ * client (re)attaches mid-stream (`memory_stream_store.attach` emits at most
+ * one `ThinkingEvent` and one `MessageEvent` per agent, each a full snapshot,
+ * before any live events). Blindly concatenating that replay doubles the
+ * visible text — the "duplicate messages during streaming, fixed only by
+ * reload" failure mode.
+ *
+ * Uses `>=`, not `>`: a reconnect with no new tokens generated since the
+ * disconnect replays a snapshot *exactly* equal to what the client already
+ * has, not longer — a strict `>` still doubles that case.
+ *
+ * IMPORTANT: this test is only sound when a replay is actually possible.
+ * A prefix match is ambiguous — a genuine delta can also start with the
+ * accumulated content (`"-"` + `"-"`, `"*"` + `"*"`, `"\n"` + `"\n"` …), and
+ * treating those as replays silently *drops* real tokens, corrupting the
+ * rendered markdown. Callers must therefore pass `replayPossible` and only
+ * set it for the first chunk of each kind after an attach. See
+ * `appendStreamingText` in `sse-reducer.ts`.
+ */
 function isReplaySnapshot(existing: string, incoming: string): boolean {
   return incoming.length >= existing.length && incoming.startsWith(existing)
 }
 
-export function appendThinking(
+/**
+ * Merge a streamed `text`/`thinking` chunk into `blocks`.
+ *
+ * Shared by `appendText` and `appendThinking` — the two differ only in the
+ * block type they accumulate into.
+ */
+function appendStreamed(
   blocks: ContentBlock[],
-  text: string
+  type: 'text' | 'thinking',
+  text: string,
+  replayPossible: boolean,
 ): ContentBlock[] {
-  const lastBlock = blocks[blocks.length - 1]
+  const lastIdx = blocks.length - 1
+  const last = blocks[lastIdx]
 
-  if (lastBlock && lastBlock.type === 'thinking') {
-    // Reconnect replay dedup — see isReplaySnapshot.
-    const content = isReplaySnapshot(lastBlock.content, text) ? text : lastBlock.content + text
-    return [
-      ...blocks.slice(0, -1),
-      {
-        ...lastBlock,
-        content,
-      },
-    ]
+  // Common case: keep filling the open block of this kind.
+  if (last && last.type === type) {
+    const next = [...blocks]
+    next[lastIdx] = {
+      ...last,
+      content: replayPossible && isReplaySnapshot(last.content, text) ? text : last.content + text,
+    }
+    return next
   }
 
-  // Create new thinking block
-  return [
-    ...blocks,
-    {
-      id: generateBlockId(),
-      type: 'thinking',
-      content: text,
-    },
-  ]
+  // Attach replay whose snapshot belongs to an *earlier* block of this kind in
+  // the same turn. The backend replays the full accumulated thinking and the
+  // full accumulated content as one chunk each, but a turn that emitted
+  // thinking and then text ends with a `text` block — so the thinking snapshot
+  // finds the wrong block type at the tail. Appending it there duplicated the
+  // whole turn on every mid-turn reconnect (the dedup above could never fire).
+  // Rewriting the matching block in place is only safe because `replayPossible`
+  // marks a real attach: during live streaming a thinking chunk arriving after
+  // text is a legitimately *new* reasoning block and must not be merged back.
+  if (replayPossible) {
+    for (let i = lastIdx; i >= 0; i--) {
+      const block = blocks[i]
+      // A user block ends the turn the snapshot describes — never reach past it.
+      if (block.type === 'user') break
+      if (block.type !== type) continue
+      if (!isReplaySnapshot(block.content, text)) break
+      const next = [...blocks]
+      next[i] = { ...block, content: text }
+      return next
+    }
+  }
+
+  return [...blocks, { id: generateBlockId(), type, content: text }]
+}
+
+export function appendThinking(
+  blocks: ContentBlock[],
+  text: string,
+  replayPossible = false,
+): ContentBlock[] {
+  return appendStreamed(blocks, 'thinking', text, replayPossible)
 }
 
 export function appendText(
   blocks: ContentBlock[],
-  text: string
+  text: string,
+  replayPossible = false,
 ): ContentBlock[] {
-  const lastBlock = blocks[blocks.length - 1]
-
-  if (lastBlock && lastBlock.type === 'text') {
-    // Reconnect replay dedup — see isReplaySnapshot.
-    const content = isReplaySnapshot(lastBlock.content, text) ? text : lastBlock.content + text
-    return [
-      ...blocks.slice(0, -1),
-      {
-        ...lastBlock,
-        content,
-      },
-    ]
-  }
-
-  // Create new text block
-  return [
-    ...blocks,
-    {
-      id: generateBlockId(),
-      type: 'text',
-      content: text,
-    },
-  ]
+  return appendStreamed(blocks, 'text', text, replayPossible)
 }
 
 /** tool_call event — first delta appearance, no args yet. Creates a pending card.

@@ -27,4 +27,8 @@ export const createDefaultAgentStream = (): AgentStream => ({
   revertedCount: 0,
   revertedMessages: [],
   _revertedSuffix: [],
+  // A stream created *during* an attach replay may legitimately receive a
+  // snapshot as its first chunk. Harmless when it doesn't: the block is empty,
+  // so replacing "" with the chunk and appending to "" are identical.
+  _replayPending: { message: true, thinking: true },
 })

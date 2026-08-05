@@ -55,6 +55,20 @@ export interface AgentStream {
    * client/server clock skew respectively).
    */
   _unsyncedBlockIds?: string[]
+  /**
+   * Per-kind "the next streamed chunk may be a full replay snapshot" flag.
+   *
+   * ``memory_stream_store.attach`` replays the whole accumulated turn text as
+   * a single ``thinking`` / ``message`` event (at most one of each per agent)
+   * before forwarding live events. Only for that first chunk may the reducer
+   * treat a prefix match as a replay to be *replaced*; for every later chunk a
+   * prefix match is just a genuine delta that happens to repeat what came
+   * before (``"-"`` then ``"-"``), and replacing it would drop real tokens.
+   *
+   * Set on every ``connectStream`` (each attach means a fresh replay), then
+   * cleared per kind as soon as that kind's first chunk lands.
+   */
+  _replayPending?: { message: boolean; thinking: boolean }
 }
 
 export interface TeamStoreState {

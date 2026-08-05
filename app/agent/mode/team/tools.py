@@ -150,6 +150,12 @@ def make_team_message_tool(
         if errors:
             return " | ".join(errors)
 
+        # Dedupe post-resolution: distinct requested names (e.g. a bare
+        # blueprint name and its resolved instance handle) can resolve to
+        # the same recipient. Without this, duplicates would be delivered
+        # and persisted once per occurrence in `to`.
+        resolved = list(dict.fromkeys(resolved))
+
         # Strip self-prefix in both "[name]: " and "name: " forms (prevents double-prefix)
         stripped = re.sub(r"^\[?" + re.escape(agent_name) + r"\]?:\s*", "", content)
         formatted = f"[{agent_name}]: {stripped}"

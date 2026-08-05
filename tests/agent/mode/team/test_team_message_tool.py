@@ -155,6 +155,18 @@ class TestTeamMessageTool:
         assert "Message sent" in result
         assert "bob" in result
 
+    async def test_duplicate_recipient_delivered_once(self):
+        """Duplicate names in `to` are deduped: bob receives one message, not two."""
+        mb = _make_mailbox("alice", "bob")
+        tool = make_team_message_tool(mb, agent_name="alice")
+
+        result = await tool(to=["bob", "bob"], content="hello")
+
+        msg = await mb.receive("bob")
+        assert msg.content == "[alice]: hello"
+        assert mb.inbox_empty("bob")
+        assert result.count("bob") == 1
+
     async def test_multicast_returns_all_recipients(self):
         """Multicast returns all recipients in success message."""
         mb = _make_mailbox("lead", "researcher", "writer")

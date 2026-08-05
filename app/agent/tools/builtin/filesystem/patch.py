@@ -202,10 +202,6 @@ def _lines_to_text(lines: list[str]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _apply_chunks(content: str, chunks: list[Chunk], path: str) -> str:
-    return _apply_chunks_with_meta(content, chunks, path)[0]
-
-
 def _find_line_matches(
     content_lines: list[str], old_lines: list[str], *, trimmed: bool
 ) -> list[int]:

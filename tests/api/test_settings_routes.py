@@ -26,6 +26,16 @@ def _make_app() -> FastAPI:
     return app
 
 
+def _provider_cached_models(provider_id: str) -> list[str]:
+    from app.core.runtime_settings import ProviderUiSettings, load_runtime_settings
+
+    return (
+        load_runtime_settings()
+        .providers.get(provider_id, ProviderUiSettings())
+        .cached_models
+    )
+
+
 @pytest.fixture
 def isolated_config(tmp_path: Path):
     """Point load_config / save_config at a tmp ``sandbox.yaml``."""
@@ -535,7 +545,7 @@ def test_save_provider_supports_plugin_credentials(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Plugin providers persist declared credential fields, including extras."""
-    from app.agent.providers.plugin_registry import clear_provider_plugin_cache
+    import app.agent.providers.plugin_registry as plugin_registry
 
     plugin_dir = tmp_path / "plugins"
     plugin_dir.mkdir()
@@ -573,7 +583,7 @@ provider = ProviderPlugin(
     )
     monkeypatch.delenv("SAMPLE_KEY", raising=False)
     monkeypatch.delenv("SAMPLE_BASE_URL", raising=False)
-    clear_provider_plugin_cache()
+    plugin_registry._PLUGIN_CACHE = None
 
     try:
         client = TestClient(_make_app())
@@ -599,7 +609,7 @@ provider = ProviderPlugin(
             "SAMPLE_BASE_URL",
         ]
     finally:
-        clear_provider_plugin_cache()
+        plugin_registry._PLUGIN_CACHE = None
 
 
 def test_save_provider_404_for_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1370,8 +1380,6 @@ def test_save_provider_visible_models_rejects_unknown_provider() -> None:
 def test_list_provider_models_persists_cached_models_for_saved_credentials(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    from app.core.runtime_settings import provider_cached_models
-
     monkeypatch.setattr(
         settings_routes.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path)
     )
@@ -1392,7 +1400,7 @@ def test_list_provider_models_persists_cached_models_for_saved_credentials(
 
     assert response.status_code == 200
     assert response.json()["models"] == ["gpt-5", "gpt-5-mini"]
-    assert provider_cached_models("openai") == ["gpt-5", "gpt-5-mini"]
+    assert _provider_cached_models("openai") == ["gpt-5", "gpt-5-mini"]
 
 
 def test_list_provider_models_copilot_uses_normalized_catalog(
@@ -1423,8 +1431,6 @@ def test_list_provider_models_copilot_uses_normalized_catalog(
 def test_list_provider_models_does_not_persist_candidate_credentials(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    from app.core.runtime_settings import provider_cached_models
-
     monkeypatch.setattr(
         settings_routes.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path)
     )
@@ -1445,7 +1451,7 @@ def test_list_provider_models_does_not_persist_candidate_credentials(
 
     assert response.status_code == 200
     assert response.json()["models"] == ["candidate-model"]
-    assert provider_cached_models("openai") == []
+    assert _provider_cached_models("openai") == []
 
 
 def test_save_provider_clears_cached_models(
@@ -1453,7 +1459,6 @@ def test_save_provider_clears_cached_models(
 ) -> None:
     from app.core.runtime_settings import (
         RuntimeSettings,
-        provider_cached_models,
         save_runtime_settings,
     )
 
@@ -1479,7 +1484,7 @@ def test_save_provider_clears_cached_models(
     )
 
     assert response.status_code == 200
-    assert provider_cached_models("openai") == []
+    assert _provider_cached_models("openai") == []
 
 
 # ── /agents/registry — cache-first provider models ─────────────────────────
@@ -1615,7 +1620,6 @@ def test_registry_warms_cached_models_for_configured_providers(
     from fastapi import FastAPI
 
     from app.api.routes.agents import router as agents_router
-    from app.core.runtime_settings import provider_cached_models
 
     monkeypatch.setattr(
         settings_routes.settings, "OPENAGENTD_CONFIG_DIR", str(tmp_path)
@@ -1638,7 +1642,7 @@ def test_registry_warms_cached_models_for_configured_providers(
     ids = {m["id"] for m in response.json()["models"]}
     assert "openai:gpt-5" in ids
     assert "openai:gpt-5-mini" in ids
-    assert provider_cached_models("openai") == ["gpt-5", "gpt-5-mini"]
+    assert _provider_cached_models("openai") == ["gpt-5", "gpt-5-mini"]
 
 
 def test_get_lsp_tools_reports_managed_component_state(monkeypatch) -> None:

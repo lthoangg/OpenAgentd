@@ -11,9 +11,7 @@ from app.agent.errors import (
     ProviderRateLimitError,
     ProviderRequestError,
     RoutingError,
-    SandboxCommandError,
     SandboxError,
-    SandboxPathError,
     SessionError,
     SessionNotFoundError,
     ToolArgumentError,
@@ -38,8 +36,6 @@ class TestExceptionHierarchy:
             ToolArgumentError,
             ToolExecutionError,
             SandboxError,
-            SandboxPathError,
-            SandboxCommandError,
             SessionError,
             SessionNotFoundError,
             AgentConfigError,
@@ -78,15 +74,9 @@ class TestExceptionHierarchy:
         assert issubclass(ToolArgumentError, ToolError)
         assert issubclass(ToolExecutionError, ToolError)
 
-    def test_sandbox_subtypes(self):
-        assert issubclass(SandboxPathError, SandboxError)
-        assert issubclass(SandboxCommandError, SandboxError)
-
     def test_sandbox_also_permission_error(self):
         """SandboxError inherits from both OpenAgentdError and PermissionError."""
         assert issubclass(SandboxError, PermissionError)
-        assert issubclass(SandboxPathError, PermissionError)
-        assert issubclass(SandboxCommandError, PermissionError)
 
     def test_session_subtypes(self):
         assert issubclass(SessionNotFoundError, SessionError)

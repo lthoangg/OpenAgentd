@@ -4,10 +4,8 @@ from __future__ import annotations
 
 import asyncio
 
-from app.agent.agent_loop.tool_dispatch import (
-    active_detached_tool_count,
-    gather_or_cancel,
-)
+from app.agent.agent_loop import tool_dispatch
+from app.agent.agent_loop.tool_dispatch import gather_or_cancel
 from app.agent.schemas.chat import FunctionCall, ToolCall
 
 
@@ -50,11 +48,11 @@ async def test_interrupt_returns_when_tool_swallows_cancellation(monkeypatch):
         (_tool_call(), "Cancellation requested; tool is still stopping.")
     ]
     assert started.is_set()
-    assert active_detached_tool_count() == 1
+    assert len(tool_dispatch._detached_tool_tasks) == 1
     release.set()
     await finished.wait()
     await asyncio.sleep(0)
-    assert active_detached_tool_count() == 0
+    assert len(tool_dispatch._detached_tool_tasks) == 0
 
 
 async def test_parent_cancellation_cancels_inflight_tools():

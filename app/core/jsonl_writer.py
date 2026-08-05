@@ -48,11 +48,6 @@ def daily_partition(ts: datetime) -> str:
     return ts.astimezone(timezone.utc).strftime("%Y-%m-%d")
 
 
-def monthly_partition(ts: datetime) -> str:
-    """``2026-04`` — one file per UTC month."""
-    return ts.astimezone(timezone.utc).strftime("%Y-%m")
-
-
 # ── Writer ────────────────────────────────────────────────────────────────────
 
 
@@ -73,8 +68,7 @@ class JsonlBatchWriter:
     Args:
         root: Directory where partitioned files live.  Created on first write.
         partition_fn: Maps a UTC ``datetime`` to a partition key.  Use
-            :func:`hourly_partition`, :func:`daily_partition`, or
-            :func:`monthly_partition`.
+            :func:`hourly_partition` or :func:`daily_partition`.
         max_queue: Maximum pending records.  On overflow records are dropped
             and ``on_drop`` is invoked (one call per dropped record).
         batch_size: Flush when this many records are buffered.

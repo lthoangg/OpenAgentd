@@ -135,12 +135,6 @@ def name(shell_path: str | None = None) -> str:
     return _shell_name(shell_path or acceptable())
 
 
-def is_posix(shell_path: str | None = None) -> bool:
-    """True if the shell speaks POSIX sh syntax."""
-    n = name(shell_path)
-    return n in {"bash", "dash", "ksh", "sh", "zsh"}
-
-
 # ── argv construction ───────────────────────────────────────────────────────
 # Mirrors opencode's ``shell.ts`` (packages/opencode/src/shell/shell.ts).
 #

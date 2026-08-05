@@ -17,8 +17,6 @@ Hierarchy::
     │   ├── ToolArgumentError
     │   └── ToolExecutionError
     ├── SandboxError (also inherits PermissionError)
-    │   ├── SandboxPathError
-    │   └── SandboxCommandError
     ├── SessionError
     │   └── SessionNotFoundError
     ├── AgentConfigError
@@ -152,14 +150,6 @@ class SandboxError(OpenAgentdError, PermissionError):
     Inherits from both ``OpenAgentdError`` (domain hierarchy) and
     ``PermissionError`` (backward compatibility with existing catches).
     """
-
-
-class SandboxPathError(SandboxError):
-    """Path escapes the workspace or is a symlink."""
-
-
-class SandboxCommandError(SandboxError):
-    """Command is blocked by the sandbox denylist."""
 
 
 # ── Session errors ────────────────────────────────────────────────────────

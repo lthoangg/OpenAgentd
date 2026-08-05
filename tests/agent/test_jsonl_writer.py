@@ -13,7 +13,6 @@ from app.core.jsonl_writer import (
     JsonlBatchWriter,
     daily_partition,
     hourly_partition,
-    monthly_partition,
 )
 
 
@@ -28,11 +27,6 @@ def test_hourly_partition_format():
 def test_daily_partition_format():
     ts = datetime(2026, 4, 17, 14, 30, tzinfo=timezone.utc)
     assert daily_partition(ts) == "2026-04-17"
-
-
-def test_monthly_partition_format():
-    ts = datetime(2026, 4, 17, 14, 30, tzinfo=timezone.utc)
-    assert monthly_partition(ts) == "2026-04"
 
 
 def test_partition_converts_non_utc_to_utc():
@@ -250,4 +244,3 @@ def test_partition_functions_idempotent(ratio_text: str):
     ts = datetime.now(timezone.utc)
     assert hourly_partition(ts) == hourly_partition(ts)
     assert daily_partition(ts) == daily_partition(ts)
-    assert monthly_partition(ts) == monthly_partition(ts)

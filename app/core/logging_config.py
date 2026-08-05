@@ -6,9 +6,6 @@ Sinks
 - ``{STATE_DIR}/logs/app/app.log`` — JSON, DEBUG+, rotated at 10 MB, 7-day retention
 - ``{STATE_DIR}/logs/app/app-error.log`` — JSON, ERROR+, rotated at 10 MB, 14-day retention
 
-Per-session sinks are created on demand via :func:`add_session_sink` and write
-to ``{STATE_DIR}/logs/sessions/{session_id}/session.log`` (human-readable, DEBUG+).
-
 All log paths are under ``LOGS_DIR`` which is ``{OPENAGENTD_STATE_DIR}/logs``.
 Configurable via the ``OPENAGENTD_STATE_DIR`` env var.
 
@@ -17,13 +14,6 @@ Usage::
     from loguru import logger
 
     logger.info("server_start host={} port={}", "0.0.0.0", 4082)
-
-Per-session filtering::
-
-    from app.core.logging_config import add_session_sink, remove_session_sink
-
-    sink_id = add_session_sink(session_id)   # starts capturing
-    remove_session_sink(sink_id)             # stops capturing
 """
 
 from __future__ import annotations
@@ -31,12 +21,8 @@ from __future__ import annotations
 import logging
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from loguru import logger
-
-if TYPE_CHECKING:
-    from loguru import Record
 
 from app.core.config import settings
 
@@ -44,9 +30,6 @@ from app.core.config import settings
 LOGS_DIR = Path(settings.OPENAGENTD_STATE_DIR) / "logs"
 APP_LOG_DIR = LOGS_DIR / "app"
 SESSION_LOG_DIR = LOGS_DIR / "sessions"
-
-# Track per-session sink IDs for cleanup
-_session_sinks: dict[str, int] = {}  # session_id → loguru sink id
 
 
 def setup_logging(log_level: str = "INFO") -> None:
@@ -99,42 +82,3 @@ def setup_logging(log_level: str = "INFO") -> None:
     oauth_logger.handlers.clear()
     oauth_logger.addHandler(logging.NullHandler())
     oauth_logger.propagate = False
-
-
-def add_session_sink(session_id: str) -> int:
-    """Add a human-readable loguru sink for a specific session.
-
-    Writes to ``{STATE_DIR}/logs/sessions/{session_id}/session.log``.
-    Only captures log records whose message contains ``session_id``.
-    Returns the loguru sink ID (use with :func:`remove_session_sink`).
-    """
-    log_dir = SESSION_LOG_DIR / session_id
-    log_dir.mkdir(parents=True, exist_ok=True)
-
-    # Me only keep records that mention this session — no cross-session noise
-    def _session_filter(record: "Record") -> bool:
-        return session_id in record["message"]
-
-    sink_id = logger.add(
-        log_dir / "session.log",
-        level="DEBUG",
-        format=(
-            "{time:YYYY-MM-DD HH:mm:ss.SSS} | "
-            "{level:<8} | "
-            "{name}:{function}:{line} | "
-            "{message}"
-        ),
-        filter=_session_filter,
-        rotation="5 MB",
-        retention="3 days",
-        encoding="utf-8",
-    )
-    _session_sinks[session_id] = sink_id
-    return sink_id
-
-
-def remove_session_sink(session_id: str) -> None:
-    """Remove a previously added per-session sink."""
-    sink_id = _session_sinks.pop(session_id, None)
-    if sink_id is not None:
-        logger.remove(sink_id)

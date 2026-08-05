@@ -13,7 +13,6 @@ from app.agent.providers.factory import build_provider
 from app.agent.providers.model_discovery import discover_provider_models
 from app.agent.providers.plugin_registry import (
     ProviderCredentialStore,
-    clear_provider_plugin_cache,
     provider_plugins,
 )
 from app.agent.schemas.chat import AssistantMessage, ChatMessage
@@ -22,9 +21,9 @@ from app.core.config import settings
 
 @pytest.fixture(autouse=True)
 def _clear_plugin_cache() -> None:
-    clear_provider_plugin_cache()
+    plugin_registry._PLUGIN_CACHE = None
     yield
-    clear_provider_plugin_cache()
+    plugin_registry._PLUGIN_CACHE = None
 
 
 def _write_plugin(directory: Path, body: str) -> None:

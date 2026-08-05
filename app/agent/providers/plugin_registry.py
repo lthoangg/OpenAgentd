@@ -161,8 +161,3 @@ def provider_plugins() -> dict[str, ProviderPlugin]:
 
 def find_provider_plugin(provider_id: str) -> ProviderPlugin | None:
     return provider_plugins().get(provider_id)
-
-
-def clear_provider_plugin_cache() -> None:
-    global _PLUGIN_CACHE
-    _PLUGIN_CACHE = None

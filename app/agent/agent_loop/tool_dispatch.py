@@ -28,11 +28,6 @@ _CANCELLATION_TIMEOUT = 0.1
 _detached_tool_tasks: set[asyncio.Future] = set()
 
 
-def active_detached_tool_count() -> int:
-    """Return the number of cancellation-resistant tool tasks still running."""
-    return len(_detached_tool_tasks)
-
-
 async def gather_or_cancel(
     coros: list,
     interrupt_event: asyncio.Event | None,

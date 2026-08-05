@@ -78,14 +78,6 @@ def set_provider_visible_models(provider_id: str, models: list[str]) -> None:
     save_runtime_settings(cfg)
 
 
-def provider_cached_models(provider_id: str) -> list[str]:
-    return (
-        load_runtime_settings()
-        .providers.get(provider_id, ProviderUiSettings())
-        .cached_models
-    )
-
-
 def set_provider_cached_models(provider_id: str, models: list[str]) -> None:
     import time
 

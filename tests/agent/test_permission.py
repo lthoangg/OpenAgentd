@@ -14,7 +14,6 @@ from app.agent.permission import (
     Rule,
     evaluate,
     get_permission_service,
-    ruleset_from_config,
     set_permission_service,
 )
 
@@ -212,45 +211,6 @@ async def test_auto_allow_service_fires_on_ask_callback():
     assert len(fired) == 1
     assert fired[0].tool == "shell"
     assert "git status" in fired[0].patterns
-
-
-# ---------------------------------------------------------------------------
-# ruleset_from_config
-# ---------------------------------------------------------------------------
-
-
-def test_ruleset_from_config_string_value():
-    config = {"shell": "allow", "read": "deny"}
-    rules = ruleset_from_config(config)
-    # shell → allow *
-    assert any(r.permission == "shell" and r.action == "allow" for r in rules)
-    assert any(r.permission == "read" and r.action == "deny" for r in rules)
-
-
-def test_ruleset_from_config_dict_value():
-    config = {
-        "shell": {
-            "git *": "allow",
-            "rm *": "deny",
-        }
-    }
-    rules = ruleset_from_config(config)
-    git_rule = next(
-        r for r in rules if r.permission == "shell" and r.pattern == "git *"
-    )
-    assert git_rule.action == "allow"
-    rm_rule = next(r for r in rules if r.permission == "shell" and r.pattern == "rm *")
-    assert rm_rule.action == "deny"
-
-
-def test_ruleset_from_config_wildcard_sorted_first():
-    """Wildcard permission entries appear before specific ones."""
-    config = {"shell": "allow", "*": "ask", "read": "deny"}
-    rules = ruleset_from_config(config)
-    # Wildcard (*) should appear before specific tools in the list
-    wildcard_idx = next(i for i, r in enumerate(rules) if r.permission == "*")
-    shell_idx = next(i for i, r in enumerate(rules) if r.permission == "shell")
-    assert wildcard_idx < shell_idx
 
 
 # ---------------------------------------------------------------------------

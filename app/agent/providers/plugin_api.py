@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
 
@@ -69,11 +69,3 @@ def credential_map(fields: list[ProviderCredentialField]) -> list[dict[str, obje
         }
         for field in fields
     ]
-
-
-def values_from_mapping(
-    mapping: Mapping[str, str], fields: list[ProviderCredentialField]
-) -> dict[str, str]:
-    return {
-        field.name: mapping[field.name] for field in fields if mapping.get(field.name)
-    }

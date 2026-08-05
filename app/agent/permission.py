@@ -271,10 +271,6 @@ class PermissionService:
     def list_pending(self) -> list[PermissionRequest]:
         return list(self.pending.values())
 
-    def add_rule(self, rule: Rule) -> None:
-        """Append a rule to the session ruleset."""
-        self.session_ruleset.append(rule)
-
 
 # ── Default auto-allow service ────────────────────────────────────────────────
 
@@ -349,38 +345,3 @@ def get_permission_service() -> PermissionService:
 def set_permission_service(service: PermissionService) -> contextvars.Token:
     """Set the active ``PermissionService`` for the current context."""
     return _permission_ctx.set(service)
-
-
-# ── Config-based ruleset builder ──────────────────────────────────────────────
-
-
-def ruleset_from_config(config: dict) -> Ruleset:
-    """Build a Ruleset from a config dict.
-
-    Config format (mirrors opencode's permission config)::
-
-        {
-            "bash": "allow",          # allow all bash calls
-            "*": "ask",               # ask for everything else
-            "bash": {                 # per-pattern rules
-                "git *": "allow",
-                "rm *": "ask",
-            }
-        }
-
-    Wildcard tool names (``"*"``, ``"filesystem_*"``) are sorted before specific
-    names so that specific tool rules override the broad default — same
-    behaviour as opencode's ``fromConfig``.
-    """
-    entries = sorted(
-        config.items(),
-        key=lambda kv: ("*" not in kv[0], kv[0]),
-    )
-    rules: Ruleset = []
-    for tool_glob, value in entries:
-        if isinstance(value, str):
-            rules.append(Rule(permission=tool_glob, pattern="*", action=value))  # type: ignore[arg-type]
-        elif isinstance(value, dict):
-            for pattern, action in value.items():
-                rules.append(Rule(permission=tool_glob, pattern=pattern, action=action))  # type: ignore[arg-type]
-    return rules

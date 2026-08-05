@@ -291,11 +291,6 @@ def get_model_cost(model_id: str | None) -> ModelCost:
     return get_model_metadata(model_id).cost
 
 
-def get_model_features(model_id: str | None) -> ModelFeatures:
-    """Return support flags for a fully-qualified ``provider:model`` string."""
-    return get_model_metadata(model_id).features
-
-
 def get_model_thinking_levels(model_id: str | None) -> tuple[str, ...]:
     """Return supported thinking levels for a fully-qualified model ID."""
     return get_model_metadata(model_id).thinking.levels

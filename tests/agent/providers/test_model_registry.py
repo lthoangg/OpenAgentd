@@ -8,8 +8,8 @@ from app.agent.providers import model_registry
 from app.agent.providers.capabilities import get_capabilities
 from app.agent.providers.model_metadata import (
     get_model_cost,
-    get_model_features,
     get_model_limits,
+    get_model_metadata,
     get_model_thinking_levels,
     get_model_transport,
 )
@@ -105,7 +105,7 @@ def test_models_dev_metadata_is_normalized(
     assert cost.output == 10.0
     assert cost.cache_read == 0.1
     assert cost.cache_write == 0.2
-    features = get_model_features("openai:gpt-live")
+    features = get_model_metadata("openai:gpt-live").features
     assert features.tool_call is True
     assert features.attachment is True
     assert features.temperature is False

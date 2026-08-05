@@ -496,15 +496,21 @@ export function CodingWorkspacePanel({
     staleTime: 30_000,
   })
 
+  // Read the optional chain once into a local. Depending on
+  // `commitDiff.data?.diff` directly made the compiler infer a different
+  // dependency than the source list declared (`commitDiff.data.diff` /
+  // `commitDiff.data`), so it skipped optimizing this component entirely.
+  const commitDiffText = commitDiff.data?.diff
+
   const commitChangedFiles = useMemo(() => {
-    if (!commitDiff.data?.diff) return []
-    return collectChangedFiles({ workspace, is_git_repo: true, diff: commitDiff.data.diff })
-  }, [commitDiff.data?.diff, workspace])
+    if (!commitDiffText) return []
+    return collectChangedFiles({ workspace, is_git_repo: true, diff: commitDiffText })
+  }, [commitDiffText, workspace])
 
   const commitDiffSections = useMemo(() => {
-    if (!commitDiff.data?.diff) return new Map<string, DiffFileSection>()
-    return collectDiffSections({ workspace, is_git_repo: true, diff: commitDiff.data.diff })
-  }, [commitDiff.data?.diff, workspace])
+    if (!commitDiffText) return new Map<string, DiffFileSection>()
+    return collectDiffSections({ workspace, is_git_repo: true, diff: commitDiffText })
+  }, [commitDiffText, workspace])
   const terminalMetas = useTerminalStore(
     useShallow((s) =>
       Object.values(s.sessions)

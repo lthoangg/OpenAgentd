@@ -239,7 +239,10 @@ export function CodingSidebar({
     setTrustWorkspace(null)
     setDialogOpen(true)
     if (!browserPath) void loadBrowser(null)
-  }, [browserPath, loadBrowser])
+    // `useState` setters are stable, so listing them is runtime-neutral — but
+    // the React Compiler infers them as dependencies and skips optimizing the
+    // whole component when the source list omits them.
+  }, [browserPath, loadBrowser, setSelectedWorkspace, setTrustWorkspace, setDialogOpen])
 
   const openWorkspaceDialog = useCallback(async () => {
     setError(null)
@@ -271,7 +274,18 @@ export function CodingSidebar({
     } finally {
       setLoading(false)
     }
-  }, [isTauri, isTauriMobile, openWebWorkspaceDialog])
+    // Stable `useState` setters — see openWebWorkspaceDialog above.
+  }, [
+    isTauri,
+    isTauriMobile,
+    openWebWorkspaceDialog,
+    setError,
+    setSelectedWorkspace,
+    setTrustWorkspace,
+    setNativeFolderPickerEnabled,
+    setDialogOpen,
+    setLoading,
+  ])
 
   const refreshWorkspaceTree = useCallback(async (force = false) => {
     if (force) {

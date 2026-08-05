@@ -23,7 +23,11 @@ export default defineConfig([
       // React Compiler-oriented rules are too strict for the current UI state
       // patterns. Keep the stable hooks checks while we migrate incrementally.
       'react-hooks/immutability': 'off',
-      'react-hooks/preserve-manual-memoization': 'off',
+      // Enabled: a dependency list the compiler can't reconcile makes it skip
+      // optimizing the *entire* component, so these are worth keeping at zero.
+      // Note this rule only validates memoization that already exists — it does
+      // not flag an expensive derivation left unmemoized in a render body.
+      'react-hooks/preserve-manual-memoization': 'error',
       'react-hooks/refs': 'off',
       'react-hooks/set-state-in-effect': 'off',
       // Allow ``_foo`` as a deliberate "intentionally unused" marker for

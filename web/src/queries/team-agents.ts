@@ -28,5 +28,13 @@ export function teamAgentsQueryOptions(workspace?: string | null) {
   return {
     queryKey: queryKeys.teamAgents(workspace),
     queryFn: (): Promise<TeamAgentsResponse> => listTeamAgents(workspace),
+    // Baseline freshness policy lives here so every consumer of this shared
+    // entry inherits it. `staleTime` is per-observer in TanStack Query, so a
+    // consumer that spreads these options and omits it used to silently fall
+    // back to the global 5-minute default instead of this endpoint's own
+    // budget. Consumers may still override deliberately after the spread —
+    // `useTeamStatusQuery` pins `Infinity` because "does team mode exist" is
+    // effectively immutable for the process lifetime.
+    staleTime: TEAM_AGENTS_STALE_MS,
   }
 }

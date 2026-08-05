@@ -352,6 +352,39 @@ describe("CommandPalette", () => {
     expect(screen.queryByText("App.tsx")).toBeNull()
   })
 
+  it("matches files by fuzzy subsequence, not just substring", async () => {
+    // The palette used a plain `includes()` while every other search surface
+    // (@-mentions, model pickers) ranked with fuzzysort — so `dockcom` found
+    // `docker-compose.yml` in the composer but not here.
+    const user = userEvent.setup()
+    const files: WorkspaceFileInfo[] = [
+      { path: 'infra/docker-compose.yml', name: 'docker-compose.yml', size: 0, mtime: 0, mime: 'text/plain' },
+      { path: 'docs/README.md', name: 'README.md', size: 0, mtime: 0, mime: 'text/plain' },
+    ]
+    render(
+      <CommandPalette commands={[]} workspaceFiles={files} onFileOpen={() => {}} onClose={() => {}} />,
+    )
+    // "dockcom" is not a substring of the path, only an ordered subsequence.
+    await user.type(screen.getByPlaceholderText("Search files and commands…"), "dockcom")
+    expect(screen.getByText("docker-compose.yml")).toBeTruthy()
+    expect(screen.queryByText("README.md")).toBeNull()
+  })
+
+  it("ranks the closest file match first", async () => {
+    const user = userEvent.setup()
+    const files: WorkspaceFileInfo[] = [
+      { path: 'src/deeply/nested/other/instrument.ts', name: 'instrument.ts', size: 0, mtime: 0, mime: 'text/plain' },
+      { path: 'index.ts', name: 'index.ts', size: 0, mtime: 0, mime: 'text/plain' },
+    ]
+    render(
+      <CommandPalette commands={[]} workspaceFiles={files} onFileOpen={() => {}} onClose={() => {}} />,
+    )
+    await user.type(screen.getByPlaceholderText("Search files and commands…"), "index.ts")
+    // Both contain the subsequence; the exact match must rank first.
+    const rows = screen.getAllByRole('button').filter((b) => b.textContent?.includes('.ts'))
+    expect(rows[0].textContent).toContain('index.ts')
+  })
+
   it("calls onFileOpen and onClose when a file row is activated via Enter", async () => {
     const user = userEvent.setup()
     let opened: WorkspaceFileInfo | null = null

@@ -8,6 +8,7 @@
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import fuzzysort from 'fuzzysort'
 import { Search, CornerDownLeft } from 'lucide-react'
 import { AppOverlay } from '@/components/ui/app-overlay'
 import type { WorkspaceFileInfo } from '@/api/types'
@@ -47,11 +48,15 @@ export function CommandPalette({ commands, onClose, workspaceFiles = [], onFileO
 
   // Build the flat filtered+grouped list in one memoised pass.
   //
-  // Files: filter the raw WorkspaceFileInfo array by query then cap at
-  // MAX_FILE_ROWS — this is intentionally cheap (no object allocation until
-  // after the slice) and matches the old inline file-search dialog behaviour.
+  // Files: ranked with fuzzysort, the same engine the `@`-mention picker and
+  // the model pickers use, so `dockcom` finds `docker-compose.yml` here too.
+  // `limit` caps the work inside fuzzysort rather than filtering the whole
+  // workspace into an intermediate array and slicing afterwards.
   //
-  // Commands: filtered as before, always shown first.
+  // Commands: substring matched across label/description/group. Kept as a
+  // substring match deliberately — command labels are a small, curated set the
+  // user is scanning visually, and fuzzy matching a 20-item list mostly just
+  // surfaces surprising rows.
   const hasFiles = workspaceFiles.length > 0 && Boolean(onFileOpen)
 
   type FileRow = { type: 'file'; file: WorkspaceFileInfo; idx: number }
@@ -69,11 +74,18 @@ export function CommandPalette({ commands, onClose, workspaceFiles = [], onFileO
       cmd.group?.toLowerCase().includes(q),
     )
 
-    // ── Files (capped) ────────────────────────────────────────────────────────
+    // ── Files (ranked + capped) ───────────────────────────────────────────────
     let filteredFiles: WorkspaceFileInfo[] = []
     if (hasFiles) {
       filteredFiles = q
-        ? workspaceFiles.filter((f) => f.path.toLowerCase().includes(q)).slice(0, MAX_FILE_ROWS)
+        ? fuzzysort
+            .go(q, workspaceFiles, {
+              key: 'path',
+              limit: MAX_FILE_ROWS,
+              // Matches the mention and model pickers.
+              threshold: 0.2,
+            })
+            .map((r) => r.obj)
         : workspaceFiles.slice(0, MAX_FILE_ROWS)
     }
 

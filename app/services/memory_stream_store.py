@@ -431,13 +431,6 @@ async def clear(session_id: str) -> None:
 # ── Read side ─────────────────────────────────────────────────────────────────
 
 
-async def is_done(session_id: str) -> bool:
-    state = _turns.get(session_id)
-    if state is None:
-        return True
-    return not state.is_streaming
-
-
 def running_session_ids() -> set[str]:
     """Return session ids that currently have an in-flight stream turn."""
     return {session_id for session_id, state in _turns.items() if state.is_streaming}

@@ -58,17 +58,6 @@ def before_boundary(stmt, boundary: datetime | None):
     return stmt.where(col(SessionMessage.created_at) < boundary)
 
 
-def visible_messages_stmt(session_id: UUID, boundary: datetime | None = None):
-    stmt = (
-        select(SessionMessage)
-        .where(col(SessionMessage.session_id) == session_id)
-        .where(~col(SessionMessage.exclude_from_context))
-    )
-    return before_boundary(stmt, boundary).order_by(
-        col(SessionMessage.created_at).asc()
-    )
-
-
 def history_messages_stmt(session_id: UUID, boundary: datetime | None = None):
     stmt = select(SessionMessage).where(col(SessionMessage.session_id) == session_id)
     if boundary is not None:
@@ -91,12 +80,6 @@ def llm_history_messages_stmt(session_id: UUID):
         )
         .order_by(col(SessionMessage.created_at).asc())
     )
-
-
-def is_history_visible(row: SessionMessage) -> bool:
-    if not row.exclude_from_context:
-        return True
-    return bool(row.extra and row.extra.get("queue_status") == "queued")
 
 
 async def get_dynamically_visible_messages(

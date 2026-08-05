@@ -9,7 +9,6 @@ import pytest
 
 from app.services.commands import (
     discover_commands,
-    parse_slash_invocation,
     render_command,
 )
 
@@ -358,32 +357,6 @@ def test_render_substitutes_all_occurrences(roots):
     cmd = discover_commands(workspace=cwd)["echo"]
 
     assert render_command(cmd, "hi") == "hi / hi"
-
-
-# ── parse_slash_invocation ─────────────────────────────────────────────────
-
-
-def test_parse_slash_invocation_supports_subcommands_and_quoted_args():
-    parsed = parse_slash_invocation('/commit "Run tests"')
-
-    assert parsed is not None
-    assert parsed.command == "commit"
-    assert parsed.subcommand is None
-    assert parsed.arguments == '"Run tests"'
-    assert parsed.argv == ["Run tests"]
-
-
-def test_parse_slash_invocation_supports_colon_subcommands():
-    parsed = parse_slash_invocation("/git:commit 20")
-
-    assert parsed is not None
-    assert parsed.command == "git"
-    assert parsed.subcommand == "commit"
-    assert parsed.argv == ["20"]
-
-
-def test_parse_slash_invocation_ignores_plain_chat():
-    assert parse_slash_invocation("hello /git:commit 20") is None
 
 
 # ── One-level nesting enforcement ────────────────────────────────────────────

@@ -699,48 +699,6 @@ def _list_traces_with_count_cached(
     ], total
 
 
-def list_traces(
-    days: int = 7,
-    limit: int = 50,
-    offset: int = 0,
-) -> list[TraceListItem]:
-    """Return a paginated trace list without its total count."""
-    return list_traces_with_count(days=days, limit=limit, offset=offset)[0]
-
-
-def count_traces(days: int = 7) -> int:
-    """Return total agent-run rows in the window for trace pagination."""
-    days = max(1, min(90, days))
-    bucket, spans_dir, signatures = _cache_context(days)
-    return _count_traces_cached(days, bucket, spans_dir, signatures)
-
-
-@lru_cache(maxsize=_CACHE_MAXSIZE)
-def _count_traces_cached(
-    days: int, _bucket: int, _spans_dir: str, signatures: FileSignatures
-) -> int:
-    now = datetime.now(timezone.utc)
-    window_start = now - timedelta(days=days)
-
-    files = _signature_paths(signatures)
-    if not files:
-        return 0
-
-    con = duckdb.connect(":memory:")
-    try:
-        _create_spans_window_view(con, files, window_start, now)
-        row = con.execute(
-            """
-            SELECT count(*)
-            FROM spans_window
-            WHERE name LIKE 'agent_run%'
-            """
-        ).fetchone()
-    finally:
-        con.close()
-    return int(row[0]) if row is not None else 0
-
-
 def get_trace(trace_id: str, days: int = 30) -> TraceDetail | None:
     """Return all spans with ``trace_id``, ordered by ``start_time`` asc.
 

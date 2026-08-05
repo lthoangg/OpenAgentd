@@ -12,9 +12,7 @@ import pytest
 
 from app.services import observability_service
 from app.services.observability_service import (
-    count_traces,
     get_trace,
-    list_traces,
     list_traces_with_count,
     summarize,
 )
@@ -378,7 +376,7 @@ def test_list_traces_empty_when_no_files(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
     _point_openagentd_at(tmp_path, monkeypatch)
-    assert list_traces(days=7) == []
+    assert list_traces_with_count(days=7) == ([], 0)
 
 
 def test_list_traces_returns_one_row_per_agent_run(
@@ -396,7 +394,7 @@ def test_list_traces_returns_one_row_per_agent_run(
         error=True,
     )
 
-    rows = list_traces(days=7)
+    rows, _total = list_traces_with_count(days=7)
 
     assert len(rows) == 2
     # Newest first
@@ -436,11 +434,12 @@ def test_list_traces_pagination(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
             run_id=f"run-{i}",
         )
 
-    first = list_traces(days=7, limit=2, offset=0)
-    second = list_traces(days=7, limit=2, offset=2)
+    first, first_total = list_traces_with_count(days=7, limit=2, offset=0)
+    second, second_total = list_traces_with_count(days=7, limit=2, offset=2)
     assert [r.run_id for r in first] == ["run-0", "run-1"]
     assert [r.run_id for r in second] == ["run-2", "run-3"]
-    assert count_traces(days=7) == 5
+    assert first_total == 5
+    assert second_total == 5
 
 
 def test_list_traces_with_count_returns_page_and_total_in_one_result(
@@ -469,8 +468,8 @@ def test_list_traces_with_count_returns_page_and_total_in_one_result(
 def test_list_traces_clamps_inputs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     _point_openagentd_at(tmp_path, monkeypatch)
     # Should not raise; should return empty because no files.
-    assert list_traces(days=0, limit=0, offset=-1) == []
-    assert list_traces(days=500, limit=10_000, offset=0) == []
+    assert list_traces_with_count(days=0, limit=0, offset=-1) == ([], 0)
+    assert list_traces_with_count(days=500, limit=10_000, offset=0) == ([], 0)
 
 
 # ── get_trace ─────────────────────────────────────────────────────────────────
@@ -573,7 +572,6 @@ def test_get_trace_accepts_unprefixed_trace_id(
 def _clear_observability_caches() -> None:
     observability_service._summarize_cached.cache_clear()
     observability_service._list_traces_with_count_cached.cache_clear()
-    observability_service._count_traces_cached.cache_clear()
     observability_service._get_trace_cached.cache_clear()
 
 
@@ -671,7 +669,7 @@ def test_summary_cache_key_includes_query_arguments(
     assert run_queries.call_count == 2
 
 
-@pytest.mark.parametrize("query", ["list", "detail", "count"])
+@pytest.mark.parametrize("query", ["list", "detail"])
 def test_trace_query_caches_invalidate_on_jsonl_signature_change(
     query: str,
     tmp_path: Path,
@@ -700,9 +698,7 @@ def test_trace_query_caches_invalidate_on_jsonl_signature_change(
     def run_query() -> object:
         if query == "list":
             return list_traces_with_count(days=7)
-        if query == "detail":
-            return get_trace(trace_id, days=7)
-        return count_traces(days=7)
+        return get_trace(trace_id, days=7)
 
     with patch.object(
         observability_service,

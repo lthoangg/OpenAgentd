@@ -835,31 +835,6 @@ class TestClear:
 
 
 # ---------------------------------------------------------------------------
-# is_done
-# ---------------------------------------------------------------------------
-
-
-class TestIsDone:
-    @pytest.mark.asyncio
-    async def test_is_done_true_when_no_state(self):
-        result = await store.is_done("unknown")
-        assert result is True
-
-    @pytest.mark.asyncio
-    async def test_is_done_false_when_streaming(self):
-        await store.init_turn("sid-1")
-        result = await store.is_done("sid-1")
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_is_done_true_after_mark_done(self):
-        await store.init_turn("sid-1")
-        await store.mark_done("sid-1")
-        result = await store.is_done("sid-1")
-        assert result is True
-
-
-# ---------------------------------------------------------------------------
 # attach — replay and live events
 # ---------------------------------------------------------------------------
 

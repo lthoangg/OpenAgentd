@@ -278,26 +278,6 @@ def current_team() -> "AgentTeam | None":
     return _team
 
 
-def current_team_for_workspace(workspace: str | None) -> "AgentTeam | None":
-    if not workspace:
-        return _team
-    key_workspace = str(_resolve_workspace(workspace))
-    for (stored_workspace, _session_id), team in _coding_teams.items():
-        if stored_workspace == key_workspace:
-            return team
-    return None
-
-
-def current_coding_team_for_session(
-    workspace: str, session_id: str
-) -> "AgentTeam | None":
-    return _coding_teams.get((str(_resolve_workspace(workspace)), session_id))
-
-
-def current_team_for_session(session_id: str) -> "AgentTeam | None":
-    return _session_teams.get(session_id)
-
-
 def set_team(team: "AgentTeam | None") -> None:
     """Replace the current team reference without running the lifecycle.
 

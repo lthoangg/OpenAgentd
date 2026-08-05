@@ -98,7 +98,7 @@ async def test_get_or_start_team_for_session_is_idempotent(monkeypatch):
     second = await team_manager.get_or_start_team_for_session("session-a")
 
     assert first is second
-    assert team_manager.current_team_for_session("session-a") is fake_team
+    assert team_manager._session_teams.get("session-a") is fake_team
     fake_team.start.assert_awaited_once()
 
 
@@ -238,10 +238,8 @@ async def test_evict_session_teams_stops_normal_and_coding_teams(tmp_path):
 
     normal.stop.assert_awaited_once()
     coding.stop.assert_awaited_once()
-    assert team_manager.current_team_for_session(session_id) is None
-    assert (
-        team_manager.current_coding_team_for_session(str(tmp_path), session_id) is None
-    )
+    assert team_manager._session_teams.get(session_id) is None
+    assert team_manager._coding_teams.get((str(tmp_path), session_id)) is None
 
 
 @pytest.mark.asyncio
@@ -261,7 +259,10 @@ async def test_stop_clears_coding_teams_without_normal_team(tmp_path, monkeypatc
     await team_manager.stop()
 
     fake_team.stop.assert_awaited_once()
-    assert team_manager.current_team_for_workspace(str(workspace)) is None
+    assert not any(
+        stored_workspace == str(workspace.resolve())
+        for stored_workspace, _session_id in team_manager._coding_teams
+    )
 
 
 @pytest.mark.asyncio
@@ -420,11 +421,11 @@ async def test_get_or_start_coding_team_isolated_by_session(tmp_path, monkeypatc
     assert second is second_team
     assert first is not second
     assert (
-        team_manager.current_coding_team_for_session(str(workspace), "session-a")
+        team_manager._coding_teams.get((str(workspace.resolve()), "session-a"))
         is first_team
     )
     assert (
-        team_manager.current_coding_team_for_session(str(workspace), "session-b")
+        team_manager._coding_teams.get((str(workspace.resolve()), "session-b"))
         is second_team
     )
 

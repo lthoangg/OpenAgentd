@@ -126,10 +126,3 @@ async def list_visible_coding_workspaces(db: AsyncSession) -> list[CodingWorkspa
             )
         ).all()
     )
-
-
-async def seed_workspace_registry_from_sessions(
-    db: AsyncSession, workspaces: list[str]
-) -> None:
-    for workspace in workspaces:
-        await upsert_coding_workspace(db, path=workspace, kind="repo", hidden=False)

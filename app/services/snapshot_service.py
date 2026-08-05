@@ -418,28 +418,6 @@ def _delete_extras(workspace: Path, extras: set[str]) -> None:
             continue
 
 
-async def cleanup(session_id: str) -> None:
-    """Run ``git gc --prune=now`` on the snapshot repo.
-
-    Safe to call periodically. No-ops when the repo does not exist or git
-    is unavailable.
-    """
-    if not is_available():
-        return
-    gitdir = snapshot_dir(session_id)
-    if not (gitdir / "HEAD").exists():
-        return
-    async with _lock(session_id):
-        await _git(
-            *_CORE_FLAGS,
-            "--git-dir",
-            str(gitdir),
-            "gc",
-            "--prune=now",
-            "--quiet",
-        )
-
-
 async def remove(session_id: str) -> None:
     """Delete the snapshot repo for this session.
 

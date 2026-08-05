@@ -4,6 +4,24 @@ export function generateBlockId(): string {
   return `block-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
 }
 
+/** Cache of confirmed-block-id sets, keyed on the `blocks` array identity.
+ *
+ * `mergeBlocks` runs on every render, and during streaming that means once per
+ * ~16ms delta batch — with `blocks` (the finalized history) unchanged and only
+ * `currentBlocks` growing. Rebuilding the id set each time made every streamed
+ * frame cost O(session length). The store replaces `blocks` by reference
+ * whenever it actually changes (immer copy-on-write), so array identity is a
+ * sound cache key, and a WeakMap lets superseded arrays be collected. */
+const confirmedIdCache = new WeakMap<ContentBlock[], Set<string>>()
+
+function confirmedIdSet(blocks: ContentBlock[]): Set<string> {
+  const cached = confirmedIdCache.get(blocks)
+  if (cached) return cached
+  const ids = new Set(blocks.map((b) => b.id))
+  confirmedIdCache.set(blocks, ids)
+  return ids
+}
+
 export function mergeBlocks(
   blocks: ContentBlock[],
   currentBlocks: ContentBlock[],
@@ -17,7 +35,7 @@ export function mergeBlocks(
   // has since been confirmed. Drop it instead of trusting every upstream
   // reconciliation path (loadSession, reconcileTurnTail, the SSE reducer) to
   // have already removed it — this is the one place that actually renders.
-  const confirmedIds = new Set(blocks.map((b) => b.id))
+  const confirmedIds = confirmedIdSet(blocks)
   const liveTail = currentBlocks.filter((b) => !confirmedIds.has(b.id))
   if (liveTail.length === 0) return blocks
   return [...blocks, ...liveTail]

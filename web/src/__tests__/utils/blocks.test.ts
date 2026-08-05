@@ -81,6 +81,43 @@ describe("mergeBlocks", () => {
     expect(result).toHaveLength(1);
     expect(result[0].toolDone).toBe(true); // the confirmed (finished) copy wins
   });
+
+  it("keeps deduping correctly across repeated calls that reuse the same confirmed array", () => {
+    // The confirmed-id set is cached on the `blocks` array identity, because
+    // during streaming `blocks` is stable while `currentBlocks` grows once per
+    // frame. A stale or shared cache entry here would either drop live blocks
+    // or render duplicates, so exercise several frames against one array.
+    const blocks: ContentBlock[] = [
+      { id: "shared", type: "user", content: "hi" },
+      { id: "b1", type: "text", content: "done" },
+    ];
+
+    const frame1 = mergeBlocks(blocks, [{ id: "shared", type: "user", content: "hi" }]);
+    expect(frame1).toBe(blocks); // fully covered by id
+
+    const frame2 = mergeBlocks(blocks, [
+      { id: "shared", type: "user", content: "hi" },
+      { id: "live-1", type: "text", content: "a" },
+    ]);
+    expect(frame2.map((b) => b.id)).toEqual(["shared", "b1", "live-1"]);
+
+    const frame3 = mergeBlocks(blocks, [
+      { id: "shared", type: "user", content: "hi" },
+      { id: "live-1", type: "text", content: "ab" },
+      { id: "live-2", type: "tool", content: "" },
+    ]);
+    expect(frame3.map((b) => b.id)).toEqual(["shared", "b1", "live-1", "live-2"]);
+  });
+
+  it("does not reuse a cached id set across different confirmed arrays", () => {
+    const first: ContentBlock[] = [{ id: "a", type: "text", content: "1" }];
+    const second: ContentBlock[] = [{ id: "b", type: "text", content: "2" }];
+    const live: ContentBlock[] = [{ id: "a", type: "text", content: "1" }];
+
+    expect(mergeBlocks(first, live)).toBe(first); // "a" is confirmed here
+    // "a" is NOT confirmed in `second`, so it must survive the merge.
+    expect(mergeBlocks(second, live).map((b) => b.id)).toEqual(["b", "a"]);
+  });
 });
 
 // ---------------------------------------------------------------------------

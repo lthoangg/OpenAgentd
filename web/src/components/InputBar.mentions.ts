@@ -272,6 +272,19 @@ export function findCommittedMentions(
  * from a ``useMemo`` on every keystroke; cost is dominated by fuzzysort
  * which has been engineered for this exact workload.
  */
+/**
+ * Directory tie-break bonuses, on fuzzysort v3's 0..1 score scale.
+ *
+ * These were originally 0.5 / 0.15 / 0.05, sized for fuzzysort v2 where scores
+ * were large negative numbers and half a point was noise. On the 0..1 scale a
+ * +0.5 bonus is half the entire range: a nested `deep/nested/place/src` (path
+ * score 0.81) outranked a *perfect* match on a top-level `src` file (1.0),
+ * which is the opposite of what the surrounding comment promised.
+ */
+const DIR_BONUS_EXACT = 0.03
+const DIR_BONUS_PREFIX = 0.015
+const DIR_BONUS_ANY = 0.005
+
 export function rankFileRefs(
   refs: readonly FileRef[],
   rawQuery: string,
@@ -293,21 +306,24 @@ export function rankFileRefs(
   }
 
   // Fuzzysort scores are ≤ 0, with 0 being a perfect match and increasingly
-  // negative values being weaker matches. We adjust each score so that a
-  // directory whose own name is a strong match comes above its children when
-  // the two are otherwise similar — fuzzysort doesn't know that ``src`` (the
-  // dir) is a different concept from ``src/foo.ts``, but the user typing
-  // ``src`` usually does mean the dir.
+  // 1.0 being a perfect match and weaker matches trending toward 0. We adjust
+  // each score so that a directory whose own name is a strong match comes above
+  // its children when the two are otherwise similar — fuzzysort doesn't know
+  // that ``src`` (the dir) is a different concept from ``src/foo.ts``, but the
+  // user typing ``src`` usually does mean the dir.
   //
-  // Bonuses are small enough that they don't override a genuinely better
-  // fuzzy match elsewhere (e.g. typing ``api`` still surfaces ``api.ts``
-  // above an unrelated ``apidocs/`` dir).
+  // Bonuses are deliberately ~1% of the score range so they only break ties and
+  // cannot override a genuinely better fuzzy match (e.g. typing ``api`` still
+  // surfaces ``api.ts`` above an unrelated ``apidocs/`` dir).
   const lowerQuery = query.toLowerCase()
   const results = fuzzysort.go(query, refs, {
     key: 'path',
     // Over-fetch a little so the dir bonus can reshuffle the head.
     limit: limit * 2,
-    threshold: -1000, // drop very weak matches; tuned to feel snappy
+    // fuzzysort only returns subsequence matches and its own floor already sits
+    // around 0.24, so this mostly documents intent. Matches the 0.2 used by the
+    // model pickers rather than the v2-era negative sentinel that sat here.
+    threshold: 0.2,
   })
 
   const adjusted = results.map((r) => {
@@ -315,9 +331,9 @@ export function rankFileRefs(
     let score = r.score
     if (ref.type === 'directory') {
       const lowerName = ref.name.toLowerCase()
-      if (lowerName === lowerQuery) score += 0.5      // exact dir-name match
-      else if (lowerName.startsWith(lowerQuery)) score += 0.15
-      else score += 0.05                              // any dir match
+      if (lowerName === lowerQuery) score += DIR_BONUS_EXACT
+      else if (lowerName.startsWith(lowerQuery)) score += DIR_BONUS_PREFIX
+      else score += DIR_BONUS_ANY
     }
     return { ref, score }
   })

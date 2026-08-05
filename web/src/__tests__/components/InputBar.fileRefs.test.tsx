@@ -198,10 +198,23 @@ describe("rankFileRefs", () => {
     expect(out[0]).toEqual({ path: "src", name: "src", type: "directory" })
   })
 
-  it("rejects matches that fall below the fuzzysort threshold", () => {
-    // ``xyz`` shares no characters in the right order with these paths.
-    // We rely on fuzzysort + the 0.2 threshold to filter rather than
-    // surfacing zero-score matches.
+  it("keeps a nested dir-name match below a perfect file match", () => {
+    // Regression: the dir bonuses were sized for fuzzysort v2's large negative
+    // scores. On v3's 0..1 scale the old +0.5 exact-name bonus was half the
+    // whole range, so this nested dir (path score ~0.81 + 0.5) outranked a
+    // perfect match on the file (1.0).
+    const refs: FileRef[] = [
+      { path: "deep/nested/place/src", name: "src", type: "directory" },
+      { path: "src", name: "src", type: "file" },
+    ]
+    const out = rankFileRefs(refs, "src", 20)
+    expect(out[0].path).toBe("src")
+    expect(out[0].type).toBe("file")
+  })
+
+  it("rejects matches that share no ordered subsequence", () => {
+    // ``xyz`` shares no characters in the right order with these paths, so
+    // fuzzysort returns nothing at all — this does not exercise the threshold.
     const refs: FileRef[] = [
       { path: "src/api.ts", name: "api.ts", type: "file" },
       { path: "docs/intro.md", name: "intro.md", type: "file" },

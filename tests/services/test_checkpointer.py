@@ -900,3 +900,70 @@ class TestSQLiteCheckpointerStreamCommit:
 
         # Me commit should have been called
         assert call_order == ["commit"]
+
+
+# ---------------------------------------------------------------------------
+# sync() must not open a transaction when there is nothing to write
+#
+# ``sync`` runs on every agent step.  The existing early-out only fires when
+# the state has *no messages at all*, so after the first turn ``seen_messages``
+# is always non-empty and every step opened a session and a transaction — even
+# on a settled conversation with nothing new to persist and no exclude flags to
+# flip.  Production logged 7,854 syncs across 2 days against 5,816 persisted
+# messages, so a large share committed nothing.
+# ---------------------------------------------------------------------------
+
+
+async def test_sync_opens_no_transaction_when_nothing_to_persist():
+    from app.core.db import async_session_factory
+
+    opened = {"n": 0}
+
+    def counting_factory(*args, **kwargs):
+        opened["n"] += 1
+        return async_session_factory(*args, **kwargs)
+
+    cp = SQLiteCheckpointer(session_factory=counting_factory)
+    ctx = _ctx("settled-session")
+    messages = [HumanMessage(content="hi"), AssistantMessage(content="yo")]
+    state = MagicMock()
+    state.messages = messages
+    # Everything already persisted, no exclude_from_context flips pending.
+    cp._persisted[ctx.session_id] = {id(m) for m in messages}
+    cp._stream_session_id = None
+    cp._agent_name = None
+
+    for _ in range(10):
+        await cp.sync(ctx, state)
+
+    assert opened["n"] == 0, (
+        f"a settled sync opened {opened['n']} transactions that commit nothing"
+    )
+
+
+async def test_sync_still_opens_a_transaction_when_there_is_new_work():
+    """Guard the other direction: real work must still reach the DB."""
+    from app.core.db import async_session_factory
+
+    opened = {"n": 0}
+
+    def counting_factory(*args, **kwargs):
+        opened["n"] += 1
+        return async_session_factory(*args, **kwargs)
+
+    sid = uuid.uuid4()
+    async with async_session_factory() as db:
+        await _make_session(db, sid)
+        await db.commit()
+
+    cp = SQLiteCheckpointer(session_factory=counting_factory)
+    ctx = _ctx(str(sid))
+    state = MagicMock()
+    state.messages = [AssistantMessage(content="fresh")]
+    cp._stream_session_id = None
+    cp._agent_name = None
+
+    await cp.sync(ctx, state)
+
+    assert opened["n"] == 1, "a sync with new messages must persist them"
+    assert state.messages[0].db_id is not None, "db_id should be stamped"

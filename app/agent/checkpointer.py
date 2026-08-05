@@ -298,66 +298,61 @@ class SQLiteCheckpointer(Checkpointer):
         if not new_messages and not seen_messages:
             return
 
-        async with self._session_factory() as db:
-            async with db.begin():
-                # ── Update exclude_from_context on already-persisted messages ─────
-                # One-way conditional UPDATE avoids re-reading every tracked row.
-                exclude_ids = [
-                    msg.db_id
-                    for msg in seen_messages
-                    if not isinstance(msg, SystemMessage)
-                    and msg.exclude_from_context
-                    and msg.db_id is not None
-                ]
-                if exclude_ids:
-                    stmt = (
-                        sa.update(SessionMessage)
-                        .where(col(SessionMessage.id).in_(exclude_ids))
-                        .where(col(SessionMessage.exclude_from_context).is_(False))
-                        .values(exclude_from_context=True)
-                    )
-                    await db.exec(stmt)
-                    logger.debug(
-                        "checkpointer_exclude_flags_updated session_id={} count={}",
-                        sid,
-                        len(exclude_ids),
-                    )
+        # ── Update exclude_from_context on already-persisted messages ─────
+        # One-way conditional UPDATE avoids re-reading every tracked row.
+        # Computed *before* opening a session: ``sync`` runs on every agent
+        # step, and on a settled conversation both this and ``new_messages``
+        # are empty, so entering a transaction only to commit nothing was pure
+        # per-step overhead.
+        exclude_ids = [
+            msg.db_id
+            for msg in seen_messages
+            if not isinstance(msg, SystemMessage)
+            and msg.exclude_from_context
+            and msg.db_id is not None
+        ]
 
-                # ── Persist new messages ──────────────────────────────────────────
-                for msg in new_messages:
-                    if isinstance(msg, AssistantMessage):
-                        # Skip empty assistant messages (e.g. interrupted before
-                        # any content was generated).
-                        has_content = bool(
-                            (msg.content and msg.content.strip())
-                            or (msg.reasoning_content and msg.reasoning_content.strip())
-                            or msg.tool_calls
-                            or msg.reasoning_encrypted_content
-                            or msg.is_summary
+        # NOTE: the stream-buffer commit further down must still run on a no-op
+        # sync, so this guards only the DB work — it is deliberately not an
+        # early return.
+        if new_messages or exclude_ids:
+            async with self._session_factory() as db:
+                async with db.begin():
+                    if exclude_ids:
+                        stmt = (
+                            sa.update(SessionMessage)
+                            .where(col(SessionMessage.id).in_(exclude_ids))
+                            .where(col(SessionMessage.exclude_from_context).is_(False))
+                            .values(exclude_from_context=True)
                         )
-                        if not has_content:
-                            logger.debug(
-                                "checkpointer_skip_empty_assistant session_id={}",
-                                sid,
+                        await db.exec(stmt)
+                        logger.debug(
+                            "checkpointer_exclude_flags_updated session_id={} count={}",
+                            sid,
+                            len(exclude_ids),
+                        )
+
+                    # ── Persist new messages ──────────────────────────────────────────
+                    for msg in new_messages:
+                        if isinstance(msg, AssistantMessage):
+                            # Skip empty assistant messages (e.g. interrupted before
+                            # any content was generated).
+                            has_content = bool(
+                                (msg.content and msg.content.strip())
+                                or (
+                                    msg.reasoning_content
+                                    and msg.reasoning_content.strip()
+                                )
+                                or msg.tool_calls
+                                or msg.reasoning_encrypted_content
+                                or msg.is_summary
                             )
-                            continue
-                        row = await save_message(
-                            db,
-                            UUID(sid),
-                            msg,
-                            is_summary=msg.is_summary,
-                            exclude_from_context=msg.exclude_from_context,
-                            extra=msg.extra,
-                        )
-                        msg.db_id = row.id
-                    elif isinstance(msg, ToolMessage):
-                        row = await save_message(db, UUID(sid), msg, extra=msg.extra)
-                        msg.db_id = row.id
-                    elif isinstance(msg, HumanMessage):
-                        if msg.is_summary or (
-                            msg.extra and msg.extra.get("hidden_from_user")
-                        ):
-                            # Me save summary or hidden HumanMessages (e.g. truncation recovery)
+                            if not has_content:
+                                logger.debug(
+                                    "checkpointer_skip_empty_assistant session_id={}",
+                                    sid,
+                                )
+                                continue
                             row = await save_message(
                                 db,
                                 UUID(sid),
@@ -367,21 +362,40 @@ class SQLiteCheckpointer(Checkpointer):
                                 extra=msg.extra,
                             )
                             msg.db_id = row.id
-                            logger.debug(
-                                "checkpointer_saved_hidden_human session_id={} db_id={}",
-                                sid,
-                                row.id,
+                        elif isinstance(msg, ToolMessage):
+                            row = await save_message(
+                                db, UUID(sid), msg, extra=msg.extra
                             )
-                        # Me real user messages already saved by route handler — skip
-                    else:
-                        logger.debug(
-                            "checkpointer_skip_role session_id={} role={}",
-                            sid,
-                            msg.role,
-                        )
-                        continue
+                            msg.db_id = row.id
+                        elif isinstance(msg, HumanMessage):
+                            if msg.is_summary or (
+                                msg.extra and msg.extra.get("hidden_from_user")
+                            ):
+                                # Me save summary or hidden HumanMessages (e.g. truncation recovery)
+                                row = await save_message(
+                                    db,
+                                    UUID(sid),
+                                    msg,
+                                    is_summary=msg.is_summary,
+                                    exclude_from_context=msg.exclude_from_context,
+                                    extra=msg.extra,
+                                )
+                                msg.db_id = row.id
+                                logger.debug(
+                                    "checkpointer_saved_hidden_human session_id={} db_id={}",
+                                    sid,
+                                    row.id,
+                                )
+                            # Me real user messages already saved by route handler — skip
+                        else:
+                            logger.debug(
+                                "checkpointer_skip_role session_id={} role={}",
+                                sid,
+                                msg.role,
+                            )
+                            continue
 
-                    persisted_ids.add(id(msg))
+                        persisted_ids.add(id(msg))
 
         # Me drop this agent's stream buffer — once the assistant text is in
         # the DB, a mid-turn reconnect loading it via loadSession must not

@@ -3,7 +3,8 @@
 Sinks
 -----
 - **stderr** — human-readable, colourised, respects ``log_level``
-- ``{STATE_DIR}/logs/app/app.log`` — JSON, DEBUG+, rotated at 10 MB, 7-day retention
+- ``{STATE_DIR}/logs/app/app.log`` — JSON, ``FILE_LOG_LEVEL``+ (default DEBUG),
+  rotated at 10 MB, 7-day retention
 - ``{STATE_DIR}/logs/app/app-error.log`` — JSON, ERROR+, rotated at 10 MB, 14-day retention
 
 All log paths are under ``LOGS_DIR`` which is ``{OPENAGENTD_STATE_DIR}/logs``.
@@ -32,8 +33,17 @@ APP_LOG_DIR = LOGS_DIR / "app"
 SESSION_LOG_DIR = LOGS_DIR / "sessions"
 
 
-def setup_logging(log_level: str = "INFO") -> None:
-    """Configure loguru sinks.  Call once at application startup."""
+def setup_logging(log_level: str = "INFO", file_log_level: str = "DEBUG") -> None:
+    """Configure loguru sinks.  Call once at application startup.
+
+    Args:
+        log_level: Threshold for the human-readable stderr sink.
+        file_log_level: Threshold for the JSON ``app.log`` sink.  Defaults to
+            ``DEBUG`` so postmortem detail is unchanged, but can be raised to
+            cut on-disk volume — DEBUG records alone accounted for roughly
+            half of all log lines in production.  ``app-error.log`` is always
+            ERROR+ regardless, so raising this never costs crash visibility.
+    """
     APP_LOG_DIR.mkdir(parents=True, exist_ok=True)
 
     # Remove loguru's default stderr handler
@@ -52,10 +62,10 @@ def setup_logging(log_level: str = "INFO") -> None:
         colorize=True,
     )
 
-    # app.log: JSON, all levels, rotated
+    # app.log: JSON, rotated.  Level is configurable (default DEBUG).
     logger.add(
         APP_LOG_DIR / "app.log",
-        level="DEBUG",
+        level=file_log_level.upper(),
         serialize=True,
         rotation="10 MB",
         retention="7 days",

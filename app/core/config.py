@@ -176,6 +176,10 @@ class Settings(BaseSettings):
 
     # Logging — defaults to INFO in production, DEBUG in development
     LOG_LEVEL: str = "INFO"  # DEBUG, INFO, WARNING, ERROR
+    # Threshold for the JSON app.log sink, independent of the console above.
+    # DEBUG keeps full postmortem detail; raise it to cut on-disk volume.
+    # app-error.log is always ERROR+, so this never hides crashes.
+    FILE_LOG_LEVEL: str = "DEBUG"  # DEBUG, INFO, WARNING, ERROR
 
     DATABASE_URL: SecretStr = SecretStr("")
 

@@ -87,3 +87,50 @@ def test_setup_logging_default_level_is_info(tmp_path):
         setup_logging()  # default
 
     assert calls[0]["level"] == "INFO"
+
+
+# ---------------------------------------------------------------------------
+# File-sink level is configurable independently of the console
+#
+# app.log was hardcoded to DEBUG, so LOG_LEVEL only ever affected stderr and
+# there was no way to reduce on-disk volume without a code change (DEBUG was
+# ~55% of 83k lines / 2 days in production).  The default stays DEBUG so
+# postmortem detail is unchanged unless an operator opts out.
+# ---------------------------------------------------------------------------
+
+
+def _capture_sink_kwargs(tmp_path, *args, **kwargs) -> list[dict]:
+    calls: list[dict] = []
+    with (
+        patch("app.core.logging_config.LOGS_DIR", tmp_path),
+        patch("app.core.logging_config.logger") as mock_logger,
+    ):
+        mock_logger.remove = MagicMock()
+        mock_logger.add = lambda *a, **kw: calls.append(kw)
+        setup_logging(*args, **kwargs)
+    return calls
+
+
+def test_file_sink_level_defaults_to_debug(tmp_path):
+    """Unchanged default: app.log still captures DEBUG for postmortems."""
+    calls = _capture_sink_kwargs(tmp_path, "INFO")
+    assert calls[1]["level"] == "DEBUG"
+
+
+def test_file_sink_level_is_configurable(tmp_path):
+    """An operator can turn app.log down without touching console output."""
+    calls = _capture_sink_kwargs(tmp_path, "INFO", file_log_level="WARNING")
+    assert calls[0]["level"] == "INFO"  # console unaffected
+    assert calls[1]["level"] == "WARNING"  # app.log turned down
+
+
+def test_file_sink_level_is_normalised(tmp_path):
+    """Lowercase config values are accepted, matching console behaviour."""
+    calls = _capture_sink_kwargs(tmp_path, "INFO", file_log_level="warning")
+    assert calls[1]["level"] == "WARNING"
+
+
+def test_error_sink_stays_error_regardless_of_file_level(tmp_path):
+    """app-error.log must remain the ERROR+ postmortem sink."""
+    calls = _capture_sink_kwargs(tmp_path, "INFO", file_log_level="WARNING")
+    assert calls[2]["level"] == "ERROR"

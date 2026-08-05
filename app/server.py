@@ -16,9 +16,10 @@ from app.core.config import settings
 from app.core.logging_config import setup_logging
 from app.core.server_settings import load_server_settings
 
-setup_logging(
-    settings.LOG_LEVEL
-)  # configure sinks before anything else imports the logger
+setup_logging(  # configure sinks before anything else imports the logger
+    settings.LOG_LEVEL,
+    file_log_level=settings.FILE_LOG_LEVEL,
+)
 
 
 app = create_app()

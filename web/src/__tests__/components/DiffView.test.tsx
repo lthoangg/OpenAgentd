@@ -1,9 +1,23 @@
 import { describe, it, expect, afterEach } from "bun:test"
 import { render, screen, cleanup, fireEvent } from "@testing-library/react"
 import { DiffView } from "@/components/ToolCall/DiffView"
-import { diffLines } from "@/components/ToolCall/diffUtils"
+import { diffLines, MAX_LCS_CELLS } from "@/components/ToolCall/diffUtils"
 
 afterEach(cleanup)
+
+/** The invariants that define a correct line diff. Byte-equality with any
+ *  particular implementation is *not* required: when a run of identical lines
+ *  makes the insertion point ambiguous several distinct minimal diffs exist. */
+function expectValidDiff(oldStr: string, newStr: string) {
+  const oldLines = oldStr.replace(/\r\n/g, "\n").split("\n")
+  const newLines = newStr.replace(/\r\n/g, "\n").split("\n")
+  const out = diffLines(oldStr, newStr)
+
+  // (removed + equal) reconstructs the old side; (added + equal) the new side.
+  expect(out.filter((l) => l.type !== "added").map((l) => l.value)).toEqual(oldLines)
+  expect(out.filter((l) => l.type !== "removed").map((l) => l.value)).toEqual(newLines)
+  return out
+}
 
 describe("diffLines", () => {
   it("computes line-by-line diff correctly", () => {
@@ -18,6 +32,62 @@ describe("diffLines", () => {
       { type: "equal", value: "line3" },
       { type: "added", value: "line4" },
     ])
+  })
+
+  it("satisfies the reconstruction invariants on edge-case inputs", () => {
+    const cases: Array<[string, string]> = [
+      ["", ""],
+      ["", "a"],
+      ["a", ""],
+      ["a", "a"],
+      ["a\nb\nc", "a\nb\nc"],
+      ["a\nb\nc", "c\nb\na"],
+      ["a\nb\nc\nd\ne", "a\nX\nc\nY\ne"],
+      ["\n", "\n\n"],
+      ["\n\n\n", "\n"],
+      ["a\n", "a"],
+      ["a", "a\n"],
+      ["same\nsame\nsame", "same\nsame\nsame\nsame"],
+      ["a\r\nb", "a\nb"],
+    ]
+    for (const [oldStr, newStr] of cases) expectValidDiff(oldStr, newStr)
+  })
+
+  it("marks an unchanged file entirely equal (no double-counted prefix/suffix)", () => {
+    const text = Array.from({ length: 20 }, (_, i) => `line ${i}`).join("\n")
+    const out = expectValidDiff(text, text)
+    expect(out.every((l) => l.type === "equal")).toBe(true)
+    expect(out).toHaveLength(20)
+  })
+
+  it("stays minimal for a one-line change inside a large file", () => {
+    // Prefix/suffix trimming must keep this exact rather than tripping the
+    // cell budget: 5000x5000 would be 25M cells without the trim.
+    const base = Array.from({ length: 5000 }, (_, i) => `line ${i}`)
+    const mutated = [...base]
+    mutated[2500] = "line 2500 changed"
+    const out = expectValidDiff(base.join("\n"), mutated.join("\n"))
+    expect(out.filter((l) => l.type === "removed")).toHaveLength(1)
+    expect(out.filter((l) => l.type === "added")).toHaveLength(1)
+  })
+
+  it("falls back to a block diff above the LCS cell budget, still reconstructing both sides", () => {
+    const n = 1200 // 1200*1200 = 1.44M cells > MAX_LCS_CELLS, nothing in common
+    expect(n * n).toBeGreaterThan(MAX_LCS_CELLS)
+    const oldLines = Array.from({ length: n }, (_, i) => `old ${i}`)
+    const newLines = Array.from({ length: n }, (_, i) => `new ${i}`)
+    const out = expectValidDiff(oldLines.join("\n"), newLines.join("\n"))
+    expect(out.filter((l) => l.type === "removed")).toHaveLength(n)
+    expect(out.filter((l) => l.type === "added")).toHaveLength(n)
+  })
+
+  it("handles a large all-different diff without blowing up", () => {
+    const mk = (s: string) =>
+      Array.from({ length: 3000 }, (_, i) => `line ${i} ${s}`).join("\n")
+    const started = Date.now()
+    expectValidDiff(mk("a"), mk("b"))
+    // The pre-fix quadratic path spent ~60ms and ~69MB here.
+    expect(Date.now() - started).toBeLessThan(1000)
   })
 })
 

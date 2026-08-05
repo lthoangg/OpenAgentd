@@ -30,21 +30,43 @@ export interface FileDiff {
   }>
 }
 
-// Simple LCS line-by-line diff algorithm
-export function diffLines(oldStr: string, newStr: string): DiffLine[] {
-  const oldLines = oldStr.replace(/\r\n/g, '\n').split('\n')
-  const newLines = newStr.replace(/\r\n/g, '\n').split('\n')
+/**
+ * Max LCS matrix cells (`oldMid.length * newMid.length`) we are willing to
+ * spend on an exact minimal diff, measured *after* the common prefix/suffix
+ * has been trimmed. 1M cells is a 4MB `Int32Array` and ~10ms — paid once per
+ * distinct `(args, result)` pair because every caller memoizes.
+ *
+ * Above the budget we emit a correct-but-not-minimal block diff (all old
+ * lines removed, then all new lines added) rather than allocating a matrix
+ * that grows quadratically: a 3000x3000 edit would otherwise cost ~69MB and
+ * ~60ms on the main thread.
+ */
+export const MAX_LCS_CELLS = 1_000_000
+
+/**
+ * Exact minimal line diff via LCS backtracking.
+ *
+ * Uses a flat `Int32Array` (one allocation, half the footprint of the
+ * `number[][]` it replaced) and builds the output with `push` + `reverse`.
+ * The previous implementation `unshift`ed each line, which re-shifted the
+ * whole array per line and made *output construction alone* quadratic in the
+ * diff length, independently of the matrix cost.
+ */
+function diffLinesExact(oldLines: string[], newLines: string[]): DiffLine[] {
   const m = oldLines.length
   const n = newLines.length
+  const width = n + 1
+  const dp = new Int32Array((m + 1) * width)
 
-  const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0))
   for (let i = 1; i <= m; i++) {
+    const row = i * width
+    const prevRow = row - width
+    const oldLine = oldLines[i - 1]
     for (let j = 1; j <= n; j++) {
-      if (oldLines[i - 1] === newLines[j - 1]) {
-        dp[i][j] = dp[i - 1][j - 1] + 1
-      } else {
-        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1])
-      }
+      dp[row + j] =
+        oldLine === newLines[j - 1]
+          ? dp[prevRow + j - 1] + 1
+          : Math.max(dp[prevRow + j], dp[row + j - 1])
     }
   }
 
@@ -53,16 +75,71 @@ export function diffLines(oldStr: string, newStr: string): DiffLine[] {
   let j = n
   while (i > 0 || j > 0) {
     if (i > 0 && j > 0 && oldLines[i - 1] === newLines[j - 1]) {
-      result.unshift({ type: 'equal', value: oldLines[i - 1] })
+      result.push({ type: 'equal', value: oldLines[i - 1] })
       i--
       j--
-    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
-      result.unshift({ type: 'added', value: newLines[j - 1] })
+    } else if (j > 0 && (i === 0 || dp[i * width + (j - 1)] >= dp[(i - 1) * width + j])) {
+      result.push({ type: 'added', value: newLines[j - 1] })
       j--
     } else {
-      result.unshift({ type: 'removed', value: oldLines[i - 1] })
+      result.push({ type: 'removed', value: oldLines[i - 1] })
       i--
     }
+  }
+  result.reverse()
+  return result
+}
+
+/** Over-budget fallback: a valid diff, just not a minimal one. Keeps the
+ *  removed-before-added ordering `diffLinesExact` produces. */
+function diffLinesBlock(oldLines: string[], newLines: string[]): DiffLine[] {
+  const result: DiffLine[] = []
+  for (const value of oldLines) result.push({ type: 'removed', value })
+  for (const value of newLines) result.push({ type: 'added', value })
+  return result
+}
+
+/**
+ * Line-by-line diff.
+ *
+ * The common prefix and suffix are trimmed in O(m+n) before the quadratic
+ * core runs. Real `edit` calls rewrite a few lines inside a larger block, so
+ * this usually shrinks the matrix to near-nothing — and it bounds what the
+ * cell budget above has to reject.
+ */
+export function diffLines(oldStr: string, newStr: string): DiffLine[] {
+  const oldLines = oldStr.replace(/\r\n/g, '\n').split('\n')
+  const newLines = newStr.replace(/\r\n/g, '\n').split('\n')
+
+  const shorter = Math.min(oldLines.length, newLines.length)
+
+  let prefix = 0
+  while (prefix < shorter && oldLines[prefix] === newLines[prefix]) prefix++
+
+  // Cap the suffix so prefix + suffix can never exceed the shorter input —
+  // otherwise a fully-identical input would count the same line twice.
+  const maxSuffix = shorter - prefix
+  let suffix = 0
+  while (
+    suffix < maxSuffix &&
+    oldLines[oldLines.length - 1 - suffix] === newLines[newLines.length - 1 - suffix]
+  ) {
+    suffix++
+  }
+
+  const oldMid = oldLines.slice(prefix, oldLines.length - suffix)
+  const newMid = newLines.slice(prefix, newLines.length - suffix)
+
+  const middle =
+    oldMid.length * newMid.length > MAX_LCS_CELLS
+      ? diffLinesBlock(oldMid, newMid)
+      : diffLinesExact(oldMid, newMid)
+
+  const result: DiffLine[] = []
+  for (let i = 0; i < prefix; i++) result.push({ type: 'equal', value: oldLines[i] })
+  for (const line of middle) result.push(line)
+  for (let i = oldLines.length - suffix; i < oldLines.length; i++) {
+    result.push({ type: 'equal', value: oldLines[i] })
   }
   return result
 }

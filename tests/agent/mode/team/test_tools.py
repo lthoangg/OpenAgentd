@@ -46,8 +46,10 @@ class TestMakeTeamMessageTool:
         mb = _make_mailbox("alice", "bob")
         tool = make_team_message_tool(mb, agent_name="alice")
 
-        assert "report blockers" in tool.description
+        assert "blockers" in tool.description
         assert "plain text output is silently discarded" in tool.description.lower()
+        # Task results already reach the lead via the board — no double reporting.
+        assert "todo_manage" in tool.description
 
     def test_content_schema_shapes_useful_team_messages(self):
         """Content guidance permits useful coordination and rejects routine chatter."""

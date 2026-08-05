@@ -34,8 +34,9 @@ _LEAD_DESCRIPTION = (
 )
 
 _MEMBER_DESCRIPTION = (
-    "Plain text output is silently discarded. Use this tool to deliver work, hand "
-    "off results, report blockers, or ask an unblocking question."
+    "Plain text output is silently discarded. Use this tool for peer handoffs, "
+    "blockers, and unblocking questions. Task results reach the lead through "
+    "`todo_manage`; never resend them here."
 )
 
 

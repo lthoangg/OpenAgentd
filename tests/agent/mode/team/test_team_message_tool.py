@@ -141,7 +141,9 @@ class TestTeamMessageTool:
         tool = make_team_message_tool(mb, agent_name="worker", role="member")
 
         assert "silently discarded" in tool.description.lower()
-        assert "deliver work" in tool.description
+        assert "peer handoffs" in tool.description
+        # Members must not double-report completed board work to the lead.
+        assert "todo_manage" in tool.description
 
     async def test_returns_success_message(self):
         """Tool returns 'Message sent to ...' on success."""

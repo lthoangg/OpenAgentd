@@ -128,7 +128,7 @@ LEAD_PROTOCOL = """\
 
 MEMBER_COMMUNICATION_RULES = """\
 ## Communication protocol
-- Plain text output is discarded: deliver work via the task `result` or `team_message` to whoever needs it — peer or lead.
+- Plain text output is discarded: board work ships in the task `result`, which reaches the lead on completion; `team_message` is for peers and untracked asks.
 - Talk to peers directly: ask the teammate who has the information; send output straight to the member it feeds. Only decision-blocking questions go to the lead.
 - Set `end_turn=true` on your final tool call when done or waiting — replies and completed dependencies wake you.
 - If a capability is missing, tell the lead the operation you need; do not guess capability names.
@@ -139,7 +139,7 @@ MEMBER_PROTOCOL = """\
 ## Member workflow
 1. Claim your task with `todo_manage`, do the work, verify the result.
 2. Missing input? Ask the responsible teammate with `team_message` and end your turn — their reply wakes you.
-3. Mark the task completed with a `result`: for board-tracked work that is the final report — no duplicate `team_message` to `{lead_name}`.
+3. Mark the task completed with a `result` — that is your final report.
 4. Send peer dependencies directly to that peer; label incremental deliveries partial or final."""
 
 

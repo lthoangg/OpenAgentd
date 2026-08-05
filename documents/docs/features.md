@@ -14,7 +14,7 @@ release that introduced it (where known). When you ship something new, **add it 
 > double-clickable app that runs a team of AI agents on your machine, with a
 > real UI to watch every step. Open source (Apache 2.0). 16 providers. Your keys.
 
-**Latest release:** v1.129.0 · August 5, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.129.0)
+**Latest release:** v1.130.0 · August 5, 2026 · [release notes](https://github.com/lthoangg/openagentd/releases/tag/v1.130.0)
 
 ---
 
@@ -821,7 +821,9 @@ Everything stays local. No third-party telemetry SaaS.
   the local DuckDB span store.
 - **Two-tier logging** `[since v1.0]` — app log at `{STATE_DIR}/logs/app/`,
   per-session JSONL transcript at `{STATE_DIR}/logs/sessions/{id}/`. Rotated,
-  loguru-based.
+  loguru-based. `FILE_LOG_LEVEL` `[v1.130.0]` sets the app-log threshold
+  independently of the console's `LOG_LEVEL` (default `DEBUG`, unchanged); the
+  error log stays ERROR-only, so raising it never hides crashes.
 - **Persistent reply/tool timing in UI** `[v1.21.0]` — assistant footers show
   full user-turn wall-clock duration; tool rows show individual execution time.
   Durations stay after a reload.

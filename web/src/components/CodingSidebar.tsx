@@ -18,7 +18,7 @@
  * currently showing their sessions. Multiple workspaces can stay open
  * at once. Switching the active workspace auto-expands it.
  */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'framer-motion'
@@ -67,6 +67,7 @@ import { CodingSidebarConfirmDialogs } from './CodingSidebar/ConfirmDialogs'
 import {
   addExpandedPaths,
   buildWorktreeSourceByDirectory,
+  groupSessionsByWorkspace,
   sourceWorkspacePaths,
   toggleExpandedPath,
   visibleNestedWorktrees,
@@ -154,12 +155,20 @@ export function CodingSidebar({
   const deleteSession = useDeleteTeamSessionMutation()
   const updateSessionTitle = useUpdateTeamSessionTitleMutation()
 
-  const codingSessions = (sessions.data?.pages.flatMap((page) => page.data) ?? []).filter(
-    (session) => session.workspace,
+  const codingSessions = useMemo(
+    () => (sessions.data?.pages.flatMap((page) => page.data) ?? []).filter((session) => session.workspace),
+    [sessions.data],
   )
+  // Indexed once per `codingSessions` change instead of re-filtering the full
+  // session list for every workspace/worktree row on every render.
+  const sessionsByWorkspace = useMemo(() => groupSessionsByWorkspace(codingSessions), [codingSessions])
 
   const [workspaceTree, setWorkspaceTree] = useState<CodingWorkspaceTreeRepository[]>(
     () => queryClient.getQueryData<{ repositories: CodingWorkspaceTreeRepository[] }>(queryKeys.coding.tree())?.repositories ?? [],
+  )
+  const workspaceByPath = useMemo(
+    () => new Map(workspaceTree.map((repo) => [repo.path, repo])),
+    [workspaceTree],
   )
   const visibleWorkspaces = workspaceTree.map((repo) => repo.path)
   const activeWorkspace = workspace ?? null
@@ -692,10 +701,10 @@ export function CodingSidebar({
           const sourceIsActive = path === activeWorkspace
           const sourceIsExpanded = expandedWorkspaces.has(path)
           const sourceIsPending = pendingWorkspace === path
-          const sourceSessions = codingSessions.filter((s) => s.workspace === path)
+          const sourceSessions = sessionsByWorkspace.get(path) ?? []
           const sourceRunningSessions = sourceSessions.filter((s) => s.running === true)
           const sourceHasRunningSession = sourceRunningSessions.length > 0
-          const repository = workspaceTree.find((repo) => repo.path === path)
+          const repository = workspaceByPath.get(path)
           const nestedWorktrees = visibleNestedWorktrees(repository, deletedWorktreeSet)
 
           return (
@@ -768,7 +777,7 @@ export function CodingSidebar({
                     const isActive = directory === activeWorkspace
                     const isExpanded = expandedWorkspaces.has(directory)
                     const isPending = pendingWorkspace === directory
-                    const itemSessions = codingSessions.filter((s) => s.workspace === directory)
+                    const itemSessions = sessionsByWorkspace.get(directory) ?? []
                     const runningSessions = itemSessions.filter((s) => s.running === true)
                     const hasRunningSession = runningSessions.length > 0
                     return (

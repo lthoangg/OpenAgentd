@@ -10,6 +10,7 @@ import { createDefaultAgentStream } from '@/stores/useTeamStore/defaults'
 import {
   addExpandedPaths,
   buildWorktreeSourceByDirectory,
+  groupSessionsByWorkspace,
   sourceWorkspacePaths,
   toggleExpandedPath,
   visibleNestedWorktrees,
@@ -293,6 +294,30 @@ describe('CodingSidebar helpers', () => {
     expect(sources.get('/repo-wt')).toBe('/repo')
     expect(sourceWorkspacePaths(workspaceTree, removed)).toEqual(['/repo'])
     expect(visibleNestedWorktrees(workspaceTree[0], removed)).toEqual([])
+  })
+
+  it('groups sessions by workspace and drops sessions without one', () => {
+    const makeSession = (id: string, workspace: string | null) => ({
+      id,
+      title: null,
+      agent_name: null,
+      created_at: null,
+      updated_at: null,
+      workspace,
+    })
+
+    const sessions = [
+      makeSession('a', '/repo'),
+      makeSession('b', '/repo-wt'),
+      makeSession('c', '/repo'),
+      makeSession('d', null),
+    ]
+
+    const byWorkspace = groupSessionsByWorkspace(sessions)
+
+    expect(byWorkspace.get('/repo')?.map((s) => s.id)).toEqual(['a', 'c'])
+    expect(byWorkspace.get('/repo-wt')?.map((s) => s.id)).toEqual(['b'])
+    expect([...byWorkspace.keys()]).toEqual(['/repo', '/repo-wt'])
   })
 
   it('exports worktree helpers used by the component', async () => {

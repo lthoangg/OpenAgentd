@@ -1,6 +1,7 @@
 import type {
   CodingWorkspaceTreeRepository,
   CodingWorkspaceTreeWorktree,
+  SessionResponse,
 } from '@/api/types'
 
 export function toggleExpandedPath(current: Set<string>, path: string): Set<string> {
@@ -40,6 +41,19 @@ export function sourceWorkspacePaths(
   return workspaceTree
     .map((repo) => repo.path)
     .filter((path) => !removedWorktreePaths.has(path))
+}
+
+export function groupSessionsByWorkspace(
+  sessions: SessionResponse[],
+): Map<string, SessionResponse[]> {
+  const byWorkspace = new Map<string, SessionResponse[]>()
+  for (const session of sessions) {
+    if (!session.workspace) continue
+    const existing = byWorkspace.get(session.workspace)
+    if (existing) existing.push(session)
+    else byWorkspace.set(session.workspace, [session])
+  }
+  return byWorkspace
 }
 
 export function visibleNestedWorktrees(

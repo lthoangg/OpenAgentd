@@ -313,6 +313,70 @@ describe("applyRevertBoundary", () => {
     expect(s.revertedMessages).toEqual([{ role: "user", content: "queued two" }])
   })
 
+  // The two boundary hints are intentionally asymmetric. These two cases pin
+  // that down so it does not get "unified" into a bug: the authoritative
+  // server id may widen the visible range, the content heuristic may not.
+
+  it("lets an authoritative boundaryId WIDEN the split past the timestamp guess", () => {
+    const s = makeStream({
+      blocks: [block("u1", "user", "first", "2024-01-01T00:00:00Z")],
+      // Both queued rows carry optimistic client timestamps after the boundary,
+      // so the timestamp scan alone would split at q1 and revert it.
+      currentBlocks: [
+        block("q1", "user", "queued one", "2024-01-01T00:00:10Z"),
+        block("q2", "user", "queued two", "2024-01-01T00:00:10Z"),
+      ],
+    })
+
+    applyRevertBoundary(s, new Date("2024-01-01T00:00:02Z").getTime(), {
+      includeCurrent: true,
+      boundaryId: "q2",
+    })
+
+    // q1 stays visible: the server says the boundary is q2, and it wins.
+    expect(s.blocks.map((b) => b.id)).toEqual(["u1", "q1"])
+    expect(s._revertedSuffix?.map((b) => b.id)).toEqual(["q2"])
+  })
+
+  it("never lets the boundaryContent heuristic WIDEN the split", () => {
+    const s = makeStream({
+      blocks: [
+        block("u1", "user", "repeat", "2024-01-01T00:00:00Z"),
+        block("u2", "user", "other", "2024-01-01T00:00:05Z"),
+        block("u3", "user", "repeat", "2024-01-01T00:00:06Z"),
+      ],
+    })
+
+    // Timestamp scan splits at u2 (t=5 >= 4). The newest content match is u3 at
+    // index 2 — widening there would resurrect u2, so the split must stay at 1.
+    applyRevertBoundary(s, new Date("2024-01-01T00:00:04Z").getTime(), {
+      boundaryContent: "repeat",
+    })
+
+    expect(s.blocks.map((b) => b.id)).toEqual(["u1"])
+    expect(s._revertedSuffix?.map((b) => b.id)).toEqual(["u2", "u3"])
+  })
+
+  it("reverts an untimestamped in-flight block that trails the crossing point", () => {
+    // Streamed assistant blocks have no timestamp until `done` stamps them.
+    // They read as t=0, but the split is positional after the first crossing
+    // block, so a trailing partial answer is still reverted.
+    const s = makeStream({
+      blocks: [block("u1", "user", "first", "2024-01-01T00:00:00Z")],
+      currentBlocks: [
+        block("u2", "user", "second", "2024-01-01T00:00:05Z"),
+        { id: "partial", type: "text", content: "half an answer" },
+      ],
+    })
+
+    applyRevertBoundary(s, new Date("2024-01-01T00:00:03Z").getTime(), {
+      includeCurrent: true,
+    })
+
+    expect(s.blocks.map((b) => b.id)).toEqual(["u1"])
+    expect(s._revertedSuffix?.map((b) => b.id)).toEqual(["u2", "partial"])
+  })
+
   // ── In-flight scratch state is wiped when includeCurrent=true ────────
   //
   // Regression for the "tokens stream into a ghost message after /undo"

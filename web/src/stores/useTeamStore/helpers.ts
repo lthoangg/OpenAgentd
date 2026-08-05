@@ -128,6 +128,11 @@ export function applyRevertBoundary(
     return
   }
 
+  // First block at or after the boundary. Only the *crossing point* is derived
+  // from timestamps; everything after it is reverted positionally. That is what
+  // makes the scan safe for in-flight blocks, which carry no timestamp until
+  // `done` stamps them: an unstamped block reads as t=0, but it trails a stamped
+  // one in append order, so the split lands before it either way.
   let splitIdx = all.length
   for (let i = 0; i < all.length; i++) {
     const t = all[i].timestamp?.getTime() ?? 0
@@ -137,6 +142,16 @@ export function applyRevertBoundary(
     }
   }
 
+  // The two boundary hints are deliberately NOT symmetric — do not "unify" them.
+  //
+  // `boundaryId` is the server's own row id: authoritative, so it overwrites the
+  // timestamp guess outright and may widen the visible range. Optimistic client
+  // timestamps on queued messages routinely sit *after* a server boundary, and
+  // clamping with Math.min would then revert messages the server kept.
+  //
+  // `boundaryContent` is only a content-equality heuristic, so it may tighten
+  // the split but never widen it: an identical earlier message would otherwise
+  // swallow rows that belong to the live tip.
   if (options.boundaryId) {
     const idx = all.findIndex((block) => block.id === options.boundaryId)
     if (idx >= 0) {

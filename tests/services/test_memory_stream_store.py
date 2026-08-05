@@ -146,6 +146,49 @@ class TestCleanupExpiry:
         finally:
             store.asyncio.get_event_loop = original_get_event_loop
 
+    def test_refresh_cleanup_caps_sliding_deadline_at_hard_lifetime(self):
+        """A turn that keeps emitting events forever must still expire —
+        ``_refresh_cleanup`` cannot slide the deadline past
+        ``_created_at + _MAX_TURN_LIFETIME_SECONDS``."""
+
+        class FakeLoop:
+            def __init__(self):
+                self.now = 0.0
+                self.calls: list[tuple[float, object, tuple[object, ...]]] = []
+
+            def time(self) -> float:
+                return self.now
+
+            def call_later(self, delay: float, callback, *args):
+                self.calls.append((delay, callback, args))
+                return object()
+
+        loop = FakeLoop()
+        original_get_event_loop = store.asyncio.get_event_loop
+        store.asyncio.get_event_loop = lambda: loop
+        try:
+            state = store._TurnState()
+            store._schedule_cleanup("sid-1", state)
+            assert state._created_at == 0.0
+            assert state._cleanup_deadline == store.STREAM_TTL
+
+            # Well within the hard lifetime: deadline keeps sliding forward.
+            loop.now = store._MAX_TURN_LIFETIME_SECONDS - store.STREAM_TTL - 1
+            store._refresh_cleanup("sid-1", state)
+            assert state._cleanup_deadline == loop.now + store.STREAM_TTL
+
+            # Past the point where a full STREAM_TTL slide would exceed the
+            # hard cap: deadline is clamped instead of moving further out.
+            loop.now = store._MAX_TURN_LIFETIME_SECONDS - 1
+            store._refresh_cleanup("sid-1", state)
+            assert state._cleanup_deadline == store._MAX_TURN_LIFETIME_SECONDS
+
+            loop.now = store._MAX_TURN_LIFETIME_SECONDS + 1000
+            store._refresh_cleanup("sid-1", state)
+            assert state._cleanup_deadline == store._MAX_TURN_LIFETIME_SECONDS
+        finally:
+            store.asyncio.get_event_loop = original_get_event_loop
+
 
 # ---------------------------------------------------------------------------
 # push_event

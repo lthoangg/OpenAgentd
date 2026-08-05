@@ -36,6 +36,15 @@ from app.services.stream_envelope import StreamEnvelope
 
 STREAM_TTL = 3600  # 1 hour
 
+# Hard ceiling on a single turn's replay-state lifetime, independent of the
+# sliding idle TTL above. ``_refresh_cleanup`` extends the deadline on every
+# event, so a turn that keeps emitting indefinitely (stuck/runaway agent
+# loop) would otherwise never expire and its accumulated content/thinking/
+# tool_calls would grow without bound. This bounds that growth by forcing
+# expiry ``_MAX_TURN_LIFETIME_SECONDS`` after the turn started, regardless
+# of ongoing activity.
+_MAX_TURN_LIFETIME_SECONDS = 4 * 60 * 60  # 4 hours
+
 # Sentinel placed on subscriber queues when the turn finishes
 _SENTINEL = object()
 
@@ -57,6 +66,7 @@ class _TurnState:
         "subscribers",
         "_cleanup_handle",
         "_cleanup_deadline",
+        "_created_at",
     )
 
     def __init__(self) -> None:
@@ -88,6 +98,7 @@ class _TurnState:
         self.subscribers: list[asyncio.Queue] = []
         self._cleanup_handle: asyncio.TimerHandle | None = None
         self._cleanup_deadline: float = 0.0
+        self._created_at: float = 0.0
 
     def reset_for_next_turn(self) -> None:
         self.is_streaming = True
@@ -113,17 +124,24 @@ def _cancel_cleanup(state: _TurnState) -> None:
 
 
 def _schedule_cleanup(session_id: str, state: _TurnState) -> None:
-    """Schedule automatic expiry after STREAM_TTL seconds."""
+    """Schedule automatic expiry after STREAM_TTL seconds. Marks turn start."""
     _cancel_cleanup(state)
     loop = asyncio.get_event_loop()
+    state._created_at = loop.time()
     state._cleanup_deadline = loop.time() + STREAM_TTL
     state._cleanup_handle = loop.call_later(STREAM_TTL, _expire_turn, session_id, state)
 
 
 def _refresh_cleanup(session_id: str, state: _TurnState) -> None:
-    """Extend the sliding TTL without cancelling and recreating the timer."""
+    """Extend the sliding TTL without cancelling and recreating the timer.
+
+    Capped at ``_created_at + _MAX_TURN_LIFETIME_SECONDS`` so a turn that
+    keeps emitting events indefinitely still expires and releases its
+    accumulated state instead of sliding forever.
+    """
     loop = asyncio.get_event_loop()
-    state._cleanup_deadline = loop.time() + STREAM_TTL
+    hard_deadline = state._created_at + _MAX_TURN_LIFETIME_SECONDS
+    state._cleanup_deadline = min(loop.time() + STREAM_TTL, hard_deadline)
     if state._cleanup_handle is None:
         _schedule_cleanup(session_id, state)
 

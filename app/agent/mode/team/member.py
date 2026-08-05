@@ -593,6 +593,7 @@ class TeamMemberBase(abc.ABC):
                 ProviderRateLimitError,
                 ProviderRequestError,
             )
+            from app.agent.providers.unconfigured import UnconfiguredProviderError
 
             if isinstance(
                 exc,
@@ -601,6 +602,12 @@ class TeamMemberBase(abc.ABC):
                     ProviderAuthenticationError,
                     ProviderRequestError,
                     ProviderConnectionError,
+                    # A fresh install whose model is still the
+                    # ``__PROVIDER_MODEL__`` placeholder.  Expected first-run
+                    # state, already surfaced to the UI as a typed
+                    # AgentNotConfiguredEvent banner — not an application fault,
+                    # so it must not land in app-error.log with a traceback.
+                    UnconfiguredProviderError,
                     RuntimeError,
                 ),
             ):

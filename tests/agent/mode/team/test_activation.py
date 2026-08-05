@@ -571,3 +571,72 @@ class TestLateInboxReactivation:
         worker.agent.run.assert_not_called()
 
         await team.stop()
+
+
+class TestTurnErrorSeverity:
+    """Expected provider states must not be logged as application faults.
+
+    ``_run_activation`` logs a known set of provider exceptions at WARNING and
+    everything else via ``logger.exception`` (ERROR + traceback, which lands in
+    the 14-day app-error.log).  ``UnconfiguredProviderError`` subclasses
+    ``ValueError``, not any provider error, so a brand-new install that has not
+    picked a model yet produced ERROR-level tracebacks — the loudest signal in
+    the log — for a state the UI already handles with a "configure a provider"
+    banner.
+    """
+
+    async def test_unconfigured_provider_logs_warning_not_error(
+        self, team_with_db, caplog
+    ):
+        from loguru import logger
+
+        from app.agent.providers.unconfigured import UnconfiguredProviderError
+
+        team = team_with_db
+        await team.start()
+        worker = team.members["worker"]
+        worker.agent.run = AsyncMock(side_effect=UnconfiguredProviderError("worker"))
+
+        handler_id = logger.add(caplog.handler, format="{message}", level="DEBUG")
+        try:
+            msg = Message(from_agent="lead", to_agent="worker", content="[lead]: task")
+            await team.mailbox.send(to="worker", message=msg)
+            await _drain_activation(worker)
+        finally:
+            logger.remove(handler_id)
+
+        levels = {
+            r.levelname for r in caplog.records if "team_member_error" in r.getMessage()
+        }
+        assert levels, "the turn error should have been logged"
+        assert levels == {"WARNING"}, (
+            f"unconfigured provider must log at WARNING, got {levels}"
+        )
+
+        await team.stop()
+
+    async def test_genuine_crash_still_logs_error_with_traceback(
+        self, team_with_db, caplog
+    ):
+        """Guard the other side: real faults must stay loud."""
+        from loguru import logger
+
+        team = team_with_db
+        await team.start()
+        worker = team.members["worker"]
+        worker.agent.run = AsyncMock(side_effect=KeyError("genuine bug"))
+
+        handler_id = logger.add(caplog.handler, format="{message}", level="DEBUG")
+        try:
+            msg = Message(from_agent="lead", to_agent="worker", content="[lead]: task")
+            await team.mailbox.send(to="worker", message=msg)
+            await _drain_activation(worker)
+        finally:
+            logger.remove(handler_id)
+
+        levels = {
+            r.levelname for r in caplog.records if "team_member_error" in r.getMessage()
+        }
+        assert levels == {"ERROR"}, f"a real bug must stay ERROR, got {levels}"
+
+        await team.stop()

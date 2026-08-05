@@ -633,10 +633,36 @@ def _visible_to_user_predicate():
     return sa.or_(hidden.is_(None), hidden.is_(False))
 
 
+def _before_cursor_predicate(before: datetime | None, before_id: UUID | None):
+    """SQL predicate for "strictly older than the ``(created_at, id)`` cursor".
+
+    ``created_at`` alone cannot order rows that share a timestamp, so paging on
+    it drops the tied rows. When *before_id* is supplied the comparison becomes
+    a proper compound tuple test; without it the predicate degrades to the
+    timestamp-only form for backwards compatibility with older cursors.
+    """
+    if before is None:
+        return None
+    if before_id is None:
+        return col(SessionMessage.created_at) < before
+    return sa.or_(
+        col(SessionMessage.created_at) < before,
+        sa.and_(
+            col(SessionMessage.created_at) == before,
+            col(SessionMessage.id) < before_id,
+        ),
+    )
+
+
 class TeamHistoryData(NamedTuple):
     """Full history payload for a team lead session.
 
     Returned by :func:`get_team_history`.
+
+    ``next_cursor``/``next_cursor_id`` together form the pagination cursor.
+    The id component is required: ``created_at`` alone cannot break ties, and
+    team turns batch-insert lead and member rows that routinely share a
+    timestamp, so a timestamp-only cursor silently skips the tied rows.
     """
 
     lead_session: ChatSession
@@ -644,6 +670,7 @@ class TeamHistoryData(NamedTuple):
     members: list[TeamHistoryMemberData]
     has_more: bool
     next_cursor: datetime | None
+    next_cursor_id: UUID | None = None
 
 
 async def _fetch_member_pages(
@@ -651,6 +678,7 @@ async def _fetch_member_pages(
     sub_sessions: Sequence[ChatSession],
     *,
     before: datetime | None,
+    before_id: UUID | None = None,
 ) -> list[TeamHistoryMemberData]:
     """Fetch the newest message page for every sub-session in one query.
 
@@ -701,8 +729,9 @@ async def _fetch_member_pages(
         col(SessionMessage.session_id).in_(session_ids),
         _visible_to_user_predicate(),
     )
-    if before is not None:
-        inner = inner.where(col(SessionMessage.created_at) < before)
+    before_predicate = _before_cursor_predicate(before, before_id)
+    if before_predicate is not None:
+        inner = inner.where(before_predicate)
     ranked = inner.subquery()
     msg_alias = aliased(SessionMessage, ranked)
     stmt = (
@@ -865,13 +894,16 @@ async def get_team_history(
     lead_session_id: UUID,
     *,
     before: datetime | None = None,
+    before_id: UUID | None = None,
 ) -> TeamHistoryData | None:
     """Fetch the latest page of history for a team lead session and its sub-sessions.
 
     Fetches up to ``_HISTORY_PAGE_SIZE`` messages per session ordered by
     ``created_at DESC`` (newest first), then reverses to chronological order
     for the caller.  Pass the ``next_cursor`` from a previous response as
-    ``before`` to load older messages.
+    ``before`` — and ``next_cursor_id`` as ``before_id`` — to load older
+    messages. Supplying only ``before`` still works but cannot break
+    ``created_at`` ties, so rows sharing the boundary timestamp are skipped.
 
     Returns ``None`` if the lead session does not exist.
     """
@@ -885,7 +917,7 @@ async def get_team_history(
     # the divider vanish on reload. Undo uses ``extra.hidden_from_user``.
     raw_lead: list[SessionMessage] = []
     scan_before = before
-    scan_before_id: UUID | None = None
+    scan_before_id: UUID | None = before_id
     # Bound the refill loop. Hidden rows are already excluded in SQL, so a
     # second pass only happens for rows the JSON boolean cast and Python
     # truthiness disagree on. Without a cap that disagreement would scan the
@@ -906,16 +938,9 @@ async def get_team_history(
             )
             .limit(_HISTORY_PAGE_SIZE + 1)
         )
-        if scan_before_id is not None:
-            stmt = stmt.where(
-                (col(SessionMessage.created_at) < scan_before)
-                | (
-                    (col(SessionMessage.created_at) == scan_before)
-                    & (col(SessionMessage.id) < scan_before_id)
-                )
-            )
-        elif scan_before is not None:
-            stmt = stmt.where(col(SessionMessage.created_at) < scan_before)
+        scan_predicate = _before_cursor_predicate(scan_before, scan_before_id)
+        if scan_predicate is not None:
+            stmt = stmt.where(scan_predicate)
         rows = list((await db.exec(stmt)).all())
         raw_lead.extend(msg for msg in rows if not _is_hidden_from_user(msg))
         if len(rows) < _HISTORY_PAGE_SIZE + 1:
@@ -938,7 +963,9 @@ async def get_team_history(
     has_more = len(raw_lead) > _HISTORY_PAGE_SIZE
     raw_lead = raw_lead[:_HISTORY_PAGE_SIZE]
     lead_msgs = list(reversed(raw_lead))
-    next_cursor = lead_msgs[0].created_at if (has_more and lead_msgs) else None
+    boundary = lead_msgs[0] if (has_more and lead_msgs) else None
+    next_cursor = boundary.created_at if boundary is not None else None
+    next_cursor_id = boundary.id if boundary is not None else None
 
     sub_sessions = (
         await db.exec(
@@ -948,7 +975,9 @@ async def get_team_history(
         )
     ).all()
 
-    members = await _fetch_member_pages(db, sub_sessions, before=before)
+    members = await _fetch_member_pages(
+        db, sub_sessions, before=before, before_id=before_id
+    )
 
     return TeamHistoryData(
         lead_session=lead_session,
@@ -956,4 +985,5 @@ async def get_team_history(
         members=members,
         has_more=has_more,
         next_cursor=next_cursor,
+        next_cursor_id=next_cursor_id,
     )

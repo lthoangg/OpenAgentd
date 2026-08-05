@@ -857,6 +857,27 @@ def _parse_cursor(raw: str, field: str) -> datetime:
     return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
 
 
+def _parse_before_cursor(raw: str) -> tuple[datetime, UUID | None]:
+    """Parse a ``before`` cursor into its ``(created_at, id)`` components.
+
+    Accepts both the compound ``"<iso>|<uuid>"`` form emitted by
+    :func:`team_history` and the legacy bare-ISO form, so cursors a client
+    persisted before the id component existed keep working (they just cannot
+    break ``created_at`` ties). Clients treat the cursor as an opaque string
+    and echo it back verbatim.
+    """
+    timestamp, _, raw_id = raw.partition("|")
+    parsed = _parse_cursor(timestamp, "before")
+    if not raw_id:
+        return parsed, None
+    try:
+        return parsed, UUID(raw_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422, detail=f"Invalid before cursor: {raw}"
+        ) from exc
+
+
 @router.get("/{session_id}/history")
 async def team_history(
     db: DbSession,
@@ -870,8 +891,11 @@ async def team_history(
 ) -> TeamHistoryResponse:
     """Return a page of turn history (cursor-based, newest-first page).
 
-    Pass ``before`` (ISO 8601 ``created_at`` of the oldest message from the
-    previous response) to load an older page.
+    Pass ``before`` (the opaque ``next_cursor`` from the previous response) to
+    load an older page. The cursor encodes ``"<created_at-iso>|<message-id>"``;
+    the id breaks ``created_at`` ties, which team turns produce routinely by
+    batch-inserting lead and member rows. A bare ISO timestamp is still
+    accepted for older clients.
 
     Pass ``since`` (``created_at`` of the newest message the caller already
     holds) to fetch only what was persisted after it.  That is how the frontend
@@ -891,9 +915,14 @@ async def team_history(
             db, team, session_id, _parse_cursor(since, "since")
         )
 
-    before_dt = _parse_cursor(before, "before") if before is not None else None
+    before_dt: datetime | None = None
+    before_id: UUID | None = None
+    if before is not None:
+        before_dt, before_id = _parse_before_cursor(before)
 
-    history = await get_team_history(db, session_id, before=before_dt)
+    history = await get_team_history(
+        db, session_id, before=before_dt, before_id=before_id
+    )
     if history is None:
         raise HTTPException(status_code=404, detail="Lead session not found.")
     if history.lead_session.mode == "coding" and history.lead_session.workspace:
@@ -926,7 +955,11 @@ async def team_history(
         for member in history.members
     ]
 
-    next_cursor = history.next_cursor.isoformat() if history.next_cursor else None
+    next_cursor = (
+        f"{history.next_cursor.isoformat()}|{history.next_cursor_id}"
+        if history.next_cursor and history.next_cursor_id
+        else None
+    )
     return TeamHistoryResponse(
         lead=lead_detail,
         members=member_histories,

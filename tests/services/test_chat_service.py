@@ -2342,3 +2342,55 @@ async def test_get_team_history_member_page_skips_hidden_rows_in_sql(session):
         "member-visible-1",
         "member-visible-2",
     ]
+
+
+@pytest.mark.asyncio
+async def test_get_team_history_cursor_keeps_rows_tied_on_created_at(session):
+    """A row sharing the boundary ``created_at`` must not vanish between pages.
+
+    Regression: ``next_cursor`` carried only ``created_at`` while the internal
+    paging loop compared ``(created_at, id)``.  The next page applied
+    ``created_at < before`` strictly, so any row tied with the boundary
+    timestamp was skipped by both pages and became unreachable.
+    """
+    from sqlalchemy import update
+
+    from app.services.chat_service import _HISTORY_PAGE_SIZE, get_team_history
+
+    lead = await create_chat_session(session, title="lead")
+    total = _HISTORY_PAGE_SIZE + 5
+    saved = [
+        await save_message(session, lead.id, HumanMessage(content=f"msg-{i:03}"))
+        for i in range(total)
+    ]
+    await session.commit()
+
+    page1 = await get_team_history(session, lead.id)
+    assert page1 is not None
+    boundary = page1.lead_messages[0]
+
+    # Force the row immediately older than the boundary to tie with it.
+    victim = max(
+        (m for m in saved if m.created_at < boundary.created_at),
+        key=lambda m: m.created_at,
+    )
+    await session.exec(
+        update(SessionMessage)
+        .where(SessionMessage.id == victim.id)
+        .values(created_at=boundary.created_at)
+    )
+    await session.commit()
+
+    page2 = await get_team_history(
+        session,
+        lead.id,
+        before=page1.next_cursor,
+        before_id=page1.next_cursor_id,
+    )
+    assert page2 is not None
+
+    seen = {m.content for m in page1.lead_messages} | {
+        m.content for m in page2.lead_messages
+    }
+    missing = sorted({f"msg-{i:03}" for i in range(total)} - seen)
+    assert missing == [], f"rows lost across pages: {missing}"

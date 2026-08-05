@@ -853,6 +853,48 @@ class TestTeamHistoryRouteExtra:
         resp = client.get(f"/api/team/{uuid.uuid7()}/history")
         assert resp.status_code == 404
 
+    def test_history_before_cursor_accepts_compound_and_legacy_forms(
+        self, app_with_team, monkeypatch
+    ):
+        """``before`` accepts ``<iso>|<uuid>`` and a bare ISO timestamp."""
+        captured: dict[str, object] = {}
+
+        async def fake_get_team_history(
+            db, requested_id, *, before=None, before_id=None
+        ):
+            captured["before"] = before
+            captured["before_id"] = before_id
+            return None  # 404s out; we only care about cursor parsing
+
+        monkeypatch.setattr(
+            "app.api.routes.team.chat.get_team_history", fake_get_team_history
+        )
+        client = TestClient(app_with_team)
+        sid = uuid.uuid7()
+        msg_id = uuid.uuid7()
+
+        resp = client.get(
+            f"/api/team/{sid}/history",
+            params={"before": f"2025-01-01T00:00:00+00:00|{msg_id}"},
+        )
+        assert resp.status_code == 404
+        assert captured["before_id"] == msg_id
+        assert captured["before"].year == 2025
+
+        resp = client.get(
+            f"/api/team/{sid}/history", params={"before": "2025-01-01T00:00:00+00:00"}
+        )
+        assert resp.status_code == 404
+        assert captured["before_id"] is None
+
+    def test_history_before_cursor_rejects_malformed_id(self, app_with_team):
+        client = TestClient(app_with_team)
+        resp = client.get(
+            f"/api/team/{uuid.uuid7()}/history",
+            params={"before": "2025-01-01T00:00:00+00:00|not-a-uuid"},
+        )
+        assert resp.status_code == 422
+
 
 # ---------------------------------------------------------------------------
 # Workspace file ignore helpers

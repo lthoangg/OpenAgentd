@@ -23,6 +23,8 @@ class TeamHistoryResponse(BaseModel):
     lead: SessionDetailResponse
     members: list[TeamHistoryMember]
     has_more: bool = False
+    #: Opaque pagination cursor — echo it back as ``?before=`` verbatim. Encodes
+    #: ``"<created_at-iso>|<message-id>"``; do not parse or reconstruct it.
     next_cursor: str | None = None
     #: Delta responses (``?since=``) only: the delta hit the row cap, so the
     #: caller must fall back to a full page instead of stitching an incomplete

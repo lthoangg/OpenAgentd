@@ -529,8 +529,16 @@ export const FloatingInputBar = memo(
       // the house rule in ``web/src/AGENTS.md``: stacking a static Tailwind
       // translate on the node framer animates ``x`` on means the two fight
       // over the same property.
+      // ``pointer-events-none`` on this wrapper is load-bearing, not cosmetic.
+      // The wrapper is the *layout* box and never moves: framer translates only
+      // the inner panel, so after a drag the wrapper is left behind as an
+      // invisible ``max-w-md``-wide rectangle sitting at the docked position,
+      // above the transcript in the stacking order (``z-20``). Transparent
+      // boxes still take hits, so it silently swallowed every click on the
+      // chat content underneath. Hit-testing therefore lives on the panel that
+      // actually carries the transform.
       <div
-        className={`pointer-events-auto absolute inset-x-0 bottom-4 z-20 mx-auto ${
+        className={`pointer-events-none absolute inset-x-0 bottom-4 z-20 mx-auto ${
           effectiveMinimized ? 'w-fit' : 'w-full max-w-md'
         }`}
       >
@@ -544,7 +552,7 @@ export const FloatingInputBar = memo(
           onDragEnd={handleDragEnd}
           animate={{ x: offset.x, y: offset.y }}
           transition={{ type: 'spring', stiffness: 380, damping: 32 }}
-          className="w-full"
+          className="pointer-events-auto w-full"
           style={{ touchAction: 'none' }}
         >
         <RevertNotice count={inputProps.revertedCount ?? 0} messages={inputProps.revertedMessages ?? []} onRedo={inputProps.onRedo} />

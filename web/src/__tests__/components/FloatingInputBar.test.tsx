@@ -198,6 +198,24 @@ describe('FloatingInputBar', () => {
     expect(screen.getByRole('button', { name: 'Stop generation' })).toBeTruthy()
   })
 
+  it('leaves no click-blocking hit area behind at the docked position', () => {
+    // The positioning wrapper stays anchored at the default docked slot
+    // (bottom-centre) while framer moves only the inner panel via
+    // ``transform``. If the wrapper keeps ``pointer-events: auto`` it turns
+    // into an invisible max-w-md rectangle that swallows every click over
+    // the chat transcript at the docked position once the bar is dragged
+    // away. Hit-testing must belong to the panel that actually moves.
+    render(<Harness />)
+
+    const handle = screen.getByRole('button', { name: /drag input bar/i })
+    const wrapper = handle.closest('div.absolute') as HTMLElement | null
+    expect(wrapper).not.toBeNull()
+    expect(wrapper!.className).toContain('pointer-events-none')
+
+    const panel = wrapper!.firstElementChild as HTMLElement
+    expect(panel.className).toContain('pointer-events-auto')
+  })
+
   it('does not render queued messages inside the floating composer', () => {
     useTeamStore.setState({
       sessionId: 'session-a',

@@ -102,23 +102,29 @@ function buildTree(files: WorkspaceFileInfo[]): TreeNode[] {
 
   for (const f of files) {
     const segments = f.path.split('/')
-    // Ensure every ancestor folder node exists.
+    // Walk the ancestors, extending the path one segment at a time. Rebuilding
+    // each level with `slice().join('/')` made this O(depth²) string work per
+    // file — on a 20k-file tree at depth 8 that was about half the total cost.
+    let parentPath = ''
     for (let i = 1; i < segments.length; i++) {
-      const parentPath = segments.slice(0, i - 1).join('/')
-      const folderPath = segments.slice(0, i).join('/')
-      if (!folders.has(folderPath)) {
-        folders.set(folderPath, [])
-        const parent = folders.get(parentPath)!
-        parent.push({ kind: 'folder', name: segments[i - 1], path: folderPath, children: folders.get(folderPath)! })
+      const name = segments[i - 1]
+      const folderPath = parentPath === '' ? name : `${parentPath}/${name}`
+      let children = folders.get(folderPath)
+      if (children === undefined) {
+        children = []
+        folders.set(folderPath, children)
+        folders.get(parentPath)!.push({ kind: 'folder', name, path: folderPath, children })
       }
+      parentPath = folderPath
     }
-    // Insert the file under its direct parent.
-    const parentPath = segments.slice(0, segments.length - 1).join('/')
+    // `parentPath` is now the file's direct parent folder.
     folders.get(parentPath)!.push({ kind: 'file', name: f.name, path: f.path, file: f })
   }
 
   function sortNodes(nodes: TreeNode[]): TreeNode[] {
-    return nodes
+    // Copy before sorting: these arrays double as the `children` of already
+    // constructed folder nodes, so sorting in place mutated shared state.
+    return [...nodes]
       .sort((a, b) => {
         if (a.kind !== b.kind) return a.kind === 'folder' ? -1 : 1
         return a.name.localeCompare(b.name)

@@ -244,3 +244,67 @@ def test_partition_functions_idempotent(ratio_text: str):
     ts = datetime.now(timezone.utc)
     assert hourly_partition(ts) == hourly_partition(ts)
     assert daily_partition(ts) == daily_partition(ts)
+
+
+# ── Metrics hooks must not fail silently ──────────────────────────────────────
+#
+# ``_on_write`` / ``_on_drop`` are caller-supplied metrics callbacks, wrapped in
+# ``except Exception: pass`` so a broken hook can never crash the writer.  That
+# is the right call — but with no log at all, a hook that raises every time
+# silently disables telemetry with zero signal anywhere.  DEBUG keeps the fix
+# from adding noise on a hot path.
+
+
+def test_broken_on_write_hook_is_logged_and_does_not_crash(tmp_path, caplog):
+    from loguru import logger
+
+    calls: list[int] = []
+
+    def exploding_on_write(count: int) -> None:
+        calls.append(count)
+        raise RuntimeError("metrics backend down")
+
+    writer = JsonlBatchWriter(
+        tmp_path, hourly_partition, flush_interval=0.05, on_write=exploding_on_write
+    )
+    handler_id = logger.add(caplog.handler, format="{message}", level="DEBUG")
+    try:
+        assert writer.write({"a": 1}) is True
+        writer.close(timeout=2.0)
+    finally:
+        logger.remove(handler_id)
+
+    assert calls, "the hook should have been invoked"
+    # The record still lands on disk despite the broken hook.
+    files = list(tmp_path.rglob("*.jsonl"))
+    assert files and files[0].read_text().strip()
+    assert any("jsonl_writer_on_write_hook_failed" in m for m in caplog.messages), (
+        f"broken metrics hook was swallowed with no trace: {caplog.messages}"
+    )
+
+
+def test_broken_on_drop_hook_is_logged_and_does_not_crash(tmp_path, caplog):
+    from loguru import logger
+
+    def exploding_on_drop() -> None:
+        raise RuntimeError("metrics backend down")
+
+    # max_queue=1 with no flusher progress guarantees a drop.
+    writer = JsonlBatchWriter(
+        tmp_path,
+        hourly_partition,
+        max_queue=1,
+        flush_interval=60.0,
+        on_drop=exploding_on_drop,
+    )
+    handler_id = logger.add(caplog.handler, format="{message}", level="DEBUG")
+    try:
+        results = [writer.write({"n": i}) for i in range(50)]
+        assert results.count(False) >= 1, "queue should have overflowed"
+    finally:
+        logger.remove(handler_id)
+        writer.close(timeout=2.0)
+
+    assert any("jsonl_writer_on_drop_hook_failed" in m for m in caplog.messages), (
+        f"broken drop hook was swallowed with no trace: {caplog.messages}"
+    )

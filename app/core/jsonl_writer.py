@@ -127,8 +127,16 @@ class JsonlBatchWriter:
             if self._on_drop is not None:
                 try:
                     self._on_drop()
-                except Exception:
-                    pass  # never let metrics hooks crash the writer
+                except Exception as exc:
+                    # Never let a metrics hook crash the writer — but do not
+                    # swallow it entirely either, or a permanently broken hook
+                    # disables telemetry with no trace anywhere.  DEBUG because
+                    # this sits on a hot path.
+                    logger.debug(
+                        "jsonl_writer_on_drop_hook_failed name={} error={!r}",
+                        self._name,
+                        exc,
+                    )
             return False
 
     def close(self, timeout: float = 5.0) -> None:
@@ -217,5 +225,11 @@ class JsonlBatchWriter:
         if written and self._on_write is not None:
             try:
                 self._on_write(written)
-            except Exception:
-                pass  # never let metrics hooks crash the writer
+            except Exception as exc:
+                # See ``_on_drop`` above: contained, but not invisible.
+                logger.debug(
+                    "jsonl_writer_on_write_hook_failed name={} written={} error={!r}",
+                    self._name,
+                    written,
+                    exc,
+                )

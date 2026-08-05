@@ -175,17 +175,20 @@ export function addTool(
   toolCallId?: string,
   durationMs?: number,
 ): ContentBlock[] {
-  const result = [...blocks]
-  // Find existing block by toolCallId first, then by name (no-args-yet pending)
-  for (let i = result.length - 1; i >= 0; i--) {
-    const block = result[i]
+  // Find existing block by toolCallId first, then by name (no-args-yet pending).
+  // Copy-on-write: these helpers run against an immer draft, where spreading the
+  // array materialises a proxy per element. Copying up front charged that O(n)
+  // cost even on the replay-dedup and no-match paths, which change nothing.
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const block = blocks[i]
     if (
       block.type === 'tool' &&
       ((toolCallId && block.toolCallId === toolCallId) ||
         (!toolCallId && block.toolName === name && block.toolArgs === undefined))
     ) {
       // Me skip if args already set — reconnect replay dedup
-      if (block.toolArgs !== undefined && block.toolArgs !== null) return result
+      if (block.toolArgs !== undefined && block.toolArgs !== null) return blocks
+      const result = [...blocks]
       result[i] = {
         ...block,
         toolArgs: args,
@@ -221,21 +224,21 @@ export function completeTool(
   extra?: Record<string, unknown>,
   completedAt = Date.now(),
 ): ContentBlock[] {
-  const result = [...blocks]
-
+  // Copy-on-write — see addTool.
   // 1. Prefer exact match by toolCallId (handles same tool called multiple times)
   if (toolCallId) {
-    for (let i = result.length - 1; i >= 0; i--) {
-      const block = result[i]
+    for (let i = blocks.length - 1; i >= 0; i--) {
+      const block = blocks[i]
       if (block.type === 'tool' && block.toolCallId === toolCallId) {
         // Me skip if already done — reconnect replay dedup
-        if (block.toolDone) return result
+        if (block.toolDone) return blocks
         // Use client elapsed since first chunk so the frozen display matches
         // what the live timer was counting up. Server execution time is kept
         // separately as serverDurationMs for metrics.
         const clientElapsedMs = block.startedAt !== undefined
           ? Math.max(0, completedAt - block.startedAt)
           : undefined
+        const result = [...blocks]
         result[i] = {
           ...block,
           toolDone: true,
@@ -250,12 +253,13 @@ export function completeTool(
   }
 
   // 2. Fall back to last incomplete block matching by name
-  for (let i = result.length - 1; i >= 0; i--) {
-    const block = result[i]
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const block = blocks[i]
     if (block.type === 'tool' && block.toolName === name && !block.toolDone) {
       const clientElapsedMs = block.startedAt !== undefined
         ? Math.max(0, completedAt - block.startedAt)
         : undefined
+      const result = [...blocks]
       result[i] = {
         ...block,
         toolDone: true,
@@ -268,7 +272,7 @@ export function completeTool(
     }
   }
 
-  return result
+  return blocks
 }
 
 /** Trailing lines of live tool output retained for display. The live-output
@@ -317,10 +321,13 @@ export function appendToolOutput(
   toolCallId: string | undefined,
   text: string,
 ): ContentBlock[] {
-  const result = [...blocks]
-
-  for (let i = result.length - 1; i >= 0; i--) {
-    const block = result[i]
+  // Copy-on-write matters most here: this runs per streamed output delta, and
+  // the reducer calls it a second time against the (session-sized) confirmed
+  // `blocks` whenever the live lookup misses. Returning the original reference
+  // on a miss is also load-bearing — `applyBufferedSSEDelta` uses identity to
+  // detect "no live card matched".
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const block = blocks[i]
     if (
       block.type === 'tool' &&
       ((toolCallId && block.toolCallId === toolCallId) ||
@@ -335,6 +342,7 @@ export function appendToolOutput(
       if (newOutput.length > LIVE_OUTPUT_MAX_CHARS) {
         newOutput = `... [truncated live output] ...\n${newOutput.slice(-LIVE_OUTPUT_MAX_CHARS)}`
       }
+      const result = [...blocks]
       result[i] = { ...block, toolOutput: newOutput }
       return result
     }

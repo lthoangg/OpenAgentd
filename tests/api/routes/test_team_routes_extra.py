@@ -194,6 +194,64 @@ class TestTeamAgentsRouteExtra:
 
         assert rebuild.call_count == 2
 
+    def test_agents_reads_settings_once_regardless_of_agent_count(
+        self, app_with_team, test_team, tmp_path
+    ):
+        """settings.yaml is read once per request, not once per serialized agent.
+
+        ``_serialize_agent`` used to call ``load_runtime_settings()`` itself, so
+        a request paid a file read plus a YAML parse for every member *and*
+        every blueprint. The route now hoists it and threads the value down.
+        """
+        source_path = tmp_path / "executor.md"
+        source_path.write_text(
+            "---\nname: executor\nrole: member\nmodel: mock:model\n---\nBlueprint\n",
+            encoding="utf-8",
+        )
+        test_team.blueprints["executor"] = MemberBlueprint(
+            name="executor", description="writes code", source_path=source_path
+        )
+        blueprint_agent = Agent(
+            name="executor", llm_provider=MockProvider(), system_prompt="Blueprint"
+        )
+
+        from app.core.runtime_settings import RuntimeSettings
+
+        with (
+            patch(
+                "app.agent.loader.rebuild_agent_from_disk",
+                return_value=blueprint_agent,
+            ),
+            patch(
+                "app.core.runtime_settings.load_runtime_settings",
+                return_value=RuntimeSettings(),
+            ) as load_settings,
+        ):
+            client = TestClient(app_with_team)
+            resp = client.get("/api/team/agents")
+
+        assert resp.status_code == 200
+        # lead + worker + 1 blueprint would previously have been 3 reads.
+        assert len(resp.json()["agents"]) >= 2
+        assert len(resp.json()["blueprints"]) == 1
+        assert load_settings.call_count == 1
+
+    def test_agents_still_applies_custom_summary_threshold(self, app_with_team):
+        """Hoisting the settings read must not drop the user's override."""
+        from app.core.runtime_settings import RuntimeSettings
+
+        settings = RuntimeSettings()
+        settings.summarization.prompt_token_threshold = 4242
+
+        with patch(
+            "app.core.runtime_settings.load_runtime_settings", return_value=settings
+        ):
+            data = TestClient(app_with_team).get("/api/team/agents").json()
+
+        assert data["agents"], "expected at least one serialized agent"
+        for agent in data["agents"]:
+            assert agent["summary_trigger_tokens"] == 4242
+
     def test_agents_workspace_returns_coding_team(
         self, app_without_team, test_team, monkeypatch
     ):

@@ -91,10 +91,41 @@ router = APIRouter()
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
+class _Unset:
+    """Sentinel type: ``custom_threshold`` was not supplied by the caller."""
+
+
+_UNSET = _Unset()
+
+
+def _custom_prompt_token_threshold() -> int | None:
+    """Read the user's summarization threshold override.
+
+    This reads *and* YAML-parses ``settings.yaml`` on every call, so anything
+    serializing more than one agent in a single request must hoist it and pass
+    the result down via ``_serialize_agent(custom_threshold=...)``.
+    """
+    from app.core.runtime_settings import load_runtime_settings
+
+    try:
+        return load_runtime_settings().summarization.prompt_token_threshold
+    except Exception:
+        return None
+
+
 def _serialize_agent(
-    agent: Agent, *, is_lead: bool = False, workspace: str | None = None
+    agent: Agent,
+    *,
+    is_lead: bool = False,
+    workspace: str | None = None,
+    custom_threshold: int | None | _Unset = _UNSET,
 ) -> dict:
     """Serialize an Agent into the /team/agents response shape.
+
+    ``custom_threshold`` is the summarization override from ``settings.yaml``.
+    Pass it explicitly when serializing several agents in one request; omitting
+    it falls back to loading settings here, which costs a file read plus a YAML
+    parse *per agent*.
 
     ``workspace``, when given, binds the sandbox for the duration of tool
     description computation only. Some tool descriptions are dynamic — the
@@ -108,12 +139,12 @@ def _serialize_agent(
     from app.agent.hooks.summarization import resolve_prompt_token_threshold
     from app.agent.mcp import mcp_manager
     from app.agent.sandbox import SandboxConfig, _sandbox_ctx, set_sandbox
-    from app.core.runtime_settings import load_runtime_settings
 
-    try:
-        _custom = load_runtime_settings().summarization.prompt_token_threshold
-    except Exception:
-        _custom = None
+    _custom = (
+        _custom_prompt_token_threshold()
+        if isinstance(custom_threshold, _Unset)
+        else custom_threshold
+    )
 
     tools_by_name = {t.name: t for t in agent._tools.values()}
     for server_name in agent.mcp_servers:
@@ -151,7 +182,9 @@ def _serialize_agent(
     }
 
 
-def _serialize_blueprint(team_obj, bp) -> dict:
+def _serialize_blueprint(
+    team_obj, bp, *, custom_threshold: int | None | _Unset = _UNSET
+) -> dict:
     from app.agent.loader import rebuild_agent_from_disk
 
     try:
@@ -179,7 +212,9 @@ def _serialize_blueprint(team_obj, bp) -> dict:
             )
             bp._serialized_agent = agent
             bp._serialized_agent_fingerprint = fingerprint
-    payload = _serialize_agent(agent, workspace=team_obj.workspace)
+    payload = _serialize_agent(
+        agent, workspace=team_obj.workspace, custom_threshold=custom_threshold
+    )
     payload["live_instances"] = team_obj.live_instances_for_blueprint(bp.name)
     return payload
 
@@ -539,14 +574,21 @@ async def list_team_agents(
     team_manager.refresh_blueprints(team_obj)
     team_manager.refresh_idle_agents(team_obj)
     all_members: list[TeamMemberBase] = [team_obj.lead, *team_obj.members.values()]
+    # Read settings.yaml once for the whole response — it used to be re-read and
+    # re-parsed inside _serialize_agent for every blueprint *and* every member.
+    custom_threshold = _custom_prompt_token_threshold()
     blueprints = [
-        _serialize_blueprint(team_obj, bp) for bp in team_obj.blueprints.values()
+        _serialize_blueprint(team_obj, bp, custom_threshold=custom_threshold)
+        for bp in team_obj.blueprints.values()
     ]
     return TeamAgentsResponse(
         agents=[
             AgentInfoResponse(
                 **_serialize_agent(
-                    m.agent, is_lead=(m is team_obj.lead), workspace=team_obj.workspace
+                    m.agent,
+                    is_lead=(m is team_obj.lead),
+                    workspace=team_obj.workspace,
+                    custom_threshold=custom_threshold,
                 )
             )
             for m in all_members

@@ -376,6 +376,190 @@ export type SessionSlice = Pick<
   | 'setActiveAgent'
 >
 
+// Keyed by `${sessionId}\u0000${workspace}`. Coalesces concurrent
+// `loadSession` calls for the same session — see the comment on the
+// `loadSession` action below.
+const inflightLoadSession = new Map<string, Promise<void>>()
+
+async function loadSessionImpl(
+  get: () => TeamStore,
+  set: (fn: (draft: TeamStore) => void) => void,
+  sessionId: string,
+  workspace?: string | null,
+): Promise<void> {
+  const gen = get()._sessionGeneration
+  const fetchStartedAt = Date.now()
+  // How much live content each stream held before the request went out, so
+  // the resolve path can tell it apart from anything appended since.
+  const liveCountsAtFetch = new Map(
+    Object.entries(get().agentStreams).map(([name, s]) => [name, s.currentBlocks.length]),
+  )
+  set((draft) => {
+    if (draft.sessionId !== sessionId) {
+      draft.isTeamWorking = false
+      draft.isContinuing = false
+    }
+  })
+  try {
+    const liveNames = get().liveAgentNames
+    const history = await teamHistory(sessionId)
+
+    if (get()._sessionGeneration !== gen) return
+
+    set((draft) => {
+      draft.sessionId = sessionId
+      draft.sessionTitle = history.lead.title ?? null
+      draft.sessionModel = history.lead.model ?? null
+      draft.sessionThinkingLevel = history.lead.thinking_level ?? null
+      draft.sessionFastMode = fastModeFromMessages(history.lead.messages)
+      draft.error = null
+      Object.values(draft.agentStreams).forEach((stream) => {
+        stream.revertedCount = 0
+        stream.revertedMessages = []
+      })
+
+      const memberNames = history.members.map((m) => m.name)
+      const leadName = history.lead.agent_name ?? liveNames?.[0] ?? draft.leadName
+      draft.leadName = leadName
+      if (liveNames !== null) draft.liveAgentNames = liveNames
+
+      const allNames = leadName ? [leadName, ...memberNames] : memberNames
+      draft.agentNames = allNames
+      const leadRevertTime = revertBoundaryTime(history.lead)
+      const boundaryId = history.lead.revert?.message_id
+      const boundaryMsg = boundaryId ? history.lead.messages.find((msg) => msg.id === boundaryId) : undefined
+
+      // The client's `isTeamWorking` lags the server: after a /stop the
+      // backend keeps unwinding for seconds before its trailing `done` clears
+      // the flag, and `session_turn_completed` can arrive over the global
+      // stream ahead of that `done` too. When the server says the turn is
+      // over it had already persisted it in full, so every live block from
+      // before this fetch is now duplicated by the canonical rows below —
+      // preserving them is what let the belated `done` append the turn twice.
+      // Drop them up front; everything downstream then sees only genuinely
+      // newer content and needs no special casing.
+      const turnStillRunning = history.lead.running === true
+      if (!turnStillRunning) {
+        Object.entries(draft.agentStreams).forEach(([name, stream]) => {
+          dropSnapshotCoveredBlocks(stream, liveCountsAtFetch.get(name) ?? 0)
+        })
+      }
+
+      // Computed against the stream identified by the *resolved* leadName,
+      // before anything below overwrites it — see hasLiveContent.
+      const leadHadNewerActivity = leadName
+        ? hasLiveContent(draft.agentStreams[leadName], draft.isTeamWorking, fetchStartedAt)
+        : false
+      if (!leadHadNewerActivity) {
+        draft.isTeamWorking = history.lead.running === true
+        draft.isContinuing = false
+      }
+
+      if (leadName) {
+        if (!draft.agentStreams[leadName]) {
+          draft.agentStreams[leadName] = createDefaultAgentStream()
+        }
+        const leadStream = draft.agentStreams[leadName]
+        if (!leadHadNewerActivity) revokeBlobUrlsFromBlocks(leadStream.currentBlocks)
+        leadStream.blocks = parseTeamBlocks(history.lead.messages)
+        leadStream._revertedSuffix = []
+        applyRevertBoundary(leadStream, leadRevertTime, {
+          boundaryId,
+          boundaryContent: boundaryMsg?.content,
+        })
+        if (leadHadNewerActivity) {
+          // A running turn keeps its live tail (the in-flight part is not in
+          // the snapshot yet), so strip whatever the snapshot already covers
+          // instead of rendering both copies.
+          if (turnStillRunning) {
+            dropSnapshotAlignedPrefix(leadStream, liveCountsAtFetch.get(leadName) ?? 0)
+          }
+          removePersistedOptimisticUserBlocks(leadStream)
+        }
+        if (!leadHadNewerActivity) {
+          leadStream.currentBlocks = []
+          leadStream.currentText = ''
+          leadStream.currentThinking = ''
+          leadStream.status = history.lead.running === true ? 'working' : 'idle'
+          leadStream._turnStartedAt = history.lead.running === true ? Date.now() : null
+        }
+        const leadVisibleMsgs = messagesBeforeRevert(history.lead)
+        const leadUsage = sumUsageFromMessages(leadVisibleMsgs)
+        leadStream.usage = leadUsage
+        leadStream._completionBase = leadUsage.completionTokens
+      }
+
+      const queued = queuedMessagesFromHistory(sessionId, history.lead.messages)
+      const queuedIds = new Set(queued.map((msg) => msg.id))
+      draft._pendingMessages = [
+        ...draft._pendingMessages.filter((msg) => msg.sessionId !== sessionId || queuedIds.has(msg.id)),
+        ...queued.filter((msg) => !draft._pendingMessages.some((existing) => existing.id === msg.id)),
+      ]
+
+      history.members.forEach((member) => {
+        const existingStatus = draft.agentStreams[member.name]?.status
+        const isLiveMember = liveNames === null || liveNames.includes(member.name)
+        if (!draft.agentStreams[member.name]) {
+          draft.agentStreams[member.name] = createDefaultAgentStream()
+        }
+        const memberStream = draft.agentStreams[member.name]
+        const memberHadNewerActivity = hasLiveContent(memberStream, draft.isTeamWorking, fetchStartedAt)
+        if (!memberHadNewerActivity) revokeBlobUrlsFromBlocks(memberStream.currentBlocks)
+        memberStream.blocks = parseTeamBlocks(member.messages)
+        memberStream._revertedSuffix = []
+        applyRevertBoundary(memberStream, leadRevertTime, {
+          boundaryId,
+          boundaryContent: boundaryMsg?.content,
+        })
+        if (memberHadNewerActivity && turnStillRunning) {
+          dropSnapshotAlignedPrefix(memberStream, liveCountsAtFetch.get(member.name) ?? 0)
+        }
+        if (!memberHadNewerActivity) {
+          memberStream.currentBlocks = []
+          memberStream.currentText = ''
+          memberStream.currentThinking = ''
+          memberStream.status =
+            !isLiveMember
+              ? 'offline'
+              : existingStatus === 'offline' || existingStatus === 'error' ? existingStatus : 'idle'
+          memberStream._turnStartedAt = null
+        }
+        const memberVisibleMsgs = messagesBeforeTime(member.messages, leadRevertTime)
+        const memberUsage = sumUsageFromMessages(memberVisibleMsgs)
+        memberStream.usage = memberUsage
+        memberStream._completionBase = memberUsage.completionTokens
+      })
+
+      if (!draft.activeAgent || !allNames.includes(draft.activeAgent)) {
+        draft.activeAgent = leadName ?? allNames[0] ?? null
+      }
+
+      draft.hasMore = history.has_more
+      draft.nextCursor = history.next_cursor
+      draft._leadRevertTime = revertBoundaryTime(history.lead)
+      // Everything in this response is server-confirmed, so nothing is
+      // pending reconciliation and the watermark advances to its newest row.
+      draft._syncedThrough = newestMessageAt(history)
+      Object.values(draft.agentStreams).forEach((stream) => {
+        stream._unsyncedBlockIds = []
+      })
+      draft._workspace = workspace ?? null
+      draft._loadingOlder = false
+      draft._resolvedSessionReadyId = null
+    })
+
+    if (liveNames === null && get()._sessionGeneration === gen) {
+      void get().loadTeamStatus(workspace, gen)
+    }
+  } catch (err) {
+    if (get()._sessionGeneration !== gen) return
+    set((draft) => {
+      draft.error = err instanceof Error ? err.message : 'Failed to load session'
+      draft.isContinuing = false
+    })
+  }
+}
+
 export const createSessionSlice: StateCreator<
   TeamStore,
   [['zustand/immer', never]],
@@ -521,177 +705,26 @@ export const createSessionSlice: StateCreator<
   },
 
   loadSession: async (sessionId: string, workspace?: string | null) => {
-    const gen = get()._sessionGeneration
-    const fetchStartedAt = Date.now()
-    // How much live content each stream held before the request went out, so
-    // the resolve path can tell it apart from anything appended since.
-    const liveCountsAtFetch = new Map(
-      Object.entries(get().agentStreams).map(([name, s]) => [name, s.currentBlocks.length]),
-    )
-    set((draft) => {
-      if (draft.sessionId !== sessionId) {
-        draft.isTeamWorking = false
-        draft.isContinuing = false
-      }
+    // Coalesce concurrent calls for the same session into one in-flight
+    // fetch. A foreground/visibility resume (useSessionBootstrap) and the
+    // global event stream's reconcile (useGlobalEventStream) can both react
+    // to the same visibilitychange and call loadSession() for the same
+    // session back-to-back. Each independent call takes its own
+    // `liveCountsAtFetch` snapshot of `currentBlocks` — if both run against a
+    // live turn, the second snapshot can be taken *after* the first call
+    // already mutated `currentBlocks` (e.g. via a `connectStream()` replay
+    // it kicked off), producing an inconsistent drop-prefix calculation that
+    // leaves stale live blocks in place for the next SSE replay to duplicate.
+    // Sharing the in-flight promise removes the race outright — every extra
+    // caller just awaits the one fetch already covering it.
+    const inflightKey = `${sessionId}\u0000${workspace ?? ''}`
+    const existing = inflightLoadSession.get(inflightKey)
+    if (existing) return existing
+    const promise = loadSessionImpl(get, set, sessionId, workspace).finally(() => {
+      if (inflightLoadSession.get(inflightKey) === promise) inflightLoadSession.delete(inflightKey)
     })
-    try {
-      const liveNames = get().liveAgentNames
-      const history = await teamHistory(sessionId)
-
-      if (get()._sessionGeneration !== gen) return
-
-      set((draft) => {
-        draft.sessionId = sessionId
-        draft.sessionTitle = history.lead.title ?? null
-        draft.sessionModel = history.lead.model ?? null
-        draft.sessionThinkingLevel = history.lead.thinking_level ?? null
-        draft.sessionFastMode = fastModeFromMessages(history.lead.messages)
-        draft.error = null
-        Object.values(draft.agentStreams).forEach((stream) => {
-          stream.revertedCount = 0
-          stream.revertedMessages = []
-        })
-
-        const memberNames = history.members.map((m) => m.name)
-        const leadName = history.lead.agent_name ?? liveNames?.[0] ?? draft.leadName
-        draft.leadName = leadName
-        if (liveNames !== null) draft.liveAgentNames = liveNames
-
-        const allNames = leadName ? [leadName, ...memberNames] : memberNames
-        draft.agentNames = allNames
-        const leadRevertTime = revertBoundaryTime(history.lead)
-        const boundaryId = history.lead.revert?.message_id
-        const boundaryMsg = boundaryId ? history.lead.messages.find((msg) => msg.id === boundaryId) : undefined
-
-        // The client's `isTeamWorking` lags the server: after a /stop the
-        // backend keeps unwinding for seconds before its trailing `done` clears
-        // the flag, and `session_turn_completed` can arrive over the global
-        // stream ahead of that `done` too. When the server says the turn is
-        // over it had already persisted it in full, so every live block from
-        // before this fetch is now duplicated by the canonical rows below —
-        // preserving them is what let the belated `done` append the turn twice.
-        // Drop them up front; everything downstream then sees only genuinely
-        // newer content and needs no special casing.
-        const turnStillRunning = history.lead.running === true
-        if (!turnStillRunning) {
-          Object.entries(draft.agentStreams).forEach(([name, stream]) => {
-            dropSnapshotCoveredBlocks(stream, liveCountsAtFetch.get(name) ?? 0)
-          })
-        }
-
-        // Computed against the stream identified by the *resolved* leadName,
-        // before anything below overwrites it — see hasLiveContent.
-        const leadHadNewerActivity = leadName
-          ? hasLiveContent(draft.agentStreams[leadName], draft.isTeamWorking, fetchStartedAt)
-          : false
-        if (!leadHadNewerActivity) {
-          draft.isTeamWorking = history.lead.running === true
-          draft.isContinuing = false
-        }
-
-        if (leadName) {
-          if (!draft.agentStreams[leadName]) {
-            draft.agentStreams[leadName] = createDefaultAgentStream()
-          }
-          const leadStream = draft.agentStreams[leadName]
-          if (!leadHadNewerActivity) revokeBlobUrlsFromBlocks(leadStream.currentBlocks)
-          leadStream.blocks = parseTeamBlocks(history.lead.messages)
-          leadStream._revertedSuffix = []
-          applyRevertBoundary(leadStream, leadRevertTime, {
-            boundaryId,
-            boundaryContent: boundaryMsg?.content,
-          })
-          if (leadHadNewerActivity) {
-            // A running turn keeps its live tail (the in-flight part is not in
-            // the snapshot yet), so strip whatever the snapshot already covers
-            // instead of rendering both copies.
-            if (turnStillRunning) {
-              dropSnapshotAlignedPrefix(leadStream, liveCountsAtFetch.get(leadName) ?? 0)
-            }
-            removePersistedOptimisticUserBlocks(leadStream)
-          }
-          if (!leadHadNewerActivity) {
-            leadStream.currentBlocks = []
-            leadStream.currentText = ''
-            leadStream.currentThinking = ''
-            leadStream.status = history.lead.running === true ? 'working' : 'idle'
-            leadStream._turnStartedAt = history.lead.running === true ? Date.now() : null
-          }
-          const leadVisibleMsgs = messagesBeforeRevert(history.lead)
-          const leadUsage = sumUsageFromMessages(leadVisibleMsgs)
-          leadStream.usage = leadUsage
-          leadStream._completionBase = leadUsage.completionTokens
-        }
-
-        const queued = queuedMessagesFromHistory(sessionId, history.lead.messages)
-        const queuedIds = new Set(queued.map((msg) => msg.id))
-        draft._pendingMessages = [
-          ...draft._pendingMessages.filter((msg) => msg.sessionId !== sessionId || queuedIds.has(msg.id)),
-          ...queued.filter((msg) => !draft._pendingMessages.some((existing) => existing.id === msg.id)),
-        ]
-
-        history.members.forEach((member) => {
-          const existingStatus = draft.agentStreams[member.name]?.status
-          const isLiveMember = liveNames === null || liveNames.includes(member.name)
-          if (!draft.agentStreams[member.name]) {
-            draft.agentStreams[member.name] = createDefaultAgentStream()
-          }
-          const memberStream = draft.agentStreams[member.name]
-          const memberHadNewerActivity = hasLiveContent(memberStream, draft.isTeamWorking, fetchStartedAt)
-          if (!memberHadNewerActivity) revokeBlobUrlsFromBlocks(memberStream.currentBlocks)
-          memberStream.blocks = parseTeamBlocks(member.messages)
-          memberStream._revertedSuffix = []
-          applyRevertBoundary(memberStream, leadRevertTime, {
-            boundaryId,
-            boundaryContent: boundaryMsg?.content,
-          })
-          if (memberHadNewerActivity && turnStillRunning) {
-            dropSnapshotAlignedPrefix(memberStream, liveCountsAtFetch.get(member.name) ?? 0)
-          }
-          if (!memberHadNewerActivity) {
-            memberStream.currentBlocks = []
-            memberStream.currentText = ''
-            memberStream.currentThinking = ''
-            memberStream.status =
-              !isLiveMember
-                ? 'offline'
-                : existingStatus === 'offline' || existingStatus === 'error' ? existingStatus : 'idle'
-            memberStream._turnStartedAt = null
-          }
-          const memberVisibleMsgs = messagesBeforeTime(member.messages, leadRevertTime)
-          const memberUsage = sumUsageFromMessages(memberVisibleMsgs)
-          memberStream.usage = memberUsage
-          memberStream._completionBase = memberUsage.completionTokens
-        })
-
-        if (!draft.activeAgent || !allNames.includes(draft.activeAgent)) {
-          draft.activeAgent = leadName ?? allNames[0] ?? null
-        }
-
-        draft.hasMore = history.has_more
-        draft.nextCursor = history.next_cursor
-        draft._leadRevertTime = revertBoundaryTime(history.lead)
-        // Everything in this response is server-confirmed, so nothing is
-        // pending reconciliation and the watermark advances to its newest row.
-        draft._syncedThrough = newestMessageAt(history)
-        Object.values(draft.agentStreams).forEach((stream) => {
-          stream._unsyncedBlockIds = []
-        })
-        draft._workspace = workspace ?? null
-        draft._loadingOlder = false
-        draft._resolvedSessionReadyId = null
-      })
-
-      if (liveNames === null && get()._sessionGeneration === gen) {
-        void get().loadTeamStatus(workspace, gen)
-      }
-    } catch (err) {
-      if (get()._sessionGeneration !== gen) return
-      set((draft) => {
-        draft.error = err instanceof Error ? err.message : 'Failed to load session'
-        draft.isContinuing = false
-      })
-    }
+    inflightLoadSession.set(inflightKey, promise)
+    return promise
   },
 
   reconcileTurnTail: async (sessionId: string, workspace?: string | null) => {

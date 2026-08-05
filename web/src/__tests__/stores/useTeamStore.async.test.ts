@@ -1838,8 +1838,12 @@ describe("loadSession", () => {
     const loadPromise = useTeamStore.getState().loadSession("sess-1").then(() => {
       loadResolved = true
     })
-    await Promise.resolve()
-    await Promise.resolve()
+    // Drain microtasks until `loadSession` resolves (bounded so a real
+    // regression — it waiting on `resolveStatus` below — still fails fast
+    // instead of hanging). The exact hop count is an implementation detail
+    // of the in-flight coalescing wrapper (see `loadSession`), not something
+    // this test should hard-code.
+    for (let i = 0; i < 10 && !loadResolved; i++) await Promise.resolve()
 
     expect(loadResolved).toBe(true)
     expect(useTeamStore.getState().agentStreams.lead.blocks[0]?.content).toBe("loaded history")
@@ -1851,6 +1855,46 @@ describe("loadSession", () => {
   it("sets sessionId from the argument", async () => {
     await useTeamStore.getState().loadSession("my-team-session")
     expect(useTeamStore.getState().sessionId).toBe("my-team-session")
+  })
+
+  it("coalesces concurrent calls for the same session into a single fetch", async () => {
+    // Regression test: a foreground/visibility resume (useSessionBootstrap)
+    // and the global event stream's reconcile (useGlobalEventStream) can
+    // both react to the same visibilitychange and call loadSession() for the
+    // same session back-to-back. Each independent fetch takes its own
+    // `liveCountsAtFetch` snapshot of `currentBlocks` — if both run against a
+    // live turn, the second snapshot can be taken *after* the first call's
+    // resolve already mutated `currentBlocks`, producing an inconsistent
+    // drop-prefix calculation that leaves stale live blocks in place to be
+    // duplicated by the next SSE replay. Coalescing concurrent calls for the
+    // same session into one in-flight fetch removes the race entirely.
+    let resolveHistory!: (value: unknown) => void
+    mockTeamHistory.mockImplementation(
+      () => new Promise((resolve) => { resolveHistory = resolve })
+    )
+
+    const callsBefore = mockTeamHistory.mock.calls.length
+    const first = useTeamStore.getState().loadSession("race-sess")
+    const second = useTeamStore.getState().loadSession("race-sess")
+
+    resolveHistory({
+      lead: {
+        id: "lead-sess",
+        agent_name: "lead",
+        title: null,
+        created_at: null,
+        updated_at: null,
+        sub_sessions: [],
+        messages: [makeMessageResponse({ id: "m1", content: "loaded once" })],
+      },
+      members: [],
+      has_more: false,
+      next_cursor: null,
+    })
+    await Promise.all([first, second])
+
+    expect(mockTeamHistory.mock.calls.length - callsBefore).toBe(1)
+    expect(useTeamStore.getState().agentStreams.lead.blocks).toHaveLength(1)
   })
 
   it("sets leadName from history response", async () => {

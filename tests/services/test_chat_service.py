@@ -2300,3 +2300,45 @@ async def test_get_team_history_since_missing_session_returns_none(session):
     assert (
         await get_team_history_since(session, uuid4(), since=datetime.now(UTC)) is None
     )
+
+
+@pytest.mark.asyncio
+async def test_get_team_history_member_page_skips_hidden_rows_in_sql(session):
+    """Hidden member rows must not consume the member page window.
+
+    Regression: the lead query filtered ``hidden_from_user`` in SQL, but
+    ``_fetch_member_pages`` applied only the Python filter under a
+    ``ROW_NUMBER() <= PAGE_SIZE + 1`` cap.  A member whose newest page-worth of
+    rows were all hidden returned an empty page, and because member histories
+    carry no cursor of their own the older visible rows were unreachable.
+    """
+    from app.services.chat_service import _HISTORY_PAGE_SIZE, get_team_history
+
+    lead = await create_chat_session(session, title="lead")
+    member = await create_chat_session(session, title="member")
+    member.parent_session_id = lead.id
+    session.add(member)
+    await session.commit()
+
+    await save_message(session, lead.id, HumanMessage(content="lead-hello"))
+    for i in range(3):
+        await save_message(
+            session, member.id, HumanMessage(content=f"member-visible-{i}")
+        )
+    for i in range(_HISTORY_PAGE_SIZE + 1):
+        await save_message(
+            session,
+            member.id,
+            HumanMessage(content=f"member-hidden-{i}"),
+            extra={"hidden_from_user": True},
+        )
+    await session.commit()
+
+    history = await get_team_history(session, lead.id)
+    assert history is not None
+    assert len(history.members) == 1
+    assert [m.content for m in history.members[0].messages] == [
+        "member-visible-0",
+        "member-visible-1",
+        "member-visible-2",
+    ]

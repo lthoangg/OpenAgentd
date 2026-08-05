@@ -620,6 +620,19 @@ class TeamHistoryMemberData(NamedTuple):
 _HISTORY_PAGE_SIZE = 100
 
 
+def _visible_to_user_predicate():
+    """SQL predicate matching rows not marked ``extra.hidden_from_user``.
+
+    Shared by the lead and member history queries so both pages agree on which
+    layer owns the filter. A Python-side :func:`_is_hidden_from_user` pass is
+    still applied after fetching, because the JSON ``as_boolean()`` cast here
+    and Python truthiness disagree on non-boolean values (e.g. a stored
+    ``"1"``); the SQL predicate is the bulk filter, Python is the backstop.
+    """
+    hidden = col(SessionMessage.extra)["hidden_from_user"].as_boolean()
+    return sa.or_(hidden.is_(None), hidden.is_(False))
+
+
 class TeamHistoryData(NamedTuple):
     """Full history payload for a team lead session.
 
@@ -650,9 +663,13 @@ async def _fetch_member_pages(
 
     Semantics match the old loop exactly:
     - ``before`` filter (from the lead's cursor) is applied uniformly;
-    - ``_is_hidden_from_user`` is filtered in Python *after* fetching
-      (it reads the JSON ``extra`` blob), so a page may end up with fewer
-      than ``_HISTORY_PAGE_SIZE`` visible rows — identical to before;
+    - hidden rows are excluded in SQL, mirroring the lead query, so the
+      ``ROW_NUMBER()`` window ranks only user-visible rows. Without this a
+      member whose newest ``_HISTORY_PAGE_SIZE + 1`` rows were all hidden
+      (an undone batch of work) returned an *empty* page, and since member
+      histories carry no cursor of their own the older visible rows were
+      unreachable. A Python ``_is_hidden_from_user`` pass still runs as a
+      backstop for values the JSON boolean cast cannot express;
     - sub-sessions with no messages still appear, with an empty list;
     - per-session order is chronological (ascending), sessions keep the
       caller-provided order.
@@ -681,7 +698,8 @@ async def _fetch_member_pages(
         .label("rank")
     )
     inner = select(SessionMessage, rank).where(
-        col(SessionMessage.session_id).in_(session_ids)
+        col(SessionMessage.session_id).in_(session_ids),
+        _visible_to_user_predicate(),
     )
     if before is not None:
         inner = inner.where(col(SessionMessage.created_at) < before)
@@ -868,12 +886,20 @@ async def get_team_history(
     raw_lead: list[SessionMessage] = []
     scan_before = before
     scan_before_id: UUID | None = None
-    hidden_from_user = col(SessionMessage.extra)["hidden_from_user"].as_boolean()
-    while len(raw_lead) <= _HISTORY_PAGE_SIZE:
+    # Bound the refill loop. Hidden rows are already excluded in SQL, so a
+    # second pass only happens for rows the JSON boolean cast and Python
+    # truthiness disagree on. Without a cap that disagreement would scan the
+    # whole session one page at a time.
+    max_scans = 4
+    scans_used = 0
+    for _ in range(max_scans):
+        if len(raw_lead) > _HISTORY_PAGE_SIZE:
+            break
+        scans_used += 1
         stmt = (
             select(SessionMessage)
             .where(col(SessionMessage.session_id) == lead_session_id)
-            .where(sa.or_(hidden_from_user.is_(None), hidden_from_user.is_(False)))
+            .where(_visible_to_user_predicate())
             .order_by(
                 col(SessionMessage.created_at).desc(),
                 col(SessionMessage.id).desc(),
@@ -896,6 +922,18 @@ async def get_team_history(
             break
         scan_before = rows[-1].created_at
         scan_before_id = rows[-1].id
+
+    if scans_used >= max_scans and len(raw_lead) <= _HISTORY_PAGE_SIZE:
+        # Only reachable when the SQL boolean cast and Python truthiness
+        # disagree about ``hidden_from_user`` often enough to drain four
+        # consecutive pages. That means malformed ``extra`` payloads — log it
+        # rather than keep scanning the session one page at a time.
+        logger.warning(
+            "team_history_scan_cap_hit session_id={} scans={} visible_rows={}",
+            lead_session_id,
+            scans_used,
+            len(raw_lead),
+        )
 
     has_more = len(raw_lead) > _HISTORY_PAGE_SIZE
     raw_lead = raw_lead[:_HISTORY_PAGE_SIZE]

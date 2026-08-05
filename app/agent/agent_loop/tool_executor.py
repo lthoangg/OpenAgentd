@@ -27,6 +27,11 @@ from app.agent.schemas.chat import ContentBlock, TextBlock, ToolResult
 
 TOOL_TIMEOUT_SECONDS = 300.0
 
+# Characters of tool output kept in the DEBUG preview line.  The authoritative
+# copy lives in the DB and the per-session log; this is only a breadcrumb for
+# scanning app.log.
+_RESULT_PREVIEW_CHARS = 200
+
 
 if TYPE_CHECKING:
     from app.agent.schemas.chat import ToolCall
@@ -160,11 +165,14 @@ def make_tool_executor(
                 tool_elapsed,
                 len(result),
             )
+            # Short preview only.  The full result is already persisted as a
+            # ToolMessage in the DB and mirrored into the per-session log, so a
+            # 1 KB copy per call bought nothing but disk (6.4 MB / 2 days).
             logger.debug(
                 "tool_result_preview agent={} tool={} result={}",
                 agent_name,
                 tc.function.name,
-                result[:1000] if len(result) > 1000 else result,
+                result[:_RESULT_PREVIEW_CHARS],
             )
 
         except TimeoutError as e:

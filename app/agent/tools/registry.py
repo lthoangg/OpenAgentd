@@ -302,7 +302,10 @@ class Tool:
 
         Supports both synchronous and asynchronous underlying functions.
         """
-        logger.debug("tool_arun tool={} kwargs={}", self.name, list(kwargs.keys()))
+        # No entry log here: the agent loop already emits ``tool_start`` with the
+        # full argument payload for every dispatch, so a second line carrying
+        # only the argument *names* was pure duplication (1:1 line ratio in
+        # production).
         # Strip injected param names that might accidentally appear in kwargs
         llm_kwargs = {k: v for k, v in kwargs.items() if k not in self._injected_params}
         try:

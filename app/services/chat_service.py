@@ -198,14 +198,6 @@ async def save_message(
     """
     # Me support both old and new param names during transition
     _exclude = exclude_from_context if exclude_from_context is not None else is_hidden
-    logger.debug(
-        "saving_message session_id={} role={} content_length={} is_summary={} exclude_from_context={}",
-        session_id,
-        message.role,
-        len(message.content or ""),
-        is_summary,
-        _exclude,
-    )
 
     tool_calls = None
     tool_call_id = None
@@ -216,20 +208,9 @@ async def save_message(
         reasoning_content = message.reasoning_content
         if message.tool_calls:
             tool_calls = [tc.model_dump() for tc in message.tool_calls]
-            logger.debug(
-                "assistant_message_has_tool_calls session_id={} count={}",
-                session_id,
-                len(tool_calls),
-            )
     elif isinstance(message, ToolMessage):
         tool_call_id = message.tool_call_id
         name = message.name
-        logger.debug(
-            "tool_message_with_result session_id={} tool={} id={}",
-            session_id,
-            name,
-            tool_call_id,
-        )
         if message.parts:
             next_extra = dict(extra or {})
             next_extra["parts"] = [part.model_dump() for part in message.parts]
@@ -253,11 +234,21 @@ async def save_message(
         db_message = SessionMessage(**kwargs)
         db.add(db_message)
         await db.flush()
+        # Single post-save record for the whole operation.  This deliberately
+        # carries the role-specific detail (tool-call count, tool name) that
+        # used to be logged as separate pre-save lines, so one grep still
+        # answers "what was persisted" without four lines per message.
         logger.debug(
-            "message_saved session_id={} message_id={} role={}",
+            "message_saved session_id={} message_id={} role={} content_length={} "
+            "tool_calls={} tool={} is_summary={} exclude_from_context={}",
             session_id,
             db_message.id,
             message.role,
+            len(message.content or ""),
+            len(tool_calls) if tool_calls else 0,
+            name or "-",
+            is_summary,
+            _exclude,
         )
         return db_message
     except Exception as e:

@@ -350,22 +350,9 @@ class SQLiteCheckpointer(Checkpointer):
                             extra=msg.extra,
                         )
                         msg.db_id = row.id
-                        logger.debug(
-                            "checkpointer_saved_assistant session_id={} db_id={} is_summary={} exclude={}",
-                            sid,
-                            row.id,
-                            msg.is_summary,
-                            msg.exclude_from_context,
-                        )
                     elif isinstance(msg, ToolMessage):
                         row = await save_message(db, UUID(sid), msg, extra=msg.extra)
                         msg.db_id = row.id
-                        logger.debug(
-                            "checkpointer_saved_tool session_id={} db_id={} tool={}",
-                            sid,
-                            row.id,
-                            msg.name,
-                        )
                     elif isinstance(msg, HumanMessage):
                         if msg.is_summary or (
                             msg.extra and msg.extra.get("hidden_from_user")
@@ -407,9 +394,17 @@ class SQLiteCheckpointer(Checkpointer):
                 self._stream_session_id, self._agent_name
             )
 
-        logger.debug(
-            "checkpointer_sync_done session_id={} new={} total_persisted={}",
-            sid,
-            len(new_messages),
-            len(persisted_ids),
-        )
+        # Only report syncs that actually wrote something.  ``sync`` is called
+        # on every agent step, and in production most calls had nothing new to
+        # persist — those no-op lines were the single largest DEBUG source
+        # (7.9k lines / 2 days) while carrying no information.  The per-message
+        # ``saved_assistant`` / ``saved_tool`` lines are gone too; ``new`` and
+        # ``total_persisted`` summarise the same outcome, and ``db_id`` values
+        # are recoverable from the session's message rows.
+        if new_messages:
+            logger.debug(
+                "checkpointer_sync_done session_id={} new={} total_persisted={}",
+                sid,
+                len(new_messages),
+                len(persisted_ids),
+            )

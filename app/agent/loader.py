@@ -569,7 +569,11 @@ def load_team_from_dir(
         try:
             cfg = parse_agent_md(md_path)
             agent_configs.append((cfg, md_path))
-            logger.info(
+            # Per-file scan detail: DEBUG, not INFO.  The aggregate
+            # ``team_loaded`` below is the INFO-level summary of a load; one
+            # line per discovered agent file is only useful when debugging
+            # discovery itself.
+            logger.debug(
                 "agent_discovered file={} name={} role={} model={}",
                 md_path.name,
                 cfg.name,

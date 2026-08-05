@@ -2394,3 +2394,76 @@ async def test_get_team_history_cursor_keeps_rows_tied_on_created_at(session):
     }
     missing = sorted({f"msg-{i:03}" for i in range(total)} - seen)
     assert missing == [], f"rows lost across pages: {missing}"
+
+
+# ── save_message logging is a single consolidated record ──────────────────────
+#
+# save_message used to emit up to three DEBUG lines per call (a pre-save
+# ``saving_message``, an optional ``assistant_message_has_tool_calls`` /
+# ``tool_message_with_result``, then ``message_saved``).  In production that was
+# ~11.7k lines / 2 days describing the same writes.  One post-save record now
+# carries the role-specific detail; these tests pin that contract so the
+# duplication cannot creep back.
+
+
+@pytest.fixture
+def caplog_loguru(caplog):
+    from loguru import logger
+
+    handler_id = logger.add(caplog.handler, format="{message}", level="DEBUG")
+    yield caplog
+    logger.remove(handler_id)
+
+
+@pytest.mark.asyncio
+async def test_save_message_emits_exactly_one_log_record(session, caplog_loguru):
+    chat_session = await create_chat_session(session)
+    caplog_loguru.clear()
+
+    await save_message(session, chat_session.id, HumanMessage(content="hi"))
+
+    records = [m for m in caplog_loguru.messages if m.startswith("message_saved")]
+    assert len(records) == 1
+    assert not any(m.startswith("saving_message") for m in caplog_loguru.messages)
+
+
+@pytest.mark.asyncio
+async def test_save_message_log_carries_tool_name_for_tool_message(
+    session, caplog_loguru
+):
+    """Detail from the removed ``tool_message_with_result`` line is preserved."""
+    chat_session = await create_chat_session(session)
+    caplog_loguru.clear()
+
+    await save_message(
+        session,
+        chat_session.id,
+        ToolMessage(content="out", tool_call_id="c1", name="ls"),
+    )
+
+    line = next(m for m in caplog_loguru.messages if m.startswith("message_saved"))
+    assert "tool=ls" in line
+    assert "role=tool" in line
+
+
+@pytest.mark.asyncio
+async def test_save_message_log_carries_tool_call_count_for_assistant(
+    session, caplog_loguru
+):
+    """Detail from the removed ``assistant_message_has_tool_calls`` line is kept."""
+    chat_session = await create_chat_session(session)
+    caplog_loguru.clear()
+
+    await save_message(
+        session,
+        chat_session.id,
+        AssistantMessage(
+            content="ok",
+            tool_calls=[
+                ToolCall(id="c1", function=FunctionCall(name="ls", arguments="{}"))
+            ],
+        ),
+    )
+
+    line = next(m for m in caplog_loguru.messages if m.startswith("message_saved"))
+    assert "tool_calls=1" in line

@@ -196,10 +196,8 @@ async def test_create_multiple_items_sequential_ids(
 
     result = await _todo_manage(actions=actions, _state=None)
 
-    # Verify per-action acks
-    assert "created task_1" in result
-    assert "created task_2" in result
-    assert "created task_3" in result
+    # Verify consolidated ack (one line per verb)
+    assert "created task_1, task_2, task_3" in result
 
     # Verify file state
     store = json.loads(todos_file.read_text())
@@ -1448,3 +1446,41 @@ async def test_clear_preserves_in_progress(
 
     assert "working" in result
     assert "done" not in result
+
+
+@pytest.mark.asyncio
+async def test_batch_outcomes_are_consolidated_per_verb(
+    tmp_sandbox: SandboxConfig, todos_file: Path
+) -> None:
+    """Same-verb outcomes collapse onto one line instead of repeating the verb."""
+    await _todo_manage(
+        actions=[
+            CreateAction(
+                action="create", content="a", status="pending", priority="low"
+            ),
+            CreateAction(
+                action="create", content="b", status="pending", priority="low"
+            ),
+            CreateAction(
+                action="create", content="c", status="pending", priority="low"
+            ),
+        ],
+        _state=None,
+    )
+
+    result = await _todo_manage(
+        actions=[
+            UpdateAction(action="update", task_id="task_1", status="completed"),
+            UpdateAction(action="update", task_id="task_2", status="completed"),
+            DeleteAction(action="delete", task_id="task_3"),
+            UpdateAction(action="update", task_id="task_99", status="completed"),
+        ],
+        _state=None,
+    )
+
+    lines = result.splitlines()
+    assert "updated task_1, task_2" in lines
+    assert "deleted task_3" in lines
+    # Reasoned/failed outcomes stay on their own line
+    assert "not_found task_99" in lines
+    assert result.count("updated") == 1

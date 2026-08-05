@@ -436,6 +436,35 @@ def _blocked_dependencies(store: dict, dependencies: list[str]) -> list[str]:
     return [dep for dep in dependencies if dep not in completed]
 
 
+def _consolidate_outcomes(log_parts: Sequence[str]) -> list[str]:
+    """Group same-verb outcomes onto one line to keep the ack compact.
+
+    ``["created task_1", "created task_2", "updated task_3"]`` becomes
+    ``["created task_1, task_2", "updated task_3"]``. Entries carrying a
+    reason (``"blocked task_2: waiting for task_1"``) stay verbatim so the
+    explanation is not lost.
+    """
+    grouped: dict[str, list[str]] = {}
+    # Each slot is either a verbatim line or the verb whose group renders here.
+    slots: list[tuple[bool, str]] = []
+    for part in log_parts:
+        verb, _, subject = part.partition(" ")
+        if not subject or ":" in part:
+            slots.append((True, part))
+            continue
+        bucket = grouped.get(verb)
+        if bucket is None:
+            bucket = []
+            grouped[verb] = bucket
+            slots.append((False, verb))
+        if subject not in bucket:
+            bucket.append(subject)
+    return [
+        value if verbatim else f"{value} {', '.join(grouped[value])}"
+        for verbatim, value in slots
+    ]
+
+
 def _find_item(store: dict, task_id: str) -> dict | None:
     for item in store.get("items", []):
         if isinstance(item, dict) and item.get("task_id") == task_id:
@@ -481,9 +510,9 @@ Rules
   prerequisites are complete.
 - Use status=cancelled for tasks that are no longer needed instead of deleting.
 - Skip this tool for single, trivial tasks.
-- Mutations return per-action outcomes (created/updated/blocked/not_found…),
-  not the board; include a read action in the same call when you need the
-  resulting task list.\
+- Mutations return consolidated outcomes grouped per verb
+  (`updated task_1, task_2`), not the board; include a read action in the
+  same call when you need the resulting task list.\
 """
 
 _MEMBER_DESCRIPTION = """\
@@ -505,7 +534,7 @@ Rules
 - When completing a task, record the outcome in `result` (what was done,
   where, how it was verified) — the lead and unblocked teammates are
   notified automatically.
-- Updates return per-action outcomes; a successful claim echoes the task
+- Updates return consolidated outcomes grouped per verb; a successful claim echoes the task
   line with its instructions. Include a read action when you need the full
   list.\
 """
@@ -717,9 +746,9 @@ async def _apply_actions(
 
     _save_store(store)
 
-    logger.info(
-        "todo_manage actions=[{}]", ", ".join(log_parts) if log_parts else "read"
-    )
+    outcomes = _consolidate_outcomes(log_parts)
+
+    logger.info("todo_manage actions=[{}]", "; ".join(outcomes) if outcomes else "read")
 
     # Mutation-only batches return a compact per-action ack: the agent
     # authored the change, so re-echoing the whole board (every other task's
@@ -730,7 +759,7 @@ async def _apply_actions(
     if has_read or not actions:
         return _format_items(store["items"])
 
-    lines = list(log_parts)
+    lines = list(outcomes)
     if claimed_ids:
         claimed_items = [
             item for item in store["items"] if item.get("task_id") in claimed_ids

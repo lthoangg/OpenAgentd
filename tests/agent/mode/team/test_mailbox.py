@@ -1,4 +1,4 @@
-"""Tests for app/teams/mailbox.py — TeamMailbox send/receive/broadcast."""
+"""Tests for app/teams/mailbox.py — TeamMailbox send/receive."""
 
 from __future__ import annotations
 
@@ -82,97 +82,24 @@ class TestMailboxSend:
         received = await mailbox.receive("receiver")
         assert received.id == original_id
 
+    async def test_send_drops_oldest_past_inbox_backlog_cap(self, setup):
+        """A stalled receiver's inbox is capped: oldest messages are dropped
+        instead of growing without bound."""
+        from app.agent.mode.team.mailbox import _MAX_INBOX_BACKLOG
 
-class TestMailboxBroadcast:
-    """Test mailbox.broadcast() — deliver to all except sender."""
-
-    @pytest_asyncio.fixture
-    async def setup(self):
-        """Setup mailbox with multiple agents."""
-        mailbox = TeamMailbox()
-        mailbox.register("sender")
-        mailbox.register("a")
-        mailbox.register("b")
-        mailbox.register("c")
-        return mailbox
-
-    async def test_broadcast_to_all_except_sender(self, setup):
-        """Broadcast delivers to all agents except sender."""
         mailbox = setup
-        msg = Message(from_agent="sender", content="broadcast")
-        await mailbox.broadcast(msg)
+        total = _MAX_INBOX_BACKLOG + 5
+        for i in range(total):
+            await mailbox.send("receiver", Message(from_agent="s", content=str(i)))
 
-        # Sender should NOT receive
-        assert mailbox.inbox_empty("sender")
+        received = []
+        while not mailbox.inbox_empty("receiver"):
+            received.append(mailbox.receive_nowait("receiver"))
 
-        # Others should receive
-        for agent in ["a", "b", "c"]:
-            received = await mailbox.receive(agent)
-            assert received.content == "broadcast"
-            assert received.is_broadcast is True
-            assert received.to_agent is None
-
-    async def test_broadcast_is_broadcast_flag(self, setup):
-        """Broadcast message has is_broadcast=True."""
-        mailbox = setup
-        msg = Message(from_agent="sender", content="test")
-        await mailbox.broadcast(msg)
-        received = await mailbox.receive("a")
-        assert received.is_broadcast is True
-
-    async def test_broadcast_to_agent_none(self, setup):
-        """Broadcast message has to_agent=None."""
-        mailbox = setup
-        msg = Message(from_agent="sender", content="test")
-        await mailbox.broadcast(msg)
-        received = await mailbox.receive("a")
-        assert received.to_agent is None
-
-    async def test_broadcast_logged(self, setup):
-        """Broadcast messages are logged in broadcast_log."""
-        mailbox = setup
-        msg1 = Message(from_agent="sender", content="msg1")
-        msg2 = Message(from_agent="sender", content="msg2")
-        await mailbox.broadcast(msg1)
-        await mailbox.broadcast(msg2)
-
-        log = mailbox.broadcast_log
-        assert len(log) == 2
-        assert log[0].content == "msg1"
-        assert log[1].content == "msg2"
-
-    async def test_broadcast_empty_agents(self):
-        """Broadcasting with only sender registered still works."""
-        mailbox = TeamMailbox()
-        mailbox.register("sender")
-        msg = Message(from_agent="sender", content="test")
-        await mailbox.broadcast(msg)
-        # No error, log updated
-        assert len(mailbox.broadcast_log) == 1
-
-    async def test_broadcast_delivers_to_later_inboxes_while_callback_is_blocked(self):
-        callback_started = asyncio.Event()
-        release_callback = asyncio.Event()
-
-        async def on_message(agent_name: str, message: Message) -> None:
-            if agent_name == "a":
-                callback_started.set()
-                await release_callback.wait()
-
-        mailbox = TeamMailbox(on_message=on_message)
-        for agent_name in ("sender", "a", "b"):
-            mailbox.register(agent_name)
-
-        broadcast = asyncio.create_task(
-            mailbox.broadcast(Message(from_agent="sender", content="status"))
-        )
-        await callback_started.wait()
-        try:
-            received = await asyncio.wait_for(mailbox.receive("b"), timeout=0.1)
-            assert received.content == "status"
-        finally:
-            release_callback.set()
-            await broadcast
+        # Capped at the backlog limit, and the oldest 5 were dropped in
+        # favor of keeping the most recent messages.
+        assert len(received) == _MAX_INBOX_BACKLOG
+        assert [m.content for m in received] == [str(i) for i in range(5, total)]
 
 
 class TestMailboxReceive:
@@ -253,33 +180,3 @@ class TestMailboxInboxEmpty:
         """inbox_empty returns True for unregistered agent."""
         mailbox = setup
         assert mailbox.inbox_empty("nonexistent") is True
-
-
-class TestMailboxBroadcastLog:
-    """Test mailbox.broadcast_log property."""
-
-    async def test_broadcast_log_read_only(self):
-        """broadcast_log returns a copy, not the internal list."""
-        mailbox = TeamMailbox()
-        mailbox.register("a")
-        msg = Message(from_agent="a", content="test")
-        await mailbox.broadcast(msg)
-
-        log1 = mailbox.broadcast_log
-        log2 = mailbox.broadcast_log
-        assert log1 is not log2
-        assert len(log1) == len(log2) == 1
-
-    async def test_broadcast_log_preserves_message_data(self):
-        """broadcast_log preserves all message fields."""
-        mailbox = TeamMailbox()
-        mailbox.register("sender")
-        mailbox.register("other")
-
-        msg = Message(from_agent="sender", content="test", to_agent="other")
-        await mailbox.broadcast(msg)
-
-        log_msg = mailbox.broadcast_log[0]
-        assert log_msg.content == "test"
-        assert log_msg.from_agent == "sender"
-        assert log_msg.is_broadcast is True

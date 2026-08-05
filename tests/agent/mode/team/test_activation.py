@@ -356,28 +356,6 @@ class TestOnMessageCallback:
         assert callback_calls[0][0] == "bob"
         assert callback_calls[0][1].content == "hello"
 
-    async def test_on_message_callback_fires_on_broadcast(self):
-        """Broadcast message, verify callback fires for each non-sender recipient."""
-        callback_calls = []
-
-        async def on_msg(agent_name: str, message: Message) -> None:
-            callback_calls.append((agent_name, message))
-
-        mailbox = TeamMailbox(on_message=on_msg)
-        mailbox.register("alice")
-        mailbox.register("bob")
-        mailbox.register("charlie")
-
-        msg = Message(from_agent="alice", to_agent=None, content="broadcast")
-        await mailbox.broadcast(message=msg)
-
-        # Should have called callback for bob and charlie (not alice)
-        assert len(callback_calls) == 2
-        recipients = [call[0] for call in callback_calls]
-        assert "bob" in recipients
-        assert "charlie" in recipients
-        assert "alice" not in recipients
-
     async def test_on_message_unknown_agent_logged(self, team_with_db):
         """Call team._on_message('nonexistent', msg), verify no crash."""
         team = team_with_db

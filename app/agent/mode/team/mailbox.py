@@ -9,6 +9,11 @@ from datetime import datetime, timezone
 
 from pydantic import BaseModel, Field
 
+# Bound on per-agent inbox backlog. Generous for normal operation (a
+# healthy member drains its inbox almost immediately) while capping memory
+# if a member is stalled/erroring and never drains.
+_MAX_INBOX_BACKLOG = 500
+
 
 class Message(BaseModel):
     """A message sent between agents or from the user."""
@@ -29,16 +34,15 @@ class TeamMailbox:
     """Per-agent inbox queues with on-message activation callbacks.
 
     Every agent registers by name before use.  ``send`` delivers to a single
-    inbox; ``broadcast`` copies to all registered inboxes flagged as broadcast.
+    inbox.
 
     An optional ``on_message`` callback is invoked after every successful
-    ``send`` or ``broadcast``.  This is the activation hook: the team uses it
-    to spawn a processing task for the receiving agent when a message arrives.
+    ``send``.  This is the activation hook: the team uses it to spawn a
+    processing task for the receiving agent when a message arrives.
     """
 
     def __init__(self, on_message: OnMessageCallback | None = None) -> None:
         self._inboxes: dict[str, asyncio.Queue[Message]] = {}
-        self._broadcast_log: list[Message] = []
         self._on_message = on_message
 
     # ------------------------------------------------------------------
@@ -58,37 +62,30 @@ class TeamMailbox:
     # Sending
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _put_bounded(inbox: asyncio.Queue[Message], message: Message) -> None:
+        """Enqueue *message*, dropping the oldest queued one past the backlog cap.
+
+        Inboxes have no ``maxsize`` so ``put`` never blocks the sender — a
+        stalled/erroring member that never drains its inbox would otherwise
+        accumulate messages (and their content) without bound. Dropping the
+        oldest pending message keeps memory bounded and favors the most
+        recent context once the member recovers.
+        """
+        if inbox.qsize() >= _MAX_INBOX_BACKLOG:
+            try:
+                inbox.get_nowait()
+            except asyncio.QueueEmpty:
+                pass
+        inbox.put_nowait(message)
+
     async def send(self, to: str, message: Message) -> None:
         """Deliver *message* to a single named inbox."""
         if to not in self._inboxes:
             raise KeyError(f"No inbox registered for agent '{to}'")
-        await self._inboxes[to].put(message)
+        self._put_bounded(self._inboxes[to], message)
         if self._on_message is not None:
             await self._on_message(to, message)
-
-    async def broadcast(self, message: Message) -> None:
-        """Deliver *message* to every registered inbox except the sender's.
-
-        The sender already knows what they broadcast — delivering it to their
-        own inbox would wake them on their own message (wasted LLM call).
-        """
-        broadcast_msg = message.model_copy(
-            update={"is_broadcast": True, "to_agent": None}
-        )
-        self._broadcast_log.append(broadcast_msg)
-
-        async def deliver(name: str, inbox: asyncio.Queue[Message]) -> None:
-            await inbox.put(broadcast_msg)
-            if self._on_message is not None:
-                await self._on_message(name, broadcast_msg)
-
-        await asyncio.gather(
-            *(
-                deliver(name, inbox)
-                for name, inbox in self._inboxes.items()
-                if name != message.from_agent
-            )
-        )
 
     # ------------------------------------------------------------------
     # Receiving
@@ -128,11 +125,6 @@ class TeamMailbox:
     # ------------------------------------------------------------------
     # Introspection
     # ------------------------------------------------------------------
-
-    @property
-    def broadcast_log(self) -> list[Message]:
-        """Read-only history of all broadcast messages."""
-        return list(self._broadcast_log)
 
     @property
     def registered_agents(self) -> list[str]:

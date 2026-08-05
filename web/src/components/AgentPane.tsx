@@ -370,7 +370,16 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
   }
 })
 
-export function AgentPane({
+/**
+ * Memoised because `SplitGrid` subscribes to the whole `agentStreams` map, whose
+ * identity changes on every ~16ms SSE delta batch (immer copy-on-write walks up
+ * to the root). Without this gate, a token streamed into one pane re-rendered
+ * every other pane in the grid. Each agent's `stream` object only changes when
+ * that agent's own state does, so a shallow prop compare is exactly the right
+ * boundary — keep every prop passed here referentially stable (`onContinue` is
+ * a Zustand action, which is stable for the store's lifetime).
+ */
+export const AgentPane = memo(function AgentPane({
   name, stream, isLead, onContinue,
 }: AgentPaneProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -709,4 +718,4 @@ export function AgentPane({
       </div>
     </div>
   )
-}
+})

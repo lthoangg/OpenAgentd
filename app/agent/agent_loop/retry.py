@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import random
 import re
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING
@@ -136,6 +137,27 @@ _BASE_DELAY = 1.0  # seconds — exponential base 3: 1, 3, 9, 27, 81
 _MAX_DELAY = 60.0  # seconds
 
 
+def _backoff_delay(attempt: int, *, retry_after: int = 0) -> float:
+    """Seconds to wait before ``attempt``'s retry.
+
+    A server-specified ``Retry-After`` wins and is used verbatim (clamped to
+    ``_MAX_DELAY``): shortening a directive the provider gave us would be
+    wrong, so no jitter is applied to it.
+
+    Otherwise the exponential fallback gets *equal jitter* — a uniform draw
+    from ``[base / 2, base]``.  Deterministic backoff made every concurrent
+    agent retry at the same instants (observed in production as five 529
+    attempts in exact lockstep at 1s/3s/9s/27s), which is precisely the
+    thundering-herd pattern an overloaded provider handles worst.  Jittering
+    only downward also guarantees a retry never waits *longer* than the old
+    fixed schedule, so no turn gets slower.
+    """
+    if retry_after > 0:
+        return min(float(retry_after), _MAX_DELAY)
+    base = min(_BASE_DELAY * (3**attempt), _MAX_DELAY)
+    return base / 2 + random.uniform(0, base / 2)
+
+
 def _is_retryable_http_error(exc: httpx.HTTPStatusError) -> bool:
     if exc.response.status_code in _RETRYABLE_STATUS_CODES:
         return True
@@ -148,7 +170,10 @@ def _is_retryable_http_error(exc: httpx.HTTPStatusError) -> bool:
 
 
 def parse_retry_after(exc: httpx.HTTPStatusError) -> int:
-    """Extract ``retry_after`` seconds from a 429 response.
+    """Extract ``retry_after`` seconds from a retryable error response.
+
+    Applies to any retryable status, not only 429 — providers signal a wait on
+    503/529 as well.
 
     Checks (in order):
     1. ``Retry-After`` HTTP header
@@ -332,33 +357,37 @@ async def stream_with_retry(
                     exc, provider_label=primary_label
                 ) from exc
             last_exc = exc
-            retry_after = 0
-            if exc.response.status_code == 429:
-                try:
-                    await exc.response.aread()
-                except Exception as read_exc:
-                    # Body read is best-effort — headers may still carry
-                    # Retry-After even when the body is gone.
-                    logger.debug("retry_429_body_read_failed error={!r}", read_exc)
-                if is_non_retryable_429(exc):
-                    logger.warning(
-                        "llm_provider_non_retryable_rate_limit model={} status={} attempt={}/{}",
-                        primary_label,
-                        exc.response.status_code,
-                        attempt + 1,
-                        MAX_RETRIES,
+            # Body read is best-effort, and needed for *any* retryable status:
+            # providers put Retry-After in the headers or the body on 503/529
+            # just as they do on 429.  Gating this behind 429 meant an
+            # overloaded-provider directive was silently ignored and the
+            # exponential fallback used instead.
+            try:
+                await exc.response.aread()
+            except Exception as read_exc:
+                # Headers may still carry Retry-After even when the body is gone.
+                logger.debug("retry_body_read_failed error={!r}", read_exc)
+            if exc.response.status_code == 429 and is_non_retryable_429(exc):
+                logger.warning(
+                    "llm_provider_non_retryable_rate_limit model={} status={} attempt={}/{}",
+                    primary_label,
+                    exc.response.status_code,
+                    attempt + 1,
+                    MAX_RETRIES,
+                )
+                break
+            retry_after = parse_retry_after(exc)
+            # The rate-limit hook stays 429-only: it drives a "you are rate
+            # limited" UI affordance, which would be misleading for a 5xx.
+            if exc.response.status_code == 429 and state and ctx:
+                for hook in hooks or []:
+                    await hook.on_rate_limit(
+                        ctx,
+                        state,
+                        retry_after=retry_after,
+                        attempt=attempt + 1,
+                        max_attempts=MAX_RETRIES,
                     )
-                    break
-                retry_after = parse_retry_after(exc)
-                if state and ctx:
-                    for hook in hooks or []:
-                        await hook.on_rate_limit(
-                            ctx,
-                            state,
-                            retry_after=retry_after,
-                            attempt=attempt + 1,
-                            max_attempts=MAX_RETRIES,
-                        )
             # Skip sleep on the last attempt — raise immediately.
             if attempt + 1 >= MAX_RETRIES:
                 logger.warning(
@@ -376,11 +405,15 @@ async def stream_with_retry(
                     status_code=exc.response.status_code,
                 )
                 break
-            delay = min(
+            # The bail-out below must key off the *un-jittered* requirement:
+            # "the wait this attempt needs is at or above the ceiling" is a
+            # property of the schedule, not of a particular random draw.
+            required_delay = min(
                 retry_after if retry_after > 0 else _BASE_DELAY * (3**attempt),
                 _MAX_DELAY,
             )
-            if exc.response.status_code == 429 and delay >= _MAX_DELAY:
+            delay = _backoff_delay(attempt, retry_after=retry_after)
+            if exc.response.status_code == 429 and required_delay >= _MAX_DELAY:
                 logger.warning(
                     "llm_provider_rate_limit_too_long model={} status={} attempt={}/{} delay={:.1f}s retry_after={}s",
                     primary_label,
@@ -437,7 +470,7 @@ async def stream_with_retry(
                     error_type=type(exc).__name__,
                 )
                 break
-            delay = min(_BASE_DELAY * (3**attempt), _MAX_DELAY)
+            delay = _backoff_delay(attempt)
             logger.warning(
                 "llm_provider_retry model={} error={} attempt={}/{} delay={:.1f}s",
                 primary_label,

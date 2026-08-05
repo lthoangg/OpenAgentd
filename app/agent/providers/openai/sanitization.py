@@ -27,7 +27,13 @@ def sanitize_openai_tool_pairs(messages: list[ChatMessage]) -> list[ChatMessage]
 
             tool_call_ids = {tc.id for tc in msg.tool_calls if tc.id}
             following_tool_ids: set[str] = set()
-            for next_msg in messages[idx + 1 :]:
+            # Index-based scan, not ``messages[idx + 1:]``: the loop breaks at
+            # the first non-tool message (so it reads a handful of entries),
+            # but slicing copied the whole remaining history first, making the
+            # enclosing loop O(n^2) over session length. This runs on every
+            # provider request, so it re-paid that cost per tool round-trip.
+            for next_idx in range(idx + 1, len(messages)):
+                next_msg = messages[next_idx]
                 if not isinstance(next_msg, ToolMessage):
                     break
                 if next_msg.tool_call_id:

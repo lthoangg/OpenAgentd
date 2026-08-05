@@ -26,6 +26,7 @@ from app.agent.providers.base import LLMProviderBase
 from app.agent.providers.codex.oauth import CODEX_ORIGINATOR, CodexOAuth
 from app.agent.providers.openai.responses import ResponsesHandler
 from app.agent.schemas.chat import AssistantMessage, ChatMessage, SystemMessage
+from app.agent.usage import Usage, usage_to_dict
 
 CODEX_API_BASE = "https://chatgpt.com/backend-api/codex"
 CODEX_STREAM_IDLE_TIMEOUT_SECONDS = 300.0
@@ -126,7 +127,12 @@ class _CodexResponsesHandler(ResponsesHandler):
         reasoning = ""
         reasoning_item_id: str | None = None
         reasoning_encrypted_content: str | None = None
+        usage: Usage | None = None
         async for chunk in self.stream(messages, tools, merged):
+            # Usage arrives on its own terminal chunk with no choices, so read it
+            # before the choices guard below skips that chunk entirely.
+            if chunk.usage is not None:
+                usage = chunk.usage
             if not chunk.choices:
                 continue
             delta = chunk.choices[0].delta
@@ -142,6 +148,11 @@ class _CodexResponsesHandler(ResponsesHandler):
             reasoning_content=reasoning or None,
             reasoning_item_id=reasoning_item_id,
             reasoning_encrypted_content=reasoning_encrypted_content,
+            extra=(
+                {"usage": usage_to_dict(usage, self.model)}
+                if usage is not None
+                else None
+            ),
         )
 
 

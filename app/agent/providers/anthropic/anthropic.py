@@ -512,6 +512,58 @@ def _finish_reason(stop_reason: str | None) -> str | None:
     return "tool_calls" if stop_reason == "tool_use" else stop_reason
 
 
+# Anthropic reports mid-stream failures as an SSE ``{"type": "error"}`` frame on a
+# connection that already returned ``200 OK``, so there is no HTTP status for the
+# transport layer to raise on.  Map the documented ``error.type`` values onto the
+# equivalent status code and re-raise as a real ``httpx.HTTPStatusError`` — that
+# way ``stream_with_retry`` applies the same retry budget, backoff, Retry-After
+# parsing, and user-facing classification it already applies to HTTP-level
+# failures, instead of us bolting a second, divergent error path onto the stream.
+# https://docs.anthropic.com/en/api/errors
+_STREAM_ERROR_STATUS: dict[str, int] = {
+    "invalid_request_error": 400,
+    "authentication_error": 401,
+    "permission_error": 403,
+    "not_found_error": 404,
+    "request_too_large": 413,
+    "rate_limit_error": 429,
+    "api_error": 500,
+    "overloaded_error": 529,
+}
+# Unknown error types are treated as transient: a 500 keeps the request eligible
+# for retry, which is the safer default for an unrecognised upstream failure.
+_STREAM_ERROR_FALLBACK_STATUS = 500
+
+
+def _raise_stream_error_event(event: dict[str, Any], *, url: str, raw: str) -> None:
+    """Convert an SSE ``error`` frame into ``httpx.HTTPStatusError`` and raise.
+
+    ``raw`` is preserved verbatim as the synthetic response body because
+    ``stream_with_retry`` re-parses it (``_extract_provider_error_message``) to
+    recover the provider's own wording for the UI.
+    """
+    error = event.get("error")
+    error = error if isinstance(error, dict) else {}
+    error_type = error.get("type")
+    error_type = error_type if isinstance(error_type, str) else "api_error"
+    message = error.get("message")
+    message = message if isinstance(message, str) else "stream error"
+    status = _STREAM_ERROR_STATUS.get(error_type, _STREAM_ERROR_FALLBACK_STATUS)
+
+    request = httpx.Request("POST", url)
+    response = httpx.Response(
+        status,
+        content=raw.encode(),
+        headers={"content-type": "application/json"},
+        request=request,
+    )
+    raise httpx.HTTPStatusError(
+        f"Anthropic stream error (HTTP {status}): {error_type}: {message}",
+        request=request,
+        response=response,
+    )
+
+
 def _prompt_usage_from_raw(raw_usage: dict[str, Any]) -> tuple[int, int | None]:
     """Collapse Anthropic's three prompt buckets into one total.
 
@@ -820,6 +872,15 @@ class AnthropicProvider(LLMProviderBase):
                         break
                     event = json.loads(raw)
                     event_type = event.get("type") if isinstance(event, dict) else ""
+                    if event_type == "error":
+                        # Raised, not ignored: a discarded error frame ends the
+                        # stream silently and the caller cannot tell an upstream
+                        # failure from the model choosing to emit nothing.
+                        _raise_stream_error_event(
+                            event,
+                            url=f"{self.base_url}{messages_path}",
+                            raw=raw,
+                        )
                     if event_type == "message_start":
                         raw_usage = event.get("message", {}).get("usage", {})
                         if isinstance(raw_usage, dict):

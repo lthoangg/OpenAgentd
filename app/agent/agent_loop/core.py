@@ -35,6 +35,7 @@ from app.agent.agent_loop.tool_dispatch import gather_or_cancel
 from app.agent.agent_loop.tool_executor import make_tool_executor
 from app.agent.usage import usage_to_dict
 from app.agent.checkpointer import Checkpointer
+from app.agent.errors import ProviderRequestError
 from app.agent.hooks import BaseAgentHook
 from app.agent.providers.base import LLMProviderBase
 from app.agent.providers.capabilities import ModelCapabilities, get_capabilities
@@ -120,8 +121,8 @@ class _IterationBookkeeping:
     # Streaming returns ``last_usage`` per call; the loop tracks the latest
     # value so it can fold it into per-iteration logging and ``state.usage``.
     last_usage: Usage | None = None
-    empty_after_tool_continuations: int = 0
-    max_empty_after_tool_continuations: int = 3
+    empty_response_retries: int = 0
+    max_empty_response_retries: int = 3
     provider_resume_attempts: int = 0
 
 
@@ -708,13 +709,14 @@ class Agent(Generic[TContext]):
         iter_start: float,
         bk: _IterationBookkeeping,
     ) -> str:
-        """Post-model bookkeeping: usage folding, empty-after-tool continuation
-        counter, and appending the assistant message.
+        """Post-model bookkeeping: usage folding, empty-response retry counter,
+        and appending the assistant message.
 
         Returns ``"continue"`` when the caller should ``continue`` the loop
-        without appending anything further (empty-after-tool retry), else
+        without appending anything further (empty-response retry), else
         ``"proceed"`` after the message has been appended to ``messages`` and
-        ``self.stats``.
+        ``self.stats``.  Raises :class:`ProviderRequestError` once the
+        empty-response retry budget is exhausted.
         """
         state = env.state
         tc_list = assistant_msg.tool_calls or []
@@ -744,29 +746,70 @@ class Agent(Generic[TContext]):
             )
             or tc_list
         )
-        previous_was_tool = bool(messages and isinstance(messages[-1], ToolMessage))
-        if not has_assistant_payload and previous_was_tool:
-            bk.empty_after_tool_continuations += 1
-            if (
-                bk.empty_after_tool_continuations
-                <= bk.max_empty_after_tool_continuations
-            ):
+        # A message left empty *because* the assembler dropped a malformed or
+        # truncated tool call is not an aborted stream — the model did produce
+        # output.  ``_handle_finish_reason`` has a dedicated recovery for it that
+        # feeds back an explanatory prompt, which beats a blind retry.
+        dropped_tool_calls = bool((assistant_msg.extra or {}).get("dropped_tool_calls"))
+        if not has_assistant_payload and not dropped_tool_calls:
+            # ``finish_reason`` is only recorded when the provider actually
+            # signalled end-of-turn.  Its absence on an empty message means the
+            # stream died before the provider ever said it was done — a failed
+            # call, not a model that chose to stay silent.  This is the exact
+            # production signature of the silent no-reply bug: no content, no
+            # tool calls, and no usage either, because the usage event that
+            # accompanies a real completion never arrived.
+            aborted_before_completion = not (assistant_msg.extra or {}).get(
+                "finish_reason"
+            )
+            previous_was_tool = bool(messages and isinstance(messages[-1], ToolMessage))
+            # Retry an aborted call from anywhere in the loop — a first-iteration
+            # abort right after the user's message is just as likely as one
+            # mid-tool-loop, and gating the retry on ``previous_was_tool`` is
+            # what let those through as silent, empty "successful" turns.
+            # A *completed* empty response keeps its original narrower handling:
+            # retried only after a tool result (a known model quirk there),
+            # otherwise treated as a deliberate end of turn.
+            if aborted_before_completion or previous_was_tool:
+                bk.empty_response_retries += 1
+                if bk.empty_response_retries <= bk.max_empty_response_retries:
+                    logger.warning(
+                        "agent_empty_response_retry agent={} iteration={} "
+                        "attempt={}/{} aborted={}",
+                        self.name,
+                        bk.iteration,
+                        bk.empty_response_retries,
+                        bk.max_empty_response_retries,
+                        aborted_before_completion,
+                    )
+                    return "continue"
+                if aborted_before_completion:
+                    logger.error(
+                        "agent_empty_response_exhausted agent={} iteration={} attempts={}",
+                        self.name,
+                        bk.iteration,
+                        bk.empty_response_retries,
+                    )
+                    # Raise rather than end quietly: a contentless assistant
+                    # message is never persisted or rendered, so completing the
+                    # run here is exactly the silent no-reply this guards
+                    # against.  Team members turn ProviderRequestError into a
+                    # visible turn error.
+                    raise ProviderRequestError(
+                        f"{effective_model or env.active_model_id} returned an "
+                        f"empty response {bk.empty_response_retries} times in a "
+                        f"row, each time disconnecting before signalling "
+                        f"end-of-turn.",
+                        provider=env.active_model_id,
+                    )
                 logger.warning(
-                    "agent_empty_after_tool_continue agent={} iteration={} attempt={}/{}",
+                    "agent_empty_after_tool_limit agent={} iteration={} attempts={}",
                     self.name,
                     bk.iteration,
-                    bk.empty_after_tool_continuations,
-                    bk.max_empty_after_tool_continuations,
+                    bk.empty_response_retries,
                 )
-                return "continue"
-            logger.warning(
-                "agent_empty_after_tool_limit agent={} iteration={} attempts={}",
-                self.name,
-                bk.iteration,
-                bk.empty_after_tool_continuations,
-            )
         elif has_assistant_payload:
-            bk.empty_after_tool_continuations = 0
+            bk.empty_response_retries = 0
 
         message_extra = dict(assistant_msg.extra or {})
         message_extra["duration_ms"] = round(
@@ -952,6 +995,14 @@ class Agent(Generic[TContext]):
         self.stats.total_tokens += total_tokens
         self.run_config = None
         run_elapsed = time.monotonic() - env.run_start
+        # Reflect actual delivered payload, not merely "an object exists" — an
+        # empty assistant message is never persisted or rendered, so reporting
+        # has_response=True for one hid every silent-empty-turn failure.
+        has_response = last_assistant_msg is not None and bool(
+            (last_assistant_msg.content or "").strip()
+            or (last_assistant_msg.reasoning_content or "").strip()
+            or last_assistant_msg.tool_calls
+        )
         logger.info(
             "agent_run_done agent={} elapsed={:.2f}s iterations={} "
             "total_messages={} total_tokens={} has_response={}",
@@ -960,7 +1011,7 @@ class Agent(Generic[TContext]):
             iteration,
             len(messages),
             total_tokens,
-            last_assistant_msg is not None,
+            has_response,
         )
         return messages
 

@@ -105,7 +105,10 @@ async def _notify_provider_exhausted(
 
 
 # Module-private timing knobs.
-_RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+# 529 is Anthropic's "overloaded" status — transient and explicitly retryable.
+# It also arrives via SSE error frames mid-stream (see the anthropic provider's
+# _raise_stream_error_event), which is the common case in practice.
+_RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504, 529}
 _NON_RETRYABLE_429_MARKERS = (
     "usage_limit_reached",
     "usage_not_included",

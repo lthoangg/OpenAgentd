@@ -119,6 +119,18 @@ def _tool_chunk(
     )
 
 
+async def _final_gen():
+    """Terminal model response for a turn that ran a tool.
+
+    Tool-flow tests need two provider calls: the tool-call turn, then the
+    model's closing message.  Supplying only the first left the second call
+    returning an exhausted generator, i.e. a stream that ends without ever
+    signalling end-of-turn — which the agent loop now correctly treats as an
+    aborted call and retries/raises on, rather than silently ending the turn.
+    """
+    yield _text_chunk("done", finish="stop")
+
+
 def _finish_chunk() -> ChatCompletionChunk:
     return ChatCompletionChunk(
         id="chunk-finish",
@@ -324,7 +336,7 @@ async def test_tool_calls_buffer_id_set_on_second_chunk():
         yield chunk4
 
     mock_provider = MagicMock()
-    mock_provider.stream.return_value = _gen()
+    mock_provider.stream.side_effect = [_gen(), _final_gen()]
 
     agent = Agent(
         llm_provider=mock_provider,
@@ -405,7 +417,7 @@ async def test_tool_result_creates_tool_message_with_parts():
         yield _finish_chunk()
 
     mock_provider = MagicMock()
-    mock_provider.stream.return_value = _gen()
+    mock_provider.stream.side_effect = [_gen(), _final_gen()]
 
     from app.agent.tools.registry import Tool
 
@@ -457,7 +469,7 @@ async def test_tool_result_content_derived_from_text_blocks():
         yield _finish_chunk()
 
     mock_provider = MagicMock()
-    mock_provider.stream.return_value = _gen()
+    mock_provider.stream.side_effect = [_gen(), _final_gen()]
 
     from app.agent.tools.registry import Tool
 
@@ -568,7 +580,7 @@ async def test_complete_tool_call_with_empty_args_is_kept():
         yield _finish_chunk()
 
     mock_provider = MagicMock()
-    mock_provider.stream.return_value = _gen()
+    mock_provider.stream.side_effect = [_gen(), _final_gen()]
 
     from app.agent.tools.registry import Tool
 
@@ -605,7 +617,7 @@ async def test_plain_string_tool_result_has_no_parts():
         yield _finish_chunk()
 
     mock_provider = MagicMock()
-    mock_provider.stream.return_value = _gen()
+    mock_provider.stream.side_effect = [_gen(), _final_gen()]
 
     from app.agent.tools.registry import Tool
 

@@ -1,4 +1,4 @@
-import type { AgentUsage, ChatMessage, ContentBlock, MessageResponse } from '@/api/types'
+import type { AgentUsage, ContentBlock, MessageResponse } from '@/api/types'
 
 // Me sort messages by timestamp asc, assistant before tool on ties
 
@@ -94,98 +94,6 @@ function assistantBlocks(
   }
 
   return blocks
-}
-
-/**
- * Parse DB messages into ChatMessage[] — used by single-agent chat view.
- * User messages → ChatMessage{role:'user'}
- * Assistant messages → ChatMessage{role:'assistant', blocks:[...]}
- * Tool result messages → mutate matching tool block (toolDone=true, toolResult=...)
- */
-export function parseApiMessages(msgs: MessageResponse[]): ChatMessage[] {
-  const result: ChatMessage[] = []
-  const pendingToolBlocks: Map<string, ContentBlock> = new Map()
-
-  for (const msg of sortMessages(msgs)) {
-    // Summaries surface as an inline "Session compacted" divider rather
-    // than being hidden from the chat — gives users a visible marker of
-    // where context compaction happened.
-    if (msg.is_summary) {
-      const timestamp = msg.created_at ? new Date(msg.created_at) : new Date()
-      result.push({
-        id: msg.id,
-        role: 'assistant',
-        content: '',
-        blocks: [{
-          id: `${msg.id}:compaction`,
-          type: 'compaction',
-          content: stripCompactionPrefix(msg.content || ''),
-          extra: { state: 'compacted' },
-          timestamp,
-        }],
-        agent: msg.name || undefined,
-        timestamp,
-      })
-      continue
-    }
-
-    if (msg.role === 'user') {
-      result.push({
-        id: msg.id,
-        role: 'user',
-        content: shellDisplayContent(msg),
-        blocks: [],
-        timestamp: msg.created_at ? new Date(msg.created_at) : new Date(),
-        attachments: msg.attachments ?? undefined,
-      })
-      continue
-    }
-
-    if (msg.role === 'tool' && msg.tool_call_id) {
-      const block = pendingToolBlocks.get(msg.tool_call_id)
-      const extra = msg.extra as { duration_ms?: number; mcp_app?: Record<string, unknown> } | null
-      if (block) {
-        block.toolResult = msg.content || ''
-        block.toolDone = true
-        if (typeof extra?.duration_ms === 'number') {
-          // Persisted messages have no client startedAt, so server duration doubles
-          // as the display value. Live sessions freeze durationMs from client elapsed.
-          block.serverDurationMs = extra.duration_ms
-          block.durationMs = extra.duration_ms
-        }
-        if (extra?.mcp_app) {
-          block.extra = {
-            ...(block.extra ?? {}),
-            mcp_app: extra.mcp_app,
-          }
-        }
-      }
-      continue
-    }
-
-    if (msg.role === 'assistant') {
-      const timestamp = msg.created_at ? new Date(msg.created_at) : new Date()
-      const blocks = assistantBlocks(msg, pendingToolBlocks, timestamp)
-      const extra = msg.extra as { usage?: { input?: number; output?: number; cache?: number; cost?: { estimated_usd?: number } } } | null
-      const usage = extra?.usage ? {
-        promptTokens: extra.usage.input ?? 0,
-        completionTokens: extra.usage.output ?? 0,
-        totalTokens: (extra.usage.input ?? 0) + (extra.usage.output ?? 0),
-        cachedTokens: extra.usage.cache ?? 0,
-      } : undefined
-      result.push({
-        id: msg.id,
-        role: 'assistant',
-        content: '',
-        blocks,
-        agent: msg.name || undefined,
-        timestamp,
-        usage,
-      })
-    }
-  }
-
-  return result
 }
 
 /**

@@ -293,20 +293,6 @@ export interface ContentBlock {
   attachments?: MessageAttachment[]
 }
 
-// Chat Message Type
-export interface ChatMessage {
-  id: string
-  role: 'user' | 'assistant'
-  content: string // For user: plain text. For assistant: ignored (use blocks)
-  blocks: ContentBlock[]
-  agent?: string | null
-  model?: string | null
-  timestamp: Date
-  usage?: AgentUsage
-  file_message?: boolean
-  attachments?: MessageAttachment[]
-}
-
 // Agent Usage Stats
 export interface AgentUsage {
   promptTokens: number

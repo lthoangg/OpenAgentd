@@ -248,7 +248,10 @@ class TestProtocolInjection:
         assert "end_turn=true" in MEMBER_COMMUNICATION_RULES
         assert "<sleep>" not in MEMBER_COMMUNICATION_RULES
         # Members address team_message to anyone on the team, not lead-only.
-        assert "peer or lead" in MEMBER_COMMUNICATION_RULES
+        assert (
+            "team_message` is for peers and untracked asks"
+            in MEMBER_COMMUNICATION_RULES
+        )
         assert "<sleep>" not in MEMBER_PROTOCOL
         assert MEMBER_PROTOCOL.index("Claim") < MEMBER_PROTOCOL.index("completed")
         # Completion carries the deliverable: result recorded on the task.
@@ -435,7 +438,9 @@ class TestProtocolConstants:
         assert "Plain text output is discarded" in MEMBER_COMMUNICATION_RULES
         # Cross-member: members are not restricted to messaging the lead.
         assert "Talk to peers directly" in MEMBER_COMMUNICATION_RULES
-        assert "whoever needs it" in MEMBER_COMMUNICATION_RULES
+        assert (
+            "send output straight to the member it feeds" in MEMBER_COMMUNICATION_RULES
+        )
 
     def test_lead_message_format_has_user_prefix(self):
         """Lead message format includes [user]: prefix — members do not."""

@@ -90,13 +90,7 @@ export async function postTeamChat(
     headers: { Accept: 'application/json' },
     body: formData,
   })
-  if (!res.ok) {
-    const body = await res.json().catch(() => null)
-    const detail = Array.isArray(body?.detail)
-      ? body.detail.map((item: { msg?: string }) => item.msg).filter(Boolean).join('; ')
-      : body?.detail
-    throw new Error(detail || `POST /team/chat failed: ${res.status}`)
-  }
+  if (!res.ok) await parseDetailOrThrow(res, 'POST /team/chat')
   return res.json()
 }
 
@@ -109,10 +103,7 @@ export async function postTeamCommand(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ command, session_id: sessionId }),
   })
-  if (!res.ok) {
-    const body = await res.json().catch(() => null)
-    throw new Error(body?.detail || `POST /team/commands failed: ${res.status}`)
-  }
+  if (!res.ok) await parseDetailOrThrow(res, 'POST /team/commands')
   return res.json()
 }
 
@@ -130,10 +121,7 @@ export async function cancelQueuedTeamMessage(sessionId: string, messageId: stri
     { method: 'DELETE' },
   )
   if (res.status === 404) return
-  if (!res.ok) {
-    const body = await res.json().catch(() => null)
-    throw new Error(body?.detail || `DELETE queued message failed: ${res.status}`)
-  }
+  if (!res.ok) await parseDetailOrThrow(res, 'DELETE queued message')
 }
 
 export function teamStream(sessionId: string, callbacks: SSECallbacks, signal?: AbortSignal): void {
@@ -184,10 +172,7 @@ export function listTeamAgents(workspace?: string | null): Promise<TeamAgentsRes
 export async function validateWorkspace(workspace: string): Promise<WorkspaceValidationResponse> {
   const params = new URLSearchParams({ workspace })
   const res = await fetch(`${apiBaseUrl()}/team/workspace/validate?${params}`)
-  if (!res.ok) {
-    const body = await res.json().catch(() => null)
-    throw new Error(body?.detail || `validateWorkspace failed: ${res.status}`)
-  }
+  if (!res.ok) await parseDetailOrThrow(res, 'validateWorkspace')
   return res.json()
 }
 
@@ -196,10 +181,7 @@ export async function browseWorkspaces(path?: string | null): Promise<WorkspaceB
   if (path) params.set('path', path)
   const query = params.toString()
   const res = await fetch(`${apiBaseUrl()}/team/workspace/browse${query ? `?${query}` : ''}`)
-  if (!res.ok) {
-    const body = await res.json().catch(() => null)
-    throw new Error(body?.detail || `browseWorkspaces failed: ${res.status}`)
-  }
+  if (!res.ok) await parseDetailOrThrow(res, 'browseWorkspaces')
   return res.json()
 }
 
@@ -212,10 +194,7 @@ export async function getCodingWorkspaceTree(): Promise<CodingWorkspaceTreeRespo
 export async function listWorktrees(sourceWorkspace: string): Promise<WorktreeInfo[]> {
   const params = new URLSearchParams({ source_workspace: sourceWorkspace })
   const res = await fetch(`${apiBaseUrl()}/team/workspace/worktrees?${params}`)
-  if (!res.ok) {
-    const body = await res.json().catch(() => null)
-    throw new Error(body?.detail || `listWorktrees failed: ${res.status}`)
-  }
+  if (!res.ok) await parseDetailOrThrow(res, 'listWorktrees')
   return res.json()
 }
 

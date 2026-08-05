@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { FileCode, ArrowRight, Trash2, PlusCircle, ChevronRight } from 'lucide-react'
-import { diffLines, parseDiffMeta, parsePatchText, type DiffLine } from './diffUtils'
+import { diffLines, parseDiffMeta, parsePatchText, type DiffLine, type FileDiff } from './diffUtils'
 import { parsePartialJSON } from './displayText'
 import { parseLspDiagnostics, LspDiagnosticsView } from '../ToolResult'
 
@@ -133,6 +133,32 @@ interface DiffViewProps {
   onCollapse?: () => void
 }
 
+/**
+ * What to render, with every expensive derivation already done.
+ *
+ * Kept as plain data (not JSX) so it can live behind a single `useMemo`:
+ * `ToolCall` re-renders this subtree once per second while the tool is still
+ * running, purely to redraw its elapsed-duration label. Computing the diff in
+ * the render body meant re-running an O(oldLines*newLines) LCS — plus a full
+ * `parsePatchText` / `split('\n')` — on every one of those ticks, for the
+ * entire lifetime of the tool call. See `ToolCall.perf.test.tsx` and
+ * `DiffView.perf.test.tsx` for the regression guards.
+ */
+type DiffModel =
+  // `variant` preserves the two distinct raw-text presentations the previous
+  // inline branches used: unparseable args render in a plain block, while a
+  // patch that yielded no file diffs renders in a scrollable one.
+  | { kind: 'raw'; text: string; variant: 'args' | 'patch' }
+  | {
+      kind: 'single'
+      path: string
+      fileKind: 'add' | 'update'
+      lines: DiffLine[]
+      oldStart: number
+      newStart: number
+    }
+  | { kind: 'files'; diffs: FileDiff[] }
+
 export function DiffView({ toolName, args, result, onCollapse }: DiffViewProps) {
   const parsed = useMemo(() => {
     try {
@@ -144,69 +170,101 @@ export function DiffView({ toolName, args, result, onCollapse }: DiffViewProps) 
   const diffMeta = useMemo(() => parseDiffMeta(result), [result])
   const lspData = useMemo(() => result ? parseLspDiagnostics(result) : null, [result])
 
-  const hasPath = typeof parsed?.path === 'string' && parsed.path.trim().length > 0
-  const hasPatchText = typeof parsed?.patch_text === 'string' && parsed.patch_text.trim().length > 0
+  const model = useMemo<DiffModel | null>(() => {
+    const hasPath = typeof parsed?.path === 'string' && parsed.path.trim().length > 0
+    const hasPatchText =
+      typeof parsed?.patch_text === 'string' && parsed.patch_text.trim().length > 0
+
+    if (
+      !parsed ||
+      (toolName === 'edit' && !hasPath) ||
+      (toolName === 'write' && !hasPath) ||
+      (toolName === 'patch' && !hasPatchText)
+    ) {
+      return { kind: 'raw', text: args, variant: 'args' }
+    }
+
+    if (toolName === 'edit') {
+      const oldStr = typeof parsed.old_string === 'string' ? parsed.old_string : ''
+      const newStr = typeof parsed.new_string === 'string' ? parsed.new_string : ''
+      return {
+        kind: 'single',
+        path: typeof parsed.path === 'string' ? parsed.path : 'unknown',
+        fileKind: 'update',
+        lines: diffLines(oldStr, newStr),
+        oldStart: diffMeta?.old_start ?? 1,
+        newStart: diffMeta?.new_start ?? 1,
+      }
+    }
+
+    if (toolName === 'write') {
+      const content = typeof parsed.content === 'string' ? parsed.content : ''
+      return {
+        kind: 'single',
+        path: typeof parsed.path === 'string' ? parsed.path : 'unknown',
+        fileKind: 'add',
+        lines: content
+          .replace(/\r\n/g, '\n')
+          .split('\n')
+          .map((line: string) => ({ type: 'added' as const, value: line })),
+        oldStart: 1,
+        newStart: 1,
+      }
+    }
+
+    if (toolName === 'patch') {
+      const patchText = typeof parsed.patch_text === 'string' ? parsed.patch_text : ''
+      const diffs = parsePatchText(patchText, diffMeta)
+      return diffs.length === 0
+        ? { kind: 'raw', text: patchText, variant: 'patch' }
+        : { kind: 'files', diffs }
+    }
+
+    return null
+  }, [toolName, args, parsed, diffMeta])
 
   let viewContent: React.ReactNode = null
 
-  if (!parsed || (toolName === 'edit' && !hasPath) || (toolName === 'write' && !hasPath) || (toolName === 'patch' && !hasPatchText)) {
-    viewContent = <pre className="p-3 font-mono text-xs">{args}</pre>
-  } else if (toolName === 'edit') {
-    const path = typeof parsed.path === 'string' ? parsed.path : 'unknown'
-    const oldStr = typeof parsed.old_string === 'string' ? parsed.old_string : ''
-    const newStr = typeof parsed.new_string === 'string' ? parsed.new_string : ''
-    const lines = diffLines(oldStr, newStr)
-
+  if (model?.kind === 'raw') {
+    viewContent =
+      model.variant === 'patch' ? (
+        <pre className="overflow-auto overscroll-contain touch-pan-y p-3 font-mono text-xs leading-relaxed text-(--color-text-2)">
+          {model.text}
+        </pre>
+      ) : (
+        <pre className="p-3 font-mono text-xs">{model.text}</pre>
+      )
+  } else if (model?.kind === 'single') {
     viewContent = (
       <div className="overflow-hidden">
         <SingleFileDiff
-          path={path}
-          kind="update"
-          lines={lines}
-          oldStart={diffMeta?.old_start ?? 1}
-          newStart={diffMeta?.new_start ?? 1}
+          path={model.path}
+          kind={model.fileKind}
+          lines={model.lines}
+          oldStart={model.oldStart}
+          newStart={model.newStart}
           onCollapse={onCollapse}
         />
       </div>
     )
-  } else if (toolName === 'write') {
-    const path = typeof parsed.path === 'string' ? parsed.path : 'unknown'
-    const content = typeof parsed.content === 'string' ? parsed.content : ''
-    const lines = content.replace(/\r\n/g, '\n').split('\n').map((line: string) => ({ type: 'added' as const, value: line }))
-
+  } else if (model?.kind === 'files') {
+    const diffs = model.diffs
     viewContent = (
-      <div className="overflow-hidden">
-        <SingleFileDiff path={path} kind="add" lines={lines} onCollapse={onCollapse} />
+      <div className="flex flex-col overflow-hidden">
+        {diffs.map((diff, idx) => (
+          <SingleFileDiff
+            key={idx}
+            path={diff.path}
+            kind={diff.kind}
+            moveTo={diff.moveTo}
+            lines={diff.lines}
+            oldStart={diff.hunkStarts?.[0]?.oldStart ?? 1}
+            newStart={diff.hunkStarts?.[0]?.newStart ?? 1}
+            onCollapse={diffs.length === 1 ? onCollapse : undefined}
+          />
+        ))}
       </div>
     )
-  } else if (toolName === 'patch') {
-    const patchText = typeof parsed.patch_text === 'string' ? parsed.patch_text : ''
-    const diffs = parsePatchText(patchText, diffMeta)
-
-    if (diffs.length === 0) {
-      viewContent = (
-        <pre className="overflow-auto overscroll-contain touch-pan-y p-3 font-mono text-xs leading-relaxed text-(--color-text-2)">
-          {patchText}
-        </pre>
-      )
-    } else {
-      viewContent = (
-        <div className="flex flex-col overflow-hidden">
-          {diffs.map((diff, idx) => (
-            <SingleFileDiff
-              key={idx}
-              path={diff.path}
-              kind={diff.kind}
-              moveTo={diff.moveTo}
-              lines={diff.lines}
-              oldStart={diff.hunkStarts?.[0]?.oldStart ?? 1}
-              newStart={diff.hunkStarts?.[0]?.newStart ?? 1}
-              onCollapse={diffs.length === 1 ? onCollapse : undefined}
-            />
-          ))}
-        </div>
-      )
-    }
   }
 
   if (!viewContent) return null

@@ -681,6 +681,44 @@ async def test_interrupt_team_waits_for_cancelled_activation_cleanup():
     assert active_task.done()
 
 
+async def test_interrupt_team_dismisses_an_open_question():
+    """Stop outranks a question the lead is parked on.
+
+    Interrupt-only requests never reach ``handle_user_message``, so this is the
+    only place a Stop can close the question. Leaving the row open would badge
+    the session "needs input" forever with no turn left to resume it, and the
+    lead would stay ``waiting_input`` — busy to every caller that asks.
+    """
+    team = MagicMock()
+    team.members = {}
+    team.all_members = []
+    team.lead.session_id = None
+    team.dismiss_pending_question = AsyncMock(return_value=True)
+
+    await interrupt_team(team, session_id=None)
+
+    team.dismiss_pending_question.assert_awaited_once_with(reason="dismissed")
+
+
+async def test_interrupt_team_survives_a_failed_question_dismissal():
+    """Cancelling the run matters more than closing the card."""
+    working = MagicMock()
+    working.state = "working"
+    working.name = "worker-a"
+    working._active_task = None
+
+    team = MagicMock()
+    team.members = {}
+    team.all_members = [working]
+    team.lead.session_id = None
+    team.dismiss_pending_question = AsyncMock(side_effect=RuntimeError("db gone"))
+
+    names = await interrupt_team(team, session_id=None)
+
+    assert names == ["worker-a"]
+    working.interrupt.assert_called_once()
+
+
 async def test_interrupt_team_stops_session_background_processes():
     team = MagicMock()
     team.members = {}

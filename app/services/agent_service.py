@@ -662,6 +662,22 @@ async def interrupt_team(team: "AgentTeam", session_id: str | None) -> list[str]
                 exc,
             )
 
+    # Stop outranks a question the lead is parked on. An interrupt-only request
+    # returns before ``handle_user_message`` runs, so this is the only place a
+    # Stop can close it: leaving the row open would badge the session "needs
+    # input" with no turn left to resume, and hold the lead in ``waiting_input``
+    # — busy to everything that asks. Done before the sweep below so a freed
+    # lead is not reported as a cancelled member; it had no task running.
+    try:
+        await team.dismiss_pending_question(reason="dismissed")
+    except Exception as exc:
+        # Cancelling the run matters more than closing the card.
+        logger.warning(
+            "team_interrupt_dismiss_question_failed session_id={} error={}",
+            effective_session_id,
+            exc,
+        )
+
     working_members = [m for m in team.all_members if is_busy(m.state)]
     working_ids = {id(member) for member in working_members}
     names = [member.name for member in working_members]

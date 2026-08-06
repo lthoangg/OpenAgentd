@@ -1,5 +1,35 @@
-import type { ContentBlock } from '@/api/types'
-import type { AgentStream } from './types'
+import type { ContentBlock, PendingQuestion } from '@/api/types'
+import type { AgentStream, ResolvedQuestion } from './types'
+
+/**
+ * Close the open question and record how it ended.
+ *
+ * Resolving is a race between the POST reply and the broadcast of the same
+ * resolution, and either can land first. Both call this, so whichever wins
+ * records the outcome and the loser is a no-op — the guard makes it idempotent
+ * rather than letting the second caller wipe what the first stored.
+ *
+ * The outcome is kept against the *tool call*: the persisted tool result is
+ * only rewritten server-side at the end of the turn, so without this the card
+ * would fall back to "waiting" for the seconds until history reconciles.
+ */
+export function applyQuestionResolution(
+  draft: {
+    pendingQuestion: PendingQuestion | null
+    resolvedQuestions: Record<string, ResolvedQuestion>
+  },
+  questionId: string,
+  answers: string[][] | null,
+  reason: string | null,
+): void {
+  if (draft.pendingQuestion?.id !== questionId) return
+  draft.resolvedQuestions[draft.pendingQuestion.toolCallId] = {
+    questions: draft.pendingQuestion.questions,
+    answers,
+    reason,
+  }
+  draft.pendingQuestion = null
+}
 
 /**
  * Statuses that mean "this agent's turn has not ended yet".

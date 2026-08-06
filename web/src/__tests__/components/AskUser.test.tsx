@@ -225,6 +225,65 @@ describe('AskUser — resolved state', () => {
 })
 
 /**
+ * Resolving is a race: the POST reply and the broadcast of the same resolution
+ * arrive independently, and either can land first. Whichever wins has to record
+ * the outcome, because the loser finds nothing left to match on — and a card
+ * with no recorded outcome falls back to "waiting", which is the one state that
+ * is definitely wrong once the user has acted.
+ */
+describe('AskUser — resolution ordering', () => {
+  it('keeps the answer when the POST reply beats the broadcast', async () => {
+    render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
+
+    fireEvent.click(screen.getByRole('radio', { name: /bun/ }))
+    fireEvent.click(screen.getByRole('button', { name: /send answer/i }))
+    await waitFor(() => expect(useTeamStore.getState().pendingQuestion).toBeNull())
+
+    // The broadcast lands afterwards, with the open question already closed.
+    useTeamStore.getState()._handleSSEEvent('question_answered', {
+      question_id: 'q-1',
+      session_id: 's-1',
+      answers: [['bun']],
+    })
+
+    await waitFor(() => expect(screen.getByText('bun')).toBeInTheDocument())
+    expect(screen.queryByText(/waiting for an answer/i)).toBeNull()
+  })
+
+  it('keeps the dismissal when the POST reply beats the broadcast', async () => {
+    render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /dismiss/i }))
+    await waitFor(() => expect(useTeamStore.getState().pendingQuestion).toBeNull())
+
+    useTeamStore.getState()._handleSSEEvent('question_dismissed', {
+      question_id: 'q-1',
+      session_id: 's-1',
+      reason: 'dismissed',
+    })
+
+    await waitFor(() => expect(screen.getByText(/dismissed/i)).toBeInTheDocument())
+    expect(screen.queryByText(/waiting for an answer/i)).toBeNull()
+  })
+
+  it('keeps the answer when the broadcast beats the POST reply', async () => {
+    render(<AskUser toolCallId="call-1" result={PLACEHOLDER} />)
+
+    fireEvent.click(screen.getByRole('radio', { name: /bun/ }))
+    useTeamStore.getState()._handleSSEEvent('question_answered', {
+      question_id: 'q-1',
+      session_id: 's-1',
+      answers: [['bun']],
+    })
+    // The local path still runs and must not undo what the broadcast recorded.
+    fireEvent.click(screen.getByRole('button', { name: /send answer/i }))
+
+    await waitFor(() => expect(screen.getByText('bun')).toBeInTheDocument())
+    expect(screen.queryByText(/waiting for an answer/i)).toBeNull()
+  })
+})
+
+/**
  * A question that ended without an answer still has to say *what was asked*.
  * "Dismissed" on its own is unreadable weeks later, and it is the one case
  * where the transcript holds no answer text to infer the question from.

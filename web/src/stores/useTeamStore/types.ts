@@ -170,7 +170,11 @@ export interface TeamStoreActions {
    * it also calls this directly, so the card closes even when this client's
    * stream is mid-reconnect and would never see its own resolution.
    */
-  clearPendingQuestion: (questionId: string) => void
+  resolveQuestion: (
+    questionId: string,
+    answers: string[][] | null,
+    reason: string | null,
+  ) => void
   loadTeamStatus: (workspace?: string | null, expectedGeneration?: number) => Promise<void>
   loadSession: (sessionId: string, workspace?: string | null) => Promise<void>
   /**

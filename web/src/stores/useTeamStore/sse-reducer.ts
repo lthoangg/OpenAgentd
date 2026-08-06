@@ -18,6 +18,7 @@ import {
   anyAgentLive,
   appendLocalBlocks,
   applyLocalBlockTransform,
+  applyQuestionResolution,
   extractToolPaths,
 } from './helpers'
 import type { CacheInvalidation, TeamStore } from './types'
@@ -579,18 +580,15 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
           ? (Array.isArray(d.answers) ? (d.answers as string[][]) : [])
           : null
         set((draft) => {
-          // Ignore a resolution for a question we are not showing: a late event
-          // for a superseded question must not close the current card.
-          if (draft.pendingQuestion?.id !== questionId) return
-          // Keep the outcome against the tool call so the transcript card can
-          // switch to its resolved state now, instead of showing the persisted
-          // "waiting" placeholder until the turn ends and history reconciles.
-          draft.resolvedQuestions[draft.pendingQuestion.toolCallId] = {
-            questions: draft.pendingQuestion.questions,
+          // Guarded inside the helper: a late event for a question we are no
+          // longer showing must not close the current card, and the local path
+          // may already have recorded this same resolution.
+          applyQuestionResolution(
+            draft,
+            questionId,
             answers,
-            reason: answers === null ? ((d.reason as string) ?? 'dismissed') : null,
-          }
-          draft.pendingQuestion = null
+            answers === null ? ((d.reason as string) ?? 'dismissed') : null,
+          )
         })
         break
       }

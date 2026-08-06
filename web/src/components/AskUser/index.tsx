@@ -70,7 +70,7 @@ export function AskUser({
 }) {
   const pendingQuestion = useTeamStore((state) => state.pendingQuestion)
   const sessionId = useTeamStore((state) => state.sessionId)
-  const clearPendingQuestion = useTeamStore((state) => state.clearPendingQuestion)
+  const resolveQuestion = useTeamStore((state) => state.resolveQuestion)
   const resolved = useTeamStore((state) =>
     toolCallId ? state.resolvedQuestions[toolCallId] : undefined,
   )
@@ -96,6 +96,8 @@ export function AskUser({
     // Only an answer restarts the turn; a dismissal reports ``resumed: false``
     // by design, and warning about that would turn "not now" into an error.
     expectResume: boolean,
+    answers: string[][] | null,
+    reason: string | null,
   ) => {
     if (submitting) return
     setSubmitting(true)
@@ -103,9 +105,11 @@ export function AskUser({
     try {
       const outcome = await action()
       forgetQuestionDraft(questionId)
-      // The resolution also arrives over SSE, but closing here too means the
-      // card still resolves when this client's stream is mid-reconnect.
-      clearPendingQuestion(questionId)
+      // Record the outcome here as well as on the broadcast. Either can land
+      // first; the store guard makes the second a no-op. Clearing without
+      // recording would strand the card in "waiting" — the broadcast then has
+      // no open question left to attach the outcome to.
+      resolveQuestion(questionId, answers, reason)
       if (expectResume && !outcome.resumed) {
         useToastStore.getState().push({
           tone: 'error',
@@ -134,6 +138,8 @@ export function AskUser({
             () => answerQuestion(sessionId, questionId, answers),
             'Could not send the answer.',
             true,
+            answers,
+            null,
           )
         }
         onDismiss={() =>
@@ -141,6 +147,8 @@ export function AskUser({
             () => dismissQuestion(sessionId, questionId),
             'Could not dismiss the question.',
             false,
+            null,
+            'dismissed',
           )
         }
       />

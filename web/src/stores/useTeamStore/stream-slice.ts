@@ -1,6 +1,6 @@
 import type { StateCreator } from 'zustand'
 import { postTeamChat, postTeamCommand, teamStream } from '@/api/client'
-import { applyRevertBoundary } from './helpers'
+import { applyQuestionResolution, applyRevertBoundary } from './helpers'
 import {
   applySSEDeltaBatch,
   createSSEHandler,
@@ -76,7 +76,7 @@ export type StreamSlice = Pick<
   | 'redoTeam'
   | 'stopTeam'
   | 'connectStream'
-  | 'clearPendingQuestion'
+  | 'resolveQuestion'
   | 'dismissSetupRequired'
   | '_drainCacheInvalidations'
   | '_handleSSEEvent'
@@ -284,10 +284,13 @@ export const createStreamSlice: StateCreator<
     }
   },
 
-  clearPendingQuestion: (questionId: string) => {
+  resolveQuestion: (
+    questionId: string,
+    answers: string[][] | null,
+    reason: string | null,
+  ) => {
     set((draft) => {
-      if (draft.pendingQuestion?.id !== questionId) return
-      draft.pendingQuestion = null
+      applyQuestionResolution(draft, questionId, answers, reason)
     })
   },
 

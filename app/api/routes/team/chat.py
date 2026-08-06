@@ -16,6 +16,7 @@ from sse_starlette.sse import EventSourceResponse
 from app.agent.agent_loop import Agent
 from app.agent.mode.team.member import TeamMemberBase
 from app.agent.mode.team.team import ContinuePreconditionError
+from app.agent.tools.registry import Tool
 from app.api.deps import ChatFormDep, DbSession, TeamDep
 from app.api.routes.team._helpers import (
     _message_response,
@@ -121,6 +122,7 @@ def _serialize_agent(
     is_lead: bool = False,
     workspace: str | None = None,
     custom_threshold: int | None | _Unset = _UNSET,
+    injected_tools: list[Tool] | None = None,
 ) -> dict:
     """Serialize an Agent into the /team/agents response shape.
 
@@ -128,6 +130,13 @@ def _serialize_agent(
     Pass it explicitly when serializing several agents in one request; omitting
     it falls back to loading settings here, which costs a file read plus a YAML
     parse *per agent*.
+
+    ``injected_tools`` are the run-time tools ``AgentTeam.get_injected_tools``
+    would supply for this agent. They are never registered on the agent, so
+    without them the listing silently omits every team tool. They are applied
+    *last* and overwrite same-named entries, mirroring ``Agent._setup_run``
+    (``run_tools[t.name] = t``) — ``todo_manage`` exists both as a static
+    builtin and as a team-bound tool, and the injected one is what runs.
 
     ``workspace``, when given, binds the sandbox for the duration of tool
     description computation only. Some tool descriptions are dynamic — the
@@ -153,6 +162,8 @@ def _serialize_agent(
         server_tools = mcp_manager.get_tools_for_server(server_name) or []
         for tool in server_tools:
             tools_by_name.setdefault(tool.name, tool)
+    for tool in injected_tools or []:
+        tools_by_name[tool.name] = tool
 
     sandbox_token = (
         set_sandbox(SandboxConfig(workspace=workspace)) if workspace else None
@@ -601,6 +612,11 @@ async def list_team_agents(
                     is_lead=(m is team_obj.lead),
                     workspace=team_obj.workspace,
                     custom_threshold=custom_threshold,
+                    # Per-agent, not per-team: the injected set is role- and
+                    # mode-dependent (only a coding-mode lead on a human-owned
+                    # session gets ``ask_user_question``), so the listing has to
+                    # ask for each member rather than share one list.
+                    injected_tools=team_obj.get_injected_tools(m.name),
                 )
             )
             for m in all_members

@@ -658,6 +658,107 @@ class TestTeamAgentsRoute:
         tool_names = {tool["name"] for tool in lead_entry["tools"]}
         assert get_date.name in tool_names
 
+    def test_team_agents_lists_the_tools_injected_at_run_time(
+        self, app_with_team, test_team
+    ):
+        """Session Settings claims to show "what this session can actually do".
+
+        ``team_message``, ``team_manage`` and ``ask_user_question`` are built
+        per-run by ``get_injected_tools`` and never registered on the agent, so
+        the listing omitted three working tools. (``todo_manage`` was already
+        there — it is also a static builtin.)
+        """
+        test_team.mode = "coding"
+
+        client = TestClient(app_with_team)
+        data = client.get("/api/team/agents").json()
+
+        lead_tools = {
+            t["name"]
+            for t in next(a for a in data["agents"] if a["name"] == "lead")["tools"]
+        }
+        assert {"team_message", "team_manage", "ask_user_question"} <= lead_tools
+
+    def test_team_agents_shows_the_injected_todo_manage_not_the_static_one(
+        self, app_with_team, test_team
+    ):
+        """``todo_manage`` exists twice, and the listing must show the winner.
+
+        It is a static builtin *and* a team-bound tool that ``get_injected_tools``
+        supplies per run. ``_setup_run`` does ``run_tools[t.name] = t``, so the
+        injected, board-aware, role-specific version is what the model actually
+        gets — listing the static one's description would document a tool that
+        never runs.
+
+        The two share a description and differ only in args schema, which this
+        payload does not carry — so precedence is asserted with a stand-in whose
+        description is distinguishable.
+        """
+        from app.agent.tools import todo_manage
+        from app.agent.tools.registry import tool as tool_decorator
+
+        @tool_decorator(name="todo_manage", description="INJECTED board-aware variant")
+        def _injected_todo() -> str:
+            return ""
+
+        test_team.mode = "coding"
+        test_team.lead.agent._tools["todo_manage"] = todo_manage
+        test_team.get_injected_tools = lambda _name: [_injected_todo]
+
+        client = TestClient(app_with_team)
+        data = client.get("/api/team/agents").json()
+
+        lead_entry = next(a for a in data["agents"] if a["name"] == "lead")
+        listed = next(t for t in lead_entry["tools"] if t["name"] == "todo_manage")
+        assert listed["description"] == "INJECTED board-aware variant"
+        # Exactly one entry — the merge replaces, it does not append a duplicate.
+        assert sum(t["name"] == "todo_manage" for t in lead_entry["tools"]) == 1
+
+    def test_team_agents_omits_ask_user_question_for_members(
+        self, app_with_team, test_team
+    ):
+        """The listing must mirror injection, not advertise what a member cannot call."""
+        test_team.mode = "coding"
+
+        client = TestClient(app_with_team)
+        data = client.get("/api/team/agents").json()
+
+        worker_tools = {
+            t["name"]
+            for t in next(a for a in data["agents"] if a["name"] == "worker")["tools"]
+        }
+        assert "team_message" in worker_tools
+        assert "ask_user_question" not in worker_tools
+        assert "team_manage" not in worker_tools
+
+    def test_team_agents_omits_ask_user_question_outside_coding_mode(
+        self, app_with_team, test_team
+    ):
+        test_team.mode = "normal"
+
+        client = TestClient(app_with_team)
+        data = client.get("/api/team/agents").json()
+
+        lead_tools = {
+            t["name"]
+            for t in next(a for a in data["agents"] if a["name"] == "lead")["tools"]
+        }
+        assert "team_message" in lead_tools
+        assert "ask_user_question" not in lead_tools
+
+    def test_team_agents_tool_descriptions_are_not_empty_for_injected_tools(
+        self, app_with_team, test_team
+    ):
+        """The panel renders the description; an empty one makes the row useless."""
+        test_team.mode = "coding"
+
+        client = TestClient(app_with_team)
+        data = client.get("/api/team/agents").json()
+
+        lead_entry = next(a for a in data["agents"] if a["name"] == "lead")
+        ask = next(t for t in lead_entry["tools"] if t["name"] == "ask_user_question")
+        assert ask["description"].strip()
+
 
 class TestTeamHistoryRoute:
     """Test GET /team/{session_id}/history endpoint."""

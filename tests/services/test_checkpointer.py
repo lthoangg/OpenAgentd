@@ -704,6 +704,106 @@ class TestSQLiteCheckpointerSync:
         assert summary_msg.db_id is not None
 
     @pytest.mark.asyncio
+    async def test_sync_anchors_a_summary_before_the_window_it_kept(self):
+        """A summary row sorts where the hook inserted it, not at the tail.
+
+        ``SummarizationHook`` *inserts* the summary into ``state.messages``
+        ahead of the window it kept verbatim. A fresh row defaults to
+        ``utcnow()``, so persisting it plainly would sort it after that whole
+        window — putting the transcript's "Session compacted" divider between
+        the user's message and its reply.
+        """
+        import app.core.db as _db
+        from sqlmodel import col, select
+        from app.models.chat import SessionMessage
+        from app.services.chat_service import save_message
+
+        sid = uuid.uuid7()
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                await _make_session(db, sid)
+                compacted_user = await save_message(
+                    db, sid, HumanMessage(content="turn one")
+                )
+                compacted_reply = await save_message(
+                    db, sid, AssistantMessage(content="ONE")
+                )
+                kept_user = await save_message(
+                    db, sid, HumanMessage(content="turn two")
+                )
+
+        # Rebuild the in-memory window the hook would have mutated: the first
+        # two rows compacted away, the third kept, summary spliced in between.
+        old_user = HumanMessage(content="turn one", exclude_from_context=True)
+        old_user.db_id = compacted_user.id
+        old_reply = AssistantMessage(content="ONE", exclude_from_context=True)
+        old_reply.db_id = compacted_reply.id
+        new_user = HumanMessage(content="turn two")
+        new_user.db_id = kept_user.id
+        summary = HumanMessage(
+            content="Earlier: the user asked for ONE.", is_summary=True
+        )
+
+        cp = SQLiteCheckpointer(_db.async_session_factory)
+        cp.mark_loaded(str(sid), [old_user, old_reply, new_user])
+        state = AgentState(messages=[old_user, old_reply, summary, new_user])
+
+        await cp.sync(_ctx(str(sid)), state)
+
+        async with _db.async_session_factory() as db:
+            rows = (
+                await db.exec(
+                    select(SessionMessage)
+                    .where(col(SessionMessage.session_id) == sid)
+                    .order_by(
+                        col(SessionMessage.created_at).asc(),
+                        col(SessionMessage.id).asc(),
+                    )
+                )
+            ).all()
+
+        assert [(r.role, r.is_summary) for r in rows] == [
+            ("user", False),
+            ("assistant", False),
+            ("user", True),
+            ("user", False),
+        ]
+        assert rows[2].content == "Earlier: the user asked for ONE."
+        assert rows[3].id == kept_user.id
+
+    @pytest.mark.asyncio
+    async def test_sync_leaves_a_trailing_summary_at_the_tail(self):
+        """No kept window after it — the default ``utcnow()`` is already right."""
+        import app.core.db as _db
+        from sqlmodel import col, select
+        from app.models.chat import SessionMessage
+        from app.services.chat_service import save_message
+
+        sid = uuid.uuid7()
+        async with _db.async_session_factory() as db:
+            async with db.begin():
+                await _make_session(db, sid)
+                first = await save_message(db, sid, HumanMessage(content="turn one"))
+
+        old_user = HumanMessage(content="turn one", exclude_from_context=True)
+        old_user.db_id = first.id
+        summary = HumanMessage(content="Earlier: one turn.", is_summary=True)
+
+        cp = SQLiteCheckpointer(_db.async_session_factory)
+        cp.mark_loaded(str(sid), [old_user])
+        await cp.sync(_ctx(str(sid)), AgentState(messages=[old_user, summary]))
+
+        async with _db.async_session_factory() as db:
+            rows = (
+                await db.exec(
+                    select(SessionMessage)
+                    .where(col(SessionMessage.session_id) == sid)
+                    .order_by(col(SessionMessage.created_at).asc())
+                )
+            ).all()
+        assert [r.is_summary for r in rows] == [False, True]
+
+    @pytest.mark.asyncio
     async def test_mark_loaded_sets_seeded_tokens_from_usage(self):
         """Line 61 + 191: mark_loaded with history containing usage sets _seeded_tokens."""
         import app.core.db as _db

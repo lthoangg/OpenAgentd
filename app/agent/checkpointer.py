@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import copy
 from abc import ABC, abstractmethod
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -61,6 +62,49 @@ def _last_prompt_tokens_from_history(history: list[ChatMessage]) -> int:
         if usage and isinstance(usage.get("input"), int):
             return usage["input"]
     return 0
+
+
+def _summary_anchor_ids(
+    messages: list[ChatMessage], persisted_ids: set[int]
+) -> dict[int, UUID]:
+    """Map each unpersisted summary to the stored row it must sort ahead of.
+
+    :class:`~app.agent.hooks.SummarizationHook` *inserts* its summary into the
+    middle of ``state.messages`` — directly before the window it kept verbatim —
+    but a fresh row takes ``utcnow()`` and would therefore sort after that whole
+    window. Since the visible transcript is ordered by ``created_at``, the
+    "Session compacted" divider then lands between the user's message and its
+    reply instead of at the boundary it actually marks.
+
+    Keyed by ``id(msg)`` so :meth:`SQLiteCheckpointer.sync` can look the anchor
+    up while iterating its own filtered list of new messages.
+    """
+    anchors: dict[int, UUID] = {}
+    for idx, msg in enumerate(messages):
+        if not msg.is_summary or id(msg) in persisted_ids:
+            continue
+        anchor = next(
+            (m.db_id for m in messages[idx + 1 :] if m.db_id is not None), None
+        )
+        if anchor is not None:
+            anchors[id(msg)] = anchor
+    return anchors
+
+
+async def _resolve_summary_timestamps(
+    db: "AsyncSession", anchors: dict[int, UUID]
+) -> dict[int, datetime]:
+    """Turn anchor row ids into the ``created_at`` each summary should take.
+
+    One microsecond *before* the anchor: enough to sort ahead of it, close
+    enough that no other row can slot in between.
+    """
+    resolved: dict[int, datetime] = {}
+    for key, anchor_id in anchors.items():
+        row = await db.get(SessionMessage, anchor_id)
+        if row is not None and row.created_at is not None:
+            resolved[key] = row.created_at - timedelta(microseconds=1)
+    return resolved
 
 
 # ── Base class ────────────────────────────────────────────────────────────────
@@ -283,6 +327,9 @@ class SQLiteCheckpointer(Checkpointer):
           saved by the route handler; system messages are never persisted).
         * Already-persisted messages whose ``exclude_from_context`` flipped to
           ``True`` are updated in the DB (``exclude_from_context=True``).
+        * Summary messages get an explicit ``created_at`` so the stored order
+          matches where the summariser inserted them — see
+          :func:`_summary_anchor_ids`.
         """
         sid = ctx.session_id or ""
         # Me init tracking sets for this session on first sync
@@ -312,12 +359,15 @@ class SQLiteCheckpointer(Checkpointer):
             and msg.db_id is not None
         ]
 
+        summary_anchors = _summary_anchor_ids(state.messages, persisted_ids)
+
         # NOTE: the stream-buffer commit further down must still run on a no-op
         # sync, so this guards only the DB work — it is deliberately not an
         # early return.
         if new_messages or exclude_ids:
             async with self._session_factory() as db:
                 async with db.begin():
+                    anchored_at = await _resolve_summary_timestamps(db, summary_anchors)
                     if exclude_ids:
                         stmt = (
                             sa.update(SessionMessage)
@@ -360,6 +410,7 @@ class SQLiteCheckpointer(Checkpointer):
                                 is_summary=msg.is_summary,
                                 exclude_from_context=msg.exclude_from_context,
                                 extra=msg.extra,
+                                created_at=anchored_at.get(id(msg)),
                             )
                             msg.db_id = row.id
                         elif isinstance(msg, ToolMessage):
@@ -379,6 +430,7 @@ class SQLiteCheckpointer(Checkpointer):
                                     is_summary=msg.is_summary,
                                     exclude_from_context=msg.exclude_from_context,
                                     extra=msg.extra,
+                                    created_at=anchored_at.get(id(msg)),
                                 )
                                 msg.db_id = row.id
                                 logger.debug(

@@ -19,7 +19,7 @@
  * (one primitive per ``useTeamStore`` call) to avoid the infinite loop
  * that returning a freshly-built object on every render would trigger.
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import { useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
@@ -52,7 +52,6 @@ import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { type InputBarHandle } from '../InputBar'
 import { FloatingInputBar } from '../FloatingInputBar'
-import { QuestionDock } from '../QuestionDock'
 import type { AgentCapabilities as AgentCapabilitiesType } from '@/api/types'
 import { SplitGrid } from './SplitGrid'
 import { TeamChatHeader } from './TeamChatHeader'
@@ -248,14 +247,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
   const leadBlocks = useTeamStore((s) => (
     s.leadName ? s.agentStreams[s.leadName]?.blocks ?? EMPTY_BLOCKS : EMPTY_BLOCKS
   ))
-  // A question owns the composer's spot until it is answered or dismissed.
-  // Subscribe to the id only: re-rendering this view on every keystroke in the
-  // dock's own draft state would be pure waste.
-  const pendingQuestionId = useTeamStore((s) => (
-    s.pendingQuestion && s.pendingQuestion.sessionId === s.sessionId
-      ? s.pendingQuestion.id
-      : null
-  ))
   const historyPrompts = useMemo(() => (
     [...leadBlocks]
       .reverse()
@@ -319,7 +310,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     handleNewSession,
     handleDraftValueChange,
     handleAddFileComment,
-    restoreSessionDraft,
   } = useSessionBootstrap({
     sessionId,
     mode,
@@ -343,16 +333,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     beginResolvedSession,
     consumeResolvedSessionReady,
   })
-
-  // The composer unmounts while the dock holds its place, which drops whatever
-  // was typed but not sent. The text is still in the per-session draft store, so
-  // put it back once the composer returns.
-  const hadPendingQuestionRef = useRef(false)
-  useEffect(() => {
-    const had = hadPendingQuestionRef.current
-    hadPendingQuestionRef.current = pendingQuestionId !== null
-    if (had && pendingQuestionId === null) restoreSessionDraft()
-  }, [pendingQuestionId, restoreSessionDraft])
 
   // ── Commands / shortcuts ───────────────────────────────────────────────────
 
@@ -603,12 +583,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
           </div>
         ) : null}
 
-        {/* The dock stands in for the composer rather than stacking over it:
-            both anchor to the same bottom-centre spot, and a question the user
-            can ignore by typing past it is a question the agent waits on
-            forever. Dismiss returns the composer. */}
-        {(mode !== 'coding' || workspace) && pendingQuestionId !== null && <QuestionDock />}
-        {(mode !== 'coding' || workspace) && pendingQuestionId === null && (
+        {(mode !== 'coding' || workspace) && (
           <FloatingInputBar
             ref={inputRef}
             boundsRef={mainColumnRef}

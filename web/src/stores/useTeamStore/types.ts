@@ -3,6 +3,7 @@ import type {
   AgentUsage,
   MessageAttachment,
   PendingQuestion,
+  QuestionItem,
   TeamCommandResponse,
 } from '@/api/types'
 
@@ -31,6 +32,13 @@ export type CacheInvalidation =
    * sequentially-refetched) session list. See ``patchSessionRunning``.
    */
   | { kind: 'session_running'; sessionId: string; running: boolean }
+
+/** How a question ended, with enough context to render it without the wire text. */
+export interface ResolvedQuestion {
+  questions: QuestionItem[]
+  /** Index-matched selections, or ``null`` when the question was dismissed. */
+  answers: string[][] | null
+}
 
 export interface SetupRequiredNotice {
   agent: string
@@ -104,6 +112,16 @@ export interface TeamStoreState {
    * ``question_asked`` replaces the first instead of stacking cards.
    */
   pendingQuestion: PendingQuestion | null
+  /**
+   * Resolved questions, keyed by ``tool_call_id``.
+   *
+   * The persisted tool result is only rewritten server-side, so between
+   * answering and the post-turn reconcile the transcript still holds the
+   * "waiting for the user" placeholder — a whole turn of showing the wrong
+   * thing. Keeping the resolution here lets the card render the real answer
+   * immediately, from structured data rather than by re-parsing a sentence.
+   */
+  resolvedQuestions: Record<string, ResolvedQuestion>
   isContinuing: boolean
   isConnected: boolean
   error: string | null

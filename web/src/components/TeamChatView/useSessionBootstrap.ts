@@ -64,15 +64,6 @@ export interface UseSessionBootstrapResult {
   handleNewSession: () => void
   handleDraftValueChange: (value: string) => void
   handleAddFileComment: (path: string, startLine: number, endLine: number) => void
-  /**
-   * Push the stored draft back into a freshly mounted composer.
-   *
-   * The draft is mirrored into ``draftBySessionRef`` on every keystroke, but it
-   * is only read back on a session switch. Anything else that unmounts the
-   * composer mid-session — the question dock taking its place — has to ask for
-   * it, or the user's typed text is gone when the composer returns.
-   */
-  restoreSessionDraft: () => void
 }
 
 export function useSessionBootstrap({
@@ -292,13 +283,6 @@ export function useSessionBootstrap({
     delete draftBySessionRef.current[currentSessionId]
   }, [])
 
-  const restoreSessionDraft = useCallback(() => {
-    const currentSessionId = useTeamStore.getState().sessionId
-    if (!currentSessionId) return
-    const draft = draftBySessionRef.current[currentSessionId]?.value
-    if (draft) inputRef.current?.setValue(draft)
-  }, [inputRef])
-
   const focusInput = useCallback(() => {
     inputRef.current?.focus()
   }, [inputRef])
@@ -397,6 +381,5 @@ export function useSessionBootstrap({
     handleNewSession,
     handleDraftValueChange,
     handleAddFileComment,
-    restoreSessionDraft,
   }
 }

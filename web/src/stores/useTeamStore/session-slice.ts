@@ -304,6 +304,7 @@ export function resetSessionState(
   state.sessionFastMode = options.fastMode ?? false
   state.isTeamWorking = false
   state.pendingQuestion = null
+  state.resolvedQuestions = {}
   state.isContinuing = false
   state.isConnected = false
   state.error = null

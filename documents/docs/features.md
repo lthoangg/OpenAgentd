@@ -654,10 +654,10 @@ MCP.
   **coding mode**, the lead can stop mid-turn and ask you 1–4 questions rather
   than guessing on a decision that would cost real work to undo. Each question
   carries up to 5 options with optional descriptions, single- or multi-select,
-  the agent's own recommendation ("Accept all recommended" fills them in one
-  click), and an optional free-text answer. The cockpit shows a card in the
-  composer's place — a bottom sheet on mobile — and the transcript keeps the
-  resolved question → answer pairs.
+  a "Recommended" badge on the agent's preferred choice, and an optional
+  free-text answer. The card renders **inline in the transcript**, in place of
+  the tool call that raised it, with exactly two states: waiting (the questions
+  and their suggested answers) and resolved (your answer, or the dismissal).
   The suspension is **durable, not in-memory**: the pending question and the
   interrupted tool call live in the database, so the turn survives an app
   reload, a daemon restart, and a switch to another device, then resumes from

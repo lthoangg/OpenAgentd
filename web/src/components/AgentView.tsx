@@ -138,6 +138,7 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
             result={block.toolResult}
             durationMs={block.durationMs}
             startedAt={block.startedAt}
+            toolCallId={block.toolCallId}
           />
           {block.toolDone && Boolean(mcpApp) && latestMCPAppBlockIds?.has(block.id) ? (
             <div className="mt-2">

@@ -3,8 +3,7 @@
  *
  * The lead is stopped until this form resolves, so the behaviours under test are
  * the ones that decide whether the user can answer at all: selection semantics
- * (single vs multiple), the free-text escape hatch, the recommended shortcut,
- * per-question stepping, and the exact ``answers`` shape the backend validates
+ * (single vs multiple), the free-text escape hatch, per-question stepping, and the exact ``answers`` shape the backend validates
  * against (index-matched to the questions, empty entry = skipped).
  */
 import { describe, it, expect, afterEach, mock } from 'bun:test'
@@ -13,8 +12,8 @@ import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 
 mock.module('lucide-react', () => new Proxy({}, { get: () => () => null }))
 
-import { QuestionCard } from '@/components/QuestionDock/QuestionCard'
-import { clearQuestionDrafts } from '@/components/QuestionDock/draft-cache'
+import { QuestionCard } from '@/components/AskUserQuestion/QuestionCard'
+import { clearQuestionDrafts } from '@/components/AskUserQuestion/draft-cache'
 import type { PendingQuestion } from '@/api/types'
 
 afterEach(() => {
@@ -159,36 +158,6 @@ describe('QuestionCard', () => {
     fireEvent.click(screen.getByRole('button', { name: /send answer/i }))
 
     expect(onSubmit).toHaveBeenCalledWith([[]])
-  })
-
-  it('fills every recommended option across all questions at once', () => {
-    const { onSubmit } = renderCard({ question: TWO_QUESTIONS })
-
-    fireEvent.click(screen.getByRole('button', { name: /accept all recommended/i }))
-    fireEvent.click(screen.getByRole('button', { name: /send answer/i }))
-
-    expect(onSubmit).toHaveBeenCalledWith([['pnpm'], ['lint', 'test']])
-  })
-
-  it('offers no recommended shortcut when the agent recommended nothing', () => {
-    renderCard({
-      question: question({
-        questions: [
-          {
-            question: 'Pick one',
-            header: 'Pick',
-            multiple: false,
-            custom: false,
-            options: [
-              { label: 'a', description: null, recommended: false },
-              { label: 'b', description: null, recommended: false },
-            ],
-          },
-        ],
-      }),
-    })
-
-    expect(screen.queryByRole('button', { name: /accept all recommended/i })).toBeNull()
   })
 
   it('shows one step per question and no stepper for a single question', () => {

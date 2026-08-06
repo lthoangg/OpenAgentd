@@ -11,6 +11,7 @@ export type {
   AgentStream,
   CacheInvalidation,
   PendingMessage,
+  ResolvedQuestion,
   TeamStoreState,
   TeamStoreActions,
   TeamStore,

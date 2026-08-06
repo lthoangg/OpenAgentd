@@ -60,6 +60,7 @@ export type StreamSlice = Pick<
   | 'agentStreams'
   | 'isTeamWorking'
   | 'pendingQuestion'
+  | 'resolvedQuestions'
   | 'isContinuing'
   | 'isConnected'
   | 'error'
@@ -90,6 +91,7 @@ export const createStreamSlice: StateCreator<
   agentStreams: {},
   isTeamWorking: false,
   pendingQuestion: null,
+  resolvedQuestions: {},
   isContinuing: false,
   isConnected: false,
   error: null,

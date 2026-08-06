@@ -575,10 +575,20 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
       case 'question_answered':
       case 'question_dismissed': {
         const questionId = d.question_id as string
+        const answers = type === 'question_answered'
+          ? (Array.isArray(d.answers) ? (d.answers as string[][]) : [])
+          : null
         set((draft) => {
           // Ignore a resolution for a question we are not showing: a late event
           // for a superseded question must not close the current card.
           if (draft.pendingQuestion?.id !== questionId) return
+          // Keep the outcome against the tool call so the transcript card can
+          // switch to its resolved state now, instead of showing the persisted
+          // "waiting" placeholder until the turn ends and history reconciles.
+          draft.resolvedQuestions[draft.pendingQuestion.toolCallId] = {
+            questions: draft.pendingQuestion.questions,
+            answers,
+          }
           draft.pendingQuestion = null
         })
         break

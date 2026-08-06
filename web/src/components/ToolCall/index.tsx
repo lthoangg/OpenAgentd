@@ -22,6 +22,7 @@ import { ChevronRight, Copy, Check } from 'lucide-react'
 import hljs from 'highlight.js/lib/core'
 import bash from 'highlight.js/lib/languages/bash'
 import { ToolResult } from '../ToolResult'
+import { AskUserQuestion } from '../AskUserQuestion'
 import { DURATIONS_S, EASINGS } from '@/lib/motion'
 import { useReducedMotion } from '@/hooks/useReducedMotion'
 import { getToolDisplay } from './display'
@@ -32,6 +33,9 @@ import type { ToolCallState } from './types'
 
 hljs.registerLanguage('bash', bash)
 
+/** Matches ``app.agent.agent_loop.core.ASK_USER_QUESTION``. */
+const ASK_USER_QUESTION = 'ask_user_question'
+
 interface ToolCallProps {
   name: string
   args?: string
@@ -40,6 +44,8 @@ interface ToolCallProps {
   result?: string // tool response content
   durationMs?: number
   startedAt?: number
+  /** Needed by ``ask_user_question`` to match the call against the open question. */
+  toolCallId?: string
 }
 
 function isFailedResult(result: string | undefined): boolean {
@@ -145,7 +151,7 @@ function ShellCommand({ command }: { command: string }) {
   return <code className="hljs" dangerouslySetInnerHTML={{ __html: highlighted }} />
 }
 
-export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, result, durationMs, startedAt }: ToolCallProps) {
+export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, result, durationMs, startedAt, toolCallId }: ToolCallProps) {
   // Hooks must be called unconditionally — before any early returns
   const [manualExpanded, setManualExpanded] = useState<boolean | null>(null)
   // Reduced motion: snap the disclosure open/closed instead of animating
@@ -269,6 +275,15 @@ export const ToolCall = memo(function ToolCall({ name, args, done, liveOutput, r
   const title = headerTitle ? `${toolLabel}: ${headerTitle}` : toolLabel
   const headerClassName = `min-w-0 truncate font-mono text-(--color-text) ${state === 'running' ? 'animate-pulse text-(--color-marker-orange)' : ''}`
   const elapsedMs = durationMs ?? (!done && startedAt ? now - startedAt : undefined)
+
+  // ``ask_user_question`` owns its whole card — frame and label included, since
+  // both track whether the question is still open. An unanswered question must
+  // not be hidden behind a disclosure triangle, and once answered it is a
+  // two-line summary with nothing to collapse. It also must not show the
+  // persisted "waiting for the user" placeholder as a finished tool result.
+  if (name === ASK_USER_QUESTION) {
+    return <AskUserQuestion toolCallId={toolCallId} result={result} />
+  }
 
   return (
     <div className="tool-row-enter my-2">

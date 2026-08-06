@@ -71,7 +71,7 @@ def test_rejects_more_than_five_options():
 
 
 def test_rejects_two_recommendations_on_a_single_select_question():
-    """'Accept all recommended' has to be unambiguous."""
+    """A single-select question can only have one preferred choice."""
     options = [
         {"label": "pnpm", "recommended": True},
         {"label": "bun", "recommended": True},

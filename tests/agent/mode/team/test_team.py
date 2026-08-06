@@ -575,6 +575,48 @@ class TestAgentTeamToolInjection:
         names = {t.name for t in tools}
         assert "broadcast" not in names
 
+    # ``ask_user_question`` is reachable *only* through this injection point —
+    # it is not in any prompt, registry, or agent config — so these are the
+    # assertions that decide whether the feature exists at runtime at all.
+
+    async def test_coding_lead_gets_ask_user_question(self, basic_team):
+        team = basic_team
+        team.mode = "coding"
+
+        names = {t.name for t in team.get_injected_tools("lead")}
+
+        assert "ask_user_question" in names
+
+    async def test_lead_does_not_get_ask_user_question_outside_coding(self, basic_team):
+        """Normal mode is conversational — a wrong guess costs nothing to redo."""
+        team = basic_team
+        team.mode = "normal"
+
+        names = {t.name for t in team.get_injected_tools("lead")}
+
+        assert "ask_user_question" not in names
+
+    async def test_members_never_get_ask_user_question(self, basic_team):
+        """Members escalate through ``team_message``; only the lead owns the user."""
+        team = basic_team
+        team.mode = "coding"
+
+        names = {t.name for t in team.get_injected_tools("member_a")}
+
+        assert "ask_user_question" not in names
+
+    async def test_scheduler_session_lead_does_not_get_ask_user_question(
+        self, basic_team
+    ):
+        """A cron-owned session has nobody to answer, so the tool is withheld."""
+        team = basic_team
+        team.mode = "coding"
+        team.lead.is_scheduler_session = True
+
+        names = {t.name for t in team.get_injected_tools("lead")}
+
+        assert "ask_user_question" not in names
+
     async def test_member_gets_team_message_tool(self, basic_team):
         """Members get team_message."""
         team = basic_team

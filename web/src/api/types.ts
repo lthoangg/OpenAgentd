@@ -619,7 +619,7 @@ export interface WorktreeRemoveResponse {
 export interface QuestionOption {
   label: string
   description?: string | null
-  /** The agent's preferred choice. Drives "Accept all recommended". */
+  /** The agent's preferred choice. Renders a "Recommended" badge. */
   recommended: boolean
 }
 

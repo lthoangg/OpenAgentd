@@ -9,7 +9,7 @@
  * against exactly that, so nothing here may reorder or omit a group.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Check, Sparkles } from 'lucide-react'
+import { Check } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -112,31 +112,6 @@ export function QuestionCard({
             ? { ...prev.selected, [index]: [] }
             : prev.selected,
       }
-    })
-  }
-
-  const recommended = useMemo(
-    () =>
-      questions.map((item) =>
-        item.options.filter((option) => option.recommended).map((option) => option.label),
-      ),
-    [questions],
-  )
-  const hasRecommendation = recommended.some((labels) => labels.length > 0)
-
-  const acceptRecommended = () => {
-    setDraft((prev) => {
-      const selected: Record<number, string[]> = { ...prev.selected }
-      const customActive: Record<number, boolean> = { ...prev.customActive }
-      questions.forEach((item, index) => {
-        const labels = recommended[index]
-        if (labels.length === 0) return
-        // A single-answer question can have at most one recommendation
-        // server-side, but slice defensively rather than send an invalid group.
-        selected[index] = item.multiple ? labels : labels.slice(0, 1)
-        customActive[index] = false
-      })
-      return { ...prev, selected, customActive }
     })
   }
 
@@ -247,12 +222,6 @@ export function QuestionCard({
       )}
 
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-(--color-border) px-3 py-2.5">
-        {hasRecommendation && (
-          <Button type="button" variant="subtle" size="sm" onClick={acceptRecommended}>
-            <Sparkles size={12} />
-            Accept all recommended
-          </Button>
-        )}
         <span className="text-[11px] text-(--color-text-subtle)">
           {questions.length > 1
             ? `${answeredCount} of ${questions.length} answered`

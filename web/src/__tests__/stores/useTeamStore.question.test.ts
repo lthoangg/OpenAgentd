@@ -42,6 +42,7 @@ function resetStore() {
     isTeamWorking: false,
     isConnected: true,
     pendingQuestion: null,
+    resolvedQuestions: {},
     cacheInvalidations: [],
   } as never)
 }
@@ -92,6 +93,34 @@ describe("useTeamStore — ask_user_question", () => {
     })
 
     expect(useTeamStore.getState().pendingQuestion).toBeNull()
+  })
+
+  it("records the outcome against the tool call so the card can resolve at once", () => {
+    ask()
+
+    useTeamStore.getState()._handleSSEEvent("question_answered", {
+      question_id: QUESTION_ID,
+      session_id: SESSION_ID,
+      answers: [["pnpm"]],
+    })
+
+    // The persisted tool result still says "waiting" until the turn ends and
+    // history reconciles, so the transcript card reads this instead.
+    const resolved = useTeamStore.getState().resolvedQuestions["call-1"]
+    expect(resolved.answers).toEqual([["pnpm"]])
+    expect(resolved.questions[0].header).toBe("Package manager")
+  })
+
+  it("records a dismissal with no answers", () => {
+    ask()
+
+    useTeamStore.getState()._handleSSEEvent("question_dismissed", {
+      question_id: QUESTION_ID,
+      session_id: SESSION_ID,
+      reason: "dismissed",
+    })
+
+    expect(useTeamStore.getState().resolvedQuestions["call-1"].answers).toBeNull()
   })
 
   it("clears the question when it is dismissed", () => {

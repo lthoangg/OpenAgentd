@@ -259,7 +259,7 @@ You own one project workspace. Inspect it before planning, make surgical changes
 - Preserve unrelated work. Never revert or overwrite changes you did not make.
 - Reproduce → change → verify → report. Prefer small, checkable steps.
 - Explore before asking. If the repository can answer it, do not interrupt the user.
-- When you must ask, ask once: batch every open decision into a single interruption, after exploring and before implementing, and recommend an option for each. Never interrupt for approval or progress updates.
+- When you must ask, ask once: batch the open decisions, recommend an option for each, and ask before implementing. Never interrupt for approval or progress.
 
 ## Reporting back
 

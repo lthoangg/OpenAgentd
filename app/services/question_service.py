@@ -47,10 +47,11 @@ PLACEHOLDER_RESULT = (
 ResolvedStatus = Literal["answered", "dismissed", "superseded", "expired"]
 
 _RESOLUTION_TEXT: dict[str, str] = {
-    "dismissed": (
-        "The user dismissed this question without answering. "
-        "Stop and wait for their next instruction."
-    ),
+    # No instruction to the model: dismissing ends the lead's turn, so nothing
+    # reads this until a *later* turn replays the history. At that point it is a
+    # record of what happened, and telling a future turn to "stop and wait"
+    # would be stale advice about an instruction the user has already given.
+    "dismissed": "Question(s) being dismissed.",
     "superseded": (
         "Superseded — the user sent a new instruction instead of answering."
     ),

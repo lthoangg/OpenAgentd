@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any
 
 from loguru import logger
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.agent.errors import QuestionSuspended
 from app.agent.tools.registry import InjectedArg, Tool
@@ -32,68 +32,72 @@ if TYPE_CHECKING:
 
 TOOL_NAME = "ask_user_question"
 
-DESCRIPTION = """Ask the user one or more questions and wait for their answer before continuing.
+DESCRIPTION = (
+    "Ask the user 1-4 questions and pause the turn until they answer. "
+    "Use only when blocked on a decision the repository cannot answer, never for "
+    "approval or progress. One interruption per turn, so ask everything at once."
+)
 
-Use this when you are blocked on a decision only the user can make — an ambiguous
-requirement, a trade-off with no right answer, or a direction choice that would
-waste real work if guessed wrong. Explore the codebase first: never ask something
-the repository can answer.
 
-Usage notes:
-- You get ONE interruption per turn. Gather every open decision and ask them together.
-- Ask after exploring and before implementing, not in the same batch as edits.
-- Always mark your preferred choice with `recommended: true` so the user can accept it in one tap.
-- A "Type your own answer" option is added automatically when `custom` is true (the default) — never add "Other" or catch-all options yourself.
-- Do NOT use this to ask for approval to proceed, to report progress, or to collect secrets.
-"""
+def _lean_schema(schema: dict[str, Any]) -> None:
+    """Drop schema keys the model gains nothing from reading.
+
+    Pydantic emits a ``title`` for the model and for every property, plus a
+    ``description`` taken from the class docstring. The titles restate the key
+    they sit under (``"header"`` → ``"title": "Header"``) and the docstrings
+    restate the field descriptions, so all of it is tokens spent on every
+    request for no added meaning. Nested models are the expensive case: this
+    schema carried eleven such titles.
+
+    Scoped to this tool deliberately — the same waste exists across every tool
+    with a nested args model, but that is a cross-cutting change with its own
+    blast radius.
+    """
+    schema.pop("title", None)
+    schema.pop("description", None)
+    for prop in schema.get("properties", {}).values():
+        prop.pop("title", None)
 
 
 class QuestionOption(BaseModel):
     """One selectable choice."""
 
+    model_config = ConfigDict(json_schema_extra=_lean_schema)
+
     label: str = Field(
-        min_length=1,
-        max_length=60,
-        description="Display text, 1-5 words. Shown on the button.",
+        min_length=1, max_length=60, description="Display text, 1-5 words."
     )
     description: str | None = Field(
-        default=None,
-        max_length=200,
-        description="One short line explaining what picking this means.",
+        default=None, max_length=200, description="One short line on what it means."
     )
     recommended: bool = Field(
         default=False,
-        description=(
-            "Mark your preferred choice. Single-select questions allow at most "
-            "one; multi-select questions may mark several."
-        ),
+        description="Your preferred choice. Only one unless multiple is true.",
     )
 
 
 class Question(BaseModel):
     """A single question with its choices."""
 
+    model_config = ConfigDict(json_schema_extra=_lean_schema)
+
     question: str = Field(
         min_length=1, max_length=500, description="The complete question."
     )
     header: str = Field(
-        min_length=1,
-        max_length=30,
-        description="Very short label for the question tab (max 30 chars).",
+        min_length=1, max_length=30, description="Tab label, max 30 chars."
     )
     options: list[QuestionOption] = Field(
         default_factory=list,
         max_length=5,
-        description="Available choices, 2-5. Omit for a free-text-only question.",
+        description="Choices, 2-5. Omit for free text only.",
     )
-    multiple: bool = Field(
-        default=False, description="Allow selecting more than one option."
-    )
+    multiple: bool = Field(default=False, description="Allow more than one choice.")
     custom: bool = Field(
         default=True,
         description=(
-            "Add a 'Type your own answer' option automatically. Leave true "
-            "unless the choices are genuinely exhaustive."
+            "Adds a 'Type your own answer' option. Leave true unless the "
+            "choices are exhaustive; never write your own catch-all option."
         ),
     )
 
@@ -125,10 +129,10 @@ class Question(BaseModel):
 class AskUserQuestionArgs(BaseModel):
     """Arguments for ``ask_user_question``."""
 
+    model_config = ConfigDict(json_schema_extra=_lean_schema)
+
     questions: list[Question] = Field(
-        min_length=1,
-        max_length=4,
-        description="Questions to ask, 1-4. Ask everything you need in one call.",
+        min_length=1, max_length=4, description="Questions to ask, 1-4."
     )
 
 

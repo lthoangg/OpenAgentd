@@ -367,6 +367,48 @@ async def test_a_typed_user_message_supersedes_the_question(monkeypatch):
     assert resolved["status"] == "superseded"
 
 
+async def test_superseding_a_question_tells_the_clients(monkeypatch, mock_stream_store):
+    """Resolving the row is not enough — the card is only on screen.
+
+    Every other resolution path broadcasts. Without this one, a client that
+    typed instead of answering is left holding an open question that the server
+    has already closed, and it has no way to learn otherwise until a reload.
+    """
+    team = _make_team()
+    team.lead.state = "waiting_input"
+    row = MagicMock()
+    row.id = uuid.uuid4()
+    resolved: dict = {}
+
+    async def fake_get_pending(db, session_id):
+        return None if resolved else row
+
+    async def fake_resolve(db, *, question_id, status, answers=None):
+        resolved["status"] = status
+        return row
+
+    monkeypatch.setattr(
+        "app.services.question_service.get_pending_question", fake_get_pending
+    )
+    monkeypatch.setattr(
+        "app.services.question_service.resolve_pending_question", fake_resolve
+    )
+    monkeypatch.setattr(
+        team.lead, "_persist_inbox", AsyncMock(return_value=[]), raising=False
+    )
+
+    await team.handle_user_message("actually, do this instead", session_id=LEAD_SESSION)
+
+    dismissals = [
+        call.args[1]
+        for call in mock_stream_store.call_args_list
+        if call.args[1].event == "question_dismissed"
+    ]
+    assert len(dismissals) == 1
+    assert dismissals[0].data["reason"] == "superseded"
+    assert dismissals[0].data["question_id"] == str(row.id)
+
+
 async def test_a_scheduled_message_defers_instead_of_superseding(monkeypatch):
     """A cron job must not cancel a question the user has not seen."""
     from app.agent.mode.team.team import QuestionPendingError

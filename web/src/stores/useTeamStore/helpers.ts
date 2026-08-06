@@ -18,11 +18,14 @@ export function applyQuestionResolution(
     pendingQuestion: PendingQuestion | null
     resolvedQuestions: Record<string, ResolvedQuestion>
   },
-  questionId: string,
+  /** ``null`` closes whatever is open — used by turn-level events that end a
+   *  question without naming it. */
+  questionId: string | null,
   answers: string[][] | null,
   reason: string | null,
 ): void {
-  if (draft.pendingQuestion?.id !== questionId) return
+  if (!draft.pendingQuestion) return
+  if (questionId !== null && draft.pendingQuestion.id !== questionId) return
   draft.resolvedQuestions[draft.pendingQuestion.toolCallId] = {
     questions: draft.pendingQuestion.questions,
     answers,

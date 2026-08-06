@@ -1676,8 +1676,9 @@ class AgentTeam:
                 )
                 if pending is None:
                     return False
+                question_id = pending.id
                 await question_service.resolve_pending_question(
-                    db, question_id=pending.id, status=reason
+                    db, question_id=question_id, status=reason
                 )
                 await db.commit()
         except Exception as exc:
@@ -1691,6 +1692,35 @@ class AgentTeam:
         if self.lead.state == "waiting_input":
             self.lead.state = "idle"
         self.lead._question_suspended = None
+
+        # The card is only on screen. Every other resolution path broadcasts;
+        # without this one a client that typed instead of answering keeps an
+        # open question the server has already closed, with no way to find out
+        # until a reload.
+        from app.agent.schemas.events import QuestionDismissedEvent
+        from app.services import memory_stream_store as stream_store
+        from app.services.stream_envelope import StreamEnvelope
+
+        try:
+            await stream_store.push_event(
+                self.lead.session_id,
+                StreamEnvelope.from_event(
+                    QuestionDismissedEvent(
+                        question_id=str(question_id),
+                        session_id=self.lead.session_id,
+                        reason=reason,
+                    )
+                ),
+            )
+        except Exception as exc:
+            # The row is already closed; a failed fan-out only costs the client
+            # a refetch on reconnect.
+            logger.warning(
+                "question_dismiss_event_failed session_id={} error={}",
+                self.lead.session_id,
+                exc,
+            )
+
         logger.info(
             "question_dismissed session_id={} reason={}", self.lead.session_id, reason
         )

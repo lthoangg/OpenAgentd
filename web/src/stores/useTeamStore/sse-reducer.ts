@@ -233,8 +233,10 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         set((draft) => {
           draft.sessionId = d.session_id as string
           // A fresh turn is starting: any card still on screen belongs to the
-          // turn that just ended (the backend supersedes it server-side).
-          draft.pendingQuestion = null
+          // turn that just ended, and the backend has already superseded it.
+          // Record that outcome rather than just clearing — a bare clear leaves
+          // the card with nothing to show but its "waiting" fallback.
+          applyQuestionResolution(draft, null, null, 'superseded')
         })
         break
       }
@@ -597,8 +599,10 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
         set((draft) => {
           draft.isTeamWorking = false
           // A turn that reaches `done` is over; nothing can answer a question
-          // from it any more. Normally already cleared by its resolution event.
-          draft.pendingQuestion = null
+          // from it any more. Normally already closed by its resolution event —
+          // this is the fallback, and it still has to record an outcome so the
+          // card does not sit on "waiting" forever.
+          applyQuestionResolution(draft, null, null, 'expired')
           draft.isContinuing = false
           const completedAtMs = Date.now()
           const completedAt = new Date(completedAtMs)

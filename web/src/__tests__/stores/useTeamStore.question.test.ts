@@ -163,6 +163,30 @@ describe("useTeamStore — ask_user", () => {
     expect(useTeamStore.getState().pendingQuestion).toBeNull()
   })
 
+  it("records a supersede when a new turn starts over an open question", () => {
+    ask()
+
+    // Typing instead of answering starts a fresh turn; the server has already
+    // closed the question, and the card must say so rather than fall back to
+    // "waiting" for an answer that can never arrive.
+    useTeamStore.getState()._handleSSEEvent("session", { session_id: SESSION_ID })
+
+    const state = useTeamStore.getState()
+    expect(state.pendingQuestion).toBeNull()
+    expect(state.resolvedQuestions["call-1"].reason).toBe("superseded")
+    expect(state.resolvedQuestions["call-1"].answers).toBeNull()
+  })
+
+  it("records an unanswered question left open when the turn ends", () => {
+    ask()
+
+    useTeamStore.getState()._handleSSEEvent("done", { session_id: SESSION_ID })
+
+    const state = useTeamStore.getState()
+    expect(state.pendingQuestion).toBeNull()
+    expect(state.resolvedQuestions["call-1"].reason).toBe("expired")
+  })
+
   it("ignores a resolution for a question it is not showing", () => {
     ask()
 

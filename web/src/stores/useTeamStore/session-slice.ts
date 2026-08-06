@@ -789,6 +789,21 @@ export const createSessionSlice: StateCreator<
       return
     }
 
+    // A delta is only valid against the watermark it was fetched with. Pressing
+    // Stop runs both reconciliation paths at once — the backend publishes
+    // `session_turn_completed` (this path) *and* returns 202 to the interrupt
+    // POST, whose `stopTeam` reload takes a full page — so the canonical rows
+    // this delta carries can already be installed by the time it resolves, and
+    // splicing it on top renders the just-sent user message twice.
+    const syncedNow = get()._syncedThrough
+    if (syncedNow !== since) {
+      const newest = newestMessageAt(delta)
+      // Already covered by whoever moved the watermark: nothing left to splice.
+      if (newest === null || (syncedNow !== null && newest <= syncedNow)) return
+      await get().loadSession(sessionId, workspace)
+      return
+    }
+
     set((draft) => {
       // Metadata the delta carries authoritatively.
       draft.sessionTitle = delta.lead.title ?? draft.sessionTitle

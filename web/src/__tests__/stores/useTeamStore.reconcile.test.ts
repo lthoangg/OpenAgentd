@@ -326,6 +326,45 @@ describe('reconcileTurnTail', () => {
     expect(useTeamStore.getState().agentStreams.lead.currentBlocks).toHaveLength(0)
   })
 
+  it('drops a delta a concurrent full load already absorbed', async () => {
+    // Reproduces the Stop duplication: pressing Stop makes the backend push
+    // `done` on the session stream *and* publish `session_turn_completed` on
+    // the global stream, then returns 202. So `reconcileTurnTail` (from the
+    // global event) and `loadSession` (from `stopTeam`) run against the same
+    // turn concurrently. The delta was fetched against the *old* watermark, so
+    // once the full page has installed those same canonical rows, appending the
+    // delta on top renders the just-sent user message twice.
+    await seedLoadedSession()
+    addUnsyncedBlock('client-block-1')
+
+    const canonicalPage = fullHistory({
+      lead: leadSession({
+        messages: [
+          { id: 'm1', role: 'user', content: 'hello', created_at: '2026-07-01T00:00:00Z' },
+          { id: 'm2', role: 'assistant', content: 'hi', created_at: '2026-07-01T00:00:01Z' },
+          { id: 'm3', role: 'user', content: 'stop me', created_at: '2026-07-01T00:00:05Z' },
+        ],
+      }),
+    })
+    mockTeamHistory.mockImplementation(() => Promise.resolve(canonicalPage))
+    mockTeamHistorySince.mockImplementation(async () => {
+      // The post-Stop reload lands first and installs the canonical page.
+      await useTeamStore.getState().loadSession('lead-sess')
+      return deltaHistory({
+        lead: leadSession({
+          messages: [
+            { id: 'm3', role: 'user', content: 'stop me', created_at: '2026-07-01T00:00:05Z' },
+          ],
+        }),
+      })
+    })
+
+    await useTeamStore.getState().reconcileTurnTail('lead-sess')
+
+    const contents = useTeamStore.getState().agentStreams.lead.blocks.map((b) => b.content)
+    expect(contents).toEqual(['hello', 'hi', 'stop me'])
+  })
+
   it('keeps live content that postdates the fetch snapshot', async () => {
     // The mirror case: content streamed in *while the fetch was in flight*
     // cannot be in that snapshot, so it must survive the reload and still be

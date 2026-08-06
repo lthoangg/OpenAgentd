@@ -36,6 +36,51 @@ export function buildAcceptString(_capabilities?: AgentCapabilities): string {
 }
 
 /**
+ * Extract the real files out of a drop's ``DataTransfer``.
+ *
+ * ``dataTransfer.files`` alone is not enough: a dropped *folder* shows up
+ * there as a zero-byte, type-less ``File``, which would otherwise render an
+ * attachment chip and upload as an empty file. ``webkitGetAsEntry()`` is the
+ * only reliable way to tell a directory from a genuinely empty file, and it
+ * must be called synchronously inside the drop handler before the item list
+ * is neutered.
+ *
+ * Falls back to ``dataTransfer.files`` wherever the entry API is missing, so
+ * a browser without it keeps working rather than silently dropping uploads.
+ */
+export function filesFromDataTransfer(dt: DataTransfer | null): File[] {
+  if (!dt) return []
+
+  const items = dt.items
+  if (items && items.length > 0) {
+    const collected: File[] = []
+    let sawDirectory = false
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]
+      if (item.kind !== 'file') continue
+
+      const entry =
+        typeof item.webkitGetAsEntry === 'function' ? item.webkitGetAsEntry() : null
+      if (entry?.isDirectory) {
+        sawDirectory = true
+        continue
+      }
+
+      const file = item.getAsFile()
+      if (file) collected.push(file)
+    }
+
+    // Only trust an empty result when we positively identified a directory —
+    // otherwise the item list told us nothing useful and the files list is
+    // the better source.
+    if (collected.length > 0 || sawDirectory) return collected
+  }
+
+  return dt.files ? Array.from(dt.files) : []
+}
+
+/**
  * Every file the user explicitly attaches — via paste, drag-and-drop, or the
  * file picker — is allowed. The agent backend decides what it can do with a
  * given file; the frontend should not silently discard attachments.

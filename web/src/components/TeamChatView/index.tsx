@@ -454,6 +454,9 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
           id="main"
           ref={mainColumnRef}
           className="relative flex min-w-0 flex-1 flex-col overflow-hidden"
+          // Opts this column out of the global stray-file-drop guard
+          // (usePreventStrayFileDrop) — drops landing here are ours to handle.
+          data-file-drop-zone
           onDragEnter={handleDragEnter}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}

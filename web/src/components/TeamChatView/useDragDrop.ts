@@ -9,7 +9,8 @@
  */
 import { useCallback, useRef, useState } from 'react'
 import type { RefObject } from 'react'
-import { isDraggingFiles } from './helpers'
+import { isDraggingFiles } from '@/lib/is-dragging-files'
+import { filesFromDataTransfer } from '../InputBar.files'
 import type { InputBarHandle } from '../InputBar'
 
 export interface UseDragDropResult {
@@ -56,13 +57,24 @@ export function useDragDrop(inputRef: RefObject<InputBarHandle | null>): UseDrag
   const handleDrop = useCallback((e: React.DragEvent) => {
     if (!inputRef.current) return
     if (isDraggingFiles(e.dataTransfer)) {
+      // The input bar sits inside this column and handles drops on itself
+      // (InputBar.attachments.ts). Its handler calls ``preventDefault`` and
+      // the event still bubbles up here, so without this guard a drop on the
+      // pill would attach every file twice. We deliberately let it bubble
+      // rather than ``stopPropagation`` at the source: the counter reset and
+      // overlay teardown below have to run for *every* drop, including the
+      // ones a child already consumed.
+      const alreadyHandled = e.defaultPrevented
+
       e.preventDefault()
       dragCounterRef.current = 0
       setIsDraggingFile(false)
 
-      const droppedFiles = e.dataTransfer.files
-      if (droppedFiles && droppedFiles.length > 0) {
-        inputRef.current.addFiles(Array.from(droppedFiles))
+      if (alreadyHandled) return
+
+      const droppedFiles = filesFromDataTransfer(e.dataTransfer)
+      if (droppedFiles.length > 0) {
+        inputRef.current.addFiles(droppedFiles)
       }
     }
   }, [inputRef])

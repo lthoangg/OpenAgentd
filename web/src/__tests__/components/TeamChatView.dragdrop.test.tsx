@@ -150,6 +150,14 @@ describe('TeamChatView coding workspace panel', () => {
 })
 
 describe('TeamChatView drag-and-drop files', () => {
+  it('marks the chat column as a drop zone so the global guard lets drops through', () => {
+    const { container } = render(<TeamChatView sessionId="test-session" />)
+
+    // usePreventStrayFileDrop swallows file drops outside [data-file-drop-zone]
+    // to stop the browser navigating away from the app.
+    expect(container.querySelector('#main')?.hasAttribute('data-file-drop-zone')).toBe(true)
+  })
+
   it('shows and hides overlay on drag events, and adds files on drop', () => {
     const { container, queryByText } = render(<TeamChatView sessionId="test-session" />)
 

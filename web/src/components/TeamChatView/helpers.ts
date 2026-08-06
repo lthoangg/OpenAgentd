@@ -32,16 +32,3 @@ export async function attachmentToFile(att: MessageAttachment): Promise<File | n
     { type: att.media_type ?? blob.type },
   )
 }
-
-/** Whether a drag event's ``DataTransfer`` carries files (vs. text/other). */
-export function isDraggingFiles(dt: DataTransfer | null): boolean {
-  if (!dt) return false
-  if (!dt.types) return false
-  return Array.from(dt.types).some(
-    (type) =>
-      type === 'Files' ||
-      type === 'application/x-moz-file' ||
-      type.toLowerCase().includes('file') ||
-      type.toLowerCase().includes('uri')
-  )
-}

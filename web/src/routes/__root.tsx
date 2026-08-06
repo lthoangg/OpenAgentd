@@ -18,6 +18,7 @@ import { getPlatform } from '@/hooks/use-platform'
 import { isPrimaryShortcut } from '@/lib/keyboard-shortcut'
 import { useContainerSelectAll } from '@/hooks/useContainerSelectAll'
 import { usePreventBackspaceNavigation } from '@/hooks/usePreventBackspaceNavigation'
+import { usePreventStrayFileDrop } from '@/hooks/usePreventStrayFileDrop'
 import { useHistoryBackForwardShortcuts } from '@/hooks/useHistoryBackForwardShortcuts'
 import { useDeepLinkRouter } from '@/hooks/useDeepLinkRouter'
 import { GlobalEventStream } from '@/hooks/use-global-event-stream'
@@ -28,6 +29,7 @@ export function Root() {
   useDesktopCommands()
   useContainerSelectAll()
   usePreventBackspaceNavigation()
+  usePreventStrayFileDrop()
   useHistoryBackForwardShortcuts()
   useDeepLinkRouter()
 

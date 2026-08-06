@@ -524,6 +524,38 @@ describe("sendMessage", () => {
     await useTeamStore.getState().sendMessage("hello")
     expect(mockTeamStream).not.toHaveBeenCalled()
   })
+
+  // The composer clears optimistically the moment a message is submitted, so
+  // callers need to know whether the send actually landed — otherwise a
+  // failed POST silently takes the user's text and attachments with it.
+  it("reports success so the caller can keep the cleared composer cleared", async () => {
+    useTeamStore.setState({ leadName: "lead", agentStreams: { lead: makeStream() } })
+
+    const delivered = await useTeamStore.getState().sendMessage("hello")
+
+    expect(delivered).toBe(true)
+  })
+
+  it("reports failure when the POST throws", async () => {
+    mockPostTeamChat.mockImplementation(() => Promise.reject(new Error("Network failure")))
+    useTeamStore.setState({ leadName: "lead", agentStreams: { lead: makeStream() } })
+
+    const delivered = await useTeamStore.getState().sendMessage("hello")
+
+    expect(delivered).toBe(false)
+  })
+
+  it("reports failure when queueing a follow-up throws", async () => {
+    mockPostTeamChat.mockImplementation(() => Promise.reject(new Error("Network failure")))
+    useTeamStore.setState({
+      leadName: "lead",
+      agentStreams: { lead: makeStream({ status: "working" }) },
+    })
+
+    const delivered = await useTeamStore.getState().sendMessage("queued follow-up")
+
+    expect(delivered).toBe(false)
+  })
 })
 
 // ── sendMessage with files ────────────────────────────────────────────────────

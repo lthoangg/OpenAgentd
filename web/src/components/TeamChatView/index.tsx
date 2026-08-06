@@ -592,7 +592,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
               const command = shell ? content.slice(1).trim() : content
               const expanded = shell ? `!${command}` : await expandUserCommand(content)
               const current = useTeamStore.getState()
-              sendMessage(expanded, files, {
+              const delivered = await sendMessage(expanded, files, {
                 mode,
                 workspace,
                 model: current.sessionId ? current.sessionModel || null : null,
@@ -601,6 +601,11 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
                 shell,
                 mentions,
               })
+              // The composer cleared itself the moment this handler was
+              // called. If the send never landed, hand the draft and its
+              // attachments back instead of letting them disappear with an
+              // error banner as the only trace.
+              if (!delivered) inputRef.current?.restoreLastSubmission()
             }}
             onStop={() => useTeamStore.getState().stopTeam()}
             onSlashCommand={handleSlashCommand}

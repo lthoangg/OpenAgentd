@@ -20,7 +20,16 @@ export const createPendingSlice: StateCreator<
 > = (set, get) => ({
   _pendingMessages: [],
 
-  sendMessage: async (content: string, files?: File[], options?: { mode?: string; workspace?: string | null; model?: string | null; thinkingLevel?: string | null; fastMode?: boolean; shell?: boolean; mentions?: string[] }) => {
+  /**
+   * Send (or queue) a user message. Resolves ``true`` when the backend
+   * accepted it, ``false`` when it did not.
+   *
+   * The composer clears optimistically on submit for responsiveness, so the
+   * caller is the only thing standing between a failed POST and the user's
+   * text and attachments being silently destroyed — see the restore in
+   * ``TeamChatView``.
+   */
+  sendMessage: async (content: string, files?: File[], options?: { mode?: string; workspace?: string | null; model?: string | null; thinkingLevel?: string | null; fastMode?: boolean; shell?: boolean; mentions?: string[] }): Promise<boolean> => {
     const { leadName, agentStreams } = get()
     const leadWorking = leadName ? agentStreams[leadName]?.status === 'working' : false
 
@@ -69,8 +78,9 @@ export const createPendingSlice: StateCreator<
         set((draft) => {
           draft.error = err instanceof Error ? err.message : 'Failed to queue message'
         })
+        return false
       }
-      return
+      return true
     }
 
     get()._abortController?.abort()
@@ -154,11 +164,13 @@ export const createPendingSlice: StateCreator<
         }
       })
       get().connectStream()
+      return true
     } catch (err) {
       set((draft) => {
         draft.error = err instanceof Error ? err.message : 'Failed to send message'
         draft.isTeamWorking = false
       })
+      return false
     }
   },
 

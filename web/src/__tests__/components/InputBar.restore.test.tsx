@@ -1,0 +1,122 @@
+/**
+ * The composer clears optimistically the moment a message is submitted. When
+ * the send turns out to have failed, the caller restores what was cleared —
+ * otherwise the text and its attachments are gone for good.
+ */
+import { describe, it, expect, afterEach, mock } from "bun:test"
+import { render, screen, cleanup, fireEvent, act } from "@testing-library/react"
+import { createRef } from "react"
+import { InputBar, type InputBarHandle } from "@/components/InputBar"
+
+mock.module("lucide-react", () => new Proxy({}, { get: () => () => null }))
+
+afterEach(cleanup)
+
+function setup() {
+  const ref = createRef<InputBarHandle>()
+  const submissions: { content: string; files?: File[] }[] = []
+  render(
+    <InputBar
+      ref={ref}
+      onSubmit={(content, files) => submissions.push({ content, files })}
+    />,
+  )
+  return { ref, submissions }
+}
+
+function textarea(): HTMLTextAreaElement {
+  const el =
+    screen.queryByLabelText("Message input") ?? screen.getByLabelText("Shell command input")
+  return el as HTMLTextAreaElement
+}
+
+function type(text: string) {
+  fireEvent.change(textarea(), { target: { value: text } })
+}
+
+function submit() {
+  fireEvent.keyDown(textarea(), { key: "Enter" })
+}
+
+function dropFile(file: File) {
+  const pill = textarea().closest("div")!.parentElement!.parentElement!
+  fireEvent.drop(pill, { dataTransfer: { types: ["Files"], files: [file] } })
+}
+
+describe("InputBar draft restore after a failed send", () => {
+  it("clears the composer on submit", () => {
+    setup()
+    type("hello team")
+
+    submit()
+
+    expect(textarea().value).toBe("")
+  })
+
+  it("puts the text back when the send is reported as failed", () => {
+    const { ref } = setup()
+    type("hello team")
+    submit()
+
+    act(() => ref.current!.restoreLastSubmission())
+
+    expect(textarea().value).toBe("hello team")
+  })
+
+  it("puts the attachments back when the send is reported as failed", () => {
+    const { ref } = setup()
+    dropFile(new File(["hi"], "notes.md", { type: "text/markdown" }))
+    type("look at this")
+    submit()
+    expect(screen.queryByText("notes.md")).toBeNull()
+
+    act(() => ref.current!.restoreLastSubmission())
+
+    expect(screen.getByText("notes.md")).not.toBeNull()
+  })
+
+  it("restores a shell command back into shell mode", () => {
+    const { ref } = setup()
+    // Shell mode arms when "!" is the first character typed; the bang itself
+    // is consumed, so the draft holds only the command.
+    type("!")
+    type("ls -la")
+    expect(screen.getByLabelText("Shell command input")).not.toBeNull()
+    submit()
+
+    act(() => ref.current!.restoreLastSubmission())
+
+    expect(screen.getByLabelText("Shell command input")).not.toBeNull()
+  })
+
+  it("does not clobber a draft the user already started typing", () => {
+    const { ref } = setup()
+    type("first message")
+    submit()
+    type("second message")
+
+    act(() => ref.current!.restoreLastSubmission())
+
+    expect(textarea().value).toBe("second message")
+  })
+
+  it("restores at most once per submission", () => {
+    const { ref } = setup()
+    type("hello team")
+    submit()
+
+    act(() => ref.current!.restoreLastSubmission())
+    type("")
+    act(() => ref.current!.restoreLastSubmission())
+
+    expect(textarea().value).toBe("")
+  })
+
+  it("does nothing when there is no submission to restore", () => {
+    const { ref } = setup()
+
+    act(() => ref.current!.restoreLastSubmission())
+
+    expect(textarea().value).toBe("")
+  })
+})

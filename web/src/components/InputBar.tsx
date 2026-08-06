@@ -156,6 +156,13 @@ export interface InputBarHandle {
   insertText: (text: string) => void
   setFiles: (files: File[]) => void
   addFiles: (files: File[]) => void
+  /**
+   * Put back the text, attachments, and mode of the last submitted message.
+   * Called when the send failed — the composer clears optimistically, so this
+   * is what stops a failed request from destroying the user's work. No-ops if
+   * the user has already started a new draft.
+   */
+  restoreLastSubmission: () => void
 }
 
 
@@ -207,6 +214,14 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   const [historyIndex, setHistoryIndex] = useState(-1)
   const [shellMode, setShellMode] = useState(false)
   const [mentions, setMentions] = useState<string[]>([])
+
+  /** Last submitted draft, held only until the send is confirmed or restored. */
+  const lastSubmissionRef = useRef<{
+    value: string
+    files: File[]
+    mentions: string[]
+    shellMode: boolean
+  } | null>(null)
 
   // Single source of truth for where committed ``@mention`` tokens live in
   // the current value. Memoized once per (value, mentions) change and shared
@@ -417,6 +432,24 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     addFiles: (nextFiles: File[]) => {
       addAllowedFiles(nextFiles)
     },
+    restoreLastSubmission: () => {
+      const snapshot = lastSubmissionRef.current
+      if (!snapshot) return
+      // One restore per submission — a second failure report (or a retry
+      // that also failed) must not resurrect an older draft.
+      lastSubmissionRef.current = null
+      // The failure can land seconds later, by which time the user may have
+      // moved on and started typing. Their current draft wins; overwriting it
+      // would trade one lost message for another.
+      if (value.trim().length > 0 || files.length > 0) return
+
+      setValue(snapshot.value)
+      setFiles(snapshot.files)
+      setMentions(snapshot.mentions)
+      setShellMode(snapshot.shellMode)
+      resetDraftState()
+      resizeAfterLayout(() => textareaRef.current?.focus())
+    },
   }))
 
   // Auto-focus the textarea whenever the bar transitions from
@@ -451,6 +484,10 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     const trimmed = value.trim()
     if (trimmed.length === 0 && files.length === 0) return
     if (isStreaming && value.trim().length === 0) return
+
+    // Snapshot everything the clear below is about to throw away, so a
+    // failed send can hand it back (see ``restoreLastSubmission``).
+    lastSubmissionRef.current = { value: trimmed, files, mentions, shellMode }
 
     const submitted = shellMode ? `!${trimmed}` : trimmed
     onSubmit(

@@ -196,6 +196,12 @@ export const FloatingInputBar = memo(
         if (files.length > 0) expand()
         innerRef.current?.addFiles(files)
       },
+      restoreLastSubmission: () => {
+        // Expand first: a failed send leaves the bar minimized, and silently
+        // refilling a collapsed composer would look like the message vanished.
+        expand()
+        innerRef.current?.restoreLastSubmission()
+      },
     }), [expand])
 
     const handleFocus = useCallback(() => {

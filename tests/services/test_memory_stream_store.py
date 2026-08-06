@@ -103,6 +103,70 @@ class TestInitTurn:
 
 
 # ---------------------------------------------------------------------------
+# ensure_turn
+# ---------------------------------------------------------------------------
+
+
+class TestEnsureTurn:
+    """``ask_user`` resumes a turn that was started before a restart.
+
+    ``push_event`` and ``attach`` both drop everything when a session has no
+    turn state, so a resume has to re-establish it — without disturbing the
+    state of a suspension that is still in memory.
+    """
+
+    @pytest.mark.asyncio
+    async def test_creates_state_when_the_session_has_none(self):
+        await store.ensure_turn("sid-1")
+
+        assert "sid-1" in _turns
+        # Attachable, or a reconnecting client is still turned away.
+        assert _turns["sid-1"].is_streaming is True
+
+    @pytest.mark.asyncio
+    async def test_keeps_the_accumulated_state_of_a_live_turn(self):
+        # The warm path: the suspended turn is still in memory, and its replay
+        # state is everything the card and the text above it are drawn from.
+        # Resetting here would blank a mid-turn reconnect.
+        await store.init_turn("sid-1")
+        _turns["sid-1"].content = {"bot": ["before the question"]}
+        _turns["sid-1"].tool_calls = [{"tool_call_id": "call-1", "name": "ask_user"}]
+        original = _turns["sid-1"]
+
+        await store.ensure_turn("sid-1")
+
+        assert _turns["sid-1"] is original
+        assert _turns["sid-1"].content == {"bot": ["before the question"]}
+        assert _turns["sid-1"].tool_calls == [
+            {"tool_call_id": "call-1", "name": "ask_user"}
+        ]
+
+    @pytest.mark.asyncio
+    async def test_keeps_subscribers_of_a_live_turn(self):
+        await store.init_turn("sid-1")
+        q: asyncio.Queue = asyncio.Queue()
+        _turns["sid-1"].subscribers.append(q)
+
+        await store.ensure_turn("sid-1")
+
+        assert _turns["sid-1"].subscribers == [q]
+
+    @pytest.mark.asyncio
+    async def test_created_state_actually_delivers_events(self):
+        # The point of the call: without it every event on the resumed turn is
+        # dropped by ``push_event``'s "no turn state" guard.
+        await store.ensure_turn("sid-1")
+        q: asyncio.Queue = asyncio.Queue()
+        _turns["sid-1"].subscribers.append(q)
+
+        await store.push_event(
+            "sid-1", StreamEnvelope.from_parts(event="done", data={})
+        )
+
+        assert q.get_nowait()["event"] == "done"
+
+
+# ---------------------------------------------------------------------------
 # cleanup expiry
 # ---------------------------------------------------------------------------
 

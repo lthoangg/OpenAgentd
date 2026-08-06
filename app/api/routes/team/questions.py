@@ -160,6 +160,12 @@ async def answer_question(
         raise HTTPException(status_code=409, detail="Question already resolved.")
     await db.commit()
 
+    # The suspension outlives the stream state that carried it: a restart drops
+    # the table, and the sliding TTL expires a turn that emits nothing while it
+    # waits. Both leave every event below — and the whole resumed turn — with
+    # nowhere to go, since push_event and attach no-op without turn state.
+    await stream_store.ensure_turn(session_id)
+
     await stream_store.push_event(
         session_id,
         StreamEnvelope.from_event(
@@ -206,6 +212,11 @@ async def dismiss_question(
     if resolved is None:
         raise HTTPException(status_code=409, detail="Question already resolved.")
     await db.commit()
+
+    # Same reason as the answer path: without turn state this broadcast and the
+    # `done` that follows it are dropped, and other devices keep showing an open
+    # card on a session that reads as running.
+    await stream_store.ensure_turn(session_id)
 
     await stream_store.push_event(
         session_id,

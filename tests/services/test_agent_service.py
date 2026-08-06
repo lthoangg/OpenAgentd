@@ -708,6 +708,34 @@ async def test_interrupt_team_dismisses_an_open_question():
     )
 
 
+async def test_interrupt_team_delivers_done_when_the_turn_state_expired():
+    """Stopping a long-suspended question still has to close the turn.
+
+    ``ask_user`` made this reachable: the stream store's TTL slides on every
+    event, and a turn parked on a question emits none, so waiting an hour to
+    press Stop expires the state while the team is still very much alive.
+    ``push_event`` no-ops without it, so the ``done`` would be dropped and the
+    pane would stay live with nothing left to end it.
+    """
+    from app.services.memory_stream_store import _turns
+
+    session_id = "019fd791-93ed-753d-8615-799b456708b7"
+    _turns.clear()
+    team = MagicMock()
+    team.members = {}
+    team.all_members = []
+    team.lead.session_id = session_id
+    team.dismiss_pending_question = AsyncMock(return_value=True)
+
+    try:
+        await interrupt_team(team, session_id=session_id)
+
+        assert session_id in _turns
+        assert _turns[session_id].is_streaming is False
+    finally:
+        _turns.clear()
+
+
 async def test_interrupt_team_survives_a_failed_question_dismissal():
     """Cancelling the run matters more than closing the card."""
     working = MagicMock()

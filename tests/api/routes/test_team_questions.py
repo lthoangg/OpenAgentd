@@ -754,3 +754,97 @@ async def test_a_successful_resume_leaves_the_turn_open(client, team, monkeypatc
 
     assert resp.json()["resumed"] is True
     assert "done" not in [event for _sid, event in pushed]
+
+
+# ---------------------------------------------------------------------------
+# stream state across a restart
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def turn_state():
+    """The stream store's in-memory turn table, cleared around the test."""
+    from app.services.memory_stream_store import _turns
+
+    _turns.clear()
+    yield _turns
+    _turns.clear()
+
+
+async def test_answer_restores_the_stream_when_the_turn_state_is_gone(
+    client, team, turn_state
+):
+    """A resume has to re-establish the stream it is about to write to.
+
+    The suspension is durable but the stream store is not: a daemon restart
+    drops the whole table, and so does the sliding ``STREAM_TTL`` — a waiting
+    turn emits nothing to refresh it, so simply taking an hour to answer is
+    enough. ``push_event`` and ``attach`` both no-op without turn state, so
+    every event of the resumed turn would go nowhere and no client could
+    reattach: no streaming, and a card that never resolves anywhere else.
+    """
+    session_id = uuid.uuid4()
+    question_id = await _seed(session_id)
+    team["team"] = _FakeTeam(str(session_id))
+    assert str(session_id) not in turn_state
+
+    resp = await client.post(
+        f"/{session_id}/question/{question_id}/answer",
+        json={"answers": [["pnpm"], ["lint"]]},
+    )
+
+    assert resp.json()["resumed"] is True
+    assert str(session_id) in turn_state
+    # Attachable, or the reconnecting client is still turned away.
+    assert turn_state[str(session_id)].is_streaming is True
+
+
+async def test_answer_keeps_the_replay_state_of_a_live_suspension(
+    client, team, turn_state
+):
+    """The warm path must not be reset by the repair.
+
+    When the suspension is still in memory its accumulated state is what a
+    mid-turn reconnect replays — the text and tool cards that came *before* the
+    question. Re-initialising instead of ensuring would blank all of it.
+    """
+    from app.services import memory_stream_store as stream_store
+
+    session_id = uuid.uuid4()
+    question_id = await _seed(session_id)
+    team["team"] = _FakeTeam(str(session_id))
+    await stream_store.init_turn(str(session_id))
+    turn_state[str(session_id)].content = {"openagentd": ["before the question"]}
+    original = turn_state[str(session_id)]
+
+    await client.post(
+        f"/{session_id}/question/{question_id}/answer",
+        json={"answers": [["pnpm"], ["lint"]]},
+    )
+
+    assert turn_state[str(session_id)] is original
+    assert turn_state[str(session_id)].content == {
+        "openagentd": ["before the question"]
+    }
+
+
+async def test_dismiss_delivers_its_events_when_the_turn_state_is_gone(
+    client, team, turn_state
+):
+    """Dismissing after a restart still has to reach every connected client.
+
+    Without turn state the ``question_dismissed`` broadcast and the ``done``
+    that ends the turn are both dropped, so other devices keep showing an open
+    card on a session that reads as running forever.
+    """
+    session_id = uuid.uuid4()
+    question_id = await _seed(session_id)
+    # No live team owns the session — the restart path through ``_end_turn``.
+    assert str(session_id) not in turn_state
+
+    resp = await client.post(f"/{session_id}/question/{question_id}/dismiss")
+
+    assert resp.status_code == 200
+    assert str(session_id) in turn_state
+    # ``mark_done`` ran on real state, so the whole close reached the store.
+    assert turn_state[str(session_id)].is_streaming is False

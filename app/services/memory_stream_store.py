@@ -193,6 +193,25 @@ async def init_turn(session_id: str, *, keep_subscribers: bool = False) -> None:
         )
 
 
+async def ensure_turn(session_id: str) -> None:
+    """Create turn state for *session_id* only if it has none.
+
+    A turn suspended on ``ask_user`` can be resumed long after the state that
+    carried it was lost: the daemon restarts, or the sliding ``STREAM_TTL``
+    expires because a waiting turn emits nothing to refresh it. Both leave
+    ``_turns`` without an entry, and both ``push_event`` and ``attach`` drop
+    everything in that case — so the resumed turn would stream to nobody.
+
+    Deliberately *not* ``init_turn``: when the suspension is still in memory,
+    its accumulated content, tool calls and subscribers are what a mid-turn
+    reconnect replays, and resetting them would blank the part of the turn that
+    came before the question.
+    """
+    if _turns.get(session_id) is not None:
+        return
+    await init_turn(session_id)
+
+
 async def push_event(session_id: str, envelope: StreamEnvelope) -> None:
     """Update state and fan-out event to all live subscribers.
 

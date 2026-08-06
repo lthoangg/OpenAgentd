@@ -124,6 +124,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
         activeCurrentBlocks: activeStream?.currentBlocks ?? EMPTY_BLOCKS,
         activeStatus: activeStream?.status ?? 'idle',
         activeLastError: activeStream?.lastError ?? null,
+        activeAwaitingRestart: activeStream?._awaitingRestartOutput === true,
 
         leadRevertedCount: leadStream?.revertedCount ?? 0,
         leadRevertedMessages: leadStream?.revertedMessages ?? EMPTY_REVERTED_MESSAGES,
@@ -166,6 +167,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
     activeCurrentBlocks,
     activeStatus,
     activeLastError,
+    activeAwaitingRestart,
 
     leadRevertedCount,
     leadRevertedMessages,
@@ -566,6 +568,7 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
               // A lead suspended on `ask_user` is not streaming, but its turn
               // is still open — no duration, no Continue, no pending dots.
               isTurnOpen={activeStatus === 'working' || activeStatus === 'waiting_input'}
+              isAwaitingRestart={activeAwaitingRestart}
               isError={activeStatus === 'error'}
               lastError={activeLastError}
               isContinuing={isContinuing && activeAgent === leadName}

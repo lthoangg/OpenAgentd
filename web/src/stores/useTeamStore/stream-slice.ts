@@ -77,6 +77,7 @@ export type StreamSlice = Pick<
   | 'stopTeam'
   | 'connectStream'
   | 'resolveQuestion'
+  | 'markTurnResuming'
   | 'dismissSetupRequired'
   | '_drainCacheInvalidations'
   | '_handleSSEEvent'
@@ -291,6 +292,18 @@ export const createStreamSlice: StateCreator<
   ) => {
     set((draft) => {
       applyQuestionResolution(draft, questionId, answers, reason)
+    })
+  },
+
+  markTurnResuming: () => {
+    set((draft) => {
+      const lead = draft.leadName ? draft.agentStreams[draft.leadName] : undefined
+      if (!lead) return
+      // The answer restarts the turn with no new user message, so nothing else
+      // marks it live until the first token — which can be seconds away.
+      draft.isTeamWorking = true
+      lead._awaitingRestartOutput = true
+      if (lead.status === 'waiting_input') lead.status = 'working'
     })
   },
 

@@ -68,6 +68,17 @@ export interface AgentStream {
   _completionBase: number
   _completionEstimated?: number
   _turnStartedAt?: number | null
+  /**
+   * The turn was restarted with no new user message — an answered `ask_user`,
+   * or `/continue` — and nothing has come back yet.
+   *
+   * A normal send shows "about to respond" dots because its optimistic user
+   * block is the only thing in `currentBlocks`. A restart adds no block and
+   * `currentBlocks` still holds the turn it is resuming, so neither dots
+   * condition fires and the UI looks frozen until the first token. Cleared by
+   * the first content of the resumed turn, and by `done` as a backstop.
+   */
+  _awaitingRestartOutput?: boolean
   model: string | null
   lastError: string | null
   revertedCount?: number
@@ -175,6 +186,13 @@ export interface TeamStoreActions {
     answers: string[][] | null,
     reason: string | null,
   ) => void
+  /**
+   * Mark the lead's turn live again after an answered ``ask_user``.
+   *
+   * The resume carries no new user message, so without this the UI shows a
+   * finished-looking turn until the first token of the restarted run.
+   */
+  markTurnResuming: () => void
   loadTeamStatus: (workspace?: string | null, expectedGeneration?: number) => Promise<void>
   loadSession: (sessionId: string, workspace?: string | null) => Promise<void>
   /**

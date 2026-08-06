@@ -697,8 +697,11 @@ export const AgentPane = memo(function AgentPane({
               </div>
             )}
 
-          {/* Me show dots when pending (user sent, agent not woken) or working with no visible agent content yet. */}
+          {/* Me show dots when pending (user sent, agent not woken), restarting
+              after an answered question (no new user block, blocks still hold
+              the suspended turn), or working with no visible agent content yet. */}
           {(isPending ||
+            stream._awaitingRestartOutput === true ||
             (isWorking && stream.currentBlocks.every((b) => b.type === 'user' || isBlankContentBlock(b)))) && (
             <div className="flex items-center gap-1.5 px-3 pt-3" role="status" aria-label={`${name} is preparing a response`}>
               <span aria-hidden="true" className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '0ms' }} />

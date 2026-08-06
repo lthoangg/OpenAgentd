@@ -341,6 +341,9 @@ export function resetSessionState(
     state.agentStreams[name]._completionBase = 0
     state.agentStreams[name]._completionEstimated = 0
     state.agentStreams[name]._turnStartedAt = null
+    // The lead stream object is reused across sessions — a restart pending in
+    // the session being left would otherwise show dots on the one being opened.
+    state.agentStreams[name]._awaitingRestartOutput = false
       state.agentStreams[name].revertedCount = 0
       state.agentStreams[name].revertedMessages = []
       state.agentStreams[name]._revertedSuffix = []

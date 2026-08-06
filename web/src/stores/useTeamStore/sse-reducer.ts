@@ -123,6 +123,8 @@ function markTurnStarted(draft: TeamStore, agent: string, startedAt = Date.now()
   ensureAgent(draft, agent)
   const stream = draft.agentStreams[agent]
   if (stream._turnStartedAt === undefined || stream._turnStartedAt === null) stream._turnStartedAt = startedAt
+  // Output has started, so a restarted turn is no longer waiting to produce.
+  stream._awaitingRestartOutput = false
 }
 
 function appendStreamingText(
@@ -183,6 +185,9 @@ function findConfirmedTool(draft: TeamStore, agent: string, toolCallId: string |
 
 function applyBufferedSSEDelta(draft: TeamStore, event: BufferedSSEDelta) {
   const d = event.data
+  // Any content at all means the restarted turn is producing again.
+  const producing = draft.agentStreams[d.agent as string]
+  if (producing) producing._awaitingRestartOutput = false
   if (event.type === 'message' || event.type === 'thinking') {
     appendStreamingText(
       draft,
@@ -626,6 +631,8 @@ export function createSSEHandler({ set, get }: CreateSSEHandlerArgs) {
             stream._completionBase = stream.usage.completionTokens
             stream._completionEstimated = 0
             stream._turnStartedAt = null
+            // Backstop: a turn that produced nothing at all still ends here.
+            stream._awaitingRestartOutput = false
             if (stream.status !== 'error' && stream.status !== 'offline') {
               stream.status = 'idle'
             }

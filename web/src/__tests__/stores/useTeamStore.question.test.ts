@@ -211,6 +211,82 @@ describe("useTeamStore — ask_user", () => {
     expect(pending!.id).toBe("018f0000-0000-7000-8000-0000000000dd")
   })
 
+  describe("resuming after an answer", () => {
+    function suspend() {
+      useTeamStore.getState()._handleSSEEvent("agent_status", {
+        agent: "openagentd",
+        status: "waiting_input",
+        metadata: { question_id: QUESTION_ID },
+      })
+    }
+
+    it("marks the lead live again so the turn does not look finished", () => {
+      // The resumed run carries no new user message, so nothing else flips the
+      // lead back to working until its first token — which can be seconds away.
+      suspend()
+
+      useTeamStore.getState().markTurnResuming()
+
+      const stream = useTeamStore.getState().agentStreams.openagentd
+      expect(stream.status).toBe("working")
+      expect(stream._awaitingRestartOutput).toBe(true)
+      expect(useTeamStore.getState().isTeamWorking).toBe(true)
+    })
+
+    it("stops awaiting the restart once the turn produces text", () => {
+      suspend()
+      useTeamStore.getState().markTurnResuming()
+
+      useTeamStore.getState()._handleSSEEvent("message", {
+        agent: "openagentd",
+        content: "Using pnpm.",
+      })
+
+      expect(
+        useTeamStore.getState().agentStreams.openagentd._awaitingRestartOutput,
+      ).toBe(false)
+    })
+
+    it("stops awaiting the restart once the turn calls a tool", () => {
+      suspend()
+      useTeamStore.getState().markTurnResuming()
+
+      useTeamStore.getState()._handleSSEEvent("tool_call", {
+        agent: "openagentd",
+        name: "shell",
+        tool_call_id: "call-2",
+      })
+
+      expect(
+        useTeamStore.getState().agentStreams.openagentd._awaitingRestartOutput,
+      ).toBe(false)
+    })
+
+    it("stops awaiting the restart when the turn ends without output", () => {
+      // Backstop: a resume that dies before emitting anything must not leave
+      // the dots bouncing forever.
+      suspend()
+      useTeamStore.getState().markTurnResuming()
+
+      useTeamStore.getState()._handleSSEEvent("done", { session_id: SESSION_ID })
+
+      expect(
+        useTeamStore.getState().agentStreams.openagentd._awaitingRestartOutput,
+      ).toBe(false)
+    })
+
+    it("does not strand the flag on the next session opened", () => {
+      suspend()
+      useTeamStore.getState().markTurnResuming()
+
+      useTeamStore.getState().beginResolvedSession(null)
+
+      expect(
+        useTeamStore.getState().agentStreams.openagentd?._awaitingRestartOutput,
+      ).toBe(false)
+    })
+  })
+
   it("drops the question when the turn is reset for a new one", () => {
     ask()
 

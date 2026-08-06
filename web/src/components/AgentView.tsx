@@ -73,6 +73,12 @@ interface AgentViewProps {
    * dots. Defaults to ``isWorking``.
    */
   isTurnOpen?: boolean
+  /**
+   * The turn restarted without a new user message (an answered ``ask_user``)
+   * and has produced nothing yet — show the "about to respond" dots, which
+   * neither of the other two conditions can detect.
+   */
+  isAwaitingRestart?: boolean
   /** True when the agent is in error state. */
   isError?: boolean
   /** Error message to display when isError is true. */
@@ -177,7 +183,7 @@ const BlockRenderer = memo(function BlockRenderer({ block, isStreaming, sessionI
   }
 })
 
-export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWorking, isError, lastError, onContinue, emptyState, onMentionFileOpen }: AgentViewProps) {
+export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWorking, isAwaitingRestart = false, isError, lastError, onContinue, emptyState, onMentionFileOpen }: AgentViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   // attachedRef: true = follow the stream.
@@ -538,10 +544,14 @@ export function AgentView({ blocks, currentBlocks, isWorking, isTurnOpen = isWor
 
             {/* Me show dots when:
              *   1. pending - user just sent, agent hasn't woken yet (no agent_status event yet), OR
-             *   2. working with no visible agent content yet (user bubbles don't count).
+             *   2. working with no visible agent content yet (user bubbles don't count), OR
+             *   3. restarting after an answered question - no new user block, and
+             *      currentBlocks still holds the turn being resumed, so neither
+             *      of the above can see it.
              * Covers the POST to first SSE event gap so the user always gets immediate feedback.
              */}
             {((!isTurnOpen && !isError && currentBlocks.some(isDirectUserBlock)) ||
+              isAwaitingRestart ||
               (isWorking && currentBlocks.every((b) => b.type === 'user' || isBlankContentBlock(b)))) && (
               <div className="flex items-center gap-1.5 py-1" role="status" aria-label="Agent is preparing a response">
                 <span aria-hidden="true" className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--color-accent)" style={{ animationDelay: '0ms' }} />

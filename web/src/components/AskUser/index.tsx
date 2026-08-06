@@ -71,6 +71,7 @@ export function AskUser({
   const pendingQuestion = useTeamStore((state) => state.pendingQuestion)
   const sessionId = useTeamStore((state) => state.sessionId)
   const resolveQuestion = useTeamStore((state) => state.resolveQuestion)
+  const markTurnResuming = useTeamStore((state) => state.markTurnResuming)
   const resolved = useTeamStore((state) =>
     toolCallId ? state.resolvedQuestions[toolCallId] : undefined,
   )
@@ -110,12 +111,18 @@ export function AskUser({
       // recording would strand the card in "waiting" — the broadcast then has
       // no open question left to attach the outcome to.
       resolveQuestion(questionId, answers, reason)
-      if (expectResume && !outcome.resumed) {
-        useToastStore.getState().push({
-          tone: 'error',
-          title: 'Answer saved, but the agent did not restart',
-          description: 'Send a message to continue the turn.',
-        })
+      if (expectResume) {
+        if (outcome.resumed) {
+          // The restarted turn adds no user block, so nothing else marks it
+          // live until its first token — show the "about to respond" dots now.
+          markTurnResuming()
+        } else {
+          useToastStore.getState().push({
+            tone: 'error',
+            title: 'Answer saved, but the agent did not restart',
+            description: 'Send a message to continue the turn.',
+          })
+        }
       }
     } catch (cause) {
       // Keep the form and the draft: the selection is still valid and the user

@@ -43,17 +43,31 @@ if TYPE_CHECKING:
 
 # ── Attachment-validation rules (transport-neutral) ──────────────────────────
 
+# Uploads are written to disk and handed to the agent as a *path*, never
+# inlined into a prompt, so these ceilings exist to bound disk and request
+# memory rather than token cost. One value across every category keeps the
+# rule explainable ("50 MB per message"); the per-category mapping is kept so
+# a single type can be tightened later without touching the others.
+_ATTACHMENT_SIZE_LIMIT = 50 * 1024 * 1024  # 50 MB
+
 SIZE_LIMITS: dict[str, int] = {
-    "text": 500 * 1024,  # 500 KB
-    "image": 10 * 1024 * 1024,  # 10 MB
-    "document": 5 * 1024 * 1024,  # 5 MB
-    "audio": 20 * 1024 * 1024,  # 20 MB
-    "video": 20 * 1024 * 1024,  # 20 MB
+    "text": _ATTACHMENT_SIZE_LIMIT,
+    "image": _ATTACHMENT_SIZE_LIMIT,
+    "document": _ATTACHMENT_SIZE_LIMIT,
+    "audio": _ATTACHMENT_SIZE_LIMIT,
+    "video": _ATTACHMENT_SIZE_LIMIT,
     # Catch-all for any file type not covered above (zip, exe, bin, …).
     # Saved to disk as-is; the agent can use shell tools to inspect it.
-    "file": 20 * 1024 * 1024,  # 20 MB
+    "file": _ATTACHMENT_SIZE_LIMIT,
 }
-GLOBAL_SIZE_LIMIT = 20 * 1024 * 1024  # 20 MB total across all files per message
+GLOBAL_SIZE_LIMIT = 50 * 1024 * 1024  # 50 MB total across all files per message
+
+# ``@mention`` context is a different animal from an upload: the file is read
+# into memory and inlined into the turn (truncated to
+# ``_MENTION_INLINE_MAX_CHARS``), and a message may carry up to 20 of them.
+# It keeps the old 500 KB ceiling — raising the upload limit must not turn a
+# stray ``@big.log`` into a multi-hundred-megabyte read.
+MENTION_MAX_BYTES = 500 * 1024  # 500 KB
 
 MIME_CATEGORY: dict[str, str] = {
     # ── Plain text / data ──────────────────────────────────────────────────

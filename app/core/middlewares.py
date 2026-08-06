@@ -7,7 +7,7 @@ Usage::
     from app.core.middlewares import RequestSizeLimitMiddleware, SecurityHeadersMiddleware
 
     app.add_middleware(SecurityHeadersMiddleware)
-    app.add_middleware(RequestSizeLimitMiddleware, max_bytes=4 * 1024 * 1024)
+    app.add_middleware(RequestSizeLimitMiddleware, max_bytes=56 * 1024 * 1024)
 """
 
 from __future__ import annotations
@@ -22,8 +22,14 @@ from app.cli.net import is_loopback_host
 from app.core.config import settings
 from app.core.desktop_auth import configured_access_token
 
-# Default: 4 MB
-_DEFAULT_MAX_BYTES = 4 * 1024 * 1024
+# Default: 56 MB — the outer envelope, deliberately above the 50 MB
+# attachment ceiling (``GLOBAL_SIZE_LIMIT`` in
+# ``app/services/agent_service.py``). A message at the attachment limit still
+# carries its text, mentions, and multipart framing in the same body, so a
+# cap equal to the payload limit would reject a legal upload here — with a
+# blunt "Request body too large" instead of the attachment layer's precise,
+# per-file message.
+_DEFAULT_MAX_BYTES = 56 * 1024 * 1024
 
 
 class _RequestTooLarge(Exception):
@@ -193,7 +199,7 @@ class RequestSizeLimitMiddleware:
 
     Args:
         app: The ASGI application to wrap.
-        max_bytes: Maximum allowed content length in bytes.  Defaults to 4 MB.
+        max_bytes: Maximum allowed content length in bytes.  Defaults to 56 MB.
     """
 
     def __init__(self, app: ASGIApp, max_bytes: int = _DEFAULT_MAX_BYTES) -> None:

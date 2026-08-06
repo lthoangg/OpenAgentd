@@ -479,7 +479,9 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     const pastedFiles = extractPastedFiles(items)
     if (pastedFiles.length > 0) {
       e.preventDefault()
-      setFiles((prev) => [...prev, ...pastedFiles])
+      // Routed through ``addAllowedFiles`` (not a raw ``setFiles``) so pasted
+      // files go through the same size budget as dropped and picked ones.
+      addAllowedFiles(pastedFiles)
       return
     }
 
@@ -498,7 +500,7 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
         resize()
       })
     }
-  }, [extractPastedFiles, resetDraftState, resize, shellMode, value, setFiles])
+  }, [extractPastedFiles, addAllowedFiles, resetDraftState, resize, shellMode, value])
 
   const handleAtomicMentionDeletion = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>): boolean => {
     if (e.key !== 'Backspace' && e.key !== 'Delete') return false

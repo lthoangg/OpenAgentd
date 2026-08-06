@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.core.middlewares import RequestSizeLimitMiddleware, SecurityHeadersMiddleware
+from app.services.agent_service import GLOBAL_SIZE_LIMIT
 
 
 def _make_app(max_bytes: int = 100) -> FastAPI:
@@ -232,9 +233,14 @@ class TestRequestSizeLimitMiddleware:
 
         assert sent[0]["status"] == 413
 
-    def test_default_max_bytes_is_4mb(self):
+    def test_default_max_bytes_leaves_headroom_over_the_attachment_limit(self):
         middleware = RequestSizeLimitMiddleware(app=FastAPI())
-        assert middleware._max_bytes == 4 * 1024 * 1024
+
+        # The envelope must exceed the attachment payload ceiling, or a
+        # message at the attachment limit is rejected before the attachment
+        # layer can report which file was the problem.
+        assert middleware._max_bytes > GLOBAL_SIZE_LIMIT
+        assert middleware._max_bytes == 56 * 1024 * 1024
 
     def test_custom_max_bytes_stored(self):
         middleware = RequestSizeLimitMiddleware(app=FastAPI(), max_bytes=1024)

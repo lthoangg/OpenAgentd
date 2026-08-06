@@ -24,6 +24,6 @@ Only the latest version on the `main` branch receives security fixes.
 | **DuckDB query safety** | All observability queries use `?` parameterised placeholders. `trace_id` inputs are validated as hex strings (422) before reaching the database. |
 | **Secrets hygiene** | Provider API keys are `SecretStr`; diagnostics reports boolean presence only. MCP OAuth secrets are stored in a `chmod 600` `.env` and masked as `"********"` in API responses. Keys are never logged or sent to the model. |
 | **Security headers** | Every response carries `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, strict CSP, `frame-ancestors 'none'`, and a `Permissions-Policy` header via `SecurityHeadersMiddleware`. |
-| **Request size cap** | `RequestSizeLimitMiddleware` rejects bodies over 4 MB (via `Content-Length`) before the body is read. |
+| **Request size cap** | `RequestSizeLimitMiddleware` rejects bodies over 56 MB (via `Content-Length`) before the body is read. |
 
 The security invariants above, their enforcement points in source, and their tests are the authoritative threat-model record.

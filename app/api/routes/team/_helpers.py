@@ -26,7 +26,7 @@ from app.models.chat import ChatSession
 from app.services import agent_service, team_manager
 from app.services.agent_service import (
     GLOBAL_SIZE_LIMIT,
-    SIZE_LIMITS,
+    MENTION_MAX_BYTES,
     NoTeamConfigured,
     RawAttachment,
     categorize,
@@ -482,7 +482,7 @@ async def _read_mention_as_attachment(
             return None
     if not data:
         return None
-    if len(data) > SIZE_LIMITS["text"]:
+    if len(data) > MENTION_MAX_BYTES:
         logger.debug(
             "mention_oversize path={} size={}",
             rel_path,

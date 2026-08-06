@@ -8,7 +8,14 @@
  */
 import { useCallback, useMemo, useRef, useState, useEffect } from 'react'
 import type { AgentCapabilities } from '@/api/types'
-import { filesFromDataTransfer, isFileTypeAllowed } from './InputBar.files'
+import {
+  MAX_TOTAL_ATTACHMENT_BYTES,
+  filesFromDataTransfer,
+  isFileTypeAllowed,
+  splitFilesByBudget,
+} from './InputBar.files'
+import { useToastStore } from '@/stores/useToastStore'
+import { formatBytes } from '@/utils/format'
 
 export interface UseInputBarAttachmentsOptions {
   capabilities?: AgentCapabilities
@@ -17,6 +24,7 @@ export interface UseInputBarAttachmentsOptions {
 export function useInputBarAttachments({ capabilities }: UseInputBarAttachmentsOptions) {
   const [files, setFiles] = useState<File[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const pushToast = useToastStore((s) => s.push)
 
   // Create blob URLs for files — memoized to avoid recreating on every render
   const blobUrls = useMemo(() => {
@@ -40,14 +48,31 @@ export function useInputBarAttachments({ capabilities }: UseInputBarAttachmentsO
     setFiles((prev) => prev.filter((_, i) => i !== index))
   }, [])
 
-  /** The single funnel for every attach path — drop, paste, and file picker. */
+  /**
+   * The single funnel for every attach path — drop, paste, and file picker.
+   * Enforces the request-size budget here rather than at submit time, because
+   * by then the composer has already been cleared and a rejected upload takes
+   * the message down with it.
+   */
   const addFiles = useCallback((nextFiles: File[]) => {
-    setFiles((prev) => {
-      const allowed = nextFiles.filter((file) => isFileTypeAllowed(file, capabilities))
-      if (allowed.length === 0) return prev
-      return [...prev, ...allowed]
-    })
-  }, [capabilities])
+    const allowed = nextFiles.filter((file) => isFileTypeAllowed(file, capabilities))
+    if (allowed.length === 0) return
+
+    const { accepted, rejected } = splitFilesByBudget(files, allowed)
+
+    if (rejected.length > 0) {
+      pushToast({
+        tone: 'error',
+        title: rejected.length === 1 ? 'File too large to attach' : 'Files too large to attach',
+        description:
+          `${rejected.map((f) => f.name).join(', ')} — a message can carry ` +
+          `${formatBytes(MAX_TOTAL_ATTACHMENT_BYTES)} of attachments in total.`,
+      })
+    }
+
+    if (accepted.length === 0) return
+    setFiles((prev) => [...prev, ...accepted])
+  }, [capabilities, files, pushToast])
 
   const addFile = useCallback((file: File) => {
     addFiles([file])

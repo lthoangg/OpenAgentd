@@ -227,6 +227,39 @@ describe('QuestionCard', () => {
     expect(onSubmit).toHaveBeenCalledWith([[], []])
   })
 
+  it('swaps Dismiss for Back once the user has stepped forward', () => {
+    // The secondary action tracks what is actually behind the user: on step one
+    // there is nothing to go back to, so "throw it away" is the only option;
+    // afterwards, offering Dismiss next to Back invites losing answers already
+    // given to a mis-click.
+    renderCard({ question: TWO_QUESTIONS })
+
+    expect(screen.getByRole('button', { name: /^dismiss$/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^back$/i })).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: /next question/i }))
+
+    expect(screen.getByRole('button', { name: /^back$/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^dismiss$/i })).toBeNull()
+  })
+
+  it('keeps earlier answers when stepping back', () => {
+    const { onSubmit } = renderCard({ question: TWO_QUESTIONS })
+
+    fireEvent.click(screen.getByRole('radio', { name: /pnpm/ }))
+    fireEvent.click(screen.getByRole('button', { name: /next question/i }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /lint/ }))
+
+    fireEvent.click(screen.getByRole('button', { name: /^back$/i }))
+    expect(screen.getByText('Which package manager?')).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: /pnpm/ })).toBeChecked()
+
+    fireEvent.click(screen.getByRole('button', { name: /next question/i }))
+    fireEvent.click(screen.getByRole('button', { name: /send answer/i }))
+
+    expect(onSubmit).toHaveBeenCalledWith([['pnpm'], ['lint']])
+  })
+
   it('dismisses without submitting an answer', () => {
     const { onSubmit, onDismiss } = renderCard()
 

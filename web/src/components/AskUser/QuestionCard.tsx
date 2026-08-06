@@ -124,6 +124,7 @@ export function QuestionCard({
   // silently skip the questions the user has not been shown yet. The label
   // tracks the step they are on, not how they reached it.
   const isLastStep = step === questions.length - 1
+  const isFirstStep = step === 0
 
   const handleSubmit = () => {
     if (submitting) return
@@ -239,14 +240,17 @@ export function QuestionCard({
               : null}
         </span>
         <div className="ml-auto flex items-center gap-2">
+          {/* Past the first step the secondary action is "go back one", not
+              "throw the whole thing away" — the pair reads as a stepper. Dismiss
+              stays reachable from step one, where there is nothing to go back to. */}
           <Button
             type="button"
             variant="ghost"
             size="sm"
-            onClick={onDismiss}
+            onClick={isFirstStep ? onDismiss : () => update({ step: step - 1 })}
             disabled={submitting}
           >
-            Dismiss
+            {isFirstStep ? 'Dismiss' : 'Back'}
           </Button>
           <Button
             type="button"

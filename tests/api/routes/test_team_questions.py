@@ -14,6 +14,7 @@ question id) are covered as carefully as the happy path.
 from __future__ import annotations
 
 import uuid
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import FastAPI
@@ -485,3 +486,188 @@ async def test_dismiss_ends_the_turn(client, team):
 
     assert resp.status_code == 200
     assert fake_team.turns_ended == 1
+
+
+async def test_dismiss_ends_the_turn_on_the_named_session(client, team, monkeypatch):
+    """The closer must target the session being dismissed.
+
+    ``find_live_team_for_lead_session`` matches on the coding registry *key* as
+    well as the lead binding, so it can hand back a team whose lead points
+    somewhere else — a team evicted after the idle window and rebuilt gets a
+    freshly minted lead session id. ``_try_emit_done`` closes
+    ``self.lead.session_id``, which would end a turn on the wrong stream and
+    leave this one live forever.
+    """
+    session_id = uuid.uuid4()
+    question_id = await _seed(session_id)
+    fake_team = _FakeTeam("019fd000-0000-7000-8000-00000000dead")
+    team["team"] = fake_team
+
+    pushed: list = []
+
+    async def capture(sid, envelope):
+        pushed.append((sid, envelope.event))
+
+    monkeypatch.setattr(
+        "app.api.routes.team.questions.stream_store.push_event", capture
+    )
+    monkeypatch.setattr(
+        "app.api.routes.team.questions.stream_store.mark_done", AsyncMock()
+    )
+
+    resp = await client.post(f"/{session_id}/question/{question_id}/dismiss")
+
+    assert resp.status_code == 200
+    # Not through the stale team: that would have closed the wrong session.
+    assert fake_team.turns_ended == 0
+    assert (str(session_id), "done") in pushed
+
+
+async def test_dismiss_ends_the_turn_with_no_live_team(client, team, monkeypatch):
+    """After a restart there is no live team, but the client still shows a turn.
+
+    The suspension is durable, so the card comes back on reload and can be
+    dismissed with nothing running. Without a close, the pane stays live and
+    the session list keeps the session marked running.
+    """
+    session_id = uuid.uuid4()
+    question_id = await _seed(session_id)
+    team["team"] = None
+
+    pushed: list = []
+
+    async def capture(sid, envelope):
+        pushed.append((sid, envelope.event))
+
+    monkeypatch.setattr(
+        "app.api.routes.team.questions.stream_store.push_event", capture
+    )
+    monkeypatch.setattr(
+        "app.api.routes.team.questions.stream_store.mark_done", AsyncMock()
+    )
+
+    resp = await client.post(f"/{session_id}/question/{question_id}/dismiss")
+
+    assert resp.status_code == 200
+    assert (str(session_id), "done") in pushed
+
+
+async def test_answer_does_not_resume_a_team_bound_to_another_session():
+    """Resuming the wrong lead would replay a turn into someone else's history.
+
+    ``find_live_team_for_lead_session`` also matches on the coding registry
+    key, so it can return a team whose lead points elsewhere — a team evicted
+    after the idle window is rebuilt with a freshly minted lead session id.
+    ``activate_for_question_answer`` runs on ``lead.session_id``, so resuming
+    it would append this answer's turn to a different session.
+    """
+    from app.api.routes.team import questions as questions_route
+
+    session_id = uuid.uuid4()
+    fake_team = _FakeTeam("019fd000-0000-7000-8000-00000000dead")
+
+    async def fake_get_team_for_session(sid: str):
+        return fake_team
+
+    original = questions_route.get_team_for_session
+    questions_route.get_team_for_session = fake_get_team_for_session
+    try:
+        resumed = await questions_route._resume_lead(str(session_id))
+    finally:
+        questions_route.get_team_for_session = original
+
+    assert resumed is False
+    assert fake_team.lead.resumed == 0
+
+
+async def test_a_failed_resume_frees_the_lead(client, team):
+    """A lead left parked with no question wedges the session.
+
+    ``waiting_input`` counts as busy, so ``_maybe_activate`` refuses to start a
+    turn — and with the question already answered nothing will ever resume it.
+    The next message would sit in the inbox undelivered.
+    """
+    session_id = uuid.uuid4()
+    question_id = await _seed(session_id)
+    fake_team = _FakeTeam(str(session_id))
+
+    def boom() -> None:
+        raise RuntimeError("event loop is closed")
+
+    fake_team.lead.activate_for_question_answer = boom  # type: ignore[method-assign]
+    team["team"] = fake_team
+
+    resp = await client.post(
+        f"/{session_id}/question/{question_id}/answer",
+        json={"answers": [["pnpm"], ["lint"]]},
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["resumed"] is False
+    assert fake_team.lead.state != "waiting_input"
+
+
+async def test_a_failed_resume_closes_the_turn(client, team, monkeypatch):
+    """If nothing restarts, the turn is over and the client has to be told.
+
+    The pane is showing a live turn (``waiting_input`` reads as busy). With the
+    question answered and no activation coming, only a ``done`` gets the UI out
+    of it — otherwise it stays live until a reload.
+    """
+    session_id = uuid.uuid4()
+    question_id = await _seed(session_id)
+    fake_team = _FakeTeam(str(session_id))
+
+    def boom() -> None:
+        raise RuntimeError("no loop")
+
+    fake_team.lead.activate_for_question_answer = boom  # type: ignore[method-assign]
+    team["team"] = fake_team
+
+    pushed: list = []
+
+    async def capture(sid, envelope):
+        pushed.append((sid, envelope.event))
+
+    monkeypatch.setattr(
+        "app.api.routes.team.questions.stream_store.push_event", capture
+    )
+    monkeypatch.setattr(
+        "app.api.routes.team.questions.stream_store.mark_done", AsyncMock()
+    )
+
+    resp = await client.post(
+        f"/{session_id}/question/{question_id}/answer",
+        json={"answers": [["pnpm"], ["lint"]]},
+    )
+
+    assert resp.json()["resumed"] is False
+    assert (str(session_id), "done") in pushed
+
+
+async def test_a_successful_resume_leaves_the_turn_open(client, team, monkeypatch):
+    """The resumed activation owns the turn — closing it would cut it short."""
+    session_id = uuid.uuid4()
+    question_id = await _seed(session_id)
+    fake_team = _FakeTeam(str(session_id))
+    team["team"] = fake_team
+
+    pushed: list = []
+
+    async def capture(sid, envelope):
+        pushed.append((sid, envelope.event))
+
+    monkeypatch.setattr(
+        "app.api.routes.team.questions.stream_store.push_event", capture
+    )
+    monkeypatch.setattr(
+        "app.api.routes.team.questions.stream_store.mark_done", AsyncMock()
+    )
+
+    resp = await client.post(
+        f"/{session_id}/question/{question_id}/answer",
+        json={"answers": [["pnpm"], ["lint"]]},
+    )
+
+    assert resp.json()["resumed"] is True
+    assert "done" not in [event for _sid, event in pushed]

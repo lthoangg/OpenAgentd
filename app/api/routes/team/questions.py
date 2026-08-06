@@ -171,6 +171,11 @@ async def answer_question(
     )
 
     resumed = await _resume_lead(session_id)
+    if not resumed:
+        # Nothing is going to run this turn, and the client is still showing it
+        # as live. Close it so the session stops reading as busy; the answer is
+        # saved and the user is told to send a message to continue.
+        await _end_turn(session_id)
     logger.info(
         "question_answered session_id={} question_id={} resumed={}",
         session_id,
@@ -201,29 +206,6 @@ async def dismiss_question(
         raise HTTPException(status_code=409, detail="Question already resolved.")
     await db.commit()
 
-    team = await get_team_for_session(session_id)
-    if team is not None:
-        # Free the lead without starting a turn — dismissing means "stop", so
-        # there is deliberately no further model call.
-        if team.lead.state == "waiting_input":
-            team.lead.state = "idle"
-        team.lead._question_suspended = None
-
-        # The suspended lead was holding an *open* turn, and no model call is
-        # coming to finish it. Every other ending emits ``done`` (Stop, a
-        # superseding message, a resumed turn completing); without it here the
-        # pane stays live forever and the session list keeps the session marked
-        # running. ``_try_emit_done`` is the canonical closer — it also drains
-        # anything the user queued while the question was up.
-        try:
-            await team._try_emit_done()
-        except Exception as exc:
-            logger.warning(
-                "question_dismiss_turn_end_failed session_id={} error={}",
-                session_id,
-                exc,
-            )
-
     await stream_store.push_event(
         session_id,
         StreamEnvelope.from_event(
@@ -234,12 +216,71 @@ async def dismiss_question(
             )
         ),
     )
+
+    team = await get_team_for_session(session_id)
+    # ``find_live_team_for_lead_session`` also matches on the coding registry
+    # key, so the team it returns may have a lead bound to a *different*
+    # session — a team evicted after the idle window is rebuilt with a freshly
+    # minted lead session id. Only drive the lead when it really owns this
+    # session; ``_try_emit_done`` closes ``self.lead.session_id`` and would
+    # otherwise end a turn on the wrong stream.
+    if team is not None and team.lead.session_id == session_id:
+        # Free the lead without starting a turn — dismissing means "stop", so
+        # there is deliberately no further model call.
+        if team.lead.state == "waiting_input":
+            team.lead.state = "idle"
+        team.lead._question_suspended = None
+        # A pending row means the turn never closed, so let the canonical
+        # closer close it: it drains a message queued while the lead was still
+        # working, which a bare ``done`` would strand.
+        team._has_active_turn = True
+        try:
+            await team._try_emit_done()
+        except Exception as exc:
+            logger.warning(
+                "question_dismiss_turn_end_failed session_id={} error={}",
+                session_id,
+                exc,
+            )
+    else:
+        # No live team owns this session (restarted daemon, or evicted and
+        # rebuilt). The client is still showing an open turn, so close it on
+        # the stream directly.
+        await _end_turn(session_id)
+
     logger.info(
         "question_dismissed_by_user session_id={} question_id={}",
         session_id,
         question_id,
     )
     return QuestionResolveResponse(status="ok", resumed=False)
+
+
+async def _end_turn(session_id: str) -> None:
+    """Close a suspended turn that has no live team left to close it.
+
+    Mirrors the tail of ``interrupt_team``: the turn is over as far as every
+    client and the session list are concerned, and nothing is running to say
+    so. Best-effort — the question is already resolved and committed, so a
+    failure here must not turn a successful dismissal into an error.
+    """
+    from app.services import event_broadcaster
+
+    try:
+        await stream_store.push_event(
+            session_id, StreamEnvelope.from_parts(event="done", data={})
+        )
+        await stream_store.mark_done(session_id)
+        await event_broadcaster.publish(
+            "session_turn_completed",
+            {"session_id": session_id, "status": "completed"},
+        )
+    except Exception as exc:
+        logger.warning(
+            "question_dismiss_stream_close_failed session_id={} error={}",
+            session_id,
+            exc,
+        )
 
 
 async def _resume_lead(session_id: str) -> bool:
@@ -252,9 +293,27 @@ async def _resume_lead(session_id: str) -> bool:
     if team is None:
         logger.warning("question_resume_no_live_team session_id={}", session_id)
         return False
+    if team.lead.session_id != session_id:
+        # Matched on the coding registry key, not the lead binding: this team
+        # was rebuilt after the idle window and its lead points at a freshly
+        # minted session. ``activate_for_question_answer`` runs on
+        # ``lead.session_id``, so resuming here would replay this answer's turn
+        # into a different session's history.
+        logger.warning(
+            "question_resume_lead_bound_elsewhere session_id={} lead_session_id={}",
+            session_id,
+            team.lead.session_id,
+        )
+        return False
     try:
         team.lead.activate_for_question_answer()
     except Exception as exc:
         logger.warning("question_resume_failed session_id={} error={}", session_id, exc)
+        # Never leave the lead parked with no question to wake it.
+        # ``waiting_input`` counts as busy, so ``_maybe_activate`` would refuse
+        # to start a turn and the next message would sit undelivered.
+        if team.lead.state == "waiting_input":
+            team.lead.state = "idle"
+        team.lead._question_suspended = None
         return False
     return True

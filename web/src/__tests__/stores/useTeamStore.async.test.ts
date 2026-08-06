@@ -249,6 +249,27 @@ describe("continueTeam", () => {
     await promise
   })
 
+  it("shows the pending dots while the continued turn spins up", async () => {
+    // /continue restarts the turn with no new user message, so the optimistic
+    // user block that normally drives the dots never exists, and currentBlocks
+    // still holds the turn being continued.
+    let resolveCommand!: () => void
+    mockPostTeamCommand.mockImplementation(() => new Promise((resolve) => {
+      resolveCommand = () => resolve({ status: "accepted", session_id: "team-sid", command: "continue" })
+    }))
+    useTeamStore.setState({
+      sessionId: "team-sid",
+      leadName: "lead",
+      agentStreams: { lead: makeStream({}) },
+    } as never)
+
+    const promise = useTeamStore.getState().continueTeam()
+    expect(useTeamStore.getState().agentStreams.lead._awaitingRestartOutput).toBe(true)
+
+    resolveCommand()
+    await promise
+  })
+
   it("clears continuation state when the command fails", async () => {
     mockPostTeamCommand.mockImplementation(() => Promise.reject(new Error("last message is not assistant")))
     useTeamStore.setState({ sessionId: "team-sid" })

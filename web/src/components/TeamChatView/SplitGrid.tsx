@@ -28,14 +28,13 @@ interface SplitGridProps {
   agentNames: string[]
   leadName: string | null
   agentStreams?: Record<string, AgentStream>
-  isContinuing?: boolean
   onContinue?: () => void
 }
 
 // Exit is faster than enter so dismissal stays readable without delaying the
 // next interaction.
 export function SplitGrid({
-  agentNames, leadName, agentStreams: streamsProp, isContinuing = false, onContinue,
+  agentNames, leadName, agentStreams: streamsProp, onContinue,
 }: SplitGridProps) {
   const storeStreams = useTeamStore((s) => s.agentStreams)
   const agentStreams = streamsProp ?? storeStreams
@@ -71,7 +70,6 @@ export function SplitGrid({
           name={name}
           stream={stream}
           isLead={name === leadName}
-          isContinuing={isContinuing && name === leadName}
           onContinue={name === leadName ? onContinue : undefined}
         />
       </motion.div>

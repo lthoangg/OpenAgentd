@@ -83,8 +83,6 @@ interface AgentViewProps {
   isError?: boolean
   /** Error message to display when isError is true. */
   lastError?: string | null
-  /** True while this turn was started by /continue. */
-  isContinuing?: boolean
   /** Continue from the trailing assistant turn. */
   onContinue?: () => void
   /** Optional slot rendered in place of the default mascot empty state. */

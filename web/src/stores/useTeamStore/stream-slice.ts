@@ -118,6 +118,10 @@ export const createStreamSlice: StateCreator<
         draft.error = null
         if (draft.leadName && draft.agentStreams[draft.leadName]) {
           draft.agentStreams[draft.leadName]._turnStartedAt = submittedAt
+          // Continue restarts the turn with no new user message, exactly like
+          // an answered question: without this nothing marks it live until the
+          // first token, and the turn reads as finished while it spins up.
+          draft.agentStreams[draft.leadName]._awaitingRestartOutput = true
         }
       })
       await postTeamCommand('continue', sessionId)

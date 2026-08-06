@@ -46,7 +46,6 @@ interface AgentPaneProps {
   name: string
   stream: AgentStream
   isLead: boolean
-  isContinuing?: boolean
   onContinue?: () => void
 }
 

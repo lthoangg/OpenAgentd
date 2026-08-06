@@ -113,7 +113,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
 
         activeAgent: s.activeAgent,
         isTeamWorking: s.isTeamWorking,
-        isContinuing: s.isContinuing,
         sessionId: s.sessionId,
         sessionTitle: s.sessionTitle,
         sessionModel: s.sessionModel,
@@ -156,7 +155,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
 
     activeAgent,
     isTeamWorking,
-    isContinuing,
     sessionId: sessionIdState,
     sessionTitle,
     sessionModel,
@@ -521,7 +519,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
             <SplitGrid
               agentNames={splitAgentNames}
               leadName={leadName}
-              isContinuing={isContinuing}
               onContinue={continueTeam}
             />
           </div>
@@ -571,7 +568,6 @@ export function TeamChatView({ sessionId, mode = 'normal', workspace = null, cod
               isAwaitingRestart={activeAwaitingRestart}
               isError={activeStatus === 'error'}
               lastError={activeLastError}
-              isContinuing={isContinuing && activeAgent === leadName}
               onContinue={activeAgent === leadName ? continueTeam : undefined}
               onMentionFileOpen={mode === 'coding' ? handleMentionFileOpen : undefined}
               emptyState={

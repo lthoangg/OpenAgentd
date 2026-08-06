@@ -747,6 +747,25 @@ class TestTeamAgentsRoute:
         }
         assert {"team_message", "team_manage", "ask_user"} <= lead_tools
 
+    def test_injected_tool_listing_does_not_vary_by_member(self, test_team):
+        """Pins the assumption the /team/agents route caches on.
+
+        The route builds one injected set per *role* rather than per member,
+        because building them cost up to a millisecond each. That is only sound
+        while every agent of a role gets the same tool names and descriptions —
+        the listing reads nothing else off them. If an injected tool ever bakes
+        the agent name into its description, this fails and the cache in
+        ``list_team_agents`` has to become per-agent again.
+        """
+
+        def described(name: str) -> set[tuple[str, str]]:
+            return {
+                (t.name, t.description or "")
+                for t in test_team.get_injected_tools(name)
+            }
+
+        assert described("alice") == described("bob")
+
     def test_team_agents_shows_the_injected_todo_manage_not_the_static_one(
         self, app_with_team, test_team
     ):

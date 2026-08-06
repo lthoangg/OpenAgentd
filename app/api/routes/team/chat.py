@@ -631,6 +631,20 @@ async def list_team_agents(
         _serialize_blueprint(team_obj, bp, custom_threshold=custom_threshold)
         for bp in team_obj.blueprints.values()
     ]
+    # The injected set is role- and mode-dependent (only a coding-mode lead on a
+    # human-owned session gets ``ask_user``), but within one role every agent
+    # gets the same tool *names and descriptions* — only the closure binding
+    # differs, and this listing reads nothing else. Building them per member cost
+    # up to a millisecond each; build one set per role instead.
+    # ``test_injected_tool_listing_does_not_vary_by_member`` pins that invariant.
+    injected_by_role: dict[str, list[Tool]] = {}
+
+    def _injected_for(member: TeamMemberBase) -> list[Tool]:
+        role = "lead" if member is team_obj.lead else "member"
+        if role not in injected_by_role:
+            injected_by_role[role] = team_obj.get_injected_tools(member.name)
+        return injected_by_role[role]
+
     return TeamAgentsResponse(
         agents=[
             AgentInfoResponse(
@@ -639,11 +653,7 @@ async def list_team_agents(
                     is_lead=(m is team_obj.lead),
                     workspace=team_obj.workspace,
                     custom_threshold=custom_threshold,
-                    # Per-agent, not per-team: the injected set is role- and
-                    # mode-dependent (only a coding-mode lead on a human-owned
-                    # session gets ``ask_user``), so the listing has to
-                    # ask for each member rather than share one list.
-                    injected_tools=team_obj.get_injected_tools(m.name),
+                    injected_tools=_injected_for(m),
                 )
             )
             for m in all_members

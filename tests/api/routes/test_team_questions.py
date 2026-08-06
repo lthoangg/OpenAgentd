@@ -82,9 +82,15 @@ class _FakeTeam:
         self.lead.session_id = session_id  # type: ignore[attr-defined]
         self.mode = "coding"
         self.turns_ended = 0
+        self.attached: list[str] = []
+        self.started_with = None
 
     async def _try_emit_done(self) -> None:
         self.turns_ended += 1
+
+    async def attach_lead_to_session(self, session_id: str, *, title=None) -> None:
+        self.attached.append(session_id)
+        self.lead.session_id = session_id
 
 
 async def _seed(
@@ -552,32 +558,109 @@ async def test_dismiss_ends_the_turn_with_no_live_team(client, team, monkeypatch
     assert (str(session_id), "done") in pushed
 
 
-async def test_answer_does_not_resume_a_team_bound_to_another_session():
-    """Resuming the wrong lead would replay a turn into someone else's history.
+async def test_answer_binds_a_stale_lead_before_resuming(client, team):
+    """A rebuilt team's lead points at a freshly minted session.
 
-    ``find_live_team_for_lead_session`` also matches on the coding registry
-    key, so it can return a team whose lead points elsewhere — a team evicted
-    after the idle window is rebuilt with a freshly minted lead session id.
     ``activate_for_question_answer`` runs on ``lead.session_id``, so resuming
-    it would append this answer's turn to a different session.
+    without binding would replay this answer's turn into another conversation.
+    Binding is what ``handle_user_message`` already does for any message that
+    lands on an existing session; the resume needs the same thing.
     """
-    from app.api.routes.team import questions as questions_route
+    session_id = uuid.uuid4()
+    question_id = await _seed(session_id)
+    fake_team = _FakeTeam("019fd000-0000-7000-8000-00000000dead")
+    # A rebuilt team has never run a turn, so its lead is idle.
+    fake_team.lead.state = "idle"
+    team["team"] = fake_team
+
+    resp = await client.post(
+        f"/{session_id}/question/{question_id}/answer",
+        json={"answers": [["pnpm"], ["lint"]]},
+    )
+
+    assert resp.json()["resumed"] is True
+    assert fake_team.attached == [str(session_id)]
+    assert fake_team.lead.session_id == str(session_id)
+    assert fake_team.lead.resumed == 1
+
+
+async def test_answer_does_not_steal_a_lead_working_another_session(client, team):
+    """Rebinding mid-turn would move a running activation to this session."""
+    session_id = uuid.uuid4()
+    question_id = await _seed(session_id)
+    fake_team = _FakeTeam("019fd000-0000-7000-8000-00000000dead")
+    fake_team.lead.state = "working"
+    team["team"] = fake_team
+
+    resp = await client.post(
+        f"/{session_id}/question/{question_id}/answer",
+        json={"answers": [["pnpm"], ["lint"]]},
+    )
+
+    assert resp.json()["resumed"] is False
+    assert fake_team.attached == []
+    assert fake_team.lead.resumed == 0
+
+
+async def test_answer_does_not_steal_a_lead_suspended_on_another_session(client, team):
+    """Another session's unanswered question outranks this resume.
+
+    ``waiting_input`` counts as busy for exactly this reason: rebinding would
+    abandon a question the user has not answered yet on the other session.
+    """
+    session_id = uuid.uuid4()
+    question_id = await _seed(session_id)
+    fake_team = _FakeTeam("019fd000-0000-7000-8000-00000000dead")
+    fake_team.lead.state = "waiting_input"
+    team["team"] = fake_team
+
+    resp = await client.post(
+        f"/{session_id}/question/{question_id}/answer",
+        json={"answers": [["pnpm"], ["lint"]]},
+    )
+
+    assert resp.json()["resumed"] is False
+    assert fake_team.attached == []
+
+
+async def test_answer_starts_a_team_when_none_is_live(client, team, monkeypatch):
+    """The suspension is durable, so answering must survive a daemon restart.
+
+    Nothing is live after a restart, but the resumed turn reads its history
+    from the database — a cold team can run it. Without this the answer is
+    saved and the turn simply never continues.
+    """
+    from app.core import db as core_db
+    from app.models.chat import ChatSession
 
     session_id = uuid.uuid4()
-    fake_team = _FakeTeam("019fd000-0000-7000-8000-00000000dead")
+    question_id = await _seed(session_id)
+    async with core_db.async_session_factory() as db:
+        row = await db.get(ChatSession, session_id)
+        row.workspace = "/tmp/ws"
+        db.add(row)
+        await db.commit()
 
-    async def fake_get_team_for_session(sid: str):
-        return fake_team
+    team["team"] = None
+    started = _FakeTeam(str(session_id))
+    started.lead.state = "waiting_input"
 
-    original = questions_route.get_team_for_session
-    questions_route.get_team_for_session = fake_get_team_for_session
-    try:
-        resumed = await questions_route._resume_lead(str(session_id))
-    finally:
-        questions_route.get_team_for_session = original
+    async def fake_start(workspace: str, sid: str):
+        started.started_with = (workspace, sid)
+        return started
 
-    assert resumed is False
-    assert fake_team.lead.resumed == 0
+    monkeypatch.setattr(
+        "app.services.team_manager.get_or_start_coding_team", fake_start
+    )
+
+    resp = await client.post(
+        f"/{session_id}/question/{question_id}/answer",
+        json={"answers": [["pnpm"], ["lint"]]},
+    )
+
+    assert resp.json()["resumed"] is True
+    assert started.started_with == ("/tmp/ws", str(session_id))
+    assert started.lead.resumed == 1
 
 
 async def test_a_failed_resume_frees_the_lead(client, team):

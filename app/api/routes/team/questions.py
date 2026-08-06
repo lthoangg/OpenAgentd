@@ -22,6 +22,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException
 from loguru import logger
 
+from app.agent.mode.team.member import is_busy
 from app.agent.schemas.events import QuestionAnsweredEvent, QuestionDismissedEvent
 from app.api.schemas.team import (
     MAX_ANSWER_CHARS,
@@ -170,7 +171,7 @@ async def answer_question(
         ),
     )
 
-    resumed = await _resume_lead(session_id)
+    resumed = await _resume_lead(session_id, db)
     if not resumed:
         # Nothing is going to run this turn, and the client is still showing it
         # as live. Close it so the session stops reading as busy; the answer is
@@ -283,7 +284,39 @@ async def _end_turn(session_id: str) -> None:
         )
 
 
-async def _resume_lead(session_id: str) -> bool:
+async def _start_team_for_session(session_id: str, db: DbSession):
+    """Boot the coding team that owns *session_id*, or ``None``.
+
+    The suspension is durable, so answering has to work after a daemon restart
+    — and the resumed turn reads its history from the database, so a cold team
+    can run it. ``ask_user`` is coding-mode-lead-only, so a session that has a
+    question always has a workspace to start against.
+    """
+    from app.models.chat import ChatSession
+    from app.services import team_manager
+
+    try:
+        row = await db.get(ChatSession, UUID(session_id))
+    except Exception as exc:
+        logger.warning("question_resume_session_lookup_failed error={}", exc)
+        return None
+    if row is None or row.mode != "coding" or not row.workspace:
+        logger.warning(
+            "question_resume_session_not_resumable session_id={} mode={}",
+            session_id,
+            None if row is None else row.mode,
+        )
+        return None
+    try:
+        return await team_manager.get_or_start_coding_team(row.workspace, session_id)
+    except Exception as exc:
+        logger.warning(
+            "question_resume_team_start_failed session_id={} error={}", session_id, exc
+        )
+        return None
+
+
+async def _resume_lead(session_id: str, db: DbSession) -> bool:
     """Restart the suspended turn. ``False`` when it could not be started.
 
     The answer is already committed at this point, so a failure here must not
@@ -291,20 +324,27 @@ async def _resume_lead(session_id: str) -> bool:
     """
     team = await get_team_for_session(session_id)
     if team is None:
-        logger.warning("question_resume_no_live_team session_id={}", session_id)
-        return False
+        # Nothing live owns this session (restarted daemon, or evicted after
+        # the idle window). Start it: the turn resumes from DB history.
+        team = await _start_team_for_session(session_id, db)
+        if team is None:
+            logger.warning("question_resume_no_live_team session_id={}", session_id)
+            return False
+
     if team.lead.session_id != session_id:
-        # Matched on the coding registry key, not the lead binding: this team
-        # was rebuilt after the idle window and its lead points at a freshly
-        # minted session. ``activate_for_question_answer`` runs on
-        # ``lead.session_id``, so resuming here would replay this answer's turn
-        # into a different session's history.
-        logger.warning(
-            "question_resume_lead_bound_elsewhere session_id={} lead_session_id={}",
-            session_id,
-            team.lead.session_id,
-        )
-        return False
+        # Matched on the coding registry key, not the lead binding: a rebuilt
+        # team's lead starts on a freshly minted session.
+        # ``activate_for_question_answer`` runs on ``lead.session_id``, so it
+        # has to be bound here or the turn replays into another conversation.
+        if is_busy(team.lead.state):
+            logger.warning(
+                "question_resume_lead_busy_elsewhere session_id={} lead_session_id={}",
+                session_id,
+                team.lead.session_id,
+            )
+            return False
+        await team.attach_lead_to_session(session_id)
+
     try:
         team.lead.activate_for_question_answer()
     except Exception as exc:

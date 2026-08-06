@@ -294,6 +294,44 @@ class AgentTeam:
         """
         return is_busy(self.lead.state)
 
+    async def attach_lead_to_session(
+        self, session_id: str, *, title: str | None = None
+    ) -> None:
+        """Point the lead at *session_id* and realign the roster behind it.
+
+        A team is cached per (workspace, session) but its lead starts on a
+        freshly minted session id, so anything that acts on an existing
+        conversation has to bind the lead first — otherwise the turn runs
+        against the wrong history. Callers must check the lead is not busy:
+        rebinding mid-turn would move a running activation to another session.
+        """
+        self.lead.session_id = session_id
+        await self.lead._ensure_db_session(
+            title=title,
+            mode=self.mode,
+            workspace=self.workspace,
+        )
+
+        # Reset blueprint counters so a fresh chat starts at #1 for each
+        # blueprint.  (Reconciliation against existing DB rows is done
+        # lazily on the first spawn for the new lead session.)
+        for bp in self.blueprints.values():
+            bp.counter_reconciled_for = None
+
+        # Restore previously-spawned-and-not-dismissed instances by
+        # rehydrating their session ids from DB.  Any instance that was
+        # alive (registered) when we entered this branch keeps its
+        # mailbox registration; we only update its DB session pointer
+        # so its view of history matches whatever child rows exist
+        # for the current lead session.
+        #
+        # This preserves the existing "restart restores members"
+        # behaviour for instances that had been spawned earlier in the
+        # process — but only for those that actually had child rows
+        # under THIS lead session.  Anything else is dropped from the
+        # roster (the lead can re-spawn at will).
+        await self._restore_or_drop_members_for_lead(session_id)
+
     def is_awaiting_question_answer(self) -> bool:
         """Whether the lead is parked on a question the user has not resolved.
 
@@ -591,32 +629,9 @@ class AgentTeam:
 
         is_new_session = self.lead.session_id != session_id
         if is_new_session:
-            self.lead.session_id = session_id
-            await self.lead._ensure_db_session(
-                title=content[:100] if content else None,
-                mode=self.mode,
-                workspace=self.workspace,
+            await self.attach_lead_to_session(
+                session_id, title=content[:100] if content else None
             )
-
-            # Reset blueprint counters so a fresh chat starts at #1 for each
-            # blueprint.  (Reconciliation against existing DB rows is done
-            # lazily on the first spawn for the new lead session.)
-            for bp in self.blueprints.values():
-                bp.counter_reconciled_for = None
-
-            # Restore previously-spawned-and-not-dismissed instances by
-            # rehydrating their session ids from DB.  Any instance that was
-            # alive (registered) when we entered this branch keeps its
-            # mailbox registration; we only update its DB session pointer
-            # so its view of history matches whatever child rows exist
-            # for the current lead session.
-            #
-            # This preserves the existing "restart restores members"
-            # behaviour for instances that had been spawned earlier in the
-            # process — but only for those that actually had child rows
-            # under THIS lead session.  Anything else is dropped from the
-            # roster (the lead can re-spawn at will).
-            await self._restore_or_drop_members_for_lead(session_id)
 
         # A question on screen owns the turn. A person typing instead of
         # answering has moved on, so the question is superseded. A machine

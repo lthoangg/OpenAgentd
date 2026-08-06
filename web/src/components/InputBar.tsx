@@ -1000,6 +1000,14 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
   // through ``motion.div`` still made framer reconcile inline styles on every
   // shell-mode toggle, which flickered in the WebView. A bare div makes the
   // toggle a pure, cheap class swap. Desktop keeps the polished morph.
+  //
+  // Desktop deliberately omits ``layout``. ``value`` is local state, so the
+  // composer re-renders on every keystroke, and a ``layout`` node is measured
+  // by framer's projection pass on every render — 2 forced
+  // ``getBoundingClientRect`` calls per typed character. Measured with
+  // ``bun scripts/bench-motion-layout.mjs``; pinned by
+  // ``InputBar.layout-perf.test.tsx``. The padding animation below is free
+  // while typing (it only retargets on the minimize toggle).
   const pill = isMobile ? (
     <div
       onDragEnter={handleDragEnter}
@@ -1013,7 +1021,6 @@ export const InputBar = forwardRef<InputBarHandle, InputBarProps>(function Input
     </div>
   ) : (
     <motion.div
-      layout
       initial={false}
       animate={{ padding: minimized ? 6 : 8 }}
       transition={{ duration: prefersReducedMotion ? 0.01 : 0.24, ease: [0.32, 0.72, 0, 1] }}

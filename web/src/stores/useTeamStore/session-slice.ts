@@ -285,6 +285,30 @@ function removePersistedOptimisticUserBlocks(stream: AgentStream) {
   })
 }
 
+/**
+ * True when this turn compacted and the divider is still client-only.
+ *
+ * A summary row is stored at the *boundary* it marks — one microsecond ahead of
+ * the oldest message the summariser kept, which is several turns back (see
+ * ``_summary_anchor_ids`` in ``app/agent/checkpointer.py``). That is older than
+ * the delta watermark, so ``teamHistorySince`` can never return it: swapping the
+ * tail would drop the locally-created divider with nothing to replace it, and
+ * the "Session compacted" marker would disappear until the next full load.
+ *
+ * Local blocks are only ever appended, so they form a suffix of ``blocks`` —
+ * stop at the first confirmed row rather than scanning the whole session.
+ */
+function hasUnsyncedCompaction(stream: AgentStream): boolean {
+  const unsynced = new Set(stream._unsyncedBlockIds ?? [])
+  if (unsynced.size === 0) return false
+  for (let i = stream.blocks.length - 1; i >= 0; i--) {
+    const block = stream.blocks[i]
+    if (!unsynced.has(block.id)) return false
+    if (block.type === 'compaction') return true
+  }
+  return false
+}
+
 export function resetSessionState(
   state: TeamStore,
   options: {
@@ -763,9 +787,14 @@ export const createSessionSlice: StateCreator<
     const state = get()
     const since = state._syncedThrough
 
-    // No confirmed baseline, or a turn is still producing content: a delta
-    // cannot be spliced safely, so take the full page.
-    if (state.sessionId !== sessionId || since === null || state.isTeamWorking) {
+    // No confirmed baseline, a turn is still producing content, or the turn
+    // compacted: a delta cannot be spliced safely, so take the full page.
+    if (
+      state.sessionId !== sessionId ||
+      since === null ||
+      state.isTeamWorking ||
+      Object.values(state.agentStreams).some(hasUnsyncedCompaction)
+    ) {
       await get().loadSession(sessionId, workspace)
       return
     }

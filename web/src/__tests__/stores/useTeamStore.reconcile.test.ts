@@ -260,6 +260,10 @@ describe('reconcileTurnTail', () => {
     // tail-swap) kept them as "confirmed" and appended the server's
     // canonical parse of that same content right after — duplicating the
     // pre-compaction reply (and doubling the compaction divider).
+    //
+    // A compacted turn now routes through the full page (the summary row is
+    // stored behind the delta watermark — see the test below), so this asserts
+    // the same no-duplication guarantee on that path.
     await seedLoadedSession()
 
     useTeamStore.setState((state) => {
@@ -278,12 +282,14 @@ describe('reconcileTurnTail', () => {
 
     // The server persisted the whole turn — pre-compaction reply, the
     // is_summary row, and the post-compaction reply — as canonical rows.
-    mockTeamHistorySince.mockImplementation(() => Promise.resolve(deltaHistory({
+    mockTeamHistory.mockImplementation(() => Promise.resolve(fullHistory({
       lead: leadSession({
         messages: [
+          { id: 'm1', role: 'user', content: 'hello', created_at: '2026-07-01T00:00:00Z' },
+          { id: 'm2', role: 'assistant', content: 'hi', created_at: '2026-07-01T00:00:01Z' },
           { id: 'ua', role: 'user', content: 'message A', created_at: '2026-07-01T00:00:02Z' },
           { id: 'a1', role: 'assistant', content: 'pre-compaction reply', created_at: '2026-07-01T00:00:02.500Z' },
-          { id: 's1', role: 'assistant', content: 'summary text', is_summary: true, created_at: '2026-07-01T00:00:03Z' },
+          { id: 's1', role: 'user', content: 'summary text', is_summary: true, created_at: '2026-07-01T00:00:03Z' },
           { id: 'a2', role: 'assistant', content: 'post-compaction reply', created_at: '2026-07-01T00:00:04Z' },
         ],
       }),
@@ -324,6 +330,51 @@ describe('reconcileTurnTail', () => {
     const contents = useTeamStore.getState().agentStreams.lead.blocks.map((b) => b.content)
     expect(contents.filter((c) => c === 'hi')).toHaveLength(1)
     expect(useTeamStore.getState().agentStreams.lead.currentBlocks).toHaveLength(0)
+  })
+
+  it('takes a full page when the turn compacted, because the summary row predates the delta', async () => {
+    // The summary row is stored at the compaction *boundary* — one microsecond
+    // ahead of the oldest message the summariser kept (see
+    // `_summary_anchor_ids` in app/agent/checkpointer.py). That boundary sits
+    // several turns back, so the row is *older* than the delta watermark and
+    // `teamHistorySince` cannot return it. Swapping the tail would then drop the
+    // locally-created divider with nothing to replace it, and the "Session
+    // compacted" marker would vanish until the next full page load.
+    await seedLoadedSession()
+
+    useTeamStore.setState({ isTeamWorking: true })
+    useTeamStore.getState()._handleSSEEvent('summarization_start', { agent: 'lead' })
+    useTeamStore.getState()._handleSSEEvent('summarization_end', { agent: 'lead', summary: 'summary text' })
+    useTeamStore.getState()._handleSSEEvent('message', { agent: 'lead', text: 'post-compaction reply' })
+    useTeamStore.getState()._handleSSEEvent('done', {})
+
+    // Canonical page: the summary sorts back at the boundary it marks.
+    mockTeamHistory.mockImplementation(() => Promise.resolve(fullHistory({
+      lead: leadSession({
+        messages: [
+          { id: 'm1', role: 'user', content: 'hello', created_at: '2026-07-01T00:00:00Z' },
+          { id: 's1', role: 'user', content: 'summary text', is_summary: true, created_at: '2026-07-01T00:00:00.999Z' },
+          { id: 'm2', role: 'assistant', content: 'hi', created_at: '2026-07-01T00:00:01Z' },
+          { id: 'a2', role: 'assistant', content: 'post-compaction reply', created_at: '2026-07-01T00:00:04Z' },
+        ],
+      }),
+    })))
+    // The delta can only ever see what postdates the watermark.
+    mockTeamHistorySince.mockImplementation(() => Promise.resolve(deltaHistory({
+      lead: leadSession({
+        messages: [
+          { id: 'a2', role: 'assistant', content: 'post-compaction reply', created_at: '2026-07-01T00:00:04Z' },
+        ],
+      }),
+    })))
+
+    await useTeamStore.getState().reconcileTurnTail('lead-sess')
+
+    const blocks = useTeamStore.getState().agentStreams.lead.blocks
+    expect(blocks.filter((b) => b.type === 'compaction')).toHaveLength(1)
+    expect(blocks.map((b) => b.content)).toEqual([
+      'hello', 'summary text', 'hi', 'post-compaction reply',
+    ])
   })
 
   it('drops a delta a concurrent full load already absorbed', async () => {
